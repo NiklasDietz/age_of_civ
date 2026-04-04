@@ -1,0 +1,52 @@
+#pragma once
+
+/**
+ * @file MapRenderer.hpp
+ * @brief Renders the hex tile map using Renderer2D with real terrain data.
+ */
+
+#include <cstdint>
+
+namespace vulkan_app::renderer {
+class Renderer2D;
+}
+
+namespace aoc::map {
+class HexGrid;
+}
+
+namespace aoc::render {
+
+class CameraController;
+
+class MapRenderer {
+public:
+    MapRenderer() = default;
+
+    /**
+     * @brief Draw the hex grid terrain, features, and rivers.
+     *
+     * Only draws tiles visible within the current camera viewport for
+     * performance. Uses terrain colors from Terrain.hpp.
+     */
+    void draw(vulkan_app::renderer::Renderer2D& renderer2d,
+              const aoc::map::HexGrid& grid,
+              const CameraController& camera,
+              uint32_t screenWidth, uint32_t screenHeight) const;
+
+    /// Set hex outer radius (pixels at zoom 1.0).
+    void setHexSize(float size) { this->m_hexSize = size; }
+    [[nodiscard]] float hexSize() const { return this->m_hexSize; }
+
+private:
+    void drawTile(vulkan_app::renderer::Renderer2D& renderer2d,
+                  const aoc::map::HexGrid& grid,
+                  int32_t tileIndex, float cx, float cy) const;
+
+    void drawRiverEdges(vulkan_app::renderer::Renderer2D& renderer2d,
+                        uint8_t riverMask, float cx, float cy) const;
+
+    float m_hexSize = 30.0f;
+};
+
+} // namespace aoc::render

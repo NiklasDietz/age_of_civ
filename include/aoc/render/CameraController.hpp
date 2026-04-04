@@ -1,0 +1,66 @@
+#pragma once
+
+/**
+ * @file CameraController.hpp
+ * @brief 2D camera with pan (WASD / middle-mouse drag) and zoom (scroll wheel).
+ *
+ * Drives Renderer2D::setCamera() and setZoom(). Provides screen-to-world
+ * and world-to-screen coordinate conversions for hex picking.
+ */
+
+#include <cstdint>
+
+namespace aoc::app {
+class InputManager;
+}
+
+namespace aoc::render {
+
+class CameraController {
+public:
+    struct Config {
+        float panSpeed    = 500.0f;   ///< World units per second at zoom 1.0
+        float zoomSpeed   = 0.15f;    ///< Zoom multiplier per scroll notch
+        float minZoom     = 0.1f;
+        float maxZoom     = 5.0f;
+        float dragSpeed   = 1.0f;     ///< Middle-mouse drag multiplier
+    };
+
+    CameraController();
+    explicit CameraController(const Config& config);
+
+    /**
+     * @brief Update camera based on input. Call once per frame.
+     * @param input  The input manager (for keys, mouse, scroll).
+     * @param deltaTime  Seconds since last frame.
+     * @param screenWidth  Current framebuffer width.
+     * @param screenHeight Current framebuffer height.
+     */
+    void update(const aoc::app::InputManager& input, float deltaTime,
+                uint32_t screenWidth, uint32_t screenHeight);
+
+    [[nodiscard]] float cameraX() const { return this->m_cameraX; }
+    [[nodiscard]] float cameraY() const { return this->m_cameraY; }
+    [[nodiscard]] float zoom() const    { return this->m_zoom; }
+
+    /// Convert screen pixel coordinates to world coordinates.
+    void screenToWorld(double screenX, double screenY,
+                       float& worldX, float& worldY,
+                       uint32_t screenWidth, uint32_t screenHeight) const;
+
+    /// Convert world coordinates to screen pixel coordinates.
+    void worldToScreen(float worldX, float worldY,
+                       double& screenX, double& screenY,
+                       uint32_t screenWidth, uint32_t screenHeight) const;
+
+    void setPosition(float x, float y) { this->m_cameraX = x; this->m_cameraY = y; }
+    void setZoom(float z) { this->m_zoom = z; }
+
+private:
+    Config m_config;
+    float  m_cameraX = 0.0f;
+    float  m_cameraY = 0.0f;
+    float  m_zoom    = 1.0f;
+};
+
+} // namespace aoc::render

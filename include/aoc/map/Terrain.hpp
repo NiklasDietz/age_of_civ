@@ -1,0 +1,156 @@
+#pragma once
+
+/**
+ * @file Terrain.hpp
+ * @brief Terrain types, features, and their base yields/properties.
+ */
+
+#include <array>
+#include <cstdint>
+#include <string_view>
+
+namespace aoc::map {
+
+// ============================================================================
+// Terrain type -- base tile type
+// ============================================================================
+
+enum class TerrainType : uint8_t {
+    Ocean,
+    Coast,
+    Desert,
+    Plains,
+    Grassland,
+    Tundra,
+    Snow,
+    Mountain,
+
+    Count
+};
+
+static constexpr uint8_t TERRAIN_COUNT = static_cast<uint8_t>(TerrainType::Count);
+
+[[nodiscard]] constexpr std::string_view terrainName(TerrainType type) {
+    constexpr std::array<std::string_view, TERRAIN_COUNT> NAMES = {{
+        "Ocean", "Coast", "Desert", "Plains",
+        "Grassland", "Tundra", "Snow", "Mountain"
+    }};
+    return NAMES[static_cast<uint8_t>(type)];
+}
+
+[[nodiscard]] constexpr bool isWater(TerrainType type) {
+    return type == TerrainType::Ocean || type == TerrainType::Coast;
+}
+
+[[nodiscard]] constexpr bool isImpassable(TerrainType type) {
+    return type == TerrainType::Mountain || type == TerrainType::Ocean;
+}
+
+// ============================================================================
+// Feature -- overlay on top of terrain
+// ============================================================================
+
+enum class FeatureType : uint8_t {
+    None,
+    Forest,
+    Jungle,
+    Marsh,
+    Floodplains,
+    Oasis,
+    Reef,
+    Ice,
+    Hills,        ///< Elevation feature, combinable with terrain
+
+    Count
+};
+
+static constexpr uint8_t FEATURE_COUNT = static_cast<uint8_t>(FeatureType::Count);
+
+[[nodiscard]] constexpr std::string_view featureName(FeatureType type) {
+    constexpr std::array<std::string_view, FEATURE_COUNT> NAMES = {{
+        "None", "Forest", "Jungle", "Marsh", "Floodplains",
+        "Oasis", "Reef", "Ice", "Hills"
+    }};
+    return NAMES[static_cast<uint8_t>(type)];
+}
+
+// ============================================================================
+// Yields -- base resource production per tile
+// ============================================================================
+
+struct TileYield {
+    int8_t food       = 0;
+    int8_t production = 0;
+    int8_t gold       = 0;
+    int8_t science    = 0;
+    int8_t culture    = 0;
+    int8_t faith      = 0;
+};
+
+/// Base yields per terrain type (before features/improvements).
+[[nodiscard]] constexpr TileYield baseTerrainYield(TerrainType type) {
+    switch (type) {
+        case TerrainType::Ocean:     return {1, 0, 0, 0, 0, 0};
+        case TerrainType::Coast:     return {1, 0, 1, 0, 0, 0};
+        case TerrainType::Desert:    return {0, 0, 0, 0, 0, 0};
+        case TerrainType::Plains:    return {1, 1, 0, 0, 0, 0};
+        case TerrainType::Grassland: return {2, 0, 0, 0, 0, 0};
+        case TerrainType::Tundra:    return {1, 0, 0, 0, 0, 0};
+        case TerrainType::Snow:      return {0, 0, 0, 0, 0, 0};
+        case TerrainType::Mountain:  return {0, 0, 0, 0, 0, 0};
+        default:                     return {};
+    }
+}
+
+/// Yield modifier from features (added to terrain base).
+[[nodiscard]] constexpr TileYield featureYieldModifier(FeatureType type) {
+    switch (type) {
+        case FeatureType::Forest:      return {0, 1, 0, 0, 0, 0};
+        case FeatureType::Jungle:      return {1, 0, 0, 0, 0, 0};
+        case FeatureType::Marsh:       return {1, 0, 0, 0, 0, 0};
+        case FeatureType::Floodplains: return {3, 0, 0, 0, 0, 0};
+        case FeatureType::Oasis:       return {3, 0, 1, 0, 0, 0};
+        case FeatureType::Reef:        return {1, 0, 1, 0, 0, 0};
+        case FeatureType::Hills:       return {0, 1, 0, 0, 0, 0};
+        default:                       return {};
+    }
+}
+
+// ============================================================================
+// Terrain rendering colors (RGBA, premultiplied)
+// ============================================================================
+
+struct TerrainColor {
+    float r, g, b;
+};
+
+[[nodiscard]] constexpr TerrainColor terrainColor(TerrainType type) {
+    switch (type) {
+        case TerrainType::Ocean:     return {0.10f, 0.20f, 0.55f};
+        case TerrainType::Coast:     return {0.20f, 0.45f, 0.70f};
+        case TerrainType::Desert:    return {0.82f, 0.75f, 0.50f};
+        case TerrainType::Plains:    return {0.65f, 0.70f, 0.35f};
+        case TerrainType::Grassland: return {0.30f, 0.65f, 0.30f};
+        case TerrainType::Tundra:    return {0.55f, 0.60f, 0.55f};
+        case TerrainType::Snow:      return {0.85f, 0.88f, 0.90f};
+        case TerrainType::Mountain:  return {0.45f, 0.40f, 0.35f};
+        default:                     return {0.50f, 0.50f, 0.50f};
+    }
+}
+
+/// Color tint applied on top of terrain color for features.
+[[nodiscard]] constexpr TerrainColor featureColorTint(FeatureType type) {
+    switch (type) {
+        case FeatureType::Forest:      return {-0.05f, 0.10f, -0.05f};
+        case FeatureType::Jungle:      return {-0.05f, 0.05f, -0.10f};
+        case FeatureType::Marsh:       return {-0.05f, -0.05f, 0.05f};
+        case FeatureType::Floodplains: return {0.05f, 0.10f, -0.05f};
+        case FeatureType::Oasis:       return {0.05f, 0.15f, 0.00f};
+        case FeatureType::Reef:        return {0.05f, 0.10f, 0.10f};
+        case FeatureType::Ice:         return {0.20f, 0.20f, 0.25f};
+        case FeatureType::Hills:       return {0.05f, 0.02f, -0.02f};
+        default:                       return {0.00f, 0.00f, 0.00f};
+    }
+}
+
+} // namespace aoc::map

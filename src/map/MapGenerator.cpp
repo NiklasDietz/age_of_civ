@@ -1,0 +1,389 @@
+/**
+ * @file MapGenerator.cpp
+ * @brief Procedural map generation using layered value noise.
+ */
+
+#include "aoc/map/MapGenerator.hpp"
+#include "aoc/map/HexCoord.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <vector>
+
+namespace aoc::map {
+
+// ============================================================================
+// Noise utilities
+// ============================================================================
+
+/// Simple hash-based value noise. Deterministic for a given (ix, iy, seed).
+static float hashNoise(int32_t ix, int32_t iy, uint64_t seed) {
+    // Combine coordinates and seed into a single hash
+    uint64_t h = seed;
+    h ^= static_cast<uint64_t>(ix) * 0x517cc1b727220a95ULL;
+    h ^= static_cast<uint64_t>(iy) * 0x6c62272e07bb0142ULL;
+    h = (h ^ (h >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    h = (h ^ (h >> 27)) * 0x94d049bb133111ebULL;
+    h = h ^ (h >> 31);
+    return static_cast<float>(h & 0xFFFFFF) / static_cast<float>(0xFFFFFF);
+}
+
+static float smoothstep(float t) {
+    return t * t * (3.0f - 2.0f * t);
+}
+
+static float lerp(float a, float b, float t) {
+    return a + (b - a) * t;
+}
+
+float MapGenerator::noise2D(float x, float y, float frequency, aoc::Random& rng) {
+    // Use rng state as noise seed so it's deterministic per-generation
+    uint64_t noiseSeed = rng.next();
+
+    float fx = x * frequency;
+    float fy = y * frequency;
+
+    int32_t ix = static_cast<int32_t>(std::floor(fx));
+    int32_t iy = static_cast<int32_t>(std::floor(fy));
+
+    float tx = fx - static_cast<float>(ix);
+    float ty = fy - static_cast<float>(iy);
+
+    tx = smoothstep(tx);
+    ty = smoothstep(ty);
+
+    float c00 = hashNoise(ix,     iy,     noiseSeed);
+    float c10 = hashNoise(ix + 1, iy,     noiseSeed);
+    float c01 = hashNoise(ix,     iy + 1, noiseSeed);
+    float c11 = hashNoise(ix + 1, iy + 1, noiseSeed);
+
+    float top    = lerp(c00, c10, tx);
+    float bottom = lerp(c01, c11, tx);
+    return lerp(top, bottom, ty);
+}
+
+float MapGenerator::fractalNoise(float x, float y, int octaves, float frequency,
+                                  float persistence, aoc::Random& rng) {
+    float value     = 0.0f;
+    float amplitude = 1.0f;
+    float maxValue  = 0.0f;
+    float freq      = frequency;
+
+    for (int i = 0; i < octaves; ++i) {
+        value    += noise2D(x, y, freq, rng) * amplitude;
+        maxValue += amplitude;
+        amplitude *= persistence;
+        freq      *= 2.0f;
+    }
+
+    return value / maxValue;  // Normalize to [0, 1]
+}
+
+// ============================================================================
+// Generation steps
+// ============================================================================
+
+void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
+    outGrid.initialize(config.width, config.height);
+
+    aoc::Random rng(config.seed);
+
+    assignTerrain(config, outGrid, rng);
+    smoothCoastlines(outGrid);
+    assignFeatures(config, outGrid, rng);
+    generateRivers(outGrid, rng);
+}
+
+void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Random& rng) {
+    const int32_t width  = grid.width();
+    const int32_t height = grid.height();
+
+    // Generate elevation map using fractal noise
+    std::vector<float> elevationMap(static_cast<std::size_t>(grid.tileCount()));
+
+    // Use a copy of rng to generate consistent noise seeds per octave
+    aoc::Random noiseRng(rng.next());
+
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            float nx = static_cast<float>(col) / static_cast<float>(width);
+            float ny = static_cast<float>(row) / static_cast<float>(height);
+
+            float elev = fractalNoise(nx, ny, 6, 3.0f, 0.5f, noiseRng);
+
+            // Island gradient: push edges toward water
+            float dx = (nx - 0.5f) * 2.0f;
+            float dy = (ny - 0.5f) * 2.0f;
+            float distFromCenter = std::sqrt(dx * dx + dy * dy);
+            float edgeFalloff = 1.0f - std::clamp(distFromCenter * 1.2f, 0.0f, 1.0f);
+            edgeFalloff = smoothstep(edgeFalloff);
+
+            elev = elev * 0.6f + edgeFalloff * 0.4f;
+
+            elevationMap[static_cast<std::size_t>(row * width + col)] = elev;
+        }
+    }
+
+    // Sort elevations to find the water threshold
+    std::vector<float> sortedElevations(elevationMap);
+    std::sort(sortedElevations.begin(), sortedElevations.end());
+    std::size_t waterCutoff = static_cast<std::size_t>(
+        config.waterRatio * static_cast<float>(sortedElevations.size()));
+    float waterThreshold = sortedElevations[std::min(waterCutoff, sortedElevations.size() - 1)];
+
+    // Mountain threshold
+    std::size_t mountainCutoff = sortedElevations.size() -
+        static_cast<std::size_t>(config.mountainRatio * static_cast<float>(sortedElevations.size()));
+    float mountainThreshold = sortedElevations[std::min(mountainCutoff, sortedElevations.size() - 1)];
+
+    // Temperature map (latitude-based + noise)
+    aoc::Random tempRng(rng.next());
+
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            int32_t index = row * width + col;
+            float elev = elevationMap[static_cast<std::size_t>(index)];
+
+            if (elev < waterThreshold) {
+                // Deep vs shallow water
+                if (elev < waterThreshold * 0.6f) {
+                    grid.setTerrain(index, TerrainType::Ocean);
+                } else {
+                    grid.setTerrain(index, TerrainType::Coast);
+                }
+                grid.setElevation(index, -1);
+                continue;
+            }
+
+            if (elev >= mountainThreshold) {
+                grid.setTerrain(index, TerrainType::Mountain);
+                grid.setElevation(index, 3);
+                continue;
+            }
+
+            // Temperature based on latitude + noise
+            float latitudeT = static_cast<float>(row) / static_cast<float>(height);
+            // 0 = top (cold), 0.5 = equator (hot), 1.0 = bottom (cold)
+            float temperature = 1.0f - 2.0f * std::abs(latitudeT - 0.5f);
+            float nx = static_cast<float>(col) / static_cast<float>(width);
+            float ny = static_cast<float>(row) / static_cast<float>(height);
+            temperature += (fractalNoise(nx, ny, 3, 5.0f, 0.5f, tempRng) - 0.5f) * 0.3f;
+            temperature = std::clamp(temperature, 0.0f, 1.0f);
+
+            // Assign terrain based on temperature
+            TerrainType terrain;
+            if (temperature < 0.15f) {
+                terrain = TerrainType::Snow;
+            } else if (temperature < 0.30f) {
+                terrain = TerrainType::Tundra;
+            } else if (temperature > 0.80f) {
+                terrain = TerrainType::Desert;
+            } else if (temperature > 0.50f) {
+                terrain = TerrainType::Plains;
+            } else {
+                terrain = TerrainType::Grassland;
+            }
+
+            grid.setTerrain(index, terrain);
+            grid.setElevation(index, static_cast<int8_t>(
+                std::clamp(static_cast<int>(elev * 4.0f), 0, 2)));
+        }
+    }
+}
+
+void MapGenerator::smoothCoastlines(HexGrid& grid) {
+    // Convert isolated ocean tiles surrounded by land into coast,
+    // and isolated land tiles surrounded by water into coast.
+    const int32_t width  = grid.width();
+    const int32_t height = grid.height();
+
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            int32_t index = row * width + col;
+            hex::AxialCoord axial = hex::offsetToAxial({col, row});
+            std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(axial);
+
+            int waterCount = 0;
+            int validCount = 0;
+
+            for (const hex::AxialCoord& n : nbrs) {
+                if (!grid.isValid(n)) {
+                    continue;
+                }
+                ++validCount;
+                if (isWater(grid.terrain(grid.toIndex(n)))) {
+                    ++waterCount;
+                }
+            }
+
+            if (validCount == 0) {
+                continue;
+            }
+
+            // If a land tile is mostly surrounded by water, make it coast
+            if (!isWater(grid.terrain(index)) && waterCount >= 4) {
+                grid.setTerrain(index, TerrainType::Coast);
+            }
+            // If an ocean tile has land neighbors, it should be coast
+            if (grid.terrain(index) == TerrainType::Ocean) {
+                int landCount = validCount - waterCount;
+                if (landCount >= 1) {
+                    grid.setTerrain(index, TerrainType::Coast);
+                }
+            }
+        }
+    }
+}
+
+void MapGenerator::assignFeatures(const Config& config, HexGrid& grid, aoc::Random& rng) {
+    const int32_t width  = grid.width();
+    const int32_t height = grid.height();
+
+    aoc::Random featureRng(rng.next());
+
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            int32_t index = row * width + col;
+            TerrainType terrain = grid.terrain(index);
+
+            // Skip water and mountains
+            if (isWater(terrain) || terrain == TerrainType::Mountain) {
+                continue;
+            }
+
+            // Hills
+            if (featureRng.chance(config.hillRatio)) {
+                grid.setFeature(index, FeatureType::Hills);
+                continue;
+            }
+
+            // Forest/Jungle based on terrain temperature
+            if (terrain == TerrainType::Grassland || terrain == TerrainType::Plains) {
+                if (featureRng.chance(config.forestRatio)) {
+                    // Latitude determines forest vs jungle
+                    float latitudeT = static_cast<float>(row) / static_cast<float>(height);
+                    float temperature = 1.0f - 2.0f * std::abs(latitudeT - 0.5f);
+                    if (temperature > 0.65f) {
+                        grid.setFeature(index, FeatureType::Jungle);
+                    } else {
+                        grid.setFeature(index, FeatureType::Forest);
+                    }
+                    continue;
+                }
+            }
+
+            // Tundra can have sparse forest
+            if (terrain == TerrainType::Tundra && featureRng.chance(0.10f)) {
+                grid.setFeature(index, FeatureType::Forest);
+                continue;
+            }
+
+            // Desert floodplains (rare)
+            if (terrain == TerrainType::Desert && featureRng.chance(0.03f)) {
+                grid.setFeature(index, FeatureType::Floodplains);
+                continue;
+            }
+
+            // Oasis (very rare, desert only)
+            if (terrain == TerrainType::Desert && featureRng.chance(0.02f)) {
+                grid.setFeature(index, FeatureType::Oasis);
+                continue;
+            }
+
+            // Marsh (grassland near water)
+            if (terrain == TerrainType::Grassland && featureRng.chance(0.05f)) {
+                // Check if near water
+                hex::AxialCoord axial = hex::offsetToAxial({col, row});
+                std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(axial);
+                bool nearWater = false;
+                for (const hex::AxialCoord& n : nbrs) {
+                    if (grid.isValid(n) && isWater(grid.terrain(grid.toIndex(n)))) {
+                        nearWater = true;
+                        break;
+                    }
+                }
+                if (nearWater) {
+                    grid.setFeature(index, FeatureType::Marsh);
+                }
+            }
+        }
+    }
+}
+
+void MapGenerator::generateRivers(HexGrid& grid, aoc::Random& rng) {
+    const int32_t width  = grid.width();
+    const int32_t height = grid.height();
+
+    // Simple river generation: start from random high-elevation tiles,
+    // flow toward lowest neighbor until reaching water.
+    int32_t riverCount = std::max(1, grid.tileCount() / 200);
+
+    for (int32_t r = 0; r < riverCount; ++r) {
+        // Find a random land tile with decent elevation
+        int32_t attempts = 50;
+        int32_t startIndex = -1;
+        while (attempts-- > 0) {
+            int32_t col = rng.nextInt(0, width - 1);
+            int32_t row = rng.nextInt(0, height - 1);
+            int32_t index = row * width + col;
+            if (!isWater(grid.terrain(index)) && grid.elevation(index) >= 1) {
+                startIndex = index;
+                break;
+            }
+        }
+        if (startIndex < 0) {
+            continue;
+        }
+
+        // Flow downhill
+        int32_t currentIndex = startIndex;
+        int32_t maxSteps = 30;
+        while (maxSteps-- > 0) {
+            hex::AxialCoord current = grid.toAxial(currentIndex);
+            std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(current);
+
+            int32_t bestNeighborIndex = -1;
+            int8_t  bestElevation = grid.elevation(currentIndex);
+            int     bestDirection = -1;
+
+            for (int dir = 0; dir < 6; ++dir) {
+                if (!grid.isValid(nbrs[static_cast<std::size_t>(dir)])) {
+                    continue;
+                }
+                int32_t nIndex = grid.toIndex(nbrs[static_cast<std::size_t>(dir)]);
+                int8_t nElev = grid.elevation(nIndex);
+
+                // Prefer lower elevation, with slight randomness for variety
+                if (nElev < bestElevation || (nElev == bestElevation && rng.chance(0.3f))) {
+                    bestElevation = nElev;
+                    bestNeighborIndex = nIndex;
+                    bestDirection = dir;
+                }
+            }
+
+            if (bestDirection < 0) {
+                break;
+            }
+
+            // Mark river edge on current tile
+            uint8_t edges = grid.riverEdges(currentIndex);
+            edges |= static_cast<uint8_t>(1u << bestDirection);
+            grid.setRiverEdges(currentIndex, edges);
+
+            // Mark reverse edge on neighbor
+            int reverseDir = (bestDirection + 3) % 6;
+            uint8_t neighborEdges = grid.riverEdges(bestNeighborIndex);
+            neighborEdges |= static_cast<uint8_t>(1u << reverseDir);
+            grid.setRiverEdges(bestNeighborIndex, neighborEdges);
+
+            // Stop if we reached water
+            if (isWater(grid.terrain(bestNeighborIndex))) {
+                break;
+            }
+
+            currentIndex = bestNeighborIndex;
+        }
+    }
+}
+
+} // namespace aoc::map

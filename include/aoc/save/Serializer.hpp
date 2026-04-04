@@ -1,0 +1,140 @@
+#pragma once
+
+/**
+ * @file Serializer.hpp
+ * @brief Versioned binary save/load for the complete game state.
+ *
+ * Save format:
+ *   [Header]  magic(4) + version(4) + flags(4) + dataSize(4)
+ *   [Sections] each section: sectionId(2) + sectionSize(4) + data(...)
+ *
+ * Sections are self-describing by size so unknown sections (from newer
+ * versions) can be skipped. This provides forward compatibility.
+ *
+ * All numeric values are little-endian. Strings are length-prefixed (uint16).
+ */
+
+#include "aoc/core/ErrorCodes.hpp"
+#include "aoc/core/Types.hpp"
+#include "aoc/core/Random.hpp"
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace aoc::ecs {
+class World;
+}
+
+namespace aoc::map {
+class HexGrid;
+class FogOfWar;
+}
+
+namespace aoc::sim {
+class TurnManager;
+class EconomySimulation;
+class DiplomacyManager;
+}
+
+namespace aoc::save {
+
+/// File format magic bytes: "AOC\0"
+inline constexpr uint32_t SAVE_MAGIC   = 0x00434F41;
+inline constexpr uint32_t SAVE_VERSION = 1;
+
+/// Section IDs for each chunk of game state.
+enum class SectionId : uint16_t {
+    MapGrid        = 0x0001,
+    Entities       = 0x0002,
+    TurnState      = 0x0003,
+    Diplomacy      = 0x0004,
+    Market         = 0x0005,
+    FogOfWar       = 0x0006,
+    RandomState    = 0x0007,
+};
+
+/// Low-level binary write buffer.
+class WriteBuffer {
+public:
+    void writeU8(uint8_t v);
+    void writeU16(uint16_t v);
+    void writeU32(uint32_t v);
+    void writeU64(uint64_t v);
+    void writeI32(int32_t v);
+    void writeI64(int64_t v);
+    void writeF32(float v);
+    void writeString(std::string_view str);
+    void writeBytes(const void* data, std::size_t size);
+
+    [[nodiscard]] const std::vector<uint8_t>& data() const { return this->m_data; }
+    [[nodiscard]] std::size_t size() const { return this->m_data.size(); }
+
+private:
+    std::vector<uint8_t> m_data;
+};
+
+/// Low-level binary read cursor.
+class ReadBuffer {
+public:
+    explicit ReadBuffer(const std::vector<uint8_t>& data);
+
+    [[nodiscard]] uint8_t readU8();
+    [[nodiscard]] uint16_t readU16();
+    [[nodiscard]] uint32_t readU32();
+    [[nodiscard]] uint64_t readU64();
+    [[nodiscard]] int32_t readI32();
+    [[nodiscard]] int64_t readI64();
+    [[nodiscard]] float readF32();
+    [[nodiscard]] std::string readString();
+    void readBytes(void* dst, std::size_t size);
+    void skip(std::size_t bytes);
+
+    [[nodiscard]] bool hasRemaining(std::size_t bytes) const;
+    [[nodiscard]] std::size_t remaining() const;
+
+private:
+    const std::vector<uint8_t>& m_data;
+    std::size_t m_offset = 0;
+};
+
+/**
+ * @brief Save the complete game state to a file.
+ *
+ * @param filepath    Output file path.
+ * @param world       ECS world with all entity/component data.
+ * @param grid        Hex map data.
+ * @param turnManager Turn state.
+ * @param economy     Market prices and production chain state.
+ * @param diplomacy   Pairwise relations.
+ * @param fogOfWar    Per-player visibility.
+ * @param rng         Game PRNG state (for determinism).
+ * @return Ok on success, SaveFailed on I/O error.
+ */
+[[nodiscard]] ErrorCode saveGame(
+    const std::string& filepath,
+    const aoc::ecs::World& world,
+    const aoc::map::HexGrid& grid,
+    const aoc::sim::TurnManager& turnManager,
+    const aoc::sim::EconomySimulation& economy,
+    const aoc::sim::DiplomacyManager& diplomacy,
+    const aoc::map::FogOfWar& fogOfWar,
+    const aoc::Random& rng);
+
+/**
+ * @brief Load a complete game state from a file.
+ *
+ * @return Ok on success, LoadFailed on I/O error, SaveVersionMismatch
+ *         on version incompatibility, SaveCorrupted on data integrity failure.
+ */
+[[nodiscard]] ErrorCode loadGame(
+    const std::string& filepath,
+    aoc::ecs::World& world,
+    aoc::map::HexGrid& grid,
+    aoc::sim::TurnManager& turnManager,
+    aoc::sim::EconomySimulation& economy,
+    aoc::sim::DiplomacyManager& diplomacy,
+    aoc::map::FogOfWar& fogOfWar,
+    aoc::Random& rng);
+
+} // namespace aoc::save
