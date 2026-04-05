@@ -8,6 +8,7 @@
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/ecs/World.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/HexGrid.hpp"
@@ -197,9 +198,18 @@ void UnitRenderer::drawCities(vulkan_app::renderer::Renderer2D& renderer2d,
         float r = 0.0f, g = 0.0f, b = 0.0f;
         playerColor(city.owner, r, g, b);
 
-        // City is a larger filled circle with a thick border
-        renderer2d.drawFilledCircle(cx, cy, cityRadius, r * 0.6f, g * 0.6f, b * 0.6f, 0.9f);
-        renderer2d.drawCircle(cx, cy, cityRadius, r, g, b, 1.0f, 3.0f);
+        // Check if this city belongs to a city-state (player ID >= CITY_STATE_PLAYER_BASE)
+        const bool isCityState = city.owner >= aoc::sim::CITY_STATE_PLAYER_BASE;
+
+        if (isCityState) {
+            // City-states get a white/gray color scheme
+            renderer2d.drawFilledCircle(cx, cy, cityRadius, 0.55f, 0.55f, 0.55f, 0.9f);
+            renderer2d.drawCircle(cx, cy, cityRadius, 0.90f, 0.90f, 0.90f, 1.0f, 3.0f);
+        } else {
+            // Regular city with player color
+            renderer2d.drawFilledCircle(cx, cy, cityRadius, r * 0.6f, g * 0.6f, b * 0.6f, 0.9f);
+            renderer2d.drawCircle(cx, cy, cityRadius, r, g, b, 1.0f, 3.0f);
+        }
 
         // Population number as centered dot pattern (simple: just a white filled rect)
         float textSize = cityRadius * 0.5f;

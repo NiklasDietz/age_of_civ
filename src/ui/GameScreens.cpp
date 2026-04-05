@@ -11,8 +11,8 @@
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
-#include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
+#include "aoc/simulation/tech/TechGating.hpp"
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
@@ -20,6 +20,7 @@
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
+#include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <cassert>
@@ -138,23 +139,55 @@ void ProductionScreen::open(UIManager& ui) {
         listWidget->childSpacing = 3.0f;
     }
 
-    // Unit types
-    for (const aoc::sim::UnitTypeDef& unitDef : aoc::sim::UNIT_TYPE_DEFS) {
-        std::string itemLabel = std::string(unitDef.name) + " ("
-                              + std::to_string(unitDef.productionCost) + ")";
+    // Build the list of available items using tech gating
+    const std::vector<aoc::sim::BuildableItem> buildableItems =
+        aoc::sim::getBuildableItems(*this->m_world, this->m_player, this->m_cityEntity);
+
+    for (const aoc::sim::BuildableItem& buildable : buildableItems) {
+        std::string itemLabel = std::string(buildable.name) + " ("
+                              + std::to_string(static_cast<int>(buildable.cost)) + ")";
+
+        // Tag wonders for clarity
+        if (buildable.type == aoc::sim::ProductionItemType::Wonder) {
+            itemLabel += " (Wonder)";
+        }
 
         ButtonData btn;
         btn.label = std::move(itemLabel);
         btn.fontSize = 12.0f;
-        btn.normalColor = {0.2f, 0.2f, 0.28f, 0.9f};
-        btn.hoverColor = {0.3f, 0.3f, 0.38f, 0.9f};
-        btn.pressedColor = {0.15f, 0.15f, 0.2f, 0.9f};
         btn.cornerRadius = 3.0f;
 
-        const uint16_t unitTypeValue = unitDef.id.value;
+        // Color-code by type
+        switch (buildable.type) {
+            case aoc::sim::ProductionItemType::Unit:
+                btn.normalColor  = {0.2f, 0.2f, 0.28f, 0.9f};
+                btn.hoverColor   = {0.3f, 0.3f, 0.38f, 0.9f};
+                btn.pressedColor = {0.15f, 0.15f, 0.2f, 0.9f};
+                break;
+            case aoc::sim::ProductionItemType::Building:
+                btn.normalColor  = {0.2f, 0.25f, 0.2f, 0.9f};
+                btn.hoverColor   = {0.3f, 0.35f, 0.3f, 0.9f};
+                btn.pressedColor = {0.15f, 0.18f, 0.15f, 0.9f};
+                break;
+            case aoc::sim::ProductionItemType::Wonder:
+                btn.normalColor  = {0.28f, 0.22f, 0.15f, 0.9f};
+                btn.hoverColor   = {0.40f, 0.32f, 0.20f, 0.9f};
+                btn.pressedColor = {0.20f, 0.15f, 0.10f, 0.9f};
+                break;
+            case aoc::sim::ProductionItemType::District:
+                btn.normalColor  = {0.2f, 0.2f, 0.25f, 0.9f};
+                btn.hoverColor   = {0.3f, 0.3f, 0.35f, 0.9f};
+                btn.pressedColor = {0.15f, 0.15f, 0.18f, 0.9f};
+                break;
+        }
+
+        const aoc::sim::ProductionItemType itemType = buildable.type;
+        const uint16_t itemId = buildable.id;
+        const float itemCost = buildable.cost;
+        const std::string itemName(buildable.name);
         const EntityId cityEnt = this->m_cityEntity;
         aoc::ecs::World* world = this->m_world;
-        btn.onClick = [world, cityEnt, unitTypeValue]() {
+        btn.onClick = [world, cityEnt, itemType, itemId, itemCost, itemName]() {
             if (!world->isAlive(cityEnt)) {
                 return;
             }
@@ -163,56 +196,14 @@ void ProductionScreen::open(UIManager& ui) {
             if (queue == nullptr) {
                 return;
             }
-            const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(UnitTypeId{unitTypeValue});
             aoc::sim::ProductionQueueItem item{};
-            item.type = aoc::sim::ProductionItemType::Unit;
-            item.itemId = unitTypeValue;
-            item.name = std::string(def.name);
-            item.totalCost = static_cast<float>(def.productionCost);
-            item.progress = 0.0f;
+            item.type      = itemType;
+            item.itemId    = itemId;
+            item.name      = itemName;
+            item.totalCost = itemCost;
+            item.progress  = 0.0f;
             queue->queue.push_back(std::move(item));
-            LOG_INFO("Enqueued unit: %.*s",
-                     static_cast<int>(def.name.size()), def.name.data());
-        };
-
-        (void)ui.createButton(this->m_itemList, {0.0f, 0.0f, 410.0f, 24.0f}, std::move(btn));
-    }
-
-    // Building types
-    for (const aoc::sim::BuildingDef& bldDef : aoc::sim::BUILDING_DEFS) {
-        std::string itemLabel = std::string(bldDef.name) + " ("
-                              + std::to_string(bldDef.productionCost) + ")";
-
-        ButtonData btn;
-        btn.label = std::move(itemLabel);
-        btn.fontSize = 12.0f;
-        btn.normalColor = {0.2f, 0.25f, 0.2f, 0.9f};
-        btn.hoverColor = {0.3f, 0.35f, 0.3f, 0.9f};
-        btn.pressedColor = {0.15f, 0.18f, 0.15f, 0.9f};
-        btn.cornerRadius = 3.0f;
-
-        const uint16_t buildingValue = bldDef.id.value;
-        const EntityId cityEnt = this->m_cityEntity;
-        aoc::ecs::World* world = this->m_world;
-        btn.onClick = [world, cityEnt, buildingValue]() {
-            if (!world->isAlive(cityEnt)) {
-                return;
-            }
-            aoc::sim::ProductionQueueComponent* queue =
-                world->tryGetComponent<aoc::sim::ProductionQueueComponent>(cityEnt);
-            if (queue == nullptr) {
-                return;
-            }
-            const aoc::sim::BuildingDef& def = aoc::sim::buildingDef(BuildingId{buildingValue});
-            aoc::sim::ProductionQueueItem item{};
-            item.type = aoc::sim::ProductionItemType::Building;
-            item.itemId = buildingValue;
-            item.name = std::string(def.name);
-            item.totalCost = static_cast<float>(def.productionCost);
-            item.progress = 0.0f;
-            queue->queue.push_back(std::move(item));
-            LOG_INFO("Enqueued building: %.*s",
-                     static_cast<int>(def.name.size()), def.name.data());
+            LOG_INFO("Enqueued: %s", itemName.c_str());
         };
 
         (void)ui.createButton(this->m_itemList, {0.0f, 0.0f, 410.0f, 24.0f}, std::move(btn));
@@ -762,12 +753,12 @@ void CityDetailScreen::open(UIManager& ui) {
     this->m_isOpen = true;
 
     WidgetId innerPanel = this->createScreenFrame(
-        ui, "City Detail", 400.0f, 450.0f, this->m_screenW, this->m_screenH);
+        ui, "City Detail", 480.0f, 550.0f, this->m_screenW, this->m_screenH);
 
     if (!this->m_world->isAlive(this->m_cityEntity) ||
         !this->m_world->hasComponent<aoc::sim::CityComponent>(this->m_cityEntity)) {
         this->m_detailLabel = ui.createLabel(
-            innerPanel, {0.0f, 0.0f, 370.0f, 16.0f},
+            innerPanel, {0.0f, 0.0f, 450.0f, 16.0f},
             LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
         ui.layout();
         return;
@@ -779,60 +770,123 @@ void CityDetailScreen::open(UIManager& ui) {
     // City name and population
     std::string nameText = city.name + "  Pop: " + std::to_string(city.population);
     this->m_detailLabel = ui.createLabel(
-        innerPanel, {0.0f, 0.0f, 370.0f, 18.0f},
+        innerPanel, {0.0f, 0.0f, 450.0f, 18.0f},
         LabelData{std::move(nameText), {1.0f, 0.95f, 0.7f, 1.0f}, 14.0f});
 
-    // Yields info
-    std::string yieldsText = "Food surplus: " + std::to_string(static_cast<int>(city.foodSurplus))
-                           + "  Production: " + std::to_string(static_cast<int>(city.productionProgress));
-    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 370.0f, 16.0f},
-                   LabelData{std::move(yieldsText), {0.7f, 0.85f, 0.7f, 1.0f}, 12.0f});
-
-    // Happiness
-    const aoc::sim::CityHappinessComponent* happiness =
-        this->m_world->tryGetComponent<aoc::sim::CityHappinessComponent>(this->m_cityEntity);
-    std::string happyText = "Happiness: ";
-    if (happiness != nullptr) {
-        happyText += std::to_string(static_cast<int>(happiness->happiness));
-    } else {
-        happyText += "N/A";
+    // Scrollable detail list for yields breakdown
+    WidgetId detailList = ui.createScrollList(
+        innerPanel, {0.0f, 0.0f, 450.0f, 380.0f});
+    {
+        Widget* listWidget = ui.getWidget(detailList);
+        if (listWidget != nullptr) {
+            listWidget->padding = {4.0f, 4.0f, 4.0f, 4.0f};
+            listWidget->childSpacing = 2.0f;
+        }
     }
-    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 370.0f, 16.0f},
-                   LabelData{std::move(happyText), {0.8f, 0.8f, 0.5f, 1.0f}, 12.0f});
 
-    // Buildings
-    std::string buildingsText = "Buildings: ";
+    // -- Per-tile yield contributions --
+    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
+        LabelData{"-- Tile Yields --", {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
+
+    int32_t totalFood = 0;
+    int32_t totalProd = 0;
+    int32_t totalGold = 0;
+    int32_t totalSci  = 0;
+    int32_t totalCult = 0;
+
+    for (const hex::AxialCoord& tile : city.workedTiles) {
+        if (!this->m_grid->isValid(tile)) {
+            continue;
+        }
+        const int32_t tileIndex = this->m_grid->toIndex(tile);
+        const aoc::map::TileYield ty = this->m_grid->tileYield(tileIndex);
+
+        totalFood += ty.food;
+        totalProd += ty.production;
+        totalGold += ty.gold;
+        totalSci  += ty.science;
+        totalCult += ty.culture;
+
+        const std::string tileText = "Tile (" + std::to_string(tile.q) + ","
+                                   + std::to_string(tile.r) + "): F:"
+                                   + std::to_string(ty.food) + " P:"
+                                   + std::to_string(ty.production) + " G:"
+                                   + std::to_string(ty.gold) + " S:"
+                                   + std::to_string(ty.science);
+        (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+            LabelData{tileText, {0.7f, 0.75f, 0.7f, 1.0f}, 10.0f});
+    }
+
+    // -- Building bonus summary --
+    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
+        LabelData{"-- Building Bonuses --", {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
+
+    int32_t bldgProd = 0;
+    int32_t bldgSci  = 0;
+    int32_t bldgGold = 0;
     const aoc::sim::CityDistrictsComponent* districts =
         this->m_world->tryGetComponent<aoc::sim::CityDistrictsComponent>(this->m_cityEntity);
     if (districts != nullptr) {
-        bool first = true;
         for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& district : districts->districts) {
             for (BuildingId bid : district.buildings) {
-                if (!first) {
-                    buildingsText += ", ";
-                }
-                buildingsText += std::string(aoc::sim::buildingDef(bid).name);
-                first = false;
+                const aoc::sim::BuildingDef& bdef = aoc::sim::buildingDef(bid);
+                bldgProd += bdef.productionBonus;
+                bldgSci  += bdef.scienceBonus;
+                bldgGold += bdef.goldBonus;
             }
         }
-        if (first) {
-            buildingsText += "None";
-        }
-    } else {
-        buildingsText += "None";
     }
-    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 370.0f, 16.0f},
-                   LabelData{std::move(buildingsText), {0.7f, 0.7f, 0.8f, 1.0f}, 12.0f});
 
-    // Worked tiles
-    std::string tilesText = "Worked tiles: " + std::to_string(city.workedTiles.size());
-    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 370.0f, 16.0f},
-                   LabelData{std::move(tilesText), {0.7f, 0.7f, 0.8f, 1.0f}, 12.0f});
+    const std::string bldgText = "Buildings: +" + std::to_string(bldgProd) + " production, +"
+                               + std::to_string(bldgSci) + " science, +"
+                               + std::to_string(bldgGold) + " gold";
+    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+        LabelData{bldgText, {0.7f, 0.7f, 0.8f, 1.0f}, 10.0f});
 
-    // Production button -- note: this captures `this` and `ui` by reference,
-    // but the button lifetime is bounded by the screen lifetime.
-    // We do NOT open a nested ProductionScreen from here to avoid complexity;
-    // instead this is a hint button.
+    // -- Total yields row --
+    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
+        LabelData{"-- Totals --", {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
+
+    const std::string totalText = "Total: F:" + std::to_string(totalFood)
+                                + " P:" + std::to_string(totalProd + bldgProd)
+                                + " G:" + std::to_string(totalGold + bldgGold)
+                                + " S:" + std::to_string(totalSci + bldgSci)
+                                + " C:" + std::to_string(totalCult);
+    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
+        LabelData{totalText, {0.9f, 0.9f, 0.7f, 1.0f}, 12.0f});
+
+    // -- Happiness breakdown --
+    const aoc::sim::CityHappinessComponent* happiness =
+        this->m_world->tryGetComponent<aoc::sim::CityHappinessComponent>(this->m_cityEntity);
+    if (happiness != nullptr) {
+        const int32_t netHappy = static_cast<int32_t>(happiness->amenities - happiness->demand + happiness->modifiers);
+        const std::string happyText = "Happiness: "
+            + std::to_string(static_cast<int>(happiness->amenities)) + " amenities - "
+            + std::to_string(static_cast<int>(happiness->demand)) + " demand = "
+            + std::to_string(netHappy);
+        (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
+            LabelData{happyText, {0.8f, 0.8f, 0.5f, 1.0f}, 11.0f});
+    } else {
+        (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
+            LabelData{"Happiness: N/A", {0.8f, 0.8f, 0.5f, 1.0f}, 11.0f});
+    }
+
+    // -- Production queue status --
+    std::string queueText = "Building: Nothing";
+    if (this->m_world->hasComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity)) {
+        const aoc::sim::ProductionQueueComponent& queue =
+            this->m_world->getComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity);
+        const aoc::sim::ProductionQueueItem* current = queue.currentItem();
+        if (current != nullptr) {
+            queueText = "Building: " + current->name + " ("
+                      + std::to_string(static_cast<int>(current->progress)) + "/"
+                      + std::to_string(static_cast<int>(current->totalCost)) + ")";
+        }
+    }
+    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
+        LabelData{std::move(queueText), {0.8f, 0.9f, 0.8f, 1.0f}, 11.0f});
+
+    // Production button hint
     ButtonData prodBtn;
     prodBtn.label = "Open Production [P]";
     prodBtn.fontSize = 12.0f;
@@ -840,7 +894,6 @@ void CityDetailScreen::open(UIManager& ui) {
     prodBtn.hoverColor = {0.3f, 0.35f, 0.5f, 0.9f};
     prodBtn.pressedColor = {0.15f, 0.18f, 0.25f, 0.9f};
     prodBtn.cornerRadius = 4.0f;
-    // The button just logs a hint; the actual P key handler in Application opens ProductionScreen
     prodBtn.onClick = []() {
         LOG_INFO("Press P to open Production screen");
     };

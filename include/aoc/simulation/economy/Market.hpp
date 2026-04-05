@@ -66,6 +66,16 @@ public:
      */
     [[nodiscard]] const GoodMarketData& marketData(uint16_t goodId) const;
 
+    /**
+     * @brief Set the current price for a good (used by save/load).
+     */
+    void setPrice(uint16_t goodId, int32_t price);
+
+    /**
+     * @brief Number of goods tracked by the market.
+     */
+    [[nodiscard]] uint16_t goodsCount() const { return static_cast<uint16_t>(this->m_goods.size()); }
+
     /// Price elasticity: higher = more volatile prices.
     float elasticity = 0.5f;
 

@@ -74,6 +74,7 @@ private:
     static void assignFeatures(const Config& config, HexGrid& grid, aoc::Random& rng);
     static void generateRivers(HexGrid& grid, aoc::Random& rng);
     static void smoothCoastlines(HexGrid& grid);
+    static void placeNaturalWonders(HexGrid& grid, aoc::Random& rng);
 };
 
 } // namespace aoc::map

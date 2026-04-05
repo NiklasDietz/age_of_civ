@@ -47,14 +47,17 @@ add_library(aoc_lib STATIC
     src/simulation/unit/Movement.cpp
     src/simulation/unit/Combat.cpp
     src/simulation/unit/Naval.cpp
+    src/simulation/unit/UnitUpgrade.cpp
     src/simulation/tech/TechTree.cpp
     src/simulation/tech/CivicTree.cpp
     src/simulation/tech/EurekaBoost.cpp
+    src/simulation/tech/TechGating.cpp
     src/simulation/city/CityGrowth.cpp
     src/simulation/city/CityScience.cpp
     src/simulation/city/Happiness.cpp
     src/simulation/city/ProductionSystem.cpp
     src/simulation/city/BorderExpansion.cpp
+    src/simulation/city/CityBombardment.cpp
     src/simulation/map/Improvement.cpp
     src/simulation/barbarian/BarbarianController.cpp
     src/simulation/diplomacy/DiplomacyState.cpp
@@ -73,6 +76,7 @@ add_library(aoc_lib STATIC
     src/simulation/monetary/FiscalPolicy.cpp
     src/simulation/greatpeople/GreatPeople.cpp
     src/simulation/wonder/Wonder.cpp
+    src/simulation/citystate/CityState.cpp
 
     # Save
     src/save/Serializer.cpp
@@ -81,6 +85,9 @@ add_library(aoc_lib STATIC
     src/ui/BitmapFont.cpp
     src/ui/UIManager.cpp
     src/ui/GameScreens.cpp
+    src/ui/TradeScreen.cpp
+    src/ui/DiplomacyScreen.cpp
+    src/ui/EventLog.cpp
     src/ui/Tooltip.cpp
     src/ui/MainMenu.cpp
 

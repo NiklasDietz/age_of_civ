@@ -9,6 +9,7 @@
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/map/FogOfWar.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 
 #include <renderer/Renderer2D.hpp>
 
@@ -137,6 +138,63 @@ void MapRenderer::drawTile(vulkan_app::renderer::Renderer2D& renderer2d,
             cx + peakSize * 0.25f, cy - peakSize * 0.4f,
             0.90f, 0.92f, 0.95f, 0.9f
         );
+    }
+
+    // Draw natural wonder indicator (golden diamond shape)
+    map::NaturalWonderType wonder = grid.naturalWonder(tileIndex);
+    if (wonder != map::NaturalWonderType::None) {
+        const float wonderSize = this->m_hexSize * 0.30f;
+        // Golden diamond shape
+        renderer2d.drawFilledTriangle(
+            cx, cy - wonderSize,
+            cx - wonderSize * 0.7f, cy,
+            cx + wonderSize * 0.7f, cy,
+            0.95f, 0.80f, 0.20f, 0.9f
+        );
+        renderer2d.drawFilledTriangle(
+            cx, cy + wonderSize,
+            cx - wonderSize * 0.7f, cy,
+            cx + wonderSize * 0.7f, cy,
+            0.85f, 0.70f, 0.15f, 0.9f
+        );
+        // Golden border glow
+        renderer2d.drawCircle(cx, cy, wonderSize * 1.2f,
+                              1.0f, 0.85f, 0.30f, 0.7f, 2.0f);
+    }
+
+    // Draw resource icon (color-coded dot at bottom of hex)
+    const ResourceId tileResource = grid.resource(tileIndex);
+    if (tileResource.isValid() && tileResource.value < aoc::sim::goodCount()) {
+        const aoc::sim::GoodDef& gdef = aoc::sim::goodDef(tileResource.value);
+        const float dotRadius = this->m_hexSize * 0.12f;
+        const float dotY = cy + this->m_hexSize * 0.45f;
+
+        float dotR = 0.5f;
+        float dotG = 0.5f;
+        float dotB = 0.5f;
+
+        switch (gdef.category) {
+            case aoc::sim::GoodCategory::RawStrategic:
+                dotR = 0.9f; dotG = 0.35f; dotB = 0.15f;  // Orange-red
+                break;
+            case aoc::sim::GoodCategory::RawLuxury:
+                dotR = 0.7f; dotG = 0.3f; dotB = 0.85f;   // Purple
+                break;
+            case aoc::sim::GoodCategory::RawBonus:
+                dotR = 0.3f; dotG = 0.8f; dotB = 0.3f;    // Green
+                break;
+            default:
+                break;
+        }
+
+        if (dimmed) {
+            constexpr float DIM = 0.4f;
+            dotR *= DIM;
+            dotG *= DIM;
+            dotB *= DIM;
+        }
+
+        renderer2d.drawFilledCircle(cx, dotY, dotRadius, dotR, dotG, dotB, 0.9f);
     }
 
     // Draw rivers

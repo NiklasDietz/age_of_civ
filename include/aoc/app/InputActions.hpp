@@ -40,6 +40,12 @@ enum class InputAction : uint8_t {
     QuickSave,
     QuickLoad,
 
+    // Unit actions
+    UpgradeUnit,
+
+    // Help
+    ShowHelp,
+
     Count  ///< Sentinel -- must be last
 };
 

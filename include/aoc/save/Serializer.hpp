@@ -41,7 +41,7 @@ namespace aoc::save {
 
 /// File format magic bytes: "AOC\0"
 inline constexpr uint32_t SAVE_MAGIC   = 0x00434F41;
-inline constexpr uint32_t SAVE_VERSION = 3;
+inline constexpr uint32_t SAVE_VERSION = 4;
 
 /// Section IDs for each chunk of game state.
 enum class SectionId : uint16_t {
@@ -60,6 +60,9 @@ enum class SectionId : uint16_t {
     GovernmentState  = 0x000D,  ///< Per-player government + policies
     VictoryState     = 0x000E,  ///< Victory trackers
     Stockpiles       = 0x000F,  ///< City stockpiles
+    PlayerState      = 0x0010,  ///< Per-player civ, era, economy, great people, eureka
+    WonderState      = 0x0012,  ///< Global wonder tracker + per-city wonders
+    MiscEntities     = 0x0013,  ///< Barbarians, great people, spies, unit experience
 };
 
 /// Low-level binary write buffer.

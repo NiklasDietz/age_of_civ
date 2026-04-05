@@ -21,6 +21,7 @@ void HexGrid::initialize(int32_t width, int32_t height) {
     this->m_owner.assign(count, INVALID_PLAYER);
     this->m_improvement.assign(count, ImprovementType::None);
     this->m_road.assign(count, 0);
+    this->m_naturalWonder.assign(count, NaturalWonderType::None);
 }
 
 } // namespace aoc::map

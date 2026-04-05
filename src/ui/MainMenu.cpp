@@ -91,7 +91,7 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
 
     // Centered content panel
     constexpr float PANEL_W = 420.0f;
-    constexpr float PANEL_H = 520.0f;
+    constexpr float PANEL_H = 320.0f;
     const float panelX = (screenW - PANEL_W) * 0.5f;
     const float panelY = (screenH - PANEL_H) * 0.5f;
 
@@ -117,183 +117,10 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
     // Spacer
     [[maybe_unused]] WidgetId spacer1 = ui.createPanel(
         contentPanel,
-        {0.0f, 0.0f, innerW, 10.0f},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
-
-    // --- Map Type section ---
-    [[maybe_unused]] WidgetId mapTypeLabel = ui.createLabel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 18.0f},
-        LabelData{"Map Type:", SECTION_TEXT, 14.0f});
-
-    // Row of map type buttons
-    WidgetId mapTypeRow = ui.createPanel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 32.0f},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
-    {
-        Widget* row = ui.getWidget(mapTypeRow);
-        assert(row != nullptr);
-        row->layoutDirection = LayoutDirection::Horizontal;
-        row->childSpacing = 6.0f;
-    }
-
-    constexpr float MAP_TYPE_BTN_W = 90.0f;
-    constexpr float MAP_TYPE_BTN_H = 28.0f;
-
-    // Continents
-    {
-        ButtonData btn;
-        btn.label       = "Continents";
-        btn.fontSize    = 12.0f;
-        btn.normalColor = BTN_SELECTED;
-        btn.hoverColor  = BTN_SEL_HOVER;
-        btn.pressedColor = BTN_SEL_PRESSED;
-        btn.labelColor  = WHITE_TEXT;
-        btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_selectedMapType = aoc::map::MapType::Continents;
-            this->updateMapTypeButtons(ui);
-        };
-        this->m_btnContinents = ui.createButton(
-            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
-    }
-
-    // Pangaea
-    {
-        ButtonData btn;
-        btn.label       = "Pangaea";
-        btn.fontSize    = 12.0f;
-        btn.normalColor = BTN_NORMAL;
-        btn.hoverColor  = BTN_HOVER;
-        btn.pressedColor = BTN_PRESSED;
-        btn.labelColor  = WHITE_TEXT;
-        btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_selectedMapType = aoc::map::MapType::Pangaea;
-            this->updateMapTypeButtons(ui);
-        };
-        this->m_btnPangaea = ui.createButton(
-            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
-    }
-
-    // Archipelago
-    {
-        ButtonData btn;
-        btn.label       = "Archipelago";
-        btn.fontSize    = 12.0f;
-        btn.normalColor = BTN_NORMAL;
-        btn.hoverColor  = BTN_HOVER;
-        btn.pressedColor = BTN_PRESSED;
-        btn.labelColor  = WHITE_TEXT;
-        btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_selectedMapType = aoc::map::MapType::Archipelago;
-            this->updateMapTypeButtons(ui);
-        };
-        this->m_btnArchipelago = ui.createButton(
-            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
-    }
-
-    // Fractal
-    {
-        ButtonData btn;
-        btn.label       = "Fractal";
-        btn.fontSize    = 12.0f;
-        btn.normalColor = BTN_NORMAL;
-        btn.hoverColor  = BTN_HOVER;
-        btn.pressedColor = BTN_PRESSED;
-        btn.labelColor  = WHITE_TEXT;
-        btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_selectedMapType = aoc::map::MapType::Fractal;
-            this->updateMapTypeButtons(ui);
-        };
-        this->m_btnFractal = ui.createButton(
-            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
-    }
-
-    // --- Map Size section ---
-    [[maybe_unused]] WidgetId mapSizeLabel = ui.createLabel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 18.0f},
-        LabelData{"Map Size:", SECTION_TEXT, 14.0f});
-
-    WidgetId mapSizeRow = ui.createPanel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 32.0f},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
-    {
-        Widget* row = ui.getWidget(mapSizeRow);
-        assert(row != nullptr);
-        row->layoutDirection = LayoutDirection::Horizontal;
-        row->childSpacing = 6.0f;
-    }
-
-    constexpr float MAP_SIZE_BTN_W = 100.0f;
-    constexpr float MAP_SIZE_BTN_H = 28.0f;
-
-    // Small
-    {
-        ButtonData btn;
-        btn.label       = "Small";
-        btn.fontSize    = 12.0f;
-        btn.normalColor = BTN_NORMAL;
-        btn.hoverColor  = BTN_HOVER;
-        btn.pressedColor = BTN_PRESSED;
-        btn.labelColor  = WHITE_TEXT;
-        btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_selectedMapSize = aoc::map::MapSize::Small;
-            this->updateMapSizeButtons(ui);
-        };
-        this->m_btnSmall = ui.createButton(
-            mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
-    }
-
-    // Standard (selected by default)
-    {
-        ButtonData btn;
-        btn.label       = "Standard";
-        btn.fontSize    = 12.0f;
-        btn.normalColor = BTN_SELECTED;
-        btn.hoverColor  = BTN_SEL_HOVER;
-        btn.pressedColor = BTN_SEL_PRESSED;
-        btn.labelColor  = WHITE_TEXT;
-        btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_selectedMapSize = aoc::map::MapSize::Standard;
-            this->updateMapSizeButtons(ui);
-        };
-        this->m_btnStandard = ui.createButton(
-            mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
-    }
-
-    // Large
-    {
-        ButtonData btn;
-        btn.label       = "Large";
-        btn.fontSize    = 12.0f;
-        btn.normalColor = BTN_NORMAL;
-        btn.hoverColor  = BTN_HOVER;
-        btn.pressedColor = BTN_PRESSED;
-        btn.labelColor  = WHITE_TEXT;
-        btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_selectedMapSize = aoc::map::MapSize::Large;
-            this->updateMapSizeButtons(ui);
-        };
-        this->m_btnLarge = ui.createButton(
-            mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
-    }
-
-    // Spacer
-    [[maybe_unused]] WidgetId spacer2 = ui.createPanel(
-        contentPanel,
         {0.0f, 0.0f, innerW, 20.0f},
         PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
 
-    // --- Start Game button ---
+    // --- Start Game button (opens Game Setup screen) ---
     {
         ButtonData btn;
         btn.label       = "Start Game";
@@ -305,7 +132,7 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
         btn.cornerRadius = 5.0f;
         btn.onClick = [this]() {
             if (this->m_onStartGame) {
-                this->m_onStartGame(this->m_selectedMapType, this->m_selectedMapSize);
+                this->m_onStartGame();
             }
         };
         [[maybe_unused]] WidgetId startBtn = ui.createButton(
@@ -365,7 +192,7 @@ void MainMenu::updateLayout(UIManager& ui, float screenW, float screenH) {
     // Re-center the content panel (first child of root)
     if (!root->children.empty()) {
         constexpr float PANEL_W = 420.0f;
-        constexpr float PANEL_H = 520.0f;
+        constexpr float PANEL_H = 320.0f;
         Widget* content = ui.getWidget(root->children[0]);
         if (content != nullptr) {
             content->requestedBounds.x = (screenW - PANEL_W) * 0.5f;
@@ -379,38 +206,495 @@ void MainMenu::destroy(UIManager& ui) {
         return;
     }
     ui.removeWidget(this->m_rootPanel);
-    this->m_rootPanel      = INVALID_WIDGET;
-    this->m_btnContinents  = INVALID_WIDGET;
-    this->m_btnPangaea     = INVALID_WIDGET;
-    this->m_btnArchipelago = INVALID_WIDGET;
-    this->m_btnFractal     = INVALID_WIDGET;
-    this->m_btnSmall       = INVALID_WIDGET;
-    this->m_btnStandard    = INVALID_WIDGET;
-    this->m_btnLarge       = INVALID_WIDGET;
-    this->m_onStartGame    = nullptr;
-    this->m_onQuit         = nullptr;
-    this->m_isBuilt        = false;
+    this->m_rootPanel   = INVALID_WIDGET;
+    this->m_onStartGame = nullptr;
+    this->m_onQuit      = nullptr;
+    this->m_isBuilt     = false;
     LOG_INFO("Main menu destroyed");
 }
 
-void MainMenu::updateMapTypeButtons(UIManager& ui) {
-    setButtonSelected(ui, this->m_btnContinents,
-                      this->m_selectedMapType == aoc::map::MapType::Continents);
-    setButtonSelected(ui, this->m_btnPangaea,
-                      this->m_selectedMapType == aoc::map::MapType::Pangaea);
-    setButtonSelected(ui, this->m_btnArchipelago,
-                      this->m_selectedMapType == aoc::map::MapType::Archipelago);
-    setButtonSelected(ui, this->m_btnFractal,
-                      this->m_selectedMapType == aoc::map::MapType::Fractal);
+// ============================================================================
+// GameSetupScreen
+// ============================================================================
+
+/// Civilization names (indexed by CivId).
+static constexpr std::array<std::string_view, aoc::sim::CIV_COUNT> CIV_NAMES = {{
+    "Rome", "Egypt", "China", "Germany", "Greece", "England", "Japan", "Persia"
+}};
+
+void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
+                            StartGameWithConfigCallback onStart,
+                            std::function<void()> onBack) {
+    assert(!this->m_isBuilt);
+
+    // Initialize default config
+    this->m_config = GameSetupConfig{};
+    this->m_config.mapType     = aoc::map::MapType::Continents;
+    this->m_config.mapSize     = aoc::map::MapSize::Standard;
+    this->m_config.playerCount = 2;
+    for (uint8_t i = 0; i < 8; ++i) {
+        this->m_config.players[i].isActive = (i < 2);
+        this->m_config.players[i].isHuman  = (i == 0);
+        this->m_config.players[i].civId    = i;  // Each slot defaults to a unique civ
+    }
+
+    // Full-screen dark background
+    this->m_rootPanel = ui.createPanel(
+        {0.0f, 0.0f, screenW, screenH},
+        PanelData{BG_DARK, 0.0f});
+
+    // Centered content panel
+    constexpr float PANEL_W = 550.0f;
+    constexpr float PANEL_H = 620.0f;
+    const float panelX = (screenW - PANEL_W) * 0.5f;
+    const float panelY = (screenH - PANEL_H) * 0.5f;
+
+    WidgetId contentPanel = ui.createPanel(
+        this->m_rootPanel,
+        {panelX, panelY, PANEL_W, PANEL_H},
+        PanelData{PANEL_BG, 8.0f});
+    {
+        Widget* cp = ui.getWidget(contentPanel);
+        assert(cp != nullptr);
+        cp->padding = {20.0f, 20.0f, 20.0f, 20.0f};
+        cp->childSpacing = 6.0f;
+    }
+
+    const float innerW = PANEL_W - 40.0f;
+
+    // Title
+    [[maybe_unused]] WidgetId titleLabel = ui.createLabel(
+        contentPanel,
+        {0.0f, 0.0f, innerW, 30.0f},
+        LabelData{"Game Setup", GOLDEN_TEXT, 22.0f});
+
+    // ---- Map Type section ----
+    [[maybe_unused]] WidgetId mapTypeLabel = ui.createLabel(
+        contentPanel,
+        {0.0f, 0.0f, innerW, 18.0f},
+        LabelData{"Map Type:", SECTION_TEXT, 14.0f});
+
+    WidgetId mapTypeRow = ui.createPanel(
+        contentPanel,
+        {0.0f, 0.0f, innerW, 32.0f},
+        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    {
+        Widget* row = ui.getWidget(mapTypeRow);
+        assert(row != nullptr);
+        row->layoutDirection = LayoutDirection::Horizontal;
+        row->childSpacing = 6.0f;
+    }
+
+    constexpr float MAP_TYPE_BTN_W = 90.0f;
+    constexpr float MAP_TYPE_BTN_H = 28.0f;
+
+    // Continents
+    {
+        ButtonData btn;
+        btn.label        = "Continents";
+        btn.fontSize     = 12.0f;
+        btn.normalColor  = BTN_SELECTED;
+        btn.hoverColor   = BTN_SEL_HOVER;
+        btn.pressedColor = BTN_SEL_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this, &ui]() {
+            this->m_config.mapType = aoc::map::MapType::Continents;
+            this->updateMapTypeButtons(ui);
+        };
+        this->m_btnContinents = ui.createButton(
+            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
+    }
+
+    // Pangaea
+    {
+        ButtonData btn;
+        btn.label        = "Pangaea";
+        btn.fontSize     = 12.0f;
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this, &ui]() {
+            this->m_config.mapType = aoc::map::MapType::Pangaea;
+            this->updateMapTypeButtons(ui);
+        };
+        this->m_btnPangaea = ui.createButton(
+            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
+    }
+
+    // Archipelago
+    {
+        ButtonData btn;
+        btn.label        = "Archipelago";
+        btn.fontSize     = 12.0f;
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this, &ui]() {
+            this->m_config.mapType = aoc::map::MapType::Archipelago;
+            this->updateMapTypeButtons(ui);
+        };
+        this->m_btnArchipelago = ui.createButton(
+            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
+    }
+
+    // Fractal
+    {
+        ButtonData btn;
+        btn.label        = "Fractal";
+        btn.fontSize     = 12.0f;
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this, &ui]() {
+            this->m_config.mapType = aoc::map::MapType::Fractal;
+            this->updateMapTypeButtons(ui);
+        };
+        this->m_btnFractal = ui.createButton(
+            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
+    }
+
+    // ---- Map Size section ----
+    [[maybe_unused]] WidgetId mapSizeLabel = ui.createLabel(
+        contentPanel,
+        {0.0f, 0.0f, innerW, 18.0f},
+        LabelData{"Map Size:", SECTION_TEXT, 14.0f});
+
+    WidgetId mapSizeRow = ui.createPanel(
+        contentPanel,
+        {0.0f, 0.0f, innerW, 32.0f},
+        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    {
+        Widget* row = ui.getWidget(mapSizeRow);
+        assert(row != nullptr);
+        row->layoutDirection = LayoutDirection::Horizontal;
+        row->childSpacing = 6.0f;
+    }
+
+    constexpr float MAP_SIZE_BTN_W = 100.0f;
+    constexpr float MAP_SIZE_BTN_H = 28.0f;
+
+    // Small
+    {
+        ButtonData btn;
+        btn.label        = "Small";
+        btn.fontSize     = 12.0f;
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this, &ui]() {
+            this->m_config.mapSize = aoc::map::MapSize::Small;
+            this->updateMapSizeButtons(ui);
+        };
+        this->m_btnSmall = ui.createButton(
+            mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
+    }
+
+    // Standard (selected by default)
+    {
+        ButtonData btn;
+        btn.label        = "Standard";
+        btn.fontSize     = 12.0f;
+        btn.normalColor  = BTN_SELECTED;
+        btn.hoverColor   = BTN_SEL_HOVER;
+        btn.pressedColor = BTN_SEL_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this, &ui]() {
+            this->m_config.mapSize = aoc::map::MapSize::Standard;
+            this->updateMapSizeButtons(ui);
+        };
+        this->m_btnStandard = ui.createButton(
+            mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
+    }
+
+    // Large
+    {
+        ButtonData btn;
+        btn.label        = "Large";
+        btn.fontSize     = 12.0f;
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this, &ui]() {
+            this->m_config.mapSize = aoc::map::MapSize::Large;
+            this->updateMapSizeButtons(ui);
+        };
+        this->m_btnLarge = ui.createButton(
+            mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
+    }
+
+    // ---- Players section ----
+    [[maybe_unused]] WidgetId playersSectionLabel = ui.createLabel(
+        contentPanel,
+        {0.0f, 0.0f, innerW, 18.0f},
+        LabelData{"Players:", SECTION_TEXT, 14.0f});
+
+    // Player count row: "Players: [N]  [-] [+]"
+    WidgetId playerCountRow = ui.createPanel(
+        contentPanel,
+        {0.0f, 0.0f, innerW, 28.0f},
+        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    {
+        Widget* row = ui.getWidget(playerCountRow);
+        assert(row != nullptr);
+        row->layoutDirection = LayoutDirection::Horizontal;
+        row->childSpacing = 6.0f;
+    }
+
+    [[maybe_unused]] WidgetId countTextLabel = ui.createLabel(
+        playerCountRow,
+        {0.0f, 0.0f, 80.0f, 28.0f},
+        LabelData{"Number:", GREY_TEXT, 13.0f});
+
+    // Minus button
+    {
+        ButtonData btn;
+        btn.label        = "-";
+        btn.fontSize     = 13.0f;
+        btn.normalColor  = BTN_GREY;
+        btn.hoverColor   = BTN_GREY_HOVER;
+        btn.pressedColor = BTN_GREY_PRESS;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 3.0f;
+        btn.onClick = [this, &ui]() {
+            if (this->m_config.playerCount > 2) {
+                --this->m_config.playerCount;
+                for (uint8_t i = 0; i < 8; ++i) {
+                    this->m_config.players[i].isActive = (i < this->m_config.playerCount);
+                }
+                this->refresh(ui);
+            }
+        };
+        [[maybe_unused]] WidgetId minusBtn = ui.createButton(
+            playerCountRow, {0.0f, 0.0f, 30.0f, 28.0f}, std::move(btn));
+    }
+
+    this->m_playerCountLabel = ui.createLabel(
+        playerCountRow,
+        {0.0f, 0.0f, 30.0f, 28.0f},
+        LabelData{std::to_string(this->m_config.playerCount), WHITE_TEXT, 13.0f});
+
+    // Plus button
+    {
+        ButtonData btn;
+        btn.label        = "+";
+        btn.fontSize     = 13.0f;
+        btn.normalColor  = BTN_GREY;
+        btn.hoverColor   = BTN_GREY_HOVER;
+        btn.pressedColor = BTN_GREY_PRESS;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 3.0f;
+        btn.onClick = [this, &ui]() {
+            if (this->m_config.playerCount < 8) {
+                ++this->m_config.playerCount;
+                for (uint8_t i = 0; i < 8; ++i) {
+                    this->m_config.players[i].isActive = (i < this->m_config.playerCount);
+                }
+                this->refresh(ui);
+            }
+        };
+        [[maybe_unused]] WidgetId plusBtn = ui.createButton(
+            playerCountRow, {0.0f, 0.0f, 30.0f, 28.0f}, std::move(btn));
+    }
+
+    // ---- Player slot rows ----
+    constexpr float SLOT_ROW_H  = 26.0f;
+    constexpr float LABEL_W     = 70.0f;
+    constexpr float CIV_BTN_W   = 100.0f;
+    constexpr float TYPE_BTN_W  = 70.0f;
+
+    for (uint8_t slot = 0; slot < 8; ++slot) {
+        WidgetId slotRow = ui.createPanel(
+            contentPanel,
+            {0.0f, 0.0f, innerW, SLOT_ROW_H},
+            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        {
+            Widget* row = ui.getWidget(slotRow);
+            assert(row != nullptr);
+            row->layoutDirection = LayoutDirection::Horizontal;
+            row->childSpacing = 6.0f;
+        }
+        this->m_playerRows[slot] = slotRow;
+
+        // "Player N:" label
+        const std::string slotLabel = "Player " + std::to_string(slot + 1) + ":";
+        [[maybe_unused]] WidgetId nameLabel = ui.createLabel(
+            slotRow,
+            {0.0f, 0.0f, LABEL_W, SLOT_ROW_H},
+            LabelData{slotLabel, GREY_TEXT, 12.0f});
+
+        // Civ cycle button
+        {
+            const std::string civName(CIV_NAMES[this->m_config.players[slot].civId]);
+            ButtonData btn;
+            btn.label        = civName;
+            btn.fontSize     = 12.0f;
+            btn.normalColor  = BTN_NORMAL;
+            btn.hoverColor   = BTN_HOVER;
+            btn.pressedColor = BTN_PRESSED;
+            btn.labelColor   = WHITE_TEXT;
+            btn.cornerRadius = 3.0f;
+            btn.onClick = [this, slot, &ui]() {
+                this->m_config.players[slot].civId =
+                    static_cast<uint8_t>((this->m_config.players[slot].civId + 1) % aoc::sim::CIV_COUNT);
+                this->refresh(ui);
+            };
+            this->m_civLabels[slot] = ui.createButton(
+                slotRow, {0.0f, 0.0f, CIV_BTN_W, SLOT_ROW_H}, std::move(btn));
+        }
+
+        // Type toggle button (Human/AI)
+        {
+            const bool isHuman = this->m_config.players[slot].isHuman;
+            ButtonData btn;
+            btn.label        = isHuman ? "Human" : "AI";
+            btn.fontSize     = 12.0f;
+            btn.normalColor  = BTN_NORMAL;
+            btn.hoverColor   = BTN_HOVER;
+            btn.pressedColor = BTN_PRESSED;
+            btn.labelColor   = WHITE_TEXT;
+            btn.cornerRadius = 3.0f;
+            if (slot == 0) {
+                // Player 1 is always Human -- no toggle
+                btn.normalColor = BTN_SELECTED;
+                btn.hoverColor  = BTN_SEL_HOVER;
+                btn.pressedColor = BTN_SEL_PRESSED;
+            } else {
+                btn.onClick = [this, slot, &ui]() {
+                    this->m_config.players[slot].isHuman = !this->m_config.players[slot].isHuman;
+                    this->refresh(ui);
+                };
+            }
+            this->m_typeLabels[slot] = ui.createButton(
+                slotRow, {0.0f, 0.0f, TYPE_BTN_W, SLOT_ROW_H}, std::move(btn));
+        }
+
+        // Hide inactive slots
+        if (slot >= this->m_config.playerCount) {
+            ui.setVisible(slotRow, false);
+        }
+    }
+
+    // Spacer
+    [[maybe_unused]] WidgetId spacer = ui.createPanel(
+        contentPanel,
+        {0.0f, 0.0f, innerW, 8.0f},
+        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+
+    // ---- Start Game button ----
+    {
+        ButtonData btn;
+        btn.label        = "Start Game";
+        btn.fontSize     = 16.0f;
+        btn.normalColor  = BTN_GREEN;
+        btn.hoverColor   = BTN_GREEN_HOVER;
+        btn.pressedColor = BTN_GREEN_PRESS;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 5.0f;
+        StartGameWithConfigCallback startCb = std::move(onStart);
+        btn.onClick = [this, startCb]() {
+            if (startCb) {
+                startCb(this->m_config);
+            }
+        };
+        [[maybe_unused]] WidgetId startBtn = ui.createButton(
+            contentPanel, {0.0f, 0.0f, innerW, 40.0f}, std::move(btn));
+    }
+
+    // ---- Back button ----
+    {
+        ButtonData btn;
+        btn.label        = "Back";
+        btn.fontSize     = 14.0f;
+        btn.normalColor  = BTN_GREY;
+        btn.hoverColor   = BTN_GREY_HOVER;
+        btn.pressedColor = BTN_GREY_PRESS;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick      = std::move(onBack);
+        [[maybe_unused]] WidgetId backBtn = ui.createButton(
+            contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+    }
+
+    this->m_isBuilt = true;
+    LOG_INFO("Game setup screen built (%.0fx%.0f)",
+             static_cast<double>(screenW), static_cast<double>(screenH));
 }
 
-void MainMenu::updateMapSizeButtons(UIManager& ui) {
+void GameSetupScreen::destroy(UIManager& ui) {
+    if (!this->m_isBuilt) {
+        return;
+    }
+    ui.removeWidget(this->m_rootPanel);
+    this->m_rootPanel        = INVALID_WIDGET;
+    this->m_playerCountLabel = INVALID_WIDGET;
+    this->m_btnContinents    = INVALID_WIDGET;
+    this->m_btnPangaea       = INVALID_WIDGET;
+    this->m_btnArchipelago   = INVALID_WIDGET;
+    this->m_btnFractal       = INVALID_WIDGET;
+    this->m_btnSmall         = INVALID_WIDGET;
+    this->m_btnStandard      = INVALID_WIDGET;
+    this->m_btnLarge         = INVALID_WIDGET;
+    for (uint8_t i = 0; i < 8; ++i) {
+        this->m_playerRows[i] = INVALID_WIDGET;
+        this->m_civLabels[i]  = INVALID_WIDGET;
+        this->m_typeLabels[i] = INVALID_WIDGET;
+    }
+    this->m_isBuilt = false;
+    LOG_INFO("Game setup screen destroyed");
+}
+
+void GameSetupScreen::refresh(UIManager& ui) {
+    // Update player count label
+    ui.setLabelText(this->m_playerCountLabel,
+                    std::to_string(this->m_config.playerCount));
+
+    // Show/hide player rows and update labels
+    for (uint8_t i = 0; i < 8; ++i) {
+        const bool active = (i < this->m_config.playerCount);
+        ui.setVisible(this->m_playerRows[i], active);
+        if (active) {
+            ui.setButtonLabel(this->m_civLabels[i],
+                              std::string(CIV_NAMES[this->m_config.players[i].civId]));
+            if (i == 0) {
+                ui.setButtonLabel(this->m_typeLabels[i], "Human");
+            } else {
+                ui.setButtonLabel(this->m_typeLabels[i],
+                                  this->m_config.players[i].isHuman ? "Human" : "AI");
+            }
+        }
+    }
+}
+
+void GameSetupScreen::updateMapTypeButtons(UIManager& ui) {
+    setButtonSelected(ui, this->m_btnContinents,
+                      this->m_config.mapType == aoc::map::MapType::Continents);
+    setButtonSelected(ui, this->m_btnPangaea,
+                      this->m_config.mapType == aoc::map::MapType::Pangaea);
+    setButtonSelected(ui, this->m_btnArchipelago,
+                      this->m_config.mapType == aoc::map::MapType::Archipelago);
+    setButtonSelected(ui, this->m_btnFractal,
+                      this->m_config.mapType == aoc::map::MapType::Fractal);
+}
+
+void GameSetupScreen::updateMapSizeButtons(UIManager& ui) {
     setButtonSelected(ui, this->m_btnSmall,
-                      this->m_selectedMapSize == aoc::map::MapSize::Small);
+                      this->m_config.mapSize == aoc::map::MapSize::Small);
     setButtonSelected(ui, this->m_btnStandard,
-                      this->m_selectedMapSize == aoc::map::MapSize::Standard);
+                      this->m_config.mapSize == aoc::map::MapSize::Standard);
     setButtonSelected(ui, this->m_btnLarge,
-                      this->m_selectedMapSize == aoc::map::MapSize::Large);
+                      this->m_config.mapSize == aoc::map::MapSize::Large);
 }
 
 // ============================================================================

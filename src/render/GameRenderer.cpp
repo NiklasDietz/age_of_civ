@@ -32,7 +32,8 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                            const aoc::map::FogOfWar& fog,
                            PlayerId viewingPlayer,
                            aoc::ui::UIManager& uiManager,
-                           uint32_t screenWidth, uint32_t screenHeight) {
+                           uint32_t screenWidth, uint32_t screenHeight,
+                           const aoc::ui::EventLog* eventLog) {
     float hexSize = this->m_mapRenderer.hexSize();
 
     // The shader's cameraPos is the TOP-LEFT corner of the viewport in world space.
@@ -66,6 +67,20 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     uiManager.transformBounds(topLeftX, topLeftY, invZoom);
     uiManager.render(renderer2d);
     uiManager.untransformBounds(topLeftX, topLeftY, invZoom);
+
+    // Event log: rendered in world-space coordinates (same as UI).
+    if (eventLog != nullptr && !eventLog->events().empty()) {
+        constexpr float EVENT_LOG_W = 320.0f;
+        constexpr float EVENT_LOG_H = 160.0f;
+        constexpr float EVENT_LOG_MARGIN = 10.0f;
+        // Position at bottom-right, above the end-turn button area
+        float elScreenX = static_cast<float>(screenWidth) - EVENT_LOG_W - EVENT_LOG_MARGIN;
+        float elScreenY = static_cast<float>(screenHeight) - EVENT_LOG_H - 70.0f;
+        float elWorldX = topLeftX + elScreenX * invZoom;
+        float elWorldY = topLeftY + elScreenY * invZoom;
+        eventLog->render(renderer2d, elWorldX, elWorldY,
+                          EVENT_LOG_W * invZoom, EVENT_LOG_H * invZoom, invZoom);
+    }
 
     // Minimap: convert screen-space position to world-space for the camera batch.
     // Screen (sx, sy) -> world (topLeftX + sx * invZoom, topLeftY + sy * invZoom)

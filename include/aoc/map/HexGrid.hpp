@@ -123,6 +123,10 @@ public:
     [[nodiscard]] PlayerId owner(int32_t index) const { this->assertIndex(index); return this->m_owner[static_cast<std::size_t>(index)]; }
     void setOwner(int32_t index, PlayerId player) { this->assertIndex(index); this->m_owner[static_cast<std::size_t>(index)] = player; }
 
+    // -- Natural wonder --
+    [[nodiscard]] NaturalWonderType naturalWonder(int32_t index) const { this->assertIndex(index); return this->m_naturalWonder[static_cast<std::size_t>(index)]; }
+    void setNaturalWonder(int32_t index, NaturalWonderType type) { this->assertIndex(index); this->m_naturalWonder[static_cast<std::size_t>(index)] = type; }
+
     // -- Tile improvement --
     [[nodiscard]] ImprovementType improvement(int32_t index) const { this->assertIndex(index); return this->m_improvement[static_cast<std::size_t>(index)]; }
     void setImprovement(int32_t index, ImprovementType type) {
@@ -138,18 +142,19 @@ public:
     // Computed properties
     // ========================================================================
 
-    /// Get the total yield for a tile (terrain + feature + improvement).
+    /// Get the total yield for a tile (terrain + feature + improvement + natural wonder).
     [[nodiscard]] TileYield tileYield(int32_t index) const {
         TileYield base = baseTerrainYield(this->terrain(index));
         TileYield feat = featureYieldModifier(this->feature(index));
         TileYield imp  = improvementYieldBonus(this->improvement(index));
+        TileYield nw   = naturalWonderYieldBonus(this->naturalWonder(index));
         return {
-            static_cast<int8_t>(base.food + feat.food + imp.food),
-            static_cast<int8_t>(base.production + feat.production + imp.production),
-            static_cast<int8_t>(base.gold + feat.gold + imp.gold),
-            static_cast<int8_t>(base.science + feat.science + imp.science),
-            static_cast<int8_t>(base.culture + feat.culture + imp.culture),
-            static_cast<int8_t>(base.faith + feat.faith + imp.faith)
+            static_cast<int8_t>(base.food + feat.food + imp.food + nw.food),
+            static_cast<int8_t>(base.production + feat.production + imp.production + nw.production),
+            static_cast<int8_t>(base.gold + feat.gold + imp.gold + nw.gold),
+            static_cast<int8_t>(base.science + feat.science + imp.science + nw.science),
+            static_cast<int8_t>(base.culture + feat.culture + imp.culture + nw.culture),
+            static_cast<int8_t>(base.faith + feat.faith + imp.faith + nw.faith)
         };
     }
 
@@ -212,8 +217,9 @@ private:
     std::vector<uint8_t>     m_riverEdges;   ///< 6-bit mask per tile
     std::vector<ResourceId>      m_resource;
     std::vector<PlayerId>        m_owner;
-    std::vector<ImprovementType> m_improvement;
-    std::vector<uint8_t>         m_road;         ///< 1 if tile has road, 0 otherwise
+    std::vector<ImprovementType>  m_improvement;
+    std::vector<uint8_t>          m_road;            ///< 1 if tile has road, 0 otherwise
+    std::vector<NaturalWonderType> m_naturalWonder;
 };
 
 } // namespace aoc::map

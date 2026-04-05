@@ -22,6 +22,9 @@
 #include "aoc/core/Random.hpp"
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ui/GameScreens.hpp"
+#include "aoc/ui/TradeScreen.hpp"
+#include "aoc/ui/DiplomacyScreen.hpp"
+#include "aoc/ui/EventLog.hpp"
 #include "aoc/ui/MainMenu.hpp"
 #include "aoc/simulation/tech/EurekaBoost.hpp"
 #include "aoc/core/ErrorCodes.hpp"
@@ -67,8 +70,8 @@ public:
     /// Apply current settings (fullscreen, vsync, FPS display, audio volumes).
     void applySettings();
 
-    /// Transition from main menu to gameplay.
-    void startGame(aoc::map::MapType mapType, aoc::map::MapSize mapSize);
+    /// Transition from main menu to gameplay using full setup config.
+    void startGame(const aoc::ui::GameSetupConfig& config);
 
 private:
     void onResize(uint32_t width, uint32_t height);
@@ -82,14 +85,14 @@ private:
     /// Handle end-turn input.
     void handleEndTurn();
 
-    /// Spawn initial units and cities for testing.
-    void spawnStartingEntities();
+    /// Spawn initial units and cities for the human player.
+    void spawnStartingEntities(aoc::sim::CivId civId);
 
     /// Scatter resources on the generated map.
     void placeMapResources();
 
-    /// Spawn starting entities for an AI player.
-    void spawnAIPlayer(PlayerId player);
+    /// Spawn starting entities for an AI player with specified civilization.
+    void spawnAIPlayer(PlayerId player, aoc::sim::CivId civId);
 
     /// Find a valid land tile near a target for spawning.
     hex::AxialCoord findNearbyLandTile(hex::AxialCoord target) const;
@@ -131,14 +134,46 @@ private:
     aoc::ui::WidgetId  m_topBar         = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId  m_resourceLabel  = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId  m_menuDropdown   = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId  m_confirmDialog  = aoc::ui::INVALID_WIDGET;
+
+    // Unit action panel
+    aoc::ui::WidgetId  m_unitActionPanel = aoc::ui::INVALID_WIDGET;
+    void rebuildUnitActionPanel();
+
+    // Research progress bar
+    aoc::ui::WidgetId  m_researchLabel   = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId  m_researchBar     = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId  m_researchBarFill = aoc::ui::INVALID_WIDGET;
+
+    // Production progress bar
+    aoc::ui::WidgetId  m_productionLabel   = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId  m_productionBar     = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId  m_productionBarFill = aoc::ui::INVALID_WIDGET;
+
+    // Help overlay
+    aoc::ui::WidgetId  m_helpOverlay = aoc::ui::INVALID_WIDGET;
+
+    /// The entity that was selected when the action panel was last built.
+    EntityId m_actionPanelEntity = NULL_ENTITY;
+
+    /// Show "Save before returning to main menu?" dialog.
+    void showReturnToMenuConfirm();
+
+    /// Tear down all game state and return to the main menu.
+    void returnToMainMenu();
     bool m_uiConsumedInput = false;
 
     // Game screens
-    aoc::ui::ProductionScreen  m_productionScreen;
-    aoc::ui::TechScreen        m_techScreen;
-    aoc::ui::GovernmentScreen  m_governmentScreen;
-    aoc::ui::EconomyScreen     m_economyScreen;
-    aoc::ui::CityDetailScreen  m_cityDetailScreen;
+    aoc::ui::ProductionScreen   m_productionScreen;
+    aoc::ui::TechScreen         m_techScreen;
+    aoc::ui::GovernmentScreen   m_governmentScreen;
+    aoc::ui::EconomyScreen      m_economyScreen;
+    aoc::ui::CityDetailScreen   m_cityDetailScreen;
+    aoc::ui::TradeScreen        m_tradeScreen;
+    aoc::ui::DiplomacyScreen    m_diplomacyScreen;
+
+    // Turn event log
+    aoc::ui::EventLog m_eventLog;
 
     /// Returns true if any modal screen is currently open.
     [[nodiscard]] bool anyScreenOpen() const;
@@ -153,8 +188,12 @@ private:
 
     // App state machine
     AppState m_appState = AppState::MainMenu;
-    aoc::ui::MainMenu    m_mainMenu;
-    aoc::ui::SettingsMenu m_settingsMenu;
+    aoc::ui::MainMenu       m_mainMenu;
+    aoc::ui::GameSetupScreen m_gameSetupScreen;
+    aoc::ui::SettingsMenu   m_settingsMenu;
+
+    /// Build the main menu with all its callbacks. Used by initialize() and returnToMainMenu().
+    void buildMainMenu(float screenW, float screenH);
 
     /// True once a victory condition has been met.
     bool m_gameOver = false;

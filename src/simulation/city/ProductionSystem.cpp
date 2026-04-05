@@ -133,7 +133,12 @@ void processProductionQueues(aoc::ecs::World& world,
                     BuildingId buildingId{item.itemId};
                     CityDistrictsComponent* districts =
                         world.tryGetComponent<CityDistrictsComponent>(cityEntity);
-                    if (districts != nullptr) {
+                    if (districts == nullptr) {
+                        // Create districts component if it doesn't exist
+                        world.addComponent<CityDistrictsComponent>(cityEntity, CityDistrictsComponent{});
+                        districts = &world.getComponent<CityDistrictsComponent>(cityEntity);
+                    }
+                    {
                         // Find or create the required district
                         const BuildingDef& bdef = buildingDef(buildingId);
                         bool placed = false;

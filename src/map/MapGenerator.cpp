@@ -5,6 +5,7 @@
 
 #include "aoc/map/MapGenerator.hpp"
 #include "aoc/map/HexCoord.hpp"
+#include "aoc/core/Log.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -92,6 +93,7 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
     smoothCoastlines(outGrid);
     assignFeatures(config, outGrid, rng);
     generateRivers(outGrid, rng);
+    placeNaturalWonders(outGrid, rng);
 }
 
 void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Random& rng) {
@@ -433,6 +435,102 @@ void MapGenerator::generateRivers(HexGrid& grid, aoc::Random& rng) {
             }
 
             currentIndex = bestNeighborIndex;
+        }
+    }
+}
+
+void MapGenerator::placeNaturalWonders(HexGrid& grid, aoc::Random& rng) {
+    const int32_t width  = grid.width();
+    const int32_t height = grid.height();
+
+    // Place 3-5 natural wonders at appropriate terrain locations
+    const int32_t wonderCount = rng.nextInt(3, 5);
+
+    // Candidate wonders (skip None and Count)
+    constexpr uint8_t WONDER_TYPE_COUNT = static_cast<uint8_t>(NaturalWonderType::Count) - 1;
+
+    // Track placed wonder positions for minimum distance enforcement
+    std::vector<hex::AxialCoord> placedPositions;
+    constexpr int32_t MIN_WONDER_DISTANCE = 10;
+
+    int32_t placed = 0;
+    for (int32_t w = 0; w < wonderCount && placed < wonderCount; ++w) {
+        // Pick a wonder type (cycle through available types)
+        NaturalWonderType wonderType = static_cast<NaturalWonderType>(
+            (static_cast<uint8_t>(w) % WONDER_TYPE_COUNT) + 1);
+
+        // Try to find a valid tile
+        for (int32_t attempt = 0; attempt < 200; ++attempt) {
+            const int32_t col = rng.nextInt(3, width - 4);
+            const int32_t row = rng.nextInt(3, height - 4);
+            const int32_t index = row * width + col;
+            const TerrainType terrain = grid.terrain(index);
+            const FeatureType feature = grid.feature(index);
+
+            // Already has a wonder
+            if (grid.naturalWonder(index) != NaturalWonderType::None) {
+                continue;
+            }
+
+            // Check terrain suitability per wonder type
+            bool suitable = false;
+            switch (wonderType) {
+                case NaturalWonderType::MountainOfGods:
+                    suitable = (terrain == TerrainType::Mountain);
+                    break;
+                case NaturalWonderType::GrandCanyon:
+                    suitable = (terrain == TerrainType::Desert || terrain == TerrainType::Plains);
+                    break;
+                case NaturalWonderType::GreatBarrierReef:
+                    suitable = (terrain == TerrainType::Coast);
+                    break;
+                case NaturalWonderType::KillerVolcano:
+                    suitable = (terrain == TerrainType::Mountain);
+                    break;
+                case NaturalWonderType::SacredForest:
+                    suitable = (feature == FeatureType::Forest || feature == FeatureType::Jungle);
+                    break;
+                case NaturalWonderType::CrystalCave:
+                    suitable = (feature == FeatureType::Hills ||
+                                terrain == TerrainType::Plains ||
+                                terrain == TerrainType::Grassland);
+                    break;
+                default:
+                    break;
+            }
+
+            if (!suitable) {
+                continue;
+            }
+
+            // Check minimum distance from other wonders
+            const hex::AxialCoord candidate = hex::offsetToAxial({col, row});
+            bool tooClose = false;
+            for (const hex::AxialCoord& prev : placedPositions) {
+                if (hex::distance(candidate, prev) < MIN_WONDER_DISTANCE) {
+                    tooClose = true;
+                    break;
+                }
+            }
+            if (tooClose) {
+                continue;
+            }
+
+            // Place the wonder: clear features and improvements
+            grid.setNaturalWonder(index, wonderType);
+            if (wonderType != NaturalWonderType::SacredForest) {
+                grid.setFeature(index, FeatureType::None);
+            }
+            grid.setImprovement(index, ImprovementType::None);
+
+            placedPositions.push_back(candidate);
+            ++placed;
+
+            LOG_INFO("Placed natural wonder %.*s at (%d,%d)",
+                     static_cast<int>(naturalWonderName(wonderType).size()),
+                     naturalWonderName(wonderType).data(),
+                     col, row);
+            break;
         }
     }
 }

@@ -2,12 +2,14 @@
 
 /**
  * @file MainMenu.hpp
- * @brief Main menu and settings screen.
+ * @brief Main menu, game setup screen, and settings screen.
  */
 
 #include "aoc/ui/Widget.hpp"
 #include "aoc/map/MapGenerator.hpp"
+#include "aoc/simulation/civilization/Civilization.hpp"
 
+#include <array>
 #include <functional>
 #include <string>
 
@@ -18,8 +20,29 @@ class UIManager;
 namespace aoc::ui {
 
 /// Callback types for menu actions.
-using StartGameCallback = std::function<void(aoc::map::MapType, aoc::map::MapSize)>;
+using StartGameCallback = std::function<void()>;
 using QuitCallback = std::function<void()>;
+
+// ============================================================================
+// Game Setup types
+// ============================================================================
+
+/// Game configuration for one player slot.
+struct PlayerSlotConfig {
+    bool     isActive = false;
+    bool     isHuman  = false;
+    uint8_t  civId    = 0;
+};
+
+/// Configuration from the setup screen passed to startGame.
+struct GameSetupConfig {
+    aoc::map::MapType mapType = aoc::map::MapType::Continents;
+    aoc::map::MapSize mapSize = aoc::map::MapSize::Standard;
+    uint8_t           playerCount = 2;
+    std::array<PlayerSlotConfig, 8> players;  ///< max 8 players
+};
+
+using StartGameWithConfigCallback = std::function<void(const GameSetupConfig&)>;
 
 class MainMenu {
 public:
@@ -37,34 +60,53 @@ public:
     [[nodiscard]] bool isBuilt() const { return this->m_isBuilt; }
 
 private:
-    /// Re-color map type selection buttons to reflect current selection.
-    void updateMapTypeButtons(UIManager& ui);
-
-    /// Re-color map size selection buttons to reflect current selection.
-    void updateMapSizeButtons(UIManager& ui);
-
     bool m_isBuilt = false;
     WidgetId m_rootPanel = INVALID_WIDGET;
-
-    // Current selection state for game start options
-    aoc::map::MapType m_selectedMapType = aoc::map::MapType::Continents;
-    aoc::map::MapSize m_selectedMapSize = aoc::map::MapSize::Standard;
-
-    // Map type buttons (for re-coloring on selection change)
-    WidgetId m_btnContinents  = INVALID_WIDGET;
-    WidgetId m_btnPangaea     = INVALID_WIDGET;
-    WidgetId m_btnArchipelago = INVALID_WIDGET;
-    WidgetId m_btnFractal     = INVALID_WIDGET;
-
-    // Map size buttons
-    WidgetId m_btnSmall    = INVALID_WIDGET;
-    WidgetId m_btnStandard = INVALID_WIDGET;
-    WidgetId m_btnLarge    = INVALID_WIDGET;
 
     // Stored callbacks
     StartGameCallback m_onStartGame;
     QuitCallback m_onQuit;
     std::function<void()> m_onSettings;
+};
+
+// ============================================================================
+// GameSetupScreen
+// ============================================================================
+
+class GameSetupScreen {
+public:
+    void build(UIManager& ui, float screenW, float screenH,
+               StartGameWithConfigCallback onStart,
+               std::function<void()> onBack);
+    void destroy(UIManager& ui);
+    void refresh(UIManager& ui);
+    [[nodiscard]] bool isBuilt() const { return this->m_isBuilt; }
+
+private:
+    bool m_isBuilt = false;
+    WidgetId m_rootPanel = INVALID_WIDGET;
+    GameSetupConfig m_config;
+
+    // Widget IDs for dynamic content
+    WidgetId m_playerCountLabel = INVALID_WIDGET;
+    std::array<WidgetId, 8> m_playerRows{};
+    std::array<WidgetId, 8> m_civLabels{};
+    std::array<WidgetId, 8> m_typeLabels{};
+
+    // Map selection buttons
+    WidgetId m_btnContinents  = INVALID_WIDGET;
+    WidgetId m_btnPangaea     = INVALID_WIDGET;
+    WidgetId m_btnArchipelago = INVALID_WIDGET;
+    WidgetId m_btnFractal     = INVALID_WIDGET;
+    WidgetId m_btnSmall       = INVALID_WIDGET;
+    WidgetId m_btnStandard    = INVALID_WIDGET;
+    WidgetId m_btnLarge       = INVALID_WIDGET;
+
+    /// Re-color map type selection buttons to reflect current selection.
+    void updateMapTypeButtons(UIManager& ui);
+
+    /// Re-color map size selection buttons to reflect current selection.
+    void updateMapSizeButtons(UIManager& ui);
 };
 
 /// Persistent settings that can be applied to the game.

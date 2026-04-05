@@ -154,6 +154,44 @@ struct TerrainColor {
 }
 
 // ============================================================================
+// Natural wonders
+// ============================================================================
+
+enum class NaturalWonderType : uint8_t {
+    None,
+    MountainOfGods,    ///< +2 faith, +1 culture
+    GrandCanyon,       ///< +1 science, +2 gold
+    GreatBarrierReef,  ///< +2 food, +2 science (coast)
+    KillerVolcano,     ///< +2 production, +1 science
+    SacredForest,      ///< +2 faith, +2 food
+    CrystalCave,       ///< +3 gold
+    Count
+};
+
+static constexpr uint8_t NATURAL_WONDER_COUNT = static_cast<uint8_t>(NaturalWonderType::Count);
+
+[[nodiscard]] constexpr std::string_view naturalWonderName(NaturalWonderType type) {
+    constexpr std::array<std::string_view, NATURAL_WONDER_COUNT> NAMES = {{
+        "None", "Mountain of Gods", "Grand Canyon", "Great Barrier Reef",
+        "Killer Volcano", "Sacred Forest", "Crystal Cave"
+    }};
+    return NAMES[static_cast<uint8_t>(type)];
+}
+
+/// Yield bonus granted by a natural wonder.
+[[nodiscard]] constexpr TileYield naturalWonderYieldBonus(NaturalWonderType type) {
+    switch (type) {
+        case NaturalWonderType::MountainOfGods:   return {0, 0, 0, 0, 1, 2};
+        case NaturalWonderType::GrandCanyon:       return {0, 0, 2, 1, 0, 0};
+        case NaturalWonderType::GreatBarrierReef:  return {2, 0, 0, 2, 0, 0};
+        case NaturalWonderType::KillerVolcano:     return {0, 2, 0, 1, 0, 0};
+        case NaturalWonderType::SacredForest:      return {2, 0, 0, 0, 0, 2};
+        case NaturalWonderType::CrystalCave:       return {0, 0, 3, 0, 0, 0};
+        default:                                   return {};
+    }
+}
+
+// ============================================================================
 // Forward-declared improvement type (defined in HexGrid.hpp)
 // Yield bonus is declared here so HexGrid::tileYield() can call it inline.
 // ============================================================================

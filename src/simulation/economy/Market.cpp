@@ -82,4 +82,10 @@ const Market::GoodMarketData& Market::marketData(uint16_t goodId) const {
     return this->m_goods[goodId];
 }
 
+void Market::setPrice(uint16_t goodId, int32_t price) {
+    if (goodId < this->m_goods.size()) {
+        this->m_goods[goodId].currentPrice = price;
+    }
+}
+
 } // namespace aoc::sim

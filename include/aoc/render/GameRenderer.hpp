@@ -10,6 +10,7 @@
 #include "aoc/render/Minimap.hpp"
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ui/Tooltip.hpp"
+#include "aoc/ui/EventLog.hpp"
 #include "aoc/core/Types.hpp"
 
 #include <cstdint>
@@ -51,7 +52,8 @@ public:
                 const aoc::map::FogOfWar& fog,
                 PlayerId viewingPlayer,
                 aoc::ui::UIManager& uiManager,
-                uint32_t screenWidth, uint32_t screenHeight);
+                uint32_t screenWidth, uint32_t screenHeight,
+                const aoc::ui::EventLog* eventLog = nullptr);
 
     MapRenderer&  mapRenderer()  { return this->m_mapRenderer; }
     UnitRenderer& unitRenderer() { return this->m_unitRenderer; }

@@ -54,6 +54,12 @@ public:
     /// Reset readiness for a new input phase.
     void beginNewTurn();
 
+    /// Restore turn number from a save file.
+    void setTurnNumber(TurnNumber turn) { this->m_currentTurn = turn; }
+
+    /// Restore turn phase from a save file.
+    void setPhase(TurnPhase phase) { this->m_currentPhase = phase; }
+
 private:
     TurnNumber m_currentTurn = 0;
     TurnPhase  m_currentPhase = TurnPhase::PlayerInput;

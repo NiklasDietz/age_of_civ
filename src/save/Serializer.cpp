@@ -12,7 +12,10 @@
 #include "aoc/simulation/turn/TurnManager.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/Espionage.hpp"
+#include "aoc/simulation/diplomacy/WarState.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
+#include "aoc/simulation/unit/Promotion.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/city/District.hpp"
@@ -20,8 +23,14 @@
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
+#include "aoc/simulation/tech/EurekaBoost.hpp"
+#include "aoc/simulation/tech/EraProgression.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/victory/VictoryCondition.hpp"
+#include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/greatpeople/GreatPeople.hpp"
+#include "aoc/simulation/barbarian/BarbarianController.hpp"
+#include "aoc/simulation/wonder/Wonder.hpp"
 
 #include <cassert>
 #include <cstring>
@@ -226,6 +235,14 @@ void writeEntitySection(WriteBuffer& out, const aoc::ecs::World& world) {
             section.writeI32(unit.hitPoints);
             section.writeI32(unit.movementRemaining);
             section.writeU8(static_cast<uint8_t>(unit.state));
+            // v4: chargesRemaining, cargoCapacity, pendingPath
+            section.writeU8(static_cast<uint8_t>(unit.chargesRemaining));
+            section.writeU8(static_cast<uint8_t>(unit.cargoCapacity));
+            section.writeU16(static_cast<uint16_t>(unit.pendingPath.size()));
+            for (const hex::AxialCoord& coord : unit.pendingPath) {
+                section.writeI32(coord.q);
+                section.writeI32(coord.r);
+            }
         }
     }
 
@@ -250,6 +267,12 @@ void writeEntitySection(WriteBuffer& out, const aoc::ecs::World& world) {
                 section.writeI32(tile.q);
                 section.writeI32(tile.r);
             }
+
+            // v4: cultureBorderProgress, tilesClaimedCount, isOriginalCapital, originalOwner
+            section.writeF32(city.cultureBorderProgress);
+            section.writeI32(city.tilesClaimedCount);
+            section.writeU8(city.isOriginalCapital ? uint8_t{1} : uint8_t{0});
+            section.writeU8(city.originalOwner);
         }
     }
 
@@ -526,6 +549,296 @@ void writeStockpilesSection(WriteBuffer& out, const aoc::ecs::World& world) {
     writeSection(out, SectionId::Stockpiles, section);
 }
 
+// ============================================================================
+// v4 section writers: PlayerState, Diplomacy, Market, Wonders, MiscEntities
+// ============================================================================
+
+void writePlayerStateSection(WriteBuffer& out, const aoc::ecs::World& world) {
+    WriteBuffer section;
+
+    // --- PlayerCivilizationComponent ---
+    const aoc::ecs::ComponentPool<aoc::sim::PlayerCivilizationComponent>* civPool =
+        world.getPool<aoc::sim::PlayerCivilizationComponent>();
+    uint32_t civCount = civPool ? civPool->size() : 0;
+    section.writeU32(civCount);
+    if (civPool != nullptr) {
+        for (uint32_t i = 0; i < civPool->size(); ++i) {
+            const aoc::sim::PlayerCivilizationComponent& comp = civPool->data()[i];
+            section.writeU8(comp.owner);
+            section.writeU8(comp.civId);
+        }
+    }
+
+    // --- PlayerEraComponent ---
+    const aoc::ecs::ComponentPool<aoc::sim::PlayerEraComponent>* eraPool =
+        world.getPool<aoc::sim::PlayerEraComponent>();
+    uint32_t eraCount = eraPool ? eraPool->size() : 0;
+    section.writeU32(eraCount);
+    if (eraPool != nullptr) {
+        for (uint32_t i = 0; i < eraPool->size(); ++i) {
+            const aoc::sim::PlayerEraComponent& comp = eraPool->data()[i];
+            section.writeU8(comp.owner);
+            section.writeU16(comp.currentEra.value);
+        }
+    }
+
+    // --- PlayerEconomyComponent ---
+    const aoc::ecs::ComponentPool<aoc::sim::PlayerEconomyComponent>* econPool =
+        world.getPool<aoc::sim::PlayerEconomyComponent>();
+    uint32_t econCount = econPool ? econPool->size() : 0;
+    section.writeU32(econCount);
+    if (econPool != nullptr) {
+        for (uint32_t i = 0; i < econPool->size(); ++i) {
+            const aoc::sim::PlayerEconomyComponent& comp = econPool->data()[i];
+            section.writeU8(comp.owner);
+            section.writeI64(comp.treasury);
+            section.writeI64(comp.incomePerTurn);
+        }
+    }
+
+    // --- PlayerGreatPeopleComponent ---
+    const aoc::ecs::ComponentPool<aoc::sim::PlayerGreatPeopleComponent>* gpPool =
+        world.getPool<aoc::sim::PlayerGreatPeopleComponent>();
+    uint32_t gpCount = gpPool ? gpPool->size() : 0;
+    section.writeU32(gpCount);
+    if (gpPool != nullptr) {
+        constexpr std::size_t GP_TYPE_COUNT =
+            static_cast<std::size_t>(aoc::sim::GreatPersonType::Count);
+        for (uint32_t i = 0; i < gpPool->size(); ++i) {
+            const aoc::sim::PlayerGreatPeopleComponent& comp = gpPool->data()[i];
+            section.writeU8(comp.owner);
+            for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
+                section.writeF32(comp.points[t]);
+            }
+            for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
+                section.writeI32(comp.recruited[t]);
+            }
+        }
+    }
+
+    // --- PlayerEurekaComponent ---
+    const aoc::ecs::ComponentPool<aoc::sim::PlayerEurekaComponent>* eurekaPool =
+        world.getPool<aoc::sim::PlayerEurekaComponent>();
+    uint32_t eurekaCount = eurekaPool ? eurekaPool->size() : 0;
+    section.writeU32(eurekaCount);
+    if (eurekaPool != nullptr) {
+        for (uint32_t i = 0; i < eurekaPool->size(); ++i) {
+            const aoc::sim::PlayerEurekaComponent& comp = eurekaPool->data()[i];
+            section.writeU8(comp.owner);
+            // Serialize the bitset as a fixed number of bytes
+            constexpr uint16_t bitCount = aoc::sim::MAX_EUREKA_BOOSTS;
+            constexpr uint16_t byteCount = (bitCount + 7) / 8;
+            section.writeU16(bitCount);
+            for (uint16_t b = 0; b < byteCount; ++b) {
+                uint8_t byte = 0;
+                for (uint8_t bit = 0; bit < 8; ++bit) {
+                    uint16_t idx = static_cast<uint16_t>(b * 8 + bit);
+                    if (idx < bitCount && comp.triggeredBoosts.test(idx)) {
+                        byte |= static_cast<uint8_t>(1u << bit);
+                    }
+                }
+                section.writeU8(byte);
+            }
+        }
+    }
+
+    // --- PlayerWarComponent ---
+    const aoc::ecs::ComponentPool<aoc::sim::PlayerWarComponent>* warPool =
+        world.getPool<aoc::sim::PlayerWarComponent>();
+    uint32_t warCompCount = warPool ? warPool->size() : 0;
+    section.writeU32(warCompCount);
+    if (warPool != nullptr) {
+        for (uint32_t i = 0; i < warPool->size(); ++i) {
+            const aoc::sim::PlayerWarComponent& comp = warPool->data()[i];
+            section.writeU8(comp.owner);
+            section.writeU32(static_cast<uint32_t>(comp.activeWars.size()));
+            for (const aoc::sim::ActiveWar& war : comp.activeWars) {
+                section.writeU8(war.aggressor);
+                section.writeU8(war.defender);
+                section.writeU8(static_cast<uint8_t>(war.casusBelli));
+                section.writeU32(war.startTurn);
+                section.writeI32(war.aggressorWarScore);
+                section.writeI32(war.defenderWarScore);
+            }
+        }
+    }
+
+    writeSection(out, SectionId::PlayerState, section);
+}
+
+void writeDiplomacySection(WriteBuffer& out, const aoc::sim::DiplomacyManager& diplomacy) {
+    WriteBuffer section;
+
+    uint8_t playerCount = diplomacy.playerCount();
+    section.writeU8(playerCount);
+
+    for (uint8_t a = 0; a < playerCount; ++a) {
+        for (uint8_t b = a + 1; b < playerCount; ++b) {
+            const aoc::sim::PairwiseRelation& rel = diplomacy.relation(a, b);
+            section.writeI32(rel.baseScore);
+            section.writeU8(rel.isAtWar ? uint8_t{1} : uint8_t{0});
+            section.writeU8(rel.hasOpenBorders ? uint8_t{1} : uint8_t{0});
+            section.writeU8(rel.hasDefensiveAlliance ? uint8_t{1} : uint8_t{0});
+            section.writeU32(static_cast<uint32_t>(rel.modifiers.size()));
+            for (const aoc::sim::RelationModifier& mod : rel.modifiers) {
+                section.writeString(mod.reason);
+                section.writeI32(mod.amount);
+                section.writeI32(mod.turnsRemaining);
+            }
+        }
+    }
+
+    writeSection(out, SectionId::Diplomacy, section);
+}
+
+void writeMarketSection(WriteBuffer& out, const aoc::sim::EconomySimulation& economy) {
+    WriteBuffer section;
+
+    const aoc::sim::Market& market = economy.market();
+    uint16_t count = market.goodsCount();
+    section.writeU16(count);
+    for (uint16_t i = 0; i < count; ++i) {
+        const aoc::sim::Market::GoodMarketData& data = market.marketData(i);
+        section.writeI32(data.currentPrice);
+        section.writeI32(data.basePrice);
+    }
+
+    writeSection(out, SectionId::Market, section);
+}
+
+void writeWonderSection(WriteBuffer& out, const aoc::ecs::World& world) {
+    WriteBuffer section;
+
+    // GlobalWonderTracker
+    const aoc::ecs::ComponentPool<aoc::sim::GlobalWonderTracker>* trackerPool =
+        world.getPool<aoc::sim::GlobalWonderTracker>();
+    uint8_t hasTracker = (trackerPool != nullptr && trackerPool->size() > 0) ? uint8_t{1} : uint8_t{0};
+    section.writeU8(hasTracker);
+    if (hasTracker != 0) {
+        const aoc::sim::GlobalWonderTracker& tracker = trackerPool->data()[0];
+        for (uint8_t w = 0; w < aoc::sim::WONDER_COUNT; ++w) {
+            section.writeU8(tracker.builtBy[w]);
+        }
+    }
+
+    // CityWondersComponent (indexed by city pool order)
+    const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
+        world.getPool<aoc::sim::CityComponent>();
+    uint32_t cityWonderCount = 0;
+    if (cityPool != nullptr) {
+        for (uint32_t i = 0; i < cityPool->size(); ++i) {
+            EntityId cityEntity = cityPool->entities()[i];
+            if (world.tryGetComponent<aoc::sim::CityWondersComponent>(cityEntity) != nullptr) {
+                ++cityWonderCount;
+            }
+        }
+    }
+
+    section.writeU32(cityWonderCount);
+    if (cityPool != nullptr) {
+        for (uint32_t i = 0; i < cityPool->size(); ++i) {
+            EntityId cityEntity = cityPool->entities()[i];
+            const aoc::sim::CityWondersComponent* wonders =
+                world.tryGetComponent<aoc::sim::CityWondersComponent>(cityEntity);
+            if (wonders != nullptr) {
+                section.writeU32(i);  // city index in pool order
+                section.writeU32(static_cast<uint32_t>(wonders->wonders.size()));
+                for (aoc::sim::WonderId wid : wonders->wonders) {
+                    section.writeU8(wid);
+                }
+            }
+        }
+    }
+
+    writeSection(out, SectionId::WonderState, section);
+}
+
+void writeMiscEntitiesSection(WriteBuffer& out, const aoc::ecs::World& world) {
+    WriteBuffer section;
+
+    // --- BarbarianEncampmentComponent ---
+    const aoc::ecs::ComponentPool<aoc::sim::BarbarianEncampmentComponent>* barbPool =
+        world.getPool<aoc::sim::BarbarianEncampmentComponent>();
+    uint32_t barbCount = barbPool ? barbPool->size() : 0;
+    section.writeU32(barbCount);
+    if (barbPool != nullptr) {
+        for (uint32_t i = 0; i < barbPool->size(); ++i) {
+            const aoc::sim::BarbarianEncampmentComponent& comp = barbPool->data()[i];
+            section.writeI32(comp.location.q);
+            section.writeI32(comp.location.r);
+            section.writeI32(comp.spawnCooldown);
+            section.writeI32(comp.unitsSpawned);
+        }
+    }
+
+    // --- GreatPersonComponent ---
+    const aoc::ecs::ComponentPool<aoc::sim::GreatPersonComponent>* gpPersonPool =
+        world.getPool<aoc::sim::GreatPersonComponent>();
+    uint32_t gpPersonCount = gpPersonPool ? gpPersonPool->size() : 0;
+    section.writeU32(gpPersonCount);
+    if (gpPersonPool != nullptr) {
+        for (uint32_t i = 0; i < gpPersonPool->size(); ++i) {
+            const aoc::sim::GreatPersonComponent& comp = gpPersonPool->data()[i];
+            section.writeU8(comp.owner);
+            section.writeU8(comp.defId);
+            section.writeI32(comp.position.q);
+            section.writeI32(comp.position.r);
+            section.writeU8(comp.isActivated ? uint8_t{1} : uint8_t{0});
+        }
+    }
+
+    // --- SpyComponent ---
+    const aoc::ecs::ComponentPool<aoc::sim::SpyComponent>* spyPool =
+        world.getPool<aoc::sim::SpyComponent>();
+    uint32_t spyCount = spyPool ? spyPool->size() : 0;
+    section.writeU32(spyCount);
+    if (spyPool != nullptr) {
+        for (uint32_t i = 0; i < spyPool->size(); ++i) {
+            const aoc::sim::SpyComponent& comp = spyPool->data()[i];
+            section.writeU8(comp.owner);
+            section.writeI32(comp.location.q);
+            section.writeI32(comp.location.r);
+            section.writeU8(static_cast<uint8_t>(comp.currentMission));
+            section.writeI32(comp.turnsRemaining);
+            section.writeI32(comp.experience);
+            section.writeU8(comp.isRevealed ? uint8_t{1} : uint8_t{0});
+        }
+    }
+
+    // --- UnitExperienceComponent (linked to unit pool order) ---
+    const aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* unitPool =
+        world.getPool<aoc::sim::UnitComponent>();
+    uint32_t expCount = 0;
+    if (unitPool != nullptr) {
+        for (uint32_t i = 0; i < unitPool->size(); ++i) {
+            EntityId unitEntity = unitPool->entities()[i];
+            if (world.tryGetComponent<aoc::sim::UnitExperienceComponent>(unitEntity) != nullptr) {
+                ++expCount;
+            }
+        }
+    }
+
+    section.writeU32(expCount);
+    if (unitPool != nullptr) {
+        for (uint32_t i = 0; i < unitPool->size(); ++i) {
+            EntityId unitEntity = unitPool->entities()[i];
+            const aoc::sim::UnitExperienceComponent* exp =
+                world.tryGetComponent<aoc::sim::UnitExperienceComponent>(unitEntity);
+            if (exp != nullptr) {
+                section.writeU32(i);  // unit index in pool order
+                section.writeI32(exp->experience);
+                section.writeI32(exp->level);
+                section.writeU32(static_cast<uint32_t>(exp->promotions.size()));
+                for (PromotionId pid : exp->promotions) {
+                    section.writeU16(pid.value);
+                }
+            }
+        }
+    }
+
+    writeSection(out, SectionId::MiscEntities, section);
+}
+
 } // anonymous namespace
 
 // ============================================================================
@@ -536,8 +849,8 @@ ErrorCode saveGame(const std::string& filepath,
                     const aoc::ecs::World& world,
                     const aoc::map::HexGrid& grid,
                     const aoc::sim::TurnManager& turnManager,
-                    const aoc::sim::EconomySimulation& /*economy*/,
-                    const aoc::sim::DiplomacyManager& /*diplomacy*/,
+                    const aoc::sim::EconomySimulation& economy,
+                    const aoc::sim::DiplomacyManager& diplomacy,
                     const aoc::map::FogOfWar& /*fogOfWar*/,
                     const aoc::Random& rng) {
     WriteBuffer buf;
@@ -561,6 +874,12 @@ ErrorCode saveGame(const std::string& filepath,
     writeGovernmentSection(buf, world);
     writeVictorySection(buf, world);
     writeStockpilesSection(buf, world);
+    // v4 sections
+    writePlayerStateSection(buf, world);
+    writeDiplomacySection(buf, diplomacy);
+    writeMarketSection(buf, economy);
+    writeWonderSection(buf, world);
+    writeMiscEntitiesSection(buf, world);
 
     // Write to file
     std::ofstream file(filepath, std::ios::binary);
@@ -586,9 +905,9 @@ ErrorCode saveGame(const std::string& filepath,
 ErrorCode loadGame(const std::string& filepath,
                     aoc::ecs::World& world,
                     aoc::map::HexGrid& grid,
-                    aoc::sim::TurnManager& /*turnManager*/,
-                    aoc::sim::EconomySimulation& /*economy*/,
-                    aoc::sim::DiplomacyManager& /*diplomacy*/,
+                    aoc::sim::TurnManager& turnManager,
+                    aoc::sim::EconomySimulation& economy,
+                    aoc::sim::DiplomacyManager& diplomacy,
                     aoc::map::FogOfWar& /*fogOfWar*/,
                     aoc::Random& rng) {
     // Read entire file
@@ -627,6 +946,9 @@ ErrorCode loadGame(const std::string& filepath,
     // sections can reference them by pool index.
     std::vector<EntityId> loadedCityEntities;
 
+    // Unit entities collected for the MiscEntities section (experience).
+    std::vector<EntityId> loadedUnitEntities;
+
     // Read sections (skip unknown ones)
     while (buf.hasRemaining(6)) {
         uint16_t sectionId = buf.readU16();
@@ -653,13 +975,16 @@ ErrorCode loadGame(const std::string& filepath,
                 break;
             }
             case SectionId::TurnState: {
-                [[maybe_unused]] uint32_t turnNum = buf.readU32();
-                [[maybe_unused]] uint8_t phase    = buf.readU8();
+                uint32_t turnNum = buf.readU32();
+                uint8_t phase    = buf.readU8();
+                turnManager.setTurnNumber(turnNum);
+                turnManager.setPhase(static_cast<aoc::sim::TurnPhase>(phase));
                 break;
             }
             case SectionId::Entities: {
                 // Units
                 uint32_t unitCount = buf.readU32();
+                loadedUnitEntities.reserve(unitCount);
                 for (uint32_t i = 0; i < unitCount; ++i) {
                     PlayerId owner = buf.readU8();
                     UnitTypeId typeId{buf.readU16()};
@@ -667,13 +992,26 @@ ErrorCode loadGame(const std::string& filepath,
                     int32_t hp = buf.readI32();
                     int32_t mp = buf.readI32();
                     uint8_t stateVal = buf.readU8();
+                    // v4: chargesRemaining, cargoCapacity, pendingPath
+                    int8_t charges = static_cast<int8_t>(buf.readU8());
+                    int8_t cargo   = static_cast<int8_t>(buf.readU8());
+                    uint16_t pathSize = buf.readU16();
+                    std::vector<hex::AxialCoord> pendingPath;
+                    pendingPath.reserve(pathSize);
+                    for (uint16_t p = 0; p < pathSize; ++p) {
+                        pendingPath.push_back({buf.readI32(), buf.readI32()});
+                    }
 
                     EntityId entity = world.createEntity();
                     aoc::sim::UnitComponent unit = aoc::sim::UnitComponent::create(owner, typeId, pos);
                     unit.hitPoints = hp;
                     unit.movementRemaining = mp;
                     unit.state = static_cast<aoc::sim::UnitState>(stateVal);
+                    unit.chargesRemaining = charges;
+                    unit.cargoCapacity = cargo;
+                    unit.pendingPath = std::move(pendingPath);
                     world.addComponent<aoc::sim::UnitComponent>(entity, std::move(unit));
+                    loadedUnitEntities.push_back(entity);
                 }
 
                 // Cities
@@ -694,12 +1032,22 @@ ErrorCode loadGame(const std::string& filepath,
                         worked.push_back({buf.readI32(), buf.readI32()});
                     }
 
+                    // v4: cultureBorderProgress, tilesClaimedCount, isOriginalCapital, originalOwner
+                    float cultureBorder = buf.readF32();
+                    int32_t tilesClaimed = buf.readI32();
+                    bool isOrigCapital = buf.readU8() != 0;
+                    PlayerId origOwner = buf.readU8();
+
                     EntityId entity = world.createEntity();
                     aoc::sim::CityComponent city = aoc::sim::CityComponent::create(owner, loc, std::move(name));
                     city.population = pop;
                     city.foodSurplus = food;
                     city.productionProgress = prod;
                     city.workedTiles = std::move(worked);
+                    city.cultureBorderProgress = cultureBorder;
+                    city.tilesClaimedCount = tilesClaimed;
+                    city.isOriginalCapital = isOrigCapital;
+                    city.originalOwner = origOwner;
                     world.addComponent<aoc::sim::CityComponent>(entity, std::move(city));
 
                     // Ensure every city has a production queue component
@@ -926,6 +1274,245 @@ ErrorCode loadGame(const std::string& filepath,
                         EntityId cityEntity = loadedCityEntities[cityIndex];
                         world.addComponent<aoc::sim::CityStockpileComponent>(
                             cityEntity, std::move(stockpile));
+                    }
+                }
+                break;
+            }
+            // ==============================================================
+            // v4 section readers
+            // ==============================================================
+            case SectionId::PlayerState: {
+                // --- PlayerCivilizationComponent ---
+                uint32_t civCount = buf.readU32();
+                for (uint32_t i = 0; i < civCount; ++i) {
+                    aoc::sim::PlayerCivilizationComponent comp{};
+                    comp.owner = buf.readU8();
+                    comp.civId = buf.readU8();
+
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::PlayerCivilizationComponent>(entity, std::move(comp));
+                }
+
+                // --- PlayerEraComponent ---
+                uint32_t eraCount = buf.readU32();
+                for (uint32_t i = 0; i < eraCount; ++i) {
+                    aoc::sim::PlayerEraComponent comp{};
+                    comp.owner = buf.readU8();
+                    comp.currentEra = EraId{buf.readU16()};
+
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::PlayerEraComponent>(entity, std::move(comp));
+                }
+
+                // --- PlayerEconomyComponent ---
+                uint32_t econCount = buf.readU32();
+                for (uint32_t i = 0; i < econCount; ++i) {
+                    aoc::sim::PlayerEconomyComponent comp{};
+                    comp.owner = buf.readU8();
+                    comp.treasury = buf.readI64();
+                    comp.incomePerTurn = buf.readI64();
+
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::PlayerEconomyComponent>(entity, std::move(comp));
+                }
+
+                // --- PlayerGreatPeopleComponent ---
+                constexpr std::size_t GP_TYPE_COUNT =
+                    static_cast<std::size_t>(aoc::sim::GreatPersonType::Count);
+                uint32_t gpCount = buf.readU32();
+                for (uint32_t i = 0; i < gpCount; ++i) {
+                    aoc::sim::PlayerGreatPeopleComponent comp{};
+                    comp.owner = buf.readU8();
+                    for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
+                        comp.points[t] = buf.readF32();
+                    }
+                    for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
+                        comp.recruited[t] = buf.readI32();
+                    }
+
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::PlayerGreatPeopleComponent>(entity, std::move(comp));
+                }
+
+                // --- PlayerEurekaComponent ---
+                uint32_t eurekaCount = buf.readU32();
+                for (uint32_t i = 0; i < eurekaCount; ++i) {
+                    aoc::sim::PlayerEurekaComponent comp{};
+                    comp.owner = buf.readU8();
+                    uint16_t bitCount = buf.readU16();
+                    uint16_t byteCount = static_cast<uint16_t>((bitCount + 7) / 8);
+                    for (uint16_t b = 0; b < byteCount; ++b) {
+                        uint8_t byte = buf.readU8();
+                        for (uint8_t bit = 0; bit < 8; ++bit) {
+                            uint16_t idx = static_cast<uint16_t>(b * 8 + bit);
+                            if (idx < bitCount && idx < aoc::sim::MAX_EUREKA_BOOSTS &&
+                                ((byte >> bit) & 1u) != 0) {
+                                comp.triggeredBoosts.set(idx);
+                            }
+                        }
+                    }
+
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::PlayerEurekaComponent>(entity, std::move(comp));
+                }
+
+                // --- PlayerWarComponent ---
+                uint32_t warCompCount = buf.readU32();
+                for (uint32_t i = 0; i < warCompCount; ++i) {
+                    aoc::sim::PlayerWarComponent comp{};
+                    comp.owner = buf.readU8();
+                    uint32_t warCount = buf.readU32();
+                    comp.activeWars.reserve(warCount);
+                    for (uint32_t w = 0; w < warCount; ++w) {
+                        aoc::sim::ActiveWar war{};
+                        war.aggressor = buf.readU8();
+                        war.defender = buf.readU8();
+                        war.casusBelli = static_cast<aoc::sim::CasusBelli>(buf.readU8());
+                        war.startTurn = buf.readU32();
+                        war.aggressorWarScore = buf.readI32();
+                        war.defenderWarScore = buf.readI32();
+                        comp.activeWars.push_back(std::move(war));
+                    }
+
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::PlayerWarComponent>(entity, std::move(comp));
+                }
+                break;
+            }
+            case SectionId::Diplomacy: {
+                uint8_t playerCount = buf.readU8();
+                diplomacy.initialize(playerCount);
+
+                for (uint8_t a = 0; a < playerCount; ++a) {
+                    for (uint8_t b = a + 1; b < playerCount; ++b) {
+                        aoc::sim::PairwiseRelation& rel = diplomacy.relation(a, b);
+                        rel.baseScore = buf.readI32();
+                        rel.isAtWar = buf.readU8() != 0;
+                        rel.hasOpenBorders = buf.readU8() != 0;
+                        rel.hasDefensiveAlliance = buf.readU8() != 0;
+                        uint32_t modCount = buf.readU32();
+                        rel.modifiers.reserve(modCount);
+                        for (uint32_t m = 0; m < modCount; ++m) {
+                            aoc::sim::RelationModifier mod{};
+                            mod.reason = buf.readString();
+                            mod.amount = buf.readI32();
+                            mod.turnsRemaining = buf.readI32();
+                            rel.modifiers.push_back(std::move(mod));
+                        }
+                    }
+                }
+                break;
+            }
+            case SectionId::Market: {
+                economy.initialize();
+                uint16_t count = buf.readU16();
+                aoc::sim::Market& market = economy.market();
+                for (uint16_t i = 0; i < count; ++i) {
+                    int32_t currentPrice = buf.readI32();
+                    [[maybe_unused]] int32_t basePrice = buf.readI32();
+                    market.setPrice(i, currentPrice);
+                }
+                break;
+            }
+            case SectionId::FogOfWar: {
+                // Fog of war is recomputed from unit/city positions after load.
+                // Skip any stored data for forward compatibility.
+                buf.skip(sectionSize);
+                break;
+            }
+            case SectionId::WonderState: {
+                // GlobalWonderTracker
+                uint8_t hasTracker = buf.readU8();
+                if (hasTracker != 0) {
+                    aoc::sim::GlobalWonderTracker tracker{};
+                    for (uint8_t w = 0; w < aoc::sim::WONDER_COUNT; ++w) {
+                        tracker.builtBy[w] = buf.readU8();
+                    }
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::GlobalWonderTracker>(entity, std::move(tracker));
+                }
+
+                // CityWondersComponent
+                uint32_t cityWonderCount = buf.readU32();
+                for (uint32_t i = 0; i < cityWonderCount; ++i) {
+                    uint32_t cityIndex = buf.readU32();
+                    uint32_t wonderCount = buf.readU32();
+
+                    aoc::sim::CityWondersComponent wonders{};
+                    wonders.wonders.reserve(wonderCount);
+                    for (uint32_t w = 0; w < wonderCount; ++w) {
+                        wonders.wonders.push_back(buf.readU8());
+                    }
+
+                    if (cityIndex < static_cast<uint32_t>(loadedCityEntities.size())) {
+                        EntityId cityEntity = loadedCityEntities[cityIndex];
+                        world.addComponent<aoc::sim::CityWondersComponent>(
+                            cityEntity, std::move(wonders));
+                    }
+                }
+                break;
+            }
+            case SectionId::MiscEntities: {
+                // --- BarbarianEncampmentComponent ---
+                uint32_t barbCount = buf.readU32();
+                for (uint32_t i = 0; i < barbCount; ++i) {
+                    aoc::sim::BarbarianEncampmentComponent comp{};
+                    comp.location.q = buf.readI32();
+                    comp.location.r = buf.readI32();
+                    comp.spawnCooldown = buf.readI32();
+                    comp.unitsSpawned = buf.readI32();
+
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::BarbarianEncampmentComponent>(entity, std::move(comp));
+                }
+
+                // --- GreatPersonComponent ---
+                uint32_t gpPersonCount = buf.readU32();
+                for (uint32_t i = 0; i < gpPersonCount; ++i) {
+                    aoc::sim::GreatPersonComponent comp{};
+                    comp.owner = buf.readU8();
+                    comp.defId = buf.readU8();
+                    comp.position.q = buf.readI32();
+                    comp.position.r = buf.readI32();
+                    comp.isActivated = buf.readU8() != 0;
+
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::GreatPersonComponent>(entity, std::move(comp));
+                }
+
+                // --- SpyComponent ---
+                uint32_t spyCount = buf.readU32();
+                for (uint32_t i = 0; i < spyCount; ++i) {
+                    aoc::sim::SpyComponent comp{};
+                    comp.owner = buf.readU8();
+                    comp.location.q = buf.readI32();
+                    comp.location.r = buf.readI32();
+                    comp.currentMission = static_cast<aoc::sim::SpyMission>(buf.readU8());
+                    comp.turnsRemaining = buf.readI32();
+                    comp.experience = buf.readI32();
+                    comp.isRevealed = buf.readU8() != 0;
+
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::SpyComponent>(entity, std::move(comp));
+                }
+
+                // --- UnitExperienceComponent ---
+                uint32_t expCount = buf.readU32();
+                for (uint32_t i = 0; i < expCount; ++i) {
+                    uint32_t unitIndex = buf.readU32();
+                    aoc::sim::UnitExperienceComponent exp{};
+                    exp.experience = buf.readI32();
+                    exp.level = buf.readI32();
+                    uint32_t promoCount = buf.readU32();
+                    exp.promotions.reserve(promoCount);
+                    for (uint32_t p = 0; p < promoCount; ++p) {
+                        exp.promotions.push_back(PromotionId{buf.readU16()});
+                    }
+
+                    if (unitIndex < static_cast<uint32_t>(loadedUnitEntities.size())) {
+                        EntityId unitEntity = loadedUnitEntities[unitIndex];
+                        world.addComponent<aoc::sim::UnitExperienceComponent>(
+                            unitEntity, std::move(exp));
                     }
                 }
                 break;
