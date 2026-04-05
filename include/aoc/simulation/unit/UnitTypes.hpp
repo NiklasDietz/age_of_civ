@@ -22,6 +22,7 @@ enum class UnitClass : uint8_t {
     Scout,
     Civilian,    ///< Builders and other non-combat units
     Naval,       ///< Ships and naval combat units
+    Religious,   ///< Missionaries, apostles, inquisitors
 
     Count
 };
@@ -49,7 +50,7 @@ struct UnitTypeDef {
 };
 
 /// Hard-coded starter unit types. Will be data-driven later.
-inline constexpr std::array<UnitTypeDef, 19> UNIT_TYPE_DEFS = {{
+inline constexpr std::array<UnitTypeDef, 22> UNIT_TYPE_DEFS = {{
     // Ancient era
     {UnitTypeId{0},  "Warrior",     UnitClass::Melee,     100, 20,  0, 0, 2,  40},
     {UnitTypeId{1},  "Slinger",     UnitClass::Ranged,     80, 10, 15, 1, 2,  35},
@@ -76,6 +77,10 @@ inline constexpr std::array<UnitTypeDef, 19> UNIT_TYPE_DEFS = {{
     {UnitTypeId{17}, "Tank",        UnitClass::Cavalry,    180, 80,  0, 0, 4, 350},
     // Atomic era
     {UnitTypeId{18}, "Fighter",     UnitClass::Ranged,    100, 20, 75, 4, 6, 400},
+    // Religious units (faith-purchased)
+    {UnitTypeId{19}, "Missionary",  UnitClass::Religious,  60,  0,  0, 0, 3,   0},
+    {UnitTypeId{20}, "Apostle",     UnitClass::Religious,  80, 10, 15, 1, 3,   0},
+    {UnitTypeId{21}, "Inquisitor",  UnitClass::Religious,  60,  0,  0, 0, 3,   0},
 }};
 
 [[nodiscard]] inline constexpr const UnitTypeDef& unitTypeDef(UnitTypeId id) {
@@ -85,6 +90,11 @@ inline constexpr std::array<UnitTypeDef, 19> UNIT_TYPE_DEFS = {{
 /// Returns true if the given unit class is a naval type.
 [[nodiscard]] constexpr bool isNaval(UnitClass c) {
     return c == UnitClass::Naval;
+}
+
+/// Returns true if the given unit class is a religious type.
+[[nodiscard]] constexpr bool isReligious(UnitClass c) {
+    return c == UnitClass::Religious;
 }
 
 /// Returns true if the given unit class is a military (combat-capable) type.

@@ -25,6 +25,7 @@
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -710,6 +711,10 @@ void AIController::executeUnitActions(aoc::ecs::World& world,
                 districts.districts.push_back(std::move(center));
                 world.addComponent<CityDistrictsComponent>(
                     cityEntity, std::move(districts));
+
+                // Attach religion component to AI-founded city
+                world.addComponent<CityReligionComponent>(
+                    cityEntity, CityReligionComponent{});
 
                 claimInitialTerritory(grid, info.unit.position, this->m_player);
                 world.destroyEntity(info.entity);

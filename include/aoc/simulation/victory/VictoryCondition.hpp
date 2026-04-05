@@ -30,6 +30,7 @@ enum class VictoryType : uint8_t {
     Domination,
     Culture,
     Score,
+    Religion,
 };
 
 /// Per-player victory progress tracker (ECS component).

@@ -248,4 +248,80 @@ CombatResult resolveRangedCombat(aoc::ecs::World& world,
     return result;
 }
 
+CombatPreview previewCombat(const aoc::ecs::World& world,
+                             const aoc::map::HexGrid& grid,
+                             EntityId attacker, EntityId defender) {
+    const UnitComponent& atkUnit = world.getComponent<UnitComponent>(attacker);
+    const UnitComponent& defUnit = world.getComponent<UnitComponent>(defender);
+    const UnitTypeDef& atkDef = unitTypeDef(atkUnit.typeId);
+    const UnitTypeDef& defDef = unitTypeDef(defUnit.typeId);
+
+    // Determine if ranged or melee
+    const bool isRanged = (atkDef.rangedStrength > 0);
+
+    // Effective strengths
+    float atkStrength = isRanged
+        ? static_cast<float>(atkDef.rangedStrength)
+        : static_cast<float>(atkDef.combatStrength);
+    float defStrength = static_cast<float>(defDef.combatStrength);
+
+    // Embarked modifier
+    if (atkUnit.state == UnitState::Embarked) {
+        atkStrength *= 0.5f;
+    }
+    if (defUnit.state == UnitState::Embarked) {
+        defStrength *= 0.5f;
+    }
+
+    // Health modifier
+    float atkHealthMod = static_cast<float>(atkUnit.hitPoints) / static_cast<float>(atkDef.maxHitPoints);
+    float defHealthMod = static_cast<float>(defUnit.hitPoints) / static_cast<float>(defDef.maxHitPoints);
+    atkStrength *= atkHealthMod;
+    defStrength *= defHealthMod;
+
+    // Terrain defense bonus for defender
+    float terrainMod = terrainDefenseModifier(grid, defUnit.position);
+    defStrength *= terrainMod;
+
+    // Flanking bonus for melee
+    if (!isRanged) {
+        int32_t flanking = countAdjacentFriendlies(world, defUnit.position, atkUnit.owner);
+        atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
+    }
+
+    // Fortification bonus
+    if (defUnit.state == UnitState::Fortified) {
+        defStrength *= 1.25f;
+    }
+
+    // Compute damage with randomFactor = 1.0 (average outcome)
+    CombatPreview preview{};
+
+    // damage = 30 * (attackStr / defenseStr) * randomFactor
+    if (defStrength < 0.01f) {
+        preview.expectedDefenderDamage = 100;
+    } else {
+        float ratio = atkStrength / defStrength;
+        float baseDamage = 30.0f * ratio * 1.0f;
+        preview.expectedDefenderDamage = std::clamp(static_cast<int32_t>(baseDamage), 0, 100);
+    }
+
+    if (isRanged) {
+        preview.expectedAttackerDamage = 0;
+    } else {
+        // Counter-damage
+        if (atkStrength < 0.01f) {
+            preview.expectedAttackerDamage = 100;
+        } else {
+            float counterRatio = defStrength / atkStrength;
+            float counterDamage = 30.0f * counterRatio * 1.0f;
+            int32_t rawCounter = std::clamp(static_cast<int32_t>(counterDamage), 0, 100);
+            // Attacker takes 80% of counter-damage (aggressor advantage)
+            preview.expectedAttackerDamage = rawCounter * 8 / 10;
+        }
+    }
+
+    return preview;
+}
+
 } // namespace aoc::sim

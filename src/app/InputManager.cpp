@@ -188,10 +188,12 @@ void InputManager::setupDefaultBindings() {
     this->m_actionToKey[static_cast<uint8_t>(InputAction::OpenEconomy)]  = GLFW_KEY_E;
     this->m_actionToKey[static_cast<uint8_t>(InputAction::OpenProductionPicker)] = GLFW_KEY_P;
     this->m_actionToKey[static_cast<uint8_t>(InputAction::OpenGovernment)]     = GLFW_KEY_G;
+    this->m_actionToKey[static_cast<uint8_t>(InputAction::OpenReligion)]      = GLFW_KEY_R;
     this->m_actionToKey[static_cast<uint8_t>(InputAction::QuickSave)]    = GLFW_KEY_F5;
     this->m_actionToKey[static_cast<uint8_t>(InputAction::QuickLoad)]    = GLFW_KEY_F9;
     this->m_actionToKey[static_cast<uint8_t>(InputAction::UpgradeUnit)]  = GLFW_KEY_U;
     this->m_actionToKey[static_cast<uint8_t>(InputAction::ShowHelp)]     = GLFW_KEY_F1;
+    this->m_actionToKey[static_cast<uint8_t>(InputAction::UndoAction)]  = GLFW_KEY_Z;
 }
 
 } // namespace aoc::app

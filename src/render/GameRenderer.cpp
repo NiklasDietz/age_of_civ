@@ -13,6 +13,8 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/FogOfWar.hpp"
 #include "aoc/ecs/World.hpp"
+#include "aoc/simulation/unit/UnitComponent.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
 
 #include <renderer/Renderer2D.hpp>
 #include <renderer/RenderPipeline.hpp>
@@ -58,6 +60,19 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     // Layer 3: Units (world coordinates)
     this->m_unitRenderer.drawUnits(renderer2d, world, fog, grid, viewingPlayer,
                                     camera, hexSize, screenWidth, screenHeight);
+
+    // Layer 3.5: Ranged attack range overlay for selected ranged unit
+    if (this->m_unitRenderer.selectedEntity.isValid() &&
+        world.hasComponent<aoc::sim::UnitComponent>(this->m_unitRenderer.selectedEntity)) {
+        const aoc::sim::UnitComponent& selUnit =
+            world.getComponent<aoc::sim::UnitComponent>(this->m_unitRenderer.selectedEntity);
+        const aoc::sim::UnitTypeDef& selDef = aoc::sim::unitTypeDef(selUnit.typeId);
+        if (selDef.rangedStrength > 0 && selDef.range > 0) {
+            this->m_unitRenderer.drawRangedRange(renderer2d, world,
+                                                  selUnit.position, selDef.range,
+                                                  selUnit.owner, hexSize);
+        }
+    }
 
     // Layer 4: UI overlay
     // UI widgets are in screen-pixel space. Transform to world space so the

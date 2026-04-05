@@ -62,6 +62,12 @@ public:
                        const std::vector<hex::AxialCoord>& tiles,
                        float hexSize) const;
 
+    /// Draw a translucent range indicator for ranged units with enemy highlights.
+    void drawRangedRange(vulkan_app::renderer::Renderer2D& renderer2d,
+                         const aoc::ecs::World& world,
+                         hex::AxialCoord center, int32_t range,
+                         PlayerId unitOwner, float hexSize) const;
+
     /// Selected entity (NULL_ENTITY if nothing selected).
     EntityId selectedEntity = NULL_ENTITY;
 };

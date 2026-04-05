@@ -16,6 +16,7 @@
 namespace aoc::ui { class UIManager; }
 namespace aoc::ecs { class World; }
 namespace aoc::map { class HexGrid; }
+namespace aoc::sim { class Market; }
 
 namespace aoc::ui {
 
@@ -106,17 +107,25 @@ private:
 /// Economy overview and market screen.
 class EconomyScreen final : public ScreenBase {
 public:
-    void setContext(aoc::ecs::World* world, const aoc::map::HexGrid* grid, PlayerId player);
+    void setContext(aoc::ecs::World* world, const aoc::map::HexGrid* grid,
+                    PlayerId player, const aoc::sim::Market* market = nullptr);
     void open(UIManager& ui) override;
     void close(UIManager& ui) override;
     void refresh(UIManager& ui) override;
 
 private:
+    /// Build the trade route creation sub-panel.
+    void buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel);
+
     aoc::ecs::World* m_world = nullptr;
     const aoc::map::HexGrid* m_grid = nullptr;
+    const aoc::sim::Market* m_market = nullptr;
     PlayerId m_player = INVALID_PLAYER;
     WidgetId m_infoLabel = INVALID_WIDGET;
     WidgetId m_marketList = INVALID_WIDGET;
+    WidgetId m_tradeRoutePanel = INVALID_WIDGET;
+    EntityId m_trSourceCity = NULL_ENTITY;
+    EntityId m_trDestCity = NULL_ENTITY;
     float m_screenW = 1280.0f;
     float m_screenH = 720.0f;
 };

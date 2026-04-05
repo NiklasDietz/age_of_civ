@@ -58,6 +58,7 @@ struct PairwiseRelation {
     bool    isAtWar   = false;
     bool    hasOpenBorders     = false;
     bool    hasDefensiveAlliance = false;
+    bool    hasEmbargo         = false;
     std::vector<RelationModifier> modifiers;
 
     /// Compute the total score = baseScore + sum of active modifiers.
@@ -112,6 +113,12 @@ public:
 
     /// Check if two players are at war.
     [[nodiscard]] bool isAtWar(PlayerId a, PlayerId b) const;
+
+    /// Set or lift a trade embargo between two players.
+    void setEmbargo(PlayerId a, PlayerId b, bool embargo);
+
+    /// Check if a trade embargo exists between two players.
+    [[nodiscard]] bool hasEmbargo(PlayerId a, PlayerId b) const;
 
 private:
     /// Flat NxN matrix: index = a * playerCount + b.

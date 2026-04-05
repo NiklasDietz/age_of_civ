@@ -53,7 +53,8 @@ public:
                 const aoc::render::CameraController& camera,
                 const aoc::map::FogOfWar& fog,
                 PlayerId player,
-                uint32_t screenW, uint32_t screenH);
+                uint32_t screenW, uint32_t screenH,
+                EntityId selectedEntity = NULL_ENTITY);
 
     /**
      * @brief Render the tooltip if visible.

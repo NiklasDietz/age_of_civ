@@ -19,12 +19,16 @@
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/economy/Market.hpp"
+#include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
+#include "aoc/map/Pathfinding.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/core/Log.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <string>
+#include <vector>
 
 namespace aoc::ui {
 
@@ -534,10 +538,11 @@ void GovernmentScreen::refresh(UIManager& ui) {
 // ============================================================================
 
 void EconomyScreen::setContext(aoc::ecs::World* world, const aoc::map::HexGrid* grid,
-                                PlayerId player) {
+                                PlayerId player, const aoc::sim::Market* market) {
     this->m_world = world;
     this->m_grid = grid;
     this->m_player = player;
+    this->m_market = market;
 }
 
 void EconomyScreen::open(UIManager& ui) {
@@ -637,12 +642,28 @@ void EconomyScreen::open(UIManager& ui) {
         (void)ui.createButton(taxRow, {0.0f, 0.0f, 80.0f, 22.0f}, std::move(plusBtn));
     }
 
+    // "Create Trade Route" button
+    {
+        ButtonData tradeRouteBtn;
+        tradeRouteBtn.label = "Create Trade Route";
+        tradeRouteBtn.fontSize = 12.0f;
+        tradeRouteBtn.normalColor  = {0.20f, 0.30f, 0.20f, 0.9f};
+        tradeRouteBtn.hoverColor   = {0.30f, 0.40f, 0.30f, 0.9f};
+        tradeRouteBtn.pressedColor = {0.15f, 0.20f, 0.15f, 0.9f};
+        tradeRouteBtn.cornerRadius = 4.0f;
+        tradeRouteBtn.onClick = [this, &ui, innerPanel]() {
+            this->buildTradeRoutePanel(ui, innerPanel);
+        };
+        (void)ui.createButton(innerPanel, {0.0f, 0.0f, 180.0f, 26.0f}, std::move(tradeRouteBtn));
+    }
+
     // Market prices section
     (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 14.0f},
-                   LabelData{"-- Market Prices --", {0.6f, 0.6f, 0.7f, 1.0f}, 12.0f});
+                   LabelData{"-- Market Prices (Trend | Supply | Demand) --",
+                              {0.6f, 0.6f, 0.7f, 1.0f}, 12.0f});
 
     this->m_marketList = ui.createScrollList(
-        innerPanel, {0.0f, 0.0f, 470.0f, 250.0f});
+        innerPanel, {0.0f, 0.0f, 470.0f, 200.0f});
 
     Widget* listWidget = ui.getWidget(this->m_marketList);
     if (listWidget != nullptr) {
@@ -659,39 +680,307 @@ void EconomyScreen::open(UIManager& ui) {
             }
         });
 
-    // Show first 20 goods that have price > 0
-    uint32_t shownCount = 0;
+    // Collect goods data for sorting by trade volume
+    struct GoodDisplayInfo {
+        uint16_t goodId;
+        int32_t  supply;
+        int32_t  demand;
+        int32_t  currentPrice;
+        int32_t  volume;  // supply + demand
+        std::string_view name;
+        std::string trend;
+    };
+    std::vector<GoodDisplayInfo> goodsInfo;
+
     const uint16_t totalGoods = aoc::sim::goodCount();
-    for (uint16_t goodId = 0; goodId < totalGoods && shownCount < 20; ++goodId) {
+    for (uint16_t goodId = 0; goodId < totalGoods; ++goodId) {
         const aoc::sim::GoodDef& gDef = aoc::sim::goodDef(goodId);
         if (gDef.basePrice <= 0) {
             continue;
         }
 
-        int32_t supply = 0;
-        int32_t demand = 0;
+        GoodDisplayInfo info{};
+        info.goodId = goodId;
+        info.name = gDef.name;
+
+        // Get current market price from Market if available
+        if (this->m_market != nullptr) {
+            info.currentPrice = this->m_market->price(goodId);
+
+            // Compute price trend from priceHistory
+            const aoc::sim::Market::GoodMarketData& mdata = this->m_market->marketData(goodId);
+            constexpr int32_t HISTORY_SIZE = aoc::sim::Market::GoodMarketData::HISTORY_SIZE;
+            // Current price index is (historyIndex - 1), 5 turns ago is (historyIndex - 6)
+            int32_t currentIdx = (mdata.historyIndex - 1 + HISTORY_SIZE) % HISTORY_SIZE;
+            int32_t oldIdx = (mdata.historyIndex - 6 + HISTORY_SIZE) % HISTORY_SIZE;
+            int32_t currentP = mdata.priceHistory[currentIdx];
+            int32_t oldP = mdata.priceHistory[oldIdx];
+            if (oldP > 0) {
+                float change = static_cast<float>(currentP - oldP) / static_cast<float>(oldP);
+                if (change > 0.10f) {
+                    info.trend = "^";
+                } else if (change < -0.10f) {
+                    info.trend = "v";
+                } else {
+                    info.trend = "=";
+                }
+            } else {
+                info.trend = "=";
+            }
+        } else {
+            info.currentPrice = gDef.basePrice;
+            info.trend = "=";
+        }
+
+        info.supply = 0;
+        info.demand = 0;
         if (playerEcon != nullptr) {
             {
                 auto it = playerEcon->totalSupply.find(goodId);
                 if (it != playerEcon->totalSupply.end()) {
-                    supply = it->second;
+                    info.supply = it->second;
                 }
             }
             {
                 auto it = playerEcon->totalDemand.find(goodId);
                 if (it != playerEcon->totalDemand.end()) {
-                    demand = it->second;
+                    info.demand = it->second;
+                }
+            }
+        }
+        info.volume = info.supply + info.demand;
+
+        goodsInfo.push_back(std::move(info));
+    }
+
+    // Show first 20 goods with price trend indicators
+    uint32_t shownCount = 0;
+    for (const GoodDisplayInfo& info : goodsInfo) {
+        if (shownCount >= 20) {
+            break;
+        }
+
+        std::string line = std::string(info.name)
+                         + " " + info.trend
+                         + " $" + std::to_string(info.currentPrice)
+                         + " S:" + std::to_string(info.supply)
+                         + " D:" + std::to_string(info.demand);
+
+        // Color the trend indicator
+        Color lineColor = {0.75f, 0.75f, 0.8f, 1.0f};
+        if (info.trend == "^") {
+            lineColor = {0.3f, 0.9f, 0.3f, 1.0f};
+        } else if (info.trend == "v") {
+            lineColor = {0.9f, 0.3f, 0.3f, 1.0f};
+        }
+
+        (void)ui.createLabel(this->m_marketList, {0.0f, 0.0f, 460.0f, 16.0f},
+                       LabelData{std::move(line), lineColor, 11.0f});
+        ++shownCount;
+    }
+
+    // Market Detail: top 10 goods by trade volume
+    std::sort(goodsInfo.begin(), goodsInfo.end(),
+              [](const GoodDisplayInfo& a, const GoodDisplayInfo& b) {
+                  return a.volume > b.volume;
+              });
+
+    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 14.0f},
+                   LabelData{"-- Top 10 by Trade Volume --",
+                              {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
+
+    uint32_t detailCount = 0;
+    for (const GoodDisplayInfo& info : goodsInfo) {
+        if (detailCount >= 10) {
+            break;
+        }
+        if (info.volume <= 0) {
+            break;
+        }
+        std::string detailLine = std::string(info.name)
+                               + " Vol:" + std::to_string(info.volume)
+                               + " $" + std::to_string(info.currentPrice);
+        (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 14.0f},
+                       LabelData{std::move(detailLine), {0.7f, 0.75f, 0.8f, 1.0f}, 10.0f});
+        ++detailCount;
+    }
+
+    ui.layout();
+}
+
+void EconomyScreen::buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel) {
+    // Remove old trade route panel if any
+    if (this->m_tradeRoutePanel != INVALID_WIDGET) {
+        ui.removeWidget(this->m_tradeRoutePanel);
+        this->m_tradeRoutePanel = INVALID_WIDGET;
+    }
+
+    this->m_trSourceCity = NULL_ENTITY;
+    this->m_trDestCity = NULL_ENTITY;
+
+    this->m_tradeRoutePanel = ui.createPanel(
+        parentPanel, {0.0f, 0.0f, 470.0f, 300.0f},
+        PanelData{{0.12f, 0.12f, 0.16f, 0.95f}, 4.0f});
+
+    Widget* trPanel = ui.getWidget(this->m_tradeRoutePanel);
+    if (trPanel != nullptr) {
+        trPanel->padding = {6.0f, 6.0f, 6.0f, 6.0f};
+        trPanel->childSpacing = 4.0f;
+    }
+
+    (void)ui.createLabel(this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 16.0f},
+                   LabelData{"-- Create Trade Route --", {1.0f, 0.9f, 0.5f, 1.0f}, 13.0f});
+
+    // Source city selection (player's own cities)
+    (void)ui.createLabel(this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 14.0f},
+                   LabelData{"Source City (yours):", {0.7f, 0.8f, 0.7f, 1.0f}, 11.0f});
+
+    WidgetId sourceList = ui.createScrollList(
+        this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 80.0f});
+    Widget* srcListW = ui.getWidget(sourceList);
+    if (srcListW != nullptr) {
+        srcListW->padding = {2.0f, 2.0f, 2.0f, 2.0f};
+        srcListW->childSpacing = 2.0f;
+    }
+
+    const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
+        this->m_world->getPool<aoc::sim::CityComponent>();
+    if (cityPool != nullptr) {
+        for (uint32_t i = 0; i < cityPool->size(); ++i) {
+            const aoc::sim::CityComponent& city = cityPool->data()[i];
+            if (city.owner != this->m_player) {
+                continue;
+            }
+            EntityId cityEntity = cityPool->entities()[i];
+            ButtonData srcBtn;
+            srcBtn.label = city.name;
+            srcBtn.fontSize = 10.0f;
+            srcBtn.normalColor  = {0.2f, 0.25f, 0.2f, 0.9f};
+            srcBtn.hoverColor   = {0.3f, 0.35f, 0.3f, 0.9f};
+            srcBtn.pressedColor = {0.15f, 0.18f, 0.15f, 0.9f};
+            srcBtn.cornerRadius = 2.0f;
+            srcBtn.onClick = [this, cityEntity]() {
+                this->m_trSourceCity = cityEntity;
+                LOG_INFO("Trade route source city selected");
+            };
+            (void)ui.createButton(sourceList, {0.0f, 0.0f, 440.0f, 20.0f}, std::move(srcBtn));
+        }
+    }
+
+    // Destination city selection (other players' cities)
+    (void)ui.createLabel(this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 14.0f},
+                   LabelData{"Destination City (other players):", {0.7f, 0.8f, 0.7f, 1.0f}, 11.0f});
+
+    WidgetId destList = ui.createScrollList(
+        this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 80.0f});
+    Widget* dstListW = ui.getWidget(destList);
+    if (dstListW != nullptr) {
+        dstListW->padding = {2.0f, 2.0f, 2.0f, 2.0f};
+        dstListW->childSpacing = 2.0f;
+    }
+
+    if (cityPool != nullptr) {
+        for (uint32_t i = 0; i < cityPool->size(); ++i) {
+            const aoc::sim::CityComponent& city = cityPool->data()[i];
+            if (city.owner == this->m_player) {
+                continue;
+            }
+            EntityId cityEntity = cityPool->entities()[i];
+            std::string destLabel = city.name + " (P" + std::to_string(static_cast<unsigned>(city.owner)) + ")";
+            ButtonData dstBtn;
+            dstBtn.label = std::move(destLabel);
+            dstBtn.fontSize = 10.0f;
+            dstBtn.normalColor  = {0.25f, 0.2f, 0.2f, 0.9f};
+            dstBtn.hoverColor   = {0.35f, 0.3f, 0.3f, 0.9f};
+            dstBtn.pressedColor = {0.18f, 0.15f, 0.15f, 0.9f};
+            dstBtn.cornerRadius = 2.0f;
+            dstBtn.onClick = [this, cityEntity]() {
+                this->m_trDestCity = cityEntity;
+                LOG_INFO("Trade route destination city selected");
+            };
+            (void)ui.createButton(destList, {0.0f, 0.0f, 440.0f, 20.0f}, std::move(dstBtn));
+        }
+    }
+
+    // "Establish Route" button
+    ButtonData establishBtn;
+    establishBtn.label = "Establish Route";
+    establishBtn.fontSize = 12.0f;
+    establishBtn.normalColor  = {0.15f, 0.35f, 0.15f, 0.9f};
+    establishBtn.hoverColor   = {0.20f, 0.50f, 0.20f, 0.9f};
+    establishBtn.pressedColor = {0.10f, 0.25f, 0.10f, 0.9f};
+    establishBtn.cornerRadius = 4.0f;
+    establishBtn.onClick = [this]() {
+        if (!this->m_trSourceCity.isValid() || !this->m_trDestCity.isValid()) {
+            LOG_INFO("Trade route: must select both source and destination cities");
+            return;
+        }
+        if (!this->m_world->isAlive(this->m_trSourceCity) ||
+            !this->m_world->isAlive(this->m_trDestCity)) {
+            return;
+        }
+
+        const aoc::sim::CityComponent& srcCity =
+            this->m_world->getComponent<aoc::sim::CityComponent>(this->m_trSourceCity);
+        const aoc::sim::CityComponent& dstCity =
+            this->m_world->getComponent<aoc::sim::CityComponent>(this->m_trDestCity);
+
+        // Compute path between cities
+        std::optional<aoc::map::PathResult> pathResult = aoc::map::findPath(
+            *this->m_grid, srcCity.location, dstCity.location);
+
+        if (!pathResult.has_value()) {
+            LOG_INFO("Trade route: no path found between cities");
+            return;
+        }
+
+        // Create the trade route entity
+        EntityId routeEntity = this->m_world->createEntity();
+        aoc::sim::TradeRouteComponent route{};
+        route.sourceCityId = this->m_trSourceCity;
+        route.destCityId = this->m_trDestCity;
+        route.sourcePlayer = srcCity.owner;
+        route.destPlayer = dstCity.owner;
+        route.path = pathResult->path;
+        route.turnsRemaining = static_cast<int32_t>(pathResult->path.size()) / 5 + 1;
+
+        // Auto-fill cargo with top 3 surplus goods from source city
+        const aoc::sim::CityStockpileComponent* stockpile =
+            this->m_world->tryGetComponent<aoc::sim::CityStockpileComponent>(this->m_trSourceCity);
+        if (stockpile != nullptr) {
+            // Collect goods with positive stockpile amounts
+            std::vector<std::pair<uint16_t, int32_t>> surplusGoods;
+            for (const std::pair<const uint16_t, int32_t>& entry : stockpile->goods) {
+                if (entry.second > 0) {
+                    surplusGoods.push_back({entry.first, entry.second});
+                }
+            }
+            // Sort by amount descending
+            std::sort(surplusGoods.begin(), surplusGoods.end(),
+                      [](const std::pair<uint16_t, int32_t>& a,
+                         const std::pair<uint16_t, int32_t>& b) {
+                          return a.second > b.second;
+                      });
+            // Take top 3
+            const std::size_t cargoCount = (surplusGoods.size() < 3) ? surplusGoods.size() : 3;
+            for (std::size_t c = 0; c < cargoCount; ++c) {
+                aoc::sim::TradeOffer offer{};
+                offer.goodId = surplusGoods[c].first;
+                offer.amountPerTurn = surplusGoods[c].second / 2;  // Ship half surplus
+                if (offer.amountPerTurn > 0) {
+                    route.cargo.push_back(std::move(offer));
                 }
             }
         }
 
-        std::string line = std::string(gDef.name) + ": " + std::to_string(gDef.basePrice)
-                         + " (S:" + std::to_string(supply) + " D:" + std::to_string(demand) + ")";
+        this->m_world->addComponent<aoc::sim::TradeRouteComponent>(
+            routeEntity, std::move(route));
 
-        (void)ui.createLabel(this->m_marketList, {0.0f, 0.0f, 460.0f, 16.0f},
-                       LabelData{std::move(line), {0.75f, 0.75f, 0.8f, 1.0f}, 11.0f});
-        ++shownCount;
-    }
+        LOG_INFO("Trade route established from %s to %s (%d turns)",
+                 srcCity.name.c_str(), dstCity.name.c_str(), route.turnsRemaining);
+    };
+    (void)ui.createButton(this->m_tradeRoutePanel, {0.0f, 0.0f, 160.0f, 26.0f},
+                     std::move(establishBtn));
 
     ui.layout();
 }
@@ -707,6 +996,9 @@ void EconomyScreen::close(UIManager& ui) {
     }
     this->m_infoLabel = INVALID_WIDGET;
     this->m_marketList = INVALID_WIDGET;
+    this->m_tradeRoutePanel = INVALID_WIDGET;
+    this->m_trSourceCity = NULL_ENTITY;
+    this->m_trDestCity = NULL_ENTITY;
 }
 
 void EconomyScreen::refresh(UIManager& ui) {

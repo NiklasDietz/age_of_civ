@@ -11,6 +11,7 @@
 #include "aoc/simulation/monetary/Inflation.hpp"
 #include "aoc/simulation/monetary/FiscalPolicy.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/ecs/World.hpp"
 
 namespace aoc::sim {
@@ -86,6 +87,27 @@ void computeCityHappiness(aoc::ecs::World& world, PlayerId player) {
             for (const WonderId wid : cityWonders->wonders) {
                 const WonderDef& wdef = wonderDef(wid);
                 happiness.amenities += wdef.effect.amenityBonus;
+            }
+        }
+
+        // Religion follower belief amenity bonus
+        const CityReligionComponent* cityReligion =
+            world.tryGetComponent<CityReligionComponent>(cityEntity);
+        if (cityReligion != nullptr) {
+            ReligionId dominant = cityReligion->dominantReligion();
+            if (dominant != NO_RELIGION) {
+                const aoc::ecs::ComponentPool<GlobalReligionTracker>* trackerPool =
+                    world.getPool<GlobalReligionTracker>();
+                if (trackerPool != nullptr && trackerPool->size() > 0) {
+                    const GlobalReligionTracker& tracker = trackerPool->data()[0];
+                    if (dominant < tracker.religionsFoundedCount) {
+                        const ReligionDef& religion = tracker.religions[dominant];
+                        if (religion.followerBelief < BELIEF_COUNT) {
+                            const BeliefDef& belief = allBeliefs()[religion.followerBelief];
+                            happiness.amenities += belief.amenityBonus;
+                        }
+                    }
+                }
             }
         }
 

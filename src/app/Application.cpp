@@ -50,6 +50,7 @@
 #include "aoc/simulation/unit/UnitUpgrade.hpp"
 #include "aoc/simulation/city/CityBombardment.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
 
 #include <chrono>
 
@@ -221,6 +222,23 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
         this->spawnAIPlayer(playerId, config.players[i].civId);
     }
 
+    // -- Religion system initialization --
+    {
+        EntityId religionEntity = this->m_world.createEntity();
+        this->m_world.addComponent<aoc::sim::GlobalReligionTracker>(
+            religionEntity, aoc::sim::GlobalReligionTracker{});
+
+        for (uint8_t p = 0; p < config.playerCount; ++p) {
+            EntityId faithEntity = this->m_world.createEntity();
+            aoc::sim::PlayerFaithComponent faithComp{};
+            faithComp.owner = static_cast<PlayerId>(p);
+            this->m_world.addComponent<aoc::sim::PlayerFaithComponent>(
+                faithEntity, std::move(faithComp));
+        }
+        LOG_INFO("Religion system initialized for %u players",
+                 static_cast<unsigned>(config.playerCount));
+    }
+
     // Spawn city-states
     const int32_t cityStateCount = static_cast<int32_t>(config.playerCount) * 2;
     aoc::sim::spawnCityStates(this->m_world, this->m_hexGrid,
@@ -369,12 +387,16 @@ void Application::run() {
             this->m_techScreen.toggle(this->m_uiManager);
         }
         if (this->m_inputManager.isActionPressed(InputAction::OpenEconomy)) {
-            this->m_economyScreen.setContext(&this->m_world, &this->m_hexGrid, 0);
+            this->m_economyScreen.setContext(&this->m_world, &this->m_hexGrid, 0, &this->m_economy.market());
             this->m_economyScreen.toggle(this->m_uiManager);
         }
         if (this->m_inputManager.isActionPressed(InputAction::OpenGovernment)) {
             this->m_governmentScreen.setContext(&this->m_world, 0);
             this->m_governmentScreen.toggle(this->m_uiManager);
+        }
+        if (this->m_inputManager.isActionPressed(InputAction::OpenReligion)) {
+            this->m_religionScreen.setContext(&this->m_world, &this->m_hexGrid, 0);
+            this->m_religionScreen.toggle(this->m_uiManager);
         }
         if (this->m_inputManager.isActionPressed(InputAction::OpenProductionPicker)) {
             // Only open if a city is selected
@@ -557,6 +579,7 @@ void Application::run() {
         if (!this->m_uiConsumedInput && !this->anyScreenOpen()) {
             this->handleSelect();
             this->handleContextAction();
+            this->handleUndoAction();
         }
         if (!this->anyScreenOpen()) {
             this->handleEndTurn();
@@ -570,6 +593,7 @@ void Application::run() {
         this->m_cityDetailScreen.refresh(this->m_uiManager);
         this->m_tradeScreen.refresh(this->m_uiManager);
         this->m_diplomacyScreen.refresh(this->m_uiManager);
+        this->m_religionScreen.refresh(this->m_uiManager);
 
         // Update tooltip when no screen is open
         if (!this->anyScreenOpen()) {
@@ -578,7 +602,8 @@ void Application::run() {
                 static_cast<float>(this->m_inputManager.mouseY()),
                 this->m_world, this->m_hexGrid,
                 this->m_cameraController, this->m_fogOfWar,
-                PlayerId{0}, fbWidth, fbHeight);
+                PlayerId{0}, fbWidth, fbHeight,
+                this->m_selectedEntity);
         }
 
         // Sync selection to renderer and update HUD text
@@ -975,6 +1000,73 @@ void Application::handleContextAction() {
     aoc::sim::UnitComponent& unit =
         this->m_world.getComponent<aoc::sim::UnitComponent>(this->m_selectedEntity);
 
+    // Religious unit actions: right-click on a city
+    {
+        const aoc::sim::UnitTypeDef& relDef = aoc::sim::unitTypeDef(unit.typeId);
+        if (relDef.unitClass == aoc::sim::UnitClass::Religious && unit.spreadCharges > 0) {
+            // Check if target tile has a city
+            const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
+                this->m_world.getPool<aoc::sim::CityComponent>();
+            if (cityPool != nullptr) {
+                for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
+                    const aoc::sim::CityComponent& city = cityPool->data()[ci];
+                    if (city.location != targetTile) {
+                        continue;
+                    }
+                    EntityId cityEntity = cityPool->entities()[ci];
+
+                    // Inquisitor: remove foreign religion from own city
+                    if (unit.typeId.value == 21 && city.owner == unit.owner) {
+                        aoc::sim::CityReligionComponent* cityRel =
+                            this->m_world.tryGetComponent<aoc::sim::CityReligionComponent>(cityEntity);
+                        if (cityRel != nullptr) {
+                            for (uint8_t ri = 0; ri < aoc::sim::MAX_RELIGIONS; ++ri) {
+                                if (ri != unit.spreadingReligion) {
+                                    cityRel->pressure[ri] = 0.0f;
+                                }
+                            }
+                            LOG_INFO("Inquisitor removed foreign religion from %s",
+                                     city.name.c_str());
+                        }
+                        --unit.spreadCharges;
+                        if (unit.spreadCharges <= 0) {
+                            this->m_world.destroyEntity(this->m_selectedEntity);
+                            this->m_selectedEntity = NULL_ENTITY;
+                        }
+                        return;
+                    }
+
+                    // Missionary/Apostle: spread religion to target city
+                    if (unit.typeId.value == 19 || unit.typeId.value == 20) {
+                        // Ensure city has a CityReligionComponent
+                        if (!this->m_world.hasComponent<aoc::sim::CityReligionComponent>(cityEntity)) {
+                            this->m_world.addComponent<aoc::sim::CityReligionComponent>(
+                                cityEntity, aoc::sim::CityReligionComponent{});
+                        }
+                        aoc::sim::CityReligionComponent& cityRel =
+                            this->m_world.getComponent<aoc::sim::CityReligionComponent>(cityEntity);
+
+                        const float pressure = (unit.typeId.value == 19) ? 100.0f : 150.0f;
+                        cityRel.addPressure(unit.spreadingReligion, pressure);
+                        --unit.spreadCharges;
+
+                        LOG_INFO("%.*s spread religion to %s (pressure +%d, charges left: %d)",
+                                 static_cast<int>(relDef.name.size()), relDef.name.data(),
+                                 city.name.c_str(), static_cast<int>(pressure),
+                                 static_cast<int>(unit.spreadCharges));
+
+                        if (unit.spreadCharges <= 0) {
+                            this->m_world.destroyEntity(this->m_selectedEntity);
+                            this->m_selectedEntity = NULL_ENTITY;
+                        }
+                        return;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     // If settler and target is valid land, found a city
     const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(unit.typeId);
     if (def.unitClass == aoc::sim::UnitClass::Settler && unit.position == targetTile) {
@@ -1016,6 +1108,10 @@ void Application::handleContextAction() {
         districts.districts.push_back(std::move(center));
         this->m_world.addComponent<aoc::sim::CityDistrictsComponent>(
             cityEntity, std::move(districts));
+
+        // Attach religion component to new city
+        this->m_world.addComponent<aoc::sim::CityReligionComponent>(
+            cityEntity, aoc::sim::CityReligionComponent{});
 
         aoc::sim::claimInitialTerritory(this->m_hexGrid, cityPos, cityOwner);
         this->m_world.destroyEntity(this->m_selectedEntity);
@@ -1080,13 +1176,52 @@ void Application::handleContextAction() {
         return;
     }
 
+    // Save undo state before movement
+    this->m_undoState.entity = this->m_selectedEntity;
+    this->m_undoState.previousPosition = unit.position;
+    this->m_undoState.previousMovement = unit.movementRemaining;
+    this->m_undoState.hasState = true;
+
     // Order movement
     bool pathFound = aoc::sim::orderUnitMove(
         this->m_world, this->m_selectedEntity, targetTile, this->m_hexGrid);
     if (pathFound) {
         // Execute movement immediately for this turn's remaining movement points
         aoc::sim::moveUnitAlongPath(this->m_world, this->m_selectedEntity, this->m_hexGrid);
+    } else {
+        // Path not found, clear undo state
+        this->m_undoState.hasState = false;
     }
+}
+
+void Application::handleUndoAction() {
+    if (!this->m_inputManager.isActionPressed(InputAction::UndoAction)) {
+        return;
+    }
+    if (!this->m_undoState.hasState) {
+        return;
+    }
+    if (!this->m_world.isAlive(this->m_undoState.entity)) {
+        this->m_undoState.hasState = false;
+        return;
+    }
+
+    aoc::sim::UnitComponent* unit =
+        this->m_world.tryGetComponent<aoc::sim::UnitComponent>(this->m_undoState.entity);
+    if (unit == nullptr) {
+        this->m_undoState.hasState = false;
+        return;
+    }
+
+    unit->position = this->m_undoState.previousPosition;
+    unit->movementRemaining = this->m_undoState.previousMovement;
+    unit->pendingPath.clear();
+    unit->state = aoc::sim::UnitState::Idle;
+
+    LOG_INFO("Undo: unit moved back to (%d,%d) with %d MP",
+             unit->position.q, unit->position.r, unit->movementRemaining);
+
+    this->m_undoState.hasState = false;
 }
 
 void Application::handleEndTurn() {
@@ -1113,6 +1248,17 @@ void Application::handleEndTurn() {
         // City growth and happiness
         aoc::sim::processCityGrowth(this->m_world, this->m_hexGrid, 0);
         aoc::sim::computeCityHappiness(this->m_world, 0);
+
+        // Religion: accumulate faith, spread, and apply bonuses
+        aoc::sim::accumulateFaith(this->m_world, this->m_hexGrid, 0);
+        for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
+            aoc::sim::accumulateFaith(this->m_world, this->m_hexGrid, ai.player());
+        }
+        aoc::sim::processReligiousSpread(this->m_world, this->m_hexGrid);
+        aoc::sim::applyReligionBonuses(this->m_world, 0);
+        for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
+            aoc::sim::applyReligionBonuses(this->m_world, ai.player());
+        }
 
         // Production queues
         aoc::sim::processProductionQueues(this->m_world, this->m_hexGrid, 0);
@@ -1250,7 +1396,8 @@ void Application::handleEndTurn() {
                      vr.type == aoc::sim::VictoryType::Science    ? "Science" :
                      vr.type == aoc::sim::VictoryType::Domination ? "Domination" :
                      vr.type == aoc::sim::VictoryType::Culture    ? "Culture" :
-                     vr.type == aoc::sim::VictoryType::Score      ? "Score" : "Unknown");
+                     vr.type == aoc::sim::VictoryType::Score      ? "Score" :
+                     vr.type == aoc::sim::VictoryType::Religion   ? "Religion" : "Unknown");
         }
 
         // Process government/policy unlocks from completed civics
@@ -1277,8 +1424,110 @@ void Application::handleEndTurn() {
 
         this->m_turnManager.beginNewTurn();
 
+        // Clear undo state at the start of a new turn
+        this->m_undoState.hasState = false;
+
+        // Wake sleeping units if enemies are within 2 hexes
+        {
+            aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* unitPool =
+                this->m_world.getPool<aoc::sim::UnitComponent>();
+            if (unitPool != nullptr) {
+                for (uint32_t i = 0; i < unitPool->size(); ++i) {
+                    aoc::sim::UnitComponent& sleeper = unitPool->data()[i];
+                    if (sleeper.owner != 0) {
+                        continue;
+                    }
+                    if (sleeper.state != aoc::sim::UnitState::Sleeping) {
+                        continue;
+                    }
+                    // Check for enemy units within 2 hexes
+                    bool enemyNearby = false;
+                    for (uint32_t j = 0; j < unitPool->size(); ++j) {
+                        const aoc::sim::UnitComponent& other = unitPool->data()[j];
+                        if (other.owner == sleeper.owner || other.owner == BARBARIAN_PLAYER) {
+                            continue;
+                        }
+                        if (hex::distance(sleeper.position, other.position) <= 2) {
+                            enemyNearby = true;
+                            break;
+                        }
+                    }
+                    if (enemyNearby) {
+                        sleeper.state = aoc::sim::UnitState::Idle;
+                        sleeper.autoExplore = false;
+                        LOG_INFO("Sleeping unit at (%d,%d) woke up -- enemy nearby",
+                                 sleeper.position.q, sleeper.position.r);
+                    }
+                }
+            }
+        }
+
+        // Auto-explore: move scout units toward unexplored territory
+        {
+            aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* unitPool =
+                this->m_world.getPool<aoc::sim::UnitComponent>();
+            if (unitPool != nullptr) {
+                // Collect entities first to avoid invalidation during movement
+                std::vector<EntityId> autoExploreUnits;
+                for (uint32_t i = 0; i < unitPool->size(); ++i) {
+                    const aoc::sim::UnitComponent& unit = unitPool->data()[i];
+                    if (unit.owner == 0 && unit.autoExplore) {
+                        autoExploreUnits.push_back(unitPool->entities()[i]);
+                    }
+                }
+                for (EntityId unitEntity : autoExploreUnits) {
+                    if (!this->m_world.isAlive(unitEntity)) {
+                        continue;
+                    }
+                    aoc::sim::UnitComponent& unit =
+                        this->m_world.getComponent<aoc::sim::UnitComponent>(unitEntity);
+                    // Find nearest unseen tile
+                    hex::AxialCoord bestTarget = unit.position;
+                    int32_t bestDist = INT32_MAX;
+                    const int32_t tileCount = this->m_hexGrid.tileCount();
+                    for (int32_t t = 0; t < tileCount; ++t) {
+                        aoc::map::TileVisibility vis =
+                            this->m_fogOfWar.visibility(0, t);
+                        if (vis != aoc::map::TileVisibility::Unseen) {
+                            continue;
+                        }
+                        hex::AxialCoord tileCoord = this->m_hexGrid.toAxial(t);
+                        int32_t dist = hex::distance(unit.position, tileCoord);
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            bestTarget = tileCoord;
+                        }
+                    }
+                    if (bestDist < INT32_MAX && !(bestTarget == unit.position)) {
+                        aoc::sim::orderUnitMove(this->m_world, unitEntity,
+                                                bestTarget, this->m_hexGrid);
+                    }
+                }
+            }
+        }
+
         // Refresh movement for next turn
         aoc::sim::refreshMovement(this->m_world, 0);
+
+        // Multi-turn movement continuation: resume pending paths after refresh
+        {
+            aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* unitPool =
+                this->m_world.getPool<aoc::sim::UnitComponent>();
+            if (unitPool != nullptr) {
+                std::vector<EntityId> pendingUnits;
+                for (uint32_t i = 0; i < unitPool->size(); ++i) {
+                    const aoc::sim::UnitComponent& unit = unitPool->data()[i];
+                    if (unit.owner == 0 && !unit.pendingPath.empty()) {
+                        pendingUnits.push_back(unitPool->entities()[i]);
+                    }
+                }
+                for (EntityId unitEntity : pendingUnits) {
+                    if (this->m_world.isAlive(unitEntity)) {
+                        aoc::sim::moveUnitAlongPath(this->m_world, unitEntity, this->m_hexGrid);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1634,7 +1883,7 @@ void Application::buildHUD() {
 
     makeTopBtn(this->m_topBar, "Econ", 50.0f, [this]() {
         if (!this->m_economyScreen.isOpen()) {
-            this->m_economyScreen.setContext(&this->m_world, &this->m_hexGrid, 0);
+            this->m_economyScreen.setContext(&this->m_world, &this->m_hexGrid, 0, &this->m_economy.market());
             this->m_economyScreen.open(this->m_uiManager);
         } else {
             this->m_economyScreen.close(this->m_uiManager);
@@ -2076,6 +2325,9 @@ void Application::rebuildUnitActionPanel() {
     if (aoc::sim::isMilitary(def.unitClass)) {
         ++buttonCount;  // Fortify
     }
+    if (def.unitClass == aoc::sim::UnitClass::Scout) {
+        ++buttonCount;  // Auto-Explore
+    }
     if (def.unitClass == aoc::sim::UnitClass::Settler) {
         ++buttonCount;  // Found City
     }
@@ -2156,6 +2408,23 @@ void Application::rebuildUnitActionPanel() {
                 LOG_INFO("Unit sleeping");
             }
         });
+
+    // -- Auto-Explore button (Scout units) --
+    if (def.unitClass == aoc::sim::UnitClass::Scout) {
+        makeActionBtn("Auto-Explore", {0.20f, 0.25f, 0.35f, 0.9f},
+            [worldPtr, selectedEnt]() {
+                if (!worldPtr->isAlive(selectedEnt)) { return; }
+                aoc::sim::UnitComponent* u = worldPtr->tryGetComponent<aoc::sim::UnitComponent>(selectedEnt);
+                if (u != nullptr) {
+                    u->autoExplore = !u->autoExplore;
+                    if (u->autoExplore) {
+                        LOG_INFO("Auto-explore enabled for scout");
+                    } else {
+                        LOG_INFO("Auto-explore disabled for scout");
+                    }
+                }
+            });
+    }
 
     // -- Fortify button (military units) --
     if (aoc::sim::isMilitary(def.unitClass)) {
@@ -2286,7 +2555,8 @@ bool Application::anyScreenOpen() const {
         || this->m_economyScreen.isOpen()
         || this->m_cityDetailScreen.isOpen()
         || this->m_tradeScreen.isOpen()
-        || this->m_diplomacyScreen.isOpen();
+        || this->m_diplomacyScreen.isOpen()
+        || this->m_religionScreen.isOpen();
 }
 
 void Application::closeAllScreens() {
@@ -2297,6 +2567,7 @@ void Application::closeAllScreens() {
     this->m_cityDetailScreen.close(this->m_uiManager);
     this->m_tradeScreen.close(this->m_uiManager);
     this->m_diplomacyScreen.close(this->m_uiManager);
+    this->m_religionScreen.close(this->m_uiManager);
 }
 
 } // namespace aoc::app

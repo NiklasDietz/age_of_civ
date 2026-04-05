@@ -26,6 +26,11 @@ struct UnitComponent {
     int8_t          cargoCapacity = 0;       ///< Number of land units this naval unit can carry (0 = none).
     std::vector<EntityId> cargo;             ///< Land units currently embarked on this naval unit.
 
+    uint8_t spreadingReligion = 255;  ///< Which religion this religious unit spreads (255 = N/A)
+    int8_t  spreadCharges = -1;       ///< Number of times this unit can spread (-1 = N/A)
+
+    bool autoExplore = false;   ///< When true, unit auto-moves toward unexplored tiles each turn.
+
     /// Path the unit is currently following (empty if stationary).
     std::vector<hex::AxialCoord> pendingPath;
 
@@ -42,6 +47,16 @@ struct UnitComponent {
         // Builders start with 3 charges
         if (def.unitClass == UnitClass::Civilian) {
             unit.chargesRemaining = 3;
+        }
+        // Religious units start with spread charges
+        if (def.unitClass == UnitClass::Religious) {
+            if (typeId.value == 19) {        // Missionary
+                unit.spreadCharges = 3;
+            } else if (typeId.value == 20) { // Apostle
+                unit.spreadCharges = 4;
+            } else if (typeId.value == 21) { // Inquisitor
+                unit.spreadCharges = 2;
+            }
         }
         // Naval cargo capacity
         if (def.unitClass == UnitClass::Naval) {

@@ -175,6 +175,23 @@ void DiplomacyScreen::open(UIManager& ui) {
             };
             (void)ui.createButton(btnRow, {0.0f, 0.0f, 110.0f, 22.0f}, std::move(bordersBtn));
         }
+
+        // Embargo button (only when not at war and not already embargoed)
+        if (!rel.isAtWar && !rel.hasEmbargo) {
+            ButtonData embargoBtn;
+            embargoBtn.label = "Embargo";
+            embargoBtn.fontSize = 11.0f;
+            embargoBtn.normalColor  = {0.35f, 0.20f, 0.10f, 0.9f};
+            embargoBtn.hoverColor   = {0.50f, 0.30f, 0.15f, 0.9f};
+            embargoBtn.pressedColor = {0.25f, 0.15f, 0.08f, 0.9f};
+            embargoBtn.cornerRadius = 3.0f;
+            embargoBtn.onClick = [diplomacy, humanPlayer, otherId, &ui, this]() {
+                diplomacy->setEmbargo(humanPlayer, otherId, true);
+                LOG_INFO("Imposed trade embargo on player %u", static_cast<unsigned>(otherId));
+                this->close(ui);
+            };
+            (void)ui.createButton(btnRow, {0.0f, 0.0f, 90.0f, 22.0f}, std::move(embargoBtn));
+        }
     }
 
     ui.layout();

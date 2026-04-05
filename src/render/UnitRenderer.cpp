@@ -17,6 +17,8 @@
 #include <renderer/Renderer2D.hpp>
 
 #include <array>
+#include <cmath>
+#include <cstdlib>
 
 namespace aoc::render {
 
@@ -252,6 +254,72 @@ void UnitRenderer::drawReachable(vulkan_app::renderer::Renderer2D& renderer2d,
         float points[12];
         hex::hexVertices(cx, cy, hexSize, points);
         renderer2d.drawFilledPolygon(points, 6, 1.0f, 1.0f, 1.0f, 0.15f);
+    }
+}
+
+void UnitRenderer::drawRangedRange(vulkan_app::renderer::Renderer2D& renderer2d,
+                                    const aoc::ecs::World& world,
+                                    hex::AxialCoord center, int32_t range,
+                                    PlayerId unitOwner, float hexSize) const {
+    // Draw all tiles within range as a translucent overlay
+    for (int32_t dq = -range; dq <= range; ++dq) {
+        for (int32_t dr = -range; dr <= range; ++dr) {
+            const int32_t ds = -dq - dr;
+            if (std::abs(dq) + std::abs(dr) + std::abs(ds) > range * 2) {
+                continue;
+            }
+            if (dq == 0 && dr == 0) {
+                continue;  // Skip the center tile
+            }
+
+            hex::AxialCoord tile{center.q + dq, center.r + dr};
+            float cx = 0.0f;
+            float cy = 0.0f;
+            hex::axialToPixel(tile, hexSize, cx, cy);
+
+            // Check if there is an enemy unit on this tile
+            bool hasEnemy = false;
+            const aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* pool =
+                world.getPool<aoc::sim::UnitComponent>();
+            if (pool != nullptr) {
+                for (uint32_t i = 0; i < pool->size(); ++i) {
+                    const aoc::sim::UnitComponent& other = pool->data()[i];
+                    if (other.position == tile && other.owner != unitOwner) {
+                        hasEnemy = true;
+                        break;
+                    }
+                }
+            }
+
+            float points[12];
+            hex::hexVertices(cx, cy, hexSize, points);
+
+            if (hasEnemy) {
+                // Red highlight for enemy tiles in range
+                renderer2d.drawFilledPolygon(points, 6, 1.0f, 0.2f, 0.2f, 0.25f);
+            } else {
+                // Translucent range indicator
+                renderer2d.drawFilledPolygon(points, 6, 0.8f, 0.8f, 0.2f, 0.10f);
+            }
+        }
+    }
+
+    // Draw range ring
+    constexpr int32_t RING_SEGMENTS = 48;
+    constexpr float PI = 3.14159265f;
+    float centerX = 0.0f;
+    float centerY = 0.0f;
+    hex::axialToPixel(center, hexSize, centerX, centerY);
+    const float ringRadius = static_cast<float>(range) * hexSize * 1.5f;
+
+    for (int32_t i = 0; i < RING_SEGMENTS; ++i) {
+        const float angle1 = static_cast<float>(i) * 2.0f * PI / static_cast<float>(RING_SEGMENTS);
+        const float angle2 = static_cast<float>(i + 1) * 2.0f * PI / static_cast<float>(RING_SEGMENTS);
+        const float x1 = centerX + ringRadius * std::cos(angle1);
+        const float y1 = centerY + ringRadius * std::sin(angle1);
+        const float x2 = centerX + ringRadius * std::cos(angle2);
+        const float y2 = centerY + ringRadius * std::sin(angle2);
+        renderer2d.drawLine(x1, y1, x2, y2, 1.5f, 1.0f, 0.8f, 0.2f, 0.4f);
     }
 }
 

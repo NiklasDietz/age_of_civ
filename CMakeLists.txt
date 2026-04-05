@@ -77,6 +77,7 @@ add_library(aoc_lib STATIC
     src/simulation/greatpeople/GreatPeople.cpp
     src/simulation/wonder/Wonder.cpp
     src/simulation/citystate/CityState.cpp
+    src/simulation/religion/Religion.cpp
 
     # Save
     src/save/Serializer.cpp
@@ -90,6 +91,7 @@ add_library(aoc_lib STATIC
     src/ui/EventLog.cpp
     src/ui/Tooltip.cpp
     src/ui/MainMenu.cpp
+    src/ui/ReligionScreen.cpp
 
     # App
     src/app/Window.cpp

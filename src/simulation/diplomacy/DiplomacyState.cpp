@@ -110,6 +110,40 @@ void DiplomacyManager::tickModifiers() {
     }
 }
 
+void DiplomacyManager::setEmbargo(PlayerId a, PlayerId b, bool embargo) {
+    PairwiseRelation& relAB = this->relation(a, b);
+    PairwiseRelation& relBA = this->relation(b, a);
+
+    relAB.hasEmbargo = embargo;
+    relBA.hasEmbargo = embargo;
+
+    if (embargo) {
+        RelationModifier embargoMod{"Trade Embargo", -15, 20};
+        relAB.modifiers.push_back(embargoMod);
+        relBA.modifiers.push_back(embargoMod);
+
+        LOG_INFO("Trade embargo set between Player %u and Player %u",
+                 static_cast<unsigned>(a), static_cast<unsigned>(b));
+    } else {
+        // Remove embargo modifiers
+        auto removeEmbargo = [](std::vector<RelationModifier>& mods) {
+            mods.erase(
+                std::remove_if(mods.begin(), mods.end(),
+                    [](const RelationModifier& m) { return m.reason == "Trade Embargo"; }),
+                mods.end());
+        };
+        removeEmbargo(relAB.modifiers);
+        removeEmbargo(relBA.modifiers);
+
+        LOG_INFO("Trade embargo lifted between Player %u and Player %u",
+                 static_cast<unsigned>(a), static_cast<unsigned>(b));
+    }
+}
+
+bool DiplomacyManager::hasEmbargo(PlayerId a, PlayerId b) const {
+    return this->relation(a, b).hasEmbargo;
+}
+
 bool DiplomacyManager::isAtWar(PlayerId a, PlayerId b) const {
     // Barbarians are always at war with everyone.
     if (a == BARBARIAN_PLAYER || b == BARBARIAN_PLAYER) {

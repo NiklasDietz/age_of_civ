@@ -24,6 +24,7 @@
 #include "aoc/ui/GameScreens.hpp"
 #include "aoc/ui/TradeScreen.hpp"
 #include "aoc/ui/DiplomacyScreen.hpp"
+#include "aoc/ui/ReligionScreen.hpp"
 #include "aoc/ui/EventLog.hpp"
 #include "aoc/ui/MainMenu.hpp"
 #include "aoc/simulation/tech/EurekaBoost.hpp"
@@ -171,6 +172,7 @@ private:
     aoc::ui::CityDetailScreen   m_cityDetailScreen;
     aoc::ui::TradeScreen        m_tradeScreen;
     aoc::ui::DiplomacyScreen    m_diplomacyScreen;
+    aoc::ui::ReligionScreen     m_religionScreen;
 
     // Turn event log
     aoc::ui::EventLog m_eventLog;
@@ -194,6 +196,18 @@ private:
 
     /// Build the main menu with all its callbacks. Used by initialize() and returnToMainMenu().
     void buildMainMenu(float screenW, float screenH);
+
+    /// Single-level undo state for the last unit movement.
+    struct UndoState {
+        EntityId entity = NULL_ENTITY;
+        hex::AxialCoord previousPosition;
+        int32_t previousMovement = 0;
+        bool hasState = false;
+    };
+    UndoState m_undoState;
+
+    /// Handle Ctrl+Z undo of last unit movement.
+    void handleUndoAction();
 
     /// True once a victory condition has been met.
     bool m_gameOver = false;

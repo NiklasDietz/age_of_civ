@@ -13,6 +13,7 @@
 #include "aoc/render/CameraController.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/simulation/unit/Combat.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 
@@ -28,7 +29,8 @@ void TooltipManager::update(float mouseX, float mouseY,
                             const aoc::render::CameraController& camera,
                             const aoc::map::FogOfWar& fog,
                             PlayerId player,
-                            uint32_t screenW, uint32_t screenH) {
+                            uint32_t screenW, uint32_t screenH,
+                            EntityId selectedEntity) {
     // Convert screen to world coordinates
     float worldX = 0.0f;
     float worldY = 0.0f;
@@ -132,6 +134,23 @@ void TooltipManager::update(float mouseX, float mouseY,
                     text += std::to_string(unit.hitPoints);
                     text += " MP:";
                     text += std::to_string(unit.movementRemaining);
+
+                    // Combat preview: if hovering an enemy unit and we have a unit selected
+                    EntityId hoveredEntity = unitPool->entities()[i];
+                    if (selectedEntity.isValid() && unit.owner != player &&
+                        world.hasComponent<aoc::sim::UnitComponent>(selectedEntity)) {
+                        const aoc::sim::UnitComponent& selUnit =
+                            world.getComponent<aoc::sim::UnitComponent>(selectedEntity);
+                        if (selUnit.owner == player) {
+                            const aoc::sim::CombatPreview preview =
+                                aoc::sim::previewCombat(world, grid, selectedEntity, hoveredEntity);
+                            text += "\nAttack: ~";
+                            text += std::to_string(preview.expectedDefenderDamage);
+                            text += " damage to enemy, ~";
+                            text += std::to_string(preview.expectedAttackerDamage);
+                            text += " damage to you";
+                        }
+                    }
                 }
             }
         }

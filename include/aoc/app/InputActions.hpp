@@ -35,6 +35,7 @@ enum class InputAction : uint8_t {
     // Screens
     OpenProductionPicker,
     OpenGovernment,
+    OpenReligion,
 
     // Save/Load
     QuickSave,
@@ -45,6 +46,9 @@ enum class InputAction : uint8_t {
 
     // Help
     ShowHelp,
+
+    // Undo
+    UndoAction,
 
     Count  ///< Sentinel -- must be last
 };

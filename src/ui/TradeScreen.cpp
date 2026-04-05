@@ -275,15 +275,35 @@ void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId
         (void)ui.createButton(goodRow, {0.0f, 0.0f, 28.0f, 20.0f}, std::move(reqPlus));
     }
 
+    // Check for embargo and show warning if active
+    const bool embargoActive = (this->m_diplomacy != nullptr) &&
+        this->m_diplomacy->hasEmbargo(this->m_player, partner);
+    if (embargoActive) {
+        (void)ui.createLabel(this->m_tradePanel, {0.0f, 0.0f, 510.0f, 20.0f},
+                              LabelData{"Embargo in effect -- trade prohibited",
+                                        {1.0f, 0.3f, 0.3f, 1.0f}, 13.0f});
+    }
+
     // "Propose Trade" button
     ButtonData proposeBtn;
-    proposeBtn.label = "Propose Trade";
+    proposeBtn.label = embargoActive ? "Embargo Active" : "Propose Trade";
     proposeBtn.fontSize = 13.0f;
-    proposeBtn.normalColor  = {0.15f, 0.35f, 0.15f, 0.9f};
-    proposeBtn.hoverColor   = {0.20f, 0.50f, 0.20f, 0.9f};
-    proposeBtn.pressedColor = {0.10f, 0.25f, 0.10f, 0.9f};
+    if (embargoActive) {
+        proposeBtn.normalColor  = {0.3f, 0.3f, 0.3f, 0.9f};
+        proposeBtn.hoverColor   = {0.3f, 0.3f, 0.3f, 0.9f};
+        proposeBtn.pressedColor = {0.3f, 0.3f, 0.3f, 0.9f};
+    } else {
+        proposeBtn.normalColor  = {0.15f, 0.35f, 0.15f, 0.9f};
+        proposeBtn.hoverColor   = {0.20f, 0.50f, 0.20f, 0.9f};
+        proposeBtn.pressedColor = {0.10f, 0.25f, 0.10f, 0.9f};
+    }
     proposeBtn.cornerRadius = 4.0f;
-    proposeBtn.onClick = [this, &ui]() {
+    const bool localEmbargoActive = embargoActive;
+    proposeBtn.onClick = [this, &ui, localEmbargoActive]() {
+        if (localEmbargoActive) {
+            ui.setLabelText(this->m_statusLabel, "Embargo in effect -- cannot trade!");
+            return;
+        }
         // AI evaluation: sum market value of what AI receives vs what AI gives
         float aiReceivesValue = static_cast<float>(this->m_offerGold);
         float aiGivesValue    = static_cast<float>(this->m_requestGold);

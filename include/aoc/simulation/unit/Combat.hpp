@@ -78,4 +78,20 @@ CombatResult resolveRangedCombat(aoc::ecs::World& world,
 [[nodiscard]] float terrainDefenseModifier(const aoc::map::HexGrid& grid,
                                             hex::AxialCoord position);
 
+/// Preview result for UI tooltip (no state changes applied).
+struct CombatPreview {
+    int32_t expectedAttackerDamage;
+    int32_t expectedDefenderDamage;
+};
+
+/**
+ * @brief Preview expected combat damage without modifying any state.
+ *
+ * Uses the same formula as resolveMeleeCombat but with a fixed random
+ * factor of 1.0 (average outcome). Useful for the combat preview tooltip.
+ */
+[[nodiscard]] CombatPreview previewCombat(const aoc::ecs::World& world,
+                                           const aoc::map::HexGrid& grid,
+                                           EntityId attacker, EntityId defender);
+
 } // namespace aoc::sim

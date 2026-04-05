@@ -7,6 +7,7 @@
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/CityScience.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/ecs/World.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/core/Log.hpp"
@@ -129,6 +130,14 @@ VictoryResult checkVictoryConditions(const aoc::ecs::World& world,
             LOG_INFO("Player %u achieved DOMINATION victory!",
                      static_cast<unsigned>(dominationCandidate));
             return {VictoryType::Domination, dominationCandidate};
+        }
+    }
+
+    // Religious victory: one religion dominant in >50% of all cities
+    {
+        PlayerId religionWinner = INVALID_PLAYER;
+        if (checkReligiousVictory(world, religionWinner)) {
+            return {VictoryType::Religion, religionWinner};
         }
     }
 
