@@ -72,9 +72,14 @@ void CameraController::update(const aoc::app::InputManager& input, float deltaTi
 void CameraController::screenToWorld(double screenX, double screenY,
                                       float& worldX, float& worldY,
                                       uint32_t screenWidth, uint32_t screenHeight) const {
-    // Screen center is the camera position in world space.
-    // Renderer2D uses: screenPos = (worldPos - camera) * zoom + screenCenter
-    // So: worldPos = (screenPos - screenCenter) / zoom + camera
+    // The Renderer2D shader maps world to screen as:
+    //   viewPos = (worldPos - cameraTopLeft) * zoom
+    //   ndc = viewPos / screenSize * 2.0 - 1.0
+    // Where cameraTopLeft = m_camera - screenSize / (2 * zoom)
+    //
+    // Inverting: worldPos = screenPos / zoom + cameraTopLeft
+    //          = screenPos / zoom + m_camera - screenSize / (2 * zoom)
+    //          = (screenPos - screenSize/2) / zoom + m_camera
     const float halfW = static_cast<float>(screenWidth) * 0.5f;
     const float halfH = static_cast<float>(screenHeight) * 0.5f;
 

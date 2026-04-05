@@ -22,9 +22,11 @@
 #include "aoc/core/Random.hpp"
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ui/GameScreens.hpp"
+#include "aoc/ui/MainMenu.hpp"
 #include "aoc/simulation/tech/EurekaBoost.hpp"
 #include "aoc/core/ErrorCodes.hpp"
 #include "aoc/core/Types.hpp"
+#include "aoc/map/MapGenerator.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -38,6 +40,12 @@ class Renderer2D;
 }
 
 namespace aoc::app {
+
+/// Application-level state machine.
+enum class AppState : uint8_t {
+    MainMenu,
+    InGame,
+};
 
 class Application {
 public:
@@ -55,6 +63,9 @@ public:
     [[nodiscard]] ErrorCode initialize(const Config& config);
     void run();
     void shutdown();
+
+    /// Transition from main menu to gameplay.
+    void startGame(aoc::map::MapType mapType, aoc::map::MapSize mapSize);
 
 private:
     void onResize(uint32_t width, uint32_t height);
@@ -133,6 +144,11 @@ private:
     void updateHUD();
 
     bool m_initialized = false;
+
+    // App state machine
+    AppState m_appState = AppState::MainMenu;
+    aoc::ui::MainMenu    m_mainMenu;
+    aoc::ui::SettingsMenu m_settingsMenu;
 
     /// True once a victory condition has been met.
     bool m_gameOver = false;

@@ -2,17 +2,15 @@
 
 /**
  * @file BitmapFont.hpp
- * @brief Vector-drawn monospace text using Renderer2D line primitives.
+ * @brief TrueType font rendering using stb_truetype rasterization and Renderer2D filled rects.
  *
- * Renders ASCII characters as simple line-based glyphs. No texture atlas
- * needed -- each character is drawn from a small set of line segments.
- * Sufficient for debug UI and prototype gameplay; can be replaced with
- * a proper texture-based font renderer later.
+ * Loads a system TrueType font (DejaVu Sans), rasterizes glyphs into bitmaps
+ * on demand, and draws each opaque pixel as a small filled rectangle via
+ * the Renderer2D primitive API. Simple but produces readable text at all sizes.
  */
 
 #include "aoc/ui/Widget.hpp"
 
-#include <cstdint>
 #include <string_view>
 
 namespace vulkan_app::renderer {
@@ -24,10 +22,15 @@ namespace aoc::ui {
 class BitmapFont {
 public:
     /**
-     * @brief Draw a text string at the given position.
+     * @brief Initialize the font system. Call once at startup.
      *
-     * Characters are drawn left-to-right. Newlines are not handled.
-     * Unsupported characters render as a small box.
+     * Loads the TrueType font file from the system fonts directory.
+     * @return true if font loaded successfully.
+     */
+    [[nodiscard]] static bool initialize();
+
+    /**
+     * @brief Draw a text string at the given position.
      */
     static void drawText(vulkan_app::renderer::Renderer2D& renderer2d,
                           std::string_view text,
@@ -41,15 +44,9 @@ public:
      */
     [[nodiscard]] static Rect measureText(std::string_view text, float fontSize);
 
-    /// Character width as fraction of fontSize.
-    static constexpr float CHAR_WIDTH_RATIO  = 0.6f;
-    /// Character spacing as fraction of fontSize.
-    static constexpr float CHAR_SPACING_RATIO = 0.1f;
-
-private:
-    /// Draw a single character glyph using line segments.
-    static void drawGlyph(vulkan_app::renderer::Renderer2D& renderer2d,
-                           char ch, float x, float y, float size, Color color);
+    /// Character advance width as fraction of fontSize (for measureText consistency).
+    static constexpr float CHAR_WIDTH_RATIO  = 0.55f;
+    static constexpr float CHAR_SPACING_RATIO = 0.05f;
 };
 
 } // namespace aoc::ui

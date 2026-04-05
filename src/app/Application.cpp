@@ -36,6 +36,7 @@
 #include "aoc/simulation/tech/EurekaBoost.hpp"
 #include "aoc/simulation/diplomacy/EspionageSystem.hpp"
 #include "aoc/save/Serializer.hpp"
+#include "aoc/ui/BitmapFont.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <renderer/GraphicsDevice.hpp>
@@ -108,14 +109,50 @@ ErrorCode Application::initialize(const Config& config) {
         extent,
         vulkan_app::RenderPipeline::MAX_FRAMES_IN_FLIGHT);
 
+    // -- Game renderer (needed for both menu and in-game rendering) --
+    this->m_gameRenderer.initialize(*this->m_renderPipeline, *this->m_renderer2d);
+
+    // -- Resize --
+    this->m_window.setResizeCallback([this](uint32_t width, uint32_t height) {
+        this->onResize(width, height);
+    });
+
+    // -- Main menu --
+    // Initialize TrueType font rendering
+    if (!aoc::ui::BitmapFont::initialize()) {
+        LOG_WARN("Font initialization failed -- text will not render");
+    }
+
+    this->m_appState = AppState::MainMenu;
+    const float screenW = static_cast<float>(fbWidth);
+    const float screenH = static_cast<float>(fbHeight);
+    this->m_mainMenu.build(
+        this->m_uiManager, screenW, screenH,
+        [this](aoc::map::MapType type, aoc::map::MapSize size) {
+            this->m_mainMenu.destroy(this->m_uiManager);
+            this->m_settingsMenu.destroy(this->m_uiManager);
+            this->startGame(type, size);
+        },
+        [this]() {
+            glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
+        });
+
+    this->m_initialized = true;
+    LOG_INFO("Initialized (%ux%u), showing main menu", fbWidth, fbHeight);
+    return ErrorCode::Ok;
+}
+
+void Application::startGame(aoc::map::MapType mapType, aoc::map::MapSize mapSize) {
     // -- Map generation --
+    const std::pair<int32_t, int32_t> dims = aoc::map::mapSizeDimensions(mapSize);
     aoc::map::MapGenerator::Config mapConfig{};
-    mapConfig.width  = 80;
-    mapConfig.height = 50;
-    mapConfig.seed   = 12345;
+    mapConfig.width   = dims.first;
+    mapConfig.height  = dims.second;
+    mapConfig.seed    = 12345;
+    mapConfig.mapType = mapType;
+    mapConfig.mapSize = mapSize;
     aoc::map::MapGenerator::generate(mapConfig, this->m_hexGrid);
-    LOG_INFO("Map generated (%dx%d)",
-             this->m_hexGrid.width(), this->m_hexGrid.height());
+    LOG_INFO("Map generated (%dx%d)", this->m_hexGrid.width(), this->m_hexGrid.height());
 
     // -- Game setup --
     this->m_turnManager.setPlayerCount(1, 1);  // 1 human + 1 AI
@@ -134,26 +171,24 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, 0);
     this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, 1);
 
-    // -- Game renderer --
-    this->m_gameRenderer.initialize(*this->m_renderPipeline, *this->m_renderer2d);
+    // Diagnostic: count visible tiles for player 0
+    {
+        int32_t visCount = 0;
+        for (int32_t i = 0; i < this->m_hexGrid.tileCount(); ++i) {
+            if (this->m_fogOfWar.visibility(0, i) == aoc::map::TileVisibility::Visible) {
+                ++visCount;
+            }
+        }
+        LOG_INFO("Fog of war: %d tiles visible for player 0 (of %d total)",
+                 visCount, this->m_hexGrid.tileCount());
+    }
 
     // -- HUD --
     this->buildHUD();
 
-    // -- Resize --
-    this->m_window.setResizeCallback([this](uint32_t width, uint32_t height) {
-        this->onResize(width, height);
-    });
-
-    // Center camera roughly on the map
-    float centerX = 0.0f, centerY = 0.0f;
-    hex::AxialCoord mapCenter = hex::offsetToAxial({mapConfig.width / 2, mapConfig.height / 2});
-    hex::axialToPixel(mapCenter, this->m_gameRenderer.mapRenderer().hexSize(), centerX, centerY);
-    this->m_cameraController.setPosition(centerX, centerY);
-
-    this->m_initialized = true;
-    LOG_INFO("Initialized (%ux%u), Turn 0", fbWidth, fbHeight);
-    return ErrorCode::Ok;
+    // Camera was already centered on the settler by spawnStartingEntities().
+    this->m_appState = AppState::InGame;
+    LOG_INFO("Game started (map type=%d, size=%d)", static_cast<int>(mapType), static_cast<int>(mapSize));
 }
 
 void Application::run() {
@@ -176,6 +211,63 @@ void Application::run() {
         this->m_inputManager.processFrame();
 
         auto [fbWidth, fbHeight] = this->m_window.framebufferSize();
+
+        // ================================================================
+        // Main Menu state
+        // ================================================================
+        if (this->m_appState == AppState::MainMenu) {
+            // Escape in settings: close settings. Escape in menu: quit.
+            if (this->m_inputManager.isActionPressed(InputAction::Cancel)) {
+                if (this->m_settingsMenu.isBuilt()) {
+                    this->m_settingsMenu.destroy(this->m_uiManager);
+                } else {
+                    break;
+                }
+            }
+
+            // UI input
+            const bool leftPressed  = this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
+            const bool leftReleased = this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT);
+            const float scrollDelta = static_cast<float>(this->m_inputManager.scrollDelta());
+            this->m_uiManager.handleInput(
+                static_cast<float>(this->m_inputManager.mouseX()),
+                static_cast<float>(this->m_inputManager.mouseY()),
+                leftPressed, leftReleased, scrollDelta);
+
+            // Update layout on resize
+            this->m_mainMenu.updateLayout(
+                this->m_uiManager, static_cast<float>(fbWidth), static_cast<float>(fbHeight));
+
+            // Render: UI only (no world-space pass)
+            if (fbWidth == 0 || fbHeight == 0) {
+                continue;
+            }
+
+            vulkan_app::RenderPipeline::FrameContext frame = this->m_renderPipeline->beginFrame();
+            if (!frame) {
+                continue;
+            }
+
+            this->m_renderPipeline->beginRenderPass(frame);
+
+            this->m_renderer2d->resetCamera();
+            this->m_renderer2d->setZoom(1.0f);
+            this->m_renderer2d->beginFrame(frame.frameIndex);
+            this->m_renderer2d->begin();
+
+            this->m_uiManager.layout();
+            this->m_uiManager.render(*this->m_renderer2d);
+
+            this->m_renderer2d->end(frame.commandBuffer);
+
+            this->m_renderPipeline->endRenderPass(frame);
+            this->m_renderPipeline->endFrame(frame);
+            continue;
+        }
+
+        // ================================================================
+        // InGame state
+        // ================================================================
         this->m_cameraController.update(this->m_inputManager, deltaTime, fbWidth, fbHeight);
 
         // -- Escape: close any open screen first, then quit --
@@ -246,13 +338,15 @@ void Application::run() {
         }
 
         // -- UI input (consumes clicks on widgets) --
-        bool leftPressed  = this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
-        bool leftReleased = this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT);
-        float scrollDelta = static_cast<float>(this->m_inputManager.scrollDelta());
-        this->m_uiConsumedInput = this->m_uiManager.handleInput(
-            static_cast<float>(this->m_inputManager.mouseX()),
-            static_cast<float>(this->m_inputManager.mouseY()),
-            leftPressed, leftReleased, scrollDelta);
+        {
+            const bool leftPressed  = this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
+            const bool leftReleased = this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT);
+            const float scrollDelta = static_cast<float>(this->m_inputManager.scrollDelta());
+            this->m_uiConsumedInput = this->m_uiManager.handleInput(
+                static_cast<float>(this->m_inputManager.mouseX()),
+                static_cast<float>(this->m_inputManager.mouseY()),
+                leftPressed, leftReleased, scrollDelta);
+        }
 
         // -- Minimap click detection --
         constexpr float MINIMAP_W = 200.0f;
@@ -261,7 +355,8 @@ void Application::run() {
         const float minimapX = MINIMAP_MARGIN;
         const float minimapY = static_cast<float>(fbHeight) - MINIMAP_H - MINIMAP_MARGIN;
 
-        if (leftPressed && !this->m_uiConsumedInput) {
+        if (this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT)
+            && !this->m_uiConsumedInput) {
             const float mouseXf = static_cast<float>(this->m_inputManager.mouseX());
             const float mouseYf = static_cast<float>(this->m_inputManager.mouseY());
             if (this->m_gameRenderer.minimap().containsPoint(
@@ -1053,15 +1148,18 @@ void Application::buildHUD() {
         {0.0f, 0.0f, 130.0f, 40.0f},
         std::move(endTurnBtn));
 
-    // Victory announcement label (hidden until game over)
+    // Victory announcement panel (hidden until game over, centered on screen)
+    aoc::ui::WidgetId victoryPanel = this->m_uiManager.createPanel(
+        {390.0f, 300.0f, 500.0f, 50.0f},
+        aoc::ui::PanelData{{0.1f, 0.1f, 0.15f, 0.9f}, 6.0f});
     this->m_victoryLabel = this->m_uiManager.createLabel(
-        aoc::ui::INVALID_WIDGET,
-        {0.0f, 0.0f, 500.0f, 30.0f},
+        victoryPanel,
+        {10.0f, 10.0f, 480.0f, 30.0f},
         aoc::ui::LabelData{"", {1.0f, 0.85f, 0.2f, 1.0f}, 24.0f});
     {
-        aoc::ui::Widget* vLabel = this->m_uiManager.getWidget(this->m_victoryLabel);
-        if (vLabel != nullptr) {
-            vLabel->isVisible = false;
+        aoc::ui::Widget* vPanel = this->m_uiManager.getWidget(victoryPanel);
+        if (vPanel != nullptr) {
+            vPanel->isVisible = false;
         }
     }
 }
@@ -1120,12 +1218,15 @@ void Application::updateHUD() {
 
     // Victory announcement
     if (this->m_gameOver && this->m_victoryLabel != aoc::ui::INVALID_WIDGET) {
+        // Show the parent panel (which contains the label)
         aoc::ui::Widget* vLabel = this->m_uiManager.getWidget(this->m_victoryLabel);
-        if (vLabel != nullptr) {
-            vLabel->isVisible = true;
-            // Center on screen
-            vLabel->requestedBounds.x = static_cast<float>(fbWidth) * 0.5f - 250.0f;
-            vLabel->requestedBounds.y = static_cast<float>(fbHeight) * 0.5f - 15.0f;
+        if (vLabel != nullptr && vLabel->parent != aoc::ui::INVALID_WIDGET) {
+            aoc::ui::Widget* vPanel = this->m_uiManager.getWidget(vLabel->parent);
+            if (vPanel != nullptr) {
+                vPanel->isVisible = true;
+                vPanel->requestedBounds.x = static_cast<float>(fbWidth) * 0.5f - 250.0f;
+                vPanel->requestedBounds.y = static_cast<float>(fbHeight) * 0.5f - 25.0f;
+            }
         }
 
         const char* victoryName =

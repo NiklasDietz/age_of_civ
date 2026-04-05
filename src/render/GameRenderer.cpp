@@ -31,7 +31,12 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     float hexSize = this->m_mapRenderer.hexSize();
 
     // -- World-space rendering (with camera) --
-    renderer2d.setCamera(camera.cameraX(), camera.cameraY());
+    // The Renderer2D shader treats cameraPos as the top-left corner of the viewport
+    // in world space. Our CameraController stores the center of the viewport.
+    // Offset so center maps correctly: topLeft = center - screenSize / (2 * zoom)
+    float cameraTopLeftX = camera.cameraX() - static_cast<float>(screenWidth) / (2.0f * camera.zoom());
+    float cameraTopLeftY = camera.cameraY() - static_cast<float>(screenHeight) / (2.0f * camera.zoom());
+    renderer2d.setCamera(cameraTopLeftX, cameraTopLeftY);
     renderer2d.setZoom(camera.zoom());
 
     renderer2d.beginFrame(frameIndex);

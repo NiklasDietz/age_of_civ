@@ -82,6 +82,7 @@ add_library(aoc_lib STATIC
     src/ui/UIManager.cpp
     src/ui/GameScreens.cpp
     src/ui/Tooltip.cpp
+    src/ui/MainMenu.cpp
 
     # App
     src/app/Window.cpp
@@ -99,6 +100,8 @@ add_library(aoc_lib STATIC
 target_include_directories(aoc_lib
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 
 target_link_libraries(aoc_lib
@@ -128,6 +131,14 @@ endif()
 
 add_executable(age_of_civ src/main.cpp)
 target_link_libraries(age_of_civ PRIVATE aoc_lib)
+
+# Copy/symlink shaders to the build directory so the executable can find them
+add_custom_command(TARGET age_of_civ POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
+        ${CMAKE_SOURCE_DIR}/third_party/vulkan_renderer/shaders
+        $<TARGET_FILE_DIR:age_of_civ>/shaders
+    COMMENT "Symlinking shaders to build output directory"
+)
 
 # --------------------------------------------------------------------------
 # Tests (optional)
