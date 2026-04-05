@@ -94,6 +94,31 @@ void Window::pollEvents() const {
     glfwPollEvents();
 }
 
+void Window::setFullscreen(bool fullscreen) {
+    if (this->m_window == nullptr || fullscreen == this->m_isFullscreen) {
+        return;
+    }
+
+    if (fullscreen) {
+        // Save current windowed position and size
+        glfwGetWindowPos(this->m_window, &this->m_windowedX, &this->m_windowedY);
+        glfwGetWindowSize(this->m_window, &this->m_windowedW, &this->m_windowedH);
+
+        // Switch to fullscreen on primary monitor
+        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+        const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+        glfwSetWindowMonitor(this->m_window, monitor, 0, 0,
+                             mode->width, mode->height, mode->refreshRate);
+    } else {
+        // Restore windowed mode
+        glfwSetWindowMonitor(this->m_window, nullptr,
+                             this->m_windowedX, this->m_windowedY,
+                             this->m_windowedW, this->m_windowedH, 0);
+    }
+
+    this->m_isFullscreen = fullscreen;
+}
+
 bool Window::shouldClose() const {
     if (this->m_window == nullptr) {
         return true;

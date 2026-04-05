@@ -8,6 +8,9 @@
 #include "aoc/core/Log.hpp"
 
 #include <cassert>
+#include <cstdint>
+#include <fstream>
+#include <string>
 #include <utility>
 
 namespace aoc::ui {
@@ -73,11 +76,13 @@ static void setButtonSelected(UIManager& ui, WidgetId id, bool selected) {
 // ============================================================================
 
 void MainMenu::build(UIManager& ui, float screenW, float screenH,
-                     StartGameCallback onStartGame, QuitCallback onQuit) {
+                     StartGameCallback onStartGame, QuitCallback onQuit,
+                     std::function<void()> onSettings) {
     assert(!this->m_isBuilt);
 
     this->m_onStartGame = std::move(onStartGame);
     this->m_onQuit      = std::move(onQuit);
+    this->m_onSettings  = std::move(onSettings);
 
     // Full-screen dark background
     this->m_rootPanel = ui.createPanel(
@@ -317,8 +322,7 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
         btn.pressedColor = BTN_GREY_PRESS;
         btn.labelColor  = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        // Settings callback will be set externally or handled by Application.
-        // For now, the button is a placeholder; the Application wires it up.
+        btn.onClick = this->m_onSettings;
         [[maybe_unused]] WidgetId settingsBtn = ui.createButton(
             contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
     }
@@ -413,6 +417,112 @@ void MainMenu::updateMapSizeButtons(UIManager& ui) {
 // SettingsMenu
 // ============================================================================
 
+/// Helper: create a volume row with label, -/+ buttons, and a value label.
+static WidgetId createVolumeRow(UIManager& ui, WidgetId parent, float rowW,
+                                 const std::string& name, int32_t value,
+                                 WidgetId& valueLabelOut,
+                                 std::function<void()> onMinus,
+                                 std::function<void()> onPlus) {
+    constexpr float ROW_H      = 28.0f;
+    constexpr float LABEL_W    = 160.0f;
+    constexpr float BTN_W      = 30.0f;
+    constexpr float VALUE_W    = 60.0f;
+
+    WidgetId row = ui.createPanel(
+        parent, {0.0f, 0.0f, rowW, ROW_H},
+        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    {
+        Widget* r = ui.getWidget(row);
+        assert(r != nullptr);
+        r->layoutDirection = LayoutDirection::Horizontal;
+        r->childSpacing = 4.0f;
+    }
+
+    // Setting name label
+    [[maybe_unused]] WidgetId lbl = ui.createLabel(
+        row, {0.0f, 0.0f, LABEL_W, ROW_H},
+        LabelData{name, GREY_TEXT, 13.0f});
+
+    // Minus button
+    {
+        ButtonData btn;
+        btn.label        = "-";
+        btn.fontSize     = 13.0f;
+        btn.normalColor  = BTN_GREY;
+        btn.hoverColor   = BTN_GREY_HOVER;
+        btn.pressedColor = BTN_GREY_PRESS;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 3.0f;
+        btn.onClick      = std::move(onMinus);
+        [[maybe_unused]] WidgetId minusBtn = ui.createButton(
+            row, {0.0f, 0.0f, BTN_W, ROW_H}, std::move(btn));
+    }
+
+    // Value label
+    valueLabelOut = ui.createLabel(
+        row, {0.0f, 0.0f, VALUE_W, ROW_H},
+        LabelData{std::to_string(value) + "%", WHITE_TEXT, 13.0f});
+
+    // Plus button
+    {
+        ButtonData btn;
+        btn.label        = "+";
+        btn.fontSize     = 13.0f;
+        btn.normalColor  = BTN_GREY;
+        btn.hoverColor   = BTN_GREY_HOVER;
+        btn.pressedColor = BTN_GREY_PRESS;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 3.0f;
+        btn.onClick      = std::move(onPlus);
+        [[maybe_unused]] WidgetId plusBtn = ui.createButton(
+            row, {0.0f, 0.0f, BTN_W, ROW_H}, std::move(btn));
+    }
+
+    return row;
+}
+
+/// Helper: create a toggle row with label and an On/Off button.
+static WidgetId createToggleRow(UIManager& ui, WidgetId parent, float rowW,
+                                 const std::string& name, bool value,
+                                 WidgetId& toggleBtnOut,
+                                 std::function<void()> onToggle) {
+    constexpr float ROW_H   = 28.0f;
+    constexpr float LABEL_W = 160.0f;
+    constexpr float BTN_W   = 80.0f;
+
+    WidgetId row = ui.createPanel(
+        parent, {0.0f, 0.0f, rowW, ROW_H},
+        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    {
+        Widget* r = ui.getWidget(row);
+        assert(r != nullptr);
+        r->layoutDirection = LayoutDirection::Horizontal;
+        r->childSpacing = 4.0f;
+    }
+
+    // Setting name label
+    [[maybe_unused]] WidgetId lbl = ui.createLabel(
+        row, {0.0f, 0.0f, LABEL_W, ROW_H},
+        LabelData{name, GREY_TEXT, 13.0f});
+
+    // Toggle button
+    {
+        ButtonData btn;
+        btn.label        = value ? "On" : "Off";
+        btn.fontSize     = 13.0f;
+        btn.normalColor  = BTN_GREY;
+        btn.hoverColor   = BTN_GREY_HOVER;
+        btn.pressedColor = BTN_GREY_PRESS;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 3.0f;
+        btn.onClick      = std::move(onToggle);
+        toggleBtnOut = ui.createButton(
+            row, {0.0f, 0.0f, BTN_W, ROW_H}, std::move(btn));
+    }
+
+    return row;
+}
+
 void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
                          std::function<void()> onBack) {
     assert(!this->m_isBuilt);
@@ -423,8 +533,8 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
         PanelData{{0.0f, 0.0f, 0.0f, 0.6f}, 0.0f});
 
     // Centered settings panel
-    constexpr float PANEL_W = 400.0f;
-    constexpr float PANEL_H = 350.0f;
+    constexpr float PANEL_W = 420.0f;
+    constexpr float PANEL_H = 450.0f;
     const float panelX = (screenW - PANEL_W) * 0.5f;
     const float panelY = (screenH - PANEL_H) * 0.5f;
 
@@ -436,7 +546,7 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
         Widget* cp = ui.getWidget(contentPanel);
         assert(cp != nullptr);
         cp->padding = {20.0f, 20.0f, 20.0f, 20.0f};
-        cp->childSpacing = 10.0f;
+        cp->childSpacing = 8.0f;
     }
 
     const float innerW = PANEL_W - 40.0f;
@@ -444,53 +554,104 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
     // Title
     [[maybe_unused]] WidgetId titleLabel = ui.createLabel(
         contentPanel,
-        {0.0f, 0.0f, innerW, 26.0f},
-        LabelData{"Settings", GOLDEN_TEXT, 20.0f});
+        {0.0f, 0.0f, innerW, 30.0f},
+        LabelData{"Settings", GOLDEN_TEXT, 22.0f});
 
     // --- Audio section ---
     [[maybe_unused]] WidgetId audioSection = ui.createLabel(
         contentPanel,
-        {0.0f, 0.0f, innerW, 18.0f},
-        LabelData{"Audio", SECTION_TEXT, 15.0f});
+        {0.0f, 0.0f, innerW, 20.0f},
+        LabelData{"Audio", SECTION_TEXT, 16.0f});
 
-    [[maybe_unused]] WidgetId volumeLabel = ui.createLabel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 16.0f},
-        LabelData{"  Master Volume: 100%", GREY_TEXT, 13.0f});
+    // Master Volume
+    [[maybe_unused]] WidgetId masterRow = createVolumeRow(
+        ui, contentPanel, innerW, "Master Volume", this->m_settings.masterVolume,
+        this->m_masterVolLabel,
+        [this, &ui]() {
+            this->m_settings.masterVolume = std::max(0, this->m_settings.masterVolume - 10);
+            this->refresh(ui);
+        },
+        [this, &ui]() {
+            this->m_settings.masterVolume = std::min(100, this->m_settings.masterVolume + 10);
+            this->refresh(ui);
+        });
+
+    // SFX Volume
+    [[maybe_unused]] WidgetId sfxRow = createVolumeRow(
+        ui, contentPanel, innerW, "SFX Volume", this->m_settings.sfxVolume,
+        this->m_sfxVolLabel,
+        [this, &ui]() {
+            this->m_settings.sfxVolume = std::max(0, this->m_settings.sfxVolume - 10);
+            this->refresh(ui);
+        },
+        [this, &ui]() {
+            this->m_settings.sfxVolume = std::min(100, this->m_settings.sfxVolume + 10);
+            this->refresh(ui);
+        });
+
+    // Music Volume
+    [[maybe_unused]] WidgetId musicRow = createVolumeRow(
+        ui, contentPanel, innerW, "Music Volume", this->m_settings.musicVolume,
+        this->m_musicVolLabel,
+        [this, &ui]() {
+            this->m_settings.musicVolume = std::max(0, this->m_settings.musicVolume - 10);
+            this->refresh(ui);
+        },
+        [this, &ui]() {
+            this->m_settings.musicVolume = std::min(100, this->m_settings.musicVolume + 10);
+            this->refresh(ui);
+        });
 
     // --- Graphics section ---
     [[maybe_unused]] WidgetId graphicsSection = ui.createLabel(
         contentPanel,
-        {0.0f, 0.0f, innerW, 18.0f},
-        LabelData{"Graphics", SECTION_TEXT, 15.0f});
+        {0.0f, 0.0f, innerW, 20.0f},
+        LabelData{"Graphics", SECTION_TEXT, 16.0f});
 
-    [[maybe_unused]] WidgetId vsyncLabel = ui.createLabel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 16.0f},
-        LabelData{"  VSync: On", GREY_TEXT, 13.0f});
+    // VSync
+    [[maybe_unused]] WidgetId vsyncRow = createToggleRow(
+        ui, contentPanel, innerW, "VSync", this->m_settings.vsync,
+        this->m_vsyncLabel,
+        [this, &ui]() {
+            this->m_settings.vsync = !this->m_settings.vsync;
+            this->refresh(ui);
+        });
 
-    [[maybe_unused]] WidgetId fullscreenLabel = ui.createLabel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 16.0f},
-        LabelData{"  Fullscreen: Off", GREY_TEXT, 13.0f});
+    // Fullscreen
+    [[maybe_unused]] WidgetId fullscreenRow = createToggleRow(
+        ui, contentPanel, innerW, "Fullscreen", this->m_settings.fullscreen,
+        this->m_fullscreenLabel,
+        [this, &ui]() {
+            this->m_settings.fullscreen = !this->m_settings.fullscreen;
+            this->refresh(ui);
+        });
+
+    // Show FPS
+    [[maybe_unused]] WidgetId fpsRow = createToggleRow(
+        ui, contentPanel, innerW, "Show FPS", this->m_settings.showFPS,
+        this->m_fpsLabel,
+        [this, &ui]() {
+            this->m_settings.showFPS = !this->m_settings.showFPS;
+            this->refresh(ui);
+        });
 
     // Spacer
     [[maybe_unused]] WidgetId spacer = ui.createPanel(
         contentPanel,
-        {0.0f, 0.0f, innerW, 20.0f},
+        {0.0f, 0.0f, innerW, 10.0f},
         PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
 
     // Back button
     {
         ButtonData btn;
-        btn.label       = "Back";
-        btn.fontSize    = 14.0f;
-        btn.normalColor = BTN_GREY;
-        btn.hoverColor  = BTN_GREY_HOVER;
+        btn.label        = "Back";
+        btn.fontSize     = 14.0f;
+        btn.normalColor  = BTN_GREY;
+        btn.hoverColor   = BTN_GREY_HOVER;
         btn.pressedColor = BTN_GREY_PRESS;
-        btn.labelColor  = WHITE_TEXT;
+        btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = std::move(onBack);
+        btn.onClick      = std::move(onBack);
         [[maybe_unused]] WidgetId backBtn = ui.createButton(
             contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
     }
@@ -504,9 +665,82 @@ void SettingsMenu::destroy(UIManager& ui) {
         return;
     }
     ui.removeWidget(this->m_rootPanel);
-    this->m_rootPanel = INVALID_WIDGET;
-    this->m_isBuilt   = false;
+    this->m_rootPanel       = INVALID_WIDGET;
+    this->m_masterVolLabel  = INVALID_WIDGET;
+    this->m_sfxVolLabel     = INVALID_WIDGET;
+    this->m_musicVolLabel   = INVALID_WIDGET;
+    this->m_vsyncLabel      = INVALID_WIDGET;
+    this->m_fullscreenLabel = INVALID_WIDGET;
+    this->m_fpsLabel        = INVALID_WIDGET;
+    this->m_isBuilt         = false;
     LOG_INFO("Settings menu destroyed");
+}
+
+void SettingsMenu::refresh(UIManager& ui) {
+    ui.setLabelText(this->m_masterVolLabel,
+                    std::to_string(this->m_settings.masterVolume) + "%");
+    ui.setLabelText(this->m_sfxVolLabel,
+                    std::to_string(this->m_settings.sfxVolume) + "%");
+    ui.setLabelText(this->m_musicVolLabel,
+                    std::to_string(this->m_settings.musicVolume) + "%");
+    ui.setButtonLabel(this->m_vsyncLabel,
+                      this->m_settings.vsync ? "On" : "Off");
+    ui.setButtonLabel(this->m_fullscreenLabel,
+                      this->m_settings.fullscreen ? "On" : "Off");
+    ui.setButtonLabel(this->m_fpsLabel,
+                      this->m_settings.showFPS ? "On" : "Off");
+}
+
+// ============================================================================
+// Settings persistence
+// ============================================================================
+
+void saveSettings(const GameSettings& settings, const std::string& filepath) {
+    std::ofstream file(filepath);
+    if (!file.is_open()) {
+        LOG_ERROR("Failed to open settings file for writing: %s", filepath.c_str());
+        return;
+    }
+    file << "masterVolume=" << settings.masterVolume << "\n";
+    file << "sfxVolume=" << settings.sfxVolume << "\n";
+    file << "musicVolume=" << settings.musicVolume << "\n";
+    file << "vsync=" << (settings.vsync ? 1 : 0) << "\n";
+    file << "fullscreen=" << (settings.fullscreen ? 1 : 0) << "\n";
+    file << "showFPS=" << (settings.showFPS ? 1 : 0) << "\n";
+    LOG_INFO("Settings saved to %s", filepath.c_str());
+}
+
+GameSettings loadSettings(const std::string& filepath) {
+    GameSettings settings;
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        LOG_INFO("No settings file found at %s, using defaults", filepath.c_str());
+        return settings;
+    }
+    std::string line;
+    while (std::getline(file, line)) {
+        const std::size_t eq = line.find('=');
+        if (eq == std::string::npos) {
+            continue;
+        }
+        const std::string key   = line.substr(0, eq);
+        const std::string value = line.substr(eq + 1);
+        if (key == "masterVolume") {
+            settings.masterVolume = std::stoi(value);
+        } else if (key == "sfxVolume") {
+            settings.sfxVolume = std::stoi(value);
+        } else if (key == "musicVolume") {
+            settings.musicVolume = std::stoi(value);
+        } else if (key == "vsync") {
+            settings.vsync = (value == "1");
+        } else if (key == "fullscreen") {
+            settings.fullscreen = (value == "1");
+        } else if (key == "showFPS") {
+            settings.showFPS = (value == "1");
+        }
+    }
+    LOG_INFO("Settings loaded from %s", filepath.c_str());
+    return settings;
 }
 
 } // namespace aoc::ui

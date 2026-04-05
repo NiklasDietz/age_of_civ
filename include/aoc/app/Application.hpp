@@ -64,6 +64,9 @@ public:
     void run();
     void shutdown();
 
+    /// Apply current settings (fullscreen, vsync, FPS display, audio volumes).
+    void applySettings();
+
     /// Transition from main menu to gameplay.
     void startGame(aoc::map::MapType mapType, aoc::map::MapSize mapSize);
 
@@ -125,6 +128,9 @@ private:
     aoc::ui::WidgetId  m_selectionLabel = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId  m_economyLabel   = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId  m_endTurnButton  = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId  m_topBar         = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId  m_resourceLabel  = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId  m_menuDropdown   = aoc::ui::INVALID_WIDGET;
     bool m_uiConsumedInput = false;
 
     // Game screens

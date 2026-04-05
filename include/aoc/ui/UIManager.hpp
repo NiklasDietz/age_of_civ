@@ -94,10 +94,19 @@ public:
 
     /**
      * @brief Render all visible widgets.
-     *
-     * Must be called with Renderer2D in screen-space mode (camera reset).
      */
     void render(vulkan_app::renderer::Renderer2D& renderer2d) const;
+
+    /**
+     * @brief Shift all widget computedBounds from screen-space to world-space.
+     *
+     * Call before render() when the Renderer2D has a camera set.
+     * worldPos = cameraPos + screenPos / zoom
+     */
+    void transformBounds(float cameraX, float cameraY, float invZoom);
+
+    /// Reverse the transform applied by transformBounds().
+    void untransformBounds(float cameraX, float cameraY, float invZoom);
 
 private:
     WidgetId allocateWidget();
@@ -114,6 +123,13 @@ private:
 
     /// Currently hovered widget.
     WidgetId m_hoveredWidget = INVALID_WIDGET;
+
+    /// Widget that received the mouse press (for matching with release).
+    WidgetId m_pressedWidget = INVALID_WIDGET;
+
+    /// Scale factor applied to font sizes and corner radii during rendering.
+    /// Set by transformBounds() to compensate for camera zoom.
+    float m_renderScale = 1.0f;
 };
 
 } // namespace aoc::ui

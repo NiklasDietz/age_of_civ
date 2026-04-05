@@ -123,6 +123,10 @@ ErrorCode Application::initialize(const Config& config) {
         LOG_WARN("Font initialization failed -- text will not render");
     }
 
+    // Load saved settings
+    this->m_settingsMenu.settings() = aoc::ui::loadSettings("settings.cfg");
+    this->applySettings();
+
     this->m_appState = AppState::MainMenu;
     const float screenW = static_cast<float>(fbWidth);
     const float screenH = static_cast<float>(fbHeight);
@@ -135,6 +139,17 @@ ErrorCode Application::initialize(const Config& config) {
         },
         [this]() {
             glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
+        },
+        [this, screenW, screenH]() {
+            if (!this->m_settingsMenu.isBuilt()) {
+                this->m_settingsMenu.build(
+                    this->m_uiManager, screenW, screenH,
+                    [this]() {
+                        aoc::ui::saveSettings(this->m_settingsMenu.settings(), "settings.cfg");
+                        this->m_settingsMenu.destroy(this->m_uiManager);
+                        this->applySettings();
+                    });
+            }
         });
 
     this->m_initialized = true;
@@ -198,17 +213,32 @@ void Application::run() {
 
     using Clock = std::chrono::steady_clock;
     Clock::time_point previousTime = Clock::now();
+    float fpsAccum = 0.0f;
+    int32_t fpsFrameCount = 0;
 
     while (!this->m_window.shouldClose()) {
         Clock::time_point currentTime = Clock::now();
         float deltaTime = std::chrono::duration<float>(currentTime - previousTime).count();
         previousTime = currentTime;
+
+        // FPS counter: update window title every 0.5 seconds
+        fpsAccum += deltaTime;
+        ++fpsFrameCount;
+        if (this->m_settingsMenu.settings().showFPS && fpsAccum >= 0.5f) {
+            float fps = static_cast<float>(fpsFrameCount) / fpsAccum;
+            std::string title = "Age of Civilization - " + std::to_string(static_cast<int>(fps)) + " FPS";
+            glfwSetWindowTitle(this->m_window.handle(), title.c_str());
+            fpsAccum = 0.0f;
+            fpsFrameCount = 0;
+        } else if (!this->m_settingsMenu.settings().showFPS && fpsFrameCount == 1) {
+            glfwSetWindowTitle(this->m_window.handle(), "Age of Civilization");
+        }
         if (deltaTime > 0.1f) {
             deltaTime = 0.1f;
         }
 
-        this->m_window.pollEvents();
         this->m_inputManager.processFrame();
+        this->m_window.pollEvents();
 
         auto [fbWidth, fbHeight] = this->m_window.framebufferSize();
 
@@ -247,6 +277,9 @@ void Application::run() {
             if (!frame) {
                 continue;
             }
+
+            // Sync Renderer2D extent with swapchain (may have changed after recreation)
+            this->m_renderer2d->setExtent(frame.extent);
 
             this->m_renderPipeline->beginRenderPass(frame);
 
@@ -413,6 +446,12 @@ void Application::run() {
             continue;
         }
 
+        // Sync Renderer2D extent with swapchain (may have changed after recreation)
+        this->m_renderer2d->setExtent(frame.extent);
+        // Update fbWidth/fbHeight to match the actual swapchain extent
+        fbWidth = frame.extent.width;
+        fbHeight = frame.extent.height;
+
         this->m_renderPipeline->beginRenderPass(frame);
 
         this->m_gameRenderer.render(
@@ -432,6 +471,20 @@ void Application::run() {
     }
 
     this->m_graphicsDevice->waitIdle();
+}
+
+void Application::applySettings() {
+    const aoc::ui::GameSettings& settings = this->m_settingsMenu.settings();
+
+    // Fullscreen toggle. The GLFW framebuffer size callback will fire,
+    // which calls onResize() to mark the swapchain for recreation.
+    // The swapchain actually recreates on the next beginFrame(), where
+    // we also update the Renderer2D extent from frame.extent.
+    this->m_window.setFullscreen(settings.fullscreen);
+
+    LOG_INFO("Settings applied: fullscreen=%d vsync=%d showFPS=%d vol=%d/%d/%d",
+             settings.fullscreen ? 1 : 0, settings.vsync ? 1 : 0, settings.showFPS ? 1 : 0,
+             settings.masterVolume, settings.sfxVolume, settings.musicVolume);
 }
 
 void Application::shutdown() {
@@ -456,8 +509,10 @@ void Application::onResize(uint32_t width, uint32_t height) {
     if (width == 0 || height == 0) {
         return;
     }
+    // Mark swapchain for recreation on next beginFrame().
+    // Don't call setExtent here -- extent() still returns the OLD size
+    // until beginFrame() actually recreates the swapchain.
     this->m_renderPipeline->resize(width, height);
-    this->m_renderer2d->setExtent(this->m_renderPipeline->extent());
 }
 
 // ============================================================================
@@ -517,7 +572,17 @@ void Application::handleSelect() {
 }
 
 void Application::handleContextAction() {
-    if (!this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_RIGHT)) {
+    // Only fire context action on right-click release WITHOUT drag.
+    // Right-click + drag is used for camera panning.
+    if (!this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_RIGHT)) {
+        return;
+    }
+    // Skip if the mouse moved significantly during the press (it was a drag)
+    constexpr double DRAG_THRESHOLD = 5.0;
+    double dx = this->m_inputManager.mouseDeltaX();
+    double dy = this->m_inputManager.mouseDeltaY();
+    if (dx > DRAG_THRESHOLD || dx < -DRAG_THRESHOLD ||
+        dy > DRAG_THRESHOLD || dy < -DRAG_THRESHOLD) {
         return;
     }
 
@@ -1105,9 +1170,168 @@ void Application::placeMapResources() {
 // ============================================================================
 
 void Application::buildHUD() {
-    // Top-left info panel
+    auto [fbW, fbH] = this->m_window.framebufferSize();
+    float screenW = static_cast<float>(fbW);
+
+    // ================================================================
+    // Top bar: full width. Resources on left, buttons on right.
+    // ================================================================
+    this->m_topBar = this->m_uiManager.createPanel(
+        {0.0f, 0.0f, screenW, 32.0f},
+        aoc::ui::PanelData{{0.06f, 0.06f, 0.10f, 0.90f}, 0.0f});
+    {
+        aoc::ui::Widget* bar = this->m_uiManager.getWidget(this->m_topBar);
+        bar->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
+        bar->padding = {4.0f, 6.0f, 4.0f, 6.0f};
+        bar->childSpacing = 6.0f;
+    }
+
+    // Helper for top bar buttons
+    auto makeTopBtn = [this](aoc::ui::WidgetId parent, const std::string& label,
+                              float width, std::function<void()> onClick) {
+        aoc::ui::ButtonData btn;
+        btn.label = label;
+        btn.fontSize = 11.0f;
+        btn.normalColor  = {0.18f, 0.18f, 0.22f, 0.9f};
+        btn.hoverColor   = {0.28f, 0.28f, 0.35f, 0.9f};
+        btn.pressedColor = {0.12f, 0.12f, 0.16f, 0.9f};
+        btn.labelColor   = {0.9f, 0.9f, 0.9f, 1.0f};
+        btn.cornerRadius = 3.0f;
+        btn.onClick = std::move(onClick);
+        return this->m_uiManager.createButton(
+            parent, {0.0f, 0.0f, width, 22.0f}, std::move(btn));
+    };
+
+    // LEFT SIDE: Resource display
+    this->m_resourceLabel = this->m_uiManager.createLabel(
+        this->m_topBar, {0.0f, 0.0f, 700.0f, 22.0f},
+        aoc::ui::LabelData{"Resources: ...", {0.75f, 0.80f, 0.65f, 1.0f}, 10.0f});
+
+    // Spacer to push buttons to the right
+    [[maybe_unused]] aoc::ui::WidgetId spacer = this->m_uiManager.createPanel(
+        this->m_topBar, {0.0f, 0.0f, 1.0f, 22.0f},
+        aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+
+    // RIGHT SIDE: Game screen buttons
+    makeTopBtn(this->m_topBar, "Tech", 50.0f, [this]() {
+        if (!this->m_techScreen.isOpen()) {
+            this->m_techScreen.setContext(&this->m_world, 0);
+            this->m_techScreen.open(this->m_uiManager);
+        } else {
+            this->m_techScreen.close(this->m_uiManager);
+        }
+    });
+
+    makeTopBtn(this->m_topBar, "Gov", 44.0f, [this]() {
+        if (!this->m_governmentScreen.isOpen()) {
+            this->m_governmentScreen.setContext(&this->m_world, 0);
+            this->m_governmentScreen.open(this->m_uiManager);
+        } else {
+            this->m_governmentScreen.close(this->m_uiManager);
+        }
+    });
+
+    makeTopBtn(this->m_topBar, "Econ", 50.0f, [this]() {
+        if (!this->m_economyScreen.isOpen()) {
+            this->m_economyScreen.setContext(&this->m_world, &this->m_hexGrid, 0);
+            this->m_economyScreen.open(this->m_uiManager);
+        } else {
+            this->m_economyScreen.close(this->m_uiManager);
+        }
+    });
+
+    // Separator
+    [[maybe_unused]] aoc::ui::WidgetId sep = this->m_uiManager.createPanel(
+        this->m_topBar, {0.0f, 0.0f, 2.0f, 22.0f},
+        aoc::ui::PanelData{{0.3f, 0.3f, 0.35f, 0.5f}, 0.0f});
+
+    // MENU button -- toggles a dropdown with Save/Load/Settings
+    makeTopBtn(this->m_topBar, "Menu", 55.0f, [this]() {
+        if (this->m_menuDropdown != aoc::ui::INVALID_WIDGET) {
+            // Close dropdown
+            this->m_uiManager.removeWidget(this->m_menuDropdown);
+            this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
+        } else {
+            // Open dropdown at top-right
+            auto [fw, fh] = this->m_window.framebufferSize();
+            float dropX = static_cast<float>(fw) - 120.0f;
+            float dropY = 34.0f;
+
+            this->m_menuDropdown = this->m_uiManager.createPanel(
+                {dropX, dropY, 110.0f, 150.0f},
+                aoc::ui::PanelData{{0.10f, 0.10f, 0.14f, 0.95f}, 4.0f});
+            {
+                aoc::ui::Widget* dp = this->m_uiManager.getWidget(this->m_menuDropdown);
+                dp->padding = {6.0f, 6.0f, 6.0f, 6.0f};
+                dp->childSpacing = 4.0f;
+            }
+
+            auto makeDropBtn = [this](aoc::ui::WidgetId parent, const std::string& label,
+                                       std::function<void()> onClick) {
+                aoc::ui::ButtonData btn;
+                btn.label = label;
+                btn.fontSize = 12.0f;
+                btn.normalColor  = {0.15f, 0.15f, 0.20f, 0.9f};
+                btn.hoverColor   = {0.25f, 0.25f, 0.32f, 0.9f};
+                btn.pressedColor = {0.10f, 0.10f, 0.14f, 0.9f};
+                btn.labelColor   = {0.9f, 0.9f, 0.9f, 1.0f};
+                btn.cornerRadius = 3.0f;
+                btn.onClick = std::move(onClick);
+                [[maybe_unused]] aoc::ui::WidgetId id = this->m_uiManager.createButton(
+                    parent, {0.0f, 0.0f, 98.0f, 28.0f}, std::move(btn));
+            };
+
+            makeDropBtn(this->m_menuDropdown, "Save Game", [this]() {
+                ErrorCode result = aoc::save::saveGame(
+                    "quicksave.aoc", this->m_world, this->m_hexGrid,
+                    this->m_turnManager, this->m_economy, this->m_diplomacy,
+                    this->m_fogOfWar, this->m_gameRng);
+                if (result == ErrorCode::Ok) { LOG_INFO("Game saved"); }
+                else { LOG_ERROR("Save failed"); }
+                this->m_uiManager.removeWidget(this->m_menuDropdown);
+                this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
+            });
+
+            makeDropBtn(this->m_menuDropdown, "Load Game", [this]() {
+                ErrorCode result = aoc::save::loadGame(
+                    "quicksave.aoc", this->m_world, this->m_hexGrid,
+                    this->m_turnManager, this->m_economy, this->m_diplomacy,
+                    this->m_fogOfWar, this->m_gameRng);
+                if (result == ErrorCode::Ok) {
+                    LOG_INFO("Game loaded");
+                    this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, 0);
+                } else { LOG_ERROR("Load failed"); }
+                this->m_uiManager.removeWidget(this->m_menuDropdown);
+                this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
+            });
+
+            makeDropBtn(this->m_menuDropdown, "Settings", [this]() {
+                this->m_uiManager.removeWidget(this->m_menuDropdown);
+                this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
+                auto [sw, sh] = this->m_window.framebufferSize();
+                if (!this->m_settingsMenu.isBuilt()) {
+                    this->m_settingsMenu.build(
+                        this->m_uiManager,
+                        static_cast<float>(sw), static_cast<float>(sh),
+                        [this]() {
+                            aoc::ui::saveSettings(this->m_settingsMenu.settings(), "settings.cfg");
+                            this->m_settingsMenu.destroy(this->m_uiManager);
+                            this->applySettings();
+                        });
+                }
+            });
+
+            makeDropBtn(this->m_menuDropdown, "Quit", [this]() {
+                glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
+            });
+        }
+    });
+
+    // ================================================================
+    // Info panel (below top bar)
+    // ================================================================
     aoc::ui::WidgetId infoPanel = this->m_uiManager.createPanel(
-        {10.0f, 10.0f, 250.0f, 110.0f},
+        {10.0f, 42.0f, 250.0f, 90.0f},
         aoc::ui::PanelData{{0.08f, 0.08f, 0.12f, 0.85f}, 6.0f});
     {
         aoc::ui::Widget* panel = this->m_uiManager.getWidget(infoPanel);
@@ -1116,16 +1340,16 @@ void Application::buildHUD() {
     }
 
     this->m_turnLabel = this->m_uiManager.createLabel(
-        infoPanel, {0.0f, 0.0f, 230.0f, 16.0f},
-        aoc::ui::LabelData{"Turn 0", {1.0f, 0.9f, 0.6f, 1.0f}, 16.0f});
+        infoPanel, {0.0f, 0.0f, 230.0f, 14.0f},
+        aoc::ui::LabelData{"Turn 0", {1.0f, 0.9f, 0.6f, 1.0f}, 14.0f});
 
     this->m_economyLabel = this->m_uiManager.createLabel(
-        infoPanel, {0.0f, 0.0f, 230.0f, 13.0f},
-        aoc::ui::LabelData{"Barter  Gold:100", {0.6f, 0.85f, 0.6f, 1.0f}, 12.0f});
+        infoPanel, {0.0f, 0.0f, 230.0f, 12.0f},
+        aoc::ui::LabelData{"Barter  Gold:100", {0.6f, 0.85f, 0.6f, 1.0f}, 11.0f});
 
     this->m_selectionLabel = this->m_uiManager.createLabel(
-        infoPanel, {0.0f, 0.0f, 230.0f, 14.0f},
-        aoc::ui::LabelData{"No selection", {0.8f, 0.8f, 0.8f, 1.0f}, 13.0f});
+        infoPanel, {0.0f, 0.0f, 230.0f, 12.0f},
+        aoc::ui::LabelData{"No selection", {0.8f, 0.8f, 0.8f, 1.0f}, 11.0f});
 
     // Bottom-right end turn button
     this->m_endTurnButton = this->m_uiManager.createPanel(
@@ -1214,6 +1438,48 @@ void Application::updateHUD() {
     if (endTurnPanel != nullptr) {
         endTurnPanel->requestedBounds.x = static_cast<float>(fbWidth) - 150.0f;
         endTurnPanel->requestedBounds.y = static_cast<float>(fbHeight) - 60.0f;
+    }
+
+    // Update top bar width to match screen
+    aoc::ui::Widget* topBar = this->m_uiManager.getWidget(this->m_topBar);
+    if (topBar != nullptr) {
+        topBar->requestedBounds.w = static_cast<float>(fbWidth);
+    }
+
+    // Update resource display in top bar
+    if (this->m_resourceLabel != aoc::ui::INVALID_WIDGET) {
+        std::string resText;
+        const aoc::ecs::ComponentPool<aoc::sim::CityStockpileComponent>* stockPool =
+            this->m_world.getPool<aoc::sim::CityStockpileComponent>();
+        if (stockPool != nullptr) {
+            // Aggregate resources across all player 0 cities
+            std::unordered_map<uint16_t, int32_t> totals;
+            for (uint32_t i = 0; i < stockPool->size(); ++i) {
+                EntityId cityEntity = stockPool->entities()[i];
+                const aoc::sim::CityComponent* city =
+                    this->m_world.tryGetComponent<aoc::sim::CityComponent>(cityEntity);
+                if (city == nullptr || city->owner != 0) {
+                    continue;
+                }
+                for (const auto& [goodId, amount] : stockPool->data()[i].goods) {
+                    totals[goodId] += amount;
+                }
+            }
+            // Display top resources with amounts > 0
+            for (const auto& [goodId, amount] : totals) {
+                if (amount > 0 && goodId < aoc::sim::goodCount()) {
+                    const aoc::sim::GoodDef& def = aoc::sim::goodDef(goodId);
+                    if (!resText.empty()) {
+                        resText += "  ";
+                    }
+                    resText += std::string(def.name) + ":" + std::to_string(amount);
+                }
+            }
+        }
+        if (resText.empty()) {
+            resText = "No resources";
+        }
+        this->m_uiManager.setLabelText(this->m_resourceLabel, std::move(resText));
     }
 
     // Victory announcement

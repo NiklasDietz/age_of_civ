@@ -43,8 +43,9 @@ void CameraController::update(const aoc::app::InputManager& input, float deltaTi
         this->m_cameraY += panAmount;
     }
 
-    // --- Middle-mouse drag pan ---
-    if (input.isMouseButtonHeld(GLFW_MOUSE_BUTTON_MIDDLE)) {
+    // --- Right-mouse or middle-mouse drag pan ---
+    if (input.isMouseButtonHeld(GLFW_MOUSE_BUTTON_RIGHT) ||
+        input.isMouseButtonHeld(GLFW_MOUSE_BUTTON_MIDDLE)) {
         const float dragScale = this->m_config.dragSpeed / this->m_zoom;
         this->m_cameraX -= static_cast<float>(input.mouseDeltaX()) * dragScale;
         this->m_cameraY -= static_cast<float>(input.mouseDeltaY()) * dragScale;

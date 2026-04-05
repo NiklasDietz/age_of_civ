@@ -214,16 +214,27 @@ bool UIManager::handleInput(float mouseX, float mouseY,
 
         if (mousePressed) {
             w.isPressed = true;
+            this->m_pressedWidget = hit;
         }
 
-        if (mouseReleased && w.isPressed) {
-            w.isPressed = false;
-            // Fire click callback on buttons
-            if (ButtonData* btn = std::get_if<ButtonData>(&w.data)) {
-                if (btn->onClick) {
-                    btn->onClick();
+        if (mouseReleased) {
+            // Fire click on the widget that was originally pressed, even if
+            // the mouse moved slightly between press and release frames
+            WidgetId clickTarget = hit;
+            if (this->m_pressedWidget != INVALID_WIDGET && this->m_pressedWidget != hit) {
+                clickTarget = this->m_pressedWidget;
+            }
+
+            Widget* targetWidget = this->getWidget(clickTarget);
+            if (targetWidget != nullptr) {
+                targetWidget->isPressed = false;
+                if (ButtonData* btn = std::get_if<ButtonData>(&targetWidget->data)) {
+                    if (btn->onClick) {
+                        btn->onClick();
+                    }
                 }
             }
+            this->m_pressedWidget = INVALID_WIDGET;
             return true;  // Input consumed
         }
 
@@ -355,12 +366,15 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d,
 
     const Rect& b = w->computedBounds;
 
+    const float scale = this->m_renderScale;
+
     std::visit([&](const auto& data) {
         using T = std::decay_t<decltype(data)>;
 
         if constexpr (std::is_same_v<T, PanelData>) {
-            if (data.cornerRadius > 0.0f) {
-                renderer2d.drawRoundedRect(b.x, b.y, b.w, b.h, data.cornerRadius,
+            float cr = data.cornerRadius * scale;
+            if (cr > 0.0f) {
+                renderer2d.drawRoundedRect(b.x, b.y, b.w, b.h, cr,
                                             data.backgroundColor.r, data.backgroundColor.g,
                                             data.backgroundColor.b, data.backgroundColor.a);
             } else {
@@ -377,31 +391,37 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d,
                 color = data.hoverColor;
             }
 
-            if (data.cornerRadius > 0.0f) {
-                renderer2d.drawRoundedRect(b.x, b.y, b.w, b.h, data.cornerRadius,
+            float cr = data.cornerRadius * scale;
+            if (cr > 0.0f) {
+                renderer2d.drawRoundedRect(b.x, b.y, b.w, b.h, cr,
                                             color.r, color.g, color.b, color.a);
             } else {
                 renderer2d.drawFilledRect(b.x, b.y, b.w, b.h,
                                            color.r, color.g, color.b, color.a);
             }
 
-            // Center the label text
+            // Center the label text. Pass pixelScale so each rasterized pixel
+            // is scale x scale world units, which the shader zooms back to 1x1 screen pixels.
             if (!data.label.empty()) {
+                float worldFontSize = data.fontSize * scale;
                 Rect textBounds = BitmapFont::measureText(data.label, data.fontSize);
-                float textX = b.x + (b.w - textBounds.w) * 0.5f;
-                float textY = b.y + (b.h - textBounds.h) * 0.5f;
+                // Scale the measured text bounds to world space for centering
+                float textW = textBounds.w * scale;
+                float textH = textBounds.h * scale;
+                float textX = b.x + (b.w - textW) * 0.5f;
+                float textY = b.y + (b.h - textH) * 0.5f;
                 BitmapFont::drawText(renderer2d, data.label, textX, textY,
-                                      data.fontSize, data.labelColor);
+                                      worldFontSize, data.labelColor, scale);
             }
         }
         else if constexpr (std::is_same_v<T, LabelData>) {
             if (!data.text.empty()) {
+                float worldFontSize = data.fontSize * scale;
                 BitmapFont::drawText(renderer2d, data.text, b.x, b.y,
-                                      data.fontSize, data.color);
+                                      worldFontSize, data.color, scale);
             }
         }
         else if constexpr (std::is_same_v<T, ScrollListData>) {
-            // Draw background
             renderer2d.drawFilledRect(b.x, b.y, b.w, b.h,
                                        data.backgroundColor.r, data.backgroundColor.g,
                                        data.backgroundColor.b, data.backgroundColor.a);
@@ -423,6 +443,33 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d,
             }
         }
         this->renderWidget(renderer2d, childId);
+    }
+}
+
+void UIManager::transformBounds(float cameraX, float cameraY, float invZoom) {
+    this->m_renderScale = invZoom;
+    for (Widget& w : this->m_widgets) {
+        if (w.id == INVALID_WIDGET) {
+            continue;
+        }
+        w.computedBounds.x = cameraX + w.computedBounds.x * invZoom;
+        w.computedBounds.y = cameraY + w.computedBounds.y * invZoom;
+        w.computedBounds.w = w.computedBounds.w * invZoom;
+        w.computedBounds.h = w.computedBounds.h * invZoom;
+    }
+}
+
+void UIManager::untransformBounds(float cameraX, float cameraY, float invZoom) {
+    this->m_renderScale = 1.0f;
+    float zoom = 1.0f / invZoom;
+    for (Widget& w : this->m_widgets) {
+        if (w.id == INVALID_WIDGET) {
+            continue;
+        }
+        w.computedBounds.x = (w.computedBounds.x - cameraX) * zoom;
+        w.computedBounds.y = (w.computedBounds.y - cameraY) * zoom;
+        w.computedBounds.w = w.computedBounds.w * zoom;
+        w.computedBounds.h = w.computedBounds.h * zoom;
     }
 }
 

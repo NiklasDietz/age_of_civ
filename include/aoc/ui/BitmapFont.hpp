@@ -31,12 +31,17 @@ public:
 
     /**
      * @brief Draw a text string at the given position.
+     *
+     * @param pixelScale Size of each rasterized pixel in draw units (default 1.0).
+     *                   When rendering in world-space with a camera zoom, set this
+     *                   to 1/zoom so pixels remain 1:1 on screen after the shader scales them.
      */
     static void drawText(vulkan_app::renderer::Renderer2D& renderer2d,
                           std::string_view text,
                           float x, float y,
                           float fontSize,
-                          Color color);
+                          Color color,
+                          float pixelScale = 1.0f);
 
     /**
      * @brief Measure the pixel dimensions of a text string.

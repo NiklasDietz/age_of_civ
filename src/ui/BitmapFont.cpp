@@ -155,39 +155,45 @@ void BitmapFont::drawText(vulkan_app::renderer::Renderer2D& renderer2d,
                            std::string_view text,
                            float x, float y,
                            float fontSize,
-                           Color color) {
+                           Color color,
+                           float pixelScale) {
     if (!g_font.initialized) {
         return;
     }
 
-    // Baseline offset: move y down by ~75% of fontSize so text aligns with top-left origin
+    // Rasterize at the screen-pixel font size for crisp glyphs,
+    // then scale positions and rect sizes by pixelScale for world-space rendering.
+    float rasterSize = fontSize / pixelScale;  // screen-pixel font size
+    if (rasterSize < 4.0f) {
+        rasterSize = 4.0f;
+    }
+
     float baseline = y + fontSize * 0.75f;
     float cursorX = x;
 
     for (char ch : text) {
-        const GlyphBitmap& glyph = getGlyph(ch, fontSize);
+        const GlyphBitmap& glyph = getGlyph(ch, rasterSize);
 
         if (glyph.width > 0 && glyph.height > 0) {
-            float glyphX = cursorX + static_cast<float>(glyph.xOffset);
-            float glyphY = baseline + static_cast<float>(glyph.yOffset);
+            float glyphX = cursorX + static_cast<float>(glyph.xOffset) * pixelScale;
+            float glyphY = baseline + static_cast<float>(glyph.yOffset) * pixelScale;
 
-            // Draw each pixel with alpha > threshold as a filled point
             for (int32_t py = 0; py < glyph.height; ++py) {
                 for (int32_t px = 0; px < glyph.width; ++px) {
                     uint8_t alpha = glyph.pixels[static_cast<std::size_t>(py * glyph.width + px)];
                     if (alpha > 80) {
                         float pixelAlpha = static_cast<float>(alpha) / 255.0f * color.a;
                         renderer2d.drawFilledRect(
-                            glyphX + static_cast<float>(px),
-                            glyphY + static_cast<float>(py),
-                            1.0f, 1.0f,
+                            glyphX + static_cast<float>(px) * pixelScale,
+                            glyphY + static_cast<float>(py) * pixelScale,
+                            pixelScale, pixelScale,
                             color.r, color.g, color.b, pixelAlpha);
                     }
                 }
             }
         }
 
-        cursorX += glyph.advance;
+        cursorX += glyph.advance * pixelScale;
     }
 }
 

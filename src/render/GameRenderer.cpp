@@ -1,6 +1,11 @@
 /**
  * @file GameRenderer.cpp
  * @brief Top-level render orchestrator implementation.
+ *
+ * The Renderer2D uses a single GPU instance buffer per frame. Multiple
+ * begin/end batches overwrite each other. We render everything in one batch
+ * using the world-space camera, and transform UI positions to world space
+ * so the camera shader maps them back to the correct screen positions.
  */
 
 #include "aoc/render/GameRenderer.hpp"
@@ -30,49 +35,50 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                            uint32_t screenWidth, uint32_t screenHeight) {
     float hexSize = this->m_mapRenderer.hexSize();
 
-    // -- World-space rendering (with camera) --
-    // The Renderer2D shader treats cameraPos as the top-left corner of the viewport
-    // in world space. Our CameraController stores the center of the viewport.
-    // Offset so center maps correctly: topLeft = center - screenSize / (2 * zoom)
-    float cameraTopLeftX = camera.cameraX() - static_cast<float>(screenWidth) / (2.0f * camera.zoom());
-    float cameraTopLeftY = camera.cameraY() - static_cast<float>(screenHeight) / (2.0f * camera.zoom());
-    renderer2d.setCamera(cameraTopLeftX, cameraTopLeftY);
+    // The shader's cameraPos is the TOP-LEFT corner of the viewport in world space.
+    // Our CameraController stores the CENTER of the viewport.
+    float topLeftX = camera.cameraX() - static_cast<float>(screenWidth)  / (2.0f * camera.zoom());
+    float topLeftY = camera.cameraY() - static_cast<float>(screenHeight) / (2.0f * camera.zoom());
+
+    renderer2d.setCamera(topLeftX, topLeftY);
     renderer2d.setZoom(camera.zoom());
 
     renderer2d.beginFrame(frameIndex);
     renderer2d.begin();
 
+    // Layer 1: Map tiles (world coordinates -- shader transforms via camera)
     this->m_mapRenderer.draw(renderer2d, grid, fog, viewingPlayer, camera,
                               screenWidth, screenHeight);
+
+    // Layer 2: Cities (world coordinates)
     this->m_unitRenderer.drawCities(renderer2d, world, fog, grid, viewingPlayer,
                                      camera, hexSize, screenWidth, screenHeight);
+
+    // Layer 3: Units (world coordinates)
     this->m_unitRenderer.drawUnits(renderer2d, world, fog, grid, viewingPlayer,
                                     camera, hexSize, screenWidth, screenHeight);
 
-    renderer2d.end(commandBuffer);
-
-    // -- Screen-space rendering (UI overlay, no camera) --
-    renderer2d.resetCamera();
-    renderer2d.setZoom(1.0f);
-
-    renderer2d.begin();
-
+    // Layer 4: UI overlay
+    // UI widgets are in screen-pixel space. Transform to world space so the
+    // camera shader maps them back: worldPos = topLeft + screenPos / zoom
     uiManager.layout();
+    float invZoom = 1.0f / camera.zoom();
+    uiManager.transformBounds(topLeftX, topLeftY, invZoom);
     uiManager.render(renderer2d);
+    uiManager.untransformBounds(topLeftX, topLeftY, invZoom);
 
-    // Draw minimap in the bottom-left corner
+    // Minimap: convert screen-space position to world-space for the camera batch.
+    // Screen (sx, sy) -> world (topLeftX + sx * invZoom, topLeftY + sy * invZoom)
     constexpr float MINIMAP_W = 200.0f;
     constexpr float MINIMAP_H = 130.0f;
     constexpr float MINIMAP_MARGIN = 10.0f;
-    const float minimapX = MINIMAP_MARGIN;
-    const float minimapY = static_cast<float>(screenHeight) - MINIMAP_H - MINIMAP_MARGIN;
-
+    float mmScreenX = MINIMAP_MARGIN;
+    float mmScreenY = static_cast<float>(screenHeight) - MINIMAP_H - MINIMAP_MARGIN;
+    float mmWorldX = topLeftX + mmScreenX * invZoom;
+    float mmWorldY = topLeftY + mmScreenY * invZoom;
     this->m_minimap.draw(renderer2d, grid, fog, viewingPlayer, camera,
-                         minimapX, minimapY, MINIMAP_W, MINIMAP_H,
+                         mmWorldX, mmWorldY, MINIMAP_W * invZoom, MINIMAP_H * invZoom,
                          screenWidth, screenHeight);
-
-    // Draw tooltip (if visible)
-    this->m_tooltipManager.render(renderer2d);
 
     renderer2d.end(commandBuffer);
 }

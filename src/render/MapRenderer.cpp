@@ -45,7 +45,6 @@ void MapRenderer::draw(vulkan_app::renderer::Renderer2D& renderer2d,
         for (int32_t col = 0; col < width; ++col) {
             int32_t index = row * width + col;
 
-            // Fog of war: skip unseen tiles entirely
             aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, index);
             if (vis == aoc::map::TileVisibility::Unseen) {
                 continue;
@@ -55,7 +54,6 @@ void MapRenderer::draw(vulkan_app::renderer::Renderer2D& renderer2d,
             float cx = 0.0f, cy = 0.0f;
             hex::axialToPixel(axial, this->m_hexSize, cx, cy);
 
-            // Frustum cull
             if (cx < topLeftX || cx > botRightX || cy < topLeftY || cy > botRightY) {
                 continue;
             }

@@ -53,6 +53,10 @@ public:
     /// Raw GLFW handle for Vulkan surface creation.
     [[nodiscard]] GLFWwindow* handle() const { return this->m_window; }
 
+    /// Toggle fullscreen mode. Stores/restores windowed position and size.
+    void setFullscreen(bool fullscreen);
+    [[nodiscard]] bool isFullscreen() const { return this->m_isFullscreen; }
+
     /// Callback fired on framebuffer resize.
     using ResizeCallback = std::function<void(uint32_t, uint32_t)>;
     void setResizeCallback(ResizeCallback callback);
@@ -81,6 +85,9 @@ private:
     static void glfwScrollCallback(GLFWwindow* window, double xOffset, double yOffset);
 
     GLFWwindow* m_window = nullptr;
+    bool m_isFullscreen = false;
+    int  m_windowedX = 0, m_windowedY = 0;
+    int  m_windowedW = 1280, m_windowedH = 720;
 
     ResizeCallback      m_resizeCallback;
     KeyCallback         m_keyCallback;
