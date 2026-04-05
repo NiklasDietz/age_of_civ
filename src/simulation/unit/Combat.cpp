@@ -4,6 +4,9 @@
  */
 
 #include "aoc/simulation/unit/Combat.hpp"
+#include "aoc/simulation/barbarian/BarbarianController.hpp"
+#include "aoc/simulation/resource/ResourceComponent.hpp"
+#include "aoc/core/Log.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/map/HexGrid.hpp"
@@ -13,7 +16,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 
 namespace aoc::sim {
 
@@ -96,6 +98,14 @@ CombatResult resolveMeleeCombat(aoc::ecs::World& world,
     float atkStrength = static_cast<float>(atkDef.combatStrength);
     float defStrength = static_cast<float>(defDef.combatStrength);
 
+    // Embarked units fight at 50% strength
+    if (atkUnit.state == UnitState::Embarked) {
+        atkStrength *= 0.5f;
+    }
+    if (defUnit.state == UnitState::Embarked) {
+        defStrength *= 0.5f;
+    }
+
     // Health modifier: damaged units fight worse
     float atkHealthMod = static_cast<float>(atkUnit.hitPoints) / static_cast<float>(atkDef.maxHitPoints);
     float defHealthMod = static_cast<float>(defUnit.hitPoints) / static_cast<float>(defDef.maxHitPoints);
@@ -147,6 +157,9 @@ CombatResult resolveMeleeCombat(aoc::ecs::World& world,
     }
 
     // Clean up dead units
+    hex::AxialCoord defenderTile = defUnit.position;
+    PlayerId attackerOwner = atkUnit.owner;
+
     if (result.defenderKilled) {
         world.destroyEntity(defender);
     }
@@ -154,10 +167,43 @@ CombatResult resolveMeleeCombat(aoc::ecs::World& world,
         world.destroyEntity(attacker);
     }
 
-    std::fprintf(stdout, "[Combat] Atk took %d dmg, Def took %d dmg%s%s\n",
-                 result.attackerDamage, result.defenderDamage,
-                 result.attackerKilled ? " (attacker killed)" : "",
-                 result.defenderKilled ? " (defender killed)" : "");
+    // If defender was killed and attacker survived, check for barbarian encampment
+    // on the tile the attacker moved onto.
+    if (result.defenderKilled && !result.attackerKilled && attackerOwner != BARBARIAN_PLAYER) {
+        aoc::ecs::ComponentPool<BarbarianEncampmentComponent>* campPool =
+            world.getPool<BarbarianEncampmentComponent>();
+        if (campPool != nullptr) {
+            for (uint32_t ci = 0; ci < campPool->size(); ++ci) {
+                if (campPool->data()[ci].location == defenderTile) {
+                    EntityId campEntity = campPool->entities()[ci];
+
+                    // Award gold to the attacking player
+                    aoc::ecs::ComponentPool<PlayerEconomyComponent>* econPool =
+                        world.getPool<PlayerEconomyComponent>();
+                    if (econPool != nullptr) {
+                        for (uint32_t ei = 0; ei < econPool->size(); ++ei) {
+                            if (econPool->data()[ei].owner == attackerOwner) {
+                                econPool->data()[ei].treasury += 25;
+                                LOG_INFO("Player %u earned 25 gold from clearing barbarian encampment",
+                                         static_cast<unsigned>(attackerOwner));
+                                break;
+                            }
+                        }
+                    }
+
+                    world.destroyEntity(campEntity);
+                    LOG_INFO("Barbarian encampment at (%d,%d) destroyed in combat",
+                             defenderTile.q, defenderTile.r);
+                    break;
+                }
+            }
+        }
+    }
+
+    LOG_INFO("Atk took %d dmg, Def took %d dmg%s%s",
+             result.attackerDamage, result.defenderDamage,
+             result.attackerKilled ? " (attacker killed)" : "",
+             result.defenderKilled ? " (defender killed)" : "");
 
     return result;
 }

@@ -5,6 +5,9 @@
 
 #include "aoc/map/Pathfinding.hpp"
 #include "aoc/map/HexGrid.hpp"
+#include "aoc/simulation/unit/UnitComponent.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/ecs/World.hpp"
 
 #include <algorithm>
 #include <queue>
@@ -13,13 +16,50 @@
 namespace aoc::map {
 
 // ============================================================================
+// Zone-of-control helper (local to this TU)
+// ============================================================================
+
+/// Check if a tile is in an enemy military unit's zone of control.
+static bool isInEnemyZoC(const aoc::ecs::World& world,
+                           hex::AxialCoord tile,
+                           PlayerId movingPlayer) {
+    const aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* pool =
+        world.getPool<aoc::sim::UnitComponent>();
+    if (pool == nullptr) {
+        return false;
+    }
+
+    const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(tile);
+
+    for (uint32_t i = 0; i < pool->size(); ++i) {
+        const aoc::sim::UnitComponent& other = pool->data()[i];
+        if (other.owner == movingPlayer) {
+            continue;
+        }
+        const aoc::sim::UnitTypeDef& otherDef = aoc::sim::unitTypeDef(other.typeId);
+        if (!aoc::sim::isMilitary(otherDef.unitClass)) {
+            continue;
+        }
+        for (const hex::AxialCoord& nbr : nbrs) {
+            if (other.position == nbr) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// ============================================================================
 // A* pathfinding
 // ============================================================================
 
 std::optional<PathResult> findPath(const HexGrid& grid,
                                     hex::AxialCoord start,
                                     hex::AxialCoord goal,
-                                    int32_t maxCost) {
+                                    int32_t maxCost,
+                                    const aoc::ecs::World* world,
+                                    PlayerId movingPlayer,
+                                    bool isNavalPath) {
     if (!grid.isValid(start) || !grid.isValid(goal)) {
         return std::nullopt;
     }
@@ -28,8 +68,11 @@ std::optional<PathResult> findPath(const HexGrid& grid,
         return PathResult{{start}, 0};
     }
 
-    // Check goal is passable
-    if (grid.movementCost(grid.toIndex(goal)) == 0) {
+    // Check goal is passable (use appropriate cost function)
+    const int32_t goalCost = isNavalPath
+        ? grid.navalMovementCost(grid.toIndex(goal))
+        : grid.movementCost(grid.toIndex(goal));
+    if (goalCost == 0) {
         return std::nullopt;
     }
 
@@ -72,9 +115,18 @@ std::optional<PathResult> findPath(const HexGrid& grid,
                 continue;
             }
 
-            int32_t moveCost = grid.movementCost(grid.toIndex(neighbor));
+            int32_t moveCost = isNavalPath
+                ? grid.navalMovementCost(grid.toIndex(neighbor))
+                : grid.movementCost(grid.toIndex(neighbor));
             if (moveCost == 0) {
                 continue;  // Impassable
+            }
+
+            // ZoC-aware costing: tiles in enemy zone of control cost +3
+            if (world != nullptr && movingPlayer != INVALID_PLAYER) {
+                if (isInEnemyZoC(*world, neighbor, movingPlayer)) {
+                    moveCost += 3;
+                }
             }
 
             int32_t newCost = currentCost + moveCost;

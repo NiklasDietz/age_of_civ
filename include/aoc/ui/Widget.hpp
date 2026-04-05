@@ -80,6 +80,13 @@ struct LabelData {
     float       fontSize = 14.0f;
 };
 
+/// Scrollable list container. Children outside the visible window are skipped during rendering.
+struct ScrollListData {
+    Color backgroundColor = {0.12f, 0.12f, 0.16f, 0.9f};
+    float scrollOffset = 0.0f;     ///< Pixels scrolled from top (0 = no scroll)
+    float contentHeight = 0.0f;    ///< Total height of all children (computed during layout)
+};
+
 /// Horizontal or vertical layout direction for children.
 enum class LayoutDirection : uint8_t {
     Vertical,
@@ -119,7 +126,7 @@ struct Widget {
     std::vector<WidgetId> children;
 
     /// Type-specific payload.
-    std::variant<PanelData, ButtonData, LabelData> data = PanelData{};
+    std::variant<PanelData, ButtonData, LabelData, ScrollListData> data = PanelData{};
 };
 
 } // namespace aoc::ui

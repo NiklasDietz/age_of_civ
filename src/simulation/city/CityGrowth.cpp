@@ -4,13 +4,13 @@
  */
 
 #include "aoc/simulation/city/CityGrowth.hpp"
+#include "aoc/core/Log.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/ecs/World.hpp"
 
 #include <cmath>
-#include <cstdio>
 
 namespace aoc::sim {
 
@@ -99,8 +99,7 @@ void processCityGrowth(aoc::ecs::World& world,
                 city.workedTiles.push_back(bestTile);
             }
 
-            std::fprintf(stdout, "[City] %s grew to pop %d\n",
-                         city.name.c_str(), city.population);
+            LOG_INFO("%s grew to pop %d", city.name.c_str(), city.population);
         }
 
         // Starvation: if food surplus goes very negative, lose population
@@ -110,8 +109,8 @@ void processCityGrowth(aoc::ecs::World& world,
             if (!city.workedTiles.empty() && city.workedTiles.size() > 1) {
                 city.workedTiles.pop_back();
             }
-            std::fprintf(stdout, "[City] %s lost population (starvation), now %d\n",
-                         city.name.c_str(), city.population);
+            LOG_WARN("%s lost population (starvation), now %d",
+                     city.name.c_str(), city.population);
         }
     }
 }

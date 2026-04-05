@@ -17,6 +17,7 @@ enum class ProductionItemType : uint8_t {
     Unit,
     Building,
     District,
+    Wonder,
 };
 
 struct ProductionQueueItem {

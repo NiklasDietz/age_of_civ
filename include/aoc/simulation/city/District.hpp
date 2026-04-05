@@ -58,25 +58,42 @@ struct BuildingDef {
     int32_t          productionBonus;      ///< Flat bonus to city production
     int32_t          scienceBonus;
     int32_t          goldBonus;
+    float            scienceMultiplier = 1.0f;  ///< Multiplicative science bonus (1.0 = no effect)
 };
 
 // BuildingId values match the requiredBuilding in ProductionRecipe:
-//   0 = Forge (smelting, tool-making)
-//   1 = Workshop (lumber, bricks, consumer goods)
-//   2 = Refinery (oil processing)
-//   3 = Factory (steel, machinery)
-//   4 = Electronics Plant (advanced electronics)
-//   5 = Industrial Complex (industrial equipment)
+//   0  = Forge              (smelting, tool-making, glass, bronze)
+//   1  = Workshop           (lumber, bricks, consumer goods, construction)
+//   2  = Refinery           (oil -> fuel/plastics, rubber)
+//   3  = Factory            (steel, machinery, ammunition, armored vehicles, adv. consumer goods)
+//   4  = Electronics Plant  (electronics, computers, telecom equipment, adv. machinery)
+//   5  = Industrial Complex (industrial equipment, aircraft)
+//   6  = Market             (trade)
+//   7  = Library            (science)
+//   8  = Textile Mill       (textiles, clothing)
+//   9  = Food Proc. Plant   (processed food)
+//   10 = Precision Workshop (surface plate, precision instruments, interchangeable parts)
+//   11 = Semiconductor Fab  (semiconductors, microchips)
+//   12 = Research Lab       (software, +50% science)
+//   13 = Telecom Hub        (trade speed, gold)
+//   14 = Airport            (air trade/military)
 
-inline constexpr std::array<BuildingDef, 8> BUILDING_DEFS = {{
-    {BuildingId{0}, "Forge",              DistrictType::Industrial, 60,  1, 2, 0, 0},
-    {BuildingId{1}, "Workshop",           DistrictType::Industrial, 40,  1, 1, 0, 0},
-    {BuildingId{2}, "Refinery",           DistrictType::Industrial, 100, 2, 3, 0, 0},
-    {BuildingId{3}, "Factory",            DistrictType::Industrial, 120, 3, 4, 0, 1},
-    {BuildingId{4}, "Electronics Plant",  DistrictType::Industrial, 180, 4, 3, 2, 2},
-    {BuildingId{5}, "Industrial Complex", DistrictType::Industrial, 250, 5, 6, 0, 3},
-    {BuildingId{6}, "Market",             DistrictType::Commercial, 50,  0, 0, 0, 3},
-    {BuildingId{7}, "Library",            DistrictType::Campus,     50,  1, 0, 2, 0},
+inline constexpr std::array<BuildingDef, 15> BUILDING_DEFS = {{
+    {BuildingId{0},  "Forge",              DistrictType::Industrial, 60,  1, 2, 0, 0, 1.0f},
+    {BuildingId{1},  "Workshop",           DistrictType::Industrial, 40,  1, 1, 0, 0, 1.0f},
+    {BuildingId{2},  "Refinery",           DistrictType::Industrial, 100, 2, 3, 0, 0, 1.0f},
+    {BuildingId{3},  "Factory",            DistrictType::Industrial, 120, 3, 4, 0, 1, 1.0f},
+    {BuildingId{4},  "Electronics Plant",  DistrictType::Industrial, 180, 4, 3, 2, 2, 1.0f},
+    {BuildingId{5},  "Industrial Complex", DistrictType::Industrial, 250, 5, 6, 0, 3, 1.0f},
+    {BuildingId{6},  "Market",             DistrictType::Commercial, 50,  0, 0, 0, 3, 1.0f},
+    {BuildingId{7},  "Library",            DistrictType::Campus,     50,  1, 0, 2, 0, 1.0f},
+    {BuildingId{8},  "Textile Mill",       DistrictType::Industrial, 80,  2, 2, 0, 1, 1.0f},
+    {BuildingId{9},  "Food Proc. Plant",   DistrictType::Industrial, 90,  2, 1, 0, 1, 1.0f},
+    {BuildingId{10}, "Precision Workshop", DistrictType::Industrial, 140, 3, 3, 1, 0, 1.0f},
+    {BuildingId{11}, "Semiconductor Fab",  DistrictType::Industrial, 220, 5, 2, 3, 2, 1.0f},
+    {BuildingId{12}, "Research Lab",       DistrictType::Campus,     160, 3, 0, 5, 0, 1.5f},
+    {BuildingId{13}, "Telecom Hub",        DistrictType::Commercial, 130, 2, 0, 1, 4, 1.0f},
+    {BuildingId{14}, "Airport",            DistrictType::Industrial, 200, 4, 2, 0, 3, 1.0f},
 }};
 
 [[nodiscard]] inline constexpr const BuildingDef& buildingDef(BuildingId id) {

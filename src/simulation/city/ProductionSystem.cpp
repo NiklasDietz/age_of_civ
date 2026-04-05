@@ -1,0 +1,214 @@
+/**
+ * @file ProductionSystem.cpp
+ * @brief City production queue processing implementation.
+ */
+
+#include "aoc/simulation/city/ProductionSystem.hpp"
+#include "aoc/simulation/city/CityComponent.hpp"
+#include "aoc/simulation/city/ProductionQueue.hpp"
+#include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/city/Happiness.hpp"
+#include "aoc/simulation/government/GovernmentComponent.hpp"
+#include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/wonder/Wonder.hpp"
+#include "aoc/simulation/unit/UnitComponent.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/map/HexGrid.hpp"
+#include "aoc/ecs/World.hpp"
+#include "aoc/core/Log.hpp"
+
+#include <vector>
+
+namespace aoc::sim {
+
+float computeCityProduction(const aoc::ecs::World& world,
+                             const aoc::map::HexGrid& grid,
+                             EntityId cityEntity) {
+    const CityComponent& city = world.getComponent<CityComponent>(cityEntity);
+
+    // Sum production from worked tiles
+    float totalProduction = 0.0f;
+    for (const hex::AxialCoord& tile : city.workedTiles) {
+        if (grid.isValid(tile)) {
+            int32_t index = grid.toIndex(tile);
+            aoc::map::TileYield yield = grid.tileYield(index);
+            totalProduction += static_cast<float>(yield.production);
+        }
+    }
+
+    // Add building production bonuses
+    const CityDistrictsComponent* districts =
+        world.tryGetComponent<CityDistrictsComponent>(cityEntity);
+    if (districts != nullptr) {
+        for (const CityDistrictsComponent::PlacedDistrict& district : districts->districts) {
+            for (BuildingId bid : district.buildings) {
+                const BuildingDef& bdef = buildingDef(bid);
+                totalProduction += static_cast<float>(bdef.productionBonus);
+            }
+        }
+    }
+
+    // Apply happiness production multiplier
+    const CityHappinessComponent* happiness =
+        world.tryGetComponent<CityHappinessComponent>(cityEntity);
+    if (happiness != nullptr) {
+        totalProduction *= happiness->productionMultiplier();
+    }
+
+    // Apply government production multiplier
+    GovernmentModifiers govMods = computeGovernmentModifiers(world, city.owner);
+    totalProduction *= govMods.productionMultiplier;
+
+    // Apply civilization production multiplier
+    const aoc::ecs::ComponentPool<PlayerCivilizationComponent>* civPool =
+        world.getPool<PlayerCivilizationComponent>();
+    if (civPool != nullptr) {
+        for (uint32_t ci = 0; ci < civPool->size(); ++ci) {
+            const PlayerCivilizationComponent& civ = civPool->data()[ci];
+            if (civ.owner == city.owner) {
+                totalProduction *= civDef(civ.civId).modifiers.productionMultiplier;
+                break;
+            }
+        }
+    }
+
+    // Minimum 1 production per turn so cities always make progress
+    if (totalProduction < 1.0f) {
+        totalProduction = 1.0f;
+    }
+
+    return totalProduction;
+}
+
+void processProductionQueues(aoc::ecs::World& world,
+                              const aoc::map::HexGrid& grid,
+                              PlayerId player) {
+    aoc::ecs::ComponentPool<CityComponent>* cityPool =
+        world.getPool<CityComponent>();
+    if (cityPool == nullptr) {
+        return;
+    }
+
+    // Collect city entities first to avoid iterator invalidation
+    std::vector<EntityId> cityEntities;
+    for (uint32_t i = 0; i < cityPool->size(); ++i) {
+        if (cityPool->data()[i].owner == player) {
+            cityEntities.push_back(cityPool->entities()[i]);
+        }
+    }
+
+    for (EntityId cityEntity : cityEntities) {
+        if (!world.isAlive(cityEntity)) {
+            continue;
+        }
+
+        ProductionQueueComponent* queue =
+            world.tryGetComponent<ProductionQueueComponent>(cityEntity);
+        if (queue == nullptr || queue->isEmpty()) {
+            continue;
+        }
+
+        float production = computeCityProduction(world, grid, cityEntity);
+        bool completed = queue->addProgress(production);
+
+        if (completed) {
+            const ProductionQueueItem& item = queue->queue.front();
+            const CityComponent& city =
+                world.getComponent<CityComponent>(cityEntity);
+
+            switch (item.type) {
+                case ProductionItemType::Unit: {
+                    UnitTypeId unitTypeId{item.itemId};
+                    EntityId unitEntity = world.createEntity();
+                    world.addComponent<UnitComponent>(
+                        unitEntity,
+                        UnitComponent::create(player, unitTypeId, city.location));
+                    LOG_INFO("Produced %.*s in %s",
+                             static_cast<int>(item.name.size()),
+                             item.name.c_str(),
+                             city.name.c_str());
+                    break;
+                }
+                case ProductionItemType::Building: {
+                    BuildingId buildingId{item.itemId};
+                    CityDistrictsComponent* districts =
+                        world.tryGetComponent<CityDistrictsComponent>(cityEntity);
+                    if (districts != nullptr) {
+                        // Find or create the required district
+                        const BuildingDef& bdef = buildingDef(buildingId);
+                        bool placed = false;
+                        for (CityDistrictsComponent::PlacedDistrict& district :
+                             districts->districts) {
+                            if (district.type == bdef.requiredDistrict) {
+                                district.buildings.push_back(buildingId);
+                                placed = true;
+                                break;
+                            }
+                        }
+                        if (!placed) {
+                            // Create new district of the required type at city location
+                            CityDistrictsComponent::PlacedDistrict newDistrict;
+                            newDistrict.type = bdef.requiredDistrict;
+                            newDistrict.location = city.location;
+                            newDistrict.buildings.push_back(buildingId);
+                            districts->districts.push_back(std::move(newDistrict));
+                        }
+                    }
+                    LOG_INFO("Built %.*s in %s",
+                             static_cast<int>(item.name.size()),
+                             item.name.c_str(),
+                             city.name.c_str());
+                    break;
+                }
+                case ProductionItemType::District: {
+                    CityDistrictsComponent* districts =
+                        world.tryGetComponent<CityDistrictsComponent>(cityEntity);
+                    if (districts != nullptr) {
+                        CityDistrictsComponent::PlacedDistrict newDistrict;
+                        newDistrict.type = static_cast<DistrictType>(item.itemId);
+                        newDistrict.location = city.location;
+                        districts->districts.push_back(std::move(newDistrict));
+                    }
+                    LOG_INFO("Completed district %.*s in %s",
+                             static_cast<int>(item.name.size()),
+                             item.name.c_str(),
+                             city.name.c_str());
+                    break;
+                }
+                case ProductionItemType::Wonder: {
+                    const WonderId wonderId = static_cast<WonderId>(item.itemId);
+
+                    // Mark built in global tracker
+                    aoc::ecs::ComponentPool<GlobalWonderTracker>* trackerPool =
+                        world.getPool<GlobalWonderTracker>();
+                    if (trackerPool != nullptr && trackerPool->size() > 0) {
+                        GlobalWonderTracker& tracker = trackerPool->data()[0];
+                        tracker.markBuilt(wonderId, player);
+                    }
+
+                    // Add to city's wonder list
+                    CityWondersComponent* cityWonders =
+                        world.tryGetComponent<CityWondersComponent>(cityEntity);
+                    if (cityWonders == nullptr) {
+                        world.addComponent<CityWondersComponent>(
+                            cityEntity, CityWondersComponent{});
+                        cityWonders = world.tryGetComponent<CityWondersComponent>(cityEntity);
+                    }
+                    if (cityWonders != nullptr) {
+                        cityWonders->wonders.push_back(wonderId);
+                    }
+
+                    LOG_INFO("Completed wonder %.*s in %s",
+                             static_cast<int>(item.name.size()),
+                             item.name.c_str(),
+                             city.name.c_str());
+                    break;
+                }
+            }
+
+            queue->popCompleted();
+        }
+    }
+}
+
+} // namespace aoc::sim

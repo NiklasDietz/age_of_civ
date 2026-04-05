@@ -16,9 +16,13 @@
 #include "aoc/simulation/turn/TurnManager.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/victory/VictoryCondition.hpp"
 #include "aoc/simulation/ai/AIController.hpp"
+#include "aoc/simulation/barbarian/BarbarianController.hpp"
 #include "aoc/core/Random.hpp"
 #include "aoc/ui/UIManager.hpp"
+#include "aoc/ui/GameScreens.hpp"
+#include "aoc/simulation/tech/EurekaBoost.hpp"
 #include "aoc/core/ErrorCodes.hpp"
 #include "aoc/core/Types.hpp"
 
@@ -98,6 +102,7 @@ private:
     aoc::map::FogOfWar           m_fogOfWar;
     aoc::sim::DiplomacyManager   m_diplomacy;
     std::vector<aoc::sim::ai::AIController> m_aiControllers;
+    aoc::sim::BarbarianController m_barbarianController;
     aoc::Random                  m_gameRng{99999};
 
     /// Currently selected entity (unit or city).
@@ -111,10 +116,32 @@ private:
     aoc::ui::WidgetId  m_endTurnButton  = aoc::ui::INVALID_WIDGET;
     bool m_uiConsumedInput = false;
 
+    // Game screens
+    aoc::ui::ProductionScreen  m_productionScreen;
+    aoc::ui::TechScreen        m_techScreen;
+    aoc::ui::GovernmentScreen  m_governmentScreen;
+    aoc::ui::EconomyScreen     m_economyScreen;
+    aoc::ui::CityDetailScreen  m_cityDetailScreen;
+
+    /// Returns true if any modal screen is currently open.
+    [[nodiscard]] bool anyScreenOpen() const;
+
+    /// Close all open screens.
+    void closeAllScreens();
+
     void buildHUD();
     void updateHUD();
 
     bool m_initialized = false;
+
+    /// True once a victory condition has been met.
+    bool m_gameOver = false;
+
+    /// The victory result once the game is over.
+    aoc::sim::VictoryResult m_victoryResult{};
+
+    /// HUD label shown when the game ends.
+    aoc::ui::WidgetId m_victoryLabel = aoc::ui::INVALID_WIDGET;
 };
 
 } // namespace aoc::app

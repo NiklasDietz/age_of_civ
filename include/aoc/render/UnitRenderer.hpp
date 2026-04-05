@@ -19,6 +19,11 @@ namespace aoc::ecs {
 class World;
 }
 
+namespace aoc::map {
+class FogOfWar;
+class HexGrid;
+}
+
 namespace aoc::render {
 
 class CameraController;
@@ -30,6 +35,9 @@ public:
     /// Draw all units visible in the viewport.
     void drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
                    const aoc::ecs::World& world,
+                   const aoc::map::FogOfWar& fog,
+                   const aoc::map::HexGrid& grid,
+                   PlayerId viewingPlayer,
                    const CameraController& camera,
                    float hexSize,
                    uint32_t screenWidth, uint32_t screenHeight) const;
@@ -37,6 +45,9 @@ public:
     /// Draw all cities visible in the viewport.
     void drawCities(vulkan_app::renderer::Renderer2D& renderer2d,
                     const aoc::ecs::World& world,
+                    const aoc::map::FogOfWar& fog,
+                    const aoc::map::HexGrid& grid,
+                    PlayerId viewingPlayer,
                     const CameraController& camera,
                     float hexSize,
                     uint32_t screenWidth, uint32_t screenHeight) const;

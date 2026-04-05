@@ -11,10 +11,10 @@
  *
  * Example chains:
  *   Iron Ore -> Iron Ingots -> Tools -> Machinery -> Industrial Equipment
- *   Coal + Iron Ore -> Steel -> Advanced Machinery
- *   Copper Ore -> Copper Wire -> Electronics
- *   Oil -> Fuel / Plastics
- *   Wood -> Lumber -> Furniture / Construction Materials
+ *   Coal + Iron Ore -> Steel -> Advanced Machinery -> Aircraft
+ *   Copper Ore -> Copper Wire -> Electronics -> Microchips -> Computers -> Software
+ *   Stone -> Glass -> Precision Instruments -> Semiconductors
+ *   Silk/Cotton -> Textiles -> Clothing -> Advanced Consumer Goods
  */
 
 #include "aoc/core/Types.hpp"
@@ -66,6 +66,9 @@ namespace goods {
     inline constexpr uint16_t NITER       = 5;
     inline constexpr uint16_t URANIUM     = 6;
     inline constexpr uint16_t ALUMINUM    = 7;
+    inline constexpr uint16_t COTTON      = 8;
+    inline constexpr uint16_t RUBBER      = 9;
+    inline constexpr uint16_t TIN         = 10;
 
     // -- Raw luxury resources (20-39) --
     inline constexpr uint16_t GOLD_ORE    = 20;
@@ -74,6 +77,9 @@ namespace goods {
     inline constexpr uint16_t SILK        = 23;
     inline constexpr uint16_t IVORY       = 24;
     inline constexpr uint16_t WINE        = 25;
+    inline constexpr uint16_t DYES        = 26;
+    inline constexpr uint16_t FURS        = 27;
+    inline constexpr uint16_t INCENSE     = 28;
 
     // -- Raw bonus resources (40-59) --
     inline constexpr uint16_t WHEAT       = 40;
@@ -81,26 +87,48 @@ namespace goods {
     inline constexpr uint16_t FISH        = 42;
     inline constexpr uint16_t WOOD        = 43;
     inline constexpr uint16_t STONE       = 44;
+    inline constexpr uint16_t RICE        = 45;
+    inline constexpr uint16_t SUGAR       = 46;
+    inline constexpr uint16_t CLAY        = 47;
 
     // -- Processed goods (60-99) --
-    inline constexpr uint16_t IRON_INGOTS   = 60;
-    inline constexpr uint16_t COPPER_WIRE   = 61;
-    inline constexpr uint16_t LUMBER        = 62;
-    inline constexpr uint16_t TOOLS         = 63;
-    inline constexpr uint16_t STEEL         = 64;
-    inline constexpr uint16_t FUEL          = 65;
-    inline constexpr uint16_t PLASTICS      = 66;
-    inline constexpr uint16_t BRICKS        = 67;
+    inline constexpr uint16_t IRON_INGOTS          = 60;
+    inline constexpr uint16_t COPPER_WIRE          = 61;
+    inline constexpr uint16_t LUMBER               = 62;
+    inline constexpr uint16_t TOOLS                = 63;
+    inline constexpr uint16_t STEEL                = 64;
+    inline constexpr uint16_t FUEL                 = 65;
+    inline constexpr uint16_t PLASTICS             = 66;
+    inline constexpr uint16_t BRICKS               = 67;
+    inline constexpr uint16_t TEXTILES             = 68;
+    inline constexpr uint16_t CLOTHING             = 69;
+    inline constexpr uint16_t PROCESSED_FOOD       = 70;
+    inline constexpr uint16_t AMMUNITION           = 71;
+    inline constexpr uint16_t SURFACE_PLATE        = 72;
+    inline constexpr uint16_t PRECISION_INSTRUMENTS = 73;
+    inline constexpr uint16_t INTERCHANGEABLE_PARTS = 74;
+    inline constexpr uint16_t SEMICONDUCTORS       = 75;
+    inline constexpr uint16_t GLASS                = 76;
+    inline constexpr uint16_t RUBBER_GOODS         = 77;
+    inline constexpr uint16_t BRONZE               = 78;
 
     // -- Advanced goods (100-139) --
-    inline constexpr uint16_t MACHINERY           = 100;
-    inline constexpr uint16_t ELECTRONICS         = 101;
-    inline constexpr uint16_t ADVANCED_MACHINERY  = 102;
-    inline constexpr uint16_t INDUSTRIAL_EQUIP    = 103;
-    inline constexpr uint16_t CONSTRUCTION_MAT    = 104;
-    inline constexpr uint16_t CONSUMER_GOODS      = 105;
+    inline constexpr uint16_t MACHINERY            = 100;
+    inline constexpr uint16_t ELECTRONICS          = 101;
+    inline constexpr uint16_t ADVANCED_MACHINERY   = 102;
+    inline constexpr uint16_t INDUSTRIAL_EQUIP     = 103;
+    inline constexpr uint16_t CONSTRUCTION_MAT     = 104;
+    inline constexpr uint16_t CONSUMER_GOODS       = 105;
+    inline constexpr uint16_t MICROCHIPS           = 106;
+    inline constexpr uint16_t COMPUTERS_GOOD       = 107;
+    inline constexpr uint16_t SOFTWARE             = 108;
+    inline constexpr uint16_t AIRCRAFT_COMPONENTS  = 109;
+    inline constexpr uint16_t AIRCRAFT             = 110;
+    inline constexpr uint16_t ARMORED_VEHICLES     = 111;
+    inline constexpr uint16_t TELECOM_EQUIPMENT    = 112;
+    inline constexpr uint16_t ADV_CONSUMER_GOODS   = 113;
 
-    inline constexpr uint16_t GOOD_COUNT = 106;
+    inline constexpr uint16_t GOOD_COUNT = 114;
 } // namespace goods
 
 // ============================================================================
@@ -120,6 +148,7 @@ namespace goods {
 struct RecipeInput {
     uint16_t goodId;
     int32_t  amount;
+    bool     consumed = true;  ///< If false, the input is required but not consumed (e.g., Computers for Software).
 };
 
 /**
@@ -127,12 +156,12 @@ struct RecipeInput {
  *
  * Recipes are processed by cities that have the required building.
  * Each turn, a city with the right building and sufficient input goods
- * consumes the inputs and produces the output.
+ * consumes the consumed inputs and produces the output.
  */
 struct ProductionRecipe {
     uint16_t                  recipeId;
     std::string_view          name;
-    std::vector<RecipeInput>  inputs;         ///< What is consumed
+    std::vector<RecipeInput>  inputs;         ///< What is required (and consumed unless consumed==false)
     uint16_t                  outputGoodId;   ///< What is produced
     int32_t                   outputAmount;
     BuildingId                requiredBuilding; ///< Building needed in the city

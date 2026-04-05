@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/resource/EconomySimulation.hpp"
+#include "aoc/core/Log.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -13,10 +14,11 @@
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/Inflation.hpp"
 #include "aoc/simulation/monetary/FiscalPolicy.hpp"
+#include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/ecs/World.hpp"
 
-#include <cstdio>
+#include <algorithm>
 
 namespace aoc::sim {
 
@@ -26,9 +28,9 @@ void EconomySimulation::initialize() {
     this->m_productionChain.build();
     this->m_market.initialize();
 
-    std::fprintf(stdout, "[Economy] Initialized: %zu recipes in production chain, %u goods on market\n",
-                 this->m_productionChain.executionOrder().size(),
-                 static_cast<unsigned>(goodCount()));
+    LOG_INFO("Initialized: %zu recipes in production chain, %u goods on market",
+             this->m_productionChain.executionOrder().size(),
+             static_cast<unsigned>(goodCount()));
 }
 
 void EconomySimulation::executeTurn(aoc::ecs::World& world, const aoc::map::HexGrid& grid) {
@@ -128,9 +130,11 @@ void EconomySimulation::executeProduction(aoc::ecs::World& world) {
                 continue;
             }
 
-            // Consume inputs (availability already verified above)
+            // Consume inputs that are marked as consumed (availability verified above)
             for (const RecipeInput& input : recipe->inputs) {
-                [[maybe_unused]] bool consumed = stockpile->consumeGoods(input.goodId, input.amount);
+                if (input.consumed) {
+                    [[maybe_unused]] bool ok = stockpile->consumeGoods(input.goodId, input.amount);
+                }
             }
 
             // Produce output
@@ -169,6 +173,14 @@ void EconomySimulation::reportToMarket(aoc::ecs::World& world) {
             this->m_market.reportDemand(goods::WHEAT, city->population);
             // Consumer goods demand
             this->m_market.reportDemand(goods::CONSUMER_GOODS, city->population / 3 + 1);
+            // Processed food demand scales with population (cities > 5 pop)
+            if (city->population > 5) {
+                this->m_market.reportDemand(goods::PROCESSED_FOOD, (city->population - 5) / 2 + 1);
+            }
+            // Advanced consumer goods demand (cities > 10 pop)
+            if (city->population > 10) {
+                this->m_market.reportDemand(goods::ADV_CONSUMER_GOODS, (city->population - 10) / 3 + 1);
+            }
         }
     }
 }
@@ -204,7 +216,21 @@ void EconomySimulation::executeTradeRoutes(aoc::ecs::World& world) {
         }
 
         // Reset for next delivery cycle
-        route.turnsRemaining = static_cast<int32_t>(route.path.size()) / 5 + 1;
+        int32_t baseTurns = static_cast<int32_t>(route.path.size()) / 5 + 1;
+
+        // Computers tech (-1 turn transit) and Telecom Hub check
+        bool hasComputersTech = false;
+        world.forEach<PlayerTechComponent>(
+            [&hasComputersTech, &route](EntityId, const PlayerTechComponent& tech) {
+                if (tech.owner == route.sourcePlayer && tech.hasResearched(TechId{16})) {
+                    hasComputersTech = true;
+                }
+            });
+        if (hasComputersTech) {
+            baseTurns = std::max(1, baseTurns - 1);
+        }
+
+        route.turnsRemaining = baseTurns;
     }
 }
 

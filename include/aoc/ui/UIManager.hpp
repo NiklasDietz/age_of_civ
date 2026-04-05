@@ -42,6 +42,12 @@ public:
     /// Create a text label.
     [[nodiscard]] WidgetId createLabel(WidgetId parent, Rect bounds, LabelData labelData);
 
+    /// Create a scrollable list container.
+    [[nodiscard]] WidgetId createScrollList(WidgetId parent, Rect bounds, ScrollListData data = {});
+
+    /// Adjust scroll offset on a ScrollList widget.
+    void scrollWidget(WidgetId id, float delta);
+
     /// Remove a widget and all its children.
     void removeWidget(WidgetId id);
 
@@ -72,7 +78,8 @@ public:
      * Returns true if the UI consumed the input (click was on a widget).
      */
     bool handleInput(float mouseX, float mouseY,
-                     bool mousePressed, bool mouseReleased);
+                     bool mousePressed, bool mouseReleased,
+                     float scrollDelta = 0.0f);
 
     // ========================================================================
     // Layout

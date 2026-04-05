@@ -41,17 +41,25 @@ namespace aoc::save {
 
 /// File format magic bytes: "AOC\0"
 inline constexpr uint32_t SAVE_MAGIC   = 0x00434F41;
-inline constexpr uint32_t SAVE_VERSION = 1;
+inline constexpr uint32_t SAVE_VERSION = 3;
 
 /// Section IDs for each chunk of game state.
 enum class SectionId : uint16_t {
-    MapGrid        = 0x0001,
-    Entities       = 0x0002,
-    TurnState      = 0x0003,
-    Diplomacy      = 0x0004,
-    Market         = 0x0005,
-    FogOfWar       = 0x0006,
-    RandomState    = 0x0007,
+    MapGrid          = 0x0001,
+    Entities         = 0x0002,
+    TurnState        = 0x0003,
+    Diplomacy        = 0x0004,
+    Market           = 0x0005,
+    FogOfWar         = 0x0006,
+    RandomState      = 0x0007,
+    Improvements     = 0x0008,  ///< Tile improvements + roads
+    TechProgress     = 0x0009,  ///< Per-player tech/civic state
+    ProductionQueues = 0x000A,  ///< City production queues
+    Districts        = 0x000B,  ///< City districts and buildings
+    MonetaryState    = 0x000C,  ///< Per-player monetary state
+    GovernmentState  = 0x000D,  ///< Per-player government + policies
+    VictoryState     = 0x000E,  ///< Victory trackers
+    Stockpiles       = 0x000F,  ///< City stockpiles
 };
 
 /// Low-level binary write buffer.

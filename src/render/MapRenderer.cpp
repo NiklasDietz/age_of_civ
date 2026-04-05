@@ -8,6 +8,7 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
+#include "aoc/map/FogOfWar.hpp"
 
 #include <renderer/Renderer2D.hpp>
 
@@ -17,6 +18,8 @@ namespace aoc::render {
 
 void MapRenderer::draw(vulkan_app::renderer::Renderer2D& renderer2d,
                         const aoc::map::HexGrid& grid,
+                        const aoc::map::FogOfWar& fog,
+                        PlayerId viewingPlayer,
                         const CameraController& camera,
                         uint32_t screenWidth, uint32_t screenHeight) const {
     // Compute visible world-space bounds from camera
@@ -40,6 +43,14 @@ void MapRenderer::draw(vulkan_app::renderer::Renderer2D& renderer2d,
 
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
+            int32_t index = row * width + col;
+
+            // Fog of war: skip unseen tiles entirely
+            aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, index);
+            if (vis == aoc::map::TileVisibility::Unseen) {
+                continue;
+            }
+
             hex::AxialCoord axial = hex::offsetToAxial({col, row});
             float cx = 0.0f, cy = 0.0f;
             hex::axialToPixel(axial, this->m_hexSize, cx, cy);
@@ -49,15 +60,16 @@ void MapRenderer::draw(vulkan_app::renderer::Renderer2D& renderer2d,
                 continue;
             }
 
-            int32_t index = row * width + col;
-            this->drawTile(renderer2d, grid, index, cx, cy);
+            this->drawTile(renderer2d, grid, index, cx, cy,
+                           vis == aoc::map::TileVisibility::Revealed);
         }
     }
 }
 
 void MapRenderer::drawTile(vulkan_app::renderer::Renderer2D& renderer2d,
                             const aoc::map::HexGrid& grid,
-                            int32_t tileIndex, float cx, float cy) const {
+                            int32_t tileIndex, float cx, float cy,
+                            bool dimmed) const {
     // Compute hex vertices
     float points[12];
     hex::hexVertices(cx, cy, this->m_hexSize, points);
@@ -72,6 +84,14 @@ void MapRenderer::drawTile(vulkan_app::renderer::Renderer2D& renderer2d,
     float r = std::clamp(baseColor.r + tint.r, 0.0f, 1.0f);
     float g = std::clamp(baseColor.g + tint.g, 0.0f, 1.0f);
     float b = std::clamp(baseColor.b + tint.b, 0.0f, 1.0f);
+
+    // Dim revealed-but-not-visible tiles
+    if (dimmed) {
+        constexpr float DIM_FACTOR = 0.4f;
+        r *= DIM_FACTOR;
+        g *= DIM_FACTOR;
+        b *= DIM_FACTOR;
+    }
 
     // Draw filled hex
     renderer2d.drawFilledPolygon(points, 6, r, g, b, 1.0f);

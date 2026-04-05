@@ -22,6 +22,8 @@ struct CivicDef {
     EraId                era;
     int32_t              cultureCost;
     std::vector<CivicId> prerequisites;
+    std::vector<uint8_t> unlockedGovernmentIds;  ///< Government type IDs unlocked by this civic.
+    std::vector<uint8_t> unlockedPolicyIds;      ///< Policy card IDs unlocked by this civic.
 };
 
 [[nodiscard]] const std::vector<CivicDef>& allCivics();

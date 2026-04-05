@@ -5,6 +5,8 @@
  * @brief Renders the hex tile map using Renderer2D with real terrain data.
  */
 
+#include "aoc/core/Types.hpp"
+
 #include <cstdint>
 
 namespace vulkan_app::renderer {
@@ -13,6 +15,7 @@ class Renderer2D;
 
 namespace aoc::map {
 class HexGrid;
+class FogOfWar;
 }
 
 namespace aoc::render {
@@ -31,6 +34,8 @@ public:
      */
     void draw(vulkan_app::renderer::Renderer2D& renderer2d,
               const aoc::map::HexGrid& grid,
+              const aoc::map::FogOfWar& fog,
+              PlayerId viewingPlayer,
               const CameraController& camera,
               uint32_t screenWidth, uint32_t screenHeight) const;
 
@@ -41,7 +46,8 @@ public:
 private:
     void drawTile(vulkan_app::renderer::Renderer2D& renderer2d,
                   const aoc::map::HexGrid& grid,
-                  int32_t tileIndex, float cx, float cy) const;
+                  int32_t tileIndex, float cx, float cy,
+                  bool dimmed = false) const;
 
     void drawRiverEdges(vulkan_app::renderer::Renderer2D& renderer2d,
                         uint8_t riverMask, float cx, float cy) const;

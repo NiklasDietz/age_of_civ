@@ -32,6 +32,10 @@ enum class InputAction : uint8_t {
     OpenEconomy,
     ToggleGrid,
 
+    // Screens
+    OpenProductionPicker,
+    OpenGovernment,
+
     // Save/Load
     QuickSave,
     QuickLoad,

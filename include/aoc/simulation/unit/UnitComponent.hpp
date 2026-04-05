@@ -22,6 +22,9 @@ struct UnitComponent {
     int32_t         hitPoints;
     int32_t         movementRemaining;
     UnitState       state = UnitState::Idle;
+    int8_t          chargesRemaining = -1;   ///< -1 = unlimited, >= 0 = remaining build charges
+    int8_t          cargoCapacity = 0;       ///< Number of land units this naval unit can carry (0 = none).
+    std::vector<EntityId> cargo;             ///< Land units currently embarked on this naval unit.
 
     /// Path the unit is currently following (empty if stationary).
     std::vector<hex::AxialCoord> pendingPath;
@@ -36,6 +39,19 @@ struct UnitComponent {
         unit.hitPoints         = def.maxHitPoints;
         unit.movementRemaining = def.movementPoints;
         unit.state             = UnitState::Idle;
+        // Builders start with 3 charges
+        if (def.unitClass == UnitClass::Civilian) {
+            unit.chargesRemaining = 3;
+        }
+        // Naval cargo capacity
+        if (def.unitClass == UnitClass::Naval) {
+            if (typeId.value == 6) {        // Galley
+                unit.cargoCapacity = 1;
+            } else if (typeId.value == 7) { // Caravel
+                unit.cargoCapacity = 2;
+            }
+            // Battleship (id 8) has 0 cargo capacity
+        }
         return unit;
     }
 };

@@ -5,8 +5,8 @@
 
 #include "aoc/app/Application.hpp"
 #include "aoc/core/ErrorCodes.hpp"
+#include "aoc/core/Log.hpp"
 
-#include <cstdio>
 #include <cstdlib>
 
 int main() {
@@ -26,10 +26,10 @@ int main() {
 
     aoc::ErrorCode result = app.initialize(config);
     if (result != aoc::ErrorCode::Ok) {
-        std::fprintf(stderr, "[main] Initialization failed (error %u): %.*s\n",
-                     static_cast<unsigned>(result),
-                     static_cast<int>(aoc::describeError(result).size()),
-                     aoc::describeError(result).data());
+        LOG_ERROR("Initialization failed (error %u): %.*s",
+                  static_cast<unsigned>(result),
+                  static_cast<int>(aoc::describeError(result).size()),
+                  aoc::describeError(result).data());
         return EXIT_FAILURE;
     }
 

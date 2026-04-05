@@ -47,7 +47,7 @@ public:
      * @param rng        Deterministic PRNG for AI randomness.
      */
     void executeTurn(aoc::ecs::World& world,
-                     const aoc::map::HexGrid& grid,
+                     aoc::map::HexGrid& grid,
                      DiplomacyManager& diplomacy,
                      const Market& market,
                      aoc::Random& rng);
@@ -63,17 +63,21 @@ private:
         const Market& market) const;
 
     void executeUnitActions(aoc::ecs::World& world,
-                            const aoc::map::HexGrid& grid,
+                            aoc::map::HexGrid& grid,
                             aoc::Random& rng);
 
     void executeCityActions(aoc::ecs::World& world,
-                            const aoc::map::HexGrid& grid);
+                            aoc::map::HexGrid& grid);
 
     void executeDiplomacyActions(aoc::ecs::World& world,
                                  DiplomacyManager& diplomacy,
                                  const Market& market);
 
     void selectResearch(aoc::ecs::World& world);
+
+    void manageBuildersAndImprovements(aoc::ecs::World& world, aoc::map::HexGrid& grid);
+
+    void manageGovernment(aoc::ecs::World& world);
 
     PlayerId      m_player;
     UtilityWeights m_weights;

@@ -73,6 +73,40 @@ WidgetId UIManager::createLabel(WidgetId parent, Rect bounds, LabelData labelDat
     return id;
 }
 
+WidgetId UIManager::createScrollList(WidgetId parent, Rect bounds, ScrollListData data) {
+    assert(parent < this->m_widgets.size());
+    WidgetId id = this->allocateWidget();
+    Widget& w = this->m_widgets[id];
+    w.requestedBounds = bounds;
+    w.data = std::move(data);
+    w.parent = parent;
+    this->m_widgets[parent].children.push_back(id);
+    return id;
+}
+
+void UIManager::scrollWidget(WidgetId id, float delta) {
+    Widget* w = this->getWidget(id);
+    if (w == nullptr) {
+        return;
+    }
+    ScrollListData* scrollData = std::get_if<ScrollListData>(&w->data);
+    if (scrollData == nullptr) {
+        return;
+    }
+    scrollData->scrollOffset += delta;
+    // Clamp to valid range
+    float maxScroll = scrollData->contentHeight - w->computedBounds.h;
+    if (maxScroll < 0.0f) {
+        maxScroll = 0.0f;
+    }
+    if (scrollData->scrollOffset < 0.0f) {
+        scrollData->scrollOffset = 0.0f;
+    }
+    if (scrollData->scrollOffset > maxScroll) {
+        scrollData->scrollOffset = maxScroll;
+    }
+}
+
 void UIManager::removeWidget(WidgetId id) {
     if (id >= this->m_widgets.size() || this->m_widgets[id].id == INVALID_WIDGET) {
         return;
@@ -149,7 +183,8 @@ void UIManager::setVisible(WidgetId id, bool visible) {
 // ============================================================================
 
 bool UIManager::handleInput(float mouseX, float mouseY,
-                             bool mousePressed, bool mouseReleased) {
+                             bool mousePressed, bool mouseReleased,
+                             float scrollDelta) {
     // Reset hover state
     if (this->m_hoveredWidget != INVALID_WIDGET && this->m_hoveredWidget < this->m_widgets.size()) {
         this->m_widgets[this->m_hoveredWidget].isHovered = false;
@@ -162,6 +197,20 @@ bool UIManager::handleInput(float mouseX, float mouseY,
     if (hit != INVALID_WIDGET) {
         Widget& w = this->m_widgets[hit];
         w.isHovered = true;
+
+        // Scroll wheel: walk up from hovered widget to find a ScrollList ancestor
+        if (scrollDelta != 0.0f) {
+            constexpr float SCROLL_PIXEL_MULTIPLIER = 20.0f;
+            WidgetId cur = hit;
+            while (cur != INVALID_WIDGET) {
+                Widget* candidate = this->getWidget(cur);
+                if (candidate != nullptr && std::holds_alternative<ScrollListData>(candidate->data)) {
+                    this->scrollWidget(cur, -scrollDelta * SCROLL_PIXEL_MULTIPLIER);
+                    break;
+                }
+                cur = (candidate != nullptr) ? candidate->parent : INVALID_WIDGET;
+            }
+        }
 
         if (mousePressed) {
             w.isPressed = true;
@@ -217,9 +266,10 @@ WidgetId UIManager::hitTestWidget(WidgetId id, float x, float y) const {
         }
     }
 
-    // Buttons and panels are clickable; labels are not
+    // Buttons, panels, and scroll lists are clickable; labels are not
     if (std::holds_alternative<ButtonData>(w->data) ||
-        std::holds_alternative<PanelData>(w->data)) {
+        std::holds_alternative<PanelData>(w->data) ||
+        std::holds_alternative<ScrollListData>(w->data)) {
         return id;
     }
 
@@ -248,9 +298,15 @@ void UIManager::layoutWidget(WidgetId id, float parentX, float parentY) {
     w->computedBounds.w = w->requestedBounds.w;
     w->computedBounds.h = w->requestedBounds.h;
 
+    // For ScrollList parents, apply scroll offset to children
+    float scrollOffsetY = 0.0f;
+    if (ScrollListData* scrollData = std::get_if<ScrollListData>(&w->data)) {
+        scrollOffsetY = -scrollData->scrollOffset;
+    }
+
     // Layout children (simple stacking with padding and spacing)
     float contentX = w->computedBounds.x + w->padding.left;
-    float contentY = w->computedBounds.y + w->padding.top;
+    float contentY = w->computedBounds.y + w->padding.top + scrollOffsetY;
     float cursorX = contentX;
     float cursorY = contentY;
 
@@ -267,6 +323,16 @@ void UIManager::layoutWidget(WidgetId id, float parentX, float parentY) {
             this->layoutWidget(childId, cursorX, cursorY);
             cursorX += child->computedBounds.w + w->childSpacing;
         }
+    }
+
+    // Update contentHeight for ScrollList widgets
+    if (ScrollListData* scrollData = std::get_if<ScrollListData>(&w->data)) {
+        float totalHeight = (cursorY - scrollOffsetY) -
+                            (w->computedBounds.y + w->padding.top);
+        if (!w->children.empty()) {
+            totalHeight -= w->childSpacing;  // Remove trailing spacing
+        }
+        scrollData->contentHeight = totalHeight;
     }
 }
 
@@ -334,10 +400,28 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d,
                                       data.fontSize, data.color);
             }
         }
+        else if constexpr (std::is_same_v<T, ScrollListData>) {
+            // Draw background
+            renderer2d.drawFilledRect(b.x, b.y, b.w, b.h,
+                                       data.backgroundColor.r, data.backgroundColor.g,
+                                       data.backgroundColor.b, data.backgroundColor.a);
+        }
     }, w->data);
 
-    // Render children
+    // Render children -- for ScrollList, clip to visible window
+    const bool isScrollList = std::holds_alternative<ScrollListData>(w->data);
     for (WidgetId childId : w->children) {
+        if (isScrollList) {
+            const Widget* child = this->getWidget(childId);
+            if (child == nullptr || !child->isVisible) {
+                continue;
+            }
+            const Rect& cb = child->computedBounds;
+            // Skip children entirely outside the visible window
+            if (cb.y + cb.h < b.y || cb.y > b.y + b.h) {
+                continue;
+            }
+        }
         this->renderWidget(renderer2d, childId);
     }
 }

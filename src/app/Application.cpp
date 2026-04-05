@@ -11,6 +11,11 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
+#include "aoc/simulation/city/ProductionQueue.hpp"
+#include "aoc/simulation/city/ProductionSystem.hpp"
+#include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/city/BorderExpansion.hpp"
+#include "aoc/simulation/map/Improvement.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
@@ -18,9 +23,20 @@
 #include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/simulation/tech/EraProgression.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
+#include "aoc/simulation/unit/Naval.hpp"
 #include "aoc/simulation/city/CityGrowth.hpp"
+#include "aoc/simulation/city/CityScience.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
+#include "aoc/simulation/victory/VictoryCondition.hpp"
+#include "aoc/simulation/government/Government.hpp"
+#include "aoc/simulation/government/GovernmentComponent.hpp"
+#include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/greatpeople/GreatPeople.hpp"
+#include "aoc/simulation/wonder/Wonder.hpp"
+#include "aoc/simulation/tech/EurekaBoost.hpp"
+#include "aoc/simulation/diplomacy/EspionageSystem.hpp"
 #include "aoc/save/Serializer.hpp"
+#include "aoc/core/Log.hpp"
 
 #include <renderer/GraphicsDevice.hpp>
 #include <renderer/RenderPipeline.hpp>
@@ -30,7 +46,6 @@
 #include <GLFW/glfw3.h>
 
 #include <chrono>
-#include <cstdio>
 
 namespace aoc::app {
 
@@ -44,10 +59,9 @@ ErrorCode Application::initialize(const Config& config) {
     // -- Window --
     ErrorCode result = this->m_window.create(config.window);
     if (result != ErrorCode::Ok) {
-        std::fprintf(stderr, "[Application] %s:%d Window creation failed: %.*s\n",
-                     __FILE__, __LINE__,
-                     static_cast<int>(describeError(result).size()),
-                     describeError(result).data());
+        LOG_ERROR("Window creation failed: %.*s",
+                  static_cast<int>(describeError(result).size()),
+                  describeError(result).data());
         return result;
     }
 
@@ -58,11 +72,19 @@ ErrorCode Application::initialize(const Config& config) {
     deviceConfig.appName = "AgeOfCiv";
     deviceConfig.enableValidation = config.enableValidation;
 
+    // Query GLFW for the Vulkan instance extensions it needs for surface creation.
+    // The renderer submodule's getRequiredExtensions("glfw") returns empty,
+    // so we must provide them explicitly.
+    uint32_t glfwExtCount = 0;
+    const char** glfwExts = glfwGetRequiredInstanceExtensions(&glfwExtCount);
+    for (uint32_t i = 0; i < glfwExtCount; ++i) {
+        deviceConfig.instanceExtensions.push_back(glfwExts[i]);
+    }
+
     this->m_graphicsDevice = vulkan_app::GraphicsDevice::createFromNativeWindow(
         static_cast<void*>(this->m_window.handle()), "glfw", deviceConfig);
     if (this->m_graphicsDevice == nullptr) {
-        std::fprintf(stderr, "[Application] %s:%d Vulkan device creation failed\n",
-                     __FILE__, __LINE__);
+        LOG_ERROR("Vulkan device creation failed");
         return ErrorCode::VulkanDeviceCreationFailed;
     }
 
@@ -92,8 +114,8 @@ ErrorCode Application::initialize(const Config& config) {
     mapConfig.height = 50;
     mapConfig.seed   = 12345;
     aoc::map::MapGenerator::generate(mapConfig, this->m_hexGrid);
-    std::fprintf(stdout, "[Application] Map generated (%dx%d)\n",
-                 this->m_hexGrid.width(), this->m_hexGrid.height());
+    LOG_INFO("Map generated (%dx%d)",
+             this->m_hexGrid.width(), this->m_hexGrid.height());
 
     // -- Game setup --
     this->m_turnManager.setPlayerCount(1, 1);  // 1 human + 1 AI
@@ -130,7 +152,7 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_cameraController.setPosition(centerX, centerY);
 
     this->m_initialized = true;
-    std::fprintf(stdout, "[Application] Initialized (%ux%u), Turn 0\n", fbWidth, fbHeight);
+    LOG_INFO("Initialized (%ux%u), Turn 0", fbWidth, fbHeight);
     return ErrorCode::Ok;
 }
 
@@ -156,9 +178,37 @@ void Application::run() {
         auto [fbWidth, fbHeight] = this->m_window.framebufferSize();
         this->m_cameraController.update(this->m_inputManager, deltaTime, fbWidth, fbHeight);
 
-        // -- Escape to close --
+        // -- Escape: close any open screen first, then quit --
         if (this->m_inputManager.isActionPressed(InputAction::Cancel)) {
-            break;
+            if (this->anyScreenOpen()) {
+                this->closeAllScreens();
+            } else {
+                break;
+            }
+        }
+
+        // -- Screen toggle keys --
+        if (this->m_inputManager.isActionPressed(InputAction::OpenTechTree)) {
+            this->m_techScreen.setContext(&this->m_world, 0);
+            this->m_techScreen.toggle(this->m_uiManager);
+        }
+        if (this->m_inputManager.isActionPressed(InputAction::OpenEconomy)) {
+            this->m_economyScreen.setContext(&this->m_world, &this->m_hexGrid, 0);
+            this->m_economyScreen.toggle(this->m_uiManager);
+        }
+        if (this->m_inputManager.isActionPressed(InputAction::OpenGovernment)) {
+            this->m_governmentScreen.setContext(&this->m_world, 0);
+            this->m_governmentScreen.toggle(this->m_uiManager);
+        }
+        if (this->m_inputManager.isActionPressed(InputAction::OpenProductionPicker)) {
+            // Only open if a city is selected
+            if (this->m_selectedEntity.isValid() &&
+                this->m_world.isAlive(this->m_selectedEntity) &&
+                this->m_world.hasComponent<aoc::sim::CityComponent>(this->m_selectedEntity)) {
+                this->m_productionScreen.setContext(
+                    &this->m_world, &this->m_hexGrid, this->m_selectedEntity, 0);
+                this->m_productionScreen.toggle(this->m_uiManager);
+            }
         }
 
         // -- Quick save/load --
@@ -168,9 +218,9 @@ void Application::run() {
                 this->m_turnManager, this->m_economy, this->m_diplomacy,
                 this->m_fogOfWar, this->m_gameRng);
             if (saveResult != ErrorCode::Ok) {
-                std::fprintf(stderr, "[Game] Quick save failed: %.*s\n",
-                             static_cast<int>(describeError(saveResult).size()),
-                             describeError(saveResult).data());
+                LOG_ERROR("Quick save failed: %.*s",
+                          static_cast<int>(describeError(saveResult).size()),
+                          describeError(saveResult).data());
             }
         }
         if (this->m_inputManager.isActionPressed(InputAction::QuickLoad)) {
@@ -179,28 +229,80 @@ void Application::run() {
                 this->m_turnManager, this->m_economy, this->m_diplomacy,
                 this->m_fogOfWar, this->m_gameRng);
             if (loadResult != ErrorCode::Ok) {
-                std::fprintf(stderr, "[Game] Quick load failed: %.*s\n",
-                             static_cast<int>(describeError(loadResult).size()),
-                             describeError(loadResult).data());
+                LOG_ERROR("Quick load failed: %.*s",
+                          static_cast<int>(describeError(loadResult).size()),
+                          describeError(loadResult).data());
             } else {
+                // Re-initialize economy (rebuild production chain from loaded state)
+                this->m_economy.initialize();
+
+                // Re-initialize fog of war from loaded state for all players
+                this->m_fogOfWar.initialize(this->m_hexGrid.tileCount(), MAX_PLAYERS);
                 this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, 0);
+                for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
+                    this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, ai.player());
+                }
             }
         }
 
         // -- UI input (consumes clicks on widgets) --
         bool leftPressed  = this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
         bool leftReleased = this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT);
+        float scrollDelta = static_cast<float>(this->m_inputManager.scrollDelta());
         this->m_uiConsumedInput = this->m_uiManager.handleInput(
             static_cast<float>(this->m_inputManager.mouseX()),
             static_cast<float>(this->m_inputManager.mouseY()),
-            leftPressed, leftReleased);
+            leftPressed, leftReleased, scrollDelta);
 
-        // -- Game input (only if UI didn't consume it) --
-        if (!this->m_uiConsumedInput) {
+        // -- Minimap click detection --
+        constexpr float MINIMAP_W = 200.0f;
+        constexpr float MINIMAP_H = 130.0f;
+        constexpr float MINIMAP_MARGIN = 10.0f;
+        const float minimapX = MINIMAP_MARGIN;
+        const float minimapY = static_cast<float>(fbHeight) - MINIMAP_H - MINIMAP_MARGIN;
+
+        if (leftPressed && !this->m_uiConsumedInput) {
+            const float mouseXf = static_cast<float>(this->m_inputManager.mouseX());
+            const float mouseYf = static_cast<float>(this->m_inputManager.mouseY());
+            if (this->m_gameRenderer.minimap().containsPoint(
+                    mouseXf, mouseYf, minimapX, minimapY, MINIMAP_W, MINIMAP_H)) {
+                float worldX = 0.0f;
+                float worldY = 0.0f;
+                this->m_gameRenderer.minimap().screenToWorld(
+                    mouseXf, mouseYf, minimapX, minimapY, MINIMAP_W, MINIMAP_H,
+                    this->m_hexGrid,
+                    this->m_gameRenderer.mapRenderer().hexSize(),
+                    worldX, worldY);
+                this->m_cameraController.setPosition(worldX, worldY);
+                this->m_uiConsumedInput = true;
+            }
+        }
+
+        // -- Game input (only if UI didn't consume it and no screen is open) --
+        if (!this->m_uiConsumedInput && !this->anyScreenOpen()) {
             this->handleSelect();
             this->handleContextAction();
         }
-        this->handleEndTurn();
+        if (!this->anyScreenOpen()) {
+            this->handleEndTurn();
+        }
+
+        // Refresh any open screens
+        this->m_productionScreen.refresh(this->m_uiManager);
+        this->m_techScreen.refresh(this->m_uiManager);
+        this->m_governmentScreen.refresh(this->m_uiManager);
+        this->m_economyScreen.refresh(this->m_uiManager);
+        this->m_cityDetailScreen.refresh(this->m_uiManager);
+
+        // Update tooltip when no screen is open
+        if (!this->anyScreenOpen()) {
+            this->m_gameRenderer.tooltipManager().update(
+                static_cast<float>(this->m_inputManager.mouseX()),
+                static_cast<float>(this->m_inputManager.mouseY()),
+                this->m_world, this->m_hexGrid,
+                this->m_cameraController, this->m_fogOfWar,
+                PlayerId{0}, fbWidth, fbHeight);
+        }
 
         // Sync selection to renderer and update HUD text
         this->m_gameRenderer.unitRenderer().selectedEntity = this->m_selectedEntity;
@@ -225,6 +327,8 @@ void Application::run() {
             this->m_cameraController,
             this->m_hexGrid,
             this->m_world,
+            this->m_fogOfWar,
+            PlayerId{0},
             this->m_uiManager,
             frame.extent.width, frame.extent.height);
 
@@ -250,7 +354,7 @@ void Application::shutdown() {
     this->m_window.destroy();
 
     this->m_initialized = false;
-    std::fprintf(stdout, "[Application] Shutdown complete\n");
+    LOG_INFO("Shutdown complete");
 }
 
 void Application::onResize(uint32_t width, uint32_t height) {
@@ -303,6 +407,12 @@ void Application::handleSelect() {
         for (uint32_t i = 0; i < cityPool->size(); ++i) {
             if (cityPool->data()[i].location == clickedTile) {
                 this->m_selectedEntity = cityPool->entities()[i];
+                // Open city detail screen
+                this->m_cityDetailScreen.setContext(
+                    &this->m_world, &this->m_hexGrid, this->m_selectedEntity, 0);
+                if (!this->m_cityDetailScreen.isOpen()) {
+                    this->m_cityDetailScreen.open(this->m_uiManager);
+                }
                 return;
             }
         }
@@ -320,11 +430,6 @@ void Application::handleContextAction() {
         return;
     }
 
-    // Only move units, not cities
-    if (!this->m_world.hasComponent<aoc::sim::UnitComponent>(this->m_selectedEntity)) {
-        return;
-    }
-
     auto [fbWidth, fbHeight] = this->m_window.framebufferSize();
     float worldX = 0.0f, worldY = 0.0f;
     this->m_cameraController.screenToWorld(
@@ -338,6 +443,44 @@ void Application::handleContextAction() {
         return;
     }
 
+    // Handle right-click on a selected city: enqueue production
+    if (this->m_world.hasComponent<aoc::sim::CityComponent>(this->m_selectedEntity)) {
+        aoc::sim::CityComponent& city =
+            this->m_world.getComponent<aoc::sim::CityComponent>(this->m_selectedEntity);
+        if (city.location == targetTile) {
+            aoc::sim::ProductionQueueComponent* queue =
+                this->m_world.tryGetComponent<aoc::sim::ProductionQueueComponent>(
+                    this->m_selectedEntity);
+            if (queue != nullptr && queue->isEmpty()) {
+                aoc::sim::ProductionQueueItem item{};
+                item.type = aoc::sim::ProductionItemType::Unit;
+                item.itemId = 0;  // Warrior
+                item.name = "Warrior";
+                item.totalCost = 40.0f;
+                item.progress = 0.0f;
+                queue->queue.push_back(std::move(item));
+                LOG_INFO("Enqueued Warrior in %s", city.name.c_str());
+            }
+        }
+        return;
+    }
+
+    // Activate Great Person on right-click at their own tile
+    if (this->m_world.hasComponent<aoc::sim::GreatPersonComponent>(this->m_selectedEntity)) {
+        const aoc::sim::GreatPersonComponent& gpCheck =
+            this->m_world.getComponent<aoc::sim::GreatPersonComponent>(this->m_selectedEntity);
+        if (gpCheck.position == targetTile && !gpCheck.isActivated) {
+            aoc::sim::activateGreatPerson(this->m_world, this->m_hexGrid, this->m_selectedEntity);
+            this->m_selectedEntity = NULL_ENTITY;
+            return;
+        }
+    }
+
+    // Only move units
+    if (!this->m_world.hasComponent<aoc::sim::UnitComponent>(this->m_selectedEntity)) {
+        return;
+    }
+
     aoc::sim::UnitComponent& unit =
         this->m_world.getComponent<aoc::sim::UnitComponent>(this->m_selectedEntity);
 
@@ -345,13 +488,103 @@ void Application::handleContextAction() {
     const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(unit.typeId);
     if (def.unitClass == aoc::sim::UnitClass::Settler && unit.position == targetTile) {
         // Found city at current position
+        PlayerId cityOwner = unit.owner;
+        hex::AxialCoord cityPos = unit.position;
+
         EntityId cityEntity = this->m_world.createEntity();
+        aoc::sim::CityComponent newCity =
+            aoc::sim::CityComponent::create(cityOwner, cityPos, "New City");
+
+        // Check if this is the player's first city (original capital)
+        bool hasExistingCity = false;
+        const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* existingCities =
+            this->m_world.getPool<aoc::sim::CityComponent>();
+        if (existingCities != nullptr) {
+            for (uint32_t ci = 0; ci < existingCities->size(); ++ci) {
+                if (existingCities->data()[ci].owner == cityOwner) {
+                    hasExistingCity = true;
+                    break;
+                }
+            }
+        }
+        if (!hasExistingCity) {
+            newCity.isOriginalCapital = true;
+            newCity.originalOwner = cityOwner;
+        }
+
         this->m_world.addComponent<aoc::sim::CityComponent>(
-            cityEntity,
-            aoc::sim::CityComponent::create(unit.owner, unit.position, "New City"));
+            cityEntity, std::move(newCity));
+        this->m_world.addComponent<aoc::sim::ProductionQueueComponent>(
+            cityEntity, aoc::sim::ProductionQueueComponent{});
+
+        aoc::sim::CityDistrictsComponent districts{};
+        aoc::sim::CityDistrictsComponent::PlacedDistrict center;
+        center.type = aoc::sim::DistrictType::CityCenter;
+        center.location = cityPos;
+        districts.districts.push_back(std::move(center));
+        this->m_world.addComponent<aoc::sim::CityDistrictsComponent>(
+            cityEntity, std::move(districts));
+
+        aoc::sim::claimInitialTerritory(this->m_hexGrid, cityPos, cityOwner);
         this->m_world.destroyEntity(this->m_selectedEntity);
         this->m_selectedEntity = cityEntity;
-        std::fprintf(stdout, "[Game] City founded!\n");
+        LOG_INFO("City founded!");
+
+        // Eureka: FoundCity condition
+        aoc::sim::checkEurekaConditions(this->m_world, cityOwner,
+                                        aoc::sim::EurekaCondition::FoundCity);
+        return;
+    }
+
+    // Builder: build improvement at current position
+    if (def.unitClass == aoc::sim::UnitClass::Civilian && unit.position == targetTile) {
+        int32_t tileIndex = this->m_hexGrid.toIndex(unit.position);
+        aoc::map::ImprovementType bestImpr =
+            aoc::sim::bestImprovementForTile(this->m_hexGrid, tileIndex);
+
+        if (bestImpr != aoc::map::ImprovementType::None &&
+            this->m_hexGrid.improvement(tileIndex) == aoc::map::ImprovementType::None) {
+            this->m_hexGrid.setImprovement(tileIndex, bestImpr);
+
+            aoc::sim::UnitComponent& builderUnit =
+                this->m_world.getComponent<aoc::sim::UnitComponent>(this->m_selectedEntity);
+            if (builderUnit.chargesRemaining > 0) {
+                --builderUnit.chargesRemaining;
+            }
+
+            // Eureka: check if the built improvement triggers a boost
+            if (bestImpr == aoc::map::ImprovementType::Quarry) {
+                aoc::sim::checkEurekaConditions(this->m_world, unit.owner,
+                                                aoc::sim::EurekaCondition::BuildQuarry);
+            }
+
+            LOG_INFO("Builder placed improvement at (%d,%d)",
+                     unit.position.q, unit.position.r);
+
+            if (builderUnit.chargesRemaining == 0) {
+                this->m_world.destroyEntity(this->m_selectedEntity);
+                this->m_selectedEntity = NULL_ENTITY;
+                LOG_INFO("Builder exhausted all charges");
+            }
+            return;
+        }
+    }
+
+    // Embark: land unit right-clicking an adjacent water tile
+    int32_t targetIndex = this->m_hexGrid.toIndex(targetTile);
+    aoc::map::TerrainType targetTerrain = this->m_hexGrid.terrain(targetIndex);
+    if (!aoc::sim::isNaval(def.unitClass) && unit.state != aoc::sim::UnitState::Embarked
+        && targetTerrain == aoc::map::TerrainType::Coast
+        && hex::distance(unit.position, targetTile) == 1) {
+        (void)aoc::sim::tryEmbark(this->m_world, this->m_selectedEntity, targetTile, this->m_hexGrid);
+        return;
+    }
+
+    // Disembark: embarked unit right-clicking an adjacent land tile
+    if (unit.state == aoc::sim::UnitState::Embarked
+        && !aoc::map::isWater(targetTerrain) && !aoc::map::isImpassable(targetTerrain)
+        && hex::distance(unit.position, targetTile) == 1) {
+        (void)aoc::sim::tryDisembark(this->m_world, this->m_selectedEntity, targetTile, this->m_hexGrid);
         return;
     }
 
@@ -366,6 +599,11 @@ void Application::handleContextAction() {
 
 void Application::handleEndTurn() {
     if (!this->m_inputManager.isActionPressed(InputAction::EndTurn)) {
+        return;
+    }
+
+    // If the game is over, skip all turn processing
+    if (this->m_gameOver) {
         return;
     }
 
@@ -384,32 +622,13 @@ void Application::handleEndTurn() {
         aoc::sim::processCityGrowth(this->m_world, this->m_hexGrid, 0);
         aoc::sim::computeCityHappiness(this->m_world, 0);
 
-        // Research: sum science from cities, advance tech/civic
-        float totalScience = 0.0f;
-        float totalCulture = 0.0f;
-        aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
-            this->m_world.getPool<aoc::sim::CityComponent>();
-        if (cityPool != nullptr) {
-            for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
-                const aoc::sim::CityComponent& city = cityPool->data()[ci];
-                if (city.owner != 0) {
-                    continue;
-                }
-                for (const hex::AxialCoord& tile : city.workedTiles) {
-                    if (this->m_hexGrid.isValid(tile)) {
-                        aoc::map::TileYield yield = this->m_hexGrid.tileYield(
-                            this->m_hexGrid.toIndex(tile));
-                        totalScience += static_cast<float>(yield.science);
-                        totalCulture += static_cast<float>(yield.culture);
-                    }
-                }
-                // Base science/culture from population
-                totalScience += static_cast<float>(city.population) * 0.5f;
-                totalCulture += static_cast<float>(city.population) * 0.3f;
-            }
-        }
+        // Production queues
+        aoc::sim::processProductionQueues(this->m_world, this->m_hexGrid, 0);
 
-        // Advance research
+        // Research: compute science/culture from cities (includes building multipliers)
+        float totalScience = aoc::sim::computePlayerScience(this->m_world, this->m_hexGrid, 0);
+        float totalCulture = aoc::sim::computePlayerCulture(this->m_world, this->m_hexGrid, 0);
+
         this->m_world.forEach<aoc::sim::PlayerTechComponent>(
             [totalScience](EntityId, aoc::sim::PlayerTechComponent& tech) {
                 aoc::sim::advanceResearch(tech, totalScience);
@@ -419,6 +638,13 @@ void Application::handleEndTurn() {
                 aoc::sim::advanceCivicResearch(civic, totalCulture);
             });
 
+        // Great People: accumulate points and check recruitment
+        aoc::sim::accumulateGreatPeoplePoints(this->m_world, 0);
+        aoc::sim::checkGreatPeopleRecruitment(this->m_world, 0);
+
+        // Border expansion
+        aoc::sim::processBorderExpansion(this->m_world, this->m_hexGrid, 0);
+
         // AI turns
         for (aoc::sim::ai::AIController& ai : this->m_aiControllers) {
             ai.executeTurn(this->m_world, this->m_hexGrid,
@@ -427,14 +653,57 @@ void Application::handleEndTurn() {
             aoc::sim::executeMovement(this->m_world, ai.player(), this->m_hexGrid);
         }
 
+        // Barbarian turn (after AI, before diplomacy)
+        this->m_barbarianController.executeTurn(this->m_world, this->m_hexGrid, this->m_gameRng);
+
         // Diplomacy modifier decay
         this->m_diplomacy.tickModifiers();
+
+        // Process spy missions
+        aoc::sim::processSpyMissions(this->m_world, this->m_gameRng);
 
         // Update fog of war for all players
         this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, 0);
         for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
             this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, ai.player());
         }
+
+        // Update victory trackers and check win conditions
+        aoc::sim::updateVictoryTrackers(this->m_world, this->m_hexGrid);
+        aoc::sim::VictoryResult vr = aoc::sim::checkVictoryConditions(
+            this->m_world, this->m_turnManager.currentTurn());
+        if (vr.type != aoc::sim::VictoryType::None) {
+            this->m_gameOver = true;
+            this->m_victoryResult = vr;
+            LOG_INFO("Game over! Player %u wins by %s",
+                     static_cast<unsigned>(vr.winner),
+                     vr.type == aoc::sim::VictoryType::Science    ? "Science" :
+                     vr.type == aoc::sim::VictoryType::Domination ? "Domination" :
+                     vr.type == aoc::sim::VictoryType::Culture    ? "Culture" :
+                     vr.type == aoc::sim::VictoryType::Score      ? "Score" : "Unknown");
+        }
+
+        // Process government/policy unlocks from completed civics
+        this->m_world.forEach<aoc::sim::PlayerCivicComponent, aoc::sim::PlayerGovernmentComponent>(
+            [](EntityId, aoc::sim::PlayerCivicComponent& civic,
+               aoc::sim::PlayerGovernmentComponent& gov) {
+                const std::vector<aoc::sim::CivicDef>& civics = aoc::sim::allCivics();
+                for (const aoc::sim::CivicDef& cdef : civics) {
+                    if (!civic.hasCompleted(cdef.id)) {
+                        continue;
+                    }
+                    for (uint8_t govId : cdef.unlockedGovernmentIds) {
+                        if (govId < static_cast<uint8_t>(aoc::sim::GovernmentType::Count)) {
+                            gov.unlockGovernment(static_cast<aoc::sim::GovernmentType>(govId));
+                        }
+                    }
+                    for (uint8_t polId : cdef.unlockedPolicyIds) {
+                        if (polId < aoc::sim::POLICY_CARD_COUNT) {
+                            gov.unlockPolicy(polId);
+                        }
+                    }
+                }
+            });
 
         this->m_turnManager.beginNewTurn();
 
@@ -490,6 +759,33 @@ void Application::spawnStartingEntities() {
     eraComp.owner = 0;
     this->m_world.addComponent<aoc::sim::PlayerEraComponent>(playerEntity, std::move(eraComp));
 
+    aoc::sim::VictoryTrackerComponent victoryComp{};
+    victoryComp.owner = 0;
+    this->m_world.addComponent<aoc::sim::VictoryTrackerComponent>(playerEntity, std::move(victoryComp));
+
+    aoc::sim::PlayerGovernmentComponent govComp{};
+    govComp.owner = 0;
+    govComp.government = aoc::sim::GovernmentType::Chiefdom;
+    this->m_world.addComponent<aoc::sim::PlayerGovernmentComponent>(playerEntity, std::move(govComp));
+
+    aoc::sim::PlayerCivilizationComponent civComp2{};
+    civComp2.owner = 0;
+    civComp2.civId = 0;  // Rome
+    this->m_world.addComponent<aoc::sim::PlayerCivilizationComponent>(playerEntity, std::move(civComp2));
+
+    aoc::sim::PlayerGreatPeopleComponent gpComp{};
+    gpComp.owner = 0;
+    this->m_world.addComponent<aoc::sim::PlayerGreatPeopleComponent>(playerEntity, std::move(gpComp));
+
+    aoc::sim::PlayerEurekaComponent eurekaComp{};
+    eurekaComp.owner = 0;
+    this->m_world.addComponent<aoc::sim::PlayerEurekaComponent>(playerEntity, std::move(eurekaComp));
+
+    // Create the global wonder tracker entity (one per game)
+    EntityId wonderTrackerEntity = this->m_world.createEntity();
+    this->m_world.addComponent<aoc::sim::GlobalWonderTracker>(
+        wonderTrackerEntity, aoc::sim::GlobalWonderTracker{});
+
     // Spawn settler
     EntityId settler = this->m_world.createEntity();
     this->m_world.addComponent<aoc::sim::UnitComponent>(
@@ -513,8 +809,8 @@ void Application::spawnStartingEntities() {
     hex::axialToPixel(settlerPos, this->m_gameRenderer.mapRenderer().hexSize(), cx, cy);
     this->m_cameraController.setPosition(cx, cy);
 
-    std::fprintf(stdout, "[Game] Spawned starting units at (%d,%d)\n",
-                 settlerPos.q, settlerPos.r);
+    LOG_INFO("Spawned starting units at (%d,%d)",
+             settlerPos.q, settlerPos.r);
 }
 
 hex::AxialCoord Application::findNearbyLandTile(hex::AxialCoord target) const {
@@ -575,6 +871,28 @@ void Application::spawnAIPlayer(PlayerId player) {
     eraComp.owner = player;
     this->m_world.addComponent<aoc::sim::PlayerEraComponent>(playerEntity, std::move(eraComp));
 
+    aoc::sim::VictoryTrackerComponent victoryComp{};
+    victoryComp.owner = player;
+    this->m_world.addComponent<aoc::sim::VictoryTrackerComponent>(playerEntity, std::move(victoryComp));
+
+    aoc::sim::PlayerGovernmentComponent govComp{};
+    govComp.owner = player;
+    govComp.government = aoc::sim::GovernmentType::Chiefdom;
+    this->m_world.addComponent<aoc::sim::PlayerGovernmentComponent>(playerEntity, std::move(govComp));
+
+    aoc::sim::PlayerCivilizationComponent civComp2{};
+    civComp2.owner = player;
+    civComp2.civId = 1;  // Egypt for AI
+    this->m_world.addComponent<aoc::sim::PlayerCivilizationComponent>(playerEntity, std::move(civComp2));
+
+    aoc::sim::PlayerGreatPeopleComponent gpComp{};
+    gpComp.owner = player;
+    this->m_world.addComponent<aoc::sim::PlayerGreatPeopleComponent>(playerEntity, std::move(gpComp));
+
+    aoc::sim::PlayerEurekaComponent eurekaComp{};
+    eurekaComp.owner = player;
+    this->m_world.addComponent<aoc::sim::PlayerEurekaComponent>(playerEntity, std::move(eurekaComp));
+
     // Spawn settler + warrior
     EntityId settler = this->m_world.createEntity();
     this->m_world.addComponent<aoc::sim::UnitComponent>(
@@ -586,8 +904,8 @@ void Application::spawnAIPlayer(PlayerId player) {
         warrior,
         aoc::sim::UnitComponent::create(player, UnitTypeId{0}, warriorPos));
 
-    std::fprintf(stdout, "[Game] AI Player %u spawned at (%d,%d)\n",
-                 static_cast<unsigned>(player), settlerPos.q, settlerPos.r);
+    LOG_INFO("AI Player %u spawned at (%d,%d)",
+             static_cast<unsigned>(player), settlerPos.q, settlerPos.r);
 }
 
 // ============================================================================
@@ -611,7 +929,7 @@ void Application::placeMapResources() {
         bool     allowTundra;
     };
 
-    constexpr std::array<ResourcePlacement, 8> PLACEMENTS = {{
+    constexpr std::array<ResourcePlacement, 18> PLACEMENTS = {{
         {aoc::sim::goods::IRON_ORE,   0.04f, true,  false, true,  true,  true},
         {aoc::sim::goods::COPPER_ORE, 0.03f, true,  false, true,  true,  false},
         {aoc::sim::goods::COAL,       0.03f, false, false, true,  true,  true},
@@ -620,6 +938,17 @@ void Application::placeMapResources() {
         {aoc::sim::goods::WOOD,       0.06f, false, false, false, true,  true},
         {aoc::sim::goods::STONE,      0.04f, true,  true,  true,  true,  true},
         {aoc::sim::goods::WHEAT,      0.05f, false, false, true,  true,  false},
+        // New resources
+        {aoc::sim::goods::COTTON,     0.03f, false, false, true,  true,  false},
+        {aoc::sim::goods::RUBBER,     0.02f, false, false, false, true,  false},
+        {aoc::sim::goods::TIN,        0.02f, true,  false, true,  true,  true},
+        {aoc::sim::goods::DYES,       0.02f, false, false, false, true,  false},
+        {aoc::sim::goods::FURS,       0.02f, false, false, false, false, true},
+        {aoc::sim::goods::RICE,       0.04f, false, false, false, true,  false},
+        {aoc::sim::goods::SUGAR,      0.02f, false, false, false, true,  false},
+        {aoc::sim::goods::SILK,       0.01f, false, false, false, true,  false},
+        {aoc::sim::goods::NITER,      0.02f, true,  true,  true,  false, false},
+        {aoc::sim::goods::ALUMINUM,   0.01f, true,  false, true,  false, true},
     }};
 
     int32_t totalPlaced = 0;
@@ -673,7 +1002,7 @@ void Application::placeMapResources() {
         }
     }
 
-    std::fprintf(stdout, "[Game] Placed %d resources on map\n", totalPlaced);
+    LOG_INFO("Placed %d resources on map", totalPlaced);
 }
 
 // ============================================================================
@@ -723,6 +1052,18 @@ void Application::buildHUD() {
         this->m_endTurnButton,
         {0.0f, 0.0f, 130.0f, 40.0f},
         std::move(endTurnBtn));
+
+    // Victory announcement label (hidden until game over)
+    this->m_victoryLabel = this->m_uiManager.createLabel(
+        aoc::ui::INVALID_WIDGET,
+        {0.0f, 0.0f, 500.0f, 30.0f},
+        aoc::ui::LabelData{"", {1.0f, 0.85f, 0.2f, 1.0f}, 24.0f});
+    {
+        aoc::ui::Widget* vLabel = this->m_uiManager.getWidget(this->m_victoryLabel);
+        if (vLabel != nullptr) {
+            vLabel->isVisible = false;
+        }
+    }
 }
 
 void Application::updateHUD() {
@@ -776,6 +1117,48 @@ void Application::updateHUD() {
         endTurnPanel->requestedBounds.x = static_cast<float>(fbWidth) - 150.0f;
         endTurnPanel->requestedBounds.y = static_cast<float>(fbHeight) - 60.0f;
     }
+
+    // Victory announcement
+    if (this->m_gameOver && this->m_victoryLabel != aoc::ui::INVALID_WIDGET) {
+        aoc::ui::Widget* vLabel = this->m_uiManager.getWidget(this->m_victoryLabel);
+        if (vLabel != nullptr) {
+            vLabel->isVisible = true;
+            // Center on screen
+            vLabel->requestedBounds.x = static_cast<float>(fbWidth) * 0.5f - 250.0f;
+            vLabel->requestedBounds.y = static_cast<float>(fbHeight) * 0.5f - 15.0f;
+        }
+
+        const char* victoryName =
+            this->m_victoryResult.type == aoc::sim::VictoryType::Science    ? "Science" :
+            this->m_victoryResult.type == aoc::sim::VictoryType::Domination ? "Domination" :
+            this->m_victoryResult.type == aoc::sim::VictoryType::Culture    ? "Culture" :
+            this->m_victoryResult.type == aoc::sim::VictoryType::Score      ? "Score" : "Unknown";
+
+        std::string victoryText = "Player " +
+            std::to_string(static_cast<unsigned>(this->m_victoryResult.winner)) +
+            " wins by " + victoryName + " Victory!";
+        this->m_uiManager.setLabelText(this->m_victoryLabel, std::move(victoryText));
+    }
+}
+
+// ============================================================================
+// Screen helpers
+// ============================================================================
+
+bool Application::anyScreenOpen() const {
+    return this->m_productionScreen.isOpen()
+        || this->m_techScreen.isOpen()
+        || this->m_governmentScreen.isOpen()
+        || this->m_economyScreen.isOpen()
+        || this->m_cityDetailScreen.isOpen();
+}
+
+void Application::closeAllScreens() {
+    this->m_productionScreen.close(this->m_uiManager);
+    this->m_techScreen.close(this->m_uiManager);
+    this->m_governmentScreen.close(this->m_uiManager);
+    this->m_economyScreen.close(this->m_uiManager);
+    this->m_cityDetailScreen.close(this->m_uiManager);
 }
 
 } // namespace aoc::app

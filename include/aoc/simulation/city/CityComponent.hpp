@@ -22,9 +22,17 @@ struct CityComponent {
     int32_t         population = 1;
     float           foodSurplus = 0.0f;       ///< Accumulated food toward next pop
     float           productionProgress = 0.0f; ///< Accumulated production
+    float           cultureBorderProgress = 0.0f; ///< Accumulated culture toward next tile
+    int32_t         tilesClaimedCount = 0;    ///< Number of tiles claimed via culture
 
     /// Tiles worked by this city's citizens.
     std::vector<hex::AxialCoord> workedTiles;
+
+    /// True if this city was the original capital of some player.
+    bool isOriginalCapital = false;
+
+    /// The player who originally founded this city.
+    PlayerId originalOwner = INVALID_PLAYER;
 
     /// Create a new city with initial values.
     static CityComponent create(PlayerId owner, hex::AxialCoord location,

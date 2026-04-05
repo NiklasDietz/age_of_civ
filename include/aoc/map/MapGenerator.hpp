@@ -12,8 +12,34 @@
 #include "aoc/core/Random.hpp"
 
 #include <cstdint>
+#include <utility>
 
 namespace aoc::map {
+
+/// Map generation type controlling landmass shape.
+enum class MapType : uint8_t {
+    Continents,   ///< 2-3 separate land masses with distinct centers.
+    Pangaea,      ///< Single central landmass with strong center gradient.
+    Archipelago,  ///< Many small islands with weak gradient and high water.
+    Fractal,      ///< Pure noise, no gradient falloff.
+};
+
+/// Predefined map sizes.
+enum class MapSize : uint8_t {
+    Small,     ///< 60x40
+    Standard,  ///< 80x50
+    Large,     ///< 100x66
+};
+
+/// Get dimensions for a given MapSize preset.
+[[nodiscard]] constexpr std::pair<int32_t, int32_t> mapSizeDimensions(MapSize size) {
+    switch (size) {
+        case MapSize::Small:    return {60, 40};
+        case MapSize::Standard: return {80, 50};
+        case MapSize::Large:    return {100, 66};
+        default:                return {80, 50};
+    }
+}
 
 class MapGenerator {
 public:
@@ -25,6 +51,8 @@ public:
         float    mountainRatio = 0.05f;
         float    forestRatio   = 0.20f;
         float    hillRatio     = 0.15f;
+        MapType  mapType   = MapType::Continents;  ///< Landmass generation style
+        MapSize  mapSize   = MapSize::Standard;     ///< Preset size (overrides width/height when applied)
     };
 
     /**

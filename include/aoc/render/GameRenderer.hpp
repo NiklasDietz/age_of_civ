@@ -7,7 +7,10 @@
 
 #include "aoc/render/MapRenderer.hpp"
 #include "aoc/render/UnitRenderer.hpp"
+#include "aoc/render/Minimap.hpp"
 #include "aoc/ui/UIManager.hpp"
+#include "aoc/ui/Tooltip.hpp"
+#include "aoc/core/Types.hpp"
 
 #include <cstdint>
 #include <vulkan/vulkan.h>
@@ -25,6 +28,7 @@ class World;
 
 namespace aoc::map {
 class HexGrid;
+class FogOfWar;
 }
 
 namespace aoc::render {
@@ -44,15 +48,21 @@ public:
                 const CameraController& camera,
                 const aoc::map::HexGrid& grid,
                 const aoc::ecs::World& world,
+                const aoc::map::FogOfWar& fog,
+                PlayerId viewingPlayer,
                 aoc::ui::UIManager& uiManager,
                 uint32_t screenWidth, uint32_t screenHeight);
 
     MapRenderer&  mapRenderer()  { return this->m_mapRenderer; }
     UnitRenderer& unitRenderer() { return this->m_unitRenderer; }
+    Minimap&      minimap()      { return this->m_minimap; }
+    aoc::ui::TooltipManager& tooltipManager() { return this->m_tooltipManager; }
 
 private:
-    MapRenderer  m_mapRenderer;
-    UnitRenderer m_unitRenderer;
+    MapRenderer              m_mapRenderer;
+    UnitRenderer             m_unitRenderer;
+    Minimap                  m_minimap;
+    aoc::ui::TooltipManager  m_tooltipManager;
 };
 
 } // namespace aoc::render

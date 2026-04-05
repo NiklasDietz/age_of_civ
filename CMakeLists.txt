@@ -46,11 +46,21 @@ add_library(aoc_lib STATIC
     src/simulation/turn/TurnManager.cpp
     src/simulation/unit/Movement.cpp
     src/simulation/unit/Combat.cpp
+    src/simulation/unit/Naval.cpp
     src/simulation/tech/TechTree.cpp
     src/simulation/tech/CivicTree.cpp
+    src/simulation/tech/EurekaBoost.cpp
     src/simulation/city/CityGrowth.cpp
+    src/simulation/city/CityScience.cpp
     src/simulation/city/Happiness.cpp
+    src/simulation/city/ProductionSystem.cpp
+    src/simulation/city/BorderExpansion.cpp
+    src/simulation/map/Improvement.cpp
+    src/simulation/barbarian/BarbarianController.cpp
     src/simulation/diplomacy/DiplomacyState.cpp
+    src/simulation/diplomacy/EspionageSystem.cpp
+    src/simulation/victory/VictoryCondition.cpp
+    src/simulation/government/Government.cpp
     src/simulation/ai/AIController.cpp
     src/simulation/resource/ResourceTypes.cpp
     src/simulation/resource/ProductionChain.cpp
@@ -61,6 +71,8 @@ add_library(aoc_lib STATIC
     src/simulation/monetary/Inflation.cpp
     src/simulation/monetary/CentralBank.cpp
     src/simulation/monetary/FiscalPolicy.cpp
+    src/simulation/greatpeople/GreatPeople.cpp
+    src/simulation/wonder/Wonder.cpp
 
     # Save
     src/save/Serializer.cpp
@@ -68,6 +80,8 @@ add_library(aoc_lib STATIC
     # UI
     src/ui/BitmapFont.cpp
     src/ui/UIManager.cpp
+    src/ui/GameScreens.cpp
+    src/ui/Tooltip.cpp
 
     # App
     src/app/Window.cpp
@@ -79,6 +93,7 @@ add_library(aoc_lib STATIC
     src/render/GameRenderer.cpp
     src/render/MapRenderer.cpp
     src/render/UnitRenderer.cpp
+    src/render/Minimap.cpp
 )
 
 target_include_directories(aoc_lib

@@ -4,10 +4,10 @@
  */
 
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/core/Log.hpp"
 
 #include <algorithm>
 #include <cassert>
-#include <cstdio>
 
 namespace aoc::sim {
 
@@ -53,8 +53,8 @@ void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target) {
     relAB.hasDefensiveAlliance = false;
     relBA.hasDefensiveAlliance = false;
 
-    std::fprintf(stdout, "[Diplomacy] Player %u declared war on Player %u\n",
-                 static_cast<unsigned>(aggressor), static_cast<unsigned>(target));
+    LOG_INFO("Player %u declared war on Player %u",
+             static_cast<unsigned>(aggressor), static_cast<unsigned>(target));
 }
 
 void DiplomacyManager::makePeace(PlayerId a, PlayerId b) {
@@ -79,8 +79,8 @@ void DiplomacyManager::makePeace(PlayerId a, PlayerId b) {
     relAB.modifiers.push_back(peaceMod);
     relBA.modifiers.push_back(peaceMod);
 
-    std::fprintf(stdout, "[Diplomacy] Peace between Player %u and Player %u\n",
-                 static_cast<unsigned>(a), static_cast<unsigned>(b));
+    LOG_INFO("Peace between Player %u and Player %u",
+             static_cast<unsigned>(a), static_cast<unsigned>(b));
 }
 
 void DiplomacyManager::grantOpenBorders(PlayerId a, PlayerId b) {
@@ -111,6 +111,10 @@ void DiplomacyManager::tickModifiers() {
 }
 
 bool DiplomacyManager::isAtWar(PlayerId a, PlayerId b) const {
+    // Barbarians are always at war with everyone.
+    if (a == BARBARIAN_PLAYER || b == BARBARIAN_PLAYER) {
+        return true;
+    }
     return this->relation(a, b).isAtWar;
 }
 

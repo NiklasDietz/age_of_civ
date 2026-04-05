@@ -4,10 +4,9 @@
  */
 
 #include "aoc/simulation/turn/TurnManager.hpp"
+#include "aoc/core/Log.hpp"
 #include "aoc/ecs/World.hpp"
 #include "aoc/ecs/SystemScheduler.hpp"
-
-#include <cstdio>
 
 namespace aoc::sim {
 
@@ -42,13 +41,12 @@ void TurnManager::executeTurn(aoc::ecs::World& world, aoc::ecs::SystemScheduler&
     // Systems register themselves for specific phases; the scheduler runs all of them.
     ErrorCode result = scheduler.executeTick(world);
     if (result != ErrorCode::Ok) {
-        std::fprintf(stderr, "[TurnManager] %s:%d System execution failed: %.*s\n",
-                     __FILE__, __LINE__,
-                     static_cast<int>(describeError(result).size()),
-                     describeError(result).data());
+        LOG_ERROR("System execution failed: %.*s",
+                  static_cast<int>(describeError(result).size()),
+                  describeError(result).data());
     }
 
-    std::fprintf(stdout, "[TurnManager] Turn %u complete\n", this->m_currentTurn);
+    LOG_INFO("Turn %u complete", this->m_currentTurn);
 }
 
 void TurnManager::beginNewTurn() {

@@ -104,6 +104,47 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // Use a copy of rng to generate consistent noise seeds per octave
     aoc::Random noiseRng(rng.next());
 
+    // Compute continent centers for multi-center map types
+    // Seed a local RNG for center placement so it's deterministic
+    aoc::Random centerRng(noiseRng.next());
+
+    struct LandCenter {
+        float cx;
+        float cy;
+        float strength;
+    };
+
+    std::vector<LandCenter> landCenters;
+
+    switch (config.mapType) {
+        case MapType::Pangaea: {
+            // Single strong center
+            landCenters.push_back({0.5f, 0.5f, 1.4f});
+            break;
+        }
+        case MapType::Continents: {
+            // 2-3 land mass centers spread across the map
+            landCenters.push_back({0.30f, 0.40f, 1.2f});
+            landCenters.push_back({0.70f, 0.55f, 1.2f});
+            landCenters.push_back({0.50f, 0.25f, 0.8f});
+            break;
+        }
+        case MapType::Archipelago: {
+            // Many weak centers for small islands
+            constexpr int32_t ISLAND_COUNT = 8;
+            for (int32_t i = 0; i < ISLAND_COUNT; ++i) {
+                float cx = centerRng.nextFloat(0.1f, 0.9f);
+                float cy = centerRng.nextFloat(0.1f, 0.9f);
+                landCenters.push_back({cx, cy, 0.5f});
+            }
+            break;
+        }
+        case MapType::Fractal: {
+            // No gradient centers -- pure noise
+            break;
+        }
+    }
+
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
             float nx = static_cast<float>(col) / static_cast<float>(width);
@@ -111,12 +152,22 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
 
             float elev = fractalNoise(nx, ny, 6, 3.0f, 0.5f, noiseRng);
 
-            // Island gradient: push edges toward water
-            float dx = (nx - 0.5f) * 2.0f;
-            float dy = (ny - 0.5f) * 2.0f;
-            float distFromCenter = std::sqrt(dx * dx + dy * dy);
-            float edgeFalloff = 1.0f - std::clamp(distFromCenter * 1.2f, 0.0f, 1.0f);
-            edgeFalloff = smoothstep(edgeFalloff);
+            float edgeFalloff = 0.0f;
+
+            if (config.mapType == MapType::Fractal) {
+                // No gradient -- use raw noise directly
+                edgeFalloff = 0.5f;  // Neutral contribution
+            } else {
+                // Compute falloff as max contribution from any land center
+                for (const LandCenter& center : landCenters) {
+                    float dx = (nx - center.cx) * 2.0f;
+                    float dy = (ny - center.cy) * 2.0f;
+                    float distFromCenter = std::sqrt(dx * dx + dy * dy);
+                    float falloff = 1.0f - std::clamp(distFromCenter * center.strength, 0.0f, 1.0f);
+                    falloff = smoothstep(falloff);
+                    edgeFalloff = std::max(edgeFalloff, falloff);
+                }
+            }
 
             elev = elev * 0.6f + edgeFalloff * 0.4f;
 

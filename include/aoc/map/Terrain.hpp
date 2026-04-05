@@ -153,4 +153,31 @@ struct TerrainColor {
     }
 }
 
+// ============================================================================
+// Forward-declared improvement type (defined in HexGrid.hpp)
+// Yield bonus is declared here so HexGrid::tileYield() can call it inline.
+// ============================================================================
+
+// ImprovementType is defined in HexGrid.hpp; forward-declare here for the
+// constexpr yield function. We use a plain enum-class forward declaration.
+enum class ImprovementType : uint8_t;
+
+/// Yield bonus granted by a tile improvement.
+[[nodiscard]] constexpr TileYield improvementYieldBonus(ImprovementType type) {
+    // Must cast to uint8_t because the enum is forward-declared.
+    switch (static_cast<uint8_t>(type)) {
+        case 1:  return {1, 0, 0, 0, 0, 0};  // Farm:         +1 food
+        case 2:  return {0, 1, 0, 0, 0, 0};  // Mine:         +1 production
+        case 3:  return {0, 0, 1, 0, 0, 0};  // Plantation:   +1 gold
+        case 4:  return {0, 1, 0, 0, 0, 0};  // Quarry:       +1 production
+        case 5:  return {0, 1, 0, 0, 0, 0};  // LumberMill:   +1 production
+        case 6:  return {0, 0, 1, 0, 0, 0};  // Camp:         +1 gold
+        case 7:  return {1, 0, 0, 0, 0, 0};  // Pasture:      +1 food
+        case 8:  return {1, 0, 1, 0, 0, 0};  // FishingBoats: +1 food, +1 gold
+        case 9:  return {0, 0, 0, 0, 0, 0};  // Fort:         no yield bonus
+        case 10: return {0, 0, 0, 0, 0, 0};  // Road:         no yield bonus
+        default: return {};                   // None / unknown
+    }
+}
+
 } // namespace aoc::map

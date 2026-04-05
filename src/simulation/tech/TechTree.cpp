@@ -4,9 +4,9 @@
  */
 
 #include "aoc/simulation/tech/TechTree.hpp"
+#include "aoc/core/Log.hpp"
 
 #include <cassert>
-#include <cstdio>
 
 namespace aoc::sim {
 
@@ -44,12 +44,68 @@ std::vector<TechDef> buildTechDefs() {
     // Era 5: Modern
     techs.push_back({TechId{14}, "Electricity", EraId{5}, 400, {{TechId{11}}},
         {}, {BuildingId{4}}, {}});
-    techs.push_back({TechId{15}, "Mass Production", EraId{5}, 420, {{TechId{11}, TechId{12}}},
+    // Mass Production: now requires Interchangeable Parts(19) + Refining(12)
+    techs.push_back({TechId{15}, "Mass Production", EraId{5}, 420, {{TechId{19}, TechId{12}}},
         {}, {BuildingId{5}}, {}});
 
-    // Era 6: Atomic/Information
-    techs.push_back({TechId{16}, "Computers", EraId{6}, 600, {{TechId{14}}}, {}, {BuildingId{4}}, {}});
+    // Era 6: Information
+    // Computers: now requires Electricity(14) + Semiconductors(23), unlocks Research Lab(12)
+    techs.push_back({TechId{16}, "Computers", EraId{6}, 600, {{TechId{14}, TechId{23}}},
+        {}, {BuildingId{12}}, {}});
     techs.push_back({TechId{17}, "Nuclear Fission", EraId{6}, 700, {{TechId{14}}}, {}, {}, {}});
+
+    // ================================================================
+    // NEW TECHS (18-27)
+    // ================================================================
+
+    // Era 4: Industrial -- precision manufacturing chain
+    techs.push_back({TechId{18}, "Surface Plate", EraId{4}, 260,
+        {{TechId{8}, TechId{11}}},  // Metallurgy + Industrialization
+        {}, {BuildingId{10}}, {}});  // Unlocks Precision Workshop
+
+    techs.push_back({TechId{19}, "Interchangeable Parts", EraId{4}, 320,
+        {{TechId{18}}},  // Surface Plate
+        {}, {}, {}});
+
+    // Era 2: Medieval -- textiles
+    techs.push_back({TechId{20}, "Textiles", EraId{2}, 100,
+        {{TechId{7}}},  // Apprenticeship
+        {}, {BuildingId{8}}, {}});  // Unlocks Textile Mill
+
+    // Era 4: Industrial -- food preservation
+    techs.push_back({TechId{21}, "Food Preservation", EraId{4}, 240,
+        {{TechId{11}}},  // Industrialization
+        {}, {BuildingId{9}}, {}});  // Unlocks Food Processing Plant
+
+    // Era 5: Modern -- precision instruments
+    techs.push_back({TechId{22}, "Precision Instruments", EraId{5}, 380,
+        {{TechId{19}, TechId{14}}},  // Interchangeable Parts + Electricity
+        {}, {}, {}});
+
+    // Era 5: Modern -- semiconductors
+    techs.push_back({TechId{23}, "Semiconductors", EraId{5}, 450,
+        {{TechId{22}}},  // Precision Instruments
+        {}, {BuildingId{11}}, {}});  // Unlocks Semiconductor Fab
+
+    // (ID 24 reserved for future use)
+    techs.push_back({TechId{24}, "Advanced Chemistry", EraId{5}, 350,
+        {{TechId{12}}},  // Refining
+        {}, {}, {}});
+
+    // Era 5: Modern -- telecommunications
+    techs.push_back({TechId{25}, "Telecommunications", EraId{5}, 380,
+        {{TechId{14}}},  // Electricity
+        {}, {BuildingId{13}}, {}});  // Unlocks Telecom Hub
+
+    // Era 5: Modern -- aviation
+    techs.push_back({TechId{26}, "Aviation", EraId{5}, 400,
+        {{TechId{11}, TechId{12}}},  // Industrialization + Refining
+        {}, {BuildingId{14}}, {}});  // Unlocks Airport
+
+    // Era 6: Information -- internet
+    techs.push_back({TechId{27}, "Internet", EraId{6}, 700,
+        {{TechId{16}, TechId{25}}},  // Computers + Telecommunications
+        {}, {}, {}});
 
     return techs;
 }
@@ -83,9 +139,9 @@ bool advanceResearch(PlayerTechComponent& tech, float sciencePoints) {
 
     const TechDef& def = techDef(tech.currentResearch);
     if (tech.researchProgress >= static_cast<float>(def.researchCost)) {
-        std::fprintf(stdout, "[Tech] Player %u researched: %.*s\n",
-                     static_cast<unsigned>(tech.owner),
-                     static_cast<int>(def.name.size()), def.name.data());
+        LOG_INFO("Player %u researched: %.*s",
+                 static_cast<unsigned>(tech.owner),
+                 static_cast<int>(def.name.size()), def.name.data());
         tech.completeResearch();
         return true;
     }

@@ -6,10 +6,15 @@
  */
 
 #include "aoc/map/HexCoord.hpp"
+#include "aoc/core/Types.hpp"
 
 #include <cstdint>
 #include <optional>
 #include <vector>
+
+namespace aoc::ecs {
+class World;
+}
 
 namespace aoc::map {
 
@@ -23,17 +28,23 @@ struct PathResult {
 /**
  * @brief Find the shortest path between two hex tiles using A*.
  *
- * @param grid         The hex grid with movement cost data.
- * @param start        Starting tile (axial coordinates).
- * @param goal         Destination tile (axial coordinates).
- * @param maxCost      Maximum total movement cost (0 = unlimited).
+ * @param grid          The hex grid with movement cost data.
+ * @param start         Starting tile (axial coordinates).
+ * @param goal          Destination tile (axial coordinates).
+ * @param maxCost       Maximum total movement cost (0 = unlimited).
+ * @param world         Optional ECS world for ZoC-aware costing. If non-null,
+ *                      tiles in an enemy zone of control cost +3 extra.
+ * @param movingPlayer  The player whose units are pathfinding (needed for ZoC check).
  * @return PathResult if a path exists, std::nullopt if unreachable.
  */
 [[nodiscard]] std::optional<PathResult> findPath(
     const HexGrid& grid,
     hex::AxialCoord start,
     hex::AxialCoord goal,
-    int32_t maxCost = 0);
+    int32_t maxCost = 0,
+    const aoc::ecs::World* world = nullptr,
+    PlayerId movingPlayer = INVALID_PLAYER,
+    bool isNavalPath = false);
 
 /**
  * @brief Get all tiles reachable from a starting tile within a movement budget.

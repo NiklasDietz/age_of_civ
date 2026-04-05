@@ -10,6 +10,8 @@
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/ecs/World.hpp"
 #include "aoc/map/HexCoord.hpp"
+#include "aoc/map/HexGrid.hpp"
+#include "aoc/map/FogOfWar.hpp"
 
 #include <renderer/Renderer2D.hpp>
 
@@ -42,6 +44,9 @@ void playerColor(PlayerId player, float& r, float& g, float& b) {
 
 void UnitRenderer::drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
                               const aoc::ecs::World& world,
+                              const aoc::map::FogOfWar& fog,
+                              const aoc::map::HexGrid& grid,
+                              PlayerId viewingPlayer,
                               const CameraController& camera,
                               float hexSize,
                               uint32_t screenWidth, uint32_t screenHeight) const {
@@ -65,6 +70,15 @@ void UnitRenderer::drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
     for (uint32_t i = 0; i < pool->size(); ++i) {
         const aoc::sim::UnitComponent& unit = pool->data()[i];
         EntityId entity = pool->entities()[i];
+
+        // Fog of war: only show units on tiles that are currently Visible
+        if (grid.isValid(unit.position)) {
+            int32_t tileIndex = grid.toIndex(unit.position);
+            aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, tileIndex);
+            if (vis != aoc::map::TileVisibility::Visible) {
+                continue;
+            }
+        }
 
         float cx = 0.0f, cy = 0.0f;
         hex::axialToPixel(unit.position, hexSize, cx, cy);
@@ -119,6 +133,13 @@ void UnitRenderer::drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
                                               1.0f, 1.0f, 1.0f, 0.9f);
                 break;
             }
+            case aoc::sim::UnitClass::Civilian: {
+                // Hammer shape: small T
+                float s = unitRadius * 0.4f;
+                renderer2d.drawLine(cx, cy - s, cx, cy + s * 0.5f, 2.0f, 1.0f, 1.0f, 1.0f, 0.9f);
+                renderer2d.drawLine(cx - s * 0.6f, cy - s, cx + s * 0.6f, cy - s, 2.0f, 1.0f, 1.0f, 1.0f, 0.9f);
+                break;
+            }
             default:
                 break;
         }
@@ -132,6 +153,9 @@ void UnitRenderer::drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
 
 void UnitRenderer::drawCities(vulkan_app::renderer::Renderer2D& renderer2d,
                                const aoc::ecs::World& world,
+                               const aoc::map::FogOfWar& fog,
+                               const aoc::map::HexGrid& grid,
+                               PlayerId viewingPlayer,
                                const CameraController& camera,
                                float hexSize,
                                uint32_t screenWidth, uint32_t screenHeight) const {
@@ -153,6 +177,15 @@ void UnitRenderer::drawCities(vulkan_app::renderer::Renderer2D& renderer2d,
 
     for (uint32_t i = 0; i < pool->size(); ++i) {
         const aoc::sim::CityComponent& city = pool->data()[i];
+
+        // Fog of war: skip cities on unseen tiles, show on revealed/visible
+        if (grid.isValid(city.location)) {
+            int32_t tileIndex = grid.toIndex(city.location);
+            aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, tileIndex);
+            if (vis == aoc::map::TileVisibility::Unseen) {
+                continue;
+            }
+        }
 
         float cx = 0.0f, cy = 0.0f;
         hex::axialToPixel(city.location, hexSize, cx, cy);

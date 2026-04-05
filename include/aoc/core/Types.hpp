@@ -44,6 +44,9 @@ inline constexpr TurnNumber TURN_ZERO      = 0;
 
 inline constexpr uint8_t MAX_PLAYERS = 16;
 
+/// Special player ID for barbarian-controlled units and encampments.
+inline constexpr PlayerId BARBARIAN_PLAYER = 255;
+
 // ============================================================================
 // Resource / economy quantities
 // ============================================================================
