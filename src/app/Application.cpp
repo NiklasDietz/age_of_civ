@@ -35,6 +35,9 @@
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/tech/EurekaBoost.hpp"
 #include "aoc/simulation/diplomacy/EspionageSystem.hpp"
+#include "aoc/simulation/diplomacy/WarWeariness.hpp"
+#include "aoc/simulation/tech/EraScore.hpp"
+#include "aoc/simulation/city/CityLoyalty.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/save/Serializer.hpp"
 #include "aoc/ui/BitmapFont.hpp"
@@ -53,6 +56,10 @@
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/economy/Maintenance.hpp"
+#include "aoc/simulation/economy/AdvancedEconomics.hpp"
+#include "aoc/simulation/diplomacy/Grievance.hpp"
+#include "aoc/simulation/diplomacy/WorldCongress.hpp"
+#include "aoc/simulation/climate/Climate.hpp"
 
 #include <chrono>
 #include <cmath>
@@ -243,8 +250,17 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
 
     // -- Game setup --
     this->m_turnManager.setPlayerCount(humanCount, aiCount);
+    if (config.sequentialTurnsInWar) {
+        this->m_turnManager.setTurnMode(aoc::sim::TurnMode::Sequential);
+    } else {
+        this->m_turnManager.setTurnMode(aoc::sim::TurnMode::Simultaneous);
+    }
     this->m_turnManager.beginNewTurn();
-    this->placeMapResources();
+    if (config.mapType != aoc::map::MapType::Realistic) {
+        this->placeMapResources();
+    } else {
+        LOG_INFO("Skipping random resource placement (Realistic map uses geology-based placement)");
+    }
     this->m_economy.initialize();
     this->m_fogOfWar.initialize(this->m_hexGrid.tileCount(), MAX_PLAYERS);
     this->m_diplomacy.initialize(config.playerCount);
@@ -252,12 +268,33 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     // Spawn human player (always slot 0)
     this->spawnStartingEntities(config.players[0].civId);
 
-    // Spawn AI players
+    // Spawn AI players (pass difficulty setting)
     for (uint8_t i = 1; i < config.playerCount; ++i) {
         const PlayerId playerId = static_cast<PlayerId>(i);
-        this->m_aiControllers.emplace_back(playerId);
+        this->m_aiControllers.emplace_back(playerId, config.aiDifficulty);
         this->spawnAIPlayer(playerId, config.players[i].civId);
     }
+
+    // -- War weariness and era score initialization --
+    for (uint8_t p = 0; p < config.playerCount; ++p) {
+        const PlayerId pid = static_cast<PlayerId>(p);
+        {
+            EntityId wwEntity = this->m_world.createEntity();
+            aoc::sim::PlayerWarWearinessComponent wwComp{};
+            wwComp.owner = pid;
+            this->m_world.addComponent<aoc::sim::PlayerWarWearinessComponent>(
+                wwEntity, std::move(wwComp));
+        }
+        {
+            EntityId esEntity = this->m_world.createEntity();
+            aoc::sim::PlayerEraScoreComponent esComp{};
+            esComp.owner = pid;
+            this->m_world.addComponent<aoc::sim::PlayerEraScoreComponent>(
+                esEntity, std::move(esComp));
+        }
+    }
+    LOG_INFO("War weariness and era score initialized for %u players",
+             static_cast<unsigned>(config.playerCount));
 
     // -- Religion system initialization --
     {
@@ -275,6 +312,43 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
         LOG_INFO("Religion system initialized for %u players",
                  static_cast<unsigned>(config.playerCount));
     }
+
+    // -- Grievance system initialization --
+    for (uint8_t p = 0; p < config.playerCount; ++p) {
+        EntityId gEntity = this->m_world.createEntity();
+        aoc::sim::PlayerGrievanceComponent gComp{};
+        gComp.owner = static_cast<PlayerId>(p);
+        this->m_world.addComponent<aoc::sim::PlayerGrievanceComponent>(
+            gEntity, std::move(gComp));
+    }
+
+    // -- World Congress initialization --
+    {
+        EntityId wcEntity = this->m_world.createEntity();
+        aoc::sim::WorldCongressComponent wcComp{};
+        this->m_world.addComponent<aoc::sim::WorldCongressComponent>(
+            wcEntity, std::move(wcComp));
+        LOG_INFO("World Congress initialized (first session at turn 50)");
+    }
+
+    // -- Climate system initialization --
+    {
+        EntityId climateEntity = this->m_world.createEntity();
+        aoc::sim::GlobalClimateComponent climateComp{};
+        this->m_world.addComponent<aoc::sim::GlobalClimateComponent>(
+            climateEntity, std::move(climateComp));
+        LOG_INFO("Climate system initialized");
+    }
+
+    // -- Replay recorder --
+    this->m_replayRecorder.clear();
+
+    // -- Sound event queue --
+    this->m_soundQueue.clear();
+    this->m_soundQueue.push(aoc::audio::SoundEffect::TurnStart);
+
+    // -- Music: set to Ancient era --
+    this->m_musicManager.setTrack(aoc::audio::MusicTrack::Ancient);
 
     // Spawn city-states
     const int32_t cityStateCount = static_cast<int32_t>(config.playerCount) * 2;
@@ -436,6 +510,13 @@ void Application::run() {
                 }
             }
         }
+
+        // -- Update combat animations and particles --
+        this->m_gameRenderer.combatAnimator().update(deltaTime);
+        this->m_gameRenderer.particleSystem().update(deltaTime);
+
+        // -- Update notifications --
+        this->m_notificationManager.update(deltaTime);
 
         // -- Cycle to next unit needing orders (Tab key) --
         if (this->m_inputManager.isActionPressed(InputAction::CycleNextUnit) && !this->anyScreenOpen()) {
@@ -695,6 +776,7 @@ void Application::run() {
         this->m_tradeScreen.refresh(this->m_uiManager);
         this->m_diplomacyScreen.refresh(this->m_uiManager);
         this->m_religionScreen.refresh(this->m_uiManager);
+        this->m_scoreScreen.refresh(this->m_uiManager);
 
         // Update tooltip when no screen is open
         if (!this->anyScreenOpen()) {
@@ -740,7 +822,9 @@ void Application::run() {
             PlayerId{0},
             this->m_uiManager,
             frame.extent.width, frame.extent.height,
-            &this->m_eventLog);
+            &this->m_eventLog,
+            &this->m_notificationManager,
+            &this->m_tutorialManager);
 
         this->m_renderPipeline->endRenderPass(frame);
         this->m_renderPipeline->endFrame(frame);
@@ -927,6 +1011,23 @@ void Application::buildMainMenu(float screenW, float screenH) {
                         this->applySettings();
                     });
             }
+        },
+        [this]() {
+            // Tutorial: start a default game with tutorial enabled
+            this->m_mainMenu.destroy(this->m_uiManager);
+            this->m_settingsMenu.destroy(this->m_uiManager);
+            aoc::ui::GameSetupConfig tutorialConfig{};
+            tutorialConfig.mapType = aoc::map::MapType::Continents;
+            tutorialConfig.mapSize = aoc::map::MapSize::Small;
+            tutorialConfig.playerCount = 2;
+            tutorialConfig.players[0].isActive = true;
+            tutorialConfig.players[0].isHuman  = true;
+            tutorialConfig.players[0].civId    = 0;
+            tutorialConfig.players[1].isActive = true;
+            tutorialConfig.players[1].isHuman  = false;
+            tutorialConfig.players[1].civId    = 1;
+            this->startGame(tutorialConfig);
+            this->m_tutorialManager.start();
         });
 }
 
@@ -1335,11 +1436,32 @@ void Application::handleEndTurn() {
         return;
     }
 
-    // Execute any remaining unit movement
+    // Execute any remaining unit movement for the human player
     aoc::sim::executeMovement(this->m_world, 0, this->m_hexGrid);
 
-    // Advance turn
-    this->m_turnManager.submitEndTurn(0);
+    // Simultaneous turns: human submits, AI auto-submits, then execute.
+    // Sequential turns in war: if active, only allow the active player's turn
+    // to advance; for single-player this is transparent (human acts, then AI).
+    const bool sequentialActive = this->m_turnManager.shouldBeSequential(this->m_diplomacy);
+    if (sequentialActive) {
+        // In sequential mode, only the active player can end their turn.
+        // For the human player (always 0), submit and advance to next player.
+        this->m_turnManager.submitEndTurn(0);
+        this->m_turnManager.advanceActivePlayer();
+
+        // Run each AI player sequentially
+        for (aoc::sim::ai::AIController& ai : this->m_aiControllers) {
+            this->m_turnManager.submitEndTurn(ai.player());
+            this->m_turnManager.advanceActivePlayer();
+        }
+    } else {
+        // Simultaneous: all players submit at once
+        this->m_turnManager.submitEndTurn(0);
+        for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
+            this->m_turnManager.submitEndTurn(ai.player());
+        }
+    }
+
     if (this->m_turnManager.allPlayersReady()) {
         this->m_turnManager.executeTurn(this->m_world, this->m_scheduler);
 
@@ -1360,9 +1482,35 @@ void Application::handleEndTurn() {
             aoc::sim::processCityConnections(this->m_world, this->m_hexGrid, ai.player());
         }
 
+        // Advanced economics (tariffs, banking, debt crisis, infrastructure)
+        aoc::sim::processAdvancedEconomics(this->m_world, this->m_hexGrid, 0,
+                                           this->m_economy.market());
+        for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
+            aoc::sim::processAdvancedEconomics(this->m_world, this->m_hexGrid,
+                                               ai.player(), this->m_economy.market());
+        }
+
+        // War weariness
+        aoc::sim::processWarWeariness(this->m_world, 0, this->m_diplomacy);
+        for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
+            aoc::sim::processWarWeariness(this->m_world, ai.player(), this->m_diplomacy);
+        }
+
+        // Golden/Dark age effects
+        aoc::sim::processAgeEffects(this->m_world, 0);
+        for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
+            aoc::sim::processAgeEffects(this->m_world, ai.player());
+        }
+
         // City growth and happiness
         aoc::sim::processCityGrowth(this->m_world, this->m_hexGrid, 0);
         aoc::sim::computeCityHappiness(this->m_world, 0);
+
+        // City loyalty (after happiness so loyalty can read happiness values)
+        aoc::sim::computeCityLoyalty(this->m_world, this->m_hexGrid, 0);
+        for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
+            aoc::sim::computeCityLoyalty(this->m_world, this->m_hexGrid, ai.player());
+        }
 
         // Religion: accumulate faith, spread, and apply bonuses
         aoc::sim::accumulateFaith(this->m_world, this->m_hexGrid, 0);
@@ -1434,6 +1582,12 @@ void Application::handleEndTurn() {
                 });
             LOG_INFO("Research completed: %s", techName.c_str());
             this->m_eventLog.addEvent("Researched " + techName);
+            this->m_notificationManager.push("Research complete: " + techName, 4.0f,
+                                              0.3f, 0.7f, 1.0f);
+            this->m_soundQueue.push(aoc::audio::SoundEffect::TechResearched);
+
+            // Era score for completing a tech
+            aoc::sim::addEraScore(this->m_world, 0, 2, "Researched " + techName);
 
             // Auto-open tech screen if no next research is queued
             bool hasNextResearch = false;
@@ -1467,6 +1621,9 @@ void Application::handleEndTurn() {
                 });
             LOG_INFO("Civic completed: %s", civicName.c_str());
             this->m_eventLog.addEvent("Completed " + civicName);
+            this->m_notificationManager.push("Civic complete: " + civicName, 4.0f,
+                                              0.8f, 0.5f, 1.0f);
+            this->m_soundQueue.push(aoc::audio::SoundEffect::CivicCompleted);
         }
 
         // Great People: accumulate points and check recruitment
@@ -1493,6 +1650,78 @@ void Application::handleEndTurn() {
         // Process spy missions
         aoc::sim::processSpyMissions(this->m_world, this->m_gameRng);
 
+        // Grievance tick
+        {
+            aoc::ecs::ComponentPool<aoc::sim::PlayerGrievanceComponent>* gPool =
+                this->m_world.getPool<aoc::sim::PlayerGrievanceComponent>();
+            if (gPool != nullptr) {
+                for (uint32_t gi = 0; gi < gPool->size(); ++gi) {
+                    gPool->data()[gi].tickGrievances();
+                }
+            }
+        }
+
+        // World Congress
+        aoc::sim::processWorldCongress(this->m_world,
+                                        this->m_turnManager.currentTurn(),
+                                        this->m_gameRng);
+
+        // Climate system
+        {
+            aoc::ecs::ComponentPool<aoc::sim::GlobalClimateComponent>* climatePool =
+                this->m_world.getPool<aoc::sim::GlobalClimateComponent>();
+            if (climatePool != nullptr) {
+                for (uint32_t ci = 0; ci < climatePool->size(); ++ci) {
+                    // Industrial era onward: add CO2 per city
+                    aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
+                        this->m_world.getPool<aoc::sim::CityComponent>();
+                    if (cityPool != nullptr) {
+                        for (uint32_t cj = 0; cj < cityPool->size(); ++cj) {
+                            // Each city adds a small amount of CO2 (scales with population)
+                            const float co2PerCity = static_cast<float>(
+                                cityPool->data()[cj].population) * 0.1f;
+                            climatePool->data()[ci].addCO2(co2PerCity);
+                        }
+                    }
+                    climatePool->data()[ci].processTurn(this->m_hexGrid, this->m_gameRng);
+                }
+            }
+        }
+
+        // Record replay frame
+        this->m_replayRecorder.recordFrame(this->m_world,
+                                            this->m_turnManager.currentTurn());
+
+        // Sound events for turn transition
+        this->m_soundQueue.clear();
+        this->m_soundQueue.push(aoc::audio::SoundEffect::TurnEnd);
+        this->m_soundQueue.push(aoc::audio::SoundEffect::TurnStart);
+
+        // Switch music track based on era
+        {
+            aoc::ecs::ComponentPool<aoc::sim::PlayerEraComponent>* eraPool =
+                this->m_world.getPool<aoc::sim::PlayerEraComponent>();
+            if (eraPool != nullptr) {
+                for (uint32_t ei = 0; ei < eraPool->size(); ++ei) {
+                    if (eraPool->data()[ei].owner == 0) {
+                        const uint16_t eraVal = eraPool->data()[ei].currentEra.value;
+                        // Map era index to music track
+                        // Ancient=0, Classical=1, Medieval=2, Renaissance=3,
+                        // Industrial=4, Modern=5, Information=6
+                        if (eraVal < static_cast<uint16_t>(aoc::audio::MusicTrack::Count) - 2) {
+                            const aoc::audio::MusicTrack track =
+                                static_cast<aoc::audio::MusicTrack>(eraVal + 1);
+                            if (track != this->m_musicManager.track()) {
+                                this->m_musicManager.setTrack(track);
+                                LOG_INFO("Music track changed to era %u", eraVal);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
         // Update fog of war for all players
         this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, 0);
         for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
@@ -1513,6 +1742,13 @@ void Application::handleEndTurn() {
                      vr.type == aoc::sim::VictoryType::Culture    ? "Culture" :
                      vr.type == aoc::sim::VictoryType::Score      ? "Score" :
                      vr.type == aoc::sim::VictoryType::Religion   ? "Religion" : "Unknown");
+
+            // Open end-game score screen
+            const uint8_t totalPlayers = static_cast<uint8_t>(1 + this->m_aiControllers.size());
+            this->m_scoreScreen.setContext(
+                &this->m_world, &this->m_hexGrid, vr, totalPlayers,
+                [this]() { this->returnToMainMenu(); });
+            this->m_scoreScreen.open(this->m_uiManager);
         }
 
         // Process government/policy unlocks from completed civics
@@ -1787,6 +2023,14 @@ void Application::spawnStartingEntities(aoc::sim::CivId civId) {
     eurekaComp.owner = 0;
     this->m_world.addComponent<aoc::sim::PlayerEurekaComponent>(playerEntity, std::move(eurekaComp));
 
+    aoc::sim::PlayerTariffComponent tariffComp{};
+    tariffComp.owner = 0;
+    this->m_world.addComponent<aoc::sim::PlayerTariffComponent>(playerEntity, std::move(tariffComp));
+
+    aoc::sim::PlayerBankingComponent bankComp{};
+    bankComp.owner = 0;
+    this->m_world.addComponent<aoc::sim::PlayerBankingComponent>(playerEntity, std::move(bankComp));
+
     // Create the global wonder tracker entity (one per game)
     EntityId wonderTrackerEntity = this->m_world.createEntity();
     this->m_world.addComponent<aoc::sim::GlobalWonderTracker>(
@@ -1892,6 +2136,14 @@ void Application::spawnAIPlayer(PlayerId player, aoc::sim::CivId civId) {
     aoc::sim::PlayerEurekaComponent eurekaComp{};
     eurekaComp.owner = player;
     this->m_world.addComponent<aoc::sim::PlayerEurekaComponent>(playerEntity, std::move(eurekaComp));
+
+    aoc::sim::PlayerTariffComponent tariffComp{};
+    tariffComp.owner = player;
+    this->m_world.addComponent<aoc::sim::PlayerTariffComponent>(playerEntity, std::move(tariffComp));
+
+    aoc::sim::PlayerBankingComponent bankComp{};
+    bankComp.owner = player;
+    this->m_world.addComponent<aoc::sim::PlayerBankingComponent>(playerEntity, std::move(bankComp));
 
     // Spawn settler (AI will auto-found city on first turn)
     EntityId settler = this->m_world.createEntity();
@@ -2765,7 +3017,8 @@ bool Application::anyScreenOpen() const {
         || this->m_cityDetailScreen.isOpen()
         || this->m_tradeScreen.isOpen()
         || this->m_diplomacyScreen.isOpen()
-        || this->m_religionScreen.isOpen();
+        || this->m_religionScreen.isOpen()
+        || this->m_scoreScreen.isOpen();
 }
 
 void Application::closeAllScreens() {
@@ -2777,6 +3030,7 @@ void Application::closeAllScreens() {
     this->m_tradeScreen.close(this->m_uiManager);
     this->m_diplomacyScreen.close(this->m_uiManager);
     this->m_religionScreen.close(this->m_uiManager);
+    this->m_scoreScreen.close(this->m_uiManager);
 }
 
 } // namespace aoc::app

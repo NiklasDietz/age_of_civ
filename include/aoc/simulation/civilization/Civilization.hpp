@@ -42,7 +42,7 @@ struct CivilizationDef {
 };
 
 /// Total number of civilizations.
-inline constexpr uint8_t CIV_COUNT = 8;
+inline constexpr uint8_t CIV_COUNT = 12;
 
 inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
     {0, "Rome",    "Trajan",        "All Roads Lead to Rome",
@@ -92,6 +92,30 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {1.0f, 1.0f, 1.0f, 1.1f, 0.0f, 0, 1.0f, 1}, UnitTypeId{}, BuildingId{},
      {{"Persepolis", "Pasargadae", "Susa", "Ecbatana", "Isfahan", "Shiraz",
        "Tabriz", "Hamadan", "Kerman", "Yazd", "Balkh", "Merv"}}},
+
+    {8, "Aztec",   "Montezuma",     "Legend of the Five Suns",
+     "+15% faith. +1 amenity from luxury resources.",
+     {1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0, 1.15f, 0}, UnitTypeId{}, BuildingId{},
+     {{"Tenochtitlan", "Texcoco", "Tlacopan", "Cholula", "Tlaxcala", "Calixtlahuaca",
+       "Xochicalco", "Tula", "Cempoala", "Malinalco", "Tamuin", "Coatepec"}}},
+
+    {9, "India",   "Gandhi",        "Satyagraha",
+     "+5 faith per turn. +2 amenity when at peace. Double religion spread.",
+     {1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     {{"Mumbai", "Delhi", "Kolkata", "Chennai", "Varanasi", "Agra",
+       "Jaipur", "Patna", "Hyderabad", "Lucknow", "Ahmedabad", "Pune"}}},
+
+    {10, "Russia", "Peter",         "The Grand Embassy",
+     "+1 science/culture per trade route. Extra territory from city founding (+2 tiles).",
+     {1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0, 1.0f, 1}, UnitTypeId{}, BuildingId{},
+     {{"Moscow", "St Petersburg", "Novgorod", "Kiev", "Kazan", "Samara",
+       "Rostov", "Tula", "Smolensk", "Pskov", "Yaroslavl", "Vladimir"}}},
+
+    {11, "Brazil", "Pedro II",      "Magnanimous",
+     "+20% culture. +2 amenity in cities with rainforest nearby.",
+     {1.0f, 1.0f, 1.2f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     {{"Rio", "Sao Paulo", "Brasilia", "Salvador", "Recife", "Belem",
+       "Manaus", "Curitiba", "Fortaleza", "Natal", "Porto Alegre", "Santos"}}},
 }};
 
 /// Look up a civilization definition by ID.

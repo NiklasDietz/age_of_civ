@@ -32,6 +32,7 @@ find_package(glfw3 REQUIRED)
 add_library(aoc_lib STATIC
     # Core
     src/core/ErrorCodes.cpp
+    src/core/Selectable.cpp
 
     # ECS
     src/ecs/World.cpp
@@ -52,6 +53,7 @@ add_library(aoc_lib STATIC
     src/simulation/tech/CivicTree.cpp
     src/simulation/tech/EurekaBoost.cpp
     src/simulation/tech/TechGating.cpp
+    src/simulation/tech/EraScore.cpp
     src/simulation/city/CityGrowth.cpp
     src/simulation/city/CityScience.cpp
     src/simulation/city/Happiness.cpp
@@ -62,6 +64,10 @@ add_library(aoc_lib STATIC
     src/simulation/barbarian/BarbarianController.cpp
     src/simulation/diplomacy/DiplomacyState.cpp
     src/simulation/diplomacy/EspionageSystem.cpp
+    src/simulation/diplomacy/WarWeariness.cpp
+    src/simulation/diplomacy/Grievance.cpp
+    src/simulation/diplomacy/WorldCongress.cpp
+    src/simulation/climate/Climate.cpp
     src/simulation/victory/VictoryCondition.cpp
     src/simulation/government/Government.cpp
     src/simulation/ai/AIController.cpp
@@ -79,7 +85,17 @@ add_library(aoc_lib STATIC
     src/simulation/citystate/CityState.cpp
     src/simulation/religion/Religion.cpp
     src/simulation/economy/Maintenance.cpp
+    src/simulation/economy/AdvancedEconomics.cpp
+    src/simulation/economy/EnvironmentModifier.cpp
+    src/simulation/economy/InternalTrade.cpp
     src/simulation/city/CityConnection.cpp
+    src/simulation/city/CityLoyalty.cpp
+
+    # Replay
+    src/replay/ReplayRecorder.cpp
+
+    # Mod
+    src/mod/ModLoader.cpp
 
     # Save
     src/save/Serializer.cpp
@@ -94,6 +110,10 @@ add_library(aoc_lib STATIC
     src/ui/Tooltip.cpp
     src/ui/MainMenu.cpp
     src/ui/ReligionScreen.cpp
+    src/ui/ScoreScreen.cpp
+    src/ui/Notifications.cpp
+    src/ui/MapEditor.cpp
+    src/ui/Tutorial.cpp
 
     # App
     src/app/Window.cpp
@@ -102,10 +122,13 @@ add_library(aoc_lib STATIC
 
     # Render
     src/render/CameraController.cpp
+    src/render/DrawCommandBuffer.cpp
     src/render/GameRenderer.cpp
     src/render/MapRenderer.cpp
     src/render/UnitRenderer.cpp
     src/render/Minimap.cpp
+    src/render/CombatAnimation.cpp
+    src/render/Particles.cpp
 )
 
 target_include_directories(aoc_lib

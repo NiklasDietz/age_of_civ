@@ -77,12 +77,14 @@ static void setButtonSelected(UIManager& ui, WidgetId id, bool selected) {
 
 void MainMenu::build(UIManager& ui, float screenW, float screenH,
                      StartGameCallback onStartGame, QuitCallback onQuit,
-                     std::function<void()> onSettings) {
+                     std::function<void()> onSettings,
+                     std::function<void()> onTutorial) {
     assert(!this->m_isBuilt);
 
     this->m_onStartGame = std::move(onStartGame);
     this->m_onQuit      = std::move(onQuit);
     this->m_onSettings  = std::move(onSettings);
+    this->m_onTutorial  = std::move(onTutorial);
 
     // Full-screen dark background
     this->m_rootPanel = ui.createPanel(
@@ -154,6 +156,25 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
             contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
     }
 
+    // --- Tutorial button ---
+    if (this->m_onTutorial) {
+        ButtonData btn;
+        btn.label       = "Tutorial";
+        btn.fontSize    = 14.0f;
+        btn.normalColor = BTN_NORMAL;
+        btn.hoverColor  = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
+        btn.labelColor  = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this]() {
+            if (this->m_onTutorial) {
+                this->m_onTutorial();
+            }
+        };
+        [[maybe_unused]] WidgetId tutorialBtn = ui.createButton(
+            contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+    }
+
     // --- Quit button ---
     {
         ButtonData btn;
@@ -219,7 +240,8 @@ void MainMenu::destroy(UIManager& ui) {
 
 /// Civilization names (indexed by CivId).
 static constexpr std::array<std::string_view, aoc::sim::CIV_COUNT> CIV_NAMES = {{
-    "Rome", "Egypt", "China", "Germany", "Greece", "England", "Japan", "Persia"
+    "Rome", "Egypt", "China", "Germany", "Greece", "England", "Japan", "Persia",
+    "Aztec", "India", "Russia", "Brazil"
 }};
 
 void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
@@ -357,6 +379,24 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             this->updateMapTypeButtons(ui);
         };
         this->m_btnFractal = ui.createButton(
+            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
+    }
+
+    // Realistic
+    {
+        ButtonData btn;
+        btn.label        = "Realistic";
+        btn.fontSize     = 12.0f;
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this, &ui]() {
+            this->m_config.mapType = aoc::map::MapType::Realistic;
+            this->updateMapTypeButtons(ui);
+        };
+        this->m_btnRealistic = ui.createButton(
             mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
     }
 
@@ -586,6 +626,60 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         }
     }
 
+    // ---- Sequential Turns in War toggle ----
+    {
+        const bool seqOn = this->m_config.sequentialTurnsInWar;
+        ButtonData btn;
+        btn.label        = seqOn ? "Sequential in War: ON" : "Sequential in War: OFF";
+        btn.fontSize     = 12.0f;
+        btn.normalColor  = seqOn ? BTN_SELECTED : BTN_NORMAL;
+        btn.hoverColor   = seqOn ? BTN_SEL_HOVER : BTN_HOVER;
+        btn.pressedColor = seqOn ? BTN_SEL_PRESSED : BTN_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this, &ui]() {
+            this->m_config.sequentialTurnsInWar = !this->m_config.sequentialTurnsInWar;
+            this->refresh(ui);
+        };
+        this->m_btnSequential = ui.createButton(
+            contentPanel, {0.0f, 0.0f, innerW, 28.0f}, std::move(btn));
+    }
+
+    // ---- AI Difficulty toggle ----
+    {
+        const char* diffLabel = "AI Difficulty: Normal";
+        if (this->m_config.aiDifficulty == AIDifficulty::Easy) {
+            diffLabel = "AI Difficulty: Easy";
+        } else if (this->m_config.aiDifficulty == AIDifficulty::Hard) {
+            diffLabel = "AI Difficulty: Hard";
+        }
+        ButtonData btn;
+        btn.label        = diffLabel;
+        btn.fontSize     = 12.0f;
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this, &ui]() {
+            // Cycle: Easy -> Normal -> Hard -> Easy
+            switch (this->m_config.aiDifficulty) {
+                case AIDifficulty::Easy:
+                    this->m_config.aiDifficulty = AIDifficulty::Normal;
+                    break;
+                case AIDifficulty::Normal:
+                    this->m_config.aiDifficulty = AIDifficulty::Hard;
+                    break;
+                case AIDifficulty::Hard:
+                    this->m_config.aiDifficulty = AIDifficulty::Easy;
+                    break;
+            }
+            this->refresh(ui);
+        };
+        this->m_btnDifficulty = ui.createButton(
+            contentPanel, {0.0f, 0.0f, innerW, 28.0f}, std::move(btn));
+    }
+
     // Spacer
     [[maybe_unused]] WidgetId spacer = ui.createPanel(
         contentPanel,
@@ -643,9 +737,12 @@ void GameSetupScreen::destroy(UIManager& ui) {
     this->m_btnPangaea       = INVALID_WIDGET;
     this->m_btnArchipelago   = INVALID_WIDGET;
     this->m_btnFractal       = INVALID_WIDGET;
+    this->m_btnRealistic     = INVALID_WIDGET;
     this->m_btnSmall         = INVALID_WIDGET;
     this->m_btnStandard      = INVALID_WIDGET;
     this->m_btnLarge         = INVALID_WIDGET;
+    this->m_btnSequential    = INVALID_WIDGET;
+    this->m_btnDifficulty    = INVALID_WIDGET;
     for (uint8_t i = 0; i < 8; ++i) {
         this->m_playerRows[i] = INVALID_WIDGET;
         this->m_civLabels[i]  = INVALID_WIDGET;
@@ -675,6 +772,21 @@ void GameSetupScreen::refresh(UIManager& ui) {
             }
         }
     }
+
+    // Update sequential turns toggle
+    const bool seqOn = this->m_config.sequentialTurnsInWar;
+    ui.setButtonLabel(this->m_btnSequential,
+                      seqOn ? "Sequential in War: ON" : "Sequential in War: OFF");
+    setButtonSelected(ui, this->m_btnSequential, seqOn);
+
+    // Update AI difficulty toggle
+    const char* diffLabel = "AI Difficulty: Normal";
+    if (this->m_config.aiDifficulty == AIDifficulty::Easy) {
+        diffLabel = "AI Difficulty: Easy";
+    } else if (this->m_config.aiDifficulty == AIDifficulty::Hard) {
+        diffLabel = "AI Difficulty: Hard";
+    }
+    ui.setButtonLabel(this->m_btnDifficulty, diffLabel);
 }
 
 void GameSetupScreen::updateMapTypeButtons(UIManager& ui) {
@@ -686,6 +798,8 @@ void GameSetupScreen::updateMapTypeButtons(UIManager& ui) {
                       this->m_config.mapType == aoc::map::MapType::Archipelago);
     setButtonSelected(ui, this->m_btnFractal,
                       this->m_config.mapType == aoc::map::MapType::Fractal);
+    setButtonSelected(ui, this->m_btnRealistic,
+                      this->m_config.mapType == aoc::map::MapType::Realistic);
 }
 
 void GameSetupScreen::updateMapSizeButtons(UIManager& ui) {

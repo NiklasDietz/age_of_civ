@@ -48,8 +48,11 @@ struct GoodDef {
     uint16_t         id;
     std::string_view name;
     GoodCategory     category;
-    int32_t          basePrice;    ///< Default market price in currency units
-    bool             isStrategic;  ///< Required for military units / key buildings
+    int32_t          basePrice;        ///< Default market price in currency units
+    bool             isStrategic;      ///< Required for military units / key buildings
+    float            priceElasticity;  ///< How much price changes with supply/demand ratio.
+                                       ///< Low (0.2) = stable prices (necessities).
+                                       ///< High (0.8) = volatile prices (luxuries/advanced).
 };
 
 // ============================================================================

@@ -11,14 +11,18 @@
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/economy/ResourceCurse.hpp"
+#include "aoc/simulation/economy/InternalTrade.hpp"
+#include "aoc/simulation/economy/EnvironmentModifier.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/Inflation.hpp"
 #include "aoc/simulation/monetary/FiscalPolicy.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
+#include "aoc/simulation/economy/AdvancedEconomics.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/ecs/World.hpp"
 
 #include <algorithm>
+#include <unordered_set>
 
 namespace aoc::sim {
 
@@ -33,9 +37,11 @@ void EconomySimulation::initialize() {
              static_cast<unsigned>(goodCount()));
 }
 
-void EconomySimulation::executeTurn(aoc::ecs::World& world, const aoc::map::HexGrid& grid) {
+void EconomySimulation::executeTurn(aoc::ecs::World& world, aoc::map::HexGrid& grid) {
     this->harvestResources(world, grid);
-    this->executeProduction(world);
+    this->applyResourceDepletion(world, grid);
+    this->processInternalTradeForAllPlayers(world, grid);
+    this->executeProduction(world, grid);
     this->reportToMarket(world);
     this->m_market.updatePrices();
     this->executeTradeRoutes(world);
@@ -90,19 +96,36 @@ void EconomySimulation::harvestResources(aoc::ecs::World& world,
 
 // ============================================================================
 // Step 2: Execute production recipes in topological order
+//
+// Worker capacity limit: each city can execute at most (population / 2)
+// recipes per turn (minimum 1). Small cities specialize in 1-2 recipes;
+// large cities run many. This creates natural specialization pressure.
 // ============================================================================
 
-void EconomySimulation::executeProduction(aoc::ecs::World& world) {
+void EconomySimulation::executeProduction(aoc::ecs::World& world,
+                                          const aoc::map::HexGrid& grid) {
     aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
     if (cityPool == nullptr) {
         return;
     }
+
+    // Track how many recipes each city has executed this turn.
+    // Key: city entity index bits, Value: count of recipes executed.
+    std::unordered_map<uint32_t, int32_t> recipesExecuted;
 
     // Process recipes in dependency order (raw first, advanced last)
     for (const ProductionRecipe* recipe : this->m_productionChain.executionOrder()) {
         // For each city, try to execute this recipe if the city has the required building
         for (uint32_t i = 0; i < cityPool->size(); ++i) {
             EntityId cityEntity = cityPool->entities()[i];
+
+            // Worker capacity limit: population / 2, minimum 1
+            const CityComponent& city = cityPool->data()[i];
+            const int32_t maxRecipes = std::max(1, city.population / 2);
+            const int32_t executed = recipesExecuted[cityEntity.index];
+            if (executed >= maxRecipes) {
+                continue;
+            }
 
             // Check if city has the required building
             const CityDistrictsComponent* districts =
@@ -137,8 +160,84 @@ void EconomySimulation::executeProduction(aoc::ecs::World& world) {
                 }
             }
 
-            // Produce output
-            stockpile->addGoods(recipe->outputGoodId, recipe->outputAmount);
+            // Produce output (apply infrastructure bonus + environment modifier)
+            const float infraBonus = computeInfrastructureBonus(world, grid, cityEntity);
+            const float envModifier = computeEnvironmentModifier(
+                world, grid, cityEntity, recipe->requiredBuilding);
+            const int32_t boostedOutput = static_cast<int32_t>(
+                static_cast<float>(recipe->outputAmount) * infraBonus * envModifier);
+            stockpile->addGoods(recipe->outputGoodId, boostedOutput);
+
+            // Count this recipe toward the city's worker capacity
+            ++recipesExecuted[cityEntity.index];
+        }
+    }
+}
+
+// ============================================================================
+// Internal trade: redistribute surplus goods between a player's own cities
+// ============================================================================
+
+void EconomySimulation::processInternalTradeForAllPlayers(aoc::ecs::World& world,
+                                                          const aoc::map::HexGrid& grid) {
+    // Collect unique player IDs from all cities
+    aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
+    if (cityPool == nullptr) {
+        return;
+    }
+
+    std::unordered_set<PlayerId> players;
+    for (uint32_t i = 0; i < cityPool->size(); ++i) {
+        const PlayerId owner = cityPool->data()[i].owner;
+        if (owner != INVALID_PLAYER && owner != BARBARIAN_PLAYER) {
+            players.insert(owner);
+        }
+    }
+
+    for (const PlayerId player : players) {
+        processInternalTrade(world, grid, player);
+    }
+}
+
+// ============================================================================
+// Resource depletion: small chance per turn that a tile's yield decreases
+// ============================================================================
+
+void EconomySimulation::applyResourceDepletion(aoc::ecs::World& world,
+                                                aoc::map::HexGrid& grid) {
+    // Use a deterministic counter-based approach for depletion checks.
+    // Each tile's resource has a 1% chance per turn of yield decrease.
+    // We use (turn number * tile index) hash for determinism without a full RNG.
+    ++this->m_depletionTurnCounter;
+
+    aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
+    if (cityPool == nullptr) {
+        return;
+    }
+
+    for (uint32_t i = 0; i < cityPool->size(); ++i) {
+        const CityComponent& city = cityPool->data()[i];
+
+        for (const hex::AxialCoord& tileCoord : city.workedTiles) {
+            if (!grid.isValid(tileCoord)) {
+                continue;
+            }
+            const int32_t tileIndex = grid.toIndex(tileCoord);
+            const ResourceId resId = grid.resource(tileIndex);
+            if (!resId.isValid()) {
+                continue;
+            }
+
+            // Deterministic 1% depletion chance per turn using hash
+            const uint32_t hash = static_cast<uint32_t>(tileIndex) * 2654435761u
+                                + this->m_depletionTurnCounter * 2246822519u;
+            constexpr uint32_t DEPLETION_THRESHOLD = 42949672u;  // ~1% of UINT32_MAX
+            if (hash < DEPLETION_THRESHOLD) {
+                // Deplete: remove the resource from this tile
+                grid.setResource(tileIndex, ResourceId{});
+                LOG_INFO("Resource depleted at tile (%d,%d): good %u exhausted",
+                         tileCoord.q, tileCoord.r, static_cast<unsigned>(resId.value));
+            }
         }
     }
 }

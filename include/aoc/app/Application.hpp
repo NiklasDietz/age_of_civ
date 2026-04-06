@@ -27,7 +27,13 @@
 #include "aoc/ui/ReligionScreen.hpp"
 #include "aoc/ui/EventLog.hpp"
 #include "aoc/ui/MainMenu.hpp"
+#include "aoc/ui/ScoreScreen.hpp"
 #include "aoc/simulation/tech/EurekaBoost.hpp"
+#include "aoc/audio/SoundEvent.hpp"
+#include "aoc/audio/MusicManager.hpp"
+#include "aoc/ui/Notifications.hpp"
+#include "aoc/ui/Tutorial.hpp"
+#include "aoc/replay/ReplayRecorder.hpp"
 #include "aoc/core/ErrorCodes.hpp"
 #include "aoc/core/Types.hpp"
 #include "aoc/map/MapGenerator.hpp"
@@ -173,9 +179,23 @@ private:
     aoc::ui::TradeScreen        m_tradeScreen;
     aoc::ui::DiplomacyScreen    m_diplomacyScreen;
     aoc::ui::ReligionScreen     m_religionScreen;
+    aoc::ui::ScoreScreen        m_scoreScreen;
 
     // Turn event log
     aoc::ui::EventLog m_eventLog;
+
+    // Audio system (event queue + music manager)
+    aoc::audio::SoundEventQueue m_soundQueue;
+    aoc::audio::MusicManager    m_musicManager;
+
+    // Notification toast system
+    aoc::ui::NotificationManager m_notificationManager;
+
+    // Tutorial
+    aoc::ui::TutorialManager m_tutorialManager;
+
+    // Replay recorder
+    aoc::replay::ReplayRecorder m_replayRecorder;
 
     /// Returns true if any modal screen is currently open.
     [[nodiscard]] bool anyScreenOpen() const;

@@ -10,6 +10,8 @@
 
 #include "aoc/render/GameRenderer.hpp"
 #include "aoc/render/CameraController.hpp"
+#include "aoc/ui/Notifications.hpp"
+#include "aoc/ui/Tutorial.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/FogOfWar.hpp"
@@ -54,7 +56,9 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                            PlayerId viewingPlayer,
                            aoc::ui::UIManager& uiManager,
                            uint32_t screenWidth, uint32_t screenHeight,
-                           const aoc::ui::EventLog* eventLog) {
+                           const aoc::ui::EventLog* eventLog,
+                           const aoc::ui::NotificationManager* notifications,
+                           const aoc::ui::TutorialManager* tutorial) {
     float hexSize = this->m_mapRenderer.hexSize();
 
     // The shader's cameraPos is the TOP-LEFT corner of the viewport in world space.
@@ -71,6 +75,10 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     // Layer 1: Map tiles (world coordinates -- shader transforms via camera)
     this->m_mapRenderer.draw(renderer2d, grid, fog, viewingPlayer, camera,
                               screenWidth, screenHeight);
+
+    // Layer 1.5: Territory borders (hex outlines drawn ON TOP of terrain)
+    this->m_mapRenderer.drawTerritoryBorders(renderer2d, grid, camera,
+                                              screenWidth, screenHeight);
 
     // Layer 2: Cities (world coordinates)
     this->m_unitRenderer.drawCities(renderer2d, world, fog, grid, viewingPlayer,
@@ -133,6 +141,12 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
         }
     }
 
+    // Layer 3.5b: Combat animations (between units layer and UI)
+    this->m_combatAnimator.render(renderer2d, hexSize);
+
+    // Layer 3.5c: Particle effects
+    this->m_particleSystem.render(renderer2d);
+
     // Layer 3.6: Ranged attack range overlay for selected ranged unit
     if (this->m_unitRenderer.selectedEntity.isValid() &&
         world.hasComponent<aoc::sim::UnitComponent>(this->m_unitRenderer.selectedEntity)) {
@@ -181,6 +195,22 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     this->m_minimap.draw(renderer2d, grid, fog, viewingPlayer, camera,
                          mmWorldX, mmWorldY, MINIMAP_W * invZoom, MINIMAP_H * invZoom,
                          screenWidth, screenHeight);
+
+    // Notifications: rendered in world-space (same transform trick as UI)
+    if (notifications != nullptr) {
+        notifications->render(renderer2d,
+                               static_cast<float>(screenWidth),
+                               static_cast<float>(screenHeight),
+                               invZoom);
+    }
+
+    // Tutorial overlay: rendered in world-space
+    if (tutorial != nullptr && tutorial->isActive()) {
+        tutorial->render(renderer2d,
+                          static_cast<float>(screenWidth),
+                          static_cast<float>(screenHeight),
+                          invZoom);
+    }
 
     renderer2d.end(commandBuffer);
 }

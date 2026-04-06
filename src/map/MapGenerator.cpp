@@ -6,6 +6,7 @@
 #include "aoc/map/MapGenerator.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/core/Log.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -89,11 +90,20 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
 
     aoc::Random rng(config.seed);
 
-    assignTerrain(config, outGrid, rng);
-    smoothCoastlines(outGrid);
-    assignFeatures(config, outGrid, rng);
-    generateRivers(outGrid, rng);
-    placeNaturalWonders(outGrid, rng);
+    if (config.mapType == MapType::Realistic) {
+        generateRealisticTerrain(config, outGrid, rng);
+        smoothCoastlines(outGrid);
+        assignFeatures(config, outGrid, rng);
+        generateRivers(outGrid, rng);
+        placeNaturalWonders(outGrid, rng);
+        placeGeologyResources(config, outGrid, rng);
+    } else {
+        assignTerrain(config, outGrid, rng);
+        smoothCoastlines(outGrid);
+        assignFeatures(config, outGrid, rng);
+        generateRivers(outGrid, rng);
+        placeNaturalWonders(outGrid, rng);
+    }
 }
 
 void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Random& rng) {
@@ -143,6 +153,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         }
         case MapType::Fractal: {
             // No gradient centers -- pure noise
+            break;
+        }
+        case MapType::Realistic: {
+            // Handled by generateRealisticTerrain(); should not reach here.
             break;
         }
     }
@@ -533,6 +547,462 @@ void MapGenerator::placeNaturalWonders(HexGrid& grid, aoc::Random& rng) {
             break;
         }
     }
+}
+
+// ============================================================================
+// Realistic map: tectonic plate simulation
+// ============================================================================
+
+/// Boundary type between two tectonic plates.
+enum class BoundaryType : uint8_t {
+    None,
+    Convergent,
+    Divergent,
+    Transform,
+};
+
+void MapGenerator::generateRealisticTerrain(const Config& config, HexGrid& grid,
+                                             aoc::Random& rng) {
+    const int32_t width  = grid.width();
+    const int32_t height = grid.height();
+    const int32_t tileCount = width * height;
+
+    // ---- Step 1: Generate Tectonic Plates as Voronoi regions ----
+
+    aoc::Random plateRng(rng.next());
+    const int32_t plateCount = plateRng.nextInt(4, 6);
+
+    struct PlateSeed {
+        float x;       ///< Normalized [0,1]
+        float y;       ///< Normalized [0,1]
+        float driftX;  ///< Drift vector X component
+        float driftY;  ///< Drift vector Y component
+    };
+
+    std::vector<PlateSeed> plates(static_cast<std::size_t>(plateCount));
+    for (int32_t p = 0; p < plateCount; ++p) {
+        plates[static_cast<std::size_t>(p)].x = plateRng.nextFloat(0.05f, 0.95f);
+        plates[static_cast<std::size_t>(p)].y = plateRng.nextFloat(0.05f, 0.95f);
+        // Random drift direction (unit-ish vector)
+        const float angle = plateRng.nextFloat(0.0f, 6.28318f);
+        plates[static_cast<std::size_t>(p)].driftX = std::cos(angle);
+        plates[static_cast<std::size_t>(p)].driftY = std::sin(angle);
+    }
+
+    // Assign each tile to nearest plate (Voronoi)
+    std::vector<int32_t> plateId(static_cast<std::size_t>(tileCount));
+
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            const float nx = static_cast<float>(col) / static_cast<float>(width);
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+
+            float bestDist = 1e9f;
+            int32_t bestPlate = 0;
+            for (int32_t p = 0; p < plateCount; ++p) {
+                const float dx = nx - plates[static_cast<std::size_t>(p)].x;
+                const float dy = ny - plates[static_cast<std::size_t>(p)].y;
+                const float dist = dx * dx + dy * dy;
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestPlate = p;
+                }
+            }
+            plateId[static_cast<std::size_t>(row * width + col)] = bestPlate;
+        }
+    }
+
+    // ---- Step 2: Classify plate boundaries ----
+
+    std::vector<BoundaryType> boundary(static_cast<std::size_t>(tileCount), BoundaryType::None);
+
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            const int32_t index = row * width + col;
+            const int32_t myPlate = plateId[static_cast<std::size_t>(index)];
+            const hex::AxialCoord axial = hex::offsetToAxial({col, row});
+            const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(axial);
+
+            for (const hex::AxialCoord& n : nbrs) {
+                if (!grid.isValid(n)) {
+                    continue;
+                }
+                const int32_t nIndex = grid.toIndex(n);
+                const int32_t nPlate = plateId[static_cast<std::size_t>(nIndex)];
+
+                if (nPlate == myPlate) {
+                    continue;
+                }
+
+                // Determine boundary type from drift vectors
+                const PlateSeed& myP = plates[static_cast<std::size_t>(myPlate)];
+                const PlateSeed& nP  = plates[static_cast<std::size_t>(nPlate)];
+
+                // Direction from my plate seed toward neighbor plate seed
+                const float towardX = nP.x - myP.x;
+                const float towardY = nP.y - myP.y;
+
+                // Dot product of my drift with toward-vector
+                const float dotMy = myP.driftX * towardX + myP.driftY * towardY;
+                // Dot product of neighbor drift with reverse direction
+                const float dotN  = nP.driftX * (-towardX) + nP.driftY * (-towardY);
+
+                if (dotMy > 0.0f && dotN > 0.0f) {
+                    // Both moving toward each other -> convergent
+                    boundary[static_cast<std::size_t>(index)] = BoundaryType::Convergent;
+                } else if (dotMy < 0.0f && dotN < 0.0f) {
+                    // Both moving apart -> divergent
+                    boundary[static_cast<std::size_t>(index)] = BoundaryType::Divergent;
+                } else {
+                    // Mixed -> transform
+                    boundary[static_cast<std::size_t>(index)] = BoundaryType::Transform;
+                }
+                break;  // Only need to detect one neighbor on different plate
+            }
+        }
+    }
+
+    // ---- Step 3: Generate elevation from tectonics + noise ----
+
+    aoc::Random noiseRng(rng.next());
+    std::vector<float> elevationMap(static_cast<std::size_t>(tileCount));
+
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            const int32_t index = row * width + col;
+            const float nx = static_cast<float>(col) / static_cast<float>(width);
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+
+            float elev = fractalNoise(nx, ny, 6, 3.0f, 0.5f, noiseRng);
+
+            // Apply tectonic elevation bias
+            switch (boundary[static_cast<std::size_t>(index)]) {
+                case BoundaryType::Convergent:
+                    elev += 0.4f;
+                    break;
+                case BoundaryType::Divergent:
+                    elev -= 0.2f;
+                    break;
+                case BoundaryType::Transform:
+                    elev += 0.1f;
+                    break;
+                case BoundaryType::None:
+                    // Continental interior: slight positive bias
+                    elev += 0.05f;
+                    break;
+            }
+
+            elevationMap[static_cast<std::size_t>(index)] = elev;
+        }
+    }
+
+    // Sort elevations to find the water threshold
+    std::vector<float> sortedElevations(elevationMap);
+    std::sort(sortedElevations.begin(), sortedElevations.end());
+    const std::size_t waterCutoff = static_cast<std::size_t>(
+        config.waterRatio * static_cast<float>(sortedElevations.size()));
+    const float waterThreshold = sortedElevations[std::min(waterCutoff, sortedElevations.size() - 1)];
+
+    // Mountain threshold
+    const std::size_t mountainCutoff = sortedElevations.size() -
+        static_cast<std::size_t>(config.mountainRatio * static_cast<float>(sortedElevations.size()));
+    const float mountainThreshold = sortedElevations[std::min(mountainCutoff, sortedElevations.size() - 1)];
+
+    // Temperature map (latitude-based + noise)
+    aoc::Random tempRng(rng.next());
+
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            const int32_t index = row * width + col;
+            const float elev = elevationMap[static_cast<std::size_t>(index)];
+
+            if (elev < waterThreshold) {
+                if (elev < waterThreshold * 0.6f) {
+                    grid.setTerrain(index, TerrainType::Ocean);
+                } else {
+                    grid.setTerrain(index, TerrainType::Coast);
+                }
+                grid.setElevation(index, -1);
+                continue;
+            }
+
+            if (elev >= mountainThreshold) {
+                grid.setTerrain(index, TerrainType::Mountain);
+                grid.setElevation(index, 3);
+                continue;
+            }
+
+            // Temperature based on latitude + noise
+            const float latitudeT = static_cast<float>(row) / static_cast<float>(height);
+            float temperature = 1.0f - 2.0f * std::abs(latitudeT - 0.5f);
+            const float tnx = static_cast<float>(col) / static_cast<float>(width);
+            const float tny = static_cast<float>(row) / static_cast<float>(height);
+            temperature += (fractalNoise(tnx, tny, 3, 5.0f, 0.5f, tempRng) - 0.5f) * 0.3f;
+            temperature = std::clamp(temperature, 0.0f, 1.0f);
+
+            TerrainType terrain;
+            if (temperature < 0.15f) {
+                terrain = TerrainType::Snow;
+            } else if (temperature < 0.30f) {
+                terrain = TerrainType::Tundra;
+            } else if (temperature > 0.80f) {
+                terrain = TerrainType::Desert;
+            } else if (temperature > 0.50f) {
+                terrain = TerrainType::Plains;
+            } else {
+                terrain = TerrainType::Grassland;
+            }
+
+            grid.setTerrain(index, terrain);
+            grid.setElevation(index, static_cast<int8_t>(
+                std::clamp(static_cast<int>(elev * 4.0f), 0, 2)));
+        }
+    }
+
+    LOG_INFO("Realistic terrain generated: %d plates, %dx%d",
+             plateCount, width, height);
+}
+
+// ============================================================================
+// Realistic map: geology-based resource placement
+// ============================================================================
+
+void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
+                                          aoc::Random& rng) {
+    const int32_t width  = grid.width();
+    const int32_t height = grid.height();
+    const int32_t tileCount = width * height;
+
+    // Rebuild plate and boundary data (lightweight, same seed path guarantees consistency).
+    // We re-derive from the same rng sequence used in generate(), but since rng has advanced
+    // past terrain generation, we use a fresh sub-rng seeded from the current state.
+    aoc::Random plateRng(rng.next());
+    const int32_t plateCount = plateRng.nextInt(4, 6);
+
+    struct PlateSeed {
+        float x;
+        float y;
+        float driftX;
+        float driftY;
+    };
+
+    std::vector<PlateSeed> plates(static_cast<std::size_t>(plateCount));
+    for (int32_t p = 0; p < plateCount; ++p) {
+        plates[static_cast<std::size_t>(p)].x = plateRng.nextFloat(0.05f, 0.95f);
+        plates[static_cast<std::size_t>(p)].y = plateRng.nextFloat(0.05f, 0.95f);
+        const float angle = plateRng.nextFloat(0.0f, 6.28318f);
+        plates[static_cast<std::size_t>(p)].driftX = std::cos(angle);
+        plates[static_cast<std::size_t>(p)].driftY = std::sin(angle);
+    }
+
+    std::vector<int32_t> plateId(static_cast<std::size_t>(tileCount));
+    std::vector<BoundaryType> boundary(static_cast<std::size_t>(tileCount), BoundaryType::None);
+
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            const float nx = static_cast<float>(col) / static_cast<float>(width);
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+
+            float bestDist = 1e9f;
+            int32_t bestPlate = 0;
+            for (int32_t p = 0; p < plateCount; ++p) {
+                const float dx = nx - plates[static_cast<std::size_t>(p)].x;
+                const float dy = ny - plates[static_cast<std::size_t>(p)].y;
+                const float dist = dx * dx + dy * dy;
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestPlate = p;
+                }
+            }
+            plateId[static_cast<std::size_t>(row * width + col)] = bestPlate;
+        }
+    }
+
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            const int32_t index = row * width + col;
+            const int32_t myPlate = plateId[static_cast<std::size_t>(index)];
+            const hex::AxialCoord axial = hex::offsetToAxial({col, row});
+            const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(axial);
+
+            for (const hex::AxialCoord& n : nbrs) {
+                if (!grid.isValid(n)) {
+                    continue;
+                }
+                const int32_t nIndex = grid.toIndex(n);
+                const int32_t nPlate = plateId[static_cast<std::size_t>(nIndex)];
+                if (nPlate == myPlate) {
+                    continue;
+                }
+
+                const PlateSeed& myP = plates[static_cast<std::size_t>(myPlate)];
+                const PlateSeed& nP  = plates[static_cast<std::size_t>(nPlate)];
+                const float towardX = nP.x - myP.x;
+                const float towardY = nP.y - myP.y;
+                const float dotMy = myP.driftX * towardX + myP.driftY * towardY;
+                const float dotN  = nP.driftX * (-towardX) + nP.driftY * (-towardY);
+
+                if (dotMy > 0.0f && dotN > 0.0f) {
+                    boundary[static_cast<std::size_t>(index)] = BoundaryType::Convergent;
+                } else if (dotMy < 0.0f && dotN < 0.0f) {
+                    boundary[static_cast<std::size_t>(index)] = BoundaryType::Divergent;
+                } else {
+                    boundary[static_cast<std::size_t>(index)] = BoundaryType::Transform;
+                }
+                break;
+            }
+        }
+    }
+
+    // ---- Place resources based on geology zones ----
+
+    aoc::Random resRng(rng.next());
+    int32_t totalPlaced = 0;
+
+    // Helper: check if any neighbor is coast/ocean
+    const auto isNearCoast = [&](int32_t row, int32_t col) -> bool {
+        const hex::AxialCoord axial = hex::offsetToAxial({col, row});
+        const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(axial);
+        for (const hex::AxialCoord& n : nbrs) {
+            if (grid.isValid(n) && isWater(grid.terrain(grid.toIndex(n)))) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            const int32_t index = row * width + col;
+            const TerrainType terrain = grid.terrain(index);
+
+            if (isWater(terrain) || terrain == TerrainType::Mountain) {
+                continue;
+            }
+
+            // Already has a resource (from natural wonders, etc.)
+            if (grid.resource(index).isValid()) {
+                continue;
+            }
+
+            const BoundaryType bType = boundary[static_cast<std::size_t>(index)];
+            const int8_t elev = grid.elevation(index);
+            const float latitudeT = static_cast<float>(row) / static_cast<float>(height);
+            const float temperature = 1.0f - 2.0f * std::abs(latitudeT - 0.5f);
+            const bool nearCoast = isNearCoast(row, col);
+
+            ResourceId placed{};
+
+            // Volcanic zone: convergent + high elevation
+            if (bType == BoundaryType::Convergent && elev >= 2) {
+                if (resRng.chance(0.05f)) {
+                    placed = ResourceId{aoc::sim::goods::GOLD_ORE};
+                } else if (resRng.chance(0.03f)) {
+                    placed = ResourceId{aoc::sim::goods::GEMS};
+                } else if (resRng.chance(0.02f)) {
+                    placed = ResourceId{aoc::sim::goods::ALUMINUM};
+                }
+            }
+            // Convergent boundary (mountain range)
+            else if (bType == BoundaryType::Convergent) {
+                if (resRng.chance(0.06f)) {
+                    placed = ResourceId{aoc::sim::goods::COPPER_ORE};
+                } else if (resRng.chance(0.04f)) {
+                    placed = ResourceId{aoc::sim::goods::GOLD_ORE};
+                } else if (resRng.chance(0.03f)) {
+                    placed = ResourceId{aoc::sim::goods::TIN};
+                } else if (resRng.chance(0.02f)) {
+                    placed = ResourceId{aoc::sim::goods::GEMS};
+                }
+            }
+            // Divergent boundary (rift zone)
+            else if (bType == BoundaryType::Divergent) {
+                if (resRng.chance(0.04f)) {
+                    placed = ResourceId{aoc::sim::goods::COPPER_ORE};
+                } else if (elev <= 0 && resRng.chance(0.03f)) {
+                    placed = ResourceId{aoc::sim::goods::OIL};
+                }
+            }
+            // Continental interior (no boundary)
+            else if (bType == BoundaryType::None) {
+                // Sedimentary basin: low elevation interior
+                if (elev <= 0) {
+                    if (resRng.chance(0.06f)) {
+                        placed = ResourceId{aoc::sim::goods::OIL};
+                    } else if (resRng.chance(0.05f)) {
+                        placed = ResourceId{aoc::sim::goods::COAL};
+                    } else if (resRng.chance(0.03f)) {
+                        placed = ResourceId{aoc::sim::goods::NITER};
+                    }
+                }
+                // Continental shield (higher elevation interior)
+                else {
+                    if (resRng.chance(0.08f)) {
+                        placed = ResourceId{aoc::sim::goods::IRON_ORE};
+                    } else if (resRng.chance(0.06f)) {
+                        placed = ResourceId{aoc::sim::goods::STONE};
+                    } else if (resRng.chance(0.04f)) {
+                        placed = ResourceId{aoc::sim::goods::COAL};
+                    }
+                }
+            }
+
+            // Climate-based resources (only if no geology resource was placed)
+            if (!placed.isValid()) {
+                if (terrain == TerrainType::Desert) {
+                    if (elev <= 0 && resRng.chance(0.04f)) {
+                        placed = ResourceId{aoc::sim::goods::OIL};
+                    } else if (resRng.chance(0.02f)) {
+                        placed = ResourceId{aoc::sim::goods::INCENSE};
+                    }
+                } else if (temperature > 0.65f && terrain != TerrainType::Desert) {
+                    // Tropical
+                    if (resRng.chance(0.04f)) {
+                        placed = ResourceId{aoc::sim::goods::COTTON};
+                    } else if (resRng.chance(0.03f)) {
+                        placed = ResourceId{aoc::sim::goods::RUBBER};
+                    } else if (resRng.chance(0.03f)) {
+                        placed = ResourceId{aoc::sim::goods::SPICES};
+                    } else if (resRng.chance(0.03f)) {
+                        placed = ResourceId{aoc::sim::goods::SUGAR};
+                    }
+                } else if (temperature >= 0.30f && temperature <= 0.65f) {
+                    // Temperate
+                    if (resRng.chance(0.06f)) {
+                        placed = ResourceId{aoc::sim::goods::WHEAT};
+                    } else if (resRng.chance(0.05f)) {
+                        placed = ResourceId{aoc::sim::goods::WOOD};
+                    } else if (resRng.chance(0.04f)) {
+                        placed = ResourceId{aoc::sim::goods::CATTLE};
+                    }
+                } else if (temperature < 0.30f) {
+                    // Cold
+                    if (resRng.chance(0.05f)) {
+                        placed = ResourceId{aoc::sim::goods::FURS};
+                    } else if (nearCoast && resRng.chance(0.04f)) {
+                        placed = ResourceId{aoc::sim::goods::FISH};
+                    }
+                }
+            }
+
+            // Coast adjacency resources (only if still nothing placed)
+            if (!placed.isValid() && nearCoast) {
+                if (resRng.chance(0.06f)) {
+                    placed = ResourceId{aoc::sim::goods::FISH};
+                } else if (resRng.chance(0.02f)) {
+                    placed = ResourceId{aoc::sim::goods::SUGAR};
+                }
+            }
+
+            if (placed.isValid()) {
+                grid.setResource(index, placed);
+                ++totalPlaced;
+            }
+        }
+    }
+
+    (void)config;  // mapSize/type already used indirectly
+    LOG_INFO("Geology-based resource placement: %d resources placed", totalPlaced);
 }
 
 } // namespace aoc::map

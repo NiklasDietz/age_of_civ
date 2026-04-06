@@ -41,14 +41,21 @@ void Market::reportDemand(uint16_t goodId, int32_t amount) {
 }
 
 void Market::updatePrices() {
+    uint16_t goodIndex = 0;
     for (GoodMarketData& data : this->m_goods) {
         // Avoid division by zero: if no supply or demand, price drifts toward base
         float supply = static_cast<float>(std::max(data.totalSupply, 1));
         float demand = static_cast<float>(std::max(data.totalDemand, 1));
 
+        // Use per-good elasticity if available, otherwise fall back to global
+        float goodElasticity = this->elasticity;
+        if (goodIndex < goodCount()) {
+            goodElasticity = goodDef(goodIndex).priceElasticity;
+        }
+
         // Price = basePrice * (demand/supply)^elasticity
         float ratio = demand / supply;
-        float priceFactor = std::pow(ratio, this->elasticity);
+        float priceFactor = std::pow(ratio, goodElasticity);
 
         float newPrice = static_cast<float>(data.basePrice) * priceFactor;
 
@@ -68,6 +75,8 @@ void Market::updatePrices() {
         // Reset accumulators for next turn
         data.totalSupply = 0;
         data.totalDemand = 0;
+
+        ++goodIndex;
     }
 }
 

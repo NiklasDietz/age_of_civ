@@ -34,12 +34,21 @@ struct PlayerSlotConfig {
     uint8_t  civId    = 0;
 };
 
+/// AI difficulty level affecting AI bonuses/penalties.
+enum class AIDifficulty : uint8_t {
+    Easy,
+    Normal,
+    Hard,
+};
+
 /// Configuration from the setup screen passed to startGame.
 struct GameSetupConfig {
     aoc::map::MapType mapType = aoc::map::MapType::Continents;
     aoc::map::MapSize mapSize = aoc::map::MapSize::Standard;
     uint8_t           playerCount = 2;
     std::array<PlayerSlotConfig, 8> players;  ///< max 8 players
+    bool sequentialTurnsInWar = false;        ///< Use sequential turns when at war
+    AIDifficulty aiDifficulty = AIDifficulty::Normal; ///< AI difficulty level
 };
 
 using StartGameWithConfigCallback = std::function<void(const GameSetupConfig&)>;
@@ -49,7 +58,8 @@ public:
     /// Build the main menu widgets. Callbacks fire when buttons are clicked.
     void build(UIManager& ui, float screenW, float screenH,
                StartGameCallback onStartGame, QuitCallback onQuit,
-               std::function<void()> onSettings = {});
+               std::function<void()> onSettings = {},
+               std::function<void()> onTutorial = {});
 
     /// Rebuild positions after resize.
     void updateLayout(UIManager& ui, float screenW, float screenH);
@@ -67,6 +77,7 @@ private:
     StartGameCallback m_onStartGame;
     QuitCallback m_onQuit;
     std::function<void()> m_onSettings;
+    std::function<void()> m_onTutorial;
 };
 
 // ============================================================================
@@ -93,11 +104,18 @@ private:
     std::array<WidgetId, 8> m_civLabels{};
     std::array<WidgetId, 8> m_typeLabels{};
 
+    // Sequential turns toggle
+    WidgetId m_btnSequential  = INVALID_WIDGET;
+
+    // AI difficulty toggle
+    WidgetId m_btnDifficulty  = INVALID_WIDGET;
+
     // Map selection buttons
     WidgetId m_btnContinents  = INVALID_WIDGET;
     WidgetId m_btnPangaea     = INVALID_WIDGET;
     WidgetId m_btnArchipelago = INVALID_WIDGET;
     WidgetId m_btnFractal     = INVALID_WIDGET;
+    WidgetId m_btnRealistic   = INVALID_WIDGET;
     WidgetId m_btnSmall       = INVALID_WIDGET;
     WidgetId m_btnStandard    = INVALID_WIDGET;
     WidgetId m_btnLarge       = INVALID_WIDGET;

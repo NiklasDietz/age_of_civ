@@ -13,6 +13,7 @@
  */
 
 #include "aoc/simulation/ai/UtilityScoring.hpp"
+#include "aoc/ui/MainMenu.hpp"
 #include "aoc/core/Types.hpp"
 #include "aoc/core/Random.hpp"
 
@@ -35,7 +36,8 @@ namespace aoc::sim::ai {
 
 class AIController {
 public:
-    explicit AIController(PlayerId player);
+    explicit AIController(PlayerId player,
+                         aoc::ui::AIDifficulty difficulty = aoc::ui::AIDifficulty::Normal);
 
     /**
      * @brief Execute one full AI turn: evaluate and act.
@@ -73,14 +75,20 @@ private:
                                  DiplomacyManager& diplomacy,
                                  const Market& market);
 
+    /// Evaluate market prices and manage surplus/deficit goods for trade.
+    void manageEconomy(aoc::ecs::World& world,
+                       DiplomacyManager& diplomacy,
+                       const Market& market);
+
     void selectResearch(aoc::ecs::World& world);
 
     void manageBuildersAndImprovements(aoc::ecs::World& world, aoc::map::HexGrid& grid);
 
     void manageGovernment(aoc::ecs::World& world);
 
-    PlayerId      m_player;
-    UtilityWeights m_weights;
+    PlayerId              m_player;
+    aoc::ui::AIDifficulty m_difficulty;
+    UtilityWeights        m_weights;
 };
 
 } // namespace aoc::sim::ai

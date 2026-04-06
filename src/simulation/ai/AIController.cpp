@@ -18,6 +18,8 @@
 #include "aoc/simulation/city/BorderExpansion.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/economy/Market.hpp"
+#include "aoc/simulation/resource/ResourceComponent.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/TechGating.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
@@ -205,8 +207,9 @@ static UnitCounts countPlayerUnits(const aoc::ecs::World& world, PlayerId player
 // Constructor
 // ============================================================================
 
-AIController::AIController(PlayerId player)
+AIController::AIController(PlayerId player, aoc::ui::AIDifficulty difficulty)
     : m_player(player)
+    , m_difficulty(difficulty)
 {
 }
 
@@ -224,6 +227,7 @@ void AIController::executeTurn(aoc::ecs::World& world,
     this->executeCityActions(world, grid);
     this->manageBuildersAndImprovements(world, grid);
     this->executeUnitActions(world, grid, rng);
+    this->manageEconomy(world, diplomacy, market);
     this->executeDiplomacyActions(world, diplomacy, market);
 
     // Refresh movement so units have moved for this turn
@@ -293,9 +297,17 @@ void AIController::selectResearch(aoc::ecs::World& world) {
             TechId best = available[0];
             int32_t bestScore = std::numeric_limits<int32_t>::min();
 
+            // Hard AI gets a bonus toward higher-value techs
+            const bool hardAI = (this->m_difficulty == aoc::ui::AIDifficulty::Hard);
+
             for (const TechId& tid : available) {
                 const TechDef& def = techDef(tid);
                 int32_t score = 0;
+
+                // Hard AI bonus: prefer techs with more unlocks
+                if (hardAI) {
+                    score += 1000;
+                }
 
                 // Priority 1: Techs that unlock buildings we don't yet have
                 if (!def.unlockedBuildings.empty()) {
@@ -475,6 +487,15 @@ void AIController::executeCityActions(aoc::ecs::World& world,
             world.tryGetComponent<ProductionQueueComponent>(cityEntity);
         if (queue == nullptr || !queue->isEmpty()) {
             continue;  // Already producing something
+        }
+
+        // Easy AI: 30% chance to skip city action entirely (suboptimal play)
+        if (this->m_difficulty == aoc::ui::AIDifficulty::Easy) {
+            // Use a simple hash of city index + turn as pseudo-random
+            const uint32_t pseudoRand = (ci * 7919u + 31u) % 100u;
+            if (pseudoRand < 30u) {
+                continue;
+            }
         }
 
         ProductionQueueItem item{};
@@ -863,8 +884,22 @@ void AIController::executeUnitActions(aoc::ecs::World& world,
             }
 
             // --- Seek enemies: move toward nearest enemy unit or city ---
+            // Hard AI prioritizes enemy cities over individual units
             int32_t closestDist = std::numeric_limits<int32_t>::max();
             hex::AxialCoord closestTarget = info.unit.position;
+
+            const bool hardMode = (this->m_difficulty == aoc::ui::AIDifficulty::Hard);
+
+            // Hard AI: prioritize cities first, then units
+            if (hardMode) {
+                for (const EnemyCityInfo& ecity : enemyCities) {
+                    const int32_t dist = hex::distance(info.unit.position, ecity.position);
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        closestTarget = ecity.position;
+                    }
+                }
+            }
 
             for (const EnemyInfo& enemy : enemyUnits) {
                 const int32_t dist = hex::distance(info.unit.position, enemy.position);
@@ -874,12 +909,14 @@ void AIController::executeUnitActions(aoc::ecs::World& world,
                 }
             }
 
-            // Also consider enemy cities as targets
-            for (const EnemyCityInfo& ecity : enemyCities) {
-                const int32_t dist = hex::distance(info.unit.position, ecity.position);
-                if (dist < closestDist) {
-                    closestDist = dist;
-                    closestTarget = ecity.position;
+            // Non-hard AI also considers enemy cities (after units)
+            if (!hardMode) {
+                for (const EnemyCityInfo& ecity : enemyCities) {
+                    const int32_t dist = hex::distance(info.unit.position, ecity.position);
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        closestTarget = ecity.position;
+                    }
                 }
             }
 
@@ -1005,7 +1042,7 @@ void AIController::executeUnitActions(aoc::ecs::World& world,
 
 void AIController::executeDiplomacyActions(aoc::ecs::World& world,
                                             DiplomacyManager& diplomacy,
-                                            const Market& /*market*/) {
+                                            const Market& market) {
     const aoc::ecs::ComponentPool<UnitComponent>* unitPool = world.getPool<UnitComponent>();
     if (unitPool == nullptr) {
         return;
@@ -1044,15 +1081,24 @@ void AIController::executeDiplomacyActions(aoc::ecs::World& world,
                          ourMilitary, theirMilitary);
             }
         } else {
-            // Declare war: military > 1.5x AND relations < -20
-            if (ourMilitary > 0 && theirMilitary >= 0 &&
-                static_cast<float>(ourMilitary) > 1.5f * static_cast<float>(theirMilitary) &&
-                relationScore < -20) {
+            // Easy AI: never declares war proactively
+            // Normal AI: declare war if military > 1.5x AND relations < -20
+            // Hard AI: more aggressive, lower threshold (1.2x, relations < -10)
+            const bool easyAI = (this->m_difficulty == aoc::ui::AIDifficulty::Easy);
+            const bool hardAI = (this->m_difficulty == aoc::ui::AIDifficulty::Hard);
+
+            const float militaryRatioThreshold = hardAI ? 1.2f : 1.5f;
+            const int32_t relationThreshold = hardAI ? -10 : -20;
+            const int32_t warChanceThreshold = hardAI ? 5 : 3;  // higher = more likely
+
+            if (!easyAI && ourMilitary > 0 && theirMilitary >= 0 &&
+                static_cast<float>(ourMilitary) > militaryRatioThreshold * static_cast<float>(theirMilitary) &&
+                relationScore < relationThreshold) {
                 // Use deterministic pseudo-random based on player IDs and military counts
                 const int32_t warChance =
                     ((ourMilitary * 7 + theirMilitary * 13 +
                       static_cast<int32_t>(this->m_player) * 31) % 10);
-                if (warChance < 3) {
+                if (warChance < warChanceThreshold) {
                     diplomacy.declareWar(this->m_player, other);
                     LOG_INFO("AI %u Declared war on player %u (military %d vs %d, relations %d)",
                              static_cast<unsigned>(this->m_player),
@@ -1067,6 +1113,35 @@ void AIController::executeDiplomacyActions(aoc::ecs::World& world,
                 LOG_INFO("AI %u Opened borders with player %u (relations %d)",
                          static_cast<unsigned>(this->m_player),
                          static_cast<unsigned>(other), relationScore);
+            }
+
+            // Propose economic alliance if relations are friendly and
+            // there is complementary supply/demand (market-driven).
+            // Check if the other player has goods we lack at high prices.
+            if (!rel.hasEconomicAlliance && relationScore > 20) {
+                int32_t complementaryGoods = 0;
+                const uint16_t totalGoods = market.goodsCount();
+                for (uint16_t g = 0; g < totalGoods; ++g) {
+                    const int32_t currentPrice = market.price(g);
+                    const int32_t basePrice = goodDef(g).basePrice;
+                    if (basePrice > 0) {
+                        const float priceRatio = static_cast<float>(currentPrice) /
+                                                 static_cast<float>(basePrice);
+                        // Count goods with significant price deviation as trade opportunities
+                        if (priceRatio > 1.3f || priceRatio < 0.7f) {
+                            ++complementaryGoods;
+                        }
+                    }
+                }
+                // Form economic alliance if there are enough trade opportunities
+                if (complementaryGoods >= 3) {
+                    diplomacy.formEconomicAlliance(this->m_player, other);
+                    LOG_INFO("AI %u Formed economic alliance with player %u "
+                             "(relations %d, %d complementary goods)",
+                             static_cast<unsigned>(this->m_player),
+                             static_cast<unsigned>(other),
+                             relationScore, complementaryGoods);
+                }
             }
         }
     }
@@ -1294,6 +1369,136 @@ void AIController::manageGovernment(aoc::ecs::World& world) {
                 }
             }
         });
+}
+
+// ============================================================================
+// Economy management: sell expensive surplus, buy cheap needed goods
+//
+// The AI evaluates market prices for all goods it holds:
+//   - If a good's price is > 1.5x its base price: AI is incentivized to sell
+//   - If a good's price is < 0.7x its base price: AI wants to buy
+// This creates natural comparative advantage trade flows.
+// ============================================================================
+
+void AIController::manageEconomy(aoc::ecs::World& world,
+                                  DiplomacyManager& diplomacy,
+                                  const Market& market) {
+    // Aggregate the AI's total stockpile across all cities
+    std::unordered_map<uint16_t, int32_t> totalStockpile;
+
+    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
+        world.getPool<CityComponent>();
+    if (cityPool == nullptr) {
+        return;
+    }
+
+    for (uint32_t i = 0; i < cityPool->size(); ++i) {
+        if (cityPool->data()[i].owner != this->m_player) {
+            continue;
+        }
+        const EntityId cityEntity = cityPool->entities()[i];
+        const CityStockpileComponent* stockpile =
+            world.tryGetComponent<CityStockpileComponent>(cityEntity);
+        if (stockpile == nullptr) {
+            continue;
+        }
+        for (const auto& [goodId, amount] : stockpile->goods) {
+            totalStockpile[goodId] += amount;
+        }
+    }
+
+    // Identify goods to sell (price > 1.5x base) and goods to buy (price < 0.7x base)
+    constexpr float SELL_THRESHOLD = 1.5f;
+    constexpr float BUY_THRESHOLD  = 0.7f;
+    constexpr int32_t MIN_SURPLUS_TO_SELL = 3;
+
+    struct TradeDesire {
+        uint16_t goodId;
+        int32_t  amount;
+        bool     wantToSell;  ///< true = sell, false = buy
+    };
+    std::vector<TradeDesire> desires;
+
+    const uint16_t totalGoods = market.goodsCount();
+    for (uint16_t g = 0; g < totalGoods; ++g) {
+        const int32_t currentPrice = market.price(g);
+        const GoodDef& def = goodDef(g);
+        if (def.basePrice <= 0) {
+            continue;
+        }
+
+        const float priceRatio = static_cast<float>(currentPrice) /
+                                 static_cast<float>(def.basePrice);
+        const int32_t held = totalStockpile[g];
+
+        // Sell if we have surplus and the price is high
+        if (priceRatio > SELL_THRESHOLD && held > MIN_SURPLUS_TO_SELL) {
+            const int32_t sellAmount = held / 2;  // Sell half of surplus
+            if (sellAmount > 0) {
+                desires.push_back({g, sellAmount, true});
+            }
+        }
+        // Buy if the price is low and we have none (deficit)
+        else if (priceRatio < BUY_THRESHOLD && held == 0) {
+            desires.push_back({g, 2, false});  // Request modest amount
+        }
+    }
+
+    if (desires.empty()) {
+        return;
+    }
+
+    // For each sell desire, find a trade partner who might want to buy
+    const uint8_t playerCount = diplomacy.playerCount();
+    for (const TradeDesire& desire : desires) {
+        if (!desire.wantToSell) {
+            continue;  // Buy desires are handled via diplomacy actions
+        }
+
+        for (uint8_t other = 0; other < playerCount; ++other) {
+            if (other == this->m_player) {
+                continue;
+            }
+            const PairwiseRelation& rel = diplomacy.relation(this->m_player, other);
+            if (rel.isAtWar || rel.hasEmbargo) {
+                continue;
+            }
+
+            // Only trade with neutral or better relations
+            if (rel.totalScore() < -10) {
+                continue;
+            }
+
+            // Check if the partner lacks this good (would value it highly)
+            int32_t partnerHoldings = 0;
+            for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
+                if (cityPool->data()[ci].owner != other) {
+                    continue;
+                }
+                const CityStockpileComponent* partnerStockpile =
+                    world.tryGetComponent<CityStockpileComponent>(cityPool->entities()[ci]);
+                if (partnerStockpile != nullptr) {
+                    partnerHoldings += partnerStockpile->getAmount(desire.goodId);
+                }
+            }
+
+            // Partner is a good trade target if they have little of this good
+            if (partnerHoldings < 2) {
+                LOG_INFO("AI %u wants to sell %d of good %u (price ratio %.2f) to player %u",
+                         static_cast<unsigned>(this->m_player),
+                         desire.amount,
+                         static_cast<unsigned>(desire.goodId),
+                         static_cast<double>(static_cast<float>(market.price(desire.goodId)) /
+                                             static_cast<float>(goodDef(desire.goodId).basePrice)),
+                         static_cast<unsigned>(other));
+
+                // Improve relations slightly for wanting to trade (trade bonus)
+                diplomacy.addModifier(this->m_player, other,
+                    RelationModifier{"Trade interest", 1, 10});
+                break;  // One partner per good per turn
+            }
+        }
+    }
 }
 
 // ============================================================================

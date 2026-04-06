@@ -4,6 +4,7 @@
  */
 
 #include "aoc/render/MapRenderer.hpp"
+#include "aoc/render/DrawCommandBuffer.hpp"
 #include "aoc/render/CameraController.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
@@ -53,24 +54,36 @@ void MapRenderer::draw(vulkan_app::renderer::Renderer2D& renderer2d,
     botRightX += margin;
     botRightY += margin;
 
-    // Iterate all tiles and draw those within the visible region.
-    // For large maps this should use spatial indexing; for now a bounds check is sufficient.
+    // Convert world-space bounds to approximate grid row/col ranges so we
+    // only iterate tiles that could possibly be visible, instead of the full
+    // grid (width * height).  The hex layout is pointy-top with:
+    //   x-spacing = sqrt(3) * hexSize,  y-spacing = 1.5 * hexSize.
     const int32_t width  = grid.width();
     const int32_t height = grid.height();
 
-    for (int32_t row = 0; row < height; ++row) {
-        for (int32_t col = 0; col < width; ++col) {
-            int32_t index = row * width + col;
+    constexpr float SQRT3 = 1.7320508075688772f;
+    const float xSpacing = SQRT3 * this->m_hexSize;
+    const float ySpacing = 1.5f  * this->m_hexSize;
 
-            aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, index);
+    const int32_t minCol = std::max(0,          static_cast<int32_t>(topLeftX  / xSpacing) - 1);
+    const int32_t maxCol = std::min(width  - 1, static_cast<int32_t>(botRightX / xSpacing) + 1);
+    const int32_t minRow = std::max(0,          static_cast<int32_t>(topLeftY  / ySpacing) - 1);
+    const int32_t maxRow = std::min(height - 1, static_cast<int32_t>(botRightY / ySpacing) + 1);
+
+    for (int32_t row = minRow; row <= maxRow; ++row) {
+        for (int32_t col = minCol; col <= maxCol; ++col) {
+            const int32_t index = row * width + col;
+
+            const aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, index);
             if (vis == aoc::map::TileVisibility::Unseen) {
                 continue;
             }
 
-            hex::AxialCoord axial = hex::offsetToAxial({col, row});
+            const hex::AxialCoord axial = hex::offsetToAxial({col, row});
             float cx = 0.0f, cy = 0.0f;
             hex::axialToPixel(axial, this->m_hexSize, cx, cy);
 
+            // Fine-grained per-tile check (accounts for odd-row offset shift)
             if (cx < topLeftX || cx > botRightX || cy < topLeftY || cy > botRightY) {
                 continue;
             }
@@ -110,13 +123,8 @@ void MapRenderer::drawTile(vulkan_app::renderer::Renderer2D& renderer2d,
     const float hexH = hs * 1.02f;
     renderer2d.drawFilledHexagon(cx, cy, hexW, hexH, r, g, b, 1.0f);
 
-    // ---- Territory overlay ----
-    const PlayerId tileOwner = grid.owner(tileIndex);
-    if (tileOwner != INVALID_PLAYER && !dimmed) {
-        const std::size_t ci = static_cast<std::size_t>(tileOwner) % TERRITORY_COLORS.size();
-        renderer2d.drawFilledHexagon(cx, cy, hexW, hexH,
-            TERRITORY_COLORS[ci][0], TERRITORY_COLORS[ci][1], TERRITORY_COLORS[ci][2], 0.12f);
-    }
+    // Territory borders are drawn as oversized halos in drawTerritoryBorders()
+    // (rendered before terrain). No per-tile tint overlay needed.
 
     // ---- Mountains: layered triangles forming a mountain range ----
     if (terrain == map::TerrainType::Mountain) {
@@ -325,6 +333,84 @@ void MapRenderer::drawTile(vulkan_app::renderer::Renderer2D& renderer2d,
     }
 }
 
+void MapRenderer::drawTerritoryBorders(vulkan_app::renderer::Renderer2D& renderer2d,
+                                        const aoc::map::HexGrid& grid,
+                                        const CameraController& camera,
+                                        uint32_t screenWidth,
+                                        uint32_t screenHeight) const {
+    // Compute visible world-space bounds from camera
+    float topLeftX = 0.0f, topLeftY = 0.0f;
+    float botRightX = 0.0f, botRightY = 0.0f;
+    camera.screenToWorld(0.0, 0.0, topLeftX, topLeftY, screenWidth, screenHeight);
+    camera.screenToWorld(static_cast<double>(screenWidth), static_cast<double>(screenHeight),
+                         botRightX, botRightY, screenWidth, screenHeight);
+
+    const float margin = this->m_hexSize * 3.0f;
+    topLeftX  -= margin;
+    topLeftY  -= margin;
+    botRightX += margin;
+    botRightY += margin;
+
+    const int32_t width  = grid.width();
+    const int32_t height = grid.height();
+    constexpr float SQRT3_B = 1.7320508075688772f;
+    const float xSpacing = SQRT3_B * this->m_hexSize;
+    const float ySpacing = 1.5f   * this->m_hexSize;
+
+    const int32_t minCol = std::max(0,          static_cast<int32_t>(topLeftX  / xSpacing) - 1);
+    const int32_t maxCol = std::min(width  - 1, static_cast<int32_t>(botRightX / xSpacing) + 1);
+    const int32_t minRow = std::max(0,          static_cast<int32_t>(topLeftY  / ySpacing) - 1);
+    const int32_t maxRow = std::min(height - 1, static_cast<int32_t>(botRightY / ySpacing) + 1);
+
+    for (int32_t row = minRow; row <= maxRow; ++row) {
+        for (int32_t col = minCol; col <= maxCol; ++col) {
+            const int32_t index = row * width + col;
+            const PlayerId tileOwner = grid.owner(index);
+            if (tileOwner == INVALID_PLAYER) {
+                continue;
+            }
+
+            hex::AxialCoord axial = hex::offsetToAxial({col, row});
+            float cx = 0.0f, cy = 0.0f;
+            hex::axialToPixel(axial, this->m_hexSize, cx, cy);
+
+            if (cx < topLeftX || cx > botRightX || cy < topLeftY || cy > botRightY) {
+                continue;
+            }
+
+            // Get player color
+            const std::size_t ci = static_cast<std::size_t>(tileOwner) % TERRITORY_COLORS.size();
+            const float cr = TERRITORY_COLORS[ci][0];
+            const float cg = TERRITORY_COLORS[ci][1];
+            const float cb = TERRITORY_COLORS[ci][2];
+
+            // Check if this is a border tile (at least one neighbor differs).
+            const std::array<hex::AxialCoord, 6> neighCoords = hex::neighbors(axial);
+            bool isBorderTile = false;
+            for (int dir = 0; dir < 6; ++dir) {
+                const hex::AxialCoord& neighbor = neighCoords[static_cast<std::size_t>(dir)];
+                PlayerId neighborOwner = INVALID_PLAYER;
+                if (grid.isValid(neighbor)) {
+                    neighborOwner = grid.owner(grid.toIndex(neighbor));
+                }
+                if (neighborOwner != tileOwner) {
+                    isBorderTile = true;
+                    break;
+                }
+            }
+
+            // Draw hex outline ONLY on border tiles, ON TOP of terrain.
+            // The SDF hex outline renders as a ring (outer - inner shape).
+            if (isBorderTile) {
+                const float borderHexW = this->m_hexSize * 0.866f;
+                const float borderHexH = this->m_hexSize;
+                renderer2d.drawHexagonOutline(cx, cy, borderHexW, borderHexH,
+                                               cr, cg, cb, 0.90f, 2.5f);
+            }
+        }
+    }
+}
+
 void MapRenderer::drawRiverEdges(vulkan_app::renderer::Renderer2D& renderer2d,
                                   uint8_t riverMask, float cx, float cy) const {
     // Rivers are drawn as blue lines along hex edges.
@@ -349,6 +435,78 @@ void MapRenderer::drawRiverEdges(vulkan_app::renderer::Renderer2D& renderer2d,
 
         renderer2d.drawLine(mx, my, riverEndX, riverEndY,
                             2.0f, 0.15f, 0.35f, 0.75f, 0.9f);
+    }
+}
+
+void MapRenderer::drawToBuffer(DrawCommandBuffer& buffer,
+                                const aoc::map::HexGrid& grid,
+                                const aoc::map::FogOfWar& fog,
+                                PlayerId viewingPlayer,
+                                const CameraController& camera,
+                                uint32_t screenWidth, uint32_t screenHeight) const {
+    // Compute visible world-space bounds from camera
+    float topLeftX = 0.0f, topLeftY = 0.0f;
+    float botRightX = 0.0f, botRightY = 0.0f;
+    camera.screenToWorld(0.0, 0.0, topLeftX, topLeftY, screenWidth, screenHeight);
+    camera.screenToWorld(static_cast<double>(screenWidth), static_cast<double>(screenHeight),
+                         botRightX, botRightY, screenWidth, screenHeight);
+
+    const float margin = this->m_hexSize * 3.0f;
+    topLeftX  -= margin;
+    topLeftY  -= margin;
+    botRightX += margin;
+    botRightY += margin;
+
+    const int32_t width  = grid.width();
+    const int32_t height = grid.height();
+
+    constexpr float SQRT3 = 1.7320508075688772f;
+    const float xSpacing = SQRT3 * this->m_hexSize;
+    const float ySpacing = 1.5f  * this->m_hexSize;
+
+    const int32_t minCol = std::max(0,          static_cast<int32_t>(topLeftX  / xSpacing) - 1);
+    const int32_t maxCol = std::min(width  - 1, static_cast<int32_t>(botRightX / xSpacing) + 1);
+    const int32_t minRow = std::max(0,          static_cast<int32_t>(topLeftY  / ySpacing) - 1);
+    const int32_t maxRow = std::min(height - 1, static_cast<int32_t>(botRightY / ySpacing) + 1);
+
+    for (int32_t row = minRow; row <= maxRow; ++row) {
+        for (int32_t col = minCol; col <= maxCol; ++col) {
+            const int32_t index = row * width + col;
+
+            const aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, index);
+            if (vis == aoc::map::TileVisibility::Unseen) {
+                continue;
+            }
+
+            const hex::AxialCoord axial = hex::offsetToAxial({col, row});
+            float cx = 0.0f, cy = 0.0f;
+            hex::axialToPixel(axial, this->m_hexSize, cx, cy);
+
+            if (cx < topLeftX || cx > botRightX || cy < topLeftY || cy > botRightY) {
+                continue;
+            }
+
+            const bool dimmed = (vis == aoc::map::TileVisibility::Revealed);
+            const float hs = this->m_hexSize;
+
+            map::TerrainType terrain = grid.terrain(index);
+            map::TerrainColor baseColor = map::terrainColor(terrain);
+            map::FeatureType feature = grid.feature(index);
+            map::TerrainColor tint = map::featureColorTint(feature);
+
+            float r = std::clamp(baseColor.r + tint.r, 0.0f, 1.0f);
+            float g = std::clamp(baseColor.g + tint.g, 0.0f, 1.0f);
+            float b = std::clamp(baseColor.b + tint.b, 0.0f, 1.0f);
+
+            if (dimmed) {
+                constexpr float DIM = 0.4f;
+                r *= DIM; g *= DIM; b *= DIM;
+            }
+
+            const float hexW = hs * 0.866f * 1.02f;
+            const float hexH = hs * 1.02f;
+            buffer.pushHexagon(cx, cy, hexW, hexH, r, g, b, 1.0f, 0);
+        }
     }
 }
 

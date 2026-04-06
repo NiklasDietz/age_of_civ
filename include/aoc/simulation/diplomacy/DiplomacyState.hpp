@@ -58,6 +58,9 @@ struct PairwiseRelation {
     bool    isAtWar   = false;
     bool    hasOpenBorders     = false;
     bool    hasDefensiveAlliance = false;
+    bool    hasMilitaryAlliance  = false;   ///< Share visibility, join wars
+    bool    hasResearchAgreement = false;   ///< +10% science for both
+    bool    hasEconomicAlliance  = false;   ///< Shared market prices, reduced tariffs
     bool    hasEmbargo         = false;
     std::vector<RelationModifier> modifiers;
 
@@ -102,6 +105,15 @@ public:
 
     /// Form a defensive alliance.
     void formDefensiveAlliance(PlayerId a, PlayerId b);
+
+    /// Form a military alliance (shared visibility, join wars).
+    void formMilitaryAlliance(PlayerId a, PlayerId b);
+
+    /// Form a research agreement (+10% science for both).
+    void formResearchAgreement(PlayerId a, PlayerId b);
+
+    /// Form an economic alliance (shared market prices, reduced tariffs).
+    void formEconomicAlliance(PlayerId a, PlayerId b);
 
     /**
      * @brief Tick all modifiers: decrement turnsRemaining, remove expired ones.

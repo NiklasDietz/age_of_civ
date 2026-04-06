@@ -11,8 +11,11 @@
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
+#include "aoc/simulation/diplomacy/WarWeariness.hpp"
+#include "aoc/simulation/tech/EraScore.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/simulation/economy/EnvironmentModifier.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
@@ -26,13 +29,25 @@ float computeCityProduction(const aoc::ecs::World& world,
                              EntityId cityEntity) {
     const CityComponent& city = world.getComponent<CityComponent>(cityEntity);
 
-    // Sum production from worked tiles
+    // Sum production from worked tiles (with environment modifiers on improvements)
     float totalProduction = 0.0f;
     for (const hex::AxialCoord& tile : city.workedTiles) {
         if (grid.isValid(tile)) {
-            int32_t index = grid.toIndex(tile);
-            aoc::map::TileYield yield = grid.tileYield(index);
-            totalProduction += static_cast<float>(yield.production);
+            const int32_t index = grid.toIndex(tile);
+            const aoc::map::TileYield yield = grid.tileYield(index);
+            float tileProduction = static_cast<float>(yield.production);
+
+            // Apply environment modifier to the improvement portion of the yield
+            const aoc::map::ImprovementType imp = grid.improvement(index);
+            if (imp != aoc::map::ImprovementType::None) {
+                const aoc::map::TileYield impYield = aoc::map::improvementYieldBonus(imp);
+                const float envMod = computeImprovementEnvironmentModifier(grid, index, imp);
+                // Adjust: subtract base improvement production, add modified version
+                const float impProduction = static_cast<float>(impYield.production);
+                tileProduction += impProduction * (envMod - 1.0f);
+            }
+
+            totalProduction += tileProduction;
         }
     }
 
@@ -67,6 +82,36 @@ float computeCityProduction(const aoc::ecs::World& world,
             const PlayerCivilizationComponent& civ = civPool->data()[ci];
             if (civ.owner == city.owner) {
                 totalProduction *= civDef(civ.civId).modifiers.productionMultiplier;
+                break;
+            }
+        }
+    }
+
+    // Apply war weariness production modifier
+    const aoc::ecs::ComponentPool<PlayerWarWearinessComponent>* wwPool =
+        world.getPool<PlayerWarWearinessComponent>();
+    if (wwPool != nullptr) {
+        for (uint32_t wi = 0; wi < wwPool->size(); ++wi) {
+            if (wwPool->data()[wi].owner == city.owner) {
+                totalProduction *= warWearinessProductionModifier(
+                    wwPool->data()[wi].weariness);
+                break;
+            }
+        }
+    }
+
+    // Apply golden/dark age yield modifier
+    const aoc::ecs::ComponentPool<PlayerEraScoreComponent>* eraScorePool =
+        world.getPool<PlayerEraScoreComponent>();
+    if (eraScorePool != nullptr) {
+        for (uint32_t ei = 0; ei < eraScorePool->size(); ++ei) {
+            if (eraScorePool->data()[ei].owner == city.owner) {
+                const AgeType age = eraScorePool->data()[ei].currentAgeType;
+                if (age == AgeType::Golden) {
+                    totalProduction *= 1.1f;   // +10% all yields
+                } else if (age == AgeType::Dark) {
+                    totalProduction *= 0.85f;  // -15% all yields
+                }
                 break;
             }
         }

@@ -52,6 +52,12 @@ void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target) {
     relBA.hasOpenBorders = false;
     relAB.hasDefensiveAlliance = false;
     relBA.hasDefensiveAlliance = false;
+    relAB.hasMilitaryAlliance = false;
+    relBA.hasMilitaryAlliance = false;
+    relAB.hasResearchAgreement = false;
+    relBA.hasResearchAgreement = false;
+    relAB.hasEconomicAlliance = false;
+    relBA.hasEconomicAlliance = false;
 
     LOG_INFO("Player %u declared war on Player %u",
              static_cast<unsigned>(aggressor), static_cast<unsigned>(target));
@@ -93,6 +99,30 @@ void DiplomacyManager::formDefensiveAlliance(PlayerId a, PlayerId b) {
     this->relation(a, b).hasDefensiveAlliance = true;
     this->relation(b, a).hasDefensiveAlliance = true;
     this->addModifier(a, b, {"Defensive alliance", 15, 0});
+}
+
+void DiplomacyManager::formMilitaryAlliance(PlayerId a, PlayerId b) {
+    this->relation(a, b).hasMilitaryAlliance = true;
+    this->relation(b, a).hasMilitaryAlliance = true;
+    this->addModifier(a, b, {"Military alliance", 10, 0});
+    LOG_INFO("Military alliance formed between Player %u and Player %u",
+             static_cast<unsigned>(a), static_cast<unsigned>(b));
+}
+
+void DiplomacyManager::formResearchAgreement(PlayerId a, PlayerId b) {
+    this->relation(a, b).hasResearchAgreement = true;
+    this->relation(b, a).hasResearchAgreement = true;
+    this->addModifier(a, b, {"Research agreement", 5, 0});
+    LOG_INFO("Research agreement formed between Player %u and Player %u",
+             static_cast<unsigned>(a), static_cast<unsigned>(b));
+}
+
+void DiplomacyManager::formEconomicAlliance(PlayerId a, PlayerId b) {
+    this->relation(a, b).hasEconomicAlliance = true;
+    this->relation(b, a).hasEconomicAlliance = true;
+    this->addModifier(a, b, {"Economic alliance", 5, 0});
+    LOG_INFO("Economic alliance formed between Player %u and Player %u",
+             static_cast<unsigned>(a), static_cast<unsigned>(b));
 }
 
 void DiplomacyManager::tickModifiers() {

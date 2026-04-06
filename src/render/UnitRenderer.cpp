@@ -13,6 +13,7 @@
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/FogOfWar.hpp"
+#include "aoc/core/Selectable.hpp"
 
 #include <renderer/Renderer2D.hpp>
 
@@ -231,10 +232,11 @@ void UnitRenderer::drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
                 break;
         }
 
-        // ---- Selection: highlight circle + HP bar on top ----
+        // ---- Selection: hex outline + HP bar on top ----
         if (entity == this->selectedEntity) {
-            // White selection ring
-            renderer2d.drawCircle(cx, cy, s + 3.0f, 1.0f, 1.0f, 1.0f, 0.85f, 2.0f);
+            // White hex selection outline on the tile
+            aoc::drawSelectionHex(renderer2d, cx, cy, hexSize,
+                                   1.0f, 1.0f, 1.0f, 0.85f, 3.0f);
 
             // HP bar above the unit (only visible when selected)
             float barW = s * 2.0f;

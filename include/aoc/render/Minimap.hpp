@@ -7,8 +7,10 @@
  */
 
 #include "aoc/core/Types.hpp"
+#include "aoc/map/HexCoord.hpp"
 
 #include <cstdint>
+#include <vector>
 
 namespace vulkan_app::renderer {
 class Renderer2D;
@@ -79,6 +81,24 @@ public:
                        float mapX, float mapY, float mapW, float mapH,
                        const aoc::map::HexGrid& grid, float hexSize,
                        float& outWorldX, float& outWorldY) const;
+
+    /// Pip data for overlay rendering (units and cities on the minimap).
+    struct MinimapPip {
+        hex::AxialCoord position;
+        PlayerId owner = 0;
+        bool isCity = false;  ///< true = city marker, false = unit pip
+    };
+
+    /**
+     * @brief Draw unit pips and city markers on the minimap.
+     *
+     * Call after draw() to overlay unit/city positions.
+     * The caller builds the pip list from ECS data.
+     */
+    void drawOverlays(vulkan_app::renderer::Renderer2D& renderer2d,
+                      const aoc::map::HexGrid& grid,
+                      const std::vector<MinimapPip>& pips,
+                      float mapX, float mapY, float mapW, float mapH) const;
 };
 
 } // namespace aoc::render

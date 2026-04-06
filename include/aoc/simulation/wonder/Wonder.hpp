@@ -13,7 +13,7 @@
 namespace aoc::sim {
 
 using WonderId = uint8_t;
-inline constexpr uint8_t WONDER_COUNT = 12;
+inline constexpr uint8_t WONDER_COUNT = 24;
 
 struct WonderEffect {
     float productionMultiplier = 1.0f;

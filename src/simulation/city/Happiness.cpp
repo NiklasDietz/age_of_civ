@@ -12,6 +12,7 @@
 #include "aoc/simulation/monetary/FiscalPolicy.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
+#include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/ecs/World.hpp"
 
 namespace aoc::sim {
@@ -20,6 +21,20 @@ void computeCityHappiness(aoc::ecs::World& world, PlayerId player) {
     aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
     if (cityPool == nullptr) {
         return;
+    }
+
+    // Find player's war weariness penalty
+    float warWearinessPenalty = 0.0f;
+    const aoc::ecs::ComponentPool<PlayerWarWearinessComponent>* wwPool =
+        world.getPool<PlayerWarWearinessComponent>();
+    if (wwPool != nullptr) {
+        for (uint32_t i = 0; i < wwPool->size(); ++i) {
+            if (wwPool->data()[i].owner == player) {
+                warWearinessPenalty = warWearinessHappinessPenalty(
+                    wwPool->data()[i].weariness);
+                break;
+            }
+        }
     }
 
     // Find player's monetary state for inflation/tax penalties
@@ -114,8 +129,8 @@ void computeCityHappiness(aoc::ecs::World& world, PlayerId player) {
         // Demand: 1 per 2 citizens
         happiness.demand = static_cast<float>(city.population) * 0.5f;
 
-        // Modifiers from economy
-        happiness.modifiers = -inflationPenalty - taxPenalty;
+        // Modifiers from economy and war weariness
+        happiness.modifiers = -inflationPenalty - taxPenalty + warWearinessPenalty;
 
         // Net happiness
         happiness.happiness = happiness.amenities - happiness.demand + happiness.modifiers;

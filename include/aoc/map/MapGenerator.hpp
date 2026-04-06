@@ -22,6 +22,7 @@ enum class MapType : uint8_t {
     Pangaea,      ///< Single central landmass with strong center gradient.
     Archipelago,  ///< Many small islands with weak gradient and high water.
     Fractal,      ///< Pure noise, no gradient falloff.
+    Realistic,    ///< Tectonic plate simulation with geology-based resource placement.
 };
 
 /// Predefined map sizes.
@@ -75,6 +76,12 @@ private:
     static void generateRivers(HexGrid& grid, aoc::Random& rng);
     static void smoothCoastlines(HexGrid& grid);
     static void placeNaturalWonders(HexGrid& grid, aoc::Random& rng);
+
+    /// Generate terrain using tectonic plate simulation (Realistic map type).
+    static void generateRealisticTerrain(const Config& config, HexGrid& grid, aoc::Random& rng);
+
+    /// Place resources based on geology zones (Realistic map type).
+    static void placeGeologyResources(const Config& config, HexGrid& grid, aoc::Random& rng);
 };
 
 } // namespace aoc::map

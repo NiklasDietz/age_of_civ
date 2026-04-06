@@ -8,9 +8,13 @@
 #include "aoc/render/MapRenderer.hpp"
 #include "aoc/render/UnitRenderer.hpp"
 #include "aoc/render/Minimap.hpp"
+#include "aoc/render/CombatAnimation.hpp"
+#include "aoc/render/Particles.hpp"
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ui/Tooltip.hpp"
 #include "aoc/ui/EventLog.hpp"
+#include "aoc/ui/Notifications.hpp"
+#include "aoc/ui/Tutorial.hpp"
 #include "aoc/core/Types.hpp"
 
 #include <cstdint>
@@ -53,17 +57,23 @@ public:
                 PlayerId viewingPlayer,
                 aoc::ui::UIManager& uiManager,
                 uint32_t screenWidth, uint32_t screenHeight,
-                const aoc::ui::EventLog* eventLog = nullptr);
+                const aoc::ui::EventLog* eventLog = nullptr,
+                const aoc::ui::NotificationManager* notifications = nullptr,
+                const aoc::ui::TutorialManager* tutorial = nullptr);
 
-    MapRenderer&  mapRenderer()  { return this->m_mapRenderer; }
-    UnitRenderer& unitRenderer() { return this->m_unitRenderer; }
-    Minimap&      minimap()      { return this->m_minimap; }
+    MapRenderer&      mapRenderer()      { return this->m_mapRenderer; }
+    UnitRenderer&     unitRenderer()     { return this->m_unitRenderer; }
+    Minimap&          minimap()          { return this->m_minimap; }
+    CombatAnimator&   combatAnimator()   { return this->m_combatAnimator; }
+    ParticleSystem&   particleSystem()   { return this->m_particleSystem; }
     aoc::ui::TooltipManager& tooltipManager() { return this->m_tooltipManager; }
 
 private:
     MapRenderer              m_mapRenderer;
     UnitRenderer             m_unitRenderer;
     Minimap                  m_minimap;
+    CombatAnimator           m_combatAnimator;
+    ParticleSystem           m_particleSystem;
     aoc::ui::TooltipManager  m_tooltipManager;
 };
 

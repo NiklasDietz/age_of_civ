@@ -7,8 +7,10 @@
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ecs/World.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/core/Log.hpp"
 
@@ -304,19 +306,57 @@ void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId
             ui.setLabelText(this->m_statusLabel, "Embargo in effect -- cannot trade!");
             return;
         }
-        // AI evaluation: sum market value of what AI receives vs what AI gives
+        // AI evaluation: sum market value of what AI receives vs what AI gives.
+        // Scarcity modifier: goods the AI has 0 of are valued at 2x market price
+        // (they desperately need them). Goods in surplus are valued at 0.5x
+        // (they don't need more). This creates mutually beneficial trades.
         float aiReceivesValue = static_cast<float>(this->m_offerGold);
         float aiGivesValue    = static_cast<float>(this->m_requestGold);
 
-        if (this->m_market != nullptr) {
+        if (this->m_market != nullptr && this->m_world != nullptr) {
+            // Aggregate AI partner's total stockpile across all cities
+            std::unordered_map<uint16_t, int32_t> partnerStockpile;
+            const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
+                this->m_world->getPool<aoc::sim::CityComponent>();
+            if (cityPool != nullptr) {
+                for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
+                    if (cityPool->data()[ci].owner != this->m_partner) {
+                        continue;
+                    }
+                    const aoc::sim::CityStockpileComponent* stockpile =
+                        this->m_world->tryGetComponent<aoc::sim::CityStockpileComponent>(
+                            cityPool->entities()[ci]);
+                    if (stockpile != nullptr) {
+                        for (const auto& [gId, amt] : stockpile->goods) {
+                            partnerStockpile[gId] += amt;
+                        }
+                    }
+                }
+            }
+
             const uint16_t evalGoodsCount = this->m_market->goodsCount();
             const uint16_t maxGoods = (evalGoodsCount < MAX_TRADE_GOODS) ? evalGoodsCount : MAX_TRADE_GOODS;
             for (uint16_t g = 0; g < maxGoods; ++g) {
                 const int32_t marketPrice = this->m_market->price(g);
-                aiReceivesValue += static_cast<float>(this->m_offerAmounts[g]) *
-                                   static_cast<float>(marketPrice);
-                aiGivesValue += static_cast<float>(this->m_requestAmounts[g]) *
-                                static_cast<float>(marketPrice);
+                const float baseValue = static_cast<float>(marketPrice);
+
+                // Compute scarcity multiplier for the AI partner
+                const int32_t partnerAmount = partnerStockpile[g];
+                constexpr int32_t SURPLUS_THRESHOLD = 5;
+                float scarcityMultiplier = 1.0f;
+                if (partnerAmount == 0) {
+                    scarcityMultiplier = 2.0f;   // Desperately needed
+                } else if (partnerAmount >= SURPLUS_THRESHOLD) {
+                    scarcityMultiplier = 0.5f;   // Already has plenty
+                }
+
+                // What AI receives (our offer): valued with scarcity modifier
+                aiReceivesValue += static_cast<float>(this->m_offerAmounts[g])
+                                 * baseValue * scarcityMultiplier;
+                // What AI gives (our request): valued at straight market price
+                // (AI values what it gives at market, what it gets with scarcity)
+                aiGivesValue += static_cast<float>(this->m_requestAmounts[g])
+                              * baseValue;
             }
         }
 

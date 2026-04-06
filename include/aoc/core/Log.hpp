@@ -9,6 +9,7 @@
  * DEBUG is disabled in NDEBUG (release) builds.
  */
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>

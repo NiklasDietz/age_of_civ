@@ -58,7 +58,11 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d,
 
             const aoc::map::TileVisibility vis = fog.visibility(player, index);
             if (vis == aoc::map::TileVisibility::Unseen) {
-                continue;  // Black / skip
+                // Draw unseen tiles as black instead of skipping
+                const float px = mapX + static_cast<float>(col) * tileW;
+                const float py = mapY + static_cast<float>(row) * tileH;
+                renderer2d.drawFilledRect(px, py, dotSize, dotSize, 0.02f, 0.02f, 0.04f, 1.0f);
+                continue;
             }
 
             const aoc::map::TerrainType terrain = grid.terrain(index);
@@ -138,6 +142,48 @@ void Minimap::screenToWorld(float screenX, float screenY,
 
     outWorldX = normalizedX * worldWidth;
     outWorldY = normalizedY * worldHeight;
+}
+
+void Minimap::drawOverlays(vulkan_app::renderer::Renderer2D& renderer2d,
+                            const aoc::map::HexGrid& grid,
+                            const std::vector<MinimapPip>& pips,
+                            float mapX, float mapY,
+                            float mapW, float mapH) const {
+    const int32_t gridWidth  = grid.width();
+    const int32_t gridHeight = grid.height();
+    if (gridWidth <= 0 || gridHeight <= 0) {
+        return;
+    }
+
+    const float tileW = mapW / static_cast<float>(gridWidth);
+    const float tileH = mapH / static_cast<float>(gridHeight);
+
+    for (const MinimapPip& pip : pips) {
+        const hex::OffsetCoord offset = hex::axialToOffset(pip.position);
+        if (offset.col < 0 || offset.col >= gridWidth ||
+            offset.row < 0 || offset.row >= gridHeight) {
+            continue;
+        }
+
+        const float px = mapX + static_cast<float>(offset.col) * tileW + tileW * 0.5f;
+        const float py = mapY + static_cast<float>(offset.row) * tileH + tileH * 0.5f;
+
+        // Player color
+        const std::size_t ci = static_cast<std::size_t>(pip.owner) % PLAYER_COLOR_COUNT;
+        const float cr = PLAYER_COLORS[ci][0];
+        const float cg = PLAYER_COLORS[ci][1];
+        const float cb = PLAYER_COLORS[ci][2];
+
+        if (pip.isCity) {
+            // City markers: slightly larger filled circle
+            const float cityRadius = std::max(2.0f, std::min(tileW, tileH) * 1.2f);
+            renderer2d.drawFilledCircle(px, py, cityRadius, cr, cg, cb, 1.0f);
+        } else {
+            // Unit pips: small dot
+            const float unitRadius = std::max(1.0f, std::min(tileW, tileH) * 0.6f);
+            renderer2d.drawFilledCircle(px, py, unitRadius, cr, cg, cb, 0.9f);
+        }
+    }
 }
 
 } // namespace aoc::render

@@ -44,7 +44,7 @@ public:
      *   6. Compute resource curse effects.
      *   7. Run monetary policy (inflation, fiscal).
      */
-    void executeTurn(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
+    void executeTurn(aoc::ecs::World& world, aoc::map::HexGrid& grid);
 
     /// Access the market (for UI display / trade decisions).
     [[nodiscard]] Market& market() { return this->m_market; }
@@ -54,7 +54,9 @@ public:
 
 private:
     void harvestResources(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
-    void executeProduction(aoc::ecs::World& world);
+    void processInternalTradeForAllPlayers(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
+    void executeProduction(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
+    void applyResourceDepletion(aoc::ecs::World& world, aoc::map::HexGrid& grid);
     void reportToMarket(aoc::ecs::World& world);
     void executeTradeRoutes(aoc::ecs::World& world);
     void executeMonetaryPolicy(aoc::ecs::World& world);
@@ -65,6 +67,9 @@ private:
     /// Previous-turn GDP per player (for inflation delta calculation).
     std::unordered_map<PlayerId, CurrencyAmount> m_previousGDP;
     std::unordered_map<PlayerId, CurrencyAmount> m_previousMoneySupply;
+
+    /// Counter for deterministic resource depletion checks.
+    uint32_t m_depletionTurnCounter = 0;
 };
 
 } // namespace aoc::sim

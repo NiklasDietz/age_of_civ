@@ -21,6 +21,7 @@ class FogOfWar;
 namespace aoc::render {
 
 class CameraController;
+class DrawCommandBuffer;
 
 class MapRenderer {
 public:
@@ -38,6 +39,31 @@ public:
               PlayerId viewingPlayer,
               const CameraController& camera,
               uint32_t screenWidth, uint32_t screenHeight) const;
+
+    /**
+     * @brief Draw colored border lines around territory edges.
+     *
+     * For each owned tile, checks its 6 neighbors. If a neighbor is unowned
+     * or owned by a different player, draws a colored line along that hex edge
+     * using the owner's player color.
+     */
+    void drawTerritoryBorders(vulkan_app::renderer::Renderer2D& renderer2d,
+                               const aoc::map::HexGrid& grid,
+                               const CameraController& camera,
+                               uint32_t screenWidth, uint32_t screenHeight) const;
+
+    /**
+     * @brief Draw map tiles to a DrawCommandBuffer for deferred rendering.
+     *
+     * Same as draw() but pushes commands to the buffer instead of calling
+     * Renderer2D directly. The caller can then sort and flush.
+     */
+    void drawToBuffer(DrawCommandBuffer& buffer,
+                      const aoc::map::HexGrid& grid,
+                      const aoc::map::FogOfWar& fog,
+                      PlayerId viewingPlayer,
+                      const CameraController& camera,
+                      uint32_t screenWidth, uint32_t screenHeight) const;
 
     /// Set hex outer radius (pixels at zoom 1.0).
     void setHexSize(float size) { this->m_hexSize = size; }

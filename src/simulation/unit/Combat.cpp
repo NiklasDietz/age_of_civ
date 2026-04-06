@@ -6,6 +6,7 @@
 #include "aoc/simulation/unit/Combat.hpp"
 #include "aoc/simulation/barbarian/BarbarianController.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
+#include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -125,6 +126,21 @@ CombatResult resolveMeleeCombat(aoc::ecs::World& world,
         defStrength *= 1.25f;
     }
 
+    // War weariness combat penalty
+    const aoc::ecs::ComponentPool<PlayerWarWearinessComponent>* wwPool =
+        world.getPool<PlayerWarWearinessComponent>();
+    if (wwPool != nullptr) {
+        for (uint32_t wi = 0; wi < wwPool->size(); ++wi) {
+            const PlayerWarWearinessComponent& ww = wwPool->data()[wi];
+            if (ww.owner == atkUnit.owner) {
+                atkStrength *= warWearinessCombatModifier(ww.weariness);
+            }
+            if (ww.owner == defUnit.owner) {
+                defStrength *= warWearinessCombatModifier(ww.weariness);
+            }
+        }
+    }
+
     // Calculate damage
     CombatResult result{};
     result.defenderDamage = computeDamage(atkStrength, defStrength, rng);
@@ -229,6 +245,21 @@ CombatResult resolveRangedCombat(aoc::ecs::World& world,
 
     float terrainMod = terrainDefenseModifier(grid, defUnit.position);
     defStrength *= terrainMod;
+
+    // War weariness combat penalty (ranged)
+    const aoc::ecs::ComponentPool<PlayerWarWearinessComponent>* wwPoolRanged =
+        world.getPool<PlayerWarWearinessComponent>();
+    if (wwPoolRanged != nullptr) {
+        for (uint32_t wi = 0; wi < wwPoolRanged->size(); ++wi) {
+            const PlayerWarWearinessComponent& ww = wwPoolRanged->data()[wi];
+            if (ww.owner == atkUnit.owner) {
+                atkStrength *= warWearinessCombatModifier(ww.weariness);
+            }
+            if (ww.owner == defUnit.owner) {
+                defStrength *= warWearinessCombatModifier(ww.weariness);
+            }
+        }
+    }
 
     CombatResult result{};
     // Ranged: attacker deals damage but takes none (no retaliation)

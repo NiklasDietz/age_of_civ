@@ -68,6 +68,63 @@ static const std::array<WonderDef, WONDER_COUNT> s_wonderDefs = {{
     {11, "Manhattan Project", EraId{6}, 700, TechId{},
       {1.0f, 5.0f, 0.0f, 0.0f, 0.0f, 0.0f},
       "Enables nuclear weapons. +5 science."},
+
+    // --- Batch B wonders ---
+
+    // Ancient era (EraId 0)
+    {12, "Hanging Gardens",  EraId{0}, 180, TechId{},
+      {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+      "+2 food all cities."},
+
+    {13, "Oracle",           EraId{0}, 160, TechId{},
+      {1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},
+      "+1 culture all cities, free civic."},
+
+    // Medieval era (EraId 2)
+    {14, "Alhambra",         EraId{2}, 350, TechId{},
+      {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+      "+1 military policy slot."},
+
+    {15, "Chichen Itza",     EraId{2}, 380, TechId{},
+      {1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f},
+      "+1 culture, +1 production to jungle tiles."},
+
+    // Renaissance era (EraId 3)
+    {16, "Taj Mahal",        EraId{3}, 450, TechId{},
+      {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+      "+1 era score for each golden age."},
+
+    {17, "Venetian Arsenal", EraId{3}, 420, TechId{},
+      {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+      "Double naval unit production."},
+
+    // Industrial era (EraId 4)
+    {18, "Ruhr Valley",      EraId{4}, 520, TechId{},
+      {1.3f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+      "+30% production in this city."},
+
+    {19, "Oxford University", EraId{4}, 480, TechId{},
+      {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+      "+20% science in this city."},
+
+    // Modern era (EraId 5)
+    {20, "Statue of Liberty", EraId{5}, 580, TechId{},
+      {1.0f, 0.0f, 0.0f, 0.0f, 4.0f, 0.0f},
+      "+4 appeal, settlers produced 50% faster."},
+
+    {21, "Broadway",          EraId{5}, 560, TechId{},
+      {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+      "+20% culture in this city."},
+
+    // Atomic era (EraId 6)
+    {22, "Sydney Opera House", EraId{6}, 650, TechId{},
+      {1.0f, 0.0f, 5.0f, 3.0f, 0.0f, 0.0f},
+      "+5 culture, +3 gold."},
+
+    // Information era (EraId 7)
+    {23, "International Space Station", EraId{7}, 750, TechId{},
+      {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+      "+10% science all cities."},
 }};
 
 const std::array<WonderDef, WONDER_COUNT>& allWonderDefs() {
