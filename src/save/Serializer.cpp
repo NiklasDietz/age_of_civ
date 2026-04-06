@@ -31,6 +31,16 @@
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/barbarian/BarbarianController.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
+#include "aoc/simulation/monetary/CurrencyTrust.hpp"
+#include "aoc/simulation/monetary/CurrencyCrisis.hpp"
+#include "aoc/simulation/monetary/CurrencyWar.hpp"
+#include "aoc/simulation/monetary/Bonds.hpp"
+#include "aoc/simulation/economy/Speculation.hpp"
+#include "aoc/simulation/production/ProductionEfficiency.hpp"
+#include "aoc/simulation/production/BuildingCapacity.hpp"
+#include "aoc/simulation/production/Waste.hpp"
+#include "aoc/simulation/production/Automation.hpp"
+#include "aoc/simulation/economy/IndustrialRevolution.hpp"
 
 #include <cassert>
 #include <cstring>
@@ -449,7 +459,11 @@ void writeMonetarySection(WriteBuffer& out, const aoc::ecs::World& world) {
             section.writeU8(m.owner);
             section.writeU8(static_cast<uint8_t>(m.system));
             section.writeI64(m.moneySupply);
-            section.writeI64(m.goldReserves);
+            section.writeI64(m.treasury);
+            section.writeI32(m.copperCoinReserves);
+            section.writeI32(m.silverCoinReserves);
+            section.writeI32(m.goldCoinReserves);
+            section.writeU8(static_cast<uint8_t>(m.effectiveCoinTier));
             section.writeF32(m.goldBackingRatio);
             section.writeF32(m.inflationRate);
             section.writeF32(m.priceLevel);
@@ -462,6 +476,10 @@ void writeMonetarySection(WriteBuffer& out, const aoc::ecs::World& world) {
             section.writeI64(m.deficit);
             section.writeI64(m.gdp);
             section.writeF32(m.velocityOfMoney);
+            section.writeF32(m.debasement.debasementRatio);
+            section.writeI32(m.debasement.turnsDebased);
+            section.writeU8(m.debasement.discoveredByPartners ? 1 : 0);
+            section.writeI32(m.turnsInCurrentSystem);
         }
     }
 
@@ -483,8 +501,11 @@ void writeGovernmentSection(WriteBuffer& out, const aoc::ecs::World& world) {
             for (uint8_t s = 0; s < aoc::sim::MAX_POLICY_SLOTS; ++s) {
                 section.writeU8(static_cast<uint8_t>(gov.activePolicies[s]));
             }
-            section.writeU8(gov.unlockedGovernments);
-            section.writeU16(gov.unlockedPolicies);
+            section.writeU16(gov.unlockedGovernments);
+            section.writeU32(gov.unlockedPolicies);
+            section.writeI32(gov.anarchyTurnsRemaining);
+            section.writeU8(static_cast<uint8_t>(gov.activeAction));
+            section.writeI32(gov.actionTurnsRemaining);
         }
     }
 
@@ -505,7 +526,23 @@ void writeVictorySection(WriteBuffer& out, const aoc::ecs::World& world) {
             section.writeI32(v.scienceProgress);
             section.writeF32(v.totalCultureAccumulated);
             section.writeI32(v.score);
-            section.writeU8(v.hasLaunchedSpaceProgram ? uint8_t{1} : uint8_t{0});
+            // CSI data
+            for (int32_t c = 0; c < aoc::sim::CSI_CATEGORY_COUNT; ++c) {
+                section.writeF32(v.categoryScores[c]);
+            }
+            section.writeF32(v.tradeNetworkMultiplier);
+            section.writeF32(v.financialIntegrationMult);
+            section.writeF32(v.diplomaticWebMult);
+            section.writeF32(v.compositeCSI);
+            section.writeI32(v.eraVictoryPoints);
+            section.writeI32(v.erasEvaluated);
+            section.writeI32(v.integrationProgress);
+            section.writeU8(v.integrationComplete ? 1 : 0);
+            section.writeU8(static_cast<uint8_t>(v.activeCollapse));
+            section.writeI32(v.peakGDP);
+            section.writeI32(v.turnsGDPBelowHalf);
+            section.writeI32(v.turnsLowLoyalty);
+            section.writeU8(v.isEliminated ? 1 : 0);
         }
     }
 
@@ -839,6 +876,218 @@ void writeMiscEntitiesSection(WriteBuffer& out, const aoc::ecs::World& world) {
     writeSection(out, SectionId::MiscEntities, section);
 }
 
+void writeCurrencyTrustSection(WriteBuffer& out, const aoc::ecs::World& world) {
+    WriteBuffer section;
+
+    const aoc::ecs::ComponentPool<aoc::sim::CurrencyTrustComponent>* pool =
+        world.getPool<aoc::sim::CurrencyTrustComponent>();
+    uint32_t count = (pool != nullptr) ? pool->size() : 0;
+    section.writeU32(count);
+    if (pool != nullptr) {
+        for (uint32_t i = 0; i < pool->size(); ++i) {
+            const aoc::sim::CurrencyTrustComponent& ct = pool->data()[i];
+            section.writeU8(ct.owner);
+            section.writeF32(ct.trustScore);
+            section.writeI32(ct.turnsOnFiat);
+            section.writeI32(ct.turnsStable);
+            section.writeU8(ct.isReserveCurrency ? 1 : 0);
+            section.writeI32(ct.turnsAsReserve);
+            for (int32_t p = 0; p < aoc::sim::CurrencyTrustComponent::MAX_PLAYERS; ++p) {
+                section.writeF32(ct.bilateralTrust[p]);
+            }
+        }
+    }
+
+    writeSection(out, SectionId::CurrencyTrust, section);
+}
+
+void writeCrisisSection(WriteBuffer& out, const aoc::ecs::World& world) {
+    WriteBuffer section;
+    const aoc::ecs::ComponentPool<aoc::sim::CurrencyCrisisComponent>* pool =
+        world.getPool<aoc::sim::CurrencyCrisisComponent>();
+    uint32_t count = (pool != nullptr) ? pool->size() : 0;
+    section.writeU32(count);
+    if (pool != nullptr) {
+        for (uint32_t i = 0; i < pool->size(); ++i) {
+            const aoc::sim::CurrencyCrisisComponent& c = pool->data()[i];
+            section.writeU8(c.owner);
+            section.writeU8(static_cast<uint8_t>(c.activeCrisis));
+            section.writeI32(c.turnsRemaining);
+            section.writeI32(c.turnsHighInflation);
+            section.writeU8(c.hasDefaulted ? 1 : 0);
+            section.writeI32(c.defaultCooldown);
+        }
+    }
+    writeSection(out, SectionId::CrisisState, section);
+}
+
+void writeBondSection(WriteBuffer& out, const aoc::ecs::World& world) {
+    WriteBuffer section;
+    const aoc::ecs::ComponentPool<aoc::sim::PlayerBondComponent>* pool =
+        world.getPool<aoc::sim::PlayerBondComponent>();
+    uint32_t count = (pool != nullptr) ? pool->size() : 0;
+    section.writeU32(count);
+    if (pool != nullptr) {
+        for (uint32_t i = 0; i < pool->size(); ++i) {
+            const aoc::sim::PlayerBondComponent& pb = pool->data()[i];
+            section.writeU8(pb.owner);
+            section.writeU32(static_cast<uint32_t>(pb.issuedBonds.size()));
+            for (const aoc::sim::BondIssue& b : pb.issuedBonds) {
+                section.writeU8(b.issuer);
+                section.writeU8(b.holder);
+                section.writeI64(b.principal);
+                section.writeF32(b.yieldRate);
+                section.writeI32(b.turnsToMaturity);
+                section.writeI64(b.accruedInterest);
+            }
+            section.writeU32(static_cast<uint32_t>(pb.heldBonds.size()));
+            for (const aoc::sim::BondIssue& b : pb.heldBonds) {
+                section.writeU8(b.issuer);
+                section.writeU8(b.holder);
+                section.writeI64(b.principal);
+                section.writeF32(b.yieldRate);
+                section.writeI32(b.turnsToMaturity);
+                section.writeI64(b.accruedInterest);
+            }
+        }
+    }
+    writeSection(out, SectionId::BondState, section);
+}
+
+void writeDevaluationSection(WriteBuffer& out, const aoc::ecs::World& world) {
+    WriteBuffer section;
+    const aoc::ecs::ComponentPool<aoc::sim::CurrencyDevaluationComponent>* pool =
+        world.getPool<aoc::sim::CurrencyDevaluationComponent>();
+    uint32_t count = (pool != nullptr) ? pool->size() : 0;
+    section.writeU32(count);
+    if (pool != nullptr) {
+        for (uint32_t i = 0; i < pool->size(); ++i) {
+            const aoc::sim::CurrencyDevaluationComponent& d = pool->data()[i];
+            section.writeU8(d.owner);
+            section.writeU8(d.isDevalued ? 1 : 0);
+            section.writeI32(d.devaluationTurnsLeft);
+            section.writeF32(d.exportBonus);
+            section.writeF32(d.importPenalty);
+            section.writeI32(d.devaluationCount);
+        }
+    }
+    writeSection(out, SectionId::DevaluationState, section);
+}
+
+void writeHoardSection(WriteBuffer& out, const aoc::ecs::World& world) {
+    WriteBuffer section;
+    const aoc::ecs::ComponentPool<aoc::sim::CommodityHoardComponent>* pool =
+        world.getPool<aoc::sim::CommodityHoardComponent>();
+    uint32_t count = (pool != nullptr) ? pool->size() : 0;
+    section.writeU32(count);
+    if (pool != nullptr) {
+        for (uint32_t i = 0; i < pool->size(); ++i) {
+            const aoc::sim::CommodityHoardComponent& h = pool->data()[i];
+            section.writeU8(h.owner);
+            section.writeU32(static_cast<uint32_t>(h.positions.size()));
+            for (const aoc::sim::CommodityHoardComponent::HoardPosition& pos : h.positions) {
+                section.writeU16(pos.goodId);
+                section.writeI32(pos.amount);
+                section.writeI32(pos.purchasePrice);
+            }
+        }
+    }
+    writeSection(out, SectionId::HoardState, section);
+}
+
+void writeProductionExpSection(WriteBuffer& out, const aoc::ecs::World& world) {
+    WriteBuffer section;
+    const aoc::ecs::ComponentPool<aoc::sim::CityProductionExperienceComponent>* pool =
+        world.getPool<aoc::sim::CityProductionExperienceComponent>();
+    uint32_t count = (pool != nullptr) ? pool->size() : 0;
+    section.writeU32(count);
+    if (pool != nullptr) {
+        for (uint32_t i = 0; i < pool->size(); ++i) {
+            const aoc::sim::CityProductionExperienceComponent& c = pool->data()[i];
+            section.writeU32(pool->entities()[i].index);
+            section.writeU32(static_cast<uint32_t>(c.recipeExperience.size()));
+            for (const auto& [recipeId, exp] : c.recipeExperience) {
+                section.writeU16(recipeId);
+                section.writeI32(exp);
+            }
+        }
+    }
+    writeSection(out, SectionId::ProductionExp, section);
+}
+
+void writeBuildingLevelsSection(WriteBuffer& out, const aoc::ecs::World& world) {
+    WriteBuffer section;
+    const aoc::ecs::ComponentPool<aoc::sim::CityBuildingLevelsComponent>* pool =
+        world.getPool<aoc::sim::CityBuildingLevelsComponent>();
+    uint32_t count = (pool != nullptr) ? pool->size() : 0;
+    section.writeU32(count);
+    if (pool != nullptr) {
+        for (uint32_t i = 0; i < pool->size(); ++i) {
+            const aoc::sim::CityBuildingLevelsComponent& c = pool->data()[i];
+            section.writeU32(pool->entities()[i].index);
+            section.writeU32(static_cast<uint32_t>(c.levels.size()));
+            for (const auto& [bid, lvl] : c.levels) {
+                section.writeU16(bid);
+                section.writeI32(lvl);
+            }
+        }
+    }
+    writeSection(out, SectionId::BuildingLevels, section);
+}
+
+void writePollutionSection(WriteBuffer& out, const aoc::ecs::World& world) {
+    WriteBuffer section;
+    const aoc::ecs::ComponentPool<aoc::sim::CityPollutionComponent>* pool =
+        world.getPool<aoc::sim::CityPollutionComponent>();
+    uint32_t count = (pool != nullptr) ? pool->size() : 0;
+    section.writeU32(count);
+    if (pool != nullptr) {
+        for (uint32_t i = 0; i < pool->size(); ++i) {
+            const aoc::sim::CityPollutionComponent& c = pool->data()[i];
+            section.writeU32(pool->entities()[i].index);
+            section.writeI32(c.wasteAccumulated);
+            section.writeI32(c.co2ContributionPerTurn);
+        }
+    }
+    writeSection(out, SectionId::PollutionState, section);
+}
+
+void writeAutomationSection(WriteBuffer& out, const aoc::ecs::World& world) {
+    WriteBuffer section;
+    const aoc::ecs::ComponentPool<aoc::sim::CityAutomationComponent>* pool =
+        world.getPool<aoc::sim::CityAutomationComponent>();
+    uint32_t count = (pool != nullptr) ? pool->size() : 0;
+    section.writeU32(count);
+    if (pool != nullptr) {
+        for (uint32_t i = 0; i < pool->size(); ++i) {
+            const aoc::sim::CityAutomationComponent& c = pool->data()[i];
+            section.writeU32(pool->entities()[i].index);
+            section.writeI32(c.robotWorkers);
+            section.writeI32(c.turnsSinceLastMaintenance);
+        }
+    }
+    writeSection(out, SectionId::AutomationState, section);
+}
+
+void writeIndustrialSection(WriteBuffer& out, const aoc::ecs::World& world) {
+    WriteBuffer section;
+    const aoc::ecs::ComponentPool<aoc::sim::PlayerIndustrialComponent>* pool =
+        world.getPool<aoc::sim::PlayerIndustrialComponent>();
+    uint32_t count = (pool != nullptr) ? pool->size() : 0;
+    section.writeU32(count);
+    if (pool != nullptr) {
+        for (uint32_t i = 0; i < pool->size(); ++i) {
+            const aoc::sim::PlayerIndustrialComponent& ind = pool->data()[i];
+            section.writeU8(ind.owner);
+            section.writeU8(static_cast<uint8_t>(ind.currentRevolution));
+            for (int32_t r = 0; r < 6; ++r) {
+                section.writeI32(ind.turnAchieved[r]);
+            }
+        }
+    }
+    writeSection(out, SectionId::IndustrialState, section);
+}
+
 } // anonymous namespace
 
 // ============================================================================
@@ -880,6 +1129,16 @@ ErrorCode saveGame(const std::string& filepath,
     writeMarketSection(buf, economy);
     writeWonderSection(buf, world);
     writeMiscEntitiesSection(buf, world);
+    writeCurrencyTrustSection(buf, world);
+    writeCrisisSection(buf, world);
+    writeBondSection(buf, world);
+    writeDevaluationSection(buf, world);
+    writeHoardSection(buf, world);
+    writeProductionExpSection(buf, world);
+    writeBuildingLevelsSection(buf, world);
+    writePollutionSection(buf, world);
+    writeAutomationSection(buf, world);
+    writeIndustrialSection(buf, world);
 
     // Write to file
     std::ofstream file(filepath, std::ios::binary);
@@ -1206,7 +1465,11 @@ ErrorCode loadGame(const std::string& filepath,
                     m.owner = buf.readU8();
                     m.system = static_cast<aoc::sim::MonetarySystemType>(buf.readU8());
                     m.moneySupply = buf.readI64();
-                    m.goldReserves = buf.readI64();
+                    m.treasury = buf.readI64();
+                    m.copperCoinReserves = buf.readI32();
+                    m.silverCoinReserves = buf.readI32();
+                    m.goldCoinReserves = buf.readI32();
+                    m.effectiveCoinTier = static_cast<aoc::sim::CoinTier>(buf.readU8());
                     m.goldBackingRatio = buf.readF32();
                     m.inflationRate = buf.readF32();
                     m.priceLevel = buf.readF32();
@@ -1219,6 +1482,10 @@ ErrorCode loadGame(const std::string& filepath,
                     m.deficit = buf.readI64();
                     m.gdp = buf.readI64();
                     m.velocityOfMoney = buf.readF32();
+                    m.debasement.debasementRatio = buf.readF32();
+                    m.debasement.turnsDebased = buf.readI32();
+                    m.debasement.discoveredByPartners = buf.readU8() != 0;
+                    m.turnsInCurrentSystem = buf.readI32();
 
                     EntityId entity = world.createEntity();
                     world.addComponent<aoc::sim::MonetaryStateComponent>(entity, std::move(m));
@@ -1234,8 +1501,11 @@ ErrorCode loadGame(const std::string& filepath,
                     for (uint8_t s = 0; s < aoc::sim::MAX_POLICY_SLOTS; ++s) {
                         gov.activePolicies[s] = static_cast<int8_t>(buf.readU8());
                     }
-                    gov.unlockedGovernments = buf.readU8();
-                    gov.unlockedPolicies = buf.readU16();
+                    gov.unlockedGovernments = buf.readU16();
+                    gov.unlockedPolicies = buf.readU32();
+                    gov.anarchyTurnsRemaining = buf.readI32();
+                    gov.activeAction = static_cast<aoc::sim::GovernmentAction>(buf.readU8());
+                    gov.actionTurnsRemaining = buf.readI32();
 
                     EntityId entity = world.createEntity();
                     world.addComponent<aoc::sim::PlayerGovernmentComponent>(entity, std::move(gov));
@@ -1250,7 +1520,23 @@ ErrorCode loadGame(const std::string& filepath,
                     v.scienceProgress = buf.readI32();
                     v.totalCultureAccumulated = buf.readF32();
                     v.score = buf.readI32();
-                    v.hasLaunchedSpaceProgram = buf.readU8() != 0;
+                    // CSI data
+                    for (int32_t c = 0; c < aoc::sim::CSI_CATEGORY_COUNT; ++c) {
+                        v.categoryScores[c] = buf.readF32();
+                    }
+                    v.tradeNetworkMultiplier = buf.readF32();
+                    v.financialIntegrationMult = buf.readF32();
+                    v.diplomaticWebMult = buf.readF32();
+                    v.compositeCSI = buf.readF32();
+                    v.eraVictoryPoints = buf.readI32();
+                    v.erasEvaluated = buf.readI32();
+                    v.integrationProgress = buf.readI32();
+                    v.integrationComplete = buf.readU8() != 0;
+                    v.activeCollapse = static_cast<aoc::sim::CollapseType>(buf.readU8());
+                    v.peakGDP = buf.readI32();
+                    v.turnsGDPBelowHalf = buf.readI32();
+                    v.turnsLowLoyalty = buf.readI32();
+                    v.isEliminated = buf.readU8() != 0;
 
                     EntityId entity = world.createEntity();
                     world.addComponent<aoc::sim::VictoryTrackerComponent>(entity, std::move(v));
@@ -1514,6 +1800,196 @@ ErrorCode loadGame(const std::string& filepath,
                         world.addComponent<aoc::sim::UnitExperienceComponent>(
                             unitEntity, std::move(exp));
                     }
+                }
+                break;
+            }
+            case SectionId::CurrencyTrust: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    aoc::sim::CurrencyTrustComponent ct{};
+                    ct.owner = buf.readU8();
+                    ct.trustScore = buf.readF32();
+                    ct.turnsOnFiat = buf.readI32();
+                    ct.turnsStable = buf.readI32();
+                    ct.isReserveCurrency = buf.readU8() != 0;
+                    ct.turnsAsReserve = buf.readI32();
+                    for (int32_t p = 0; p < aoc::sim::CurrencyTrustComponent::MAX_PLAYERS; ++p) {
+                        ct.bilateralTrust[p] = buf.readF32();
+                    }
+
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::CurrencyTrustComponent>(entity, std::move(ct));
+                }
+                break;
+            }
+            case SectionId::CrisisState: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    aoc::sim::CurrencyCrisisComponent c{};
+                    c.owner = buf.readU8();
+                    c.activeCrisis = static_cast<aoc::sim::CrisisType>(buf.readU8());
+                    c.turnsRemaining = buf.readI32();
+                    c.turnsHighInflation = buf.readI32();
+                    c.hasDefaulted = buf.readU8() != 0;
+                    c.defaultCooldown = buf.readI32();
+
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::CurrencyCrisisComponent>(entity, std::move(c));
+                }
+                break;
+            }
+            case SectionId::BondState: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    aoc::sim::PlayerBondComponent pb{};
+                    pb.owner = buf.readU8();
+                    uint32_t issuedCount = buf.readU32();
+                    pb.issuedBonds.reserve(issuedCount);
+                    for (uint32_t j = 0; j < issuedCount; ++j) {
+                        aoc::sim::BondIssue b{};
+                        b.issuer = buf.readU8();
+                        b.holder = buf.readU8();
+                        b.principal = buf.readI64();
+                        b.yieldRate = buf.readF32();
+                        b.turnsToMaturity = buf.readI32();
+                        b.accruedInterest = buf.readI64();
+                        pb.issuedBonds.push_back(b);
+                    }
+                    uint32_t heldCount = buf.readU32();
+                    pb.heldBonds.reserve(heldCount);
+                    for (uint32_t j = 0; j < heldCount; ++j) {
+                        aoc::sim::BondIssue b{};
+                        b.issuer = buf.readU8();
+                        b.holder = buf.readU8();
+                        b.principal = buf.readI64();
+                        b.yieldRate = buf.readF32();
+                        b.turnsToMaturity = buf.readI32();
+                        b.accruedInterest = buf.readI64();
+                        pb.heldBonds.push_back(b);
+                    }
+
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::PlayerBondComponent>(entity, std::move(pb));
+                }
+                break;
+            }
+            case SectionId::DevaluationState: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    aoc::sim::CurrencyDevaluationComponent d{};
+                    d.owner = buf.readU8();
+                    d.isDevalued = buf.readU8() != 0;
+                    d.devaluationTurnsLeft = buf.readI32();
+                    d.exportBonus = buf.readF32();
+                    d.importPenalty = buf.readF32();
+                    d.devaluationCount = buf.readI32();
+
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::CurrencyDevaluationComponent>(entity, std::move(d));
+                }
+                break;
+            }
+            case SectionId::HoardState: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    aoc::sim::CommodityHoardComponent h{};
+                    h.owner = buf.readU8();
+                    uint32_t posCount = buf.readU32();
+                    h.positions.reserve(posCount);
+                    for (uint32_t j = 0; j < posCount; ++j) {
+                        aoc::sim::CommodityHoardComponent::HoardPosition pos{};
+                        pos.goodId = buf.readU16();
+                        pos.amount = buf.readI32();
+                        pos.purchasePrice = buf.readI32();
+                        h.positions.push_back(pos);
+                    }
+
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::CommodityHoardComponent>(entity, std::move(h));
+                }
+                break;
+            }
+            case SectionId::ProductionExp: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    uint32_t entityIndex = buf.readU32();
+                    aoc::sim::CityProductionExperienceComponent comp{};
+                    uint32_t mapSize = buf.readU32();
+                    for (uint32_t j = 0; j < mapSize; ++j) {
+                        uint16_t recipeId = buf.readU16();
+                        int32_t exp = buf.readI32();
+                        comp.recipeExperience[recipeId] = exp;
+                    }
+                    // Attach to existing city entity if possible
+                    EntityId target{entityIndex & 0xFFFFFu, 0};
+                    if (world.isAlive(target)) {
+                        world.addComponent<aoc::sim::CityProductionExperienceComponent>(
+                            target, std::move(comp));
+                    }
+                }
+                break;
+            }
+            case SectionId::BuildingLevels: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    uint32_t entityIndex = buf.readU32();
+                    aoc::sim::CityBuildingLevelsComponent comp{};
+                    uint32_t mapSize = buf.readU32();
+                    for (uint32_t j = 0; j < mapSize; ++j) {
+                        uint16_t bid = buf.readU16();
+                        int32_t lvl = buf.readI32();
+                        comp.levels[bid] = lvl;
+                    }
+                    EntityId target{entityIndex & 0xFFFFFu, 0};
+                    if (world.isAlive(target)) {
+                        world.addComponent<aoc::sim::CityBuildingLevelsComponent>(
+                            target, std::move(comp));
+                    }
+                }
+                break;
+            }
+            case SectionId::PollutionState: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    uint32_t entityIndex = buf.readU32();
+                    aoc::sim::CityPollutionComponent comp{};
+                    comp.wasteAccumulated = buf.readI32();
+                    comp.co2ContributionPerTurn = buf.readI32();
+                    EntityId target{entityIndex & 0xFFFFFu, 0};
+                    if (world.isAlive(target)) {
+                        world.addComponent<aoc::sim::CityPollutionComponent>(
+                            target, std::move(comp));
+                    }
+                }
+                break;
+            }
+            case SectionId::AutomationState: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    uint32_t entityIndex = buf.readU32();
+                    aoc::sim::CityAutomationComponent comp{};
+                    comp.robotWorkers = buf.readI32();
+                    comp.turnsSinceLastMaintenance = buf.readI32();
+                    EntityId target{entityIndex & 0xFFFFFu, 0};
+                    if (world.isAlive(target)) {
+                        world.addComponent<aoc::sim::CityAutomationComponent>(
+                            target, std::move(comp));
+                    }
+                }
+                break;
+            }
+            case SectionId::IndustrialState: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    aoc::sim::PlayerIndustrialComponent ind{};
+                    ind.owner = buf.readU8();
+                    ind.currentRevolution = static_cast<aoc::sim::IndustrialRevolutionId>(buf.readU8());
+                    for (int32_t r = 0; r < 6; ++r) {
+                        ind.turnAchieved[r] = buf.readI32();
+                    }
+
+                    EntityId entity = world.createEntity();
+                    world.addComponent<aoc::sim::PlayerIndustrialComponent>(entity, std::move(ind));
                 }
                 break;
             }

@@ -63,6 +63,17 @@ enum class SectionId : uint16_t {
     PlayerState      = 0x0010,  ///< Per-player civ, era, economy, great people, eureka
     WonderState      = 0x0012,  ///< Global wonder tracker + per-city wonders
     MiscEntities     = 0x0013,  ///< Barbarians, great people, spies, unit experience
+    CurrencyTrust    = 0x0014,  ///< Per-player fiat currency trust state
+    CrisisState      = 0x0015,  ///< Per-player currency crisis state
+    BondState        = 0x0016,  ///< Per-player bond portfolios
+    DevaluationState = 0x0017,  ///< Per-player devaluation state
+    HoardState       = 0x0018,  ///< Per-player commodity hoards
+    ProductionExp    = 0x0019,  ///< Per-city recipe experience
+    BuildingLevels   = 0x001A,  ///< Per-city building upgrade levels
+    QualityState     = 0x001B,  ///< Per-city good quality breakdowns
+    PollutionState   = 0x001C,  ///< Per-city waste/pollution
+    AutomationState  = 0x001D,  ///< Per-city robot worker state
+    IndustrialState  = 0x001E,  ///< Per-player industrial revolution progress
 };
 
 /// Low-level binary write buffer.

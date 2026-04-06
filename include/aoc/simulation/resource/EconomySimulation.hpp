@@ -11,6 +11,9 @@
 
 #include "aoc/simulation/resource/ProductionChain.hpp"
 #include "aoc/simulation/economy/Market.hpp"
+#include "aoc/simulation/economy/Sanctions.hpp"
+#include "aoc/simulation/economy/ColonialEconomics.hpp"
+#include "aoc/simulation/monetary/CurrencyWar.hpp"
 #include "aoc/core/Types.hpp"
 
 #include <unordered_map>
@@ -59,7 +62,12 @@ private:
     void applyResourceDepletion(aoc::ecs::World& world, aoc::map::HexGrid& grid);
     void reportToMarket(aoc::ecs::World& world);
     void executeTradeRoutes(aoc::ecs::World& world);
+    void settleTradeInCoins(aoc::ecs::World& world);
+    void updateCoinReservesFromStockpiles(aoc::ecs::World& world);
+    void tickMonetaryMechanics(aoc::ecs::World& world);
     void executeMonetaryPolicy(aoc::ecs::World& world);
+    void processCrisisAndBonds(aoc::ecs::World& world);
+    void processEconomicZonesAndSpeculation(aoc::ecs::World& world, aoc::map::HexGrid& grid);
 
     ProductionChain m_productionChain;
     Market          m_market;
@@ -70,6 +78,19 @@ private:
 
     /// Counter for deterministic resource depletion checks.
     uint32_t m_depletionTurnCounter = 0;
+
+    /// Global state trackers for the new economic systems.
+    GlobalSanctionTracker       m_sanctions;
+    GlobalEconomicZoneTracker   m_economicZones;
+    GlobalCurrencyWarState      m_currencyWarState;
+
+public:
+    [[nodiscard]] GlobalSanctionTracker& sanctions() { return this->m_sanctions; }
+    [[nodiscard]] const GlobalSanctionTracker& sanctions() const { return this->m_sanctions; }
+    [[nodiscard]] GlobalEconomicZoneTracker& economicZones() { return this->m_economicZones; }
+    [[nodiscard]] const GlobalEconomicZoneTracker& economicZones() const { return this->m_economicZones; }
+    [[nodiscard]] GlobalCurrencyWarState& currencyWar() { return this->m_currencyWarState; }
+    [[nodiscard]] const GlobalCurrencyWarState& currencyWar() const { return this->m_currencyWarState; }
 };
 
 } // namespace aoc::sim

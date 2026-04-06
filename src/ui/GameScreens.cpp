@@ -16,6 +16,7 @@
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/economy/Market.hpp"
@@ -570,7 +571,8 @@ void EconomyScreen::open(UIManager& ui) {
     std::string infoText = "No economic data";
     if (monetary != nullptr) {
         infoText = "System: " + std::string(aoc::sim::monetarySystemName(monetary->system))
-                 + "  Gold: " + std::to_string(monetary->goldReserves)
+                 + "  Coins: " + std::string(aoc::sim::coinTierName(monetary->effectiveCoinTier))
+                 + "  Treasury: " + std::to_string(monetary->treasury)
                  + "  Money: " + std::to_string(monetary->moneySupply)
                  + "  Inflation: " + std::to_string(static_cast<int>(monetary->inflationRate * 100.0f)) + "%";
     }
@@ -1017,10 +1019,48 @@ void EconomyScreen::refresh(UIManager& ui) {
 
     std::string infoText = "No economic data";
     if (monetary != nullptr) {
-        infoText = "System: " + std::string(aoc::sim::monetarySystemName(monetary->system))
-                 + "  Gold: " + std::to_string(monetary->goldReserves)
-                 + "  Money: " + std::to_string(monetary->moneySupply)
-                 + "  Inflation: " + std::to_string(static_cast<int>(monetary->inflationRate * 100.0f)) + "%";
+        infoText = std::string(aoc::sim::monetarySystemName(monetary->system));
+
+        // Coin reserves detail
+        if (monetary->system == aoc::sim::MonetarySystemType::CommodityMoney
+            || monetary->system == aoc::sim::MonetarySystemType::GoldStandard) {
+            infoText += "  Cu:" + std::to_string(monetary->copperCoinReserves)
+                      + " Ag:" + std::to_string(monetary->silverCoinReserves)
+                      + " Au:" + std::to_string(monetary->goldCoinReserves);
+        }
+
+        infoText += "  Tier:" + std::string(aoc::sim::coinTierName(monetary->effectiveCoinTier))
+                  + "  Treasury:" + std::to_string(monetary->treasury);
+
+        if (monetary->system != aoc::sim::MonetarySystemType::Barter) {
+            infoText += "  M:" + std::to_string(monetary->moneySupply);
+            int inflPct = static_cast<int>(monetary->inflationRate * 100.0f);
+            infoText += "  Infl:" + std::to_string(inflPct) + "%";
+        }
+
+        // Debasement warning
+        if (monetary->debasement.discoveredByPartners) {
+            int debPct = static_cast<int>(monetary->debasement.debasementRatio * 100.0f);
+            infoText += "  DEBASED:" + std::to_string(debPct) + "%";
+        }
+
+        // Fiat trust info
+        if (monetary->system == aoc::sim::MonetarySystemType::FiatMoney) {
+            const aoc::sim::CurrencyTrustComponent* trust = nullptr;
+            this->m_world->forEach<aoc::sim::CurrencyTrustComponent>(
+                [this, &trust](EntityId, aoc::sim::CurrencyTrustComponent& ct) {
+                    if (ct.owner == this->m_player) {
+                        trust = &ct;
+                    }
+                });
+            if (trust != nullptr) {
+                int trustPct = static_cast<int>(trust->trustScore * 100.0f);
+                infoText += "  Trust:" + std::to_string(trustPct) + "%";
+                if (trust->isReserveCurrency) {
+                    infoText += " [RESERVE]";
+                }
+            }
+        }
     }
     ui.setLabelText(this->m_infoLabel, std::move(infoText));
 }

@@ -35,6 +35,7 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     defs[goods::COTTON]     = {goods::COTTON,      "Cotton",      GoodCategory::RawStrategic, 10, false, 0.4f};
     defs[goods::RUBBER]     = {goods::RUBBER,      "Rubber",      GoodCategory::RawStrategic, 18, true,  0.4f};
     defs[goods::TIN]        = {goods::TIN,         "Tin",         GoodCategory::RawStrategic, 12, true,  0.4f};
+    defs[goods::SILVER_ORE] = {goods::SILVER_ORE,  "Silver Ore",  GoodCategory::RawStrategic, 22, false, 0.5f};
 
     // Raw luxury (20-39) -- high elasticity (0.7)
     defs[goods::GOLD_ORE]   = {goods::GOLD_ORE,   "Gold Ore",    GoodCategory::RawLuxury, 25, false, 0.7f};
@@ -93,6 +94,14 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     defs[goods::ARMORED_VEHICLES]     = {goods::ARMORED_VEHICLES,     "Armored Vehicles",     GoodCategory::Advanced, 200, true,  0.8f};
     defs[goods::TELECOM_EQUIPMENT]    = {goods::TELECOM_EQUIPMENT,    "Telecom Equipment",    GoodCategory::Advanced, 140, true,  0.8f};
     defs[goods::ADV_CONSUMER_GOODS]   = {goods::ADV_CONSUMER_GOODS,   "Adv. Consumer Goods",  GoodCategory::Advanced, 90, false, 0.8f};
+
+    // Monetary goods (140+) -- low elasticity (stable value as currency)
+    defs[goods::COPPER_COINS] = {goods::COPPER_COINS, "Copper Coins", GoodCategory::Monetary, 10, false, 0.2f};
+    defs[goods::SILVER_COINS] = {goods::SILVER_COINS, "Silver Coins", GoodCategory::Monetary, 20, false, 0.2f};
+    defs[goods::GOLD_COINS]   = {goods::GOLD_COINS,   "Gold Coins",   GoodCategory::Monetary, 40, false, 0.2f};
+
+    // Automation goods
+    defs[goods::ROBOT_WORKERS] = {goods::ROBOT_WORKERS, "Robot Workers", GoodCategory::Advanced, 300, false, 0.8f};
 
     return defs;
 }();
@@ -283,6 +292,28 @@ std::vector<ProductionRecipe> buildRecipes() {
     recipes.push_back({33, "Weave Cotton Textiles",
         {{goods::COTTON, 2}},
         goods::TEXTILES, 2, BuildingId{8}, 1});
+
+    // ================================================================
+    // Minting: raw metal ore -> coins (requires Mint building)
+    // ================================================================
+    recipes.push_back({34, "Mint Copper Coins",
+        {{goods::COPPER_ORE, 2}},
+        goods::COPPER_COINS, 3, BuildingId{24}, 1});
+
+    recipes.push_back({35, "Mint Silver Coins",
+        {{goods::SILVER_ORE, 2}},
+        goods::SILVER_COINS, 2, BuildingId{24}, 1});
+
+    recipes.push_back({36, "Mint Gold Coins",
+        {{goods::GOLD_ORE, 2}},
+        goods::GOLD_COINS, 1, BuildingId{24}, 1});
+
+    // ================================================================
+    // Automation: Robot Workers (late-game)
+    // ================================================================
+    recipes.push_back({37, "Build Robot Workers",
+        {{goods::MICROCHIPS, 1}, {goods::STEEL, 2}, {goods::ELECTRONICS, 1}},
+        goods::ROBOT_WORKERS, 1, BuildingId{5}, 4});
 
     return recipes;
 }

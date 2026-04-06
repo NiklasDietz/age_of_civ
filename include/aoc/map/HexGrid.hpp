@@ -33,6 +33,9 @@ enum class ImprovementType : uint8_t {
     FishingBoats,
     Fort,
     Road,
+    Railway,    ///< Requires Steel + Coal. 0.5 MP cost, 5x trade capacity.
+    Highway,    ///< Requires Plastics + Steel. 0.33 MP cost, 8x trade capacity.
+    Dam,        ///< River-only. Prevents flooding, enables hydroelectric.
 
     Count
 };
@@ -132,11 +135,25 @@ public:
     void setImprovement(int32_t index, ImprovementType type) {
         this->assertIndex(index);
         this->m_improvement[static_cast<std::size_t>(index)] = type;
-        if (type == ImprovementType::Road) {
+        if (type == ImprovementType::Road
+            || type == ImprovementType::Railway
+            || type == ImprovementType::Highway) {
             this->m_road[static_cast<std::size_t>(index)] = 1;
         }
     }
+    /// True if the tile has any road-type infrastructure (road, railway, highway).
     [[nodiscard]] bool hasRoad(int32_t index) const { this->assertIndex(index); return this->m_road[static_cast<std::size_t>(index)] != 0; }
+
+    /// Get the infrastructure tier: 0=none, 1=road, 2=railway, 3=highway.
+    [[nodiscard]] int32_t infrastructureTier(int32_t index) const {
+        this->assertIndex(index);
+        ImprovementType imp = this->m_improvement[static_cast<std::size_t>(index)];
+        if (imp == ImprovementType::Highway) { return 3; }
+        if (imp == ImprovementType::Railway) { return 2; }
+        if (imp == ImprovementType::Road)    { return 1; }
+        if (this->m_road[static_cast<std::size_t>(index)] != 0) { return 1; }
+        return 0;
+    }
 
     // ========================================================================
     // Computed properties
@@ -167,7 +184,29 @@ public:
         return 0;  // Land tiles are impassable for naval units
     }
 
-    /// Movement cost for a land unit (0 = impassable).
+    /// Movement cost for a land unit moving FROM fromIndex TO index.
+    /// Includes river crossing penalty. Use the single-arg overload when direction is unknown.
+    [[nodiscard]] int32_t movementCost(int32_t fromIndex, int32_t index) const {
+        int32_t base = this->movementCost(index);
+        if (base <= 0) {
+            return 0;  // Impassable
+        }
+        // River crossing penalty: +1 MP
+        hex::AxialCoord fromAxial = this->toAxial(fromIndex);
+        hex::AxialCoord toAxial = this->toAxial(index);
+        std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(fromAxial);
+        for (int dir = 0; dir < 6; ++dir) {
+            if (nbrs[static_cast<std::size_t>(dir)] == toAxial) {
+                if (this->hasRiverOnEdge(fromIndex, dir)) {
+                    base += 1;  // River crossing cost
+                }
+                break;
+            }
+        }
+        return base;
+    }
+
+    /// Movement cost for a land unit entering this tile (no directional info).
     [[nodiscard]] int32_t movementCost(int32_t index) const {
         TerrainType t = this->terrain(index);
         if (isImpassable(t)) {
@@ -186,10 +225,13 @@ public:
             cost = 2;
         }
 
-        // Roads reduce movement cost to 1
-        if (this->hasRoad(index) && cost > 1) {
-            cost = 1;
+        // Infrastructure reduces movement cost
+        int32_t tier = this->infrastructureTier(index);
+        if (tier >= 1 && cost > 1) {
+            cost = 1;  // Road: all terrain costs 1 MP
         }
+        // Railway and Highway are even faster but handled via
+        // the 2-arg movementCost overload (fractional MP not supported here)
         return cost;
     }
 

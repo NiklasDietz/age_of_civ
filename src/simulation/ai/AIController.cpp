@@ -28,6 +28,8 @@
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
+#include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -228,6 +230,7 @@ void AIController::executeTurn(aoc::ecs::World& world,
     this->manageBuildersAndImprovements(world, grid);
     this->executeUnitActions(world, grid, rng);
     this->manageEconomy(world, diplomacy, market);
+    this->manageMonetarySystem(world, diplomacy);
     this->executeDiplomacyActions(world, diplomacy, market);
 
     // Refresh movement so units have moved for this turn
@@ -1513,6 +1516,107 @@ std::vector<ScoredAction> AIController::evaluateActions(
     // Full utility-based evaluation will be implemented as the game matures.
     // For now, actions are hard-coded priorities in executeTurn().
     return {};
+}
+
+// ============================================================================
+// Monetary system management
+//
+// AI strategy for monetary transitions:
+//   1. Transition to Commodity Money as soon as any coins are held.
+//   2. Transition to Gold Standard when gold coins + Banking tech available.
+//   3. Transition to Fiat only if GDP rank is top half and economy is stable.
+//   4. Never debase currency (AI plays conservatively with money).
+// ============================================================================
+
+void AIController::manageMonetarySystem(aoc::ecs::World& world,
+                                         const DiplomacyManager& /*diplomacy*/) {
+    aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
+        world.getPool<MonetaryStateComponent>();
+    if (monetaryPool == nullptr) {
+        return;
+    }
+
+    MonetaryStateComponent* myState = nullptr;
+    for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
+        if (monetaryPool->data()[i].owner == this->m_player) {
+            myState = &monetaryPool->data()[i];
+            break;
+        }
+    }
+    if (myState == nullptr) {
+        return;
+    }
+
+    // Count cities
+    int32_t cityCount = 0;
+    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
+        world.getPool<CityComponent>();
+    if (cityPool != nullptr) {
+        for (uint32_t i = 0; i < cityPool->size(); ++i) {
+            if (cityPool->data()[i].owner == this->m_player) {
+                ++cityCount;
+            }
+        }
+    }
+
+    // Count trade partners
+    int32_t tradePartnerCount = 0;
+    const aoc::ecs::ComponentPool<TradeRouteComponent>* tradePool =
+        world.getPool<TradeRouteComponent>();
+    if (tradePool != nullptr) {
+        std::unordered_set<PlayerId> partners;
+        for (uint32_t i = 0; i < tradePool->size(); ++i) {
+            const TradeRouteComponent& route = tradePool->data()[i];
+            if (route.sourcePlayer == this->m_player && route.destPlayer != this->m_player) {
+                partners.insert(route.destPlayer);
+            }
+            if (route.destPlayer == this->m_player && route.sourcePlayer != this->m_player) {
+                partners.insert(route.sourcePlayer);
+            }
+        }
+        tradePartnerCount = static_cast<int32_t>(partners.size());
+    }
+
+    // Compute GDP rank
+    int32_t gdpRank = 1;
+    int32_t playerCount = static_cast<int32_t>(monetaryPool->size());
+    for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
+        const MonetaryStateComponent& other = monetaryPool->data()[i];
+        if (other.owner != this->m_player && other.gdp > myState->gdp) {
+            ++gdpRank;
+        }
+    }
+
+    // Determine next transition target
+    MonetarySystemType nextTarget = MonetarySystemType::Count;
+    switch (myState->system) {
+        case MonetarySystemType::Barter:
+            nextTarget = MonetarySystemType::CommodityMoney;
+            break;
+        case MonetarySystemType::CommodityMoney:
+            nextTarget = MonetarySystemType::GoldStandard;
+            break;
+        case MonetarySystemType::GoldStandard:
+            nextTarget = MonetarySystemType::FiatMoney;
+            break;
+        default:
+            return;  // Already on fiat, nothing to transition to
+    }
+
+    // AI only transitions to fiat if GDP rank is top 2 (conservative)
+    if (nextTarget == MonetarySystemType::FiatMoney && gdpRank > 2) {
+        return;
+    }
+
+    ErrorCode result = myState->canTransition(
+        nextTarget, cityCount, tradePartnerCount, gdpRank, playerCount);
+    if (result == ErrorCode::Ok) {
+        myState->transitionTo(nextTarget);
+        LOG_INFO("AI player %u transitioned to %.*s",
+                 static_cast<unsigned>(this->m_player),
+                 static_cast<int>(monetarySystemName(nextTarget).size()),
+                 monetarySystemName(nextTarget).data());
+    }
 }
 
 } // namespace aoc::sim::ai

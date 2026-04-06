@@ -1974,7 +1974,7 @@ void Application::spawnStartingEntities(aoc::sim::CivId civId) {
     aoc::sim::MonetaryStateComponent monetary{};
     monetary.owner = 0;
     monetary.system = aoc::sim::MonetarySystemType::Barter;
-    monetary.goldReserves = 100;
+    monetary.treasury = 100;
     monetary.moneySupply = 0;
     monetary.taxRate = 0.15f;
     monetary.governmentSpending = 0;
@@ -2093,7 +2093,7 @@ void Application::spawnAIPlayer(PlayerId player, aoc::sim::CivId civId) {
     aoc::sim::MonetaryStateComponent monetary{};
     monetary.owner = player;
     monetary.system = aoc::sim::MonetarySystemType::Barter;
-    monetary.goldReserves = 100;
+    monetary.treasury = 100;
     this->m_world.addComponent<aoc::sim::MonetaryStateComponent>(playerEntity, std::move(monetary));
 
     aoc::sim::PlayerEconomyComponent playerEcon{};
@@ -2553,7 +2553,8 @@ void Application::updateHUD() {
         if (monetaryPool != nullptr && monetaryPool->size() > 0) {
             const aoc::sim::MonetaryStateComponent& ms = monetaryPool->data()[0];
             econText = std::string(aoc::sim::monetarySystemName(ms.system));
-            econText += "  Gold:" + std::to_string(ms.goldReserves);
+            econText += "  T:" + std::to_string(ms.treasury);
+            econText += "  " + std::string(aoc::sim::coinTierName(ms.effectiveCoinTier));
             if (ms.system != aoc::sim::MonetarySystemType::Barter) {
                 econText += "  M:" + std::to_string(ms.moneySupply);
                 int inflPct = static_cast<int>(ms.inflationRate * 100.0f);

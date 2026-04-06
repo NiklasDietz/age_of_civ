@@ -85,8 +85,9 @@ void ScoreScreen::computeScores() {
     this->m_world->forEach<aoc::sim::MonetaryStateComponent>(
         [this](EntityId /*id*/, aoc::sim::MonetaryStateComponent& ms) {
             if (ms.owner < this->m_playerCount) {
-                this->m_scores[ms.owner].economy = static_cast<int32_t>(ms.goldReserves)
-                                                 + static_cast<int32_t>(ms.moneySupply);
+                this->m_scores[ms.owner].economy = static_cast<int32_t>(ms.treasury)
+                                                 + static_cast<int32_t>(ms.moneySupply)
+                                                 + ms.totalCoinValue();
             }
         });
 

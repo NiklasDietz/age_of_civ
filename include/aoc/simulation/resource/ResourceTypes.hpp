@@ -39,6 +39,7 @@ enum class GoodCategory : uint8_t {
     RawBonus,        ///< From bonus resource tiles (wheat, cattle, fish, ...)
     Processed,       ///< Output of a production recipe (tools, steel, electronics, ...)
     Advanced,        ///< High-tier processed good (machinery, industrial equipment, ...)
+    Monetary,        ///< Coined metals used as currency (copper/silver/gold coins)
 
     Count
 };
@@ -72,6 +73,7 @@ namespace goods {
     inline constexpr uint16_t COTTON      = 8;
     inline constexpr uint16_t RUBBER      = 9;
     inline constexpr uint16_t TIN         = 10;
+    inline constexpr uint16_t SILVER_ORE  = 11;
 
     // -- Raw luxury resources (20-39) --
     inline constexpr uint16_t GOLD_ORE    = 20;
@@ -131,7 +133,15 @@ namespace goods {
     inline constexpr uint16_t TELECOM_EQUIPMENT    = 112;
     inline constexpr uint16_t ADV_CONSUMER_GOODS   = 113;
 
-    inline constexpr uint16_t GOOD_COUNT = 114;
+    // -- Monetary goods (140-159) -- produced at Mint from raw metals
+    inline constexpr uint16_t COPPER_COINS         = 140;
+    inline constexpr uint16_t SILVER_COINS         = 141;
+    inline constexpr uint16_t GOLD_COINS           = 142;
+
+    // -- Automation goods (160-169) --
+    inline constexpr uint16_t ROBOT_WORKERS        = 143;
+
+    inline constexpr uint16_t GOOD_COUNT = 144;
 } // namespace goods
 
 // ============================================================================

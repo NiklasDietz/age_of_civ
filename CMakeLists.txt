@@ -42,6 +42,7 @@ add_library(aoc_lib STATIC
     src/map/MapGenerator.cpp
     src/map/Pathfinding.cpp
     src/map/FogOfWar.cpp
+    src/map/RiverGameplay.cpp
 
     # Simulation
     src/simulation/turn/TurnManager.cpp
@@ -61,6 +62,7 @@ add_library(aoc_lib STATIC
     src/simulation/city/BorderExpansion.cpp
     src/simulation/city/CityBombardment.cpp
     src/simulation/map/Improvement.cpp
+    src/simulation/map/Infrastructure.cpp
     src/simulation/barbarian/BarbarianController.cpp
     src/simulation/diplomacy/DiplomacyState.cpp
     src/simulation/diplomacy/EspionageSystem.cpp
@@ -80,6 +82,10 @@ add_library(aoc_lib STATIC
     src/simulation/monetary/Inflation.cpp
     src/simulation/monetary/CentralBank.cpp
     src/simulation/monetary/FiscalPolicy.cpp
+    src/simulation/monetary/CurrencyTrust.cpp
+    src/simulation/monetary/CurrencyCrisis.cpp
+    src/simulation/monetary/CurrencyWar.cpp
+    src/simulation/monetary/Bonds.cpp
     src/simulation/greatpeople/GreatPeople.cpp
     src/simulation/wonder/Wonder.cpp
     src/simulation/citystate/CityState.cpp
@@ -88,7 +94,19 @@ add_library(aoc_lib STATIC
     src/simulation/economy/AdvancedEconomics.cpp
     src/simulation/economy/EnvironmentModifier.cpp
     src/simulation/economy/InternalTrade.cpp
+    src/simulation/economy/Sanctions.cpp
+    src/simulation/economy/Speculation.cpp
+    src/simulation/economy/ColonialEconomics.cpp
+    src/simulation/economy/IndustrialRevolution.cpp
+    src/simulation/economy/NavalTrade.cpp
+    src/simulation/empire/CommunicationSpeed.cpp
     src/simulation/city/CityConnection.cpp
+
+    # Production systems
+    src/simulation/production/QualityTier.cpp
+    src/simulation/production/Waste.cpp
+    src/simulation/production/PowerGrid.cpp
+    src/simulation/production/Automation.cpp
     src/simulation/city/CityLoyalty.cpp
 
     # Replay

@@ -277,7 +277,7 @@ void applyReligionBonuses(aoc::ecs::World& world, PlayerId player) {
                 for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
                     MonetaryStateComponent& ms = monetaryPool->data()[i];
                     if (ms.owner == player) {
-                        ms.goldReserves += static_cast<CurrencyAmount>(goldBonus);
+                        ms.treasury += static_cast<CurrencyAmount>(goldBonus);
                         break;
                     }
                 }

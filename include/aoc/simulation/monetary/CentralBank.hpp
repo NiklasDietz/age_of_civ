@@ -4,15 +4,17 @@
  * @file CentralBank.hpp
  * @brief Central bank monetary policy tools.
  *
- * Available in GoldStandard and FiatMoney systems. Controls:
- *   - Interest rate: higher rate slows borrowing, reduces velocity, fights inflation
- *     but also slows economic growth.
- *   - Reserve requirement: fraction of deposits banks must hold. Higher = less
- *     money creation through lending (lower money multiplier).
- *   - Money printing (Fiat only): directly increase money supply. Powerful stimulus
- *     but directly causes inflation.
- *   - Gold purchase/sale (Gold Standard): buy/sell gold to adjust reserves and
- *     money supply within the gold backing constraint.
+ * Available tools depend on the monetary system:
+ *
+ *   CommodityMoney:
+ *     - Debasement: mix cheaper metals into coins to stretch supply.
+ *       Short-term stimulus but destroys trust once discovered by partners.
+ *
+ *   GoldStandard:
+ *     - Interest rate, reserve requirement, gold buy/sell.
+ *
+ *   FiatMoney:
+ *     - Interest rate, reserve requirement, money printing.
  */
 
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
@@ -65,8 +67,42 @@ void setReserveRequirement(MonetaryStateComponent& state, Percentage ratio);
  *
  * In fractional reserve banking: multiplier = 1 / reserveRequirement
  * This determines how much money banks can create through lending.
- * A 10% reserve requirement means banks can lend 10x their reserves.
  */
 [[nodiscard]] float moneyMultiplier(const MonetaryStateComponent& state);
+
+/**
+ * @brief Debase the currency (Commodity Money only).
+ *
+ * Mixes cheaper metals into coins, effectively creating new coins from
+ * the same metal supply. This increases the money supply immediately
+ * but degrades coin quality.
+ *
+ * @param state  Player's monetary state.
+ * @param ratio  How much to debase: 0.1 = 10% base metal mixed in.
+ *               Cumulative -- cannot exceed 0.5 (50%).
+ * @return Ok if successful, InvalidMonetaryTransition if not CommodityMoney.
+ *
+ * Effects:
+ * - Immediate: coin reserves increase by (ratio * currentReserves) for
+ *   the highest-tier coin held. Free money.
+ * - After ~5 turns: trade partners discover the debasement via coin
+ *   weight/purity checks. Exchange rate penalty applied.
+ * - Discovered debasement reduces trade efficiency by up to 25%.
+ * - Other civs may refuse debased coins entirely above 40% debasement.
+ */
+[[nodiscard]] ErrorCode debaseCurrency(MonetaryStateComponent& state, float ratio);
+
+/**
+ * @brief Per-turn debasement discovery check.
+ *
+ * Each turn after debasement, there is a cumulative probability that
+ * trade partners discover the coin has been debased. Once discovered,
+ * the trade penalty is applied until the player transitions away from
+ * Commodity Money (upgrading to Gold Standard resets trust via new paper).
+ *
+ * @param state  Player's monetary state.
+ * @return true if debasement was newly discovered this turn.
+ */
+bool tickDebasementDiscovery(MonetaryStateComponent& state);
 
 } // namespace aoc::sim

@@ -77,8 +77,16 @@ struct BuildingDef {
 //   12 = Research Lab       (software, +50% science)
 //   13 = Telecom Hub        (trade speed, gold)
 //   14 = Airport            (air trade/military)
+//   24 = Mint               (coins from copper/silver/gold ore)
+//   25 = Waste Treatment    (pollution cleanup, recycling)
+//   26 = Coal Plant         (power, consumes coal)
+//   27 = Oil Plant          (power, consumes oil)
+//   28 = Hydroelectric      (power, requires river)
+//   29 = Nuclear Plant      (power, consumes uranium, meltdown risk)
+//   30 = Solar Array        (power, free, late game)
+//   31 = Wind Farm          (power, free, late game)
 
-inline constexpr std::array<BuildingDef, 24> BUILDING_DEFS = {{
+inline constexpr std::array<BuildingDef, 32> BUILDING_DEFS = {{
     {BuildingId{0},  "Forge",              DistrictType::Industrial,  60, 1, 2, 0, 0, 1.0f},
     {BuildingId{1},  "Workshop",           DistrictType::Industrial,  40, 1, 1, 0, 0, 1.0f},
     {BuildingId{2},  "Refinery",           DistrictType::Industrial, 100, 2, 3, 0, 0, 1.0f},
@@ -104,6 +112,14 @@ inline constexpr std::array<BuildingDef, 24> BUILDING_DEFS = {{
     {BuildingId{21}, "Stock Exchange",     DistrictType::Commercial, 200, 0, 0, 0, 8, 1.0f},
     {BuildingId{22}, "Hospital",           DistrictType::CityCenter, 150, 2, 0, 0, 0, 1.0f},
     {BuildingId{23}, "Shipyard",           DistrictType::Harbor,     120, 2, 3, 0, 2, 1.0f},
+    {BuildingId{24}, "Mint",               DistrictType::Commercial,  70, 1, 0, 0, 2, 1.0f},
+    {BuildingId{25}, "Waste Treatment",    DistrictType::Industrial, 100, 2, 0, 0, 0, 1.0f},
+    {BuildingId{26}, "Coal Plant",         DistrictType::Industrial,  80, 2, 0, 0, 0, 1.0f},
+    {BuildingId{27}, "Oil Plant",          DistrictType::Industrial, 120, 3, 0, 0, 0, 1.0f},
+    {BuildingId{28}, "Hydroelectric Dam",  DistrictType::Industrial, 150, 1, 0, 0, 0, 1.0f},
+    {BuildingId{29}, "Nuclear Plant",      DistrictType::Industrial, 300, 5, 0, 0, 0, 1.0f},
+    {BuildingId{30}, "Solar Array",        DistrictType::Industrial, 200, 1, 0, 1, 0, 1.0f},
+    {BuildingId{31}, "Wind Farm",          DistrictType::Industrial, 160, 1, 0, 0, 0, 1.0f},
 }};
 
 [[nodiscard]] inline constexpr const BuildingDef& buildingDef(BuildingId id) {

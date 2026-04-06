@@ -13,6 +13,7 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
+#include "aoc/map/RiverGameplay.hpp"
 #include "aoc/ecs/World.hpp"
 
 #include <algorithm>
@@ -116,6 +117,18 @@ CombatResult resolveMeleeCombat(aoc::ecs::World& world,
     // Terrain defense bonus for defender
     float terrainMod = terrainDefenseModifier(grid, defUnit.position);
     defStrength *= terrainMod;
+
+    // River crossing penalty: defender gets +25% if attacker must cross a river
+    {
+        int32_t atkIdx = grid.toIndex(atkUnit.position);
+        int32_t defIdx = grid.toIndex(defUnit.position);
+        if (aoc::map::crossesRiver(grid, atkIdx, defIdx)) {
+            defStrength *= aoc::map::RIVER_DEFENSE_BONUS;
+        }
+        // Elevation advantage: +10% per level difference
+        float elevMod = aoc::map::elevationCombatModifier(grid, atkIdx, defIdx);
+        atkStrength *= elevMod;
+    }
 
     // Flanking bonus: +10% per adjacent friendly for attacker
     int32_t flanking = countAdjacentFriendlies(world, defUnit.position, atkUnit.owner);
@@ -246,6 +259,18 @@ CombatResult resolveRangedCombat(aoc::ecs::World& world,
     float terrainMod = terrainDefenseModifier(grid, defUnit.position);
     defStrength *= terrainMod;
 
+    // River crossing penalty: defender gets +25% if attacker must cross a river
+    {
+        int32_t atkIdx = grid.toIndex(atkUnit.position);
+        int32_t defIdx = grid.toIndex(defUnit.position);
+        if (aoc::map::crossesRiver(grid, atkIdx, defIdx)) {
+            defStrength *= aoc::map::RIVER_DEFENSE_BONUS;
+        }
+        // Elevation advantage: +10% per level difference
+        float elevMod = aoc::map::elevationCombatModifier(grid, atkIdx, defIdx);
+        atkStrength *= elevMod;
+    }
+
     // War weariness combat penalty (ranged)
     const aoc::ecs::ComponentPool<PlayerWarWearinessComponent>* wwPoolRanged =
         world.getPool<PlayerWarWearinessComponent>();
@@ -313,6 +338,18 @@ CombatPreview previewCombat(const aoc::ecs::World& world,
     // Terrain defense bonus for defender
     float terrainMod = terrainDefenseModifier(grid, defUnit.position);
     defStrength *= terrainMod;
+
+    // River crossing penalty: defender gets +25% if attacker must cross a river
+    {
+        int32_t atkIdx = grid.toIndex(atkUnit.position);
+        int32_t defIdx = grid.toIndex(defUnit.position);
+        if (aoc::map::crossesRiver(grid, atkIdx, defIdx)) {
+            defStrength *= aoc::map::RIVER_DEFENSE_BONUS;
+        }
+        // Elevation advantage: +10% per level difference
+        float elevMod = aoc::map::elevationCombatModifier(grid, atkIdx, defIdx);
+        atkStrength *= elevMod;
+    }
 
     // Flanking bonus for melee
     if (!isRanged) {

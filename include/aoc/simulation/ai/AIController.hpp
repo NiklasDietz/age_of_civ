@@ -80,6 +80,10 @@ private:
                        DiplomacyManager& diplomacy,
                        const Market& market);
 
+    /// Manage monetary system: transition when ready, prioritize minting.
+    void manageMonetarySystem(aoc::ecs::World& world,
+                              const DiplomacyManager& diplomacy);
+
     void selectResearch(aoc::ecs::World& world);
 
     void manageBuildersAndImprovements(aoc::ecs::World& world, aoc::map::HexGrid& grid);

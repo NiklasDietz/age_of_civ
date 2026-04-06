@@ -897,6 +897,8 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
             if (bType == BoundaryType::Convergent && elev >= 2) {
                 if (resRng.chance(0.05f)) {
                     placed = ResourceId{aoc::sim::goods::GOLD_ORE};
+                } else if (resRng.chance(0.04f)) {
+                    placed = ResourceId{aoc::sim::goods::SILVER_ORE};
                 } else if (resRng.chance(0.03f)) {
                     placed = ResourceId{aoc::sim::goods::GEMS};
                 } else if (resRng.chance(0.02f)) {
@@ -909,6 +911,8 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
                     placed = ResourceId{aoc::sim::goods::COPPER_ORE};
                 } else if (resRng.chance(0.04f)) {
                     placed = ResourceId{aoc::sim::goods::GOLD_ORE};
+                } else if (resRng.chance(0.04f)) {
+                    placed = ResourceId{aoc::sim::goods::SILVER_ORE};
                 } else if (resRng.chance(0.03f)) {
                     placed = ResourceId{aoc::sim::goods::TIN};
                 } else if (resRng.chance(0.02f)) {

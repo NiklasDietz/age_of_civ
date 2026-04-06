@@ -214,6 +214,9 @@ enum class ImprovementType : uint8_t;
         case 8:  return {1, 0, 1, 0, 0, 0};  // FishingBoats: +1 food, +1 gold
         case 9:  return {0, 0, 0, 0, 0, 0};  // Fort:         no yield bonus
         case 10: return {0, 0, 0, 0, 0, 0};  // Road:         no yield bonus
+        case 11: return {0, 1, 0, 0, 0, 0};  // Railway:      +1 production
+        case 12: return {0, 0, 1, 0, 0, 0};  // Highway:      +1 gold
+        case 13: return {0, 1, 0, 0, 0, 0};  // Dam:          +1 production
         default: return {};                   // None / unknown
     }
 }

@@ -37,7 +37,7 @@ void executeFiscalPolicy(MonetaryStateComponent& state, CurrencyAmount gdp) {
         CurrencyAmount debtPayment = std::min(surplus, state.governmentDebt);
         state.governmentDebt -= debtPayment;
         // Remaining surplus goes to treasury
-        state.goldReserves += (surplus - debtPayment);
+        state.treasury += (surplus - debtPayment);
     }
 
     // Interest on debt: annual rate applied per turn
