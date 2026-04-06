@@ -344,6 +344,15 @@ void Application::run() {
 
         auto [fbWidth, fbHeight] = this->m_window.framebufferSize();
 
+        // Detect framebuffer size changes that the GLFW callback may have missed
+        // (e.g., window manager fullscreen toggle on Wayland)
+        if (fbWidth > 0 && fbHeight > 0) {
+            VkExtent2D currentExtent = this->m_renderPipeline->extent();
+            if (currentExtent.width != fbWidth || currentExtent.height != fbHeight) {
+                this->m_renderPipeline->resize(fbWidth, fbHeight);
+            }
+        }
+
         // ================================================================
         // Main Menu state
         // ================================================================
