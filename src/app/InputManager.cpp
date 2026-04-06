@@ -194,6 +194,7 @@ void InputManager::setupDefaultBindings() {
     this->m_actionToKey[static_cast<uint8_t>(InputAction::UpgradeUnit)]  = GLFW_KEY_U;
     this->m_actionToKey[static_cast<uint8_t>(InputAction::ShowHelp)]     = GLFW_KEY_F1;
     this->m_actionToKey[static_cast<uint8_t>(InputAction::UndoAction)]  = GLFW_KEY_Z;
+    this->m_actionToKey[static_cast<uint8_t>(InputAction::CycleNextUnit)] = GLFW_KEY_TAB;
 }
 
 } // namespace aoc::app

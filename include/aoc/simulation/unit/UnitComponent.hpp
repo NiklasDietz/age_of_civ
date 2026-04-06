@@ -30,9 +30,16 @@ struct UnitComponent {
     int8_t  spreadCharges = -1;       ///< Number of times this unit can spread (-1 = N/A)
 
     bool autoExplore = false;   ///< When true, unit auto-moves toward unexplored tiles each turn.
+    bool autoImprove = false;   ///< When true, civilian unit auto-builds improvements each turn.
 
     /// Path the unit is currently following (empty if stationary).
     std::vector<hex::AxialCoord> pendingPath;
+
+    // -- Transient animation fields (not saved) --
+    bool            isAnimating = false;
+    float           animProgress = 0.0f;
+    hex::AxialCoord animFrom;
+    hex::AxialCoord animTo;
 
     /// Create a unit with full HP and movement from its type definition.
     static UnitComponent create(PlayerId owner, UnitTypeId typeId, hex::AxialCoord position) {

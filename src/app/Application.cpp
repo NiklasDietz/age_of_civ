@@ -49,10 +49,13 @@
 
 #include "aoc/simulation/unit/UnitUpgrade.hpp"
 #include "aoc/simulation/city/CityBombardment.hpp"
+#include "aoc/simulation/city/CityConnection.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
+#include "aoc/simulation/economy/Maintenance.hpp"
 
 #include <chrono>
+#include <cmath>
 
 namespace aoc::sim {
 
@@ -93,6 +96,40 @@ std::string getNextCityName(const aoc::ecs::World& world, PlayerId player) {
 } // namespace aoc::sim
 
 namespace aoc::app {
+
+namespace {
+
+/**
+ * @brief Convert a turn number to a year string for display (e.g., "1600 BC").
+ *
+ * Eras:
+ *   Turn   0-50:  start 4000 BC, 80 years per turn
+ *   Turn  51-100: start   0 AD,  20 years per turn
+ *   Turn 101-200: start 1000 AD,  5 years per turn
+ *   Turn 201-350: start 1500 AD, ~2.7 years per turn (3 years used)
+ *   Turn 351+:    start 1900 AD,  1 year per turn
+ */
+std::string turnToYear(TurnNumber turn) {
+    int32_t year = 0;
+    if (turn <= 50) {
+        year = -4000 + static_cast<int32_t>(turn) * 80;
+    } else if (turn <= 100) {
+        year = 0 + static_cast<int32_t>(turn - 51) * 20;
+    } else if (turn <= 200) {
+        year = 1000 + static_cast<int32_t>(turn - 101) * 5;
+    } else if (turn <= 350) {
+        year = 1500 + static_cast<int32_t>(turn - 201) * 3;
+    } else {
+        year = 1900 + static_cast<int32_t>(turn - 351);
+    }
+
+    if (year < 0) {
+        return std::to_string(-year) + " BC";
+    }
+    return std::to_string(year) + " AD";
+}
+
+} // anonymous namespace
 
 Application::Application() = default;
 
@@ -371,6 +408,61 @@ void Application::run() {
         // InGame state
         // ================================================================
         this->m_cameraController.update(this->m_inputManager, deltaTime, fbWidth, fbHeight);
+
+        // -- Animated unit movement: advance animProgress each frame --
+        {
+            aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* animPool =
+                this->m_world.getPool<aoc::sim::UnitComponent>();
+            if (animPool != nullptr) {
+                constexpr float ANIM_DURATION = 0.2f;
+                for (uint32_t ai = 0; ai < animPool->size(); ++ai) {
+                    aoc::sim::UnitComponent& animUnit = animPool->data()[ai];
+                    if (animUnit.isAnimating) {
+                        animUnit.animProgress += deltaTime / ANIM_DURATION;
+                        if (animUnit.animProgress >= 1.0f) {
+                            animUnit.animProgress = 1.0f;
+                            animUnit.isAnimating = false;
+                        }
+                    }
+                }
+            }
+        }
+
+        // -- Cycle to next unit needing orders (Tab key) --
+        if (this->m_inputManager.isActionPressed(InputAction::CycleNextUnit) && !this->anyScreenOpen()) {
+            aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* cyclePool =
+                this->m_world.getPool<aoc::sim::UnitComponent>();
+            if (cyclePool != nullptr) {
+                EntityId nextUnit = NULL_ENTITY;
+                for (uint32_t ci = 0; ci < cyclePool->size(); ++ci) {
+                    const aoc::sim::UnitComponent& cu = cyclePool->data()[ci];
+                    if (cu.owner != 0) {
+                        continue;
+                    }
+                    if (cu.movementRemaining <= 0) {
+                        continue;
+                    }
+                    if (cu.state == aoc::sim::UnitState::Sleeping ||
+                        cu.state == aoc::sim::UnitState::Fortified) {
+                        continue;
+                    }
+                    if (!cu.pendingPath.empty()) {
+                        continue;
+                    }
+                    nextUnit = cyclePool->entities()[ci];
+                    break;
+                }
+                if (nextUnit.isValid()) {
+                    this->m_selectedEntity = nextUnit;
+                    const aoc::sim::UnitComponent& selU =
+                        this->m_world.getComponent<aoc::sim::UnitComponent>(nextUnit);
+                    float ucx = 0.0f, ucy = 0.0f;
+                    hex::axialToPixel(selU.position,
+                                      this->m_gameRenderer.mapRenderer().hexSize(), ucx, ucy);
+                    this->m_cameraController.setPosition(ucx, ucy);
+                }
+            }
+        }
 
         // -- Escape: close any open screen first, then quit --
         if (this->m_inputManager.isActionPressed(InputAction::Cancel)) {
@@ -1245,6 +1337,20 @@ void Application::handleEndTurn() {
         // Run economic simulation
         this->m_economy.executeTurn(this->m_world, this->m_hexGrid);
 
+        // Unit and building maintenance costs
+        aoc::sim::processUnitMaintenance(this->m_world, 0);
+        aoc::sim::processBuildingMaintenance(this->m_world, 0);
+        for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
+            aoc::sim::processUnitMaintenance(this->m_world, ai.player());
+            aoc::sim::processBuildingMaintenance(this->m_world, ai.player());
+        }
+
+        // City connection gold bonuses
+        aoc::sim::processCityConnections(this->m_world, this->m_hexGrid, 0);
+        for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
+            aoc::sim::processCityConnections(this->m_world, this->m_hexGrid, ai.player());
+        }
+
         // City growth and happiness
         aoc::sim::processCityGrowth(this->m_world, this->m_hexGrid, 0);
         aoc::sim::computeCityHappiness(this->m_world, 0);
@@ -1489,6 +1595,82 @@ void Application::handleEndTurn() {
                         aoc::map::TileVisibility vis =
                             this->m_fogOfWar.visibility(0, t);
                         if (vis != aoc::map::TileVisibility::Unseen) {
+                            continue;
+                        }
+                        hex::AxialCoord tileCoord = this->m_hexGrid.toAxial(t);
+                        int32_t dist = hex::distance(unit.position, tileCoord);
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            bestTarget = tileCoord;
+                        }
+                    }
+                    if (bestDist < INT32_MAX && !(bestTarget == unit.position)) {
+                        aoc::sim::orderUnitMove(this->m_world, unitEntity,
+                                                bestTarget, this->m_hexGrid);
+                    }
+                }
+            }
+        }
+
+        // Auto-improve: civilian units with autoImprove build improvements or move to unimproved tiles
+        {
+            aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* unitPool =
+                this->m_world.getPool<aoc::sim::UnitComponent>();
+            if (unitPool != nullptr) {
+                std::vector<EntityId> autoImproveUnits;
+                for (uint32_t i = 0; i < unitPool->size(); ++i) {
+                    const aoc::sim::UnitComponent& unit = unitPool->data()[i];
+                    if (unit.owner == 0 && unit.autoImprove) {
+                        autoImproveUnits.push_back(unitPool->entities()[i]);
+                    }
+                }
+                for (EntityId unitEntity : autoImproveUnits) {
+                    if (!this->m_world.isAlive(unitEntity)) {
+                        continue;
+                    }
+                    aoc::sim::UnitComponent& unit =
+                        this->m_world.getComponent<aoc::sim::UnitComponent>(unitEntity);
+                    if (unit.chargesRemaining == 0) {
+                        continue;
+                    }
+
+                    // Try to improve current tile
+                    const int32_t currentIdx = this->m_hexGrid.toIndex(unit.position);
+                    const aoc::map::ImprovementType bestImpr =
+                        aoc::sim::bestImprovementForTile(this->m_hexGrid, currentIdx);
+
+                    if (bestImpr != aoc::map::ImprovementType::None &&
+                        this->m_hexGrid.improvement(currentIdx) == aoc::map::ImprovementType::None) {
+                        this->m_hexGrid.setImprovement(currentIdx, bestImpr);
+                        if (unit.chargesRemaining > 0) {
+                            --unit.chargesRemaining;
+                        }
+                        LOG_INFO("Auto-improve: built improvement at (%d,%d)",
+                                 unit.position.q, unit.position.r);
+                        if (unit.chargesRemaining == 0) {
+                            this->m_world.destroyEntity(unitEntity);
+                            LOG_INFO("Auto-improve: builder exhausted all charges");
+                        }
+                        continue;
+                    }
+
+                    // Find nearest unimproved owned tile and move there
+                    hex::AxialCoord bestTarget = unit.position;
+                    int32_t bestDist = INT32_MAX;
+                    const int32_t tileCount = this->m_hexGrid.tileCount();
+                    for (int32_t t = 0; t < tileCount; ++t) {
+                        if (this->m_hexGrid.owner(t) != unit.owner) {
+                            continue;
+                        }
+                        if (this->m_hexGrid.improvement(t) != aoc::map::ImprovementType::None) {
+                            continue;
+                        }
+                        if (this->m_hexGrid.movementCost(t) == 0) {
+                            continue;
+                        }
+                        const aoc::map::ImprovementType candidate =
+                            aoc::sim::bestImprovementForTile(this->m_hexGrid, t);
+                        if (candidate == aoc::map::ImprovementType::None) {
                             continue;
                         }
                         hex::AxialCoord tileCoord = this->m_hexGrid.toAxial(t);
@@ -2096,8 +2278,10 @@ void Application::buildHUD() {
 }
 
 void Application::updateHUD() {
-    // Update turn label
-    std::string turnText = "Turn " + std::to_string(this->m_turnManager.currentTurn());
+    // Update turn label with year display
+    const TurnNumber currentTurn = this->m_turnManager.currentTurn();
+    std::string turnText = "Turn " + std::to_string(currentTurn)
+                         + " (" + turnToYear(currentTurn) + ")";
     this->m_uiManager.setLabelText(this->m_turnLabel, std::move(turnText));
 
     // Update economy label
@@ -2332,7 +2516,7 @@ void Application::rebuildUnitActionPanel() {
         ++buttonCount;  // Found City
     }
     if (def.unitClass == aoc::sim::UnitClass::Civilian) {
-        ++buttonCount;  // Improve
+        buttonCount += 2;  // Improve + Auto-Improve
     }
 
     const std::vector<aoc::sim::UnitUpgradeDef> upgrades =
@@ -2519,6 +2703,22 @@ void Application::rebuildUnitActionPanel() {
                         this->m_world.destroyEntity(selectedEnt);
                         this->m_selectedEntity = NULL_ENTITY;
                         LOG_INFO("Builder exhausted all charges");
+                    }
+                }
+            });
+
+        // -- Auto-Improve toggle (Civilian units) --
+        makeActionBtn("Auto-Improve", {0.20f, 0.28f, 0.30f, 0.9f},
+            [worldPtr, selectedEnt]() {
+                if (!worldPtr->isAlive(selectedEnt)) { return; }
+                aoc::sim::UnitComponent* u =
+                    worldPtr->tryGetComponent<aoc::sim::UnitComponent>(selectedEnt);
+                if (u != nullptr) {
+                    u->autoImprove = !u->autoImprove;
+                    if (u->autoImprove) {
+                        LOG_INFO("Auto-improve enabled for builder");
+                    } else {
+                        LOG_INFO("Auto-improve disabled for builder");
                     }
                 }
             });

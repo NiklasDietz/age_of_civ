@@ -18,11 +18,9 @@ int main() {
     config.window.title  = "Age of Civilization";
     config.window.vsync  = true;
 
-#ifdef NDEBUG
+    // Validation layers require the Vulkan SDK to be installed.
+    // Default to off -- enable only if explicitly requested.
     config.enableValidation = false;
-#else
-    config.enableValidation = true;
-#endif
 
     aoc::ErrorCode result = app.initialize(config);
     if (result != aoc::ErrorCode::Ok) {

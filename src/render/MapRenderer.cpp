@@ -15,6 +15,22 @@
 
 #include <algorithm>
 
+namespace {
+
+/// Player colors for territory overlay (matches UnitRenderer).
+constexpr std::array<std::array<float, 3>, 8> TERRITORY_COLORS = {{
+    {0.20f, 0.40f, 0.90f},  // Player 0: blue
+    {0.90f, 0.20f, 0.20f},  // Player 1: red
+    {0.20f, 0.80f, 0.20f},  // Player 2: green
+    {0.90f, 0.80f, 0.10f},  // Player 3: yellow
+    {0.70f, 0.30f, 0.80f},  // Player 4: purple
+    {0.90f, 0.50f, 0.10f},  // Player 5: orange
+    {0.10f, 0.80f, 0.80f},  // Player 6: cyan
+    {0.80f, 0.40f, 0.60f},  // Player 7: pink
+}};
+
+} // anonymous namespace
+
 namespace aoc::render {
 
 void MapRenderer::draw(vulkan_app::renderer::Renderer2D& renderer2d,
@@ -97,6 +113,17 @@ void MapRenderer::drawTile(vulkan_app::renderer::Renderer2D& renderer2d,
 
     // Draw hex border (subtle)
     renderer2d.drawPolygon(points, 6, 0.0f, 0.0f, 0.0f, 0.15f, 1.0f);
+
+    // Territory color overlay: subtle tint for owned tiles
+    const PlayerId tileOwner = grid.owner(tileIndex);
+    if (tileOwner != INVALID_PLAYER && !dimmed) {
+        const std::size_t colorIdx = static_cast<std::size_t>(tileOwner) % TERRITORY_COLORS.size();
+        renderer2d.drawFilledPolygon(points, 6,
+                                      TERRITORY_COLORS[colorIdx][0],
+                                      TERRITORY_COLORS[colorIdx][1],
+                                      TERRITORY_COLORS[colorIdx][2],
+                                      0.10f);
+    }
 
     // Draw feature indicators
     if (feature == map::FeatureType::Forest || feature == map::FeatureType::Jungle) {

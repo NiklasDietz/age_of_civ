@@ -23,6 +23,7 @@
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/map/Pathfinding.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
+#include "aoc/simulation/map/Improvement.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -1177,6 +1178,210 @@ void CityDetailScreen::open(UIManager& ui) {
     }
     (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
         LabelData{std::move(queueText), {0.8f, 0.9f, 0.8f, 1.0f}, 11.0f});
+
+    // -- Manage Citizens: tile assignment --
+    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
+        LabelData{"-- Manage Citizens --", {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
+
+    // Show tiles within city borders that citizens can work
+    {
+        // Gather all owned tiles within 3 hexes of city center
+        std::vector<hex::AxialCoord> borderTiles;
+        hex::spiral(city.location, 3, std::back_inserter(borderTiles));
+
+        for (const hex::AxialCoord& tile : borderTiles) {
+            if (!this->m_grid->isValid(tile)) {
+                continue;
+            }
+            const int32_t tileIdx = this->m_grid->toIndex(tile);
+            if (this->m_grid->owner(tileIdx) != this->m_player) {
+                continue;
+            }
+            if (this->m_grid->movementCost(tileIdx) == 0) {
+                continue;  // Skip impassable tiles
+            }
+
+            const aoc::map::TileYield ty = this->m_grid->tileYield(tileIdx);
+
+            // Check if tile is currently worked
+            bool isWorked = false;
+            for (const hex::AxialCoord& wt : city.workedTiles) {
+                if (wt == tile) {
+                    isWorked = true;
+                    break;
+                }
+            }
+
+            const std::string statusMark = isWorked ? "[W]" : "[ ]";
+            const std::string tileLine = statusMark + " (" + std::to_string(tile.q) + ","
+                                       + std::to_string(tile.r) + ") F:"
+                                       + std::to_string(ty.food) + " P:"
+                                       + std::to_string(ty.production) + " G:"
+                                       + std::to_string(ty.gold);
+
+            ButtonData citizenBtn;
+            citizenBtn.label = tileLine;
+            citizenBtn.fontSize = 10.0f;
+            citizenBtn.normalColor = isWorked
+                ? Color{0.15f, 0.30f, 0.15f, 0.9f}
+                : Color{0.25f, 0.25f, 0.30f, 0.9f};
+            citizenBtn.hoverColor = {citizenBtn.normalColor.r + 0.10f,
+                                      citizenBtn.normalColor.g + 0.10f,
+                                      citizenBtn.normalColor.b + 0.10f, 0.9f};
+            citizenBtn.pressedColor = {citizenBtn.normalColor.r - 0.05f,
+                                        citizenBtn.normalColor.g - 0.05f,
+                                        citizenBtn.normalColor.b - 0.05f, 0.9f};
+            citizenBtn.cornerRadius = 2.0f;
+
+            aoc::ecs::World* world = this->m_world;
+            const EntityId cityEnt = this->m_cityEntity;
+            const hex::AxialCoord toggleTile = tile;
+            citizenBtn.onClick = [world, cityEnt, toggleTile, isWorked]() {
+                if (!world->isAlive(cityEnt)) { return; }
+                aoc::sim::CityComponent* c =
+                    world->tryGetComponent<aoc::sim::CityComponent>(cityEnt);
+                if (c == nullptr) { return; }
+
+                if (isWorked) {
+                    // Remove from workedTiles (don't remove city center)
+                    if (toggleTile == c->location) { return; }
+                    for (std::size_t wi = 0; wi < c->workedTiles.size(); ++wi) {
+                        if (c->workedTiles[wi] == toggleTile) {
+                            c->workedTiles.erase(c->workedTiles.begin() +
+                                                  static_cast<std::ptrdiff_t>(wi));
+                            LOG_INFO("Citizen unassigned from (%d,%d)",
+                                     toggleTile.q, toggleTile.r);
+                            break;
+                        }
+                    }
+                } else {
+                    // Add to workedTiles if population allows
+                    if (static_cast<int32_t>(c->workedTiles.size()) < c->population) {
+                        c->workedTiles.push_back(toggleTile);
+                        LOG_INFO("Citizen assigned to (%d,%d)",
+                                 toggleTile.q, toggleTile.r);
+                    } else {
+                        LOG_INFO("Cannot assign citizen: population limit (%d)",
+                                 c->population);
+                    }
+                }
+            };
+
+            (void)ui.createButton(detailList, {0.0f, 0.0f, 440.0f, 20.0f},
+                                   std::move(citizenBtn));
+        }
+    }
+
+    // -- Buy Tile section --
+    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
+        LabelData{"-- Buy Tile --", {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
+
+    {
+        // Find adjacent unowned tiles
+        std::vector<hex::AxialCoord> adjacentTiles;
+        // Gather all tiles within city borders + 1 ring
+        std::vector<hex::AxialCoord> spiralTiles;
+        hex::spiral(city.location, 4, std::back_inserter(spiralTiles));
+
+        for (const hex::AxialCoord& tile : spiralTiles) {
+            if (!this->m_grid->isValid(tile)) {
+                continue;
+            }
+            const int32_t tileIdx = this->m_grid->toIndex(tile);
+            if (this->m_grid->owner(tileIdx) != INVALID_PLAYER) {
+                continue;  // Already owned
+            }
+            if (this->m_grid->movementCost(tileIdx) == 0) {
+                continue;  // Impassable
+            }
+
+            // Must be adjacent to an already-owned tile of this player
+            bool adjacentToOwned = false;
+            const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(tile);
+            for (const hex::AxialCoord& nbr : nbrs) {
+                if (!this->m_grid->isValid(nbr)) {
+                    continue;
+                }
+                if (this->m_grid->owner(this->m_grid->toIndex(nbr)) == this->m_player) {
+                    adjacentToOwned = true;
+                    break;
+                }
+            }
+            if (!adjacentToOwned) {
+                continue;
+            }
+
+            adjacentTiles.push_back(tile);
+        }
+
+        for (const hex::AxialCoord& tile : adjacentTiles) {
+            const int32_t tileIdx = this->m_grid->toIndex(tile);
+            const aoc::map::TileYield ty = this->m_grid->tileYield(tileIdx);
+            const int32_t cost = 50 + 25 * city.tilesClaimedCount;
+
+            const std::string buyLine = "(" + std::to_string(tile.q) + ","
+                                      + std::to_string(tile.r) + ") F:"
+                                      + std::to_string(ty.food) + " P:"
+                                      + std::to_string(ty.production) + " G:"
+                                      + std::to_string(ty.gold)
+                                      + " - Cost: " + std::to_string(cost) + "g";
+
+            ButtonData buyBtn;
+            buyBtn.label = buyLine;
+            buyBtn.fontSize = 10.0f;
+            buyBtn.normalColor = {0.25f, 0.22f, 0.15f, 0.9f};
+            buyBtn.hoverColor = {0.35f, 0.32f, 0.25f, 0.9f};
+            buyBtn.pressedColor = {0.18f, 0.15f, 0.10f, 0.9f};
+            buyBtn.cornerRadius = 2.0f;
+
+            aoc::ecs::World* world = this->m_world;
+            aoc::map::HexGrid* gridMut = const_cast<aoc::map::HexGrid*>(this->m_grid);
+            const EntityId cityEnt = this->m_cityEntity;
+            const PlayerId buyPlayer = this->m_player;
+            const hex::AxialCoord buyTile = tile;
+            const int32_t buyCost = cost;
+            buyBtn.onClick = [world, gridMut, cityEnt, buyPlayer, buyTile, buyCost]() {
+                if (!world->isAlive(cityEnt)) { return; }
+
+                // Check treasury
+                aoc::sim::PlayerEconomyComponent* econ = nullptr;
+                world->forEach<aoc::sim::PlayerEconomyComponent>(
+                    [buyPlayer, &econ](EntityId, aoc::sim::PlayerEconomyComponent& ec) {
+                        if (ec.owner == buyPlayer) {
+                            econ = &ec;
+                        }
+                    });
+
+                if (econ == nullptr || econ->treasury < static_cast<CurrencyAmount>(buyCost)) {
+                    LOG_INFO("Cannot buy tile: insufficient gold");
+                    return;
+                }
+
+                // Deduct cost and claim tile
+                econ->treasury -= static_cast<CurrencyAmount>(buyCost);
+                const int32_t buyIdx = gridMut->toIndex(buyTile);
+                gridMut->setOwner(buyIdx, buyPlayer);
+
+                aoc::sim::CityComponent* c =
+                    world->tryGetComponent<aoc::sim::CityComponent>(cityEnt);
+                if (c != nullptr) {
+                    ++c->tilesClaimedCount;
+                }
+
+                LOG_INFO("Tile (%d,%d) purchased for %d gold",
+                         buyTile.q, buyTile.r, buyCost);
+            };
+
+            (void)ui.createButton(detailList, {0.0f, 0.0f, 440.0f, 20.0f},
+                                   std::move(buyBtn));
+        }
+
+        if (adjacentTiles.empty()) {
+            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+                LabelData{"No tiles available to purchase",
+                           {0.5f, 0.5f, 0.5f, 0.7f}, 10.0f});
+        }
+    }
 
     // Production button hint
     ButtonData prodBtn;

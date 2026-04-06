@@ -84,7 +84,18 @@ void UnitRenderer::drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
         }
 
         float cx = 0.0f, cy = 0.0f;
-        hex::axialToPixel(unit.position, hexSize, cx, cy);
+        if (unit.isAnimating) {
+            // Interpolate between animFrom and animTo based on animProgress
+            float fromX = 0.0f, fromY = 0.0f;
+            float toX = 0.0f, toY = 0.0f;
+            hex::axialToPixel(unit.animFrom, hexSize, fromX, fromY);
+            hex::axialToPixel(unit.animTo, hexSize, toX, toY);
+            const float t = unit.animProgress;
+            cx = fromX + (toX - fromX) * t;
+            cy = fromY + (toY - fromY) * t;
+        } else {
+            hex::axialToPixel(unit.position, hexSize, cx, cy);
+        }
 
         // Frustum cull
         if (cx < topLeftX || cx > botRightX || cy < topLeftY || cy > botRightY) {

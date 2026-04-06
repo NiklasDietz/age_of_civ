@@ -78,6 +78,8 @@ add_library(aoc_lib STATIC
     src/simulation/wonder/Wonder.cpp
     src/simulation/citystate/CityState.cpp
     src/simulation/religion/Religion.cpp
+    src/simulation/economy/Maintenance.cpp
+    src/simulation/city/CityConnection.cpp
 
     # Save
     src/save/Serializer.cpp

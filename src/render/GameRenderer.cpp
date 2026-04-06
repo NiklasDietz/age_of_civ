@@ -11,13 +11,32 @@
 #include "aoc/render/GameRenderer.hpp"
 #include "aoc/render/CameraController.hpp"
 #include "aoc/map/HexGrid.hpp"
+#include "aoc/map/HexCoord.hpp"
 #include "aoc/map/FogOfWar.hpp"
 #include "aoc/ecs/World.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/simulation/city/CityComponent.hpp"
+#include "aoc/ui/BitmapFont.hpp"
 
 #include <renderer/Renderer2D.hpp>
 #include <renderer/RenderPipeline.hpp>
+
+namespace {
+
+/// Player colors for city name labels (matches UnitRenderer).
+constexpr std::array<std::array<float, 3>, 8> LABEL_PLAYER_COLORS = {{
+    {0.20f, 0.40f, 0.90f},
+    {0.90f, 0.20f, 0.20f},
+    {0.20f, 0.80f, 0.20f},
+    {0.90f, 0.80f, 0.10f},
+    {0.70f, 0.30f, 0.80f},
+    {0.90f, 0.50f, 0.10f},
+    {0.10f, 0.80f, 0.80f},
+    {0.80f, 0.40f, 0.60f},
+}};
+
+} // anonymous namespace
 
 namespace aoc::render {
 
@@ -61,7 +80,55 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     this->m_unitRenderer.drawUnits(renderer2d, world, fog, grid, viewingPlayer,
                                     camera, hexSize, screenWidth, screenHeight);
 
-    // Layer 3.5: Ranged attack range overlay for selected ranged unit
+    // Layer 3.5: City name labels (world-space text above each city hex)
+    {
+        const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
+            world.getPool<aoc::sim::CityComponent>();
+        if (cityPool != nullptr) {
+            const float invZoomLabel = 1.0f / camera.zoom();
+            constexpr float LABEL_FONT_SIZE = 10.0f;
+            const float labelOffsetY = hexSize * 0.60f;
+
+            for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
+                const aoc::sim::CityComponent& city = cityPool->data()[ci];
+
+                // Skip cities on unseen tiles
+                if (grid.isValid(city.location)) {
+                    int32_t tileIdx = grid.toIndex(city.location);
+                    aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, tileIdx);
+                    if (vis == aoc::map::TileVisibility::Unseen) {
+                        continue;
+                    }
+                }
+
+                float cityCx = 0.0f, cityCy = 0.0f;
+                hex::axialToPixel(city.location, hexSize, cityCx, cityCy);
+
+                // Measure text to center it
+                const aoc::ui::Rect textBounds =
+                    aoc::ui::BitmapFont::measureText(city.name, LABEL_FONT_SIZE);
+                const float textWorldW = textBounds.w * invZoomLabel;
+                const float textX = cityCx - textWorldW * 0.5f;
+                const float textY = cityCy - labelOffsetY;
+
+                // Player color
+                const std::size_t cIdx =
+                    static_cast<std::size_t>(city.owner) % LABEL_PLAYER_COLORS.size();
+                const aoc::ui::Color labelColor{
+                    LABEL_PLAYER_COLORS[cIdx][0],
+                    LABEL_PLAYER_COLORS[cIdx][1],
+                    LABEL_PLAYER_COLORS[cIdx][2],
+                    1.0f};
+
+                aoc::ui::BitmapFont::drawText(renderer2d, city.name,
+                                               textX, textY,
+                                               LABEL_FONT_SIZE, labelColor,
+                                               invZoomLabel);
+            }
+        }
+    }
+
+    // Layer 3.6: Ranged attack range overlay for selected ranged unit
     if (this->m_unitRenderer.selectedEntity.isValid() &&
         world.hasComponent<aoc::sim::UnitComponent>(this->m_unitRenderer.selectedEntity)) {
         const aoc::sim::UnitComponent& selUnit =

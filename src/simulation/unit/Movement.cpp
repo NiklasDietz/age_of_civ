@@ -6,11 +6,14 @@
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/simulation/city/CityComponent.hpp"
+#include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/map/Pathfinding.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/ecs/World.hpp"
+#include "aoc/core/Log.hpp"
 
 namespace aoc::sim {
 
@@ -146,11 +149,60 @@ bool moveUnitAlongPath(aoc::ecs::World& world, EntityId unitEntity,
             break;
         }
 
-        // Move the unit
+        // Move the unit -- set up animation from old position
+        hex::AxialCoord oldPosition = unit.position;
         unit.position = nextTile;
         unit.movementRemaining -= cost;
         unit.pendingPath.erase(unit.pendingPath.begin());
         moved = true;
+
+        // Animation: record transition for smooth interpolation
+        unit.isAnimating = true;
+        unit.animProgress = 0.0f;
+        unit.animFrom = oldPosition;
+        unit.animTo = nextTile;
+
+        // City capture: if a military unit steps onto an enemy city, capture it
+        if (unitIsMilitary) {
+            aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
+            if (cityPool != nullptr) {
+                for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
+                    CityComponent& city = cityPool->data()[ci];
+                    if (city.location == nextTile && city.owner != unit.owner) {
+                        const PlayerId previousOwner = city.owner;
+                        city.owner = unit.owner;
+                        if (city.population > 1) {
+                            --city.population;
+                        }
+
+                        // Clear production queue
+                        EntityId cityEntity = cityPool->entities()[ci];
+                        ProductionQueueComponent* queue =
+                            world.tryGetComponent<ProductionQueueComponent>(cityEntity);
+                        if (queue != nullptr) {
+                            queue->queue.clear();
+                        }
+
+                        // Update tile ownership for worked tiles
+                        for (const hex::AxialCoord& workedTile : city.workedTiles) {
+                            if (grid.isValid(workedTile)) {
+                                const int32_t wtIndex = grid.toIndex(workedTile);
+                                if (grid.owner(wtIndex) == previousOwner) {
+                                    const_cast<aoc::map::HexGrid&>(grid).setOwner(wtIndex, unit.owner);
+                                }
+                            }
+                        }
+
+                        unit.movementRemaining = 0;
+                        LOG_INFO("City %s captured by player %u (was player %u)",
+                                 city.name.c_str(),
+                                 static_cast<unsigned>(unit.owner),
+                                 static_cast<unsigned>(previousOwner));
+                        break;
+                    }
+                }
+            }
+        }
 
         // Zone of control: if previous AND current tile are in enemy ZoC,
         // the unit must stop immediately.

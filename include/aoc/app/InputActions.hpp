@@ -50,6 +50,9 @@ enum class InputAction : uint8_t {
     // Undo
     UndoAction,
 
+    // Unit cycling
+    CycleNextUnit,
+
     Count  ///< Sentinel -- must be last
 };
 
