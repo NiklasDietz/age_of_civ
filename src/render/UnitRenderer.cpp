@@ -16,6 +16,7 @@
 
 #include <renderer/Renderer2D.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -105,62 +106,149 @@ void UnitRenderer::drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
         float r = 0.0f, g = 0.0f, b = 0.0f;
         playerColor(unit.owner, r, g, b);
 
-        // Draw unit as a filled circle with a colored border
-        renderer2d.drawFilledCircle(cx, cy, unitRadius, r, g, b, 0.9f);
-        renderer2d.drawCircle(cx, cy, unitRadius, 0.0f, 0.0f, 0.0f, 0.8f, 2.0f);
-
-        // Draw unit class indicator
+        const float s = unitRadius;
         const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(unit.typeId);
+
+        // ---- Unit background: filled circle with player color ----
+        renderer2d.drawFilledCircle(cx, cy, s, r * 0.35f, g * 0.35f, b * 0.35f, 0.88f);
+
+        // ---- Unit icon (white on player-colored background) ----
+        const float iconA = 0.95f;
         switch (def.unitClass) {
             case aoc::sim::UnitClass::Melee: {
-                // Sword shape: small cross
-                float s = unitRadius * 0.5f;
-                renderer2d.drawLine(cx - s, cy, cx + s, cy, 2.0f, 1.0f, 1.0f, 1.0f, 0.9f);
-                renderer2d.drawLine(cx, cy - s, cx, cy + s, 2.0f, 1.0f, 1.0f, 1.0f, 0.9f);
+                // Sword: diagonal line with crossguard
+                float sw = s * 0.65f;
+                renderer2d.drawLine(cx - sw * 0.6f, cy + sw * 0.6f,
+                                     cx + sw * 0.6f, cy - sw * 0.6f,
+                                     2.5f, 1.0f, 1.0f, 1.0f, iconA);
+                // Crossguard
+                renderer2d.drawLine(cx - sw * 0.3f, cy - sw * 0.2f,
+                                     cx + sw * 0.3f, cy + sw * 0.2f,
+                                     2.0f, 0.8f, 0.8f, 0.8f, iconA);
+                // Pommel
+                renderer2d.drawFilledCircle(cx - sw * 0.55f, cy + sw * 0.55f, sw * 0.15f,
+                                             0.9f, 0.85f, 0.6f, iconA);
                 break;
             }
             case aoc::sim::UnitClass::Ranged: {
-                // Dot in center
-                renderer2d.drawFilledCircle(cx, cy, unitRadius * 0.25f, 1.0f, 1.0f, 1.0f, 0.9f);
+                // Bow: arc with arrow
+                float bw = s * 0.55f;
+                renderer2d.drawArc(cx - bw * 0.2f, cy, bw, -1.2f, 1.2f, 2.0f,
+                                    1.0f, 1.0f, 1.0f, iconA);
+                // Arrow shaft
+                renderer2d.drawLine(cx - bw * 0.3f, cy, cx + bw * 0.7f, cy,
+                                     2.0f, 1.0f, 1.0f, 1.0f, iconA);
+                // Arrowhead
+                renderer2d.drawFilledTriangle(cx + bw * 0.7f, cy,
+                                              cx + bw * 0.4f, cy - bw * 0.2f,
+                                              cx + bw * 0.4f, cy + bw * 0.2f,
+                                              1.0f, 1.0f, 1.0f, iconA);
                 break;
             }
             case aoc::sim::UnitClass::Scout: {
-                // Small triangle pointing up
-                float s = unitRadius * 0.4f;
-                renderer2d.drawFilledTriangle(cx, cy - s, cx - s, cy + s * 0.5f,
-                                              cx + s, cy + s * 0.5f,
-                                              1.0f, 1.0f, 1.0f, 0.9f);
+                // Eye/spyglass shape
+                float ew = s * 0.5f;
+                renderer2d.drawFilledCircle(cx, cy, ew * 0.5f, 1.0f, 1.0f, 1.0f, iconA);
+                renderer2d.drawFilledCircle(cx, cy, ew * 0.25f, 0.2f, 0.6f, 0.9f, iconA);
+                renderer2d.drawCircle(cx, cy, ew * 0.5f, 1.0f, 1.0f, 1.0f, iconA, 1.5f);
                 break;
             }
             case aoc::sim::UnitClass::Settler: {
-                // Small square
-                float s = unitRadius * 0.35f;
-                renderer2d.drawFilledRect(cx - s, cy - s, s * 2.0f, s * 2.0f,
-                                           1.0f, 1.0f, 1.0f, 0.9f);
+                // Covered wagon: rectangle + half circle on top
+                float ww = s * 0.5f;
+                renderer2d.drawFilledRect(cx - ww, cy, ww * 2.0f, ww * 0.7f,
+                                           0.6f, 0.45f, 0.25f, iconA);
+                // Wagon cover (arc)
+                renderer2d.drawFilledCircle(cx, cy - ww * 0.1f, ww * 0.7f,
+                                             0.9f, 0.85f, 0.75f, iconA * 0.8f);
+                // Wheels
+                renderer2d.drawFilledCircle(cx - ww * 0.6f, cy + ww * 0.7f, ww * 0.25f,
+                                             0.3f, 0.25f, 0.2f, iconA);
+                renderer2d.drawFilledCircle(cx + ww * 0.6f, cy + ww * 0.7f, ww * 0.25f,
+                                             0.3f, 0.25f, 0.2f, iconA);
                 break;
             }
             case aoc::sim::UnitClass::Cavalry: {
-                // Arrow shape pointing right
-                float s = unitRadius * 0.4f;
-                renderer2d.drawFilledTriangle(cx + s, cy, cx - s, cy - s * 0.6f,
-                                              cx - s, cy + s * 0.6f,
-                                              1.0f, 1.0f, 1.0f, 0.9f);
+                // Horse head silhouette: triangular head + neck
+                float hw = s * 0.55f;
+                // Body
+                renderer2d.drawFilledTriangle(cx - hw * 0.8f, cy + hw * 0.3f,
+                                              cx + hw * 0.5f, cy + hw * 0.3f,
+                                              cx + hw * 0.2f, cy - hw * 0.2f,
+                                              1.0f, 1.0f, 1.0f, iconA);
+                // Head
+                renderer2d.drawFilledTriangle(cx + hw * 0.2f, cy - hw * 0.2f,
+                                              cx + hw * 0.8f, cy - hw * 0.7f,
+                                              cx + hw * 0.6f, cy + hw * 0.1f,
+                                              1.0f, 1.0f, 1.0f, iconA);
+                // Ear
+                renderer2d.drawFilledTriangle(cx + hw * 0.7f, cy - hw * 0.7f,
+                                              cx + hw * 0.55f, cy - hw * 0.9f,
+                                              cx + hw * 0.85f, cy - hw * 0.8f,
+                                              0.9f, 0.9f, 0.9f, iconA);
                 break;
             }
             case aoc::sim::UnitClass::Civilian: {
-                // Hammer shape: small T
-                float s = unitRadius * 0.4f;
-                renderer2d.drawLine(cx, cy - s, cx, cy + s * 0.5f, 2.0f, 1.0f, 1.0f, 1.0f, 0.9f);
-                renderer2d.drawLine(cx - s * 0.6f, cy - s, cx + s * 0.6f, cy - s, 2.0f, 1.0f, 1.0f, 1.0f, 0.9f);
+                // Hammer + wrench (builder)
+                float bw = s * 0.45f;
+                // Hammer handle
+                renderer2d.drawLine(cx, cy + bw * 0.6f, cx, cy - bw * 0.3f,
+                                     2.5f, 0.6f, 0.4f, 0.2f, iconA);
+                // Hammer head
+                renderer2d.drawFilledRect(cx - bw * 0.5f, cy - bw * 0.6f, bw * 1.0f, bw * 0.35f,
+                                           0.7f, 0.7f, 0.75f, iconA);
+                break;
+            }
+            case aoc::sim::UnitClass::Naval: {
+                // Ship: hull + mast + sail
+                float nw = s * 0.55f;
+                // Hull
+                renderer2d.drawFilledTriangle(cx - nw, cy + nw * 0.2f,
+                                              cx + nw, cy + nw * 0.2f,
+                                              cx, cy + nw * 0.7f,
+                                              0.5f, 0.35f, 0.2f, iconA);
+                // Mast
+                renderer2d.drawLine(cx, cy + nw * 0.2f, cx, cy - nw * 0.7f,
+                                     2.0f, 0.6f, 0.4f, 0.25f, iconA);
+                // Sail
+                renderer2d.drawFilledTriangle(cx, cy - nw * 0.6f,
+                                              cx + nw * 0.6f, cy,
+                                              cx, cy + nw * 0.1f,
+                                              1.0f, 1.0f, 1.0f, iconA);
+                break;
+            }
+            case aoc::sim::UnitClass::Religious: {
+                // Holy symbol: circle with cross
+                float rw = s * 0.4f;
+                renderer2d.drawCircle(cx, cy, rw, 1.0f, 0.9f, 0.5f, iconA, 2.0f);
+                renderer2d.drawLine(cx, cy - rw * 0.6f, cx, cy + rw * 0.6f,
+                                     2.0f, 1.0f, 0.9f, 0.5f, iconA);
+                renderer2d.drawLine(cx - rw * 0.4f, cy - rw * 0.1f, cx + rw * 0.4f, cy - rw * 0.1f,
+                                     2.0f, 1.0f, 0.9f, 0.5f, iconA);
                 break;
             }
             default:
                 break;
         }
 
-        // Selection highlight
+        // ---- Selection: highlight circle + HP bar on top ----
         if (entity == this->selectedEntity) {
-            renderer2d.drawCircle(cx, cy, unitRadius + 3.0f, 1.0f, 1.0f, 1.0f, 0.8f, 2.0f);
+            // White selection ring
+            renderer2d.drawCircle(cx, cy, s + 3.0f, 1.0f, 1.0f, 1.0f, 0.85f, 2.0f);
+
+            // HP bar above the unit (only visible when selected)
+            float barW = s * 2.0f;
+            float barH = s * 0.22f;
+            float barX = cx - barW * 0.5f;
+            float barY = cy - s - barH - 4.0f;
+            float hpFrac = static_cast<float>(unit.hitPoints) / static_cast<float>(def.maxHitPoints);
+            hpFrac = std::clamp(hpFrac, 0.0f, 1.0f);
+            // Background
+            renderer2d.drawFilledRect(barX, barY, barW, barH, 0.15f, 0.15f, 0.15f, 0.8f);
+            // Fill (green -> yellow -> red)
+            float hpR = (hpFrac < 0.5f) ? 1.0f : (1.0f - hpFrac) * 2.0f;
+            float hpG = (hpFrac > 0.5f) ? 1.0f : hpFrac * 2.0f;
+            renderer2d.drawFilledRect(barX, barY, barW * hpFrac, barH, hpR, hpG, 0.1f, 0.9f);
         }
     }
 }
@@ -187,8 +275,6 @@ void UnitRenderer::drawCities(vulkan_app::renderer::Renderer2D& renderer2d,
     topLeftX -= margin; topLeftY -= margin;
     botRightX += margin; botRightY += margin;
 
-    float cityRadius = hexSize * 0.45f;
-
     for (uint32_t i = 0; i < pool->size(); ++i) {
         const aoc::sim::CityComponent& city = pool->data()[i];
 
@@ -211,24 +297,74 @@ void UnitRenderer::drawCities(vulkan_app::renderer::Renderer2D& renderer2d,
         float r = 0.0f, g = 0.0f, b = 0.0f;
         playerColor(city.owner, r, g, b);
 
-        // Check if this city belongs to a city-state (player ID >= CITY_STATE_PLAYER_BASE)
         const bool isCityState = city.owner >= aoc::sim::CITY_STATE_PLAYER_BASE;
 
-        if (isCityState) {
-            // City-states get a white/gray color scheme
-            renderer2d.drawFilledCircle(cx, cy, cityRadius, 0.55f, 0.55f, 0.55f, 0.9f);
-            renderer2d.drawCircle(cx, cy, cityRadius, 0.90f, 0.90f, 0.90f, 1.0f, 3.0f);
-        } else {
-            // Regular city with player color
-            renderer2d.drawFilledCircle(cx, cy, cityRadius, r * 0.6f, g * 0.6f, b * 0.6f, 0.9f);
-            renderer2d.drawCircle(cx, cy, cityRadius, r, g, b, 1.0f, 3.0f);
+        // ---- City covers the full hex ----
+        float hexPoints[12];
+        hex::hexVertices(cx, cy, hexSize, hexPoints);
+
+        // City fill: SDF hexagon (single primitive, no seams).
+        {
+            float fillR = isCityState ? 0.40f : r * 0.25f;
+            float fillG = isCityState ? 0.40f : g * 0.25f;
+            float fillB = isCityState ? 0.42f : b * 0.25f;
+            renderer2d.drawFilledHexagon(cx, cy, hexSize * 0.866f, hexSize,
+                                          fillR, fillG, fillB, 0.90f);
         }
 
-        // Population number as centered dot pattern (simple: just a white filled rect)
-        float textSize = cityRadius * 0.5f;
-        renderer2d.drawFilledRect(cx - textSize * 0.3f, cy - textSize * 0.4f,
-                                   textSize * 0.6f, textSize * 0.8f,
-                                   1.0f, 1.0f, 1.0f, 0.9f);
+        // ---- City buildings silhouette (small rectangles like a skyline) ----
+        const float bw = hexSize * 0.12f;
+        const float baseY = cy + hexSize * 0.15f;
+
+        // Central tall building
+        renderer2d.drawFilledRect(cx - bw * 0.6f, baseY - hexSize * 0.45f,
+                                   bw * 1.2f, hexSize * 0.45f,
+                                   0.55f, 0.50f, 0.45f, 0.9f);
+        // Left building
+        renderer2d.drawFilledRect(cx - bw * 2.5f, baseY - hexSize * 0.28f,
+                                   bw * 1.5f, hexSize * 0.28f,
+                                   0.50f, 0.46f, 0.40f, 0.85f);
+        // Right building
+        renderer2d.drawFilledRect(cx + bw * 1.0f, baseY - hexSize * 0.32f,
+                                   bw * 1.4f, hexSize * 0.32f,
+                                   0.52f, 0.48f, 0.42f, 0.88f);
+        // Far left small building
+        renderer2d.drawFilledRect(cx - bw * 3.8f, baseY - hexSize * 0.18f,
+                                   bw * 1.0f, hexSize * 0.18f,
+                                   0.48f, 0.44f, 0.38f, 0.8f);
+        // Far right small building
+        renderer2d.drawFilledRect(cx + bw * 2.8f, baseY - hexSize * 0.22f,
+                                   bw * 1.0f, hexSize * 0.22f,
+                                   0.48f, 0.44f, 0.38f, 0.8f);
+
+        // ---- Ground line ----
+        renderer2d.drawLine(cx - hexSize * 0.55f, baseY,
+                             cx + hexSize * 0.55f, baseY,
+                             1.5f, 0.35f, 0.30f, 0.25f, 0.7f);
+
+        // ---- Population badge (bottom of hex) ----
+        const float badgeR = hexSize * 0.18f;
+        const float badgeY = cy + hexSize * 0.55f;
+        renderer2d.drawFilledCircle(cx, badgeY, badgeR, 0.15f, 0.15f, 0.20f, 0.9f);
+
+        // ---- City center marker (small flag at top) ----
+        const float flagX = cx + hexSize * 0.05f;
+        const float flagY = cy - hexSize * 0.55f;
+        // Flagpole
+        renderer2d.drawLine(flagX, flagY + hexSize * 0.25f, flagX, flagY,
+                             1.5f, 0.6f, 0.55f, 0.5f, 0.9f);
+        // Flag (small triangle in player color)
+        if (!isCityState) {
+            renderer2d.drawFilledTriangle(flagX, flagY,
+                                          flagX + hexSize * 0.15f, flagY + hexSize * 0.06f,
+                                          flagX, flagY + hexSize * 0.12f,
+                                          r, g, b, 0.9f);
+        } else {
+            renderer2d.drawFilledTriangle(flagX, flagY,
+                                          flagX + hexSize * 0.15f, flagY + hexSize * 0.06f,
+                                          flagX, flagY + hexSize * 0.12f,
+                                          0.85f, 0.85f, 0.85f, 0.9f);
+        }
     }
 }
 
@@ -262,9 +398,8 @@ void UnitRenderer::drawReachable(vulkan_app::renderer::Renderer2D& renderer2d,
         float cx = 0.0f, cy = 0.0f;
         hex::axialToPixel(tile, hexSize, cx, cy);
 
-        float points[12];
-        hex::hexVertices(cx, cy, hexSize, points);
-        renderer2d.drawFilledPolygon(points, 6, 1.0f, 1.0f, 1.0f, 0.15f);
+        renderer2d.drawFilledHexagon(cx, cy, hexSize * 0.866f, hexSize,
+                                       1.0f, 1.0f, 1.0f, 0.15f);
     }
 }
 
@@ -302,15 +437,12 @@ void UnitRenderer::drawRangedRange(vulkan_app::renderer::Renderer2D& renderer2d,
                 }
             }
 
-            float points[12];
-            hex::hexVertices(cx, cy, hexSize, points);
-
             if (hasEnemy) {
-                // Red highlight for enemy tiles in range
-                renderer2d.drawFilledPolygon(points, 6, 1.0f, 0.2f, 0.2f, 0.25f);
+                renderer2d.drawFilledHexagon(cx, cy, hexSize * 0.866f, hexSize,
+                                              1.0f, 0.2f, 0.2f, 0.25f);
             } else {
-                // Translucent range indicator
-                renderer2d.drawFilledPolygon(points, 6, 0.8f, 0.8f, 0.2f, 0.10f);
+                renderer2d.drawFilledHexagon(cx, cy, hexSize * 0.866f, hexSize,
+                                              0.8f, 0.8f, 0.2f, 0.10f);
             }
         }
     }

@@ -104,12 +104,17 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                 float cityCx = 0.0f, cityCy = 0.0f;
                 hex::axialToPixel(city.location, hexSize, cityCx, cityCy);
 
-                // Measure text to center it
+                // Measure text at screen size, then convert to world width.
+                // drawText with pixelScale rasterizes at fontSize/pixelScale screen pixels,
+                // and each pixel occupies pixelScale world units.
+                // So total world width = measureText(fontSize).w * pixelScale
+                // (measureText returns screen-pixel width at the given fontSize)
                 const aoc::ui::Rect textBounds =
                     aoc::ui::BitmapFont::measureText(city.name, LABEL_FONT_SIZE);
                 const float textWorldW = textBounds.w * invZoomLabel;
+                const float textWorldH = textBounds.h * invZoomLabel;
                 const float textX = cityCx - textWorldW * 0.5f;
-                const float textY = cityCy - labelOffsetY;
+                const float textY = cityCy - labelOffsetY - textWorldH * 0.5f;
 
                 // Player color
                 const std::size_t cIdx =

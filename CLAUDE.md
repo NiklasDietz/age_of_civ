@@ -23,7 +23,7 @@ For this project the typical set is:
 - `ai_command/languages/cpp/simd.txt`
 - `ai_command/languages/cpp/embedded.txt`
 - `ai_command/languages/cpp/testing.txt`
-
+- Use c++20 for all of the code
 These files contain binding architectural requirements. Follow them -- they are not suggestions.
 
 ## Project Context
