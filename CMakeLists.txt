@@ -132,6 +132,7 @@ add_library(aoc_lib STATIC
     src/ui/Notifications.cpp
     src/ui/MapEditor.cpp
     src/ui/Tutorial.cpp
+    src/ui/Encyclopedia.cpp
 
     # App
     src/app/Window.cpp
