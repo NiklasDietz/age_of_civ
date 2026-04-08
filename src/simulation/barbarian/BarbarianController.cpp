@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/barbarian/BarbarianController.hpp"
+#include "aoc/simulation/barbarian/BarbarianClans.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
@@ -171,7 +172,7 @@ void BarbarianController::spawnEncampments(aoc::ecs::World& world,
 
         // Also spawn an initial warrior at the encampment
         EntityId unitEntity = world.createEntity();
-        UnitComponent warrior = UnitComponent::create(BARBARIAN_PLAYER, UnitTypeId{0}, candidate);
+        UnitComponent warrior = UnitComponent::create(BARBARIAN_PLAYER, barbarianSpawnUnit(this->m_turnCounter), candidate);
         world.addComponent<UnitComponent>(unitEntity, std::move(warrior));
 
         LOG_INFO("Barbarian encampment spawned at (%d,%d)", candidate.q, candidate.r);
@@ -217,7 +218,7 @@ void BarbarianController::spawnUnitsFromEncampments(aoc::ecs::World& world,
 
         // Spawn a warrior at the encampment location
         EntityId unitEntity = world.createEntity();
-        UnitComponent warrior = UnitComponent::create(BARBARIAN_PLAYER, UnitTypeId{0}, camp.location);
+        UnitComponent warrior = UnitComponent::create(BARBARIAN_PLAYER, barbarianSpawnUnit(this->m_turnCounter), camp.location);
         world.addComponent<UnitComponent>(unitEntity, std::move(warrior));
 
         camp.spawnCooldown = SPAWN_COOLDOWN_TURNS;

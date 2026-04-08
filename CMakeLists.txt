@@ -64,6 +64,8 @@ add_library(aoc_lib STATIC
     src/simulation/map/Improvement.cpp
     src/simulation/map/Infrastructure.cpp
     src/simulation/barbarian/BarbarianController.cpp
+    src/simulation/barbarian/BarbarianClans.cpp
+    src/simulation/climate/NaturalDisasters.cpp
     src/simulation/diplomacy/DiplomacyState.cpp
     src/simulation/diplomacy/EspionageSystem.cpp
     src/simulation/diplomacy/WarWeariness.cpp
@@ -73,6 +75,7 @@ add_library(aoc_lib STATIC
     src/simulation/victory/VictoryCondition.cpp
     src/simulation/government/Government.cpp
     src/simulation/ai/AIController.cpp
+    src/simulation/ai/AIEconomicStrategy.cpp
     src/simulation/resource/ResourceTypes.cpp
     src/simulation/resource/ProductionChain.cpp
     src/simulation/resource/EconomySimulation.cpp
@@ -98,6 +101,7 @@ add_library(aoc_lib STATIC
     src/simulation/economy/Speculation.cpp
     src/simulation/economy/ColonialEconomics.cpp
     src/simulation/economy/IndustrialRevolution.cpp
+    src/simulation/economy/EconomicDepth.cpp
     src/simulation/economy/NavalTrade.cpp
     src/simulation/empire/CommunicationSpeed.cpp
     src/simulation/city/CityConnection.cpp
@@ -108,6 +112,13 @@ add_library(aoc_lib STATIC
     src/simulation/production/PowerGrid.cpp
     src/simulation/production/Automation.cpp
     src/simulation/city/CityLoyalty.cpp
+    src/simulation/city/DistrictAdjacency.cpp
+    src/simulation/unit/CombatExtensions.cpp
+    src/simulation/religion/TheologicalCombat.cpp
+    src/simulation/citystate/CityStateQuest.cpp
+    src/simulation/diplomacy/DiplomacyExtensions.cpp
+    src/simulation/greatpeople/GreatPeopleExpanded.cpp
+    src/simulation/tech/CivicEffects.cpp
 
     # Replay
     src/replay/ReplayRecorder.cpp
@@ -133,14 +144,21 @@ add_library(aoc_lib STATIC
     src/ui/MapEditor.cpp
     src/ui/Tutorial.cpp
     src/ui/Encyclopedia.cpp
+    src/ui/GameNotifications.cpp
 
     # App
     src/app/Window.cpp
     src/app/InputManager.cpp
+    src/app/UnitSelection.cpp
+    src/app/HotkeyManager.cpp
     src/app/Application.cpp
+
+    # Audio
+    src/audio/AudioBackend.cpp
 
     # Render
     src/render/CameraController.cpp
+    src/render/MapOverlays.cpp
     src/render/DrawCommandBuffer.cpp
     src/render/GameRenderer.cpp
     src/render/MapRenderer.cpp

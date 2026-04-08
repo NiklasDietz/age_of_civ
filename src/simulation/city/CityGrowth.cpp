@@ -6,6 +6,7 @@
 #include "aoc/simulation/city/CityGrowth.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
+#include "aoc/simulation/production/Waste.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/ecs/World.hpp"
@@ -47,6 +48,13 @@ void processCityGrowth(aoc::ecs::World& world,
         // Food consumption: 2 per citizen
         float consumption = static_cast<float>(city.population) * 2.0f;
         float surplus = totalFood - consumption;
+
+        // Pollution growth penalty
+        const CityPollutionComponent* pollution =
+            world.tryGetComponent<CityPollutionComponent>(cityPool->entities()[i]);
+        if (pollution != nullptr) {
+            surplus *= pollution->growthModifier();
+        }
 
         city.foodSurplus += surplus;
 

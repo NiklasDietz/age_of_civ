@@ -8,6 +8,7 @@
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/empire/CommunicationSpeed.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/ecs/World.hpp"
@@ -64,6 +65,24 @@ float computePlayerScience(const aoc::ecs::World& world,
 
         // 4. Apply multiplier (e.g., Research Lab gives 1.5x)
         cityScience *= bestMultiplier;
+
+        // Communication speed science penalty for distant cities
+        const aoc::ecs::ComponentPool<PlayerCommunicationComponent>* commPool =
+            world.getPool<PlayerCommunicationComponent>();
+        if (commPool != nullptr) {
+            for (uint32_t cp = 0; cp < commPool->size(); ++cp) {
+                if (commPool->data()[cp].owner != player) { continue; }
+                const PlayerCommunicationComponent& comm = commPool->data()[cp];
+                for (int32_t cc = 0; cc < comm.cityCount; ++cc) {
+                    if (comm.cities[cc].cityEntity == cityEntity) {
+                        CityCommModifiers mods = computeCityCommModifiers(comm.cities[cc]);
+                        cityScience *= mods.scienceMultiplier;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
 
         totalScience += cityScience;
     }

@@ -9,6 +9,7 @@
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
+#include "aoc/simulation/city/DistrictAdjacency.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
@@ -51,7 +52,7 @@ float computeCityProduction(const aoc::ecs::World& world,
         }
     }
 
-    // Add building production bonuses
+    // Add building production bonuses + district adjacency bonuses
     const CityDistrictsComponent* districts =
         world.tryGetComponent<CityDistrictsComponent>(cityEntity);
     if (districts != nullptr) {
@@ -59,6 +60,12 @@ float computeCityProduction(const aoc::ecs::World& world,
             for (BuildingId bid : district.buildings) {
                 const BuildingDef& bdef = buildingDef(bid);
                 totalProduction += static_cast<float>(bdef.productionBonus);
+            }
+            // District adjacency production bonus
+            if (grid.isValid(district.location)) {
+                AdjacencyBonus adj = computeAdjacencyBonus(
+                    grid, world, district.type, grid.toIndex(district.location));
+                totalProduction += adj.production;
             }
         }
     }
@@ -115,6 +122,31 @@ float computeCityProduction(const aoc::ecs::World& world,
                 break;
             }
         }
+    }
+
+    // Apply corruption loss (scales with empire size and government type)
+    {
+        GovernmentType govType = GovernmentType::Chiefdom;
+        const aoc::ecs::ComponentPool<PlayerGovernmentComponent>* govPool =
+            world.getPool<PlayerGovernmentComponent>();
+        if (govPool != nullptr) {
+            for (uint32_t gi = 0; gi < govPool->size(); ++gi) {
+                if (govPool->data()[gi].owner == city.owner) {
+                    govType = govPool->data()[gi].government;
+                    break;
+                }
+            }
+        }
+        int32_t playerCityCount = 0;
+        const aoc::ecs::ComponentPool<CityComponent>* allCities = world.getPool<CityComponent>();
+        if (allCities != nullptr) {
+            for (uint32_t ci2 = 0; ci2 < allCities->size(); ++ci2) {
+                if (allCities->data()[ci2].owner == city.owner) { ++playerCityCount; }
+            }
+        }
+        float corruption = computeCorruption(govType, playerCityCount,
+                                              govMods.corruptionReduction);
+        totalProduction *= (1.0f - corruption);
     }
 
     // Minimum 1 production per turn so cities always make progress

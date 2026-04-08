@@ -19,6 +19,7 @@
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/production/Waste.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/simulation/tech/EraProgression.hpp"
@@ -1672,17 +1673,19 @@ void Application::handleEndTurn() {
                 this->m_world.getPool<aoc::sim::GlobalClimateComponent>();
             if (climatePool != nullptr) {
                 for (uint32_t ci = 0; ci < climatePool->size(); ++ci) {
-                    // Industrial era onward: add CO2 per city
+                    // Population-based CO2
                     aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
                         this->m_world.getPool<aoc::sim::CityComponent>();
                     if (cityPool != nullptr) {
                         for (uint32_t cj = 0; cj < cityPool->size(); ++cj) {
-                            // Each city adds a small amount of CO2 (scales with population)
                             const float co2PerCity = static_cast<float>(
                                 cityPool->data()[cj].population) * 0.1f;
                             climatePool->data()[ci].addCO2(co2PerCity);
                         }
                     }
+                    // Industrial pollution CO2 (from power plants, factories, etc.)
+                    const int32_t industrialCO2 = aoc::sim::totalIndustrialCO2(this->m_world);
+                    climatePool->data()[ci].addCO2(static_cast<float>(industrialCO2));
                     climatePool->data()[ci].processTurn(this->m_hexGrid, this->m_gameRng);
                 }
             }

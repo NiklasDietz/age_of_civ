@@ -26,6 +26,7 @@
 #include "aoc/simulation/economy/Sanctions.hpp"
 #include "aoc/simulation/economy/Speculation.hpp"
 #include "aoc/simulation/economy/ColonialEconomics.hpp"
+#include "aoc/simulation/economy/EconomicDepth.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/simulation/production/ProductionEfficiency.hpp"
 #include "aoc/simulation/production/BuildingCapacity.hpp"
@@ -170,6 +171,13 @@ void EconomySimulation::executeProduction(aoc::ecs::World& world,
             EntityId cityEntity = cityPool->entities()[i];
             const CityComponent& city = cityPool->data()[i];
             CityProductionState& state = cityState[cityEntity.index];
+
+            // Skip cities on labor strike (industrial buildings shut down)
+            const CityStrikeComponent* strike =
+                world.tryGetComponent<CityStrikeComponent>(cityEntity);
+            if (strike != nullptr && strike->isOnStrike) {
+                continue;
+            }
 
             // Worker capacity: population-based + robot workers
             const CityAutomationComponent* automation =
@@ -458,8 +466,24 @@ void EconomySimulation::executeTradeRoutes(aoc::ecs::World& world) {
             continue;
         }
 
+        // Apply devaluation export bonus (source ships more when devalued)
+        float exportMult = 1.0f;
+        const aoc::ecs::ComponentPool<CurrencyDevaluationComponent>* devalPool =
+            world.getPool<CurrencyDevaluationComponent>();
+        if (devalPool != nullptr) {
+            for (uint32_t d = 0; d < devalPool->size(); ++d) {
+                if (devalPool->data()[d].owner == route.sourcePlayer) {
+                    exportMult = devalPool->data()[d].exportPriceMultiplier();
+                    break;
+                }
+            }
+        }
+
         for (const TradeOffer& offer : route.cargo) {
-            destStockpile->addGoods(offer.goodId, offer.amountPerTurn);
+            // Devaluation makes goods cheaper -> more units shipped for same value
+            int32_t adjusted = static_cast<int32_t>(
+                static_cast<float>(offer.amountPerTurn) / std::max(0.5f, exportMult));
+            destStockpile->addGoods(offer.goodId, adjusted);
         }
 
         // Reset for next delivery cycle

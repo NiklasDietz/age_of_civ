@@ -13,6 +13,8 @@
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
+#include "aoc/simulation/monetary/CurrencyCrisis.hpp"
+#include "aoc/simulation/production/Waste.hpp"
 #include "aoc/ecs/World.hpp"
 
 namespace aoc::sim {
@@ -131,6 +133,25 @@ void computeCityHappiness(aoc::ecs::World& world, PlayerId player) {
 
         // Modifiers from economy and war weariness
         happiness.modifiers = -inflationPenalty - taxPenalty + warWearinessPenalty;
+
+        // Currency crisis amenity penalty
+        const aoc::ecs::ComponentPool<CurrencyCrisisComponent>* crisisPool =
+            world.getPool<CurrencyCrisisComponent>();
+        if (crisisPool != nullptr) {
+            for (uint32_t ci = 0; ci < crisisPool->size(); ++ci) {
+                if (crisisPool->data()[ci].owner == player) {
+                    happiness.amenities -= static_cast<float>(crisisPool->data()[ci].amenityPenalty());
+                    break;
+                }
+            }
+        }
+
+        // Pollution amenity penalty
+        const CityPollutionComponent* pollution =
+            world.tryGetComponent<CityPollutionComponent>(cityEntity);
+        if (pollution != nullptr) {
+            happiness.amenities -= static_cast<float>(pollution->amenityPenalty());
+        }
 
         // Net happiness
         happiness.happiness = happiness.amenities - happiness.demand + happiness.modifiers;

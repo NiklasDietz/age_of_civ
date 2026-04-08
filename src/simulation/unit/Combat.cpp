@@ -14,6 +14,7 @@
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/map/RiverGameplay.hpp"
+#include "aoc/simulation/unit/CombatExtensions.hpp"
 #include "aoc/ecs/World.hpp"
 
 #include <algorithm>
@@ -96,9 +97,17 @@ CombatResult resolveMeleeCombat(aoc::ecs::World& world,
     const UnitTypeDef& atkDef = unitTypeDef(atkUnit.typeId);
     const UnitTypeDef& defDef = unitTypeDef(defUnit.typeId);
 
-    // Effective strengths
+    // Effective strengths (including formation bonus)
     float atkStrength = static_cast<float>(atkDef.combatStrength);
     float defStrength = static_cast<float>(defDef.combatStrength);
+
+    // Corps/Army formation bonus
+    {
+        const UnitFormationComponent* atkForm = world.tryGetComponent<UnitFormationComponent>(attacker);
+        if (atkForm != nullptr) { atkStrength += static_cast<float>(formationStrengthBonus(atkForm->level)); }
+        const UnitFormationComponent* defForm = world.tryGetComponent<UnitFormationComponent>(defender);
+        if (defForm != nullptr) { defStrength += static_cast<float>(formationStrengthBonus(defForm->level)); }
+    }
 
     // Embarked units fight at 50% strength
     if (atkUnit.state == UnitState::Embarked) {

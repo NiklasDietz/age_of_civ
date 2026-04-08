@@ -30,6 +30,7 @@
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
+#include "aoc/simulation/ai/AIEconomicStrategy.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -231,6 +232,8 @@ void AIController::executeTurn(aoc::ecs::World& world,
     this->executeUnitActions(world, grid, rng);
     this->manageEconomy(world, diplomacy, market);
     this->manageMonetarySystem(world, diplomacy);
+    aoc::sim::aiEconomicStrategy(world, grid, market, diplomacy, this->m_player,
+                                  static_cast<int32_t>(this->m_difficulty));
     this->executeDiplomacyActions(world, diplomacy, market);
 
     // Refresh movement so units have moved for this turn
