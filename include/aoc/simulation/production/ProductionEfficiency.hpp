@@ -38,7 +38,7 @@ struct CityProductionExperienceComponent {
 
     /// Get the experience count for a recipe.
     [[nodiscard]] int32_t getExperience(uint16_t recipeId) const {
-        auto it = this->recipeExperience.find(recipeId);
+        std::unordered_map<uint16_t, int32_t>::const_iterator it = this->recipeExperience.find(recipeId);
         return (it != this->recipeExperience.end()) ? it->second : 0;
     }
 

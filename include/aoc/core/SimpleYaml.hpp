@@ -49,27 +49,27 @@ public:
     /// Get a string value (returns defaultVal if key not found).
     [[nodiscard]] std::string getString(const std::string& key,
                                          const std::string& defaultVal = "") const {
-        auto it = this->m_values.find(key);
+        std::unordered_map<std::string, std::string>::const_iterator it = this->m_values.find(key);
         return (it != this->m_values.end()) ? it->second : defaultVal;
     }
 
     /// Get an integer value.
     [[nodiscard]] int32_t getInt(const std::string& key, int32_t defaultVal = 0) const {
-        auto it = this->m_values.find(key);
+        std::unordered_map<std::string, std::string>::const_iterator it = this->m_values.find(key);
         if (it == this->m_values.end()) { return defaultVal; }
         return std::atoi(it->second.c_str());
     }
 
     /// Get a float value.
     [[nodiscard]] float getFloat(const std::string& key, float defaultVal = 0.0f) const {
-        auto it = this->m_values.find(key);
+        std::unordered_map<std::string, std::string>::const_iterator it = this->m_values.find(key);
         if (it == this->m_values.end()) { return defaultVal; }
         return std::strtof(it->second.c_str(), nullptr);
     }
 
     /// Get a boolean value (true/false/yes/no/1/0).
     [[nodiscard]] bool getBool(const std::string& key, bool defaultVal = false) const {
-        auto it = this->m_values.find(key);
+        std::unordered_map<std::string, std::string>::const_iterator it = this->m_values.find(key);
         if (it == this->m_values.end()) { return defaultVal; }
         const std::string& val = it->second;
         return val == "true" || val == "yes" || val == "1";
@@ -78,7 +78,7 @@ public:
     /// Get a list value (parsed from [item1, item2, ...]).
     [[nodiscard]] std::vector<std::string> getList(const std::string& key) const {
         std::vector<std::string> result;
-        auto it = this->m_values.find(key);
+        std::unordered_map<std::string, std::string>::const_iterator it = this->m_values.find(key);
         if (it == this->m_values.end()) { return result; }
 
         std::string val = it->second;

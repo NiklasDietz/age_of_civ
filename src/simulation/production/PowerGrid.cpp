@@ -133,7 +133,7 @@ bool checkNuclearMeltdown(aoc::ecs::World& world, EntityId cityEntity,
         world.tryGetComponent<CityDistrictsComponent>(cityEntity);
     if (mutableDistricts != nullptr) {
         for (CityDistrictsComponent::PlacedDistrict& district : mutableDistricts->districts) {
-            auto it = std::find(district.buildings.begin(), district.buildings.end(),
+            std::vector<BuildingId>::iterator it = std::find(district.buildings.begin(), district.buildings.end(),
                                 POWER_PLANT_DEFS[3].buildingId);
             if (it != district.buildings.end()) {
                 district.buildings.erase(it);

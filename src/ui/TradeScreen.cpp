@@ -327,8 +327,8 @@ void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId
                         this->m_world->tryGetComponent<aoc::sim::CityStockpileComponent>(
                             cityPool->entities()[ci]);
                     if (stockpile != nullptr) {
-                        for (const auto& [gId, amt] : stockpile->goods) {
-                            partnerStockpile[gId] += amt;
+                        for (const std::pair<const uint16_t, int32_t>& entry : stockpile->goods) {
+                            partnerStockpile[entry.first] += entry.second;
                         }
                     }
                 }

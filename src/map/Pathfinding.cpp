@@ -81,6 +81,7 @@ std::optional<PathResult> findPath(const HexGrid& grid,
         int32_t priority;  ///< f = g + h
     };
 
+    // auto required: lambda type is unnameable
     auto cmp = [](const Node& a, const Node& b) { return a.priority > b.priority; };
     std::priority_queue<Node, std::vector<Node>, decltype(cmp)> openSet(cmp);
 
@@ -134,7 +135,7 @@ std::optional<PathResult> findPath(const HexGrid& grid,
                 continue;  // Over budget
             }
 
-            auto it = costSoFar.find(neighbor);
+            std::unordered_map<hex::AxialCoord, int32_t>::iterator it = costSoFar.find(neighbor);
             if (it == costSoFar.end() || newCost < it->second) {
                 costSoFar[neighbor] = newCost;
                 int32_t heuristic = hex::distance(neighbor, goal);
@@ -190,7 +191,7 @@ std::vector<ReachableTile> findReachable(const HexGrid& grid,
                 continue;
             }
 
-            auto it = visited.find(neighbor);
+            std::unordered_map<hex::AxialCoord, int32_t>::iterator it = visited.find(neighbor);
             if (it == visited.end() || newCost < it->second) {
                 visited[neighbor] = newCost;
                 frontier.push({neighbor, newCost});

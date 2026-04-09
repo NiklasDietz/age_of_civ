@@ -860,7 +860,7 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
     aoc::Random resRng(rng.next());
     int32_t totalPlaced = 0;
 
-    // Helper: check if any neighbor is coast/ocean
+    // auto required: lambda type is unnameable
     const auto isNearCoast = [&](int32_t row, int32_t col) -> bool {
         const hex::AxialCoord axial = hex::offsetToAxial({col, row});
         const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(axial);

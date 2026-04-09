@@ -37,18 +37,18 @@ struct ExpandedTechDef {
 };
 
 inline constexpr ExpandedTechDef EXPANDED_TECHS[] = {
-    // Ancient Era (0) -- costs 25-50 (5-10 turns at 5 sci/turn)
-    {20, "Pottery",           0,  25, {0xFFFF, 0xFFFF, 0xFFFF}},
-    {21, "Animal Husbandry",  0,  25, {0xFFFF, 0xFFFF, 0xFFFF}},
-    {22, "Irrigation",        0,  35, {20, 0xFFFF, 0xFFFF}},
-    {23, "Archery",           0,  30, {21, 0xFFFF, 0xFFFF}},
-    {24, "Sailing",           0,  40, {0xFFFF, 0xFFFF, 0xFFFF}},
-    // Classical Era (1) -- costs 60-120 (6-12 turns at 10 sci/turn)
-    {25, "Celestial Navigation",1, 80, {24, 0xFFFF, 0xFFFF}},
-    {26, "Mathematics",       1, 100, {4, 0xFFFF, 0xFFFF}},
-    {27, "Construction",      1, 110, {1, 26, 0xFFFF}},
-    {28, "Engineering",       1, 120, {27, 0xFFFF, 0xFFFF}},
-    {29, "Iron Working",      1,  90, {4, 0xFFFF, 0xFFFF}},
+    // Ancient Era (0) -- costs 20-35 (2-5 turns at 8 sci/turn)
+    {20, "Pottery",           0,  20, {0xFFFF, 0xFFFF, 0xFFFF}},
+    {21, "Animal Husbandry",  0,  20, {0xFFFF, 0xFFFF, 0xFFFF}},
+    {22, "Irrigation",        0,  30, {20, 0xFFFF, 0xFFFF}},
+    {23, "Archery",           0,  25, {21, 0xFFFF, 0xFFFF}},
+    {24, "Sailing",           0,  35, {0xFFFF, 0xFFFF, 0xFFFF}},
+    // Classical Era (1) -- costs 50-80 (5-8 turns at 10 sci/turn)
+    {25, "Celestial Navigation",1, 60, {24, 0xFFFF, 0xFFFF}},
+    {26, "Mathematics",       1,  70, {4, 0xFFFF, 0xFFFF}},
+    {27, "Construction",      1,  75, {1, 26, 0xFFFF}},
+    {28, "Engineering",       1,  80, {27, 0xFFFF, 0xFFFF}},
+    {29, "Iron Working",      1,  65, {4, 0xFFFF, 0xFFFF}},
     // Medieval Era (2) -- costs 150-250 (10-17 turns at 15 sci/turn)
     {30, "Apprenticeship",    2, 160, {5, 26, 0xFFFF}},
     {31, "Machinery",         2, 200, {28, 29, 0xFFFF}},

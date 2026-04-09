@@ -51,8 +51,8 @@ void World::destroyEntity(EntityId entity) {
     assert(this->isAlive(entity));
 
     // Remove all components for this entity
-    for (auto& [typeId, pool] : this->m_pools) {
-        pool->remove(entity);
+    for (std::pair<const std::type_index, std::unique_ptr<IComponentPool>>& entry : this->m_pools) {
+        entry.second->remove(entity);
     }
 
     EntitySlot& slot = this->m_entitySlots[entity.index];

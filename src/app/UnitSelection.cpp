@@ -37,7 +37,7 @@ void UnitSelection::addUnit(EntityId unitEntity) {
 }
 
 void UnitSelection::removeUnit(EntityId unitEntity) {
-    auto it = std::find(this->m_selected.begin(), this->m_selected.end(), unitEntity);
+    std::vector<EntityId>::iterator it = std::find(this->m_selected.begin(), this->m_selected.end(), unitEntity);
     if (it != this->m_selected.end()) {
         this->m_selected.erase(it);
     }
@@ -100,7 +100,7 @@ void UnitSelection::moveAllTo(aoc::ecs::World& world,
             continue;
         }
         // Pathfind from unit position to target
-        auto pathResult = aoc::map::findPath(grid, unit->position, target);
+        std::optional<aoc::map::PathResult> pathResult = aoc::map::findPath(grid, unit->position, target);
         if (pathResult.has_value() && !pathResult->path.empty()) {
             unit->pendingPath = std::move(pathResult->path);
         }
@@ -206,7 +206,7 @@ void processRallyPoints(aoc::ecs::World& world, const aoc::map::HexGrid& grid) {
             }
 
             // Pathfind to rally point
-            auto pathResult = aoc::map::findPath(
+            std::optional<aoc::map::PathResult> pathResult = aoc::map::findPath(
                 grid, unit.position, rally->rallyPoint);
             if (pathResult.has_value() && !pathResult->path.empty()) {
                 unit.pendingPath = std::move(pathResult->path);

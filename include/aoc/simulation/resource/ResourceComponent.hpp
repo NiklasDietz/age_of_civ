@@ -26,7 +26,7 @@ struct CityStockpileComponent {
     std::unordered_map<uint16_t, int32_t> goods;
 
     [[nodiscard]] int32_t getAmount(uint16_t goodId) const {
-        auto it = this->goods.find(goodId);
+        std::unordered_map<uint16_t, int32_t>::const_iterator it = this->goods.find(goodId);
         return (it != this->goods.end()) ? it->second : 0;
     }
 

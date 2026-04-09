@@ -17,16 +17,16 @@ namespace {
 std::vector<TechDef> buildTechDefs() {
     std::vector<TechDef> techs;
 
-    // Era 0: Ancient -- costs 25-50
-    techs.push_back({TechId{0}, "Mining", EraId{0}, 25, {}, {}, {BuildingId{0}}, {}});
-    techs.push_back({TechId{1}, "Animal Husbandry", EraId{0}, 25, {}, {}, {}, {UnitTypeId{4}}});
-    techs.push_back({TechId{2}, "Pottery", EraId{0}, 25, {}, {}, {BuildingId{1}}, {}});
-    techs.push_back({TechId{3}, "Writing", EraId{0}, 50, {{TechId{2}}}, {}, {BuildingId{7}}, {}});
+    // Era 0: Ancient -- costs 20-40 (fast early game: 2-5 turns each)
+    techs.push_back({TechId{0}, "Mining", EraId{0}, 20, {}, {}, {BuildingId{0}}, {}});
+    techs.push_back({TechId{1}, "Animal Husbandry", EraId{0}, 20, {}, {}, {}, {UnitTypeId{4}}});
+    techs.push_back({TechId{2}, "Pottery", EraId{0}, 20, {}, {}, {BuildingId{1}}, {}});
+    techs.push_back({TechId{3}, "Writing", EraId{0}, 40, {{TechId{2}}}, {}, {BuildingId{7}}, {}});
 
-    // Era 1: Classical -- costs 70-120
-    techs.push_back({TechId{4}, "Bronze Working", EraId{1}, 80, {{TechId{0}}}, {}, {}, {UnitTypeId{0}}});
-    techs.push_back({TechId{5}, "Currency", EraId{1}, 90, {{TechId{3}}}, {}, {BuildingId{6}}, {}});
-    techs.push_back({TechId{6}, "Engineering", EraId{1}, 110, {{TechId{0}, TechId{2}}}, {}, {}, {}});
+    // Era 1: Classical -- costs 50-80 (5-10 turns each)
+    techs.push_back({TechId{4}, "Bronze Working", EraId{1}, 60, {{TechId{0}}}, {}, {}, {UnitTypeId{0}}});
+    techs.push_back({TechId{5}, "Currency", EraId{1}, 65, {{TechId{3}}}, {}, {BuildingId{6}}, {}});
+    techs.push_back({TechId{6}, "Engineering", EraId{1}, 80, {{TechId{0}, TechId{2}}}, {}, {}, {}});
 
     // Era 2: Medieval -- costs 160-240
     techs.push_back({TechId{7}, "Apprenticeship", EraId{2}, 190, {{TechId{5}, TechId{6}}}, {}, {BuildingId{1}}, {}});
@@ -68,55 +68,63 @@ std::vector<TechDef> buildTechDefs() {
         {}, {}, {}});
 
     // Era 2: Medieval -- textiles
-    techs.push_back({TechId{20}, "Textiles", EraId{2}, 100,
+    techs.push_back({TechId{20}, "Textiles", EraId{2}, 200,
         {{TechId{7}}},  // Apprenticeship
         {}, {BuildingId{8}}, {}});  // Unlocks Textile Mill
 
     // Era 4: Industrial -- food preservation
-    techs.push_back({TechId{21}, "Food Preservation", EraId{4}, 240,
+    techs.push_back({TechId{21}, "Food Preservation", EraId{4}, 560,
         {{TechId{11}}},  // Industrialization
         {}, {BuildingId{9}}, {}});  // Unlocks Food Processing Plant
 
     // Era 5: Modern -- precision instruments
-    techs.push_back({TechId{22}, "Precision Instruments", EraId{5}, 380,
+    techs.push_back({TechId{22}, "Precision Instruments", EraId{5}, 930,
         {{TechId{19}, TechId{14}}},  // Interchangeable Parts + Electricity
         {}, {}, {}});
 
     // Era 5: Modern -- semiconductors
-    techs.push_back({TechId{23}, "Semiconductors", EraId{5}, 450,
+    techs.push_back({TechId{23}, "Semiconductors", EraId{5}, 1050,
         {{TechId{22}}},  // Precision Instruments
         {}, {BuildingId{11}}, {}});  // Unlocks Semiconductor Fab
 
-    // (ID 24 reserved for future use)
-    techs.push_back({TechId{24}, "Advanced Chemistry", EraId{5}, 350,
+    techs.push_back({TechId{24}, "Advanced Chemistry", EraId{5}, 850,
         {{TechId{12}}},  // Refining
         {}, {}, {}});
 
     // Era 5: Modern -- telecommunications
-    techs.push_back({TechId{25}, "Telecommunications", EraId{5}, 380,
+    techs.push_back({TechId{25}, "Telecommunications", EraId{5}, 930,
         {{TechId{14}}},  // Electricity
         {}, {BuildingId{13}}, {}});  // Unlocks Telecom Hub
 
     // Era 5: Modern -- aviation
-    techs.push_back({TechId{26}, "Aviation", EraId{5}, 400,
+    techs.push_back({TechId{26}, "Aviation", EraId{5}, 1000,
         {{TechId{11}, TechId{12}}},  // Industrialization + Refining
         {}, {BuildingId{14}}, {}});  // Unlocks Airport
 
     // Era 6: Information -- internet
-    techs.push_back({TechId{27}, "Internet", EraId{6}, 700,
+    techs.push_back({TechId{27}, "Internet", EraId{6}, 1560,
         {{TechId{16}, TechId{25}}},  // Computers + Telecommunications
         {}, {}, {}});
 
-    // Append expanded techs (IDs 20-66)
+    // Append expanded techs (only IDs > max base ID to avoid overlap)
+    uint16_t maxBaseId = 0;
+    for (const TechDef& t : techs) {
+        if (t.id.value > maxBaseId) { maxBaseId = t.id.value; }
+    }
     for (int32_t i = 0; i < EXPANDED_TECH_COUNT; ++i) {
         const ExpandedTechDef& et = EXPANDED_TECHS[i];
+        if (et.id <= maxBaseId) {
+            continue;  // Skip IDs that overlap with base techs
+        }
         TechDef def{};
-        def.id = TechId{et.id};
+        def.id = TechId{static_cast<uint16_t>(techs.size())};  // Use vector index as ID
         def.name = et.name;
         def.era = EraId{et.era};
         def.researchCost = et.cost;
         for (int32_t p = 0; p < 3; ++p) {
             if (et.prereqs[p] != 0xFFFF) {
+                // Map expanded prereq IDs: if <= maxBaseId, use as-is (base tech).
+                // If > maxBaseId, need to find the remapped index.
                 def.prerequisites.push_back(TechId{et.prereqs[p]});
             }
         }

@@ -67,7 +67,7 @@
 #include <unordered_set>
 #include <vector>
 
-using aoc::EntityId;
+// All types use full namespace paths per coding standards.
 
 // ============================================================================
 // Progress bar
@@ -87,13 +87,6 @@ static void printProgressBar(int32_t current, int32_t total, int32_t barWidth = 
                  static_cast<int>(progress * 100.0f), current, total);
     std::fflush(stderr);
 }
-using aoc::PlayerId;
-using aoc::TechId;
-using aoc::UnitTypeId;
-using aoc::CurrencyAmount;
-using aoc::ResourceId;
-using namespace aoc::map;
-namespace hex = aoc::hex;
 
 namespace {
 
@@ -326,7 +319,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     aiControllers.reserve(static_cast<std::size_t>(playerCount));
 
     // Track placed starting positions for minimum distance enforcement
-    std::vector<hex::AxialCoord> startPositions;
+    std::vector<aoc::hex::AxialCoord> startPositions;
     constexpr int32_t MIN_START_DISTANCE = 8;
 
     // Spawn each AI player with a starting city and settler
@@ -334,7 +327,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         aoc::PlayerId player = static_cast<aoc::PlayerId>(p);
 
         // Find a land tile for the starting city
-        hex::AxialCoord startPos{0, 0};
+        aoc::hex::AxialCoord startPos{0, 0};
         bool found = false;
         for (int32_t attempts = 0; attempts < 1000 && !found; ++attempts) {
             int32_t rx = rng.nextInt(5, mapConfig.width - 5);
@@ -342,11 +335,11 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             int32_t idx = ry * mapConfig.width + rx;
             if (!aoc::map::isWater(grid.terrain(idx))
                 && !aoc::map::isImpassable(grid.terrain(idx))) {
-                hex::AxialCoord candidate = hex::offsetToAxial({rx, ry});
+                aoc::hex::AxialCoord candidate = aoc::hex::offsetToAxial({rx, ry});
                 // Check minimum distance from all existing starts
                 bool tooClose = false;
-                for (const hex::AxialCoord& existing : startPositions) {
-                    if (hex::distance(candidate, existing) < MIN_START_DISTANCE) {
+                for (const aoc::hex::AxialCoord& existing : startPositions) {
+                    if (aoc::hex::distance(candidate, existing) < MIN_START_DISTANCE) {
                         tooClose = true;
                         break;
                     }
@@ -361,7 +354,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         startPositions.push_back(startPos);
 
         // Create city
-        EntityId cityEntity = world.createEntity();
+        aoc::EntityId cityEntity = world.createEntity();
         aoc::sim::CityComponent city{};
         city.owner = player;
         city.name = std::string(aoc::sim::civDef(static_cast<aoc::sim::CivId>(p % aoc::sim::CIV_COUNT)).cityNames[0]);
@@ -370,7 +363,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         city.isOriginalCapital = true;
         city.workedTiles.push_back(startPos);
         // Add neighboring tiles to worked tiles
-        std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(startPos);
+        std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(startPos);
         for (int32_t n = 0; n < 3 && n < 6; ++n) {
             if (grid.isValid(nbrs[static_cast<std::size_t>(n)])) {
                 city.workedTiles.push_back(nbrs[static_cast<std::size_t>(n)]);
@@ -392,7 +385,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         // Claim surrounding tiles for this player
         int32_t centerIdx = grid.toIndex(startPos);
         grid.setOwner(centerIdx, player);
-        for (const hex::AxialCoord& nbr : nbrs) {
+        for (const aoc::hex::AxialCoord& nbr : nbrs) {
             if (grid.isValid(nbr)) {
                 grid.setOwner(grid.toIndex(nbr), player);
             }
@@ -401,7 +394,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         // Guarantee minimum resources near starting position
         // Place wheat on center if no resource, iron+copper on neighbors
         if (!grid.resource(centerIdx).isValid()) {
-            grid.setResource(centerIdx, ResourceId{aoc::sim::goods::WHEAT});
+            grid.setResource(centerIdx, aoc::ResourceId{aoc::sim::goods::WHEAT});
         }
         int32_t resourcesPlaced = 0;
         const uint16_t STARTER_RESOURCES[] = {
@@ -409,20 +402,20 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             aoc::sim::goods::WOOD, aoc::sim::goods::STONE,
             aoc::sim::goods::COAL, aoc::sim::goods::CATTLE
         };
-        for (const hex::AxialCoord& nbr2 : nbrs) {
+        for (const aoc::hex::AxialCoord& nbr2 : nbrs) {
             if (!grid.isValid(nbr2)) { continue; }
             int32_t nbrIdx = grid.toIndex(nbr2);
             if (!grid.resource(nbrIdx).isValid()
                 && !aoc::map::isWater(grid.terrain(nbrIdx))
                 && !aoc::map::isImpassable(grid.terrain(nbrIdx))
                 && resourcesPlaced < 6) {
-                grid.setResource(nbrIdx, ResourceId{STARTER_RESOURCES[resourcesPlaced]});
+                grid.setResource(nbrIdx, aoc::ResourceId{STARTER_RESOURCES[resourcesPlaced]});
                 ++resourcesPlaced;
             }
         }
 
         // Create player entity with monetary state
-        EntityId playerEntity = world.createEntity();
+        aoc::EntityId playerEntity = world.createEntity();
         aoc::sim::MonetaryStateComponent monetary{};
         monetary.owner = player;
         monetary.system = aoc::sim::MonetarySystemType::Barter;
@@ -460,9 +453,9 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         world.addComponent<aoc::sim::PlayerCivilizationComponent>(playerEntity, std::move(civComp));
 
         // Create a scout unit
-        EntityId unitEntity = world.createEntity();
+        aoc::EntityId unitEntity = world.createEntity();
         world.addComponent<aoc::sim::UnitComponent>(
-            unitEntity, aoc::sim::UnitComponent::create(player, UnitTypeId{2}, startPos));
+            unitEntity, aoc::sim::UnitComponent::create(player, aoc::UnitTypeId{2}, startPos));
 
         // Create AI controller
         aiControllers.emplace_back(player);
@@ -497,16 +490,16 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             float science = aoc::sim::computePlayerScience(world, grid, p);
             float culture = aoc::sim::computePlayerCulture(world, grid, p);
             world.forEach<aoc::sim::PlayerTechComponent>(
-                [p, science](EntityId, aoc::sim::PlayerTechComponent& tech) {
+                [p, science](aoc::EntityId, aoc::sim::PlayerTechComponent& tech) {
                     if (tech.owner == p) { aoc::sim::advanceResearch(tech, science); }
                 });
             world.forEach<aoc::sim::PlayerCivicComponent>(
-                [p, culture, &world](EntityId, aoc::sim::PlayerCivicComponent& civic) {
+                [p, culture, &world](aoc::EntityId, aoc::sim::PlayerCivicComponent& civic) {
                     if (civic.owner != p) { return; }
                     // Find government component for unlocking
                     aoc::sim::PlayerGovernmentComponent* gov = nullptr;
                     world.forEach<aoc::sim::PlayerGovernmentComponent>(
-                        [p, &gov](EntityId, aoc::sim::PlayerGovernmentComponent& g) {
+                        [p, &gov](aoc::EntityId, aoc::sim::PlayerGovernmentComponent& g) {
                             if (g.owner == p) { gov = &g; }
                         });
                     aoc::sim::advanceCivicResearch(civic, culture, gov);

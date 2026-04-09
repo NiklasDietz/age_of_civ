@@ -24,7 +24,7 @@ namespace aoc::sim {
 // ============================================================================
 
 float PlayerTariffComponent::effectiveImportTariff(PlayerId from) const {
-    const auto it = this->perPlayerTariffs.find(from);
+    const std::unordered_map<PlayerId, float>::const_iterator it = this->perPlayerTariffs.find(from);
     if (it != this->perPlayerTariffs.end()) {
         return it->second;
     }
@@ -188,7 +188,7 @@ void processTechSpillover(aoc::ecs::World& world) {
 
     for (uint32_t i = 0; i < techPool->size(); ++i) {
         PlayerTechComponent& tech = techPool->data()[i];
-        const auto it = spilloverAccum.find(tech.owner);
+        const std::unordered_map<PlayerId, float>::const_iterator it = spilloverAccum.find(tech.owner);
         if (it != spilloverAccum.end() && it->second > 0.0f) {
             tech.researchProgress += it->second;
             LOG_DEBUG("Tech spillover: player %u gains %.1f science from trade",

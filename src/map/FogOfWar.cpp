@@ -38,7 +38,7 @@ void FogOfWar::updateVisibility(const aoc::ecs::World& world,
         }
     }
 
-    // Helper: mark tiles within radius as Visible
+    // auto required: lambda type is unnameable
     auto revealRadius = [&](hex::AxialCoord center, int32_t radius) {
         for (int32_t q = -radius; q <= radius; ++q) {
             for (int32_t r = std::max(-radius, -q - radius);

@@ -45,11 +45,12 @@ struct GameLengthDef {
 };
 
 inline constexpr GameLengthDef GAME_LENGTH_DEFS[] = {
-    {GameLength::Quick,    "Quick",     250, 0.67f, 0.67f, 20, 7},
-    {GameLength::Standard, "Standard",  400, 1.00f, 1.00f, 30, 10},
-    {GameLength::Epic,     "Epic",      600, 1.50f, 1.25f, 40, 15},
-    {GameLength::Marathon, "Marathon", 1000, 2.50f, 1.75f, 50, 20},
-    {GameLength::Eternal,  "Eternal",  2000, 5.00f, 3.00f, 75, 30},
+    //                          turns  cost   growth  era  integ
+    {GameLength::Quick,    "Quick",     330, 0.67f, 1.00f, 15,  5},
+    {GameLength::Standard, "Standard",  500, 1.00f, 1.00f, 30, 10},
+    {GameLength::Epic,     "Epic",      750, 1.50f, 1.50f, 45, 15},
+    {GameLength::Marathon, "Marathon", 1500, 3.00f, 3.00f, 60, 20},
+    {GameLength::Eternal,  "Eternal",  2000, 1.50f, 1.25f, 75, 30},
 };
 
 inline constexpr int32_t GAME_LENGTH_COUNT = 5;

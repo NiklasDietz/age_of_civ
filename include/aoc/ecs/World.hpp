@@ -147,7 +147,7 @@ public:
     template<std::movable T>
     [[nodiscard]] ComponentPool<T>* getPool() {
         std::type_index typeId = std::type_index(typeid(T));
-        auto it = this->m_pools.find(typeId);
+        std::unordered_map<std::type_index, std::unique_ptr<IComponentPool>>::iterator it = this->m_pools.find(typeId);
         if (it == this->m_pools.end()) {
             return nullptr;
         }
@@ -157,7 +157,7 @@ public:
     template<std::movable T>
     [[nodiscard]] const ComponentPool<T>* getPool() const {
         std::type_index typeId = std::type_index(typeid(T));
-        auto it = this->m_pools.find(typeId);
+        std::unordered_map<std::type_index, std::unique_ptr<IComponentPool>>::const_iterator it = this->m_pools.find(typeId);
         if (it == this->m_pools.end()) {
             return nullptr;
         }
@@ -184,7 +184,7 @@ public:
     template<std::movable... Components, typename Func>
     void forEach(Func&& func) {
         // Ensure all pools exist; if any is missing, there are zero matches
-        auto pools = std::make_tuple(this->getPool<Components>()...);
+        std::tuple<ComponentPool<Components>*...> pools = std::make_tuple(this->getPool<Components>()...);
         if (((std::get<ComponentPool<Components>*>(pools) == nullptr) || ...)) {
             return;
         }
@@ -193,6 +193,7 @@ public:
         uint32_t minSize = std::numeric_limits<uint32_t>::max();
         IComponentPool* smallestPool = nullptr;
 
+        // auto required: lambda type is unnameable
         auto findSmallest = [&]<typename T>(ComponentPool<T>* pool) {
             if (pool->size() < minSize) {
                 minSize = pool->size();
@@ -203,6 +204,7 @@ public:
 
         // Iterate the smallest pool's entities, check membership in all others
         // We need to iterate by index because entities() gives us the EntityId array
+        // auto required: lambda type is unnameable
         auto iteratePool = [&]<typename First>(ComponentPool<First>* pool) {
             if (static_cast<IComponentPool*>(pool) != smallestPool) {
                 return;
@@ -227,11 +229,11 @@ private:
     template<std::movable T>
     ComponentPool<T>& getOrCreatePool() {
         std::type_index typeId = std::type_index(typeid(T));
-        auto it = this->m_pools.find(typeId);
+        std::unordered_map<std::type_index, std::unique_ptr<IComponentPool>>::iterator it = this->m_pools.find(typeId);
         if (it != this->m_pools.end()) {
             return *static_cast<ComponentPool<T>*>(it->second.get());
         }
-        auto pool = std::make_unique<ComponentPool<T>>();
+        std::unique_ptr<ComponentPool<T>> pool = std::make_unique<ComponentPool<T>>();
         ComponentPool<T>& ref = *pool;
         this->m_pools.emplace(typeId, std::move(pool));
         return ref;

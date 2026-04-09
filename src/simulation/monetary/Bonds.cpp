@@ -147,7 +147,7 @@ ErrorCode dumpBonds(aoc::ecs::World& world,
 
     // Sell all bonds held from target at 50% of face value (fire sale)
     CurrencyAmount recoveredValue = 0;
-    auto it = dumperBonds->heldBonds.begin();
+    std::vector<BondIssue>::iterator it = dumperBonds->heldBonds.begin();
     while (it != dumperBonds->heldBonds.end()) {
         if (it->issuer == target) {
             CurrencyAmount saleValue = (it->principal + it->accruedInterest) / 2;
@@ -225,7 +225,7 @@ void processBondPayments(aoc::ecs::World& world) {
             continue;
         }
 
-        auto it = portfolio.issuedBonds.begin();
+        std::vector<BondIssue>::iterator it = portfolio.issuedBonds.begin();
         while (it != portfolio.issuedBonds.end()) {
             // Accrue interest
             CurrencyAmount interest = static_cast<CurrencyAmount>(
@@ -254,8 +254,8 @@ void processBondPayments(aoc::ecs::World& world) {
                     // Remove from holder's portfolio too
                     for (uint32_t h = 0; h < bondPool->size(); ++h) {
                         if (bondPool->data()[h].owner == it->holder) {
-                            auto& held = bondPool->data()[h].heldBonds;
-                            for (auto hIt = held.begin(); hIt != held.end(); ++hIt) {
+                            std::vector<BondIssue>& held = bondPool->data()[h].heldBonds;
+                            for (std::vector<BondIssue>::iterator hIt = held.begin(); hIt != held.end(); ++hIt) {
                                 if (hIt->issuer == portfolio.owner
                                     && hIt->principal == it->principal) {
                                     held.erase(hIt);

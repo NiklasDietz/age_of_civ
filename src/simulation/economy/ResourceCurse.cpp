@@ -44,9 +44,9 @@ ResourceCurseModifiers computeResourceCurse(const aoc::ecs::World& world,
     float rawResourceValue = 0.0f;
     float totalValue = 0.0f;
 
-    for (const auto& [goodId, amount] : playerEcon->totalSupply) {
-        const GoodDef& def = goodDef(goodId);
-        float value = static_cast<float>(amount) * static_cast<float>(def.basePrice);
+    for (const std::pair<const uint16_t, int32_t>& entry : playerEcon->totalSupply) {
+        const GoodDef& def = goodDef(entry.first);
+        float value = static_cast<float>(entry.second) * static_cast<float>(def.basePrice);
         totalValue += value;
 
         if (def.category == GoodCategory::RawStrategic ||

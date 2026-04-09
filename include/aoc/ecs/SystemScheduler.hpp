@@ -100,7 +100,7 @@ private:
 
         for (uint32_t i = 0; i < count; ++i) {
             for (const std::string& dep : this->m_systems[i].dependencies) {
-                auto it = this->m_systemMap.find(dep);
+                std::unordered_map<std::string, uint32_t>::const_iterator it = this->m_systemMap.find(dep);
                 if (it == this->m_systemMap.end()) {
                     continue;  // Unknown dependency -- skip gracefully
                 }

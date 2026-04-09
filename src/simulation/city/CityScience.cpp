@@ -44,8 +44,13 @@ float computePlayerScience(const aoc::ecs::World& world,
             }
         }
 
-        // 2. Population base science
-        cityScience += static_cast<float>(city.population) * 0.5f;
+        // 2. Population base science (1.0 per citizen for faster early game)
+        cityScience += static_cast<float>(city.population) * 1.0f;
+
+        // 3. Palace bonus (capital gets extra science)
+        if (city.isOriginalCapital) {
+            cityScience += 5.0f;
+        }
 
         // 3. Building bonuses and multiplier
         float bestMultiplier = 1.0f;

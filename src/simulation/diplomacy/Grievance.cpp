@@ -47,7 +47,7 @@ void PlayerGrievanceComponent::addGrievance(GrievanceType type, PlayerId against
 }
 
 void PlayerGrievanceComponent::tickGrievances() {
-    for (auto it = this->grievances.begin(); it != this->grievances.end(); ) {
+    for (std::vector<Grievance>::iterator it = this->grievances.begin(); it != this->grievances.end(); ) {
         if (it->turnsRemaining > 0) {
             --it->turnsRemaining;
             if (it->turnsRemaining == 0) {

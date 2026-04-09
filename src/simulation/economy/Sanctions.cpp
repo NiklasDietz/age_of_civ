@@ -65,7 +65,7 @@ ErrorCode imposeSanction(aoc::ecs::World& world,
 void liftSanction(GlobalSanctionTracker& tracker,
                   PlayerId sanctioner, PlayerId target,
                   SanctionType type) {
-    auto it = tracker.activeSanctions.begin();
+    std::vector<SanctionEntry>::iterator it = tracker.activeSanctions.begin();
     while (it != tracker.activeSanctions.end()) {
         if (it->sanctioner == sanctioner && it->target == target && it->type == type) {
             it = tracker.activeSanctions.erase(it);
@@ -123,7 +123,7 @@ void executeAssetFreeze(aoc::ecs::World& world,
     if (bondPool != nullptr) {
         for (uint32_t i = 0; i < bondPool->size(); ++i) {
             if (bondPool->data()[i].owner == target) {
-                auto& held = bondPool->data()[i].heldBonds;
+                std::vector<BondIssue>& held = bondPool->data()[i].heldBonds;
                 held.erase(
                     std::remove_if(held.begin(), held.end(),
                         [sanctioner](const BondIssue& b) {

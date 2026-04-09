@@ -56,7 +56,7 @@ uint32_t makeCacheKey(char ch, float fontSize) {
 const GlyphBitmap& getGlyph(char ch, float fontSize) {
     uint32_t key = makeCacheKey(ch, fontSize);
 
-    auto it = g_font.glyphCache.find(key);
+    std::unordered_map<uint32_t, GlyphBitmap>::iterator it = g_font.glyphCache.find(key);
     if (it != g_font.glyphCache.end()) {
         return it->second;
     }

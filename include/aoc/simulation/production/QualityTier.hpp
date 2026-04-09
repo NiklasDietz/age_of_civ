@@ -87,7 +87,7 @@ struct CityQualityComponent {
     /// Consume goods, preferring lowest quality first.
     /// Returns the average quality of the consumed goods.
     [[nodiscard]] float consumeGoods(uint16_t goodId, int32_t amount) {
-        auto it = this->qualities.find(goodId);
+        std::unordered_map<uint16_t, QualityBreakdown>::iterator it = this->qualities.find(goodId);
         if (it == this->qualities.end()) {
             return 0.0f;
         }
@@ -120,7 +120,7 @@ struct CityQualityComponent {
 
     /// Get the breakdown for a good.
     [[nodiscard]] QualityBreakdown getBreakdown(uint16_t goodId) const {
-        auto it = this->qualities.find(goodId);
+        std::unordered_map<uint16_t, QualityBreakdown>::const_iterator it = this->qualities.find(goodId);
         return (it != this->qualities.end()) ? it->second : QualityBreakdown{};
     }
 };

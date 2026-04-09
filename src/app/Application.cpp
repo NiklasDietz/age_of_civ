@@ -64,6 +64,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <utility>
 
 namespace aoc::sim {
 
@@ -178,7 +179,9 @@ ErrorCode Application::initialize(const Config& config) {
         return ErrorCode::VulkanDeviceCreationFailed;
     }
 
-    auto [fbWidth, fbHeight] = this->m_window.framebufferSize();
+    const std::pair<uint32_t, uint32_t> fbSize = this->m_window.framebufferSize();
+    const uint32_t fbWidth = fbSize.first;
+    const uint32_t fbHeight = fbSize.second;
     vulkan_app::RenderPipeline::Config pipelineConfig{};
     pipelineConfig.width  = fbWidth;
     pipelineConfig.height = fbHeight;
@@ -417,7 +420,9 @@ void Application::run() {
         this->m_inputManager.processFrame();
         this->m_window.pollEvents();
 
-        auto [fbWidth, fbHeight] = this->m_window.framebufferSize();
+        std::pair<uint32_t, uint32_t> fbSizePair = this->m_window.framebufferSize();
+        uint32_t fbWidth = fbSizePair.first;
+        uint32_t fbHeight = fbSizePair.second;
 
         // Detect framebuffer size changes that the GLFW callback may have missed
         // (e.g., window manager fullscreen toggle on Wayland)
@@ -438,8 +443,8 @@ void Application::run() {
                     this->m_settingsMenu.destroy(this->m_uiManager);
                 } else if (this->m_gameSetupScreen.isBuilt()) {
                     this->m_gameSetupScreen.destroy(this->m_uiManager);
-                    auto [sw, sh] = this->m_window.framebufferSize();
-                    this->buildMainMenu(static_cast<float>(sw), static_cast<float>(sh));
+                    const std::pair<uint32_t, uint32_t> menuSize = this->m_window.framebufferSize();
+                    this->buildMainMenu(static_cast<float>(menuSize.first), static_cast<float>(menuSize.second));
                 } else {
                     break;
                 }
@@ -839,9 +844,9 @@ void Application::showReturnToMenuConfirm() {
         return;  // Already showing
     }
 
-    auto [fw, fh] = this->m_window.framebufferSize();
-    float screenW = static_cast<float>(fw);
-    float screenH = static_cast<float>(fh);
+    const std::pair<uint32_t, uint32_t> confirmFbSize = this->m_window.framebufferSize();
+    float screenW = static_cast<float>(confirmFbSize.first);
+    float screenH = static_cast<float>(confirmFbSize.second);
 
     // Dark overlay + centered dialog
     this->m_confirmDialog = this->m_uiManager.createPanel(
@@ -875,6 +880,7 @@ void Application::showReturnToMenuConfirm() {
         row->childSpacing = 10.0f;
     }
 
+    // auto required: lambda type is unnameable
     auto makeDlgBtn = [this](aoc::ui::WidgetId parent, const std::string& label,
                               aoc::ui::Color normalColor, std::function<void()> onClick) {
         aoc::ui::ButtonData btn;
@@ -971,9 +977,9 @@ void Application::returnToMainMenu() {
 
     // Switch to main menu
     this->m_appState = AppState::MainMenu;
-    auto [fw, fh] = this->m_window.framebufferSize();
-    float screenW = static_cast<float>(fw);
-    float screenH = static_cast<float>(fh);
+    const std::pair<uint32_t, uint32_t> menuFbSize = this->m_window.framebufferSize();
+    float screenW = static_cast<float>(menuFbSize.first);
+    float screenH = static_cast<float>(menuFbSize.second);
 
     this->buildMainMenu(screenW, screenH);
 
@@ -1083,7 +1089,9 @@ void Application::handleSelect() {
         return;
     }
 
-    auto [fbWidth, fbHeight] = this->m_window.framebufferSize();
+    const std::pair<uint32_t, uint32_t> selectFbSize = this->m_window.framebufferSize();
+    const uint32_t fbWidth = selectFbSize.first;
+    const uint32_t fbHeight = selectFbSize.second;
     float worldX = 0.0f, worldY = 0.0f;
     this->m_cameraController.screenToWorld(
         this->m_inputManager.mouseX(), this->m_inputManager.mouseY(),
@@ -1149,7 +1157,9 @@ void Application::handleContextAction() {
         return;
     }
 
-    auto [fbWidth, fbHeight] = this->m_window.framebufferSize();
+    const std::pair<uint32_t, uint32_t> contextFbSize = this->m_window.framebufferSize();
+    const uint32_t fbWidth = contextFbSize.first;
+    const uint32_t fbHeight = contextFbSize.second;
     float worldX = 0.0f, worldY = 0.0f;
     this->m_cameraController.screenToWorld(
         this->m_inputManager.mouseX(), this->m_inputManager.mouseY(),
@@ -2271,8 +2281,8 @@ void Application::placeMapResources() {
 // ============================================================================
 
 void Application::buildHUD() {
-    auto [fbW, fbH] = this->m_window.framebufferSize();
-    float screenW = static_cast<float>(fbW);
+    const std::pair<uint32_t, uint32_t> hudFbSize = this->m_window.framebufferSize();
+    float screenW = static_cast<float>(hudFbSize.first);
 
     // ================================================================
     // Top bar: full width. Resources on left, buttons on right.
@@ -2288,6 +2298,7 @@ void Application::buildHUD() {
     }
 
     // Helper for top bar buttons
+    // auto required: lambda type is unnameable
     auto makeTopBtn = [this](aoc::ui::WidgetId parent, const std::string& label,
                               float width, std::function<void()> onClick) {
         aoc::ui::ButtonData btn;
@@ -2374,8 +2385,8 @@ void Application::buildHUD() {
             this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
         } else {
             // Open dropdown at top-right
-            auto [fw, fh] = this->m_window.framebufferSize();
-            float dropX = static_cast<float>(fw) - 120.0f;
+            const std::pair<uint32_t, uint32_t> dropFbSize = this->m_window.framebufferSize();
+            float dropX = static_cast<float>(dropFbSize.first) - 120.0f;
             float dropY = 34.0f;
 
             this->m_menuDropdown = this->m_uiManager.createPanel(
@@ -2387,6 +2398,7 @@ void Application::buildHUD() {
                 dp->childSpacing = 4.0f;
             }
 
+            // auto required: lambda type is unnameable
             auto makeDropBtn = [this](aoc::ui::WidgetId parent, const std::string& label,
                                        std::function<void()> onClick) {
                 aoc::ui::ButtonData btn;
@@ -2429,11 +2441,11 @@ void Application::buildHUD() {
             makeDropBtn(this->m_menuDropdown, "Settings", [this]() {
                 this->m_uiManager.removeWidget(this->m_menuDropdown);
                 this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
-                auto [sw, sh] = this->m_window.framebufferSize();
+                const std::pair<uint32_t, uint32_t> settingsFbSize = this->m_window.framebufferSize();
                 if (!this->m_settingsMenu.isBuilt()) {
                     this->m_settingsMenu.build(
                         this->m_uiManager,
-                        static_cast<float>(sw), static_cast<float>(sh),
+                        static_cast<float>(settingsFbSize.first), static_cast<float>(settingsFbSize.second),
                         [this]() {
                             aoc::ui::saveSettings(this->m_settingsMenu.settings(), "settings.cfg");
                             this->m_settingsMenu.destroy(this->m_uiManager);
@@ -2594,7 +2606,9 @@ void Application::updateHUD() {
     this->m_uiManager.setLabelText(this->m_selectionLabel, std::move(selText));
 
     // Position end turn button at bottom-right of screen
-    auto [fbWidth, fbHeight] = this->m_window.framebufferSize();
+    const std::pair<uint32_t, uint32_t> hudUpdateFbSize = this->m_window.framebufferSize();
+    const uint32_t fbWidth = hudUpdateFbSize.first;
+    const uint32_t fbHeight = hudUpdateFbSize.second;
     aoc::ui::Widget* endTurnPanel = this->m_uiManager.getWidget(this->m_endTurnButton);
     if (endTurnPanel != nullptr) {
         endTurnPanel->requestedBounds.x = static_cast<float>(fbWidth) - 150.0f;
@@ -2622,18 +2636,18 @@ void Application::updateHUD() {
                 if (city == nullptr || city->owner != 0) {
                     continue;
                 }
-                for (const auto& [goodId, amount] : stockPool->data()[i].goods) {
-                    totals[goodId] += amount;
+                for (const std::pair<const uint16_t, int32_t>& entry : stockPool->data()[i].goods) {
+                    totals[entry.first] += entry.second;
                 }
             }
             // Display top resources with amounts > 0
-            for (const auto& [goodId, amount] : totals) {
-                if (amount > 0 && goodId < aoc::sim::goodCount()) {
-                    const aoc::sim::GoodDef& def = aoc::sim::goodDef(goodId);
+            for (const std::pair<const uint16_t, int32_t>& entry : totals) {
+                if (entry.second > 0 && entry.first < aoc::sim::goodCount()) {
+                    const aoc::sim::GoodDef& def = aoc::sim::goodDef(entry.first);
                     if (!resText.empty()) {
                         resText += "  ";
                     }
-                    resText += std::string(def.name) + ":" + std::to_string(amount);
+                    resText += std::string(def.name) + ":" + std::to_string(entry.second);
                 }
             }
         }
@@ -2770,9 +2784,9 @@ void Application::rebuildUnitActionPanel() {
         this->m_world.getComponent<aoc::sim::UnitComponent>(this->m_selectedEntity);
     const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(unit.typeId);
 
-    auto [fbW, fbH] = this->m_window.framebufferSize();
-    const float screenW = static_cast<float>(fbW);
-    const float screenH = static_cast<float>(fbH);
+    const std::pair<uint32_t, uint32_t> actionFbSize = this->m_window.framebufferSize();
+    const float screenW = static_cast<float>(actionFbSize.first);
+    const float screenH = static_cast<float>(actionFbSize.second);
 
     // Count buttons to size the panel
     int32_t buttonCount = 2;  // Skip + Sleep always
@@ -2820,6 +2834,7 @@ void Application::rebuildUnitActionPanel() {
     const EntityId selectedEnt = this->m_selectedEntity;
     aoc::ecs::World* worldPtr = &this->m_world;
 
+    // auto required: lambda type is unnameable
     auto makeActionBtn = [this](const std::string& label,
                                  aoc::ui::Color normalColor,
                                  std::function<void()> onClick) {

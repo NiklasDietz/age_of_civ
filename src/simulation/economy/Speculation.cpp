@@ -110,7 +110,7 @@ ErrorCode releaseCommodity(aoc::ecs::World& world,
             continue;
         }
         CommodityHoardComponent& hoard = hoardPool->data()[i];
-        for (auto it = hoard.positions.begin(); it != hoard.positions.end(); ++it) {
+        for (std::vector<CommodityHoardComponent::HoardPosition>::iterator it = hoard.positions.begin(); it != hoard.positions.end(); ++it) {
             if (it->goodId == goodId) {
                 released = (amount <= 0) ? it->amount : std::min(amount, it->amount);
                 it->amount -= released;

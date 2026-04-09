@@ -5,9 +5,10 @@
  * @brief Fundamental types used across the entire Age of Civilization project.
  */
 
+#include <compare>
 #include <cstdint>
-#include <limits>
 #include <functional>
+#include <limits>
 
 namespace aoc {
 
@@ -65,7 +66,7 @@ struct StrongId {
     uint16_t value = std::numeric_limits<uint16_t>::max();
 
     constexpr bool operator==(const StrongId& other) const = default;
-    constexpr auto operator<=>(const StrongId& other) const = default;
+    constexpr std::strong_ordering operator<=>(const StrongId& other) const = default;
 
     [[nodiscard]] constexpr bool isValid() const {
         return this->value != std::numeric_limits<uint16_t>::max();

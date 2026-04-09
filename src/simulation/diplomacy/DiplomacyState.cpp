@@ -70,7 +70,7 @@ void DiplomacyManager::makePeace(PlayerId a, PlayerId b) {
     relAB.isAtWar = false;
     relBA.isAtWar = false;
 
-    // Remove permanent war modifiers, add peace modifier
+    // auto required: lambda type is unnameable
     auto removeWar = [](std::vector<RelationModifier>& mods) {
         mods.erase(
             std::remove_if(mods.begin(), mods.end(),
@@ -127,7 +127,7 @@ void DiplomacyManager::formEconomicAlliance(PlayerId a, PlayerId b) {
 
 void DiplomacyManager::tickModifiers() {
     for (PairwiseRelation& rel : this->m_relations) {
-        for (auto it = rel.modifiers.begin(); it != rel.modifiers.end(); ) {
+        for (std::vector<RelationModifier>::iterator it = rel.modifiers.begin(); it != rel.modifiers.end(); ) {
             if (it->turnsRemaining > 0) {
                 --it->turnsRemaining;
                 if (it->turnsRemaining == 0) {
@@ -156,6 +156,7 @@ void DiplomacyManager::setEmbargo(PlayerId a, PlayerId b, bool embargo) {
                  static_cast<unsigned>(a), static_cast<unsigned>(b));
     } else {
         // Remove embargo modifiers
+        // auto required: lambda type is unnameable
         auto removeEmbargo = [](std::vector<RelationModifier>& mods) {
             mods.erase(
                 std::remove_if(mods.begin(), mods.end(),

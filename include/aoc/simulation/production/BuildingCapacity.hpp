@@ -91,7 +91,7 @@ struct CityBuildingLevelsComponent {
     std::unordered_map<uint16_t, int32_t> levels;
 
     [[nodiscard]] int32_t getLevel(BuildingId id) const {
-        auto it = this->levels.find(id.value);
+        std::unordered_map<uint16_t, int32_t>::const_iterator it = this->levels.find(id.value);
         return (it != this->levels.end()) ? it->second : 1;
     }
 

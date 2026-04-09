@@ -90,7 +90,7 @@ void computeSupplyLines(aoc::ecs::World& world,
             }
 
             int32_t newDist = currentDist + 1;
-            auto it = supplyDistance.find(nbrIdx);
+            std::unordered_map<int32_t, int32_t>::iterator it = supplyDistance.find(nbrIdx);
             if (it == supplyDistance.end() || newDist < it->second) {
                 supplyDistance[nbrIdx] = newDist;
                 frontier.push(nbrIdx);
@@ -121,7 +121,7 @@ void computeSupplyLines(aoc::ecs::World& world,
         }
         if (supply == nullptr) { continue; }
 
-        auto it = supplyDistance.find(unitTileIdx);
+        std::unordered_map<int32_t, int32_t>::iterator it = supplyDistance.find(unitTileIdx);
         if (it != supplyDistance.end()) {
             supply->isSupplied = true;
             supply->distanceFromSupply = it->second;

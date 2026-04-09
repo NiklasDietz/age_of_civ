@@ -102,7 +102,7 @@ struct Blackboard {
 
     void set(const std::string& key, float val) { this->values[key] = val; }
     [[nodiscard]] float get(const std::string& key, float defaultVal = 0.0f) const {
-        auto it = this->values.find(key);
+        std::unordered_map<std::string, float>::const_iterator it = this->values.find(key);
         return (it != this->values.end()) ? it->second : defaultVal;
     }
 };
@@ -131,7 +131,7 @@ public:
         : m_name(std::move(nodeName)), m_children(std::move(children)) {}
 
     Status tick(Blackboard& bb) override {
-        for (auto& child : this->m_children) {
+        for (std::unique_ptr<Node>& child : this->m_children) {
             Status s = child->tick(bb);
             if (s != Status::Success) { return s; }
         }
@@ -152,7 +152,7 @@ public:
         : m_name(std::move(nodeName)), m_children(std::move(children)) {}
 
     Status tick(Blackboard& bb) override {
-        for (auto& child : this->m_children) {
+        for (std::unique_ptr<Node>& child : this->m_children) {
             Status s = child->tick(bb);
             if (s != Status::Failure) { return s; }
         }

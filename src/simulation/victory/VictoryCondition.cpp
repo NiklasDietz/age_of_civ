@@ -113,17 +113,17 @@ static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
         }
 
         // Average happiness and loyalty
-        for (auto& [pid, s] : stats) {
-            if (s.cityCount > 0) {
-                s.avgHappiness /= static_cast<float>(s.cityCount);
-                s.avgLoyalty /= static_cast<float>(s.cityCount);
+        for (std::pair<const PlayerId, PlayerRawStats>& entry : stats) {
+            if (entry.second.cityCount > 0) {
+                entry.second.avgHappiness /= static_cast<float>(entry.second.cityCount);
+                entry.second.avgLoyalty /= static_cast<float>(entry.second.cityCount);
             }
         }
     }
 
     // Culture
-    for (auto& [pid, s] : stats) {
-        s.culturePerTurn = computePlayerCulture(world, grid, pid);
+    for (std::pair<const PlayerId, PlayerRawStats>& entry : stats) {
+        entry.second.culturePerTurn = computePlayerCulture(world, grid, entry.first);
     }
 
     // Techs
@@ -211,21 +211,21 @@ static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
             }
             stats[route.sourcePlayer].tradeVolume += cargoValue;
         }
-        for (const auto& [pid, partners] : partnerSets) {
-            stats[pid].tradePartnerCount = static_cast<int32_t>(partners.size());
+        for (const std::pair<const PlayerId, std::unordered_set<PlayerId>>& entry : partnerSets) {
+            stats[entry.first].tradePartnerCount = static_cast<int32_t>(entry.second.size());
         }
     }
 
     // Improved tiles (count from grid)
-    for (auto& [pid, s] : stats) {
+    for (std::pair<const PlayerId, PlayerRawStats>& entry : stats) {
         // Count tiles owned by this player that have improvements
         int32_t improved = 0;
         for (int32_t t = 0; t < grid.tileCount(); ++t) {
-            if (grid.owner(t) == pid && grid.improvement(t) != aoc::map::ImprovementType::None) {
+            if (grid.owner(t) == entry.first && grid.improvement(t) != aoc::map::ImprovementType::None) {
                 ++improved;
             }
         }
-        s.improvedTiles = improved;
+        entry.second.improvedTiles = improved;
     }
 
     return stats;
@@ -237,7 +237,7 @@ static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
 
 void computeCSI(aoc::ecs::World& world, const aoc::map::HexGrid& grid,
                 const EconomySimulation& economy) {
-    auto stats = gatherPlayerStats(world, grid, economy);
+    std::unordered_map<PlayerId, PlayerRawStats> stats = gatherPlayerStats(world, grid, economy);
     if (stats.empty()) {
         return;
     }
@@ -248,14 +248,14 @@ void computeCSI(aoc::ecs::World& world, const aoc::map::HexGrid& grid,
     float avgGDP = 0.0f, avgMilitary = 0.0f, avgCulture = 0.0f, avgTech = 0.0f;
     float avgCities = 0.0f, avgPop = 0.0f, avgTreasury = 0.0f;
 
-    for (const auto& [pid, s] : stats) {
-        avgGDP += static_cast<float>(s.gdp);
-        avgMilitary += s.totalCombatStrength;
-        avgCulture += s.culturePerTurn + static_cast<float>(s.wonderCount) * 10.0f;
-        avgTech += static_cast<float>(s.techsResearched);
-        avgCities += static_cast<float>(s.cityCount);
-        avgPop += static_cast<float>(s.totalPopulation);
-        avgTreasury += static_cast<float>(s.treasury);
+    for (const std::pair<const PlayerId, PlayerRawStats>& entry : stats) {
+        avgGDP += static_cast<float>(entry.second.gdp);
+        avgMilitary += entry.second.totalCombatStrength;
+        avgCulture += entry.second.culturePerTurn + static_cast<float>(entry.second.wonderCount) * 10.0f;
+        avgTech += static_cast<float>(entry.second.techsResearched);
+        avgCities += static_cast<float>(entry.second.cityCount);
+        avgPop += static_cast<float>(entry.second.totalPopulation);
+        avgTreasury += static_cast<float>(entry.second.treasury);
     }
 
     float invCount = 1.0f / static_cast<float>(std::max(1, playerCount));
@@ -267,7 +267,7 @@ void computeCSI(aoc::ecs::World& world, const aoc::map::HexGrid& grid,
     avgPop *= invCount;
     avgTreasury *= invCount;
 
-    // Avoid division by zero: if average is 0, everyone scores 1.0
+    // auto required: lambda type is unnameable
     auto relScore = [](float value, float avg) -> float {
         if (avg < 0.01f) { return 1.0f; }
         return value / avg;
@@ -282,7 +282,7 @@ void computeCSI(aoc::ecs::World& world, const aoc::map::HexGrid& grid,
 
     for (uint32_t i = 0; i < trackerPool->size(); ++i) {
         VictoryTrackerComponent& tracker = trackerPool->data()[i];
-        auto it = stats.find(tracker.owner);
+        std::unordered_map<PlayerId, PlayerRawStats>::iterator it = stats.find(tracker.owner);
         if (it == stats.end()) {
             continue;
         }

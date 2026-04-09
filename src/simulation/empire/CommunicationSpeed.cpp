@@ -261,7 +261,7 @@ void processCommunication(aoc::ecs::World& world, const aoc::map::HexGrid& grid)
 
         // Apply loyalty penalties from communication distance
         for (int32_t c = 0; c < comm.cityCount; ++c) {
-            const auto& cityComm = comm.cities[c];
+            const PlayerCommunicationComponent::CityCommData& cityComm = comm.cities[c];
             CityCommModifiers mods = computeCityCommModifiers(cityComm);
 
             if (mods.loyaltyPenalty > 0.01f) {

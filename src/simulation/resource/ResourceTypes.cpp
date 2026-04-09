@@ -19,7 +19,7 @@ namespace {
 constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     std::array<GoodDef, goods::GOOD_COUNT> defs{};
 
-    for (auto& d : defs) {
+    for (GoodDef& d : defs) {
         d = {0, "Unknown", GoodCategory::RawBonus, 10, false, 0.5f};
     }
 

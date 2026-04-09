@@ -1006,9 +1006,9 @@ void writeProductionExpSection(WriteBuffer& out, const aoc::ecs::World& world) {
             const aoc::sim::CityProductionExperienceComponent& c = pool->data()[i];
             section.writeU32(pool->entities()[i].index);
             section.writeU32(static_cast<uint32_t>(c.recipeExperience.size()));
-            for (const auto& [recipeId, exp] : c.recipeExperience) {
-                section.writeU16(recipeId);
-                section.writeI32(exp);
+            for (const std::pair<const uint16_t, int32_t>& entry : c.recipeExperience) {
+                section.writeU16(entry.first);
+                section.writeI32(entry.second);
             }
         }
     }
@@ -1026,9 +1026,9 @@ void writeBuildingLevelsSection(WriteBuffer& out, const aoc::ecs::World& world) 
             const aoc::sim::CityBuildingLevelsComponent& c = pool->data()[i];
             section.writeU32(pool->entities()[i].index);
             section.writeU32(static_cast<uint32_t>(c.levels.size()));
-            for (const auto& [bid, lvl] : c.levels) {
-                section.writeU16(bid);
-                section.writeI32(lvl);
+            for (const std::pair<const uint16_t, int32_t>& entry : c.levels) {
+                section.writeU16(entry.first);
+                section.writeI32(entry.second);
             }
         }
     }

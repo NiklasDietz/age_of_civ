@@ -255,7 +255,7 @@ void EconomySimulation::executeProduction(aoc::ecs::World& world,
 
             // Power efficiency
             float powerEff = 1.0f;
-            auto powerIt = cityPowerEfficiency.find(cityEntity.index);
+            std::unordered_map<uint32_t, float>::iterator powerIt = cityPowerEfficiency.find(cityEntity.index);
             if (powerIt != cityPowerEfficiency.end()) {
                 powerEff = powerIt->second;
             }
@@ -412,11 +412,11 @@ void EconomySimulation::reportToMarket(aoc::ecs::World& world) {
     for (uint32_t i = 0; i < stockpilePool->size(); ++i) {
         const CityStockpileComponent& stockpile = stockpilePool->data()[i];
 
-        for (const auto& [goodId, amount] : stockpile.goods) {
-            if (amount > 0) {
-                this->m_market.reportSupply(goodId, amount);
-            } else if (amount < 0) {
-                this->m_market.reportDemand(goodId, -amount);
+        for (const std::pair<const uint16_t, int32_t>& entry : stockpile.goods) {
+            if (entry.second > 0) {
+                this->m_market.reportSupply(entry.first, entry.second);
+            } else if (entry.second < 0) {
+                this->m_market.reportDemand(entry.first, -entry.second);
             }
         }
 
@@ -533,10 +533,10 @@ void EconomySimulation::executeMonetaryPolicy(aoc::ecs::World& world) {
                 }
 
                 const CityStockpileComponent& stockpile = stockpilePool->data()[j];
-                for (const auto& [goodId, amount] : stockpile.goods) {
-                    if (amount > 0) {
-                        currentGDP += static_cast<CurrencyAmount>(amount)
-                                    * static_cast<CurrencyAmount>(this->m_market.price(goodId));
+                for (const std::pair<const uint16_t, int32_t>& entry : stockpile.goods) {
+                    if (entry.second > 0) {
+                        currentGDP += static_cast<CurrencyAmount>(entry.second)
+                                    * static_cast<CurrencyAmount>(this->m_market.price(entry.first));
                     }
                 }
             }
@@ -596,7 +596,7 @@ void EconomySimulation::settleTradeInCoins(aoc::ecs::World& world) {
         }
 
         if (cargoValue > 0) {
-            auto key = std::make_pair(route.sourcePlayer, route.destPlayer);
+            std::pair<PlayerId, PlayerId> key = std::make_pair(route.sourcePlayer, route.destPlayer);
             tradeFlows[key] += cargoValue;
         }
     }
@@ -617,9 +617,9 @@ void EconomySimulation::settleTradeInCoins(aoc::ecs::World& world) {
 
     // Process settled pairs (only process A->B, not B->A separately)
     std::unordered_set<uint64_t> processed;
-    for (const auto& [pair, flow] : tradeFlows) {
-        PlayerId pA = pair.first;
-        PlayerId pB = pair.second;
+    for (const std::pair<const std::pair<PlayerId, PlayerId>, int32_t>& entry : tradeFlows) {
+        PlayerId pA = entry.first.first;
+        PlayerId pB = entry.first.second;
 
         uint64_t pairKey = (static_cast<uint64_t>(std::min(pA, pB)) << 32)
                          | static_cast<uint64_t>(std::max(pA, pB));
@@ -629,9 +629,9 @@ void EconomySimulation::settleTradeInCoins(aoc::ecs::World& world) {
         processed.insert(pairKey);
 
         // Net flow: positive means B owes A (A is net exporter)
-        int32_t flowAtoB = flow;
-        auto reverseKey = std::make_pair(pB, pA);
-        auto reverseIt = tradeFlows.find(reverseKey);
+        int32_t flowAtoB = entry.second;
+        std::pair<PlayerId, PlayerId> reverseKey = std::make_pair(pB, pA);
+        std::unordered_map<std::pair<PlayerId, PlayerId>, int32_t, PlayerPairHash>::iterator reverseIt = tradeFlows.find(reverseKey);
         int32_t flowBtoA = (reverseIt != tradeFlows.end()) ? reverseIt->second : 0;
         int32_t netBalance = flowAtoB - flowBtoA;
 
@@ -644,8 +644,8 @@ void EconomySimulation::settleTradeInCoins(aoc::ecs::World& world) {
         PlayerId receiver = (netBalance > 0) ? pA : pB;
         int32_t paymentValue = std::abs(netBalance);
 
-        auto payerIt = playerToMonetary.find(payer);
-        auto recvIt  = playerToMonetary.find(receiver);
+        std::unordered_map<PlayerId, uint32_t>::iterator payerIt = playerToMonetary.find(payer);
+        std::unordered_map<PlayerId, uint32_t>::iterator recvIt  = playerToMonetary.find(receiver);
         if (payerIt == playerToMonetary.end() || recvIt == playerToMonetary.end()) {
             continue;
         }

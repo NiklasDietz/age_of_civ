@@ -122,8 +122,8 @@ void settleFutures(aoc::ecs::World& world, Market& market) {
     if (futuresPool == nullptr) { return; }
 
     for (uint32_t p = 0; p < futuresPool->size(); ++p) {
-        auto& contracts = futuresPool->data()[p].contracts;
-        auto it = contracts.begin();
+        std::vector<FuturesContract>& contracts = futuresPool->data()[p].contracts;
+        std::vector<FuturesContract>::iterator it = contracts.begin();
         while (it != contracts.end()) {
             --it->turnsToSettlement;
             if (it->turnsToSettlement <= 0) {

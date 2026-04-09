@@ -250,7 +250,7 @@ bool UIManager::handleInput(float mouseX, float mouseY,
 
 WidgetId UIManager::hitTest(float x, float y) const {
     // Test root widgets in reverse order (last = topmost)
-    for (auto it = this->m_rootWidgets.rbegin(); it != this->m_rootWidgets.rend(); ++it) {
+    for (std::vector<WidgetId>::const_reverse_iterator it = this->m_rootWidgets.rbegin(); it != this->m_rootWidgets.rend(); ++it) {
         WidgetId result = this->hitTestWidget(*it, x, y);
         if (result != INVALID_WIDGET) {
             return result;
@@ -270,7 +270,7 @@ WidgetId UIManager::hitTestWidget(WidgetId id, float x, float y) const {
     }
 
     // Test children in reverse order (topmost first)
-    for (auto it = w->children.rbegin(); it != w->children.rend(); ++it) {
+    for (std::vector<WidgetId>::const_reverse_iterator it = w->children.rbegin(); it != w->children.rend(); ++it) {
         WidgetId result = this->hitTestWidget(*it, x, y);
         if (result != INVALID_WIDGET) {
             return result;
@@ -368,6 +368,7 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d,
 
     const float scale = this->m_renderScale;
 
+    // auto required: generic lambda template parameter
     std::visit([&](const auto& data) {
         using T = std::decay_t<decltype(data)>;
 

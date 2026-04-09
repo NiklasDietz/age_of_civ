@@ -80,7 +80,7 @@ ErrorCode establishEconomicZone(aoc::ecs::World& world,
 }
 
 void dissolveEconomicZone(GlobalEconomicZoneTracker& tracker, EntityId hostCity) {
-    auto it = tracker.zones.begin();
+    std::vector<EconomicZone>::iterator it = tracker.zones.begin();
     while (it != tracker.zones.end()) {
         if (it->hostCityEntity == hostCity) {
             LOG_INFO("Economic zone dissolved in city entity %u",
@@ -96,7 +96,7 @@ void processEconomicZones(aoc::ecs::World& world,
                           const aoc::map::HexGrid& /*grid*/,
                           const Market& market,
                           GlobalEconomicZoneTracker& tracker) {
-    auto it = tracker.zones.begin();
+    std::vector<EconomicZone>::iterator it = tracker.zones.begin();
     while (it != tracker.zones.end()) {
         EconomicZone& zone = *it;
         ++zone.turnsActive;
@@ -118,11 +118,11 @@ void processEconomicZones(aoc::ecs::World& world,
 
         // Extract raw resources (categories: RawStrategic, RawLuxury, RawBonus)
         CurrencyAmount totalExtractedValue = 0;
-        for (auto& [goodId, amount] : hostStockpile->goods) {
-            if (amount <= 0) {
+        for (std::pair<const uint16_t, int32_t>& entry : hostStockpile->goods) {
+            if (entry.second <= 0) {
                 continue;
             }
-            const GoodDef& def = goodDef(goodId);
+            const GoodDef& def = goodDef(entry.first);
             bool isRaw = def.category == GoodCategory::RawStrategic
                       || def.category == GoodCategory::RawLuxury
                       || def.category == GoodCategory::RawBonus;
@@ -131,13 +131,13 @@ void processEconomicZones(aoc::ecs::World& world,
             }
 
             int32_t extracted = static_cast<int32_t>(
-                static_cast<float>(amount) * zone.extractionRate);
+                static_cast<float>(entry.second) * zone.extractionRate);
             if (extracted <= 0) {
                 continue;
             }
 
             // Remove from host
-            amount -= extracted;
+            entry.second -= extracted;
 
             // Add to colonizer's first city
             aoc::ecs::ComponentPool<CityComponent>* cityPool =
@@ -149,7 +149,7 @@ void processEconomicZones(aoc::ecs::World& world,
                         CityStockpileComponent* colStockpile =
                             world.tryGetComponent<CityStockpileComponent>(colCity);
                         if (colStockpile != nullptr) {
-                            colStockpile->addGoods(goodId, extracted);
+                            colStockpile->addGoods(entry.first, extracted);
                         }
                         break;
                     }
@@ -157,7 +157,7 @@ void processEconomicZones(aoc::ecs::World& world,
             }
 
             totalExtractedValue += static_cast<CurrencyAmount>(extracted)
-                                 * static_cast<CurrencyAmount>(market.price(goodId));
+                                 * static_cast<CurrencyAmount>(market.price(entry.first));
         }
 
         // Pay the host a fraction of market value

@@ -215,6 +215,7 @@ void ScoreScreen::open(UIManager& ui) {
 
         // Helper to pad number to 6 chars
         constexpr std::size_t COL_WIDTH = 6;
+        // auto required: lambda type is unnameable
         const auto padNum = [](int32_t val) -> std::string {
             std::string s = std::to_string(val);
             while (s.size() < COL_WIDTH) {

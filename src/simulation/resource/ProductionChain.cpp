@@ -33,7 +33,7 @@ void ProductionChain::build() {
 
     for (std::size_t i = 0; i < recipes.size(); ++i) {
         for (const RecipeInput& input : recipes[i].inputs) {
-            auto it = producerMap.find(input.goodId);
+            std::unordered_map<uint16_t, std::vector<std::size_t>>::iterator it = producerMap.find(input.goodId);
             if (it != producerMap.end()) {
                 for (std::size_t producerIdx : it->second) {
                     // producerIdx must execute before i

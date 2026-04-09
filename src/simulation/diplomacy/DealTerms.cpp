@@ -92,7 +92,7 @@ void breakDeal(aoc::ecs::World& /*world*/, GlobalDealTracker& tracker,
 }
 
 void processDeals(aoc::ecs::World& world, GlobalDealTracker& tracker) {
-    auto it = tracker.activeDeals.begin();
+    std::vector<DiplomaticDeal>::iterator it = tracker.activeDeals.begin();
     while (it != tracker.activeDeals.end()) {
         if (!it->isAccepted || it->isBroken) {
             ++it;

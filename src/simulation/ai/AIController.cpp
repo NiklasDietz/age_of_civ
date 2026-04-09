@@ -1456,8 +1456,8 @@ void AIController::manageEconomy(aoc::ecs::World& world,
         if (stockpile == nullptr) {
             continue;
         }
-        for (const auto& [goodId, amount] : stockpile->goods) {
-            totalStockpile[goodId] += amount;
+        for (const std::pair<const uint16_t, int32_t>& entry : stockpile->goods) {
+            totalStockpile[entry.first] += entry.second;
         }
     }
 
