@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/tech/CivicTree.hpp"
+#include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <cassert>
@@ -68,16 +69,36 @@ uint16_t civicCount() {
     return static_cast<uint16_t>(getCivics().size());
 }
 
-bool advanceCivicResearch(PlayerCivicComponent& civic, float culturePoints) {
+bool advanceCivicResearch(PlayerCivicComponent& civic, float culturePoints,
+                          PlayerGovernmentComponent* gov) {
     if (!civic.currentResearch.isValid()) {
         return false;
     }
     civic.researchProgress += culturePoints;
     const CivicDef& def = civicDef(civic.currentResearch);
     if (civic.researchProgress >= static_cast<float>(def.cultureCost)) {
-        LOG_INFO("Player %u completed: %.*s",
+        LOG_INFO("Player %u completed civic: %.*s",
                  static_cast<unsigned>(civic.owner),
                  static_cast<int>(def.name.size()), def.name.data());
+
+        // Unlock governments and policies from this civic
+        if (gov != nullptr) {
+            for (uint8_t gid : def.unlockedGovernmentIds) {
+                if (gid < GOVERNMENT_COUNT) {
+                    gov->unlockGovernment(static_cast<GovernmentType>(gid));
+                    LOG_INFO("Player %u unlocked government: %.*s",
+                             static_cast<unsigned>(civic.owner),
+                             static_cast<int>(governmentDef(static_cast<GovernmentType>(gid)).name.size()),
+                             governmentDef(static_cast<GovernmentType>(gid)).name.data());
+                }
+            }
+            for (uint8_t pid : def.unlockedPolicyIds) {
+                if (pid < POLICY_CARD_COUNT) {
+                    gov->unlockPolicy(pid);
+                }
+            }
+        }
+
         civic.completeResearch();
         return true;
     }

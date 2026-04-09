@@ -103,6 +103,7 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
         assignFeatures(config, outGrid, rng);
         generateRivers(outGrid, rng);
         placeNaturalWonders(outGrid, rng);
+        placeBasicResources(config, outGrid, rng);
     }
 }
 
@@ -1007,6 +1008,101 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
 
     (void)config;  // mapSize/type already used indirectly
     LOG_INFO("Geology-based resource placement: %d resources placed", totalPlaced);
+}
+
+// ============================================================================
+// Basic resource placement for non-Realistic map types
+// ============================================================================
+
+void MapGenerator::placeBasicResources(const Config& config, HexGrid& grid,
+                                        aoc::Random& rng) {
+    const int32_t width = grid.width();
+    const int32_t height = grid.height();
+    int32_t totalPlaced = 0;
+
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            int32_t index = row * width + col;
+            TerrainType terrain = grid.terrain(index);
+            FeatureType feature = grid.feature(index);
+
+            if (isWater(terrain) || isImpassable(terrain)) {
+                continue;
+            }
+
+            ResourceId placed{};
+
+            // Hills/mountains area: strategic metals
+            if (feature == FeatureType::Hills) {
+                if (rng.chance(0.08f))      { placed = ResourceId{aoc::sim::goods::IRON_ORE}; }
+                else if (rng.chance(0.05f)) { placed = ResourceId{aoc::sim::goods::COPPER_ORE}; }
+                else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::GOLD_ORE}; }
+                else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::SILVER_ORE}; }
+                else if (rng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::COAL}; }
+                else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::TIN}; }
+                else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::STONE}; }
+            }
+            // Desert: oil, incense
+            else if (terrain == TerrainType::Desert) {
+                if (rng.chance(0.04f))      { placed = ResourceId{aoc::sim::goods::OIL}; }
+                else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::INCENSE}; }
+            }
+            // Forest/jungle: wood, rubber, spices, dyes
+            else if (feature == FeatureType::Forest) {
+                if (rng.chance(0.08f))      { placed = ResourceId{aoc::sim::goods::WOOD}; }
+                else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::FURS}; }
+            }
+            else if (feature == FeatureType::Jungle) {
+                if (rng.chance(0.04f))      { placed = ResourceId{aoc::sim::goods::RUBBER}; }
+                else if (rng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::SPICES}; }
+                else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::DYES}; }
+                else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::SUGAR}; }
+            }
+            // Grassland: food, cotton, horses
+            else if (terrain == TerrainType::Grassland) {
+                if (rng.chance(0.06f))      { placed = ResourceId{aoc::sim::goods::WHEAT}; }
+                else if (rng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::CATTLE}; }
+                else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::COTTON}; }
+                else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::HORSES}; }
+            }
+            // Plains: food, stone, horses, niter
+            else if (terrain == TerrainType::Plains) {
+                if (rng.chance(0.05f))      { placed = ResourceId{aoc::sim::goods::WHEAT}; }
+                else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::HORSES}; }
+                else if (rng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::STONE}; }
+                else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::NITER}; }
+                else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::WOOD}; }
+            }
+            // Tundra: furs, gems
+            else if (terrain == TerrainType::Tundra) {
+                if (rng.chance(0.04f))      { placed = ResourceId{aoc::sim::goods::FURS}; }
+                else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::GEMS}; }
+                else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::COAL}; }
+            }
+
+            // Coastal tiles: fish
+            if (!placed.isValid() && terrain == TerrainType::Grassland) {
+                hex::AxialCoord axial = hex::offsetToAxial({col, row});
+                std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(axial);
+                for (const hex::AxialCoord& n : nbrs) {
+                    if (grid.isValid(n) && isWater(grid.terrain(grid.toIndex(n)))) {
+                        if (rng.chance(0.06f)) {
+                            placed = ResourceId{aoc::sim::goods::FISH};
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if (placed.isValid()) {
+                grid.setResource(index, placed);
+                ++totalPlaced;
+            }
+        }
+    }
+
+    (void)config;
+    LOG_INFO("Basic resource placement: %d resources placed", totalPlaced);
 }
 
 } // namespace aoc::map

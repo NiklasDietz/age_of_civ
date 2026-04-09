@@ -1556,9 +1556,14 @@ void Application::handleEndTurn() {
                 }
             });
         this->m_world.forEach<aoc::sim::PlayerCivicComponent>(
-            [totalCulture, &civicCompleted](EntityId, aoc::sim::PlayerCivicComponent& civic) {
+            [this, totalCulture, &civicCompleted](EntityId, aoc::sim::PlayerCivicComponent& civic) {
                 if (civic.owner == 0) {
-                    civicCompleted = aoc::sim::advanceCivicResearch(civic, totalCulture);
+                    aoc::sim::PlayerGovernmentComponent* gov = nullptr;
+                    this->m_world.forEach<aoc::sim::PlayerGovernmentComponent>(
+                        [&gov](EntityId, aoc::sim::PlayerGovernmentComponent& g) {
+                            if (g.owner == 0) { gov = &g; }
+                        });
+                    civicCompleted = aoc::sim::advanceCivicResearch(civic, totalCulture, gov);
                 }
             });
 

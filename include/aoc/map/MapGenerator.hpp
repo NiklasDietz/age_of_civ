@@ -82,6 +82,9 @@ private:
 
     /// Place resources based on geology zones (Realistic map type).
     static void placeGeologyResources(const Config& config, HexGrid& grid, aoc::Random& rng);
+
+    /// Place resources using simple terrain-based rules (non-Realistic map types).
+    static void placeBasicResources(const Config& config, HexGrid& grid, aoc::Random& rng);
 };
 
 } // namespace aoc::map

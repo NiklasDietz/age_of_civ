@@ -72,6 +72,10 @@ struct PlayerCivicComponent {
     }
 };
 
-bool advanceCivicResearch(PlayerCivicComponent& civic, float culturePoints);
+struct PlayerGovernmentComponent;
+
+/// Advance civic research. If gov is non-null, unlocks governments/policies on completion.
+bool advanceCivicResearch(PlayerCivicComponent& civic, float culturePoints,
+                          PlayerGovernmentComponent* gov = nullptr);
 
 } // namespace aoc::sim

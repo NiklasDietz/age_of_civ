@@ -31,6 +31,7 @@
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/ai/AIEconomicStrategy.hpp"
+#include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -466,20 +467,6 @@ void AIController::executeCityActions(aoc::ecs::World& world,
     const UnitTypeId bestMilitaryId = bestAvailableMilitaryUnit(world, this->m_player);
     const UnitTypeDef& bestMilitaryDef = unitTypeDef(bestMilitaryId);
 
-    // Building priority order for city center buildings
-    // Cheap / high-value buildings first
-    static constexpr std::array<uint16_t, 9> BUILDING_PRIORITY = {{
-        16,  // Monument (cheapest, culture)
-        15,  // Granary (food/production placeholder)
-        1,   // Workshop
-        7,   // Library (if Campus exists)
-        6,   // Market (if Commercial exists)
-        0,   // Forge
-        19,  // University (if Campus exists)
-        20,  // Bank (if Commercial exists)
-        3,   // Factory
-    }};
-
     bool settlerEnqueued = false;  // Only produce one settler across all cities
     bool builderEnqueued = false;  // Only produce one builder across all cities
 
@@ -507,7 +494,7 @@ void AIController::executeCityActions(aoc::ecs::World& world,
         ProductionQueueItem item{};
 
         // Priority 1: Settler if conditions met and this city has pop > 3
-        if (needsSettler && !settlerEnqueued && city.population > 3) {
+        if (needsSettler && !settlerEnqueued && city.population >= 2) {
             item.type = ProductionItemType::Unit;
             item.itemId = 3;  // Settler
             item.name = "Settler";
@@ -542,66 +529,75 @@ void AIController::executeCityActions(aoc::ecs::World& world,
                      bestMilitaryDef.name.data(),
                      city.name.c_str());
         }
-        // Priority 4: Buildings -- pick the most valuable one we can build
+        // Priority 4+5: Districts, then Buildings, then Fallback
         else {
-            bool enqueuedBuilding = false;
+            bool enqueuedSomething = false;
 
-            {
-                // First try priority-ordered buildings with tech gating
-                for (const uint16_t buildingIdx : BUILDING_PRIORITY) {
-                    if (buildingIdx >= BUILDING_DEFS.size()) {
-                        continue;
-                    }
-                    const BuildingDef& bdef = BUILDING_DEFS[buildingIdx];
-                    if (!canBuildBuilding(world, this->m_player, cityEntity, bdef.id)) {
-                        continue;
-                    }
+            // --- 4a: Districts the city is missing ---
+            const CityDistrictsComponent* existingDistricts =
+                world.tryGetComponent<CityDistrictsComponent>(cityEntity);
+
+            static constexpr DistrictType DISTRICT_PRIORITY[] = {
+                DistrictType::Commercial, DistrictType::Campus,
+                DistrictType::Industrial, DistrictType::Encampment,
+                DistrictType::Harbor,
+            };
+            static constexpr int32_t DISTRICT_COSTS[] = {60, 55, 60, 55, 70};
+
+            for (int32_t di = 0; di < 5 && !enqueuedSomething; ++di) {
+                DistrictType dtype = DISTRICT_PRIORITY[di];
+                bool alreadyHas = (existingDistricts != nullptr
+                                   && existingDistricts->hasDistrict(dtype));
+                if (!alreadyHas) {
+                    item.type = ProductionItemType::District;
+                    item.itemId = static_cast<uint16_t>(dtype);
+                    item.name = std::string(districtTypeName(dtype));
+                    item.totalCost = static_cast<float>(DISTRICT_COSTS[di]);
+                    item.progress = 0.0f;
+                    enqueuedSomething = true;
+                }
+            }
+
+            // --- 4b: Buildings (if no district queued) ---
+            if (!enqueuedSomething) {
+                static constexpr uint16_t BLDG_PRIO[] = {
+                    16, 15, 1, 7, 6, 24, 0, 20, 19, 3, 26, 4, 12
+                };
+                for (uint16_t bidx : BLDG_PRIO) {
+                    if (bidx >= BUILDING_DEFS.size()) { continue; }
+                    const BuildingDef& bdef = BUILDING_DEFS[bidx];
+                    if (!canBuildBuilding(world, this->m_player, cityEntity, bdef.id)) { continue; }
                     item.type = ProductionItemType::Building;
                     item.itemId = bdef.id.value;
                     item.name = std::string(bdef.name);
                     item.totalCost = static_cast<float>(bdef.productionCost);
                     item.progress = 0.0f;
-                    enqueuedBuilding = true;
-                    LOG_INFO("AI %u Enqueued %.*s in %s",
-                             static_cast<unsigned>(this->m_player),
-                             static_cast<int>(bdef.name.size()), bdef.name.data(),
-                             city.name.c_str());
+                    enqueuedSomething = true;
                     break;
-                }
-
-                // If none of the priority buildings worked, try any building
-                if (!enqueuedBuilding) {
-                    for (const BuildingDef& bdef : BUILDING_DEFS) {
-                        if (!canBuildBuilding(world, this->m_player, cityEntity, bdef.id)) {
-                            continue;
-                        }
-                        item.type = ProductionItemType::Building;
-                        item.itemId = bdef.id.value;
-                        item.name = std::string(bdef.name);
-                        item.totalCost = static_cast<float>(bdef.productionCost);
-                        item.progress = 0.0f;
-                        enqueuedBuilding = true;
-                        LOG_INFO("AI %u Enqueued %.*s in %s",
-                                 static_cast<unsigned>(this->m_player),
-                                 static_cast<int>(bdef.name.size()), bdef.name.data(),
-                                 city.name.c_str());
-                        break;
-                    }
                 }
             }
 
-            // Priority 5: Fallback -- produce best military unit
-            if (!enqueuedBuilding) {
+            // Try any building
+            if (!enqueuedSomething) {
+                for (const BuildingDef& bdef : BUILDING_DEFS) {
+                    if (!canBuildBuilding(world, this->m_player, cityEntity, bdef.id)) { continue; }
+                    item.type = ProductionItemType::Building;
+                    item.itemId = bdef.id.value;
+                    item.name = std::string(bdef.name);
+                    item.totalCost = static_cast<float>(bdef.productionCost);
+                    item.progress = 0.0f;
+                    enqueuedSomething = true;
+                    break;
+                }
+            }
+
+            // --- 4c: Fallback -- produce best military unit ---
+            if (!enqueuedSomething) {
                 item.type = ProductionItemType::Unit;
                 item.itemId = bestMilitaryId.value;
                 item.name = std::string(bestMilitaryDef.name);
                 item.totalCost = static_cast<float>(bestMilitaryDef.productionCost);
                 item.progress = 0.0f;
-                LOG_INFO("AI %u Enqueued %.*s (fallback) in %s",
-                         static_cast<unsigned>(this->m_player),
-                         static_cast<int>(bestMilitaryDef.name.size()),
-                         bestMilitaryDef.name.data(),
-                         city.name.c_str());
             }
         }
 

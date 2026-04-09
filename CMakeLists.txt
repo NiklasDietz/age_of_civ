@@ -63,6 +63,9 @@ add_library(aoc_lib STATIC
     src/simulation/city/CityBombardment.cpp
     src/simulation/map/Improvement.cpp
     src/simulation/map/Infrastructure.cpp
+    src/simulation/map/TerrainModification.cpp
+    src/simulation/unit/SupplyLines.cpp
+    src/simulation/event/WorldEvents.cpp
     src/simulation/barbarian/BarbarianController.cpp
     src/simulation/barbarian/BarbarianClans.cpp
     src/simulation/climate/NaturalDisasters.cpp
@@ -71,11 +74,13 @@ add_library(aoc_lib STATIC
     src/simulation/diplomacy/WarWeariness.cpp
     src/simulation/diplomacy/Grievance.cpp
     src/simulation/diplomacy/WorldCongress.cpp
+    src/simulation/diplomacy/DealTerms.cpp
     src/simulation/climate/Climate.cpp
     src/simulation/victory/VictoryCondition.cpp
     src/simulation/government/Government.cpp
     src/simulation/ai/AIController.cpp
     src/simulation/ai/AIEconomicStrategy.cpp
+    src/simulation/ai/LeaderPersonality.cpp
     src/simulation/resource/ResourceTypes.cpp
     src/simulation/resource/ProductionChain.cpp
     src/simulation/resource/EconomySimulation.cpp
@@ -210,6 +215,16 @@ add_custom_command(TARGET age_of_civ POST_BUILD
         $<TARGET_FILE_DIR:age_of_civ>/shaders
     COMMENT "Symlinking shaders to build output directory"
 )
+
+# --------------------------------------------------------------------------
+# Headless simulation tool (AI-vs-AI for analysis)
+# --------------------------------------------------------------------------
+
+add_executable(aoc_simulate src/tools/HeadlessSimulation.cpp)
+target_link_libraries(aoc_simulate PRIVATE aoc_lib)
+
+# Provide a main() for the headless tool
+target_compile_definitions(aoc_simulate PRIVATE AOC_HEADLESS_MAIN)
 
 # --------------------------------------------------------------------------
 # Tests (optional)
