@@ -5,6 +5,7 @@
 
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
+#include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
@@ -16,6 +17,8 @@
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
 #include "aoc/simulation/production/Waste.hpp"
 #include "aoc/ecs/World.hpp"
+
+#include <cmath>
 
 namespace aoc::sim {
 
@@ -97,6 +100,29 @@ void computeCityHappiness(aoc::ecs::World& world, PlayerId player) {
             }
         }
 
+        // Amenity bonus from buildings (districts and their buildings provide comfort)
+        const CityDistrictsComponent* districts =
+            world.tryGetComponent<CityDistrictsComponent>(cityEntity);
+        if (districts != nullptr) {
+            // Each district beyond CityCenter adds +0.5 amenity (urban services)
+            for (const CityDistrictsComponent::PlacedDistrict& d : districts->districts) {
+                if (d.type != DistrictType::CityCenter) {
+                    happiness.amenities += 0.5f;
+                }
+                // Specific buildings that provide amenities
+                for (BuildingId bid : d.buildings) {
+                    // Granary: +0.5 (food security)
+                    if (bid.value == 15) { happiness.amenities += 0.5f; }
+                    // Hospital: +1.0 (healthcare)
+                    if (bid.value == 22) { happiness.amenities += 1.0f; }
+                    // Market: +0.5 (commerce)
+                    if (bid.value == 6) { happiness.amenities += 0.5f; }
+                    // Monument: +0.5 (culture)
+                    if (bid.value == 16) { happiness.amenities += 0.5f; }
+                }
+            }
+        }
+
         // Amenity bonus from wonders in this city
         const CityWondersComponent* cityWonders =
             world.tryGetComponent<CityWondersComponent>(cityEntity);
@@ -128,8 +154,10 @@ void computeCityHappiness(aoc::ecs::World& world, PlayerId player) {
             }
         }
 
-        // Demand: 1 per 2 citizens
-        happiness.demand = static_cast<float>(city.population) * 0.5f;
+        // Demand: scales sub-linearly with population (sqrt-based)
+        // Small cities (pop 3): demand 1.4. Pop 10: demand 2.5. Pop 20: demand 3.6.
+        // This is much gentler than the old 0.5 per citizen which made large cities always unhappy.
+        happiness.demand = std::sqrt(static_cast<float>(city.population)) * 0.8f;
 
         // Modifiers from economy and war weariness
         happiness.modifiers = -inflationPenalty - taxPenalty + warWearinessPenalty;

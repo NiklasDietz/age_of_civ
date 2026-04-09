@@ -23,6 +23,7 @@
 #include "aoc/core/Random.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/core/SimpleYaml.hpp"
+#include "aoc/simulation/turn/GameLength.hpp"
 
 // Simulation systems
 #include "aoc/simulation/turn/TurnManager.hpp"
@@ -90,6 +91,7 @@ using aoc::PlayerId;
 using aoc::TechId;
 using aoc::UnitTypeId;
 using aoc::CurrencyAmount;
+using aoc::ResourceId;
 using namespace aoc::map;
 namespace hex = aoc::hex;
 
@@ -294,6 +296,9 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     aoc::map::HexGrid grid;
     aoc::Random rng(42);  // Fixed seed for reproducibility
 
+    // Initialize game pace (default Standard; overridden by config in main())
+    // The GamePace singleton is set before this function is called if config specifies game_length.
+
     // Generate map (use Realistic for resource placement)
     aoc::map::MapGenerator::Config mapConfig{};
     mapConfig.width = 60;
@@ -320,6 +325,10 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     std::vector<aoc::sim::ai::AIController> aiControllers;
     aiControllers.reserve(static_cast<std::size_t>(playerCount));
 
+    // Track placed starting positions for minimum distance enforcement
+    std::vector<hex::AxialCoord> startPositions;
+    constexpr int32_t MIN_START_DISTANCE = 8;
+
     // Spawn each AI player with a starting city and settler
     for (int32_t p = 0; p < playerCount; ++p) {
         aoc::PlayerId player = static_cast<aoc::PlayerId>(p);
@@ -333,10 +342,23 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             int32_t idx = ry * mapConfig.width + rx;
             if (!aoc::map::isWater(grid.terrain(idx))
                 && !aoc::map::isImpassable(grid.terrain(idx))) {
-                startPos = hex::offsetToAxial({rx, ry});
-                found = true;
+                hex::AxialCoord candidate = hex::offsetToAxial({rx, ry});
+                // Check minimum distance from all existing starts
+                bool tooClose = false;
+                for (const hex::AxialCoord& existing : startPositions) {
+                    if (hex::distance(candidate, existing) < MIN_START_DISTANCE) {
+                        tooClose = true;
+                        break;
+                    }
+                }
+                if (!tooClose) {
+                    startPos = candidate;
+                    found = true;
+                }
             }
         }
+
+        startPositions.push_back(startPos);
 
         // Create city
         EntityId cityEntity = world.createEntity();
@@ -373,6 +395,29 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         for (const hex::AxialCoord& nbr : nbrs) {
             if (grid.isValid(nbr)) {
                 grid.setOwner(grid.toIndex(nbr), player);
+            }
+        }
+
+        // Guarantee minimum resources near starting position
+        // Place wheat on center if no resource, iron+copper on neighbors
+        if (!grid.resource(centerIdx).isValid()) {
+            grid.setResource(centerIdx, ResourceId{aoc::sim::goods::WHEAT});
+        }
+        int32_t resourcesPlaced = 0;
+        const uint16_t STARTER_RESOURCES[] = {
+            aoc::sim::goods::IRON_ORE, aoc::sim::goods::COPPER_ORE,
+            aoc::sim::goods::WOOD, aoc::sim::goods::STONE,
+            aoc::sim::goods::COAL, aoc::sim::goods::CATTLE
+        };
+        for (const hex::AxialCoord& nbr2 : nbrs) {
+            if (!grid.isValid(nbr2)) { continue; }
+            int32_t nbrIdx = grid.toIndex(nbr2);
+            if (!grid.resource(nbrIdx).isValid()
+                && !aoc::map::isWater(grid.terrain(nbrIdx))
+                && !aoc::map::isImpassable(grid.terrain(nbrIdx))
+                && resourcesPlaced < 6) {
+                grid.setResource(nbrIdx, ResourceId{STARTER_RESOURCES[resourcesPlaced]});
+                ++resourcesPlaced;
             }
         }
 
@@ -550,16 +595,26 @@ int main(int argc, char* argv[]) {
                 players    = config.getInt("player_count", 4);
                 outputPath = config.getString("output_file", "simulation_log.csv");
 
+                // Game length preset (overrides max_turns if set)
+                std::string gameLengthStr = config.getString("game_length", "");
+                if (!gameLengthStr.empty()) {
+                    aoc::sim::GameLength gl = aoc::sim::parseGameLength(gameLengthStr);
+                    const aoc::sim::GameLengthDef& glDef = aoc::sim::gameLengthDef(gl);
+                    turns = glDef.maxTurns;
+                    aoc::sim::GamePace::instance().setFromLength(gl);
+                }
+
                 std::fprintf(stderr, "\n  === Age of Civilization: Headless Simulation ===\n\n");
-                std::fprintf(stderr, "  Config: %s\n", arg1.c_str());
-                std::fprintf(stderr, "  Turns:  %d\n", turns);
+                std::fprintf(stderr, "  Config:  %s\n", arg1.c_str());
+                std::fprintf(stderr, "  Length:  %s\n", gameLengthStr.empty() ? "Custom" : gameLengthStr.c_str());
+                std::fprintf(stderr, "  Turns:   %d\n", turns);
                 std::fprintf(stderr, "  Players: %d\n", players);
-                std::fprintf(stderr, "  Map:    %s (%dx%d)\n",
+                std::fprintf(stderr, "  Map:     %s (%dx%d)\n",
                              config.getString("map_type", "Continents").c_str(),
                              config.getInt("map_width", 60),
                              config.getInt("map_height", 40));
-                std::fprintf(stderr, "  Seed:   %d\n", config.getInt("seed", 42));
-                std::fprintf(stderr, "  Output: %s\n\n", outputPath.c_str());
+                std::fprintf(stderr, "  Seed:    %d\n", config.getInt("seed", 42));
+                std::fprintf(stderr, "  Output:  %s\n\n", outputPath.c_str());
 
                 loadedConfig = true;
             } else {

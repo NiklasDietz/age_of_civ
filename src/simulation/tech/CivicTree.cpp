@@ -5,6 +5,7 @@
 
 #include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
+#include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <cassert>
@@ -76,7 +77,8 @@ bool advanceCivicResearch(PlayerCivicComponent& civic, float culturePoints,
     }
     civic.researchProgress += culturePoints;
     const CivicDef& def = civicDef(civic.currentResearch);
-    if (civic.researchProgress >= static_cast<float>(def.cultureCost)) {
+    float scaledCost = static_cast<float>(def.cultureCost) * GamePace::instance().costMultiplier;
+    if (civic.researchProgress >= scaledCost) {
         LOG_INFO("Player %u completed civic: %.*s",
                  static_cast<unsigned>(civic.owner),
                  static_cast<int>(def.name.size()), def.name.data());

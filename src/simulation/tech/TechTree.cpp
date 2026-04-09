@@ -4,6 +4,8 @@
  */
 
 #include "aoc/simulation/tech/TechTree.hpp"
+#include "aoc/simulation/tech/ExpandedContent.hpp"
+#include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <cassert>
@@ -15,55 +17,53 @@ namespace {
 std::vector<TechDef> buildTechDefs() {
     std::vector<TechDef> techs;
 
-    // Era 0: Ancient
+    // Era 0: Ancient -- costs 25-50
     techs.push_back({TechId{0}, "Mining", EraId{0}, 25, {}, {}, {BuildingId{0}}, {}});
     techs.push_back({TechId{1}, "Animal Husbandry", EraId{0}, 25, {}, {}, {}, {UnitTypeId{4}}});
     techs.push_back({TechId{2}, "Pottery", EraId{0}, 25, {}, {}, {BuildingId{1}}, {}});
     techs.push_back({TechId{3}, "Writing", EraId{0}, 50, {{TechId{2}}}, {}, {BuildingId{7}}, {}});
 
-    // Era 1: Classical
-    techs.push_back({TechId{4}, "Bronze Working", EraId{1}, 60, {{TechId{0}}}, {}, {}, {UnitTypeId{0}}});
-    techs.push_back({TechId{5}, "Currency", EraId{1}, 60, {{TechId{3}}}, {}, {BuildingId{6}}, {}});
-    techs.push_back({TechId{6}, "Engineering", EraId{1}, 80, {{TechId{0}, TechId{2}}}, {}, {}, {}});
+    // Era 1: Classical -- costs 70-120
+    techs.push_back({TechId{4}, "Bronze Working", EraId{1}, 80, {{TechId{0}}}, {}, {}, {UnitTypeId{0}}});
+    techs.push_back({TechId{5}, "Currency", EraId{1}, 90, {{TechId{3}}}, {}, {BuildingId{6}}, {}});
+    techs.push_back({TechId{6}, "Engineering", EraId{1}, 110, {{TechId{0}, TechId{2}}}, {}, {}, {}});
 
-    // Era 2: Medieval
-    techs.push_back({TechId{7}, "Apprenticeship", EraId{2}, 120, {{TechId{5}, TechId{6}}}, {}, {BuildingId{1}}, {}});
-    techs.push_back({TechId{8}, "Metallurgy", EraId{2}, 140, {{TechId{4}}}, {}, {BuildingId{3}}, {}});
+    // Era 2: Medieval -- costs 160-240
+    techs.push_back({TechId{7}, "Apprenticeship", EraId{2}, 190, {{TechId{5}, TechId{6}}}, {}, {BuildingId{1}}, {}});
+    techs.push_back({TechId{8}, "Metallurgy", EraId{2}, 220, {{TechId{4}}}, {}, {BuildingId{3}}, {}});
 
-    // Era 3: Renaissance
-    techs.push_back({TechId{9}, "Banking", EraId{3}, 200, {{TechId{5}, TechId{7}}}, {}, {}, {}});
-    techs.push_back({TechId{10}, "Gunpowder", EraId{3}, 200, {{TechId{8}}}, {}, {}, {}});
+    // Era 3: Renaissance -- costs 300-420
+    techs.push_back({TechId{9}, "Banking", EraId{3}, 350, {{TechId{5}, TechId{7}}}, {}, {}, {}});
+    techs.push_back({TechId{10}, "Gunpowder", EraId{3}, 380, {{TechId{8}}}, {}, {}, {}});
 
-    // Era 4: Industrial
-    techs.push_back({TechId{11}, "Industrialization", EraId{4}, 300, {{TechId{8}, TechId{9}}},
+    // Era 4: Industrial -- costs 480-650
+    techs.push_back({TechId{11}, "Industrialization", EraId{4}, 580, {{TechId{8}, TechId{9}}},
         {}, {BuildingId{3}}, {}});
-    techs.push_back({TechId{12}, "Refining", EraId{4}, 280, {{TechId{11}}},
+    techs.push_back({TechId{12}, "Refining", EraId{4}, 520, {{TechId{11}}},
         {}, {BuildingId{2}}, {}});
-    techs.push_back({TechId{13}, "Economics", EraId{4}, 250, {{TechId{9}}}, {}, {}, {}});
+    techs.push_back({TechId{13}, "Economics", EraId{4}, 480, {{TechId{9}}}, {}, {}, {}});
 
-    // Era 5: Modern
-    techs.push_back({TechId{14}, "Electricity", EraId{5}, 400, {{TechId{11}}},
+    // Era 5: Modern -- costs 750-950
+    techs.push_back({TechId{14}, "Electricity", EraId{5}, 800, {{TechId{11}}},
         {}, {BuildingId{4}}, {}});
-    // Mass Production: now requires Interchangeable Parts(19) + Refining(12)
-    techs.push_back({TechId{15}, "Mass Production", EraId{5}, 420, {{TechId{19}, TechId{12}}},
+    techs.push_back({TechId{15}, "Mass Production", EraId{5}, 900, {{TechId{19}, TechId{12}}},
         {}, {BuildingId{5}}, {}});
 
-    // Era 6: Information
-    // Computers: now requires Electricity(14) + Semiconductors(23), unlocks Research Lab(12)
-    techs.push_back({TechId{16}, "Computers", EraId{6}, 600, {{TechId{14}, TechId{23}}},
+    // Era 6: Information -- costs 1100-1400
+    techs.push_back({TechId{16}, "Computers", EraId{6}, 1300, {{TechId{14}, TechId{23}}},
         {}, {BuildingId{12}}, {}});
-    techs.push_back({TechId{17}, "Nuclear Fission", EraId{6}, 700, {{TechId{14}}}, {}, {}, {}});
+    techs.push_back({TechId{17}, "Nuclear Fission", EraId{6}, 1400, {{TechId{14}}}, {}, {}, {}});
 
     // ================================================================
     // NEW TECHS (18-27)
     // ================================================================
 
     // Era 4: Industrial -- precision manufacturing chain
-    techs.push_back({TechId{18}, "Surface Plate", EraId{4}, 260,
+    techs.push_back({TechId{18}, "Surface Plate", EraId{4}, 500,
         {{TechId{8}, TechId{11}}},  // Metallurgy + Industrialization
         {}, {BuildingId{10}}, {}});  // Unlocks Precision Workshop
 
-    techs.push_back({TechId{19}, "Interchangeable Parts", EraId{4}, 320,
+    techs.push_back({TechId{19}, "Interchangeable Parts", EraId{4}, 600,
         {{TechId{18}}},  // Surface Plate
         {}, {}, {}});
 
@@ -107,6 +107,22 @@ std::vector<TechDef> buildTechDefs() {
         {{TechId{16}, TechId{25}}},  // Computers + Telecommunications
         {}, {}, {}});
 
+    // Append expanded techs (IDs 20-66)
+    for (int32_t i = 0; i < EXPANDED_TECH_COUNT; ++i) {
+        const ExpandedTechDef& et = EXPANDED_TECHS[i];
+        TechDef def{};
+        def.id = TechId{et.id};
+        def.name = et.name;
+        def.era = EraId{et.era};
+        def.researchCost = et.cost;
+        for (int32_t p = 0; p < 3; ++p) {
+            if (et.prereqs[p] != 0xFFFF) {
+                def.prerequisites.push_back(TechId{et.prereqs[p]});
+            }
+        }
+        techs.push_back(std::move(def));
+    }
+
     return techs;
 }
 
@@ -138,7 +154,8 @@ bool advanceResearch(PlayerTechComponent& tech, float sciencePoints) {
     tech.researchProgress += sciencePoints;
 
     const TechDef& def = techDef(tech.currentResearch);
-    if (tech.researchProgress >= static_cast<float>(def.researchCost)) {
+    float scaledCost = static_cast<float>(def.researchCost) * GamePace::instance().costMultiplier;
+    if (tech.researchProgress >= scaledCost) {
         LOG_INFO("Player %u researched: %.*s",
                  static_cast<unsigned>(tech.owner),
                  static_cast<int>(def.name.size()), def.name.data());

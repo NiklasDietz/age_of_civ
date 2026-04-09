@@ -32,6 +32,7 @@
 #include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/ai/AIEconomicStrategy.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
+#include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -288,7 +289,7 @@ void AIController::selectResearch(aoc::ecs::World& world) {
     }
 
     world.forEach<PlayerTechComponent>(
-        [this, threatened, &ownedBuildings, ownedCityCount](
+        [this, threatened, &ownedBuildings, ownedCityCount, &world](
             EntityId, PlayerTechComponent& tech) {
             if (tech.owner != this->m_player) {
                 return;
@@ -348,8 +349,42 @@ void AIController::selectResearch(aoc::ecs::World& world) {
                     score += 2000 + static_cast<int32_t>(def.unlockedGoods.size()) * 500;
                 }
 
-                // Scale bonus slightly by city count (more cities = more benefit from new unlocks)
+                // Scale bonus slightly by city count
                 score += ownedCityCount * 100;
+
+                // Leader personality tech bias:
+                // Apply multiplier based on what the tech unlocks
+                CivId myCiv2 = 0;
+                const aoc::ecs::ComponentPool<PlayerCivilizationComponent>* cp =
+                    world.getPool<PlayerCivilizationComponent>();
+                if (cp != nullptr) {
+                    for (uint32_t cc = 0; cc < cp->size(); ++cc) {
+                        if (cp->data()[cc].owner == this->m_player) {
+                            myCiv2 = cp->data()[cc].civId; break;
+                        }
+                    }
+                }
+                const LeaderBehavior& beh = leaderPersonality(myCiv2).behavior;
+
+                // Military techs (unlock units) get military bias
+                if (!def.unlockedUnits.empty()) {
+                    score = static_cast<int32_t>(static_cast<float>(score) * beh.techMilitary);
+                }
+                // Economic techs (unlock buildings related to commerce)
+                if (!def.unlockedBuildings.empty()) {
+                    for (const BuildingId& bid : def.unlockedBuildings) {
+                        if (bid.value == 6 || bid.value == 20 || bid.value == 21 || bid.value == 24) {
+                            score = static_cast<int32_t>(static_cast<float>(score) * beh.techEconomic);
+                        }
+                        if (bid.value == 3 || bid.value == 5 || bid.value == 10 || bid.value == 11) {
+                            score = static_cast<int32_t>(static_cast<float>(score) * beh.techIndustrial);
+                        }
+                    }
+                }
+                // Higher era techs biased by information focus
+                if (def.era.value >= 5) {
+                    score = static_cast<int32_t>(static_cast<float>(score) * beh.techInformation);
+                }
 
                 // Prefer cheaper techs as tiebreaker (invert cost so cheaper = higher)
                 score -= def.researchCost;
@@ -459,9 +494,24 @@ void AIController::executeCityActions(aoc::ecs::World& world,
         }
     }
 
-    const int32_t desiredMilitary = ownedCityCount * 2 + 2;
+    // Get leader personality for this AI's civilization
+    CivId myCivId = 0;
+    const aoc::ecs::ComponentPool<PlayerCivilizationComponent>* civPool =
+        world.getPool<PlayerCivilizationComponent>();
+    if (civPool != nullptr) {
+        for (uint32_t ci = 0; ci < civPool->size(); ++ci) {
+            if (civPool->data()[ci].owner == this->m_player) {
+                myCivId = civPool->data()[ci].civId;
+                break;
+            }
+        }
+    }
+    const LeaderPersonalityDef& personality = leaderPersonality(myCivId);
+    const AIScaledTargets targets = computeScaledTargets(personality.behavior);
+
+    const int32_t desiredMilitary = ownedCityCount * targets.desiredMilitaryPerCity + 2;
     const bool needsMilitary = unitCounts.military < desiredMilitary;
-    const bool needsSettler = ownedCityCount < 3 && unitCounts.settlers == 0;
+    const bool needsSettler = ownedCityCount < targets.maxCities && unitCounts.settlers == 0;
 
     // Determine best available military unit type once
     const UnitTypeId bestMilitaryId = bestAvailableMilitaryUnit(world, this->m_player);
@@ -494,7 +544,7 @@ void AIController::executeCityActions(aoc::ecs::World& world,
         ProductionQueueItem item{};
 
         // Priority 1: Settler if conditions met and this city has pop > 3
-        if (needsSettler && !settlerEnqueued && city.population >= 2) {
+        if (needsSettler && !settlerEnqueued && city.population >= targets.settlePopThreshold) {
             item.type = ProductionItemType::Unit;
             item.itemId = 3;  // Settler
             item.name = "Settler";
@@ -601,6 +651,8 @@ void AIController::executeCityActions(aoc::ecs::World& world,
             }
         }
 
+        // Apply game pace cost multiplier (Marathon/Eternal = higher costs)
+        item.totalCost *= aoc::sim::GamePace::instance().costMultiplier;
         queue->queue.push_back(std::move(item));
     }
 }

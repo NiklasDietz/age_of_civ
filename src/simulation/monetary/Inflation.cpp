@@ -66,6 +66,17 @@ void computeInflation(MonetaryStateComponent& state,
     // Core inflation calculation
     state.inflationRate = moneyGrowth + velocityChange - gdpGrowth;
 
+    // Treasury hoarding pressure: very large treasuries relative to GDP
+    // cause inflationary pressure (excess money in the economy)
+    if (currentGDP > 0 && state.treasury > 0) {
+        float treasuryToGDP = static_cast<float>(state.treasury) / static_cast<float>(currentGDP);
+        if (treasuryToGDP > 5.0f) {
+            // Treasury is 5x+ GDP -- this excess money creates inflation
+            float excessPressure = (treasuryToGDP - 5.0f) * 0.005f;
+            state.inflationRate += excessPressure;
+        }
+    }
+
     // Commodity money and gold standard have natural inflation dampening
     if (state.system == MonetarySystemType::CommodityMoney) {
         // Money supply is tied to gold -- inflation is limited to gold mining rate

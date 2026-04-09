@@ -7,6 +7,7 @@
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/production/Waste.hpp"
+#include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/ecs/World.hpp"
@@ -17,7 +18,8 @@ namespace aoc::sim {
 
 float foodForGrowth(int32_t currentPopulation) {
     float pop = static_cast<float>(currentPopulation);
-    return 15.0f + 6.0f * pop + std::pow(pop, 1.3f);
+    float base = 15.0f + 6.0f * pop + std::pow(pop, 1.3f);
+    return base * GamePace::instance().growthMultiplier;
 }
 
 void processCityGrowth(aoc::ecs::World& world,
@@ -110,8 +112,13 @@ void processCityGrowth(aoc::ecs::World& world,
             LOG_INFO("%s grew to pop %d", city.name.c_str(), city.population);
         }
 
-        // Starvation: if food surplus goes very negative, lose population
-        if (city.foodSurplus < -needed && city.population > 1) {
+        // Clamp surplus: don't let it go below -50 (buffer against oscillation)
+        if (city.foodSurplus < -50.0f) {
+            city.foodSurplus = -50.0f;
+        }
+
+        // Starvation: only lose population at extreme deficit (surplus < -30)
+        if (city.foodSurplus < -30.0f && city.population > 1) {
             --city.population;
             city.foodSurplus = 0.0f;
             if (!city.workedTiles.empty() && city.workedTiles.size() > 1) {

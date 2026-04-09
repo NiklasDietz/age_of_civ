@@ -97,33 +97,33 @@ namespace rev_goods {
 }
 
 inline constexpr std::array<RevolutionDef, 5> REVOLUTION_DEFS = {{
-    // 1st: Steam Age
+    // 1st: Steam Age -- Industrialization(11) + Coal + Iron
     {IndustrialRevolutionId::First, "Steam Age",
-     {{TechId{4}, TechId{7}, TechId{}},              // Bronze Working, Steel(proxy for Steam Engine)
+     {{TechId{11}, TechId{}, TechId{}},
       {rev_goods::COAL, rev_goods::IRON_ORE, rev_goods::NONE}, 2},
      {1.50f, 1.0f, 1.0f, 1.15f, 1.5f, true, false, false, false}},
 
-    // 2nd: Electric Age
+    // 2nd: Electric Age -- Electricity(14) + Oil + Steel
     {IndustrialRevolutionId::Second, "Electric Age",
-     {{TechId{10}, TechId{7}, TechId{}},             // Electricity(proxy), Steel
+     {{TechId{14}, TechId{}, TechId{}},
       {rev_goods::OIL, rev_goods::STEEL_GOOD, rev_goods::NONE}, 3},
      {1.25f, 1.5f, 1.10f, 1.10f, 1.3f, true, false, false, false}},
 
-    // 3rd: Digital Age
+    // 3rd: Digital Age -- Computers(16) + Semiconductors
     {IndustrialRevolutionId::Third, "Digital Age",
-     {{TechId{16}, TechId{14}, TechId{}},            // Computers, Telecommunications(proxy)
+     {{TechId{16}, TechId{}, TechId{}},
       {rev_goods::SEMICONDUCTORS_GOOD, rev_goods::NONE, rev_goods::NONE}, 4},
      {1.15f, 2.0f, 1.20f, 1.0f, 1.0f, true, true, true, false}},
 
-    // 4th: Information Age
+    // 4th: Information Age -- Internet(27) + Computers(16) + Software
     {IndustrialRevolutionId::Fourth, "Information Age",
-     {{TechId{17}, TechId{16}, TechId{}},            // Internet(proxy), Computers
+     {{TechId{27}, TechId{16}, TechId{}},
       {rev_goods::SOFTWARE_GOOD, rev_goods::NONE, rev_goods::NONE}, 4},
      {1.10f, 2.5f, 1.30f, 1.0f, 0.8f, true, true, true, false}},
 
-    // 5th: Post-Industrial
+    // 5th: Post-Industrial -- Nuclear Fission(17) + expanded Fusion(64)
     {IndustrialRevolutionId::Fifth, "Post-Industrial",
-     {{TechId{19}, TechId{18}, TechId{}},            // Fusion(proxy), Quantum(proxy)
+     {{TechId{17}, TechId{64}, TechId{}},
       {rev_goods::NONE, rev_goods::NONE, rev_goods::NONE}, 5},
      {1.20f, 3.0f, 1.50f, 1.20f, 0.5f, true, true, true, true}},
 }};
