@@ -14,6 +14,7 @@
 #include "aoc/map/HexCoord.hpp"
 
 #include <cstdint>
+#include <string>
 #include <variant>
 #include <vector>
 

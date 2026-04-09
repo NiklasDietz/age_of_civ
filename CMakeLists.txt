@@ -46,6 +46,7 @@ add_library(aoc_lib STATIC
 
     # Simulation
     src/simulation/turn/TurnManager.cpp
+    src/simulation/turn/TurnProcessor.cpp
     src/simulation/unit/Movement.cpp
     src/simulation/unit/Combat.cpp
     src/simulation/unit/Naval.cpp
@@ -151,6 +152,10 @@ add_library(aoc_lib STATIC
     src/ui/Tutorial.cpp
     src/ui/Encyclopedia.cpp
     src/ui/GameNotifications.cpp
+
+    # Networking / Server-Client
+    src/net/Transport.cpp
+    src/net/GameServer.cpp
 
     # App
     src/app/Window.cpp

@@ -24,6 +24,7 @@
 #include "aoc/core/Log.hpp"
 #include "aoc/core/SimpleYaml.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
+#include "aoc/simulation/turn/TurnProcessor.hpp"
 
 // Simulation systems
 #include "aoc/simulation/turn/TurnManager.hpp"
@@ -35,8 +36,6 @@
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/city/CityLoyalty.hpp"
 #include "aoc/simulation/city/ProductionSystem.hpp"
-#include "aoc/simulation/city/ProductionQueue.hpp"
-#include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/CityConnection.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
@@ -353,46 +352,14 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
         startPositions.push_back(startPos);
 
-        // Create city
-        aoc::EntityId cityEntity = world.createEntity();
-        aoc::sim::CityComponent city{};
-        city.owner = player;
-        city.name = std::string(aoc::sim::civDef(static_cast<aoc::sim::CivId>(p % aoc::sim::CIV_COUNT)).cityNames[0]);
-        city.location = startPos;
-        city.population = 3;
-        city.isOriginalCapital = true;
-        city.workedTiles.push_back(startPos);
-        // Add neighboring tiles to worked tiles
-        std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(startPos);
-        for (int32_t n = 0; n < 3 && n < 6; ++n) {
-            if (grid.isValid(nbrs[static_cast<std::size_t>(n)])) {
-                city.workedTiles.push_back(nbrs[static_cast<std::size_t>(n)]);
-            }
-        }
-        world.addComponent<aoc::sim::CityComponent>(cityEntity, std::move(city));
-        world.addComponent<aoc::sim::CityHappinessComponent>(cityEntity, aoc::sim::CityHappinessComponent{});
-        world.addComponent<aoc::sim::ProductionQueueComponent>(cityEntity, aoc::sim::ProductionQueueComponent{});
-        world.addComponent<aoc::sim::CityStockpileComponent>(cityEntity, aoc::sim::CityStockpileComponent{});
-
-        // Create CityCenter district so CityCenter buildings can be placed
-        aoc::sim::CityDistrictsComponent districts{};
-        aoc::sim::CityDistrictsComponent::PlacedDistrict centerDistrict{};
-        centerDistrict.type = aoc::sim::DistrictType::CityCenter;
-        centerDistrict.location = startPos;
-        districts.districts.push_back(std::move(centerDistrict));
-        world.addComponent<aoc::sim::CityDistrictsComponent>(cityEntity, std::move(districts));
-
-        // Claim surrounding tiles for this player
-        int32_t centerIdx = grid.toIndex(startPos);
-        grid.setOwner(centerIdx, player);
-        for (const aoc::hex::AxialCoord& nbr : nbrs) {
-            if (grid.isValid(nbr)) {
-                grid.setOwner(grid.toIndex(nbr), player);
-            }
-        }
+        // Create city using unified foundCity (creates ALL required components)
+        std::string cityName = std::string(
+            aoc::sim::civDef(static_cast<aoc::sim::CivId>(p % aoc::sim::CIV_COUNT)).cityNames[0]);
+        aoc::sim::foundCity(world, grid, player, startPos, cityName, true, 3);
 
         // Guarantee minimum resources near starting position
-        // Place wheat on center if no resource, iron+copper on neighbors
+        std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(startPos);
+        int32_t centerIdx = grid.toIndex(startPos);
         if (!grid.resource(centerIdx).isValid()) {
             grid.setResource(centerIdx, aoc::ResourceId{aoc::sim::goods::WHEAT});
         }
@@ -467,53 +434,27 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                  startPos.q, startPos.r);
     }
 
+    // Build TurnContext
+    aoc::sim::TurnContext turnCtx{};
+    turnCtx.world = &world;
+    turnCtx.grid = &grid;
+    turnCtx.economy = &economy;
+    turnCtx.diplomacy = &diplomacy;
+    turnCtx.barbarians = &barbarians;
+    turnCtx.rng = &rng;
+    for (aoc::sim::ai::AIController& ai : aiControllers) {
+        turnCtx.aiControllers.push_back(&ai);
+        turnCtx.allPlayers.push_back(ai.player());
+    }
+    turnCtx.humanPlayer = aoc::INVALID_PLAYER;  // No human in headless
+    turnCtx.currentTurn = 0;
+
     // === Main simulation loop ===
     for (int32_t turn = 1; turn <= maxTurns; ++turn) {
-        // AI decisions
-        for (aoc::sim::ai::AIController& ai : aiControllers) {
-            ai.executeTurn(world, grid, diplomacy, economy.market(), rng);
-            turnManager.submitEndTurn(ai.player());
-        }
+        turnCtx.currentTurn = static_cast<aoc::TurnNumber>(turn);
 
-        // Economy
-        economy.executeTurn(world, grid);
-
-        // Per-player processing
-        for (const aoc::sim::ai::AIController& ai : aiControllers) {
-            aoc::PlayerId p = ai.player();
-            aoc::sim::processAdvancedEconomics(world, grid, p, economy.market());
-            aoc::sim::processWarWeariness(world, p, diplomacy);
-            aoc::sim::processCityGrowth(world, grid, p);
-            aoc::sim::computeCityHappiness(world, p);
-            aoc::sim::computeCityLoyalty(world, grid, p);
-
-            float science = aoc::sim::computePlayerScience(world, grid, p);
-            float culture = aoc::sim::computePlayerCulture(world, grid, p);
-            world.forEach<aoc::sim::PlayerTechComponent>(
-                [p, science](aoc::EntityId, aoc::sim::PlayerTechComponent& tech) {
-                    if (tech.owner == p) { aoc::sim::advanceResearch(tech, science); }
-                });
-            world.forEach<aoc::sim::PlayerCivicComponent>(
-                [p, culture, &world](aoc::EntityId, aoc::sim::PlayerCivicComponent& civic) {
-                    if (civic.owner != p) { return; }
-                    // Find government component for unlocking
-                    aoc::sim::PlayerGovernmentComponent* gov = nullptr;
-                    world.forEach<aoc::sim::PlayerGovernmentComponent>(
-                        [p, &gov](aoc::EntityId, aoc::sim::PlayerGovernmentComponent& g) {
-                            if (g.owner == p) { gov = &g; }
-                        });
-                    aoc::sim::advanceCivicResearch(civic, culture, gov);
-                });
-
-            aoc::sim::processProductionQueues(world, grid, p);
-        }
-
-        // Barbarians
-        barbarians.executeTurn(world, grid, rng);
-
-        // Victory tracking
-        aoc::sim::updateVictoryTrackers(world, grid, economy,
-                                         static_cast<aoc::TurnNumber>(turn));
+        // Single unified turn processing for ALL players
+        aoc::sim::processTurn(turnCtx);
 
         // === Log snapshot for each player ===
         for (int32_t p = 0; p < playerCount; ++p) {
