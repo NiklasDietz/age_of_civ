@@ -75,8 +75,9 @@ void EconomySimulation::executeTurn(aoc::ecs::World& world, aoc::map::HexGrid& g
 // ============================================================================
 
 void EconomySimulation::harvestResources(aoc::ecs::World& world,
-                                          const aoc::map::HexGrid& grid) {
+                                          aoc::map::HexGrid& grid) {
     // For each city, iterate its worked tiles and collect resource yields.
+    // Non-renewable resources consume reserves; when exhausted, the tile is empty.
     aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
     if (cityPool == nullptr) {
         return;
@@ -93,23 +94,54 @@ void EconomySimulation::harvestResources(aoc::ecs::World& world,
         CityStockpileComponent& stockpile = world.getComponent<CityStockpileComponent>(cityEntity);
 
         // Harvest from each worked tile
-        for (const hex::AxialCoord& tileCoord : city.workedTiles) {
+        for (const aoc::hex::AxialCoord& tileCoord : city.workedTiles) {
             if (!grid.isValid(tileCoord)) {
                 continue;
             }
             int32_t tileIndex = grid.toIndex(tileCoord);
 
-            // Check if this tile has a resource (by checking the grid's resource field)
             ResourceId resId = grid.resource(tileIndex);
             if (!resId.isValid()) {
                 continue;
             }
 
-            // Map the ResourceId to a good ID. For simplicity, the ResourceId value
-            // directly corresponds to the good ID for raw resources.
             uint16_t goodId = resId.value;
-            if (goodId < goodCount()) {
-                int32_t yield = 1;  // Base yield per worked tile with resource
+            if (goodId >= goodCount()) {
+                continue;
+            }
+
+            // Base yield depends on improvement type
+            int32_t yield = 1;
+            aoc::map::ImprovementType imp = grid.improvement(tileIndex);
+            if (imp == aoc::map::ImprovementType::Mine) {
+                yield = 2;  // Mines extract faster
+            } else if (imp == aoc::map::ImprovementType::Plantation
+                       || imp == aoc::map::ImprovementType::Camp
+                       || imp == aoc::map::ImprovementType::Pasture) {
+                yield = 2;  // Improved resource tiles produce more
+            }
+
+            // Consume reserves for non-renewable resources
+            int16_t currentReserves = grid.reserves(tileIndex);
+            if (currentReserves >= 0) {
+                // Non-renewable: consume reserves
+                int32_t actualYield = std::min(yield, static_cast<int32_t>(currentReserves));
+                if (actualYield <= 0) {
+                    continue;  // Exhausted
+                }
+                grid.setReserves(tileIndex, static_cast<int16_t>(currentReserves - actualYield));
+                if (grid.reserves(tileIndex) <= 0) {
+                    // Resource exhausted
+                    grid.setResource(tileIndex, ResourceId{});
+                    grid.setReserves(tileIndex, 0);
+                    LOG_INFO("Resource exhausted at tile (%d,%d): %.*s depleted after extraction",
+                             tileCoord.q, tileCoord.r,
+                             static_cast<int>(goodDef(goodId).name.size()),
+                             goodDef(goodId).name.data());
+                }
+                stockpile.addGoods(goodId, actualYield);
+            } else {
+                // Renewable resource (reserves = -1): harvest without depleting
                 stockpile.addGoods(goodId, yield);
             }
         }
@@ -315,6 +347,20 @@ void EconomySimulation::executeProduction(aoc::ecs::World& world,
                 quality->addGoods(recipe->outputGoodId, boostedOutput, outputQuality);
             }
 
+            // Log first coin minting per city (monetary pipeline milestone)
+            if (recipe->outputGoodId == goods::COPPER_COINS
+                || recipe->outputGoodId == goods::SILVER_COINS
+                || recipe->outputGoodId == goods::GOLD_COINS) {
+                int32_t existing = stockpile->getAmount(recipe->outputGoodId);
+                if (existing <= boostedOutput) {
+                    LOG_INFO("First coins minted: %d x good %u in '%s' (player %u)",
+                             boostedOutput,
+                             static_cast<unsigned>(recipe->outputGoodId),
+                             city.name.c_str(),
+                             static_cast<unsigned>(city.owner));
+                }
+            }
+
             // === Waste generation ===
             accumulateWaste(world, cityEntity, recipe->requiredBuilding, 1);
 
@@ -356,46 +402,16 @@ void EconomySimulation::processInternalTradeForAllPlayers(aoc::ecs::World& world
 }
 
 // ============================================================================
-// Resource depletion: small chance per turn that a tile's yield decreases
+// Resource depletion is now handled by reserve consumption in harvestResources().
+// This function is repurposed for renewable resource regeneration: forests regrow,
+// fish restock, pastures recover -- but only on unworked tiles (resting land).
 // ============================================================================
 
-void EconomySimulation::applyResourceDepletion(aoc::ecs::World& world,
-                                                aoc::map::HexGrid& grid) {
-    // Use a deterministic counter-based approach for depletion checks.
-    // Each tile's resource has a 1% chance per turn of yield decrease.
-    // We use (turn number * tile index) hash for determinism without a full RNG.
+void EconomySimulation::applyResourceDepletion(aoc::ecs::World& /*world*/,
+                                                aoc::map::HexGrid& /*grid*/) {
     ++this->m_depletionTurnCounter;
-
-    aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
-    if (cityPool == nullptr) {
-        return;
-    }
-
-    for (uint32_t i = 0; i < cityPool->size(); ++i) {
-        const CityComponent& city = cityPool->data()[i];
-
-        for (const hex::AxialCoord& tileCoord : city.workedTiles) {
-            if (!grid.isValid(tileCoord)) {
-                continue;
-            }
-            const int32_t tileIndex = grid.toIndex(tileCoord);
-            const ResourceId resId = grid.resource(tileIndex);
-            if (!resId.isValid()) {
-                continue;
-            }
-
-            // Deterministic 1% depletion chance per turn using hash
-            const uint32_t hash = static_cast<uint32_t>(tileIndex) * 2654435761u
-                                + this->m_depletionTurnCounter * 2246822519u;
-            constexpr uint32_t DEPLETION_THRESHOLD = 42949672u;  // ~1% of UINT32_MAX
-            if (hash < DEPLETION_THRESHOLD) {
-                // Deplete: remove the resource from this tile
-                grid.setResource(tileIndex, ResourceId{});
-                LOG_INFO("Resource depleted at tile (%d,%d): good %u exhausted",
-                         tileCoord.q, tileCoord.r, static_cast<unsigned>(resId.value));
-            }
-        }
-    }
+    // Depletion is now handled via reserve consumption in harvestResources().
+    // Future: add renewable regeneration for unworked tiles here.
 }
 
 // ============================================================================
@@ -542,6 +558,11 @@ void EconomySimulation::executeMonetaryPolicy(aoc::ecs::World& world) {
             }
         }
 
+        // Banking multiplier: advanced monetary systems amplify GDP through credit
+        float bankingMult = bankingGDPMultiplier(state);
+        currentGDP = static_cast<CurrencyAmount>(
+            static_cast<float>(currentGDP) * bankingMult);
+
         // Retrieve previous-turn values
         CurrencyAmount prevGDP = this->m_previousGDP[state.owner];
         CurrencyAmount prevMoney = this->m_previousMoneySupply[state.owner];
@@ -556,6 +577,40 @@ void EconomySimulation::executeMonetaryPolicy(aoc::ecs::World& world) {
         // Store current values for next turn's delta calculation
         this->m_previousGDP[state.owner] = currentGDP;
         this->m_previousMoneySupply[state.owner] = state.moneySupply;
+    }
+
+    // Seigniorage: reserve currency holders earn income from foreign GDP
+    const aoc::ecs::ComponentPool<CurrencyTrustComponent>* trustPool =
+        world.getPool<CurrencyTrustComponent>();
+    if (trustPool != nullptr && monetaryPool != nullptr) {
+        // Compute total foreign GDP for seigniorage calculation
+        CurrencyAmount totalGDP = 0;
+        for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
+            totalGDP += monetaryPool->data()[i].gdp;
+        }
+
+        for (uint32_t i = 0; i < trustPool->size(); ++i) {
+            const CurrencyTrustComponent& trust = trustPool->data()[i];
+            if (!trust.isReserveCurrency) {
+                continue;
+            }
+
+            // Find the reserve holder's monetary state
+            for (uint32_t m = 0; m < monetaryPool->size(); ++m) {
+                MonetaryStateComponent& reserveState = monetaryPool->data()[m];
+                if (reserveState.owner != trust.owner) {
+                    continue;
+                }
+
+                CurrencyAmount foreignGDP = totalGDP - reserveState.gdp;
+                CurrencyAmount seigniorage = computeSeigniorage(
+                    reserveState, true, foreignGDP);
+                if (seigniorage > 0) {
+                    reserveState.treasury += seigniorage;
+                }
+                break;
+            }
+        }
     }
 }
 
@@ -660,25 +715,27 @@ void EconomySimulation::settleTradeInCoins(aoc::ecs::World& world) {
         // 5% of trade value converts to coin transfer (the rest is goods-for-goods)
         effectivePayment = std::max(1, effectivePayment);
 
-        // Transfer coins: payer gives their highest-tier coins
-        // Gold first, then silver, then copper
+        // Transfer coins: payer gives their highest-denomination coins first
+        // Gold (25 value) first, then silver (5 value), then copper (1 value)
         int32_t remaining = effectivePayment;
 
-        // Gold coins (value 4 each)
+        // Gold coins (25 value each)
         if (remaining > 0 && payerState.goldCoinReserves > 0) {
-            int32_t goldToTransfer = std::min(payerState.goldCoinReserves, (remaining + 3) / 4);
+            int32_t goldToTransfer = std::min(payerState.goldCoinReserves,
+                                              (remaining + GOLD_COIN_VALUE - 1) / GOLD_COIN_VALUE);
             payerState.goldCoinReserves -= goldToTransfer;
             recvState.goldCoinReserves  += goldToTransfer;
-            remaining -= goldToTransfer * 4;
+            remaining -= goldToTransfer * GOLD_COIN_VALUE;
         }
-        // Silver coins (value 2 each)
+        // Silver coins (5 value each)
         if (remaining > 0 && payerState.silverCoinReserves > 0) {
-            int32_t silverToTransfer = std::min(payerState.silverCoinReserves, (remaining + 1) / 2);
+            int32_t silverToTransfer = std::min(payerState.silverCoinReserves,
+                                                (remaining + SILVER_COIN_VALUE - 1) / SILVER_COIN_VALUE);
             payerState.silverCoinReserves -= silverToTransfer;
             recvState.silverCoinReserves  += silverToTransfer;
-            remaining -= silverToTransfer * 2;
+            remaining -= silverToTransfer * SILVER_COIN_VALUE;
         }
-        // Copper coins (value 1 each)
+        // Copper coins (1 value each)
         if (remaining > 0 && payerState.copperCoinReserves > 0) {
             int32_t copperToTransfer = std::min(payerState.copperCoinReserves, remaining);
             payerState.copperCoinReserves -= copperToTransfer;
@@ -746,7 +803,29 @@ void EconomySimulation::updateCoinReservesFromStockpiles(aoc::ecs::World& world)
     // Update coin tiers and money supply for commodity money players
     for (uint32_t m = 0; m < monetaryPool->size(); ++m) {
         MonetaryStateComponent& state = monetaryPool->data()[m];
+        CoinTier previousTier = state.effectiveCoinTier;
         state.updateCoinTier();
+
+        // Log when a player first accumulates enough coins for transition
+        if (state.system == MonetarySystemType::Barter
+            && previousTier == CoinTier::None
+            && state.effectiveCoinTier != CoinTier::None) {
+            LOG_INFO("Player %u reached coin tier %.*s: Cu=%d Ag=%d Au=%d",
+                     static_cast<unsigned>(state.owner),
+                     static_cast<int>(coinTierName(state.effectiveCoinTier).size()),
+                     coinTierName(state.effectiveCoinTier).data(),
+                     state.copperCoinReserves, state.silverCoinReserves, state.goldCoinReserves);
+        }
+
+        // Log tier changes
+        if (state.effectiveCoinTier != previousTier) {
+            LOG_INFO("Player %u coin tier changed: %.*s -> %.*s",
+                     static_cast<unsigned>(state.owner),
+                     static_cast<int>(coinTierName(previousTier).size()),
+                     coinTierName(previousTier).data(),
+                     static_cast<int>(coinTierName(state.effectiveCoinTier).size()),
+                     coinTierName(state.effectiveCoinTier).data());
+        }
 
         // In commodity money, money supply = total coin value
         if (state.system == MonetarySystemType::CommodityMoney) {
@@ -838,6 +917,9 @@ void EconomySimulation::processCrisisAndBonds(aoc::ecs::World& world) {
 
     // Process bond payments
     processBondPayments(world);
+
+    // Process IOU (player-to-player loan) payments
+    processIOUPayments(world);
 
     // Process currency wars
     processCurrencyWar(world, this->m_currencyWarState);

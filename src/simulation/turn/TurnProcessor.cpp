@@ -85,6 +85,9 @@
 // Monetary
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 
+// Energy
+#include "aoc/simulation/economy/EnergyDependency.hpp"
+
 // Logging
 #include "aoc/core/Log.hpp"
 
@@ -115,12 +118,37 @@ EntityId foundCity(aoc::ecs::World& world,
     city.isOriginalCapital = isOriginalCapital;
     city.workedTiles.push_back(location);
 
-    // Auto-assign nearby tiles
+    // Auto-assign nearby tiles, preferring tiles with resources
     std::array<aoc::hex::AxialCoord, 6> neighbors = aoc::hex::neighbors(location);
-    for (int32_t n = 0; n < 3 && n < 6; ++n) {
-        if (grid.isValid(neighbors[static_cast<std::size_t>(n)])) {
-            city.workedTiles.push_back(neighbors[static_cast<std::size_t>(n)]);
+
+    // Sort: resource tiles first, then by yield value
+    struct TileScore {
+        int32_t index;
+        float score;
+    };
+    std::vector<TileScore> tileScores;
+    for (int32_t n = 0; n < 6; ++n) {
+        if (!grid.isValid(neighbors[static_cast<std::size_t>(n)])) { continue; }
+        int32_t idx = grid.toIndex(neighbors[static_cast<std::size_t>(n)]);
+        if (aoc::map::isWater(grid.terrain(idx)) || aoc::map::isImpassable(grid.terrain(idx))) { continue; }
+        float score = 0.0f;
+        aoc::map::TileYield yield = grid.tileYield(idx);
+        score += static_cast<float>(yield.food) * 2.0f;
+        score += static_cast<float>(yield.production) * 1.5f;
+        score += static_cast<float>(yield.gold) * 1.0f;
+        if (grid.resource(idx).isValid()) {
+            score += 5.0f;  // Strong preference for resource tiles
         }
+        tileScores.push_back({n, score});
+    }
+    std::sort(tileScores.begin(), tileScores.end(),
+        [](const TileScore& a, const TileScore& b) { return a.score > b.score; });
+
+    int32_t assigned = 0;
+    for (const TileScore& ts : tileScores) {
+        if (assigned >= 3) { break; }
+        city.workedTiles.push_back(neighbors[static_cast<std::size_t>(ts.index)]);
+        ++assigned;
     }
     world.addComponent<CityComponent>(cityEntity, std::move(city));
 
@@ -267,6 +295,9 @@ void processGlobalSystems(TurnContext& ctx) {
     // Communication speed (affects all players)
     processCommunication(world, grid);
 
+    // Tick prospect cooldowns (tiles that were surveyed become available again)
+    grid.tickProspectCooldowns();
+
     // Labor strikes
     checkLaborStrikes(world);
     processStrikes(world);
@@ -310,6 +341,45 @@ void processGlobalSystems(TurnContext& ctx) {
                 static_cast<float>(industrialCO2));
             const_cast<GlobalClimateComponent&>(climatePool->data()[ci]).processTurn(
                 grid, *ctx.rng);
+        }
+    }
+
+    // Energy dependency and peak oil tracking
+    {
+        // Update global oil reserves
+        aoc::ecs::ComponentPool<GlobalOilReserves>* oilPool =
+            world.getPool<GlobalOilReserves>();
+        if (oilPool != nullptr && oilPool->size() > 0) {
+            updateGlobalOilReserves(grid, oilPool->data()[0]);
+        }
+
+        // Per-player energy dependency
+        aoc::ecs::ComponentPool<PlayerEnergyComponent>* energyPool =
+            world.getPool<PlayerEnergyComponent>();
+        if (energyPool != nullptr) {
+            for (uint32_t ei = 0; ei < energyPool->size(); ++ei) {
+                PlayerEnergyComponent& energy = energyPool->data()[ei];
+
+                // Count oil consumed from stockpiles (tracked in production recipes)
+                int32_t oilConsumed = 0;
+                const aoc::ecs::ComponentPool<CityStockpileComponent>* stockPool =
+                    world.getPool<CityStockpileComponent>();
+                const aoc::ecs::ComponentPool<CityComponent>* cityPool2 =
+                    world.getPool<CityComponent>();
+                if (stockPool != nullptr && cityPool2 != nullptr) {
+                    for (uint32_t si = 0; si < stockPool->size(); ++si) {
+                        EntityId cityEnt = stockPool->entities()[si];
+                        const CityComponent* city2 = world.tryGetComponent<CityComponent>(cityEnt);
+                        if (city2 != nullptr && city2->owner == energy.owner) {
+                            oilConsumed += stockPool->data()[si].getAmount(goods::OIL);
+                        }
+                    }
+                }
+
+                int32_t renewables = countRenewableBuildings(world, energy.owner);
+                updateEnergyDependency(energy, oilConsumed, renewables);
+                processOilShock(energy);
+            }
         }
     }
 

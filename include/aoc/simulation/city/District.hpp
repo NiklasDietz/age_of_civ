@@ -99,7 +99,7 @@ inline constexpr std::array<BuildingDef, 32> BUILDING_DEFS = {{
     {BuildingId{9},  "Food Proc. Plant",   DistrictType::Industrial,  90, 2, 1, 0, 1, 1.0f},
     {BuildingId{10}, "Precision Workshop", DistrictType::Industrial, 140, 3, 3, 1, 0, 1.0f},
     {BuildingId{11}, "Semiconductor Fab",  DistrictType::Industrial, 220, 5, 2, 3, 2, 1.0f},
-    {BuildingId{12}, "Research Lab",       DistrictType::Campus,     480, 3, 0, 8, 0, 1.5f},
+    {BuildingId{12}, "Research Lab",       DistrictType::Campus,     480, 3, 0, 10, 0, 1.5f},
     {BuildingId{13}, "Telecom Hub",        DistrictType::Commercial, 130, 2, 0, 1, 4, 1.0f},
     {BuildingId{14}, "Airport",            DistrictType::Industrial, 200, 4, 2, 0, 3, 1.0f},
     // Expansion buildings

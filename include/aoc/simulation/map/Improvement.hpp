@@ -68,4 +68,34 @@ inline constexpr std::array<ImprovementDef, 14> IMPROVEMENT_DEFS = {{
 [[nodiscard]] aoc::map::ImprovementType bestImprovementForTile(
     const aoc::map::HexGrid& grid, int32_t index);
 
+/**
+ * @brief Check if a tile can be prospected by a Prospector unit.
+ *
+ * Requires: no existing resource, land tile, not on cooldown from prior survey.
+ */
+[[nodiscard]] bool canProspect(const aoc::map::HexGrid& grid, int32_t index);
+
+/**
+ * @brief Prospect a tile for undiscovered resource deposits.
+ *
+ * A Prospector unit surveys the terrain. Success depends on terrain type
+ * and tech level. On success, a new resource with reserves is placed.
+ * On failure, the tile gets a cooldown (cannot be re-prospected for N turns).
+ *
+ * Terrain probabilities (base, before tech modifiers):
+ *   Hills:      25% chance of mineral (iron, copper, gold, silver, tin, coal)
+ *   Desert:     15% chance of oil
+ *   Plains:     10% chance of oil or niter
+ *   Tundra:     15% chance of coal or gems
+ *   Other land: 5% chance of stone or clay
+ *
+ * @param grid       The hex grid (mutated on success + cooldown on failure).
+ * @param index      Tile flat index.
+ * @param techBonus  Tech-based success rate bonus (0.0 = no bonus, 0.15 = Geology, 0.30 = Seismology).
+ * @param rngSeed    Deterministic seed for this prospect attempt.
+ * @return true if a resource was discovered.
+ */
+bool prospectTile(aoc::map::HexGrid& grid, int32_t index,
+                  float techBonus, uint32_t rngSeed);
+
 } // namespace aoc::sim

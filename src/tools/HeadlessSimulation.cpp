@@ -362,6 +362,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         int32_t centerIdx = grid.toIndex(startPos);
         if (!grid.resource(centerIdx).isValid()) {
             grid.setResource(centerIdx, aoc::ResourceId{aoc::sim::goods::WHEAT});
+            grid.setReserves(centerIdx, aoc::sim::defaultReserves(aoc::sim::goods::WHEAT));
         }
         int32_t resourcesPlaced = 0;
         const uint16_t STARTER_RESOURCES[] = {
@@ -377,6 +378,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 && !aoc::map::isImpassable(grid.terrain(nbrIdx))
                 && resourcesPlaced < 6) {
                 grid.setResource(nbrIdx, aoc::ResourceId{STARTER_RESOURCES[resourcesPlaced]});
+                grid.setReserves(nbrIdx, aoc::sim::defaultReserves(STARTER_RESOURCES[resourcesPlaced]));
                 ++resourcesPlaced;
             }
         }

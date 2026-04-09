@@ -301,4 +301,270 @@ void processBondPayments(aoc::ecs::World& world) {
     }
 }
 
+// ============================================================================
+// Player-to-player IOUs (credit/loans)
+// ============================================================================
+
+ErrorCode createIOU(aoc::ecs::World& world,
+                     PlayerId creditor, PlayerId debtor,
+                     CurrencyAmount principal,
+                     float interestRate,
+                     int32_t termTurns) {
+    if (principal <= 0 || creditor == debtor) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    // Find monetary states
+    aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
+        world.getPool<MonetaryStateComponent>();
+    if (monetaryPool == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    MonetaryStateComponent* creditorState = nullptr;
+    MonetaryStateComponent* debtorState = nullptr;
+    for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
+        if (monetaryPool->data()[i].owner == creditor) { creditorState = &monetaryPool->data()[i]; }
+        if (monetaryPool->data()[i].owner == debtor)   { debtorState = &monetaryPool->data()[i]; }
+    }
+    if (creditorState == nullptr || debtorState == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    // Creditor must have the cash
+    if (creditorState->treasury < principal) {
+        return ErrorCode::InsufficientResources;
+    }
+
+    // Both players need IOU components
+    aoc::ecs::ComponentPool<PlayerIOUComponent>* iouPool =
+        world.getPool<PlayerIOUComponent>();
+    if (iouPool == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    PlayerIOUComponent* creditorIOU = nullptr;
+    PlayerIOUComponent* debtorIOU = nullptr;
+    for (uint32_t i = 0; i < iouPool->size(); ++i) {
+        if (iouPool->data()[i].owner == creditor) { creditorIOU = &iouPool->data()[i]; }
+        if (iouPool->data()[i].owner == debtor)   { debtorIOU = &iouPool->data()[i]; }
+    }
+    if (creditorIOU == nullptr || debtorIOU == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    // Transfer cash
+    creditorState->treasury -= principal;
+    debtorState->treasury += principal;
+
+    // Create the contract
+    IOUContract contract;
+    contract.creditor = creditor;
+    contract.debtor = debtor;
+    contract.principal = principal;
+    contract.remaining = principal;
+    contract.interestRate = interestRate;
+    contract.turnsRemaining = termTurns;
+    contract.turnsActive = 0;
+    contract.inDefault = false;
+
+    creditorIOU->loansGiven.push_back(contract);
+    debtorIOU->loansReceived.push_back(contract);
+
+    LOG_INFO("IOU created: player %u lent %lld to player %u at %.1f%% for %d turns",
+             static_cast<unsigned>(creditor),
+             static_cast<long long>(principal),
+             static_cast<unsigned>(debtor),
+             static_cast<double>(interestRate) * 100.0,
+             termTurns);
+
+    return ErrorCode::Ok;
+}
+
+ErrorCode callInIOU(aoc::ecs::World& world,
+                     PlayerId creditor, PlayerId debtor) {
+    aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
+        world.getPool<MonetaryStateComponent>();
+    aoc::ecs::ComponentPool<PlayerIOUComponent>* iouPool =
+        world.getPool<PlayerIOUComponent>();
+
+    if (monetaryPool == nullptr || iouPool == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    MonetaryStateComponent* debtorState = nullptr;
+    MonetaryStateComponent* creditorState = nullptr;
+    for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
+        if (monetaryPool->data()[i].owner == debtor)   { debtorState = &monetaryPool->data()[i]; }
+        if (monetaryPool->data()[i].owner == creditor) { creditorState = &monetaryPool->data()[i]; }
+    }
+    if (debtorState == nullptr || creditorState == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    PlayerIOUComponent* creditorIOU = nullptr;
+    PlayerIOUComponent* debtorIOU = nullptr;
+    for (uint32_t i = 0; i < iouPool->size(); ++i) {
+        if (iouPool->data()[i].owner == creditor) { creditorIOU = &iouPool->data()[i]; }
+        if (iouPool->data()[i].owner == debtor)   { debtorIOU = &iouPool->data()[i]; }
+    }
+    if (creditorIOU == nullptr || debtorIOU == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    // Call in all IOUs from this debtor
+    CurrencyAmount totalDemanded = 0;
+    CurrencyAmount totalPaid = 0;
+    bool anyDefault = false;
+
+    std::vector<IOUContract>::iterator it = creditorIOU->loansGiven.begin();
+    while (it != creditorIOU->loansGiven.end()) {
+        if (it->debtor != debtor) {
+            ++it;
+            continue;
+        }
+
+        totalDemanded += it->remaining;
+        CurrencyAmount payment = std::min(debtorState->treasury, it->remaining);
+        debtorState->treasury -= payment;
+        creditorState->treasury += payment;
+        totalPaid += payment;
+
+        if (payment < it->remaining) {
+            it->inDefault = true;
+            anyDefault = true;
+            it->remaining -= payment;
+            ++it;
+        } else {
+            // Remove matching entry from debtor's loansReceived
+            for (std::vector<IOUContract>::iterator dIt = debtorIOU->loansReceived.begin();
+                 dIt != debtorIOU->loansReceived.end(); ++dIt) {
+                if (dIt->creditor == creditor && dIt->principal == it->principal) {
+                    debtorIOU->loansReceived.erase(dIt);
+                    break;
+                }
+            }
+            it = creditorIOU->loansGiven.erase(it);
+        }
+    }
+
+    LOG_INFO("IOU called: player %u demanded %lld from player %u, received %lld%s",
+             static_cast<unsigned>(creditor),
+             static_cast<long long>(totalDemanded),
+             static_cast<unsigned>(debtor),
+             static_cast<long long>(totalPaid),
+             anyDefault ? " (PARTIAL DEFAULT)" : "");
+
+    // Default damages currency trust
+    if (anyDefault) {
+        aoc::ecs::ComponentPool<CurrencyTrustComponent>* trustPool =
+            world.getPool<CurrencyTrustComponent>();
+        if (trustPool != nullptr) {
+            for (uint32_t i = 0; i < trustPool->size(); ++i) {
+                if (trustPool->data()[i].owner == debtor) {
+                    trustPool->data()[i].trustScore =
+                        std::max(0.0f, trustPool->data()[i].trustScore - 0.10f);
+                    break;
+                }
+            }
+        }
+        return ErrorCode::InsufficientResources;
+    }
+
+    return ErrorCode::Ok;
+}
+
+void processIOUPayments(aoc::ecs::World& world) {
+    aoc::ecs::ComponentPool<PlayerIOUComponent>* iouPool =
+        world.getPool<PlayerIOUComponent>();
+    aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
+        world.getPool<MonetaryStateComponent>();
+
+    if (iouPool == nullptr || monetaryPool == nullptr) {
+        return;
+    }
+
+    // Process each creditor's loans given
+    for (uint32_t p = 0; p < iouPool->size(); ++p) {
+        PlayerIOUComponent& creditorIOU = iouPool->data()[p];
+
+        std::vector<IOUContract>::iterator it = creditorIOU.loansGiven.begin();
+        while (it != creditorIOU.loansGiven.end()) {
+            ++it->turnsActive;
+            --it->turnsRemaining;
+
+            // Accrue interest
+            CurrencyAmount interest = static_cast<CurrencyAmount>(
+                static_cast<float>(it->remaining) * it->interestRate);
+            interest = std::max(static_cast<CurrencyAmount>(1), interest);
+            it->remaining += interest;
+
+            // Scheduled payment: (principal / original_term) + interest per turn
+            CurrencyAmount scheduledPayment = it->principal / 20 + interest;
+            scheduledPayment = std::min(scheduledPayment, it->remaining);
+
+            // Find debtor's treasury
+            MonetaryStateComponent* debtorState = nullptr;
+            MonetaryStateComponent* creditorState = nullptr;
+            for (uint32_t m = 0; m < monetaryPool->size(); ++m) {
+                if (monetaryPool->data()[m].owner == it->debtor) {
+                    debtorState = &monetaryPool->data()[m];
+                }
+                if (monetaryPool->data()[m].owner == creditorIOU.owner) {
+                    creditorState = &monetaryPool->data()[m];
+                }
+            }
+
+            if (debtorState != nullptr && creditorState != nullptr) {
+                CurrencyAmount actualPayment = std::min(debtorState->treasury, scheduledPayment);
+                debtorState->treasury -= actualPayment;
+                creditorState->treasury += actualPayment;
+                it->remaining -= actualPayment;
+
+                if (actualPayment < scheduledPayment) {
+                    it->inDefault = true;
+                }
+            }
+
+            // Loan fully repaid or expired
+            if (it->remaining <= 0) {
+                // Remove from debtor's loansReceived
+                for (uint32_t d = 0; d < iouPool->size(); ++d) {
+                    if (iouPool->data()[d].owner == it->debtor) {
+                        std::vector<IOUContract>& received = iouPool->data()[d].loansReceived;
+                        for (std::vector<IOUContract>::iterator rIt = received.begin();
+                             rIt != received.end(); ++rIt) {
+                            if (rIt->creditor == creditorIOU.owner
+                                && rIt->principal == it->principal) {
+                                received.erase(rIt);
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
+                it = creditorIOU.loansGiven.erase(it);
+            } else {
+                // Sync to debtor's copy
+                for (uint32_t d = 0; d < iouPool->size(); ++d) {
+                    if (iouPool->data()[d].owner == it->debtor) {
+                        for (IOUContract& received : iouPool->data()[d].loansReceived) {
+                            if (received.creditor == creditorIOU.owner
+                                && received.principal == it->principal) {
+                                received.remaining = it->remaining;
+                                received.turnsRemaining = it->turnsRemaining;
+                                received.turnsActive = it->turnsActive;
+                                received.inDefault = it->inDefault;
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
+                ++it;
+            }
+        }
+    }
+}
+
 } // namespace aoc::sim

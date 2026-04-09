@@ -66,13 +66,12 @@ void computeInflation(MonetaryStateComponent& state,
     // Core inflation calculation
     state.inflationRate = moneyGrowth + velocityChange - gdpGrowth;
 
-    // Treasury hoarding pressure: very large treasuries relative to GDP
-    // cause inflationary pressure (excess money in the economy)
+    // Treasury hoarding pressure: excess gold causes inflation
     if (currentGDP > 0 && state.treasury > 0) {
         float treasuryToGDP = static_cast<float>(state.treasury) / static_cast<float>(currentGDP);
-        if (treasuryToGDP > 5.0f) {
-            // Treasury is 5x+ GDP -- this excess money creates inflation
-            float excessPressure = (treasuryToGDP - 5.0f) * 0.005f;
+        if (treasuryToGDP > 2.0f) {
+            // Treasury exceeds 2x GDP -- excess money creates inflation
+            float excessPressure = (treasuryToGDP - 2.0f) * 0.01f;
             state.inflationRate += excessPressure;
         }
     }
@@ -133,6 +132,127 @@ float inflationHappinessPenalty(Percentage inflationRate) {
         return 3.0f + (absRate - 0.10f) * 40.0f;  // 3 to 5
     }
     return 5.0f + (absRate - 0.15f) * 30.0f;  // 5+ (no cap)
+}
+
+// ============================================================================
+// Price level effects on the real economy
+// ============================================================================
+
+float priceLevelMaintenanceMultiplier(float priceLevel) {
+    // Maintenance scales with price level but with dampening.
+    // At base (1.0): 1.0x maintenance.
+    // At 2.0 (100% cumulative inflation): ~1.5x maintenance.
+    // At 0.5 (50% deflation): ~0.8x maintenance (wages drop slower than prices).
+    if (priceLevel <= 0.1f) {
+        return 0.8f;
+    }
+    // Dampened scaling: sqrt growth prevents maintenance from becoming absurd
+    return std::clamp(0.5f + 0.5f * std::sqrt(priceLevel), 0.8f, 3.0f);
+}
+
+float inflationProductionModifier(float inflationRate) {
+    float absRate = std::abs(inflationRate);
+
+    // Mild inflation (1-3%) greases the economy: slight production bonus
+    if (inflationRate >= 0.01f && inflationRate <= 0.03f) {
+        return 0.98f;  // 2% production bonus
+    }
+
+    // Deflation hurts production (unsold inventory, layoffs)
+    if (inflationRate < 0.0f) {
+        return 1.0f + absRate * 2.0f;  // -5% deflation = 1.10x cost (+10%)
+    }
+
+    // Moderate inflation (3-10%): rising costs
+    if (absRate <= 0.10f) {
+        return 1.0f + (absRate - 0.03f) * 1.5f;  // Up to ~1.1x at 10%
+    }
+
+    // High inflation (10%+): significant supply chain disruption
+    return 1.1f + (absRate - 0.10f) * 3.0f;  // Gets expensive fast
+}
+
+// ============================================================================
+// Banking and monetary system GDP effects
+// ============================================================================
+
+float bankingGDPMultiplier(const MonetaryStateComponent& state) {
+    switch (state.system) {
+        case MonetarySystemType::Barter:
+            return 1.0f;  // No credit creation, pure goods exchange
+        case MonetarySystemType::CommodityMoney:
+            // Coins enable basic commerce but no fractional reserve banking
+            return 1.05f;
+        case MonetarySystemType::GoldStandard: {
+            // Paper notes backed by metal enable credit creation.
+            // Money multiplier from fractional reserves amplifies GDP.
+            float multiplier = 1.0f / std::max(0.01f, state.reserveRequirement);
+            // Cap the effect: reserve banking adds 5-15% GDP depending on reserve ratio
+            float bonus = std::clamp((multiplier - 1.0f) * 0.02f, 0.05f, 0.15f);
+            return 1.0f + bonus;
+        }
+        case MonetarySystemType::FiatMoney: {
+            // Full modern banking: credit cards, commercial lending, derivatives.
+            // Maximum amplification but sensitive to stability.
+            float baseBonus = 0.20f;
+            // High debt-to-GDP reduces the banking bonus (crowding out)
+            if (state.gdp > 0) {
+                float debtToGDP = static_cast<float>(state.governmentDebt)
+                                / static_cast<float>(state.gdp);
+                if (debtToGDP > 1.0f) {
+                    baseBonus -= std::min(0.10f, (debtToGDP - 1.0f) * 0.05f);
+                }
+            }
+            return 1.0f + std::max(0.05f, baseBonus);
+        }
+        default:
+            return 1.0f;
+    }
+}
+
+float economicStabilityMultiplier(const MonetaryStateComponent& state) {
+    float stability = 1.0f;
+
+    // Low inflation helps (scholars can plan, patrons can fund)
+    float absInflation = std::abs(state.inflationRate);
+    if (absInflation < 0.03f) {
+        stability += 0.05f;  // +5% science/culture in stable economies
+    } else if (absInflation < 0.05f) {
+        stability += 0.0f;   // Neutral
+    } else if (absInflation < 0.10f) {
+        stability -= 0.05f;  // -5%: universities losing funding
+    } else {
+        stability -= 0.15f;  // -15%: brain drain, cultural stagnation
+    }
+
+    // Advanced monetary systems enable larger research institutions
+    if (state.system == MonetarySystemType::GoldStandard) {
+        stability += 0.05f;  // +5%: banking funds universities
+    } else if (state.system == MonetarySystemType::FiatMoney) {
+        stability += 0.10f;  // +10%: government research grants
+    }
+
+    return std::clamp(stability, 0.80f, 1.15f);
+}
+
+CurrencyAmount computeSeigniorage(const MonetaryStateComponent& state,
+                                   bool isReserveCurrency,
+                                   CurrencyAmount totalForeignGDP) {
+    if (!isReserveCurrency || state.system != MonetarySystemType::FiatMoney) {
+        return 0;
+    }
+
+    // Seigniorage: ~0.5% of foreign GDP that uses your currency as reserve.
+    // This represents the "exorbitant privilege" of reserve currency status:
+    // other nations hold your currency, effectively giving you an interest-free loan.
+    float seigniorageRate = 0.005f;
+
+    // Higher trust = more nations holding your currency = more seigniorage
+    // (trust is checked externally, but we scale by the foreign GDP ratio)
+    CurrencyAmount income = static_cast<CurrencyAmount>(
+        static_cast<float>(totalForeignGDP) * seigniorageRate);
+
+    return std::max(static_cast<CurrencyAmount>(0), income);
 }
 
 } // namespace aoc::sim

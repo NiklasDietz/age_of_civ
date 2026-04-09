@@ -9,10 +9,9 @@
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
+#include "aoc/simulation/monetary/Inflation.hpp"
 #include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
-
-#include <vector>
 
 namespace aoc::sim {
 
@@ -127,13 +126,30 @@ void processBuildingMaintenance(aoc::ecs::World& world, PlayerId player) {
         return;
     }
 
+    // Scale maintenance by price level (inflation increases upkeep costs)
+    float priceMultiplier = 1.0f;
+    const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
+        world.getPool<MonetaryStateComponent>();
+    if (monetaryPool != nullptr) {
+        for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
+            if (monetaryPool->data()[i].owner == player) {
+                priceMultiplier = priceLevelMaintenanceMultiplier(
+                    monetaryPool->data()[i].priceLevel);
+                break;
+            }
+        }
+    }
+    const CurrencyAmount adjustedMaintenance = static_cast<CurrencyAmount>(
+        static_cast<float>(totalMaintenance) * priceMultiplier);
+
     // Deduct from treasury
     world.forEach<PlayerEconomyComponent>(
-        [player, totalMaintenance](EntityId, PlayerEconomyComponent& ec) {
+        [player, adjustedMaintenance](EntityId, PlayerEconomyComponent& ec) {
             if (ec.owner == player) {
-                ec.treasury -= static_cast<CurrencyAmount>(totalMaintenance);
-                LOG_INFO("Player %u building maintenance: %d gold (treasury: %lld)",
-                         static_cast<unsigned>(player), totalMaintenance,
+                ec.treasury -= adjustedMaintenance;
+                LOG_INFO("Player %u building maintenance: %lld gold (treasury: %lld)",
+                         static_cast<unsigned>(player),
+                         static_cast<long long>(adjustedMaintenance),
                          static_cast<long long>(ec.treasury));
             }
         });

@@ -83,6 +83,7 @@ add_library(aoc_lib STATIC
     src/simulation/ai/AIEconomicStrategy.cpp
     src/simulation/ai/LeaderPersonality.cpp
     src/simulation/ai/BehaviorTree.cpp
+    src/simulation/ai/UtilityScoring.cpp
     src/simulation/resource/ResourceTypes.cpp
     src/simulation/resource/ProductionChain.cpp
     src/simulation/resource/EconomySimulation.cpp
@@ -110,6 +111,7 @@ add_library(aoc_lib STATIC
     src/simulation/economy/IndustrialRevolution.cpp
     src/simulation/economy/EconomicDepth.cpp
     src/simulation/economy/NavalTrade.cpp
+    src/simulation/economy/EnergyDependency.cpp
     src/simulation/empire/CommunicationSpeed.cpp
     src/simulation/city/CityConnection.cpp
 
@@ -214,13 +216,39 @@ endif()
 add_executable(age_of_civ src/main.cpp)
 target_link_libraries(age_of_civ PRIVATE aoc_lib)
 
-# Copy/symlink shaders to the build directory so the executable can find them
+# Copy GLSL shader sources to the build directory for runtime compilation.
+# Also keep the symlink as a fallback for pre-compiled .spv files.
+set(AOC_SHADER_SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/vulkan_renderer/shaders")
+set(AOC_SHADER_OUTPUT_DIR "$<TARGET_FILE_DIR:age_of_civ>/shaders")
+
 add_custom_command(TARGET age_of_civ POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E create_symlink
-        ${CMAKE_SOURCE_DIR}/third_party/vulkan_renderer/shaders
-        $<TARGET_FILE_DIR:age_of_civ>/shaders
-    COMMENT "Symlinking shaders to build output directory"
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${AOC_SHADER_OUTPUT_DIR}
+    COMMENT "Creating shader output directory"
 )
+
+# Copy all .glsl source files so runtime compilation works from the build dir
+file(GLOB AOC_GLSL_SOURCES "${AOC_SHADER_SOURCE_DIR}/*.glsl")
+foreach(GLSL_FILE ${AOC_GLSL_SOURCES})
+    get_filename_component(GLSL_FILENAME "${GLSL_FILE}" NAME)
+    add_custom_command(TARGET age_of_civ POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${GLSL_FILE}"
+            "${AOC_SHADER_OUTPUT_DIR}/${GLSL_FILENAME}"
+        COMMENT "Copying shader source: ${GLSL_FILENAME}"
+    )
+endforeach()
+
+# Copy any pre-compiled .spv files as fallback
+file(GLOB AOC_SPV_FILES "${AOC_SHADER_SOURCE_DIR}/*.spv")
+foreach(SPV_FILE ${AOC_SPV_FILES})
+    get_filename_component(SPV_FILENAME "${SPV_FILE}" NAME)
+    add_custom_command(TARGET age_of_civ POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${SPV_FILE}"
+            "${AOC_SHADER_OUTPUT_DIR}/${SPV_FILENAME}"
+        COMMENT "Copying pre-compiled shader: ${SPV_FILENAME}"
+    )
+endforeach()
 
 # --------------------------------------------------------------------------
 # Headless simulation tool (AI-vs-AI for analysis)

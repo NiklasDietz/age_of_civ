@@ -32,6 +32,7 @@
 #include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/ai/AIEconomicStrategy.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
+#include "aoc/simulation/ai/UtilityScoring.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
@@ -519,6 +520,24 @@ void AIController::executeCityActions(aoc::ecs::World& world,
 
     bool settlerEnqueued = false;  // Only produce one settler across all cities
     bool builderEnqueued = false;  // Only produce one builder across all cities
+    int32_t militaryProducers = 0; // Limit how many cities build military per turn
+    // Reserve infrastructure capacity: with 1-3 cities, no dedicated military production
+    // (military comes from fallback when no buildings/districts are available).
+    // With 4+ cities, allow some dedicated military production.
+    const int32_t maxMilitaryProducers = std::max(0, ownedCityCount / 2 - 1);
+
+    // Check if player has any coins (for AI context)
+    bool playerHasCoins = false;
+    const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
+        world.getPool<MonetaryStateComponent>();
+    if (monetaryPool != nullptr) {
+        for (uint32_t mi = 0; mi < monetaryPool->size(); ++mi) {
+            if (monetaryPool->data()[mi].owner == this->m_player) {
+                playerHasCoins = monetaryPool->data()[mi].totalCoinCount() > 0;
+                break;
+            }
+        }
+    }
 
     for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
         CityComponent& city = cityPool->data()[ci];
@@ -566,13 +585,14 @@ void AIController::executeCityActions(aoc::ecs::World& world,
             LOG_INFO("AI %u Enqueued Builder in %s",
                      static_cast<unsigned>(this->m_player), city.name.c_str());
         }
-        // Priority 3: Military units if below desired count
-        else if (needsMilitary) {
+        // Priority 3: Military units if below desired count (limited to half of cities)
+        else if (needsMilitary && militaryProducers < maxMilitaryProducers) {
             item.type = ProductionItemType::Unit;
             item.itemId = bestMilitaryId.value;
             item.name = std::string(bestMilitaryDef.name);
             item.totalCost = static_cast<float>(bestMilitaryDef.productionCost);
             item.progress = 0.0f;
+            ++militaryProducers;
             LOG_INFO("AI %u Enqueued %.*s in %s",
                      static_cast<unsigned>(this->m_player),
                      static_cast<int>(bestMilitaryDef.name.size()),
@@ -594,40 +614,97 @@ void AIController::executeCityActions(aoc::ecs::World& world,
             };
             static constexpr int32_t DISTRICT_COSTS[] = {60, 55, 60, 55, 70};
 
-            for (int32_t di = 0; di < 5 && !enqueuedSomething; ++di) {
-                DistrictType dtype = DISTRICT_PRIORITY[di];
-                bool alreadyHas = (existingDistricts != nullptr
-                                   && existingDistricts->hasDistrict(dtype));
-                if (!alreadyHas) {
-                    item.type = ProductionItemType::District;
-                    item.itemId = static_cast<uint16_t>(dtype);
-                    item.name = std::string(districtTypeName(dtype));
-                    item.totalCost = static_cast<float>(DISTRICT_COSTS[di]);
-                    item.progress = 0.0f;
-                    enqueuedSomething = true;
+            // Build ONE missing district, but only if we already have at least
+            // 1-2 buildings in existing districts (don't stack 5 districts with no buildings)
+            int32_t totalBuildings = 0;
+            if (existingDistricts != nullptr) {
+                for (const CityDistrictsComponent::PlacedDistrict& d : existingDistricts->districts) {
+                    totalBuildings += static_cast<int32_t>(d.buildings.size());
+                }
+            }
+            int32_t existingDistrictCount = (existingDistricts != nullptr)
+                ? static_cast<int32_t>(existingDistricts->districts.size()) : 0;
+
+            // Only build a new district if we have enough buildings in existing ones
+            // (at least 1 building per 2 districts, or if we have no non-CityCenter districts)
+            bool shouldBuildDistrict = (existingDistrictCount <= 1)
+                || (totalBuildings >= existingDistrictCount - 1);
+
+            if (shouldBuildDistrict) {
+                for (int32_t di = 0; di < 5 && !enqueuedSomething; ++di) {
+                    DistrictType dtype = DISTRICT_PRIORITY[di];
+                    bool alreadyHas = (existingDistricts != nullptr
+                                       && existingDistricts->hasDistrict(dtype));
+                    if (!alreadyHas) {
+                        item.type = ProductionItemType::District;
+                        item.itemId = static_cast<uint16_t>(dtype);
+                        item.name = std::string(districtTypeName(dtype));
+                        item.totalCost = static_cast<float>(DISTRICT_COSTS[di]);
+                        item.progress = 0.0f;
+                        enqueuedSomething = true;
+                        LOG_INFO("AI %u Enqueued district %.*s in %s",
+                                 static_cast<unsigned>(this->m_player),
+                                 static_cast<int>(districtTypeName(dtype).size()),
+                                 districtTypeName(dtype).data(),
+                                 city.name.c_str());
+                    }
                 }
             }
 
-            // --- 4b: Buildings (if no district queued) ---
+            // --- 4b: Buildings scored by utility function ---
             if (!enqueuedSomething) {
-                static constexpr uint16_t BLDG_PRIO[] = {
-                    16, 15, 1, 7, 6, 24, 0, 20, 19, 3, 26, 4, 12
-                };
-                for (uint16_t bidx : BLDG_PRIO) {
-                    if (bidx >= BUILDING_DEFS.size()) { continue; }
+                // Build context for utility scoring
+                aoc::sim::AIContext aiCtx{};
+                aiCtx.ownedCities = ownedCityCount;
+                aiCtx.totalPopulation = 0;
+                for (uint32_t cp = 0; cp < cityPool->size(); ++cp) {
+                    if (cityPool->data()[cp].owner == this->m_player) {
+                        aiCtx.totalPopulation += cityPool->data()[cp].population;
+                    }
+                }
+                aiCtx.militaryUnits = unitCounts.military;
+                aiCtx.builderUnits = unitCounts.builders;
+                aiCtx.settlerUnits = unitCounts.settlers;
+                aiCtx.isThreatened = unitCounts.military < 3;
+                aiCtx.needsImprovements = needsBuilder;
+                aiCtx.hasMint = (existingDistricts != nullptr && existingDistricts->hasBuilding(BuildingId{24}));
+                aiCtx.hasCoins = playerHasCoins;
+                aiCtx.hasCampus = (existingDistricts != nullptr && existingDistricts->hasDistrict(DistrictType::Campus));
+                aiCtx.hasCommercial = (existingDistricts != nullptr && existingDistricts->hasDistrict(DistrictType::Commercial));
+                aiCtx.targetMaxCities = targets.maxCities;
+                aiCtx.desiredMilitary = desiredMilitary;
+
+                // Score all buildable buildings and pick the best
+                float bestScore = -1.0f;
+                BuildingId bestBid{0};
+                for (uint16_t bidx = 0; bidx < static_cast<uint16_t>(BUILDING_DEFS.size()); ++bidx) {
                     const BuildingDef& bdef = BUILDING_DEFS[bidx];
                     if (!canBuildBuilding(world, this->m_player, cityEntity, bdef.id)) { continue; }
+                    float score = scoreBuildingForLeader(personality.behavior, bdef.id, aiCtx);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestBid = bdef.id;
+                    }
+                }
+
+                if (bestScore > 0.0f) {
+                    const BuildingDef& bdef = BUILDING_DEFS[bestBid.value];
                     item.type = ProductionItemType::Building;
                     item.itemId = bdef.id.value;
                     item.name = std::string(bdef.name);
                     item.totalCost = static_cast<float>(bdef.productionCost);
                     item.progress = 0.0f;
                     enqueuedSomething = true;
-                    break;
+                    LOG_INFO("AI %u Enqueued building %.*s in %s (score %.1f)",
+                             static_cast<unsigned>(this->m_player),
+                             static_cast<int>(bdef.name.size()),
+                             bdef.name.data(),
+                             city.name.c_str(),
+                             static_cast<double>(bestScore));
                 }
             }
 
-            // Try any building
+            // Try any building (fallback when utility scoring found nothing)
             if (!enqueuedSomething) {
                 for (const BuildingDef& bdef : BUILDING_DEFS) {
                     if (!canBuildBuilding(world, this->m_player, cityEntity, bdef.id)) { continue; }
@@ -637,7 +714,7 @@ void AIController::executeCityActions(aoc::ecs::World& world,
                     item.totalCost = static_cast<float>(bdef.productionCost);
                     item.progress = 0.0f;
                     enqueuedSomething = true;
-                    break;
+                    break;  // break from building loop, not city loop
                 }
             }
 
@@ -653,6 +730,7 @@ void AIController::executeCityActions(aoc::ecs::World& world,
 
         // Apply game pace cost multiplier (Marathon/Eternal = higher costs)
         item.totalCost *= aoc::sim::GamePace::instance().costMultiplier;
+
         queue->queue.push_back(std::move(item));
     }
 }
@@ -1326,7 +1404,71 @@ void AIController::manageBuildersAndImprovements(aoc::ecs::World& world,
             }
         }
 
-        // Move toward the target tile
+        // Move toward the target tile for improvement
+        if (bestTarget != builder.unit.position && bestDist < std::numeric_limits<int32_t>::max()) {
+            targetedTiles.insert(bestTarget);
+            orderUnitMove(world, builder.entity, bestTarget, grid);
+            moveUnitAlongPath(world, builder.entity, grid);
+            continue;
+        }
+
+        // Step 3: No tiles to improve -- try prospecting for hidden resources.
+        // Prospect the current tile if possible, otherwise find nearby prospectable tiles.
+        const int32_t prospectIdx = grid.toIndex(builder.unit.position);
+        if (grid.owner(prospectIdx) == this->m_player && canProspect(grid, prospectIdx)) {
+            // Tech bonus: 0.0 base, +0.15 with Geology (tech 10), +0.30 with Seismology
+            float prospectTechBonus = 0.0f;
+            const aoc::ecs::ComponentPool<PlayerTechComponent>* techPool2 =
+                world.getPool<PlayerTechComponent>();
+            if (techPool2 != nullptr) {
+                for (uint32_t ti = 0; ti < techPool2->size(); ++ti) {
+                    if (techPool2->data()[ti].owner == this->m_player) {
+                        if (techPool2->data()[ti].hasResearched(TechId{10})) {
+                            prospectTechBonus = 0.15f;
+                        }
+                        break;
+                    }
+                }
+            }
+            uint32_t rngSeed = static_cast<uint32_t>(prospectIdx) * 104729u
+                             + static_cast<uint32_t>(this->m_player) * 7919u;
+            bool found = prospectTile(grid, prospectIdx, prospectTechBonus, rngSeed);
+            UnitComponent* liveUnit = world.tryGetComponent<UnitComponent>(builder.entity);
+            if (liveUnit != nullptr && liveUnit->chargesRemaining > 0) {
+                --liveUnit->chargesRemaining;
+                if (liveUnit->chargesRemaining == 0) {
+                    world.destroyEntity(builder.entity);
+                }
+            }
+            if (found) {
+                LOG_INFO("AI %u Builder prospected and found resource at (%d,%d)",
+                         static_cast<unsigned>(this->m_player),
+                         builder.unit.position.q, builder.unit.position.r);
+            }
+            continue;
+        }
+
+        // Find a nearby prospectable tile and move toward it
+        for (const aoc::hex::AxialCoord& cityLoc : cityLocations) {
+            std::vector<aoc::hex::AxialCoord> ring2Tiles;
+            ring2Tiles.reserve(12);
+            aoc::hex::ring(cityLoc, 2, std::back_inserter(ring2Tiles));
+            aoc::hex::ring(cityLoc, 3, std::back_inserter(ring2Tiles));
+
+            for (const aoc::hex::AxialCoord& tile : ring2Tiles) {
+                if (!grid.isValid(tile)) { continue; }
+                const int32_t tIdx = grid.toIndex(tile);
+                if (grid.owner(tIdx) != this->m_player) { continue; }
+                if (!canProspect(grid, tIdx)) { continue; }
+                if (targetedTiles.find(tile) != targetedTiles.end()) { continue; }
+
+                const int32_t dist = aoc::hex::distance(builder.unit.position, tile);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestTarget = tile;
+                }
+            }
+        }
         if (bestTarget != builder.unit.position && bestDist < std::numeric_limits<int32_t>::max()) {
             targetedTiles.insert(bestTarget);
             orderUnitMove(world, builder.entity, bestTarget, grid);
@@ -1559,16 +1701,6 @@ void AIController::manageEconomy(aoc::ecs::World& world,
 // Action scoring (for future expansion)
 // ============================================================================
 
-std::vector<ScoredAction> AIController::evaluateActions(
-    const aoc::ecs::World& /*world*/,
-    const aoc::map::HexGrid& /*grid*/,
-    const DiplomacyManager& /*diplomacy*/,
-    const Market& /*market*/) const {
-    // Full utility-based evaluation will be implemented as the game matures.
-    // For now, actions are hard-coded priorities in executeTurn().
-    return {};
-}
-
 // ============================================================================
 // Monetary system management
 //
@@ -1667,6 +1799,18 @@ void AIController::manageMonetarySystem(aoc::ecs::World& world,
                  static_cast<unsigned>(this->m_player),
                  static_cast<int>(monetarySystemName(nextTarget).size()),
                  monetarySystemName(nextTarget).data());
+    } else {
+        // Log transition failure diagnostics periodically (every 50 turns)
+        if (myState->turnsInCurrentSystem % 50 == 0 && myState->turnsInCurrentSystem > 0) {
+            LOG_INFO("AI player %u cannot transition to %.*s: strength=%d coins=%d cities=%d trades=%d inflation=%.2f",
+                     static_cast<unsigned>(this->m_player),
+                     static_cast<int>(monetarySystemName(nextTarget).size()),
+                     monetarySystemName(nextTarget).data(),
+                     myState->currencyStrength(),
+                     myState->totalCoinCount(),
+                     cityCount, tradePartnerCount,
+                     static_cast<double>(myState->inflationRate));
+        }
     }
 }
 

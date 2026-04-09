@@ -9,6 +9,7 @@
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/empire/CommunicationSpeed.hpp"
+#include "aoc/simulation/monetary/Inflation.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/ecs/World.hpp"
@@ -109,6 +110,18 @@ float computePlayerScience(const aoc::ecs::World& world,
         }
     }
 
+    // Economic stability bonus: stable monetary systems enable scholarship
+    const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
+        world.getPool<MonetaryStateComponent>();
+    if (monetaryPool != nullptr) {
+        for (uint32_t mi = 0; mi < monetaryPool->size(); ++mi) {
+            if (monetaryPool->data()[mi].owner == player) {
+                totalScience *= economicStabilityMultiplier(monetaryPool->data()[mi]);
+                break;
+            }
+        }
+    }
+
     return totalScience;
 }
 
@@ -141,13 +154,25 @@ float computePlayerCulture(const aoc::ecs::World& world,
     }
 
     // Apply civilization culture multiplier
-    const aoc::ecs::ComponentPool<PlayerCivilizationComponent>* civPool =
+    const aoc::ecs::ComponentPool<PlayerCivilizationComponent>* civPool2 =
         world.getPool<PlayerCivilizationComponent>();
-    if (civPool != nullptr) {
-        for (uint32_t ci = 0; ci < civPool->size(); ++ci) {
-            const PlayerCivilizationComponent& civ = civPool->data()[ci];
+    if (civPool2 != nullptr) {
+        for (uint32_t ci = 0; ci < civPool2->size(); ++ci) {
+            const PlayerCivilizationComponent& civ = civPool2->data()[ci];
             if (civ.owner == player) {
                 totalCulture *= civDef(civ.civId).modifiers.cultureMultiplier;
+                break;
+            }
+        }
+    }
+
+    // Economic stability bonus: stable economies enable cultural flourishing
+    const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool2 =
+        world.getPool<MonetaryStateComponent>();
+    if (monetaryPool2 != nullptr) {
+        for (uint32_t mi = 0; mi < monetaryPool2->size(); ++mi) {
+            if (monetaryPool2->data()[mi].owner == player) {
+                totalCulture *= economicStabilityMultiplier(monetaryPool2->data()[mi]);
                 break;
             }
         }

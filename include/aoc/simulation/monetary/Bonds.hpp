@@ -153,4 +153,106 @@ struct PlayerBondComponent {
  */
 void processBondPayments(aoc::ecs::World& world);
 
+// ============================================================================
+// Player-to-player IOUs (credit/loans)
+//
+// Unlike bonds (which are government debt instruments tradeable on markets),
+// IOUs are direct bilateral loans between two players. They create tight
+// economic interdependence:
+//
+// - Creditor earns interest each turn (passive income)
+// - Debtor gets immediate cash to fund wars/expansion
+// - Defaulting on IOUs damages diplomatic relations and currency trust
+// - Creditor can "call in" IOUs early (forces partial repayment)
+// - IOUs can be used as diplomatic leverage ("pay me or I call the loan")
+// ============================================================================
+
+struct IOUContract {
+    PlayerId  creditor = INVALID_PLAYER;    ///< Who lent the money
+    PlayerId  debtor   = INVALID_PLAYER;    ///< Who owes the money
+    CurrencyAmount principal = 0;           ///< Original loan amount
+    CurrencyAmount remaining = 0;           ///< Outstanding balance
+    float    interestRate = 0.05f;          ///< Per-turn interest rate
+    int32_t  turnsRemaining = 20;           ///< Turns until full repayment due
+    int32_t  turnsActive = 0;               ///< How long the loan has been active
+    bool     inDefault = false;             ///< Debtor failed to make a payment
+};
+
+/// Per-player IOU tracking (attached to each player entity).
+struct PlayerIOUComponent {
+    PlayerId owner = INVALID_PLAYER;
+
+    /// IOUs where this player is the CREDITOR (money owed TO us).
+    std::vector<IOUContract> loansGiven;
+
+    /// IOUs where this player is the DEBTOR (money WE owe).
+    std::vector<IOUContract> loansReceived;
+
+    /// Total amount owed to this player across all IOUs.
+    [[nodiscard]] CurrencyAmount totalCreditsOutstanding() const {
+        CurrencyAmount total = 0;
+        for (const IOUContract& iou : this->loansGiven) {
+            total += iou.remaining;
+        }
+        return total;
+    }
+
+    /// Total amount this player owes across all IOUs.
+    [[nodiscard]] CurrencyAmount totalDebtsOutstanding() const {
+        CurrencyAmount total = 0;
+        for (const IOUContract& iou : this->loansReceived) {
+            total += iou.remaining;
+        }
+        return total;
+    }
+};
+
+/**
+ * @brief Create a new IOU (loan) between two players.
+ *
+ * Creditor pays the principal from their treasury to debtor's treasury.
+ * Debtor must repay over time with interest.
+ *
+ * @param world      ECS world.
+ * @param creditor   Player lending money.
+ * @param debtor     Player borrowing money.
+ * @param principal  Loan amount.
+ * @param interestRate  Per-turn interest rate (default 5%).
+ * @param termTurns  Loan term in turns (default 20).
+ * @return Ok if successful, InsufficientResources if creditor can't afford it.
+ */
+[[nodiscard]] ErrorCode createIOU(aoc::ecs::World& world,
+                                   PlayerId creditor, PlayerId debtor,
+                                   CurrencyAmount principal,
+                                   float interestRate = 0.05f,
+                                   int32_t termTurns = 20);
+
+/**
+ * @brief Call in an IOU early (demand partial repayment).
+ *
+ * Creditor demands immediate repayment of remaining balance. Debtor pays
+ * what they can from treasury. Any unpaid remainder is marked as default.
+ * Defaulting damages diplomatic relations and currency trust.
+ *
+ * @param world      ECS world.
+ * @param creditor   Player calling the loan.
+ * @param debtor     Player whose loan is called.
+ * @return Ok if debtor fully repaid, InsufficientResources if partial/default.
+ */
+[[nodiscard]] ErrorCode callInIOU(aoc::ecs::World& world,
+                                   PlayerId creditor, PlayerId debtor);
+
+/**
+ * @brief Process IOU interest accrual and scheduled repayments.
+ *
+ * Called once per turn. For each active IOU:
+ * - Accrues interest on remaining balance.
+ * - Debtor makes scheduled payment (principal / termTurns + interest).
+ * - If debtor can't pay, marks IOU as in default.
+ * - Expired IOUs (turnsRemaining <= 0) demand full repayment.
+ *
+ * @param world  ECS world.
+ */
+void processIOUPayments(aoc::ecs::World& world);
+
 } // namespace aoc::sim

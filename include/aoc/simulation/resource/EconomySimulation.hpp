@@ -56,7 +56,7 @@ public:
     [[nodiscard]] const ProductionChain& productionChain() const { return this->m_productionChain; }
 
 private:
-    void harvestResources(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
+    void harvestResources(aoc::ecs::World& world, aoc::map::HexGrid& grid);
     void processInternalTradeForAllPlayers(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
     void executeProduction(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
     void applyResourceDepletion(aoc::ecs::World& world, aoc::map::HexGrid& grid);

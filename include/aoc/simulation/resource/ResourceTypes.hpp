@@ -60,6 +60,54 @@ struct GoodDef {
 // Good ID constants (stable numeric IDs for serialization)
 // ============================================================================
 
+/// Reserve amount for a resource when placed on the map.
+/// -1 = infinite (renewable). Positive = finite extractable units.
+[[nodiscard]] inline constexpr int16_t defaultReserves(uint16_t goodId) {
+    // Strategic minerals: finite, 50-150 units depending on rarity
+    if (goodId <= 11) {
+        switch (goodId) {
+            case 0:  return 100;  // Iron ore: abundant
+            case 1:  return 80;   // Copper ore: common
+            case 2:  return 120;  // Coal: large deposits
+            case 3:  return 60;   // Oil: moderate
+            case 4:  return -1;   // Horses: renewable (breeding)
+            case 5:  return 50;   // Niter: scarce
+            case 6:  return 30;   // Uranium: very scarce
+            case 7:  return 40;   // Aluminum: moderate
+            case 8:  return -1;   // Cotton: renewable (crop)
+            case 9:  return -1;   // Rubber: renewable (trees)
+            case 10: return 60;   // Tin: moderate
+            case 11: return 70;   // Silver ore: moderate
+            default: return 80;
+        }
+    }
+    // Luxury resources: mix of renewable and finite
+    if (goodId >= 20 && goodId <= 28) {
+        switch (goodId) {
+            case 20: return 50;   // Gold ore: finite, scarce
+            case 21: return 40;   // Gems: finite, very scarce
+            case 22: return -1;   // Spices: renewable (plants)
+            case 23: return -1;   // Silk: renewable (silkworms)
+            case 24: return 60;   // Ivory: finite (elephants decline)
+            case 25: return -1;   // Wine: renewable (grapes)
+            case 26: return -1;   // Dyes: renewable (plants)
+            case 27: return -1;   // Furs: renewable (animals, slowly)
+            case 28: return -1;   // Incense: renewable (trees)
+            default: return -1;
+        }
+    }
+    // Bonus resources: all renewable (food, wood, fish)
+    if (goodId >= 40 && goodId <= 47) {
+        return -1;  // Renewable
+    }
+    return 80;  // Default for unknown resources
+}
+
+/// Whether a resource is renewable (regrows/restocks naturally).
+[[nodiscard]] inline constexpr bool isRenewableResource(uint16_t goodId) {
+    return defaultReserves(goodId) < 0;
+}
+
 namespace goods {
     // -- Raw strategic resources (0-19) --
     inline constexpr uint16_t IRON_ORE    = 0;

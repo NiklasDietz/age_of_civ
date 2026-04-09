@@ -87,7 +87,7 @@ enum class CoinTier : uint8_t {
     }
 }
 
-/// Trade efficiency multiplier for each coin tier.
+/// Trade efficiency multiplier for each coin tier (legacy, used as fallback).
 [[nodiscard]] constexpr float coinTierTradeEfficiency(CoinTier tier) {
     switch (tier) {
         case CoinTier::None:   return 0.50f;   // Barter: 50%
@@ -99,7 +99,45 @@ enum class CoinTier : uint8_t {
 }
 
 /// Minimum coin reserves to qualify for a tier.
-inline constexpr int32_t COIN_TIER_THRESHOLD = 5;
+inline constexpr int32_t COIN_TIER_THRESHOLD = 3;
+
+// ============================================================================
+// Denomination value ratios (historical: Roman aureus/denarius/sestertius)
+// ============================================================================
+
+/// Value of one copper coin in base currency units.
+inline constexpr int32_t COPPER_COIN_VALUE = 1;
+/// Value of one silver coin in base currency units.
+inline constexpr int32_t SILVER_COIN_VALUE = 5;
+/// Value of one gold coin in base currency units.
+inline constexpr int32_t GOLD_COIN_VALUE = 25;
+
+/// Currency strength thresholds for trade efficiency tiers.
+/// A civ with 100 copper coins (strength 100) trades as well as one with 4 gold (strength 100).
+inline constexpr int32_t STRENGTH_LOCAL_TRADE    = 3;    ///< Minimal coinage
+inline constexpr int32_t STRENGTH_REGIONAL_TRADE = 25;   ///< Regional commerce
+inline constexpr int32_t STRENGTH_INTERNATIONAL  = 100;  ///< Full international trade
+
+/// Currency strength to trade efficiency mapping.
+/// Based on total metal-weighted coin value, not specific metal type.
+[[nodiscard]] inline float currencyStrengthTradeEfficiency(int32_t currencyStrength) {
+    if (currencyStrength < STRENGTH_LOCAL_TRADE) {
+        return 0.50f;   // Barter-equivalent
+    }
+    if (currencyStrength < STRENGTH_REGIONAL_TRADE) {
+        // Linear interpolation 0.65 to 0.80
+        float t = static_cast<float>(currencyStrength - STRENGTH_LOCAL_TRADE)
+                / static_cast<float>(STRENGTH_REGIONAL_TRADE - STRENGTH_LOCAL_TRADE);
+        return 0.65f + t * 0.15f;
+    }
+    if (currencyStrength < STRENGTH_INTERNATIONAL) {
+        // Linear interpolation 0.80 to 0.95
+        float t = static_cast<float>(currencyStrength - STRENGTH_REGIONAL_TRADE)
+                / static_cast<float>(STRENGTH_INTERNATIONAL - STRENGTH_REGIONAL_TRADE);
+        return 0.80f + t * 0.15f;
+    }
+    return 0.95f;  // Full international trade efficiency
+}
 
 /// Good ID for each coin tier.
 [[nodiscard]] constexpr uint16_t coinTierGoodId(CoinTier tier) {
@@ -119,22 +157,22 @@ inline constexpr int32_t COIN_TIER_THRESHOLD = 5;
 struct MonetaryTransitionReq {
     MonetarySystemType target;
     TechId             requiredTech;       ///< Tech prerequisite (INVALID = none)
-    CoinTier           minCoinTier;        ///< Minimum coin tier held
-    int32_t            minCoinReserves;    ///< Minimum total coin amount across all tiers
+    int32_t            minCurrencyStrength;///< Minimum currency strength (metal-weighted coin value)
     int32_t            minCityCount;       ///< Minimum number of cities
     int32_t            minTurnsInCurrent;  ///< Minimum turns spent in current system
     int32_t            minTradePartners;   ///< Minimum active trade partners
     float              maxInflation;       ///< Maximum inflation rate allowed (for stability check)
 };
 
-/// Transition requirements. Fiat has strict prerequisites to prevent abuse.
+/// Transition requirements. Based on currency strength, not specific metal type.
+/// A civ with 100 copper coins can reach Gold Standard just as well as one with 4 gold coins.
 inline constexpr std::array<MonetaryTransitionReq, 3> MONETARY_TRANSITIONS = {{
-    // Barter -> Commodity Money: just need any coins + a mint
-    {MonetarySystemType::CommodityMoney, TechId{},  CoinTier::Copper, 5,   1, 0, 0, 1.0f},
-    // Commodity -> Gold Standard: need banking, gold coins, 2 cities
-    {MonetarySystemType::GoldStandard,   TechId{9}, CoinTier::Gold,   20,  2, 0, 0, 1.0f},
+    // Barter -> Commodity Money: need any coins worth >= 3 currency units
+    {MonetarySystemType::CommodityMoney, TechId{},  3,    1, 0, 0, 1.0f},
+    // Commodity -> Gold Standard: need banking tech, significant reserves, 2 cities
+    {MonetarySystemType::GoldStandard,   TechId{9}, 50,   2, 0, 0, 1.0f},
     // Gold Standard -> Fiat: need economics, stability, trade network, GDP rank checked separately
-    {MonetarySystemType::FiatMoney,      TechId{13},CoinTier::Gold,   10,  3, 5, 3, 0.10f},
+    {MonetarySystemType::FiatMoney,      TechId{13},100,  3, 5, 3, 0.10f},
 }};
 
 // ============================================================================
@@ -210,11 +248,18 @@ struct MonetaryStateComponent {
         }
     }
 
-    /// Total coin reserves across all tiers (weighted by value).
+    /// Total coin reserves across all tiers (weighted by denomination value).
+    /// Uses historical ratios: copper=1, silver=5, gold=25.
     [[nodiscard]] int32_t totalCoinValue() const {
-        return this->copperCoinReserves * 1
-             + this->silverCoinReserves * 2
-             + this->goldCoinReserves   * 4;
+        return this->copperCoinReserves * COPPER_COIN_VALUE
+             + this->silverCoinReserves * SILVER_COIN_VALUE
+             + this->goldCoinReserves   * GOLD_COIN_VALUE;
+    }
+
+    /// Currency strength: total metal-weighted value of all coin reserves.
+    /// Determines trade efficiency independent of which specific metals are held.
+    [[nodiscard]] int32_t currencyStrength() const {
+        return this->totalCoinValue();
     }
 
     /// Total raw coin count across all tiers.
@@ -248,10 +293,7 @@ struct MonetaryStateComponent {
 
         for (const MonetaryTransitionReq& req : MONETARY_TRANSITIONS) {
             if (req.target == target) {
-                if (this->effectiveCoinTier < req.minCoinTier) {
-                    return ErrorCode::InvalidMonetaryTransition;
-                }
-                if (this->totalCoinCount() < req.minCoinReserves) {
+                if (this->currencyStrength() < req.minCurrencyStrength) {
                     return ErrorCode::InvalidMonetaryTransition;
                 }
                 if (cityCount < req.minCityCount) {
@@ -297,8 +339,8 @@ struct MonetaryStateComponent {
                 break;
 
             case MonetarySystemType::GoldStandard:
-                // Issue paper notes backed by gold coins at 2:1 ratio.
-                this->moneySupply = static_cast<CurrencyAmount>(this->goldCoinReserves) * 2;
+                // Issue paper notes backed by total coin reserves at 2:1 ratio.
+                this->moneySupply = static_cast<CurrencyAmount>(this->totalCoinValue()) * 2;
                 this->goldBackingRatio = 0.5f;
                 this->debasement = {};  // Paper money, debasement no longer applies
                 break;
@@ -317,7 +359,8 @@ struct MonetaryStateComponent {
     // Trade modifiers based on monetary system and coin tier
     // ========================================================================
 
-    /// Trade efficiency multiplier. Accounts for coin tier and debasement.
+    /// Trade efficiency multiplier. Based on currency strength and monetary system.
+    /// A copper-rich civ trades just as well as a gold-rich one with equivalent total value.
     [[nodiscard]] float tradeEfficiency() const {
         float baseEfficiency = 0.50f;
 
@@ -326,7 +369,8 @@ struct MonetaryStateComponent {
                 baseEfficiency = 0.50f;
                 break;
             case MonetarySystemType::CommodityMoney:
-                baseEfficiency = coinTierTradeEfficiency(this->effectiveCoinTier);
+                // Currency strength determines efficiency, not specific metal type
+                baseEfficiency = currencyStrengthTradeEfficiency(this->currencyStrength());
                 // Debasement penalty once discovered
                 if (this->debasement.discoveredByPartners) {
                     baseEfficiency *= (1.0f - this->debasement.debasementRatio * 0.5f);
@@ -347,27 +391,32 @@ struct MonetaryStateComponent {
     }
 
     /// Maximum number of simultaneous trade routes allowed.
+    /// Scales with currency strength in commodity money (more coins = more trade capacity).
     [[nodiscard]] int32_t maxTradeRoutes() const {
         switch (this->system) {
             case MonetarySystemType::Barter:         return 1;
-            case MonetarySystemType::CommodityMoney:
-                // More trade routes with higher coin tiers
-                switch (this->effectiveCoinTier) {
-                    case CoinTier::None:   return 1;
-                    case CoinTier::Copper: return 2;
-                    case CoinTier::Silver: return 3;
-                    case CoinTier::Gold:   return 4;
-                    default:               return 1;
-                }
+            case MonetarySystemType::CommodityMoney: {
+                // Currency strength determines trade capacity
+                int32_t strength = this->currencyStrength();
+                if (strength < STRENGTH_LOCAL_TRADE)    { return 1; }
+                if (strength < STRENGTH_REGIONAL_TRADE) { return 2; }
+                if (strength < STRENGTH_INTERNATIONAL)  { return 3; }
+                return 4;  // Full commodity money trade capacity
+            }
             case MonetarySystemType::GoldStandard:   return 6;
             case MonetarySystemType::FiatMoney:      return 10;
             default:                                 return 1;
         }
     }
 
-    /// Get the gold reserves value used for gold standard backing checks.
-    /// In gold standard, this is the gold coin reserves.
-    /// In fiat, gold is just a commodity (value comes from market).
+    /// Get the total metal reserves value used for gold standard backing checks.
+    /// In gold standard, all coin types back the paper currency (weighted by denomination).
+    /// In fiat, metal is just a commodity (value comes from market).
+    [[nodiscard]] CurrencyAmount metalReserves() const {
+        return static_cast<CurrencyAmount>(this->totalCoinValue());
+    }
+
+    /// Legacy accessor (gold-specific reserves for gold buy/sell operations).
     [[nodiscard]] CurrencyAmount goldReserves() const {
         return static_cast<CurrencyAmount>(this->goldCoinReserves);
     }

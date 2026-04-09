@@ -2,60 +2,60 @@
 
 /**
  * @file UtilityScoring.hpp
- * @brief Utility-based action scoring framework for AI decision making.
- *
- * Each possible AI action gets a utility score [0, 1]. The AI picks the
- * highest-scoring action each decision cycle. Scores are computed from
- * weighted factors (military threat, economic need, expansion opportunity, etc.).
+ * @brief Utility-based AI scoring: each leader scores every possible action
+ * differently based on their personality weights.
  */
 
+#include "aoc/simulation/ai/LeaderPersonality.hpp"
+#include "aoc/core/Types.hpp"
+
 #include <cstdint>
-#include <string_view>
 
-namespace aoc::sim::ai {
+namespace aoc::sim {
 
-/// Categories of AI actions that can be scored.
-enum class ActionCategory : uint8_t {
-    BuildUnit,
-    BuildBuilding,
-    BuildDistrict,
-    ResearchTech,
-    ResearchCivic,
-    MoveUnit,
-    AttackUnit,
-    FoundCity,
-    ProposeTrade,
-    DeclareWar,
-    MakePeace,
-    ChangePolicy,
+/// Score categories for production decisions.
+struct ProductionScores {
+    float settler;
+    float builder;
+    float military;
+    float navalMilitary;
+    float religious;
+    float wonder;
+    float scienceBuilding;
+    float economicBuilding;
+    float industrialBuilding;
+    float cultureBuilding;
+    float militaryBuilding;
+    float mintBuilding;
+    float powerPlant;
+    float district;
 };
 
-/// A scored action ready for comparison.
-struct ScoredAction {
-    ActionCategory  category;
-    uint32_t        targetId;     ///< Entity ID, tech ID, unit ID, etc.
-    float           utility;      ///< [0.0, 1.0] -- higher is better
-    std::string_view reason;      ///< Debug: why this score
+/// Context that modifies base scores.
+struct AIContext {
+    int32_t ownedCities;
+    int32_t totalPopulation;
+    int32_t militaryUnits;
+    int32_t builderUnits;
+    int32_t settlerUnits;
+    bool    isThreatened;
+    bool    needsImprovements;
+    bool    hasMint;
+    bool    hasCoins;
+    bool    hasCampus;
+    bool    hasCommercial;
+    CurrencyAmount treasury;
+    int32_t targetMaxCities;
+    int32_t desiredMilitary;
 };
 
-/// Clamp and normalize a raw score to [0, 1].
-[[nodiscard]] constexpr float normalizeScore(float raw, float minVal, float maxVal) {
-    if (maxVal <= minVal) {
-        return 0.0f;
-    }
-    float clamped = raw;
-    if (clamped < minVal) clamped = minVal;
-    if (clamped > maxVal) clamped = maxVal;
-    return (clamped - minVal) / (maxVal - minVal);
-}
+[[nodiscard]] ProductionScores computeProductionUtility(
+    const LeaderBehavior& behavior, const AIContext& ctx);
 
-/// Weighted combination of factors.
-struct UtilityWeights {
-    float militaryThreat    = 0.25f;
-    float economicNeed      = 0.25f;
-    float expansionValue    = 0.20f;
-    float diplomaticGain    = 0.15f;
-    float scienceValue      = 0.15f;
-};
+[[nodiscard]] float scoreBuildingForLeader(
+    const LeaderBehavior& behavior, BuildingId buildingId, const AIContext& ctx);
 
-} // namespace aoc::sim::ai
+[[nodiscard]] float scoreTechForLeader(
+    const LeaderBehavior& behavior, TechId techId, const AIContext& ctx);
+
+} // namespace aoc::sim

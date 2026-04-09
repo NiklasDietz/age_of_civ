@@ -1,0 +1,183 @@
+/**
+ * @file UtilityScoring.cpp
+ * @brief Utility-based AI scoring for production and research decisions.
+ */
+
+#include "aoc/simulation/ai/UtilityScoring.hpp"
+#include "aoc/simulation/tech/TechTree.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/core/Log.hpp"
+
+#include <algorithm>
+#include <cmath>
+
+namespace aoc::sim {
+
+ProductionScores computeProductionUtility(const LeaderBehavior& b, const AIContext& ctx) {
+    ProductionScores scores{};
+
+    // ================================================================
+    // Base scores weighted by personality
+    // ================================================================
+
+    // Settler: high value when below target cities
+    scores.settler = 150.0f * b.expansionism * b.prodSettlers;
+    if (ctx.ownedCities >= ctx.targetMaxCities) { scores.settler = 0.0f; }
+    if (ctx.settlerUnits > 0) { scores.settler = 0.0f; }
+    if (ctx.totalPopulation < ctx.ownedCities * 2) { scores.settler *= 0.3f; }
+
+    // Builder: needed for improvements
+    scores.builder = 80.0f * b.prodBuilders;
+    if (ctx.builderUnits > 0) { scores.builder *= 0.1f; }
+    if (ctx.needsImprovements) { scores.builder *= 2.0f; }
+
+    // Military: scales with aggression and threat
+    scores.military = 100.0f * b.militaryAggression * b.prodMilitary;
+    if (ctx.militaryUnits >= ctx.desiredMilitary) { scores.military *= 0.3f; }
+    if (ctx.isThreatened) { scores.military *= 3.0f; }
+
+    // Naval military
+    scores.navalMilitary = 60.0f * b.prodNaval;
+
+    // Religious units
+    scores.religious = 60.0f * b.religiousZeal * b.prodReligious;
+
+    // Wonders
+    scores.wonder = 200.0f * b.cultureFocus * b.prodWonders;
+
+    // ================================================================
+    // Building categories
+    // ================================================================
+
+    // Science buildings (Library, University, Research Lab)
+    scores.scienceBuilding = 120.0f * b.scienceFocus * b.prodBuildings;
+    if (!ctx.hasCampus) { scores.scienceBuilding *= 0.3f; }  // Need Campus first
+
+    // Economic buildings (Market, Bank, Stock Exchange)
+    scores.economicBuilding = 100.0f * b.economicFocus * b.prodBuildings;
+    if (!ctx.hasCommercial) { scores.economicBuilding *= 0.3f; }
+
+    // Industrial buildings (Workshop, Factory, etc.)
+    scores.industrialBuilding = 110.0f * b.prodBuildings * b.techIndustrial;
+
+    // Culture buildings (Monument)
+    scores.cultureBuilding = 90.0f * b.cultureFocus * b.prodBuildings;
+
+    // Military buildings (Barracks, Walls)
+    scores.militaryBuilding = 70.0f * b.militaryAggression * b.prodBuildings;
+
+    // Mint: HIGH priority if no coins yet (enables monetary advancement)
+    scores.mintBuilding = 130.0f * b.economicFocus;
+    if (ctx.hasCoins) { scores.mintBuilding *= 0.2f; }  // Already have coins
+    if (ctx.hasMint) { scores.mintBuilding = 0.0f; }    // Already have Mint
+    if (!ctx.hasCommercial) { scores.mintBuilding *= 0.3f; }  // Need Commercial first
+
+    // Power plants
+    scores.powerPlant = 90.0f * b.techIndustrial * b.prodBuildings;
+
+    // Districts: high base value since they unlock buildings
+    scores.district = 140.0f * b.prodBuildings;
+
+    return scores;
+}
+
+float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
+                              const AIContext& ctx) {
+    float score = 50.0f;  // Base score for any building
+
+    switch (buildingId.value) {
+        // City Center
+        case 15: score = 70.0f; break;   // Granary: food, always useful
+        case 16: score = 80.0f * b.cultureFocus; break;  // Monument: culture
+        case 22: score = 60.0f; break;   // Hospital
+
+        // Campus
+        case  7: score = 100.0f * b.scienceFocus; break;  // Library
+        case 19: score = 130.0f * b.scienceFocus; break;  // University
+        case 12: score = 160.0f * b.scienceFocus; break;  // Research Lab
+
+        // Commercial
+        case  6: score = 90.0f * b.economicFocus; break;   // Market
+        case 20: score = 110.0f * b.economicFocus; break;  // Bank
+        case 21: score = 130.0f * b.economicFocus; break;  // Stock Exchange
+        case 24: score = 140.0f * b.economicFocus;          // Mint!
+                 if (!ctx.hasCoins) { score *= 1.5f; }      // Huge bonus if no coins
+                 break;
+
+        // Industrial
+        case  0: score = 80.0f * b.techIndustrial; break;  // Forge
+        case  1: score = 90.0f * b.techIndustrial; break;  // Workshop
+        case  3: score = 120.0f * b.techIndustrial; break; // Factory
+        case  5: score = 140.0f * b.techIndustrial; break; // Industrial Complex
+
+        // Encampment
+        case 17: score = 60.0f * b.militaryAggression; break; // Walls
+        case 18: score = 70.0f * b.militaryAggression; break; // Barracks
+
+        // Power plants
+        case 26: score = 90.0f * b.techIndustrial; break;  // Coal Plant
+        case 27: score = 95.0f * b.techIndustrial; break;  // Oil Plant
+        case 28: score = 100.0f; break;                     // Hydroelectric (clean)
+        case 29: score = 80.0f * b.techIndustrial; break;  // Nuclear (risky)
+        case 30: score = 110.0f; break;                     // Solar
+        case 31: score = 105.0f; break;                     // Wind
+
+        // Other
+        case  8: score = 70.0f; break;  // Textile Mill
+        case  9: score = 65.0f; break;  // Food Processing
+        case 25: score = 50.0f; break;  // Waste Treatment
+
+        default: score = 40.0f; break;
+    }
+
+    // Context bonus: treasury-rich players can afford expensive buildings
+    if (ctx.treasury > 5000) { score *= 1.2f; }
+
+    return score;
+}
+
+float scoreTechForLeader(const LeaderBehavior& b, TechId techId,
+                          const AIContext& /*ctx*/) {
+    if (!techId.isValid() || techId.value >= techCount()) {
+        return 0.0f;
+    }
+
+    const TechDef& def = techDef(techId);
+    float score = 100.0f;  // Base score
+
+    // Prefer cheaper techs (lower opportunity cost)
+    score -= static_cast<float>(def.researchCost) * 0.01f;
+
+    // Bonus for techs that unlock things
+    if (!def.unlockedBuildings.empty()) {
+        score += 200.0f * b.prodBuildings;
+        // Extra bonus for science/economic buildings
+        for (BuildingId bid : def.unlockedBuildings) {
+            if (bid.value == 7 || bid.value == 19 || bid.value == 12) {
+                score += 150.0f * b.scienceFocus;  // Science buildings
+            }
+            if (bid.value == 6 || bid.value == 20 || bid.value == 24) {
+                score += 120.0f * b.economicFocus;  // Economic + Mint
+            }
+            if (bid.value == 3 || bid.value == 5) {
+                score += 100.0f * b.techIndustrial;  // Industrial
+            }
+        }
+    }
+
+    if (!def.unlockedUnits.empty()) {
+        score += 150.0f * b.militaryAggression * b.techMilitary;
+    }
+
+    // Era-based bias
+    if (def.era.value >= 5) {
+        score *= b.techInformation;  // Late techs biased by info focus
+    }
+    if (def.era.value <= 1) {
+        score *= 1.3f;  // Early techs always valuable (unlock basics)
+    }
+
+    return score;
+}
+
+} // namespace aoc::sim

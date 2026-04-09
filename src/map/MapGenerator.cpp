@@ -1001,6 +1001,7 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
 
             if (placed.isValid()) {
                 grid.setResource(index, placed);
+                grid.setReserves(index, aoc::sim::defaultReserves(placed.value));
                 ++totalPlaced;
             }
         }
@@ -1096,6 +1097,8 @@ void MapGenerator::placeBasicResources(const Config& config, HexGrid& grid,
 
             if (placed.isValid()) {
                 grid.setResource(index, placed);
+                int16_t reserves = aoc::sim::defaultReserves(placed.value);
+                grid.setReserves(index, reserves);
                 ++totalPlaced;
             }
         }

@@ -18,6 +18,8 @@ void HexGrid::initialize(int32_t width, int32_t height) {
     this->m_elevation.assign(count, 0);
     this->m_riverEdges.assign(count, 0);
     this->m_resource.assign(count, ResourceId{});
+    this->m_reserves.assign(count, 0);
+    this->m_prospectCooldown.assign(count, 0);
     this->m_owner.assign(count, INVALID_PLAYER);
     this->m_improvement.assign(count, ImprovementType::None);
     this->m_road.assign(count, 0);

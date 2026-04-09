@@ -74,30 +74,24 @@ void computeCityHappiness(aoc::ecs::World& world, PlayerId player) {
         // Base amenities: 1 from palace/capital
         happiness.amenities = 1.0f;
 
-        // Amenity bonus from luxury processed goods in city stockpile
+        // Amenity bonus from luxury resources and processed goods
         const CityStockpileComponent* stockpile =
             world.tryGetComponent<CityStockpileComponent>(cityEntity);
         if (stockpile != nullptr) {
-            // Clothing: +1 amenity if city has any
-            if (stockpile->getAmount(goods::CLOTHING) > 0) {
-                happiness.amenities += 1.0f;
-            }
-            // Advanced Consumer Goods: +2 amenities
-            if (stockpile->getAmount(goods::ADV_CONSUMER_GOODS) > 0) {
-                happiness.amenities += 2.0f;
-            }
-            // Consumer Goods: +0.5 amenity
-            if (stockpile->getAmount(goods::CONSUMER_GOODS) > 0) {
-                happiness.amenities += 0.5f;
-            }
-            // Wine: +1 amenity (luxury)
-            if (stockpile->getAmount(goods::WINE) > 0) {
-                happiness.amenities += 1.0f;
-            }
-            // Spices: +0.5 amenity (luxury)
-            if (stockpile->getAmount(goods::SPICES) > 0) {
-                happiness.amenities += 0.5f;
-            }
+            // Each unique luxury resource provides +1 amenity (like Civ 6)
+            if (stockpile->getAmount(goods::WINE) > 0)    { happiness.amenities += 1.0f; }
+            if (stockpile->getAmount(goods::SPICES) > 0)  { happiness.amenities += 1.0f; }
+            if (stockpile->getAmount(goods::SILK) > 0)    { happiness.amenities += 1.0f; }
+            if (stockpile->getAmount(goods::IVORY) > 0)   { happiness.amenities += 1.0f; }
+            if (stockpile->getAmount(goods::GEMS) > 0)    { happiness.amenities += 1.0f; }
+            if (stockpile->getAmount(goods::DYES) > 0)    { happiness.amenities += 1.0f; }
+            if (stockpile->getAmount(goods::FURS) > 0)    { happiness.amenities += 1.0f; }
+            if (stockpile->getAmount(goods::INCENSE) > 0) { happiness.amenities += 1.0f; }
+            if (stockpile->getAmount(goods::SUGAR) > 0)   { happiness.amenities += 0.5f; }
+            // Processed luxury goods
+            if (stockpile->getAmount(goods::CLOTHING) > 0)          { happiness.amenities += 1.5f; }
+            if (stockpile->getAmount(goods::ADV_CONSUMER_GOODS) > 0){ happiness.amenities += 2.0f; }
+            if (stockpile->getAmount(goods::CONSUMER_GOODS) > 0)    { happiness.amenities += 1.0f; }
         }
 
         // Amenity bonus from buildings (districts and their buildings provide comfort)

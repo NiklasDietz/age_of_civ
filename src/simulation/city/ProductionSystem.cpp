@@ -17,6 +17,7 @@
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/economy/EnvironmentModifier.hpp"
+#include "aoc/simulation/monetary/Inflation.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
@@ -147,6 +148,22 @@ float computeCityProduction(const aoc::ecs::World& world,
         float corruption = computeCorruption(govType, playerCityCount,
                                               govMods.corruptionReduction);
         totalProduction *= (1.0f - corruption);
+    }
+
+    // Inflation reduces effective production (supply chain disruption, wage demands).
+    // Mild inflation (1-3%) slightly helps. High inflation hurts significantly.
+    const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool2 =
+        world.getPool<MonetaryStateComponent>();
+    if (monetaryPool2 != nullptr) {
+        for (uint32_t mi = 0; mi < monetaryPool2->size(); ++mi) {
+            if (monetaryPool2->data()[mi].owner == city.owner) {
+                float inflationMod = inflationProductionModifier(
+                    monetaryPool2->data()[mi].inflationRate);
+                // inflationMod > 1.0 means costs are higher, so production buys less
+                totalProduction /= inflationMod;
+                break;
+            }
+        }
     }
 
     // Minimum 1 production per turn so cities always make progress

@@ -57,13 +57,6 @@ public:
     [[nodiscard]] PlayerId player() const { return this->m_player; }
 
 private:
-    /// Score all available actions and return sorted list (highest first).
-    [[nodiscard]] std::vector<ScoredAction> evaluateActions(
-        const aoc::ecs::World& world,
-        const aoc::map::HexGrid& grid,
-        const DiplomacyManager& diplomacy,
-        const Market& market) const;
-
     void executeUnitActions(aoc::ecs::World& world,
                             aoc::map::HexGrid& grid,
                             aoc::Random& rng);
@@ -92,7 +85,6 @@ private:
 
     PlayerId              m_player;
     aoc::ui::AIDifficulty m_difficulty;
-    UtilityWeights        m_weights;
 };
 
 } // namespace aoc::sim::ai

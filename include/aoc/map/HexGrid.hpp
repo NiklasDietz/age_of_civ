@@ -122,6 +122,34 @@ public:
     [[nodiscard]] ResourceId resource(int32_t index) const { this->assertIndex(index); return this->m_resource[static_cast<std::size_t>(index)]; }
     void setResource(int32_t index, ResourceId id) { this->assertIndex(index); this->m_resource[static_cast<std::size_t>(index)] = id; }
 
+    // -- Resource reserves (how much extractable material remains) --
+    /// Remaining reserves for the tile's resource. 0 = exhausted.
+    [[nodiscard]] int16_t reserves(int32_t index) const { this->assertIndex(index); return this->m_reserves[static_cast<std::size_t>(index)]; }
+    void setReserves(int32_t index, int16_t amount) { this->assertIndex(index); this->m_reserves[static_cast<std::size_t>(index)] = amount; }
+    /// Consume 1 unit of reserves. Returns true if reserves remain, false if exhausted.
+    bool consumeReserve(int32_t index) {
+        this->assertIndex(index);
+        int16_t& r = this->m_reserves[static_cast<std::size_t>(index)];
+        if (r <= 0) { return false; }
+        --r;
+        if (r <= 0) {
+            // Resource exhausted: remove it from the tile
+            this->m_resource[static_cast<std::size_t>(index)] = ResourceId{};
+            return false;
+        }
+        return true;
+    }
+
+    // -- Prospect cooldown (turns until this tile can be prospected again) --
+    [[nodiscard]] int8_t prospectCooldown(int32_t index) const { this->assertIndex(index); return this->m_prospectCooldown[static_cast<std::size_t>(index)]; }
+    void setProspectCooldown(int32_t index, int8_t turns) { this->assertIndex(index); this->m_prospectCooldown[static_cast<std::size_t>(index)] = turns; }
+    /// Tick all prospect cooldowns by 1 turn. Call once per turn globally.
+    void tickProspectCooldowns() {
+        for (std::size_t i = 0; i < this->m_prospectCooldown.size(); ++i) {
+            if (this->m_prospectCooldown[i] > 0) { --this->m_prospectCooldown[i]; }
+        }
+    }
+
     // -- Owning player --
     [[nodiscard]] PlayerId owner(int32_t index) const { this->assertIndex(index); return this->m_owner[static_cast<std::size_t>(index)]; }
     void setOwner(int32_t index, PlayerId player) { this->assertIndex(index); this->m_owner[static_cast<std::size_t>(index)] = player; }
@@ -258,6 +286,8 @@ private:
     std::vector<int8_t>      m_elevation;
     std::vector<uint8_t>     m_riverEdges;   ///< 6-bit mask per tile
     std::vector<ResourceId>      m_resource;
+    std::vector<int16_t>         m_reserves;         ///< Extractable units remaining (-1 = infinite/renewable)
+    std::vector<int8_t>          m_prospectCooldown; ///< Turns until tile can be prospected again (0 = available)
     std::vector<PlayerId>        m_owner;
     std::vector<ImprovementType>  m_improvement;
     std::vector<uint8_t>          m_road;            ///< 1 if tile has road, 0 otherwise

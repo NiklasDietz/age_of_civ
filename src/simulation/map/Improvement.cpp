@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/map/Improvement.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/map/Terrain.hpp"
 
 namespace aoc::sim {
@@ -136,6 +137,84 @@ aoc::map::ImprovementType bestImprovementForTile(
     }
 
     return aoc::map::ImprovementType::None;
+}
+
+bool canProspect(const aoc::map::HexGrid& grid, int32_t index) {
+    if (grid.resource(index).isValid()) {
+        return false;  // Already has a resource
+    }
+    aoc::map::TerrainType terrain = grid.terrain(index);
+    if (aoc::map::isWater(terrain) || aoc::map::isImpassable(terrain)) {
+        return false;
+    }
+    if (grid.prospectCooldown(index) > 0) {
+        return false;  // Recently surveyed, nothing new to find yet
+    }
+    return true;
+}
+
+bool prospectTile(aoc::map::HexGrid& grid, int32_t index,
+                  float techBonus, uint32_t rngSeed) {
+    if (!canProspect(grid, index)) {
+        return false;
+    }
+
+    aoc::map::TerrainType terrain = grid.terrain(index);
+    aoc::map::FeatureType feature = grid.feature(index);
+
+    // Deterministic "random" from seed
+    uint32_t hash = rngSeed * 2654435761u + static_cast<uint32_t>(index) * 2246822519u;
+    float roll = static_cast<float>(hash % 10000u) / 10000.0f;
+
+    // Determine base success rate and possible resources by terrain
+    float baseChance = 0.0f;
+    ResourceId discovered{};
+
+    if (feature == aoc::map::FeatureType::Hills) {
+        baseChance = 0.25f;
+        // Weighted selection among minerals
+        uint32_t mineralRoll = (hash >> 8) % 100u;
+        if (mineralRoll < 25)      { discovered = ResourceId{aoc::sim::goods::IRON_ORE}; }
+        else if (mineralRoll < 45) { discovered = ResourceId{aoc::sim::goods::COPPER_ORE}; }
+        else if (mineralRoll < 60) { discovered = ResourceId{aoc::sim::goods::COAL}; }
+        else if (mineralRoll < 72) { discovered = ResourceId{aoc::sim::goods::TIN}; }
+        else if (mineralRoll < 82) { discovered = ResourceId{aoc::sim::goods::SILVER_ORE}; }
+        else if (mineralRoll < 90) { discovered = ResourceId{aoc::sim::goods::GOLD_ORE}; }
+        else                       { discovered = ResourceId{aoc::sim::goods::STONE}; }
+    } else if (terrain == aoc::map::TerrainType::Desert) {
+        baseChance = 0.15f;
+        discovered = ResourceId{aoc::sim::goods::OIL};
+    } else if (terrain == aoc::map::TerrainType::Plains) {
+        baseChance = 0.10f;
+        uint32_t plainsRoll = (hash >> 12) % 100u;
+        if (plainsRoll < 60) { discovered = ResourceId{aoc::sim::goods::OIL}; }
+        else                 { discovered = ResourceId{aoc::sim::goods::NITER}; }
+    } else if (terrain == aoc::map::TerrainType::Tundra) {
+        baseChance = 0.15f;
+        uint32_t tundraRoll = (hash >> 12) % 100u;
+        if (tundraRoll < 60) { discovered = ResourceId{aoc::sim::goods::COAL}; }
+        else                 { discovered = ResourceId{aoc::sim::goods::GEMS}; }
+    } else {
+        baseChance = 0.05f;
+        uint32_t otherRoll = (hash >> 12) % 100u;
+        if (otherRoll < 50) { discovered = ResourceId{aoc::sim::goods::STONE}; }
+        else                { discovered = ResourceId{aoc::sim::goods::CLAY}; }
+    }
+
+    float totalChance = baseChance + techBonus;
+
+    if (roll < totalChance && discovered.isValid()) {
+        // Discovery! Place the resource with reserves.
+        int16_t reserves = aoc::sim::defaultReserves(discovered.value);
+        grid.setResource(index, discovered);
+        grid.setReserves(index, reserves);
+        grid.setProspectCooldown(index, 0);  // No cooldown on success
+        return true;
+    }
+
+    // Failed: set cooldown (15 turns before re-prospecting)
+    grid.setProspectCooldown(index, 15);
+    return false;
 }
 
 } // namespace aoc::sim

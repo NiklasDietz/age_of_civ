@@ -63,4 +63,70 @@ void applyInflationEffects(MonetaryStateComponent& state);
  */
 [[nodiscard]] float inflationHappinessPenalty(Percentage inflationRate);
 
+// ============================================================================
+// Price level effects on the real economy
+// ============================================================================
+
+/**
+ * @brief Maintenance cost multiplier from cumulative price level.
+ *
+ * High inflation erodes the real value of fixed gold payments, but maintenance
+ * workers demand higher wages. Maintenance costs scale with price level.
+ *
+ * @return Multiplier on gold maintenance costs (1.0 at base price level).
+ */
+[[nodiscard]] float priceLevelMaintenanceMultiplier(float priceLevel);
+
+/**
+ * @brief Production cost multiplier from inflation.
+ *
+ * High inflation increases the hammers needed for production (supply chain
+ * disruption, workers demanding pay raises, material cost increases).
+ * Mild inflation (2-3%) actually helps (greases the wheels).
+ *
+ * @return Multiplier on production costs (1.0 at base, <1.0 for mild inflation).
+ */
+[[nodiscard]] float inflationProductionModifier(float inflationRate);
+
+// ============================================================================
+// Banking and monetary system GDP effects
+// ============================================================================
+
+/**
+ * @brief Banking system GDP multiplier.
+ *
+ * More advanced monetary systems amplify economic output through credit
+ * creation, fractional reserve banking, and efficient capital allocation.
+ *
+ * @return Multiplier on GDP calculation (1.0 for Barter, up to 1.3 for Fiat).
+ */
+[[nodiscard]] float bankingGDPMultiplier(const MonetaryStateComponent& state);
+
+/**
+ * @brief Economic stability bonus for science and culture.
+ *
+ * A stable monetary system (low inflation, manageable debt) creates an
+ * environment where scholarship and arts can flourish. Instability
+ * disrupts academic institutions and cultural production.
+ *
+ * @return Multiplier on science/culture yields (0.8 to 1.15).
+ */
+[[nodiscard]] float economicStabilityMultiplier(const MonetaryStateComponent& state);
+
+/**
+ * @brief Seigniorage income for the turn.
+ *
+ * When a nation's currency is held as reserves by other nations (reserve
+ * currency status), the issuer earns seigniorage -- effectively free
+ * purchasing power from other nations holding their money.
+ *
+ * @param state             The reserve currency issuer's monetary state.
+ * @param isReserveCurrency Whether this player holds reserve currency status.
+ * @param totalForeignGDP   Sum of all other players' GDP.
+ * @return Gold income from seigniorage this turn.
+ */
+[[nodiscard]] CurrencyAmount computeSeigniorage(const MonetaryStateComponent& state,
+                                                 bool isReserveCurrency,
+                                                 CurrencyAmount totalForeignGDP);
+
 } // namespace aoc::sim

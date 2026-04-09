@@ -1,0 +1,46 @@
+# ============================================================================
+# Age of Civilization -- Headless Simulation Configuration
+# ============================================================================
+
+# --- Game Settings ---
+max_turns: 300
+seed: 42
+
+# --- Map ---
+map_width: 60
+map_height: 40
+# Map types: Continents, Pangaea, Archipelago, Fractal, Realistic
+map_type: Realistic
+
+# --- Players ---
+# Number of AI players (2-12)
+player_count: 4
+
+# Civilization assignments (by index into CIV_DEFS: 0=Rome, 1=Egypt, 2=China,
+# 3=Germany, 4=Greece, 5=England, 6=Japan, 7=Persia, 8=Aztec, 9=India,
+# 10=Russia, 11=Brazil). If fewer entries than player_count, remaining
+# players get sequential civs.
+civilizations: [0, 3, 9, 5]
+
+# AI difficulty: 0=Easy, 1=Normal, 2=Hard
+difficulty: 1
+
+# --- Output ---
+output_file: simulation_log.csv
+
+# Show progress bar in terminal
+show_progress: true
+
+# Log interval: write a summary line every N turns to stderr
+log_interval: 25
+
+# --- Victory ---
+# Turn limit for score victory (0 = no limit, runs until max_turns)
+score_victory_turn: 300
+
+# --- Optional Overrides ---
+# Starting gold per player
+starting_gold: 100
+
+# Starting population per city
+starting_population: 3
