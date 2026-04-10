@@ -37,6 +37,14 @@ enum class ImprovementType : uint8_t {
     Highway,    ///< Requires Plastics + Steel. 0.33 MP cost, 8x trade capacity.
     Dam,        ///< River-only. Prevents flooding, enables hydroelectric.
 
+    // -- Cultivated export improvements (no natural resource required) --
+    Vineyard,   ///< Grassland/Plains. Produces wine (luxury). Renewable.
+    SilkFarm,   ///< Grassland. Produces silk (luxury). Renewable.
+    SpiceFarm,  ///< Plains/Jungle edge. Produces spices (luxury). Renewable.
+    DyeWorks,   ///< Plains/Forest edge. Produces dyes (luxury). Renewable.
+    CottonField,///< Grassland/Plains. Produces cotton (strategic). Renewable.
+    Workshop,   ///< Any land. Produces tools/consumer goods (+2 production, +1 gold).
+
     Count
 };
 

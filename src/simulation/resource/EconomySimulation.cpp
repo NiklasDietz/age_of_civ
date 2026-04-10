@@ -22,6 +22,7 @@
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
 #include "aoc/simulation/monetary/CurrencyWar.hpp"
+#include "aoc/simulation/monetary/ForexMarket.hpp"
 #include "aoc/simulation/monetary/Bonds.hpp"
 #include "aoc/simulation/economy/Sanctions.hpp"
 #include "aoc/simulation/economy/Speculation.hpp"
@@ -100,9 +101,25 @@ void EconomySimulation::harvestResources(aoc::ecs::World& world,
             }
             int32_t tileIndex = grid.toIndex(tileCoord);
 
+            // Cultivated improvements produce goods without natural resources
+            aoc::map::ImprovementType imp = grid.improvement(tileIndex);
+            uint16_t cultivatedGood = 0;
+            bool isCultivated = false;
+            switch (imp) {
+                case aoc::map::ImprovementType::Vineyard:    cultivatedGood = goods::WINE;   isCultivated = true; break;
+                case aoc::map::ImprovementType::SilkFarm:    cultivatedGood = goods::SILK;   isCultivated = true; break;
+                case aoc::map::ImprovementType::SpiceFarm:   cultivatedGood = goods::SPICES; isCultivated = true; break;
+                case aoc::map::ImprovementType::DyeWorks:    cultivatedGood = goods::DYES;   isCultivated = true; break;
+                case aoc::map::ImprovementType::CottonField: cultivatedGood = goods::COTTON; isCultivated = true; break;
+                default: break;
+            }
+            if (isCultivated) {
+                stockpile.addGoods(cultivatedGood, 2);  // Cultivated = 2 units/turn (renewable)
+            }
+
             ResourceId resId = grid.resource(tileIndex);
             if (!resId.isValid()) {
-                continue;
+                continue;  // No natural resource (but cultivated goods already harvested above)
             }
 
             uint16_t goodId = resId.value;
@@ -112,7 +129,6 @@ void EconomySimulation::harvestResources(aoc::ecs::World& world,
 
             // Base yield depends on improvement type
             int32_t yield = 1;
-            aoc::map::ImprovementType imp = grid.improvement(tileIndex);
             if (imp == aoc::map::ImprovementType::Mine) {
                 yield = 2;  // Mines extract faster
             } else if (imp == aoc::map::ImprovementType::Plantation
@@ -883,6 +899,9 @@ void EconomySimulation::tickMonetaryMechanics(aoc::ecs::World& world) {
 
     // Global reserve currency check
     updateReserveCurrencyStatus(world);
+
+    // Forex market: update exchange rates for all fiat currencies
+    updateExchangeRates(world);
 }
 
 // ============================================================================

@@ -97,6 +97,7 @@ add_library(aoc_lib STATIC
     src/simulation/monetary/CurrencyCrisis.cpp
     src/simulation/monetary/CurrencyWar.cpp
     src/simulation/monetary/Bonds.cpp
+    src/simulation/monetary/ForexMarket.cpp
     src/simulation/greatpeople/GreatPeople.cpp
     src/simulation/wonder/Wonder.cpp
     src/simulation/citystate/CityState.cpp
@@ -112,6 +113,16 @@ add_library(aoc_lib STATIC
     src/simulation/economy/EconomicDepth.cpp
     src/simulation/economy/NavalTrade.cpp
     src/simulation/economy/EnergyDependency.cpp
+    src/simulation/economy/StockMarket.cpp
+    src/simulation/economy/WageDemands.cpp
+    src/simulation/economy/EconomicEspionage.cpp
+    src/simulation/economy/TradeAgreement.cpp
+    src/simulation/economy/SupplyChain.cpp
+    src/simulation/economy/SpeculationBubble.cpp
+    src/simulation/economy/MonopolyPricing.cpp
+    src/simulation/economy/TechUnemployment.cpp
+    src/simulation/economy/BlackMarket.cpp
+    src/simulation/economy/HumanCapital.cpp
     src/simulation/empire/CommunicationSpeed.cpp
     src/simulation/city/CityConnection.cpp
 

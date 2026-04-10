@@ -27,7 +27,7 @@ struct ImprovementDef {
 };
 
 /// Hard-coded improvement definitions.
-inline constexpr std::array<ImprovementDef, 14> IMPROVEMENT_DEFS = {{
+inline constexpr std::array<ImprovementDef, 20> IMPROVEMENT_DEFS = {{
     {aoc::map::ImprovementType::Farm,         "Farm",          {1, 0, 0, 0, 0, 0}, TechId{},   3},
     {aoc::map::ImprovementType::Mine,         "Mine",          {0, 1, 0, 0, 0, 0}, TechId{0},  3},
     {aoc::map::ImprovementType::Plantation,   "Plantation",    {0, 0, 1, 0, 0, 0}, TechId{},   4},
@@ -38,9 +38,16 @@ inline constexpr std::array<ImprovementDef, 14> IMPROVEMENT_DEFS = {{
     {aoc::map::ImprovementType::FishingBoats, "Fishing Boats", {1, 0, 1, 0, 0, 0}, TechId{},   4},
     {aoc::map::ImprovementType::Fort,         "Fort",          {0, 0, 0, 0, 0, 0}, TechId{},   5},
     {aoc::map::ImprovementType::Road,         "Road",          {0, 0, 0, 0, 0, 0}, TechId{},   2},
-    {aoc::map::ImprovementType::Railway,      "Railway",       {0, 1, 0, 0, 0, 0}, TechId{7},  4}, // +1 prod, requires Steel tech
-    {aoc::map::ImprovementType::Highway,      "Highway",       {0, 0, 1, 0, 0, 0}, TechId{16}, 3}, // +1 gold, requires Computers tech
-    {aoc::map::ImprovementType::Dam,          "Dam",           {0, 1, 0, 0, 0, 0}, TechId{7},  6}, // +1 prod, river-only
+    {aoc::map::ImprovementType::Railway,      "Railway",       {0, 1, 0, 0, 0, 0}, TechId{7},  4},
+    {aoc::map::ImprovementType::Highway,      "Highway",       {0, 0, 1, 0, 0, 0}, TechId{16}, 3},
+    {aoc::map::ImprovementType::Dam,          "Dam",           {0, 1, 0, 0, 0, 0}, TechId{7},  6},
+    // Cultivated export improvements: produce luxury/strategic goods without natural resources
+    {aoc::map::ImprovementType::Vineyard,     "Vineyard",      {0, 0, 2, 0, 0, 0}, TechId{},   4}, // +2 gold (wine exports)
+    {aoc::map::ImprovementType::SilkFarm,     "Silk Farm",     {0, 0, 2, 0, 0, 0}, TechId{},   4}, // +2 gold (silk exports)
+    {aoc::map::ImprovementType::SpiceFarm,    "Spice Farm",    {0, 0, 2, 0, 0, 0}, TechId{},   4}, // +2 gold (spice exports)
+    {aoc::map::ImprovementType::DyeWorks,     "Dye Works",     {0, 0, 2, 0, 0, 0}, TechId{},   4}, // +2 gold (dye exports)
+    {aoc::map::ImprovementType::CottonField,  "Cotton Field",  {0, 1, 1, 0, 0, 0}, TechId{},   3}, // +1 prod, +1 gold
+    {aoc::map::ImprovementType::Workshop,     "Workshop",      {0, 2, 1, 0, 0, 0}, TechId{0},  5}, // +2 prod, +1 gold (manufactured goods)
     {aoc::map::ImprovementType::None,         "None",          {0, 0, 0, 0, 0, 0}, TechId{},   0},
 }};
 

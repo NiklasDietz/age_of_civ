@@ -5,6 +5,7 @@
 
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/monetary/ForexMarket.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
@@ -259,7 +260,32 @@ float bilateralTradeEfficiency(const aoc::ecs::World& world,
 
     // Bilateral efficiency = minimum of both players' capabilities.
     // You can only trade as efficiently as the weakest monetary link.
-    return std::min(efficiencyA, efficiencyB);
+    float baseEfficiency = std::min(efficiencyA, efficiencyB);
+
+    // Exchange rate volatility penalty: if both are on fiat and their rates
+    // differ significantly, trade is less efficient (exchange rate risk).
+    const aoc::ecs::ComponentPool<CurrencyExchangeComponent>* forexPool =
+        world.getPool<CurrencyExchangeComponent>();
+    if (forexPool != nullptr) {
+        const CurrencyExchangeComponent* forexA = nullptr;
+        const CurrencyExchangeComponent* forexB = nullptr;
+        for (uint32_t i = 0; i < forexPool->size(); ++i) {
+            if (forexPool->data()[i].owner == playerA) { forexA = &forexPool->data()[i]; }
+            if (forexPool->data()[i].owner == playerB) { forexB = &forexPool->data()[i]; }
+        }
+        if (forexA != nullptr && forexB != nullptr) {
+            float xRate = bilateralExchangeRate(*forexA, *forexB);
+            // Exchange rate far from 1.0 creates friction (hedging costs)
+            float deviation = std::abs(xRate - 1.0f);
+            if (deviation > 0.5f) {
+                // More than 50% deviation: up to 10% trade efficiency penalty
+                float penalty = std::min(0.10f, (deviation - 0.5f) * 0.10f);
+                baseEfficiency *= (1.0f - penalty);
+            }
+        }
+    }
+
+    return baseEfficiency;
 }
 
 } // namespace aoc::sim

@@ -88,6 +88,16 @@
 // Energy
 #include "aoc/simulation/economy/EnergyDependency.hpp"
 
+// Advanced economics
+#include "aoc/simulation/economy/StockMarket.hpp"
+#include "aoc/simulation/economy/TradeAgreement.hpp"
+#include "aoc/simulation/economy/SupplyChain.hpp"
+#include "aoc/simulation/economy/SpeculationBubble.hpp"
+#include "aoc/simulation/economy/MonopolyPricing.hpp"
+#include "aoc/simulation/economy/TechUnemployment.hpp"
+#include "aoc/simulation/economy/BlackMarket.hpp"
+#include "aoc/simulation/economy/HumanCapital.hpp"
+
 // Logging
 #include "aoc/core/Log.hpp"
 
@@ -381,6 +391,58 @@ void processGlobalSystems(TurnContext& ctx) {
                 processOilShock(energy);
             }
         }
+    }
+
+    // Stock market: dividends, value updates
+    processStockMarket(world);
+
+    // Trade agreements: tick durations
+    processTradeAgreements(world);
+
+    // Supply chain health: check import dependencies
+    processSupplyChains(world);
+
+    // Monopoly detection and pricing
+    detectMonopolies(world, grid);
+    applyMonopolyIncome(world);
+
+    // Black market smuggling (for embargoed players)
+    processBlackMarketTrade(world);
+
+    // Speculation bubbles (per player)
+    {
+        aoc::ecs::ComponentPool<PlayerBubbleComponent>* bubblePool =
+            world.getPool<PlayerBubbleComponent>();
+        aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool3 =
+            world.getPool<MonetaryStateComponent>();
+        if (bubblePool != nullptr && monetaryPool3 != nullptr) {
+            for (uint32_t bi = 0; bi < bubblePool->size(); ++bi) {
+                PlayerBubbleComponent& bubble = bubblePool->data()[bi];
+                // Find matching monetary state
+                for (uint32_t mi = 0; mi < monetaryPool3->size(); ++mi) {
+                    if (monetaryPool3->data()[mi].owner == bubble.owner) {
+                        bool hasShock = false;
+                        // Shock triggers: war, default, resource exhaustion
+                        // Simplified: check if inflation spiked or treasury negative
+                        if (monetaryPool3->data()[mi].inflationRate > 0.15f
+                            || monetaryPool3->data()[mi].treasury < 0) {
+                            hasShock = true;
+                        }
+                        processSpeculationBubble(bubble,
+                            monetaryPool3->data()[mi].gdp,
+                            monetaryPool3->data()[mi].interestRate,
+                            hasShock);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Per-player: unemployment and education
+    for (PlayerId player : ctx.allPlayers) {
+        processUnemployment(world, player);
+        updateHumanCapital(world, player);
     }
 
     // World events (per player)
