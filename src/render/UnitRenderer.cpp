@@ -76,8 +76,11 @@ void UnitRenderer::drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
         const aoc::sim::UnitComponent& unit = pool->data()[i];
         EntityId entity = pool->entities()[i];
 
-        // Fog of war: only show units on tiles that are currently Visible
-        if (grid.isValid(unit.position)) {
+        // Fog of war: only show units on tiles that are currently Visible to the viewer
+        {
+            if (!grid.isValid(unit.position)) {
+                continue;  // Skip units with invalid positions
+            }
             int32_t tileIndex = grid.toIndex(unit.position);
             aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, tileIndex);
             if (vis != aoc::map::TileVisibility::Visible) {
@@ -251,6 +254,36 @@ void UnitRenderer::drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
             float hpR = (hpFrac < 0.5f) ? 1.0f : (1.0f - hpFrac) * 2.0f;
             float hpG = (hpFrac > 0.5f) ? 1.0f : hpFrac * 2.0f;
             renderer2d.drawFilledRect(barX, barY, barW * hpFrac, barH, hpR, hpG, 0.1f, 0.9f);
+
+            // ---- Movement path: dashed line along pending path ----
+            if (!unit.pendingPath.empty()) {
+                float prevX = cx;
+                float prevY = cy;
+                for (std::size_t pi = 0; pi < unit.pendingPath.size(); ++pi) {
+                    float nextX = 0.0f;
+                    float nextY = 0.0f;
+                    aoc::hex::axialToPixel(unit.pendingPath[pi], hexSize, nextX, nextY);
+
+                    // Dashed line segment
+                    renderer2d.drawDashedLine(prevX, prevY, nextX, nextY,
+                                               2.0f, 6.0f, 4.0f,
+                                               1.0f, 1.0f, 1.0f, 0.6f);
+
+                    // Waypoint dot
+                    renderer2d.drawFilledCircle(nextX, nextY, hexSize * 0.08f,
+                                                 1.0f, 1.0f, 1.0f, 0.5f);
+
+                    prevX = nextX;
+                    prevY = nextY;
+                }
+
+                // Destination marker: circle outline at final position
+                float destX = 0.0f;
+                float destY = 0.0f;
+                aoc::hex::axialToPixel(unit.pendingPath.back(), hexSize, destX, destY);
+                renderer2d.drawCircle(destX, destY, hexSize * 0.25f,
+                                       1.0f, 1.0f, 1.0f, 0.7f, 2.0f);
+            }
         }
     }
 }

@@ -204,6 +204,8 @@ add_library(aoc_lib STATIC
     src/render/Minimap.cpp
     src/render/CombatAnimation.cpp
     src/render/Particles.cpp
+    src/render/TextureAtlas.cpp
+    src/render/SpriteRenderer.cpp
 )
 
 target_include_directories(aoc_lib
@@ -323,6 +325,19 @@ foreach(SPV_FILE ${AOC_SPV_FILES})
             "${SPV_FILE}"
             "${AOC_SHADER_OUTPUT_DIR}/${SPV_FILENAME}"
         COMMENT "Copying pre-compiled shader: ${SPV_FILENAME}"
+    )
+endforeach()
+
+# Copy game-specific GLSL shader sources (sprite shaders, etc.)
+set(AOC_GAME_SHADER_DIR "${CMAKE_SOURCE_DIR}/shaders")
+file(GLOB AOC_GAME_GLSL_SOURCES "${AOC_GAME_SHADER_DIR}/*.glsl")
+foreach(GLSL_FILE ${AOC_GAME_GLSL_SOURCES})
+    get_filename_component(GLSL_FILENAME "${GLSL_FILE}" NAME)
+    add_custom_command(TARGET age_of_civ POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${GLSL_FILE}"
+            "${AOC_SHADER_OUTPUT_DIR}/${GLSL_FILENAME}"
+        COMMENT "Copying game shader source: ${GLSL_FILENAME}"
     )
 endforeach()
 

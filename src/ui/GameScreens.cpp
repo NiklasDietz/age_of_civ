@@ -1514,8 +1514,10 @@ void CityDetailScreen::open(UIManager& ui) {
                         }
                     });
 
-                if (econ == nullptr || econ->treasury < static_cast<CurrencyAmount>(buyCost)) {
-                    LOG_INFO("Cannot buy tile: insufficient gold");
+                if (econ == nullptr || econ->treasury < static_cast<CurrencyAmount>(buyCost)
+                    || econ->treasury <= 0) {
+                    LOG_INFO("Cannot buy tile: insufficient gold (have %lld, need %d)",
+                             static_cast<long long>(econ != nullptr ? econ->treasury : 0), buyCost);
                     return;
                 }
 

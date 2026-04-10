@@ -160,21 +160,19 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
         }
     }
 
-    // Layer 4: UI overlay
-    // UI widgets are in screen-pixel space. Transform to world space so the
-    // camera shader maps them back: worldPos = topLeft + screenPos / zoom
-    uiManager.layout();
+    // Layer 4: UI overlay (single batch - transform UI to world-space so the
+    // camera shader maps it back to screen-space correctly).
     float invZoom = 1.0f / camera.zoom();
+    uiManager.layout();
     uiManager.transformBounds(topLeftX, topLeftY, invZoom);
     uiManager.render(renderer2d);
     uiManager.untransformBounds(topLeftX, topLeftY, invZoom);
 
-    // Event log: rendered in world-space coordinates (same as UI).
+    // Event log (transformed to world-space)
     if (eventLog != nullptr && !eventLog->events().empty()) {
         constexpr float EVENT_LOG_W = 320.0f;
         constexpr float EVENT_LOG_H = 160.0f;
         constexpr float EVENT_LOG_MARGIN = 10.0f;
-        // Position at bottom-right, above the end-turn button area
         float elScreenX = static_cast<float>(screenWidth) - EVENT_LOG_W - EVENT_LOG_MARGIN;
         float elScreenY = static_cast<float>(screenHeight) - EVENT_LOG_H - 70.0f;
         float elWorldX = topLeftX + elScreenX * invZoom;
@@ -183,8 +181,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                           EVENT_LOG_W * invZoom, EVENT_LOG_H * invZoom, invZoom);
     }
 
-    // Minimap: convert screen-space position to world-space for the camera batch.
-    // Screen (sx, sy) -> world (topLeftX + sx * invZoom, topLeftY + sy * invZoom)
+    // Minimap (transformed to world-space)
     constexpr float MINIMAP_W = 200.0f;
     constexpr float MINIMAP_H = 130.0f;
     constexpr float MINIMAP_MARGIN = 10.0f;
@@ -196,7 +193,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                          mmWorldX, mmWorldY, MINIMAP_W * invZoom, MINIMAP_H * invZoom,
                          screenWidth, screenHeight);
 
-    // Notifications: rendered in world-space (same transform trick as UI)
+    // Notifications (transformed to world-space)
     if (notifications != nullptr) {
         notifications->render(renderer2d,
                                static_cast<float>(screenWidth),
@@ -204,7 +201,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                                invZoom);
     }
 
-    // Tutorial overlay: rendered in world-space
+    // Tutorial overlay (transformed to world-space)
     if (tutorial != nullptr && tutorial->isActive()) {
         tutorial->render(renderer2d,
                           static_cast<float>(screenWidth),

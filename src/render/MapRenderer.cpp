@@ -111,17 +111,32 @@ void MapRenderer::drawTile(vulkan_app::renderer::Renderer2D& renderer2d,
     float g = std::clamp(baseColor.g + tint.g, 0.0f, 1.0f);
     float b = std::clamp(baseColor.b + tint.b, 0.0f, 1.0f);
 
+    // Per-tile color variation: deterministic noise based on tile index.
+    // Makes terrain look less uniform without affecting gameplay.
+    {
+        uint32_t noiseHash = static_cast<uint32_t>(tileIndex) * 2654435761u;
+        float noise = (static_cast<float>(noiseHash % 1000u) / 1000.0f - 0.5f) * 0.08f;
+        r = std::clamp(r + noise, 0.0f, 1.0f);
+        g = std::clamp(g + noise * 0.8f, 0.0f, 1.0f);
+        b = std::clamp(b + noise * 0.6f, 0.0f, 1.0f);
+    }
+
     if (dimmed) {
         constexpr float DIM = 0.4f;
         r *= DIM; g *= DIM; b *= DIM;
     }
 
     // ---- Base hex fill: SDF hexagon (single primitive, no seams) ----
-    // Pointy-top hex: bounding box = sqrt(3)*R wide, 2*R tall.
-    // Slightly oversized (1.02x) to eliminate sub-pixel gaps between tiles.
     const float hexW = hs * 0.866f * 1.02f;
     const float hexH = hs * 1.02f;
     renderer2d.drawFilledHexagon(cx, cy, hexW, hexH, r, g, b, 1.0f);
+
+    // ---- Hex grid outline (subtle border between tiles) ----
+    if (!dimmed) {
+        float borderAlpha = 0.15f;
+        renderer2d.drawHexagonOutline(cx, cy, hexW * 0.98f, hexH * 0.98f,
+                                      0.0f, 0.0f, 0.0f, borderAlpha, 1.0f);
+    }
 
     // Territory borders are drawn as oversized halos in drawTerritoryBorders()
     // (rendered before terrain). No per-tile tint overlay needed.

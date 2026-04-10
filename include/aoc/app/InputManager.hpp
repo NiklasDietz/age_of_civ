@@ -52,6 +52,7 @@ public:
     [[nodiscard]] double mouseDeltaX() const { return this->m_mouseDeltaX; }
     [[nodiscard]] double mouseDeltaY() const { return this->m_mouseDeltaY; }
     [[nodiscard]] double scrollDelta() const { return this->m_scrollDelta; }
+    void consumeScroll() { this->m_scrollDelta = 0.0; }
 
     [[nodiscard]] bool isMouseButtonPressed(int button) const;
     [[nodiscard]] bool isMouseButtonHeld(int button) const;

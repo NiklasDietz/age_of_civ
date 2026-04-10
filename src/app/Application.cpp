@@ -533,7 +533,8 @@ void Application::run() {
             }
         }
 
-        this->m_cameraController.update(this->m_inputManager, deltaTime, fbWidth, fbHeight);
+        // Camera update is deferred until after UI input to prevent scroll conflicts
+        // (see below after UI input handling)
 
         // -- Animated unit movement: advance animProgress each frame --
         {
@@ -775,6 +776,12 @@ void Application::run() {
                 leftPressed, leftReleased, scrollDelta);
         }
 
+        // -- Camera update (after UI so scroll doesn't zoom when scrolling menus) --
+        if (this->m_uiConsumedInput || this->m_debugConsole.isOpen()) {
+            this->m_inputManager.consumeScroll();
+        }
+        this->m_cameraController.update(this->m_inputManager, deltaTime, fbWidth, fbHeight);
+
         // -- Minimap click detection --
         constexpr float MINIMAP_W = 200.0f;
         constexpr float MINIMAP_H = 130.0f;
@@ -869,18 +876,18 @@ void Application::run() {
             &this->m_notificationManager,
             &this->m_tutorialManager);
 
-        // Debug console overlay
+        // Debug console overlay (own begin/end batch, screen-space)
         if (this->m_debugConsole.isOpen()) {
+            this->m_renderer2d->begin();
+
             const float consoleW = static_cast<float>(frame.extent.width);
             const float consoleH = 250.0f;
             const float consoleY = static_cast<float>(frame.extent.height) - consoleH;
 
-            // Semi-transparent background
             this->m_renderer2d->drawFilledRect(
                 0.0f, consoleY, consoleW, consoleH,
                 0.0f, 0.0f, 0.0f, 0.85f);
 
-            // History lines
             float lineY = consoleY + 5.0f;
             for (const std::string& line : this->m_debugConsole.history()) {
                 aoc::ui::BitmapFont::drawText(
@@ -890,12 +897,13 @@ void Application::run() {
                 lineY += 14.0f;
             }
 
-            // Input line with cursor
             std::string inputLine = "> " + this->m_debugConsole.input() + "_";
             aoc::ui::BitmapFont::drawText(
                 *this->m_renderer2d, inputLine,
                 5.0f, consoleY + consoleH - 20.0f, 14.0f,
                 aoc::ui::Color{0.0f, 1.0f, 0.0f, 1.0f});
+
+            this->m_renderer2d->end(frame.commandBuffer);
         }
 
         this->m_renderPipeline->endRenderPass(frame);
@@ -1467,6 +1475,9 @@ void Application::handleContextAction() {
     if (pathFound) {
         // Execute movement immediately for this turn's remaining movement points
         aoc::sim::moveUnitAlongPath(this->m_world, this->m_selectedEntity, this->m_hexGrid);
+
+        // Update fog of war to reveal newly visible tiles
+        this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, 0);
     } else {
         // Path not found, clear undo state
         this->m_undoState.hasState = false;
@@ -1507,6 +1518,42 @@ void Application::handleEndTurn() {
     // If the game is over, skip all turn processing
     if (this->m_gameOver) {
         return;
+    }
+
+    // Turn blockers: warn player about unassigned actions (Civ 6 style)
+    // Check 1: No active research
+    {
+        const aoc::ecs::ComponentPool<aoc::sim::PlayerTechComponent>* techPool =
+            this->m_world.getPool<aoc::sim::PlayerTechComponent>();
+        if (techPool != nullptr) {
+            for (uint32_t i = 0; i < techPool->size(); ++i) {
+                if (techPool->data()[i].owner == 0 && !techPool->data()[i].currentResearch.isValid()) {
+                    this->m_notificationManager.push(
+                        "No research selected! Open Tech Tree (T) to choose a technology.",
+                        4.0f, 1.0f, 0.8f, 0.2f);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Check 2: Cities with empty production queues
+    {
+        const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
+            this->m_world.getPool<aoc::sim::CityComponent>();
+        if (cityPool != nullptr) {
+            for (uint32_t i = 0; i < cityPool->size(); ++i) {
+                if (cityPool->data()[i].owner != 0) { continue; }
+                EntityId cityEntity = cityPool->entities()[i];
+                const aoc::sim::ProductionQueueComponent* queue =
+                    this->m_world.tryGetComponent<aoc::sim::ProductionQueueComponent>(cityEntity);
+                if (queue != nullptr && queue->isEmpty()) {
+                    this->m_notificationManager.push(
+                        cityPool->data()[i].name + " has no production! Open city (click) to set production.",
+                        4.0f, 1.0f, 0.8f, 0.2f);
+                }
+            }
+        }
     }
 
     // Execute any remaining unit movement for the human player
@@ -2049,8 +2096,14 @@ void Application::spawnStartingEntities(aoc::sim::CivId civId) {
     const int32_t mapH = this->m_hexGrid.height();
     const float radiusX = static_cast<float>(mapW) * 0.35f;
     const float radiusY = static_cast<float>(mapH) * 0.35f;
-    const int32_t spawnX = mapW / 2 + static_cast<int32_t>(radiusX);  // angle 0 = east
-    const int32_t spawnY = mapH / 2;
+    // Small random offset for human player too (deterministic from map seed)
+    const uint32_t humanHash = 42u * 2654435761u;
+    const float humanOffX = (static_cast<float>(humanHash % 1000u) / 1000.0f - 0.5f)
+                          * static_cast<float>(mapW) * 0.10f;
+    const float humanOffY = (static_cast<float>((humanHash >> 10) % 1000u) / 1000.0f - 0.5f)
+                          * static_cast<float>(mapH) * 0.10f;
+    const int32_t spawnX = mapW / 2 + static_cast<int32_t>(radiusX + humanOffX);
+    const int32_t spawnY = mapH / 2 + static_cast<int32_t>(humanOffY);
     aoc::hex::AxialCoord mapCenter = aoc::hex::offsetToAxial(
         {std::clamp(spawnX, 2, mapW - 3), std::clamp(spawnY, 2, mapH - 3)});
 
@@ -2175,8 +2228,17 @@ void Application::spawnAIPlayer(PlayerId player, aoc::sim::CivId civId) {
     const float angle = 2.0f * 3.14159f * static_cast<float>(player) / static_cast<float>(totalPlayers);
     const float radiusX = static_cast<float>(mapW) * 0.35f;
     const float radiusY = static_cast<float>(mapH) * 0.35f;
-    const int32_t spawnX = mapW / 2 + static_cast<int32_t>(radiusX * std::cos(angle));
-    const int32_t spawnY = mapH / 2 + static_cast<int32_t>(radiusY * std::sin(angle));
+
+    // Add randomization: +/- 15% of map size so players aren't on a perfect circle
+    // Use deterministic hash from player ID for reproducibility
+    const uint32_t rngHash = static_cast<uint32_t>(player) * 2654435761u;
+    const float offsetX = (static_cast<float>(rngHash % 1000u) / 1000.0f - 0.5f)
+                        * static_cast<float>(mapW) * 0.15f;
+    const float offsetY = (static_cast<float>((rngHash >> 10) % 1000u) / 1000.0f - 0.5f)
+                        * static_cast<float>(mapH) * 0.15f;
+
+    const int32_t spawnX = mapW / 2 + static_cast<int32_t>(radiusX * std::cos(angle) + offsetX);
+    const int32_t spawnY = mapH / 2 + static_cast<int32_t>(radiusY * std::sin(angle) + offsetY);
     aoc::hex::AxialCoord aiSpawn = aoc::hex::offsetToAxial(
         {std::clamp(spawnX, 2, mapW - 3), std::clamp(spawnY, 2, mapH - 3)});
 
@@ -2703,6 +2765,18 @@ void Application::updateHUD() {
     // Update resource display in top bar
     if (this->m_resourceLabel != aoc::ui::INVALID_WIDGET) {
         std::string resText;
+
+        // Show treasury gold first
+        this->m_world.forEach<aoc::sim::PlayerEconomyComponent>(
+            [&resText](EntityId, const aoc::sim::PlayerEconomyComponent& ec) {
+                if (ec.owner == 0) {
+                    resText = "Gold:" + std::to_string(static_cast<int64_t>(ec.treasury));
+                    if (ec.incomePerTurn > 0) {
+                        resText += "(+" + std::to_string(static_cast<int64_t>(ec.incomePerTurn)) + ")";
+                    }
+                }
+            });
+
         const aoc::ecs::ComponentPool<aoc::sim::CityStockpileComponent>* stockPool =
             this->m_world.getPool<aoc::sim::CityStockpileComponent>();
         if (stockPool != nullptr) {
