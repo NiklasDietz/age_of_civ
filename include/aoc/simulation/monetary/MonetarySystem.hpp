@@ -171,8 +171,8 @@ inline constexpr std::array<MonetaryTransitionReq, 3> MONETARY_TRANSITIONS = {{
     {MonetarySystemType::CommodityMoney, TechId{},  3,    1, 0, 0, 1.0f},
     // Commodity -> Gold Standard: need banking tech, significant reserves, 2 cities
     {MonetarySystemType::GoldStandard,   TechId{9}, 50,   2, 0, 0, 1.0f},
-    // Gold Standard -> Fiat: need economics, stability, trade network, GDP rank checked separately
-    {MonetarySystemType::FiatMoney,      TechId{13},100,  3, 5, 3, 0.10f},
+    // Gold Standard -> Fiat: need economics tech, stability, sufficient economy
+    {MonetarySystemType::FiatMoney,      TechId{13},100,  3, 5, 0, 0.15f},
 }};
 
 // ============================================================================

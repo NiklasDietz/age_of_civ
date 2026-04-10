@@ -26,6 +26,25 @@
 
 namespace aoc::sim {
 
+int32_t computeMaxProductionSlots(bool hasIndustrialDistrict,
+                                   bool hasFactory,
+                                   bool hasIndustrialRevolution,
+                                   bool hasFiatMoney,
+                                   int32_t population) {
+    // Population provides base labor slots: 1 per 5 population
+    int32_t laborSlots = std::max(1, population / 5);
+
+    // Buildings/tech provide infrastructure cap (organization, tools, capital)
+    int32_t infraCap = 1;  // Every city has 1 base slot
+    if (hasIndustrialDistrict)    { ++infraCap; }
+    if (hasFactory)               { ++infraCap; }
+    if (hasIndustrialRevolution)  { ++infraCap; }
+    if (hasFiatMoney)             { ++infraCap; }
+
+    // Actual slots = min(labor available, infrastructure capacity), max 5
+    return std::min(std::min(laborSlots, infraCap), 5);
+}
+
 float computeCityProduction(const aoc::ecs::World& world,
                              const aoc::map::HexGrid& grid,
                              EntityId cityEntity) {

@@ -147,6 +147,9 @@ void processBuildingMaintenance(aoc::ecs::World& world, PlayerId player) {
         [player, adjustedMaintenance](EntityId, PlayerEconomyComponent& ec) {
             if (ec.owner == player) {
                 ec.treasury -= adjustedMaintenance;
+                // No cap: debt spirals are a natural consequence.
+                // The crisis system (sovereign default, bond yields spiking,
+                // currency trust collapse) provides the real consequences.
                 LOG_INFO("Player %u building maintenance: %lld gold (treasury: %lld)",
                          static_cast<unsigned>(player),
                          static_cast<long long>(adjustedMaintenance),

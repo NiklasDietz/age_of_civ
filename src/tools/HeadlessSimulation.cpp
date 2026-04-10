@@ -560,11 +560,38 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Fallback: positional arguments
+    // Parse named arguments (--turns N, --players N, --map-size WxH, --log-level X, --output F)
     if (!loadedConfig) {
-        if (argc >= 2) { turns = std::atoi(argv[1]); }
-        if (argc >= 3) { players = std::atoi(argv[2]); }
-        if (argc >= 4) { outputPath = argv[3]; }
+        int32_t mapWidth = 60;
+        int32_t mapHeight = 40;
+        for (int i = 1; i < argc; ++i) {
+            std::string arg(argv[i]);
+            if (arg == "--turns" && i + 1 < argc) {
+                turns = std::atoi(argv[++i]);
+            } else if (arg == "--players" && i + 1 < argc) {
+                players = std::atoi(argv[++i]);
+            } else if (arg == "--output" && i + 1 < argc) {
+                outputPath = argv[++i];
+            } else if (arg == "--map-size" && i + 1 < argc) {
+                std::string sizeStr(argv[++i]);
+                std::size_t xPos = sizeStr.find('x');
+                if (xPos != std::string::npos) {
+                    mapWidth = std::atoi(sizeStr.substr(0, xPos).c_str());
+                    mapHeight = std::atoi(sizeStr.substr(xPos + 1).c_str());
+                }
+            } else if (arg == "--log-level" && i + 1 < argc) {
+                ++i;  // Consumed but log level is set elsewhere
+            } else if (arg == "--seed" && i + 1 < argc) {
+                ++i;  // Consumed
+            } else {
+                // Try as positional
+                int val = std::atoi(arg.c_str());
+                if (val > 0 && turns == 200) { turns = val; }
+                else if (val > 0 && players == 4) { players = val; }
+            }
+        }
+        (void)mapWidth;
+        (void)mapHeight;
 
         std::fprintf(stderr, "\n  === Age of Civilization: Headless Simulation ===\n\n");
         std::fprintf(stderr, "  Turns:   %d\n", turns);

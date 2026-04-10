@@ -4,20 +4,18 @@
  * @file AIController.hpp
  * @brief Top-level AI decision maker for computer-controlled players.
  *
- * Each AI turn:
- *   1. Evaluate military situation (threats, opportunities).
- *   2. Evaluate economic situation (deficits, trade opportunities).
- *   3. Evaluate diplomatic options (war, peace, alliances).
- *   4. Score all possible actions using utility framework.
- *   5. Execute the highest-utility actions within resource constraints.
+ * Orchestrates subsystem controllers for research, city production,
+ * builders, military, settlers, diplomacy, economy, and government.
+ * Each AI turn delegates to focused subsystems in priority order.
  */
 
-#include "aoc/simulation/ai/UtilityScoring.hpp"
+#include "aoc/simulation/ai/AIResearchPlanner.hpp"
+#include "aoc/simulation/ai/AISettlerController.hpp"
+#include "aoc/simulation/ai/AIBuilderController.hpp"
+#include "aoc/simulation/ai/AIMilitaryController.hpp"
 #include "aoc/ui/MainMenu.hpp"
 #include "aoc/core/Types.hpp"
 #include "aoc/core/Random.hpp"
-
-#include <vector>
 
 namespace aoc::ecs {
 class World;
@@ -57,10 +55,6 @@ public:
     [[nodiscard]] PlayerId player() const { return this->m_player; }
 
 private:
-    void executeUnitActions(aoc::ecs::World& world,
-                            aoc::map::HexGrid& grid,
-                            aoc::Random& rng);
-
     void executeCityActions(aoc::ecs::World& world,
                             aoc::map::HexGrid& grid);
 
@@ -77,14 +71,15 @@ private:
     void manageMonetarySystem(aoc::ecs::World& world,
                               const DiplomacyManager& diplomacy);
 
-    void selectResearch(aoc::ecs::World& world);
-
-    void manageBuildersAndImprovements(aoc::ecs::World& world, aoc::map::HexGrid& grid);
-
     void manageGovernment(aoc::ecs::World& world);
 
     PlayerId              m_player;
     aoc::ui::AIDifficulty m_difficulty;
+
+    AIResearchPlanner     m_researchPlanner;
+    AISettlerController   m_settlerController;
+    AIBuilderController   m_builderController;
+    AIMilitaryController  m_militaryController;
 };
 
 } // namespace aoc::sim::ai

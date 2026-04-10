@@ -79,6 +79,10 @@
 // Production
 #include "aoc/simulation/production/Waste.hpp"
 
+// Automation
+#include "aoc/simulation/city/Governor.hpp"
+#include "aoc/simulation/automation/Automation.hpp"
+
 // AI
 #include "aoc/simulation/ai/AIController.hpp"
 
@@ -92,6 +96,7 @@
 #include "aoc/simulation/economy/StockMarket.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/simulation/economy/SupplyChain.hpp"
+#include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/simulation/economy/SpeculationBubble.hpp"
 #include "aoc/simulation/economy/MonopolyPricing.hpp"
 #include "aoc/simulation/economy/TechUnemployment.hpp"
@@ -284,6 +289,12 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
 
     // City-state bonuses
     processCityStateBonuses(world, player);
+
+    // Governor: auto-queue production for cities with governors
+    processGovernors(world, grid, player);
+
+    // Automation: research queue, auto-explore, military alert
+    processAutomation(world, grid, player);
 }
 
 // ============================================================================
@@ -324,33 +335,35 @@ void processGlobalSystems(TurnContext& ctx) {
     // River flooding (seasonal)
     processFlooding(world, grid, static_cast<int32_t>(ctx.currentTurn));
 
-    // Natural disasters
-    float globalTemp = 14.0f;  // Default; would read from climate component
-    const aoc::ecs::ComponentPool<GlobalClimateComponent>* climatePool =
-        world.getPool<GlobalClimateComponent>();
-    if (climatePool != nullptr && climatePool->size() > 0) {
-        globalTemp = climatePool->data()[0].globalTemperature;
-    }
-    processNaturalDisasters(world, grid, static_cast<int32_t>(ctx.currentTurn), globalTemp);
+    // Natural disasters + climate
+    {
+        float globalTemp = 14.0f;
+        aoc::ecs::ComponentPool<GlobalClimateComponent>* climatePool =
+            world.getPool<GlobalClimateComponent>();
+        if (climatePool != nullptr && climatePool->size() > 0) {
+            globalTemp = climatePool->data()[0].globalTemperature;
+        }
+        processNaturalDisasters(world, grid, static_cast<int32_t>(ctx.currentTurn), globalTemp);
 
-    // Climate / CO2
-    if (climatePool != nullptr) {
-        for (uint32_t ci = 0; ci < climatePool->size(); ++ci) {
-            // Population CO2
-            const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-                world.getPool<CityComponent>();
-            if (cityPool != nullptr) {
-                for (uint32_t cj = 0; cj < cityPool->size(); ++cj) {
-                    float co2PerCity = static_cast<float>(cityPool->data()[cj].population) * 0.1f;
-                    const_cast<GlobalClimateComponent&>(climatePool->data()[ci]).addCO2(co2PerCity);
+        // Climate CO2 accumulation and temperature processing
+        if (climatePool != nullptr) {
+            for (uint32_t ci = 0; ci < climatePool->size(); ++ci) {
+                GlobalClimateComponent& climate = climatePool->data()[ci];
+
+                // Population CO2
+                const aoc::ecs::ComponentPool<CityComponent>* cityPool3 =
+                    world.getPool<CityComponent>();
+                if (cityPool3 != nullptr) {
+                    for (uint32_t cj = 0; cj < cityPool3->size(); ++cj) {
+                        float co2PerCity = static_cast<float>(cityPool3->data()[cj].population) * 0.1f;
+                        climate.addCO2(co2PerCity);
+                    }
                 }
+
+                // Industrial pollution CO2
+                climate.addCO2(static_cast<float>(totalIndustrialCO2(world)));
+                climate.processTurn(grid, *ctx.rng);
             }
-            // Industrial pollution CO2
-            int32_t industrialCO2 = totalIndustrialCO2(world);
-            const_cast<GlobalClimateComponent&>(climatePool->data()[ci]).addCO2(
-                static_cast<float>(industrialCO2));
-            const_cast<GlobalClimateComponent&>(climatePool->data()[ci]).processTurn(
-                grid, *ctx.rng);
         }
     }
 
@@ -392,6 +405,9 @@ void processGlobalSystems(TurnContext& ctx) {
             }
         }
     }
+
+    // Physical trade routes: move Traders, exchange goods
+    processTradeRoutes(world, grid);
 
     // Stock market: dividends, value updates
     processStockMarket(world);

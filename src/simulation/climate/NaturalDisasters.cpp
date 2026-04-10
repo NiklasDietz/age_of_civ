@@ -39,7 +39,7 @@ int32_t processNaturalDisasters(aoc::ecs::World& world, aoc::map::HexGrid& grid,
         // Volcanic eruption: high elevation mountains
         if (terrain == aoc::map::TerrainType::Mountain && elevation >= 2) {
             uint32_t threshold = static_cast<uint32_t>(
-                50000000.0f * tempMultiplier);  // ~1.2% base
+                5000000.0f * tempMultiplier);  // ~0.12% per volcano tile per turn
             if ((hash % 4294967295u) < threshold) {
                 // Erupt: damage surrounding tiles
                 hex::AxialCoord center = grid.toAxial(i);
@@ -61,7 +61,7 @@ int32_t processNaturalDisasters(aoc::ecs::World& world, aoc::map::HexGrid& grid,
         // Earthquake: near mountains
         if (feature == aoc::map::FeatureType::Hills && elevation >= 1) {
             uint32_t eqHash = hash * 104729u;
-            uint32_t threshold = static_cast<uint32_t>(30000000.0f * tempMultiplier);
+            uint32_t threshold = static_cast<uint32_t>(3000000.0f * tempMultiplier);
             if ((eqHash % 4294967295u) < threshold) {
                 // Damage a building in nearby city
                 hex::AxialCoord center = grid.toAxial(i);
@@ -95,7 +95,7 @@ int32_t processNaturalDisasters(aoc::ecs::World& world, aoc::map::HexGrid& grid,
             && globalTemp > 15.0f) {
             uint32_t drHash = hash * 7919u;
             uint32_t threshold = static_cast<uint32_t>(
-                20000000.0f * (globalTemp - 14.0f));  // More droughts at higher temp
+                2000000.0f * (globalTemp - 14.0f));  // More droughts at higher temp
             if ((drHash % 4294967295u) < threshold) {
                 // Apply drought: reduce food for this tile for a few turns
                 // (would need TileDisasterComponent but for now just log)

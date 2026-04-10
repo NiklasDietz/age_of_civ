@@ -23,6 +23,7 @@ enum class UnitClass : uint8_t {
     Civilian,    ///< Builders and other non-combat units
     Naval,       ///< Ships and naval combat units
     Religious,   ///< Missionaries, apostles, inquisitors
+    Trader,      ///< Trade units that carry goods between cities
 
     Count
 };
@@ -50,7 +51,7 @@ struct UnitTypeDef {
 };
 
 /// Hard-coded starter unit types. Will be data-driven later.
-inline constexpr std::array<UnitTypeDef, 30> UNIT_TYPE_DEFS = {{
+inline constexpr std::array<UnitTypeDef, 32> UNIT_TYPE_DEFS = {{
     // Ancient era
     {UnitTypeId{0},  "Warrior",        UnitClass::Melee,     100, 20,  0, 0, 2,  40},
     {UnitTypeId{1},  "Slinger",        UnitClass::Ranged,     80, 10, 15, 1, 2,  35},
@@ -92,6 +93,9 @@ inline constexpr std::array<UnitTypeDef, 30> UNIT_TYPE_DEFS = {{
     // Support units
     {UnitTypeId{28}, "Medic",          UnitClass::Civilian,   60,  0,  0, 0, 2,  80},
     {UnitTypeId{29}, "Great General",  UnitClass::Civilian,   60,  0,  0, 0, 3,   0},
+    // Trade units
+    {UnitTypeId{30}, "Trader",         UnitClass::Trader,     60,  0,  0, 0, 3,  40},
+    {UnitTypeId{31}, "Caravan",        UnitClass::Trader,     80,  0,  0, 0, 4,  80},
 }};
 
 [[nodiscard]] inline constexpr const UnitTypeDef& unitTypeDef(UnitTypeId id) {

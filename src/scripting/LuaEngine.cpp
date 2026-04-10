@@ -1,0 +1,191 @@
+/**
+ * @file LuaEngine.cpp
+ * @brief Lua scripting engine implementation.
+ *
+ * Used for: world events, victory conditions, building/unit special abilities,
+ * AI personality overrides, map generation scripts, and mod init scripts.
+ */
+
+#include "aoc/scripting/LuaEngine.hpp"
+#include "aoc/map/HexGrid.hpp"
+#include "aoc/ecs/World.hpp"
+#include "aoc/core/Log.hpp"
+
+extern "C" {
+#include <lua.h>
+#include <lauxlib.h>
+#include <lualib.h>
+}
+
+#include <string>
+
+namespace aoc::scripting {
+
+struct LuaEngine::Impl {
+    lua_State* luaState = nullptr;
+    aoc::ecs::World* world = nullptr;
+    aoc::map::HexGrid* grid = nullptr;
+};
+
+LuaEngine::LuaEngine() : m_impl(new Impl()) {}
+
+LuaEngine::~LuaEngine() {
+    if (this->m_impl != nullptr && this->m_impl->luaState != nullptr) {
+        lua_close(this->m_impl->luaState);
+    }
+    delete this->m_impl;
+}
+
+LuaEngine::LuaEngine(LuaEngine&& other) noexcept : m_impl(other.m_impl) {
+    other.m_impl = nullptr;
+}
+
+LuaEngine& LuaEngine::operator=(LuaEngine&& other) noexcept {
+    if (this != &other) {
+        delete this->m_impl;
+        this->m_impl = other.m_impl;
+        other.m_impl = nullptr;
+    }
+    return *this;
+}
+
+bool LuaEngine::initialize(const std::string& scriptsPath) {
+    this->m_impl->luaState = luaL_newstate();
+    if (this->m_impl->luaState == nullptr) {
+        LOG_ERROR("LuaEngine::initialize: failed to create Lua state");
+        return false;
+    }
+
+    luaL_openlibs(this->m_impl->luaState);
+
+    // Load init script if it exists
+    std::string initPath = scriptsPath + "/init.lua";
+    if (this->executeFile(initPath)) {
+        LOG_INFO("Lua scripting initialized from %s", scriptsPath.c_str());
+    }
+
+    return true;
+}
+
+bool LuaEngine::isAvailable() const {
+    return this->m_impl != nullptr && this->m_impl->luaState != nullptr;
+}
+
+bool LuaEngine::executeFile(const std::string& path) {
+    if (!this->isAvailable()) { return false; }
+
+    int result = luaL_dofile(this->m_impl->luaState, path.c_str());
+    if (result != LUA_OK) {
+        const char* err = lua_tostring(this->m_impl->luaState, -1);
+        LOG_ERROR("Lua script error in %s: %s", path.c_str(), err != nullptr ? err : "unknown");
+        lua_pop(this->m_impl->luaState, 1);
+        return false;
+    }
+    return true;
+}
+
+bool LuaEngine::executeString(std::string_view code) {
+    if (!this->isAvailable()) { return false; }
+
+    std::string codeStr(code);
+    int result = luaL_dostring(this->m_impl->luaState, codeStr.c_str());
+    if (result != LUA_OK) {
+        const char* err = lua_tostring(this->m_impl->luaState, -1);
+        LOG_ERROR("Lua eval error: %s", err != nullptr ? err : "unknown");
+        lua_pop(this->m_impl->luaState, 1);
+        return false;
+    }
+    return true;
+}
+
+void LuaEngine::bindGameState(aoc::ecs::World& world, aoc::map::HexGrid& grid) {
+    this->m_impl->world = &world;
+    this->m_impl->grid = &grid;
+
+    lua_State* L = this->m_impl->luaState;
+    if (L == nullptr) { return; }
+
+    // Create 'game' table with basic info
+    lua_newtable(L);
+    lua_pushinteger(L, static_cast<lua_Integer>(grid.width()));
+    lua_setfield(L, -2, "mapWidth");
+    lua_pushinteger(L, static_cast<lua_Integer>(grid.height()));
+    lua_setfield(L, -2, "mapHeight");
+    lua_setglobal(L, "game");
+}
+
+bool LuaEngine::callFunction(std::string_view funcName) {
+    if (!this->isAvailable()) { return false; }
+
+    std::string name(funcName);
+    lua_getglobal(this->m_impl->luaState, name.c_str());
+    if (!lua_isfunction(this->m_impl->luaState, -1)) {
+        lua_pop(this->m_impl->luaState, 1);
+        return false;
+    }
+
+    if (lua_pcall(this->m_impl->luaState, 0, 1, 0) != LUA_OK) {
+        const char* err = lua_tostring(this->m_impl->luaState, -1);
+        LOG_ERROR("Lua call '%s' failed: %s", name.c_str(), err != nullptr ? err : "unknown");
+        lua_pop(this->m_impl->luaState, 1);
+        return false;
+    }
+
+    bool result = lua_toboolean(this->m_impl->luaState, -1) != 0;
+    lua_pop(this->m_impl->luaState, 1);
+    return result;
+}
+
+bool LuaEngine::callFunctionWithPlayer(std::string_view funcName, PlayerId player) {
+    if (!this->isAvailable()) { return false; }
+
+    std::string name(funcName);
+    lua_getglobal(this->m_impl->luaState, name.c_str());
+    if (!lua_isfunction(this->m_impl->luaState, -1)) {
+        lua_pop(this->m_impl->luaState, 1);
+        return false;
+    }
+
+    lua_pushinteger(this->m_impl->luaState, static_cast<lua_Integer>(player));
+    if (lua_pcall(this->m_impl->luaState, 1, 1, 0) != LUA_OK) {
+        const char* err = lua_tostring(this->m_impl->luaState, -1);
+        LOG_ERROR("Lua call '%s(%u)' failed: %s", name.c_str(),
+                  static_cast<unsigned>(player), err != nullptr ? err : "unknown");
+        lua_pop(this->m_impl->luaState, 1);
+        return false;
+    }
+
+    bool result = lua_toboolean(this->m_impl->luaState, -1) != 0;
+    lua_pop(this->m_impl->luaState, 1);
+    return result;
+}
+
+bool LuaEngine::callFunctionWithTurn(std::string_view funcName, int32_t turn) {
+    if (!this->isAvailable()) { return false; }
+
+    std::string name(funcName);
+    lua_getglobal(this->m_impl->luaState, name.c_str());
+    if (!lua_isfunction(this->m_impl->luaState, -1)) {
+        lua_pop(this->m_impl->luaState, 1);
+        return false;
+    }
+
+    lua_pushinteger(this->m_impl->luaState, static_cast<lua_Integer>(turn));
+    if (lua_pcall(this->m_impl->luaState, 1, 1, 0) != LUA_OK) {
+        lua_pop(this->m_impl->luaState, 1);
+        return false;
+    }
+
+    bool result = lua_toboolean(this->m_impl->luaState, -1) != 0;
+    lua_pop(this->m_impl->luaState, 1);
+    return result;
+}
+
+void LuaEngine::registerFunction(std::string_view name, int32_t (*func)(void*)) {
+    (void)name;
+    (void)func;
+    // Full implementation: wrap the function pointer in a lua_CFunction adapter
+    // and register via lua_pushcfunction + lua_setglobal
+}
+
+} // namespace aoc::scripting

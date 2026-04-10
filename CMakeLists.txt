@@ -34,6 +34,9 @@ add_library(aoc_lib STATIC
     src/core/ErrorCodes.cpp
     src/core/Selectable.cpp
 
+    # Data loading
+    src/data/DataLoader.cpp
+
     # ECS
     src/ecs/World.cpp
 
@@ -80,6 +83,10 @@ add_library(aoc_lib STATIC
     src/simulation/victory/VictoryCondition.cpp
     src/simulation/government/Government.cpp
     src/simulation/ai/AIController.cpp
+    src/simulation/ai/AIResearchPlanner.cpp
+    src/simulation/ai/AISettlerController.cpp
+    src/simulation/ai/AIBuilderController.cpp
+    src/simulation/ai/AIMilitaryController.cpp
     src/simulation/ai/AIEconomicStrategy.cpp
     src/simulation/ai/LeaderPersonality.cpp
     src/simulation/ai/BehaviorTree.cpp
@@ -118,11 +125,14 @@ add_library(aoc_lib STATIC
     src/simulation/economy/EconomicEspionage.cpp
     src/simulation/economy/TradeAgreement.cpp
     src/simulation/economy/SupplyChain.cpp
+    src/simulation/economy/TradeRouteSystem.cpp
     src/simulation/economy/SpeculationBubble.cpp
     src/simulation/economy/MonopolyPricing.cpp
     src/simulation/economy/TechUnemployment.cpp
     src/simulation/economy/BlackMarket.cpp
     src/simulation/economy/HumanCapital.cpp
+    src/simulation/city/Governor.cpp
+    src/simulation/automation/Automation.cpp
     src/simulation/empire/CommunicationSpeed.cpp
     src/simulation/city/CityConnection.cpp
 
@@ -177,6 +187,9 @@ add_library(aoc_lib STATIC
     src/app/HotkeyManager.cpp
     src/app/Application.cpp
 
+    # Scripting
+    src/scripting/LuaEngine.cpp
+
     # Audio
     src/audio/AudioBackend.cpp
 
@@ -206,6 +219,23 @@ target_link_libraries(aoc_lib
 )
 
 target_compile_features(aoc_lib PUBLIC cxx_std_20)
+
+# Lua scripting (required)
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(LUA lua5.4 lua lua-5.4)
+endif()
+if(NOT LUA_FOUND)
+    find_library(LUA_LIBRARY NAMES lua5.4 lua lua54 REQUIRED)
+    find_path(LUA_INCLUDE_DIR NAMES lua.h PATH_SUFFIXES lua5.4 lua REQUIRED)
+    set(LUA_LIBRARIES ${LUA_LIBRARY})
+    set(LUA_INCLUDE_DIRS ${LUA_INCLUDE_DIR})
+endif()
+
+target_compile_definitions(aoc_lib PUBLIC AOC_HAS_LUA)
+target_include_directories(aoc_lib PUBLIC ${LUA_INCLUDE_DIRS})
+target_link_libraries(aoc_lib PUBLIC ${LUA_LIBRARIES})
+message(STATUS "Lua: ${LUA_LIBRARIES} (include: ${LUA_INCLUDE_DIRS})")
 
 # Compiler warnings
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
@@ -258,6 +288,38 @@ foreach(SPV_FILE ${AOC_SPV_FILES})
             "${SPV_FILE}"
             "${AOC_SHADER_OUTPUT_DIR}/${SPV_FILENAME}"
         COMMENT "Copying pre-compiled shader: ${SPV_FILENAME}"
+    )
+endforeach()
+
+# Copy game data files (JSON definitions) to the build directory
+set(AOC_DATA_SOURCE_DIR "${CMAKE_SOURCE_DIR}/data")
+set(AOC_DATA_OUTPUT_DIR "$<TARGET_FILE_DIR:age_of_civ>/data")
+
+add_custom_command(TARGET age_of_civ POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${AOC_DATA_OUTPUT_DIR}/definitions"
+    COMMENT "Creating data output directory"
+)
+
+file(GLOB AOC_DATA_JSON_FILES "${AOC_DATA_SOURCE_DIR}/definitions/*.json")
+foreach(JSON_FILE ${AOC_DATA_JSON_FILES})
+    get_filename_component(JSON_FILENAME "${JSON_FILE}" NAME)
+    add_custom_command(TARGET age_of_civ POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${JSON_FILE}"
+            "${AOC_DATA_OUTPUT_DIR}/definitions/${JSON_FILENAME}"
+        COMMENT "Copying data file: ${JSON_FILENAME}"
+    )
+endforeach()
+
+# Also copy YAML config files
+file(GLOB AOC_DATA_YAML_FILES "${AOC_DATA_SOURCE_DIR}/*.yaml")
+foreach(YAML_FILE ${AOC_DATA_YAML_FILES})
+    get_filename_component(YAML_FILENAME "${YAML_FILE}" NAME)
+    add_custom_command(TARGET age_of_civ POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${YAML_FILE}"
+            "${AOC_DATA_OUTPUT_DIR}/${YAML_FILENAME}"
+        COMMENT "Copying config file: ${YAML_FILENAME}"
     )
 endforeach()
 
