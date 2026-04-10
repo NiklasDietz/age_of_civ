@@ -135,6 +135,7 @@ struct GameSettings {
     bool    vsync        = true;
     bool    fullscreen   = false;
     bool    showFPS      = false;
+    bool    showTileYields = true; ///< Display F/P/G/S yields directly on all map tiles
 };
 
 class SettingsMenu {
@@ -157,6 +158,7 @@ private:
     WidgetId m_vsyncLabel     = INVALID_WIDGET;
     WidgetId m_fullscreenLabel = INVALID_WIDGET;
     WidgetId m_fpsLabel       = INVALID_WIDGET;
+    WidgetId m_yieldLabel     = INVALID_WIDGET;
     GameSettings m_settings;
 };
 

@@ -51,6 +51,14 @@ bool canBuildUnit(const aoc::ecs::World& world, PlayerId player, UnitTypeId unit
         return false;
     }
 
+    // Also check the unit's own requiredTech field (new expanded unit roster)
+    const UnitTypeDef& udef = unitTypeDef(unitType);
+    if (udef.requiredTech.isValid()) {
+        if (playerTech == nullptr || !playerTech->hasResearched(udef.requiredTech)) {
+            return false;
+        }
+    }
+
     return true;
 }
 

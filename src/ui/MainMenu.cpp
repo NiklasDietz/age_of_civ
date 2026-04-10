@@ -1033,6 +1033,21 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
             this->refresh(ui);
         });
 
+    // --- Gameplay section ---
+    [[maybe_unused]] WidgetId gameplaySection = ui.createLabel(
+        contentPanel,
+        {0.0f, 0.0f, innerW, 20.0f},
+        LabelData{"Gameplay", SECTION_TEXT, 16.0f});
+
+    // Show Tile Yields
+    [[maybe_unused]] WidgetId yieldRow = createToggleRow(
+        ui, contentPanel, innerW, "Show Tile Yields", this->m_settings.showTileYields,
+        this->m_yieldLabel,
+        [this, &ui]() {
+            this->m_settings.showTileYields = !this->m_settings.showTileYields;
+            this->refresh(ui);
+        });
+
     // Spacer
     [[maybe_unused]] WidgetId spacer = ui.createPanel(
         contentPanel,
@@ -1105,6 +1120,7 @@ void saveSettings(const GameSettings& settings, const std::string& filepath) {
     file << "vsync=" << (settings.vsync ? 1 : 0) << "\n";
     file << "fullscreen=" << (settings.fullscreen ? 1 : 0) << "\n";
     file << "showFPS=" << (settings.showFPS ? 1 : 0) << "\n";
+    file << "showTileYields=" << (settings.showTileYields ? 1 : 0) << "\n";
     LOG_INFO("Settings saved to %s", filepath.c_str());
 }
 
@@ -1135,6 +1151,8 @@ GameSettings loadSettings(const std::string& filepath) {
             settings.fullscreen = (value == "1");
         } else if (key == "showFPS") {
             settings.showFPS = (value == "1");
+        } else if (key == "showTileYields") {
+            settings.showTileYields = (value == "1");
         }
     }
     LOG_INFO("Settings loaded from %s", filepath.c_str());

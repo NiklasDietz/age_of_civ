@@ -29,6 +29,7 @@
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cstdio>
 #include <string>
@@ -1087,13 +1088,51 @@ void CityDetailScreen::open(UIManager& ui) {
     assert(this->m_world != nullptr);
     this->m_isOpen = true;
 
-    WidgetId innerPanel = this->createScreenFrame(
-        ui, "City Detail", 500.0f, 640.0f, this->m_screenW, this->m_screenH);
+    constexpr float kPanelWidth = 350.0f;
+    constexpr float kContentWidth = 330.0f;
+
+    // Right-side panel anchored to the right edge of the screen (no full-screen overlay).
+    const float panelX = this->m_screenW - kPanelWidth;
+    const float panelHeight = this->m_screenH;
+
+    this->m_rootPanel = ui.createPanel(
+        {panelX, 0.0f, kPanelWidth, panelHeight},
+        PanelData{{0.12f, 0.14f, 0.18f, 0.95f}, 0.0f});
+
+    WidgetId innerPanel = this->m_rootPanel;
+    {
+        Widget* inner = ui.getWidget(innerPanel);
+        if (inner != nullptr) {
+            inner->padding = {8.0f, 10.0f, 8.0f, 10.0f};
+            inner->childSpacing = 4.0f;
+        }
+    }
+
+    // Title label at top
+    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, kContentWidth, 22.0f},
+                   LabelData{"City Detail", {1.0f, 0.9f, 0.5f, 1.0f}, 18.0f});
+
+    // "Close [ESC]" button at top-right corner
+    {
+        ButtonData closeBtn;
+        closeBtn.label = "X";
+        closeBtn.fontSize = 13.0f;
+        closeBtn.normalColor = {0.3f, 0.15f, 0.15f, 0.9f};
+        closeBtn.hoverColor = {0.45f, 0.2f, 0.2f, 0.9f};
+        closeBtn.pressedColor = {0.2f, 0.1f, 0.1f, 0.9f};
+        closeBtn.cornerRadius = 3.0f;
+        closeBtn.onClick = [this, &ui]() {
+            this->close(ui);
+        };
+        (void)ui.createButton(innerPanel,
+                        {kContentWidth - 24.0f, 0.0f, 28.0f, 22.0f},
+                        std::move(closeBtn));
+    }
 
     if (!this->m_world->isAlive(this->m_cityEntity) ||
         !this->m_world->hasComponent<aoc::sim::CityComponent>(this->m_cityEntity)) {
         this->m_detailLabel = ui.createLabel(
-            innerPanel, {0.0f, 0.0f, 450.0f, 16.0f},
+            innerPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
             LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
         ui.layout();
         return;
@@ -1102,128 +1141,220 @@ void CityDetailScreen::open(UIManager& ui) {
     const aoc::sim::CityComponent& city =
         this->m_world->getComponent<aoc::sim::CityComponent>(this->m_cityEntity);
 
-    // City name and population
-    std::string nameText = city.name + "  Pop: " + std::to_string(city.population);
-    this->m_detailLabel = ui.createLabel(
-        innerPanel, {0.0f, 0.0f, 450.0f, 18.0f},
-        LabelData{std::move(nameText), {1.0f, 0.95f, 0.7f, 1.0f}, 14.0f});
-
-    // Scrollable detail list for city information
-    WidgetId detailList = ui.createScrollList(
-        innerPanel, {0.0f, 0.0f, 470.0f, 480.0f});
+    // ====================================================================
+    // Header bar: city name + population
+    // ====================================================================
     {
-        Widget* listWidget = ui.getWidget(detailList);
+        WidgetId headerBar = ui.createPanel(
+            innerPanel, {0.0f, 0.0f, kContentWidth, 36.0f},
+            PanelData{{0.08f, 0.10f, 0.14f, 0.98f}, 4.0f});
+        {
+            Widget* hdr = ui.getWidget(headerBar);
+            if (hdr != nullptr) {
+                hdr->layoutDirection = LayoutDirection::Horizontal;
+                hdr->padding = {6.0f, 8.0f, 6.0f, 8.0f};
+                hdr->childSpacing = 0.0f;
+            }
+        }
+
+        // Player color accent stripe
+        (void)ui.createPanel(
+            headerBar, {0.0f, 0.0f, 4.0f, 24.0f},
+            PanelData{{0.3f, 0.6f, 0.95f, 1.0f}, 2.0f});
+
+        std::string nameText = "  " + city.name;
+        this->m_detailLabel = ui.createLabel(
+            headerBar, {0.0f, 4.0f, 200.0f, 18.0f},
+            LabelData{std::move(nameText), {1.0f, 0.95f, 0.75f, 1.0f}, 16.0f});
+
+        std::string popText = "Pop " + std::to_string(city.population);
+        (void)ui.createLabel(
+            headerBar, {0.0f, 5.0f, 100.0f, 16.0f},
+            LabelData{std::move(popText), {0.7f, 0.85f, 0.7f, 1.0f}, 13.0f});
+    }
+
+    // ====================================================================
+    // Tab bar: 4 tab buttons in a horizontal row
+    // ====================================================================
+    {
+        constexpr float kTabWidth = 74.0f;
+        constexpr float kTabHeight = 26.0f;
+        constexpr float kTabGap = 4.0f;
+
+        WidgetId tabBar = ui.createPanel(
+            innerPanel, {0.0f, 0.0f, kContentWidth, kTabHeight + 6.0f},
+            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        {
+            Widget* tb = ui.getWidget(tabBar);
+            if (tb != nullptr) {
+                tb->layoutDirection = LayoutDirection::Horizontal;
+                tb->padding = {2.0f, 2.0f, 2.0f, 2.0f};
+                tb->childSpacing = kTabGap;
+            }
+        }
+
+        constexpr std::array<const char*, TAB_COUNT> kTabNames = {
+            "Overview", "Production", "Buildings", "Citizens"
+        };
+        constexpr Color kActiveTabColor   = {0.25f, 0.35f, 0.55f, 1.0f};
+        constexpr Color kInactiveTabColor = {0.15f, 0.17f, 0.22f, 0.9f};
+
+        for (int32_t tabIdx = 0; tabIdx < TAB_COUNT; ++tabIdx) {
+            const bool isActive = (tabIdx == this->m_activeTab);
+            const Color baseColor = isActive ? kActiveTabColor : kInactiveTabColor;
+
+            ButtonData tabBtn;
+            tabBtn.label = kTabNames[static_cast<std::size_t>(tabIdx)];
+            tabBtn.fontSize = 11.0f;
+            tabBtn.normalColor = baseColor;
+            tabBtn.hoverColor = {baseColor.r + 0.08f, baseColor.g + 0.08f,
+                                 baseColor.b + 0.08f, 1.0f};
+            tabBtn.pressedColor = {baseColor.r - 0.04f, baseColor.g - 0.04f,
+                                   baseColor.b - 0.04f, 1.0f};
+            tabBtn.cornerRadius = 3.0f;
+
+            CityDetailScreen* self = this;
+            UIManager* uiPtr = &ui;
+            const int32_t capturedIdx = tabIdx;
+            tabBtn.onClick = [self, uiPtr, capturedIdx]() {
+                self->switchTab(*uiPtr, capturedIdx);
+            };
+
+            this->m_tabButtons[static_cast<std::size_t>(tabIdx)] =
+                ui.createButton(tabBar, {0.0f, 0.0f, kTabWidth, kTabHeight}, std::move(tabBtn));
+        }
+    }
+
+    // ====================================================================
+    // Content panel: holds tab content, swapped on tab switch
+    // ====================================================================
+    // Title(22) + headerBar(36) + tabBar(~32) + padding/spacing ~ 110px overhead
+    const float contentHeight = panelHeight - 110.0f;
+    this->m_contentPanel = ui.createPanel(
+        innerPanel, {0.0f, 0.0f, kContentWidth, contentHeight},
+        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    {
+        Widget* cp = ui.getWidget(this->m_contentPanel);
+        if (cp != nullptr) {
+            cp->padding = {0.0f, 0.0f, 0.0f, 0.0f};
+            cp->childSpacing = 0.0f;
+        }
+    }
+
+    // Populate with the default tab
+    this->m_activeTab = TAB_OVERVIEW;
+    this->buildOverviewTab(ui, this->m_contentPanel);
+
+    ui.layout();
+}
+
+// ----------------------------------------------------------------------------
+// switchTab -- clear content panel and rebuild the selected tab
+// ----------------------------------------------------------------------------
+
+void CityDetailScreen::switchTab(UIManager& ui, int32_t tabIndex) {
+    if (tabIndex < 0 || tabIndex >= TAB_COUNT) {
+        return;
+    }
+
+    this->m_activeTab = tabIndex;
+
+    // Remove all children of the content panel
+    {
+        Widget* cp = ui.getWidget(this->m_contentPanel);
+        if (cp != nullptr) {
+            // Copy the children vector because removeWidget mutates it
+            const std::vector<WidgetId> childrenCopy = cp->children;
+            for (WidgetId child : childrenCopy) {
+                ui.removeWidget(child);
+            }
+        }
+    }
+
+    // Build the selected tab's content
+    switch (tabIndex) {
+        case TAB_OVERVIEW:   this->buildOverviewTab(ui, this->m_contentPanel);   break;
+        case TAB_PRODUCTION: this->buildProductionTab(ui, this->m_contentPanel); break;
+        case TAB_BUILDINGS:  this->buildBuildingsTab(ui, this->m_contentPanel);  break;
+        case TAB_CITIZENS:   this->buildCitizensTab(ui, this->m_contentPanel);   break;
+        default: break;
+    }
+
+    // Update tab button colors to reflect active tab
+    this->updateTabButtonColors(ui);
+
+    ui.layout();
+}
+
+// ----------------------------------------------------------------------------
+// updateTabButtonColors -- highlight the active tab, dim the rest
+// ----------------------------------------------------------------------------
+
+void CityDetailScreen::updateTabButtonColors(UIManager& ui) {
+    constexpr Color kActiveTabColor   = {0.25f, 0.35f, 0.55f, 1.0f};
+    constexpr Color kInactiveTabColor = {0.15f, 0.17f, 0.22f, 0.9f};
+
+    for (int32_t tabIdx = 0; tabIdx < TAB_COUNT; ++tabIdx) {
+        Widget* btnWidget = ui.getWidget(this->m_tabButtons[static_cast<std::size_t>(tabIdx)]);
+        if (btnWidget == nullptr) {
+            continue;
+        }
+        ButtonData* btnData = std::get_if<ButtonData>(&btnWidget->data);
+        if (btnData == nullptr) {
+            continue;
+        }
+
+        const bool isActive = (tabIdx == this->m_activeTab);
+        const Color baseColor = isActive ? kActiveTabColor : kInactiveTabColor;
+        btnData->normalColor  = baseColor;
+        btnData->hoverColor   = {baseColor.r + 0.08f, baseColor.g + 0.08f,
+                                 baseColor.b + 0.08f, 1.0f};
+        btnData->pressedColor = {baseColor.r - 0.04f, baseColor.g - 0.04f,
+                                 baseColor.b - 0.04f, 1.0f};
+    }
+}
+
+// ----------------------------------------------------------------------------
+// buildOverviewTab -- summary: yields, loyalty, happiness, current production
+// ----------------------------------------------------------------------------
+
+void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
+    constexpr float kListWidth = 310.0f;
+    constexpr float kContentWidth = 330.0f;
+    constexpr Color kHeaderBg = {0.18f, 0.20f, 0.28f, 0.95f};
+    constexpr Color kHeaderTextColor = {0.9f, 0.85f, 0.6f, 1.0f};
+    constexpr Color kDimTextColor = {0.55f, 0.55f, 0.60f, 0.8f};
+    constexpr Color kBodyTextColor = {0.78f, 0.80f, 0.82f, 1.0f};
+    constexpr Color kSeparatorColor = {0.22f, 0.24f, 0.30f, 0.6f};
+    constexpr Color kFoodColor = {0.3f, 0.8f, 0.3f, 1.0f};
+    constexpr Color kProdColor = {0.9f, 0.55f, 0.2f, 1.0f};
+    constexpr Color kGoldColor = {0.95f, 0.85f, 0.2f, 1.0f};
+    constexpr Color kSciColor = {0.3f, 0.55f, 0.95f, 1.0f};
+    constexpr Color kCultColor = {0.7f, 0.35f, 0.85f, 1.0f};
+
+    if (!this->m_world->isAlive(this->m_cityEntity) ||
+        !this->m_world->hasComponent<aoc::sim::CityComponent>(this->m_cityEntity)) {
+        (void)ui.createLabel(contentPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
+            LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
+        return;
+    }
+
+    const aoc::sim::CityComponent& city =
+        this->m_world->getComponent<aoc::sim::CityComponent>(this->m_cityEntity);
+
+    // Scrollable area for tab content
+    WidgetId scrollArea = ui.createScrollList(
+        contentPanel, {0.0f, 0.0f, kContentWidth, 520.0f},
+        ScrollListData{{0.12f, 0.14f, 0.18f, 0.0f}, 0.0f, 0.0f});
+    {
+        Widget* listWidget = ui.getWidget(scrollArea);
         if (listWidget != nullptr) {
-            listWidget->padding = {4.0f, 4.0f, 4.0f, 4.0f};
-            listWidget->childSpacing = 2.0f;
+            listWidget->padding = {4.0f, 6.0f, 4.0f, 6.0f};
+            listWidget->childSpacing = 3.0f;
         }
     }
 
-    // -- Loyalty --
-    {
-        const aoc::sim::CityLoyaltyComponent* loyaltyComp =
-            this->m_world->tryGetComponent<aoc::sim::CityLoyaltyComponent>(this->m_cityEntity);
-        if (loyaltyComp != nullptr) {
-            const aoc::sim::LoyaltyStatus loyaltyStatus = loyaltyComp->status();
-            const char* statusName = aoc::sim::loyaltyStatusName(loyaltyStatus);
-
-            // Color based on status: green=Loyal, white=Content, yellow=Disloyal, red=Unrest/Revolt
-            Color loyaltyColor = {1.0f, 1.0f, 1.0f, 1.0f};
-            switch (loyaltyStatus) {
-                case aoc::sim::LoyaltyStatus::Loyal:    loyaltyColor = {0.3f, 0.9f, 0.3f, 1.0f}; break;
-                case aoc::sim::LoyaltyStatus::Content:  loyaltyColor = {1.0f, 1.0f, 1.0f, 1.0f}; break;
-                case aoc::sim::LoyaltyStatus::Disloyal: loyaltyColor = {0.9f, 0.9f, 0.2f, 1.0f}; break;
-                case aoc::sim::LoyaltyStatus::Unrest:   loyaltyColor = {0.9f, 0.3f, 0.3f, 1.0f}; break;
-                case aoc::sim::LoyaltyStatus::Revolt:   loyaltyColor = {0.9f, 0.1f, 0.1f, 1.0f}; break;
-            }
-
-            char loyaltyBuf[128];
-            const char* signStr = (loyaltyComp->loyaltyPerTurn >= 0.0f) ? "+" : "";
-            std::snprintf(loyaltyBuf, sizeof(loyaltyBuf),
-                "Loyalty: %.0f/100 (%s) %s%.1f/turn",
-                static_cast<double>(loyaltyComp->loyalty), statusName,
-                signStr, static_cast<double>(loyaltyComp->loyaltyPerTurn));
-            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 18.0f},
-                LabelData{std::string(loyaltyBuf), loyaltyColor, 12.0f});
-
-            // Loyalty breakdown
-            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
-                LabelData{"-- Loyalty Breakdown --", {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
-
-            char factorBuf[96];
-
-            std::snprintf(factorBuf, sizeof(factorBuf), "  Base: +%.0f", static_cast<double>(loyaltyComp->baseLoyalty));
-            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-                LabelData{std::string(factorBuf), {0.7f, 0.8f, 0.7f, 1.0f}, 10.0f});
-
-            std::snprintf(factorBuf, sizeof(factorBuf), "  Own city pressure: +%.1f", static_cast<double>(loyaltyComp->ownCityPressure));
-            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-                LabelData{std::string(factorBuf), {0.7f, 0.8f, 0.7f, 1.0f}, 10.0f});
-
-            std::snprintf(factorBuf, sizeof(factorBuf), "  Foreign pressure: %.1f", static_cast<double>(loyaltyComp->foreignCityPressure));
-            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-                LabelData{std::string(factorBuf), {0.8f, 0.6f, 0.6f, 1.0f}, 10.0f});
-
-            if (loyaltyComp->governorBonus > 0.0f) {
-                std::snprintf(factorBuf, sizeof(factorBuf), "  Governor: +%.0f", static_cast<double>(loyaltyComp->governorBonus));
-                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-                    LabelData{std::string(factorBuf), {0.7f, 0.8f, 0.7f, 1.0f}, 10.0f});
-            }
-
-            if (loyaltyComp->garrisonBonus > 0.0f) {
-                std::snprintf(factorBuf, sizeof(factorBuf), "  Garrison: +%.0f", static_cast<double>(loyaltyComp->garrisonBonus));
-                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-                    LabelData{std::string(factorBuf), {0.7f, 0.8f, 0.7f, 1.0f}, 10.0f});
-            }
-
-            if (loyaltyComp->monumentBonus > 0.0f) {
-                std::snprintf(factorBuf, sizeof(factorBuf), "  Monument: +%.0f", static_cast<double>(loyaltyComp->monumentBonus));
-                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-                    LabelData{std::string(factorBuf), {0.7f, 0.8f, 0.7f, 1.0f}, 10.0f});
-            }
-
-            if (loyaltyComp->ageEffect != 0.0f) {
-                const char* ageSign = (loyaltyComp->ageEffect >= 0.0f) ? "+" : "";
-                std::snprintf(factorBuf, sizeof(factorBuf), "  Age effect: %s%.0f", ageSign, static_cast<double>(loyaltyComp->ageEffect));
-                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-                    LabelData{std::string(factorBuf),
-                        (loyaltyComp->ageEffect >= 0.0f)
-                            ? Color{0.7f, 0.8f, 0.7f, 1.0f}
-                            : Color{0.8f, 0.6f, 0.6f, 1.0f},
-                        10.0f});
-            }
-
-            if (loyaltyComp->happinessEffect != 0.0f) {
-                std::snprintf(factorBuf, sizeof(factorBuf), "  Happiness: %.0f", static_cast<double>(loyaltyComp->happinessEffect));
-                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-                    LabelData{std::string(factorBuf), {0.8f, 0.6f, 0.6f, 1.0f}, 10.0f});
-            }
-
-            if (loyaltyComp->capturedPenalty != 0.0f) {
-                std::snprintf(factorBuf, sizeof(factorBuf), "  Captured: %.0f", static_cast<double>(loyaltyComp->capturedPenalty));
-                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-                    LabelData{std::string(factorBuf), {0.8f, 0.5f, 0.5f, 1.0f}, 10.0f});
-            }
-        } else {
-            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
-                LabelData{"Loyalty: N/A", {0.5f, 0.5f, 0.5f, 0.7f}, 11.0f});
-        }
-    }
-
-    // -- Population and growth --
-    {
-        char growthBuf[96];
-        std::snprintf(growthBuf, sizeof(growthBuf),
-            "Population: %d  Food surplus: %.1f",
-            city.population, static_cast<double>(city.foodSurplus));
-        (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
-            LabelData{std::string(growthBuf), {0.7f, 0.9f, 0.7f, 1.0f}, 11.0f});
-    }
-
-    // -- Per-tile yield contributions --
-    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
-        LabelData{"-- Tile Yields --", {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
-
+    // -- Yield summary row --
     int32_t totalFood = 0;
     int32_t totalProd = 0;
     int32_t totalGold = 0;
@@ -1236,27 +1367,14 @@ void CityDetailScreen::open(UIManager& ui) {
         }
         const int32_t tileIndex = this->m_grid->toIndex(tile);
         const aoc::map::TileYield ty = this->m_grid->tileYield(tileIndex);
-
         totalFood += ty.food;
         totalProd += ty.production;
         totalGold += ty.gold;
         totalSci  += ty.science;
         totalCult += ty.culture;
-
-        const std::string tileText = "Tile (" + std::to_string(tile.q) + ","
-                                   + std::to_string(tile.r) + "): F:"
-                                   + std::to_string(ty.food) + " P:"
-                                   + std::to_string(ty.production) + " G:"
-                                   + std::to_string(ty.gold) + " S:"
-                                   + std::to_string(ty.science);
-        (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-            LabelData{tileText, {0.7f, 0.75f, 0.7f, 1.0f}, 10.0f});
     }
 
-    // -- Districts and buildings --
-    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
-        LabelData{"-- Districts & Buildings --", {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
-
+    // Building bonuses for yield totals
     int32_t bldgProd = 0;
     int32_t bldgSci  = 0;
     int32_t bldgGold = 0;
@@ -1264,9 +1382,506 @@ void CityDetailScreen::open(UIManager& ui) {
         this->m_world->tryGetComponent<aoc::sim::CityDistrictsComponent>(this->m_cityEntity);
     if (districts != nullptr) {
         for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& district : districts->districts) {
-            const std::string districtHeader = std::string(aoc::sim::districtTypeName(district.type));
-            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-                LabelData{districtHeader, {0.8f, 0.8f, 0.9f, 1.0f}, 10.0f});
+            for (BuildingId bid : district.buildings) {
+                const aoc::sim::BuildingDef& bdef = aoc::sim::buildingDef(bid);
+                bldgProd += bdef.productionBonus;
+                bldgSci  += bdef.scienceBonus;
+                bldgGold += bdef.goldBonus;
+            }
+        }
+    }
+
+    {
+        WidgetId yieldRow = ui.createPanel(
+            scrollArea, {0.0f, 0.0f, kListWidth, 32.0f},
+            PanelData{{0.15f, 0.17f, 0.22f, 0.95f}, 4.0f});
+        {
+            Widget* yr = ui.getWidget(yieldRow);
+            if (yr != nullptr) {
+                yr->layoutDirection = LayoutDirection::Horizontal;
+                yr->padding = {4.0f, 6.0f, 4.0f, 6.0f};
+                yr->childSpacing = 4.0f;
+            }
+        }
+
+        struct YieldEntry {
+            const char* name;
+            int32_t value;
+            Color dotColor;
+        };
+        const std::array<YieldEntry, 5> yieldEntries = {{
+            {"Food",    totalFood,              kFoodColor},
+            {"Prod",    totalProd + bldgProd,    kProdColor},
+            {"Gold",    totalGold + bldgGold,    kGoldColor},
+            {"Sci",     totalSci + bldgSci,      kSciColor},
+            {"Cult",    totalCult,               kCultColor},
+        }};
+
+        for (const YieldEntry& entry : yieldEntries) {
+            WidgetId entryPanel = ui.createPanel(
+                yieldRow, {0.0f, 0.0f, 90.0f, 22.0f},
+                PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+            {
+                Widget* ep = ui.getWidget(entryPanel);
+                if (ep != nullptr) {
+                    ep->layoutDirection = LayoutDirection::Horizontal;
+                    ep->padding = {2.0f, 4.0f, 2.0f, 4.0f};
+                    ep->childSpacing = 4.0f;
+                }
+            }
+            (void)ui.createPanel(
+                entryPanel, {0.0f, 2.0f, 10.0f, 10.0f},
+                PanelData{entry.dotColor, 5.0f});
+            std::string valueText = std::to_string(entry.value) + " " + entry.name;
+            (void)ui.createLabel(
+                entryPanel, {0.0f, 0.0f, 64.0f, 14.0f},
+                LabelData{std::move(valueText), {0.92f, 0.92f, 0.92f, 1.0f}, 11.0f});
+        }
+    }
+
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
+        PanelData{kSeparatorColor, 0.0f});
+
+    // -- Loyalty section --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
+        PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Loyalty", kHeaderTextColor, 11.0f});
+
+    {
+        const aoc::sim::CityLoyaltyComponent* loyaltyComp =
+            this->m_world->tryGetComponent<aoc::sim::CityLoyaltyComponent>(this->m_cityEntity);
+        if (loyaltyComp != nullptr) {
+            const aoc::sim::LoyaltyStatus loyaltyStatus = loyaltyComp->status();
+            const char* statusName = aoc::sim::loyaltyStatusName(loyaltyStatus);
+
+            Color loyaltyTextColor = {1.0f, 1.0f, 1.0f, 1.0f};
+            Color loyaltyBarColor = {0.3f, 0.9f, 0.3f, 0.9f};
+            switch (loyaltyStatus) {
+                case aoc::sim::LoyaltyStatus::Loyal:
+                    loyaltyTextColor = {0.3f, 0.9f, 0.3f, 1.0f};
+                    loyaltyBarColor = {0.2f, 0.7f, 0.2f, 0.9f};
+                    break;
+                case aoc::sim::LoyaltyStatus::Content:
+                    loyaltyTextColor = {0.85f, 0.85f, 0.85f, 1.0f};
+                    loyaltyBarColor = {0.5f, 0.7f, 0.3f, 0.9f};
+                    break;
+                case aoc::sim::LoyaltyStatus::Disloyal:
+                    loyaltyTextColor = {0.9f, 0.9f, 0.2f, 1.0f};
+                    loyaltyBarColor = {0.8f, 0.8f, 0.15f, 0.9f};
+                    break;
+                case aoc::sim::LoyaltyStatus::Unrest:
+                    loyaltyTextColor = {0.9f, 0.4f, 0.2f, 1.0f};
+                    loyaltyBarColor = {0.85f, 0.35f, 0.15f, 0.9f};
+                    break;
+                case aoc::sim::LoyaltyStatus::Revolt:
+                    loyaltyTextColor = {0.9f, 0.1f, 0.1f, 1.0f};
+                    loyaltyBarColor = {0.8f, 0.1f, 0.1f, 0.9f};
+                    break;
+            }
+
+            char loyaltyBuf[128];
+            const char* signStr = (loyaltyComp->loyaltyPerTurn >= 0.0f) ? "+" : "";
+            std::snprintf(loyaltyBuf, sizeof(loyaltyBuf),
+                "  %.0f / 100  %s    %s%.1f per turn",
+                static_cast<double>(loyaltyComp->loyalty), statusName,
+                signStr, static_cast<double>(loyaltyComp->loyaltyPerTurn));
+            (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+                LabelData{std::string(loyaltyBuf), loyaltyTextColor, 11.0f});
+
+            constexpr float kBarWidth = 470.0f;
+            constexpr float kBarHeight = 10.0f;
+            WidgetId barBg = ui.createPanel(
+                scrollArea, {0.0f, 0.0f, kBarWidth, kBarHeight},
+                PanelData{{0.08f, 0.08f, 0.10f, 0.9f}, 3.0f});
+            {
+                const float fillFraction = std::clamp(loyaltyComp->loyalty / 100.0f, 0.0f, 1.0f);
+                const float fillWidth = std::max(fillFraction * kBarWidth, 2.0f);
+                (void)ui.createPanel(
+                    barBg, {0.0f, 0.0f, fillWidth, kBarHeight},
+                    PanelData{loyaltyBarColor, 3.0f});
+            }
+
+            char factorBuf[128];
+            std::snprintf(factorBuf, sizeof(factorBuf),
+                "  Base: +%.0f   Own pressure: +%.1f   Foreign: %.1f",
+                static_cast<double>(loyaltyComp->baseLoyalty),
+                static_cast<double>(loyaltyComp->ownCityPressure),
+                static_cast<double>(loyaltyComp->foreignCityPressure));
+            (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 12.0f},
+                LabelData{std::string(factorBuf), kBodyTextColor, 9.0f});
+
+            std::string bonusLine = "  ";
+            if (loyaltyComp->governorBonus > 0.0f) {
+                char buf[48];
+                std::snprintf(buf, sizeof(buf), "Governor: +%.0f  ", static_cast<double>(loyaltyComp->governorBonus));
+                bonusLine += buf;
+            }
+            if (loyaltyComp->garrisonBonus > 0.0f) {
+                char buf[48];
+                std::snprintf(buf, sizeof(buf), "Garrison: +%.0f  ", static_cast<double>(loyaltyComp->garrisonBonus));
+                bonusLine += buf;
+            }
+            if (loyaltyComp->monumentBonus > 0.0f) {
+                char buf[48];
+                std::snprintf(buf, sizeof(buf), "Monument: +%.0f  ", static_cast<double>(loyaltyComp->monumentBonus));
+                bonusLine += buf;
+            }
+            if (loyaltyComp->ageEffect != 0.0f) {
+                char buf[48];
+                const char* ageSign = (loyaltyComp->ageEffect >= 0.0f) ? "+" : "";
+                std::snprintf(buf, sizeof(buf), "Age: %s%.0f  ", ageSign, static_cast<double>(loyaltyComp->ageEffect));
+                bonusLine += buf;
+            }
+            if (loyaltyComp->happinessEffect != 0.0f) {
+                char buf[48];
+                std::snprintf(buf, sizeof(buf), "Happiness: %.0f  ", static_cast<double>(loyaltyComp->happinessEffect));
+                bonusLine += buf;
+            }
+            if (loyaltyComp->capturedPenalty != 0.0f) {
+                char buf[48];
+                std::snprintf(buf, sizeof(buf), "Captured: %.0f", static_cast<double>(loyaltyComp->capturedPenalty));
+                bonusLine += buf;
+            }
+            if (bonusLine.size() > 2) {
+                (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 12.0f},
+                    LabelData{std::move(bonusLine), kBodyTextColor, 9.0f});
+            }
+        } else {
+            (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+                LabelData{"  N/A", kDimTextColor, 11.0f});
+        }
+    }
+
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
+        PanelData{kSeparatorColor, 0.0f});
+
+    // -- Happiness section --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
+        PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Happiness", kHeaderTextColor, 11.0f});
+
+    {
+        const aoc::sim::CityHappinessComponent* happiness =
+            this->m_world->tryGetComponent<aoc::sim::CityHappinessComponent>(this->m_cityEntity);
+        if (happiness != nullptr) {
+            const int32_t netHappy = static_cast<int32_t>(happiness->amenities - happiness->demand + happiness->modifiers);
+
+            Color happyIndicatorColor = {0.3f, 0.8f, 0.3f, 1.0f};
+            if (netHappy < 0) {
+                happyIndicatorColor = {0.85f, 0.3f, 0.3f, 1.0f};
+            } else if (netHappy == 0) {
+                happyIndicatorColor = {0.8f, 0.8f, 0.3f, 1.0f};
+            }
+
+            WidgetId happyRow = ui.createPanel(
+                scrollArea, {0.0f, 0.0f, kListWidth, 18.0f},
+                PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+            {
+                Widget* hr = ui.getWidget(happyRow);
+                if (hr != nullptr) {
+                    hr->layoutDirection = LayoutDirection::Horizontal;
+                    hr->childSpacing = 6.0f;
+                    hr->padding = {2.0f, 4.0f, 2.0f, 4.0f};
+                }
+            }
+
+            (void)ui.createPanel(
+                happyRow, {0.0f, 1.0f, 12.0f, 12.0f},
+                PanelData{happyIndicatorColor, 6.0f});
+
+            char happyBuf[128];
+            std::snprintf(happyBuf, sizeof(happyBuf),
+                "%d amenities - %d demand + %d modifiers = %d net",
+                static_cast<int>(happiness->amenities),
+                static_cast<int>(happiness->demand),
+                static_cast<int>(happiness->modifiers),
+                netHappy);
+            (void)ui.createLabel(
+                happyRow, {0.0f, 0.0f, 420.0f, 14.0f},
+                LabelData{std::string(happyBuf), kBodyTextColor, 11.0f});
+        } else {
+            (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+                LabelData{"  N/A", kDimTextColor, 11.0f});
+        }
+    }
+
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
+        PanelData{kSeparatorColor, 0.0f});
+
+    // -- Current production with progress bar --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
+        PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Current Production", kHeaderTextColor, 11.0f});
+
+    {
+        std::string prodName = "Nothing";
+        float prodProgress = 0.0f;
+        float prodTotal = 1.0f;
+        if (this->m_world->hasComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity)) {
+            const aoc::sim::ProductionQueueComponent& queue =
+                this->m_world->getComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity);
+            const aoc::sim::ProductionQueueItem* current = queue.currentItem();
+            if (current != nullptr) {
+                prodName = current->name;
+                prodProgress = current->progress;
+                prodTotal = current->totalCost;
+            }
+        }
+
+        char prodBuf[128];
+        std::snprintf(prodBuf, sizeof(prodBuf), "  %s   (%d / %d)",
+            prodName.c_str(),
+            static_cast<int>(prodProgress),
+            static_cast<int>(prodTotal));
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{std::string(prodBuf), kBodyTextColor, 11.0f});
+
+        constexpr float kProdBarWidth = 470.0f;
+        constexpr float kProdBarHeight = 10.0f;
+        WidgetId prodBarBg = ui.createPanel(
+            scrollArea, {0.0f, 0.0f, kProdBarWidth, kProdBarHeight},
+            PanelData{{0.08f, 0.08f, 0.10f, 0.9f}, 3.0f});
+        {
+            const float fraction = (prodTotal > 0.0f)
+                ? std::clamp(prodProgress / prodTotal, 0.0f, 1.0f)
+                : 0.0f;
+            const float fillWidth = std::max(fraction * kProdBarWidth, 2.0f);
+            (void)ui.createPanel(
+                prodBarBg, {0.0f, 0.0f, fillWidth, kProdBarHeight},
+                PanelData{kProdColor, 3.0f});
+        }
+    }
+
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
+        PanelData{kSeparatorColor, 0.0f});
+
+    // -- Purchase hint --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
+        PanelData{{0.3f, 0.3f, 0.4f, 0.3f}, 0.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+        LabelData{"  Right-click unowned tiles on the map to purchase them", kDimTextColor, 10.0f});
+}
+
+// ----------------------------------------------------------------------------
+// buildProductionTab -- queue management and buildable item list
+// ----------------------------------------------------------------------------
+
+void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) {
+    constexpr float kListWidth = 310.0f;
+    constexpr float kContentWidth = 330.0f;
+    constexpr Color kHeaderBg = {0.18f, 0.20f, 0.28f, 0.95f};
+    constexpr Color kHeaderTextColor = {0.9f, 0.85f, 0.6f, 1.0f};
+    constexpr Color kDimTextColor = {0.55f, 0.55f, 0.60f, 0.8f};
+    constexpr Color kBodyTextColor = {0.78f, 0.80f, 0.82f, 1.0f};
+    constexpr Color kSeparatorColor = {0.22f, 0.24f, 0.30f, 0.6f};
+    constexpr Color kProdColor = {0.9f, 0.55f, 0.2f, 1.0f};
+
+    if (!this->m_world->isAlive(this->m_cityEntity) ||
+        !this->m_world->hasComponent<aoc::sim::CityComponent>(this->m_cityEntity)) {
+        (void)ui.createLabel(contentPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
+            LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
+        return;
+    }
+
+    WidgetId scrollArea = ui.createScrollList(
+        contentPanel, {0.0f, 0.0f, kContentWidth, 520.0f},
+        ScrollListData{{0.12f, 0.14f, 0.18f, 0.0f}, 0.0f, 0.0f});
+    {
+        Widget* listWidget = ui.getWidget(scrollArea);
+        if (listWidget != nullptr) {
+            listWidget->padding = {4.0f, 6.0f, 4.0f, 6.0f};
+            listWidget->childSpacing = 3.0f;
+        }
+    }
+
+    // -- Current production queue --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
+        PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Production Queue", kHeaderTextColor, 11.0f});
+
+    if (this->m_world->hasComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity)) {
+        const aoc::sim::ProductionQueueComponent& queue =
+            this->m_world->getComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity);
+
+        if (queue.queue.empty()) {
+            (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+                LabelData{"  (empty)", kDimTextColor, 11.0f});
+        } else {
+            for (const aoc::sim::ProductionQueueItem& item : queue.queue) {
+                char itemBuf[128];
+                std::snprintf(itemBuf, sizeof(itemBuf), "  %s   (%d / %d)",
+                    item.name.c_str(),
+                    static_cast<int>(item.progress),
+                    static_cast<int>(item.totalCost));
+                (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+                    LabelData{std::string(itemBuf), kBodyTextColor, 11.0f});
+
+                // Progress bar per queue item
+                constexpr float kProdBarWidth = 470.0f;
+                constexpr float kProdBarHeight = 8.0f;
+                WidgetId barBg = ui.createPanel(
+                    scrollArea, {0.0f, 0.0f, kProdBarWidth, kProdBarHeight},
+                    PanelData{{0.08f, 0.08f, 0.10f, 0.9f}, 3.0f});
+                {
+                    const float fraction = (item.totalCost > 0.0f)
+                        ? std::clamp(item.progress / item.totalCost, 0.0f, 1.0f)
+                        : 0.0f;
+                    const float fillWidth = std::max(fraction * kProdBarWidth, 2.0f);
+                    (void)ui.createPanel(
+                        barBg, {0.0f, 0.0f, fillWidth, kProdBarHeight},
+                        PanelData{kProdColor, 3.0f});
+                }
+            }
+        }
+    } else {
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{"  No production queue", kDimTextColor, 11.0f});
+    }
+
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
+        PanelData{kSeparatorColor, 0.0f});
+
+    // -- Buildable items --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
+        PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Available Items", kHeaderTextColor, 11.0f});
+
+    const std::vector<aoc::sim::BuildableItem> buildableItems =
+        aoc::sim::getBuildableItems(*this->m_world, this->m_player, this->m_cityEntity);
+
+    if (buildableItems.empty()) {
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{"  Nothing available to build", kDimTextColor, 11.0f});
+    }
+
+    for (const aoc::sim::BuildableItem& buildable : buildableItems) {
+        std::string itemLabel = std::string(buildable.name) + " ("
+                              + std::to_string(static_cast<int>(buildable.cost)) + ")";
+        if (buildable.type == aoc::sim::ProductionItemType::Wonder) {
+            itemLabel += " [Wonder]";
+        }
+
+        ButtonData btn;
+        btn.label = std::move(itemLabel);
+        btn.fontSize = 10.0f;
+        btn.cornerRadius = 3.0f;
+
+        switch (buildable.type) {
+            case aoc::sim::ProductionItemType::Unit:
+                btn.normalColor  = {0.2f, 0.2f, 0.28f, 0.9f};
+                btn.hoverColor   = {0.3f, 0.3f, 0.38f, 0.9f};
+                btn.pressedColor = {0.15f, 0.15f, 0.2f, 0.9f};
+                break;
+            case aoc::sim::ProductionItemType::Building:
+                btn.normalColor  = {0.2f, 0.25f, 0.2f, 0.9f};
+                btn.hoverColor   = {0.3f, 0.35f, 0.3f, 0.9f};
+                btn.pressedColor = {0.15f, 0.18f, 0.15f, 0.9f};
+                break;
+            case aoc::sim::ProductionItemType::Wonder:
+                btn.normalColor  = {0.28f, 0.22f, 0.15f, 0.9f};
+                btn.hoverColor   = {0.40f, 0.32f, 0.20f, 0.9f};
+                btn.pressedColor = {0.20f, 0.15f, 0.10f, 0.9f};
+                break;
+            case aoc::sim::ProductionItemType::District:
+                btn.normalColor  = {0.2f, 0.2f, 0.25f, 0.9f};
+                btn.hoverColor   = {0.3f, 0.3f, 0.35f, 0.9f};
+                btn.pressedColor = {0.15f, 0.15f, 0.18f, 0.9f};
+                break;
+        }
+
+        const aoc::sim::ProductionItemType itemType = buildable.type;
+        const uint16_t itemId = buildable.id;
+        const float itemCost = buildable.cost;
+        const std::string itemName(buildable.name);
+        const EntityId cityEnt = this->m_cityEntity;
+        aoc::ecs::World* world = this->m_world;
+        btn.onClick = [world, cityEnt, itemType, itemId, itemCost, itemName]() {
+            if (!world->isAlive(cityEnt)) {
+                return;
+            }
+            aoc::sim::ProductionQueueComponent* queue =
+                world->tryGetComponent<aoc::sim::ProductionQueueComponent>(cityEnt);
+            if (queue == nullptr) {
+                return;
+            }
+            aoc::sim::ProductionQueueItem item{};
+            item.type      = itemType;
+            item.itemId    = itemId;
+            item.name      = itemName;
+            item.totalCost = itemCost;
+            item.progress  = 0.0f;
+            queue->queue.push_back(std::move(item));
+            LOG_INFO("Enqueued: %s", itemName.c_str());
+        };
+
+        (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 22.0f}, std::move(btn));
+    }
+}
+
+// ----------------------------------------------------------------------------
+// buildBuildingsTab -- districts and their buildings with bonuses
+// ----------------------------------------------------------------------------
+
+void CityDetailScreen::buildBuildingsTab(UIManager& ui, WidgetId contentPanel) {
+    constexpr float kListWidth = 310.0f;
+    constexpr float kContentWidth = 330.0f;
+    constexpr Color kHeaderBg = {0.18f, 0.20f, 0.28f, 0.95f};
+    constexpr Color kHeaderTextColor = {0.9f, 0.85f, 0.6f, 1.0f};
+    constexpr Color kDimTextColor = {0.55f, 0.55f, 0.60f, 0.8f};
+
+    if (!this->m_world->isAlive(this->m_cityEntity) ||
+        !this->m_world->hasComponent<aoc::sim::CityComponent>(this->m_cityEntity)) {
+        (void)ui.createLabel(contentPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
+            LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
+        return;
+    }
+
+    WidgetId scrollArea = ui.createScrollList(
+        contentPanel, {0.0f, 0.0f, kContentWidth, 520.0f},
+        ScrollListData{{0.12f, 0.14f, 0.18f, 0.0f}, 0.0f, 0.0f});
+    {
+        Widget* listWidget = ui.getWidget(scrollArea);
+        if (listWidget != nullptr) {
+            listWidget->padding = {4.0f, 6.0f, 4.0f, 6.0f};
+            listWidget->childSpacing = 3.0f;
+        }
+    }
+
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
+        PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Districts & Buildings", kHeaderTextColor, 11.0f});
+
+    const aoc::sim::CityDistrictsComponent* districts =
+        this->m_world->tryGetComponent<aoc::sim::CityDistrictsComponent>(this->m_cityEntity);
+
+    if (districts != nullptr && !districts->districts.empty()) {
+        constexpr std::array<Color, 4> kDistrictAccents = {{
+            {0.20f, 0.24f, 0.38f, 0.9f},
+            {0.26f, 0.20f, 0.35f, 0.9f},
+            {0.20f, 0.30f, 0.24f, 0.9f},
+            {0.30f, 0.24f, 0.20f, 0.9f},
+        }};
+
+        int32_t bldgProd = 0;
+        int32_t bldgSci  = 0;
+        int32_t bldgGold = 0;
+        std::size_t districtIdx = 0;
+
+        for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& district : districts->districts) {
+            const Color accentColor = kDistrictAccents[districtIdx % kDistrictAccents.size()];
+            ++districtIdx;
+
+            (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 18.0f},
+                PanelData{accentColor, 2.0f});
+            const std::string districtName = std::string(aoc::sim::districtTypeName(district.type));
+            (void)ui.createLabel(scrollArea, {0.0f, -17.0f, kListWidth, 14.0f},
+                LabelData{"   " + districtName, {0.9f, 0.9f, 0.95f, 1.0f}, 10.0f});
 
             for (BuildingId bid : district.buildings) {
                 const aoc::sim::BuildingDef& bdef = aoc::sim::buildingDef(bid);
@@ -1274,80 +1889,107 @@ void CityDetailScreen::open(UIManager& ui) {
                 bldgSci  += bdef.scienceBonus;
                 bldgGold += bdef.goldBonus;
 
-                const std::string bldgLine = "  " + std::string(bdef.name)
-                    + " (P:+" + std::to_string(bdef.productionBonus)
-                    + " S:+" + std::to_string(bdef.scienceBonus)
-                    + " G:+" + std::to_string(bdef.goldBonus) + ")";
-                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-                    LabelData{bldgLine, {0.7f, 0.75f, 0.8f, 1.0f}, 10.0f});
+                std::string bldgLine = "      " + std::string(bdef.name);
+                bool hasBonus = false;
+                if (bdef.productionBonus != 0) {
+                    bldgLine += (hasBonus ? ", " : "  ");
+                    bldgLine += "+" + std::to_string(bdef.productionBonus) + " prod";
+                    hasBonus = true;
+                }
+                if (bdef.scienceBonus != 0) {
+                    bldgLine += (hasBonus ? ", " : "  ");
+                    bldgLine += "+" + std::to_string(bdef.scienceBonus) + " sci";
+                    hasBonus = true;
+                }
+                if (bdef.goldBonus != 0) {
+                    bldgLine += (hasBonus ? ", " : "  ");
+                    bldgLine += "+" + std::to_string(bdef.goldBonus) + " gold";
+                    hasBonus = true;
+                }
+                (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 13.0f},
+                    LabelData{std::move(bldgLine), {0.72f, 0.76f, 0.82f, 1.0f}, 10.0f});
             }
 
             if (district.buildings.empty()) {
-                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-                    LabelData{"  (no buildings)", {0.5f, 0.5f, 0.5f, 0.7f}, 10.0f});
+                (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 13.0f},
+                    LabelData{"      (no buildings)", kDimTextColor, 10.0f});
             }
         }
+
+        // Building totals summary at the bottom
+        char bldgTotalBuf[128];
+        std::snprintf(bldgTotalBuf, sizeof(bldgTotalBuf),
+            "  Building totals: +%d prod, +%d sci, +%d gold",
+            bldgProd, bldgSci, bldgGold);
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{std::string(bldgTotalBuf), {0.65f, 0.7f, 0.8f, 1.0f}, 10.0f});
     } else {
-        (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-            LabelData{"No districts", {0.5f, 0.5f, 0.5f, 0.7f}, 10.0f});
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{"  No districts built", kDimTextColor, 10.0f});
+    }
+}
+
+// ----------------------------------------------------------------------------
+// buildCitizensTab -- worked tiles, population, food surplus
+// ----------------------------------------------------------------------------
+
+void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
+    constexpr float kListWidth = 310.0f;
+    constexpr float kContentWidth = 330.0f;
+    constexpr Color kHeaderBg = {0.18f, 0.20f, 0.28f, 0.95f};
+    constexpr Color kHeaderTextColor = {0.9f, 0.85f, 0.6f, 1.0f};
+    constexpr Color kDimTextColor = {0.55f, 0.55f, 0.60f, 0.8f};
+    constexpr Color kBodyTextColor = {0.78f, 0.80f, 0.82f, 1.0f};
+    constexpr Color kSeparatorColor = {0.22f, 0.24f, 0.30f, 0.6f};
+
+    if (!this->m_world->isAlive(this->m_cityEntity) ||
+        !this->m_world->hasComponent<aoc::sim::CityComponent>(this->m_cityEntity)) {
+        (void)ui.createLabel(contentPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
+            LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
+        return;
     }
 
-    const std::string bldgText = "Building totals: +" + std::to_string(bldgProd) + " production, +"
-                               + std::to_string(bldgSci) + " science, +"
-                               + std::to_string(bldgGold) + " gold";
-    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-        LabelData{bldgText, {0.7f, 0.7f, 0.8f, 1.0f}, 10.0f});
+    const aoc::sim::CityComponent& city =
+        this->m_world->getComponent<aoc::sim::CityComponent>(this->m_cityEntity);
 
-    // -- Total yields row --
-    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
-        LabelData{"-- Totals --", {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
-
-    const std::string totalText = "Total: F:" + std::to_string(totalFood)
-                                + " P:" + std::to_string(totalProd + bldgProd)
-                                + " G:" + std::to_string(totalGold + bldgGold)
-                                + " S:" + std::to_string(totalSci + bldgSci)
-                                + " C:" + std::to_string(totalCult);
-    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
-        LabelData{totalText, {0.9f, 0.9f, 0.7f, 1.0f}, 12.0f});
-
-    // -- Happiness breakdown --
-    const aoc::sim::CityHappinessComponent* happiness =
-        this->m_world->tryGetComponent<aoc::sim::CityHappinessComponent>(this->m_cityEntity);
-    if (happiness != nullptr) {
-        const int32_t netHappy = static_cast<int32_t>(happiness->amenities - happiness->demand + happiness->modifiers);
-        const std::string happyText = "Happiness: "
-            + std::to_string(static_cast<int>(happiness->amenities)) + " amenities - "
-            + std::to_string(static_cast<int>(happiness->demand)) + " demand = "
-            + std::to_string(netHappy);
-        (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
-            LabelData{happyText, {0.8f, 0.8f, 0.5f, 1.0f}, 11.0f});
-    } else {
-        (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
-            LabelData{"Happiness: N/A", {0.8f, 0.8f, 0.5f, 1.0f}, 11.0f});
-    }
-
-    // -- Production queue status --
-    std::string queueText = "Building: Nothing";
-    if (this->m_world->hasComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity)) {
-        const aoc::sim::ProductionQueueComponent& queue =
-            this->m_world->getComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity);
-        const aoc::sim::ProductionQueueItem* current = queue.currentItem();
-        if (current != nullptr) {
-            queueText = "Building: " + current->name + " ("
-                      + std::to_string(static_cast<int>(current->progress)) + "/"
-                      + std::to_string(static_cast<int>(current->totalCost)) + ")";
+    WidgetId scrollArea = ui.createScrollList(
+        contentPanel, {0.0f, 0.0f, kContentWidth, 520.0f},
+        ScrollListData{{0.12f, 0.14f, 0.18f, 0.0f}, 0.0f, 0.0f});
+    {
+        Widget* listWidget = ui.getWidget(scrollArea);
+        if (listWidget != nullptr) {
+            listWidget->padding = {4.0f, 6.0f, 4.0f, 6.0f};
+            listWidget->childSpacing = 3.0f;
         }
     }
-    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
-        LabelData{std::move(queueText), {0.8f, 0.9f, 0.8f, 1.0f}, 11.0f});
+
+    // -- Population and growth info --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
+        PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Population & Growth", kHeaderTextColor, 11.0f});
+
+    {
+        char popBuf[128];
+        std::snprintf(popBuf, sizeof(popBuf),
+            "  Population: %d   |   Worked tiles: %d   |   Food surplus: %.1f",
+            city.population,
+            static_cast<int>(city.workedTiles.size()),
+            static_cast<double>(city.foodSurplus));
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{std::string(popBuf), kBodyTextColor, 11.0f});
+    }
+
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
+        PanelData{kSeparatorColor, 0.0f});
 
     // -- Manage Citizens: tile assignment --
-    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
-        LabelData{"-- Manage Citizens --", {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
+        PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Manage Citizens", kHeaderTextColor, 11.0f});
 
-    // Show tiles within city borders that citizens can work
     {
-        // Gather all owned tiles within 3 hexes of city center
         std::vector<hex::AxialCoord> borderTiles;
         hex::spiral(city.location, 3, std::back_inserter(borderTiles));
 
@@ -1360,12 +2002,11 @@ void CityDetailScreen::open(UIManager& ui) {
                 continue;
             }
             if (this->m_grid->movementCost(tileIdx) == 0) {
-                continue;  // Skip impassable tiles
+                continue;
             }
 
             const aoc::map::TileYield ty = this->m_grid->tileYield(tileIdx);
 
-            // Check if tile is currently worked
             bool isWorked = false;
             for (const hex::AxialCoord& wt : city.workedTiles) {
                 if (wt == tile) {
@@ -1374,26 +2015,25 @@ void CityDetailScreen::open(UIManager& ui) {
                 }
             }
 
-            const std::string statusMark = isWorked ? "[W]" : "[ ]";
-            const std::string tileLine = statusMark + " (" + std::to_string(tile.q) + ","
-                                       + std::to_string(tile.r) + ") F:"
-                                       + std::to_string(ty.food) + " P:"
-                                       + std::to_string(ty.production) + " G:"
-                                       + std::to_string(ty.gold);
+            char tileBuf[128];
+            std::snprintf(tileBuf, sizeof(tileBuf),
+                "%s (%d,%d)  F:%d  P:%d  G:%d",
+                isWorked ? "[W]" : "[ ]",
+                tile.q, tile.r, ty.food, ty.production, ty.gold);
 
             ButtonData citizenBtn;
-            citizenBtn.label = tileLine;
+            citizenBtn.label = std::string(tileBuf);
             citizenBtn.fontSize = 10.0f;
             citizenBtn.normalColor = isWorked
-                ? Color{0.15f, 0.30f, 0.15f, 0.9f}
-                : Color{0.25f, 0.25f, 0.30f, 0.9f};
-            citizenBtn.hoverColor = {citizenBtn.normalColor.r + 0.10f,
-                                      citizenBtn.normalColor.g + 0.10f,
-                                      citizenBtn.normalColor.b + 0.10f, 0.9f};
-            citizenBtn.pressedColor = {citizenBtn.normalColor.r - 0.05f,
-                                        citizenBtn.normalColor.g - 0.05f,
-                                        citizenBtn.normalColor.b - 0.05f, 0.9f};
-            citizenBtn.cornerRadius = 2.0f;
+                ? Color{0.12f, 0.28f, 0.14f, 0.9f}
+                : Color{0.20f, 0.22f, 0.28f, 0.9f};
+            citizenBtn.hoverColor = {citizenBtn.normalColor.r + 0.08f,
+                                      citizenBtn.normalColor.g + 0.08f,
+                                      citizenBtn.normalColor.b + 0.08f, 0.95f};
+            citizenBtn.pressedColor = {citizenBtn.normalColor.r - 0.04f,
+                                        citizenBtn.normalColor.g - 0.04f,
+                                        citizenBtn.normalColor.b - 0.04f, 0.9f};
+            citizenBtn.cornerRadius = 3.0f;
 
             aoc::ecs::World* world = this->m_world;
             const EntityId cityEnt = this->m_cityEntity;
@@ -1405,7 +2045,6 @@ void CityDetailScreen::open(UIManager& ui) {
                 if (c == nullptr) { return; }
 
                 if (isWorked) {
-                    // Remove from workedTiles (don't remove city center)
                     if (toggleTile == c->location) { return; }
                     for (std::size_t wi = 0; wi < c->workedTiles.size(); ++wi) {
                         if (c->workedTiles[wi] == toggleTile) {
@@ -1417,151 +2056,105 @@ void CityDetailScreen::open(UIManager& ui) {
                         }
                     }
                 } else {
-                    // Add to workedTiles if population allows
-                    if (static_cast<int32_t>(c->workedTiles.size()) < c->population) {
+                    // City center is free: usedCitizens = workedTiles - 1 (center)
+                    int32_t usedCtz = static_cast<int32_t>(c->workedTiles.size()) - 1;
+                    if (usedCtz < 0) { usedCtz = 0; }
+                    if (usedCtz < c->population) {
                         c->workedTiles.push_back(toggleTile);
                         LOG_INFO("Citizen assigned to (%d,%d)",
                                  toggleTile.q, toggleTile.r);
                     } else {
-                        LOG_INFO("Cannot assign citizen: population limit (%d)",
-                                 c->population);
+                        // Move a worker: remove last non-center tile
+                        bool movedWorker = false;
+                        for (std::size_t mi = c->workedTiles.size(); mi > 0; --mi) {
+                            if (c->workedTiles[mi - 1] != c->location) {
+                                c->workedTiles.erase(
+                                    c->workedTiles.begin() + static_cast<std::ptrdiff_t>(mi - 1));
+                                c->workedTiles.push_back(toggleTile);
+                                movedWorker = true;
+                                LOG_INFO("Citizen moved to (%d,%d) via button",
+                                         toggleTile.q, toggleTile.r);
+                                break;
+                            }
+                        }
+                        if (!movedWorker) {
+                            LOG_INFO("Cannot assign: need more population");
+                        }
                     }
                 }
             };
 
-            (void)ui.createButton(detailList, {0.0f, 0.0f, 440.0f, 20.0f},
+            (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
                                    std::move(citizenBtn));
         }
     }
+}
 
-    // -- Buy Tile section --
-    (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
-        LabelData{"-- Buy Tile --", {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
+void CityDetailScreen::toggleWorkerOnTile(aoc::hex::AxialCoord tile) {
+    if (this->m_world == nullptr || !this->m_world->isAlive(this->m_cityEntity)) {
+        return;
+    }
+    aoc::sim::CityComponent* city =
+        this->m_world->tryGetComponent<aoc::sim::CityComponent>(this->m_cityEntity);
+    if (city == nullptr) {
+        return;
+    }
 
-    {
-        // Find adjacent unowned tiles
-        std::vector<hex::AxialCoord> adjacentTiles;
-        // Gather all tiles within city borders + 1 ring
-        std::vector<hex::AxialCoord> spiralTiles;
-        hex::spiral(city.location, 4, std::back_inserter(spiralTiles));
+    // Never unassign the city center tile
+    if (tile == city->location) {
+        return;
+    }
 
-        for (const hex::AxialCoord& tile : spiralTiles) {
-            if (!this->m_grid->isValid(tile)) {
-                continue;
-            }
-            const int32_t tileIdx = this->m_grid->toIndex(tile);
-            if (this->m_grid->owner(tileIdx) != INVALID_PLAYER) {
-                continue;  // Already owned
-            }
-            if (this->m_grid->movementCost(tileIdx) == 0) {
-                continue;  // Impassable
-            }
-
-            // Must be adjacent to an already-owned tile of this player
-            bool adjacentToOwned = false;
-            const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(tile);
-            for (const hex::AxialCoord& nbr : nbrs) {
-                if (!this->m_grid->isValid(nbr)) {
-                    continue;
-                }
-                if (this->m_grid->owner(this->m_grid->toIndex(nbr)) == this->m_player) {
-                    adjacentToOwned = true;
-                    break;
-                }
-            }
-            if (!adjacentToOwned) {
-                continue;
-            }
-
-            adjacentTiles.push_back(tile);
-        }
-
-        for (const hex::AxialCoord& tile : adjacentTiles) {
-            const int32_t tileIdx = this->m_grid->toIndex(tile);
-            const aoc::map::TileYield ty = this->m_grid->tileYield(tileIdx);
-            const int32_t cost = 50 + 25 * city.tilesClaimedCount;
-
-            const std::string buyLine = "(" + std::to_string(tile.q) + ","
-                                      + std::to_string(tile.r) + ") F:"
-                                      + std::to_string(ty.food) + " P:"
-                                      + std::to_string(ty.production) + " G:"
-                                      + std::to_string(ty.gold)
-                                      + " - Cost: " + std::to_string(cost) + "g";
-
-            ButtonData buyBtn;
-            buyBtn.label = buyLine;
-            buyBtn.fontSize = 10.0f;
-            buyBtn.normalColor = {0.25f, 0.22f, 0.15f, 0.9f};
-            buyBtn.hoverColor = {0.35f, 0.32f, 0.25f, 0.9f};
-            buyBtn.pressedColor = {0.18f, 0.15f, 0.10f, 0.9f};
-            buyBtn.cornerRadius = 2.0f;
-
-            aoc::ecs::World* world = this->m_world;
-            aoc::map::HexGrid* gridMut = const_cast<aoc::map::HexGrid*>(this->m_grid);
-            const EntityId cityEnt = this->m_cityEntity;
-            const PlayerId buyPlayer = this->m_player;
-            const hex::AxialCoord buyTile = tile;
-            const int32_t buyCost = cost;
-            buyBtn.onClick = [world, gridMut, cityEnt, buyPlayer, buyTile, buyCost]() {
-                if (!world->isAlive(cityEnt)) { return; }
-
-                // Check treasury
-                aoc::sim::PlayerEconomyComponent* econ = nullptr;
-                world->forEach<aoc::sim::PlayerEconomyComponent>(
-                    [buyPlayer, &econ](EntityId, aoc::sim::PlayerEconomyComponent& ec) {
-                        if (ec.owner == buyPlayer) {
-                            econ = &ec;
-                        }
-                    });
-
-                if (econ == nullptr || econ->treasury < static_cast<CurrencyAmount>(buyCost)
-                    || econ->treasury <= 0) {
-                    LOG_INFO("Cannot buy tile: insufficient gold (have %lld, need %d)",
-                             static_cast<long long>(econ != nullptr ? econ->treasury : 0), buyCost);
-                    return;
-                }
-
-                // Deduct cost and claim tile
-                econ->treasury -= static_cast<CurrencyAmount>(buyCost);
-                const int32_t buyIdx = gridMut->toIndex(buyTile);
-                gridMut->setOwner(buyIdx, buyPlayer);
-
-                aoc::sim::CityComponent* c =
-                    world->tryGetComponent<aoc::sim::CityComponent>(cityEnt);
-                if (c != nullptr) {
-                    ++c->tilesClaimedCount;
-                }
-
-                LOG_INFO("Tile (%d,%d) purchased for %d gold",
-                         buyTile.q, buyTile.r, buyCost);
-            };
-
-            (void)ui.createButton(detailList, {0.0f, 0.0f, 440.0f, 20.0f},
-                                   std::move(buyBtn));
-        }
-
-        if (adjacentTiles.empty()) {
-            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
-                LabelData{"No tiles available to purchase",
-                           {0.5f, 0.5f, 0.5f, 0.7f}, 10.0f});
+    // Check if the tile is already worked — if so, unassign
+    for (std::size_t i = 0; i < city->workedTiles.size(); ++i) {
+        if (city->workedTiles[i] == tile) {
+            city->workedTiles.erase(
+                city->workedTiles.begin() + static_cast<std::ptrdiff_t>(i));
+            LOG_INFO("Citizen unassigned from (%d,%d) via map click",
+                     tile.q, tile.r);
+            return;
         }
     }
 
-    // Production button hint
-    ButtonData prodBtn;
-    prodBtn.label = "Open Production [P]";
-    prodBtn.fontSize = 12.0f;
-    prodBtn.normalColor = {0.2f, 0.25f, 0.35f, 0.9f};
-    prodBtn.hoverColor = {0.3f, 0.35f, 0.5f, 0.9f};
-    prodBtn.pressedColor = {0.15f, 0.18f, 0.25f, 0.9f};
-    prodBtn.cornerRadius = 4.0f;
-    prodBtn.onClick = []() {
-        LOG_INFO("Press P to open Production screen");
-    };
-
-    (void)ui.createButton(innerPanel, {0.0f, 0.0f, 160.0f, 28.0f}, std::move(prodBtn));
-
-    ui.layout();
+    // Tile is not worked — check if it is owned and within range, then assign
+    if (this->m_grid == nullptr || !this->m_grid->isValid(tile)) {
+        return;
+    }
+    const int32_t tileIdx = this->m_grid->toIndex(tile);
+    if (this->m_grid->owner(tileIdx) != this->m_player) {
+        return;
+    }
+    if (aoc::hex::distance(city->location, tile) > 3) {
+        return;
+    }
+    if (this->m_grid->movementCost(tileIdx) == 0) {
+        return;
+    }
+    // City center is free (doesn't use a citizen). Available slots = population.
+    // Used citizen slots = workedTiles.size() - 1 (center is always worked but free).
+    int32_t usedCitizens = static_cast<int32_t>(city->workedTiles.size()) - 1;  // -1 for center
+    if (usedCitizens < 0) { usedCitizens = 0; }
+    if (usedCitizens >= city->population) {
+        // Find the last non-center tile to reassign
+        bool moved = false;
+        for (std::size_t i = city->workedTiles.size(); i > 0; --i) {
+            if (city->workedTiles[i - 1] != city->location) {
+                LOG_INFO("Citizen moved from (%d,%d) to (%d,%d)",
+                         city->workedTiles[i - 1].q, city->workedTiles[i - 1].r,
+                         tile.q, tile.r);
+                city->workedTiles.erase(
+                    city->workedTiles.begin() + static_cast<std::ptrdiff_t>(i - 1));
+                moved = true;
+                break;
+            }
+        }
+        if (!moved) {
+            LOG_INFO("Cannot reassign: only the city center is worked (need more population)");
+            return;
+        }
+    }
+    city->workedTiles.push_back(tile);
+    LOG_INFO("Citizen assigned to (%d,%d) via map click", tile.q, tile.r);
 }
 
 void CityDetailScreen::close(UIManager& ui) {
@@ -1574,6 +2167,10 @@ void CityDetailScreen::close(UIManager& ui) {
         this->m_rootPanel = INVALID_WIDGET;
     }
     this->m_detailLabel = INVALID_WIDGET;
+    this->m_contentPanel = INVALID_WIDGET;
+    for (WidgetId& tabBtn : this->m_tabButtons) {
+        tabBtn = INVALID_WIDGET;
+    }
 }
 
 void CityDetailScreen::refresh(UIManager& ui) {
@@ -1587,10 +2184,14 @@ void CityDetailScreen::refresh(UIManager& ui) {
         return;
     }
 
+    // Update header label
     const aoc::sim::CityComponent& city =
         this->m_world->getComponent<aoc::sim::CityComponent>(this->m_cityEntity);
-    std::string nameText = city.name + "  Pop: " + std::to_string(city.population);
+    std::string nameText = "  " + city.name;
     ui.setLabelText(this->m_detailLabel, std::move(nameText));
+
+    // Rebuild current tab content to reflect latest data
+    this->switchTab(ui, this->m_activeTab);
 }
 
 } // namespace aoc::ui

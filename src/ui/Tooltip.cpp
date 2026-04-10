@@ -122,13 +122,17 @@ void TooltipManager::update(float mouseX, float mouseY,
         text += gdef.name;
     }
 
-    // Check for units on this tile (only if visible)
-    if (vis == aoc::map::TileVisibility::Visible) {
+    // Check for units on this tile (own units always visible, enemy only if tile visible)
+    {
         const aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* unitPool =
             world.getPool<aoc::sim::UnitComponent>();
         if (unitPool != nullptr) {
             for (uint32_t i = 0; i < unitPool->size(); ++i) {
                 const aoc::sim::UnitComponent& unit = unitPool->data()[i];
+                // Show own units always, enemy units only on visible tiles
+                if (unit.owner != player && vis != aoc::map::TileVisibility::Visible) {
+                    continue;
+                }
                 if (unit.position == hovered) {
                     const aoc::sim::UnitTypeDef& udef = aoc::sim::unitTypeDef(unit.typeId);
                     text += "\nUnit: ";
@@ -158,12 +162,15 @@ void TooltipManager::update(float mouseX, float mouseY,
             }
         }
 
-        // Check for city on this tile
+        // Check for city on this tile (own cities always, foreign if revealed/visible)
         const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
             world.getPool<aoc::sim::CityComponent>();
         if (cityPool != nullptr) {
             for (uint32_t i = 0; i < cityPool->size(); ++i) {
                 const aoc::sim::CityComponent& city = cityPool->data()[i];
+                if (city.owner != player && vis == aoc::map::TileVisibility::Unseen) {
+                    continue;
+                }
                 if (city.location == hovered) {
                     const EntityId cityEntity = cityPool->entities()[i];
 
@@ -288,16 +295,25 @@ void TooltipManager::render(vulkan_app::renderer::Renderer2D& renderer2d) const 
         maxLineLen = currentLineLen;
     }
 
-    const float tooltipW = static_cast<float>(maxLineLen) * FONT_SIZE * 0.7f + PADDING * 2.0f;
-    const float tooltipH = static_cast<float>(lineCount) * LINE_HEIGHT + PADDING * 2.0f;
+    const float scale = this->m_renderScale;
+    const float scaledFontSize = FONT_SIZE * scale;
+    const float scaledLineHeight = LINE_HEIGHT * scale;
+    const float scaledPadding = PADDING * scale;
+
+    const float tooltipW = (static_cast<float>(maxLineLen) * FONT_SIZE * 0.7f + PADDING * 2.0f) * scale;
+    const float tooltipH = (static_cast<float>(lineCount) * LINE_HEIGHT + PADDING * 2.0f) * scale;
 
     // Draw background panel
     renderer2d.drawRoundedRect(this->m_x, this->m_y, tooltipW, tooltipH,
-                               3.0f, 0.05f, 0.05f, 0.08f, 0.92f);
+                               3.0f * scale, 0.05f, 0.05f, 0.08f, 0.92f);
+
+    // Thin accent border
+    renderer2d.drawRoundedRect(this->m_x, this->m_y, tooltipW, tooltipH,
+                               3.0f * scale, 0.3f, 0.3f, 0.4f, 0.5f);
 
     // Draw text lines
     const Color textColor{0.9f, 0.9f, 0.9f, 1.0f};
-    float lineY = this->m_y + PADDING;
+    float lineY = this->m_y + scaledPadding;
     std::size_t lineStart = 0;
 
     for (std::size_t i = 0; i <= this->m_text.size(); ++i) {
@@ -305,10 +321,10 @@ void TooltipManager::render(vulkan_app::renderer::Renderer2D& renderer2d) const 
             const std::string_view line(this->m_text.data() + lineStart, i - lineStart);
             if (!line.empty()) {
                 BitmapFont::drawText(renderer2d, line,
-                                     this->m_x + PADDING, lineY,
-                                     FONT_SIZE, textColor);
+                                     this->m_x + scaledPadding, lineY,
+                                     scaledFontSize, textColor, scale);
             }
-            lineY += LINE_HEIGHT;
+            lineY += scaledLineHeight;
             lineStart = i + 1;
         }
     }

@@ -198,7 +198,8 @@ bool UIManager::handleInput(float mouseX, float mouseY,
         Widget& w = this->m_widgets[hit];
         w.isHovered = true;
 
-        // Scroll wheel: walk up from hovered widget to find a ScrollList ancestor
+        // Scroll wheel: walk up from hovered widget to find a ScrollList ancestor.
+        // Any scroll over a UI widget is consumed (prevents camera zoom while in menus).
         if (scrollDelta != 0.0f) {
             constexpr float SCROLL_PIXEL_MULTIPLIER = 20.0f;
             WidgetId cur = hit;
@@ -210,6 +211,7 @@ bool UIManager::handleInput(float mouseX, float mouseY,
                 }
                 cur = (candidate != nullptr) ? candidate->parent : INVALID_WIDGET;
             }
+            return true;  // Consume scroll even if no scroll list found (hovering any UI)
         }
 
         if (mousePressed) {
@@ -242,7 +244,12 @@ bool UIManager::handleInput(float mouseX, float mouseY,
             w.isPressed = false;
         }
 
-        return true;  // Hovering over UI consumes hover
+        // Only consume input on actual press (not just hover) so that
+        // map interactions still work when hovering HUD elements
+        if (mousePressed) {
+            return true;
+        }
+        return false;  // Hovering alone doesn't block map clicks
     }
 
     return false;

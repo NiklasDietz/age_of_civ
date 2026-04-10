@@ -66,14 +66,21 @@ public:
      */
     void render(vulkan_app::renderer::Renderer2D& renderer2d) const;
 
+    [[nodiscard]] bool isVisible() const { return this->m_visible; }
+    [[nodiscard]] float getX() const { return this->m_x; }
+    [[nodiscard]] float getY() const { return this->m_y; }
+    void setPosition(float x, float y) { this->m_x = x; this->m_y = y; }
+    void setRenderScale(float scale) { this->m_renderScale = scale; }
+
 private:
     bool        m_visible = false;
     float       m_x = 0.0f;
     float       m_y = 0.0f;
+    float       m_renderScale = 1.0f;  ///< Scale for world-space rendering (invZoom).
     std::string m_text;
     float       m_showDelay = 0.0f;  ///< Accumulated hover frames before showing.
 
-    static constexpr float SHOW_DELAY_FRAMES = 10.0f;
+    static constexpr float SHOW_DELAY_FRAMES = 5.0f;  ///< Frames to hover before showing (reduced for responsiveness)
     static constexpr float TOOLTIP_OFFSET_X  = 15.0f;
     static constexpr float TOOLTIP_OFFSET_Y  = 15.0f;
     static constexpr float FONT_SIZE         = 11.0f;

@@ -65,6 +65,14 @@ public:
                       const CameraController& camera,
                       uint32_t screenWidth, uint32_t screenHeight) const;
 
+    /// Draw yield labels (F/P/G/S) on visible tiles.
+    void drawYieldLabels(vulkan_app::renderer::Renderer2D& renderer2d,
+                          const aoc::map::HexGrid& grid,
+                          const aoc::map::FogOfWar& fog,
+                          PlayerId viewingPlayer,
+                          const CameraController& camera,
+                          uint32_t screenWidth, uint32_t screenHeight) const;
+
     /// Set hex outer radius (pixels at zoom 1.0).
     void setHexSize(float size) { this->m_hexSize = size; }
     [[nodiscard]] float hexSize() const { return this->m_hexSize; }

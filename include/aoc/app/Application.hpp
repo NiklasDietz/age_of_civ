@@ -204,6 +204,10 @@ private:
     /// Returns true if any modal screen is currently open.
     [[nodiscard]] bool anyScreenOpen() const;
 
+    /// Returns true if only the city detail screen is open (a right-side panel
+    /// that should not block map interaction).
+    [[nodiscard]] bool onlyCityDetailScreenOpen() const;
+
     /// Close all open screens.
     void closeAllScreens();
 
@@ -229,6 +233,10 @@ private:
         bool hasState = false;
     };
     UndoState m_undoState;
+
+    /// Tile buying: two-click confirmation state.
+    aoc::hex::AxialCoord m_pendingBuyTile{-9999, -9999};
+    bool m_pendingBuyConfirm = false;
 
     /// Handle Ctrl+Z undo of last unit movement.
     void handleUndoAction();

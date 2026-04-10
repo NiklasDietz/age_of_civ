@@ -68,6 +68,9 @@ public:
     ParticleSystem&   particleSystem()   { return this->m_particleSystem; }
     aoc::ui::TooltipManager& tooltipManager() { return this->m_tooltipManager; }
 
+    /// Whether to show yield labels on all visible tiles.
+    bool showTileYields = true;
+
 private:
     MapRenderer              m_mapRenderer;
     UnitRenderer             m_unitRenderer;

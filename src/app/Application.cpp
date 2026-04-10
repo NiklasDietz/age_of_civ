@@ -607,6 +607,18 @@ void Application::run() {
             }
         }
 
+        // -- Toggle tile yield display (Y key) --
+        if (this->m_inputManager.isKeyPressed(GLFW_KEY_Y) && !this->m_debugConsole.isOpen()) {
+            this->m_settingsMenu.settings().showTileYields =
+                !this->m_settingsMenu.settings().showTileYields;
+            this->m_gameRenderer.showTileYields =
+                this->m_settingsMenu.settings().showTileYields;
+            this->m_notificationManager.push(
+                this->m_gameRenderer.showTileYields
+                    ? "Tile yields: ON" : "Tile yields: OFF",
+                2.0f, 0.8f, 0.8f, 0.8f);
+        }
+
         // -- Screen toggle keys --
         if (this->m_inputManager.isActionPressed(InputAction::OpenTechTree)) {
             this->m_techScreen.setContext(&this->m_world, 0);
@@ -686,7 +698,7 @@ void Application::run() {
                     {0.0f, 0.0f, 356.0f, 22.0f},
                     aoc::ui::LabelData{"Keyboard Shortcuts", {1.0f, 0.9f, 0.5f, 1.0f}, 16.0f});
 
-                constexpr std::array<std::pair<const char*, const char*>, 14> SHORTCUTS = {{
+                constexpr std::array<std::pair<const char*, const char*>, 16> SHORTCUTS = {{
                     {"WASD / Right-drag", "Pan camera"},
                     {"Scroll wheel / +/-", "Zoom"},
                     {"Left click", "Select unit/city"},
@@ -697,6 +709,8 @@ void Application::run() {
                     {"E", "Economy"},
                     {"P", "Production (city selected)"},
                     {"U", "Upgrade unit"},
+                    {"Y", "Toggle tile yield display"},
+                    {"`", "Debug console"},
                     {"F5", "Quick save"},
                     {"F9", "Quick load"},
                     {"ESC", "Close screen / Menu"},
@@ -813,6 +827,72 @@ void Application::run() {
             this->handleContextAction();
             this->handleUndoAction();
         }
+        // When only the city detail panel is open (right-side, non-blocking),
+        // allow map interactions on the MAP area (left of the city panel).
+        // Don't check m_uiConsumedInput — the HUD widgets shouldn't block tile clicks.
+        if (this->onlyCityDetailScreenOpen()
+            && this->m_world.hasComponent<aoc::sim::CityComponent>(this->m_cityDetailScreen.cityEntity())
+            && this->m_inputManager.mouseX() < static_cast<double>(fbWidth) - 350.0) {
+            // Left-click on a tile: toggle worker assignment
+            if (this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT)) {
+                const std::pair<uint32_t, uint32_t> workerFbSize = this->m_window.framebufferSize();
+                float worldX = 0.0f;
+                float worldY = 0.0f;
+                this->m_cameraController.screenToWorld(
+                    this->m_inputManager.mouseX(), this->m_inputManager.mouseY(),
+                    worldX, worldY, workerFbSize.first, workerFbSize.second);
+                const float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
+                const aoc::hex::AxialCoord clickedTile =
+                    aoc::hex::pixelToAxial(worldX, worldY, hexSize);
+
+                if (this->m_hexGrid.isValid(clickedTile)) {
+                    // Check if clicked on a unit or different city → close panel and select
+                    bool clickedOtherEntity = false;
+                    aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* unitPool =
+                        this->m_world.getPool<aoc::sim::UnitComponent>();
+                    if (unitPool != nullptr) {
+                        for (uint32_t ui2 = 0; ui2 < unitPool->size(); ++ui2) {
+                            if (unitPool->data()[ui2].position == clickedTile
+                                && unitPool->data()[ui2].owner == 0) {
+                                // Clicked on own unit: close city panel, select unit
+                                this->m_cityDetailScreen.close(this->m_uiManager);
+                                this->m_selectedEntity = unitPool->entities()[ui2];
+                                clickedOtherEntity = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!clickedOtherEntity) {
+                        aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
+                            this->m_world.getPool<aoc::sim::CityComponent>();
+                        if (cityPool != nullptr) {
+                            for (uint32_t ci2 = 0; ci2 < cityPool->size(); ++ci2) {
+                                if (cityPool->data()[ci2].location == clickedTile
+                                    && cityPool->data()[ci2].owner == 0
+                                    && cityPool->entities()[ci2] != this->m_cityDetailScreen.cityEntity()) {
+                                    // Clicked on different own city: switch to it
+                                    this->m_cityDetailScreen.close(this->m_uiManager);
+                                    this->m_selectedEntity = cityPool->entities()[ci2];
+                                    this->m_cityDetailScreen.setContext(
+                                        &this->m_world, &this->m_hexGrid,
+                                        this->m_selectedEntity, 0);
+                                    this->m_cityDetailScreen.open(this->m_uiManager);
+                                    clickedOtherEntity = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (!clickedOtherEntity) {
+                        // Normal tile click: toggle worker
+                        this->m_cityDetailScreen.toggleWorkerOnTile(clickedTile);
+                        this->m_cityDetailScreen.refresh(this->m_uiManager);
+                    }
+                }
+            }
+            // Right-click: tile buying (existing context action logic)
+            this->handleContextAction();
+        }
         if (!this->anyScreenOpen() && this->m_inputManager.isActionPressed(InputAction::EndTurn)) {
             this->handleEndTurn();
         }
@@ -828,8 +908,8 @@ void Application::run() {
         this->m_religionScreen.refresh(this->m_uiManager);
         this->m_scoreScreen.refresh(this->m_uiManager);
 
-        // Update tooltip when no screen is open
-        if (!this->anyScreenOpen()) {
+        // Update tooltip when no blocking screen is open (city side panel is OK)
+        if (!this->anyScreenOpen() || this->onlyCityDetailScreenOpen()) {
             this->m_gameRenderer.tooltipManager().update(
                 static_cast<float>(this->m_inputManager.mouseX()),
                 static_cast<float>(this->m_inputManager.mouseY()),
@@ -1121,8 +1201,12 @@ void Application::applySettings() {
     // we also update the Renderer2D extent from frame.extent.
     this->m_window.setFullscreen(settings.fullscreen);
 
-    LOG_INFO("Settings applied: fullscreen=%d vsync=%d showFPS=%d vol=%d/%d/%d",
+    // Tile yield display setting
+    this->m_gameRenderer.showTileYields = settings.showTileYields;
+
+    LOG_INFO("Settings applied: fullscreen=%d vsync=%d showFPS=%d yields=%d vol=%d/%d/%d",
              settings.fullscreen ? 1 : 0, settings.vsync ? 1 : 0, settings.showFPS ? 1 : 0,
+             settings.showTileYields ? 1 : 0,
              settings.masterVolume, settings.sfxVolume, settings.musicVolume);
 }
 
@@ -1246,10 +1330,12 @@ void Application::handleContextAction() {
         return;
     }
 
-    // Handle right-click on a selected city: enqueue production
+    // Handle right-click on a selected city
     if (this->m_world.hasComponent<aoc::sim::CityComponent>(this->m_selectedEntity)) {
         aoc::sim::CityComponent& city =
             this->m_world.getComponent<aoc::sim::CityComponent>(this->m_selectedEntity);
+
+        // Right-click on city itself: open production picker
         if (city.location == targetTile) {
             aoc::sim::ProductionQueueComponent* queue =
                 this->m_world.tryGetComponent<aoc::sim::ProductionQueueComponent>(
@@ -1264,6 +1350,59 @@ void Application::handleContextAction() {
                 queue->queue.push_back(std::move(item));
                 LOG_INFO("Enqueued Warrior in %s", city.name.c_str());
             }
+            return;
+        }
+
+        // Right-click on unowned tile adjacent to player's border: buy it
+        int32_t tileIdx = this->m_hexGrid.toIndex(targetTile);
+        if (this->m_hexGrid.owner(tileIdx) == INVALID_PLAYER) {
+            // Check if at least one neighbor is owned by this player
+            bool adjacentToOwned = false;
+            std::array<aoc::hex::AxialCoord, 6> neighbors = aoc::hex::neighbors(targetTile);
+            for (const aoc::hex::AxialCoord& nbr : neighbors) {
+                if (this->m_hexGrid.isValid(nbr) &&
+                    this->m_hexGrid.owner(this->m_hexGrid.toIndex(nbr)) == 0) {
+                    adjacentToOwned = true;
+                    break;
+                }
+            }
+            if (!adjacentToOwned) { return; }
+
+            int32_t dist = aoc::hex::distance(city.location, targetTile);
+            int32_t cost = 25 * std::max(1, dist);
+
+            // Two-click confirmation: first click shows cost, second click on same tile confirms
+            if (this->m_pendingBuyTile == targetTile && this->m_pendingBuyConfirm) {
+                // Second click: execute purchase
+                aoc::sim::PlayerEconomyComponent* econ = nullptr;
+                this->m_world.forEach<aoc::sim::PlayerEconomyComponent>(
+                    [&econ](EntityId, aoc::sim::PlayerEconomyComponent& ec) {
+                        if (ec.owner == 0) { econ = &ec; }
+                    });
+
+                if (econ != nullptr && econ->treasury >= static_cast<CurrencyAmount>(cost)) {
+                    econ->treasury -= static_cast<CurrencyAmount>(cost);
+                    this->m_hexGrid.setOwner(tileIdx, 0);
+                    city.tilesClaimedCount += 1;
+                    this->m_notificationManager.push(
+                        "Bought tile for " + std::to_string(cost) + " gold",
+                        2.0f, 0.2f, 0.9f, 0.3f);
+                } else {
+                    this->m_notificationManager.push(
+                        "Not enough gold! Need " + std::to_string(cost),
+                        2.0f, 1.0f, 0.3f, 0.3f);
+                }
+                this->m_pendingBuyConfirm = false;
+                this->m_pendingBuyTile = aoc::hex::AxialCoord{-9999, -9999};
+            } else {
+                // First click: show cost preview
+                this->m_pendingBuyTile = targetTile;
+                this->m_pendingBuyConfirm = true;
+                this->m_notificationManager.push(
+                    "Buy tile for " + std::to_string(cost) + " gold? Right-click again to confirm.",
+                    3.0f, 1.0f, 0.9f, 0.4f);
+            }
+            return;
         }
         return;
     }
@@ -1401,6 +1540,12 @@ void Application::handleContextAction() {
             cityEntity, aoc::sim::CityReligionComponent{});
 
         aoc::sim::claimInitialTerritory(this->m_hexGrid, cityPos, cityOwner);
+
+        // Auto-assign workers to best tiles for the new city
+        aoc::sim::CityComponent& foundedCity =
+            this->m_world.getComponent<aoc::sim::CityComponent>(cityEntity);
+        aoc::sim::autoAssignWorkers(foundedCity, this->m_hexGrid);
+
         this->m_world.destroyEntity(this->m_selectedEntity);
         this->m_selectedEntity = cityEntity;
         LOG_INFO("City founded!");
@@ -1473,11 +1618,20 @@ void Application::handleContextAction() {
     bool pathFound = aoc::sim::orderUnitMove(
         this->m_world, this->m_selectedEntity, targetTile, this->m_hexGrid);
     if (pathFound) {
+        // Remember position before movement to detect actual movement
+        const aoc::sim::UnitComponent& unitBefore =
+            this->m_world.getComponent<aoc::sim::UnitComponent>(this->m_selectedEntity);
+        aoc::hex::AxialCoord posBefore = unitBefore.position;
+
         // Execute movement immediately for this turn's remaining movement points
         aoc::sim::moveUnitAlongPath(this->m_world, this->m_selectedEntity, this->m_hexGrid);
 
-        // Update fog of war to reveal newly visible tiles
-        this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, 0);
+        // Only update fog if the unit actually moved (not just path set with 0 MP)
+        const aoc::sim::UnitComponent& unitAfter =
+            this->m_world.getComponent<aoc::sim::UnitComponent>(this->m_selectedEntity);
+        if (unitAfter.position != posBefore) {
+            this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, 0);
+        }
     } else {
         // Path not found, clear undo state
         this->m_undoState.hasState = false;
@@ -2198,20 +2352,51 @@ void Application::spawnStartingEntities(aoc::sim::CivId civId) {
 }
 
 hex::AxialCoord Application::findNearbyLandTile(hex::AxialCoord target) const {
-    // Spiral outward from target to find a walkable land tile
-    for (int32_t radius = 0; radius < 10; ++radius) {
-        std::vector<hex::AxialCoord> ringTiles;
-        hex::ring(target, radius, std::back_inserter(ringTiles));
-        for (const hex::AxialCoord& tile : ringTiles) {
-            if (this->m_hexGrid.isValid(tile)) {
-                int32_t index = this->m_hexGrid.toIndex(tile);
-                if (this->m_hexGrid.movementCost(index) > 0) {
-                    return tile;
-                }
+    // Spiral outward from target to find a good starting tile.
+    // Prefer grassland/plains over desert/tundra/snow.
+    aoc::hex::AxialCoord bestTile = target;
+    float bestScore = -999.0f;
+
+    for (int32_t radius = 0; radius < 15; ++radius) {
+        std::vector<aoc::hex::AxialCoord> ringTiles;
+        aoc::hex::ring(target, radius, std::back_inserter(ringTiles));
+        for (const aoc::hex::AxialCoord& tile : ringTiles) {
+            if (!this->m_hexGrid.isValid(tile)) { continue; }
+            int32_t index = this->m_hexGrid.toIndex(tile);
+            if (this->m_hexGrid.movementCost(index) <= 0) { continue; }
+
+            aoc::map::TerrainType terrain = this->m_hexGrid.terrain(index);
+            float score = 0.0f;
+
+            // Score terrain types (prefer fertile land)
+            switch (terrain) {
+                case aoc::map::TerrainType::Grassland: score = 10.0f; break;
+                case aoc::map::TerrainType::Plains:    score = 8.0f;  break;
+                case aoc::map::TerrainType::Tundra:    score = 2.0f;  break;
+                case aoc::map::TerrainType::Desert:    score = 1.0f;  break;
+                case aoc::map::TerrainType::Snow:      score = 0.5f;  break;
+                default:                                score = 3.0f;  break;
+            }
+
+            // Bonus for river adjacency
+            if (this->m_hexGrid.riverEdges(index) != 0) { score += 3.0f; }
+
+            // Bonus for nearby resources
+            if (this->m_hexGrid.resource(index).isValid()) { score += 2.0f; }
+
+            // Penalty for distance from target (prefer closer)
+            score -= static_cast<float>(radius) * 0.3f;
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestTile = tile;
             }
         }
+
+        // Stop early if we found a great tile (grassland with river)
+        if (bestScore >= 12.0f) { break; }
     }
-    return target;  // Fallback (shouldn't happen on a reasonable map)
+    return bestTile;
 }
 
 // ============================================================================
@@ -2766,7 +2951,7 @@ void Application::updateHUD() {
     if (this->m_resourceLabel != aoc::ui::INVALID_WIDGET) {
         std::string resText;
 
-        // Show treasury gold first
+        // Gold
         this->m_world.forEach<aoc::sim::PlayerEconomyComponent>(
             [&resText](EntityId, const aoc::sim::PlayerEconomyComponent& ec) {
                 if (ec.owner == 0) {
@@ -2776,6 +2961,33 @@ void Application::updateHUD() {
                     }
                 }
             });
+
+        // Science per turn (from computePlayerScience)
+        {
+            float totalScience = aoc::sim::computePlayerScience(this->m_world, this->m_hexGrid, 0);
+            resText += "  Sci:" + std::to_string(static_cast<int>(totalScience));
+        }
+
+        // Culture per turn
+        {
+            float totalCulture = aoc::sim::computePlayerCulture(this->m_world, this->m_hexGrid, 0);
+            resText += "  Cul:" + std::to_string(static_cast<int>(totalCulture));
+        }
+
+        // Faith per turn
+        {
+            const aoc::ecs::ComponentPool<aoc::sim::PlayerFaithComponent>* faithPool =
+                this->m_world.getPool<aoc::sim::PlayerFaithComponent>();
+            if (faithPool != nullptr) {
+                for (uint32_t fi = 0; fi < faithPool->size(); ++fi) {
+                    if (faithPool->data()[fi].owner == 0) {
+                        resText += "  Faith:" + std::to_string(
+                            static_cast<int>(faithPool->data()[fi].faith));
+                        break;
+                    }
+                }
+            }
+        }
 
         const aoc::ecs::ComponentPool<aoc::sim::CityStockpileComponent>* stockPool =
             this->m_world.getPool<aoc::sim::CityStockpileComponent>();
@@ -2925,11 +3137,34 @@ void Application::rebuildUnitActionPanel() {
     }
     this->m_actionPanelEntity = this->m_selectedEntity;
 
-    // Only build for valid unit selection
-    if (!this->m_selectedEntity.isValid() || !this->m_world.isAlive(this->m_selectedEntity)) {
-        return;
-    }
-    if (!this->m_world.hasComponent<aoc::sim::UnitComponent>(this->m_selectedEntity)) {
+    // If no unit selected, show minimal End Turn panel
+    if (!this->m_selectedEntity.isValid() || !this->m_world.isAlive(this->m_selectedEntity)
+        || !this->m_world.hasComponent<aoc::sim::UnitComponent>(this->m_selectedEntity)) {
+        const std::pair<uint32_t, uint32_t> minFb = this->m_window.framebufferSize();
+        const float minScreenW = static_cast<float>(minFb.first);
+        const float minScreenH = static_cast<float>(minFb.second);
+        constexpr float MIN_W = 150.0f;
+        constexpr float MIN_H = 50.0f;
+        this->m_unitActionPanel = this->m_uiManager.createPanel(
+            {minScreenW - MIN_W - 10.0f, minScreenH - MIN_H - 10.0f, MIN_W, MIN_H},
+            aoc::ui::PanelData{{0.08f, 0.08f, 0.12f, 0.90f}, 6.0f});
+        {
+            aoc::ui::Widget* p = this->m_uiManager.getWidget(this->m_unitActionPanel);
+            if (p != nullptr) { p->padding = {8.0f, 8.0f, 8.0f, 8.0f}; }
+        }
+        aoc::ui::ButtonData endBtn;
+        endBtn.label = "End Turn";
+        endBtn.fontSize = 13.0f;
+        endBtn.normalColor = {0.15f, 0.35f, 0.15f, 0.9f};
+        endBtn.hoverColor = {0.20f, 0.50f, 0.20f, 0.9f};
+        endBtn.pressedColor = {0.10f, 0.25f, 0.10f, 0.9f};
+        endBtn.labelColor = {1.0f, 1.0f, 1.0f, 1.0f};
+        endBtn.cornerRadius = 4.0f;
+        endBtn.onClick = [this]() { this->handleEndTurn(); };
+        (void)this->m_uiManager.createButton(
+            this->m_unitActionPanel,
+            {0.0f, 0.0f, MIN_W - 16.0f, 34.0f}, std::move(endBtn));
+        this->m_uiManager.layout();
         return;
     }
 
@@ -2963,24 +3198,64 @@ void Application::rebuildUnitActionPanel() {
     }
 
     constexpr float BTN_W = 90.0f;
-    constexpr float BTN_H = 28.0f;
-    constexpr float BTN_SPACING = 4.0f;
+    constexpr float BTN_H = 24.0f;
+    constexpr float BTN_SPACING = 3.0f;
     constexpr float PAD = 8.0f;
-    const float panelW = static_cast<float>(buttonCount) * (BTN_W + BTN_SPACING) - BTN_SPACING + PAD * 2.0f;
-    constexpr float PANEL_H = BTN_H + PAD * 2.0f;
-    const float panelX = (screenW - panelW) * 0.5f;
-    const float panelY = screenH - 110.0f;
+    // Bottom-right panel with unit info + action buttons + End Turn
+    constexpr float PANEL_W = 280.0f;
+    // Height: info header (50) + buttons rows + end turn button (40) + padding
+    int32_t buttonRows = (buttonCount + 2) / 3;  // 3 buttons per row
+    const float PANEL_H = 55.0f + static_cast<float>(buttonRows) * (BTN_H + BTN_SPACING) + 45.0f + PAD * 2.0f;
+    const float panelX = screenW - PANEL_W - 10.0f;
+    const float panelY = screenH - PANEL_H - 10.0f;
 
     this->m_unitActionPanel = this->m_uiManager.createPanel(
-        {panelX, panelY, panelW, PANEL_H},
-        aoc::ui::PanelData{{0.08f, 0.08f, 0.12f, 0.85f}, 6.0f});
+        {panelX, panelY, PANEL_W, PANEL_H},
+        aoc::ui::PanelData{{0.08f, 0.08f, 0.12f, 0.90f}, 6.0f});
     {
         aoc::ui::Widget* panel = this->m_uiManager.getWidget(this->m_unitActionPanel);
         if (panel != nullptr) {
-            panel->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
             panel->padding = {PAD, PAD, PAD, PAD};
-            panel->childSpacing = BTN_SPACING;
+            panel->childSpacing = 3.0f;
         }
+    }
+
+    // -- Unit info header --
+    {
+        char infoBuf[128];
+        std::snprintf(infoBuf, sizeof(infoBuf), "%.*s   HP: %d/%d   MP: %d/%d",
+                      static_cast<int>(def.name.size()), def.name.data(),
+                      unit.hitPoints, def.maxHitPoints,
+                      unit.movementRemaining, def.movementPoints);
+        (void)this->m_uiManager.createLabel(
+            this->m_unitActionPanel,
+            {0.0f, 0.0f, PANEL_W - PAD * 2.0f, 16.0f},
+            aoc::ui::LabelData{std::string(infoBuf),
+                               {0.9f, 0.85f, 0.6f, 1.0f}, 11.0f});
+
+        // Combat strength info for military units
+        if (aoc::sim::isMilitary(def.unitClass)) {
+            char combatBuf[96];
+            if (def.rangedStrength > 0) {
+                std::snprintf(combatBuf, sizeof(combatBuf),
+                              "Melee: %d  Ranged: %d (range %d)",
+                              def.combatStrength, def.rangedStrength, def.range);
+            } else {
+                std::snprintf(combatBuf, sizeof(combatBuf),
+                              "Combat Strength: %d", def.combatStrength);
+            }
+            (void)this->m_uiManager.createLabel(
+                this->m_unitActionPanel,
+                {0.0f, 0.0f, PANEL_W - PAD * 2.0f, 14.0f},
+                aoc::ui::LabelData{std::string(combatBuf),
+                                   {0.75f, 0.75f, 0.80f, 0.9f}, 10.0f});
+        }
+
+        // Separator
+        (void)this->m_uiManager.createPanel(
+            this->m_unitActionPanel,
+            {0.0f, 0.0f, PANEL_W - PAD * 2.0f, 1.0f},
+            aoc::ui::PanelData{{0.3f, 0.3f, 0.4f, 0.4f}, 0.0f});
     }
 
     // Helper to create action buttons
@@ -2991,8 +3266,8 @@ void Application::rebuildUnitActionPanel() {
     auto makeActionBtn = [this](const std::string& label,
                                  aoc::ui::Color normalColor,
                                  std::function<void()> onClick) {
-        constexpr float ACTION_BTN_W = 90.0f;
-        constexpr float ACTION_BTN_H = 28.0f;
+        constexpr float ACTION_BTN_W2 = 125.0f;
+        constexpr float ACTION_BTN_H2 = 24.0f;
         aoc::ui::ButtonData btn;
         btn.label = label;
         btn.fontSize = 10.0f;
@@ -3006,7 +3281,7 @@ void Application::rebuildUnitActionPanel() {
         btn.onClick = std::move(onClick);
         (void)this->m_uiManager.createButton(
             this->m_unitActionPanel,
-            {0.0f, 0.0f, ACTION_BTN_W, ACTION_BTN_H}, std::move(btn));
+            {0.0f, 0.0f, ACTION_BTN_W2, ACTION_BTN_H2}, std::move(btn));
     };
 
     // -- Skip button (all units) --
@@ -3108,6 +3383,12 @@ void Application::rebuildUnitActionPanel() {
                     cityEntity, std::move(districts));
 
                 aoc::sim::claimInitialTerritory(this->m_hexGrid, cityPos, cityOwner);
+
+                // Auto-assign workers to best tiles
+                aoc::sim::CityComponent& foundedCity2 =
+                    this->m_world.getComponent<aoc::sim::CityComponent>(cityEntity);
+                aoc::sim::autoAssignWorkers(foundedCity2, this->m_hexGrid);
+
                 this->m_world.destroyEntity(selectedEnt);
                 this->m_selectedEntity = cityEntity;
                 LOG_INFO("City founded via action panel!");
@@ -3179,6 +3460,28 @@ void Application::rebuildUnitActionPanel() {
             });
     }
 
+    // Separator before End Turn
+    (void)this->m_uiManager.createPanel(
+        this->m_unitActionPanel,
+        {0.0f, 0.0f, PANEL_W - PAD * 2.0f, 1.0f},
+        aoc::ui::PanelData{{0.3f, 0.3f, 0.4f, 0.4f}, 0.0f});
+
+    // End Turn button integrated into the unit panel
+    {
+        aoc::ui::ButtonData endBtn;
+        endBtn.label = "End Turn";
+        endBtn.fontSize = 13.0f;
+        endBtn.normalColor = {0.15f, 0.35f, 0.15f, 0.9f};
+        endBtn.hoverColor = {0.20f, 0.50f, 0.20f, 0.9f};
+        endBtn.pressedColor = {0.10f, 0.25f, 0.10f, 0.9f};
+        endBtn.labelColor = {1.0f, 1.0f, 1.0f, 1.0f};
+        endBtn.cornerRadius = 4.0f;
+        endBtn.onClick = [this]() { this->handleEndTurn(); };
+        (void)this->m_uiManager.createButton(
+            this->m_unitActionPanel,
+            {0.0f, 0.0f, PANEL_W - PAD * 2.0f, 34.0f}, std::move(endBtn));
+    }
+
     this->m_uiManager.layout();
 }
 
@@ -3196,6 +3499,18 @@ bool Application::anyScreenOpen() const {
         || this->m_diplomacyScreen.isOpen()
         || this->m_religionScreen.isOpen()
         || this->m_scoreScreen.isOpen();
+}
+
+bool Application::onlyCityDetailScreenOpen() const {
+    return this->m_cityDetailScreen.isOpen()
+        && !this->m_productionScreen.isOpen()
+        && !this->m_techScreen.isOpen()
+        && !this->m_governmentScreen.isOpen()
+        && !this->m_economyScreen.isOpen()
+        && !this->m_tradeScreen.isOpen()
+        && !this->m_diplomacyScreen.isOpen()
+        && !this->m_religionScreen.isOpen()
+        && !this->m_scoreScreen.isOpen();
 }
 
 void Application::closeAllScreens() {

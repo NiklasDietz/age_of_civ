@@ -18,6 +18,7 @@
 #include "aoc/ecs/World.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/ui/BitmapFont.hpp"
 
@@ -79,6 +80,165 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     // Layer 1.5: Territory borders (hex outlines drawn ON TOP of terrain)
     this->m_mapRenderer.drawTerritoryBorders(renderer2d, grid, camera,
                                               screenWidth, screenHeight);
+
+    // Layer 1.55: Tile yield labels (if enabled in settings)
+    if (this->showTileYields) {
+        this->m_mapRenderer.drawYieldLabels(renderer2d, grid, fog, viewingPlayer,
+                                             camera, screenWidth, screenHeight);
+    }
+
+    // Layer 1.6: City tile highlight overlay (when a city is selected, dim non-interactable tiles)
+    if (this->m_unitRenderer.selectedEntity.isValid() &&
+        world.hasComponent<aoc::sim::CityComponent>(this->m_unitRenderer.selectedEntity)) {
+        const aoc::sim::CityComponent& selCity =
+            world.getComponent<aoc::sim::CityComponent>(this->m_unitRenderer.selectedEntity);
+
+        // Compute visible bounds
+        float tlx = 0.0f, tly = 0.0f, brx = 0.0f, bry = 0.0f;
+        camera.screenToWorld(0.0, 0.0, tlx, tly, screenWidth, screenHeight);
+        camera.screenToWorld(static_cast<double>(screenWidth), static_cast<double>(screenHeight),
+                             brx, bry, screenWidth, screenHeight);
+        float margin = hexSize * 2.0f;
+        tlx -= margin; tly -= margin; brx += margin; bry += margin;
+
+        constexpr float SQRT3 = 1.7320508075688772f;
+        float xSpacing = SQRT3 * hexSize;
+        float ySpacing = 1.5f * hexSize;
+        int32_t minCol = std::max(0, static_cast<int32_t>(tlx / xSpacing) - 1);
+        int32_t maxCol = std::min(grid.width() - 1, static_cast<int32_t>(brx / xSpacing) + 1);
+        int32_t minRow = std::max(0, static_cast<int32_t>(tly / ySpacing) - 1);
+        int32_t maxRow = std::min(grid.height() - 1, static_cast<int32_t>(bry / ySpacing) + 1);
+
+        for (int32_t row = minRow; row <= maxRow; ++row) {
+            for (int32_t col = minCol; col <= maxCol; ++col) {
+                int32_t index = row * grid.width() + col;
+                aoc::hex::AxialCoord axial = aoc::hex::offsetToAxial({col, row});
+                float cx2 = 0.0f, cy2 = 0.0f;
+                aoc::hex::axialToPixel(axial, hexSize, cx2, cy2);
+                if (cx2 < tlx || cx2 > brx || cy2 < tly || cy2 > bry) { continue; }
+
+                aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, index);
+                if (vis == aoc::map::TileVisibility::Unseen) { continue; }
+
+                int32_t dist = aoc::hex::distance(selCity.location, axial);
+                bool isWorked = false;
+                for (const aoc::hex::AxialCoord& wt : selCity.workedTiles) {
+                    if (wt == axial) { isWorked = true; break; }
+                }
+                bool isBuyable = (grid.owner(index) == INVALID_PLAYER);
+                if (isBuyable) {
+                    // Check adjacency to owned tile
+                    bool adj = false;
+                    std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(axial);
+                    for (const aoc::hex::AxialCoord& n : nbrs) {
+                        if (grid.isValid(n) && grid.owner(grid.toIndex(n)) == viewingPlayer) {
+                            adj = true; break;
+                        }
+                    }
+                    isBuyable = adj;
+                }
+
+                float hexW = hexSize * 0.866f;
+                float hexH = hexSize;
+
+                if (isWorked) {
+                    // Green highlight for worked tiles
+                    renderer2d.drawFilledHexagon(cx2, cy2, hexW, hexH,
+                                                 0.1f, 0.5f, 0.1f, 0.20f);
+                    // White outline on worked tiles
+                    renderer2d.drawHexagonOutline(cx2, cy2, hexW * 0.95f, hexH * 0.95f,
+                                                  0.3f, 0.8f, 0.3f, 0.5f, 1.5f);
+                } else if (isBuyable) {
+                    // Get player treasury to determine if affordable
+                    CurrencyAmount playerTreasury = 0;
+                    const aoc::ecs::ComponentPool<aoc::sim::PlayerEconomyComponent>* econPool =
+                        world.getPool<aoc::sim::PlayerEconomyComponent>();
+                    if (econPool != nullptr) {
+                        for (uint32_t ei = 0; ei < econPool->size(); ++ei) {
+                            if (econPool->data()[ei].owner == viewingPlayer) {
+                                playerTreasury = econPool->data()[ei].treasury;
+                                break;
+                            }
+                        }
+                    }
+                    int32_t tileCost = 25 * std::max(1, dist);
+                    bool canAfford = (playerTreasury >= static_cast<CurrencyAmount>(tileCost));
+
+                    if (canAfford) {
+                        // Green: affordable
+                        renderer2d.drawFilledHexagon(cx2, cy2, hexW, hexH,
+                                                     0.1f, 0.4f, 0.1f, 0.25f);
+                        renderer2d.drawHexagonOutline(cx2, cy2, hexW * 0.95f, hexH * 0.95f,
+                                                      0.2f, 0.7f, 0.2f, 0.6f, 1.5f);
+                    } else {
+                        // Red: too expensive
+                        renderer2d.drawFilledHexagon(cx2, cy2, hexW, hexH,
+                                                     0.4f, 0.1f, 0.1f, 0.25f);
+                        renderer2d.drawHexagonOutline(cx2, cy2, hexW * 0.95f, hexH * 0.95f,
+                                                      0.7f, 0.2f, 0.2f, 0.6f, 1.5f);
+                    }
+                    // Show price text on the tile
+                    float invZoomTile = 1.0f / camera.zoom();
+                    char priceBuf[16];
+                    std::snprintf(priceBuf, sizeof(priceBuf), "%dg", tileCost);
+                    aoc::ui::Color priceColor = canAfford
+                        ? aoc::ui::Color{0.3f, 0.9f, 0.3f, 0.9f}
+                        : aoc::ui::Color{0.9f, 0.3f, 0.3f, 0.9f};
+                    aoc::ui::BitmapFont::drawText(renderer2d, priceBuf,
+                        cx2 - hexSize * 0.2f, cy2 - hexSize * 0.15f,
+                        9.0f * invZoomTile, priceColor, invZoomTile);
+                } else if (dist > 4) {
+                    // Darken distant tiles
+                    renderer2d.drawFilledHexagon(cx2, cy2, hexW, hexH,
+                                                 0.0f, 0.0f, 0.0f, 0.4f);
+                }
+
+                // Worker indicator circle on workable tiles (owned, within range)
+                bool isOwned = (grid.owner(index) == viewingPlayer);
+                if (isOwned && dist <= 3 && axial != selCity.location) {
+                    float circleR = hexSize * 0.18f;
+                    float circleX = cx2;
+                    float circleY = cy2 - hexSize * 0.25f;
+                    bool isLocked = selCity.isTileLocked(axial);
+
+                    if (isWorked) {
+                        // Filled green circle with head icon
+                        renderer2d.drawFilledCircle(circleX, circleY, circleR,
+                                                     0.15f, 0.55f, 0.15f, 0.9f);
+                        renderer2d.drawCircle(circleX, circleY, circleR,
+                                               0.3f, 0.8f, 0.3f, 0.9f, 1.5f);
+
+                        // Head icon: small circle (head) + triangle (body)
+                        float headR = circleR * 0.3f;
+                        renderer2d.drawFilledCircle(circleX, circleY - headR * 0.6f, headR,
+                                                     1.0f, 1.0f, 1.0f, 0.9f);
+                        // Shoulders/body arc
+                        renderer2d.drawFilledArc(circleX, circleY + headR * 0.8f, headR * 1.5f,
+                                                  3.14159f, 0.0f,
+                                                  1.0f, 1.0f, 1.0f, 0.8f);
+                    } else {
+                        // Empty circle (available slot)
+                        renderer2d.drawCircle(circleX, circleY, circleR,
+                                               0.5f, 0.5f, 0.5f, 0.5f, 1.0f);
+                    }
+
+                    // Lock icon overlay (small padlock shape)
+                    if (isLocked) {
+                        float lockX = circleX + circleR * 0.7f;
+                        float lockY = circleY - circleR * 0.7f;
+                        float lockS = circleR * 0.45f;
+                        // Lock body (filled rect)
+                        renderer2d.drawFilledRect(lockX - lockS * 0.5f, lockY,
+                                                   lockS, lockS * 0.8f,
+                                                   0.9f, 0.75f, 0.2f, 0.9f);
+                        // Lock shackle (arc/circle at top)
+                        renderer2d.drawCircle(lockX, lockY, lockS * 0.4f,
+                                               0.9f, 0.75f, 0.2f, 0.9f, 1.5f);
+                    }
+                }
+            }
+        }
+    }
 
     // Layer 2: Cities (world coordinates)
     this->m_unitRenderer.drawCities(renderer2d, world, fog, grid, viewingPlayer,
@@ -167,6 +327,18 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     uiManager.transformBounds(topLeftX, topLeftY, invZoom);
     uiManager.render(renderer2d);
     uiManager.untransformBounds(topLeftX, topLeftY, invZoom);
+
+    // Tooltip (transform screen-space mouse position to world-space for rendering)
+    if (this->m_tooltipManager.isVisible()) {
+        float savedX = this->m_tooltipManager.getX();
+        float savedY = this->m_tooltipManager.getY();
+        this->m_tooltipManager.setPosition(
+            topLeftX + savedX * invZoom,
+            topLeftY + savedY * invZoom);
+        this->m_tooltipManager.setRenderScale(invZoom);
+        this->m_tooltipManager.render(renderer2d);
+        this->m_tooltipManager.setPosition(savedX, savedY);
+    }
 
     // Event log (transformed to world-space)
     if (eventLog != nullptr && !eventLog->events().empty()) {

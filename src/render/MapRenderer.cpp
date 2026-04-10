@@ -6,11 +6,14 @@
 #include "aoc/render/MapRenderer.hpp"
 #include "aoc/render/DrawCommandBuffer.hpp"
 #include "aoc/render/CameraController.hpp"
+#include "aoc/ui/BitmapFont.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/map/FogOfWar.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
+
+#include <cstdio>
 
 #include <renderer/Renderer2D.hpp>
 
@@ -521,6 +524,103 @@ void MapRenderer::drawToBuffer(DrawCommandBuffer& buffer,
             const float hexW = hs * 0.866f * 1.02f;
             const float hexH = hs * 1.02f;
             buffer.pushHexagon(cx, cy, hexW, hexH, r, g, b, 1.0f, 0);
+        }
+    }
+}
+
+void MapRenderer::drawYieldLabels(vulkan_app::renderer::Renderer2D& renderer2d,
+                                   const aoc::map::HexGrid& grid,
+                                   const aoc::map::FogOfWar& fog,
+                                   PlayerId viewingPlayer,
+                                   const CameraController& camera,
+                                   uint32_t screenWidth, uint32_t screenHeight) const {
+    float topLeftX = 0.0f, topLeftY = 0.0f, botRightX = 0.0f, botRightY = 0.0f;
+    camera.screenToWorld(0.0, 0.0, topLeftX, topLeftY, screenWidth, screenHeight);
+    camera.screenToWorld(static_cast<double>(screenWidth), static_cast<double>(screenHeight),
+                         botRightX, botRightY, screenWidth, screenHeight);
+    float margin = this->m_hexSize * 2.0f;
+    topLeftX -= margin; topLeftY -= margin;
+    botRightX += margin; botRightY += margin;
+
+    const int32_t width = grid.width();
+    const int32_t height = grid.height();
+    constexpr float SQRT3 = 1.7320508075688772f;
+    const float xSpacing = SQRT3 * this->m_hexSize;
+    const float ySpacing = 1.5f * this->m_hexSize;
+    const int32_t minCol = std::max(0, static_cast<int32_t>(topLeftX / xSpacing) - 1);
+    const int32_t maxCol = std::min(width - 1, static_cast<int32_t>(botRightX / xSpacing) + 1);
+    const int32_t minRow = std::max(0, static_cast<int32_t>(topLeftY / ySpacing) - 1);
+    const int32_t maxRow = std::min(height - 1, static_cast<int32_t>(botRightY / ySpacing) + 1);
+
+    (void)camera;  // Camera used for bounds calculation above
+
+    for (int32_t row = minRow; row <= maxRow; ++row) {
+        for (int32_t col = minCol; col <= maxCol; ++col) {
+            const int32_t index = row * width + col;
+            const aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, index);
+            if (vis != aoc::map::TileVisibility::Visible) { continue; }
+
+            const aoc::hex::AxialCoord axial = aoc::hex::offsetToAxial({col, row});
+            float cx = 0.0f, cy = 0.0f;
+            aoc::hex::axialToPixel(axial, this->m_hexSize, cx, cy);
+            if (cx < topLeftX || cx > botRightX || cy < topLeftY || cy > botRightY) { continue; }
+
+            const aoc::map::TileYield yields = grid.tileYield(index);
+            if (yields.food == 0 && yields.production == 0 && yields.gold == 0
+                && yields.science == 0 && yields.culture == 0) {
+                continue;
+            }
+
+            // Civ 6 style: colored circles for each yield type with count
+            // Layout: small icons in a row at the bottom of the hex
+            const float iconR = this->m_hexSize * 0.08f;  // Icon radius
+            const float iconSpacing = iconR * 2.8f;
+            const float baseY = cy + this->m_hexSize * 0.38f;
+
+            // Count how many yield types to display for centering
+            int32_t totalIcons = 0;
+            if (yields.food > 0)       { totalIcons += yields.food; }
+            if (yields.production > 0) { totalIcons += yields.production; }
+            if (yields.gold > 0)       { totalIcons += yields.gold; }
+            if (yields.science > 0)    { totalIcons += yields.science; }
+            if (yields.culture > 0)    { totalIcons += yields.culture; }
+
+            // Center the icons horizontally
+            float totalWidth = static_cast<float>(totalIcons) * iconSpacing;
+            float startX = cx - totalWidth * 0.5f + iconR;
+
+            // Draw each yield as repeated colored circles (like Civ 6)
+            float curX = startX;
+            // Food: green circles
+            for (int32_t fi = 0; fi < yields.food; ++fi) {
+                renderer2d.drawFilledCircle(curX, baseY, iconR, 0.2f, 0.7f, 0.2f, 0.9f);
+                renderer2d.drawCircle(curX, baseY, iconR, 0.1f, 0.4f, 0.1f, 0.6f, 0.8f);
+                curX += iconSpacing;
+            }
+            // Production: orange circles
+            for (int32_t pi = 0; pi < yields.production; ++pi) {
+                renderer2d.drawFilledCircle(curX, baseY, iconR, 0.85f, 0.5f, 0.15f, 0.9f);
+                renderer2d.drawCircle(curX, baseY, iconR, 0.5f, 0.3f, 0.1f, 0.6f, 0.8f);
+                curX += iconSpacing;
+            }
+            // Gold: yellow circles
+            for (int32_t gi = 0; gi < yields.gold; ++gi) {
+                renderer2d.drawFilledCircle(curX, baseY, iconR, 0.9f, 0.8f, 0.15f, 0.9f);
+                renderer2d.drawCircle(curX, baseY, iconR, 0.6f, 0.5f, 0.1f, 0.6f, 0.8f);
+                curX += iconSpacing;
+            }
+            // Science: blue circles
+            for (int32_t si = 0; si < yields.science; ++si) {
+                renderer2d.drawFilledCircle(curX, baseY, iconR, 0.2f, 0.45f, 0.85f, 0.9f);
+                renderer2d.drawCircle(curX, baseY, iconR, 0.1f, 0.25f, 0.5f, 0.6f, 0.8f);
+                curX += iconSpacing;
+            }
+            // Culture: purple circles
+            for (int32_t ci2 = 0; ci2 < yields.culture; ++ci2) {
+                renderer2d.drawFilledCircle(curX, baseY, iconR, 0.6f, 0.2f, 0.7f, 0.9f);
+                renderer2d.drawCircle(curX, baseY, iconR, 0.35f, 0.1f, 0.4f, 0.6f, 0.8f);
+                curX += iconSpacing;
+            }
         }
     }
 }

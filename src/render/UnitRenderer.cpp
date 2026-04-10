@@ -313,11 +313,15 @@ void UnitRenderer::drawCities(vulkan_app::renderer::Renderer2D& renderer2d,
     for (uint32_t i = 0; i < pool->size(); ++i) {
         const aoc::sim::CityComponent& city = pool->data()[i];
 
-        // Fog of war: skip cities on unseen tiles, show on revealed/visible
+        // Fog of war: own cities on Revealed+Visible, foreign cities ONLY on Visible
         if (grid.isValid(city.location)) {
             int32_t tileIndex = grid.toIndex(city.location);
             aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, tileIndex);
             if (vis == aoc::map::TileVisibility::Unseen) {
+                continue;
+            }
+            // Foreign cities disappear when not in active vision
+            if (city.owner != viewingPlayer && vis != aoc::map::TileVisibility::Visible) {
                 continue;
             }
         }
