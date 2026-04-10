@@ -1,6 +1,9 @@
 /**
  * @file LuaEngine.cpp
- * @brief Lua scripting engine implementation.
+ * @brief LuaJIT scripting engine implementation.
+ *
+ * Uses LuaJIT (Lua 5.1 compatible, JIT compiled for 10-50x speed over
+ * interpreted Lua). The C API is identical to standard Lua 5.1.
  *
  * Used for: world events, victory conditions, building/unit special abilities,
  * AI personality overrides, map generation scripts, and mod init scripts.

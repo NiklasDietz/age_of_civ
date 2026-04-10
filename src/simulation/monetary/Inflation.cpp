@@ -93,7 +93,7 @@ void computeInflation(MonetaryStateComponent& state,
 void applyInflationEffects(MonetaryStateComponent& state) {
     // Update cumulative price level
     state.priceLevel *= (1.0f + state.inflationRate);
-    state.priceLevel = std::max(state.priceLevel, 0.1f);  // Floor at 10% of base
+    state.priceLevel = std::clamp(state.priceLevel, 0.1f, 10.0f);  // Cap at 10x base (hyperinflation ceiling)
 
     // Debt is eroded by inflation (real value decreases)
     if (state.inflationRate > 0.0f && state.governmentDebt > 0) {

@@ -2,7 +2,7 @@
 
 /**
  * @file LuaEngine.hpp
- * @brief Lua scripting engine for moddable game logic.
+ * @brief LuaJIT scripting engine for moddable game logic.
  *
  * Provides a Lua interpreter for:
  *   - Victory conditions (custom win logic)

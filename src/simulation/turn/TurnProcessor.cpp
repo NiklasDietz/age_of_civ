@@ -219,6 +219,66 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
     aoc::ecs::World& world = *ctx.world;
     aoc::map::HexGrid& grid = *ctx.grid;
 
+    // City gold income: worked tiles, buildings, and base population income
+    {
+        CurrencyAmount goldIncome = 0;
+        const aoc::ecs::ComponentPool<CityComponent>* cityPool =
+            world.getPool<CityComponent>();
+        if (cityPool != nullptr) {
+            for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
+                if (cityPool->data()[ci].owner != player) { continue; }
+                EntityId cityEntity = cityPool->entities()[ci];
+                const CityComponent& city = cityPool->data()[ci];
+
+                // Base gold from population (2 gold per citizen)
+                goldIncome += static_cast<CurrencyAmount>(city.population) * 2;
+
+                // Gold from worked tiles
+                for (const aoc::hex::AxialCoord& tile : city.workedTiles) {
+                    if (grid.isValid(tile)) {
+                        aoc::map::TileYield yield = grid.tileYield(grid.toIndex(tile));
+                        goldIncome += static_cast<CurrencyAmount>(yield.gold);
+                    }
+                }
+
+                // Gold from buildings
+                const CityDistrictsComponent* districts =
+                    world.tryGetComponent<CityDistrictsComponent>(cityEntity);
+                if (districts != nullptr) {
+                    for (const CityDistrictsComponent::PlacedDistrict& d : districts->districts) {
+                        for (BuildingId bid : d.buildings) {
+                            goldIncome += static_cast<CurrencyAmount>(buildingDef(bid).goldBonus);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Apply tax rate
+        const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
+            world.getPool<MonetaryStateComponent>();
+        float taxRate = 0.15f;
+        if (monetaryPool != nullptr) {
+            for (uint32_t mi = 0; mi < monetaryPool->size(); ++mi) {
+                if (monetaryPool->data()[mi].owner == player) {
+                    taxRate = monetaryPool->data()[mi].taxRate;
+                    break;
+                }
+            }
+        }
+        CurrencyAmount taxedIncome = static_cast<CurrencyAmount>(
+            static_cast<float>(goldIncome) * taxRate);
+
+        // Add to economy treasury
+        world.forEach<PlayerEconomyComponent>(
+            [player, taxedIncome](EntityId, PlayerEconomyComponent& ec) {
+                if (ec.owner == player) {
+                    ec.treasury += taxedIncome;
+                    ec.incomePerTurn = taxedIncome;
+                }
+            });
+    }
+
     // Maintenance costs
     processUnitMaintenance(world, player);
     processBuildingMaintenance(world, player);

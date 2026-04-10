@@ -1,0 +1,194 @@
+[
+    {
+        "civId": 0,
+        "agendaName": "Optimus Princeps",
+        "agendaDescription": "Respects civilizations with large, well-connected empires. Dislikes small, isolated civs.",
+        "likeCondition": "HasMoreCities",
+        "dislikeCondition": "HasLessMilitary",
+        "behavior": {
+            "militaryAggression": 1.3, "expansionism": 1.8, "scienceFocus": 1.0, "cultureFocus": 1.0,
+            "economicFocus": 1.2, "diplomaticOpenness": 1.0, "religiousZeal": 0.5, "nukeWillingness": 0.3,
+            "trustworthiness": 0.8, "grudgeHolding": 0.6,
+            "techMilitary": 1.2, "techEconomic": 1.0, "techIndustrial": 1.5, "techNaval": 0.8, "techInformation": 0.8,
+            "prodSettlers": 1.8, "prodMilitary": 1.2, "prodBuilders": 1.5, "prodBuildings": 1.3,
+            "prodWonders": 1.0, "prodNaval": 0.7, "prodReligious": 0.3,
+            "warDeclarationThreshold": 1.5, "peaceAcceptanceThreshold": 0.6, "allianceDesire": 1.0
+        }
+    },
+    {
+        "civId": 1,
+        "agendaName": "Queen of the Nile",
+        "agendaDescription": "Respects civilizations with strong economies and trade. Dislikes weak economies.",
+        "likeCondition": "HasStrongEconomy",
+        "dislikeCondition": "HasLessMilitary",
+        "behavior": {
+            "militaryAggression": 0.7, "expansionism": 1.0, "scienceFocus": 1.0, "cultureFocus": 1.5,
+            "economicFocus": 1.8, "diplomaticOpenness": 1.3, "religiousZeal": 0.8, "nukeWillingness": 0.0,
+            "trustworthiness": 0.9, "grudgeHolding": 0.4,
+            "techMilitary": 0.7, "techEconomic": 1.8, "techIndustrial": 1.0, "techNaval": 1.3, "techInformation": 1.0,
+            "prodSettlers": 1.0, "prodMilitary": 0.6, "prodBuilders": 0.8, "prodBuildings": 1.5,
+            "prodWonders": 1.8, "prodNaval": 1.2, "prodReligious": 0.5,
+            "warDeclarationThreshold": 2.0, "peaceAcceptanceThreshold": 0.3, "allianceDesire": 1.3
+        }
+    },
+    {
+        "civId": 2,
+        "agendaName": "Wall Builder",
+        "agendaDescription": "Respects civilizations with strong defenses and many wonders. Dislikes warmongers.",
+        "likeCondition": "HasHigherCulture",
+        "dislikeCondition": "IsAtWarWithAnyone",
+        "behavior": {
+            "militaryAggression": 0.8, "expansionism": 1.2, "scienceFocus": 1.5, "cultureFocus": 1.3,
+            "economicFocus": 1.2, "diplomaticOpenness": 0.7, "religiousZeal": 0.5, "nukeWillingness": 0.2,
+            "trustworthiness": 1.0, "grudgeHolding": 0.8,
+            "techMilitary": 0.8, "techEconomic": 1.0, "techIndustrial": 1.5, "techNaval": 0.6, "techInformation": 1.3,
+            "prodSettlers": 1.2, "prodMilitary": 0.8, "prodBuilders": 1.0, "prodBuildings": 1.5,
+            "prodWonders": 2.0, "prodNaval": 0.5, "prodReligious": 0.3,
+            "warDeclarationThreshold": 2.5, "peaceAcceptanceThreshold": 0.4, "allianceDesire": 0.7
+        }
+    },
+    {
+        "civId": 3,
+        "agendaName": "Iron Chancellor",
+        "agendaDescription": "Respects militarily powerful civilizations. Dislikes those without armies.",
+        "likeCondition": "HasMoreMilitary",
+        "dislikeCondition": "HasLessMilitary",
+        "behavior": {
+            "militaryAggression": 1.5, "expansionism": 1.3, "scienceFocus": 1.3, "cultureFocus": 0.8,
+            "economicFocus": 1.5, "diplomaticOpenness": 0.8, "religiousZeal": 0.3, "nukeWillingness": 0.5,
+            "trustworthiness": 0.9, "grudgeHolding": 0.7,
+            "techMilitary": 1.8, "techEconomic": 1.2, "techIndustrial": 1.8, "techNaval": 0.8, "techInformation": 0.8,
+            "prodSettlers": 1.2, "prodMilitary": 1.8, "prodBuilders": 1.0, "prodBuildings": 1.5,
+            "prodWonders": 0.5, "prodNaval": 0.8, "prodReligious": 0.2,
+            "warDeclarationThreshold": 1.2, "peaceAcceptanceThreshold": 0.8, "allianceDesire": 0.7
+        }
+    },
+    {
+        "civId": 4,
+        "agendaName": "Delian League",
+        "agendaDescription": "Respects civilizations with high culture and science. Dislikes cultural backwaters.",
+        "likeCondition": "HasHigherCulture",
+        "dislikeCondition": "HasDifferentGovernment",
+        "behavior": {
+            "militaryAggression": 0.6, "expansionism": 0.8, "scienceFocus": 1.6, "cultureFocus": 1.8,
+            "economicFocus": 0.9, "diplomaticOpenness": 1.5, "religiousZeal": 0.7, "nukeWillingness": 0.0,
+            "trustworthiness": 1.0, "grudgeHolding": 0.3,
+            "techMilitary": 0.5, "techEconomic": 0.8, "techIndustrial": 0.8, "techNaval": 0.7, "techInformation": 1.8,
+            "prodSettlers": 0.8, "prodMilitary": 0.5, "prodBuilders": 0.7, "prodBuildings": 1.8,
+            "prodWonders": 1.5, "prodNaval": 0.5, "prodReligious": 0.5,
+            "warDeclarationThreshold": 3.0, "peaceAcceptanceThreshold": 0.3, "allianceDesire": 1.5
+        }
+    },
+    {
+        "civId": 5,
+        "agendaName": "Sun Never Sets",
+        "agendaDescription": "Respects trade partners and naval powers. Dislikes those who don't trade.",
+        "likeCondition": "IsTradePartner",
+        "dislikeCondition": "HasColonies",
+        "behavior": {
+            "militaryAggression": 1.2, "expansionism": 1.5, "scienceFocus": 1.2, "cultureFocus": 1.2,
+            "economicFocus": 1.7, "diplomaticOpenness": 1.2, "religiousZeal": 0.5, "nukeWillingness": 0.3,
+            "trustworthiness": 0.7, "grudgeHolding": 0.5,
+            "techMilitary": 1.0, "techEconomic": 1.5, "techIndustrial": 1.0, "techNaval": 2.0, "techInformation": 1.2,
+            "prodSettlers": 1.5, "prodMilitary": 1.0, "prodBuilders": 1.0, "prodBuildings": 1.3,
+            "prodWonders": 1.0, "prodNaval": 1.8, "prodReligious": 0.3,
+            "warDeclarationThreshold": 1.5, "peaceAcceptanceThreshold": 0.5, "allianceDesire": 1.2
+        }
+    },
+    {
+        "civId": 6,
+        "agendaName": "Divine Wind",
+        "agendaDescription": "Respects civilizations with strong military and culture. Dislikes those with different religion.",
+        "likeCondition": "HasMoreMilitary",
+        "dislikeCondition": "HasDifferentReligion",
+        "behavior": {
+            "militaryAggression": 1.6, "expansionism": 0.9, "scienceFocus": 1.3, "cultureFocus": 1.5,
+            "economicFocus": 1.0, "diplomaticOpenness": 0.7, "religiousZeal": 1.3, "nukeWillingness": 0.4,
+            "trustworthiness": 1.0, "grudgeHolding": 0.9,
+            "techMilitary": 1.5, "techEconomic": 0.8, "techIndustrial": 1.2, "techNaval": 1.0, "techInformation": 1.0,
+            "prodSettlers": 0.9, "prodMilitary": 1.6, "prodBuilders": 0.8, "prodBuildings": 1.3,
+            "prodWonders": 1.3, "prodNaval": 1.0, "prodReligious": 1.5,
+            "warDeclarationThreshold": 1.3, "peaceAcceptanceThreshold": 0.7, "allianceDesire": 0.7
+        }
+    },
+    {
+        "civId": 7,
+        "agendaName": "Fall of Babylon",
+        "agendaDescription": "Respects diplomatic and wealthy civilizations. Secretly plans surprise wars.",
+        "likeCondition": "HasStrongEconomy",
+        "dislikeCondition": "HasMoreMilitary",
+        "behavior": {
+            "militaryAggression": 1.4, "expansionism": 1.3, "scienceFocus": 1.0, "cultureFocus": 1.0,
+            "economicFocus": 1.3, "diplomaticOpenness": 1.4, "religiousZeal": 0.8, "nukeWillingness": 0.2,
+            "trustworthiness": 0.5, "grudgeHolding": 0.6,
+            "techMilitary": 1.3, "techEconomic": 1.5, "techIndustrial": 1.0, "techNaval": 0.8, "techInformation": 0.8,
+            "prodSettlers": 1.3, "prodMilitary": 1.4, "prodBuilders": 1.0, "prodBuildings": 1.2,
+            "prodWonders": 0.8, "prodNaval": 0.8, "prodReligious": 0.5,
+            "warDeclarationThreshold": 1.0, "peaceAcceptanceThreshold": 0.4, "allianceDesire": 1.5
+        }
+    },
+    {
+        "civId": 8,
+        "agendaName": "Tlatoani",
+        "agendaDescription": "Dislikes civilizations with more luxury resources. Wants all luxuries for himself.",
+        "likeCondition": "None",
+        "dislikeCondition": "HasMoreLuxuries",
+        "behavior": {
+            "militaryAggression": 1.7, "expansionism": 1.2, "scienceFocus": 0.7, "cultureFocus": 0.8,
+            "economicFocus": 1.0, "diplomaticOpenness": 0.6, "religiousZeal": 1.5, "nukeWillingness": 0.3,
+            "trustworthiness": 0.7, "grudgeHolding": 0.9,
+            "techMilitary": 1.8, "techEconomic": 0.7, "techIndustrial": 0.8, "techNaval": 0.5, "techInformation": 0.5,
+            "prodSettlers": 1.2, "prodMilitary": 2.0, "prodBuilders": 1.0, "prodBuildings": 0.8,
+            "prodWonders": 0.5, "prodNaval": 0.5, "prodReligious": 1.8,
+            "warDeclarationThreshold": 1.0, "peaceAcceptanceThreshold": 0.8, "allianceDesire": 0.5
+        }
+    },
+    {
+        "civId": 9,
+        "agendaName": "Peacekeeper",
+        "agendaDescription": "Respects peaceful civilizations. Strongly dislikes warmongers and nuclear weapon holders.",
+        "likeCondition": "None",
+        "dislikeCondition": "HasNuclearWeapons",
+        "behavior": {
+            "militaryAggression": 0.2, "expansionism": 0.7, "scienceFocus": 1.3, "cultureFocus": 1.3,
+            "economicFocus": 1.0, "diplomaticOpenness": 1.8, "religiousZeal": 1.6, "nukeWillingness": 0.0,
+            "trustworthiness": 1.0, "grudgeHolding": 0.2,
+            "techMilitary": 0.3, "techEconomic": 1.0, "techIndustrial": 0.8, "techNaval": 0.5, "techInformation": 1.5,
+            "prodSettlers": 0.7, "prodMilitary": 0.2, "prodBuilders": 0.8, "prodBuildings": 1.5,
+            "prodWonders": 1.0, "prodNaval": 0.3, "prodReligious": 2.0,
+            "warDeclarationThreshold": 5.0, "peaceAcceptanceThreshold": 0.2, "allianceDesire": 1.8
+        }
+    },
+    {
+        "civId": 10,
+        "agendaName": "The Grand Embassy",
+        "agendaDescription": "Respects scientifically advanced civilizations. Dislikes those behind in tech.",
+        "likeCondition": "HasHigherScience",
+        "dislikeCondition": "HasLessMilitary",
+        "behavior": {
+            "militaryAggression": 1.3, "expansionism": 1.5, "scienceFocus": 1.7, "cultureFocus": 0.8,
+            "economicFocus": 1.2, "diplomaticOpenness": 1.0, "religiousZeal": 0.7, "nukeWillingness": 0.4,
+            "trustworthiness": 0.8, "grudgeHolding": 0.6,
+            "techMilitary": 1.2, "techEconomic": 1.0, "techIndustrial": 1.5, "techNaval": 0.8, "techInformation": 1.8,
+            "prodSettlers": 1.5, "prodMilitary": 1.2, "prodBuilders": 1.0, "prodBuildings": 1.5,
+            "prodWonders": 0.8, "prodNaval": 0.8, "prodReligious": 0.5,
+            "warDeclarationThreshold": 1.5, "peaceAcceptanceThreshold": 0.5, "allianceDesire": 1.0
+        }
+    },
+    {
+        "civId": 11,
+        "agendaName": "Magnanimous",
+        "agendaDescription": "Respects civilizations with high culture and happy citizens. Dislikes warmongers.",
+        "likeCondition": "HasHigherCulture",
+        "dislikeCondition": "IsAtWarWithAnyone",
+        "behavior": {
+            "militaryAggression": 0.5, "expansionism": 1.0, "scienceFocus": 1.0, "cultureFocus": 1.8,
+            "economicFocus": 1.2, "diplomaticOpenness": 1.5, "religiousZeal": 0.8, "nukeWillingness": 0.0,
+            "trustworthiness": 1.0, "grudgeHolding": 0.1,
+            "techMilitary": 0.4, "techEconomic": 1.0, "techIndustrial": 0.8, "techNaval": 0.7, "techInformation": 1.3,
+            "prodSettlers": 1.0, "prodMilitary": 0.4, "prodBuilders": 0.8, "prodBuildings": 1.5,
+            "prodWonders": 1.8, "prodNaval": 0.5, "prodReligious": 0.8,
+            "warDeclarationThreshold": 3.0, "peaceAcceptanceThreshold": 0.2, "allianceDesire": 1.5
+        }
+    }
+]
