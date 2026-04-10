@@ -15,11 +15,14 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
+#include "aoc/simulation/city/CityLoyalty.hpp"
+#include "aoc/simulation/city/Happiness.hpp"
+#include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 
 #include <renderer/Renderer2D.hpp>
 
-#include <cmath>
+#include <cstdio>
 
 namespace aoc::ui {
 
@@ -162,10 +165,63 @@ void TooltipManager::update(float mouseX, float mouseY,
             for (uint32_t i = 0; i < cityPool->size(); ++i) {
                 const aoc::sim::CityComponent& city = cityPool->data()[i];
                 if (city.location == hovered) {
+                    const EntityId cityEntity = cityPool->entities()[i];
+
                     text += "\nCity: ";
                     text += city.name;
                     text += " Pop:";
                     text += std::to_string(city.population);
+
+                    // Loyalty
+                    const aoc::sim::CityLoyaltyComponent* loyaltyComp =
+                        world.tryGetComponent<aoc::sim::CityLoyaltyComponent>(cityEntity);
+                    if (loyaltyComp != nullptr) {
+                        char loyaltyBuf[64];
+                        std::snprintf(loyaltyBuf, sizeof(loyaltyBuf),
+                            "\nLoyalty: %.0f/100 (%s)",
+                            static_cast<double>(loyaltyComp->loyalty),
+                            aoc::sim::loyaltyStatusName(loyaltyComp->status()));
+                        text += loyaltyBuf;
+                    }
+
+                    // Happiness
+                    const aoc::sim::CityHappinessComponent* happinessComp =
+                        world.tryGetComponent<aoc::sim::CityHappinessComponent>(cityEntity);
+                    if (happinessComp != nullptr) {
+                        char happyBuf[64];
+                        std::snprintf(happyBuf, sizeof(happyBuf),
+                            "\nHappiness: %.0f amenities",
+                            static_cast<double>(happinessComp->amenities));
+                        text += happyBuf;
+                    }
+
+                    // Current production
+                    const aoc::sim::ProductionQueueComponent* queueComp =
+                        world.tryGetComponent<aoc::sim::ProductionQueueComponent>(cityEntity);
+                    if (queueComp != nullptr) {
+                        const aoc::sim::ProductionQueueItem* current = queueComp->currentItem();
+                        if (current != nullptr) {
+                            char prodBuf[128];
+                            std::snprintf(prodBuf, sizeof(prodBuf),
+                                "\nProduction: %s (%.0f/%.0f hammers)",
+                                current->name.c_str(),
+                                static_cast<double>(current->progress),
+                                static_cast<double>(current->totalCost));
+                            text += prodBuf;
+                        }
+                    }
+
+                    // Gold income (sum gold from worked tiles)
+                    int32_t cityGold = 0;
+                    for (const hex::AxialCoord& tile : city.workedTiles) {
+                        if (grid.isValid(tile)) {
+                            const int32_t tileIdx = grid.toIndex(tile);
+                            cityGold += grid.tileYield(tileIdx).gold;
+                        }
+                    }
+                    text += "\nGold income: +";
+                    text += std::to_string(cityGold);
+                    text += "/turn";
                 }
             }
         }

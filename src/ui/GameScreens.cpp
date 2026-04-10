@@ -11,6 +11,7 @@
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
+#include "aoc/simulation/city/CityLoyalty.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/TechGating.hpp"
 #include "aoc/simulation/government/Government.hpp"
@@ -29,6 +30,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -1086,7 +1088,7 @@ void CityDetailScreen::open(UIManager& ui) {
     this->m_isOpen = true;
 
     WidgetId innerPanel = this->createScreenFrame(
-        ui, "City Detail", 480.0f, 550.0f, this->m_screenW, this->m_screenH);
+        ui, "City Detail", 500.0f, 640.0f, this->m_screenW, this->m_screenH);
 
     if (!this->m_world->isAlive(this->m_cityEntity) ||
         !this->m_world->hasComponent<aoc::sim::CityComponent>(this->m_cityEntity)) {
@@ -1106,15 +1108,116 @@ void CityDetailScreen::open(UIManager& ui) {
         innerPanel, {0.0f, 0.0f, 450.0f, 18.0f},
         LabelData{std::move(nameText), {1.0f, 0.95f, 0.7f, 1.0f}, 14.0f});
 
-    // Scrollable detail list for yields breakdown
+    // Scrollable detail list for city information
     WidgetId detailList = ui.createScrollList(
-        innerPanel, {0.0f, 0.0f, 450.0f, 380.0f});
+        innerPanel, {0.0f, 0.0f, 470.0f, 480.0f});
     {
         Widget* listWidget = ui.getWidget(detailList);
         if (listWidget != nullptr) {
             listWidget->padding = {4.0f, 4.0f, 4.0f, 4.0f};
             listWidget->childSpacing = 2.0f;
         }
+    }
+
+    // -- Loyalty --
+    {
+        const aoc::sim::CityLoyaltyComponent* loyaltyComp =
+            this->m_world->tryGetComponent<aoc::sim::CityLoyaltyComponent>(this->m_cityEntity);
+        if (loyaltyComp != nullptr) {
+            const aoc::sim::LoyaltyStatus loyaltyStatus = loyaltyComp->status();
+            const char* statusName = aoc::sim::loyaltyStatusName(loyaltyStatus);
+
+            // Color based on status: green=Loyal, white=Content, yellow=Disloyal, red=Unrest/Revolt
+            Color loyaltyColor = {1.0f, 1.0f, 1.0f, 1.0f};
+            switch (loyaltyStatus) {
+                case aoc::sim::LoyaltyStatus::Loyal:    loyaltyColor = {0.3f, 0.9f, 0.3f, 1.0f}; break;
+                case aoc::sim::LoyaltyStatus::Content:  loyaltyColor = {1.0f, 1.0f, 1.0f, 1.0f}; break;
+                case aoc::sim::LoyaltyStatus::Disloyal: loyaltyColor = {0.9f, 0.9f, 0.2f, 1.0f}; break;
+                case aoc::sim::LoyaltyStatus::Unrest:   loyaltyColor = {0.9f, 0.3f, 0.3f, 1.0f}; break;
+                case aoc::sim::LoyaltyStatus::Revolt:   loyaltyColor = {0.9f, 0.1f, 0.1f, 1.0f}; break;
+            }
+
+            char loyaltyBuf[128];
+            const char* signStr = (loyaltyComp->loyaltyPerTurn >= 0.0f) ? "+" : "";
+            std::snprintf(loyaltyBuf, sizeof(loyaltyBuf),
+                "Loyalty: %.0f/100 (%s) %s%.1f/turn",
+                static_cast<double>(loyaltyComp->loyalty), statusName,
+                signStr, static_cast<double>(loyaltyComp->loyaltyPerTurn));
+            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 18.0f},
+                LabelData{std::string(loyaltyBuf), loyaltyColor, 12.0f});
+
+            // Loyalty breakdown
+            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
+                LabelData{"-- Loyalty Breakdown --", {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
+
+            char factorBuf[96];
+
+            std::snprintf(factorBuf, sizeof(factorBuf), "  Base: +%.0f", static_cast<double>(loyaltyComp->baseLoyalty));
+            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+                LabelData{std::string(factorBuf), {0.7f, 0.8f, 0.7f, 1.0f}, 10.0f});
+
+            std::snprintf(factorBuf, sizeof(factorBuf), "  Own city pressure: +%.1f", static_cast<double>(loyaltyComp->ownCityPressure));
+            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+                LabelData{std::string(factorBuf), {0.7f, 0.8f, 0.7f, 1.0f}, 10.0f});
+
+            std::snprintf(factorBuf, sizeof(factorBuf), "  Foreign pressure: %.1f", static_cast<double>(loyaltyComp->foreignCityPressure));
+            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+                LabelData{std::string(factorBuf), {0.8f, 0.6f, 0.6f, 1.0f}, 10.0f});
+
+            if (loyaltyComp->governorBonus > 0.0f) {
+                std::snprintf(factorBuf, sizeof(factorBuf), "  Governor: +%.0f", static_cast<double>(loyaltyComp->governorBonus));
+                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+                    LabelData{std::string(factorBuf), {0.7f, 0.8f, 0.7f, 1.0f}, 10.0f});
+            }
+
+            if (loyaltyComp->garrisonBonus > 0.0f) {
+                std::snprintf(factorBuf, sizeof(factorBuf), "  Garrison: +%.0f", static_cast<double>(loyaltyComp->garrisonBonus));
+                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+                    LabelData{std::string(factorBuf), {0.7f, 0.8f, 0.7f, 1.0f}, 10.0f});
+            }
+
+            if (loyaltyComp->monumentBonus > 0.0f) {
+                std::snprintf(factorBuf, sizeof(factorBuf), "  Monument: +%.0f", static_cast<double>(loyaltyComp->monumentBonus));
+                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+                    LabelData{std::string(factorBuf), {0.7f, 0.8f, 0.7f, 1.0f}, 10.0f});
+            }
+
+            if (loyaltyComp->ageEffect != 0.0f) {
+                const char* ageSign = (loyaltyComp->ageEffect >= 0.0f) ? "+" : "";
+                std::snprintf(factorBuf, sizeof(factorBuf), "  Age effect: %s%.0f", ageSign, static_cast<double>(loyaltyComp->ageEffect));
+                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+                    LabelData{std::string(factorBuf),
+                        (loyaltyComp->ageEffect >= 0.0f)
+                            ? Color{0.7f, 0.8f, 0.7f, 1.0f}
+                            : Color{0.8f, 0.6f, 0.6f, 1.0f},
+                        10.0f});
+            }
+
+            if (loyaltyComp->happinessEffect != 0.0f) {
+                std::snprintf(factorBuf, sizeof(factorBuf), "  Happiness: %.0f", static_cast<double>(loyaltyComp->happinessEffect));
+                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+                    LabelData{std::string(factorBuf), {0.8f, 0.6f, 0.6f, 1.0f}, 10.0f});
+            }
+
+            if (loyaltyComp->capturedPenalty != 0.0f) {
+                std::snprintf(factorBuf, sizeof(factorBuf), "  Captured: %.0f", static_cast<double>(loyaltyComp->capturedPenalty));
+                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+                    LabelData{std::string(factorBuf), {0.8f, 0.5f, 0.5f, 1.0f}, 10.0f});
+            }
+        } else {
+            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
+                LabelData{"Loyalty: N/A", {0.5f, 0.5f, 0.5f, 0.7f}, 11.0f});
+        }
+    }
+
+    // -- Population and growth --
+    {
+        char growthBuf[96];
+        std::snprintf(growthBuf, sizeof(growthBuf),
+            "Population: %d  Food surplus: %.1f",
+            city.population, static_cast<double>(city.foodSurplus));
+        (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
+            LabelData{std::string(growthBuf), {0.7f, 0.9f, 0.7f, 1.0f}, 11.0f});
     }
 
     // -- Per-tile yield contributions --
@@ -1150,9 +1253,9 @@ void CityDetailScreen::open(UIManager& ui) {
             LabelData{tileText, {0.7f, 0.75f, 0.7f, 1.0f}, 10.0f});
     }
 
-    // -- Building bonus summary --
+    // -- Districts and buildings --
     (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 16.0f},
-        LabelData{"-- Building Bonuses --", {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
+        LabelData{"-- Districts & Buildings --", {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
 
     int32_t bldgProd = 0;
     int32_t bldgSci  = 0;
@@ -1161,16 +1264,35 @@ void CityDetailScreen::open(UIManager& ui) {
         this->m_world->tryGetComponent<aoc::sim::CityDistrictsComponent>(this->m_cityEntity);
     if (districts != nullptr) {
         for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& district : districts->districts) {
+            const std::string districtHeader = std::string(aoc::sim::districtTypeName(district.type));
+            (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+                LabelData{districtHeader, {0.8f, 0.8f, 0.9f, 1.0f}, 10.0f});
+
             for (BuildingId bid : district.buildings) {
                 const aoc::sim::BuildingDef& bdef = aoc::sim::buildingDef(bid);
                 bldgProd += bdef.productionBonus;
                 bldgSci  += bdef.scienceBonus;
                 bldgGold += bdef.goldBonus;
+
+                const std::string bldgLine = "  " + std::string(bdef.name)
+                    + " (P:+" + std::to_string(bdef.productionBonus)
+                    + " S:+" + std::to_string(bdef.scienceBonus)
+                    + " G:+" + std::to_string(bdef.goldBonus) + ")";
+                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+                    LabelData{bldgLine, {0.7f, 0.75f, 0.8f, 1.0f}, 10.0f});
+            }
+
+            if (district.buildings.empty()) {
+                (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+                    LabelData{"  (no buildings)", {0.5f, 0.5f, 0.5f, 0.7f}, 10.0f});
             }
         }
+    } else {
+        (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},
+            LabelData{"No districts", {0.5f, 0.5f, 0.5f, 0.7f}, 10.0f});
     }
 
-    const std::string bldgText = "Buildings: +" + std::to_string(bldgProd) + " production, +"
+    const std::string bldgText = "Building totals: +" + std::to_string(bldgProd) + " production, +"
                                + std::to_string(bldgSci) + " science, +"
                                + std::to_string(bldgGold) + " gold";
     (void)ui.createLabel(detailList, {0.0f, 0.0f, 440.0f, 14.0f},

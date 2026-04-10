@@ -210,7 +210,6 @@ ErrorCode Application::initialize(const Config& config) {
     });
 
     // -- Main menu --
-    // Initialize TrueType font rendering
     if (!aoc::ui::BitmapFont::initialize()) {
         LOG_WARN("Font initialization failed -- text will not render");
     }
@@ -496,6 +495,44 @@ void Application::run() {
         // ================================================================
         // InGame state
         // ================================================================
+
+        // -- Debug Console (backtick key toggles, intercepts input when open) --
+        if (this->m_inputManager.isKeyPressed(GLFW_KEY_GRAVE_ACCENT)) {
+            this->m_debugConsole.toggle();
+        }
+        if (this->m_debugConsole.isOpen()) {
+            // Route character input to console
+            for (int32_t ki = GLFW_KEY_A; ki <= GLFW_KEY_Z; ++ki) {
+                if (this->m_inputManager.isKeyPressed(ki)) {
+                    bool shift = this->m_inputManager.isKeyHeld(GLFW_KEY_LEFT_SHIFT)
+                              || this->m_inputManager.isKeyHeld(GLFW_KEY_RIGHT_SHIFT);
+                    char c = static_cast<char>(ki - GLFW_KEY_A + (shift ? 'A' : 'a'));
+                    this->m_debugConsole.addChar(c);
+                }
+            }
+            for (int32_t ki = GLFW_KEY_0; ki <= GLFW_KEY_9; ++ki) {
+                if (this->m_inputManager.isKeyPressed(ki)) {
+                    this->m_debugConsole.addChar(static_cast<char>('0' + ki - GLFW_KEY_0));
+                }
+            }
+            if (this->m_inputManager.isKeyPressed(GLFW_KEY_SPACE)) {
+                this->m_debugConsole.addChar(' ');
+            }
+            if (this->m_inputManager.isKeyPressed(GLFW_KEY_MINUS)) {
+                this->m_debugConsole.addChar('-');
+            }
+            if (this->m_inputManager.isKeyPressed(GLFW_KEY_PERIOD)) {
+                this->m_debugConsole.addChar('.');
+            }
+            if (this->m_inputManager.isKeyPressed(GLFW_KEY_BACKSPACE)) {
+                this->m_debugConsole.backspace();
+            }
+            if (this->m_inputManager.isKeyPressed(GLFW_KEY_ENTER)) {
+                this->m_debugConsole.execute(this->m_world, this->m_hexGrid,
+                                              this->m_fogOfWar, 0);
+            }
+        }
+
         this->m_cameraController.update(this->m_inputManager, deltaTime, fbWidth, fbHeight);
 
         // -- Animated unit movement: advance animProgress each frame --
@@ -769,7 +806,7 @@ void Application::run() {
             this->handleContextAction();
             this->handleUndoAction();
         }
-        if (!this->anyScreenOpen()) {
+        if (!this->anyScreenOpen() && this->m_inputManager.isActionPressed(InputAction::EndTurn)) {
             this->handleEndTurn();
         }
 
@@ -831,6 +868,35 @@ void Application::run() {
             &this->m_eventLog,
             &this->m_notificationManager,
             &this->m_tutorialManager);
+
+        // Debug console overlay
+        if (this->m_debugConsole.isOpen()) {
+            const float consoleW = static_cast<float>(frame.extent.width);
+            const float consoleH = 250.0f;
+            const float consoleY = static_cast<float>(frame.extent.height) - consoleH;
+
+            // Semi-transparent background
+            this->m_renderer2d->drawFilledRect(
+                0.0f, consoleY, consoleW, consoleH,
+                0.0f, 0.0f, 0.0f, 0.85f);
+
+            // History lines
+            float lineY = consoleY + 5.0f;
+            for (const std::string& line : this->m_debugConsole.history()) {
+                aoc::ui::BitmapFont::drawText(
+                    *this->m_renderer2d, line,
+                    5.0f, lineY, 12.0f,
+                    aoc::ui::Color{0.85f, 0.85f, 0.85f, 1.0f});
+                lineY += 14.0f;
+            }
+
+            // Input line with cursor
+            std::string inputLine = "> " + this->m_debugConsole.input() + "_";
+            aoc::ui::BitmapFont::drawText(
+                *this->m_renderer2d, inputLine,
+                5.0f, consoleY + consoleH - 20.0f, 14.0f,
+                aoc::ui::Color{0.0f, 1.0f, 0.0f, 1.0f});
+        }
 
         this->m_renderPipeline->endRenderPass(frame);
         this->m_renderPipeline->endFrame(frame);
@@ -1438,10 +1504,6 @@ void Application::handleUndoAction() {
 }
 
 void Application::handleEndTurn() {
-    if (!this->m_inputManager.isActionPressed(InputAction::EndTurn)) {
-        return;
-    }
-
     // If the game is over, skip all turn processing
     if (this->m_gameOver) {
         return;
@@ -1981,9 +2043,16 @@ void Application::handleEndTurn() {
 // ============================================================================
 
 void Application::spawnStartingEntities(aoc::sim::CivId civId) {
-    // Find a land tile near the center of the map for the capital
-    hex::AxialCoord mapCenter = hex::offsetToAxial(
-        {this->m_hexGrid.width() / 4, this->m_hexGrid.height() / 4});
+    // Place human player (player 0) using same circular layout as AI players.
+    // Player 0 gets angle 0 (east side of map center).
+    const int32_t mapW = this->m_hexGrid.width();
+    const int32_t mapH = this->m_hexGrid.height();
+    const float radiusX = static_cast<float>(mapW) * 0.35f;
+    const float radiusY = static_cast<float>(mapH) * 0.35f;
+    const int32_t spawnX = mapW / 2 + static_cast<int32_t>(radiusX);  // angle 0 = east
+    const int32_t spawnY = mapH / 2;
+    aoc::hex::AxialCoord mapCenter = aoc::hex::offsetToAxial(
+        {std::clamp(spawnX, 2, mapW - 3), std::clamp(spawnY, 2, mapH - 3)});
 
     hex::AxialCoord capitalPos = this->findNearbyLandTile(mapCenter);
 
@@ -2097,9 +2166,19 @@ hex::AxialCoord Application::findNearbyLandTile(hex::AxialCoord target) const {
 // ============================================================================
 
 void Application::spawnAIPlayer(PlayerId player, aoc::sim::CivId civId) {
-    // Spawn AI units on the opposite side of the map from the human player
-    hex::AxialCoord aiSpawn = hex::offsetToAxial(
-        {this->m_hexGrid.width() * 3 / 4, this->m_hexGrid.height() * 3 / 4});
+    // Distribute AI players evenly across the map using a grid pattern.
+    // Player 0 is human (spawned separately). AI players 1..N get spread positions.
+    // Use a circular layout: each player gets an angle, placed at 35% map radius from center.
+    const int32_t mapW = this->m_hexGrid.width();
+    const int32_t mapH = this->m_hexGrid.height();
+    const int32_t totalPlayers = static_cast<int32_t>(this->m_aiControllers.size()) + 1;
+    const float angle = 2.0f * 3.14159f * static_cast<float>(player) / static_cast<float>(totalPlayers);
+    const float radiusX = static_cast<float>(mapW) * 0.35f;
+    const float radiusY = static_cast<float>(mapH) * 0.35f;
+    const int32_t spawnX = mapW / 2 + static_cast<int32_t>(radiusX * std::cos(angle));
+    const int32_t spawnY = mapH / 2 + static_cast<int32_t>(radiusY * std::sin(angle));
+    aoc::hex::AxialCoord aiSpawn = aoc::hex::offsetToAxial(
+        {std::clamp(spawnX, 2, mapW - 3), std::clamp(spawnY, 2, mapH - 3)});
 
     hex::AxialCoord settlerPos = this->findNearbyLandTile(aiSpawn);
     hex::AxialCoord warriorPos = this->findNearbyLandTile(

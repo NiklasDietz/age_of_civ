@@ -33,6 +33,7 @@
 #include "aoc/audio/MusicManager.hpp"
 #include "aoc/ui/Notifications.hpp"
 #include "aoc/ui/Tutorial.hpp"
+#include "aoc/ui/DebugConsole.hpp"
 #include "aoc/replay/ReplayRecorder.hpp"
 #include "aoc/core/ErrorCodes.hpp"
 #include "aoc/core/Types.hpp"
@@ -193,6 +194,9 @@ private:
 
     // Tutorial
     aoc::ui::TutorialManager m_tutorialManager;
+
+    // Debug console (opened with ` key)
+    aoc::ui::DebugConsole m_debugConsole;
 
     // Replay recorder
     aoc::replay::ReplayRecorder m_replayRecorder;

@@ -59,6 +59,9 @@ public:
      */
     [[nodiscard]] TileVisibility visibility(PlayerId player, int32_t tileIndex) const;
 
+    /// Override visibility for a tile (used by debug console 'reveal' command).
+    void setVisibility(PlayerId player, int32_t tileIndex, TileVisibility vis);
+
     /// Default sight range for units.
     static constexpr int32_t DEFAULT_SIGHT_RANGE = 2;
     /// Extended sight range for scouts.

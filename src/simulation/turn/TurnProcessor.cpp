@@ -230,15 +230,15 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
                 EntityId cityEntity = cityPool->entities()[ci];
                 const CityComponent& city = cityPool->data()[ci];
 
-                // Base gold from population (3 gold per citizen)
-                goldIncome += static_cast<CurrencyAmount>(city.population) * 3;
+                // Base gold: 1 per citizen (subsistence economy, barely covers basics)
+                goldIncome += static_cast<CurrencyAmount>(city.population);
 
-                // Capital bonus
+                // Capital gets administration bonus
                 if (city.isOriginalCapital) {
-                    goldIncome += 5;
+                    goldIncome += 3;
                 }
 
-                // Gold from worked tiles
+                // Gold from worked tiles (improvements like Vineyard generate gold yield)
                 for (const aoc::hex::AxialCoord& tile : city.workedTiles) {
                     if (grid.isValid(tile)) {
                         aoc::map::TileYield yield = grid.tileYield(grid.toIndex(tile));
@@ -246,11 +246,19 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
                     }
                 }
 
-                // Gold from buildings
+                // Gold from districts and buildings (this is where real income comes from)
                 const CityDistrictsComponent* districts =
                     world.tryGetComponent<CityDistrictsComponent>(cityEntity);
                 if (districts != nullptr) {
                     for (const CityDistrictsComponent::PlacedDistrict& d : districts->districts) {
+                        // Commercial Hub district itself generates +4 gold
+                        if (d.type == DistrictType::Commercial) {
+                            goldIncome += 4;
+                        }
+                        // Harbor generates +2 gold
+                        if (d.type == DistrictType::Harbor) {
+                            goldIncome += 2;
+                        }
                         for (BuildingId bid : d.buildings) {
                             goldIncome += static_cast<CurrencyAmount>(buildingDef(bid).goldBonus);
                         }

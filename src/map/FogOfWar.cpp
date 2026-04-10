@@ -91,4 +91,12 @@ TileVisibility FogOfWar::visibility(PlayerId player, int32_t tileIndex) const {
     return this->m_visibility[offset + static_cast<std::size_t>(tileIndex)];
 }
 
+void FogOfWar::setVisibility(PlayerId player, int32_t tileIndex, TileVisibility vis) {
+    if (player >= this->m_playerCount || tileIndex < 0 || tileIndex >= this->m_tileCount) {
+        return;
+    }
+    std::size_t offset = static_cast<std::size_t>(player) * static_cast<std::size_t>(this->m_tileCount);
+    this->m_visibility[offset + static_cast<std::size_t>(tileIndex)] = vis;
+}
+
 } // namespace aoc::map

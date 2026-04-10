@@ -175,6 +175,7 @@ add_library(aoc_lib STATIC
     src/ui/Tutorial.cpp
     src/ui/Encyclopedia.cpp
     src/ui/GameNotifications.cpp
+    src/ui/DebugConsole.cpp
 
     # Networking / Server-Client
     src/net/Transport.cpp

@@ -8,6 +8,7 @@
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
+#include "aoc/simulation/city/CityLoyalty.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/city/DistrictAdjacency.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
@@ -95,6 +96,13 @@ float computeCityProduction(const aoc::ecs::World& world,
         world.tryGetComponent<CityHappinessComponent>(cityEntity);
     if (happiness != nullptr) {
         totalProduction *= happiness->productionMultiplier();
+    }
+
+    // Apply loyalty yield penalty (Disloyal: -25%, Unrest: -50%)
+    const CityLoyaltyComponent* loyaltyComp =
+        world.tryGetComponent<CityLoyaltyComponent>(cityEntity);
+    if (loyaltyComp != nullptr) {
+        totalProduction *= loyaltyComp->yieldMultiplier();
     }
 
     // Apply government production multiplier
