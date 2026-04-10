@@ -230,8 +230,13 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
                 EntityId cityEntity = cityPool->entities()[ci];
                 const CityComponent& city = cityPool->data()[ci];
 
-                // Base gold from population (2 gold per citizen)
-                goldIncome += static_cast<CurrencyAmount>(city.population) * 2;
+                // Base gold from population (3 gold per citizen)
+                goldIncome += static_cast<CurrencyAmount>(city.population) * 3;
+
+                // Capital bonus
+                if (city.isOriginalCapital) {
+                    goldIncome += 5;
+                }
 
                 // Gold from worked tiles
                 for (const aoc::hex::AxialCoord& tile : city.workedTiles) {
@@ -254,27 +259,15 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
             }
         }
 
-        // Apply tax rate
-        const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-            world.getPool<MonetaryStateComponent>();
-        float taxRate = 0.15f;
-        if (monetaryPool != nullptr) {
-            for (uint32_t mi = 0; mi < monetaryPool->size(); ++mi) {
-                if (monetaryPool->data()[mi].owner == player) {
-                    taxRate = monetaryPool->data()[mi].taxRate;
-                    break;
-                }
-            }
-        }
-        CurrencyAmount taxedIncome = static_cast<CurrencyAmount>(
-            static_cast<float>(goldIncome) * taxRate);
+        // Gold income goes directly to treasury (not taxed -- tax rate affects GDP revenue
+        // in the fiscal policy system, not direct city yields)
 
         // Add to economy treasury
         world.forEach<PlayerEconomyComponent>(
-            [player, taxedIncome](EntityId, PlayerEconomyComponent& ec) {
+            [player, goldIncome](EntityId, PlayerEconomyComponent& ec) {
                 if (ec.owner == player) {
-                    ec.treasury += taxedIncome;
-                    ec.incomePerTurn = taxedIncome;
+                    ec.treasury += goldIncome;
+                    ec.incomePerTurn = goldIncome;
                 }
             });
     }
