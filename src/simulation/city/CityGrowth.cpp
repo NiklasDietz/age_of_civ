@@ -6,6 +6,7 @@
 #include "aoc/simulation/city/CityGrowth.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
+#include "aoc/simulation/map/Improvement.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -129,7 +130,8 @@ void autoAssignWorkers(CityComponent& city, const aoc::map::HexGrid& grid,
 // ============================================================================
 
 static void processSingleCityGrowth(aoc::game::City& city,
-                                     const aoc::map::HexGrid& grid) {
+                                     const aoc::map::HexGrid& grid,
+                                     bool hasFeudalismCivic) {
     // Calculate food from worked tiles
     float totalFood = 0.0f;
     for (const aoc::hex::AxialCoord& tileCoord : city.workedTiles()) {
@@ -142,6 +144,10 @@ static void processSingleCityGrowth(aoc::game::City& city,
         // City center always yields at least 2 food (Civ 6 guarantee)
         if (tileCoord == city.location() && tileFood < 2.0f) {
             tileFood = 2.0f;
+        }
+        // Farm triangle adjacency bonus: +1 food if 2+ adjacent farms (Feudalism civic)
+        if (hasFeudalismCivic) {
+            tileFood += static_cast<float>(computeFarmAdjacencyBonus(grid, tileIndex));
         }
         totalFood += tileFood;
     }
@@ -158,40 +164,45 @@ static void processSingleCityGrowth(aoc::game::City& city,
         city.setFoodSurplus(city.foodSurplus() - needed);
         city.growPopulation(1);
 
-        // Auto-assign new citizen to best unworked adjacent tile
+        // Auto-assign new citizen to best unworked tile within radius 3 (37 tiles)
+        // This matches Civ 6 city workable area of 3 hex rings.
         aoc::hex::AxialCoord center = city.location();
-        std::array<aoc::hex::AxialCoord, 6> neighbors = aoc::hex::neighbors(center);
+        std::vector<aoc::hex::AxialCoord> candidates;
+        candidates.reserve(37);
+        aoc::hex::spiral(center, 3, std::back_inserter(candidates));
+
         float bestYieldValue = -1.0f;
         aoc::hex::AxialCoord bestTile = center;
         bool foundNew = false;
 
-        for (const aoc::hex::AxialCoord& nbr : neighbors) {
-            if (!grid.isValid(nbr)) {
-                continue;
-            }
+        for (const aoc::hex::AxialCoord& tile : candidates) {
+            if (!grid.isValid(tile)) { continue; }
+            if (tile == center) { continue; }  // Center is already worked (free)
+
             bool alreadyWorked = false;
             for (const aoc::hex::AxialCoord& worked : city.workedTiles()) {
-                if (worked == nbr) {
+                if (worked == tile) {
                     alreadyWorked = true;
                     break;
                 }
             }
-            if (alreadyWorked) {
-                continue;
-            }
+            if (alreadyWorked) { continue; }
 
-            int32_t idx = grid.toIndex(nbr);
+            int32_t idx = grid.toIndex(tile);
             if (aoc::map::isWater(grid.terrain(idx)) || aoc::map::isImpassable(grid.terrain(idx))) {
                 continue;
             }
+            // Only work tiles owned by this city's player
+            if (grid.owner(idx) != city.owner()) { continue; }
 
             aoc::map::TileYield yield = grid.tileYield(idx);
             float value = static_cast<float>(yield.food) * 2.0f
                         + static_cast<float>(yield.production)
-                        + static_cast<float>(yield.gold) * 0.5f;
+                        + static_cast<float>(yield.gold) * 0.5f
+                        + static_cast<float>(yield.science) * 0.5f;
             if (value > bestYieldValue) {
                 bestYieldValue = value;
-                bestTile = nbr;
+                bestTile = tile;
                 foundNew = true;
             }
         }
@@ -221,8 +232,11 @@ static void processSingleCityGrowth(aoc::game::City& city,
 }
 
 void processCityGrowth(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
+    // Check if player has researched Feudalism civic (CivicId{6}) for farm adjacency bonus
+    bool hasFeudalismCivic = player.civics().hasCompleted(CivicId{6});
+
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
-        processSingleCityGrowth(*city, grid);
+        processSingleCityGrowth(*city, grid, hasFeudalismCivic);
     }
 }
 

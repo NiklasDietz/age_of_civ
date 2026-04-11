@@ -49,6 +49,14 @@ static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType
 // Building definitions
 // ============================================================================
 
+/// Resource consumed when constructing a building.
+struct BuildingResourceCost {
+    uint16_t goodId = 0xFFFF;  ///< 0xFFFF = no requirement
+    int32_t  amount = 0;
+
+    [[nodiscard]] constexpr bool isValid() const { return this->goodId != 0xFFFF && this->amount > 0; }
+};
+
 struct BuildingDef {
     BuildingId       id;
     std::string_view name;
@@ -59,6 +67,24 @@ struct BuildingDef {
     int32_t          scienceBonus;
     int32_t          goldBonus;
     float            scienceMultiplier = 1.0f;  ///< Multiplicative science bonus (1.0 = no effect)
+
+    /// Resources consumed when constructing this building (up to 2 types).
+    BuildingResourceCost resourceCosts[2] = {};
+
+    /// Ongoing fuel: good consumed each turn to keep the building operational.
+    /// 0xFFFF = no fuel needed. If fuel is unavailable, building is unpowered.
+    uint16_t ongoingFuelGoodId = 0xFFFF;
+    int32_t  ongoingFuelPerTurn = 0;
+
+    /// Whether this building requires any resources to construct.
+    [[nodiscard]] constexpr bool hasResourceCost() const {
+        return this->resourceCosts[0].isValid() || this->resourceCosts[1].isValid();
+    }
+
+    /// Whether this building needs ongoing fuel to operate.
+    [[nodiscard]] constexpr bool needsFuel() const {
+        return this->ongoingFuelGoodId != 0xFFFF && this->ongoingFuelPerTurn > 0;
+    }
 };
 
 // BuildingId values match the requiredBuilding in ProductionRecipe:
@@ -86,42 +112,47 @@ struct BuildingDef {
 //   30 = Solar Array        (power, free, late game)
 //   31 = Wind Farm          (power, free, late game)
 
-// Format: {id, name, district, prodCost, maintenanceCost, productionBonus, scienceBonus, goldBonus, scienceMultiplier}
-// Maintenance costs aligned with Civ 6: 1-5 gold depending on building tier.
-inline constexpr std::array<BuildingDef, 32> BUILDING_DEFS = {{
-    {BuildingId{0},  "Forge",              DistrictType::Industrial,  60, 1, 2, 0, 0, 1.0f},
+// Format: {id, name, district, prodCost, maint, prodBonus, sciBonus, goldBonus, sciMult, resourceCosts, fuelGoodId, fuelPerTurn}
+// Resource costs and fuel added for mid/late-game buildings per plan Phase 1C/1D.
+inline constexpr std::array<BuildingDef, 36> BUILDING_DEFS = {{
+    //                                                                                                                     resourceCosts         fuel
+    {BuildingId{0},  "Forge",              DistrictType::Industrial,  60, 1, 2, 0, 0, 1.0f},                            // no cost, no fuel
     {BuildingId{1},  "Workshop",           DistrictType::Industrial,  40, 1, 1, 0, 0, 1.0f},
-    {BuildingId{2},  "Refinery",           DistrictType::Industrial, 100, 2, 3, 0, 0, 1.0f},
-    {BuildingId{3},  "Factory",            DistrictType::Industrial, 120, 2, 4, 0, 1, 1.0f},
-    {BuildingId{4},  "Electronics Plant",  DistrictType::Industrial, 180, 3, 3, 2, 2, 1.0f},
-    {BuildingId{5},  "Industrial Complex", DistrictType::Industrial, 250, 4, 6, 0, 3, 1.0f},
+    {BuildingId{2},  "Refinery",           DistrictType::Industrial, 100, 2, 3, 0, 0, 1.0f,  {{64, 1}}},                // 1 Steel to build
+    {BuildingId{3},  "Factory",            DistrictType::Industrial, 120, 2, 4, 0, 1, 1.0f,  {{104, 2}}},               // 2 Construction Mat
+    {BuildingId{4},  "Electronics Plant",  DistrictType::Industrial, 180, 3, 3, 2, 2, 1.0f,  {{61, 1}, {64, 1}}},       // 1 Cu Wire + 1 Steel
+    {BuildingId{5},  "Industrial Complex", DistrictType::Industrial, 250, 4, 6, 0, 3, 1.0f,  {{64, 2}, {104, 2}}},      // 2 Steel + 2 Constr Mat
     {BuildingId{6},  "Market",             DistrictType::Commercial,  50, 0, 0, 0, 3, 1.0f},
     {BuildingId{7},  "Library",            DistrictType::Campus,      90, 1, 0, 3, 0, 1.0f},
     {BuildingId{8},  "Textile Mill",       DistrictType::Industrial,  80, 1, 2, 0, 1, 1.0f},
     {BuildingId{9},  "Food Proc. Plant",   DistrictType::Industrial,  90, 1, 1, 0, 1, 1.0f},
-    {BuildingId{10}, "Precision Workshop", DistrictType::Industrial, 140, 2, 3, 1, 0, 1.0f},
-    {BuildingId{11}, "Semiconductor Fab",  DistrictType::Industrial, 220, 4, 2, 3, 2, 1.0f},
-    {BuildingId{12}, "Research Lab",       DistrictType::Campus,     480, 3, 0, 10, 0, 1.5f},
+    {BuildingId{10}, "Precision Workshop", DistrictType::Industrial, 140, 2, 3, 1, 0, 1.0f,  {{63, 1}}},                // 1 Tools
+    {BuildingId{11}, "Semiconductor Fab",  DistrictType::Industrial, 220, 4, 2, 3, 2, 1.0f,  {{64, 1}, {76, 1}}},       // 1 Steel + 1 Glass
+    {BuildingId{12}, "Research Lab",       DistrictType::Campus,     480, 3, 0, 10, 0, 1.5f, {{76, 1}}},                // 1 Glass
     {BuildingId{13}, "Telecom Hub",        DistrictType::Commercial, 130, 2, 0, 1, 4, 1.0f},
-    {BuildingId{14}, "Airport",            DistrictType::Industrial, 200, 3, 2, 0, 3, 1.0f},
-    // Expansion buildings
+    {BuildingId{14}, "Airport",            DistrictType::Industrial, 200, 3, 2, 0, 3, 1.0f,  {{64, 2}}},                // 2 Steel
     {BuildingId{15}, "Granary",            DistrictType::CityCenter,  40, 1, 1, 0, 0, 1.0f},
     {BuildingId{16}, "Monument",           DistrictType::CityCenter,  30, 0, 0, 0, 0, 1.0f},
-    {BuildingId{17}, "Walls",              DistrictType::Encampment,  60, 0, 0, 0, 0, 1.0f},
+    {BuildingId{17}, "Walls",              DistrictType::Encampment,  60, 0, 0, 0, 0, 1.0f,  {{44, 2}}},                // 2 Stone
     {BuildingId{18}, "Barracks",           DistrictType::Encampment,  70, 2, 0, 0, 0, 1.0f},
     {BuildingId{19}, "University",         DistrictType::Campus,     250, 2, 0, 6, 0, 1.0f},
     {BuildingId{20}, "Bank",               DistrictType::Commercial, 100, 0, 0, 0, 5, 1.0f},
     {BuildingId{21}, "Stock Exchange",     DistrictType::Commercial, 200, 0, 0, 0, 7, 1.0f},
     {BuildingId{22}, "Hospital",           DistrictType::CityCenter, 150, 2, 0, 0, 0, 1.0f},
-    {BuildingId{23}, "Shipyard",           DistrictType::Harbor,     120, 2, 3, 0, 2, 1.0f},
+    {BuildingId{23}, "Shipyard",           DistrictType::Harbor,     120, 2, 3, 0, 2, 1.0f,  {{62, 2}}},                // 2 Lumber
     {BuildingId{24}, "Mint",               DistrictType::Commercial,  70, 1, 0, 0, 2, 1.0f},
     {BuildingId{25}, "Waste Treatment",    DistrictType::Industrial, 100, 2, 0, 0, 0, 1.0f},
-    {BuildingId{26}, "Coal Plant",         DistrictType::Industrial,  80, 2, 0, 0, 0, 1.0f},
-    {BuildingId{27}, "Oil Plant",          DistrictType::Industrial, 120, 3, 0, 0, 0, 1.0f},
+    {BuildingId{26}, "Coal Plant",         DistrictType::Industrial,  80, 2, 0, 0, 0, 1.0f,  {}, 2, 1},                 // burns 1 Coal/turn
+    {BuildingId{27}, "Oil Plant",          DistrictType::Industrial, 120, 3, 0, 0, 0, 1.0f,  {}, 65, 1},                // burns 1 Fuel/turn
     {BuildingId{28}, "Hydroelectric Dam",  DistrictType::Industrial, 150, 1, 0, 0, 0, 1.0f},
-    {BuildingId{29}, "Nuclear Plant",      DistrictType::Industrial, 300, 5, 0, 0, 0, 1.0f},
+    {BuildingId{29}, "Nuclear Plant",      DistrictType::Industrial, 300, 5, 0, 0, 0, 1.0f,  {{64, 2}}, 6, 1},          // 2 Steel to build, 1 Uranium/turn
     {BuildingId{30}, "Solar Array",        DistrictType::Industrial, 200, 1, 0, 1, 0, 1.0f},
     {BuildingId{31}, "Wind Farm",          DistrictType::Industrial, 160, 1, 0, 0, 0, 1.0f},
+    // New energy buildings
+    {BuildingId{32}, "Gas Plant",          DistrictType::Industrial, 100, 2, 0, 0, 0, 1.0f,  {}, 12, 1},                // burns 1 Natural Gas/turn
+    {BuildingId{33}, "Biofuel Plant",      DistrictType::Industrial, 120, 2, 1, 0, 0, 1.0f},                            // enables biofuel recipes
+    {BuildingId{34}, "Geothermal Plant",   DistrictType::Industrial, 180, 1, 0, 0, 0, 1.0f},                            // free power, requires volcanic/mountain
+    {BuildingId{35}, "Fusion Reactor",     DistrictType::Industrial, 500, 8, 0, 2, 0, 1.0f,  {{64, 3}, {76, 2}}, 80, 1}, // 3 Steel + 2 Glass to build, 1 Deuterium/turn
 }};
 
 [[nodiscard]] inline constexpr const BuildingDef& buildingDef(BuildingId id) {

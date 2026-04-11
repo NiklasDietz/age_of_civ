@@ -404,6 +404,9 @@ void processGlobalSystems(TurnContext& ctx) {
     // Tick prospect cooldowns (tiles that were surveyed become available again)
     grid.tickProspectCooldowns();
 
+    // Tick nuclear fallout decay
+    grid.tickFallout();
+
     // Labor strikes
     checkLaborStrikes(world);
     processStrikes(world);
@@ -492,7 +495,7 @@ void processGlobalSystems(TurnContext& ctx) {
     }
 
     // Physical trade routes: move Traders, exchange goods
-    processTradeRoutes(world, grid);
+    processTradeRoutes(world, grid, ctx.economy->market());
 
     // Stock market: dividends, value updates
     processStockMarket(world);

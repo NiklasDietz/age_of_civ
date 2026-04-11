@@ -78,6 +78,7 @@ struct GoodDef {
             case 9:  return -1;   // Rubber: renewable (trees)
             case 10: return 60;   // Tin: moderate
             case 11: return 70;   // Silver ore: moderate
+            case 12: return 80;   // Natural gas: moderate deposits
             default: return 80;
         }
     }
@@ -93,6 +94,12 @@ struct GoodDef {
             case 26: return -1;   // Dyes: renewable (plants)
             case 27: return -1;   // Furs: renewable (animals, slowly)
             case 28: return -1;   // Incense: renewable (trees)
+            case 29: return 200;  // Salt: large finite deposits
+            case 30: return 80;   // Marble: finite quarry
+            case 31: return -1;   // Pearls: renewable (diving)
+            case 32: return -1;   // Tea: renewable (plantation)
+            case 33: return -1;   // Coffee: renewable (plantation)
+            case 34: return -1;   // Tobacco: renewable (plantation)
             default: return -1;
         }
     }
@@ -133,6 +140,7 @@ struct GoodDef {
         case 6:  return TechId{18};  // Uranium → Nuclear Fission
         case 7:  return TechId{14};  // Aluminum → Electricity
         case 10: return TechId{0};   // Tin → Mining
+        case 12: return TechId{11};  // Natural Gas → Industrialization
         default: return TechId{};    // Always visible (luxury, bonus, cotton, rubber, silver, gold)
     }
 }
@@ -163,6 +171,7 @@ namespace goods {
     inline constexpr uint16_t RUBBER      = 9;
     inline constexpr uint16_t TIN         = 10;
     inline constexpr uint16_t SILVER_ORE  = 11;
+    inline constexpr uint16_t NATURAL_GAS = 12;  ///< Cleaner fossil fuel, sedimentary basins
 
     // -- Raw luxury resources (20-39) --
     inline constexpr uint16_t GOLD_ORE    = 20;
@@ -174,6 +183,12 @@ namespace goods {
     inline constexpr uint16_t DYES        = 26;
     inline constexpr uint16_t FURS        = 27;
     inline constexpr uint16_t INCENSE     = 28;
+    inline constexpr uint16_t SALT        = 29;  ///< Food preservation, temperate/desert
+    inline constexpr uint16_t MARBLE      = 30;  ///< Construction, mountains/hills
+    inline constexpr uint16_t PEARLS      = 31;  ///< Luxury, coastal
+    inline constexpr uint16_t TEA         = 32;  ///< Luxury amenity, tropical
+    inline constexpr uint16_t COFFEE      = 33;  ///< Luxury amenity, tropical
+    inline constexpr uint16_t TOBACCO     = 34;  ///< Luxury amenity, subtropical
 
     // -- Raw bonus resources (40-59) --
     inline constexpr uint16_t WHEAT       = 40;
@@ -206,6 +221,8 @@ namespace goods {
     inline constexpr uint16_t RUBBER_GOODS         = 77;
     inline constexpr uint16_t BRONZE               = 78;
     inline constexpr uint16_t CHARCOAL            = 79;  ///< Wood-based fuel, early coal substitute
+    inline constexpr uint16_t DEUTERIUM           = 80;  ///< Fusion fuel, extracted from coastal water
+    inline constexpr uint16_t BIOFUEL             = 81;  ///< Renewable fuel from crops, substitutes for Fuel
 
     // -- Advanced goods (100-139) --
     inline constexpr uint16_t MACHINERY            = 100;
@@ -231,7 +248,7 @@ namespace goods {
     // -- Automation goods (160-169) --
     inline constexpr uint16_t ROBOT_WORKERS        = 143;
 
-    inline constexpr uint16_t GOOD_COUNT = 145;
+    inline constexpr uint16_t GOOD_COUNT = 152;
 } // namespace goods
 
 // ============================================================================

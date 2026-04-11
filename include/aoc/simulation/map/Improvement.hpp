@@ -76,6 +76,19 @@ inline constexpr std::array<ImprovementDef, 20> IMPROVEMENT_DEFS = {{
     const aoc::map::HexGrid& grid, int32_t index);
 
 /**
+ * @brief Compute the farm adjacency food bonus for a tile.
+ *
+ * If the tile has a Farm improvement and 2+ adjacent tiles also have Farms,
+ * returns +1 food (Civ 6 Feudalism-style farm triangle bonus).
+ * The caller should gate this on the Feudalism civic (CivicId{6}).
+ *
+ * @param grid   The hex grid.
+ * @param index  Tile flat index.
+ * @return Extra food from farm adjacency (0 or 1).
+ */
+[[nodiscard]] int32_t computeFarmAdjacencyBonus(const aoc::map::HexGrid& grid, int32_t index);
+
+/**
  * @brief Check if a tile can be prospected by a Prospector unit.
  *
  * Requires: no existing resource, land tile, not on cooldown from prior survey.

@@ -35,7 +35,8 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     defs[goods::COTTON]     = {goods::COTTON,      "Cotton",      GoodCategory::RawStrategic, 10, false, 0.4f};
     defs[goods::RUBBER]     = {goods::RUBBER,      "Rubber",      GoodCategory::RawStrategic, 18, true,  0.4f};
     defs[goods::TIN]        = {goods::TIN,         "Tin",         GoodCategory::RawStrategic, 12, true,  0.4f};
-    defs[goods::SILVER_ORE] = {goods::SILVER_ORE,  "Silver Ore",  GoodCategory::RawStrategic, 22, false, 0.5f};
+    defs[goods::SILVER_ORE]  = {goods::SILVER_ORE,  "Silver Ore",  GoodCategory::RawStrategic, 22, false, 0.5f};
+    defs[goods::NATURAL_GAS] = {goods::NATURAL_GAS, "Natural Gas", GoodCategory::RawStrategic, 20, true,  0.4f};
 
     // Raw luxury (20-39) -- high elasticity (0.7)
     defs[goods::GOLD_ORE]   = {goods::GOLD_ORE,   "Gold Ore",    GoodCategory::RawLuxury, 25, false, 0.7f};
@@ -47,6 +48,12 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     defs[goods::DYES]       = {goods::DYES,        "Dyes",        GoodCategory::RawLuxury, 15, false, 0.7f};
     defs[goods::FURS]       = {goods::FURS,        "Furs",        GoodCategory::RawLuxury, 18, false, 0.7f};
     defs[goods::INCENSE]    = {goods::INCENSE,     "Incense",     GoodCategory::RawLuxury, 14, false, 0.7f};
+    defs[goods::SALT]       = {goods::SALT,        "Salt",        GoodCategory::RawBonus,   8, false, 0.3f};
+    defs[goods::MARBLE]     = {goods::MARBLE,      "Marble",      GoodCategory::RawStrategic, 20, true, 0.4f};
+    defs[goods::PEARLS]     = {goods::PEARLS,      "Pearls",      GoodCategory::RawLuxury, 28, false, 0.7f};
+    defs[goods::TEA]        = {goods::TEA,         "Tea",         GoodCategory::RawLuxury, 16, false, 0.7f};
+    defs[goods::COFFEE]     = {goods::COFFEE,      "Coffee",      GoodCategory::RawLuxury, 18, false, 0.7f};
+    defs[goods::TOBACCO]    = {goods::TOBACCO,     "Tobacco",     GoodCategory::RawLuxury, 15, false, 0.7f};
 
     // Raw bonus (40-59) -- low elasticity (0.2), necessities
     defs[goods::WHEAT]      = {goods::WHEAT,       "Wheat",       GoodCategory::RawBonus, 5, false, 0.2f};
@@ -79,6 +86,8 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     defs[goods::RUBBER_GOODS]         = {goods::RUBBER_GOODS,         "Rubber Goods",         GoodCategory::Processed, 25, false, 0.5f};
     defs[goods::BRONZE]               = {goods::BRONZE,               "Bronze",               GoodCategory::Processed, 20, true,  0.5f};
     defs[goods::CHARCOAL]             = {goods::CHARCOAL,             "Charcoal",             GoodCategory::Processed, 10, false, 0.3f};
+    defs[goods::DEUTERIUM]            = {goods::DEUTERIUM,            "Deuterium",            GoodCategory::Processed, 100, true, 0.5f};
+    defs[goods::BIOFUEL]              = {goods::BIOFUEL,              "Biofuel",              GoodCategory::Processed, 30, false, 0.4f};
 
     // Advanced (100+) -- high elasticity (0.8)
     defs[goods::MACHINERY]            = {goods::MACHINERY,            "Machinery",            GoodCategory::Advanced, 70, true,  0.8f};
@@ -334,6 +343,35 @@ std::vector<ProductionRecipe> buildRecipes() {
     recipes.push_back({40, "Make Glass (Charcoal)",
         {{goods::STONE, 1}, {goods::CHARCOAL, 2}},
         goods::GLASS, 1, BuildingId{0}, 1});  // Forge, less output than coal version
+
+    // ================================================================
+    // Salt-based food preservation (alternative Processed Food recipes)
+    // ================================================================
+    recipes.push_back({41, "Preserve Fish",
+        {{goods::SALT, 1}, {goods::FISH, 2}},
+        goods::PROCESSED_FOOD, 3, BuildingId{9}, 1});  // Food Proc. Plant
+
+    recipes.push_back({42, "Salt Cure Meat",
+        {{goods::SALT, 1}, {goods::CATTLE, 2}},
+        goods::PROCESSED_FOOD, 3, BuildingId{9}, 1});
+
+    // ================================================================
+    // Marble construction (high-quality alternative)
+    // ================================================================
+    recipes.push_back({43, "Cut Marble Blocks",
+        {{goods::MARBLE, 2}, {goods::LUMBER, 1}},
+        goods::CONSTRUCTION_MAT, 2, BuildingId{1}, 1});  // Workshop, better ratio than brick+lumber
+
+    // ================================================================
+    // Biofuel: renewable fossil fuel substitute from crops
+    // ================================================================
+    recipes.push_back({44, "Distill Biofuel (Wheat)",
+        {{goods::WHEAT, 3}},
+        goods::BIOFUEL, 1, BuildingId{33}, 1});  // Biofuel Plant
+
+    recipes.push_back({45, "Distill Biofuel (Sugar)",
+        {{goods::SUGAR, 3}},
+        goods::BIOFUEL, 1, BuildingId{33}, 1});
 
     return recipes;
 }

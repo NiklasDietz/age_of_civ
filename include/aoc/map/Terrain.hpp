@@ -16,8 +16,9 @@ namespace aoc::map {
 // ============================================================================
 
 enum class TerrainType : uint8_t {
-    Ocean,
-    Coast,
+    Ocean,         ///< Deep water: requires Navigation tech for ships
+    Coast,         ///< Coastal water: adjacent to land, always navigable
+    ShallowWater,  ///< Open shallow seas: navigable without Navigation tech
     Desert,
     Plains,
     Grassland,
@@ -32,18 +33,31 @@ static constexpr uint8_t TERRAIN_COUNT = static_cast<uint8_t>(TerrainType::Count
 
 [[nodiscard]] constexpr std::string_view terrainName(TerrainType type) {
     constexpr std::array<std::string_view, TERRAIN_COUNT> NAMES = {{
-        "Ocean", "Coast", "Desert", "Plains",
+        "Ocean", "Coast", "Shallow Water", "Desert", "Plains",
         "Grassland", "Tundra", "Snow", "Mountain"
     }};
     return NAMES[static_cast<uint8_t>(type)];
 }
 
 [[nodiscard]] constexpr bool isWater(TerrainType type) {
-    return type == TerrainType::Ocean || type == TerrainType::Coast;
+    return type == TerrainType::Ocean || type == TerrainType::Coast
+        || type == TerrainType::ShallowWater;
 }
 
+/// Deep ocean requires Navigation tech to traverse.
+[[nodiscard]] constexpr bool isDeepWater(TerrainType type) {
+    return type == TerrainType::Ocean;
+}
+
+/// Shallow navigable water (Coast + ShallowWater) - no tech required.
+[[nodiscard]] constexpr bool isShallowWater(TerrainType type) {
+    return type == TerrainType::Coast || type == TerrainType::ShallowWater;
+}
+
+/// Impassable terrain for land units (mountains, deep ocean, shallow water without embarking).
 [[nodiscard]] constexpr bool isImpassable(TerrainType type) {
-    return type == TerrainType::Mountain || type == TerrainType::Ocean;
+    return type == TerrainType::Mountain || type == TerrainType::Ocean
+        || type == TerrainType::ShallowWater;
 }
 
 // ============================================================================
@@ -60,6 +74,7 @@ enum class FeatureType : uint8_t {
     Reef,
     Ice,
     Hills,        ///< Elevation feature, combinable with terrain
+    Fallout,      ///< Nuclear fallout: 0 yields, can't build improvements, temporary
 
     Count
 };
@@ -69,7 +84,7 @@ static constexpr uint8_t FEATURE_COUNT = static_cast<uint8_t>(FeatureType::Count
 [[nodiscard]] constexpr std::string_view featureName(FeatureType type) {
     constexpr std::array<std::string_view, FEATURE_COUNT> NAMES = {{
         "None", "Forest", "Jungle", "Marsh", "Floodplains",
-        "Oasis", "Reef", "Ice", "Hills"
+        "Oasis", "Reef", "Ice", "Hills", "Fallout"
     }};
     return NAMES[static_cast<uint8_t>(type)];
 }
@@ -90,8 +105,9 @@ struct TileYield {
 /// Base yields per terrain type (before features/improvements).
 [[nodiscard]] constexpr TileYield baseTerrainYield(TerrainType type) {
     switch (type) {
-        case TerrainType::Ocean:     return {1, 0, 0, 0, 0, 0};
-        case TerrainType::Coast:     return {1, 0, 1, 0, 0, 0};
+        case TerrainType::Ocean:        return {1, 0, 0, 0, 0, 0};
+        case TerrainType::Coast:        return {1, 0, 1, 0, 0, 0};
+        case TerrainType::ShallowWater: return {1, 0, 0, 0, 0, 0};
         case TerrainType::Desert:    return {0, 0, 0, 0, 0, 0};
         case TerrainType::Plains:    return {1, 1, 0, 0, 0, 0};
         case TerrainType::Grassland: return {2, 0, 0, 0, 0, 0};

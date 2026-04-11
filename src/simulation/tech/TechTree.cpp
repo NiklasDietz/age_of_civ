@@ -106,6 +106,16 @@ std::vector<TechDef> buildTechDefs() {
         {{TechId{16}, TechId{25}}},  // Computers + Telecommunications
         {}, {}, {}});
 
+    // Era 7: Future -- fusion power
+    techs.push_back({TechId{28}, "Fusion Power", EraId{7}, 2000,
+        {{TechId{17}, TechId{27}}},  // Nuclear Fission + Internet
+        {}, {BuildingId{35}}, {}});  // Unlocks Fusion Reactor
+
+    // Era 6: Atomic -- ecology (biofuel)
+    techs.push_back({TechId{29}, "Ecology", EraId{6}, 1200,
+        {{TechId{24}}},  // Advanced Chemistry
+        {}, {BuildingId{33}}, {}});  // Unlocks Biofuel Plant
+
     // Append expanded techs (only IDs > max base ID to avoid overlap)
     uint16_t maxBaseId = 0;
     for (const TechDef& t : techs) {

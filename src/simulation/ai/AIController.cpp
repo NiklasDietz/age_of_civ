@@ -145,7 +145,7 @@ void AIController::executeTurn(aoc::ecs::World& world,
     aoc::sim::aiEconomicStrategy(world, grid, market, diplomacy, this->m_player,
                                   static_cast<int32_t>(this->m_difficulty));
     this->executeDiplomacyActions(world, diplomacy, market);
-    this->manageTradeRoutes(world, grid);
+    this->manageTradeRoutes(world, grid, market, diplomacy);
 
     refreshMovement(world, this->m_player);
 }
@@ -397,25 +397,49 @@ void AIController::executeCityActions(aoc::ecs::World& world,
             const CityDistrictsComponent* existingDistricts =
                 world.tryGetComponent<CityDistrictsComponent>(cityEntity);
 
-            // District priority: Industrial first (enables Forge/Workshop for production
-            // chain), then Commercial (for trade/Mint), then Campus for science.
+            // Check if city is coastal (any neighbor is water)
+            bool isCityCoastal = false;
+            {
+                std::array<aoc::hex::AxialCoord, 6> cityNbrs = aoc::hex::neighbors(city.location);
+                for (const aoc::hex::AxialCoord& cn : cityNbrs) {
+                    if (grid.isValid(cn) && aoc::map::isWater(grid.terrain(grid.toIndex(cn)))) {
+                        isCityCoastal = true;
+                        break;
+                    }
+                }
+            }
+
+            // District priority: Industrial first, then Harbor (for coastal cities),
+            // then Commercial, then Campus.
             DistrictType districtPriority[5];
             int32_t districtCosts[5];
             bool hasIndustrial = (existingDistricts != nullptr
                 && existingDistricts->hasDistrict(DistrictType::Industrial));
+            bool hasHarbor = (existingDistricts != nullptr
+                && existingDistricts->hasDistrict(DistrictType::Harbor));
+
             if (!hasIndustrial) {
-                // Industrial first: enables Forge/Workshop for resource processing
                 districtPriority[0] = DistrictType::Industrial;  districtCosts[0] = 60;
-                districtPriority[1] = DistrictType::Commercial;  districtCosts[1] = 60;
+                // Coastal cities get Harbor early (enables naval + sea trade)
+                if (isCityCoastal && !hasHarbor) {
+                    districtPriority[1] = DistrictType::Harbor;      districtCosts[1] = 70;
+                    districtPriority[2] = DistrictType::Commercial;  districtCosts[2] = 60;
+                } else {
+                    districtPriority[1] = DistrictType::Commercial;  districtCosts[1] = 60;
+                    districtPriority[2] = DistrictType::Harbor;      districtCosts[2] = 70;
+                }
+                districtPriority[3] = DistrictType::Campus;      districtCosts[3] = 55;
+                districtPriority[4] = DistrictType::Encampment;  districtCosts[4] = 55;
+            } else {
+                if (isCityCoastal && !hasHarbor) {
+                    districtPriority[0] = DistrictType::Harbor;      districtCosts[0] = 70;
+                    districtPriority[1] = DistrictType::Commercial;  districtCosts[1] = 60;
+                } else {
+                    districtPriority[0] = DistrictType::Commercial;  districtCosts[0] = 60;
+                    districtPriority[1] = DistrictType::Harbor;      districtCosts[1] = 70;
+                }
                 districtPriority[2] = DistrictType::Campus;      districtCosts[2] = 55;
                 districtPriority[3] = DistrictType::Encampment;  districtCosts[3] = 55;
-                districtPriority[4] = DistrictType::Harbor;      districtCosts[4] = 70;
-            } else {
-                // Already have Industrial: Commercial next, then Campus
-                districtPriority[0] = DistrictType::Commercial;  districtCosts[0] = 60;
-                districtPriority[1] = DistrictType::Campus;      districtCosts[1] = 55;
-                districtPriority[2] = DistrictType::Encampment;  districtCosts[2] = 55;
-                districtPriority[3] = DistrictType::Harbor;      districtCosts[3] = 70;
                 districtPriority[4] = DistrictType::Industrial;  districtCosts[4] = 60;
             }
 
@@ -835,7 +859,8 @@ void AIController::manageGovernment(aoc::ecs::World& world) {
 // Monetary system management
 // ============================================================================
 
-void AIController::manageTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& grid) {
+void AIController::manageTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+                                      const Market& market, const DiplomacyManager& diplomacy) {
     // Find idle Trader units owned by this player that are not already on a route
     aoc::ecs::ComponentPool<UnitComponent>* unitPool = world.getPool<UnitComponent>();
     if (unitPool == nullptr) {
@@ -867,46 +892,98 @@ void AIController::manageTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& 
         return;
     }
 
+    // Get our needs for scoring destinations
+    const PlayerEconomyComponent* myEcon = nullptr;
+    const aoc::ecs::ComponentPool<PlayerEconomyComponent>* econPool =
+        world.getPool<PlayerEconomyComponent>();
+    if (econPool != nullptr) {
+        for (uint32_t ei = 0; ei < econPool->size(); ++ei) {
+            if (econPool->data()[ei].owner == this->m_player) {
+                myEcon = &econPool->data()[ei];
+                break;
+            }
+        }
+    }
+
     for (EntityId traderEntity : idleTraders) {
         const UnitComponent* traderUnit = world.tryGetComponent<UnitComponent>(traderEntity);
         if (traderUnit == nullptr) { continue; }
 
-        // Find the closest foreign city
+        // Score each city as a trade destination based on complementary resources.
+        // High score = destination has what we need AND needs what we have.
         EntityId bestCity = NULL_ENTITY;
-        int32_t bestDist = INT32_MAX;
+        float bestScore = -1.0f;
+
         for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
             const CityComponent& city = cityPool->data()[ci];
-            if (city.owner == this->m_player) { continue; }  // Skip own cities
+            if (city.location == traderUnit->position) { continue; }
+
+            float score = 0.0f;
             int32_t dist = aoc::hex::distance(traderUnit->position, city.location);
-            if (dist < bestDist) {
-                bestDist = dist;
+            float distPenalty = 1.0f / static_cast<float>(std::max(1, dist));
+
+            if (city.owner != this->m_player) {
+                // Foreign city: check what THEY have that WE need
+                const CityStockpileComponent* destStock =
+                    world.tryGetComponent<CityStockpileComponent>(cityPool->entities()[ci]);
+                if (destStock != nullptr && myEcon != nullptr) {
+                    for (const std::pair<const uint16_t, int32_t>& need : myEcon->totalNeeds) {
+                        int32_t destHas = destStock->getAmount(need.first);
+                        if (destHas > 1) {
+                            score += static_cast<float>(std::min(destHas, need.second))
+                                   * static_cast<float>(market.marketData(need.first).currentPrice);
+                        }
+                    }
+                }
+                // Also check what WE have that THEY need
+                const PlayerEconomyComponent* destEcon = nullptr;
+                if (econPool != nullptr) {
+                    for (uint32_t ei = 0; ei < econPool->size(); ++ei) {
+                        if (econPool->data()[ei].owner == city.owner) {
+                            destEcon = &econPool->data()[ei];
+                            break;
+                        }
+                    }
+                }
+                if (destEcon != nullptr) {
+                    for (const std::pair<const uint16_t, int32_t>& theirNeed : destEcon->totalNeeds) {
+                        int32_t weHave = 0;
+                        if (myEcon != nullptr) {
+                            std::unordered_map<uint16_t, int32_t>::const_iterator supIt =
+                                myEcon->totalSupply.find(theirNeed.first);
+                            if (supIt != myEcon->totalSupply.end()) { weHave = supIt->second; }
+                        }
+                        if (weHave > 1) {
+                            score += static_cast<float>(std::min(weHave, theirNeed.second))
+                                   * static_cast<float>(market.marketData(theirNeed.first).currentPrice) * 0.5f;
+                        }
+                    }
+                }
+
+                // Foreign trade base bonus (always some value from gold earnings)
+                score += 50.0f;
+            } else {
+                // Internal trade: lower priority, just moves goods between own cities
+                score += 10.0f;
+            }
+
+            score *= distPenalty;
+
+            if (score > bestScore) {
+                bestScore = score;
                 bestCity = cityPool->entities()[ci];
             }
         }
 
-        // If no foreign cities, try own cities for internal routes
-        if (!bestCity.isValid()) {
-            for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
-                const CityComponent& city = cityPool->data()[ci];
-                if (city.owner != this->m_player) { continue; }
-                // Don't trade with the city the trader is in
-                if (city.location == traderUnit->position) { continue; }
-                int32_t dist = aoc::hex::distance(traderUnit->position, city.location);
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    bestCity = cityPool->entities()[ci];
-                }
-            }
-        }
-
         if (bestCity.isValid()) {
-            ErrorCode result = establishTradeRoute(world, grid, traderEntity, bestCity);
+            ErrorCode result = establishTradeRoute(world, grid, market, &diplomacy, traderEntity, bestCity);
             if (result == ErrorCode::Ok) {
                 const CityComponent* destCity = world.tryGetComponent<CityComponent>(bestCity);
-                LOG_INFO("AI %u established trade route to %s (player %u)",
+                LOG_INFO("AI %u established trade route to %s (player %u, score %.0f)",
                          static_cast<unsigned>(this->m_player),
                          (destCity != nullptr) ? destCity->name.c_str() : "unknown",
-                         static_cast<unsigned>((destCity != nullptr) ? destCity->owner : INVALID_PLAYER));
+                         static_cast<unsigned>((destCity != nullptr) ? destCity->owner : INVALID_PLAYER),
+                         static_cast<double>(bestScore));
             }
         }
     }

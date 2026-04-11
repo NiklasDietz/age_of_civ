@@ -59,8 +59,10 @@ void EconomySimulation::executeTurn(aoc::ecs::World& world, aoc::map::HexGrid& g
     this->harvestResources(world, grid);
     this->applyResourceDepletion(world, grid);
     this->processInternalTradeForAllPlayers(world, grid);
+    this->consumeBuildingFuel(world, grid);
     this->executeProduction(world, grid);
     this->reportToMarket(world);
+    this->computePlayerNeeds(world);
     this->m_market.updatePrices();
     this->executeTradeRoutes(world);
     this->settleTradeInCoins(world);
@@ -185,6 +187,179 @@ void EconomySimulation::harvestResources(aoc::ecs::World& world,
 }
 
 // ============================================================================
+// Step 1b: Consume ongoing fuel for buildings (power plants, etc.)
+//
+// Buildings with ongoingFuelGoodId consume fuel from the city stockpile each
+// turn. If fuel is unavailable, the building is unpowered this turn -- its
+// recipes won't run in executeProduction (checked via CityPowerComponent).
+// ============================================================================
+
+void EconomySimulation::consumeBuildingFuel(aoc::ecs::World& world,
+                                             const aoc::map::HexGrid& grid) {
+    aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
+    if (cityPool == nullptr) {
+        return;
+    }
+
+    for (uint32_t i = 0; i < cityPool->size(); ++i) {
+        EntityId cityEntity = cityPool->entities()[i];
+        const CityComponent& city = cityPool->data()[i];
+
+        const CityDistrictsComponent* districts =
+            world.tryGetComponent<CityDistrictsComponent>(cityEntity);
+        if (districts == nullptr) {
+            continue;
+        }
+
+        CityStockpileComponent* stockpile =
+            world.tryGetComponent<CityStockpileComponent>(cityEntity);
+        if (stockpile == nullptr) {
+            continue;
+        }
+
+        // Fusion Reactor Deuterium self-supply: coastal cities with a Fusion
+        // Reactor extract Deuterium from seawater. Inland cities must import it.
+        if (districts->hasBuilding(BuildingId{35})) {
+            // Check if city is coastal (any neighbor tile is water)
+            bool isCoastal = false;
+            std::array<aoc::hex::AxialCoord, 6> neighbors = aoc::hex::neighbors(city.location);
+            for (const aoc::hex::AxialCoord& nbr : neighbors) {
+                if (grid.isValid(nbr)) {
+                    int32_t nbrIdx = grid.toIndex(nbr);
+                    if (aoc::map::isWater(grid.terrain(nbrIdx))) {
+                        isCoastal = true;
+                        break;
+                    }
+                }
+            }
+            if (isCoastal) {
+                stockpile->addGoods(goods::DEUTERIUM, 1);
+            }
+        }
+
+        for (const CityDistrictsComponent::PlacedDistrict& district : districts->districts) {
+            for (BuildingId bid : district.buildings) {
+                const BuildingDef& bdef = buildingDef(bid);
+                if (!bdef.needsFuel()) {
+                    continue;
+                }
+
+                int32_t available = stockpile->getAmount(bdef.ongoingFuelGoodId);
+                if (available >= bdef.ongoingFuelPerTurn) {
+                    [[maybe_unused]] bool ok =
+                        stockpile->consumeGoods(bdef.ongoingFuelGoodId, bdef.ongoingFuelPerTurn);
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Step 1c: Compute per-player resource needs (what they lack but want).
+//
+// Needs are derived from: recipe inputs for buildings they have, building
+// fuel requirements, unit resource requirements for queued/desired units,
+// and missing luxury types (for amenity dedup system).
+// ============================================================================
+
+void EconomySimulation::computePlayerNeeds(aoc::ecs::World& world) {
+    aoc::ecs::ComponentPool<PlayerEconomyComponent>* econPool =
+        world.getPool<PlayerEconomyComponent>();
+    if (econPool == nullptr) {
+        return;
+    }
+
+    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
+        world.getPool<CityComponent>();
+
+    for (uint32_t pi = 0; pi < econPool->size(); ++pi) {
+        PlayerEconomyComponent& econ = econPool->data()[pi];
+        econ.totalNeeds.clear();
+
+        if (cityPool == nullptr) { continue; }
+
+        // Aggregate stockpile across all cities for this player
+        std::unordered_map<uint16_t, int32_t> totalStock;
+        for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
+            if (cityPool->data()[ci].owner != econ.owner) { continue; }
+            const CityStockpileComponent* stock =
+                world.tryGetComponent<CityStockpileComponent>(cityPool->entities()[ci]);
+            if (stock == nullptr) { continue; }
+            for (const std::pair<const uint16_t, int32_t>& entry : stock->goods) {
+                totalStock[entry.first] += entry.second;
+            }
+        }
+
+        // Recipe input needs: for each recipe the player's buildings can run,
+        // compute the input deficit (what's needed but not in stockpile)
+        for (const ProductionRecipe& recipe : allRecipes()) {
+            // Check if any city has the required building
+            bool hasBuildingSomewhere = false;
+            for (uint32_t ci = 0; ci < cityPool->size() && !hasBuildingSomewhere; ++ci) {
+                if (cityPool->data()[ci].owner != econ.owner) { continue; }
+                const CityDistrictsComponent* districts =
+                    world.tryGetComponent<CityDistrictsComponent>(cityPool->entities()[ci]);
+                if (districts != nullptr && districts->hasBuilding(recipe.requiredBuilding)) {
+                    hasBuildingSomewhere = true;
+                }
+            }
+            if (!hasBuildingSomewhere) { continue; }
+
+            for (const RecipeInput& input : recipe.inputs) {
+                int32_t have = 0;
+                std::unordered_map<uint16_t, int32_t>::iterator it = totalStock.find(input.goodId);
+                if (it != totalStock.end()) { have = it->second; }
+                int32_t deficit = input.amount - have;
+                if (deficit > 0) {
+                    econ.totalNeeds[input.goodId] += deficit;
+                }
+            }
+        }
+
+        // Building fuel needs
+        for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
+            if (cityPool->data()[ci].owner != econ.owner) { continue; }
+            const CityDistrictsComponent* districts =
+                world.tryGetComponent<CityDistrictsComponent>(cityPool->entities()[ci]);
+            if (districts == nullptr) { continue; }
+            for (const CityDistrictsComponent::PlacedDistrict& d : districts->districts) {
+                for (BuildingId bid : d.buildings) {
+                    const BuildingDef& bdef = buildingDef(bid);
+                    if (bdef.needsFuel()) {
+                        int32_t have = 0;
+                        std::unordered_map<uint16_t, int32_t>::iterator it =
+                            totalStock.find(bdef.ongoingFuelGoodId);
+                        if (it != totalStock.end()) { have = it->second; }
+                        if (have < bdef.ongoingFuelPerTurn) {
+                            econ.totalNeeds[bdef.ongoingFuelGoodId] +=
+                                (bdef.ongoingFuelPerTurn - have);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Count unique luxuries (for dedup tracking)
+        constexpr uint16_t RAW_LUXURY_IDS[] = {
+            goods::WINE, goods::SPICES, goods::SILK, goods::IVORY, goods::GEMS,
+            goods::DYES, goods::FURS, goods::INCENSE, goods::SUGAR,
+            goods::PEARLS, goods::TEA, goods::COFFEE, goods::TOBACCO
+        };
+        int32_t uniqueCount = 0;
+        for (uint16_t luxId : RAW_LUXURY_IDS) {
+            std::unordered_map<uint16_t, int32_t>::iterator it = totalStock.find(luxId);
+            if (it != totalStock.end() && it->second > 0) {
+                ++uniqueCount;
+            } else {
+                // Missing luxury = need for trade
+                econ.totalNeeds[luxId] += 1;
+            }
+        }
+        econ.uniqueLuxuryCount = uniqueCount;
+    }
+}
+
+// ============================================================================
 // Step 2: Execute production recipes in topological order
 //
 // Worker capacity limit: each city can execute at most (population / 2)
@@ -193,7 +368,7 @@ void EconomySimulation::harvestResources(aoc::ecs::World& world,
 // ============================================================================
 
 void EconomySimulation::executeProduction(aoc::ecs::World& world,
-                                          const aoc::map::HexGrid& grid) {
+                                          aoc::map::HexGrid& grid) {
     aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
     if (cityPool == nullptr) {
         return;
@@ -219,7 +394,7 @@ void EconomySimulation::executeProduction(aoc::ecs::World& world,
         // Check nuclear meltdown (deterministic hash from turn counter + city index)
         if (power.hasNuclear) {
             uint32_t turnHash = this->m_depletionTurnCounter * 7919u + cityEntity.index;
-            checkNuclearMeltdown(world, cityEntity, turnHash);
+            checkNuclearMeltdown(world, grid, cityEntity, turnHash);
         }
 
         // Update automation

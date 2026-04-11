@@ -48,6 +48,10 @@ enum class PowerPlantType : uint8_t {
     Nuclear      = 3,
     Solar        = 4,
     Wind         = 5,
+    Gas          = 6,
+    Biofuel      = 7,
+    Geothermal   = 8,
+    Fusion       = 9,
 
     Count
 };
@@ -64,13 +68,17 @@ struct PowerPlantDef {
 };
 
 /// Power plant building IDs start at 26.
-inline constexpr std::array<PowerPlantDef, 6> POWER_PLANT_DEFS = {{
-    {PowerPlantType::Coal,          BuildingId{26}, 30, 2 /*COAL*/,    2, 3, false, 0.0f},
-    {PowerPlantType::Oil,           BuildingId{27}, 40, 3 /*OIL*/,     2, 2, false, 0.0f},
-    {PowerPlantType::Hydroelectric, BuildingId{28}, 25, 0xFFFF,        0, 0, true,  0.0f},
-    {PowerPlantType::Nuclear,       BuildingId{29}, 60, 6 /*URANIUM*/, 1, 0, false, 0.002f},
-    {PowerPlantType::Solar,         BuildingId{30}, 15, 0xFFFF,        0, 0, false, 0.0f},
-    {PowerPlantType::Wind,          BuildingId{31}, 12, 0xFFFF,        0, 0, false, 0.0f},
+inline constexpr std::array<PowerPlantDef, 10> POWER_PLANT_DEFS = {{
+    {PowerPlantType::Coal,          BuildingId{26}, 30, 2 /*COAL*/,       2, 3, false, 0.0f},
+    {PowerPlantType::Oil,           BuildingId{27}, 40, 65 /*FUEL*/,      1, 2, false, 0.0f},
+    {PowerPlantType::Hydroelectric, BuildingId{28}, 25, 0xFFFF,           0, 0, true,  0.0f},
+    {PowerPlantType::Nuclear,       BuildingId{29}, 60, 6 /*URANIUM*/,    1, 0, false, 0.002f},
+    {PowerPlantType::Solar,         BuildingId{30}, 15, 0xFFFF,           0, 0, false, 0.0f},
+    {PowerPlantType::Wind,          BuildingId{31}, 12, 0xFFFF,           0, 0, false, 0.0f},
+    {PowerPlantType::Gas,           BuildingId{32}, 35, 12 /*NAT_GAS*/,   1, 1, false, 0.0f},
+    {PowerPlantType::Biofuel,       BuildingId{33}, 25, 81 /*BIOFUEL*/,   2, 0, false, 0.0f},
+    {PowerPlantType::Geothermal,    BuildingId{34}, 20, 0xFFFF,           0, 0, false, 0.0f},   // requires volcanic/mountain (checked elsewhere)
+    {PowerPlantType::Fusion,        BuildingId{35}, 80, 80 /*DEUTERIUM*/, 1, 0, false, 0.0f},
 }};
 
 // ============================================================================
@@ -151,7 +159,16 @@ struct CityPowerComponent {
  * @param turnHash    Deterministic hash for this turn.
  * @return true if meltdown occurred.
  */
-bool checkNuclearMeltdown(aoc::ecs::World& world, EntityId cityEntity,
-                          uint32_t turnHash);
+bool checkNuclearMeltdown(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+                          EntityId cityEntity, uint32_t turnHash);
+
+/**
+ * @brief Apply nuclear fallout from a bombed nuclear plant.
+ *
+ * Larger radius (2 hexes) and longer duration (40 turns) than accidental meltdown.
+ * Called from combat when a city with a nuclear plant is attacked.
+ */
+void applyBombedNuclearFallout(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+                                EntityId cityEntity);
 
 } // namespace aoc::sim

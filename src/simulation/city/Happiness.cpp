@@ -58,6 +58,50 @@ void computeCityHappiness(aoc::ecs::World& world, PlayerId player) {
         }
     }
 
+    // Gather unique luxury resource types across ALL player cities (deduplication).
+    // Each unique type provides +1 amenity to up to 4 cities (Civ 6 style).
+    // Duplicate copies of the same luxury give ZERO extra amenities -- this creates
+    // strong incentive to trade surplus luxuries for types the player lacks.
+    constexpr uint16_t RAW_LUXURY_IDS[] = {
+        goods::WINE, goods::SPICES, goods::SILK, goods::IVORY, goods::GEMS,
+        goods::DYES, goods::FURS, goods::INCENSE, goods::SUGAR,
+        goods::PEARLS, goods::TEA, goods::COFFEE, goods::TOBACCO
+    };
+    int32_t uniqueLuxuryCount = 0;
+    for (uint16_t luxId : RAW_LUXURY_IDS) {
+        bool playerHasThis = false;
+        for (uint32_t ci = 0; ci < cityPool->size() && !playerHasThis; ++ci) {
+            if (cityPool->data()[ci].owner != player) { continue; }
+            const CityStockpileComponent* stock =
+                world.tryGetComponent<CityStockpileComponent>(cityPool->entities()[ci]);
+            if (stock != nullptr && stock->getAmount(luxId) > 0) {
+                playerHasThis = true;
+            }
+        }
+        if (playerHasThis) {
+            ++uniqueLuxuryCount;
+        }
+    }
+
+    // Count player's cities for amenity distribution
+    int32_t playerCityCount = 0;
+    for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
+        if (cityPool->data()[ci].owner == player) { ++playerCityCount; }
+    }
+
+    // Each unique luxury provides +1 amenity to each city, up to 4 cities per luxury.
+    // Effective per-city amenity: min(uniqueLuxuryCount, 4 * uniqueLuxuryCount / max(1, cityCount))
+    // Simplified: each city gets uniqueLuxuryCount amenities, but each luxury covers max 4 cities.
+    float luxuryAmenityPerCity = 0.0f;
+    if (playerCityCount > 0) {
+        // Each luxury covers 4 cities. Total luxury amenity pool = uniqueLuxuryCount * 4.
+        // Distributed evenly across all cities, capped at uniqueLuxuryCount per city.
+        float totalPool = static_cast<float>(uniqueLuxuryCount) * 4.0f;
+        luxuryAmenityPerCity = std::min(
+            static_cast<float>(uniqueLuxuryCount),
+            totalPool / static_cast<float>(playerCityCount));
+    }
+
     for (uint32_t i = 0; i < cityPool->size(); ++i) {
         CityComponent& city = cityPool->data()[i];
         if (city.owner != player) {
@@ -74,24 +118,16 @@ void computeCityHappiness(aoc::ecs::World& world, PlayerId player) {
         // Base amenities: 1 from palace/capital
         happiness.amenities = 1.0f;
 
-        // Amenity bonus from luxury resources and processed goods
+        // Deduplicated luxury amenities (unique types across empire)
+        happiness.amenities += luxuryAmenityPerCity;
+
+        // Processed luxury goods: NOT deduplicated (manufactured, scale with production)
         const CityStockpileComponent* stockpile =
             world.tryGetComponent<CityStockpileComponent>(cityEntity);
         if (stockpile != nullptr) {
-            // Each unique luxury resource provides +1 amenity (like Civ 6)
-            if (stockpile->getAmount(goods::WINE) > 0)    { happiness.amenities += 1.0f; }
-            if (stockpile->getAmount(goods::SPICES) > 0)  { happiness.amenities += 1.0f; }
-            if (stockpile->getAmount(goods::SILK) > 0)    { happiness.amenities += 1.0f; }
-            if (stockpile->getAmount(goods::IVORY) > 0)   { happiness.amenities += 1.0f; }
-            if (stockpile->getAmount(goods::GEMS) > 0)    { happiness.amenities += 1.0f; }
-            if (stockpile->getAmount(goods::DYES) > 0)    { happiness.amenities += 1.0f; }
-            if (stockpile->getAmount(goods::FURS) > 0)    { happiness.amenities += 1.0f; }
-            if (stockpile->getAmount(goods::INCENSE) > 0) { happiness.amenities += 1.0f; }
-            if (stockpile->getAmount(goods::SUGAR) > 0)   { happiness.amenities += 0.5f; }
-            // Processed luxury goods
-            if (stockpile->getAmount(goods::CLOTHING) > 0)          { happiness.amenities += 1.5f; }
-            if (stockpile->getAmount(goods::ADV_CONSUMER_GOODS) > 0){ happiness.amenities += 2.0f; }
-            if (stockpile->getAmount(goods::CONSUMER_GOODS) > 0)    { happiness.amenities += 1.0f; }
+            if (stockpile->getAmount(goods::CLOTHING) > 0)           { happiness.amenities += 1.5f; }
+            if (stockpile->getAmount(goods::ADV_CONSUMER_GOODS) > 0) { happiness.amenities += 2.0f; }
+            if (stockpile->getAmount(goods::CONSUMER_GOODS) > 0)     { happiness.amenities += 1.0f; }
         }
 
         // Amenity bonus from buildings (districts and their buildings provide comfort)

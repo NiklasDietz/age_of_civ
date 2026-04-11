@@ -58,7 +58,9 @@ public:
 private:
     void harvestResources(aoc::ecs::World& world, aoc::map::HexGrid& grid);
     void processInternalTradeForAllPlayers(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
-    void executeProduction(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
+    void consumeBuildingFuel(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
+    void executeProduction(aoc::ecs::World& world, aoc::map::HexGrid& grid);
+    void computePlayerNeeds(aoc::ecs::World& world);
     void applyResourceDepletion(aoc::ecs::World& world, aoc::map::HexGrid& grid);
     void reportToMarket(aoc::ecs::World& world);
     void executeTradeRoutes(aoc::ecs::World& world);

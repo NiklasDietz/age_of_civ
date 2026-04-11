@@ -301,6 +301,33 @@ void MapGenerator::smoothCoastlines(HexGrid& grid) {
             }
         }
     }
+
+    // Second pass: create ShallowWater ring around Coast tiles.
+    // Ocean tiles adjacent to Coast (but not adjacent to land) become ShallowWater.
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            int32_t index = row * width + col;
+            if (grid.terrain(index) != TerrainType::Ocean) {
+                continue;
+            }
+
+            hex::AxialCoord axial = hex::offsetToAxial({col, row});
+            std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(axial);
+
+            bool adjacentToCoast = false;
+            for (const hex::AxialCoord& n : nbrs) {
+                if (!grid.isValid(n)) { continue; }
+                if (grid.terrain(grid.toIndex(n)) == TerrainType::Coast) {
+                    adjacentToCoast = true;
+                    break;
+                }
+            }
+
+            if (adjacentToCoast) {
+                grid.setTerrain(index, TerrainType::ShallowWater);
+            }
+        }
+    }
 }
 
 void MapGenerator::assignFeatures(const Config& config, HexGrid& grid, aoc::Random& rng) {
@@ -936,6 +963,8 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
                         placed = ResourceId{aoc::sim::goods::OIL};
                     } else if (resRng.chance(0.05f)) {
                         placed = ResourceId{aoc::sim::goods::COAL};
+                    } else if (resRng.chance(0.04f)) {
+                        placed = ResourceId{aoc::sim::goods::NATURAL_GAS};
                     } else if (resRng.chance(0.03f)) {
                         placed = ResourceId{aoc::sim::goods::NITER};
                     }
@@ -957,35 +986,62 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
                 if (terrain == TerrainType::Desert) {
                     if (elev <= 0 && resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::OIL};
-                    } else if (resRng.chance(0.02f)) {
+                    } else if (resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::INCENSE};
+                    } else if (resRng.chance(0.03f)) {
+                        placed = ResourceId{aoc::sim::goods::IVORY};
                     }
                 } else if (temperature > 0.65f && terrain != TerrainType::Desert) {
-                    // Tropical
+                    // Tropical: luxuries are more abundant here
                     if (resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::COTTON};
                     } else if (resRng.chance(0.03f)) {
                         placed = ResourceId{aoc::sim::goods::RUBBER};
-                    } else if (resRng.chance(0.03f)) {
+                    } else if (resRng.chance(0.05f)) {
                         placed = ResourceId{aoc::sim::goods::SPICES};
-                    } else if (resRng.chance(0.03f)) {
+                    } else if (resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::SUGAR};
+                    } else if (resRng.chance(0.05f)) {
+                        placed = ResourceId{aoc::sim::goods::TEA};
+                    } else if (resRng.chance(0.05f)) {
+                        placed = ResourceId{aoc::sim::goods::COFFEE};
+                    } else if (resRng.chance(0.04f)) {
+                        placed = ResourceId{aoc::sim::goods::TOBACCO};
+                    } else if (resRng.chance(0.03f)) {
+                        placed = ResourceId{aoc::sim::goods::SILK};
                     }
                 } else if (temperature >= 0.30f && temperature <= 0.65f) {
-                    // Temperate
+                    // Temperate: bonus + luxury resources
                     if (resRng.chance(0.06f)) {
                         placed = ResourceId{aoc::sim::goods::WHEAT};
                     } else if (resRng.chance(0.05f)) {
                         placed = ResourceId{aoc::sim::goods::WOOD};
                     } else if (resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::CATTLE};
+                    } else if (resRng.chance(0.04f)) {
+                        placed = ResourceId{aoc::sim::goods::WINE};
+                    } else if (resRng.chance(0.03f)) {
+                        placed = ResourceId{aoc::sim::goods::SALT};
+                    } else if (resRng.chance(0.03f)) {
+                        placed = ResourceId{aoc::sim::goods::DYES};
+                    } else if (grid.feature(index) == FeatureType::Hills && resRng.chance(0.04f)) {
+                        placed = ResourceId{aoc::sim::goods::MARBLE};
                     }
                 } else if (temperature < 0.30f) {
-                    // Cold
-                    if (resRng.chance(0.05f)) {
+                    // Cold: furs and gems are more common
+                    if (resRng.chance(0.06f)) {
                         placed = ResourceId{aoc::sim::goods::FURS};
+                    } else if (resRng.chance(0.03f)) {
+                        placed = ResourceId{aoc::sim::goods::GEMS};
                     } else if (nearCoast && resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::FISH};
+                    }
+                }
+
+                // Desert also gets salt
+                if (!placed.isValid() && terrain == TerrainType::Desert) {
+                    if (resRng.chance(0.04f)) {
+                        placed = ResourceId{aoc::sim::goods::SALT};
                     }
                 }
             }
@@ -996,6 +1052,8 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
                     placed = ResourceId{aoc::sim::goods::FISH};
                 } else if (resRng.chance(0.02f)) {
                     placed = ResourceId{aoc::sim::goods::SUGAR};
+                } else if (resRng.chance(0.02f)) {
+                    placed = ResourceId{aoc::sim::goods::PEARLS};
                 }
             }
 

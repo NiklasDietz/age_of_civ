@@ -196,7 +196,11 @@ public:
     // ========================================================================
 
     /// Get the total yield for a tile (terrain + feature + improvement + natural wonder).
+    /// Fallout tiles yield nothing.
     [[nodiscard]] TileYield tileYield(int32_t index) const {
+        if (this->feature(index) == FeatureType::Fallout) {
+            return {0, 0, 0, 0, 0, 0};
+        }
         TileYield base = baseTerrainYield(this->terrain(index));
         TileYield feat = featureYieldModifier(this->feature(index));
         TileYield imp  = improvementYieldBonus(this->improvement(index));
@@ -211,13 +215,24 @@ public:
         };
     }
 
-    /// Movement cost for a naval unit (0 = impassable water/land for ships).
+    /// Movement cost for a naval unit (0 = impassable for ships).
+    /// All water tiles cost 1 MP. Land is impassable.
     [[nodiscard]] int32_t navalMovementCost(int32_t index) const {
         TerrainType t = this->terrain(index);
-        if (t == TerrainType::Coast || t == TerrainType::Ocean) {
+        if (aoc::map::isWater(t)) {
             return 1;
         }
         return 0;  // Land tiles are impassable for naval units
+    }
+
+    /// Movement cost for early naval units (no Navigation tech).
+    /// Can only traverse Coast and ShallowWater, not deep Ocean.
+    [[nodiscard]] int32_t shallowNavalMovementCost(int32_t index) const {
+        TerrainType t = this->terrain(index);
+        if (aoc::map::isShallowWater(t)) {
+            return 1;
+        }
+        return 0;  // Deep ocean and land are impassable
     }
 
     /// Movement cost for a land unit moving FROM fromIndex TO index.
@@ -300,6 +315,46 @@ private:
     std::vector<ImprovementType>  m_improvement;
     std::vector<uint8_t>          m_road;            ///< 1 if tile has road, 0 otherwise
     std::vector<NaturalWonderType> m_naturalWonder;
+
+    // Nuclear fallout tracking
+    std::vector<int16_t>     m_falloutTurns;     ///< Turns of fallout remaining (0 = no fallout)
+    std::vector<FeatureType> m_preFalloutFeature; ///< Feature before fallout (restored after decay)
+
+public:
+    /// Apply nuclear fallout to a tile for the given duration.
+    void applyFallout(int32_t index, int16_t turns) {
+        this->assertIndex(index);
+        std::size_t idx = static_cast<std::size_t>(index);
+        if (this->m_falloutTurns[idx] <= 0) {
+            // Save original feature before replacing with Fallout
+            this->m_preFalloutFeature[idx] = this->m_feature[idx];
+        }
+        this->m_feature[idx] = FeatureType::Fallout;
+        this->m_falloutTurns[idx] = turns;
+        // Destroy improvements in fallout zone
+        this->m_improvement[idx] = ImprovementType::None;
+        this->m_road[idx] = 0;
+    }
+
+    /// Tick fallout decay for all tiles (call once per turn).
+    void tickFallout() {
+        for (std::size_t i = 0; i < this->m_falloutTurns.size(); ++i) {
+            if (this->m_falloutTurns[i] > 0) {
+                --this->m_falloutTurns[i];
+                if (this->m_falloutTurns[i] <= 0) {
+                    // Fallout has decayed -- restore original feature
+                    this->m_feature[i] = this->m_preFalloutFeature[i];
+                    this->m_preFalloutFeature[i] = FeatureType::None;
+                }
+            }
+        }
+    }
+
+    /// Check if a tile has active fallout.
+    [[nodiscard]] bool hasFallout(int32_t index) const {
+        this->assertIndex(index);
+        return this->m_falloutTurns[static_cast<std::size_t>(index)] > 0;
+    }
 };
 
 } // namespace aoc::map

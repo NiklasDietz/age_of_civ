@@ -217,4 +217,28 @@ bool prospectTile(aoc::map::HexGrid& grid, int32_t index,
     return false;
 }
 
+int32_t computeFarmAdjacencyBonus(const aoc::map::HexGrid& grid, int32_t index) {
+    if (grid.improvement(index) != aoc::map::ImprovementType::Farm) {
+        return 0;
+    }
+
+    // Count adjacent tiles that also have Farms
+    aoc::hex::AxialCoord center = grid.toAxial(index);
+    std::array<aoc::hex::AxialCoord, 6> neighbors = aoc::hex::neighbors(center);
+
+    int32_t adjacentFarms = 0;
+    for (const aoc::hex::AxialCoord& nbr : neighbors) {
+        if (!grid.isValid(nbr)) {
+            continue;
+        }
+        int32_t nbrIdx = grid.toIndex(nbr);
+        if (grid.improvement(nbrIdx) == aoc::map::ImprovementType::Farm) {
+            ++adjacentFarms;
+        }
+    }
+
+    // Bonus: +1 food if 2+ adjacent farms (forming a triangle/cluster of 3+)
+    return (adjacentFarms >= 2) ? 1 : 0;
+}
+
 } // namespace aoc::sim

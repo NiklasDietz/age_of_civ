@@ -32,7 +32,7 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
     hex::AxialCoord center = grid.toAxial(tileIndex);
     std::array<hex::AxialCoord, 6> neighbors = hex::neighbors(center);
 
-    // Count adjacent features
+    // Count adjacent features and district types
     int32_t adjMountains = 0;
     int32_t adjForests = 0;
     int32_t adjRainforests = 0;
@@ -40,8 +40,16 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
     int32_t adjRiverEdges = 0;
     int32_t adjCoastalResources = 0;
     int32_t adjMines = 0;
+    int32_t adjQuarries = 0;
     int32_t adjHills = 0;
     int32_t adjWonders = 0;
+    int32_t adjHarborDistricts = 0;
+    int32_t adjIndustrialDistricts = 0;
+    int32_t adjCityCenters = 0;
+    [[maybe_unused]] int32_t adjCampusDistricts = 0;
+
+    const aoc::ecs::ComponentPool<CityDistrictsComponent>* distPool =
+        world.getPool<CityDistrictsComponent>();
 
     for (const hex::AxialCoord& nbr : neighbors) {
         if (!grid.isValid(nbr)) { continue; }
@@ -55,15 +63,19 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
         if (feature == aoc::map::FeatureType::Jungle)   { ++adjRainforests; }
         if (feature == aoc::map::FeatureType::Hills)    { ++adjHills; }
         if (grid.improvement(nbrIdx) == aoc::map::ImprovementType::Mine) { ++adjMines; }
+        if (grid.improvement(nbrIdx) == aoc::map::ImprovementType::Quarry) { ++adjQuarries; }
 
         // Check for adjacent districts (any city's district on this tile)
-        const aoc::ecs::ComponentPool<CityDistrictsComponent>* distPool =
-            world.getPool<CityDistrictsComponent>();
+        // Also track specific district types for enhanced adjacency
         if (distPool != nullptr) {
             for (uint32_t d = 0; d < distPool->size(); ++d) {
                 for (const CityDistrictsComponent::PlacedDistrict& pd : distPool->data()[d].districts) {
                     if (pd.location == nbr) {
                         ++adjDistricts;
+                        if (pd.type == DistrictType::Harbor)     { ++adjHarborDistricts; }
+                        if (pd.type == DistrictType::Industrial) { ++adjIndustrialDistricts; }
+                        if (pd.type == DistrictType::CityCenter) { ++adjCityCenters; }
+                        if (pd.type == DistrictType::Campus)     { ++adjCampusDistricts; }
                     }
                 }
             }
@@ -83,37 +95,41 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
     // River edges on the district's own tile
     adjRiverEdges = __builtin_popcount(grid.riverEdges(tileIndex));
 
-    // Apply bonuses based on district type
+    // Apply bonuses based on district type (Civ 6 adjacency rules)
     switch (districtType) {
         case DistrictType::Campus:
             bonus.science += static_cast<float>(adjMountains) * 1.0f;
             bonus.science += static_cast<float>(adjRainforests) * 0.5f;
-            bonus.science += static_cast<float>(adjWonders) * 1.0f;
+            bonus.science += static_cast<float>(adjWonders) * 2.0f;  // Wonders inspire science
             break;
 
         case DistrictType::Commercial:
             bonus.gold += (adjRiverEdges > 0) ? 2.0f : 0.0f;
             bonus.gold += static_cast<float>(adjDistricts) * 0.5f;
+            bonus.gold += static_cast<float>(adjHarborDistricts) * 2.0f;  // Harbor synergy
             break;
 
         case DistrictType::Industrial:
             bonus.production += static_cast<float>(adjMines) * 1.0f;
+            bonus.production += static_cast<float>(adjQuarries) * 1.0f;   // Quarries feed industry
             bonus.production += static_cast<float>(adjDistricts) * 0.5f;
+            bonus.production += static_cast<float>(adjIndustrialDistricts) * 1.0f;  // Industrial clusters
             break;
 
         case DistrictType::Harbor:
             bonus.gold += static_cast<float>(adjCoastalResources) * 2.0f;
             bonus.gold += static_cast<float>(adjDistricts) * 1.0f;
+            bonus.gold += static_cast<float>(adjCityCenters) * 2.0f;  // City center synergy
             break;
 
         case DistrictType::HolySite:
             bonus.faith += static_cast<float>(adjMountains) * 1.0f;
             bonus.faith += static_cast<float>(adjForests) * 0.5f;
-            bonus.faith += static_cast<float>(adjWonders) * 1.0f;
+            bonus.faith += static_cast<float>(adjWonders) * 2.0f;  // Wonders inspire faith
             break;
 
         case DistrictType::Encampment:
-            // No yield adjacency, but defense bonus
+            // Defense bonus from hills (not yield but tracked for combat)
             break;
 
         default:

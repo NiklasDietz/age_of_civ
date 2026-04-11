@@ -9,6 +9,8 @@
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/map/HexGrid.hpp"
+#include "aoc/map/HexCoord.hpp"
+#include "aoc/map/Terrain.hpp"
 #include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
@@ -91,8 +93,24 @@ CityPowerComponent computeCityPower(aoc::ecs::World& world,
     return result;
 }
 
-bool checkNuclearMeltdown(aoc::ecs::World& world, EntityId cityEntity,
-                          uint32_t turnHash) {
+/// Apply fallout to tiles in a hex radius around a city.
+static void applyFalloutRadius(aoc::map::HexGrid& grid, aoc::hex::AxialCoord center,
+                                int32_t radius, int16_t durationTurns) {
+    std::vector<aoc::hex::AxialCoord> affected;
+    affected.reserve(static_cast<std::size_t>(radius * radius * 3 + 1));
+    aoc::hex::spiral(center, radius, std::back_inserter(affected));
+    affected.push_back(center);
+
+    for (const aoc::hex::AxialCoord& tile : affected) {
+        if (!grid.isValid(tile)) { continue; }
+        int32_t idx = grid.toIndex(tile);
+        if (aoc::map::isWater(grid.terrain(idx))) { continue; }
+        grid.applyFallout(idx, durationTurns);
+    }
+}
+
+bool checkNuclearMeltdown(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+                          EntityId cityEntity, uint32_t turnHash) {
     const CityDistrictsComponent* districts =
         world.tryGetComponent<CityDistrictsComponent>(cityEntity);
     if (districts == nullptr) {
@@ -160,7 +178,62 @@ bool checkNuclearMeltdown(aoc::ecs::World& world, EntityId cityEntity,
         mutableCity->population /= 2;
     }
 
+    // Apply fallout to 1-hex radius around city for 20 turns
+    if (city != nullptr) {
+        applyFalloutRadius(grid, city->location, 1, 20);
+        LOG_INFO("Nuclear fallout applied: 1-hex radius, 20 turns around %s", cityName);
+    }
+
     return true;
+}
+
+void applyBombedNuclearFallout(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+                                EntityId cityEntity) {
+    const CityComponent* city = world.tryGetComponent<CityComponent>(cityEntity);
+    if (city == nullptr) {
+        return;
+    }
+
+    // Check if the city has a nuclear plant
+    const CityDistrictsComponent* districts =
+        world.tryGetComponent<CityDistrictsComponent>(cityEntity);
+    if (districts == nullptr || !districts->hasBuilding(POWER_PLANT_DEFS[3].buildingId)) {
+        return;
+    }
+
+    LOG_INFO("NUCLEAR PLANT BOMBED in %s! Massive fallout, 2-hex radius, 40 turns.",
+             city->name.c_str());
+
+    // Destroy the nuclear plant
+    CityDistrictsComponent* mutableDistricts =
+        world.tryGetComponent<CityDistrictsComponent>(cityEntity);
+    if (mutableDistricts != nullptr) {
+        for (CityDistrictsComponent::PlacedDistrict& district : mutableDistricts->districts) {
+            std::vector<BuildingId>::iterator it = std::find(
+                district.buildings.begin(), district.buildings.end(),
+                POWER_PLANT_DEFS[3].buildingId);
+            if (it != district.buildings.end()) {
+                district.buildings.erase(it);
+                break;
+            }
+        }
+    }
+
+    // Halve population (same as meltdown)
+    CityComponent* mutableCity = world.tryGetComponent<CityComponent>(cityEntity);
+    if (mutableCity != nullptr && mutableCity->population > 1) {
+        mutableCity->population /= 2;
+    }
+
+    // Apply fallout: 2-hex radius, 40 turns (double the accidental meltdown)
+    applyFalloutRadius(grid, city->location, 2, 40);
+
+    // Massive pollution
+    CityPollutionComponent* pollution =
+        world.tryGetComponent<CityPollutionComponent>(cityEntity);
+    if (pollution != nullptr) {
+        pollution->wasteAccumulated += 200;
+    }
 }
 
 } // namespace aoc::sim

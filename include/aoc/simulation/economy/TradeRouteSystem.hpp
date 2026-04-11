@@ -42,6 +42,7 @@
 
 namespace aoc::ecs { class World; }
 namespace aoc::map { class HexGrid; }
+namespace aoc::sim { class Market; class DiplomacyManager; }
 
 namespace aoc::sim {
 
@@ -51,12 +52,22 @@ struct TradeCargo {
     int32_t  amount = 0;
 };
 
+/// How a trade route travels between cities.
+enum class TradeRouteType : uint8_t {
+    Land,   ///< Walks overland, uses roads/railways, slowest but cheapest
+    Sea,    ///< Sails between coastal cities (both need Harbor), +50% capacity
+    Air,    ///< Flies between cities with Airports, fastest, +25% gold, late-game
+};
+
 /// State of an active trade route (attached to the Trader entity).
 struct TraderComponent {
     PlayerId     owner = INVALID_PLAYER;
     EntityId     originCity = NULL_ENTITY;
     EntityId     destCity = NULL_ENTITY;
     PlayerId     destOwner = INVALID_PLAYER;  ///< Owner of destination city
+
+    /// How this route travels.
+    TradeRouteType routeType = TradeRouteType::Land;
 
     /// Goods currently being carried.
     std::vector<TradeCargo> cargo;
@@ -84,12 +95,39 @@ struct TraderComponent {
     float scienceSpread = 0.0f;
     float cultureSpread = 0.0f;
 
-    /// Movement speed (tiles per turn).
+    /// Maximum cargo slots (varies by route type).
+    /// Land: 4, Sea: 6 (+50%), Air: 4 (same as land, but faster)
+    [[nodiscard]] int32_t maxCargoSlots() const {
+        switch (this->routeType) {
+            case TradeRouteType::Sea: return 6;
+            default: return 4;
+        }
+    }
+
+    /// Movement speed (tiles per turn). Air is fastest, sea is medium, land depends on roads.
     [[nodiscard]] int32_t movementSpeed(bool onRoad, bool onRailway) const {
-        int32_t base = 2;
-        if (onRailway) { return base + 4; }
-        if (onRoad)    { return base + 2; }
-        return base;
+        switch (this->routeType) {
+            case TradeRouteType::Air:
+                return 8;  // Air routes are the fastest
+            case TradeRouteType::Sea:
+                return 5;  // Sea routes are moderately fast
+            case TradeRouteType::Land:
+            default: {
+                int32_t base = 2;
+                if (onRailway) { return base + 4; }
+                if (onRoad)    { return base + 2; }
+                return base;
+            }
+        }
+    }
+
+    /// Gold multiplier for route type. Air and Sea give bonuses.
+    [[nodiscard]] float goldMultiplier() const {
+        switch (this->routeType) {
+            case TradeRouteType::Air: return 1.25f;  // +25% gold (premium express delivery)
+            case TradeRouteType::Sea: return 1.50f;  // +50% gold (bulk shipping)
+            default: return 1.0f;
+        }
     }
 };
 
@@ -111,23 +149,18 @@ struct TraderComponent {
  */
 [[nodiscard]] ErrorCode establishTradeRoute(aoc::ecs::World& world,
                                              aoc::map::HexGrid& grid,
+                                             const Market& market,
+                                             const DiplomacyManager* diplomacy,
                                              EntityId traderEntity,
                                              EntityId destCity);
 
 /**
  * @brief Process all active trade routes for one turn.
  *
- * For each Trader unit:
- * 1. Move along path (speed depends on road/railway)
- * 2. If arrived at destination: unload cargo, load return cargo, earn gold
- * 3. If arrived back at origin: unload return cargo, load new outbound cargo
- * 4. Apply science/culture spread bonuses
- * 5. Check if max trips reached (expire the Trader)
- *
- * @param world  ECS world.
- * @param grid   Hex grid.
+ * Uses market prices for gold calculation and demand-driven cargo selection.
  */
-void processTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& grid);
+void processTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+                         const Market& market);
 
 /**
  * @brief Pillage a Trader unit (called when enemy attacks it).

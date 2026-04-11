@@ -28,7 +28,7 @@ enum class MapType : uint8_t {
 /// Predefined map sizes.
 enum class MapSize : uint8_t {
     Small,     ///< 60x40
-    Standard,  ///< 80x50
+    Standard,  ///< 80x52
     Large,     ///< 100x66
 };
 
@@ -36,9 +36,9 @@ enum class MapSize : uint8_t {
 [[nodiscard]] constexpr std::pair<int32_t, int32_t> mapSizeDimensions(MapSize size) {
     switch (size) {
         case MapSize::Small:    return {60, 40};
-        case MapSize::Standard: return {80, 50};
+        case MapSize::Standard: return {80, 52};
         case MapSize::Large:    return {100, 66};
-        default:                return {80, 50};
+        default:                return {80, 52};
     }
 }
 
@@ -46,7 +46,7 @@ class MapGenerator {
 public:
     struct Config {
         int32_t  width     = 80;
-        int32_t  height    = 50;
+        int32_t  height    = 52;
         uint64_t seed      = 42;
         float    waterRatio = 0.35f;   ///< Approximate fraction of water tiles
         float    mountainRatio = 0.05f;

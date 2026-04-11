@@ -17,6 +17,7 @@
 #include "aoc/simulation/tech/EraScore.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/economy/EnvironmentModifier.hpp"
 #include "aoc/simulation/monetary/Inflation.hpp"
 #include "aoc/map/HexGrid.hpp"
@@ -237,6 +238,62 @@ void processProductionQueues(aoc::ecs::World& world,
             const CityComponent& city =
                 world.getComponent<CityComponent>(cityEntity);
 
+            // Check resource requirements before completing production.
+            // If the city lacks the required resources, stall (hold production overflow).
+            CityStockpileComponent* stockpile =
+                world.tryGetComponent<CityStockpileComponent>(cityEntity);
+            bool resourcesAvailable = true;
+
+            if (item.type == ProductionItemType::Unit) {
+                const UnitTypeDef& udef = unitTypeDef(UnitTypeId{item.itemId});
+                for (const UnitResourceReq& req : udef.resourceReqs) {
+                    if (req.isValid()) {
+                        int32_t available = (stockpile != nullptr)
+                            ? stockpile->getAmount(req.goodId) : 0;
+                        if (available < req.amount) {
+                            resourcesAvailable = false;
+                            break;
+                        }
+                    }
+                }
+            } else if (item.type == ProductionItemType::Building) {
+                const BuildingDef& bdef = buildingDef(BuildingId{item.itemId});
+                for (const BuildingResourceCost& cost : bdef.resourceCosts) {
+                    if (cost.isValid()) {
+                        int32_t available = (stockpile != nullptr)
+                            ? stockpile->getAmount(cost.goodId) : 0;
+                        if (available < cost.amount) {
+                            resourcesAvailable = false;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!resourcesAvailable) {
+                // Stall: keep progress at 100%, don't pop queue.
+                // Production resumes when resources arrive (via trade or harvesting).
+                queue->queue.front().progress = queue->queue.front().totalCost;
+                continue;
+            }
+
+            // Consume resources on completion
+            if (item.type == ProductionItemType::Unit && stockpile != nullptr) {
+                const UnitTypeDef& udef = unitTypeDef(UnitTypeId{item.itemId});
+                for (const UnitResourceReq& req : udef.resourceReqs) {
+                    if (req.isValid()) {
+                        [[maybe_unused]] bool ok = stockpile->consumeGoods(req.goodId, req.amount);
+                    }
+                }
+            } else if (item.type == ProductionItemType::Building && stockpile != nullptr) {
+                const BuildingDef& bdef = buildingDef(BuildingId{item.itemId});
+                for (const BuildingResourceCost& cost : bdef.resourceCosts) {
+                    if (cost.isValid()) {
+                        [[maybe_unused]] bool ok = stockpile->consumeGoods(cost.goodId, cost.amount);
+                    }
+                }
+            }
+
             switch (item.type) {
                 case ProductionItemType::Unit: {
                     UnitTypeId unitTypeId{item.itemId};
@@ -255,12 +312,10 @@ void processProductionQueues(aoc::ecs::World& world,
                     CityDistrictsComponent* districts =
                         world.tryGetComponent<CityDistrictsComponent>(cityEntity);
                     if (districts == nullptr) {
-                        // Create districts component if it doesn't exist
                         world.addComponent<CityDistrictsComponent>(cityEntity, CityDistrictsComponent{});
                         districts = &world.getComponent<CityDistrictsComponent>(cityEntity);
                     }
                     {
-                        // Find or create the required district
                         const BuildingDef& bdef = buildingDef(buildingId);
                         bool placed = false;
                         for (CityDistrictsComponent::PlacedDistrict& district :
@@ -272,7 +327,6 @@ void processProductionQueues(aoc::ecs::World& world,
                             }
                         }
                         if (!placed) {
-                            // Create new district of the required type at city location
                             CityDistrictsComponent::PlacedDistrict newDistrict;
                             newDistrict.type = bdef.requiredDistrict;
                             newDistrict.location = city.location;

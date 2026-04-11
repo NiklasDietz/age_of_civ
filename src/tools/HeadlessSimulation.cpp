@@ -311,8 +311,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
     // Generate map (use Realistic for resource placement)
     aoc::map::MapGenerator::Config mapConfig{};
-    mapConfig.width = 60;
-    mapConfig.height = 40;
+    mapConfig.width = 80;
+    mapConfig.height = 52;
     mapConfig.seed = 42;
     mapConfig.mapType = aoc::map::MapType::Realistic;
     aoc::map::MapGenerator generator;
@@ -435,6 +435,39 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 grid.setResource(nbrIdx, aoc::ResourceId{STARTER_RESOURCES[resourcesPlaced]});
                 grid.setReserves(nbrIdx, aoc::sim::defaultReserves(STARTER_RESOURCES[resourcesPlaced]));
                 ++resourcesPlaced;
+            }
+        }
+
+        // Guarantee 2 unique luxury resources near each player's capital.
+        // Each player gets different luxury types from a rotating pool so that
+        // trade for luxuries is meaningful (player A has Wine+Spices, B has Silk+Furs, etc.)
+        {
+            constexpr uint16_t LUXURY_POOL[] = {
+                aoc::sim::goods::WINE, aoc::sim::goods::SPICES, aoc::sim::goods::SILK,
+                aoc::sim::goods::FURS, aoc::sim::goods::GEMS, aoc::sim::goods::DYES,
+                aoc::sim::goods::TEA, aoc::sim::goods::COFFEE, aoc::sim::goods::TOBACCO,
+                aoc::sim::goods::PEARLS, aoc::sim::goods::INCENSE, aoc::sim::goods::IVORY
+            };
+            constexpr int32_t LUXURY_POOL_SIZE = 12;
+
+            // Each player gets 2 unique luxuries, offset by player index
+            int32_t luxPlaced = 0;
+            std::vector<aoc::hex::AxialCoord> ring2;
+            ring2.reserve(12);
+            aoc::hex::ring(startPos, 2, std::back_inserter(ring2));
+
+            for (const aoc::hex::AxialCoord& luxTile : ring2) {
+                if (luxPlaced >= 2) { break; }
+                if (!grid.isValid(luxTile)) { continue; }
+                int32_t luxIdx = grid.toIndex(luxTile);
+                if (grid.resource(luxIdx).isValid()) { continue; }
+                if (aoc::map::isWater(grid.terrain(luxIdx))
+                    || aoc::map::isImpassable(grid.terrain(luxIdx))) { continue; }
+
+                uint16_t luxId = LUXURY_POOL[(p * 2 + luxPlaced) % LUXURY_POOL_SIZE];
+                grid.setResource(luxIdx, aoc::ResourceId{luxId});
+                grid.setReserves(luxIdx, aoc::sim::defaultReserves(luxId));
+                ++luxPlaced;
             }
         }
 
@@ -640,7 +673,9 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                             cargoStr += "g" + std::to_string(c.goodId);
                             cargoStr += "x" + std::to_string(c.amount);
                         }
-                        LOG_INFO("    Trade: -> %s (P%u) trips=%d gold=%lld cargo=[%s]",
+                        const char* routeTypeNames[] = {"Land", "Sea", "Air"};
+                        LOG_INFO("    Trade[%s]: -> %s (P%u) trips=%d gold=%lld cargo=[%s]",
+                                 routeTypeNames[static_cast<int>(trader.routeType)],
                                  (destCity != nullptr) ? destCity->name.c_str() : "?",
                                  static_cast<unsigned>((destCity != nullptr) ? destCity->owner : 255),
                                  trader.completedTrips,
@@ -648,6 +683,71 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                                  cargoStr.c_str());
                     }
                 }
+            }
+        }
+
+        // Extended economy detail every 50 turns
+        if (turn % 50 == 0) {
+            LOG_INFO("=== TURN %d DETAILED ECONOMY ===", turn);
+            for (int32_t p = 0; p < playerCount; ++p) {
+                const aoc::game::Player* dp = gameState.player(static_cast<aoc::PlayerId>(p));
+                if (dp == nullptr) { continue; }
+
+                // Happiness from ECS
+                float avgHappiness = 0.0f;
+                int32_t happyCities = 0;
+                const aoc::ecs::ComponentPool<aoc::sim::CityHappinessComponent>* happyPool =
+                    world.getPool<aoc::sim::CityHappinessComponent>();
+                const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cpPool2 =
+                    world.getPool<aoc::sim::CityComponent>();
+                if (happyPool != nullptr && cpPool2 != nullptr) {
+                    for (uint32_t hi = 0; hi < happyPool->size(); ++hi) {
+                        aoc::EntityId hEnt = happyPool->entities()[hi];
+                        const aoc::sim::CityComponent* hc =
+                            world.tryGetComponent<aoc::sim::CityComponent>(hEnt);
+                        if (hc != nullptr && hc->owner == static_cast<aoc::PlayerId>(p)) {
+                            avgHappiness += happyPool->data()[hi].happiness;
+                            ++happyCities;
+                        }
+                    }
+                    if (happyCities > 0) {
+                        avgHappiness /= static_cast<float>(happyCities);
+                    }
+                }
+
+                // Needs summary
+                const aoc::ecs::ComponentPool<aoc::sim::PlayerEconomyComponent>* econP =
+                    world.getPool<aoc::sim::PlayerEconomyComponent>();
+                int32_t needsCount = 0;
+                int32_t uniqueLux = 0;
+                if (econP != nullptr) {
+                    for (uint32_t ei = 0; ei < econP->size(); ++ei) {
+                        if (econP->data()[ei].owner == static_cast<aoc::PlayerId>(p)) {
+                            needsCount = static_cast<int32_t>(econP->data()[ei].totalNeeds.size());
+                            uniqueLux = econP->data()[ei].uniqueLuxuryCount;
+                            break;
+                        }
+                    }
+                }
+
+                // Count trade routes by type
+                int32_t landRoutes = 0, seaRoutes = 0, airRoutes = 0;
+                const aoc::ecs::ComponentPool<aoc::sim::TraderComponent>* trP =
+                    world.getPool<aoc::sim::TraderComponent>();
+                if (trP != nullptr) {
+                    for (uint32_t ti = 0; ti < trP->size(); ++ti) {
+                        if (trP->data()[ti].owner != static_cast<aoc::PlayerId>(p)) { continue; }
+                        switch (trP->data()[ti].routeType) {
+                            case aoc::sim::TradeRouteType::Land: ++landRoutes; break;
+                            case aoc::sim::TradeRouteType::Sea:  ++seaRoutes; break;
+                            case aoc::sim::TradeRouteType::Air:  ++airRoutes; break;
+                        }
+                    }
+                }
+
+                LOG_INFO("  P%d: Happiness=%.2f UniqueLux=%d Needs=%d Routes(L/S/A)=%d/%d/%d",
+                         p, static_cast<double>(avgHappiness), uniqueLux, needsCount,
+                         landRoutes, seaRoutes, airRoutes);
             }
         }
 

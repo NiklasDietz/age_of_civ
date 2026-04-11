@@ -59,6 +59,29 @@ bool canBuildUnit(const aoc::ecs::World& world, PlayerId player, UnitTypeId unit
         }
     }
 
+    // Naval units require the player to have at least one city with a Harbor district
+    if (isNaval(udef.unitClass)) {
+        bool hasHarbor = false;
+        const aoc::ecs::ComponentPool<CityDistrictsComponent>* distPool =
+            world.getPool<CityDistrictsComponent>();
+        const aoc::ecs::ComponentPool<CityComponent>* cityPool =
+            world.getPool<CityComponent>();
+        if (distPool != nullptr && cityPool != nullptr) {
+            for (uint32_t ci = 0; ci < distPool->size(); ++ci) {
+                EntityId cityEnt = distPool->entities()[ci];
+                const CityComponent* city = world.tryGetComponent<CityComponent>(cityEnt);
+                if (city != nullptr && city->owner == player
+                    && distPool->data()[ci].hasDistrict(DistrictType::Harbor)) {
+                    hasHarbor = true;
+                    break;
+                }
+            }
+        }
+        if (!hasHarbor) {
+            return false;
+        }
+    }
+
     return true;
 }
 

@@ -54,6 +54,14 @@ struct PlayerEconomyComponent {
     /// Player-wide resource totals (aggregated from all cities each turn).
     std::unordered_map<uint16_t, int32_t> totalSupply;
     std::unordered_map<uint16_t, int32_t> totalDemand;
+
+    /// Per-good: resources the player needs but lacks (computed from recipe
+    /// inputs, building fuel, unit requirements, missing luxuries).
+    /// Positive = deficit that trade should fill. Updated each turn.
+    std::unordered_map<uint16_t, int32_t> totalNeeds;
+
+    /// Number of unique luxury types the player has across all cities.
+    int32_t uniqueLuxuryCount = 0;
 };
 
 } // namespace aoc::sim
