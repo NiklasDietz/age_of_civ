@@ -172,7 +172,16 @@ bool advanceResearch(PlayerTechComponent& tech, float sciencePoints) {
     tech.researchProgress += sciencePoints;
 
     const TechDef& def = techDef(tech.currentResearch);
-    float scaledCost = static_cast<float>(def.researchCost) * GamePace::instance().costMultiplier;
+    // Recursive tech cost scaling: techs with deeper dependency trees cost more.
+    // Each prerequisite in the full tree adds 15% to the base cost.
+    int32_t numPrereqs = 0;
+    for (uint16_t ti = 0; ti < techCount(); ++ti) {
+        if (tech.hasResearched(TechId{ti})) {
+            ++numPrereqs;
+        }
+    }
+    float depthMultiplier = 1.0f + static_cast<float>(numPrereqs) * 0.05f;
+    float scaledCost = static_cast<float>(def.researchCost) * GamePace::instance().costMultiplier * depthMultiplier;
     if (tech.researchProgress >= scaledCost) {
         LOG_INFO("Player %u researched: %.*s",
                  static_cast<unsigned>(tech.owner),

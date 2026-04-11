@@ -25,6 +25,14 @@
 #include "aoc/simulation/city/Governor.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
+#include "aoc/simulation/wonder/Wonder.hpp"
+#include "aoc/simulation/production/Waste.hpp"
+#include "aoc/simulation/production/PowerGrid.hpp"
+#include "aoc/simulation/production/BuildingCapacity.hpp"
+#include "aoc/simulation/production/ProductionEfficiency.hpp"
+#include "aoc/simulation/production/QualityTier.hpp"
+#include "aoc/simulation/economy/EconomicDepth.hpp"
+#include "aoc/simulation/production/Automation.hpp"
 
 #include <cstdint>
 #include <string>
@@ -158,6 +166,42 @@ public:
     [[nodiscard]] const aoc::sim::CityReligionComponent& religion() const { return this->m_religion; }
 
     // ========================================================================
+    // Extended subsystems (formerly ECS-only)
+    // ========================================================================
+
+    [[nodiscard]] aoc::sim::CityPollutionComponent& pollution() { return this->m_pollution; }
+    [[nodiscard]] const aoc::sim::CityPollutionComponent& pollution() const { return this->m_pollution; }
+
+    [[nodiscard]] aoc::sim::CityWondersComponent& wonders() { return this->m_wonders; }
+    [[nodiscard]] const aoc::sim::CityWondersComponent& wonders() const { return this->m_wonders; }
+
+    [[nodiscard]] aoc::sim::CityBuildingLevelsComponent& buildingLevels() { return this->m_buildingLevels; }
+    [[nodiscard]] const aoc::sim::CityBuildingLevelsComponent& buildingLevels() const { return this->m_buildingLevels; }
+
+    [[nodiscard]] aoc::sim::CityProductionExperienceComponent& productionExperience() { return this->m_productionExperience; }
+    [[nodiscard]] const aoc::sim::CityProductionExperienceComponent& productionExperience() const { return this->m_productionExperience; }
+
+    [[nodiscard]] aoc::sim::CityQualityComponent& quality() { return this->m_quality; }
+    [[nodiscard]] const aoc::sim::CityQualityComponent& quality() const { return this->m_quality; }
+
+    [[nodiscard]] aoc::sim::CityStrikeComponent& strike() { return this->m_strike; }
+    [[nodiscard]] const aoc::sim::CityStrikeComponent& strike() const { return this->m_strike; }
+
+    [[nodiscard]] aoc::sim::CityAutomationComponent& automation() { return this->m_automation; }
+    [[nodiscard]] const aoc::sim::CityAutomationComponent& automation() const { return this->m_automation; }
+
+    // ========================================================================
+    // Specialists
+    // ========================================================================
+
+    [[nodiscard]] int32_t entertainers() const { return this->m_entertainers; }
+    [[nodiscard]] int32_t scientists() const { return this->m_scientists; }
+    [[nodiscard]] int32_t taxmen() const { return this->m_taxmen; }
+    void setEntertainers(int32_t n) { this->m_entertainers = n; }
+    void setScientists(int32_t n) { this->m_scientists = n; }
+    void setTaxmen(int32_t n) { this->m_taxmen = n; }
+
+    // ========================================================================
     // Tile management
     // ========================================================================
 
@@ -188,6 +232,20 @@ private:
     aoc::sim::CityGovernorComponent m_governor;
     aoc::sim::CityStockpileComponent m_stockpile;
     aoc::sim::CityReligionComponent m_religion;
+
+    // Extended subsystems (formerly ECS-only, now owned by City)
+    aoc::sim::CityPollutionComponent m_pollution;
+    aoc::sim::CityWondersComponent m_wonders;
+    aoc::sim::CityBuildingLevelsComponent m_buildingLevels;
+    aoc::sim::CityProductionExperienceComponent m_productionExperience;
+    aoc::sim::CityQualityComponent m_quality;
+    aoc::sim::CityStrikeComponent m_strike;
+    aoc::sim::CityAutomationComponent m_automation;
+
+    // Specialist citizens
+    int32_t m_entertainers = 0;
+    int32_t m_scientists = 0;
+    int32_t m_taxmen = 0;
 
     int32_t m_tilesClaimedCount = 0;
 };

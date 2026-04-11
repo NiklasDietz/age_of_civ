@@ -140,7 +140,7 @@ inline constexpr std::array<BuildingDef, 36> BUILDING_DEFS = {{
     {BuildingId{21}, "Stock Exchange",     DistrictType::Commercial, 200, 0, 0, 0, 7, 1.0f},
     {BuildingId{22}, "Hospital",           DistrictType::CityCenter, 150, 2, 0, 0, 0, 1.0f},
     {BuildingId{23}, "Shipyard",           DistrictType::Harbor,     120, 2, 3, 0, 2, 1.0f,  {{62, 2}}},                // 2 Lumber
-    {BuildingId{24}, "Mint",               DistrictType::Commercial,  70, 1, 0, 0, 2, 1.0f},
+    {BuildingId{24}, "Mint",               DistrictType::CityCenter,  70, 1, 0, 0, 2, 1.0f},
     {BuildingId{25}, "Waste Treatment",    DistrictType::Industrial, 100, 2, 0, 0, 0, 1.0f},
     {BuildingId{26}, "Coal Plant",         DistrictType::Industrial,  80, 2, 0, 0, 0, 1.0f,  {}, 2, 1},                 // burns 1 Coal/turn
     {BuildingId{27}, "Oil Plant",          DistrictType::Industrial, 120, 3, 0, 0, 0, 1.0f,  {}, 65, 1},                // burns 1 Fuel/turn

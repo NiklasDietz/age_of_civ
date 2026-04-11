@@ -86,7 +86,7 @@ struct TraderComponent {
     int32_t turnsActive = 0;
 
     /// Maximum round trips before the Trader expires (like Builder charges).
-    int32_t maxTrips = 10;
+    int32_t maxTrips = -1;  ///< -1 = permanent (route persists until trader killed)
 
     /// Gold earned this turn from trade.
     CurrencyAmount goldEarnedThisTurn = 0;

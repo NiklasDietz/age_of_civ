@@ -131,7 +131,8 @@ void autoAssignWorkers(CityComponent& city, const aoc::map::HexGrid& grid,
 
 static void processSingleCityGrowth(aoc::game::City& city,
                                      const aoc::map::HexGrid& grid,
-                                     bool hasFeudalismCivic) {
+                                     bool hasFeudalismCivic,
+                                     float cityHappiness) {
     // Calculate food from worked tiles
     float totalFood = 0.0f;
     for (const aoc::hex::AxialCoord& tileCoord : city.workedTiles()) {
@@ -156,12 +157,23 @@ static void processSingleCityGrowth(aoc::game::City& city,
     float consumption = static_cast<float>(city.population()) * 2.0f;
     float surplus = totalFood - consumption;
 
+    // Celebration growth (rapture): very happy cities get +50% food surplus
+    if (cityHappiness >= 3.0f && surplus > 0.0f) {
+        surplus *= 1.5f;
+    }
+
     city.setFoodSurplus(city.foodSurplus() + surplus);
 
     // Growth check
     float needed = foodForGrowth(city.population());
     if (city.foodSurplus() >= needed) {
-        city.setFoodSurplus(city.foodSurplus() - needed);
+        // Granary (BuildingId{15}): preserves 50% of food stock after growth
+        bool hasGranary = city.hasBuilding(BuildingId{15});
+        if (hasGranary) {
+            city.setFoodSurplus(city.foodSurplus() * 0.5f);
+        } else {
+            city.setFoodSurplus(city.foodSurplus() - needed);
+        }
         city.growPopulation(1);
 
         // Auto-assign new citizen to best unworked tile within radius 3 (37 tiles)
@@ -236,7 +248,10 @@ void processCityGrowth(aoc::game::Player& player, const aoc::map::HexGrid& grid)
     bool hasFeudalismCivic = player.civics().hasCompleted(CivicId{6});
 
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
-        processSingleCityGrowth(*city, grid, hasFeudalismCivic);
+        // Happiness for celebration growth: read from CityHappinessComponent (synced from ECS).
+        // Uses previous turn's happiness since happiness is computed after growth.
+        float cityHappiness = city->happiness().happiness;
+        processSingleCityGrowth(*city, grid, hasFeudalismCivic, cityHappiness);
     }
 }
 

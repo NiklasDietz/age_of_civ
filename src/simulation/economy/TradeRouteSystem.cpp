@@ -97,11 +97,13 @@ bool evaluateTradeConsent(const aoc::ecs::World& world, const Market& market,
         }
     }
 
-    // Compute benefit score for the target player
+    // Compute benefit score for the target player.
+    // Trade is generally beneficial (gold, resources, science/culture spread),
+    // so the baseline is positive. Only war/embargo/very hostile relations block it.
     float score = 0.0f;
 
-    // Gold benefit: target always gains some gold from trade
-    score += 20.0f;
+    // Gold benefit: trade always generates gold for both parties
+    score += 40.0f;
 
     // Resource benefit: does the proposer have goods we need?
     const PlayerEconomyComponent* targetEcon = nullptr;
@@ -207,7 +209,7 @@ ErrorCode establishTradeRoute(aoc::ecs::World& world,
     trader.isReturning = false;
     trader.completedTrips = 0;
     trader.turnsActive = 0;
-    trader.maxTrips = 10;
+    trader.maxTrips = -1;  // Permanent route
 
     // Determine route type based on city infrastructure
     const CityComponent* origin = world.tryGetComponent<CityComponent>(originCity);
@@ -410,8 +412,8 @@ void processTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& grid,
                          static_cast<unsigned>(trader->owner), trader->completedTrips);
             }
 
-            // Check if max trips reached
-            if (trader->completedTrips >= trader->maxTrips) {
+            // Check if max trips reached (skip if permanent: maxTrips < 0)
+            if (trader->maxTrips > 0 && trader->completedTrips >= trader->maxTrips) {
                 LOG_INFO("Trade route expired after %d trips (player %u)",
                          trader->completedTrips, static_cast<unsigned>(trader->owner));
                 world.destroyEntity(traderEntity);

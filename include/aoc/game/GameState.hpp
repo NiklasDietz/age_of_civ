@@ -74,14 +74,13 @@ public:
     [[nodiscard]] int32_t currentTurn() const { return this->m_currentTurn; }
     void advanceTurn() { ++this->m_currentTurn; }
 
-    /// The legacy ECS World (for backward compatibility during migration).
-    /// New code should NOT use this. Use player/city/unit accessors instead.
+    /// The legacy ECS World (backward compatibility during migration - BEING REMOVED).
     [[nodiscard]] aoc::ecs::World& legacyWorld() { return *this->m_legacyWorld; }
     [[nodiscard]] const aoc::ecs::World& legacyWorld() const { return *this->m_legacyWorld; }
 
 private:
     std::vector<std::unique_ptr<Player>> m_players;
-    std::unique_ptr<aoc::ecs::World> m_legacyWorld;
+    std::unique_ptr<aoc::ecs::World> m_legacyWorld;  ///< DEPRECATED: being purged
     int32_t m_currentTurn = 0;
 };
 

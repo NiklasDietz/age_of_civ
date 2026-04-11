@@ -16,10 +16,18 @@
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
+#include "aoc/simulation/tech/EraProgression.hpp"
+#include "aoc/simulation/tech/EraScore.hpp"
+#include "aoc/simulation/tech/EurekaBoost.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/diplomacy/WarWeariness.hpp"
+#include "aoc/simulation/greatpeople/GreatPeople.hpp"
+#include "aoc/simulation/victory/VictoryCondition.hpp"
+#include "aoc/simulation/economy/TradeAgreement.hpp"
+#include "aoc/simulation/resource/ResourceComponent.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -109,6 +117,42 @@ public:
     [[nodiscard]] const aoc::sim::PlayerFaithComponent& faith() const { return this->m_faith; }
 
     // ========================================================================
+    // Era & History
+    // ========================================================================
+
+    [[nodiscard]] aoc::sim::PlayerEraComponent& era() { return this->m_era; }
+    [[nodiscard]] const aoc::sim::PlayerEraComponent& era() const { return this->m_era; }
+
+    [[nodiscard]] aoc::sim::PlayerEraScoreComponent& eraScore() { return this->m_eraScore; }
+    [[nodiscard]] const aoc::sim::PlayerEraScoreComponent& eraScore() const { return this->m_eraScore; }
+
+    [[nodiscard]] aoc::sim::PlayerWarWearinessComponent& warWeariness() { return this->m_warWeariness; }
+    [[nodiscard]] const aoc::sim::PlayerWarWearinessComponent& warWeariness() const { return this->m_warWeariness; }
+
+    [[nodiscard]] aoc::sim::PlayerEurekaComponent& eureka() { return this->m_eureka; }
+    [[nodiscard]] const aoc::sim::PlayerEurekaComponent& eureka() const { return this->m_eureka; }
+
+    [[nodiscard]] aoc::sim::PlayerGreatPeopleComponent& greatPeople() { return this->m_greatPeople; }
+    [[nodiscard]] const aoc::sim::PlayerGreatPeopleComponent& greatPeople() const { return this->m_greatPeople; }
+
+    // ========================================================================
+    // Economy (extended)
+    // ========================================================================
+
+    [[nodiscard]] aoc::sim::PlayerEconomyComponent& economy() { return this->m_economy; }
+    [[nodiscard]] const aoc::sim::PlayerEconomyComponent& economy() const { return this->m_economy; }
+
+    [[nodiscard]] aoc::sim::PlayerTradeAgreementsComponent& tradeAgreements() { return this->m_tradeAgreements; }
+    [[nodiscard]] const aoc::sim::PlayerTradeAgreementsComponent& tradeAgreements() const { return this->m_tradeAgreements; }
+
+    // ========================================================================
+    // Victory
+    // ========================================================================
+
+    [[nodiscard]] aoc::sim::VictoryTrackerComponent& victoryTracker() { return this->m_victoryTracker; }
+    [[nodiscard]] const aoc::sim::VictoryTrackerComponent& victoryTracker() const { return this->m_victoryTracker; }
+
+    // ========================================================================
     // Cities
     // ========================================================================
 
@@ -183,6 +227,20 @@ private:
 
     // Religion
     aoc::sim::PlayerFaithComponent m_faith;
+
+    // Era & History
+    aoc::sim::PlayerEraComponent m_era;
+    aoc::sim::PlayerEraScoreComponent m_eraScore;
+    aoc::sim::PlayerWarWearinessComponent m_warWeariness;
+    aoc::sim::PlayerEurekaComponent m_eureka;
+    aoc::sim::PlayerGreatPeopleComponent m_greatPeople;
+
+    // Economy (extended)
+    aoc::sim::PlayerEconomyComponent m_economy;  ///< Supply/demand/needs tracking
+    aoc::sim::PlayerTradeAgreementsComponent m_tradeAgreements;
+
+    // Victory
+    aoc::sim::VictoryTrackerComponent m_victoryTracker;
 
     // Owned entities
     std::vector<std::unique_ptr<City>> m_cities;

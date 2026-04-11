@@ -27,6 +27,12 @@ struct CityComponent {
     float           cultureBorderProgress = 0.0f; ///< Accumulated culture toward next tile
     int32_t         tilesClaimedCount = 0;    ///< Number of tiles claimed via culture
 
+    /// Specialist citizens (not working tiles, producing yields directly).
+    /// Entertainer: +2 luxury amenity. Scientist: +3 science. Taxman: +3 gold.
+    int32_t entertainers = 0;
+    int32_t scientists   = 0;
+    int32_t taxmen       = 0;
+
     /// Tiles worked by this city's citizens.
     /// The city center is always in this list and doesn't consume a citizen.
     std::vector<hex::AxialCoord> workedTiles;

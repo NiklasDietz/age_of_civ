@@ -16,6 +16,10 @@
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
 #include "aoc/simulation/production/Waste.hpp"
+#include "aoc/simulation/government/GovernmentComponent.hpp"
+#include "aoc/simulation/government/Government.hpp"
+#include "aoc/simulation/unit/UnitComponent.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/ecs/World.hpp"
 
 #include <cmath>
@@ -118,6 +122,17 @@ void computeCityHappiness(aoc::ecs::World& world, PlayerId player) {
         // Base amenities: 1 from palace/capital
         happiness.amenities = 1.0f;
 
+        // Luxury allocation slider: convert fraction of gold output to amenities.
+        // Each 10% luxury allocation → +0.5 amenity per city.
+        if (monetaryPool != nullptr) {
+            for (uint32_t mi = 0; mi < monetaryPool->size(); ++mi) {
+                if (monetaryPool->data()[mi].owner == player) {
+                    happiness.amenities += monetaryPool->data()[mi].luxuryAllocation * 5.0f;
+                    break;
+                }
+            }
+        }
+
         // Deduplicated luxury amenities (unique types across empire)
         happiness.amenities += luxuryAmenityPerCity;
 
@@ -129,6 +144,9 @@ void computeCityHappiness(aoc::ecs::World& world, PlayerId player) {
             if (stockpile->getAmount(goods::ADV_CONSUMER_GOODS) > 0) { happiness.amenities += 2.0f; }
             if (stockpile->getAmount(goods::CONSUMER_GOODS) > 0)     { happiness.amenities += 1.0f; }
         }
+
+        // Specialist citizens: Entertainers produce +2 amenity each
+        happiness.amenities += static_cast<float>(city.entertainers) * 2.0f;
 
         // Amenity bonus from buildings (districts and their buildings provide comfort)
         const CityDistrictsComponent* districts =
@@ -188,6 +206,52 @@ void computeCityHappiness(aoc::ecs::World& world, PlayerId player) {
         // Small cities (pop 3): demand 1.4. Pop 10: demand 2.5. Pop 20: demand 3.6.
         // This is much gentler than the old 0.5 per citizen which made large cities always unhappy.
         happiness.demand = std::sqrt(static_cast<float>(city.population)) * 0.8f;
+
+        // Empire size happiness penalty: cities beyond government threshold cause unhappiness
+        {
+            const aoc::ecs::ComponentPool<PlayerGovernmentComponent>* govPool =
+                world.getPool<PlayerGovernmentComponent>();
+            if (govPool != nullptr) {
+                for (uint32_t gi = 0; gi < govPool->size(); ++gi) {
+                    if (govPool->data()[gi].owner == player) {
+                        const GovernmentDef& gdef = governmentDef(govPool->data()[gi].government);
+                        int32_t excessCities = playerCityCount - gdef.empireSizeThreshold;
+                        if (excessCities > 0) {
+                            happiness.amenities -= static_cast<float>(excessCities) * 0.5f;
+                        }
+
+                        // Military unhappiness: units away from cities cause unhappiness
+                        // (Republic: 1 per unit, Democracy: 2 per unit, others: 0)
+                        if (gdef.militaryUnhappyFactor > 0.0f) {
+                            int32_t unitsAway = 0;
+                            const aoc::ecs::ComponentPool<UnitComponent>* unitPool =
+                                world.getPool<UnitComponent>();
+                            if (unitPool != nullptr) {
+                                for (uint32_t ui = 0; ui < unitPool->size(); ++ui) {
+                                    const UnitComponent& unit = unitPool->data()[ui];
+                                    if (unit.owner != player) { continue; }
+                                    if (!isMilitary(unitTypeDef(unit.typeId).unitClass)) { continue; }
+                                    // Check if unit is in any friendly city
+                                    bool inCity = false;
+                                    for (uint32_t ci2 = 0; ci2 < cityPool->size(); ++ci2) {
+                                        if (cityPool->data()[ci2].owner == player
+                                            && cityPool->data()[ci2].location == unit.position) {
+                                            inCity = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!inCity) { ++unitsAway; }
+                                }
+                            }
+                            // Distribute military unhappiness across all cities
+                            float totalMilUnhappy = static_cast<float>(unitsAway) * gdef.militaryUnhappyFactor;
+                            happiness.amenities -= totalMilUnhappy / static_cast<float>(std::max(1, playerCityCount));
+                        }
+                        break;
+                    }
+                }
+            }
+        }
 
         // Modifiers from economy and war weariness
         happiness.modifiers = -inflationPenalty - taxPenalty + warWearinessPenalty;

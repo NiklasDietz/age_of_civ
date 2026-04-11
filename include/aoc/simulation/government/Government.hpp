@@ -85,22 +85,25 @@ struct GovernmentDef {
     uint8_t            diplomaticSlots;
     uint8_t            wildcardSlots;
     GovernmentModifiers inherentBonuses;
-    float              corruptionRate;     ///< Base corruption per city beyond 4 (0.0-0.10)
+    float              corruptionRate;          ///< Base corruption per city beyond 4 (0.0-0.10)
+    int32_t            empireSizeThreshold = 6; ///< Cities before happiness penalty kicks in
+    float              militaryUnhappyFactor = 0.0f; ///< Unhappiness per military unit away from cities (0=authoritarian, 1=republic, 2=democracy)
+    float              distanceCorruptionRate = 2.0f; ///< Multiplier for distance-based corruption (0=communism)
 };
 
 inline constexpr uint8_t GOVERNMENT_COUNT = static_cast<uint8_t>(GovernmentType::Count);
 
 inline constexpr std::array<GovernmentDef, GOVERNMENT_COUNT> GOVERNMENT_DEFS = {{
-    //                                                M  E  D  W  {prod, gold, combat, sci, cul, ...}                          corrupt
-    {GovernmentType::Chiefdom,         "Chiefdom",         255, 1, 1, 0, 0, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f}, 0.05f},
-    {GovernmentType::Autocracy,        "Autocracy",          3, 2, 1, 0, 0, {1.10f, 1.0f, 0.0f, 1.0f, 1.0f}, 0.06f},
-    {GovernmentType::Oligarchy,        "Oligarchy",          3, 1, 1, 1, 0, {1.0f, 1.0f, 4.0f, 1.0f, 1.0f}, 0.05f},
-    {GovernmentType::Monarchy,         "Monarchy",           6, 2, 1, 1, 1, {1.0f, 1.05f, 0.0f, 1.0f, 1.05f}, 0.04f},
-    {GovernmentType::Democracy,        "Democracy",         12, 1, 2, 2, 1, {1.0f, 1.0f, 0.0f, 1.0f, 1.15f}, 0.02f},
-    {GovernmentType::Communism,        "Communism",         11, 3, 2, 0, 0, {1.15f, 0.90f, 0.0f, 1.05f, 1.0f}, 0.04f},
-    {GovernmentType::Fascism,          "Fascism",           11, 4, 1, 0, 0, {1.05f, 1.0f, 5.0f, 1.0f, 0.90f}, 0.07f},
-    {GovernmentType::Theocracy,        "Theocracy",          8, 1, 1, 1, 2, {1.0f, 1.0f, 0.0f, 0.95f, 1.0f}, 0.03f},
-    {GovernmentType::MerchantRepublic, "Merchant Republic",  6, 0, 3, 1, 1, {1.0f, 1.15f, 0.0f, 1.0f, 1.0f}, 0.03f},
+    //                                                    M  E  D  W  {prod, gold, combat, sci, cul, ...}                        corrupt empireThresh milUnhappy distCorrupt
+    {GovernmentType::Chiefdom,         "Chiefdom",         255, 1, 1, 0, 0, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f}, 0.05f,   4, 0.0f, 3.0f},
+    {GovernmentType::Autocracy,        "Autocracy",          3, 2, 1, 0, 0, {1.10f, 1.0f, 0.0f, 1.0f, 1.0f}, 0.06f,  6, 0.0f, 4.0f},  // Authoritarian: no mil unhappy, high dist corruption
+    {GovernmentType::Oligarchy,        "Oligarchy",          3, 1, 1, 1, 0, {1.0f, 1.0f, 4.0f, 1.0f, 1.0f}, 0.05f,   7, 0.0f, 2.0f},
+    {GovernmentType::Monarchy,         "Monarchy",           6, 2, 1, 1, 1, {1.0f, 1.05f, 0.0f, 1.0f, 1.05f}, 0.04f, 8, 0.0f, 2.0f},
+    {GovernmentType::Democracy,        "Democracy",         12, 1, 2, 2, 1, {1.0f, 1.0f, 0.0f, 1.0f, 1.15f}, 0.02f, 12, 2.0f, 2.0f},  // Democracy: high mil unhappy, big empire threshold
+    {GovernmentType::Communism,        "Communism",         11, 3, 2, 0, 0, {1.15f, 0.90f, 0.0f, 1.05f, 1.0f}, 0.04f,10, 0.0f, 0.0f}, // Communism: no distance corruption
+    {GovernmentType::Fascism,          "Fascism",           11, 4, 1, 0, 0, {1.05f, 1.0f, 5.0f, 1.0f, 0.90f}, 0.07f, 7, 0.0f, 3.0f},
+    {GovernmentType::Theocracy,        "Theocracy",          8, 1, 1, 1, 2, {1.0f, 1.0f, 0.0f, 0.95f, 1.0f}, 0.03f,  8, 0.0f, 2.0f},
+    {GovernmentType::MerchantRepublic, "Merchant Republic",  6, 0, 3, 1, 1, {1.0f, 1.15f, 0.0f, 1.0f, 1.0f}, 0.03f,  9, 1.0f, 2.0f},  // Republic: some mil unhappy
 }};
 
 [[nodiscard]] inline constexpr const GovernmentDef& governmentDef(GovernmentType type) {

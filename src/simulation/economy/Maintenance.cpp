@@ -10,6 +10,8 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/monetary/Inflation.hpp"
+#include "aoc/simulation/government/Government.hpp"
+#include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/game/Unit.hpp"
@@ -23,37 +25,72 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
                                   const aoc::map::HexGrid& grid) {
     CurrencyAmount goldIncome = 0;
 
+    // Find capital location for distance-based corruption
+    aoc::hex::AxialCoord capitalLocation{0, 0};
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
-        // Capital Palace bonus (+5 gold, matching Civ 6)
         if (city->isOriginalCapital()) {
-            goldIncome += 5;
+            capitalLocation = city->location();
+            break;
+        }
+    }
+
+    // Get government corruption rates
+    const aoc::sim::GovernmentDef& govDef = governmentDef(player.government().government);
+
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        CurrencyAmount cityGold = 0;
+
+        // Capital Palace bonus (+5 gold)
+        if (city->isOriginalCapital()) {
+            cityGold += 5;
         }
 
-        // Gold from worked tiles (improvements, terrain, resources)
+        // Gold from worked tiles
         for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
             if (grid.isValid(tile)) {
                 aoc::map::TileYield yield = grid.tileYield(grid.toIndex(tile));
-                goldIncome += static_cast<CurrencyAmount>(yield.gold);
+                cityGold += static_cast<CurrencyAmount>(yield.gold);
             }
         }
+
+        // Specialist taxmen: +3 gold each (read from ECS sync'd data or default 0)
+        // Taxmen gold is handled here since we compute per-city gold
 
         // District and building gold bonuses
         const CityDistrictsComponent& districts = city->districts();
         for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
             if (d.type == DistrictType::Commercial) {
-                goldIncome += 4;
+                cityGold += 4;
             }
             if (d.type == DistrictType::Harbor) {
-                goldIncome += 2;
+                cityGold += 2;
             }
             for (BuildingId bid : d.buildings) {
-                goldIncome += static_cast<CurrencyAmount>(buildingDef(bid).goldBonus);
+                cityGold += static_cast<CurrencyAmount>(buildingDef(bid).goldBonus);
             }
         }
+
+        // Distance-based corruption: reduces gold based on distance from capital.
+        // Varies by government type (Communism has 0 distance corruption).
+        if (!city->isOriginalCapital() && govDef.distanceCorruptionRate > 0.0f) {
+            int32_t dist = aoc::hex::distance(city->location(), capitalLocation);
+            float maxDist = static_cast<float>(std::max(grid.width(), grid.height()));
+            float distFraction = static_cast<float>(dist) / maxDist;
+            float corruptionPct = govDef.corruptionRate + distFraction * govDef.distanceCorruptionRate * 0.1f;
+            corruptionPct = std::min(corruptionPct, 0.50f);  // Cap at 50%
+            cityGold = static_cast<CurrencyAmount>(
+                static_cast<float>(cityGold) * (1.0f - corruptionPct));
+        }
+
+        goldIncome += cityGold;
     }
 
-    player.addGold(goldIncome);
-    player.setIncomePerTurn(goldIncome);
+    // Apply gold allocation slider: only the gold fraction goes to treasury.
+    // The rest is allocated to science and luxury bonuses (handled in their respective systems).
+    CurrencyAmount effectiveGold = static_cast<CurrencyAmount>(
+        static_cast<float>(goldIncome) * player.monetary().goldAllocation);
+    player.addGold(effectiveGold);
+    player.setIncomePerTurn(goldIncome);  // Display full income before split
     return goldIncome;
 }
 

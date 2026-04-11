@@ -277,8 +277,40 @@ void AIController::executeCityActions(aoc::ecs::World& world,
 
         ProductionQueueItem item{};
 
-        // Priority 0: At least 1 military unit for basic defense
-        if (unitCounts.military == 0 && bestMilitaryId.isValid() && militaryProducers == 0) {
+        // EMERGENCY: Check for enemy military units within 5 hexes of this city.
+        // If threatened, immediately produce a military unit regardless of other priorities.
+        bool emergencyThreat = false;
+        const aoc::ecs::ComponentPool<UnitComponent>* allUnits = world.getPool<UnitComponent>();
+        if (bestMilitaryId.isValid() && allUnits != nullptr) {
+            for (uint32_t ui = 0; ui < allUnits->size(); ++ui) {
+                const UnitComponent& enemyUnit = allUnits->data()[ui];
+                if (enemyUnit.owner == this->m_player) { continue; }
+                if (!isMilitary(unitTypeDef(enemyUnit.typeId).unitClass)) { continue; }
+                if (aoc::hex::distance(enemyUnit.position, city.location) <= 5) {
+                    emergencyThreat = true;
+                    break;
+                }
+            }
+        }
+        if (emergencyThreat && unitCounts.military < ownedCityCount) {
+            item.type = ProductionItemType::Unit;
+            item.itemId = bestMilitaryId.value;
+            item.name = std::string(bestMilitaryDef.name);
+            item.totalCost = static_cast<float>(bestMilitaryDef.productionCost);
+            item.progress = 0.0f;
+            ++militaryProducers;
+            LOG_INFO("AI %u EMERGENCY: Enqueued %.*s in %s (enemy nearby!)",
+                     static_cast<unsigned>(this->m_player),
+                     static_cast<int>(bestMilitaryDef.name.size()),
+                     bestMilitaryDef.name.data(),
+                     city.name.c_str());
+        }
+
+        // Priority 0: Military defense - build if we have fewer than half the desired military
+        bool criticalMilitaryNeed = item.name.empty()
+            && (unitCounts.military < desiredMilitary / 2)
+            && bestMilitaryId.isValid() && militaryProducers == 0;
+        if (criticalMilitaryNeed) {
             item.type = ProductionItemType::Unit;
             item.itemId = bestMilitaryId.value;
             item.name = std::string(bestMilitaryDef.name);

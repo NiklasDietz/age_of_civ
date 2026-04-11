@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/unit/Combat.hpp"
+#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/barbarian/BarbarianController.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
@@ -200,6 +201,49 @@ CombatResult resolveMeleeCombat(aoc::ecs::World& world,
 
     if (result.defenderKilled) {
         world.destroyEntity(defender);
+
+        // Stack kill: if defender died on open terrain (no city, no fort),
+        // all other units of the same owner on that tile are destroyed.
+        bool tileHasCity = false;
+        bool tileHasFort = false;
+        const aoc::ecs::ComponentPool<CityComponent>* cityCheckPool =
+            world.getPool<CityComponent>();
+        if (cityCheckPool != nullptr) {
+            for (uint32_t sci = 0; sci < cityCheckPool->size(); ++sci) {
+                if (cityCheckPool->data()[sci].location == defenderTile) {
+                    tileHasCity = true;
+                    break;
+                }
+            }
+        }
+        if (grid.improvement(grid.toIndex(defenderTile)) == aoc::map::ImprovementType::Fort) {
+            tileHasFort = true;
+        }
+        if (!tileHasCity && !tileHasFort) {
+            // Destroy all remaining units of the defender's owner on this tile
+            aoc::ecs::ComponentPool<UnitComponent>* stackPool =
+                world.getPool<UnitComponent>();
+            if (stackPool != nullptr) {
+                std::vector<EntityId> stackKill;
+                for (uint32_t ski = 0; ski < stackPool->size(); ++ski) {
+                    if (stackPool->data()[ski].owner == defUnit.owner
+                        && stackPool->data()[ski].position == defenderTile
+                        && stackPool->entities()[ski] != defender) {
+                        stackKill.push_back(stackPool->entities()[ski]);
+                    }
+                }
+                for (EntityId killed : stackKill) {
+                    if (world.isAlive(killed)) {
+                        world.destroyEntity(killed);
+                    }
+                }
+                if (!stackKill.empty()) {
+                    LOG_INFO("Stack kill: %d units destroyed on open terrain at (%d,%d)",
+                             static_cast<int>(stackKill.size()),
+                             defenderTile.q, defenderTile.r);
+                }
+            }
+        }
     }
     if (result.attackerKilled) {
         world.destroyEntity(attacker);

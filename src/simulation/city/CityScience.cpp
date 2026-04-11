@@ -51,6 +51,9 @@ float computePlayerScience(const aoc::ecs::World& world,
         // 2. Population base science (0.5 per citizen -- buildings are the real driver)
         cityScience += static_cast<float>(city.population) * 0.5f;
 
+        // 2b. Specialist scientists: +3 science each
+        cityScience += static_cast<float>(city.scientists) * 3.0f;
+
         // 3. Palace bonus (capital gets extra science, matching Civ 6 Palace)
         if (city.isOriginalCapital) {
             cityScience += 3.0f;
@@ -244,6 +247,9 @@ float computePlayerScience(const aoc::game::Player& player,
 
     // Economic stability bonus
     totalScience *= economicStabilityMultiplier(player.monetary());
+
+    // Science allocation slider bonus: fraction of city output allocated to research
+    totalScience *= (1.0f + player.monetary().scienceAllocation);
 
     return totalScience;
 }
