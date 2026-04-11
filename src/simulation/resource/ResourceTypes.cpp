@@ -78,6 +78,7 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     defs[goods::GLASS]                = {goods::GLASS,                "Glass",                GoodCategory::Processed, 15, false, 0.5f};
     defs[goods::RUBBER_GOODS]         = {goods::RUBBER_GOODS,         "Rubber Goods",         GoodCategory::Processed, 25, false, 0.5f};
     defs[goods::BRONZE]               = {goods::BRONZE,               "Bronze",               GoodCategory::Processed, 20, true,  0.5f};
+    defs[goods::CHARCOAL]             = {goods::CHARCOAL,             "Charcoal",             GoodCategory::Processed, 10, false, 0.3f};
 
     // Advanced (100+) -- high elasticity (0.8)
     defs[goods::MACHINERY]            = {goods::MACHINERY,            "Machinery",            GoodCategory::Advanced, 70, true,  0.8f};
@@ -314,6 +315,25 @@ std::vector<ProductionRecipe> buildRecipes() {
     recipes.push_back({37, "Build Robot Workers",
         {{goods::MICROCHIPS, 1}, {goods::STEEL, 2}, {goods::ELECTRONICS, 1}},
         goods::ROBOT_WORKERS, 1, BuildingId{5}, 4});
+
+    // ================================================================
+    // Charcoal: early coal substitute from wood (less efficient)
+    // Historically: charcoal was the primary fuel before coal mining.
+    // 3 Wood -> 1 Charcoal (vs coal which comes from mining 1:1)
+    // ================================================================
+    recipes.push_back({38, "Burn Charcoal",
+        {{goods::WOOD, 3}},
+        goods::CHARCOAL, 1, BuildingId{0}, 1});  // Forge (kiln)
+
+    // Charcoal-based steel (less efficient than coal: needs 3 charcoal vs 2 coal)
+    recipes.push_back({39, "Produce Charcoal Steel",
+        {{goods::IRON_ORE, 1}, {goods::CHARCOAL, 3}},
+        goods::STEEL, 1, BuildingId{3}, 2});  // Factory, slower
+
+    // Charcoal-based glass (less efficient: 2 charcoal vs 1 coal)
+    recipes.push_back({40, "Make Glass (Charcoal)",
+        {{goods::STONE, 1}, {goods::CHARCOAL, 2}},
+        goods::GLASS, 1, BuildingId{0}, 1});  // Forge, less output than coal version
 
     return recipes;
 }

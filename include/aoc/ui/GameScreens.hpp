@@ -32,6 +32,12 @@ public:
     /// Toggle the screen open/closed.
     void toggle(UIManager& ui);
 
+    /// Update the stored screen dimensions used when building the screen UI.
+    void setScreenSize(float width, float height) {
+        this->m_screenW = width;
+        this->m_screenH = height;
+    }
+
     /// Build and show the screen UI.
     virtual void open(UIManager& ui) = 0;
 
@@ -44,6 +50,8 @@ public:
 protected:
     WidgetId m_rootPanel = INVALID_WIDGET;
     bool m_isOpen = false;
+    float m_screenW = 1280.0f;
+    float m_screenH = 720.0f;
 
     /// Helper to create the standard screen frame (dark overlay + centered panel).
     /// Returns the inner panel WidgetId to which screens add their content.
@@ -68,8 +76,6 @@ private:
     PlayerId m_player = INVALID_PLAYER;
     WidgetId m_queueLabel = INVALID_WIDGET;
     WidgetId m_itemList = INVALID_WIDGET;
-    float m_screenW = 1280.0f;
-    float m_screenH = 720.0f;
 };
 
 /// Technology research screen.
@@ -85,8 +91,6 @@ private:
     PlayerId m_player = INVALID_PLAYER;
     WidgetId m_currentLabel = INVALID_WIDGET;
     WidgetId m_techList = INVALID_WIDGET;
-    float m_screenW = 1280.0f;
-    float m_screenH = 720.0f;
 };
 
 /// Government and policy management screen.
@@ -102,8 +106,6 @@ private:
     PlayerId m_player = INVALID_PLAYER;
     WidgetId m_currentGovLabel = INVALID_WIDGET;
     WidgetId m_govList = INVALID_WIDGET;
-    float m_screenW = 1280.0f;
-    float m_screenH = 720.0f;
 };
 
 /// Economy overview and market screen.
@@ -128,8 +130,6 @@ private:
     WidgetId m_tradeRoutePanel = INVALID_WIDGET;
     EntityId m_trSourceCity = NULL_ENTITY;
     EntityId m_trDestCity = NULL_ENTITY;
-    float m_screenW = 1280.0f;
-    float m_screenH = 720.0f;
 };
 
 /// Detailed city information screen (right-side panel, does not block map input).
@@ -179,8 +179,6 @@ private:
     std::array<WidgetId, TAB_COUNT> m_tabButtons = {
         INVALID_WIDGET, INVALID_WIDGET, INVALID_WIDGET, INVALID_WIDGET};
     int32_t m_activeTab = TAB_OVERVIEW;
-    float m_screenW = 1280.0f;
-    float m_screenH = 720.0f;
 };
 
 } // namespace aoc::ui

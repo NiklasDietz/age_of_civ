@@ -96,7 +96,7 @@ void GameServer::initialize(const GameConfig& config) {
         // Found starting city
         std::string cityName = std::string(
             aoc::sim::civDef(static_cast<aoc::sim::CivId>(civId)).cityNames[0]);
-        aoc::sim::foundCity(this->m_world, this->m_grid, player, startPos, cityName, true, 3);
+        aoc::sim::foundCity(this->m_world, this->m_grid, player, startPos, cityName, true, 1);
 
         // Create player entity with all components
         EntityId playerEntity = this->m_world.createEntity();

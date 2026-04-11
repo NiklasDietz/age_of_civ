@@ -8,20 +8,20 @@
  * Each turn, food surplus accumulates. When it reaches foodNeeded,
  * population increases by 1 and surplus resets.
  *
- * Housing limits soft-cap growth. When population exceeds housing,
- * growth rate is halved, then quartered, then stops.
+ * City center always yields at least 2 food (Civ 6 guarantee).
+ * Food consumption: 2 per citizen per turn.
  */
 
 #include "aoc/core/Types.hpp"
 
 #include <cstdint>
 
-namespace aoc::ecs {
-class World;
-}
-
 namespace aoc::map {
 class HexGrid;
+}
+
+namespace aoc::game {
+class Player;
 }
 
 namespace aoc::sim {
@@ -33,17 +33,12 @@ namespace aoc::sim {
  * @brief Process city growth for all cities of a player.
  *
  * For each city:
- *   1. Calculate food yield from worked tiles.
+ *   1. Calculate food yield from worked tiles (center guaranteed 2 food min).
  *   2. Subtract food consumption (2 per citizen).
  *   3. Accumulate surplus toward next population.
- *   4. If surplus >= threshold, grow. If surplus < 0 and sustained, starve.
- *
- * @param world  ECS world with city components.
- * @param grid   Hex grid for tile yield data.
- * @param player Player whose cities to process.
+ *   4. If surplus >= threshold, grow and auto-assign new citizen.
+ *   5. If surplus < -30 and pop > 1, starve.
  */
-void processCityGrowth(aoc::ecs::World& world,
-                       const aoc::map::HexGrid& grid,
-                       PlayerId player);
+void processCityGrowth(aoc::game::Player& player, const aoc::map::HexGrid& grid);
 
 } // namespace aoc::sim

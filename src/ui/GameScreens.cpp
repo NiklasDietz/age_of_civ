@@ -1091,13 +1091,20 @@ void CityDetailScreen::open(UIManager& ui) {
     constexpr float kPanelWidth = 350.0f;
     constexpr float kContentWidth = 330.0f;
 
-    // Right-side panel anchored to the right edge of the screen (no full-screen overlay).
-    const float panelX = this->m_screenW - kPanelWidth;
+    // Right-side panel anchored to the top-right edge of the screen (no full-screen overlay).
+    // Height is set to a large value; the anchor system positions X from the right edge.
     const float panelHeight = this->m_screenH;
 
     this->m_rootPanel = ui.createPanel(
-        {panelX, 0.0f, kPanelWidth, panelHeight},
+        {0.0f, 0.0f, kPanelWidth, panelHeight},
         PanelData{{0.12f, 0.14f, 0.18f, 0.95f}, 0.0f});
+    {
+        Widget* rootWidget = ui.getWidget(this->m_rootPanel);
+        if (rootWidget != nullptr) {
+            rootWidget->anchor = Anchor::TopRight;
+            rootWidget->marginRight = 0.0f;
+        }
+    }
 
     WidgetId innerPanel = this->m_rootPanel;
     {

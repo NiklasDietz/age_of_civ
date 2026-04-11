@@ -100,6 +100,10 @@ struct PlayerGovernmentComponent {
 [[nodiscard]] GovernmentModifiers computeGovernmentModifiers(
     const aoc::ecs::World& world, PlayerId player);
 
+/// Compute government modifiers directly from a government component.
+[[nodiscard]] GovernmentModifiers computeGovernmentModifiers(
+    const PlayerGovernmentComponent& gov);
+
 /**
  * @brief Execute a government unique action.
  *

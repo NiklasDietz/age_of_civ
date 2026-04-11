@@ -108,6 +108,47 @@ struct GoodDef {
     return defaultReserves(goodId) < 0;
 }
 
+/// Technology required to reveal a resource on the map.
+/// Returns an invalid TechId if the resource is always visible (luxury/bonus resources).
+/// Strategic resources are hidden until the player researches the required tech.
+///
+/// Based on Civ 6 resource visibility:
+///   Mining (0)            → Copper, Tin, Stone
+///   Animal Husbandry (1)  → Horses
+///   Bronze Working (4)    → Iron
+///   Apprenticeship (7)    → Niter
+///   Industrialization (11)→ Coal
+///   Refining (13)         → Oil
+///   Electricity (14)      → Aluminum
+///   Nuclear Fission (18)  → Uranium
+///   (none)                → Rubber, Cotton, Silver, Gold ore (always visible)
+[[nodiscard]] inline constexpr TechId resourceRevealTech(uint16_t goodId) {
+    switch (goodId) {
+        case 0:  return TechId{4};   // Iron ore → Bronze Working
+        case 1:  return TechId{0};   // Copper ore → Mining
+        case 2:  return TechId{11};  // Coal → Industrialization
+        case 3:  return TechId{13};  // Oil → Refining
+        case 4:  return TechId{1};   // Horses → Animal Husbandry
+        case 5:  return TechId{7};   // Niter → Apprenticeship
+        case 6:  return TechId{18};  // Uranium → Nuclear Fission
+        case 7:  return TechId{14};  // Aluminum → Electricity
+        case 10: return TechId{0};   // Tin → Mining
+        default: return TechId{};    // Always visible (luxury, bonus, cotton, rubber, silver, gold)
+    }
+}
+
+/// Check if a player can see a resource based on their researched techs.
+[[nodiscard]] inline bool canSeeResource(uint16_t goodId, const void* playerTechPtr) {
+    TechId revealTech = resourceRevealTech(goodId);
+    if (!revealTech.isValid()) {
+        return true;  // Always visible
+    }
+    // playerTechPtr is a PlayerTechComponent* but we use void* to avoid circular include
+    // Caller must cast and check hasResearched
+    (void)playerTechPtr;
+    return false;  // Caller should use resourceRevealTech() directly
+}
+
 namespace goods {
     // -- Raw strategic resources (0-19) --
     inline constexpr uint16_t IRON_ORE    = 0;
@@ -164,6 +205,7 @@ namespace goods {
     inline constexpr uint16_t GLASS                = 76;
     inline constexpr uint16_t RUBBER_GOODS         = 77;
     inline constexpr uint16_t BRONZE               = 78;
+    inline constexpr uint16_t CHARCOAL            = 79;  ///< Wood-based fuel, early coal substitute
 
     // -- Advanced goods (100-139) --
     inline constexpr uint16_t MACHINERY            = 100;
@@ -189,7 +231,7 @@ namespace goods {
     // -- Automation goods (160-169) --
     inline constexpr uint16_t ROBOT_WORKERS        = 143;
 
-    inline constexpr uint16_t GOOD_COUNT = 144;
+    inline constexpr uint16_t GOOD_COUNT = 145;
 } // namespace goods
 
 // ============================================================================

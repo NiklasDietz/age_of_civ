@@ -21,6 +21,10 @@ namespace aoc::map {
 class HexGrid;
 }
 
+namespace aoc::game {
+class Player;
+}
+
 namespace aoc::sim {
 
 /**
@@ -42,5 +46,27 @@ namespace aoc::sim {
 [[nodiscard]] float computePlayerCulture(const aoc::ecs::World& world,
                                           const aoc::map::HexGrid& grid,
                                           PlayerId player);
+
+// ========================================================================
+// GameState-native overloads (Phase 3 migration)
+// ========================================================================
+
+/**
+ * @brief Compute total science yield for a player (GameState version).
+ *
+ * Includes: tile yields, population base, building bonuses/multipliers,
+ * government multiplier, civilization multiplier, monetary stability bonus.
+ */
+[[nodiscard]] float computePlayerScience(const aoc::game::Player& player,
+                                          const aoc::map::HexGrid& grid);
+
+/**
+ * @brief Compute total culture yield for a player (GameState version).
+ *
+ * Includes: tile yields, population base, civilization multiplier,
+ * monetary stability bonus.
+ */
+[[nodiscard]] float computePlayerCulture(const aoc::game::Player& player,
+                                          const aoc::map::HexGrid& grid);
 
 } // namespace aoc::sim

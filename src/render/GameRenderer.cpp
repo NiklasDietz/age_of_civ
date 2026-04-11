@@ -78,8 +78,8 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                               screenWidth, screenHeight);
 
     // Layer 1.5: Territory borders (hex outlines drawn ON TOP of terrain)
-    this->m_mapRenderer.drawTerritoryBorders(renderer2d, grid, camera,
-                                              screenWidth, screenHeight);
+    this->m_mapRenderer.drawTerritoryBorders(renderer2d, grid, fog, viewingPlayer,
+                                              camera, screenWidth, screenHeight);
 
     // Layer 1.55: Tile yield labels (if enabled in settings)
     if (this->showTileYields) {
@@ -260,11 +260,14 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
             for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
                 const aoc::sim::CityComponent& city = cityPool->data()[ci];
 
-                // Skip cities on unseen tiles
+                // Skip cities not visible: own cities on Revealed+Visible, foreign only on Visible
                 if (grid.isValid(city.location)) {
                     int32_t tileIdx = grid.toIndex(city.location);
                     aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, tileIdx);
                     if (vis == aoc::map::TileVisibility::Unseen) {
+                        continue;
+                    }
+                    if (city.owner != viewingPlayer && vis != aoc::map::TileVisibility::Visible) {
                         continue;
                     }
                 }

@@ -227,6 +227,10 @@ void AIResearchPlanner::selectResearch(aoc::ecs::World& world) {
                     if (!def.unlockedPolicyIds.empty()) {
                         score += 3000;
                     }
+                    // Foreign Trade (CivicId{2}) enables Traders -- high early priority
+                    if (id == CivicId{2}) {
+                        score += 6000;
+                    }
                     score -= def.cultureCost;
 
                     if (score > bestScore) {

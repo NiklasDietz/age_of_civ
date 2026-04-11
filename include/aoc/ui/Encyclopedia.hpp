@@ -85,9 +85,6 @@ public:
     void close(UIManager& ui) override;
     void refresh(UIManager& ui) override;
 
-    /// Set the screen dimensions (call before open).
-    void setScreenSize(float w, float h) { this->m_screenW = w; this->m_screenH = h; }
-
     /// Navigate to a specific category.
     void setCategory(WikiCategory cat);
 
@@ -107,9 +104,6 @@ private:
     WidgetId m_entryList = INVALID_WIDGET;
     WidgetId m_detailLabel = INVALID_WIDGET;
     int32_t m_selectedEntry = -1;
-
-    float m_screenW = 1280.0f;
-    float m_screenH = 720.0f;
 };
 
 } // namespace aoc::ui

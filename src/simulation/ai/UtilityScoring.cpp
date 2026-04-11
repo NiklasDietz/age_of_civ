@@ -104,11 +104,12 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
                  if (!ctx.hasCoins) { score *= 1.5f; }      // Huge bonus if no coins
                  break;
 
-        // Industrial
-        case  0: score = 80.0f * b.techIndustrial; break;  // Forge
-        case  1: score = 90.0f * b.techIndustrial; break;  // Workshop
-        case  3: score = 120.0f * b.techIndustrial; break; // Factory
-        case  5: score = 140.0f * b.techIndustrial; break; // Industrial Complex
+        // Industrial -- Forge and Workshop are critical: they enable the entire
+        // production chain (smelting, tools, lumber, charcoal, glass).
+        case  0: score = 200.0f * b.techIndustrial; break;  // Forge (smelting, tools, charcoal)
+        case  1: score = 180.0f * b.techIndustrial; break;  // Workshop (lumber, bricks, construction)
+        case  3: score = 150.0f * b.techIndustrial; break;  // Factory (steel, machinery)
+        case  5: score = 160.0f * b.techIndustrial; break;  // Industrial Complex
 
         // Encampment
         case 17: score = 60.0f * b.militaryAggression; break; // Walls

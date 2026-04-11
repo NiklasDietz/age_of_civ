@@ -77,6 +77,24 @@ std::vector<EurekaBoostDef> buildBoostTable() {
     boosts.push_back({14, TechId{15}, CivicId{}, EurekaCondition::TrainUnit,
                       "Train a naval unit", 0.5f});
 
+    // ----- Civic boosts (techId invalid, civicId valid) -----
+
+    // Index 15: Foreign Trade -- "Meet another civilization" (50% boost)
+    boosts.push_back({15, TechId{}, CivicId{2}, EurekaCondition::MeetCivilization,
+                      "Meet another civilization", 0.5f});
+
+    // Index 16: Code of Laws -- "Found a city"
+    boosts.push_back({16, TechId{}, CivicId{0}, EurekaCondition::FoundCity,
+                      "Found a city", 0.4f});
+
+    // Index 17: Military Tradition -- "Kill a unit"
+    boosts.push_back({17, TechId{}, CivicId{5}, EurekaCondition::KillUnit,
+                      "Win a battle", 0.5f});
+
+    // Index 18: Trade Routes -- "Meet another civilization"
+    boosts.push_back({18, TechId{}, CivicId{4}, EurekaCondition::MeetCivilization,
+                      "Meet a second civilization", 0.4f});
+
     return boosts;
 }
 

@@ -93,6 +93,20 @@ enum class LayoutDirection : uint8_t {
     Horizontal,
 };
 
+/// Anchor point for root widget positioning relative to the screen.
+/// Only meaningful for root widgets (no parent). Child widgets are always
+/// positioned relative to their parent regardless of anchor.
+enum class Anchor : uint8_t {
+    None,         ///< Absolute position (legacy behavior)
+    TopLeft,      ///< Position relative to top-left corner
+    TopRight,     ///< Position relative to top-right corner
+    BottomLeft,   ///< Position relative to bottom-left corner
+    BottomRight,  ///< Position relative to bottom-right corner
+    Center,       ///< Centered on screen
+    TopCenter,    ///< Centered horizontally, top edge
+    BottomCenter, ///< Centered horizontally, bottom edge
+};
+
 // ============================================================================
 // Widget struct (variant-based, stored in flat vector)
 // ============================================================================
@@ -115,6 +129,12 @@ struct Widget {
     /// If true, size is auto-computed from children.
     bool autoWidth  = false;
     bool autoHeight = false;
+
+    /// Anchor point for root-level widgets. Determines how the widget is
+    /// positioned relative to the screen edges on resize.
+    Anchor anchor = Anchor::None;
+    float marginRight  = 0.0f;  ///< Distance from right edge (right-anchored widgets)
+    float marginBottom = 0.0f;  ///< Distance from bottom edge (bottom-anchored widgets)
 
     /// Visibility and interaction state.
     bool isVisible = true;

@@ -19,6 +19,7 @@
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
+#include "aoc/simulation/tech/TechTree.hpp"
 
 #include <renderer/Renderer2D.hpp>
 
@@ -115,11 +116,30 @@ void TooltipManager::update(float mouseX, float mouseY,
     }
 
     // Resource
+    // Resource (only if revealed by tech)
     const ResourceId resource = grid.resource(tileIndex);
     if (resource.isValid() && resource.value < aoc::sim::goods::GOOD_COUNT) {
-        const aoc::sim::GoodDef& gdef = aoc::sim::goodDef(resource.value);
-        text += "\nResource: ";
-        text += gdef.name;
+        TechId revealTech = aoc::sim::resourceRevealTech(resource.value);
+        bool resourceRevealed = true;
+        if (revealTech.isValid()) {
+            resourceRevealed = false;
+            const aoc::ecs::ComponentPool<aoc::sim::PlayerTechComponent>* ttPool =
+                world.getPool<aoc::sim::PlayerTechComponent>();
+            if (ttPool != nullptr) {
+                for (uint32_t ti = 0; ti < ttPool->size(); ++ti) {
+                    if (ttPool->data()[ti].owner == player
+                        && ttPool->data()[ti].hasResearched(revealTech)) {
+                        resourceRevealed = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (resourceRevealed) {
+            const aoc::sim::GoodDef& gdef = aoc::sim::goodDef(resource.value);
+            text += "\nResource: ";
+            text += gdef.name;
+        }
     }
 
     // Check for units on this tile (own units always visible, enemy only if tile visible)

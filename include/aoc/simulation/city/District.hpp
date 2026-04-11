@@ -86,30 +86,32 @@ struct BuildingDef {
 //   30 = Solar Array        (power, free, late game)
 //   31 = Wind Farm          (power, free, late game)
 
+// Format: {id, name, district, prodCost, maintenanceCost, productionBonus, scienceBonus, goldBonus, scienceMultiplier}
+// Maintenance costs aligned with Civ 6: 1-5 gold depending on building tier.
 inline constexpr std::array<BuildingDef, 32> BUILDING_DEFS = {{
     {BuildingId{0},  "Forge",              DistrictType::Industrial,  60, 1, 2, 0, 0, 1.0f},
     {BuildingId{1},  "Workshop",           DistrictType::Industrial,  40, 1, 1, 0, 0, 1.0f},
     {BuildingId{2},  "Refinery",           DistrictType::Industrial, 100, 2, 3, 0, 0, 1.0f},
-    {BuildingId{3},  "Factory",            DistrictType::Industrial, 120, 3, 4, 0, 1, 1.0f},
-    {BuildingId{4},  "Electronics Plant",  DistrictType::Industrial, 180, 4, 3, 2, 2, 1.0f},
-    {BuildingId{5},  "Industrial Complex", DistrictType::Industrial, 250, 5, 6, 0, 3, 1.0f},
+    {BuildingId{3},  "Factory",            DistrictType::Industrial, 120, 2, 4, 0, 1, 1.0f},
+    {BuildingId{4},  "Electronics Plant",  DistrictType::Industrial, 180, 3, 3, 2, 2, 1.0f},
+    {BuildingId{5},  "Industrial Complex", DistrictType::Industrial, 250, 4, 6, 0, 3, 1.0f},
     {BuildingId{6},  "Market",             DistrictType::Commercial,  50, 0, 0, 0, 3, 1.0f},
     {BuildingId{7},  "Library",            DistrictType::Campus,      90, 1, 0, 3, 0, 1.0f},
-    {BuildingId{8},  "Textile Mill",       DistrictType::Industrial,  80, 2, 2, 0, 1, 1.0f},
-    {BuildingId{9},  "Food Proc. Plant",   DistrictType::Industrial,  90, 2, 1, 0, 1, 1.0f},
-    {BuildingId{10}, "Precision Workshop", DistrictType::Industrial, 140, 3, 3, 1, 0, 1.0f},
-    {BuildingId{11}, "Semiconductor Fab",  DistrictType::Industrial, 220, 5, 2, 3, 2, 1.0f},
+    {BuildingId{8},  "Textile Mill",       DistrictType::Industrial,  80, 1, 2, 0, 1, 1.0f},
+    {BuildingId{9},  "Food Proc. Plant",   DistrictType::Industrial,  90, 1, 1, 0, 1, 1.0f},
+    {BuildingId{10}, "Precision Workshop", DistrictType::Industrial, 140, 2, 3, 1, 0, 1.0f},
+    {BuildingId{11}, "Semiconductor Fab",  DistrictType::Industrial, 220, 4, 2, 3, 2, 1.0f},
     {BuildingId{12}, "Research Lab",       DistrictType::Campus,     480, 3, 0, 10, 0, 1.5f},
     {BuildingId{13}, "Telecom Hub",        DistrictType::Commercial, 130, 2, 0, 1, 4, 1.0f},
-    {BuildingId{14}, "Airport",            DistrictType::Industrial, 200, 4, 2, 0, 3, 1.0f},
+    {BuildingId{14}, "Airport",            DistrictType::Industrial, 200, 3, 2, 0, 3, 1.0f},
     // Expansion buildings
     {BuildingId{15}, "Granary",            DistrictType::CityCenter,  40, 1, 1, 0, 0, 1.0f},
     {BuildingId{16}, "Monument",           DistrictType::CityCenter,  30, 0, 0, 0, 0, 1.0f},
     {BuildingId{17}, "Walls",              DistrictType::Encampment,  60, 0, 0, 0, 0, 1.0f},
-    {BuildingId{18}, "Barracks",           DistrictType::Encampment,  70, 1, 0, 0, 0, 1.0f},
+    {BuildingId{18}, "Barracks",           DistrictType::Encampment,  70, 2, 0, 0, 0, 1.0f},
     {BuildingId{19}, "University",         DistrictType::Campus,     250, 2, 0, 6, 0, 1.0f},
     {BuildingId{20}, "Bank",               DistrictType::Commercial, 100, 0, 0, 0, 5, 1.0f},
-    {BuildingId{21}, "Stock Exchange",     DistrictType::Commercial, 200, 0, 0, 0, 8, 1.0f},
+    {BuildingId{21}, "Stock Exchange",     DistrictType::Commercial, 200, 0, 0, 0, 7, 1.0f},
     {BuildingId{22}, "Hospital",           DistrictType::CityCenter, 150, 2, 0, 0, 0, 1.0f},
     {BuildingId{23}, "Shipyard",           DistrictType::Harbor,     120, 2, 3, 0, 2, 1.0f},
     {BuildingId{24}, "Mint",               DistrictType::Commercial,  70, 1, 0, 0, 2, 1.0f},

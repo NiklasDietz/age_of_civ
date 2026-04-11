@@ -49,6 +49,8 @@ public:
      */
     void drawTerritoryBorders(vulkan_app::renderer::Renderer2D& renderer2d,
                                const aoc::map::HexGrid& grid,
+                               const aoc::map::FogOfWar& fog,
+                               PlayerId viewingPlayer,
                                const CameraController& camera,
                                uint32_t screenWidth, uint32_t screenHeight) const;
 
@@ -77,6 +79,16 @@ public:
     void setHexSize(float size) { this->m_hexSize = size; }
     [[nodiscard]] float hexSize() const { return this->m_hexSize; }
 
+    /// Set which resource good IDs are revealed (visible on map) for the viewing player.
+    /// Called each turn after tech research updates.
+    void setRevealedResources(const std::vector<bool>& revealed) { this->m_revealedResources = revealed; }
+
+    /// Check if a resource good ID is revealed to the viewing player.
+    [[nodiscard]] bool isResourceRevealed(uint16_t goodId) const {
+        if (goodId >= this->m_revealedResources.size()) { return true; }
+        return this->m_revealedResources[goodId];
+    }
+
 private:
     void drawTile(vulkan_app::renderer::Renderer2D& renderer2d,
                   const aoc::map::HexGrid& grid,
@@ -87,6 +99,7 @@ private:
                         uint8_t riverMask, float cx, float cy) const;
 
     float m_hexSize = 30.0f;
+    std::vector<bool> m_revealedResources;  ///< Per good ID: true if revealed to player
 };
 
 } // namespace aoc::render

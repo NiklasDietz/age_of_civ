@@ -162,6 +162,16 @@ std::vector<BuildableItem> getBuildableItems(const aoc::ecs::World& world,
             continue;
         }
 
+        // Skip faith-purchased units (Religious units with 0 production cost)
+        if (unitDef.unitClass == UnitClass::Religious && unitDef.productionCost == 0) {
+            continue;
+        }
+
+        // Skip units with 0 production cost (Great People, etc.)
+        if (unitDef.productionCost <= 0) {
+            continue;
+        }
+
         // Special case: Settler requires pop > 1 in the producing city
         if (unitDef.unitClass == UnitClass::Settler) {
             const CityComponent* city = world.tryGetComponent<CityComponent>(cityEntity);

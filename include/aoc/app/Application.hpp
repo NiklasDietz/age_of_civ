@@ -35,6 +35,7 @@
 #include "aoc/ui/Tutorial.hpp"
 #include "aoc/ui/DebugConsole.hpp"
 #include "aoc/replay/ReplayRecorder.hpp"
+#include "aoc/game/GameState.hpp"
 #include "aoc/core/ErrorCodes.hpp"
 #include "aoc/core/Types.hpp"
 #include "aoc/map/MapGenerator.hpp"
@@ -119,8 +120,9 @@ private:
     aoc::render::GameRenderer     m_gameRenderer;
 
     // Game state
+    aoc::game::GameState         m_gameState;  ///< New object model (Phase 2 migration)
     aoc::map::HexGrid          m_hexGrid;
-    aoc::ecs::World            m_world;
+    aoc::ecs::World            m_world;       ///< Legacy ECS (being migrated away)
     aoc::ecs::SystemScheduler  m_scheduler;
     aoc::sim::TurnManager        m_turnManager;
     aoc::sim::EconomySimulation  m_economy;
@@ -128,7 +130,7 @@ private:
     aoc::sim::DiplomacyManager   m_diplomacy;
     std::vector<aoc::sim::ai::AIController> m_aiControllers;
     aoc::sim::BarbarianController m_barbarianController;
-    aoc::Random                  m_gameRng{99999};
+    aoc::Random                  m_gameRng{0};  ///< Reseeded in startGame()
 
     /// Currently selected entity (unit or city).
     EntityId m_selectedEntity = NULL_ENTITY;

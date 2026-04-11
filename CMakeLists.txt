@@ -37,6 +37,12 @@ add_library(aoc_lib STATIC
     # Data loading
     src/data/DataLoader.cpp
 
+    # Game object model
+    src/game/GameState.cpp
+    src/game/Player.cpp
+    src/game/City.cpp
+    src/game/Unit.cpp
+
     # ECS
     src/ecs/World.cpp
 

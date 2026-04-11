@@ -53,6 +53,7 @@
 
 namespace aoc::ecs { class World; }
 namespace aoc::map { class HexGrid; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -75,6 +76,10 @@ struct TurnContext {
     DiplomacyManager* diplomacy = nullptr;
     BarbarianController* barbarians = nullptr;
     aoc::Random* rng = nullptr;
+
+    /// New object model (Phase 3 migration). When non-null, turn processing
+    /// reads/writes GameState objects and syncs results back to ECS.
+    aoc::game::GameState* gameState = nullptr;
 
     /// All AI controllers (empty for headless sim that manages AI separately).
     std::vector<ai::AIController*> aiControllers;
@@ -137,5 +142,28 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player);
  * Climate, barbarians, disasters, etc.
  */
 void processGlobalSystems(TurnContext& ctx);
+
+/**
+ * @brief Sync ECS component state into GameState objects after turn processing.
+ *
+ * During migration, the ECS functions are authoritative. After they run,
+ * this copies key results (treasury, population, food surplus, tech progress)
+ * from ECS components into the GameState Player/City/Unit objects so that
+ * code reading from GameState sees up-to-date values.
+ *
+ * @param ctx  Turn context (must have both world and gameState set).
+ */
+void syncEcsToGameState(TurnContext& ctx);
+
+/**
+ * @brief Sync GameState object state back into ECS components.
+ *
+ * For subsystems that have been migrated to use GameState natively,
+ * this copies their results back into ECS so rendering and unmigrated
+ * systems still see correct data.
+ *
+ * @param ctx  Turn context (must have both world and gameState set).
+ */
+void syncGameStateToEcs(TurnContext& ctx);
 
 } // namespace aoc::sim

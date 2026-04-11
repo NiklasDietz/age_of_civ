@@ -298,9 +298,81 @@ WidgetId UIManager::hitTestWidget(WidgetId id, float x, float y) const {
 // Layout
 // ============================================================================
 
+void UIManager::shiftWidgetTree(WidgetId id, float deltaX, float deltaY) {
+    Widget* w = this->getWidget(id);
+    if (w == nullptr) {
+        return;
+    }
+    w->computedBounds.x += deltaX;
+    w->computedBounds.y += deltaY;
+    for (WidgetId childId : w->children) {
+        this->shiftWidgetTree(childId, deltaX, deltaY);
+    }
+}
+
+void UIManager::setScreenSize(float width, float height) {
+    this->m_screenWidth  = width;
+    this->m_screenHeight = height;
+}
+
 void UIManager::layout() {
     for (WidgetId rootId : this->m_rootWidgets) {
         this->layoutWidget(rootId, 0.0f, 0.0f);
+    }
+
+    // Apply anchor adjustments to root widgets after standard layout.
+    // Only root widgets (no parent) use anchors; children are relative to parent.
+    for (WidgetId rootId : this->m_rootWidgets) {
+        Widget* w = this->getWidget(rootId);
+        if (w == nullptr || !w->isVisible || w->anchor == Anchor::None) {
+            continue;
+        }
+
+        const float widgetW = w->computedBounds.w;
+        const float widgetH = w->computedBounds.h;
+        float newX = w->computedBounds.x;
+        float newY = w->computedBounds.y;
+
+        switch (w->anchor) {
+            case Anchor::None:
+                break;
+            case Anchor::TopLeft:
+                // requestedBounds.x/y are the margins from top-left (default behavior)
+                newX = w->requestedBounds.x;
+                newY = w->requestedBounds.y;
+                break;
+            case Anchor::TopRight:
+                newX = this->m_screenWidth - w->marginRight - widgetW;
+                newY = w->requestedBounds.y;
+                break;
+            case Anchor::BottomLeft:
+                newX = w->requestedBounds.x;
+                newY = this->m_screenHeight - w->marginBottom - widgetH;
+                break;
+            case Anchor::BottomRight:
+                newX = this->m_screenWidth - w->marginRight - widgetW;
+                newY = this->m_screenHeight - w->marginBottom - widgetH;
+                break;
+            case Anchor::Center:
+                newX = (this->m_screenWidth - widgetW) * 0.5f;
+                newY = (this->m_screenHeight - widgetH) * 0.5f;
+                break;
+            case Anchor::TopCenter:
+                newX = (this->m_screenWidth - widgetW) * 0.5f;
+                newY = w->requestedBounds.y;
+                break;
+            case Anchor::BottomCenter:
+                newX = (this->m_screenWidth - widgetW) * 0.5f;
+                newY = this->m_screenHeight - w->marginBottom - widgetH;
+                break;
+        }
+
+        // Shift the entire subtree by the delta between old and new position
+        float deltaX = newX - w->computedBounds.x;
+        float deltaY = newY - w->computedBounds.y;
+        if (deltaX != 0.0f || deltaY != 0.0f) {
+            this->shiftWidgetTree(rootId, deltaX, deltaY);
+        }
     }
 }
 

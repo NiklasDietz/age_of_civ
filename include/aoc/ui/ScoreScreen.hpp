@@ -51,9 +51,6 @@ private:
     uint8_t                m_playerCount     = 0;
     std::function<void()>  m_onReturnToMenu;
     std::vector<PlayerScoreEntry> m_scores;
-
-    float m_screenW = 1280.0f;
-    float m_screenH = 720.0f;
 };
 
 } // namespace aoc::ui

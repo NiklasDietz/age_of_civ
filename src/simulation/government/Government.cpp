@@ -14,8 +14,80 @@
 namespace aoc::sim {
 
 GovernmentModifiers computeGovernmentModifiers(
-    const aoc::ecs::World& world, PlayerId player) {
+    const PlayerGovernmentComponent& gov) {
+    // During anarchy: no bonuses at all
+    if (gov.isInAnarchy()) {
+        return {};
+    }
 
+    // Start with government inherent bonuses
+    const GovernmentDef& gdef = governmentDef(gov.government);
+    GovernmentModifiers result = gdef.inherentBonuses;
+
+    // Combine active policy card modifiers
+    for (uint8_t slot = 0; slot < MAX_POLICY_SLOTS; ++slot) {
+        const int8_t policyId = gov.activePolicies[slot];
+        if (policyId == EMPTY_POLICY_SLOT || policyId < 0) {
+            continue;
+        }
+        if (static_cast<uint8_t>(policyId) >= POLICY_CARD_COUNT) {
+            continue;
+        }
+
+        const PolicyCardDef& pdef = policyCardDef(static_cast<uint8_t>(policyId));
+        const GovernmentModifiers& pm = pdef.modifiers;
+
+        // Multipliers: multiply together
+        result.productionMultiplier *= pm.productionMultiplier;
+        result.goldMultiplier       *= pm.goldMultiplier;
+        result.scienceMultiplier    *= pm.scienceMultiplier;
+        result.cultureMultiplier    *= pm.cultureMultiplier;
+        result.faithMultiplier      *= pm.faithMultiplier;
+        result.growthMultiplier     *= pm.growthMultiplier;
+
+        // Flat bonuses: add
+        result.combatStrengthBonus      += pm.combatStrengthBonus;
+        result.tradeRouteBonus          += pm.tradeRouteBonus;
+        result.unitMaintenanceReduction += pm.unitMaintenanceReduction;
+        result.productionPerCity        += pm.productionPerCity;
+        result.extraTradeRoutes         += pm.extraTradeRoutes;
+        result.diplomaticInfluence      += pm.diplomaticInfluence;
+        result.corruptionReduction      += pm.corruptionReduction;
+        result.loyaltyBonus             += pm.loyaltyBonus;
+        result.espionageDefense         += pm.espionageDefense;
+        result.tariffEfficiency         += pm.tariffEfficiency;
+        result.warWearinessReduction    += pm.warWearinessReduction;
+    }
+
+    // Apply active unique action effects
+    if (gov.activeAction != GovernmentAction::None && gov.actionTurnsRemaining > 0) {
+        switch (gov.activeAction) {
+            case GovernmentAction::FiveYearPlan:
+                result.productionMultiplier *= 1.30f;
+                break;
+            case GovernmentAction::RoyalDecree:
+                result.goldMultiplier *= 1.15f;
+                break;
+            case GovernmentAction::HolyWar:
+                result.combatStrengthBonus += 4.0f;
+                result.faithMultiplier *= 1.20f;
+                break;
+            case GovernmentAction::Referendum:
+                result.loyaltyBonus += 20.0f;
+                break;
+            case GovernmentAction::TradeFleet:
+                result.extraTradeRoutes += 3;
+                break;
+            default:
+                break;
+        }
+    }
+
+    return result;
+}
+
+GovernmentModifiers computeGovernmentModifiers(
+    const aoc::ecs::World& world, PlayerId player) {
     const aoc::ecs::ComponentPool<PlayerGovernmentComponent>* govPool =
         world.getPool<PlayerGovernmentComponent>();
     if (govPool == nullptr) {
@@ -23,80 +95,9 @@ GovernmentModifiers computeGovernmentModifiers(
     }
 
     for (uint32_t i = 0; i < govPool->size(); ++i) {
-        const PlayerGovernmentComponent& gov = govPool->data()[i];
-        if (gov.owner != player) {
-            continue;
+        if (govPool->data()[i].owner == player) {
+            return computeGovernmentModifiers(govPool->data()[i]);
         }
-
-        // During anarchy: no bonuses at all
-        if (gov.isInAnarchy()) {
-            return {};
-        }
-
-        // Start with government inherent bonuses
-        const GovernmentDef& gdef = governmentDef(gov.government);
-        GovernmentModifiers result = gdef.inherentBonuses;
-
-        // Combine active policy card modifiers
-        for (uint8_t slot = 0; slot < MAX_POLICY_SLOTS; ++slot) {
-            const int8_t policyId = gov.activePolicies[slot];
-            if (policyId == EMPTY_POLICY_SLOT || policyId < 0) {
-                continue;
-            }
-            if (static_cast<uint8_t>(policyId) >= POLICY_CARD_COUNT) {
-                continue;
-            }
-
-            const PolicyCardDef& pdef = policyCardDef(static_cast<uint8_t>(policyId));
-            const GovernmentModifiers& pm = pdef.modifiers;
-
-            // Multipliers: multiply together
-            result.productionMultiplier *= pm.productionMultiplier;
-            result.goldMultiplier       *= pm.goldMultiplier;
-            result.scienceMultiplier    *= pm.scienceMultiplier;
-            result.cultureMultiplier    *= pm.cultureMultiplier;
-            result.faithMultiplier      *= pm.faithMultiplier;
-            result.growthMultiplier     *= pm.growthMultiplier;
-
-            // Flat bonuses: add
-            result.combatStrengthBonus      += pm.combatStrengthBonus;
-            result.tradeRouteBonus          += pm.tradeRouteBonus;
-            result.unitMaintenanceReduction += pm.unitMaintenanceReduction;
-            result.productionPerCity        += pm.productionPerCity;
-            result.extraTradeRoutes         += pm.extraTradeRoutes;
-            result.diplomaticInfluence      += pm.diplomaticInfluence;
-            result.corruptionReduction      += pm.corruptionReduction;
-            result.loyaltyBonus             += pm.loyaltyBonus;
-            result.espionageDefense         += pm.espionageDefense;
-            result.tariffEfficiency         += pm.tariffEfficiency;
-            result.warWearinessReduction    += pm.warWearinessReduction;
-        }
-
-        // Apply active unique action effects
-        if (gov.activeAction != GovernmentAction::None && gov.actionTurnsRemaining > 0) {
-            switch (gov.activeAction) {
-                case GovernmentAction::FiveYearPlan:
-                    result.productionMultiplier *= 1.30f;  // +30% production
-                    break;
-                case GovernmentAction::RoyalDecree:
-                    result.goldMultiplier *= 1.15f;  // +15% gold
-                    break;
-                case GovernmentAction::HolyWar:
-                    result.combatStrengthBonus += 4.0f;
-                    result.faithMultiplier *= 1.20f;
-                    break;
-                case GovernmentAction::Referendum:
-                    result.loyaltyBonus += 20.0f;
-                    break;
-                case GovernmentAction::TradeFleet:
-                    result.extraTradeRoutes += 3;
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        return result;
     }
 
     return {};

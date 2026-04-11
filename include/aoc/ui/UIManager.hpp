@@ -85,6 +85,10 @@ public:
     // Layout
     // ========================================================================
 
+    /// Update the stored screen dimensions used by the anchor system.
+    /// Call this each frame (or on resize) before layout().
+    void setScreenSize(float width, float height);
+
     /// Recompute layout for all root widgets and their children.
     void layout();
 
@@ -96,6 +100,9 @@ public:
      * @brief Render all visible widgets.
      */
     void render(vulkan_app::renderer::Renderer2D& renderer2d) const;
+
+    /// Get the currently hovered widget ID (INVALID_WIDGET if none).
+    [[nodiscard]] WidgetId hoveredWidget() const { return this->m_hoveredWidget; }
 
     /**
      * @brief Shift all widget computedBounds from screen-space to world-space.
@@ -115,11 +122,16 @@ private:
                       WidgetId id) const;
     [[nodiscard]] WidgetId hitTest(float x, float y) const;
     [[nodiscard]] WidgetId hitTestWidget(WidgetId id, float x, float y) const;
+    void shiftWidgetTree(WidgetId id, float deltaX, float deltaY);
 
     std::vector<Widget>   m_widgets;
     std::vector<WidgetId> m_rootWidgets;  ///< Top-level widgets (no parent)
     std::vector<WidgetId> m_freeList;     ///< Recycled widget slots
     WidgetId              m_nextId = 0;
+
+    /// Current screen dimensions for anchor calculations.
+    float m_screenWidth  = 1280.0f;
+    float m_screenHeight = 720.0f;
 
     /// Currently hovered widget.
     WidgetId m_hoveredWidget = INVALID_WIDGET;

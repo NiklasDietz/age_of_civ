@@ -89,6 +89,12 @@
 // Monetary
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 
+// New object model (Phase 3 migration)
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/game/Unit.hpp"
+
 // Energy
 #include "aoc/simulation/economy/EnergyDependency.hpp"
 
@@ -159,9 +165,11 @@ EntityId foundCity(aoc::ecs::World& world,
     std::sort(tileScores.begin(), tileScores.end(),
         [](const TileScore& a, const TileScore& b) { return a.score > b.score; });
 
+    // Assign workers up to population count (center tile is free, doesn't consume a citizen)
+    const int32_t maxWorkers = startingPop;
     int32_t assigned = 0;
     for (const TileScore& ts : tileScores) {
-        if (assigned >= 3) { break; }
+        if (assigned >= maxWorkers) { break; }
         city.workedTiles.push_back(neighbors[static_cast<std::size_t>(ts.index)]);
         ++assigned;
     }
@@ -216,78 +224,75 @@ EntityId foundCity(aoc::ecs::World& world,
 // ============================================================================
 
 void processPlayerTurn(TurnContext& ctx, PlayerId player) {
+    assert(ctx.gameState != nullptr && "GameState is required for turn processing");
+
     aoc::ecs::World& world = *ctx.world;
     aoc::map::HexGrid& grid = *ctx.grid;
+    aoc::game::Player* gsPlayer = ctx.gameState->player(player);
+    assert(gsPlayer != nullptr);
 
-    // City gold income: worked tiles, buildings, and base population income
+    // Civilization meeting detection: check if any of our units/cities are near
+    // another player's units/cities. Triggers MeetCivilization eureka.
     {
-        CurrencyAmount goldIncome = 0;
+        const aoc::ecs::ComponentPool<UnitComponent>* unitPool =
+            world.getPool<UnitComponent>();
         const aoc::ecs::ComponentPool<CityComponent>* cityPool =
             world.getPool<CityComponent>();
-        if (cityPool != nullptr) {
-            for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
-                if (cityPool->data()[ci].owner != player) { continue; }
-                EntityId cityEntity = cityPool->entities()[ci];
-                const CityComponent& city = cityPool->data()[ci];
-
-                // Base gold: 1 per citizen (subsistence economy, barely covers basics)
-                goldIncome += static_cast<CurrencyAmount>(city.population);
-
-                // Capital gets administration bonus
-                if (city.isOriginalCapital) {
-                    goldIncome += 3;
-                }
-
-                // Gold from worked tiles (improvements like Vineyard generate gold yield)
-                for (const aoc::hex::AxialCoord& tile : city.workedTiles) {
-                    if (grid.isValid(tile)) {
-                        aoc::map::TileYield yield = grid.tileYield(grid.toIndex(tile));
-                        goldIncome += static_cast<CurrencyAmount>(yield.gold);
-                    }
-                }
-
-                // Gold from districts and buildings (this is where real income comes from)
-                const CityDistrictsComponent* districts =
-                    world.tryGetComponent<CityDistrictsComponent>(cityEntity);
-                if (districts != nullptr) {
-                    for (const CityDistrictsComponent::PlacedDistrict& d : districts->districts) {
-                        // Commercial Hub district itself generates +4 gold
-                        if (d.type == DistrictType::Commercial) {
-                            goldIncome += 4;
-                        }
-                        // Harbor generates +2 gold
-                        if (d.type == DistrictType::Harbor) {
-                            goldIncome += 2;
-                        }
-                        for (BuildingId bid : d.buildings) {
-                            goldIncome += static_cast<CurrencyAmount>(buildingDef(bid).goldBonus);
-                        }
+        if (unitPool != nullptr && cityPool != nullptr) {
+            bool metAnotherCiv = false;
+            // Check if any of our units are within 4 hexes of a foreign city
+            for (uint32_t ui = 0; ui < unitPool->size() && !metAnotherCiv; ++ui) {
+                if (unitPool->data()[ui].owner != player) { continue; }
+                for (uint32_t ci = 0; ci < cityPool->size() && !metAnotherCiv; ++ci) {
+                    if (cityPool->data()[ci].owner == player) { continue; }
+                    if (aoc::hex::distance(unitPool->data()[ui].position,
+                                           cityPool->data()[ci].location) <= 4) {
+                        metAnotherCiv = true;
                     }
                 }
             }
-        }
-
-        // Gold income goes directly to treasury (not taxed -- tax rate affects GDP revenue
-        // in the fiscal policy system, not direct city yields)
-
-        // Add to economy treasury
-        world.forEach<PlayerEconomyComponent>(
-            [player, goldIncome](EntityId, PlayerEconomyComponent& ec) {
-                if (ec.owner == player) {
-                    ec.treasury += goldIncome;
-                    ec.incomePerTurn = goldIncome;
+            // Also check if any foreign units are near our cities
+            for (uint32_t ci = 0; ci < cityPool->size() && !metAnotherCiv; ++ci) {
+                if (cityPool->data()[ci].owner != player) { continue; }
+                for (uint32_t ui = 0; ui < unitPool->size() && !metAnotherCiv; ++ui) {
+                    if (unitPool->data()[ui].owner == player) { continue; }
+                    if (aoc::hex::distance(unitPool->data()[ui].position,
+                                           cityPool->data()[ci].location) <= 4) {
+                        metAnotherCiv = true;
+                    }
                 }
-            });
+            }
+            if (metAnotherCiv) {
+                checkEurekaConditions(world, player, EurekaCondition::MeetCivilization);
+            }
+        }
     }
 
-    // Maintenance costs
-    processUnitMaintenance(world, player);
-    processBuildingMaintenance(world, player);
+    // Trigger FoundCity eureka (fires once when player has 2+ cities)
+    if (gsPlayer->cityCount() >= 2) {
+        checkEurekaConditions(world, player, EurekaCondition::FoundCity);
+    }
 
-    // City connections
+    // Gold income: reads from Player/City objects, writes to Player::treasury()
+    processGoldIncome(*gsPlayer, grid);
+
+    // Maintenance: per-unit era-scaled, per-building, per-district, per-city
+    processUnitMaintenance(*gsPlayer);
+    processBuildingMaintenance(*gsPlayer);
+
+    // Sync treasury back to ECS so downstream ECS-based systems see correct values
+    world.forEach<PlayerEconomyComponent>(
+        [player, gsPlayer](EntityId, PlayerEconomyComponent& ec) {
+            if (ec.owner == player) {
+                ec.treasury = gsPlayer->treasury();
+                ec.incomePerTurn = gsPlayer->incomePerTurn();
+            }
+        });
+
+    // City connections (still ECS-based)
     processCityConnections(world, grid, player);
 
-    // Advanced economics (tariffs, banking, debt)
+    // Advanced economics (tariffs, banking, debt -- still ECS-based)
     processAdvancedEconomics(world, grid, player, ctx.economy->market());
 
     // War weariness
@@ -296,13 +301,32 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
     // Golden/Dark age effects
     processAgeEffects(world, player);
 
-    // City growth
-    processCityGrowth(world, grid, player);
+    // City growth: GameState-native
+    processCityGrowth(*gsPlayer, grid);
 
-    // City happiness
+    // Sync city population/food changes back to ECS for happiness/loyalty
+    {
+        aoc::ecs::ComponentPool<CityComponent>* cityPool =
+            world.getPool<CityComponent>();
+        if (cityPool != nullptr) {
+            for (const std::unique_ptr<aoc::game::City>& gsCity : gsPlayer->cities()) {
+                for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
+                    CityComponent& ecsCity = cityPool->data()[ci];
+                    if (ecsCity.owner == player && ecsCity.location == gsCity->location()) {
+                        ecsCity.population = gsCity->population();
+                        ecsCity.foodSurplus = gsCity->foodSurplus();
+                        ecsCity.workedTiles = gsCity->workedTiles();
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // City happiness (still ECS-based, reads CityComponent population)
     computeCityHappiness(world, player);
 
-    // City loyalty
+    // City loyalty (still ECS-based, reads happiness values)
     computeCityLoyalty(world, grid, player);
 
     // Government processing (anarchy ticks, active action ticks)
@@ -312,30 +336,30 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
     accumulateFaith(world, grid, player);
     applyReligionBonuses(world, player);
 
-    // Science + tech research
-    float science = computePlayerScience(world, grid, player);
-    float culture = computePlayerCulture(world, grid, player);
+    // Science + tech research: GameState-native
+    {
+        float science = computePlayerScience(*gsPlayer, grid);
+        float culture = computePlayerCulture(*gsPlayer, grid);
 
-    world.forEach<PlayerTechComponent>(
-        [player, science](aoc::EntityId, PlayerTechComponent& tech) {
-            if (tech.owner == player) {
-                advanceResearch(tech, science);
-            }
-        });
+        advanceResearch(gsPlayer->tech(), science);
+        advanceCivicResearch(gsPlayer->civics(), culture, &gsPlayer->government());
 
-    // Civic research (with government unlock)
-    world.forEach<PlayerCivicComponent>(
-        [player, culture, &world](aoc::EntityId, PlayerCivicComponent& civic) {
-            if (civic.owner != player) { return; }
-            PlayerGovernmentComponent* gov = nullptr;
-            world.forEach<PlayerGovernmentComponent>(
-                [player, &gov](aoc::EntityId, PlayerGovernmentComponent& g) {
-                    if (g.owner == player) { gov = &g; }
-                });
-            advanceCivicResearch(civic, culture, gov);
-        });
+        // Sync tech/civic state back to ECS
+        world.forEach<PlayerTechComponent>(
+            [player, gsPlayer](aoc::EntityId, PlayerTechComponent& tech) {
+                if (tech.owner == player) {
+                    tech = gsPlayer->tech();
+                }
+            });
+        world.forEach<PlayerCivicComponent>(
+            [player, gsPlayer](aoc::EntityId, PlayerCivicComponent& civic) {
+                if (civic.owner == player) {
+                    civic = gsPlayer->civics();
+                }
+            });
+    }
 
-    // Production queues
+    // Production queues (still ECS-based)
     processProductionQueues(world, grid, player);
 
     // City bombardment
@@ -548,15 +572,314 @@ void processTurn(TurnContext& ctx) {
     // 2. Economy simulation (harvest, produce, trade, market prices)
     ctx.economy->executeTurn(*ctx.world, *ctx.grid);
 
-    // 3. Per-player processing (SAME logic for human AND AI)
+    // 2b. Sync ECS -> GameState before per-player processing.
+    // AI decisions and economy simulation may have created new cities/units in ECS.
+    if (ctx.gameState != nullptr) {
+        syncEcsToGameState(ctx);
+    }
+
+    // 3. Per-player processing (uses GameState for migrated subsystems)
     for (PlayerId player : ctx.allPlayers) {
         processPlayerTurn(ctx, player);
     }
 
-    // 4. Global systems
+    // 4. Global systems (still ECS-based)
     processGlobalSystems(ctx);
 
+    // 5. Final sync: pick up any state changes from global systems and
+    //    write-back results from GameState-native processing.
+    if (ctx.gameState != nullptr) {
+        syncEcsToGameState(ctx);
+    }
+
     ++ctx.currentTurn;
+}
+
+// ============================================================================
+// ECS <-> GameState synchronization (Phase 3 migration bridge)
+// ============================================================================
+
+void syncEcsToGameState(TurnContext& ctx) {
+    if (ctx.gameState == nullptr || ctx.world == nullptr) {
+        return;
+    }
+
+    aoc::ecs::World& world = *ctx.world;
+    aoc::game::GameState& gs = *ctx.gameState;
+
+    // Sync player-level economy state
+    const aoc::ecs::ComponentPool<PlayerEconomyComponent>* econPool =
+        world.getPool<PlayerEconomyComponent>();
+    if (econPool != nullptr) {
+        for (uint32_t i = 0; i < econPool->size(); ++i) {
+            const PlayerEconomyComponent& econ = econPool->data()[i];
+            aoc::game::Player* player = gs.player(econ.owner);
+            if (player == nullptr) { continue; }
+
+            player->setTreasury(econ.treasury);
+            player->setIncomePerTurn(econ.incomePerTurn);
+        }
+    }
+
+    // Sync player-level monetary state
+    const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
+        world.getPool<MonetaryStateComponent>();
+    if (monetaryPool != nullptr) {
+        for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
+            const MonetaryStateComponent& mon = monetaryPool->data()[i];
+            aoc::game::Player* player = gs.player(mon.owner);
+            if (player == nullptr) { continue; }
+
+            player->monetary() = mon;
+        }
+    }
+
+    // Sync player-level tech state
+    const aoc::ecs::ComponentPool<PlayerTechComponent>* techPool =
+        world.getPool<PlayerTechComponent>();
+    if (techPool != nullptr) {
+        for (uint32_t i = 0; i < techPool->size(); ++i) {
+            const PlayerTechComponent& tech = techPool->data()[i];
+            aoc::game::Player* player = gs.player(tech.owner);
+            if (player == nullptr) { continue; }
+
+            player->tech() = tech;
+        }
+    }
+
+    // Sync player-level civic state
+    const aoc::ecs::ComponentPool<PlayerCivicComponent>* civicPool =
+        world.getPool<PlayerCivicComponent>();
+    if (civicPool != nullptr) {
+        for (uint32_t i = 0; i < civicPool->size(); ++i) {
+            const PlayerCivicComponent& civic = civicPool->data()[i];
+            aoc::game::Player* player = gs.player(civic.owner);
+            if (player == nullptr) { continue; }
+
+            player->civics() = civic;
+        }
+    }
+
+    // Sync player-level government state
+    const aoc::ecs::ComponentPool<PlayerGovernmentComponent>* govPool =
+        world.getPool<PlayerGovernmentComponent>();
+    if (govPool != nullptr) {
+        for (uint32_t i = 0; i < govPool->size(); ++i) {
+            const PlayerGovernmentComponent& gov = govPool->data()[i];
+            aoc::game::Player* player = gs.player(gov.owner);
+            if (player == nullptr) { continue; }
+
+            player->government() = gov;
+        }
+    }
+
+    // Sync player-level faith state
+    const aoc::ecs::ComponentPool<PlayerFaithComponent>* faithPool =
+        world.getPool<PlayerFaithComponent>();
+    if (faithPool != nullptr) {
+        for (uint32_t i = 0; i < faithPool->size(); ++i) {
+            const PlayerFaithComponent& faith = faithPool->data()[i];
+            aoc::game::Player* player = gs.player(faith.owner);
+            if (player == nullptr) { continue; }
+
+            player->faith() = faith;
+        }
+    }
+
+    // Sync city-level state: match ECS cities to GameState cities by location.
+    // If a city exists in ECS but not in GameState, create it (AI founded a new city).
+    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
+        world.getPool<CityComponent>();
+    if (cityPool != nullptr) {
+        for (uint32_t i = 0; i < cityPool->size(); ++i) {
+            const CityComponent& ecsCity = cityPool->data()[i];
+            aoc::game::Player* player = gs.player(ecsCity.owner);
+            if (player == nullptr) { continue; }
+
+            aoc::game::City* gsCity = player->cityAt(ecsCity.location);
+            if (gsCity == nullptr) {
+                // City was founded via ECS (AI settler) -- mirror it into GameState
+                aoc::game::City& newCity = player->addCity(ecsCity.location, ecsCity.name);
+                newCity.setOriginalCapital(ecsCity.isOriginalCapital);
+                newCity.setOriginalOwner(ecsCity.originalOwner);
+                gsCity = &newCity;
+            }
+
+            gsCity->setPopulation(ecsCity.population);
+            gsCity->setFoodSurplus(ecsCity.foodSurplus);
+
+            // Sync worked tiles
+            gsCity->workedTiles() = ecsCity.workedTiles;
+
+            // Sync districts
+            EntityId cityEntity = cityPool->entities()[i];
+            const CityDistrictsComponent* districts =
+                world.tryGetComponent<CityDistrictsComponent>(cityEntity);
+            if (districts != nullptr) {
+                gsCity->districts() = *districts;
+            }
+
+            // Sync production queue
+            const ProductionQueueComponent* prodQueue =
+                world.tryGetComponent<ProductionQueueComponent>(cityEntity);
+            if (prodQueue != nullptr) {
+                gsCity->production() = *prodQueue;
+            }
+
+            // Sync happiness
+            const CityHappinessComponent* happiness =
+                world.tryGetComponent<CityHappinessComponent>(cityEntity);
+            if (happiness != nullptr) {
+                gsCity->happiness() = *happiness;
+            }
+
+            // Sync loyalty
+            const CityLoyaltyComponent* loyalty =
+                world.tryGetComponent<CityLoyaltyComponent>(cityEntity);
+            if (loyalty != nullptr) {
+                gsCity->loyalty() = *loyalty;
+            }
+
+            // Sync religion
+            const CityReligionComponent* religion =
+                world.tryGetComponent<CityReligionComponent>(cityEntity);
+            if (religion != nullptr) {
+                gsCity->religion() = *religion;
+            }
+
+            // Sync stockpile
+            const CityStockpileComponent* stockpile =
+                world.tryGetComponent<CityStockpileComponent>(cityEntity);
+            if (stockpile != nullptr) {
+                gsCity->stockpile() = *stockpile;
+            }
+        }
+    }
+
+    // Sync unit-level state: match ECS units to GameState units by position.
+    // Also handle units that were produced/destroyed via ECS during the turn.
+
+    // First, collect all ECS unit positions per player to detect removed units
+    const aoc::ecs::ComponentPool<UnitComponent>* unitPool =
+        world.getPool<UnitComponent>();
+    if (unitPool != nullptr) {
+        // Remove GameState units that no longer exist in ECS
+        for (int32_t pi = 0; pi < gs.playerCount(); ++pi) {
+            aoc::game::Player* player = gs.player(static_cast<PlayerId>(pi));
+            if (player == nullptr) { continue; }
+
+            std::vector<aoc::game::Unit*> toRemove;
+            for (const std::unique_ptr<aoc::game::Unit>& gsUnit : player->units()) {
+                bool foundInEcs = false;
+                for (uint32_t ui = 0; ui < unitPool->size(); ++ui) {
+                    const UnitComponent& eu = unitPool->data()[ui];
+                    if (eu.owner == player->id() && eu.position == gsUnit->position()
+                        && eu.typeId == gsUnit->typeId()) {
+                        foundInEcs = true;
+                        break;
+                    }
+                }
+                if (!foundInEcs) {
+                    toRemove.push_back(gsUnit.get());
+                }
+            }
+            for (aoc::game::Unit* dead : toRemove) {
+                player->removeUnit(dead);
+            }
+        }
+
+        // Now sync existing and create new units
+        for (uint32_t i = 0; i < unitPool->size(); ++i) {
+            const UnitComponent& ecsUnit = unitPool->data()[i];
+            aoc::game::Player* player = gs.player(ecsUnit.owner);
+            if (player == nullptr) { continue; }
+
+            // Find matching unit in GameState (by position + type)
+            aoc::game::Unit* gsUnit = nullptr;
+            for (const std::unique_ptr<aoc::game::Unit>& u : player->units()) {
+                if (u->position() == ecsUnit.position && u->typeId() == ecsUnit.typeId) {
+                    gsUnit = u.get();
+                    break;
+                }
+            }
+            if (gsUnit == nullptr) {
+                // Unit was produced via ECS (production queue) -- mirror into GameState
+                aoc::game::Unit& newUnit = player->addUnit(ecsUnit.typeId, ecsUnit.position);
+                gsUnit = &newUnit;
+            }
+
+            gsUnit->setHitPoints(ecsUnit.hitPoints);
+            gsUnit->setMovementRemaining(ecsUnit.movementRemaining);
+            gsUnit->setState(ecsUnit.state);
+            gsUnit->pendingPath() = ecsUnit.pendingPath;
+            gsUnit->autoExplore = ecsUnit.autoExplore;
+            gsUnit->autoImprove = ecsUnit.autoImprove;
+            gsUnit->isAnimating = ecsUnit.isAnimating;
+            gsUnit->animProgress = ecsUnit.animProgress;
+            gsUnit->animFrom = ecsUnit.animFrom;
+            gsUnit->animTo = ecsUnit.animTo;
+        }
+    }
+}
+
+void syncGameStateToEcs(TurnContext& ctx) {
+    if (ctx.gameState == nullptr || ctx.world == nullptr) {
+        return;
+    }
+
+    aoc::ecs::World& world = *ctx.world;
+    aoc::game::GameState& gs = *ctx.gameState;
+
+    // Sync player economy back to ECS
+    aoc::ecs::ComponentPool<PlayerEconomyComponent>* econPool =
+        world.getPool<PlayerEconomyComponent>();
+    if (econPool != nullptr) {
+        for (uint32_t i = 0; i < econPool->size(); ++i) {
+            PlayerEconomyComponent& econ = econPool->data()[i];
+            const aoc::game::Player* player = gs.player(econ.owner);
+            if (player == nullptr) { continue; }
+
+            econ.treasury = player->treasury();
+            econ.incomePerTurn = player->incomePerTurn();
+        }
+    }
+
+    // Sync city state back to ECS
+    aoc::ecs::ComponentPool<CityComponent>* cityPool =
+        world.getPool<CityComponent>();
+    if (cityPool != nullptr) {
+        for (uint32_t i = 0; i < cityPool->size(); ++i) {
+            CityComponent& ecsCity = cityPool->data()[i];
+            const aoc::game::Player* player = gs.player(ecsCity.owner);
+            if (player == nullptr) { continue; }
+
+            const aoc::game::City* gsCity = player->cityAt(ecsCity.location);
+            if (gsCity == nullptr) { continue; }
+
+            ecsCity.population = gsCity->population();
+            ecsCity.foodSurplus = gsCity->foodSurplus();
+            ecsCity.workedTiles = gsCity->workedTiles();
+        }
+    }
+
+    // Sync unit state back to ECS
+    aoc::ecs::ComponentPool<UnitComponent>* unitPool =
+        world.getPool<UnitComponent>();
+    if (unitPool != nullptr) {
+        for (uint32_t i = 0; i < unitPool->size(); ++i) {
+            UnitComponent& ecsUnit = unitPool->data()[i];
+            const aoc::game::Player* player = gs.player(ecsUnit.owner);
+            if (player == nullptr) { continue; }
+
+            const aoc::game::Unit* gsUnit = player->unitAt(ecsUnit.position);
+            if (gsUnit == nullptr) { continue; }
+
+            ecsUnit.hitPoints = gsUnit->hitPoints();
+            ecsUnit.movementRemaining = gsUnit->movementRemaining();
+            ecsUnit.state = gsUnit->state();
+            ecsUnit.pendingPath = gsUnit->pendingPath();
+        }
+    }
 }
 
 } // namespace aoc::sim

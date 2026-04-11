@@ -25,6 +25,14 @@ void executeFiscalPolicy(MonetaryStateComponent& state, CurrencyAmount gdp) {
     state.taxRevenue = static_cast<CurrencyAmount>(
         state.taxRate * static_cast<float>(gdp));
 
+    // Auto-set government spending proportional to GDP.
+    // Government spending covers infrastructure, military, public services,
+    // and scales with empire size. This is the primary gold sink preventing
+    // unlimited treasury accumulation from fiscal surplus.
+    // Spending = 12% of GDP (close to tax revenue at 15% rate, leaving ~3% surplus).
+    state.governmentSpending = static_cast<CurrencyAmount>(
+        static_cast<float>(gdp) * 0.12f);
+
     // Deficit = spending - revenue
     state.deficit = state.governmentSpending - state.taxRevenue;
 

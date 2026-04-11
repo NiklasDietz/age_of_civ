@@ -7,9 +7,12 @@
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
+#include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/empire/CommunicationSpeed.hpp"
 #include "aoc/simulation/monetary/Inflation.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/ecs/World.hpp"
@@ -45,12 +48,12 @@ float computePlayerScience(const aoc::ecs::World& world,
             }
         }
 
-        // 2. Population base science (1.0 per citizen for faster early game)
-        cityScience += static_cast<float>(city.population) * 1.0f;
+        // 2. Population base science (0.5 per citizen -- buildings are the real driver)
+        cityScience += static_cast<float>(city.population) * 0.5f;
 
-        // 3. Palace bonus (capital gets extra science)
+        // 3. Palace bonus (capital gets extra science, matching Civ 6 Palace)
         if (city.isOriginalCapital) {
-            cityScience += 5.0f;
+            cityScience += 3.0f;
         }
 
         // 3. Building bonuses and multiplier
@@ -149,8 +152,13 @@ float computePlayerCulture(const aoc::ecs::World& world,
             }
         }
 
-        // Population base culture
-        totalCulture += static_cast<float>(city.population) * 0.3f;
+        // Population base culture (1.0 per citizen, includes implicit Monument)
+        totalCulture += static_cast<float>(city.population) * 1.0f;
+
+        // Palace bonus: capital generates extra culture (+2, matching Civ 6)
+        if (city.isOriginalCapital) {
+            totalCulture += 2.0f;
+        }
     }
 
     // Apply civilization culture multiplier
@@ -177,6 +185,96 @@ float computePlayerCulture(const aoc::ecs::World& world,
             }
         }
     }
+
+    return totalCulture;
+}
+
+// ============================================================================
+// GameState-native overloads (Phase 3 migration)
+// ============================================================================
+
+float computePlayerScience(const aoc::game::Player& player,
+                            const aoc::map::HexGrid& grid) {
+    float totalScience = 0.0f;
+
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        float cityScience = 0.0f;
+
+        // 1. Science from worked tiles
+        for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
+            if (grid.isValid(tile)) {
+                aoc::map::TileYield yield = grid.tileYield(grid.toIndex(tile));
+                cityScience += static_cast<float>(yield.science);
+            }
+        }
+
+        // 2. Population base science (0.5 per citizen -- buildings are the real driver)
+        cityScience += static_cast<float>(city->population()) * 0.5f;
+
+        // 3. Palace bonus (capital gets extra science, matching Civ 6 Palace)
+        if (city->isOriginalCapital()) {
+            cityScience += 3.0f;
+        }
+
+        // 4. Building bonuses and multiplier
+        float bestMultiplier = 1.0f;
+        const CityDistrictsComponent& districts = city->districts();
+        for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
+            for (BuildingId bid : district.buildings) {
+                if (bid.value < BUILDING_DEFS.size()) {
+                    const BuildingDef& bdef = buildingDef(bid);
+                    cityScience += static_cast<float>(bdef.scienceBonus);
+                    bestMultiplier = std::max(bestMultiplier, bdef.scienceMultiplier);
+                }
+            }
+        }
+
+        // 5. Apply multiplier
+        cityScience *= bestMultiplier;
+
+        totalScience += cityScience;
+    }
+
+    // Apply government science multiplier
+    GovernmentModifiers govMods = computeGovernmentModifiers(player.government());
+    totalScience *= govMods.scienceMultiplier;
+
+    // Apply civilization science multiplier
+    totalScience *= civDef(player.civId()).modifiers.scienceMultiplier;
+
+    // Economic stability bonus
+    totalScience *= economicStabilityMultiplier(player.monetary());
+
+    return totalScience;
+}
+
+float computePlayerCulture(const aoc::game::Player& player,
+                            const aoc::map::HexGrid& grid) {
+    float totalCulture = 0.0f;
+
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        // Culture from worked tiles
+        for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
+            if (grid.isValid(tile)) {
+                aoc::map::TileYield yield = grid.tileYield(grid.toIndex(tile));
+                totalCulture += static_cast<float>(yield.culture);
+            }
+        }
+
+        // Population base culture (1.0 per citizen, includes implicit Monument)
+        totalCulture += static_cast<float>(city->population()) * 1.0f;
+
+        // Palace bonus: capital generates extra culture (+2, matching Civ 6)
+        if (city->isOriginalCapital()) {
+            totalCulture += 2.0f;
+        }
+    }
+
+    // Apply civilization culture multiplier
+    totalCulture *= civDef(player.civId()).modifiers.cultureMultiplier;
+
+    // Economic stability bonus
+    totalCulture *= economicStabilityMultiplier(player.monetary());
 
     return totalCulture;
 }

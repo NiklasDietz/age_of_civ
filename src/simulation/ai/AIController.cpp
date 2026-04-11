@@ -20,11 +20,13 @@
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/tech/TechGating.hpp"
+#include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
+#include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/simulation/ai/AIEconomicStrategy.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/ai/UtilityScoring.hpp"
@@ -73,6 +75,7 @@ struct UnitCounts {
     int32_t builders  = 0;
     int32_t settlers  = 0;
     int32_t scouts    = 0;
+    int32_t traders   = 0;
     int32_t total     = 0;
 };
 
@@ -100,6 +103,9 @@ static UnitCounts countPlayerUnits(const aoc::ecs::World& world, PlayerId player
         }
         if (def.unitClass == UnitClass::Scout) {
             ++counts.scouts;
+        }
+        if (def.unitClass == UnitClass::Trader) {
+            ++counts.traders;
         }
     }
     return counts;
@@ -139,6 +145,7 @@ void AIController::executeTurn(aoc::ecs::World& world,
     aoc::sim::aiEconomicStrategy(world, grid, market, diplomacy, this->m_player,
                                   static_cast<int32_t>(this->m_difficulty));
     this->executeDiplomacyActions(world, diplomacy, market);
+    this->manageTradeRoutes(world, grid);
 
     refreshMovement(world, this->m_player);
 }
@@ -223,6 +230,17 @@ void AIController::executeCityActions(aoc::ecs::World& world,
     bool builderEnqueued = false;
     int32_t militaryProducers = 0;
     const int32_t maxMilitaryProducers = std::max(0, ownedCityCount / 2 - 1);
+    int32_t traderProducers = 0;
+    // Traders require Foreign Trade civic (CivicId{2}) -- one of the first civics
+    bool hasForeignTrade = false;
+    world.forEach<PlayerCivicComponent>(
+        [this, &hasForeignTrade](EntityId, const PlayerCivicComponent& civic) {
+            if (civic.owner == this->m_player && civic.hasCompleted(CivicId{2})) {
+                hasForeignTrade = true;
+            }
+        });
+    const bool needsTrader = hasForeignTrade
+        && unitCounts.traders < std::min(ownedCityCount, 3);
 
     // Check if player has any coins
     bool playerHasCoins = false;
@@ -259,8 +277,72 @@ void AIController::executeCityActions(aoc::ecs::World& world,
 
         ProductionQueueItem item{};
 
-        // Priority 1: Settler
-        if (needsSettler && !settlerEnqueued && city.population >= targets.settlePopThreshold) {
+        // Priority 0: At least 1 military unit for basic defense
+        if (unitCounts.military == 0 && bestMilitaryId.isValid() && militaryProducers == 0) {
+            item.type = ProductionItemType::Unit;
+            item.itemId = bestMilitaryId.value;
+            item.name = std::string(bestMilitaryDef.name);
+            item.totalCost = static_cast<float>(bestMilitaryDef.productionCost);
+            item.progress = 0.0f;
+            ++militaryProducers;
+            LOG_INFO("AI %u Enqueued %.*s in %s (defense priority)",
+                     static_cast<unsigned>(this->m_player),
+                     static_cast<int>(bestMilitaryDef.name.size()),
+                     bestMilitaryDef.name.data(),
+                     city.name.c_str());
+        }
+        // Priority 1: Industrial district in capital (enables production chain).
+        // This is the foundation of the economy -- Forge/Workshop can't be built without it.
+        else if (city.isOriginalCapital) {
+            const CityDistrictsComponent* capDistricts =
+                world.tryGetComponent<CityDistrictsComponent>(cityEntity);
+            bool capHasIndustrial = (capDistricts != nullptr
+                && capDistricts->hasDistrict(DistrictType::Industrial));
+            bool capHasForge = (capDistricts != nullptr
+                && capDistricts->hasBuilding(BuildingId{0}));
+            bool capHasWorkshop = (capDistricts != nullptr
+                && capDistricts->hasBuilding(BuildingId{1}));
+
+            if (!capHasIndustrial) {
+                item.type = ProductionItemType::District;
+                item.itemId = static_cast<uint16_t>(DistrictType::Industrial);
+                item.name = "Industrial Zone";
+                item.totalCost = 60.0f;
+                item.progress = 0.0f;
+                LOG_INFO("AI %u Enqueued Industrial Zone in %s (capital priority)",
+                         static_cast<unsigned>(this->m_player), city.name.c_str());
+            } else if (!capHasForge) {
+                item.type = ProductionItemType::Building;
+                item.itemId = 0;
+                item.name = "Forge";
+                item.totalCost = 60.0f;
+                item.progress = 0.0f;
+                LOG_INFO("AI %u Enqueued Forge in %s (capital priority)",
+                         static_cast<unsigned>(this->m_player), city.name.c_str());
+            } else if (!capHasWorkshop) {
+                item.type = ProductionItemType::Building;
+                item.itemId = 1;
+                item.name = "Workshop";
+                item.totalCost = 40.0f;
+                item.progress = 0.0f;
+                LOG_INFO("AI %u Enqueued Workshop in %s (capital priority)",
+                         static_cast<unsigned>(this->m_player), city.name.c_str());
+            }
+            // If capital already has all three, fall through to next priority
+        }
+        // Priority 2: First Trader (enables trade routes)
+        if (item.name.empty() && traderProducers == 0 && needsTrader && unitCounts.traders == 0) {
+            item.type = ProductionItemType::Unit;
+            item.itemId = 30;  // Trader
+            item.name = "Trader";
+            item.totalCost = static_cast<float>(unitTypeDef(UnitTypeId{30}).productionCost);
+            item.progress = 0.0f;
+            ++traderProducers;
+            LOG_INFO("AI %u Enqueued Trader in %s (first trader priority)",
+                     static_cast<unsigned>(this->m_player), city.name.c_str());
+        }
+        // Priority 3: Settler
+        if (item.name.empty() && needsSettler && !settlerEnqueued && city.population >= targets.settlePopThreshold) {
             item.type = ProductionItemType::Unit;
             item.itemId = 3;
             item.name = "Settler";
@@ -271,8 +353,8 @@ void AIController::executeCityActions(aoc::ecs::World& world,
                      static_cast<unsigned>(this->m_player),
                      city.name.c_str(), city.population);
         }
-        // Priority 2: Builder
-        else if (needsBuilder && !builderEnqueued) {
+        // Priority 4: Builder
+        if (item.name.empty() && needsBuilder && !builderEnqueued) {
             item.type = ProductionItemType::Unit;
             item.itemId = 5;
             item.name = "Builder";
@@ -282,8 +364,19 @@ void AIController::executeCityActions(aoc::ecs::World& world,
             LOG_INFO("AI %u Enqueued Builder in %s",
                      static_cast<unsigned>(this->m_player), city.name.c_str());
         }
-        // Priority 3: Military units (limited to half of cities)
-        else if (needsMilitary && militaryProducers < maxMilitaryProducers) {
+        // Priority 5: Additional Traders (one per city, max 3)
+        if (item.name.empty() && traderProducers == 0 && needsTrader) {
+            item.type = ProductionItemType::Unit;
+            item.itemId = 30;
+            item.name = "Trader";
+            item.totalCost = static_cast<float>(unitTypeDef(UnitTypeId{30}).productionCost);
+            item.progress = 0.0f;
+            ++traderProducers;
+            LOG_INFO("AI %u Enqueued Trader in %s",
+                     static_cast<unsigned>(this->m_player), city.name.c_str());
+        }
+        // Priority 6: Military units (limited to half of cities)
+        if (item.name.empty() && needsMilitary && militaryProducers < maxMilitaryProducers) {
             item.type = ProductionItemType::Unit;
             item.itemId = bestMilitaryId.value;
             item.name = std::string(bestMilitaryDef.name);
@@ -296,32 +389,34 @@ void AIController::executeCityActions(aoc::ecs::World& world,
                      bestMilitaryDef.name.data(),
                      city.name.c_str());
         }
-        // Priority 4+5: Districts, then Buildings, then Fallback
-        else {
+        // Priority 7+8: Districts, then Buildings, then Fallback
+        if (item.name.empty()) {
             bool enqueuedSomething = false;
 
             // --- 4a: Districts the city is missing ---
             const CityDistrictsComponent* existingDistricts =
                 world.tryGetComponent<CityDistrictsComponent>(cityEntity);
 
-            // District priority varies per city: first city gets Commercial (for Mint),
-            // subsequent cities alternate Campus/Industrial based on what's missing.
+            // District priority: Industrial first (enables Forge/Workshop for production
+            // chain), then Commercial (for trade/Mint), then Campus for science.
             DistrictType districtPriority[5];
             int32_t districtCosts[5];
-            if (!existingDistricts || !existingDistricts->hasDistrict(DistrictType::Commercial)) {
-                // First priority: Commercial (enables coins)
-                districtPriority[0] = DistrictType::Commercial; districtCosts[0] = 60;
-                districtPriority[1] = DistrictType::Campus;     districtCosts[1] = 55;
-                districtPriority[2] = DistrictType::Industrial;  districtCosts[2] = 60;
+            bool hasIndustrial = (existingDistricts != nullptr
+                && existingDistricts->hasDistrict(DistrictType::Industrial));
+            if (!hasIndustrial) {
+                // Industrial first: enables Forge/Workshop for resource processing
+                districtPriority[0] = DistrictType::Industrial;  districtCosts[0] = 60;
+                districtPriority[1] = DistrictType::Commercial;  districtCosts[1] = 60;
+                districtPriority[2] = DistrictType::Campus;      districtCosts[2] = 55;
                 districtPriority[3] = DistrictType::Encampment;  districtCosts[3] = 55;
                 districtPriority[4] = DistrictType::Harbor;      districtCosts[4] = 70;
             } else {
-                // Already have Commercial: prioritize Campus then Industrial
-                districtPriority[0] = DistrictType::Campus;     districtCosts[0] = 55;
-                districtPriority[1] = DistrictType::Industrial;  districtCosts[1] = 60;
+                // Already have Industrial: Commercial next, then Campus
+                districtPriority[0] = DistrictType::Commercial;  districtCosts[0] = 60;
+                districtPriority[1] = DistrictType::Campus;      districtCosts[1] = 55;
                 districtPriority[2] = DistrictType::Encampment;  districtCosts[2] = 55;
                 districtPriority[3] = DistrictType::Harbor;      districtCosts[3] = 70;
-                districtPriority[4] = DistrictType::Commercial;  districtCosts[4] = 60;
+                districtPriority[4] = DistrictType::Industrial;  districtCosts[4] = 60;
             }
 
             int32_t totalBuildings = 0;
@@ -738,6 +833,85 @@ void AIController::manageGovernment(aoc::ecs::World& world) {
 
 // ============================================================================
 // Monetary system management
+// ============================================================================
+
+void AIController::manageTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& grid) {
+    // Find idle Trader units owned by this player that are not already on a route
+    aoc::ecs::ComponentPool<UnitComponent>* unitPool = world.getPool<UnitComponent>();
+    if (unitPool == nullptr) {
+        return;
+    }
+
+    // Collect Trader entities that don't have a TraderComponent (idle)
+    std::vector<EntityId> idleTraders;
+    for (uint32_t i = 0; i < unitPool->size(); ++i) {
+        if (unitPool->data()[i].owner != this->m_player) { continue; }
+        const UnitTypeDef& def = unitTypeDef(unitPool->data()[i].typeId);
+        if (def.unitClass != UnitClass::Trader) { continue; }
+
+        EntityId traderEntity = unitPool->entities()[i];
+        // Check if already assigned to a route
+        const TraderComponent* existing = world.tryGetComponent<TraderComponent>(traderEntity);
+        if (existing != nullptr) { continue; }
+
+        idleTraders.push_back(traderEntity);
+    }
+
+    if (idleTraders.empty()) {
+        return;
+    }
+
+    // Find foreign cities to trade with (prefer closest)
+    aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
+    if (cityPool == nullptr) {
+        return;
+    }
+
+    for (EntityId traderEntity : idleTraders) {
+        const UnitComponent* traderUnit = world.tryGetComponent<UnitComponent>(traderEntity);
+        if (traderUnit == nullptr) { continue; }
+
+        // Find the closest foreign city
+        EntityId bestCity = NULL_ENTITY;
+        int32_t bestDist = INT32_MAX;
+        for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
+            const CityComponent& city = cityPool->data()[ci];
+            if (city.owner == this->m_player) { continue; }  // Skip own cities
+            int32_t dist = aoc::hex::distance(traderUnit->position, city.location);
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestCity = cityPool->entities()[ci];
+            }
+        }
+
+        // If no foreign cities, try own cities for internal routes
+        if (!bestCity.isValid()) {
+            for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
+                const CityComponent& city = cityPool->data()[ci];
+                if (city.owner != this->m_player) { continue; }
+                // Don't trade with the city the trader is in
+                if (city.location == traderUnit->position) { continue; }
+                int32_t dist = aoc::hex::distance(traderUnit->position, city.location);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestCity = cityPool->entities()[ci];
+                }
+            }
+        }
+
+        if (bestCity.isValid()) {
+            ErrorCode result = establishTradeRoute(world, grid, traderEntity, bestCity);
+            if (result == ErrorCode::Ok) {
+                const CityComponent* destCity = world.tryGetComponent<CityComponent>(bestCity);
+                LOG_INFO("AI %u established trade route to %s (player %u)",
+                         static_cast<unsigned>(this->m_player),
+                         (destCity != nullptr) ? destCity->name.c_str() : "unknown",
+                         static_cast<unsigned>((destCity != nullptr) ? destCity->owner : INVALID_PLAYER));
+            }
+        }
+    }
+}
+
 // ============================================================================
 
 void AIController::manageMonetarySystem(aoc::ecs::World& world,

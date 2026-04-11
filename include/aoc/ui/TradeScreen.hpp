@@ -42,9 +42,6 @@ private:
     WidgetId                     m_statusLabel = INVALID_WIDGET;
     WidgetId                     m_partnerList = INVALID_WIDGET;
     WidgetId                     m_tradePanel  = INVALID_WIDGET;
-    float m_screenW = 1280.0f;
-    float m_screenH = 720.0f;
-
     /// Amounts the human offers / requests (indexed by good ID).
     static constexpr uint16_t MAX_TRADE_GOODS = 32;
     int32_t m_offerAmounts[MAX_TRADE_GOODS]   = {};

@@ -127,6 +127,26 @@ void EconomySimulation::harvestResources(aoc::ecs::World& world,
                 continue;
             }
 
+            // Check if this resource is revealed by tech for this player
+            TechId revealTech = resourceRevealTech(goodId);
+            if (revealTech.isValid()) {
+                const aoc::ecs::ComponentPool<PlayerTechComponent>* techPool =
+                    world.getPool<PlayerTechComponent>();
+                bool hasRevealTech = false;
+                if (techPool != nullptr) {
+                    for (uint32_t ti = 0; ti < techPool->size(); ++ti) {
+                        if (techPool->data()[ti].owner == city.owner
+                            && techPool->data()[ti].hasResearched(revealTech)) {
+                            hasRevealTech = true;
+                            break;
+                        }
+                    }
+                }
+                if (!hasRevealTech) {
+                    continue;  // Can't harvest what you can't see
+                }
+            }
+
             // Base yield depends on improvement type
             int32_t yield = 1;
             if (imp == aoc::map::ImprovementType::Mine) {

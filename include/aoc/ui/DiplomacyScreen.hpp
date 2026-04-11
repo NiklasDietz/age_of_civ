@@ -31,8 +31,6 @@ private:
     aoc::sim::DiplomacyManager*  m_diplomacy = nullptr;
     PlayerId                     m_player    = INVALID_PLAYER;
     WidgetId                     m_playerList = INVALID_WIDGET;
-    float m_screenW = 1280.0f;
-    float m_screenH = 720.0f;
 };
 
 } // namespace aoc::ui

@@ -67,6 +67,7 @@ public:
     void render(vulkan_app::renderer::Renderer2D& renderer2d) const;
 
     [[nodiscard]] bool isVisible() const { return this->m_visible; }
+    void hide() { this->m_visible = false; this->m_showDelay = 0.0f; }
     [[nodiscard]] float getX() const { return this->m_x; }
     [[nodiscard]] float getY() const { return this->m_y; }
     void setPosition(float x, float y) { this->m_x = x; this->m_y = y; }

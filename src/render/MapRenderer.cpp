@@ -312,9 +312,10 @@ void MapRenderer::drawTile(vulkan_app::renderer::Renderer2D& renderer2d,
         renderer2d.drawFilledCircle(cx, cy, hs * 0.06f, 0.45f, 0.40f, 0.30f, 0.5f);
     }
 
-    // ---- Resource icon (distinctive shapes at bottom of hex) ----
+    // ---- Resource icon (only if revealed by tech) ----
     const ResourceId tileResource = grid.resource(tileIndex);
-    if (tileResource.isValid() && tileResource.value < aoc::sim::goodCount()) {
+    if (tileResource.isValid() && tileResource.value < aoc::sim::goodCount()
+        && this->isResourceRevealed(tileResource.value)) {
         const aoc::sim::GoodDef& gdef = aoc::sim::goodDef(tileResource.value);
         const float s = hs * 0.13f;
         const float ry = cy + hs * 0.38f;
@@ -353,6 +354,8 @@ void MapRenderer::drawTile(vulkan_app::renderer::Renderer2D& renderer2d,
 
 void MapRenderer::drawTerritoryBorders(vulkan_app::renderer::Renderer2D& renderer2d,
                                         const aoc::map::HexGrid& grid,
+                                        const aoc::map::FogOfWar& fog,
+                                        PlayerId viewingPlayer,
                                         const CameraController& camera,
                                         uint32_t screenWidth,
                                         uint32_t screenHeight) const {
@@ -385,6 +388,13 @@ void MapRenderer::drawTerritoryBorders(vulkan_app::renderer::Renderer2D& rendere
             const int32_t index = row * width + col;
             const PlayerId tileOwner = grid.owner(index);
             if (tileOwner == INVALID_PLAYER) {
+                continue;
+            }
+
+            // Fog check: own territory on Revealed+Visible, foreign only on Visible
+            const aoc::map::TileVisibility tileVis = fog.visibility(viewingPlayer, index);
+            if (tileVis == aoc::map::TileVisibility::Unseen) { continue; }
+            if (tileOwner != viewingPlayer && tileVis != aoc::map::TileVisibility::Visible) {
                 continue;
             }
 
@@ -572,10 +582,10 @@ void MapRenderer::drawYieldLabels(vulkan_app::renderer::Renderer2D& renderer2d,
             }
 
             // Civ 6 style: colored circles for each yield type with count
-            // Layout: small icons in a row at the bottom of the hex
-            const float iconR = this->m_hexSize * 0.08f;  // Icon radius
-            const float iconSpacing = iconR * 2.8f;
-            const float baseY = cy + this->m_hexSize * 0.38f;
+            // Layout: small icons in a row above the resource icon area
+            const float iconR = this->m_hexSize * 0.07f;  // Icon radius
+            const float iconSpacing = iconR * 2.6f;
+            const float baseY = cy + this->m_hexSize * 0.28f;  // Between center and resource icon
 
             // Count how many yield types to display for centering
             int32_t totalIcons = 0;

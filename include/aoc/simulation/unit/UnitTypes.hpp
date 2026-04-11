@@ -69,6 +69,16 @@ struct UnitTypeDef {
     TechId          requiredTech;     ///< Tech needed to build (invalid = no requirement)
     UnitTypeId      upgradesTo;       ///< Next unit in the upgrade chain (invalid = none)
     int32_t         upgradeCost;      ///< Gold cost to upgrade an existing unit
+
+    /// Per-turn gold maintenance for this unit (Civ 6 style, scales with era).
+    [[nodiscard]] constexpr int32_t maintenanceGold() const {
+        if (this->unitClass == UnitClass::Settler || this->unitClass == UnitClass::Civilian
+            || this->unitClass == UnitClass::Trader || this->unitClass == UnitClass::Scout) {
+            return 0;  // Civilian units have no maintenance
+        }
+        // Military maintenance: 1 (Ancient) to 6 (Information)
+        return static_cast<int32_t>(this->era) + 1;
+    }
 };
 
 // Unit type IDs: keep stable for serialization. Gaps are fine.

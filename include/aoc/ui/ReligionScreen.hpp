@@ -37,8 +37,6 @@ private:
     WidgetId             m_faithLabel   = INVALID_WIDGET;
     WidgetId             m_statusLabel  = INVALID_WIDGET;
     WidgetId             m_beliefList   = INVALID_WIDGET;
-    float m_screenW = 1280.0f;
-    float m_screenH = 720.0f;
 };
 
 } // namespace aoc::ui

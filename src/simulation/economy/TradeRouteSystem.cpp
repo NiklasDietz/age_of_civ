@@ -23,25 +23,38 @@ namespace aoc::sim {
 
 namespace {
 
-/// Select surplus goods from a city stockpile (goods with amount > threshold).
-/// Returns up to maxGoods types of cargo.
+/// Select surplus goods from a city stockpile for trade.
+/// Picks goods with the highest stockpile amounts, transferring half the excess.
+/// Cities keep a minimum reserve of 1 unit per good type.
 void selectSurplusGoods(const CityStockpileComponent& stockpile,
                          std::vector<TradeCargo>& outCargo,
-                         int32_t maxGoods,
-                         int32_t surplusThreshold) {
+                         int32_t maxGoods) {
     outCargo.clear();
-    int32_t count = 0;
 
+    // Sort goods by amount descending to prioritize largest surpluses
+    struct GoodEntry {
+        uint16_t goodId;
+        int32_t  amount;
+    };
+    std::vector<GoodEntry> sortedGoods;
+    sortedGoods.reserve(stockpile.goods.size());
     for (const std::pair<const uint16_t, int32_t>& entry : stockpile.goods) {
-        if (count >= maxGoods) { break; }
-        if (entry.second <= surplusThreshold) { continue; }
+        if (entry.second > 1) {  // Keep at least 1 in reserve
+            sortedGoods.push_back({entry.first, entry.second});
+        }
+    }
+    std::sort(sortedGoods.begin(), sortedGoods.end(),
+        [](const GoodEntry& a, const GoodEntry& b) { return a.amount > b.amount; });
 
-        // Transfer half of the surplus
-        int32_t surplus = entry.second - surplusThreshold;
-        int32_t transfer = std::max(1, surplus / 2);
+    int32_t count = 0;
+    for (const GoodEntry& entry : sortedGoods) {
+        if (count >= maxGoods) { break; }
+
+        // Transfer half, keeping at least 1 behind
+        int32_t transfer = std::max(1, (entry.amount - 1) / 2);
 
         TradeCargo cargo;
-        cargo.goodId = entry.first;
+        cargo.goodId = entry.goodId;
         cargo.amount = transfer;
         outCargo.push_back(cargo);
         ++count;
@@ -122,7 +135,7 @@ ErrorCode establishTradeRoute(aoc::ecs::World& world,
     CityStockpileComponent* originStock =
         world.tryGetComponent<CityStockpileComponent>(originCity);
     if (originStock != nullptr) {
-        selectSurplusGoods(*originStock, trader.cargo, 4, 3);
+        selectSurplusGoods(*originStock, trader.cargo, 4);
         // Remove loaded goods from city stockpile
         for (const TradeCargo& c : trader.cargo) {
             originStock->consumeGoods(c.goodId, c.amount);
@@ -206,7 +219,7 @@ void processTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& grid) {
             trader->goldEarnedThisTurn = goldEarned;
 
             // Load return cargo (surplus from this city)
-            selectSurplusGoods(*targetStock, trader->cargo, 4, 3);
+            selectSurplusGoods(*targetStock, trader->cargo, 4);
             for (const TradeCargo& c : trader->cargo) {
                 targetStock->consumeGoods(c.goodId, c.amount);
             }

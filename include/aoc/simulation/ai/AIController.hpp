@@ -67,6 +67,9 @@ private:
                        DiplomacyManager& diplomacy,
                        const Market& market);
 
+    /// Assign idle Trader units to trade routes with other players' cities.
+    void manageTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& grid);
+
     /// Manage monetary system: transition when ready, prioritize minting.
     void manageMonetarySystem(aoc::ecs::World& world,
                               const DiplomacyManager& diplomacy);
