@@ -24,7 +24,7 @@
 #include <array>
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -93,13 +93,13 @@ struct PlayerSupplyChainComponent {
  * @param world   ECS world.
  * @param player  Player to update.
  */
-void updateSupplyChainHealth(aoc::ecs::World& world, PlayerId player);
+void updateSupplyChainHealth(aoc::game::GameState& gameState, PlayerId player);
 
 /**
  * @brief Process supply chain effects for all players.
  *
  * Called once per turn in global systems.
  */
-void processSupplyChains(aoc::ecs::World& world);
+void processSupplyChains(aoc::game::GameState& gameState);
 
 } // namespace aoc::sim

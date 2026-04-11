@@ -4,6 +4,7 @@
  *        and city founding.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/ai/AISettlerController.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
@@ -28,8 +29,9 @@ namespace aoc::sim::ai {
 
 static float scoreCityLocation(hex::AxialCoord pos,
                                const aoc::map::HexGrid& grid,
-                               const aoc::ecs::World& world,
+                               const aoc::game::GameState& gameState,
                                PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (!grid.isValid(pos)) {
         return -1000.0f;
     }
@@ -115,8 +117,9 @@ AISettlerController::AISettlerController(PlayerId player, aoc::ui::AIDifficulty 
 // Settler actions
 // ============================================================================
 
-void AISettlerController::executeSettlerActions(aoc::ecs::World& world,
+void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
                                                 aoc::map::HexGrid& grid) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<UnitComponent>* unitPool = world.getPool<UnitComponent>();
     if (unitPool == nullptr) {
         return;

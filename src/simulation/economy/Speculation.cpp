@@ -3,6 +3,7 @@
  * @brief Market speculation, commodity hoarding, and gold rush events.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/Speculation.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
@@ -15,10 +16,11 @@
 
 namespace aoc::sim {
 
-ErrorCode hoardCommodity(aoc::ecs::World& world,
+ErrorCode hoardCommodity(aoc::game::GameState& gameState,
                          const Market& market,
                          PlayerId player,
                          uint16_t goodId, int32_t amount) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (amount <= 0 || goodId >= market.goodsCount()) {
         return ErrorCode::InvalidArgument;
     }
@@ -94,10 +96,11 @@ ErrorCode hoardCommodity(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-ErrorCode releaseCommodity(aoc::ecs::World& world,
+ErrorCode releaseCommodity(aoc::game::GameState& gameState,
                            const Market& /*market*/,
                            PlayerId player,
                            uint16_t goodId, int32_t amount) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<CommodityHoardComponent>* hoardPool =
         world.getPool<CommodityHoardComponent>();
     if (hoardPool == nullptr) {
@@ -148,9 +151,10 @@ ErrorCode releaseCommodity(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-float marketShareOfGood(const aoc::ecs::World& world,
+float marketShareOfGood(const aoc::game::GameState& gameState,
                         const Market& /*market*/,
                         PlayerId player, uint16_t goodId) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Sum total supply of this good across all players
     int32_t totalSupply = 0;
     int32_t playerSupply = 0;
@@ -197,7 +201,7 @@ float marketShareOfGood(const aoc::ecs::World& world,
     return static_cast<float>(playerSupply) / static_cast<float>(totalSupply);
 }
 
-void triggerGoldRushInflation(aoc::ecs::World& world, int32_t goldAmount) {
+void triggerGoldRushInflation(aoc::game::GameState& gameState, int32_t goldAmount) {
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
         world.getPool<MonetaryStateComponent>();
     if (monetaryPool == nullptr) {
@@ -219,7 +223,7 @@ void triggerGoldRushInflation(aoc::ecs::World& world, int32_t goldAmount) {
     }
 }
 
-void processSpeculation(aoc::ecs::World& world, Market& market) {
+void processSpeculation(aoc::game::GameState& gameState, Market& market) {
     const aoc::ecs::ComponentPool<CommodityHoardComponent>* hoardPool =
         world.getPool<CommodityHoardComponent>();
     if (hoardPool == nullptr) {

@@ -9,8 +9,8 @@
 #include "aoc/core/Types.hpp"
 #include "aoc/ui/MainMenu.hpp"
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::map {
@@ -36,7 +36,7 @@ public:
      * @param world  ECS world with all game state.
      * @param grid   Hex grid for terrain queries and pathfinding.
      */
-    void executeSettlerActions(aoc::ecs::World& world, aoc::map::HexGrid& grid);
+    void executeSettlerActions(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
 
 private:
     PlayerId              m_player;

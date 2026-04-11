@@ -17,7 +17,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -96,12 +96,12 @@ inline constexpr int32_t CITY_STATE_FULL_COUNT = 24;
 /**
  * @brief Generate a quest for a city-state aimed at a nearby player.
  */
-void generateCityStateQuest(aoc::ecs::World& world, EntityId cityStateEntity,
+void generateCityStateQuest(aoc::game::GameState& gameState, EntityId cityStateEntity,
                             PlayerId targetPlayer);
 
 /**
  * @brief Check quest completion for all city-states.
  */
-void checkCityStateQuests(aoc::ecs::World& world);
+void checkCityStateQuests(aoc::game::GameState& gameState);
 
 } // namespace aoc::sim

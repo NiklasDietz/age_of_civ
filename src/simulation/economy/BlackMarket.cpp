@@ -3,6 +3,7 @@
  * @brief Black market smuggling past embargoes.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/BlackMarket.hpp"
 #include "aoc/simulation/economy/Sanctions.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
@@ -16,7 +17,8 @@
 
 namespace aoc::sim {
 
-void processBlackMarketTrade(aoc::ecs::World& world) {
+void processBlackMarketTrade(aoc::game::GameState& gameState) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<PlayerBlackMarketComponent>* bmPool =
         world.getPool<PlayerBlackMarketComponent>();
     aoc::ecs::ComponentPool<GlobalSanctionTracker>* sanctionPool =

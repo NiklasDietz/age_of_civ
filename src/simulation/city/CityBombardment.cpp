@@ -1,112 +1,81 @@
 /**
  * @file CityBombardment.cpp
  * @brief City ranged bombardment implementation.
+ *
+ * Migrated from ECS to GameState object model.
  */
 
 #include "aoc/simulation/city/CityBombardment.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/core/Log.hpp"
+#include "aoc/core/Random.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/game/Unit.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
-#include "aoc/map/Terrain.hpp"
-#include "aoc/ecs/World.hpp"
 
 #include <algorithm>
 #include <cmath>
 
 namespace aoc::sim {
 
-void processCityBombardment(aoc::ecs::World& world, const aoc::map::HexGrid& grid,
+void processCityBombardment(aoc::game::GameState& gameState,
+                             const aoc::map::HexGrid& grid,
                              PlayerId player, aoc::Random& rng) {
-    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-        world.getPool<CityComponent>();
-    if (cityPool == nullptr) {
+    aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer == nullptr) {
         return;
     }
 
-    aoc::ecs::ComponentPool<UnitComponent>* unitPool =
-        world.getPool<UnitComponent>();
-    if (unitPool == nullptr) {
-        return;
-    }
-
-    for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
-        const CityComponent& city = cityPool->data()[ci];
-        if (city.owner != player) {
-            continue;
-        }
-
-        const EntityId cityEntity = cityPool->entities()[ci];
-
+    for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
         // Check if the city has Walls (BuildingId 17)
-        const CityDistrictsComponent* districts =
-            world.tryGetComponent<CityDistrictsComponent>(cityEntity);
-        if (districts == nullptr) {
+        if (!city->hasBuilding(BuildingId{17})) {
             continue;
         }
 
-        // Count wall-type buildings for strength scaling
-        int32_t wallBuildingCount = 0;
-        if (districts->hasBuilding(BuildingId{17})) {
-            ++wallBuildingCount;
-        }
+        const float bombardStrength = 20.0f;
 
-        if (wallBuildingCount == 0) {
-            continue;
-        }
+        // Find adjacent enemy military units across all players
+        const std::array<aoc::hex::AxialCoord, 6> neighbors =
+            aoc::hex::neighbors(city->location());
 
-        // Bombardment strength: 15 + 5 per wall building
-        const float bombardStrength = 15.0f + 5.0f * static_cast<float>(wallBuildingCount);
-
-        // Find adjacent enemy military units
-        const std::array<hex::AxialCoord, 6> neighbors = hex::neighbors(city.location);
-
-        for (const hex::AxialCoord& nbr : neighbors) {
+        for (const aoc::hex::AxialCoord& nbr : neighbors) {
             if (!grid.isValid(nbr)) {
                 continue;
             }
 
-            // Find an enemy unit on this tile
-            for (uint32_t ui = 0; ui < unitPool->size(); ++ui) {
-                UnitComponent& targetUnit = unitPool->data()[ui];
-                if (targetUnit.owner == player || targetUnit.owner == INVALID_PLAYER) {
-                    continue;
-                }
-                if (targetUnit.position != nbr) {
-                    continue;
-                }
+            // Search all enemy players for units on this tile
+            for (const std::unique_ptr<aoc::game::Player>& otherPlayer : gameState.players()) {
+                if (otherPlayer->id() == player) { continue; }
 
-                const UnitTypeDef& targetDef = unitTypeDef(targetUnit.typeId);
-                if (!isMilitary(targetDef.unitClass)) {
-                    continue;
-                }
+                aoc::game::Unit* target = otherPlayer->unitAt(nbr);
+                if (target == nullptr) { continue; }
+                if (!target->isMilitary()) { continue; }
 
-                // Compute damage using ranged combat formula: city never takes retaliation
-                const float defenseStrength = static_cast<float>(targetDef.combatStrength);
+                // Compute bombardment damage
+                float defenseStrength = static_cast<float>(target->combatStrength());
                 float ratio = bombardStrength / std::max(defenseStrength, 0.01f);
                 float randomFactor = 0.8f + rng.nextFloat() * 0.4f;
                 float baseDamage = 30.0f * ratio * randomFactor;
-                const int32_t damage = std::clamp(static_cast<int32_t>(baseDamage), 0, 100);
+                int32_t damage = std::clamp(static_cast<int32_t>(baseDamage), 0, 100);
 
-                targetUnit.hitPoints -= damage;
+                target->takeDamage(damage);
 
                 LOG_INFO("City %s bombarded %.*s at (%d,%d) for %d damage (HP: %d)",
-                         city.name.c_str(),
-                         static_cast<int>(targetDef.name.size()), targetDef.name.data(),
-                         nbr.q, nbr.r, damage, targetUnit.hitPoints);
+                         city->name().c_str(),
+                         static_cast<int>(target->typeDef().name.size()),
+                         target->typeDef().name.data(),
+                         nbr.q, nbr.r, damage, target->hitPoints());
 
-                // Destroy the unit if HP <= 0
-                if (targetUnit.hitPoints <= 0) {
-                    const EntityId targetEntity = unitPool->entities()[ui];
-                    world.destroyEntity(targetEntity);
+                if (target->isDead()) {
+                    otherPlayer->removeUnit(target);
                     LOG_INFO("City bombardment destroyed enemy unit");
-                    break; // Only bombard one unit per neighbor tile
                 }
 
-                break; // Only one unit per tile
+                break;  // One target per neighbor tile
             }
         }
     }

@@ -17,7 +17,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -71,23 +71,23 @@ struct UnitAutomationComponent {
  * @brief Process research queue: if current research is complete and queue
  *        has next entry, automatically start researching it.
  */
-void processResearchQueue(aoc::ecs::World& world, PlayerId player);
+void processResearchQueue(aoc::game::GameState& gameState, PlayerId player);
 
 /**
  * @brief Process auto-explore for all scout units with the flag set.
  *
  * Scouts move toward the nearest fog-of-war tile they haven't visited.
  */
-void processAutoExplore(aoc::ecs::World& world, aoc::map::HexGrid& grid, PlayerId player);
+void processAutoExplore(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, PlayerId player);
 
 /**
  * @brief Process military alert: wake units when enemies enter their radius.
  */
-void processAlertStance(aoc::ecs::World& world, const aoc::map::HexGrid& grid, PlayerId player);
+void processAlertStance(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid, PlayerId player);
 
 /**
  * @brief Process all automation for a player (called once per turn).
  */
-void processAutomation(aoc::ecs::World& world, aoc::map::HexGrid& grid, PlayerId player);
+void processAutomation(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, PlayerId player);
 
 } // namespace aoc::sim

@@ -3,6 +3,7 @@
  * @brief Natural disaster event processing.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/climate/NaturalDisasters.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
@@ -18,8 +19,9 @@
 
 namespace aoc::sim {
 
-int32_t processNaturalDisasters(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                                 int32_t turnNumber, float globalTemp) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     int32_t disasterCount = 0;
     int32_t totalTiles = grid.tileCount();
 

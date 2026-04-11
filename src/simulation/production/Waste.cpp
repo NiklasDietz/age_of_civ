@@ -3,6 +3,7 @@
  * @brief Production waste accumulation and treatment.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/production/Waste.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
@@ -14,7 +15,7 @@
 
 namespace aoc::sim {
 
-void processWasteTreatment(aoc::ecs::World& world, EntityId cityEntity) {
+void processWasteTreatment(aoc::game::GameState& gameState, EntityId cityEntity) {
     CityPollutionComponent* pollution =
         world.tryGetComponent<CityPollutionComponent>(cityEntity);
     if (pollution == nullptr || pollution->wasteAccumulated <= 0) {
@@ -41,8 +42,9 @@ void processWasteTreatment(aoc::ecs::World& world, EntityId cityEntity) {
     }
 }
 
-void accumulateWaste(aoc::ecs::World& world, EntityId cityEntity,
+void accumulateWaste(aoc::game::GameState& gameState, EntityId cityEntity,
                      BuildingId buildingUsed, int32_t batchesExecuted) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     WasteOutput waste = buildingWasteOutput(buildingUsed);
     if (waste.amount <= 0
         || waste.type == static_cast<WasteType>(static_cast<uint8_t>(WasteType::Count))) {
@@ -72,7 +74,7 @@ void accumulateWaste(aoc::ecs::World& world, EntityId cityEntity,
     }
 }
 
-int32_t totalIndustrialCO2(const aoc::ecs::World& world) {
+int32_t totalIndustrialCO2(const aoc::game::GameState& gameState) {
     const aoc::ecs::ComponentPool<CityPollutionComponent>* pool =
         world.getPool<CityPollutionComponent>();
     if (pool == nullptr) {

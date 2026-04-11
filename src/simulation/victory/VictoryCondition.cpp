@@ -4,6 +4,7 @@
  *        interdependence bonuses, losing conditions, and integration project.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/victory/VictoryCondition.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -70,9 +71,10 @@ struct PlayerRawStats {
 };
 
 static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
-    const aoc::ecs::World& world,
+    const aoc::game::GameState& gameState,
     const aoc::map::HexGrid& grid,
     const EconomySimulation& economy) {
+    aoc::ecs::World& world = gameState.legacyWorld();
 
     std::unordered_map<PlayerId, PlayerRawStats> stats;
 
@@ -235,8 +237,9 @@ static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
 // CSI Computation
 // ============================================================================
 
-void computeCSI(aoc::ecs::World& world, const aoc::map::HexGrid& grid,
+void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
                 const EconomySimulation& economy) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     std::unordered_map<PlayerId, PlayerRawStats> stats = gatherPlayerStats(world, grid, economy);
     if (stats.empty()) {
         return;
@@ -374,7 +377,7 @@ void computeCSI(aoc::ecs::World& world, const aoc::map::HexGrid& grid,
 /// Era length in turns.
 constexpr TurnNumber ERA_EVALUATION_INTERVAL = 30;
 
-void performEraEvaluation(aoc::ecs::World& world) {
+void performEraEvaluation(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<VictoryTrackerComponent>* trackerPool =
         world.getPool<VictoryTrackerComponent>();
     if (trackerPool == nullptr || trackerPool->size() == 0) {
@@ -426,7 +429,7 @@ void performEraEvaluation(aoc::ecs::World& world) {
 // Collapse (losing conditions)
 // ============================================================================
 
-void checkCollapseConditions(aoc::ecs::World& world) {
+void checkCollapseConditions(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<VictoryTrackerComponent>* trackerPool =
         world.getPool<VictoryTrackerComponent>();
     if (trackerPool == nullptr) {
@@ -555,7 +558,7 @@ void checkCollapseConditions(aoc::ecs::World& world) {
 constexpr float INTEGRATION_THRESHOLD = 1.5f;
 constexpr int32_t INTEGRATION_TURNS_REQUIRED = 10;
 
-void updateIntegrationProject(aoc::ecs::World& world) {
+void updateIntegrationProject(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<VictoryTrackerComponent>* trackerPool =
         world.getPool<VictoryTrackerComponent>();
     if (trackerPool == nullptr) {
@@ -594,9 +597,10 @@ void updateIntegrationProject(aoc::ecs::World& world) {
 // Master victory check
 // ============================================================================
 
-VictoryResult checkVictoryConditions(const aoc::ecs::World& world,
+VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                                       TurnNumber currentTurn,
                                       TurnNumber maxTurns) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     const aoc::ecs::ComponentPool<VictoryTrackerComponent>* trackerPool =
         world.getPool<VictoryTrackerComponent>();
     if (trackerPool == nullptr) {
@@ -649,8 +653,9 @@ VictoryResult checkVictoryConditions(const aoc::ecs::World& world,
 // Master per-turn update
 // ============================================================================
 
-void updateVictoryTrackers(aoc::ecs::World& world, const aoc::map::HexGrid& grid,
+void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
                            const EconomySimulation& economy, TurnNumber currentTurn) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     computeCSI(world, grid, economy);
     checkCollapseConditions(world);
     updateIntegrationProject(world);
@@ -662,7 +667,7 @@ void updateVictoryTrackers(aoc::ecs::World& world, const aoc::map::HexGrid& grid
 }
 
 // Backwards-compatible overload (limited scoring without economy data)
-void updateVictoryTrackers(aoc::ecs::World& world, const aoc::map::HexGrid& grid) {
+void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid) {
     // Minimal update: just compute basic stats without full CSI
     aoc::ecs::ComponentPool<VictoryTrackerComponent>* trackerPool =
         world.getPool<VictoryTrackerComponent>();

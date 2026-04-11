@@ -3,6 +3,7 @@
  * @brief Economic sanctions with monetary system integration.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/Sanctions.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/Bonds.hpp"
@@ -14,10 +15,11 @@
 
 namespace aoc::sim {
 
-ErrorCode imposeSanction(aoc::ecs::World& world,
+ErrorCode imposeSanction(aoc::game::GameState& gameState,
                          GlobalSanctionTracker& tracker,
                          PlayerId sanctioner, PlayerId target,
                          SanctionType type, bool secondary) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Don't duplicate
     if (tracker.hasSanction(sanctioner, target, type)) {
         return ErrorCode::InvalidArgument;
@@ -77,8 +79,9 @@ void liftSanction(GlobalSanctionTracker& tracker,
     }
 }
 
-void executeAssetFreeze(aoc::ecs::World& world,
+void executeAssetFreeze(aoc::game::GameState& gameState,
                         PlayerId sanctioner, PlayerId target) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
         world.getPool<MonetaryStateComponent>();
     if (monetaryPool == nullptr) {

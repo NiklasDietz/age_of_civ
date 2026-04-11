@@ -3,6 +3,7 @@
  * @brief Player automation: research queue, auto-explore, alert, auto-improve.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/automation/Automation.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -18,7 +19,8 @@
 
 namespace aoc::sim {
 
-void processResearchQueue(aoc::ecs::World& world, PlayerId player) {
+void processResearchQueue(aoc::game::GameState& gameState, PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<PlayerTechComponent>* techPool =
         world.getPool<PlayerTechComponent>();
     aoc::ecs::ComponentPool<PlayerResearchQueueComponent>* queuePool =
@@ -66,7 +68,8 @@ void processResearchQueue(aoc::ecs::World& world, PlayerId player) {
     }
 }
 
-void processAutoExplore(aoc::ecs::World& world, aoc::map::HexGrid& grid, PlayerId player) {
+void processAutoExplore(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<UnitComponent>* unitPool = world.getPool<UnitComponent>();
     aoc::ecs::ComponentPool<UnitAutomationComponent>* autoPool =
         world.getPool<UnitAutomationComponent>();
@@ -118,7 +121,8 @@ void processAutoExplore(aoc::ecs::World& world, aoc::map::HexGrid& grid, PlayerI
     }
 }
 
-void processAlertStance(aoc::ecs::World& world, const aoc::map::HexGrid& grid, PlayerId player) {
+void processAlertStance(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid, PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<UnitComponent>* unitPool = world.getPool<UnitComponent>();
     aoc::ecs::ComponentPool<UnitAutomationComponent>* autoPool =
         world.getPool<UnitAutomationComponent>();
@@ -164,7 +168,8 @@ void processAlertStance(aoc::ecs::World& world, const aoc::map::HexGrid& grid, P
     (void)grid;
 }
 
-void processAutomation(aoc::ecs::World& world, aoc::map::HexGrid& grid, PlayerId player) {
+void processAutomation(aoc::game::GameState& gameState, aoc::map::HexGrid& grid, PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     processResearchQueue(world, player);
     processAutoExplore(world, grid, player);
     processAlertStance(world, grid, player);

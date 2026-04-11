@@ -29,7 +29,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -109,14 +109,14 @@ inline constexpr BuildingId WASTE_TREATMENT_PLANT{25};
 
 /// Process waste treatment for a city (if it has the building).
 /// Converts up to 5 waste/turn into Construction Materials.
-void processWasteTreatment(aoc::ecs::World& world, EntityId cityEntity);
+void processWasteTreatment(aoc::game::GameState& gameState, EntityId cityEntity);
 
 /// Process waste generation for all cities (called during production step).
 /// Accumulates waste based on recipes executed this turn.
-void accumulateWaste(aoc::ecs::World& world, EntityId cityEntity,
+void accumulateWaste(aoc::game::GameState& gameState, EntityId cityEntity,
                      BuildingId buildingUsed, int32_t batchesExecuted);
 
 /// Get the total CO2 contribution from all cities (for climate system).
-[[nodiscard]] int32_t totalIndustrialCO2(const aoc::ecs::World& world);
+[[nodiscard]] int32_t totalIndustrialCO2(const aoc::game::GameState& gameState);
 
 } // namespace aoc::sim

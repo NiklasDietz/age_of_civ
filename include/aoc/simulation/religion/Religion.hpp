@@ -14,7 +14,8 @@
 #include <string_view>
 #include <vector>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
+namespace aoc::game { class Player; class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -145,16 +146,16 @@ struct GlobalReligionTracker {
 // ============================================================================
 
 /// Accumulate faith per turn from tiles, buildings, and natural wonders.
-void accumulateFaith(aoc::ecs::World& world, const aoc::map::HexGrid& grid, PlayerId player);
+void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid);
 
 /// Process religious pressure: cities with holy sites spread to neighbors.
-void processReligiousSpread(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
+void processReligiousSpread(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid);
 
 /// Apply religion bonuses (founder beliefs give gold/science, follower beliefs give amenities).
-void applyReligionBonuses(aoc::ecs::World& world, PlayerId player);
+void applyReligionBonuses(aoc::game::Player& player);
 
 /// Check religious victory: one religion is dominant in all civilizations' cities.
-[[nodiscard]] bool checkReligiousVictory(const aoc::ecs::World& world, PlayerId& outWinner);
+[[nodiscard]] bool checkReligiousVictory(const aoc::game::GameState& gameState, PlayerId& outWinner);
 
 /// Cost to found a pantheon.
 inline constexpr float PANTHEON_FAITH_COST = 25.0f;

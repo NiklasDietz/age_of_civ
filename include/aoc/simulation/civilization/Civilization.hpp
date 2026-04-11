@@ -132,13 +132,13 @@ struct PlayerCivilizationComponent {
 } // namespace aoc::sim
 
 // Forward declarations for getNextCityName -- defined in headers included by .cpp files.
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
 /// Get the next historical city name for a player based on their civilization.
 /// Counts existing cities owned by the player and returns the next name from
 /// the civ's city name list. Falls back to "City [N]" if all 12 are used.
-[[nodiscard]] std::string getNextCityName(const aoc::ecs::World& world, PlayerId player);
+[[nodiscard]] std::string getNextCityName(const aoc::game::GameState& gameState, PlayerId player);
 
 } // namespace aoc::sim

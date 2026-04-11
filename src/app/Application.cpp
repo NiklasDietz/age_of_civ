@@ -276,9 +276,8 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     this->m_fogOfWar.initialize(this->m_hexGrid.tileCount(), MAX_PLAYERS);
     this->m_diplomacy.initialize(config.playerCount);
 
-    // -- Initialize new GameState object model (mirrors ECS data) --
-    // Must happen before spawning so spawnStartingEntities/spawnAIPlayer
-    // can populate units into the GameState.
+    // -- Initialize new GameState object model (shares the same ECS World) --
+    this->m_gameState.setExternalWorld(&this->m_world);
     this->m_gameState.initialize(static_cast<int32_t>(config.playerCount));
     for (uint8_t i = 0; i < config.playerCount; ++i) {
         aoc::game::Player* gsPlayer = this->m_gameState.player(static_cast<PlayerId>(i));
@@ -1686,8 +1685,13 @@ void Application::handleContextAction() {
         LOG_INFO("City founded!");
 
         // Eureka: FoundCity condition
-        aoc::sim::checkEurekaConditions(this->m_world, cityOwner,
-                                        aoc::sim::EurekaCondition::FoundCity);
+        {
+            aoc::game::Player* eurekaPlayer = this->m_gameState.player(cityOwner);
+            if (eurekaPlayer != nullptr) {
+                aoc::sim::checkEurekaConditions(*eurekaPlayer,
+                                                aoc::sim::EurekaCondition::FoundCity);
+            }
+        }
         return;
     }
 
@@ -1709,8 +1713,11 @@ void Application::handleContextAction() {
 
             // Eureka: check if the built improvement triggers a boost
             if (bestImpr == aoc::map::ImprovementType::Quarry) {
-                aoc::sim::checkEurekaConditions(this->m_world, unit.owner,
-                                                aoc::sim::EurekaCondition::BuildQuarry);
+                aoc::game::Player* eurekaPlayer2 = this->m_gameState.player(unit.owner);
+                if (eurekaPlayer2 != nullptr) {
+                    aoc::sim::checkEurekaConditions(*eurekaPlayer2,
+                                                    aoc::sim::EurekaCondition::BuildQuarry);
+                }
             }
 
             LOG_INFO("Builder placed improvement at (%d,%d)",
@@ -1869,7 +1876,7 @@ void Application::handleEndTurn() {
 
         // Build TurnContext and execute all game logic via TurnProcessor
         aoc::sim::TurnContext turnCtx{};
-        turnCtx.world = &this->m_world;
+        // world is accessed via gameState.legacyWorld()
         turnCtx.grid = &this->m_hexGrid;
         turnCtx.economy = &this->m_economy;
         turnCtx.diplomacy = &this->m_diplomacy;
@@ -1937,7 +1944,12 @@ void Application::handleEndTurn() {
                                               0.3f, 0.7f, 1.0f);
             this->m_soundQueue.push(aoc::audio::SoundEffect::TechResearched);
 
-            aoc::sim::addEraScore(this->m_world, 0, 2, "Researched " + techName);
+            {
+                aoc::game::Player* eraPlayer = this->m_gameState.humanPlayer();
+                if (eraPlayer != nullptr) {
+                    aoc::sim::addEraScore(*eraPlayer, 2, "Researched " + techName);
+                }
+            }
 
             if (!humanPost->tech().currentResearch.isValid()) {
                 this->m_techScreen.setContext(&this->m_world, 0);
@@ -3474,8 +3486,13 @@ void Application::rebuildUnitActionPanel() {
                 this->m_selectedEntity = cityEntity;
                 LOG_INFO("City founded via action panel!");
 
-                aoc::sim::checkEurekaConditions(this->m_world, cityOwner,
-                                                aoc::sim::EurekaCondition::FoundCity);
+                {
+                    aoc::game::Player* eurekaP = this->m_gameState.player(cityOwner);
+                    if (eurekaP != nullptr) {
+                        aoc::sim::checkEurekaConditions(*eurekaP,
+                                                        aoc::sim::EurekaCondition::FoundCity);
+                    }
+                }
             });
     }
 

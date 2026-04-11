@@ -143,7 +143,7 @@ void GameServer::initialize(const GameConfig& config) {
     }
 
     // Build turn context
-    this->m_turnCtx.world = &this->m_world;
+    // world accessed via gameState.legacyWorld()
     this->m_turnCtx.grid = &this->m_grid;
     this->m_turnCtx.economy = &this->m_economy;
     this->m_turnCtx.diplomacy = &this->m_diplomacy;

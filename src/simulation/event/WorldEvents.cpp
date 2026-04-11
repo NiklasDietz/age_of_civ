@@ -3,6 +3,7 @@
  * @brief World event definitions, triggers, and resolution.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/event/WorldEvents.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
@@ -138,7 +139,7 @@ const WorldEventDef& worldEventDef(WorldEventId id) {
     return EVENT_DEFS[static_cast<uint8_t>(id)];
 }
 
-void checkWorldEvents(aoc::ecs::World& world, PlayerId player, int32_t turnNumber) {
+void checkWorldEvents(aoc::game::GameState& gameState, PlayerId player, int32_t turnNumber) {
     aoc::ecs::ComponentPool<PlayerEventComponent>* eventPool =
         world.getPool<PlayerEventComponent>();
     if (eventPool == nullptr) { return; }
@@ -176,10 +177,11 @@ void checkWorldEvents(aoc::ecs::World& world, PlayerId player, int32_t turnNumbe
     }
 }
 
-ErrorCode resolveWorldEvent(aoc::ecs::World& world, PlayerId player, int32_t choice) {
+ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, int32_t choice) {
     aoc::ecs::ComponentPool<PlayerEventComponent>* eventPool =
         world.getPool<PlayerEventComponent>();
     if (eventPool == nullptr) { return ErrorCode::InvalidArgument; }
+    aoc::ecs::World& world = gameState.legacyWorld();
 
     PlayerEventComponent* events = nullptr;
     for (uint32_t i = 0; i < eventPool->size(); ++i) {
@@ -243,7 +245,7 @@ ErrorCode resolveWorldEvent(aoc::ecs::World& world, PlayerId player, int32_t cho
     return ErrorCode::Ok;
 }
 
-void tickWorldEvents(aoc::ecs::World& world) {
+void tickWorldEvents(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<PlayerEventComponent>* eventPool =
         world.getPool<PlayerEventComponent>();
     if (eventPool == nullptr) { return; }

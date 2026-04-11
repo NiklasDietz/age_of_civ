@@ -34,7 +34,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -126,13 +126,13 @@ struct GlobalEmergencyTracker {
 /**
  * @brief Trigger an emergency against a player.
  */
-void triggerEmergency(aoc::ecs::World& world, GlobalEmergencyTracker& tracker,
+void triggerEmergency(aoc::game::GameState& gameState, GlobalEmergencyTracker& tracker,
                       EmergencyType type, PlayerId target);
 
 /**
  * @brief Process emergencies per turn (tick timers, check resolution).
  */
-void processEmergencies(aoc::ecs::World& world, GlobalEmergencyTracker& tracker);
+void processEmergencies(aoc::game::GameState& gameState, GlobalEmergencyTracker& tracker);
 
 // ============================================================================
 // Extended World Congress Resolutions

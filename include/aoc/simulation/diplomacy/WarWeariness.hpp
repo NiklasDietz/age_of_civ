@@ -20,8 +20,8 @@
 #include <cstdint>
 #include <unordered_map>
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class Player;
 }
 
 namespace aoc::sim {
@@ -43,7 +43,7 @@ struct PlayerWarWearinessComponent {
  * Increments weariness by (1 + combatLosses * 0.5) per turn at war,
  * decreases by 2 per turn at peace.
  */
-void processWarWeariness(aoc::ecs::World& world, PlayerId player,
+void processWarWeariness(aoc::game::Player& player,
                          const DiplomacyManager& diplomacy);
 
 /**

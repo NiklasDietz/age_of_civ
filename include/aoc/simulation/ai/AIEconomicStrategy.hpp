@@ -22,7 +22,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -43,7 +43,7 @@ class DiplomacyManager;
  * @param player     AI player to run decisions for.
  * @param difficulty AI difficulty level (0=easy, 1=normal, 2=hard).
  */
-void aiEconomicStrategy(aoc::ecs::World& world,
+void aiEconomicStrategy(aoc::game::GameState& gameState,
                         aoc::map::HexGrid& grid,
                         const Market& market,
                         DiplomacyManager& diplomacy,
@@ -59,7 +59,7 @@ void aiEconomicStrategy(aoc::ecs::World& world,
  *   - Prefer hydroelectric if city has river
  *   - Avoid nuclear unless AI is desperate for power (hard difficulty only)
  */
-void aiManagePowerGrid(aoc::ecs::World& world,
+void aiManagePowerGrid(aoc::game::GameState& gameState,
                        const aoc::map::HexGrid& grid,
                        PlayerId player);
 
@@ -71,7 +71,7 @@ void aiManagePowerGrid(aoc::ecs::World& world,
  *   2. Railway to resource-rich cities
  *   3. Highway upgrade on busiest trade routes
  */
-void aiManageInfrastructure(aoc::ecs::World& world,
+void aiManageInfrastructure(aoc::game::GameState& gameState,
                             aoc::map::HexGrid& grid,
                             PlayerId player);
 
@@ -82,14 +82,14 @@ void aiManageInfrastructure(aoc::ecs::World& world,
  * Hyperinflation: raise interest rates, stop printing money
  * Default: request bond restructuring, cut spending drastically
  */
-void aiCrisisResponse(aoc::ecs::World& world, PlayerId player);
+void aiCrisisResponse(aoc::game::GameState& gameState, PlayerId player);
 
 /**
  * @brief AI prepares for the next industrial revolution.
  *
  * Stockpiles required resources, prioritizes prerequisite techs.
  */
-void aiPrepareIndustrialRevolution(aoc::ecs::World& world,
+void aiPrepareIndustrialRevolution(aoc::game::GameState& gameState,
                                     const Market& market,
                                     PlayerId player);
 

@@ -3,12 +3,13 @@
  * @brief Government modifier computation, anarchy, unique actions, corruption.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/government/Government.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
-#include "aoc/ecs/World.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/game/Unit.hpp"
 #include "aoc/core/Log.hpp"
 
 namespace aoc::sim {
@@ -87,147 +88,109 @@ GovernmentModifiers computeGovernmentModifiers(
 }
 
 GovernmentModifiers computeGovernmentModifiers(
-    const aoc::ecs::World& world, PlayerId player) {
-    const aoc::ecs::ComponentPool<PlayerGovernmentComponent>* govPool =
-        world.getPool<PlayerGovernmentComponent>();
-    if (govPool == nullptr) {
+    const aoc::game::GameState& gameState, PlayerId player) {
+    const aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer == nullptr) {
         return {};
     }
-
-    for (uint32_t i = 0; i < govPool->size(); ++i) {
-        if (govPool->data()[i].owner == player) {
-            return computeGovernmentModifiers(govPool->data()[i]);
-        }
-    }
-
-    return {};
+    return computeGovernmentModifiers(gsPlayer->government());
 }
 
-ErrorCode executeGovernmentAction(aoc::ecs::World& world, PlayerId player) {
-    aoc::ecs::ComponentPool<PlayerGovernmentComponent>* govPool =
-        world.getPool<PlayerGovernmentComponent>();
-    if (govPool == nullptr) {
+ErrorCode executeGovernmentAction(aoc::game::GameState& gameState, PlayerId player) {
+    aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer == nullptr) {
         return ErrorCode::InvalidArgument;
     }
 
-    for (uint32_t i = 0; i < govPool->size(); ++i) {
-        PlayerGovernmentComponent& gov = govPool->data()[i];
-        if (gov.owner != player) {
-            continue;
-        }
+    PlayerGovernmentComponent& gov = gsPlayer->government();
 
-        GovernmentAction action = governmentUniqueAction(gov.government);
-        if (action == GovernmentAction::None) {
-            return ErrorCode::InvalidArgument;
-        }
-        if (gov.activeAction != GovernmentAction::None) {
-            return ErrorCode::InvalidArgument;  // Already have an active action
-        }
-        if (gov.isInAnarchy()) {
-            return ErrorCode::InvalidArgument;  // Can't use during anarchy
-        }
-
-        gov.activeAction = action;
-
-        switch (action) {
-            case GovernmentAction::Referendum:
-                gov.actionTurnsRemaining = 5;
-                LOG_INFO("Player %u activated Referendum (+20 loyalty for 5 turns)",
-                         static_cast<unsigned>(player));
-                break;
-
-            case GovernmentAction::FiveYearPlan:
-                gov.actionTurnsRemaining = 10;
-                LOG_INFO("Player %u activated Five Year Plan (+30%% production for 10 turns)",
-                         static_cast<unsigned>(player));
-                break;
-
-            case GovernmentAction::Mobilization: {
-                gov.actionTurnsRemaining = 1;  // Instant effect
-                // Spawn 3 military units at the capital
-                const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-                    world.getPool<CityComponent>();
-                if (cityPool != nullptr) {
-                    for (uint32_t c = 0; c < cityPool->size(); ++c) {
-                        if (cityPool->data()[c].owner == player
-                            && cityPool->data()[c].isOriginalCapital) {
-                            for (int32_t u = 0; u < 3; ++u) {
-                                EntityId unitEntity = world.createEntity();
-                                world.addComponent<UnitComponent>(
-                                    unitEntity,
-                                    UnitComponent::create(player, UnitTypeId{0},
-                                                          cityPool->data()[c].location));
-                            }
-                            break;
-                        }
-                    }
-                }
-                LOG_INFO("Player %u activated Mobilization (3 instant military units)",
-                         static_cast<unsigned>(player));
-                break;
-            }
-
-            case GovernmentAction::RoyalDecree:
-                gov.actionTurnsRemaining = 10;
-                LOG_INFO("Player %u activated Royal Decree (+15%% gold for 10 turns)",
-                         static_cast<unsigned>(player));
-                break;
-
-            case GovernmentAction::HolyWar:
-                gov.actionTurnsRemaining = 10;
-                LOG_INFO("Player %u activated Holy War (+4 combat, +20%% faith for 10 turns)",
-                         static_cast<unsigned>(player));
-                break;
-
-            case GovernmentAction::TradeFleet:
-                gov.actionTurnsRemaining = 10;
-                LOG_INFO("Player %u activated Trade Fleet (+3 trade routes for 10 turns)",
-                         static_cast<unsigned>(player));
-                break;
-
-            default:
-                break;
-        }
-
-        return ErrorCode::Ok;
+    GovernmentAction action = governmentUniqueAction(gov.government);
+    if (action == GovernmentAction::None) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (gov.activeAction != GovernmentAction::None) {
+        return ErrorCode::InvalidArgument;  // Already have an active action
+    }
+    if (gov.isInAnarchy()) {
+        return ErrorCode::InvalidArgument;  // Can't use during anarchy
     }
 
-    return ErrorCode::InvalidArgument;
+    gov.activeAction = action;
+
+    switch (action) {
+        case GovernmentAction::Referendum:
+            gov.actionTurnsRemaining = 5;
+            LOG_INFO("Player %u activated Referendum (+20 loyalty for 5 turns)",
+                     static_cast<unsigned>(player));
+            break;
+
+        case GovernmentAction::FiveYearPlan:
+            gov.actionTurnsRemaining = 10;
+            LOG_INFO("Player %u activated Five Year Plan (+30%% production for 10 turns)",
+                     static_cast<unsigned>(player));
+            break;
+
+        case GovernmentAction::Mobilization: {
+            gov.actionTurnsRemaining = 1;  // Instant effect
+            // Spawn 3 military units at the capital
+            for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+                if (city->isOriginalCapital()) {
+                    for (int32_t u = 0; u < 3; ++u) {
+                        gsPlayer->addUnit(UnitTypeId{0}, city->location());
+                    }
+                    break;
+                }
+            }
+            LOG_INFO("Player %u activated Mobilization (3 instant military units)",
+                     static_cast<unsigned>(player));
+            break;
+        }
+
+        case GovernmentAction::RoyalDecree:
+            gov.actionTurnsRemaining = 10;
+            LOG_INFO("Player %u activated Royal Decree (+15%% gold for 10 turns)",
+                     static_cast<unsigned>(player));
+            break;
+
+        case GovernmentAction::HolyWar:
+            gov.actionTurnsRemaining = 10;
+            LOG_INFO("Player %u activated Holy War (+4 combat, +20%% faith for 10 turns)",
+                     static_cast<unsigned>(player));
+            break;
+
+        case GovernmentAction::TradeFleet:
+            gov.actionTurnsRemaining = 10;
+            LOG_INFO("Player %u activated Trade Fleet (+3 trade routes for 10 turns)",
+                     static_cast<unsigned>(player));
+            break;
+
+        default:
+            break;
+    }
+
+    return ErrorCode::Ok;
 }
 
-void processGovernment(aoc::ecs::World& world, PlayerId player) {
-    aoc::ecs::ComponentPool<PlayerGovernmentComponent>* govPool =
-        world.getPool<PlayerGovernmentComponent>();
-    if (govPool == nullptr) {
-        return;
+void processGovernment(aoc::game::Player& player) {
+    PlayerGovernmentComponent& gov = player.government();
+
+    // Tick anarchy
+    if (gov.anarchyTurnsRemaining > 0) {
+        --gov.anarchyTurnsRemaining;
+        if (gov.anarchyTurnsRemaining == 0) {
+            LOG_INFO("Player %u: anarchy ended, %.*s government established",
+                     static_cast<unsigned>(player.id()),
+                     static_cast<int>(governmentDef(gov.government).name.size()),
+                     governmentDef(gov.government).name.data());
+        }
     }
 
-    for (uint32_t i = 0; i < govPool->size(); ++i) {
-        PlayerGovernmentComponent& gov = govPool->data()[i];
-        if (gov.owner != player) {
-            continue;
+    // Tick active action
+    if (gov.actionTurnsRemaining > 0) {
+        --gov.actionTurnsRemaining;
+        if (gov.actionTurnsRemaining <= 0) {
+            gov.activeAction = GovernmentAction::None;
         }
-
-        // Tick anarchy
-        if (gov.anarchyTurnsRemaining > 0) {
-            --gov.anarchyTurnsRemaining;
-            if (gov.anarchyTurnsRemaining == 0) {
-                LOG_INFO("Player %u: anarchy ended, %.*s government established",
-                         static_cast<unsigned>(player),
-                         static_cast<int>(governmentDef(gov.government).name.size()),
-                         governmentDef(gov.government).name.data());
-            }
-        }
-
-        // Tick active action
-        if (gov.actionTurnsRemaining > 0) {
-            --gov.actionTurnsRemaining;
-            if (gov.actionTurnsRemaining <= 0) {
-                gov.activeAction = GovernmentAction::None;
-            }
-        }
-
-        break;
     }
 }
 

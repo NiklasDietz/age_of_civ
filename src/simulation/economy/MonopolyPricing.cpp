@@ -3,6 +3,7 @@
  * @brief Resource monopoly detection and cartel pricing.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/MonopolyPricing.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -17,7 +18,8 @@
 
 namespace aoc::sim {
 
-void detectMonopolies(aoc::ecs::World& world, const aoc::map::HexGrid& grid) {
+void detectMonopolies(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<GlobalMonopolyComponent>* monoPool =
         world.getPool<GlobalMonopolyComponent>();
     if (monoPool == nullptr || monoPool->size() == 0) {
@@ -139,7 +141,8 @@ void detectMonopolies(aoc::ecs::World& world, const aoc::map::HexGrid& grid) {
     }
 }
 
-void applyMonopolyIncome(aoc::ecs::World& world) {
+void applyMonopolyIncome(aoc::game::GameState& gameState) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<GlobalMonopolyComponent>* monoPool =
         world.getPool<GlobalMonopolyComponent>();
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =

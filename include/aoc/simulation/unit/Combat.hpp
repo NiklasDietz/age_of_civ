@@ -15,8 +15,9 @@
 
 #include <cstdint>
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
+class Unit;
 }
 
 namespace aoc::map {
@@ -37,46 +38,47 @@ struct CombatResult {
 /**
  * @brief Resolve melee combat between two units.
  *
- * Both units must be alive. The attacker must be adjacent to the defender.
- * Both take damage; one or both may die.
+ * Both units must be alive and the attacker must be adjacent to the defender.
+ * Both take damage; one or both may die. Dead units are removed from their
+ * owning player via GameState.
  *
- * @param world   ECS world (will modify unit components).
- * @param rng     Deterministic PRNG for combat variance.
- * @param grid    Hex grid for terrain modifiers.
- * @param attacker Entity ID of the attacking unit.
- * @param defender Entity ID of the defending unit.
+ * @param gameState Game state (used to remove killed units and access player data).
+ * @param rng       Deterministic PRNG for combat variance.
+ * @param grid      Hex grid for terrain modifiers.
+ * @param attacker  The attacking unit.
+ * @param defender  The defending unit.
  * @return Combat outcome.
  */
-CombatResult resolveMeleeCombat(aoc::ecs::World& world,
+CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
                                  aoc::Random& rng,
                                  const aoc::map::HexGrid& grid,
-                                 EntityId attacker,
-                                 EntityId defender);
+                                 aoc::game::Unit& attacker,
+                                 aoc::game::Unit& defender);
 
 /**
  * @brief Resolve ranged attack.
  *
- * Ranged units deal damage without taking melee retaliation, but deal
- * less damage than melee. Defender must be within range.
+ * Ranged units deal damage without taking melee retaliation. The defender
+ * must be within range. If the defender dies it is removed from its owning player.
  */
-CombatResult resolveRangedCombat(aoc::ecs::World& world,
+CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
                                   aoc::Random& rng,
                                   const aoc::map::HexGrid& grid,
-                                  EntityId attacker,
-                                  EntityId defender);
+                                  aoc::game::Unit& attacker,
+                                  aoc::game::Unit& defender);
 
 /**
  * @brief Count friendly units adjacent to a position (for flanking bonus).
  */
-[[nodiscard]] int32_t countAdjacentFriendlies(const aoc::ecs::World& world,
-                                               hex::AxialCoord position,
+[[nodiscard]] int32_t countAdjacentFriendlies(const aoc::game::GameState& gameState,
+                                               aoc::hex::AxialCoord position,
                                                PlayerId friendlyPlayer);
 
 /**
- * @brief Terrain defense modifier for a tile. Mountains/hills give bonus.
+ * @brief Terrain defense modifier for a tile. Hills/forest/jungle give bonus.
  */
 [[nodiscard]] float terrainDefenseModifier(const aoc::map::HexGrid& grid,
-                                            hex::AxialCoord position);
+                                            aoc::hex::AxialCoord position);
 
 /// Preview result for UI tooltip (no state changes applied).
 struct CombatPreview {
@@ -87,11 +89,12 @@ struct CombatPreview {
 /**
  * @brief Preview expected combat damage without modifying any state.
  *
- * Uses the same formula as resolveMeleeCombat but with a fixed random
- * factor of 1.0 (average outcome). Useful for the combat preview tooltip.
+ * Uses the same formula as resolveMeleeCombat but with a fixed random factor
+ * of 1.0 (average outcome). Useful for the combat preview tooltip.
  */
-[[nodiscard]] CombatPreview previewCombat(const aoc::ecs::World& world,
+[[nodiscard]] CombatPreview previewCombat(const aoc::game::GameState& gameState,
                                            const aoc::map::HexGrid& grid,
-                                           EntityId attacker, EntityId defender);
+                                           const aoc::game::Unit& attacker,
+                                           const aoc::game::Unit& defender);
 
 } // namespace aoc::sim

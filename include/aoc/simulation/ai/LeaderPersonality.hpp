@@ -36,7 +36,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -300,7 +300,7 @@ enum class DialogueContext : uint8_t {
  * @param target  The player being evaluated.
  * @return Diplomatic modifier (positive = friendly, negative = hostile).
  */
-[[nodiscard]] int32_t evaluateAgenda(const aoc::ecs::World& world,
+[[nodiscard]] int32_t evaluateAgenda(const aoc::game::GameState& gameState,
                                      PlayerId leader, PlayerId target);
 
 /**

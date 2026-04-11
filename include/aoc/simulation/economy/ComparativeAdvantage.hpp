@@ -22,8 +22,8 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::sim {
@@ -52,7 +52,7 @@ struct TradeRecommendation {
  * @return Sorted list of trade recommendations (highest gain first).
  */
 [[nodiscard]] std::vector<TradeRecommendation> computeComparativeAdvantage(
-    const aoc::ecs::World& world,
+    const aoc::game::GameState& gameState,
     const Market& market,
     PlayerId playerA,
     PlayerId playerB);
@@ -66,7 +66,7 @@ struct TradeRecommendation {
  * @return Units per turn the player could produce.
  */
 [[nodiscard]] float playerProductionRate(
-    const aoc::ecs::World& world,
+    const aoc::game::GameState& gameState,
     PlayerId player,
     uint16_t goodId);
 

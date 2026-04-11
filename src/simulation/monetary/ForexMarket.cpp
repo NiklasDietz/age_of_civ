@@ -3,6 +3,7 @@
  * @brief Foreign exchange market implementation.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/monetary/ForexMarket.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
@@ -45,9 +46,10 @@ float computeFundamentalRate(const MonetaryStateComponent& state,
     return std::clamp(rate, 0.20f, 5.0f);
 }
 
-ErrorCode buyCurrency(aoc::ecs::World& world,
+ErrorCode buyCurrency(aoc::game::GameState& gameState,
                        PlayerId buyer, PlayerId target,
                        CurrencyAmount goldAmount) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (goldAmount <= 0 || buyer == target) {
         return ErrorCode::InvalidArgument;
     }
@@ -111,9 +113,10 @@ ErrorCode buyCurrency(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-ErrorCode sellCurrency(aoc::ecs::World& world,
+ErrorCode sellCurrency(aoc::game::GameState& gameState,
                         PlayerId seller, PlayerId target,
                         CurrencyAmount currencyAmount) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (currencyAmount <= 0 || seller == target) {
         return ErrorCode::InvalidArgument;
     }
@@ -178,9 +181,10 @@ ErrorCode sellCurrency(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-ErrorCode defendCurrency(aoc::ecs::World& world,
+ErrorCode defendCurrency(aoc::game::GameState& gameState,
                           PlayerId player,
                           CurrencyAmount amount) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (amount <= 0) {
         return ErrorCode::InvalidArgument;
     }
@@ -232,7 +236,7 @@ ErrorCode defendCurrency(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-void updateExchangeRates(aoc::ecs::World& world) {
+void updateExchangeRates(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<CurrencyExchangeComponent>* forexPool =
         world.getPool<CurrencyExchangeComponent>();
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =

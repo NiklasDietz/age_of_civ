@@ -3,6 +3,7 @@
  * @brief Education, literacy, and human capital development.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/HumanCapital.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
@@ -13,7 +14,8 @@
 
 namespace aoc::sim {
 
-void updateHumanCapital(aoc::ecs::World& world, PlayerId player) {
+void updateHumanCapital(aoc::game::GameState& gameState, PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<PlayerHumanCapitalComponent>* hcPool =
         world.getPool<PlayerHumanCapitalComponent>();
     if (hcPool == nullptr) {

@@ -22,7 +22,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -81,11 +81,11 @@ struct GlobalMonopolyComponent {
  * @param world  ECS world.
  * @param grid   Hex grid (for tile resource scanning).
  */
-void detectMonopolies(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
+void detectMonopolies(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid);
 
 /**
  * @brief Apply monopoly income to monopolists' treasuries.
  */
-void applyMonopolyIncome(aoc::ecs::World& world);
+void applyMonopolyIncome(aoc::game::GameState& gameState);
 
 } // namespace aoc::sim

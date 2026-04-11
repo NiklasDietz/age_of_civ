@@ -3,6 +3,7 @@
  * @brief Direct civic effect application.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/tech/CivicEffects.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/CityLoyalty.hpp"
@@ -13,8 +14,9 @@
 
 namespace aoc::sim {
 
-void applyCivicEffect(aoc::ecs::World& world, PlayerId player, uint8_t civicId) {
+void applyCivicEffect(aoc::game::GameState& gameState, PlayerId player, uint8_t civicId) {
     for (int32_t i = 0; i < CIVIC_EFFECT_COUNT; ++i) {
+        aoc::ecs::World& world = gameState.legacyWorld();
         if (CIVIC_EFFECTS[i].civicId != civicId) {
             continue;
         }

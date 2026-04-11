@@ -3,6 +3,7 @@
  * @brief Competitive devaluation and currency war mechanics.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/monetary/CurrencyWar.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/ecs/World.hpp"
@@ -51,7 +52,8 @@ ErrorCode devalueCurrency(aoc::ecs::World& /*world*/,
     return ErrorCode::Ok;
 }
 
-void processCurrencyWar(aoc::ecs::World& world, GlobalCurrencyWarState& global) {
+void processCurrencyWar(aoc::game::GameState& gameState, GlobalCurrencyWarState& global) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<CurrencyDevaluationComponent>* devalPool =
         world.getPool<CurrencyDevaluationComponent>();
     if (devalPool == nullptr) {

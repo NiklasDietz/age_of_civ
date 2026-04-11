@@ -28,7 +28,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -122,7 +122,7 @@ struct PlayerBondComponent {
  * @param principal  Face value of the bond.
  * @return Ok if successful, InsufficientResources if buyer can't afford it.
  */
-[[nodiscard]] ErrorCode issueBond(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode issueBond(aoc::game::GameState& gameState,
                                   PlayerId issuer, PlayerId buyer,
                                   CurrencyAmount principal);
 
@@ -139,7 +139,7 @@ struct PlayerBondComponent {
  * @param target   Issuer whose bonds are being dumped.
  * @return Ok if successful.
  */
-[[nodiscard]] ErrorCode dumpBonds(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode dumpBonds(aoc::game::GameState& gameState,
                                   PlayerId dumper, PlayerId target);
 
 /**
@@ -151,7 +151,7 @@ struct PlayerBondComponent {
  *
  * @param world  ECS world.
  */
-void processBondPayments(aoc::ecs::World& world);
+void processBondPayments(aoc::game::GameState& gameState);
 
 // ============================================================================
 // Player-to-player IOUs (credit/loans)
@@ -221,7 +221,7 @@ struct PlayerIOUComponent {
  * @param termTurns  Loan term in turns (default 20).
  * @return Ok if successful, InsufficientResources if creditor can't afford it.
  */
-[[nodiscard]] ErrorCode createIOU(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode createIOU(aoc::game::GameState& gameState,
                                    PlayerId creditor, PlayerId debtor,
                                    CurrencyAmount principal,
                                    float interestRate = 0.05f,
@@ -239,7 +239,7 @@ struct PlayerIOUComponent {
  * @param debtor     Player whose loan is called.
  * @return Ok if debtor fully repaid, InsufficientResources if partial/default.
  */
-[[nodiscard]] ErrorCode callInIOU(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode callInIOU(aoc::game::GameState& gameState,
                                    PlayerId creditor, PlayerId debtor);
 
 /**
@@ -253,6 +253,6 @@ struct PlayerIOUComponent {
  *
  * @param world  ECS world.
  */
-void processIOUPayments(aoc::ecs::World& world);
+void processIOUPayments(aoc::game::GameState& gameState);
 
 } // namespace aoc::sim

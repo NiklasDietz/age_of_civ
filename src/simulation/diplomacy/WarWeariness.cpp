@@ -5,67 +5,41 @@
 
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
-#include "aoc/ecs/World.hpp"
+#include "aoc/game/Player.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
 
 namespace aoc::sim {
 
-void processWarWeariness(aoc::ecs::World& world, PlayerId player,
+void processWarWeariness(aoc::game::Player& player,
                          const DiplomacyManager& diplomacy) {
-    aoc::ecs::ComponentPool<PlayerWarWearinessComponent>* pool =
-        world.getPool<PlayerWarWearinessComponent>();
-    if (pool == nullptr) {
-        return;
-    }
+    PlayerWarWearinessComponent& ww = player.warWeariness();
 
-    for (uint32_t i = 0; i < pool->size(); ++i) {
-        PlayerWarWearinessComponent& ww = pool->data()[i];
-        if (ww.owner != player) {
+    bool atWarWithAnyone = false;
+    const uint8_t playerCount = diplomacy.playerCount();
+
+    for (uint8_t other = 0; other < playerCount; ++other) {
+        if (other == player.id()) {
             continue;
         }
 
-        bool atWarWithAnyone = false;
-        const uint8_t playerCount = diplomacy.playerCount();
-
-        for (uint8_t other = 0; other < playerCount; ++other) {
-            if (other == player) {
-                continue;
-            }
-
-            if (diplomacy.isAtWar(player, other)) {
-                atWarWithAnyone = true;
-                ww.turnsAtWar[other] += 1;
-
-                // Combat losses approximated by turns at war for simplicity.
-                // Each turn at war: weariness += 1 + (combatLosses * 0.5).
-                // We approximate combatLosses as 0 for the base tick; the
-                // actual combat loss reporting would need hooks from Combat.cpp.
-                // For now use a flat per-war increase.
-                constexpr float BASE_WEARINESS_PER_TURN = 1.0f;
-                ww.weariness += BASE_WEARINESS_PER_TURN;
-            } else {
-                // Remove from turnsAtWar if peace restored
-                ww.turnsAtWar.erase(other);
-            }
+        if (diplomacy.isAtWar(player.id(), other)) {
+            atWarWithAnyone = true;
+            ww.turnsAtWar[other] += 1;
+            constexpr float BASE_WEARINESS_PER_TURN = 1.0f;
+            ww.weariness += BASE_WEARINESS_PER_TURN;
+        } else {
+            ww.turnsAtWar.erase(other);
         }
-
-        // Peace decay
-        if (!atWarWithAnyone) {
-            constexpr float PEACE_DECAY = 2.0f;
-            ww.weariness -= PEACE_DECAY;
-        }
-
-        ww.weariness = std::clamp(ww.weariness, 0.0f, 100.0f);
-
-        if (ww.weariness > 0.1f) {
-            LOG_INFO("Player %u war weariness: %.1f",
-                     static_cast<unsigned>(player),
-                     static_cast<double>(ww.weariness));
-        }
-        return;  // Found the component for this player
     }
+
+    if (!atWarWithAnyone) {
+        constexpr float PEACE_DECAY = 2.0f;
+        ww.weariness -= PEACE_DECAY;
+    }
+
+    ww.weariness = std::clamp(ww.weariness, 0.0f, 100.0f);
 }
 
 float warWearinessHappinessPenalty(float weariness) {

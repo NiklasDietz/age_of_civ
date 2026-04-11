@@ -13,8 +13,8 @@
 
 #include "aoc/core/Types.hpp"
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::map {
@@ -36,14 +36,14 @@ namespace aoc::sim {
  *
  * @return Total science points to feed into advanceResearch().
  */
-[[nodiscard]] float computePlayerScience(const aoc::ecs::World& world,
+[[nodiscard]] float computePlayerScience(const aoc::game::GameState& gameState,
                                           const aoc::map::HexGrid& grid,
                                           PlayerId player);
 
 /**
  * @brief Compute total culture yield for a player (similar structure to science).
  */
-[[nodiscard]] float computePlayerCulture(const aoc::ecs::World& world,
+[[nodiscard]] float computePlayerCulture(const aoc::game::GameState& gameState,
                                           const aoc::map::HexGrid& grid,
                                           PlayerId player);
 

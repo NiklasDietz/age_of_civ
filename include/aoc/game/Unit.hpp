@@ -11,6 +11,7 @@
 #include "aoc/core/Types.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/simulation/unit/CombatExtensions.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -80,6 +81,15 @@ public:
     [[nodiscard]] int32_t combatStrength() const { return this->typeDef().combatStrength; }
     [[nodiscard]] int32_t rangedStrength() const { return this->typeDef().rangedStrength; }
 
+    /**
+     * @brief Formation level for Corps/Army bonuses.
+     *
+     * Single = normal unit, Corps/Army give +10/+17 strength.
+     * Managed by formCorps()/formArmy() in CombatExtensions.
+     */
+    [[nodiscard]] aoc::sim::FormationLevel formationLevel() const { return this->m_formationLevel; }
+    void setFormationLevel(aoc::sim::FormationLevel level) { this->m_formationLevel = level; }
+
     // ========================================================================
     // State
     // ========================================================================
@@ -140,6 +150,7 @@ private:
     int32_t m_hitPoints;
     int32_t m_movementRemaining;
     aoc::sim::UnitState m_state = aoc::sim::UnitState::Idle;
+    aoc::sim::FormationLevel m_formationLevel = aoc::sim::FormationLevel::Single;
     int32_t m_chargesRemaining = 0;
 
     std::vector<aoc::hex::AxialCoord> m_pendingPath;

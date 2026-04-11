@@ -34,7 +34,7 @@
 #include <string>
 #include <vector>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -144,26 +144,26 @@ struct GlobalDealTracker {
 /**
  * @brief Propose a deal to another player. AI auto-evaluates; human gets a popup.
  */
-[[nodiscard]] ErrorCode proposeDeal(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode proposeDeal(aoc::game::GameState& gameState,
                                     GlobalDealTracker& tracker,
                                     DiplomaticDeal deal);
 
 /**
  * @brief Accept a proposed deal. Applies immediate terms (city cession, etc.).
  */
-[[nodiscard]] ErrorCode acceptDeal(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode acceptDeal(aoc::game::GameState& gameState,
                                    GlobalDealTracker& tracker,
                                    int32_t dealIndex);
 
 /**
  * @brief Break a deal (violate terms). Applies grievance penalties.
  */
-void breakDeal(aoc::ecs::World& world, GlobalDealTracker& tracker,
+void breakDeal(aoc::game::GameState& gameState, GlobalDealTracker& tracker,
                PlayerId breaker, int32_t dealIndex);
 
 /**
  * @brief Process active deals per turn (enforce terms, tick durations).
  */
-void processDeals(aoc::ecs::World& world, GlobalDealTracker& tracker);
+void processDeals(aoc::game::GameState& gameState, GlobalDealTracker& tracker);
 
 } // namespace aoc::sim

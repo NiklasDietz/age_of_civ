@@ -3,6 +3,7 @@
  * @brief Unit upgrade path logic: checks, costs, and execution.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/unit/UnitUpgrade.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
@@ -58,8 +59,9 @@ int32_t upgradeCost(UnitTypeId from, UnitTypeId to) {
     return std::max(cost, 20);
 }
 
-bool upgradeUnit(aoc::ecs::World& world, EntityId unitEntity,
+bool upgradeUnit(aoc::game::GameState& gameState, EntityId unitEntity,
                   UnitTypeId newType, PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Verify the unit exists
     UnitComponent* unit = world.tryGetComponent<UnitComponent>(unitEntity);
     if (unit == nullptr) {

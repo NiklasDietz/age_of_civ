@@ -10,12 +10,12 @@
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/core/Types.hpp"
 
-namespace aoc::ecs {
-class World;
-}
-
 namespace aoc::map {
 class HexGrid;
+}
+
+namespace aoc::game {
+class Player;
 }
 
 namespace aoc::sim {
@@ -47,8 +47,7 @@ namespace aoc::sim {
  * @param player The player to process.
  * @return Total gold bonus awarded this turn.
  */
-int32_t processCityConnections(aoc::ecs::World& world,
-                                const aoc::map::HexGrid& grid,
-                                PlayerId player);
+int32_t processCityConnections(aoc::game::Player& player,
+                                const aoc::map::HexGrid& grid);
 
 } // namespace aoc::sim

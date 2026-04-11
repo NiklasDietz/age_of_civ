@@ -3,6 +3,7 @@
  * @brief Economic espionage mission execution.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/EconomicEspionage.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
@@ -15,12 +16,13 @@
 
 namespace aoc::sim {
 
-EspionageResult executeEspionageMission(aoc::ecs::World& world,
+EspionageResult executeEspionageMission(aoc::game::GameState& gameState,
                                          PlayerId spyOwner,
                                          PlayerId target,
                                          EspionageMissionType mission,
                                          float spySkill,
                                          uint32_t rngSeed) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     EspionageResult result{};
 
     // Success roll

@@ -40,7 +40,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 namespace aoc::sim { class Market; class DiplomacyManager; }
 
@@ -147,7 +147,7 @@ struct TraderComponent {
  * @param destCity  Destination city entity.
  * @return Ok if route established.
  */
-[[nodiscard]] ErrorCode establishTradeRoute(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
                                              aoc::map::HexGrid& grid,
                                              const Market& market,
                                              const DiplomacyManager* diplomacy,
@@ -159,7 +159,7 @@ struct TraderComponent {
  *
  * Uses market prices for gold calculation and demand-driven cargo selection.
  */
-void processTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                          const Market& market);
 
 /**
@@ -173,14 +173,14 @@ void processTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& grid,
  * @param pillager      The player doing the pillaging.
  * @return Gold value of captured cargo.
  */
-CurrencyAmount pillageTrader(aoc::ecs::World& world,
+CurrencyAmount pillageTrader(aoc::game::GameState& gameState,
                               EntityId traderEntity,
                               PlayerId pillager);
 
 /**
  * @brief Count active trade routes for a player.
  */
-[[nodiscard]] int32_t countActiveTradeRoutes(const aoc::ecs::World& world,
+[[nodiscard]] int32_t countActiveTradeRoutes(const aoc::game::GameState& gameState,
                                               PlayerId player);
 
 } // namespace aoc::sim

@@ -21,7 +21,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -68,6 +68,6 @@ inline constexpr int32_t CIVIC_EFFECT_COUNT = 11;
  * @param player   Player who completed the civic.
  * @param civicId  ID of the completed civic.
  */
-void applyCivicEffect(aoc::ecs::World& world, PlayerId player, uint8_t civicId);
+void applyCivicEffect(aoc::game::GameState& gameState, PlayerId player, uint8_t civicId);
 
 } // namespace aoc::sim

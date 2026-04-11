@@ -14,8 +14,8 @@
 
 #include <cstdint>
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class Player;
 }
 
 namespace aoc::sim {
@@ -58,9 +58,11 @@ struct CityHappinessComponent {
 /**
  * @brief Recalculate happiness for all cities of a player.
  *
+ * Uses GameState object model (Player/City) directly.
  * Considers: luxury resources, buildings, population size,
- * war weariness, inflation penalty, tax penalty.
+ * war weariness, inflation penalty, tax penalty, empire size,
+ * military unit unhappiness, specialist entertainers.
  */
-void computeCityHappiness(aoc::ecs::World& world, PlayerId player);
+void computeCityHappiness(aoc::game::Player& player);
 
 } // namespace aoc::sim

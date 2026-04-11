@@ -14,12 +14,12 @@
 
 #include <cstdint>
 
-namespace aoc::ecs {
-class World;
-}
-
 namespace aoc::map {
 class HexGrid;
+}
+
+namespace aoc::game {
+class Player;
 }
 
 namespace aoc::hex {
@@ -49,9 +49,8 @@ namespace aoc::sim {
  * @param grid    Hex grid for ownership data.
  * @param player  Player whose cities to process.
  */
-void processBorderExpansion(aoc::ecs::World& world,
-                             aoc::map::HexGrid& grid,
-                             PlayerId player);
+void processBorderExpansion(aoc::game::Player& player,
+                             aoc::map::HexGrid& grid);
 
 /**
  * @brief Claim the initial 7 tiles (city center + 6 neighbors) when founding.

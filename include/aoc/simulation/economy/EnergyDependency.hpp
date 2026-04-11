@@ -26,7 +26,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -158,7 +158,7 @@ void processOilShock(PlayerEnergyComponent& energy);
  * Counts Solar Array, Wind Farm, Hydroelectric Dam, and Nuclear Plant
  * buildings across all the player's cities.
  */
-[[nodiscard]] int32_t countRenewableBuildings(const aoc::ecs::World& world,
+[[nodiscard]] int32_t countRenewableBuildings(const aoc::game::GameState& gameState,
                                                PlayerId player);
 
 } // namespace aoc::sim

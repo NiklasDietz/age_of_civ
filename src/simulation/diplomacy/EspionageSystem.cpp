@@ -3,6 +3,7 @@
  * @brief Spy mission execution logic.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/diplomacy/EspionageSystem.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -16,7 +17,7 @@
 
 namespace aoc::sim {
 
-void processSpyMissions(aoc::ecs::World& world, aoc::Random& rng) {
+void processSpyMissions(aoc::game::GameState& gameState, aoc::Random& rng) {
     // Collect spy entities first to avoid mutation during iteration
     std::vector<EntityId> spyEntities;
 
@@ -163,9 +164,10 @@ void processSpyMissions(aoc::ecs::World& world, aoc::Random& rng) {
     }
 }
 
-ErrorCode assignSpyMission(aoc::ecs::World& world,
+ErrorCode assignSpyMission(aoc::game::GameState& gameState,
                            EntityId spy,
                            SpyMission mission) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (!world.isAlive(spy)) {
         return ErrorCode::EntityNotFound;
     }

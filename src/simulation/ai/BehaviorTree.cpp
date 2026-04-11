@@ -3,6 +3,7 @@
  * @brief Behavior tree construction, blackboard refresh, and action implementations.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/ai/BehaviorTree.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -27,7 +28,7 @@ namespace aoc::sim::bt {
 
 void refreshBlackboard(Blackboard& bb) {
     if (bb.world == nullptr) { return; }
-    aoc::ecs::World& world = *bb.world;
+    aoc::game::GameState& gameState = *bb.world;
 
     bb.ownedCities = 0;
     bb.totalPopulation = 0;
@@ -109,11 +110,12 @@ static NodePtr actionBuildSettler() {
     return std::make_unique<ExecuteAction>("BuildSettler",
         [](Blackboard& bb) -> Status {
             if (bb.world == nullptr) { return Status::Failure; }
-            aoc::ecs::World& world = *bb.world;
+            aoc::game::GameState& gameState = *bb.world;
 
             const aoc::ecs::ComponentPool<CityComponent>* cityPool =
                 world.getPool<CityComponent>();
             if (cityPool == nullptr) { return Status::Failure; }
+            aoc::ecs::World& world = gameState.legacyWorld();
 
             // Find best city to produce settler (highest population)
             EntityId bestCity = NULL_ENTITY;
@@ -151,11 +153,12 @@ static NodePtr actionBuildMilitary() {
     return std::make_unique<ExecuteAction>("BuildMilitary",
         [](Blackboard& bb) -> Status {
             if (bb.world == nullptr) { return Status::Failure; }
-            aoc::ecs::World& world = *bb.world;
+            aoc::game::GameState& gameState = *bb.world;
 
             const aoc::ecs::ComponentPool<CityComponent>* cityPool =
                 world.getPool<CityComponent>();
             if (cityPool == nullptr) { return Status::Failure; }
+            aoc::ecs::World& world = gameState.legacyWorld();
 
             // Find UnitTypeId 0 (Warrior) as default military unit
             UnitTypeId militaryId{0};
@@ -185,11 +188,12 @@ static NodePtr actionBuildBuilder() {
     return std::make_unique<ExecuteAction>("BuildBuilder",
         [](Blackboard& bb) -> Status {
             if (bb.world == nullptr) { return Status::Failure; }
-            aoc::ecs::World& world = *bb.world;
+            aoc::game::GameState& gameState = *bb.world;
 
             const aoc::ecs::ComponentPool<CityComponent>* cityPool =
                 world.getPool<CityComponent>();
             if (cityPool == nullptr) { return Status::Failure; }
+            aoc::ecs::World& world = gameState.legacyWorld();
 
             for (uint32_t i = 0; i < cityPool->size(); ++i) {
                 if (cityPool->data()[i].owner != bb.player) { continue; }
@@ -216,11 +220,12 @@ static NodePtr actionBuildInfrastructure() {
     return std::make_unique<ExecuteAction>("BuildInfrastructure",
         [](Blackboard& bb) -> Status {
             if (bb.world == nullptr) { return Status::Failure; }
-            aoc::ecs::World& world = *bb.world;
+            aoc::game::GameState& gameState = *bb.world;
 
             const aoc::ecs::ComponentPool<CityComponent>* cityPool =
                 world.getPool<CityComponent>();
             if (cityPool == nullptr) { return Status::Failure; }
+            aoc::ecs::World& world = gameState.legacyWorld();
 
             for (uint32_t i = 0; i < cityPool->size(); ++i) {
                 if (cityPool->data()[i].owner != bb.player) { continue; }
@@ -279,11 +284,12 @@ static NodePtr actionBuildReligious() {
     return std::make_unique<ExecuteAction>("BuildReligious",
         [](Blackboard& bb) -> Status {
             if (bb.world == nullptr) { return Status::Failure; }
-            aoc::ecs::World& world = *bb.world;
+            aoc::game::GameState& gameState = *bb.world;
 
             const aoc::ecs::ComponentPool<CityComponent>* cityPool =
                 world.getPool<CityComponent>();
             if (cityPool == nullptr) { return Status::Failure; }
+            aoc::ecs::World& world = gameState.legacyWorld();
 
             for (uint32_t i = 0; i < cityPool->size(); ++i) {
                 if (cityPool->data()[i].owner != bb.player) { continue; }

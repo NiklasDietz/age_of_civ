@@ -39,7 +39,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -97,7 +97,7 @@ struct GlobalEconomicZoneTracker {
  * @param hostCity    Target city entity.
  * @return Ok if successful, InvalidArgument if requirements not met.
  */
-[[nodiscard]] ErrorCode establishEconomicZone(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode establishEconomicZone(aoc::game::GameState& gameState,
                                               GlobalEconomicZoneTracker& tracker,
                                               PlayerId colonizer,
                                               EntityId hostCity);
@@ -125,7 +125,7 @@ void dissolveEconomicZone(GlobalEconomicZoneTracker& tracker, EntityId hostCity)
  * @param market  Market (for pricing extracted goods).
  * @param tracker Zone tracker.
  */
-void processEconomicZones(aoc::ecs::World& world,
+void processEconomicZones(aoc::game::GameState& gameState,
                           const aoc::map::HexGrid& grid,
                           const Market& market,
                           GlobalEconomicZoneTracker& tracker);

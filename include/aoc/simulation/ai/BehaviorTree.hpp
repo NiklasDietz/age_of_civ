@@ -46,7 +46,7 @@
 #include <variant>
 #include <vector>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -78,7 +78,7 @@ struct Blackboard {
     const LeaderBehavior* behavior = nullptr;
 
     // World references (set before each tick)
-    aoc::ecs::World* world = nullptr;
+    aoc::game::GameState* gameState = nullptr;
     aoc::map::HexGrid* grid = nullptr;
     const Market* market = nullptr;
     DiplomacyManager* diplomacy = nullptr;

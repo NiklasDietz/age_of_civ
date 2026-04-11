@@ -18,8 +18,8 @@
 
 #include <unordered_map>
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::map {
@@ -47,7 +47,7 @@ public:
      *   6. Compute resource curse effects.
      *   7. Run monetary policy (inflation, fiscal).
      */
-    void executeTurn(aoc::ecs::World& world, aoc::map::HexGrid& grid);
+    void executeTurn(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
 
     /// Access the market (for UI display / trade decisions).
     [[nodiscard]] Market& market() { return this->m_market; }
@@ -56,20 +56,20 @@ public:
     [[nodiscard]] const ProductionChain& productionChain() const { return this->m_productionChain; }
 
 private:
-    void harvestResources(aoc::ecs::World& world, aoc::map::HexGrid& grid);
-    void processInternalTradeForAllPlayers(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
-    void consumeBuildingFuel(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
-    void executeProduction(aoc::ecs::World& world, aoc::map::HexGrid& grid);
-    void computePlayerNeeds(aoc::ecs::World& world);
-    void applyResourceDepletion(aoc::ecs::World& world, aoc::map::HexGrid& grid);
-    void reportToMarket(aoc::ecs::World& world);
-    void executeTradeRoutes(aoc::ecs::World& world);
-    void settleTradeInCoins(aoc::ecs::World& world);
-    void updateCoinReservesFromStockpiles(aoc::ecs::World& world);
-    void tickMonetaryMechanics(aoc::ecs::World& world);
-    void executeMonetaryPolicy(aoc::ecs::World& world);
-    void processCrisisAndBonds(aoc::ecs::World& world);
-    void processEconomicZonesAndSpeculation(aoc::ecs::World& world, aoc::map::HexGrid& grid);
+    void harvestResources(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
+    void processInternalTradeForAllPlayers(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid);
+    void consumeBuildingFuel(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid);
+    void executeProduction(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
+    void computePlayerNeeds(aoc::game::GameState& gameState);
+    void applyResourceDepletion(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
+    void reportToMarket(aoc::game::GameState& gameState);
+    void executeTradeRoutes(aoc::game::GameState& gameState);
+    void settleTradeInCoins(aoc::game::GameState& gameState);
+    void updateCoinReservesFromStockpiles(aoc::game::GameState& gameState);
+    void tickMonetaryMechanics(aoc::game::GameState& gameState);
+    void executeMonetaryPolicy(aoc::game::GameState& gameState);
+    void processCrisisAndBonds(aoc::game::GameState& gameState);
+    void processEconomicZonesAndSpeculation(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
 
     ProductionChain m_productionChain;
     Market          m_market;

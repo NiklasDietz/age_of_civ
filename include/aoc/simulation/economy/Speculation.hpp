@@ -30,7 +30,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -75,7 +75,7 @@ struct CommodityHoardComponent {
  * @param amount   Amount to buy into hoard.
  * @return Ok if successful.
  */
-[[nodiscard]] ErrorCode hoardCommodity(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode hoardCommodity(aoc::game::GameState& gameState,
                                        const Market& market,
                                        PlayerId player,
                                        uint16_t goodId, int32_t amount);
@@ -92,7 +92,7 @@ struct CommodityHoardComponent {
  * @param amount   Amount to release (0 = all).
  * @return Ok if successful.
  */
-[[nodiscard]] ErrorCode releaseCommodity(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode releaseCommodity(aoc::game::GameState& gameState,
                                          const Market& market,
                                          PlayerId player,
                                          uint16_t goodId, int32_t amount);
@@ -106,7 +106,7 @@ struct CommodityHoardComponent {
  * @param goodId   Good to check.
  * @return Share of global supply (0.0 to 1.0). Above 0.5 = cornered.
  */
-[[nodiscard]] float marketShareOfGood(const aoc::ecs::World& world,
+[[nodiscard]] float marketShareOfGood(const aoc::game::GameState& gameState,
                                       const Market& market,
                                       PlayerId player, uint16_t goodId);
 
@@ -124,7 +124,7 @@ struct CommodityHoardComponent {
  * @param world  ECS world.
  * @param goldAmount  Amount of new gold entering the system.
  */
-void triggerGoldRushInflation(aoc::ecs::World& world, int32_t goldAmount);
+void triggerGoldRushInflation(aoc::game::GameState& gameState, int32_t goldAmount);
 
 /**
  * @brief Process speculation effects per turn.
@@ -135,6 +135,6 @@ void triggerGoldRushInflation(aoc::ecs::World& world, int32_t goldAmount);
  * @param world   ECS world.
  * @param market  Market to adjust.
  */
-void processSpeculation(aoc::ecs::World& world, Market& market);
+void processSpeculation(aoc::game::GameState& gameState, Market& market);
 
 } // namespace aoc::sim

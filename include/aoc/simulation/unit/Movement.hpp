@@ -8,8 +8,9 @@
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/core/Types.hpp"
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
+class Unit;
 }
 
 namespace aoc::map {
@@ -24,35 +25,42 @@ namespace aoc::sim {
  * Deducts movement points. If the unit runs out of movement, it stops
  * with the remaining path preserved for next turn.
  *
- * @return true if the unit moved at least one tile, false if it couldn't move.
+ * @param gameState  Full game state (needed for stacking, ZoC, and city capture checks).
+ * @param unit       The unit to move.
+ * @param grid       Hex grid for terrain and movement costs.
+ * @return true if the unit moved at least one tile, false if it could not move.
  */
-bool moveUnitAlongPath(aoc::ecs::World& world, EntityId unitEntity,
+bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
                        const aoc::map::HexGrid& grid);
 
 /**
- * @brief Set a movement order for a unit (replaces existing path).
+ * @brief Set a movement order for a unit (replaces any existing path).
  *
- * Computes A* path from current position to goal and stores it
- * in the unit's pendingPath.
+ * Computes an A* path from the unit's current position to goal and stores it
+ * in the unit's pending path. The unit will follow the path on subsequent
+ * calls to moveUnitAlongPath / executeMovement.
  *
- * @return true if a path was found, false if destination is unreachable.
+ * @param unit   The unit receiving the order.
+ * @param goal   Target tile.
+ * @param grid   Hex grid for pathfinding.
+ * @return true if a path was found, false if the destination is unreachable.
  */
-bool orderUnitMove(aoc::ecs::World& world, EntityId unitEntity,
-                   hex::AxialCoord goal, const aoc::map::HexGrid& grid);
+bool orderUnitMove(aoc::game::Unit& unit,
+                   aoc::hex::AxialCoord goal, const aoc::map::HexGrid& grid);
 
 /**
- * @brief Restore movement points for all units of a player.
+ * @brief Restore movement points for all units belonging to a player.
  *
- * Called at the start of each turn.
+ * Called at the start of each player's turn.
  */
-void refreshMovement(aoc::ecs::World& world, PlayerId player);
+void refreshMovement(aoc::game::GameState& gameState, PlayerId player);
 
 /**
  * @brief Execute pending movement for all units of a player.
  *
- * Moves each unit along its path as far as movement points allow.
+ * Moves each unit along its stored path as far as its movement points allow.
  */
-void executeMovement(aoc::ecs::World& world, PlayerId player,
+void executeMovement(aoc::game::GameState& gameState, PlayerId player,
                      const aoc::map::HexGrid& grid);
 
 } // namespace aoc::sim

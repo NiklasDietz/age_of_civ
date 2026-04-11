@@ -7,6 +7,7 @@
  * agricultural hinterlands feed population centers.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/InternalTrade.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -74,9 +75,10 @@ float transportEfficiency(float distance) {
 }
 
 /// Check if a city needs a specific good for any of its recipes.
-bool cityNeedsGoodForRecipe(const aoc::ecs::World& world,
+bool cityNeedsGoodForRecipe(const aoc::game::GameState& gameState,
                             EntityId cityEntity,
                             uint16_t goodId) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     const CityDistrictsComponent* districts =
         world.tryGetComponent<CityDistrictsComponent>(cityEntity);
     if (districts == nullptr) {
@@ -100,9 +102,10 @@ bool cityNeedsGoodForRecipe(const aoc::ecs::World& world,
 
 } // anonymous namespace
 
-void processInternalTrade(aoc::ecs::World& world,
+void processInternalTrade(aoc::game::GameState& gameState,
                           const aoc::map::HexGrid& grid,
                           PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Gather all cities belonging to this player
     aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
     if (cityPool == nullptr) {

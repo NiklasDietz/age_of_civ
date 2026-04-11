@@ -41,7 +41,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -204,7 +204,7 @@ struct PlayerIndustrialComponent {
  * @param currentTurn Current turn number (for recording achievement turn).
  * @return true if a new revolution was achieved this turn.
  */
-bool checkIndustrialRevolution(aoc::ecs::World& world, PlayerId player,
+bool checkIndustrialRevolution(aoc::game::GameState& gameState, PlayerId player,
                                TurnNumber currentTurn);
 
 /**

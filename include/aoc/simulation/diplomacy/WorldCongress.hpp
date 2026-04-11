@@ -15,8 +15,8 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::sim {
@@ -65,6 +65,6 @@ struct WorldCongressComponent {
 };
 
 /// Process World Congress: decrement timer, propose resolutions, AI votes.
-void processWorldCongress(aoc::ecs::World& world, TurnNumber turn, aoc::Random& rng);
+void processWorldCongress(aoc::game::GameState& gameState, TurnNumber turn, aoc::Random& rng);
 
 } // namespace aoc::sim

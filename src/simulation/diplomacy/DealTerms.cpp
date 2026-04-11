@@ -3,6 +3,7 @@
  * @brief Diplomatic deal enforcement and processing.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -23,9 +24,10 @@ ErrorCode proposeDeal(aoc::ecs::World& /*world*/,
     return ErrorCode::Ok;
 }
 
-ErrorCode acceptDeal(aoc::ecs::World& world,
+ErrorCode acceptDeal(aoc::game::GameState& gameState,
                      GlobalDealTracker& tracker,
                      int32_t dealIndex) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (dealIndex < 0 || dealIndex >= static_cast<int32_t>(tracker.activeDeals.size())) {
         return ErrorCode::InvalidArgument;
     }
@@ -91,9 +93,10 @@ void breakDeal(aoc::ecs::World& /*world*/, GlobalDealTracker& tracker,
              static_cast<unsigned>(breaker));
 }
 
-void processDeals(aoc::ecs::World& world, GlobalDealTracker& tracker) {
+void processDeals(aoc::game::GameState& gameState, GlobalDealTracker& tracker) {
     std::vector<DiplomaticDeal>::iterator it = tracker.activeDeals.begin();
     while (it != tracker.activeDeals.end()) {
+        aoc::ecs::World& world = gameState.legacyWorld();
         if (!it->isAccepted || it->isBroken) {
             ++it;
             continue;

@@ -28,7 +28,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -83,6 +83,6 @@ struct PlayerHumanCapitalComponent {
  * @param world   ECS world.
  * @param player  Player to update.
  */
-void updateHumanCapital(aoc::ecs::World& world, PlayerId player);
+void updateHumanCapital(aoc::game::GameState& gameState, PlayerId player);
 
 } // namespace aoc::sim

@@ -17,8 +17,8 @@
 #include "aoc/core/Types.hpp"
 #include "aoc/core/Random.hpp"
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::map {
@@ -46,7 +46,7 @@ public:
      * @param market     Market for trade/economic decisions.
      * @param rng        Deterministic PRNG for AI randomness.
      */
-    void executeTurn(aoc::ecs::World& world,
+    void executeTurn(aoc::game::GameState& gameState,
                      aoc::map::HexGrid& grid,
                      DiplomacyManager& diplomacy,
                      const Market& market,
@@ -55,27 +55,27 @@ public:
     [[nodiscard]] PlayerId player() const { return this->m_player; }
 
 private:
-    void executeCityActions(aoc::ecs::World& world,
+    void executeCityActions(aoc::game::GameState& gameState,
                             aoc::map::HexGrid& grid);
 
-    void executeDiplomacyActions(aoc::ecs::World& world,
+    void executeDiplomacyActions(aoc::game::GameState& gameState,
                                  DiplomacyManager& diplomacy,
                                  const Market& market);
 
     /// Evaluate market prices and manage surplus/deficit goods for trade.
-    void manageEconomy(aoc::ecs::World& world,
+    void manageEconomy(aoc::game::GameState& gameState,
                        DiplomacyManager& diplomacy,
                        const Market& market);
 
     /// Assign idle Trader units to trade routes with other players' cities.
-    void manageTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+    void manageTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                             const Market& market, const DiplomacyManager& diplomacy);
 
     /// Manage monetary system: transition when ready, prioritize minting.
-    void manageMonetarySystem(aoc::ecs::World& world,
+    void manageMonetarySystem(aoc::game::GameState& gameState,
                               const DiplomacyManager& diplomacy);
 
-    void manageGovernment(aoc::ecs::World& world);
+    void manageGovernment(aoc::game::GameState& gameState);
 
     PlayerId              m_player;
     aoc::ui::AIDifficulty m_difficulty;

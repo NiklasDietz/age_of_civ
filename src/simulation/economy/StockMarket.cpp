@@ -3,6 +3,7 @@
  * @brief Inter-player equity investment and stock market.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/StockMarket.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/ecs/World.hpp"
@@ -13,9 +14,10 @@
 
 namespace aoc::sim {
 
-ErrorCode investInEconomy(aoc::ecs::World& world,
+ErrorCode investInEconomy(aoc::game::GameState& gameState,
                            PlayerId investor, PlayerId target,
                            CurrencyAmount amount) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (amount <= 0 || investor == target) {
         return ErrorCode::InvalidArgument;
     }
@@ -87,8 +89,9 @@ ErrorCode investInEconomy(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-ErrorCode divestFromEconomy(aoc::ecs::World& world,
+ErrorCode divestFromEconomy(aoc::game::GameState& gameState,
                              PlayerId investor, PlayerId target) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
         world.getPool<MonetaryStateComponent>();
     aoc::ecs::ComponentPool<PlayerStockPortfolioComponent>* stockPool =
@@ -158,7 +161,7 @@ ErrorCode divestFromEconomy(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-void processStockMarket(aoc::ecs::World& world) {
+void processStockMarket(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<PlayerStockPortfolioComponent>* stockPool =
         world.getPool<PlayerStockPortfolioComponent>();
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
@@ -225,7 +228,7 @@ void processStockMarket(aoc::ecs::World& world) {
     }
 }
 
-void triggerMarketCrash(aoc::ecs::World& world, PlayerId crashedPlayer) {
+void triggerMarketCrash(aoc::game::GameState& gameState, PlayerId crashedPlayer) {
     aoc::ecs::ComponentPool<PlayerStockPortfolioComponent>* stockPool =
         world.getPool<PlayerStockPortfolioComponent>();
     if (stockPool == nullptr) {

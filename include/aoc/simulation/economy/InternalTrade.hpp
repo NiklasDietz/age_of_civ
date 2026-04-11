@@ -12,7 +12,7 @@
 
 #include "aoc/core/Types.hpp"
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -29,7 +29,7 @@ namespace aoc::sim {
  * @param grid    Hex grid for distance calculation and road checks.
  * @param player  The player whose cities should trade internally.
  */
-void processInternalTrade(aoc::ecs::World& world,
+void processInternalTrade(aoc::game::GameState& gameState,
                           const aoc::map::HexGrid& grid,
                           PlayerId player);
 

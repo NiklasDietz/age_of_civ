@@ -36,7 +36,7 @@
 #include <cstdint>
 
 namespace aoc::map { class HexGrid; }
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -79,7 +79,7 @@ enum class TerrainProjectType : uint8_t {
  *
  * @return Ok if successful.
  */
-[[nodiscard]] ErrorCode executeTerrainProject(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode executeTerrainProject(aoc::game::GameState& gameState,
                                               aoc::map::HexGrid& grid,
                                               int32_t tileIndex,
                                               TerrainProjectType type);

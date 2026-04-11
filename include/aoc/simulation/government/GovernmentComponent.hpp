@@ -15,7 +15,8 @@
 #include <array>
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
+namespace aoc::game { class Player; }
 
 namespace aoc::sim {
 
@@ -98,7 +99,7 @@ struct PlayerGovernmentComponent {
  * @return Combined GovernmentModifiers.
  */
 [[nodiscard]] GovernmentModifiers computeGovernmentModifiers(
-    const aoc::ecs::World& world, PlayerId player);
+    const aoc::game::GameState& gameState, PlayerId player);
 
 /// Compute government modifiers directly from a government component.
 [[nodiscard]] GovernmentModifiers computeGovernmentModifiers(
@@ -111,11 +112,12 @@ struct PlayerGovernmentComponent {
  * @param player  Player performing the action.
  * @return Ok if successful, InvalidArgument if action not available.
  */
-[[nodiscard]] ErrorCode executeGovernmentAction(aoc::ecs::World& world, PlayerId player);
+[[nodiscard]] ErrorCode executeGovernmentAction(aoc::game::GameState& gameState, PlayerId player);
 
 /**
  * @brief Per-turn government processing: tick anarchy, tick active actions.
+ * Uses GameState Player directly (no ECS).
  */
-void processGovernment(aoc::ecs::World& world, PlayerId player);
+void processGovernment(aoc::game::Player& player);
 
 } // namespace aoc::sim

@@ -9,8 +9,8 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::sim {
@@ -30,7 +30,7 @@ struct UnitUpgradeDef {
 
 /// Perform the upgrade: changes unit type, adjusts HP, costs gold.
 /// Returns true if successful.
-[[nodiscard]] bool upgradeUnit(aoc::ecs::World& world, EntityId unitEntity,
+[[nodiscard]] bool upgradeUnit(aoc::game::GameState& gameState, EntityId unitEntity,
                                 UnitTypeId newType, PlayerId player);
 
 } // namespace aoc::sim

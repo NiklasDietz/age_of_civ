@@ -3,6 +3,7 @@
  * @brief Supply chain dependency tracking and disruption.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/SupplyChain.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
@@ -13,7 +14,8 @@
 
 namespace aoc::sim {
 
-void updateSupplyChainHealth(aoc::ecs::World& world, PlayerId player) {
+void updateSupplyChainHealth(aoc::game::GameState& gameState, PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<PlayerSupplyChainComponent>* chainPool =
         world.getPool<PlayerSupplyChainComponent>();
     if (chainPool == nullptr) {
@@ -87,7 +89,8 @@ void updateSupplyChainHealth(aoc::ecs::World& world, PlayerId player) {
     }
 }
 
-void processSupplyChains(aoc::ecs::World& world) {
+void processSupplyChains(aoc::game::GameState& gameState) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<PlayerSupplyChainComponent>* chainPool =
         world.getPool<PlayerSupplyChainComponent>();
     if (chainPool == nullptr) {

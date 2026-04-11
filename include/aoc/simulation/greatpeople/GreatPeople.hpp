@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -59,13 +59,13 @@ struct PlayerGreatPeopleComponent {
 };
 
 /// Add GP points based on districts/buildings. Called each turn.
-void accumulateGreatPeoplePoints(aoc::ecs::World& world, PlayerId player);
+void accumulateGreatPeoplePoints(aoc::game::GameState& gameState, PlayerId player);
 
 /// Check if any GP thresholds are met and recruit. Called each turn.
-void checkGreatPeopleRecruitment(aoc::ecs::World& world, PlayerId player);
+void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId player);
 
 /// Activate a Great Person's one-time ability.
-void activateGreatPerson(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                           EntityId greatPersonEntity);
 
 } // namespace aoc::sim

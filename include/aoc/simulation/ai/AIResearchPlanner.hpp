@@ -8,8 +8,8 @@
 #include "aoc/core/Types.hpp"
 #include "aoc/ui/MainMenu.hpp"
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::sim::ai {
@@ -35,7 +35,7 @@ public:
      *
      * @param world  ECS world containing player tech/civic components.
      */
-    void selectResearch(aoc::ecs::World& world);
+    void selectResearch(aoc::game::GameState& gameState);
 
 private:
     PlayerId              m_player;

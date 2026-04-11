@@ -49,7 +49,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -74,11 +74,11 @@ struct PlayerFuturesComponent {
     std::vector<FuturesContract> contracts;
 };
 
-[[nodiscard]] ErrorCode buyFuture(aoc::ecs::World& world, const Market& market,
+[[nodiscard]] ErrorCode buyFuture(aoc::game::GameState& gameState, const Market& market,
                                    PlayerId buyer, uint16_t goodId, int32_t amount);
-[[nodiscard]] ErrorCode sellFuture(aoc::ecs::World& world, const Market& market,
+[[nodiscard]] ErrorCode sellFuture(aoc::game::GameState& gameState, const Market& market,
                                     PlayerId seller, uint16_t goodId, int32_t amount);
-void settleFutures(aoc::ecs::World& world, Market& market);
+void settleFutures(aoc::game::GameState& gameState, Market& market);
 
 // ============================================================================
 // Labor Strikes
@@ -90,10 +90,10 @@ struct CityStrikeComponent {
 };
 
 /// Check and trigger strikes in cities with low amenities + high industry.
-void checkLaborStrikes(aoc::ecs::World& world);
+void checkLaborStrikes(aoc::game::GameState& gameState);
 
 /// Tick down active strikes.
-void processStrikes(aoc::ecs::World& world);
+void processStrikes(aoc::game::GameState& gameState);
 
 // ============================================================================
 // Insurance
@@ -123,7 +123,7 @@ struct PlayerInsuranceComponent {
 };
 
 /// Process insurance premium payments per turn.
-void processInsurancePremiums(aoc::ecs::World& world);
+void processInsurancePremiums(aoc::game::GameState& gameState);
 
 // ============================================================================
 // Economic Espionage
@@ -139,7 +139,7 @@ enum class EconSpyMission : uint8_t {
 };
 
 /// Execute an economic espionage mission (extends the base espionage system).
-[[nodiscard]] ErrorCode executeEconSpyMission(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode executeEconSpyMission(aoc::game::GameState& gameState,
                                                EntityId spyEntity,
                                                EconSpyMission mission);
 
@@ -161,6 +161,6 @@ struct PlayerMigrationComponent {
 };
 
 /// Process migration between civilizations based on QoL differences.
-void processMigration(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
+void processMigration(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid);
 
 } // namespace aoc::sim

@@ -3,6 +3,7 @@
  * @brief Robot worker assignment and maintenance.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/production/Automation.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/ecs/World.hpp"
@@ -12,7 +13,8 @@
 
 namespace aoc::sim {
 
-void updateCityAutomation(aoc::ecs::World& world, EntityId cityEntity) {
+void updateCityAutomation(aoc::game::GameState& gameState, EntityId cityEntity) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     CityStockpileComponent* stockpile =
         world.tryGetComponent<CityStockpileComponent>(cityEntity);
     if (stockpile == nullptr) {

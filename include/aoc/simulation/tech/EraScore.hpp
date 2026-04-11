@@ -17,8 +17,8 @@
 #include <cstdint>
 #include <string>
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class Player;
 }
 
 namespace aoc::sim {
@@ -30,7 +30,7 @@ enum class AgeType : uint8_t {
     Dark,
 };
 
-/// ECS component tracking per-player era score and age state.
+/// Per-player era score and age state.
 struct PlayerEraScoreComponent {
     PlayerId owner = INVALID_PLAYER;
 
@@ -39,23 +39,26 @@ struct PlayerEraScoreComponent {
     int32_t darkAgeThreshold    = 5;   ///< Below this triggers dark age.
     AgeType currentAgeType      = AgeType::Normal;
     int32_t turnsRemaining      = 0;   ///< Turns left in current age bonus.
+
+    /// Cumulative victory points from era events.
+    int32_t eraVictoryPoints    = 0;
 };
 
 /**
  * @brief Add era score points and log the reason.
  */
-void addEraScore(aoc::ecs::World& world, PlayerId player,
+void addEraScore(aoc::game::Player& player,
                  int32_t points, const std::string& reason);
 
 /**
  * @brief Check whether the player has entered a new era and resolve
  *        golden/dark/normal age accordingly. Call when era changes.
  */
-void checkEraTransition(aoc::ecs::World& world, PlayerId player);
+void checkEraTransition(aoc::game::Player& player);
 
 /**
  * @brief Apply per-turn age bonuses/penalties and decrement the timer.
  */
-void processAgeEffects(aoc::ecs::World& world, PlayerId player);
+void processAgeEffects(aoc::game::Player& player);
 
 } // namespace aoc::sim

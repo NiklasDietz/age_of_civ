@@ -22,7 +22,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -80,7 +80,7 @@ struct EspionageResult {
  * @param rngSeed     Deterministic seed for success roll.
  * @return Result including success/failure and effects.
  */
-EspionageResult executeEspionageMission(aoc::ecs::World& world,
+EspionageResult executeEspionageMission(aoc::game::GameState& gameState,
                                          PlayerId spyOwner,
                                          PlayerId target,
                                          EspionageMissionType mission,

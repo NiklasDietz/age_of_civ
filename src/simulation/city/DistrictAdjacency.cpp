@@ -3,6 +3,7 @@
  * @brief District adjacency bonus computation, appeal, and city projects.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/city/DistrictAdjacency.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/CityLoyalty.hpp"
@@ -25,10 +26,12 @@ namespace aoc::sim {
 // ============================================================================
 
 AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
-                                      const aoc::ecs::World& world,
+                                      const aoc::game::GameState& gameState,
                                       DistrictType districtType,
                                       int32_t tileIndex) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     AdjacencyBonus bonus{};
+    aoc::ecs::World& world = gameState.legacyWorld();
     hex::AxialCoord center = grid.toAxial(tileIndex);
     std::array<hex::AxialCoord, 6> neighbors = hex::neighbors(center);
 
@@ -144,8 +147,9 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
 // ============================================================================
 
 int32_t computeTileAppeal(const aoc::map::HexGrid& grid,
-                          const aoc::ecs::World& world,
+                          const aoc::game::GameState& gameState,
                           int32_t tileIndex) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     int32_t appeal = 0;
     hex::AxialCoord center = grid.toAxial(tileIndex);
     std::array<hex::AxialCoord, 6> neighbors = hex::neighbors(center);
@@ -196,12 +200,15 @@ int32_t computeTileAppeal(const aoc::map::HexGrid& grid,
 // City Projects
 // ============================================================================
 
-void completeCityProject(aoc::ecs::World& world, EntityId cityEntity,
+void completeCityProject(aoc::game::GameState& gameState, EntityId cityEntity,
                          CityProjectType project) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     CityComponent* city = world.tryGetComponent<CityComponent>(cityEntity);
     if (city == nullptr) { return; }
+    aoc::ecs::World& world = gameState.legacyWorld();
 
     switch (project) {
+        aoc::ecs::World& world = gameState.legacyWorld();
         case CityProjectType::BreadAndCircuses: {
             CityLoyaltyComponent* loyalty =
                 world.tryGetComponent<CityLoyaltyComponent>(cityEntity);

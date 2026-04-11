@@ -23,7 +23,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -62,7 +62,7 @@ struct PlayerBlackMarketComponent {
  *
  * @param world  ECS world.
  */
-void processBlackMarketTrade(aoc::ecs::World& world);
+void processBlackMarketTrade(aoc::game::GameState& gameState);
 
 /**
  * @brief Update border control efficiency based on tech and spending.

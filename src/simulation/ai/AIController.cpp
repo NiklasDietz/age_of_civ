@@ -7,6 +7,7 @@
  * monetary system, and government logic.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/ai/AIController.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
@@ -44,12 +45,15 @@ namespace aoc::sim::ai {
 // Helper: Find the best military unit type ID the player can produce.
 // ============================================================================
 
-static UnitTypeId bestAvailableMilitaryUnit(const aoc::ecs::World& world,
+static UnitTypeId bestAvailableMilitaryUnit(const aoc::game::GameState& gameState,
                                             PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     UnitTypeId bestId{0};
+    aoc::ecs::World& world = gameState.legacyWorld();
     int32_t bestStrength = 0;
 
     for (const UnitTypeDef& def : UNIT_TYPE_DEFS) {
+        aoc::ecs::World& world = gameState.legacyWorld();
         if (!isMilitary(def.unitClass) || isNaval(def.unitClass)) {
             continue;
         }
@@ -79,8 +83,9 @@ struct UnitCounts {
     int32_t total     = 0;
 };
 
-static UnitCounts countPlayerUnits(const aoc::ecs::World& world, PlayerId player) {
+static UnitCounts countPlayerUnits(const aoc::game::GameState& gameState, PlayerId player) {
     UnitCounts counts{};
+    aoc::ecs::World& world = gameState.legacyWorld();
     const aoc::ecs::ComponentPool<UnitComponent>* unitPool =
         world.getPool<UnitComponent>();
     if (unitPool == nullptr) {
@@ -129,11 +134,12 @@ AIController::AIController(PlayerId player, aoc::ui::AIDifficulty difficulty)
 // Main turn execution
 // ============================================================================
 
-void AIController::executeTurn(aoc::ecs::World& world,
+void AIController::executeTurn(aoc::game::GameState& gameState,
                                 aoc::map::HexGrid& grid,
                                 DiplomacyManager& diplomacy,
                                 const Market& market,
                                 aoc::Random& rng) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     this->manageGovernment(world);
     this->m_researchPlanner.selectResearch(world);
     this->executeCityActions(world, grid);
@@ -161,8 +167,9 @@ void AIController::executeTurn(aoc::ecs::World& world,
 //   5. Default: best military unit
 // ============================================================================
 
-void AIController::executeCityActions(aoc::ecs::World& world,
+void AIController::executeCityActions(aoc::game::GameState& gameState,
                                        aoc::map::HexGrid& grid) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
     if (cityPool == nullptr) {
         return;
@@ -592,9 +599,10 @@ void AIController::executeCityActions(aoc::ecs::World& world,
 // Diplomacy
 // ============================================================================
 
-void AIController::executeDiplomacyActions(aoc::ecs::World& world,
+void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                                             DiplomacyManager& diplomacy,
                                             const Market& market) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     const aoc::ecs::ComponentPool<UnitComponent>* unitPool = world.getPool<UnitComponent>();
     if (unitPool == nullptr) {
         return;
@@ -691,9 +699,10 @@ void AIController::executeDiplomacyActions(aoc::ecs::World& world,
 // Economy management
 // ============================================================================
 
-void AIController::manageEconomy(aoc::ecs::World& world,
+void AIController::manageEconomy(aoc::game::GameState& gameState,
                                   DiplomacyManager& diplomacy,
                                   const Market& market) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     std::unordered_map<uint16_t, int32_t> totalStockpile;
 
     const aoc::ecs::ComponentPool<CityComponent>* cityPool =
@@ -807,7 +816,7 @@ void AIController::manageEconomy(aoc::ecs::World& world,
 // Government management
 // ============================================================================
 
-void AIController::manageGovernment(aoc::ecs::World& world) {
+void AIController::manageGovernment(aoc::game::GameState& gameState) {
     world.forEach<PlayerGovernmentComponent>(
         [this](EntityId, PlayerGovernmentComponent& gov) {
             if (gov.owner != this->m_player) {
@@ -891,8 +900,9 @@ void AIController::manageGovernment(aoc::ecs::World& world) {
 // Monetary system management
 // ============================================================================
 
-void AIController::manageTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+void AIController::manageTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                                       const Market& market, const DiplomacyManager& diplomacy) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Find idle Trader units owned by this player that are not already on a route
     aoc::ecs::ComponentPool<UnitComponent>* unitPool = world.getPool<UnitComponent>();
     if (unitPool == nullptr) {
@@ -1023,8 +1033,9 @@ void AIController::manageTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& 
 
 // ============================================================================
 
-void AIController::manageMonetarySystem(aoc::ecs::World& world,
+void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
                                          const DiplomacyManager& /*diplomacy*/) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
         world.getPool<MonetaryStateComponent>();
     if (monetaryPool == nullptr) {

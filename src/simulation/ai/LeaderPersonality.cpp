@@ -3,6 +3,7 @@
  * @brief Leader personality evaluation, agenda checks, and dialogue.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
@@ -29,9 +30,10 @@ const LeaderPersonalityDef& leaderPersonality(CivId civId) {
 // Agenda evaluation
 // ============================================================================
 
-static bool checkCondition(const aoc::ecs::World& world,
+static bool checkCondition(const aoc::game::GameState& gameState,
                            AgendaCondition condition,
                            PlayerId leader, PlayerId target) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (condition == AgendaCondition::None) {
         return false;
     }
@@ -184,10 +186,12 @@ static bool checkCondition(const aoc::ecs::World& world,
     }
 }
 
-int32_t evaluateAgenda(const aoc::ecs::World& world,
+int32_t evaluateAgenda(const aoc::game::GameState& gameState,
                        PlayerId leader, PlayerId target) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Find the leader's civ ID
     CivId leaderCiv{0};
+    aoc::ecs::World& world = gameState.legacyWorld();
     const aoc::ecs::ComponentPool<PlayerCivilizationComponent>* civPool =
         world.getPool<PlayerCivilizationComponent>();
     if (civPool != nullptr) {

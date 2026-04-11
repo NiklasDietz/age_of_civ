@@ -8,8 +8,8 @@
 #include "aoc/core/Types.hpp"
 #include "aoc/map/HexCoord.hpp"
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::map {
@@ -30,7 +30,7 @@ namespace aoc::sim {
  * @param grid       Hex grid for terrain checks.
  * @return true if embarkation succeeded.
  */
-[[nodiscard]] bool tryEmbark(aoc::ecs::World& world,
+[[nodiscard]] bool tryEmbark(aoc::game::GameState& gameState,
                               EntityId unitEntity,
                               hex::AxialCoord coastTile,
                               const aoc::map::HexGrid& grid);
@@ -47,7 +47,7 @@ namespace aoc::sim {
  * @param grid       Hex grid for terrain checks.
  * @return true if disembarkation succeeded.
  */
-[[nodiscard]] bool tryDisembark(aoc::ecs::World& world,
+[[nodiscard]] bool tryDisembark(aoc::game::GameState& gameState,
                                 EntityId unitEntity,
                                 hex::AxialCoord landTile,
                                 const aoc::map::HexGrid& grid);

@@ -26,7 +26,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -67,7 +67,7 @@ struct CityAutomationComponent {
  * @param world       ECS world.
  * @param cityEntity  City to update.
  */
-void updateCityAutomation(aoc::ecs::World& world, EntityId cityEntity);
+void updateCityAutomation(aoc::game::GameState& gameState, EntityId cityEntity);
 
 /**
  * @brief Get the total worker capacity for a city (population + robots).

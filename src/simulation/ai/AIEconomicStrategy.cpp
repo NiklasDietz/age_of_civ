@@ -3,6 +3,7 @@
  * @brief AI economic strategy: bonds, sanctions, devaluation, infrastructure, crises.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/ai/AIEconomicStrategy.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/CentralBank.hpp"
@@ -36,7 +37,7 @@ namespace aoc::sim {
 // Helper: find player's monetary state
 // ============================================================================
 
-static MonetaryStateComponent* findMonetary(aoc::ecs::World& world, PlayerId player) {
+static MonetaryStateComponent* findMonetary(aoc::game::GameState& gameState, PlayerId player) {
     aoc::ecs::ComponentPool<MonetaryStateComponent>* pool =
         world.getPool<MonetaryStateComponent>();
     if (pool == nullptr) { return nullptr; }
@@ -50,10 +51,12 @@ static MonetaryStateComponent* findMonetary(aoc::ecs::World& world, PlayerId pla
 // Bond strategy
 // ============================================================================
 
-static void aiBondStrategy(aoc::ecs::World& world, PlayerId player,
+static void aiBondStrategy(aoc::game::GameState& gameState, PlayerId player,
                            int32_t difficulty) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     MonetaryStateComponent* myState = findMonetary(world, player);
     if (myState == nullptr) { return; }
+    aoc::ecs::World& world = gameState.legacyWorld();
 
     // Buy bonds from weaker players (investment + leverage)
     // Only on normal/hard difficulty
@@ -83,11 +86,13 @@ static void aiBondStrategy(aoc::ecs::World& world, PlayerId player,
 // Sanctions strategy
 // ============================================================================
 
-static void aiSanctionStrategy(aoc::ecs::World& world,
+static void aiSanctionStrategy(aoc::game::GameState& gameState,
                                 DiplomacyManager& diplomacy,
                                 PlayerId player,
                                 int32_t difficulty) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (difficulty < 2) { return; }  // Only hard AI uses sanctions
+    aoc::ecs::World& world = gameState.legacyWorld();
 
     // Sanction players we're at war with (if we have financial leverage)
     const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
@@ -111,10 +116,11 @@ static void aiSanctionStrategy(aoc::ecs::World& world,
 // Insurance strategy
 // ============================================================================
 
-static void aiInsuranceStrategy(aoc::ecs::World& world, PlayerId player) {
+static void aiInsuranceStrategy(aoc::game::GameState& gameState, PlayerId player) {
     // AI buys insurance if it can afford the premiums and has vulnerable assets
     MonetaryStateComponent* myState = findMonetary(world, player);
     if (myState == nullptr || myState->treasury < 100) { return; }
+    aoc::ecs::World& world = gameState.legacyWorld();
 
     aoc::ecs::ComponentPool<PlayerInsuranceComponent>* insPool =
         world.getPool<PlayerInsuranceComponent>();
@@ -140,10 +146,11 @@ static void aiInsuranceStrategy(aoc::ecs::World& world, PlayerId player) {
 // Immigration policy
 // ============================================================================
 
-static void aiImmigrationPolicy(aoc::ecs::World& world, PlayerId player) {
+static void aiImmigrationPolicy(aoc::game::GameState& gameState, PlayerId player) {
     aoc::ecs::ComponentPool<PlayerMigrationComponent>* migPool =
         world.getPool<PlayerMigrationComponent>();
     if (migPool == nullptr) { return; }
+    aoc::ecs::World& world = gameState.legacyWorld();
 
     // Simple strategy: open borders if small, controlled if medium, closed if at war
     int32_t cityCount = 0;
@@ -173,9 +180,10 @@ static void aiImmigrationPolicy(aoc::ecs::World& world, PlayerId player) {
 // Power grid management
 // ============================================================================
 
-void aiManagePowerGrid(aoc::ecs::World& world,
+void aiManagePowerGrid(aoc::game::GameState& gameState,
                        const aoc::map::HexGrid& grid,
                        PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     const aoc::ecs::ComponentPool<CityComponent>* cityPool =
         world.getPool<CityComponent>();
     if (cityPool == nullptr) { return; }
@@ -203,9 +211,10 @@ void aiManagePowerGrid(aoc::ecs::World& world,
 // Infrastructure management
 // ============================================================================
 
-void aiManageInfrastructure(aoc::ecs::World& world,
+void aiManageInfrastructure(aoc::game::GameState& gameState,
                             aoc::map::HexGrid& /*grid*/,
                             PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // AI prioritizes railway construction between capital and other cities
     // This is handled by the builder AI -- here we just set the priority
     const aoc::ecs::ComponentPool<PlayerIndustrialComponent>* indPool =
@@ -227,10 +236,11 @@ void aiManageInfrastructure(aoc::ecs::World& world,
 // Crisis response
 // ============================================================================
 
-void aiCrisisResponse(aoc::ecs::World& world, PlayerId player) {
+void aiCrisisResponse(aoc::game::GameState& gameState, PlayerId player) {
     aoc::ecs::ComponentPool<CurrencyCrisisComponent>* crisisPool =
         world.getPool<CurrencyCrisisComponent>();
     if (crisisPool == nullptr) { return; }
+    aoc::ecs::World& world = gameState.legacyWorld();
 
     MonetaryStateComponent* myState = findMonetary(world, player);
     if (myState == nullptr) { return; }
@@ -277,9 +287,10 @@ void aiCrisisResponse(aoc::ecs::World& world, PlayerId player) {
 // Industrial revolution preparation
 // ============================================================================
 
-void aiPrepareIndustrialRevolution(aoc::ecs::World& world,
+void aiPrepareIndustrialRevolution(aoc::game::GameState& gameState,
                                     const Market& /*market*/,
                                     PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Check what the next revolution requires and prioritize those techs/resources
     const aoc::ecs::ComponentPool<PlayerIndustrialComponent>* indPool =
         world.getPool<PlayerIndustrialComponent>();
@@ -322,7 +333,7 @@ void aiPrepareIndustrialRevolution(aoc::ecs::World& world,
 // Gold spending: prevent treasury runaway
 // ============================================================================
 
-static void aiSpendExcessGold(aoc::ecs::World& world, PlayerId player) {
+static void aiSpendExcessGold(aoc::game::GameState& gameState, PlayerId player) {
     MonetaryStateComponent* myState = findMonetary(world, player);
     if (myState == nullptr) { return; }
 
@@ -338,12 +349,13 @@ static void aiSpendExcessGold(aoc::ecs::World& world, PlayerId player) {
 // Master economic strategy
 // ============================================================================
 
-void aiEconomicStrategy(aoc::ecs::World& world,
+void aiEconomicStrategy(aoc::game::GameState& gameState,
                         aoc::map::HexGrid& grid,
                         const Market& market,
                         DiplomacyManager& diplomacy,
                         PlayerId player,
                         int32_t difficulty) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Run all sub-strategies
     aiBondStrategy(world, player, difficulty);
     aiSanctionStrategy(world, diplomacy, player, difficulty);

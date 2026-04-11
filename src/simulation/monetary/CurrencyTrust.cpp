@@ -3,6 +3,7 @@
  * @brief Currency trust scoring and reserve currency mechanics.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/ForexMarket.hpp"
@@ -19,10 +20,11 @@ namespace aoc::sim {
 // Trust score computation
 // ============================================================================
 
-void computeCurrencyTrust(const aoc::ecs::World& world,
+void computeCurrencyTrust(const aoc::game::GameState& gameState,
                           const MonetaryStateComponent& state,
                           CurrencyTrustComponent& trust,
                           int32_t playerCount) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (state.system != MonetarySystemType::FiatMoney) {
         return;
     }
@@ -144,7 +146,7 @@ void computeCurrencyTrust(const aoc::ecs::World& world,
 // Reserve currency determination
 // ============================================================================
 
-void updateReserveCurrencyStatus(aoc::ecs::World& world) {
+void updateReserveCurrencyStatus(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<CurrencyTrustComponent>* trustPool =
         world.getPool<CurrencyTrustComponent>();
     if (trustPool == nullptr) {
@@ -220,8 +222,9 @@ float fiatTradeEfficiency(const CurrencyTrustComponent& trust) {
     return std::clamp(efficiency, 0.40f, 1.05f);
 }
 
-float bilateralTradeEfficiency(const aoc::ecs::World& world,
+float bilateralTradeEfficiency(const aoc::game::GameState& gameState,
                                PlayerId playerA, PlayerId playerB) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     float efficiencyA = 0.50f;  // Default barter
     float efficiencyB = 0.50f;
 

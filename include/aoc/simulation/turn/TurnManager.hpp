@@ -12,8 +12,11 @@
 #include <array>
 #include <cstdint>
 
+namespace aoc::game {
+class GameState;
+}
+
 namespace aoc::ecs {
-class World;
 class SystemScheduler;
 }
 
@@ -57,7 +60,7 @@ public:
      * Should be called when allPlayersReady() returns true.
      * Executes each phase sequentially via the system scheduler.
      */
-    void executeTurn(aoc::ecs::World& world, aoc::ecs::SystemScheduler& scheduler);
+    void executeTurn(aoc::game::GameState& gameState, aoc::ecs::SystemScheduler& scheduler);
 
     /// Reset readiness for a new input phase.
     void beginNewTurn();

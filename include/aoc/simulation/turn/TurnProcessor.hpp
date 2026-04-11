@@ -51,9 +51,9 @@
 #include <string>
 #include <vector>
 
-namespace aoc::ecs { class World; }
-namespace aoc::map { class HexGrid; }
 namespace aoc::game { class GameState; }
+namespace aoc::game { class City; }
+namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
 
@@ -70,15 +70,13 @@ namespace ai { class AIController; }
  * Created once, passed to processTurn() each turn.
  */
 struct TurnContext {
-    aoc::ecs::World* world = nullptr;
     aoc::map::HexGrid* grid = nullptr;
     EconomySimulation* economy = nullptr;
     DiplomacyManager* diplomacy = nullptr;
     BarbarianController* barbarians = nullptr;
     aoc::Random* rng = nullptr;
 
-    /// New object model (Phase 3 migration). When non-null, turn processing
-    /// reads/writes GameState objects and syncs results back to ECS.
+    /// GameState owns all game data. legacyWorld() provides ECS bridge.
     aoc::game::GameState* gameState = nullptr;
 
     /// All AI controllers (empty for headless sim that manages AI separately).
@@ -95,28 +93,30 @@ struct TurnContext {
 };
 
 /**
- * @brief Found a new city at the given location with all required components.
+ * @brief Found a new city at the given location for the given player.
  *
  * This is the SINGLE function for city creation. Both human settlers,
- * AI settlers, and the headless sim's starting cities should call this.
- * Ensures all required ECS components are created.
+ * AI settlers, and the headless sim's starting cities must call this.
+ * Creates the City in the GameState object model, assigns initial worked
+ * tiles based on yield scoring, places the CityCenter district, sets
+ * starting loyalty, and claims adjacent hex tiles on the grid.
  *
- * @param world     ECS world.
- * @param grid      Hex grid (for tile ownership).
- * @param owner     Player who owns the new city.
- * @param location  Hex coordinate for the city center.
- * @param name      City name.
+ * @param gameState  Top-level game state (player must exist in it).
+ * @param grid       Hex grid (for tile ownership and yield queries).
+ * @param owner      Player who owns the new city.
+ * @param location   Hex coordinate for the city center.
+ * @param name       City name.
  * @param isOriginalCapital  True if this is the player's original capital.
- * @param startingPop  Starting population (default 1, capitals get more).
- * @return Entity ID of the new city.
+ * @param startingPop  Starting population (default 1, capitals may receive more).
+ * @return Reference to the newly created City owned by the player.
  */
-EntityId foundCity(aoc::ecs::World& world,
-                   aoc::map::HexGrid& grid,
-                   PlayerId owner,
-                   aoc::hex::AxialCoord location,
-                   const std::string& name,
-                   bool isOriginalCapital = false,
-                   int32_t startingPop = 1);
+aoc::game::City& foundCity(aoc::game::GameState& gameState,
+                            aoc::map::HexGrid& grid,
+                            PlayerId owner,
+                            aoc::hex::AxialCoord location,
+                            const std::string& name,
+                            bool isOriginalCapital = false,
+                            int32_t startingPop = 1);
 
 /**
  * @brief Process one complete turn for all players.
@@ -137,33 +137,12 @@ void processTurn(TurnContext& ctx);
 void processPlayerTurn(TurnContext& ctx, PlayerId player);
 
 /**
- * @brief Process global systems that aren't per-player.
+ * @brief Process global systems that are not per-player.
  *
- * Climate, barbarians, disasters, etc.
+ * Covers climate, barbarians, natural disasters, trade routes, speculation
+ * bubbles, labor strikes, migration, insurance premiums, futures settlement,
+ * river flooding, world events, and victory tracking.
  */
 void processGlobalSystems(TurnContext& ctx);
-
-/**
- * @brief Sync ECS component state into GameState objects after turn processing.
- *
- * During migration, the ECS functions are authoritative. After they run,
- * this copies key results (treasury, population, food surplus, tech progress)
- * from ECS components into the GameState Player/City/Unit objects so that
- * code reading from GameState sees up-to-date values.
- *
- * @param ctx  Turn context (must have both world and gameState set).
- */
-void syncEcsToGameState(TurnContext& ctx);
-
-/**
- * @brief Sync GameState object state back into ECS components.
- *
- * For subsystems that have been migrated to use GameState natively,
- * this copies their results back into ECS so rendering and unmigrated
- * systems still see correct data.
- *
- * @param ctx  Turn context (must have both world and gameState set).
- */
-void syncGameStateToEcs(TurnContext& ctx);
 
 } // namespace aoc::sim

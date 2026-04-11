@@ -3,6 +3,7 @@
  * @brief Corps/Armies, nuclear weapons, and air combat mechanics.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/unit/CombatExtensions.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -23,8 +24,9 @@ namespace aoc::sim {
 // Corps / Armies
 // ============================================================================
 
-ErrorCode formCorps(aoc::ecs::World& world,
+ErrorCode formCorps(aoc::game::GameState& gameState,
                      EntityId targetUnit, EntityId sourceUnit) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     UnitComponent* target = world.tryGetComponent<UnitComponent>(targetUnit);
     UnitComponent* source = world.tryGetComponent<UnitComponent>(sourceUnit);
     if (target == nullptr || source == nullptr) {
@@ -74,8 +76,9 @@ ErrorCode formCorps(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-ErrorCode formArmy(aoc::ecs::World& world,
+ErrorCode formArmy(aoc::game::GameState& gameState,
                     EntityId corpsUnit, EntityId sourceUnit) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     UnitComponent* corps = world.tryGetComponent<UnitComponent>(corpsUnit);
     UnitComponent* source = world.tryGetComponent<UnitComponent>(sourceUnit);
     if (corps == nullptr || source == nullptr) {
@@ -112,11 +115,12 @@ ErrorCode formArmy(aoc::ecs::World& world,
 // Nuclear Weapons
 // ============================================================================
 
-ErrorCode launchNuclearStrike(aoc::ecs::World& world,
+ErrorCode launchNuclearStrike(aoc::game::GameState& gameState,
                               aoc::map::HexGrid& grid,
                               EntityId launcherEntity,
                               hex::AxialCoord targetTile,
                               NukeType type) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Determine blast radius and population damage
     int32_t blastRadius = (type == NukeType::ThermonuclearDevice) ? 2 : 1;
     float populationDamage = (type == NukeType::ThermonuclearDevice) ? 0.75f : 0.50f;
@@ -241,10 +245,11 @@ ErrorCode launchNuclearStrike(aoc::ecs::World& world,
 // Air Combat
 // ============================================================================
 
-ErrorCode executeBombingRun(aoc::ecs::World& world,
+ErrorCode executeBombingRun(aoc::game::GameState& gameState,
                             aoc::map::HexGrid& grid,
                             EntityId bomberEntity,
                             hex::AxialCoord targetTile) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     UnitComponent* bomber = world.tryGetComponent<UnitComponent>(bomberEntity);
     AirUnitComponent* air = world.tryGetComponent<AirUnitComponent>(bomberEntity);
     if (bomber == nullptr || air == nullptr) {
@@ -320,9 +325,10 @@ ErrorCode executeBombingRun(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-bool attemptInterception(aoc::ecs::World& world,
+bool attemptInterception(aoc::game::GameState& gameState,
                          EntityId interceptorEntity,
                          EntityId targetAirUnit) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     UnitComponent* interceptor = world.tryGetComponent<UnitComponent>(interceptorEntity);
     AirUnitComponent* intAir = world.tryGetComponent<AirUnitComponent>(interceptorEntity);
     UnitComponent* target = world.tryGetComponent<UnitComponent>(targetAirUnit);
@@ -359,7 +365,7 @@ bool attemptInterception(aoc::ecs::World& world,
     return true;
 }
 
-void resetAirSorties(aoc::ecs::World& world, PlayerId player) {
+void resetAirSorties(aoc::game::GameState& gameState, PlayerId player) {
     aoc::ecs::ComponentPool<AirUnitComponent>* airPool =
         world.getPool<AirUnitComponent>();
     if (airPool == nullptr) {

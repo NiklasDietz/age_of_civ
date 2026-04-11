@@ -3,6 +3,7 @@
  * @brief Dutch disease calculation and application.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/ResourceCurse.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
@@ -14,9 +15,11 @@
 
 namespace aoc::sim {
 
-ResourceCurseModifiers computeResourceCurse(const aoc::ecs::World& world,
+ResourceCurseModifiers computeResourceCurse(const aoc::game::GameState& gameState,
                                               PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     ResourceCurseModifiers result{};
+    aoc::ecs::World& world = gameState.legacyWorld();
     result.manufacturingPenalty  = 1.0f;
     result.currencyAppreciation  = 1.0f;
     result.happinessPenalty      = 0.0f;

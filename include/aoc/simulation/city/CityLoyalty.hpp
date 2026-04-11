@@ -36,7 +36,8 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -115,7 +116,7 @@ struct CityLoyaltyComponent {
  * Computes pressure from nearby cities, applies modifiers, updates
  * loyalty values, and handles city flipping at 0 loyalty.
  */
-void computeCityLoyalty(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                         PlayerId player);
 
 } // namespace aoc::sim

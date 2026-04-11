@@ -31,7 +31,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -132,7 +132,7 @@ struct CurrencyCrisisComponent {
  * @param crisis Player's crisis component (will be mutated).
  * @return true if a new crisis was triggered this turn.
  */
-bool processCurrencyCrisis(aoc::ecs::World& world,
+bool processCurrencyCrisis(aoc::game::GameState& gameState,
                            MonetaryStateComponent& state,
                            CurrencyCrisisComponent& crisis);
 

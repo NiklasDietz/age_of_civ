@@ -7,6 +7,7 @@
  * queues the highest-scoring option.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/ai/AIResearchPlanner.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
@@ -28,7 +29,8 @@ namespace aoc::sim::ai {
 // Helper: Count military units for threat assessment.
 // ============================================================================
 
-static int32_t countMilitaryUnits(const aoc::ecs::World& world, PlayerId player) {
+static int32_t countMilitaryUnits(const aoc::game::GameState& gameState, PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     int32_t count = 0;
     const aoc::ecs::ComponentPool<UnitComponent>* unitPool =
         world.getPool<UnitComponent>();
@@ -61,7 +63,8 @@ AIResearchPlanner::AIResearchPlanner(PlayerId player, aoc::ui::AIDifficulty diff
 // Research selection
 // ============================================================================
 
-void AIResearchPlanner::selectResearch(aoc::ecs::World& world) {
+void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     const int32_t militaryCount = countMilitaryUnits(world, this->m_player);
     const bool threatened = militaryCount < 3;
 

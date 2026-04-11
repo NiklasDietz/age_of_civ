@@ -1,11 +1,14 @@
 /**
  * @file EurekaBoost.cpp
  * @brief Eureka/Inspiration boost definitions and trigger logic.
+ *
+ * Migrated from ECS to GameState object model.
  */
 
 #include "aoc/simulation/tech/EurekaBoost.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
+#include "aoc/game/Player.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <cassert>
@@ -109,91 +112,59 @@ const std::vector<EurekaBoostDef>& getEurekaBoosts() {
     return getBoostTable();
 }
 
-void checkEurekaConditions(aoc::ecs::World& world,
-                           PlayerId player,
+void checkEurekaConditions(aoc::game::Player& player,
                            EurekaCondition triggered) {
     const std::vector<EurekaBoostDef>& boosts = getBoostTable();
 
-    // Find the player's eureka and tech components
-    PlayerEurekaComponent* eurekaComp = nullptr;
-    PlayerTechComponent* techComp = nullptr;
-    PlayerCivicComponent* civicComp = nullptr;
-
-    world.forEach<PlayerEurekaComponent>(
-        [player, &eurekaComp](EntityId /*id*/, PlayerEurekaComponent& eureka) {
-            if (eureka.owner == player) {
-                eurekaComp = &eureka;
-            }
-        });
-
-    world.forEach<PlayerTechComponent>(
-        [player, &techComp](EntityId /*id*/, PlayerTechComponent& tech) {
-            if (tech.owner == player) {
-                techComp = &tech;
-            }
-        });
-
-    world.forEach<PlayerCivicComponent>(
-        [player, &civicComp](EntityId /*id*/, PlayerCivicComponent& civic) {
-            if (civic.owner == player) {
-                civicComp = &civic;
-            }
-        });
-
-    if (eurekaComp == nullptr || techComp == nullptr) {
-        return;
-    }
+    PlayerEurekaComponent& eurekaComp = player.eureka();
+    PlayerTechComponent& techComp = player.tech();
+    PlayerCivicComponent& civicComp = player.civics();
 
     for (const EurekaBoostDef& boost : boosts) {
         if (boost.condition != triggered) {
             continue;
         }
 
-        if (eurekaComp->hasTriggered(boost.boostIndex)) {
+        if (eurekaComp.hasTriggered(boost.boostIndex)) {
             continue;
         }
 
         // Apply boost to relevant tech or civic
         if (boost.techId.isValid()) {
-            // Check if tech is not yet completed
-            if (techComp->hasResearched(boost.techId)) {
+            if (techComp.hasResearched(boost.techId)) {
                 continue;
             }
 
             const TechDef& def = techDef(boost.techId);
             float boostAmount = boost.boostFraction * static_cast<float>(def.researchCost);
 
-            // If this is the currently researched tech, add to progress directly
-            if (techComp->currentResearch == boost.techId) {
-                techComp->researchProgress += boostAmount;
+            if (techComp.currentResearch == boost.techId) {
+                techComp.researchProgress += boostAmount;
             }
-            // Otherwise still mark it as triggered (the boost is conceptually
-            // "banked" for when the player starts researching this tech).
-            // For simplicity, if the tech is the current research, apply immediately.
 
-            eurekaComp->markTriggered(boost.boostIndex);
+            eurekaComp.markTriggered(boost.boostIndex);
             LOG_INFO("Eureka! Player %u: %.*s (+%.0f%% toward %.*s)",
-                     static_cast<unsigned>(player),
+                     static_cast<unsigned>(player.id()),
                      static_cast<int>(boost.description.size()),
                      boost.description.data(),
                      static_cast<double>(boost.boostFraction * 100.0f),
                      static_cast<int>(def.name.size()),
                      def.name.data());
-        } else if (boost.civicId.isValid() && civicComp != nullptr) {
-            if (civicComp->hasCompleted(boost.civicId)) {
+        } else if (boost.civicId.isValid()) {
+            if (civicComp.hasCompleted(boost.civicId)) {
                 continue;
             }
 
             const CivicDef& def = civicDef(boost.civicId);
             float boostAmount = boost.boostFraction * static_cast<float>(def.cultureCost);
 
-            if (civicComp->currentResearch == boost.civicId) {
-                civicComp->researchProgress += boostAmount;
+            if (civicComp.currentResearch == boost.civicId) {
+                civicComp.researchProgress += boostAmount;
             }
 
-            eurekaComp->markTriggered(boost.boostIndex);
+            eurekaComp.markTriggered(boost.boostIndex);
             LOG_INFO("Inspiration! Player %u: %.*s (+%.0f%% toward %.*s)",
-                     static_cast<unsigned>(player),
+                     static_cast<unsigned>(player.id()),
                      static_cast<int>(boost.description.size()),
                      boost.description.data(),
                      static_cast<double>(boost.boostFraction * 100.0f),

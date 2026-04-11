@@ -4,26 +4,26 @@
  */
 
 #include "aoc/simulation/unit/Combat.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
-#include "aoc/simulation/barbarian/BarbarianController.hpp"
-#include "aoc/simulation/resource/ResourceComponent.hpp"
+
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/Unit.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/simulation/unit/CombatExtensions.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/core/Log.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
-#include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/map/RiverGameplay.hpp"
-#include "aoc/simulation/unit/CombatExtensions.hpp"
-#include "aoc/ecs/World.hpp"
 
 #include <algorithm>
 #include <cmath>
 
 namespace aoc::sim {
 
-float terrainDefenseModifier(const aoc::map::HexGrid& grid, hex::AxialCoord position) {
+float terrainDefenseModifier(const aoc::map::HexGrid& grid, aoc::hex::AxialCoord position) {
     if (!grid.isValid(position)) {
         return 1.0f;
     }
@@ -43,26 +43,22 @@ float terrainDefenseModifier(const aoc::map::HexGrid& grid, hex::AxialCoord posi
     return modifier;
 }
 
-int32_t countAdjacentFriendlies(const aoc::ecs::World& world,
-                                 hex::AxialCoord position,
+int32_t countAdjacentFriendlies(const aoc::game::GameState& gameState,
+                                 aoc::hex::AxialCoord position,
                                  PlayerId friendlyPlayer) {
-    const aoc::ecs::ComponentPool<UnitComponent>* pool = world.getPool<UnitComponent>();
-    if (pool == nullptr) {
-        return 0;
-    }
-
-    std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(position);
+    std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(position);
     int32_t count = 0;
 
-    for (uint32_t i = 0; i < pool->size(); ++i) {
-        const UnitComponent& unit = pool->data()[i];
-        if (unit.owner != friendlyPlayer) {
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        if (player->id() != friendlyPlayer) {
             continue;
         }
-        for (const hex::AxialCoord& nbr : nbrs) {
-            if (unit.position == nbr) {
-                ++count;
-                break;
+        for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
+            for (const aoc::hex::AxialCoord& nbr : nbrs) {
+                if (unit->position() == nbr) {
+                    ++count;
+                    break;
+                }
             }
         }
     }
@@ -86,52 +82,63 @@ int32_t computeDamage(float attackStrength, float defenseStrength, aoc::Random& 
     return std::clamp(static_cast<int32_t>(baseDamage), 0, 100);
 }
 
+/**
+ * @brief Find and return the Player that owns the given unit pointer.
+ *
+ * Searches all players by pointer identity. Returns nullptr if not found,
+ * which indicates a programming error (unit not registered with any player).
+ */
+aoc::game::Player* findOwningPlayer(aoc::game::GameState& gameState,
+                                    const aoc::game::Unit* unit) {
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::Unit>& u : player->units()) {
+            if (u.get() == unit) {
+                return player.get();
+            }
+        }
+    }
+    return nullptr;
+}
+
 } // anonymous namespace
 
-CombatResult resolveMeleeCombat(aoc::ecs::World& world,
+CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
                                  aoc::Random& rng,
                                  const aoc::map::HexGrid& grid,
-                                 EntityId attacker,
-                                 EntityId defender) {
-    UnitComponent& atkUnit = world.getComponent<UnitComponent>(attacker);
-    UnitComponent& defUnit = world.getComponent<UnitComponent>(defender);
-    const UnitTypeDef& atkDef = unitTypeDef(atkUnit.typeId);
-    const UnitTypeDef& defDef = unitTypeDef(defUnit.typeId);
+                                 aoc::game::Unit& attacker,
+                                 aoc::game::Unit& defender) {
+    const aoc::sim::UnitTypeDef& atkDef = attacker.typeDef();
+    const aoc::sim::UnitTypeDef& defDef = defender.typeDef();
 
-    // Effective strengths (including formation bonus)
+    // Effective strengths including formation bonus
     float atkStrength = static_cast<float>(atkDef.combatStrength);
     float defStrength = static_cast<float>(defDef.combatStrength);
 
-    // Corps/Army formation bonus
-    {
-        const UnitFormationComponent* atkForm = world.tryGetComponent<UnitFormationComponent>(attacker);
-        if (atkForm != nullptr) { atkStrength += static_cast<float>(formationStrengthBonus(atkForm->level)); }
-        const UnitFormationComponent* defForm = world.tryGetComponent<UnitFormationComponent>(defender);
-        if (defForm != nullptr) { defStrength += static_cast<float>(formationStrengthBonus(defForm->level)); }
-    }
+    atkStrength += static_cast<float>(formationStrengthBonus(attacker.formationLevel()));
+    defStrength += static_cast<float>(formationStrengthBonus(defender.formationLevel()));
 
     // Embarked units fight at 50% strength
-    if (atkUnit.state == UnitState::Embarked) {
+    if (attacker.state() == aoc::sim::UnitState::Embarked) {
         atkStrength *= 0.5f;
     }
-    if (defUnit.state == UnitState::Embarked) {
+    if (defender.state() == aoc::sim::UnitState::Embarked) {
         defStrength *= 0.5f;
     }
 
     // Health modifier: damaged units fight worse
-    float atkHealthMod = static_cast<float>(atkUnit.hitPoints) / static_cast<float>(atkDef.maxHitPoints);
-    float defHealthMod = static_cast<float>(defUnit.hitPoints) / static_cast<float>(defDef.maxHitPoints);
+    float atkHealthMod = static_cast<float>(attacker.hitPoints()) / static_cast<float>(atkDef.maxHitPoints);
+    float defHealthMod = static_cast<float>(defender.hitPoints()) / static_cast<float>(defDef.maxHitPoints);
     atkStrength *= atkHealthMod;
     defStrength *= defHealthMod;
 
     // Terrain defense bonus for defender
-    float terrainMod = terrainDefenseModifier(grid, defUnit.position);
+    float terrainMod = terrainDefenseModifier(grid, defender.position());
     defStrength *= terrainMod;
 
     // River crossing penalty: defender gets +25% if attacker must cross a river
     {
-        int32_t atkIdx = grid.toIndex(atkUnit.position);
-        int32_t defIdx = grid.toIndex(defUnit.position);
+        int32_t atkIdx = grid.toIndex(attacker.position());
+        int32_t defIdx = grid.toIndex(defender.position());
         if (aoc::map::crossesRiver(grid, atkIdx, defIdx)) {
             defStrength *= aoc::map::RIVER_DEFENSE_BONUS;
         }
@@ -141,26 +148,22 @@ CombatResult resolveMeleeCombat(aoc::ecs::World& world,
     }
 
     // Flanking bonus: +10% per adjacent friendly for attacker
-    int32_t flanking = countAdjacentFriendlies(world, defUnit.position, atkUnit.owner);
+    int32_t flanking = countAdjacentFriendlies(gameState, defender.position(), attacker.owner());
     atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
 
     // Fortification bonus
-    if (defUnit.state == UnitState::Fortified) {
+    if (defender.state() == aoc::sim::UnitState::Fortified) {
         defStrength *= 1.25f;
     }
 
-    // War weariness combat penalty
-    const aoc::ecs::ComponentPool<PlayerWarWearinessComponent>* wwPool =
-        world.getPool<PlayerWarWearinessComponent>();
-    if (wwPool != nullptr) {
-        for (uint32_t wi = 0; wi < wwPool->size(); ++wi) {
-            const PlayerWarWearinessComponent& ww = wwPool->data()[wi];
-            if (ww.owner == atkUnit.owner) {
-                atkStrength *= warWearinessCombatModifier(ww.weariness);
-            }
-            if (ww.owner == defUnit.owner) {
-                defStrength *= warWearinessCombatModifier(ww.weariness);
-            }
+    // War weariness combat penalty: iterate players to find attacker and defender owners
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        const aoc::sim::PlayerWarWearinessComponent& ww = player->warWeariness();
+        if (player->id() == attacker.owner()) {
+            atkStrength *= warWearinessCombatModifier(ww.weariness);
+        }
+        if (player->id() == defender.owner()) {
+            defStrength *= warWearinessCombatModifier(ww.weariness);
         }
     }
 
@@ -173,11 +176,11 @@ CombatResult resolveMeleeCombat(aoc::ecs::World& world,
     result.attackerDamage = result.attackerDamage * 8 / 10;
 
     // Apply damage
-    defUnit.hitPoints -= result.defenderDamage;
-    atkUnit.hitPoints -= result.attackerDamage;
+    attacker.setHitPoints(attacker.hitPoints() - result.attackerDamage);
+    defender.setHitPoints(defender.hitPoints() - result.defenderDamage);
 
-    result.defenderKilled = (defUnit.hitPoints <= 0);
-    result.attackerKilled = (atkUnit.hitPoints <= 0);
+    result.defenderKilled = defender.isDead();
+    result.attackerKilled = attacker.isDead();
 
     // XP: base 5, bonus for killing
     result.attackerXpGained = 5;
@@ -190,52 +193,42 @@ CombatResult resolveMeleeCombat(aoc::ecs::World& world,
     }
 
     // If defender died and attacker survived, move attacker to defender's tile
+    aoc::hex::AxialCoord defenderTile = defender.position();
     if (result.defenderKilled && !result.attackerKilled) {
-        atkUnit.position = defUnit.position;
-        atkUnit.movementRemaining = 0;  // Melee attack ends movement
+        attacker.setPosition(defenderTile);
+        attacker.setMovementRemaining(0);  // Melee attack ends movement
     }
 
-    // Clean up dead units
-    hex::AxialCoord defenderTile = defUnit.position;
-    PlayerId attackerOwner = atkUnit.owner;
+    // Snapshot owner IDs before units are potentially removed
+    PlayerId attackerOwner = attacker.owner();
+    PlayerId defenderOwner = defender.owner();
 
+    // Clean up dead units: find the owning player and remove the unit
     if (result.defenderKilled) {
-        world.destroyEntity(defender);
-
-        // Stack kill: if defender died on open terrain (no city, no fort),
-        // all other units of the same owner on that tile are destroyed.
-        bool tileHasCity = false;
-        bool tileHasFort = false;
-        const aoc::ecs::ComponentPool<CityComponent>* cityCheckPool =
-            world.getPool<CityComponent>();
-        if (cityCheckPool != nullptr) {
-            for (uint32_t sci = 0; sci < cityCheckPool->size(); ++sci) {
-                if (cityCheckPool->data()[sci].location == defenderTile) {
+        aoc::game::Player* defPlayer = findOwningPlayer(gameState, &defender);
+        if (defPlayer != nullptr) {
+            // Stack kill: if the defender died on open terrain (no city, no fort),
+            // all other units of the same owner on that tile are also destroyed.
+            bool tileHasCity = false;
+            for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+                if (player->cityAt(defenderTile) != nullptr) {
                     tileHasCity = true;
                     break;
                 }
             }
-        }
-        if (grid.improvement(grid.toIndex(defenderTile)) == aoc::map::ImprovementType::Fort) {
-            tileHasFort = true;
-        }
-        if (!tileHasCity && !tileHasFort) {
-            // Destroy all remaining units of the defender's owner on this tile
-            aoc::ecs::ComponentPool<UnitComponent>* stackPool =
-                world.getPool<UnitComponent>();
-            if (stackPool != nullptr) {
-                std::vector<EntityId> stackKill;
-                for (uint32_t ski = 0; ski < stackPool->size(); ++ski) {
-                    if (stackPool->data()[ski].owner == defUnit.owner
-                        && stackPool->data()[ski].position == defenderTile
-                        && stackPool->entities()[ski] != defender) {
-                        stackKill.push_back(stackPool->entities()[ski]);
+            bool tileHasFort = (grid.improvement(grid.toIndex(defenderTile)) == aoc::map::ImprovementType::Fort);
+
+            if (!tileHasCity && !tileHasFort) {
+                // Collect pointers to stack units before any removal to avoid
+                // invalidating the vector while iterating.
+                std::vector<aoc::game::Unit*> stackKill;
+                for (const std::unique_ptr<aoc::game::Unit>& u : defPlayer->units()) {
+                    if (u.get() != &defender && u->position() == defenderTile) {
+                        stackKill.push_back(u.get());
                     }
                 }
-                for (EntityId killed : stackKill) {
-                    if (world.isAlive(killed)) {
-                        world.destroyEntity(killed);
-                    }
+                for (aoc::game::Unit* killed : stackKill) {
+                    defPlayer->removeUnit(killed);
                 }
                 if (!stackKill.empty()) {
                     LOG_INFO("Stack kill: %d units destroyed on open terrain at (%d,%d)",
@@ -243,41 +236,26 @@ CombatResult resolveMeleeCombat(aoc::ecs::World& world,
                              defenderTile.q, defenderTile.r);
                 }
             }
+
+            defPlayer->removeUnit(&defender);
         }
     }
     if (result.attackerKilled) {
-        world.destroyEntity(attacker);
+        aoc::game::Player* atkPlayer = findOwningPlayer(gameState, &attacker);
+        if (atkPlayer != nullptr) {
+            atkPlayer->removeUnit(&attacker);
+        }
     }
 
-    // If defender was killed and attacker survived, check for barbarian encampment
-    // on the tile the attacker moved onto.
+    // If the defender was killed and the attacker survived, award gold to the
+    // attacking player for clearing a barbarian encampment on that tile.
     if (result.defenderKilled && !result.attackerKilled && attackerOwner != BARBARIAN_PLAYER) {
-        aoc::ecs::ComponentPool<BarbarianEncampmentComponent>* campPool =
-            world.getPool<BarbarianEncampmentComponent>();
-        if (campPool != nullptr) {
-            for (uint32_t ci = 0; ci < campPool->size(); ++ci) {
-                if (campPool->data()[ci].location == defenderTile) {
-                    EntityId campEntity = campPool->entities()[ci];
-
-                    // Award gold to the attacking player
-                    aoc::ecs::ComponentPool<PlayerEconomyComponent>* econPool =
-                        world.getPool<PlayerEconomyComponent>();
-                    if (econPool != nullptr) {
-                        for (uint32_t ei = 0; ei < econPool->size(); ++ei) {
-                            if (econPool->data()[ei].owner == attackerOwner) {
-                                econPool->data()[ei].treasury += 25;
-                                LOG_INFO("Player %u earned 25 gold from clearing barbarian encampment",
-                                         static_cast<unsigned>(attackerOwner));
-                                break;
-                            }
-                        }
-                    }
-
-                    world.destroyEntity(campEntity);
-                    LOG_INFO("Barbarian encampment at (%d,%d) destroyed in combat",
-                             defenderTile.q, defenderTile.r);
-                    break;
-                }
+        if (defenderOwner == BARBARIAN_PLAYER) {
+            aoc::game::Player* atkPlayer = gameState.player(attackerOwner);
+            if (atkPlayer != nullptr) {
+                atkPlayer->addGold(25);
+                LOG_INFO("Player %u earned 25 gold from clearing barbarian encampment",
+                         static_cast<unsigned>(attackerOwner));
             }
         }
     }
@@ -290,52 +268,45 @@ CombatResult resolveMeleeCombat(aoc::ecs::World& world,
     return result;
 }
 
-CombatResult resolveRangedCombat(aoc::ecs::World& world,
+CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
                                   aoc::Random& rng,
                                   const aoc::map::HexGrid& grid,
-                                  EntityId attacker,
-                                  EntityId defender) {
-    UnitComponent& atkUnit = world.getComponent<UnitComponent>(attacker);
-    UnitComponent& defUnit = world.getComponent<UnitComponent>(defender);
-    const UnitTypeDef& atkDef = unitTypeDef(atkUnit.typeId);
-    const UnitTypeDef& defDef = unitTypeDef(defUnit.typeId);
+                                  aoc::game::Unit& attacker,
+                                  aoc::game::Unit& defender) {
+    const aoc::sim::UnitTypeDef& atkDef = attacker.typeDef();
+    const aoc::sim::UnitTypeDef& defDef = defender.typeDef();
 
-    // Ranged uses rangedStrength for attack
+    // Ranged uses rangedStrength for attack, combatStrength for defense
     float atkStrength = static_cast<float>(atkDef.rangedStrength);
     float defStrength = static_cast<float>(defDef.combatStrength);
 
-    float atkHealthMod = static_cast<float>(atkUnit.hitPoints) / static_cast<float>(atkDef.maxHitPoints);
-    float defHealthMod = static_cast<float>(defUnit.hitPoints) / static_cast<float>(defDef.maxHitPoints);
+    float atkHealthMod = static_cast<float>(attacker.hitPoints()) / static_cast<float>(atkDef.maxHitPoints);
+    float defHealthMod = static_cast<float>(defender.hitPoints()) / static_cast<float>(defDef.maxHitPoints);
     atkStrength *= atkHealthMod;
     defStrength *= defHealthMod;
 
-    float terrainMod = terrainDefenseModifier(grid, defUnit.position);
+    float terrainMod = terrainDefenseModifier(grid, defender.position());
     defStrength *= terrainMod;
 
-    // River crossing penalty: defender gets +25% if attacker must cross a river
+    // River crossing penalty and elevation advantage
     {
-        int32_t atkIdx = grid.toIndex(atkUnit.position);
-        int32_t defIdx = grid.toIndex(defUnit.position);
+        int32_t atkIdx = grid.toIndex(attacker.position());
+        int32_t defIdx = grid.toIndex(defender.position());
         if (aoc::map::crossesRiver(grid, atkIdx, defIdx)) {
             defStrength *= aoc::map::RIVER_DEFENSE_BONUS;
         }
-        // Elevation advantage: +10% per level difference
         float elevMod = aoc::map::elevationCombatModifier(grid, atkIdx, defIdx);
         atkStrength *= elevMod;
     }
 
     // War weariness combat penalty (ranged)
-    const aoc::ecs::ComponentPool<PlayerWarWearinessComponent>* wwPoolRanged =
-        world.getPool<PlayerWarWearinessComponent>();
-    if (wwPoolRanged != nullptr) {
-        for (uint32_t wi = 0; wi < wwPoolRanged->size(); ++wi) {
-            const PlayerWarWearinessComponent& ww = wwPoolRanged->data()[wi];
-            if (ww.owner == atkUnit.owner) {
-                atkStrength *= warWearinessCombatModifier(ww.weariness);
-            }
-            if (ww.owner == defUnit.owner) {
-                defStrength *= warWearinessCombatModifier(ww.weariness);
-            }
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        const aoc::sim::PlayerWarWearinessComponent& ww = player->warWeariness();
+        if (player->id() == attacker.owner()) {
+            atkStrength *= warWearinessCombatModifier(ww.weariness);
+        }
+        if (player->id() == defender.owner()) {
+            defStrength *= warWearinessCombatModifier(ww.weariness);
         }
     }
 
@@ -344,26 +315,28 @@ CombatResult resolveRangedCombat(aoc::ecs::World& world,
     result.defenderDamage = computeDamage(atkStrength, defStrength, rng);
     result.attackerDamage = 0;
 
-    defUnit.hitPoints -= result.defenderDamage;
-    result.defenderKilled = (defUnit.hitPoints <= 0);
+    defender.setHitPoints(defender.hitPoints() - result.defenderDamage);
+    result.defenderKilled = defender.isDead();
 
     result.attackerXpGained = 3;
     result.defenderXpGained = 2;
     if (result.defenderKilled) {
         result.attackerXpGained += 8;
-        world.destroyEntity(defender);
+        aoc::game::Player* defPlayer = findOwningPlayer(gameState, &defender);
+        if (defPlayer != nullptr) {
+            defPlayer->removeUnit(&defender);
+        }
     }
 
     return result;
 }
 
-CombatPreview previewCombat(const aoc::ecs::World& world,
+CombatPreview previewCombat(const aoc::game::GameState& gameState,
                              const aoc::map::HexGrid& grid,
-                             EntityId attacker, EntityId defender) {
-    const UnitComponent& atkUnit = world.getComponent<UnitComponent>(attacker);
-    const UnitComponent& defUnit = world.getComponent<UnitComponent>(defender);
-    const UnitTypeDef& atkDef = unitTypeDef(atkUnit.typeId);
-    const UnitTypeDef& defDef = unitTypeDef(defUnit.typeId);
+                             const aoc::game::Unit& attacker,
+                             const aoc::game::Unit& defender) {
+    const aoc::sim::UnitTypeDef& atkDef = attacker.typeDef();
+    const aoc::sim::UnitTypeDef& defDef = defender.typeDef();
 
     // Determine if ranged or melee
     const bool isRanged = (atkDef.rangedStrength > 0);
@@ -375,50 +348,48 @@ CombatPreview previewCombat(const aoc::ecs::World& world,
     float defStrength = static_cast<float>(defDef.combatStrength);
 
     // Embarked modifier
-    if (atkUnit.state == UnitState::Embarked) {
+    if (attacker.state() == aoc::sim::UnitState::Embarked) {
         atkStrength *= 0.5f;
     }
-    if (defUnit.state == UnitState::Embarked) {
+    if (defender.state() == aoc::sim::UnitState::Embarked) {
         defStrength *= 0.5f;
     }
 
     // Health modifier
-    float atkHealthMod = static_cast<float>(atkUnit.hitPoints) / static_cast<float>(atkDef.maxHitPoints);
-    float defHealthMod = static_cast<float>(defUnit.hitPoints) / static_cast<float>(defDef.maxHitPoints);
+    float atkHealthMod = static_cast<float>(attacker.hitPoints()) / static_cast<float>(atkDef.maxHitPoints);
+    float defHealthMod = static_cast<float>(defender.hitPoints()) / static_cast<float>(defDef.maxHitPoints);
     atkStrength *= atkHealthMod;
     defStrength *= defHealthMod;
 
     // Terrain defense bonus for defender
-    float terrainMod = terrainDefenseModifier(grid, defUnit.position);
+    float terrainMod = terrainDefenseModifier(grid, defender.position());
     defStrength *= terrainMod;
 
-    // River crossing penalty: defender gets +25% if attacker must cross a river
+    // River crossing penalty and elevation advantage
     {
-        int32_t atkIdx = grid.toIndex(atkUnit.position);
-        int32_t defIdx = grid.toIndex(defUnit.position);
+        int32_t atkIdx = grid.toIndex(attacker.position());
+        int32_t defIdx = grid.toIndex(defender.position());
         if (aoc::map::crossesRiver(grid, atkIdx, defIdx)) {
             defStrength *= aoc::map::RIVER_DEFENSE_BONUS;
         }
-        // Elevation advantage: +10% per level difference
         float elevMod = aoc::map::elevationCombatModifier(grid, atkIdx, defIdx);
         atkStrength *= elevMod;
     }
 
     // Flanking bonus for melee
     if (!isRanged) {
-        int32_t flanking = countAdjacentFriendlies(world, defUnit.position, atkUnit.owner);
+        int32_t flanking = countAdjacentFriendlies(gameState, defender.position(), attacker.owner());
         atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
     }
 
     // Fortification bonus
-    if (defUnit.state == UnitState::Fortified) {
+    if (defender.state() == aoc::sim::UnitState::Fortified) {
         defStrength *= 1.25f;
     }
 
     // Compute damage with randomFactor = 1.0 (average outcome)
     CombatPreview preview{};
 
-    // damage = 30 * (attackStr / defenseStr) * randomFactor
     if (defStrength < 0.01f) {
         preview.expectedDefenderDamage = 100;
     } else {
@@ -430,7 +401,6 @@ CombatPreview previewCombat(const aoc::ecs::World& world,
     if (isRanged) {
         preview.expectedAttackerDamage = 0;
     } else {
-        // Counter-damage
         if (atkStrength < 0.01f) {
             preview.expectedAttackerDamage = 100;
         } else {

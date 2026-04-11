@@ -32,7 +32,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -142,7 +142,7 @@ struct CityPowerComponent {
  * @return Power state for this turn.
  */
 [[nodiscard]] CityPowerComponent computeCityPower(
-    aoc::ecs::World& world,
+    aoc::game::GameState& gameState,
     const aoc::map::HexGrid& grid,
     EntityId cityEntity);
 
@@ -159,7 +159,7 @@ struct CityPowerComponent {
  * @param turnHash    Deterministic hash for this turn.
  * @return true if meltdown occurred.
  */
-bool checkNuclearMeltdown(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+bool checkNuclearMeltdown(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                           EntityId cityEntity, uint32_t turnHash);
 
 /**
@@ -168,7 +168,7 @@ bool checkNuclearMeltdown(aoc::ecs::World& world, aoc::map::HexGrid& grid,
  * Larger radius (2 hexes) and longer duration (40 turns) than accidental meltdown.
  * Called from combat when a city with a nuclear plant is attacked.
  */
-void applyBombedNuclearFallout(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+void applyBombedNuclearFallout(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                                 EntityId cityEntity);
 
 } // namespace aoc::sim

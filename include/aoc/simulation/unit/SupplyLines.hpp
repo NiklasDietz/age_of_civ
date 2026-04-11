@@ -32,7 +32,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -78,7 +78,7 @@ constexpr int32_t UNSUPPLIED_ATTRITION_HP = 10;
  * @param grid    Hex grid (for road/railway checks).
  * @param player  Player whose units to check.
  */
-void computeSupplyLines(aoc::ecs::World& world,
+void computeSupplyLines(aoc::game::GameState& gameState,
                         const aoc::map::HexGrid& grid,
                         PlayerId player);
 
@@ -90,6 +90,6 @@ void computeSupplyLines(aoc::ecs::World& world,
  * @param world  ECS world.
  * @param player Player whose units to process.
  */
-void applySupplyAttrition(aoc::ecs::World& world, PlayerId player);
+void applySupplyAttrition(aoc::game::GameState& gameState, PlayerId player);
 
 } // namespace aoc::sim

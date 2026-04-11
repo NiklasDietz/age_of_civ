@@ -3,6 +3,7 @@
  * @brief Barbarian clan interactions and difficulty scaling.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/barbarian/BarbarianClans.hpp"
 #include "aoc/simulation/barbarian/BarbarianController.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
@@ -11,7 +12,7 @@
 
 namespace aoc::sim {
 
-ErrorCode bribeClan(aoc::ecs::World& world, EntityId encampmentEntity, PlayerId player) {
+ErrorCode bribeClan(aoc::game::GameState& gameState, EntityId encampmentEntity, PlayerId player) {
     BarbarianClanComponent* clan = world.tryGetComponent<BarbarianClanComponent>(encampmentEntity);
     if (clan == nullptr || clan->isBribed) {
         return ErrorCode::InvalidArgument;
@@ -44,8 +45,9 @@ ErrorCode bribeClan(aoc::ecs::World& world, EntityId encampmentEntity, PlayerId 
     return ErrorCode::Ok;
 }
 
-ErrorCode hireClan(aoc::ecs::World& world, EntityId encampmentEntity,
+ErrorCode hireClan(aoc::game::GameState& gameState, EntityId encampmentEntity,
                     PlayerId hirer, PlayerId target) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     BarbarianClanComponent* clan = world.tryGetComponent<BarbarianClanComponent>(encampmentEntity);
     if (clan == nullptr) {
         return ErrorCode::InvalidArgument;

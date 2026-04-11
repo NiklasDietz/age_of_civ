@@ -3,6 +3,7 @@
  * @brief Theological combat resolution between religious units.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/religion/TheologicalCombat.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -16,10 +17,11 @@
 
 namespace aoc::sim {
 
-ErrorCode resolveTheologicalCombat(aoc::ecs::World& world,
+ErrorCode resolveTheologicalCombat(aoc::game::GameState& gameState,
                                     const aoc::map::HexGrid& /*grid*/,
                                     EntityId attackerEntity,
                                     EntityId defenderEntity) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     UnitComponent* attacker = world.tryGetComponent<UnitComponent>(attackerEntity);
     UnitComponent* defender = world.tryGetComponent<UnitComponent>(defenderEntity);
     if (attacker == nullptr || defender == nullptr) {
@@ -73,9 +75,10 @@ ErrorCode resolveTheologicalCombat(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-ErrorCode purgeReligion(aoc::ecs::World& world,
+ErrorCode purgeReligion(aoc::game::GameState& gameState,
                          EntityId inquisitorEntity,
                          EntityId cityEntity) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     UnitComponent* inquisitor = world.tryGetComponent<UnitComponent>(inquisitorEntity);
     if (inquisitor == nullptr || inquisitor->spreadCharges <= 0) {
         return ErrorCode::InvalidArgument;

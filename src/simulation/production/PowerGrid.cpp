@@ -3,6 +3,7 @@
  * @brief City power grid computation, fuel consumption, and nuclear meltdown.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/production/PowerGrid.hpp"
 #include "aoc/simulation/production/Waste.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
@@ -18,10 +19,12 @@
 
 namespace aoc::sim {
 
-CityPowerComponent computeCityPower(aoc::ecs::World& world,
+CityPowerComponent computeCityPower(aoc::game::GameState& gameState,
                                      const aoc::map::HexGrid& grid,
                                      EntityId cityEntity) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     CityPowerComponent result{};
+    aoc::ecs::World& world = gameState.legacyWorld();
 
     const CityDistrictsComponent* districts =
         world.tryGetComponent<CityDistrictsComponent>(cityEntity);
@@ -109,8 +112,9 @@ static void applyFalloutRadius(aoc::map::HexGrid& grid, aoc::hex::AxialCoord cen
     }
 }
 
-bool checkNuclearMeltdown(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+bool checkNuclearMeltdown(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                           EntityId cityEntity, uint32_t turnHash) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     const CityDistrictsComponent* districts =
         world.tryGetComponent<CityDistrictsComponent>(cityEntity);
     if (districts == nullptr) {
@@ -187,8 +191,9 @@ bool checkNuclearMeltdown(aoc::ecs::World& world, aoc::map::HexGrid& grid,
     return true;
 }
 
-void applyBombedNuclearFallout(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+void applyBombedNuclearFallout(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                                 EntityId cityEntity) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     const CityComponent* city = world.tryGetComponent<CityComponent>(cityEntity);
     if (city == nullptr) {
         return;

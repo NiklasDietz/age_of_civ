@@ -3,6 +3,7 @@
  * @brief Implementation of advanced economic systems (Batch C: Economics Realism).
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/AdvancedEconomics.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
@@ -119,8 +120,9 @@ float GlobalTradeBlocTracker::effectiveTariff(PlayerId importer, PlayerId export
 // Technology Spillover
 // ============================================================================
 
-float computeTechSpillover(const aoc::ecs::World& world,
+float computeTechSpillover(const aoc::game::GameState& gameState,
                            PlayerId player, PlayerId tradePartner) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     constexpr float SPILLOVER_RATE = 0.5f;
 
     int32_t myTechs = 0;
@@ -156,7 +158,7 @@ float computeTechSpillover(const aoc::ecs::World& world,
     return static_cast<float>(techDiff) * SPILLOVER_RATE;
 }
 
-void processTechSpillover(aoc::ecs::World& world) {
+void processTechSpillover(aoc::game::GameState& gameState) {
     const aoc::ecs::ComponentPool<TradeRouteComponent>* tradePool =
         world.getPool<TradeRouteComponent>();
     if (tradePool == nullptr) {
@@ -263,9 +265,10 @@ float diminishingReturns(int32_t currentStockpile, int32_t newProduction) {
 // Infrastructure
 // ============================================================================
 
-float computeInfrastructureBonus(const aoc::ecs::World& world,
+float computeInfrastructureBonus(const aoc::game::GameState& gameState,
                                  const aoc::map::HexGrid& grid,
                                  EntityId cityEntity) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     constexpr float BONUS_PER_INFRA = 0.05f;
     constexpr float MAX_BONUS = 1.5f;
 
@@ -372,8 +375,9 @@ void PlayerBankingComponent::processPayments(CurrencyAmount& treasury, CurrencyA
 // Currency Exchange
 // ============================================================================
 
-float computeExchangeRate(const aoc::ecs::World& world,
+float computeExchangeRate(const aoc::game::GameState& gameState,
                           PlayerId playerA, PlayerId playerB) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
         world.getPool<MonetaryStateComponent>();
     if (monetaryPool == nullptr) {
@@ -430,7 +434,7 @@ float computeExchangeRate(const aoc::ecs::World& world,
 // Debt Crisis
 // ============================================================================
 
-bool checkDebtCrisis(aoc::ecs::World& world, PlayerId player) {
+bool checkDebtCrisis(aoc::game::GameState& gameState, PlayerId player) {
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
         world.getPool<MonetaryStateComponent>();
     if (monetaryPool == nullptr) {
@@ -480,8 +484,9 @@ bool checkDebtCrisis(aoc::ecs::World& world, PlayerId player) {
 // Master function
 // ============================================================================
 
-void processAdvancedEconomics(aoc::ecs::World& world, const aoc::map::HexGrid& grid,
+void processAdvancedEconomics(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
                               PlayerId player, Market& /*market*/) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // 1. Tech spillover from trade routes
     processTechSpillover(world);
 

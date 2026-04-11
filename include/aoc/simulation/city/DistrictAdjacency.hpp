@@ -36,7 +36,7 @@
 #include <cstdint>
 
 namespace aoc::map { class HexGrid; }
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -68,7 +68,7 @@ struct AdjacencyBonus {
  */
 [[nodiscard]] AdjacencyBonus computeAdjacencyBonus(
     const aoc::map::HexGrid& grid,
-    const aoc::ecs::World& world,
+    const aoc::game::GameState& gameState,
     DistrictType districtType,
     int32_t tileIndex);
 
@@ -90,7 +90,7 @@ struct AdjacencyBonus {
  * @return Appeal rating (can be negative).
  */
 [[nodiscard]] int32_t computeTileAppeal(const aoc::map::HexGrid& grid,
-                                        const aoc::ecs::World& world,
+                                        const aoc::game::GameState& gameState,
                                         int32_t tileIndex);
 
 // ============================================================================
@@ -127,7 +127,7 @@ inline constexpr std::array<CityProjectDef, 6> CITY_PROJECT_DEFS = {{
 /**
  * @brief Complete a city project. Applies the one-time effect.
  */
-void completeCityProject(aoc::ecs::World& world, EntityId cityEntity,
+void completeCityProject(aoc::game::GameState& gameState, EntityId cityEntity,
                          CityProjectType project);
 
 } // namespace aoc::sim

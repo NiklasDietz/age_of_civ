@@ -3,6 +3,7 @@
  * @brief Oil/gas scarcity, energy dependency, and peak oil mechanics.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/EnergyDependency.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
@@ -87,7 +88,8 @@ void processOilShock(PlayerEnergyComponent& energy) {
     }
 }
 
-int32_t countRenewableBuildings(const aoc::ecs::World& world, PlayerId player) {
+int32_t countRenewableBuildings(const aoc::game::GameState& gameState, PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     int32_t count = 0;
 
     const aoc::ecs::ComponentPool<CityComponent>* cityPool =

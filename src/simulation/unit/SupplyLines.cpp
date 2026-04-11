@@ -3,6 +3,7 @@
  * @brief Military supply line computation and attrition.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/unit/SupplyLines.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -19,9 +20,10 @@
 
 namespace aoc::sim {
 
-void computeSupplyLines(aoc::ecs::World& world,
+void computeSupplyLines(aoc::game::GameState& gameState,
                         const aoc::map::HexGrid& grid,
                         PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Collect all supply sources (cities and forts owned by player)
     std::vector<int32_t> supplySources;
 
@@ -133,12 +135,13 @@ void computeSupplyLines(aoc::ecs::World& world,
     }
 }
 
-void applySupplyAttrition(aoc::ecs::World& world, PlayerId player) {
+void applySupplyAttrition(aoc::game::GameState& gameState, PlayerId player) {
     aoc::ecs::ComponentPool<UnitComponent>* unitPool =
         world.getPool<UnitComponent>();
     aoc::ecs::ComponentPool<UnitSupplyComponent>* supplyPool =
         world.getPool<UnitSupplyComponent>();
     if (unitPool == nullptr || supplyPool == nullptr) { return; }
+    aoc::ecs::World& world = gameState.legacyWorld();
 
     for (uint32_t i = 0; i < supplyPool->size(); ++i) {
         const UnitSupplyComponent& supply = supplyPool->data()[i];

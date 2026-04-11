@@ -20,7 +20,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -66,6 +66,6 @@ void updateUnemployment(CityUnemploymentComponent& unemployment,
 /**
  * @brief Process unemployment effects for all cities of a player.
  */
-void processUnemployment(aoc::ecs::World& world, PlayerId player);
+void processUnemployment(aoc::game::GameState& gameState, PlayerId player);
 
 } // namespace aoc::sim

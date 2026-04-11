@@ -3,6 +3,7 @@
  * @brief Trade agreements, free trade zones, and customs unions.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
@@ -11,8 +12,9 @@
 
 namespace aoc::sim {
 
-ErrorCode proposeBilateralDeal(aoc::ecs::World& world,
+ErrorCode proposeBilateralDeal(aoc::game::GameState& gameState,
                                  PlayerId proposer, PlayerId partner) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (proposer == partner) {
         return ErrorCode::InvalidArgument;
     }
@@ -60,8 +62,9 @@ ErrorCode proposeBilateralDeal(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-ErrorCode createFreeTradeZone(aoc::ecs::World& world,
+ErrorCode createFreeTradeZone(aoc::game::GameState& gameState,
                                 const std::vector<PlayerId>& members) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (members.size() < 3) {
         return ErrorCode::InvalidArgument;
     }
@@ -93,9 +96,10 @@ ErrorCode createFreeTradeZone(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-ErrorCode formCustomsUnion(aoc::ecs::World& world,
+ErrorCode formCustomsUnion(aoc::game::GameState& gameState,
                              const std::vector<PlayerId>& members,
                              float externalTariff) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (members.size() < 2) {
         return ErrorCode::InvalidArgument;
     }
@@ -128,7 +132,7 @@ ErrorCode formCustomsUnion(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-void processTradeAgreements(aoc::ecs::World& world) {
+void processTradeAgreements(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<PlayerTradeAgreementsComponent>* agreePool =
         world.getPool<PlayerTradeAgreementsComponent>();
     if (agreePool == nullptr) {

@@ -3,6 +3,7 @@
  * @brief AI military and scout unit management: combat, defense, patrol, and exploration.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/ai/AIMilitaryController.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
@@ -34,9 +35,10 @@ AIMilitaryController::AIMilitaryController(PlayerId player, aoc::ui::AIDifficult
 // Military and scout actions
 // ============================================================================
 
-void AIMilitaryController::executeMilitaryActions(aoc::ecs::World& world,
+void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameState,
                                                    aoc::map::HexGrid& grid,
                                                    aoc::Random& rng) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<UnitComponent>* unitPool = world.getPool<UnitComponent>();
     if (unitPool == nullptr) {
         return;

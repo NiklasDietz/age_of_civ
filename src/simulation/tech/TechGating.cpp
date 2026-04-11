@@ -3,6 +3,7 @@
  * @brief Implementation of tech gating helpers for production availability.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/tech/TechGating.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -13,7 +14,7 @@
 
 namespace aoc::sim {
 
-bool canBuildUnit(const aoc::ecs::World& world, PlayerId player, UnitTypeId unitType) {
+bool canBuildUnit(const aoc::game::GameState& gameState, PlayerId player, UnitTypeId unitType) {
     // Find the player's tech component
     const aoc::ecs::ComponentPool<PlayerTechComponent>* techPool =
         world.getPool<PlayerTechComponent>();
@@ -85,8 +86,9 @@ bool canBuildUnit(const aoc::ecs::World& world, PlayerId player, UnitTypeId unit
     return true;
 }
 
-bool canBuildBuilding(const aoc::ecs::World& world, PlayerId player,
+bool canBuildBuilding(const aoc::game::GameState& gameState, PlayerId player,
                        EntityId cityEntity, BuildingId buildingId) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Check if the city already has this building
     const CityDistrictsComponent* districts =
         world.tryGetComponent<CityDistrictsComponent>(cityEntity);
@@ -140,7 +142,7 @@ bool canBuildBuilding(const aoc::ecs::World& world, PlayerId player,
     return true;
 }
 
-bool canBuildWonder(const aoc::ecs::World& world, PlayerId player, uint8_t wonderId) {
+bool canBuildWonder(const aoc::game::GameState& gameState, PlayerId player, uint8_t wonderId) {
     if (wonderId >= WONDER_COUNT) {
         return false;
     }
@@ -175,12 +177,14 @@ bool canBuildWonder(const aoc::ecs::World& world, PlayerId player, uint8_t wonde
     return true;
 }
 
-std::vector<BuildableItem> getBuildableItems(const aoc::ecs::World& world,
+std::vector<BuildableItem> getBuildableItems(const aoc::game::GameState& gameState,
                                               PlayerId player, EntityId cityEntity) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     std::vector<BuildableItem> items;
 
     // Units
     for (const UnitTypeDef& unitDef : UNIT_TYPE_DEFS) {
+        aoc::ecs::World& world = gameState.legacyWorld();
         if (!canBuildUnit(world, player, unitDef.id)) {
             continue;
         }

@@ -23,8 +23,8 @@
 
 #include <cstdint>
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::sim {
@@ -48,7 +48,7 @@ struct ResourceCurseModifiers {
  * @return Modifiers to apply to this player's economy.
  */
 [[nodiscard]] ResourceCurseModifiers computeResourceCurse(
-    const aoc::ecs::World& world,
+    const aoc::game::GameState& gameState,
     PlayerId player);
 
 /**
@@ -57,7 +57,7 @@ struct ResourceCurseModifiers {
  * Called during the ResourceProduction turn phase.
  * Reduces manufacturing output and adjusts export prices.
  */
-void applyResourceCurseEffects(aoc::ecs::World& world,
+void applyResourceCurseEffects(aoc::game::GameState& gameState,
                                 PlayerId player,
                                 const ResourceCurseModifiers& modifiers);
 

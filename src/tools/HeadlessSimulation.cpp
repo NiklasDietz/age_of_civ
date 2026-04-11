@@ -530,8 +530,9 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                  startPos.q, startPos.r);
     }
 
-    // Initialize GameState object model (mirrors ECS data)
+    // Initialize GameState object model -- shares the same ECS World
     aoc::game::GameState gameState;
+    gameState.setExternalWorld(&world);
     gameState.initialize(playerCount);
     for (int32_t p = 0; p < playerCount; ++p) {
         aoc::game::Player* gsPlayer = gameState.player(static_cast<aoc::PlayerId>(p));
@@ -565,7 +566,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
     // Build TurnContext
     aoc::sim::TurnContext turnCtx{};
-    turnCtx.world = &world;
+    // world accessed via gameState.legacyWorld()
     turnCtx.grid = &grid;
     turnCtx.economy = &economy;
     turnCtx.diplomacy = &diplomacy;

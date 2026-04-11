@@ -11,8 +11,8 @@
 #include <cstdint>
 #include <string_view>
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::map {
@@ -84,10 +84,10 @@ struct CityStateComponent {
 };
 
 /// Spawn city-states during map generation.
-void spawnCityStates(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+void spawnCityStates(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                       int32_t count, aoc::Random& rng);
 
 /// Process city-state bonuses each turn for a given player.
-void processCityStateBonuses(aoc::ecs::World& world, PlayerId player);
+void processCityStateBonuses(aoc::game::GameState& gameState, PlayerId player);
 
 } // namespace aoc::sim

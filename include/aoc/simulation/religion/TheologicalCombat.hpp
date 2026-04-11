@@ -16,7 +16,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -41,7 +41,7 @@ namespace aoc::sim {
  *
  * @return Ok if combat occurred.
  */
-[[nodiscard]] ErrorCode resolveTheologicalCombat(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode resolveTheologicalCombat(aoc::game::GameState& gameState,
                                                   const aoc::map::HexGrid& grid,
                                                   EntityId attackerEntity,
                                                   EntityId defenderEntity);
@@ -54,7 +54,7 @@ namespace aoc::sim {
  *
  * @return Ok if purge occurred.
  */
-[[nodiscard]] ErrorCode purgeReligion(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode purgeReligion(aoc::game::GameState& gameState,
                                       EntityId inquisitorEntity,
                                       EntityId cityEntity);
 

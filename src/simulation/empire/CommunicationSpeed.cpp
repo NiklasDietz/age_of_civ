@@ -3,6 +3,7 @@
  * @brief Communication speed computation and empire cohesion penalties.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/empire/CommunicationSpeed.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -24,7 +25,7 @@ namespace aoc::sim {
 // Communication tier determination
 // ============================================================================
 
-CommTier determineCommTier(const aoc::ecs::World& world, PlayerId player) {
+CommTier determineCommTier(const aoc::game::GameState& gameState, PlayerId player) {
     const aoc::ecs::ComponentPool<PlayerTechComponent>* techPool =
         world.getPool<PlayerTechComponent>();
     if (techPool == nullptr) {
@@ -58,9 +59,10 @@ CommTier determineCommTier(const aoc::ecs::World& world, PlayerId player) {
 // Communication distance computation
 // ============================================================================
 
-void updateCommunicationDistances(aoc::ecs::World& world,
+void updateCommunicationDistances(aoc::game::GameState& gameState,
                                    const aoc::map::HexGrid& grid,
                                    PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Find or create communication component
     aoc::ecs::ComponentPool<PlayerCommunicationComponent>* commPool =
         world.getPool<PlayerCommunicationComponent>();
@@ -248,7 +250,7 @@ CityCommModifiers computeCityCommModifiers(
 // Per-turn processing
 // ============================================================================
 
-void processCommunication(aoc::ecs::World& world, const aoc::map::HexGrid& grid) {
+void processCommunication(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid) {
     aoc::ecs::ComponentPool<PlayerCommunicationComponent>* commPool =
         world.getPool<PlayerCommunicationComponent>();
     if (commPool == nullptr) {

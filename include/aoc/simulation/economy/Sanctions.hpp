@@ -33,7 +33,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -135,7 +135,7 @@ struct GlobalSanctionTracker {
  * @param secondary   Whether to apply secondary sanctions to third parties.
  * @return Ok if successful.
  */
-[[nodiscard]] ErrorCode imposeSanction(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode imposeSanction(aoc::game::GameState& gameState,
                                        GlobalSanctionTracker& tracker,
                                        PlayerId sanctioner, PlayerId target,
                                        SanctionType type, bool secondary);
@@ -157,12 +157,12 @@ void liftSanction(GlobalSanctionTracker& tracker,
  * @param sanctioner  Player seizing assets.
  * @param target      Player whose assets are being seized.
  */
-void executeAssetFreeze(aoc::ecs::World& world,
+void executeAssetFreeze(aoc::game::GameState& gameState,
                         PlayerId sanctioner, PlayerId target);
 
 /**
  * @brief Per-turn processing of sanctions (tick durations, apply effects).
  */
-void processSanctions(aoc::ecs::World& world, GlobalSanctionTracker& tracker);
+void processSanctions(aoc::game::GameState& gameState, GlobalSanctionTracker& tracker);
 
 } // namespace aoc::sim

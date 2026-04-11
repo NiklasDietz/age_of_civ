@@ -3,6 +3,7 @@
  * @brief AI builder management: tile improvements and resource prospecting.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/ai/AIBuilderController.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
@@ -35,8 +36,9 @@ AIBuilderController::AIBuilderController(PlayerId player, aoc::ui::AIDifficulty 
 // Builder management
 // ============================================================================
 
-void AIBuilderController::manageBuildersAndImprovements(aoc::ecs::World& world,
+void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& gameState,
                                                          aoc::map::HexGrid& grid) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<UnitComponent>* unitPool = world.getPool<UnitComponent>();
     if (unitPool == nullptr) {
         return;

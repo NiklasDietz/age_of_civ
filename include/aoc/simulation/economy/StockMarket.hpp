@@ -24,7 +24,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -94,7 +94,7 @@ struct PlayerStockPortfolioComponent {
  * Investor pays gold, target gets capital injection.
  * Returns shares that earn dividends from target's GDP growth.
  */
-[[nodiscard]] ErrorCode investInEconomy(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode investInEconomy(aoc::game::GameState& gameState,
                                          PlayerId investor, PlayerId target,
                                          CurrencyAmount amount);
 
@@ -104,7 +104,7 @@ struct PlayerStockPortfolioComponent {
  * Investor gets current value back. May be less than invested if
  * target's economy declined. Creates capital outflow for target.
  */
-[[nodiscard]] ErrorCode divestFromEconomy(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode divestFromEconomy(aoc::game::GameState& gameState,
                                            PlayerId investor, PlayerId target);
 
 /**
@@ -113,7 +113,7 @@ struct PlayerStockPortfolioComponent {
  * Called once per turn. Updates investment values based on target GDP
  * changes and pays dividends to investors.
  */
-void processStockMarket(aoc::ecs::World& world);
+void processStockMarket(aoc::game::GameState& gameState);
 
 /**
  * @brief Trigger market crash: all investments in a target lose 30-50% value.
@@ -121,6 +121,6 @@ void processStockMarket(aoc::ecs::World& world);
  * Caused by war declaration, sovereign default, or hyperinflation.
  * Cascades to investors who may also crash if heavily exposed.
  */
-void triggerMarketCrash(aoc::ecs::World& world, PlayerId crashedPlayer);
+void triggerMarketCrash(aoc::game::GameState& gameState, PlayerId crashedPlayer);
 
 } // namespace aoc::sim

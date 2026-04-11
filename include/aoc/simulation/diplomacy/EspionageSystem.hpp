@@ -8,7 +8,7 @@
 #include "aoc/core/ErrorCodes.hpp"
 #include "aoc/core/Random.hpp"
 #include "aoc/core/Types.hpp"
-#include "aoc/ecs/World.hpp"
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/diplomacy/Espionage.hpp"
 
 #include <cstdint>
@@ -28,7 +28,7 @@ namespace aoc::sim {
  * @param world  ECS world with SpyComponent entities.
  * @param rng    Random number generator for success rolls.
  */
-void processSpyMissions(aoc::ecs::World& world, aoc::Random& rng);
+void processSpyMissions(aoc::game::GameState& gameState, aoc::Random& rng);
 
 /**
  * @brief Assign a spy to a mission. Validates placement.
@@ -41,7 +41,7 @@ void processSpyMissions(aoc::ecs::World& world, aoc::Random& rng);
  * @param mission The mission to assign.
  * @return ErrorCode::Ok on success, or an error code on failure.
  */
-[[nodiscard]] ErrorCode assignSpyMission(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode assignSpyMission(aoc::game::GameState& gameState,
                                          EntityId spy,
                                          SpyMission mission);
 

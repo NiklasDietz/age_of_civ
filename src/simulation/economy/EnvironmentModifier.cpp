@@ -4,24 +4,15 @@
  */
 
 #include "aoc/simulation/economy/EnvironmentModifier.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/map/HexCoord.hpp"
-#include "aoc/ecs/World.hpp"
 
 #include <algorithm>
 
 namespace aoc::sim {
 
-float computeEnvironmentModifier(const aoc::ecs::World& world,
-                                  const aoc::map::HexGrid& grid,
-                                  EntityId cityEntity,
+float computeEnvironmentModifier(const aoc::map::HexGrid& grid,
+                                  aoc::hex::AxialCoord location,
                                   BuildingId buildingId) {
-    const CityComponent* city = world.tryGetComponent<CityComponent>(cityEntity);
-    if (city == nullptr) {
-        return 1.0f;
-    }
-
-    const hex::AxialCoord location = city->location;
     if (!grid.isValid(location)) {
         return 1.0f;
     }

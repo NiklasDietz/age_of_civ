@@ -3,6 +3,7 @@
  * @brief Naval trade, river navigation, and merchant ship economics.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/NavalTrade.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
@@ -95,9 +96,10 @@ bool canNavalUnitEnter(const aoc::map::HexGrid& grid, int32_t tileIndex) {
 // Trade route capacity
 // ============================================================================
 
-int32_t computeTradeRouteCapacity(const aoc::ecs::World& world,
+int32_t computeTradeRouteCapacity(const aoc::game::GameState& gameState,
                                    const aoc::map::HexGrid& grid,
                                    EntityId routeEntity) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     const TradeRouteComponent* route =
         world.tryGetComponent<TradeRouteComponent>(routeEntity);
     if (route == nullptr || route->path.empty()) {
@@ -192,7 +194,7 @@ int32_t computeTradeRouteCapacity(const aoc::ecs::World& world,
 // Merchant ship fuel
 // ============================================================================
 
-void processMerchantShipFuel(aoc::ecs::World& world) {
+void processMerchantShipFuel(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<UnitComponent>* unitPool =
         world.getPool<UnitComponent>();
     if (unitPool == nullptr) {

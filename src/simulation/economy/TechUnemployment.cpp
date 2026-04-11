@@ -3,6 +3,7 @@
  * @brief Technological unemployment from automation.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/TechUnemployment.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
@@ -49,7 +50,8 @@ void updateUnemployment(CityUnemploymentComponent& unemployment,
     unemployment.unemploymentRate = std::clamp(unemployment.unemploymentRate, 0.0f, 0.50f);
 }
 
-void processUnemployment(aoc::ecs::World& world, PlayerId player) {
+void processUnemployment(aoc::game::GameState& gameState, PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<CityComponent>* cityPool =
         world.getPool<CityComponent>();
     if (cityPool == nullptr) {

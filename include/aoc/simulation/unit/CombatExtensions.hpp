@@ -34,7 +34,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -76,7 +76,7 @@ struct UnitFormationComponent {
  *
  * @return Ok if successful.
  */
-[[nodiscard]] ErrorCode formCorps(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode formCorps(aoc::game::GameState& gameState,
                                    EntityId targetUnit, EntityId sourceUnit);
 
 /**
@@ -84,7 +84,7 @@ struct UnitFormationComponent {
  *
  * @return Ok if successful.
  */
-[[nodiscard]] ErrorCode formArmy(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode formArmy(aoc::game::GameState& gameState,
                                   EntityId corpsUnit, EntityId sourceUnit);
 
 // ============================================================================
@@ -118,7 +118,7 @@ struct NuclearWeaponComponent {
  * @param type        Nuclear or thermonuclear.
  * @return Ok if successful.
  */
-[[nodiscard]] ErrorCode launchNuclearStrike(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode launchNuclearStrike(aoc::game::GameState& gameState,
                                             aoc::map::HexGrid& grid,
                                             EntityId launcherEntity,
                                             hex::AxialCoord targetTile,
@@ -145,7 +145,7 @@ struct AirUnitComponent {
  *
  * @return Ok if successful.
  */
-[[nodiscard]] ErrorCode executeBombingRun(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode executeBombingRun(aoc::game::GameState& gameState,
                                           aoc::map::HexGrid& grid,
                                           EntityId bomberEntity,
                                           hex::AxialCoord targetTile);
@@ -158,13 +158,13 @@ struct AirUnitComponent {
  *
  * @return true if interception occurred.
  */
-bool attemptInterception(aoc::ecs::World& world,
+bool attemptInterception(aoc::game::GameState& gameState,
                          EntityId interceptorEntity,
                          EntityId targetAirUnit);
 
 /**
  * @brief Reset air unit sorties at the start of a turn.
  */
-void resetAirSorties(aoc::ecs::World& world, PlayerId player);
+void resetAirSorties(aoc::game::GameState& gameState, PlayerId player);
 
 } // namespace aoc::sim

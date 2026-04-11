@@ -30,7 +30,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -104,13 +104,13 @@ struct BarbarianClanComponent {
 /**
  * @brief Bribe a barbarian clan to be passive for 20 turns.
  */
-[[nodiscard]] ErrorCode bribeClan(aoc::ecs::World& world, EntityId encampmentEntity,
+[[nodiscard]] ErrorCode bribeClan(aoc::game::GameState& gameState, EntityId encampmentEntity,
                                    PlayerId player);
 
 /**
  * @brief Hire a barbarian clan to attack a target player for 10 turns.
  */
-[[nodiscard]] ErrorCode hireClan(aoc::ecs::World& world, EntityId encampmentEntity,
+[[nodiscard]] ErrorCode hireClan(aoc::game::GameState& gameState, EntityId encampmentEntity,
                                   PlayerId hirer, PlayerId target);
 
 /**

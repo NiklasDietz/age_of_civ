@@ -3,6 +3,7 @@
  * @brief Comparative advantage and opportunity cost calculations.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/ComparativeAdvantage.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
@@ -15,9 +16,10 @@
 
 namespace aoc::sim {
 
-float playerProductionRate(const aoc::ecs::World& world,
+float playerProductionRate(const aoc::game::GameState& gameState,
                             PlayerId player,
                             uint16_t goodId) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Sum production from all cities owned by this player.
     // For raw resources: count tile yields.
     // For processed goods: check if any city has the required building
@@ -65,10 +67,11 @@ float playerProductionRate(const aoc::ecs::World& world,
 }
 
 std::vector<TradeRecommendation> computeComparativeAdvantage(
-    const aoc::ecs::World& world,
+    const aoc::game::GameState& gameState,
     const Market& market,
     PlayerId playerA,
     PlayerId playerB) {
+    aoc::ecs::World& world = gameState.legacyWorld();
 
     std::vector<TradeRecommendation> recommendations;
 

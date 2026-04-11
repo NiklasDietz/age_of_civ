@@ -31,7 +31,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -71,7 +71,7 @@ struct CurrencyTrustComponent {
  * @param trust     Player's trust component (will be mutated).
  * @param playerCount Total number of active players.
  */
-void computeCurrencyTrust(const aoc::ecs::World& world,
+void computeCurrencyTrust(const aoc::game::GameState& gameState,
                           const MonetaryStateComponent& state,
                           CurrencyTrustComponent& trust,
                           int32_t playerCount);
@@ -85,7 +85,7 @@ void computeCurrencyTrust(const aoc::ecs::World& world,
  *
  * @param world  ECS world with MonetaryState and CurrencyTrust components.
  */
-void updateReserveCurrencyStatus(aoc::ecs::World& world);
+void updateReserveCurrencyStatus(aoc::game::GameState& gameState);
 
 /**
  * @brief Get the effective fiat trade efficiency for a player.
@@ -110,7 +110,7 @@ void updateReserveCurrencyStatus(aoc::ecs::World& world);
  * @param playerB  Second player.
  * @return Combined trade efficiency multiplier.
  */
-[[nodiscard]] float bilateralTradeEfficiency(const aoc::ecs::World& world,
+[[nodiscard]] float bilateralTradeEfficiency(const aoc::game::GameState& gameState,
                                              PlayerId playerA, PlayerId playerB);
 
 } // namespace aoc::sim

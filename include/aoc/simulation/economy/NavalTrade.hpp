@@ -50,7 +50,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -133,7 +133,7 @@ inline constexpr std::array<MerchantShipDef, 5> MERCHANT_SHIP_DEFS = {{
  * @param routeEntity Entity of the trade route.
  * @return Maximum cargo units per turn for this route.
  */
-[[nodiscard]] int32_t computeTradeRouteCapacity(const aoc::ecs::World& world,
+[[nodiscard]] int32_t computeTradeRouteCapacity(const aoc::game::GameState& gameState,
                                                 const aoc::map::HexGrid& grid,
                                                 EntityId routeEntity);
 
@@ -145,7 +145,7 @@ inline constexpr std::array<MerchantShipDef, 5> MERCHANT_SHIP_DEFS = {{
  *
  * @param world  ECS world.
  */
-void processMerchantShipFuel(aoc::ecs::World& world);
+void processMerchantShipFuel(aoc::game::GameState& gameState);
 
 // ============================================================================
 // Naval trade bonuses

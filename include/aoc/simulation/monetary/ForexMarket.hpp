@@ -29,7 +29,7 @@
 #include <array>
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -113,7 +113,7 @@ struct CurrencyExchangeComponent {
  * @param goldAmount Amount of gold spent on the purchase.
  * @return Ok if successful.
  */
-[[nodiscard]] ErrorCode buyCurrency(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode buyCurrency(aoc::game::GameState& gameState,
                                      PlayerId buyer, PlayerId target,
                                      CurrencyAmount goldAmount);
 
@@ -130,7 +130,7 @@ struct CurrencyExchangeComponent {
  * @param currencyAmount Amount of target currency to sell.
  * @return Ok if successful.
  */
-[[nodiscard]] ErrorCode sellCurrency(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode sellCurrency(aoc::game::GameState& gameState,
                                       PlayerId seller, PlayerId target,
                                       CurrencyAmount currencyAmount);
 
@@ -145,7 +145,7 @@ struct CurrencyExchangeComponent {
  * @param amount   Amount of foreign reserves to spend on defense.
  * @return Ok if successful.
  */
-[[nodiscard]] ErrorCode defendCurrency(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode defendCurrency(aoc::game::GameState& gameState,
                                         PlayerId player,
                                         CurrencyAmount amount);
 
@@ -160,7 +160,7 @@ struct CurrencyExchangeComponent {
  * 5. Clamp rate to reasonable bounds (0.2 to 5.0).
  * 6. Reset order flow for next turn.
  */
-void updateExchangeRates(aoc::ecs::World& world);
+void updateExchangeRates(aoc::game::GameState& gameState);
 
 /**
  * @brief Get the bilateral exchange rate between two fiat players.

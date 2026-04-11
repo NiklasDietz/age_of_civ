@@ -20,6 +20,13 @@ GameState::~GameState() = default;
 GameState::GameState(GameState&&) noexcept = default;
 GameState& GameState::operator=(GameState&&) noexcept = default;
 
+void GameState::setExternalWorld(aoc::ecs::World* externalWorld) {
+    if (externalWorld != nullptr) {
+        this->m_legacyWorld.reset();
+        this->m_externalWorld = externalWorld;
+    }
+}
+
 void GameState::initialize(int32_t playerCount) {
     assert(playerCount > 0 && playerCount <= MAX_PLAYERS);
     this->m_players.clear();

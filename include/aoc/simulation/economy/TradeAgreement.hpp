@@ -22,7 +22,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -86,25 +86,25 @@ struct PlayerTradeAgreementsComponent {
 /**
  * @brief Propose a bilateral trade deal between two players.
  */
-[[nodiscard]] ErrorCode proposeBilateralDeal(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode proposeBilateralDeal(aoc::game::GameState& gameState,
                                                PlayerId proposer, PlayerId partner);
 
 /**
  * @brief Create a free trade zone among multiple players.
  */
-[[nodiscard]] ErrorCode createFreeTradeZone(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode createFreeTradeZone(aoc::game::GameState& gameState,
                                               const std::vector<PlayerId>& members);
 
 /**
  * @brief Form a customs union with common external tariff.
  */
-[[nodiscard]] ErrorCode formCustomsUnion(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode formCustomsUnion(aoc::game::GameState& gameState,
                                            const std::vector<PlayerId>& members,
                                            float externalTariff);
 
 /**
  * @brief Process trade agreement effects each turn (tick duration, check validity).
  */
-void processTradeAgreements(aoc::ecs::World& world);
+void processTradeAgreements(aoc::game::GameState& gameState);
 
 } // namespace aoc::sim

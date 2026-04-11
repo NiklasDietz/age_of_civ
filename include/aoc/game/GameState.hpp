@@ -75,12 +75,21 @@ public:
     void advanceTurn() { ++this->m_currentTurn; }
 
     /// The legacy ECS World (backward compatibility during migration - BEING REMOVED).
-    [[nodiscard]] aoc::ecs::World& legacyWorld() { return *this->m_legacyWorld; }
-    [[nodiscard]] const aoc::ecs::World& legacyWorld() const { return *this->m_legacyWorld; }
+    [[nodiscard]] aoc::ecs::World& legacyWorld() {
+        return (this->m_externalWorld != nullptr) ? *this->m_externalWorld : *this->m_legacyWorld;
+    }
+    [[nodiscard]] const aoc::ecs::World& legacyWorld() const {
+        return (this->m_externalWorld != nullptr) ? *this->m_externalWorld : *this->m_legacyWorld;
+    }
+
+    /// Set an external World (used when the World is owned by the caller).
+    /// This avoids having two separate World objects during the migration.
+    void setExternalWorld(aoc::ecs::World* externalWorld);
 
 private:
     std::vector<std::unique_ptr<Player>> m_players;
     std::unique_ptr<aoc::ecs::World> m_legacyWorld;  ///< DEPRECATED: being purged
+    aoc::ecs::World* m_externalWorld = nullptr;       ///< Non-owning pointer to external world
     int32_t m_currentTurn = 0;
 };
 

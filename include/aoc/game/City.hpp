@@ -85,6 +85,13 @@ public:
     void growPopulation(int32_t amount = 1) { this->m_population += amount; }
 
     [[nodiscard]] float foodSurplus() const { return this->m_foodSurplus; }
+
+    [[nodiscard]] float cultureBorderProgress() const { return this->m_cultureBorderProgress; }
+    void setCultureBorderProgress(float prog) { this->m_cultureBorderProgress = prog; }
+    void addCultureBorderProgress(float amount) { this->m_cultureBorderProgress += amount; }
+
+    [[nodiscard]] float productionProgress() const { return this->m_productionProgress; }
+    void setProductionProgress(float prog) { this->m_productionProgress = prog; }
     void setFoodSurplus(float surplus) { this->m_foodSurplus = surplus; }
 
     /// Available citizen slots (population, since center tile is free).
@@ -219,6 +226,8 @@ private:
     // Population
     int32_t m_population = 1;
     float m_foodSurplus = 0.0f;
+    float m_cultureBorderProgress = 0.0f;
+    float m_productionProgress = 0.0f;
 
     // Citizens
     std::vector<aoc::hex::AxialCoord> m_workedTiles;

@@ -3,6 +3,7 @@
  * @brief Industrial revolution detection and progression.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
@@ -12,8 +13,9 @@
 
 namespace aoc::sim {
 
-bool checkIndustrialRevolution(aoc::ecs::World& world, PlayerId player,
+bool checkIndustrialRevolution(aoc::game::GameState& gameState, PlayerId player,
                                TurnNumber currentTurn) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Find or create the player's industrial component
     aoc::ecs::ComponentPool<PlayerIndustrialComponent>* indPool =
         world.getPool<PlayerIndustrialComponent>();

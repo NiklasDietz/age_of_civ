@@ -7,12 +7,13 @@
  */
 
 #include "aoc/core/Types.hpp"
-#include "aoc/ecs/World.hpp"
 
 #include <bitset>
 #include <cstdint>
 #include <string_view>
 #include <vector>
+
+namespace aoc::game { class Player; }
 
 namespace aoc::sim {
 
@@ -98,8 +99,7 @@ struct PlayerEurekaComponent {
  * @param player   The player who performed the action.
  * @param triggered The gameplay condition that just occurred.
  */
-void checkEurekaConditions(aoc::ecs::World& world,
-                           PlayerId player,
+void checkEurekaConditions(aoc::game::Player& player,
                            EurekaCondition triggered);
 
 } // namespace aoc::sim

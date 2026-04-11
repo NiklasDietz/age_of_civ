@@ -3,6 +3,7 @@
  * @brief Colonial economic zone extraction and mercantilism mechanics.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/ColonialEconomics.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
@@ -24,10 +25,11 @@ constexpr float MIN_GDP_RATIO = 2.0f;
 /// Loyalty penalty per turn for having an economic zone.
 constexpr float ZONE_LOYALTY_PENALTY = 2.0f;
 
-ErrorCode establishEconomicZone(aoc::ecs::World& world,
+ErrorCode establishEconomicZone(aoc::game::GameState& gameState,
                                 GlobalEconomicZoneTracker& tracker,
                                 PlayerId colonizer,
                                 EntityId hostCity) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Check the city exists and belongs to someone else
     const CityComponent* city = world.tryGetComponent<CityComponent>(hostCity);
     if (city == nullptr || city->owner == colonizer) {
@@ -92,12 +94,14 @@ void dissolveEconomicZone(GlobalEconomicZoneTracker& tracker, EntityId hostCity)
     }
 }
 
-void processEconomicZones(aoc::ecs::World& world,
+void processEconomicZones(aoc::game::GameState& gameState,
                           const aoc::map::HexGrid& /*grid*/,
                           const Market& market,
                           GlobalEconomicZoneTracker& tracker) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     std::vector<EconomicZone>::iterator it = tracker.zones.begin();
     while (it != tracker.zones.end()) {
+        aoc::ecs::World& world = gameState.legacyWorld();
         EconomicZone& zone = *it;
         ++zone.turnsActive;
 

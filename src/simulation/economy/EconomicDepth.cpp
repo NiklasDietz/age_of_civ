@@ -3,6 +3,7 @@
  * @brief Futures trading, labor strikes, insurance, economic espionage, migration.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/EconomicDepth.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -26,8 +27,9 @@ namespace aoc::sim {
 // Futures Trading
 // ============================================================================
 
-ErrorCode buyFuture(aoc::ecs::World& world, const Market& market,
+ErrorCode buyFuture(aoc::game::GameState& gameState, const Market& market,
                      PlayerId buyer, uint16_t goodId, int32_t amount) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (amount <= 0 || goodId >= market.goodsCount()) {
         return ErrorCode::InvalidArgument;
     }
@@ -74,8 +76,9 @@ ErrorCode buyFuture(aoc::ecs::World& world, const Market& market,
     return ErrorCode::Ok;
 }
 
-ErrorCode sellFuture(aoc::ecs::World& world, const Market& market,
+ErrorCode sellFuture(aoc::game::GameState& gameState, const Market& market,
                       PlayerId seller, uint16_t goodId, int32_t amount) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (amount <= 0 || goodId >= market.goodsCount()) {
         return ErrorCode::InvalidArgument;
     }
@@ -116,12 +119,14 @@ ErrorCode sellFuture(aoc::ecs::World& world, const Market& market,
     return ErrorCode::Ok;
 }
 
-void settleFutures(aoc::ecs::World& world, Market& market) {
+void settleFutures(aoc::game::GameState& gameState, Market& market) {
     aoc::ecs::ComponentPool<PlayerFuturesComponent>* futuresPool =
         world.getPool<PlayerFuturesComponent>();
     if (futuresPool == nullptr) { return; }
+    aoc::ecs::World& world = gameState.legacyWorld();
 
     for (uint32_t p = 0; p < futuresPool->size(); ++p) {
+        aoc::ecs::World& world = gameState.legacyWorld();
         std::vector<FuturesContract>& contracts = futuresPool->data()[p].contracts;
         std::vector<FuturesContract>::iterator it = contracts.begin();
         while (it != contracts.end()) {
@@ -159,12 +164,14 @@ void settleFutures(aoc::ecs::World& world, Market& market) {
 // Labor Strikes
 // ============================================================================
 
-void checkLaborStrikes(aoc::ecs::World& world) {
+void checkLaborStrikes(aoc::game::GameState& gameState) {
     const aoc::ecs::ComponentPool<CityComponent>* cityPool =
         world.getPool<CityComponent>();
     if (cityPool == nullptr) { return; }
+    aoc::ecs::World& world = gameState.legacyWorld();
 
     for (uint32_t c = 0; c < cityPool->size(); ++c) {
+        aoc::ecs::World& world = gameState.legacyWorld();
         const CityComponent& city = cityPool->data()[c];
         EntityId cityEntity = cityPool->entities()[c];
         if (city.owner == BARBARIAN_PLAYER) { continue; }
@@ -208,7 +215,7 @@ void checkLaborStrikes(aoc::ecs::World& world) {
     }
 }
 
-void processStrikes(aoc::ecs::World& world) {
+void processStrikes(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<CityStrikeComponent>* strikePool =
         world.getPool<CityStrikeComponent>();
     if (strikePool == nullptr) { return; }
@@ -229,7 +236,7 @@ void processStrikes(aoc::ecs::World& world) {
 // Insurance
 // ============================================================================
 
-void processInsurancePremiums(aoc::ecs::World& world) {
+void processInsurancePremiums(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<PlayerInsuranceComponent>* insPool =
         world.getPool<PlayerInsuranceComponent>();
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
@@ -254,10 +261,12 @@ void processInsurancePremiums(aoc::ecs::World& world) {
 // Economic Espionage
 // ============================================================================
 
-ErrorCode executeEconSpyMission(aoc::ecs::World& world,
+ErrorCode executeEconSpyMission(aoc::game::GameState& gameState,
                                  EntityId /*spyEntity*/,
                                  EconSpyMission mission) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     switch (mission) {
+        aoc::ecs::World& world = gameState.legacyWorld();
         case EconSpyMission::StealRecipe:
             LOG_INFO("Economic espionage: recipe stolen!");
             break;
@@ -288,10 +297,11 @@ ErrorCode executeEconSpyMission(aoc::ecs::World& world,
 // Migration
 // ============================================================================
 
-void processMigration(aoc::ecs::World& world, const aoc::map::HexGrid& grid) {
+void processMigration(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid) {
     const aoc::ecs::ComponentPool<CityComponent>* cityPool =
         world.getPool<CityComponent>();
     if (cityPool == nullptr) { return; }
+    aoc::ecs::World& world = gameState.legacyWorld();
 
     // Compare QoL between neighboring cities across borders
     for (uint32_t a = 0; a < cityPool->size(); ++a) {

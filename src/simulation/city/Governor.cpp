@@ -3,6 +3,7 @@
  * @brief City governor system: automated city management based on focus.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/city/Governor.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
@@ -92,10 +93,11 @@ float scoreDistrictForFocus(CityFocus focus, DistrictType dtype) {
 
 } // anonymous namespace
 
-void governorAutoQueue(aoc::ecs::World& world,
+void governorAutoQueue(aoc::game::GameState& gameState,
                         const aoc::map::HexGrid& grid,
                         EntityId cityEntity,
                         PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     CityGovernorComponent* governor = world.tryGetComponent<CityGovernorComponent>(cityEntity);
     if (governor == nullptr || !governor->isActive || !governor->autoQueueProduction) {
         return;
@@ -213,9 +215,10 @@ void governorAutoQueue(aoc::ecs::World& world,
     (void)grid;
 }
 
-void processGovernors(aoc::ecs::World& world,
+void processGovernors(aoc::game::GameState& gameState,
                        const aoc::map::HexGrid& grid,
                        PlayerId player) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
     if (cityPool == nullptr) {
         return;

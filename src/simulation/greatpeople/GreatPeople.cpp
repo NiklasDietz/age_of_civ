@@ -3,6 +3,7 @@
  * @brief Great Person definitions, point accumulation, recruitment, and activation.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
@@ -63,7 +64,7 @@ const std::array<GreatPersonDef, GREAT_PERSON_COUNT>& allGreatPersonDefs() {
 // Point accumulation
 // ============================================================================
 
-void accumulateGreatPeoplePoints(aoc::ecs::World& world, PlayerId player) {
+void accumulateGreatPeoplePoints(aoc::game::GameState& gameState, PlayerId player) {
     // Find the player's GP component
     aoc::ecs::ComponentPool<PlayerGreatPeopleComponent>* gpPool =
         world.getPool<PlayerGreatPeopleComponent>();
@@ -160,7 +161,7 @@ void accumulateGreatPeoplePoints(aoc::ecs::World& world, PlayerId player) {
 // Recruitment
 // ============================================================================
 
-void checkGreatPeopleRecruitment(aoc::ecs::World& world, PlayerId player) {
+void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId player) {
     aoc::ecs::ComponentPool<PlayerGreatPeopleComponent>* gpPool =
         world.getPool<PlayerGreatPeopleComponent>();
     if (gpPool == nullptr) {
@@ -239,8 +240,9 @@ void checkGreatPeopleRecruitment(aoc::ecs::World& world, PlayerId player) {
 // Activation
 // ============================================================================
 
-void activateGreatPerson(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                           EntityId greatPersonEntity) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     GreatPersonComponent* gp = world.tryGetComponent<GreatPersonComponent>(greatPersonEntity);
     if (gp == nullptr || gp->isActivated) {
         return;

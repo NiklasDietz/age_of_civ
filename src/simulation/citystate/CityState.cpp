@@ -3,6 +3,7 @@
  * @brief City-state spawning, envoy processing, and per-turn bonuses.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
@@ -22,8 +23,9 @@
 
 namespace aoc::sim {
 
-void spawnCityStates(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+void spawnCityStates(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                       int32_t count, aoc::Random& rng) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     const int32_t toSpawn = std::min(count, static_cast<int32_t>(CITY_STATE_COUNT));
 
     // Collect existing city/unit positions to ensure minimum distance
@@ -144,7 +146,7 @@ void spawnCityStates(aoc::ecs::World& world, aoc::map::HexGrid& grid,
     }
 }
 
-void processCityStateBonuses(aoc::ecs::World& world, PlayerId player) {
+void processCityStateBonuses(aoc::game::GameState& gameState, PlayerId player) {
     const aoc::ecs::ComponentPool<CityStateComponent>* csPool =
         world.getPool<CityStateComponent>();
     if (csPool == nullptr) {

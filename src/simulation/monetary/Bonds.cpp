@@ -3,6 +3,7 @@
  * @brief Government bond issuance, trading, payments, and weaponization.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/monetary/Bonds.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
@@ -31,9 +32,10 @@ float computeBondYield(const MonetaryStateComponent& state, bool hasRecentDefaul
     return std::clamp(baseRate + debtPremium + defaultPenalty, 0.01f, 0.30f);
 }
 
-ErrorCode issueBond(aoc::ecs::World& world,
+ErrorCode issueBond(aoc::game::GameState& gameState,
                     PlayerId issuer, PlayerId buyer,
                     CurrencyAmount principal) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (principal <= 0) {
         return ErrorCode::InvalidArgument;
     }
@@ -120,8 +122,9 @@ ErrorCode issueBond(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-ErrorCode dumpBonds(aoc::ecs::World& world,
+ErrorCode dumpBonds(aoc::game::GameState& gameState,
                     PlayerId dumper, PlayerId target) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<PlayerBondComponent>* bondPool =
         world.getPool<PlayerBondComponent>();
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
@@ -199,7 +202,7 @@ ErrorCode dumpBonds(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-void processBondPayments(aoc::ecs::World& world) {
+void processBondPayments(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<PlayerBondComponent>* bondPool =
         world.getPool<PlayerBondComponent>();
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
@@ -305,11 +308,12 @@ void processBondPayments(aoc::ecs::World& world) {
 // Player-to-player IOUs (credit/loans)
 // ============================================================================
 
-ErrorCode createIOU(aoc::ecs::World& world,
+ErrorCode createIOU(aoc::game::GameState& gameState,
                      PlayerId creditor, PlayerId debtor,
                      CurrencyAmount principal,
                      float interestRate,
                      int32_t termTurns) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (principal <= 0 || creditor == debtor) {
         return ErrorCode::InvalidArgument;
     }
@@ -381,8 +385,9 @@ ErrorCode createIOU(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-ErrorCode callInIOU(aoc::ecs::World& world,
+ErrorCode callInIOU(aoc::game::GameState& gameState,
                      PlayerId creditor, PlayerId debtor) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
         world.getPool<MonetaryStateComponent>();
     aoc::ecs::ComponentPool<PlayerIOUComponent>* iouPool =
@@ -474,7 +479,7 @@ ErrorCode callInIOU(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-void processIOUPayments(aoc::ecs::World& world) {
+void processIOUPayments(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<PlayerIOUComponent>* iouPool =
         world.getPool<PlayerIOUComponent>();
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =

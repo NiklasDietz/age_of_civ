@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -80,11 +80,11 @@ struct GlobalTradeBlocTracker {
 
 /// When trading with a more advanced player, gain a small science bonus.
 /// Bonus = max(0, partnerTechs - myTechs) * spilloverRate
-[[nodiscard]] float computeTechSpillover(const aoc::ecs::World& world,
+[[nodiscard]] float computeTechSpillover(const aoc::game::GameState& gameState,
                                          PlayerId player, PlayerId tradePartner);
 
 /// Process tech spillover for all active trade routes.
-void processTechSpillover(aoc::ecs::World& world);
+void processTechSpillover(aoc::game::GameState& gameState);
 
 // ============================================================================
 // Labor Market
@@ -123,7 +123,7 @@ struct CityLaborComponent {
 
 /// Compute infrastructure bonus for a city based on nearby roads, harbors, markets.
 /// Returns a multiplier (1.0 = no bonus, up to 1.5 with full infrastructure).
-[[nodiscard]] float computeInfrastructureBonus(const aoc::ecs::World& world,
+[[nodiscard]] float computeInfrastructureBonus(const aoc::game::GameState& gameState,
                                                const aoc::map::HexGrid& grid,
                                                EntityId cityEntity);
 
@@ -153,7 +153,7 @@ struct PlayerBankingComponent {
 
 /// Compute exchange rate between two players based on their monetary systems.
 /// Players on gold standard trade at 1:1. Fiat vs gold has variable rate.
-[[nodiscard]] float computeExchangeRate(const aoc::ecs::World& world,
+[[nodiscard]] float computeExchangeRate(const aoc::game::GameState& gameState,
                                         PlayerId playerA, PlayerId playerB);
 
 // ============================================================================
@@ -162,13 +162,13 @@ struct PlayerBankingComponent {
 
 /// Check if a player is in a debt crisis (debt > 2x GDP).
 /// Returns true and applies penalties: -20% production, -10% science, -3 amenities.
-[[nodiscard]] bool checkDebtCrisis(aoc::ecs::World& world, PlayerId player);
+[[nodiscard]] bool checkDebtCrisis(aoc::game::GameState& gameState, PlayerId player);
 
 // ============================================================================
 // Master function: process all advanced economics per turn.
 // ============================================================================
 
-void processAdvancedEconomics(aoc::ecs::World& world, const aoc::map::HexGrid& grid,
+void processAdvancedEconomics(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
                               PlayerId player, Market& market);
 
 } // namespace aoc::sim

@@ -3,6 +3,7 @@
  * @brief World Congress voting system implementation.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/diplomacy/WorldCongress.hpp"
 #include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
@@ -56,8 +57,9 @@ bool WorldCongressComponent::isResolutionActive(Resolution res) const {
            != this->passedResolutions.end();
 }
 
-void processWorldCongress(aoc::ecs::World& world, TurnNumber /*turn*/,
+void processWorldCongress(aoc::game::GameState& gameState, TurnNumber /*turn*/,
                            aoc::Random& rng) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<WorldCongressComponent>* pool =
         world.getPool<WorldCongressComponent>();
     if (pool == nullptr) {

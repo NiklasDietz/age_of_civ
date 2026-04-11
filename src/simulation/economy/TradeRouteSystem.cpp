@@ -3,6 +3,7 @@
  * @brief Physical trade routes with Trader units carrying real goods.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -84,9 +85,10 @@ void selectTradeGoods(const CityStockpileComponent& originStock,
 
 /// Evaluate whether the destination player would accept a trade route from the proposer.
 /// AI decision based on: gold need, resource benefit, relations, war/embargo status.
-bool evaluateTradeConsent(const aoc::ecs::World& world, const Market& market,
+bool evaluateTradeConsent(const aoc::game::GameState& gameState, const Market& market,
                            const DiplomacyManager* diplomacy,
                            PlayerId proposer, PlayerId target) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Block trade during war or embargo
     if (diplomacy != nullptr) {
         if (diplomacy->isAtWar(proposer, target)) {
@@ -145,12 +147,13 @@ bool evaluateTradeConsent(const aoc::ecs::World& world, const Market& market,
 
 } // anonymous namespace
 
-ErrorCode establishTradeRoute(aoc::ecs::World& world,
+ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
                                aoc::map::HexGrid& grid,
                                const Market& market,
                                const DiplomacyManager* diplomacy,
                                EntityId traderEntity,
                                EntityId destCity) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     UnitComponent* unit = world.tryGetComponent<UnitComponent>(traderEntity);
     if (unit == nullptr) {
         return ErrorCode::InvalidArgument;
@@ -303,8 +306,9 @@ ErrorCode establishTradeRoute(aoc::ecs::World& world,
     return ErrorCode::Ok;
 }
 
-void processTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                          const Market& market) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<TraderComponent>* traderPool =
         world.getPool<TraderComponent>();
     aoc::ecs::ComponentPool<UnitComponent>* unitPool =
@@ -430,9 +434,10 @@ void processTradeRoutes(aoc::ecs::World& world, aoc::map::HexGrid& grid,
     }
 }
 
-CurrencyAmount pillageTrader(aoc::ecs::World& world,
+CurrencyAmount pillageTrader(aoc::game::GameState& gameState,
                               EntityId traderEntity,
                               PlayerId pillager) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     TraderComponent* trader = world.tryGetComponent<TraderComponent>(traderEntity);
     if (trader == nullptr) {
         return 0;
@@ -469,7 +474,7 @@ CurrencyAmount pillageTrader(aoc::ecs::World& world,
     return totalValue;
 }
 
-int32_t countActiveTradeRoutes(const aoc::ecs::World& world, PlayerId player) {
+int32_t countActiveTradeRoutes(const aoc::game::GameState& gameState, PlayerId player) {
     const aoc::ecs::ComponentPool<TraderComponent>* traderPool =
         world.getPool<TraderComponent>();
     if (traderPool == nullptr) {

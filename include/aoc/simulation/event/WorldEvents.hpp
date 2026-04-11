@@ -21,7 +21,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -93,7 +93,7 @@ struct PlayerEventComponent {
  * @param player      Player to check.
  * @param turnNumber  Current turn.
  */
-void checkWorldEvents(aoc::ecs::World& world, PlayerId player, int32_t turnNumber);
+void checkWorldEvents(aoc::game::GameState& gameState, PlayerId player, int32_t turnNumber);
 
 /**
  * @brief Apply the player's choice for a pending event.
@@ -102,12 +102,12 @@ void checkWorldEvents(aoc::ecs::World& world, PlayerId player, int32_t turnNumbe
  * @param player  Player making the choice.
  * @param choice  Index of the chosen option (0-2).
  */
-[[nodiscard]] ErrorCode resolveWorldEvent(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode resolveWorldEvent(aoc::game::GameState& gameState,
                                           PlayerId player, int32_t choice);
 
 /**
  * @brief Tick active event effects (decrement durations, remove expired).
  */
-void tickWorldEvents(aoc::ecs::World& world);
+void tickWorldEvents(aoc::game::GameState& gameState);
 
 } // namespace aoc::sim

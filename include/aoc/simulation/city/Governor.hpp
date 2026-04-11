@@ -27,7 +27,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -80,7 +80,7 @@ struct CityGovernorComponent {
  * @param cityEntity  The city entity.
  * @param player      Owning player.
  */
-void governorAutoQueue(aoc::ecs::World& world,
+void governorAutoQueue(aoc::game::GameState& gameState,
                         const aoc::map::HexGrid& grid,
                         EntityId cityEntity,
                         PlayerId player);
@@ -92,7 +92,7 @@ void governorAutoQueue(aoc::ecs::World& world,
  * For each city with an active governor, handles auto-queuing
  * and tile assignment.
  */
-void processGovernors(aoc::ecs::World& world,
+void processGovernors(aoc::game::GameState& gameState,
                        const aoc::map::HexGrid& grid,
                        PlayerId player);
 

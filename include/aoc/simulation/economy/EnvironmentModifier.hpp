@@ -5,19 +5,15 @@
 
 #include "aoc/core/Types.hpp"
 #include "aoc/map/HexGrid.hpp"
-
-namespace aoc::ecs {
-class World;
-}
+#include "aoc/map/HexCoord.hpp"
 
 namespace aoc::sim {
 
-/// Compute terrain-based production modifier for a specific building in a city.
+/// Compute terrain-based production modifier for a specific building at a location.
 /// Returns a multiplier (1.0 = no effect, >1.0 = bonus, <1.0 = penalty).
 [[nodiscard]] float computeEnvironmentModifier(
-    const aoc::ecs::World& world,
     const aoc::map::HexGrid& grid,
-    EntityId cityEntity,
+    aoc::hex::AxialCoord location,
     BuildingId buildingId);
 
 /// Compute terrain-based yield modifier for a tile improvement.

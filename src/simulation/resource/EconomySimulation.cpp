@@ -3,6 +3,7 @@
  * @brief Per-turn economic simulation implementation.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
@@ -55,7 +56,7 @@ void EconomySimulation::initialize() {
              static_cast<unsigned>(goodCount()));
 }
 
-void EconomySimulation::executeTurn(aoc::ecs::World& world, aoc::map::HexGrid& grid) {
+void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::HexGrid& grid) {
     this->harvestResources(world, grid);
     this->applyResourceDepletion(world, grid);
     this->processInternalTradeForAllPlayers(world, grid);
@@ -77,8 +78,9 @@ void EconomySimulation::executeTurn(aoc::ecs::World& world, aoc::map::HexGrid& g
 // Step 1: Harvest raw resources from worked tiles into city stockpiles
 // ============================================================================
 
-void EconomySimulation::harvestResources(aoc::ecs::World& world,
+void EconomySimulation::harvestResources(aoc::game::GameState& gameState,
                                           aoc::map::HexGrid& grid) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // For each city, iterate its worked tiles and collect resource yields.
     // Non-renewable resources consume reserves; when exhausted, the tile is empty.
     aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
@@ -194,8 +196,9 @@ void EconomySimulation::harvestResources(aoc::ecs::World& world,
 // recipes won't run in executeProduction (checked via CityPowerComponent).
 // ============================================================================
 
-void EconomySimulation::consumeBuildingFuel(aoc::ecs::World& world,
+void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
                                              const aoc::map::HexGrid& grid) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
     if (cityPool == nullptr) {
         return;
@@ -262,7 +265,7 @@ void EconomySimulation::consumeBuildingFuel(aoc::ecs::World& world,
 // and missing luxury types (for amenity dedup system).
 // ============================================================================
 
-void EconomySimulation::computePlayerNeeds(aoc::ecs::World& world) {
+void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<PlayerEconomyComponent>* econPool =
         world.getPool<PlayerEconomyComponent>();
     if (econPool == nullptr) {
@@ -367,8 +370,9 @@ void EconomySimulation::computePlayerNeeds(aoc::ecs::World& world) {
 // large cities run many. This creates natural specialization pressure.
 // ============================================================================
 
-void EconomySimulation::executeProduction(aoc::ecs::World& world,
+void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                                           aoc::map::HexGrid& grid) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
     if (cityPool == nullptr) {
         return;
@@ -494,7 +498,7 @@ void EconomySimulation::executeProduction(aoc::ecs::World& world,
             // === Compute output modifiers ===
             const float infraBonus = computeInfrastructureBonus(world, grid, cityEntity);
             const float envModifier = computeEnvironmentModifier(
-                world, grid, cityEntity, recipe->requiredBuilding);
+                grid, city.location, recipe->requiredBuilding);
 
             // Power efficiency
             float powerEff = 1.0f;
@@ -591,8 +595,9 @@ void EconomySimulation::executeProduction(aoc::ecs::World& world,
 // Internal trade: redistribute surplus goods between a player's own cities
 // ============================================================================
 
-void EconomySimulation::processInternalTradeForAllPlayers(aoc::ecs::World& world,
+void EconomySimulation::processInternalTradeForAllPlayers(aoc::game::GameState& gameState,
                                                           const aoc::map::HexGrid& grid) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Collect unique player IDs from all cities
     aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
     if (cityPool == nullptr) {
@@ -629,7 +634,7 @@ void EconomySimulation::applyResourceDepletion(aoc::ecs::World& /*world*/,
 // Step 3: Report supply/demand to the market
 // ============================================================================
 
-void EconomySimulation::reportToMarket(aoc::ecs::World& world) {
+void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<CityStockpileComponent>* stockpilePool =
         world.getPool<CityStockpileComponent>();
     if (stockpilePool == nullptr) {
@@ -671,7 +676,7 @@ void EconomySimulation::reportToMarket(aoc::ecs::World& world) {
 // Step 4: Execute active trade routes
 // ============================================================================
 
-void EconomySimulation::executeTradeRoutes(aoc::ecs::World& world) {
+void EconomySimulation::executeTradeRoutes(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<TradeRouteComponent>* tradePool =
         world.getPool<TradeRouteComponent>();
     if (tradePool == nullptr) {
@@ -736,7 +741,7 @@ void EconomySimulation::executeTradeRoutes(aoc::ecs::World& world) {
 // Step 5: Monetary policy (inflation, fiscal)
 // ============================================================================
 
-void EconomySimulation::executeMonetaryPolicy(aoc::ecs::World& world) {
+void EconomySimulation::executeMonetaryPolicy(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
         world.getPool<MonetaryStateComponent>();
     if (monetaryPool == nullptr) {
@@ -833,7 +838,7 @@ void EconomySimulation::executeMonetaryPolicy(aoc::ecs::World& world) {
 // This is the core mechanism that distributes money metals through trade.
 // ============================================================================
 
-void EconomySimulation::settleTradeInCoins(aoc::ecs::World& world) {
+void EconomySimulation::settleTradeInCoins(aoc::game::GameState& gameState) {
     const aoc::ecs::ComponentPool<TradeRouteComponent>* tradePool =
         world.getPool<TradeRouteComponent>();
     if (tradePool == nullptr) {
@@ -966,7 +971,7 @@ void EconomySimulation::settleTradeInCoins(aoc::ecs::World& world) {
 // (via production recipes) feeds into the monetary system.
 // ============================================================================
 
-void EconomySimulation::updateCoinReservesFromStockpiles(aoc::ecs::World& world) {
+void EconomySimulation::updateCoinReservesFromStockpiles(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
         world.getPool<MonetaryStateComponent>();
     if (monetaryPool == nullptr) {
@@ -1050,7 +1055,7 @@ void EconomySimulation::updateCoinReservesFromStockpiles(aoc::ecs::World& world)
 // reserve currency check, and system duration tracking.
 // ============================================================================
 
-void EconomySimulation::tickMonetaryMechanics(aoc::ecs::World& world) {
+void EconomySimulation::tickMonetaryMechanics(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
         world.getPool<MonetaryStateComponent>();
     if (monetaryPool == nullptr) {
@@ -1103,7 +1108,7 @@ void EconomySimulation::tickMonetaryMechanics(aoc::ecs::World& world) {
 // Currency crises, bond payments, and currency war processing.
 // ============================================================================
 
-void EconomySimulation::processCrisisAndBonds(aoc::ecs::World& world) {
+void EconomySimulation::processCrisisAndBonds(aoc::game::GameState& gameState) {
     aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
         world.getPool<MonetaryStateComponent>();
     if (monetaryPool == nullptr) {
@@ -1143,8 +1148,9 @@ void EconomySimulation::processCrisisAndBonds(aoc::ecs::World& world) {
 // Economic zones, speculation, and sanctions.
 // ============================================================================
 
-void EconomySimulation::processEconomicZonesAndSpeculation(aoc::ecs::World& world,
+void EconomySimulation::processEconomicZonesAndSpeculation(aoc::game::GameState& gameState,
                                                             aoc::map::HexGrid& grid) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     // Process colonial economic zones
     processEconomicZones(world, grid, this->m_market, this->m_economicZones);
 

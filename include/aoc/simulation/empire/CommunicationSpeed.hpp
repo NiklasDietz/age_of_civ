@@ -51,7 +51,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -160,7 +160,7 @@ constexpr int32_t REGIONAL_CAPITAL_RADIUS = 5;
  * @param player  Player to check.
  * @return Current communication tier.
  */
-[[nodiscard]] CommTier determineCommTier(const aoc::ecs::World& world, PlayerId player);
+[[nodiscard]] CommTier determineCommTier(const aoc::game::GameState& gameState, PlayerId player);
 
 /**
  * @brief Compute communication distances for all of a player's cities.
@@ -172,7 +172,7 @@ constexpr int32_t REGIONAL_CAPITAL_RADIUS = 5;
  * @param grid    Hex grid.
  * @param player  Player to compute for.
  */
-void updateCommunicationDistances(aoc::ecs::World& world,
+void updateCommunicationDistances(aoc::game::GameState& gameState,
                                    const aoc::map::HexGrid& grid,
                                    PlayerId player);
 
@@ -201,6 +201,6 @@ struct CityCommModifiers {
  * @param world  ECS world.
  * @param grid   Hex grid.
  */
-void processCommunication(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
+void processCommunication(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid);
 
 } // namespace aoc::sim

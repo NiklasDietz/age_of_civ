@@ -30,7 +30,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -77,7 +77,7 @@ struct TileDisasterComponent {
  * @param globalTemp  Current global temperature (from climate system).
  * @return Number of disasters that occurred this turn.
  */
-int32_t processNaturalDisasters(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                                 int32_t turnNumber, float globalTemp);
 
 /**
@@ -85,6 +85,6 @@ int32_t processNaturalDisasters(aoc::ecs::World& world, aoc::map::HexGrid& grid,
  *
  * Removes expired disaster effects and restores tile yields.
  */
-void tickDisasterEffects(aoc::ecs::World& world, aoc::map::HexGrid& grid);
+void tickDisasterEffects(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
 
 } // namespace aoc::sim

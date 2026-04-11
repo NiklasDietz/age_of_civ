@@ -9,8 +9,8 @@
 #include "aoc/core/Random.hpp"
 #include "aoc/ui/MainMenu.hpp"
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::map {
@@ -38,7 +38,7 @@ public:
      * @param grid   Hex grid for terrain and pathfinding.
      * @param rng    Deterministic PRNG for random patrol movement.
      */
-    void executeMilitaryActions(aoc::ecs::World& world,
+    void executeMilitaryActions(aoc::game::GameState& gameState,
                                 aoc::map::HexGrid& grid,
                                 aoc::Random& rng);
 

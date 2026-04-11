@@ -42,7 +42,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -156,7 +156,7 @@ struct VictoryResult {
  * @param grid    Hex grid.
  * @param economy Economy simulation (for market/trade data).
  */
-void computeCSI(aoc::ecs::World& world, const aoc::map::HexGrid& grid,
+void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
                 const EconomySimulation& economy);
 
 /**
@@ -170,14 +170,14 @@ void computeCSI(aoc::ecs::World& world, const aoc::map::HexGrid& grid,
  *
  * @param world  ECS world.
  */
-void performEraEvaluation(aoc::ecs::World& world);
+void performEraEvaluation(aoc::game::GameState& gameState);
 
 /**
  * @brief Check for losing conditions (collapse) for all players.
  *
  * @param world  ECS world.
  */
-void checkCollapseConditions(aoc::ecs::World& world);
+void checkCollapseConditions(aoc::game::GameState& gameState);
 
 /**
  * @brief Check Global Integration Project progress.
@@ -187,7 +187,7 @@ void checkCollapseConditions(aoc::ecs::World& world);
  *
  * @param world  ECS world.
  */
-void updateIntegrationProject(aoc::ecs::World& world);
+void updateIntegrationProject(aoc::game::GameState& gameState);
 
 /**
  * @brief Master victory check. Replaces the old checkVictoryConditions.
@@ -197,7 +197,7 @@ void updateIntegrationProject(aoc::ecs::World& world);
  * @param maxTurns    Turn limit for score victory (default 500).
  * @return VictoryResult with type != None if a winner is determined.
  */
-[[nodiscard]] VictoryResult checkVictoryConditions(const aoc::ecs::World& world,
+[[nodiscard]] VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                                                     TurnNumber currentTurn,
                                                     TurnNumber maxTurns = 500);
 
@@ -207,10 +207,10 @@ void updateIntegrationProject(aoc::ecs::World& world);
  * Computes CSI, checks collapse, updates integration project,
  * and performs era evaluation if on an era boundary.
  */
-void updateVictoryTrackers(aoc::ecs::World& world, const aoc::map::HexGrid& grid,
+void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
                            const EconomySimulation& economy, TurnNumber currentTurn);
 
 /// Backwards-compatible overload (no economy param -- uses limited scoring).
-void updateVictoryTrackers(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
+void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid);
 
 } // namespace aoc::sim

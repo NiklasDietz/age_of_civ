@@ -3,6 +3,7 @@
  * @brief Naval unit embarkation, disembarkation, and water traversal logic.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/unit/Naval.hpp"
 #include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -16,10 +17,11 @@
 
 namespace aoc::sim {
 
-bool tryEmbark(aoc::ecs::World& world,
+bool tryEmbark(aoc::game::GameState& gameState,
                EntityId unitEntity,
                hex::AxialCoord coastTile,
                const aoc::map::HexGrid& grid) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (!world.isAlive(unitEntity)) {
         return false;
     }
@@ -60,10 +62,11 @@ bool tryEmbark(aoc::ecs::World& world,
     return true;
 }
 
-bool tryDisembark(aoc::ecs::World& world,
+bool tryDisembark(aoc::game::GameState& gameState,
                   EntityId unitEntity,
                   hex::AxialCoord landTile,
                   const aoc::map::HexGrid& grid) {
+    aoc::ecs::World& world = gameState.legacyWorld();
     if (!world.isAlive(unitEntity)) {
         return false;
     }

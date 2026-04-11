@@ -24,7 +24,7 @@
 
 #include <cstdint>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::sim {
 
@@ -77,7 +77,7 @@ struct GlobalCurrencyWarState {
  * @param global Global currency war state.
  * @return Ok if successful.
  */
-[[nodiscard]] ErrorCode devalueCurrency(aoc::ecs::World& world,
+[[nodiscard]] ErrorCode devalueCurrency(aoc::game::GameState& gameState,
                                         MonetaryStateComponent& state,
                                         CurrencyDevaluationComponent& deval,
                                         const GlobalCurrencyWarState& global);
@@ -92,6 +92,6 @@ struct GlobalCurrencyWarState {
  * @param world  ECS world.
  * @param global Global currency war state (will be mutated).
  */
-void processCurrencyWar(aoc::ecs::World& world, GlobalCurrencyWarState& global);
+void processCurrencyWar(aoc::game::GameState& gameState, GlobalCurrencyWarState& global);
 
 } // namespace aoc::sim
