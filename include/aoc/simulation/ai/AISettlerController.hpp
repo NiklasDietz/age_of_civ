@@ -4,6 +4,11 @@
  * @file AISettlerController.hpp
  * @brief AI subsystem for settler management: city founding, location scoring,
  *        and settler movement decisions.
+ *
+ * Tracking uses axial map coordinates as the stable identity key instead of
+ * unit pointer addresses.  This ensures the stuck-turn counter survives when
+ * a fresh settler is produced at the same tile as its predecessor, which is
+ * the normal case when a city keeps training settlers to expand.
  */
 
 #include "aoc/core/Types.hpp"
@@ -26,23 +31,25 @@ namespace aoc::sim::ai {
  * @brief Handles settler AI: evaluating city locations, moving settlers,
  *        and founding new cities when a suitable site is reached.
  *
- * Tracks per-settler movement history to detect settlers that are stuck
- * wandering without finding a suitable site, and forces city founding after
- * a configurable number of turns to prevent indefinite searching.
+ * Per-settler state is keyed on the settler's current map position rather than
+ * its pointer address.  A new settler produced at a city tile inherits the
+ * stuck-turn count from the previous settler at that position, so the 1-turn
+ * stuck threshold is reached on the very next turn and the city is founded
+ * adjacent to (or at) the current tile.
  */
 class AISettlerController {
 public:
     explicit AISettlerController(PlayerId player, aoc::ui::AIDifficulty difficulty);
 
     /**
-     * @brief Process all settler units for this player.
+     * @brief Process all settler units for this player for one turn.
      *
      * For each settler: on first activation the best city location within
-     * radius 15 is computed and stored as the target. The settler moves toward
-     * it each turn and founds a city upon arrival. If the target is taken by an
-     * enemy the search is repeated. Settlers stuck for 3+ consecutive turns
-     * without moving are force-founded at their current position if the tile is
-     * passable.
+     * radius 15 is computed and stored as the target.  The settler moves toward
+     * it each turn and founds a city upon arrival.  If the target is occupied
+     * by an enemy the search is repeated.  A settler stuck for 1 consecutive
+     * turn without moving is force-founded at its current position (or the best
+     * adjacent passable tile if the current tile is already a city).
      *
      * @param gameState  Game state holding all players, cities and units.
      * @param grid       Hex grid for terrain queries and pathfinding.
@@ -54,16 +61,13 @@ private:
     aoc::ui::AIDifficulty m_difficulty;
 
     /// Number of consecutive turns each settler has remained at the same
-    /// position without founding a city, keyed by unit pointer identity.
-    std::unordered_map<uintptr_t, int32_t> m_settlerStuckTurns;
+    /// position without founding a city, keyed by tile coordinate.
+    std::unordered_map<aoc::hex::AxialCoord, int32_t> m_settlerStuckTurns;
 
-    /// Last known position of each settler, used to detect no-movement turns.
-    std::unordered_map<uintptr_t, aoc::hex::AxialCoord> m_settlerLastPosition;
-
-    /// Pre-computed target city location for each settler.  Set on first
-    /// activation, cleared when the settler founds a city, becomes stuck, or
-    /// the target tile is occupied by an enemy.
-    std::unordered_map<uintptr_t, aoc::hex::AxialCoord> m_settlerTargets;
+    /// Pre-computed target city location for each settler, keyed by the
+    /// settler's tile coordinate when the target was assigned.  Cleared when
+    /// the settler founds a city, force-founds, or the target is stolen.
+    std::unordered_map<aoc::hex::AxialCoord, aoc::hex::AxialCoord> m_settlerTargets;
 };
 
 } // namespace aoc::sim::ai

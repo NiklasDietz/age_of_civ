@@ -194,7 +194,7 @@ inline constexpr std::array<UnitTypeDef, 60> UNIT_TYPE_DEFS = {{
     // CIVILIAN / SUPPORT / SPECIAL
     // ========================================================================
     {UnitTypeId{2},  "Scout",           UnitClass::Scout,    UnitEra::Ancient,       80, 10,  0, 0, 3,  30, TechId{},   UnitTypeId{},   0},
-    {UnitTypeId{3},  "Settler",         UnitClass::Settler,  UnitEra::Ancient,       80,  0,  0, 0, 2,  80, TechId{},   UnitTypeId{},   0},
+    {UnitTypeId{3},  "Settler",         UnitClass::Settler,  UnitEra::Ancient,       80,  0,  0, 0, 3,  80, TechId{},   UnitTypeId{},   0},
     {UnitTypeId{5},  "Builder",         UnitClass::Civilian, UnitEra::Ancient,       80,  0,  0, 0, 2,  50, TechId{},   UnitTypeId{},   0},
     {UnitTypeId{22}, "Battering Ram",   UnitClass::Artillery,UnitEra::Ancient,       60, 10,  0, 0, 2,  65, TechId{},   UnitTypeId{23}, 40},
     {UnitTypeId{28}, "Medic",           UnitClass::Civilian, UnitEra::Medieval,      60,  0,  0, 0, 2,  80, TechId{5},  UnitTypeId{},   0},

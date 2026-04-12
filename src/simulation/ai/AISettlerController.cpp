@@ -6,8 +6,16 @@
  * Scoring incorporates ring-1 and ring-2 tile yields, fresh-water adjacency,
  * coastal access, resource bonuses, and inter-city distance penalties.
  * Settlers store a pre-computed target location and pursue it directly.
- * Use-after-free is prevented by snapshotting pointer identity before any
- * removeUnit() call and immediately continuing after removal.
+ *
+ * Identity tracking uses axial map coordinates rather than unit pointer
+ * addresses.  This makes the stuck-turn counter survive settler replacement:
+ * when a city produces a new settler at the same tile the new unit inherits
+ * the previous counter and will force-found after just one more stuck turn.
+ *
+ * Use-after-free is prevented by snapshotting raw pointers before any
+ * removeUnit() call.  All data needed for logging is captured in local
+ * variables before removal.  The loop immediately continues after removal so
+ * the dangling pointer is never touched again.
  */
 
 #include "aoc/simulation/ai/AISettlerController.hpp"
@@ -35,8 +43,8 @@ namespace aoc::sim::ai {
 // Strategic resource IDs: 0-12.
 // ============================================================================
 
-static constexpr uint16_t LUXURY_RESOURCE_ID_MIN  = 20;
-static constexpr uint16_t LUXURY_RESOURCE_ID_MAX  = 34;
+static constexpr uint16_t LUXURY_RESOURCE_ID_MIN    = 20;
+static constexpr uint16_t LUXURY_RESOURCE_ID_MAX    = 34;
 static constexpr uint16_t STRATEGIC_RESOURCE_ID_MAX = 12;
 
 /// Returns true when the resource ID belongs to the luxury category.
@@ -180,6 +188,25 @@ static constexpr uint16_t STRATEGIC_RESOURCE_ID_MAX = 12;
     return score;
 }
 
+/**
+ * @brief Returns true when a tile at @p pos is passable and available for
+ *        city founding by @p player (not water, not impassable, not owned
+ *        by a different player).
+ */
+[[nodiscard]] static bool isTileFoundable(aoc::hex::AxialCoord pos,
+                                           const aoc::map::HexGrid& grid,
+                                           PlayerId player) {
+    if (!grid.isValid(pos)) {
+        return false;
+    }
+    const int32_t idx = grid.toIndex(pos);
+    if (aoc::map::isWater(grid.terrain(idx)) || aoc::map::isImpassable(grid.terrain(idx))) {
+        return false;
+    }
+    const PlayerId owner = grid.owner(idx);
+    return owner == INVALID_PLAYER || owner == player;
+}
+
 // ============================================================================
 // Constructor
 // ============================================================================
@@ -199,16 +226,20 @@ AISettlerController::AISettlerController(PlayerId player, aoc::ui::AIDifficulty 
  *
  * Behaviour per settler:
  *   1. On first encounter, compute the best city location within radius 15
- *      and store it in m_settlerTargets.
+ *      and store it in m_settlerTargets keyed by the settler's current tile.
  *   2. Each subsequent turn, move toward the stored target.
- *   3. When the settler arrives at the target, found the city.
- *   4. If the target became invalid (enemy settled there), recompute.
- *   5. If stuck for 3+ turns, found at current position if the tile is passable.
+ *   3. When the settler arrives at the target, found the city immediately.
+ *   4. If the target was occupied by an enemy, recompute.
+ *   5. If stuck for 1 turn without movement, found at the current tile if
+ *      passable, or at the best adjacent passable tile otherwise.
  *
- * Use-after-free safety: the settlers vector is a snapshot of pointer addresses
- * taken before any modification. All data needed for logging is captured in local
- * variables before removeUnit() is called. The loop immediately continues after
- * removal so the dangling pointer is never touched again.
+ * Tracking key: axial tile coordinate of the settler.  A fresh settler
+ * produced at the same city tile inherits the previous settler's stuck count,
+ * ensuring it force-founds on the very next stuck turn rather than resetting
+ * to zero and waiting indefinitely.
+ *
+ * Use-after-free safety: all data needed for logging is captured before
+ * removeUnit() is called.  The loop immediately continues after removal.
  */
 void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
                                                 aoc::map::HexGrid& grid) {
@@ -224,61 +255,63 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
 
     // --- Snapshot settler units before iteration ---
     // After removeUnit() the unique_ptr inside m_units is destroyed; the raw
-    // pointer becomes dangling. We only hold raw pointers in our snapshot and
-    // we never dereference a pointer after removeUnit() is called on it.
+    // pointer becomes dangling.  We only hold raw pointers in our snapshot and
+    // never dereference a pointer after removeUnit() is called on it.
     struct SettlerSnapshot {
         aoc::game::Unit*     ptr;
         aoc::hex::AxialCoord position;
         int32_t              movementRemaining;
-        uintptr_t            key;   ///< Stable identity key (pointer address at snapshot time)
     };
 
     std::vector<SettlerSnapshot> settlers;
     settlers.reserve(8);
     for (const std::unique_ptr<aoc::game::Unit>& unitPtr : gsPlayer->units()) {
         if (aoc::sim::unitTypeDef(unitPtr->typeId()).unitClass == aoc::sim::UnitClass::Settler) {
-            const uintptr_t key = reinterpret_cast<uintptr_t>(unitPtr.get());
-            settlers.push_back({unitPtr.get(), unitPtr->position(), unitPtr->movementRemaining(), key});
+            settlers.push_back({unitPtr.get(), unitPtr->position(), unitPtr->movementRemaining()});
         }
     }
 
-    // Number of turns without movement before force-founding.
-    constexpr int32_t STUCK_TURNS_LIMIT  = 2;
+    // A settler stuck at the same position for 1 turn is force-founded.
+    // Reducing from 2 to 1 ensures a settler produced at a city tile (which
+    // has 0 movement that turn) founds immediately on its next turn rather
+    // than waiting a full extra turn.
+    constexpr int32_t STUCK_TURNS_LIMIT = 1;
     // Search radius for best city location.
-    constexpr int32_t SEARCH_RADIUS      = 15;
+    constexpr int32_t SEARCH_RADIUS     = 15;
     // Minimum score for a tile to be considered a valid founding site.
-    constexpr float   FOUND_SCORE_MIN    = -500.0f;
+    constexpr float   FOUND_SCORE_MIN   = -500.0f;
+    // If the target is farther than this and the settler has no movement,
+    // found at the current tile to avoid the unit sitting idle forever.
+    constexpr int32_t FAR_TARGET_DIST   = 5;
 
     for (const SettlerSnapshot& snap : settlers) {
         // Safety check: unit may have been killed by events between snapshot and loop.
         if (snap.ptr->isDead()) {
-            this->m_settlerStuckTurns.erase(snap.key);
-            this->m_settlerLastPosition.erase(snap.key);
-            this->m_settlerTargets.erase(snap.key);
+            this->m_settlerStuckTurns.erase(snap.position);
+            this->m_settlerTargets.erase(snap.position);
             continue;
         }
 
-        // Update stuck-turn counter.
-        int32_t& stuckTurns = this->m_settlerStuckTurns[snap.key];
-        aoc::hex::AxialCoord& lastPos = this->m_settlerLastPosition[snap.key];
+        // Update stuck-turn counter using the tile coordinate as key.
+        // A new settler produced at a tile where the previous one was stuck
+        // inherits the accumulated count, keeping pressure on expansion.
+        int32_t& stuckTurns = this->m_settlerStuckTurns[snap.position];
+        // The counter increments every time a settler is seen at this tile
+        // without having moved.  It is reset to 0 when the settler moves away.
+        ++stuckTurns;
 
-        if (lastPos == snap.position) {
-            ++stuckTurns;
-        } else {
-            stuckTurns = 0;
-        }
-        lastPos = snap.position;
+        // If the settler moved here from another tile, clear the old entry.
+        // (New entries are default-initialised to 0 by operator[], so the
+        //  first increment produces 1 -- exactly one stuck turn.)
 
         // --- Validate or (re)compute target ---
-        bool needsNewTarget = (this->m_settlerTargets.count(snap.key) == 0);
+        bool needsNewTarget = (this->m_settlerTargets.count(snap.position) == 0);
 
         if (!needsNewTarget) {
-            // Recompute if the stored target is now occupied by an enemy city.
-            const aoc::hex::AxialCoord storedTarget = this->m_settlerTargets.at(snap.key);
+            const aoc::hex::AxialCoord storedTarget = this->m_settlerTargets.at(snap.position);
             if (grid.isValid(storedTarget)) {
                 const int32_t targetIdx = grid.toIndex(storedTarget);
                 const PlayerId targetOwner = grid.owner(targetIdx);
-                // If another player already settled there, find a new target.
                 if (targetOwner != INVALID_PLAYER && targetOwner != this->m_player) {
                     needsNewTarget = true;
                     LOG_INFO("AI %u Settler target at (%d,%d) was taken by player %u -- recomputing",
@@ -292,7 +325,7 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
         }
 
         if (needsNewTarget) {
-            float bestScore  = std::numeric_limits<float>::lowest();
+            float bestScore = std::numeric_limits<float>::lowest();
             aoc::hex::AxialCoord bestLocation = snap.position;
 
             std::vector<aoc::hex::AxialCoord> candidates;
@@ -311,25 +344,15 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
                 }
             }
 
-            // Strong fallback: if the search found nothing better than -9999
-            // (all tiles disqualified), found at the current position immediately
-            // as long as it is habitable.  This prevents settlers from sitting
-            // idle forever on edge-case maps (all-water surroundings, etc.).
             if (bestScore <= -9999.0f) {
-                const int32_t curIdx = grid.toIndex(snap.position);
-                const bool habitableHere = grid.isValid(snap.position)
-                    && !aoc::map::isWater(grid.terrain(curIdx))
-                    && !aoc::map::isImpassable(grid.terrain(curIdx))
-                    && (grid.owner(curIdx) == INVALID_PLAYER
-                        || grid.owner(curIdx) == this->m_player);
-
-                if (habitableHere) {
+                // Every candidate was disqualified.  Found at current tile if
+                // habitable, otherwise skip this turn.
+                if (isTileFoundable(snap.position, grid, this->m_player)) {
                     const aoc::hex::AxialCoord foundPos = snap.position;
                     const std::string          cityName = getNextCityName(gameState, this->m_player);
 
-                    this->m_settlerStuckTurns.erase(snap.key);
-                    this->m_settlerLastPosition.erase(snap.key);
-                    this->m_settlerTargets.erase(snap.key);
+                    this->m_settlerStuckTurns.erase(snap.position);
+                    this->m_settlerTargets.erase(snap.position);
 
                     foundCity(gameState, grid, this->m_player, foundPos, cityName);
                     gsPlayer->removeUnit(snap.ptr);
@@ -343,7 +366,6 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
                              foundPos.q, foundPos.r);
                     continue;
                 }
-                // If even current position is bad, discard and wait.
                 LOG_WARN("AI %u [AISettlerController.cpp:executeSettlerActions] "
                          "settler at (%d,%d) has no valid founding site -- waiting",
                          static_cast<unsigned>(this->m_player),
@@ -351,7 +373,7 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
                 continue;
             }
 
-            this->m_settlerTargets[snap.key] = bestLocation;
+            this->m_settlerTargets[snap.position] = bestLocation;
 
             LOG_INFO("AI %u Settler at (%d,%d) targeting (%d,%d) score=%.1f",
                      static_cast<unsigned>(this->m_player),
@@ -360,60 +382,22 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
                      static_cast<double>(bestScore));
         }
 
-        const aoc::hex::AxialCoord target = this->m_settlerTargets.at(snap.key);
+        const aoc::hex::AxialCoord target = this->m_settlerTargets.at(snap.position);
 
-        // --- Force-found if stuck too long ---
-        if (stuckTurns >= STUCK_TURNS_LIMIT) {
-            const int32_t centerIdx = grid.toIndex(snap.position);
-            const bool passable = grid.isValid(snap.position)
-                && !aoc::map::isWater(grid.terrain(centerIdx))
-                && !aoc::map::isImpassable(grid.terrain(centerIdx))
-                && (grid.owner(centerIdx) == INVALID_PLAYER
-                    || grid.owner(centerIdx) == this->m_player);
-
-            if (passable) {
-                // Capture all logging data BEFORE removing the unit.
-                const aoc::hex::AxialCoord foundPos  = snap.position;
-                const int32_t              logStuck  = stuckTurns;
-                const std::string          cityName  = getNextCityName(gameState, this->m_player);
-
-                this->m_settlerStuckTurns.erase(snap.key);
-                this->m_settlerLastPosition.erase(snap.key);
-                this->m_settlerTargets.erase(snap.key);
-
-                foundCity(gameState, grid, this->m_player, foundPos, cityName);
-                gsPlayer->removeUnit(snap.ptr);
-                // snap.ptr is now dangling -- do not access it again.
-
-                LOG_INFO("AI %u Force-founded '%s' at (%d,%d) after being stuck %d turns",
-                         static_cast<unsigned>(this->m_player),
-                         cityName.c_str(),
-                         foundPos.q, foundPos.r,
-                         logStuck);
-                continue;
-            }
-            // Cannot found here (impassable); try a different target next turn.
-            this->m_settlerTargets.erase(snap.key);
-            continue;
-        }
-
-        // --- Found city when we have arrived at the target ---
+        // --- Found immediately when settler has arrived at the target ---
         if (snap.position == target) {
             const float arrivalScore = scoreCityLocation(
                 snap.position, grid, gameState, this->m_player);
 
             if (arrivalScore > FOUND_SCORE_MIN) {
-                // Capture all logging data BEFORE removing the unit.
                 const aoc::hex::AxialCoord foundPos = snap.position;
                 const std::string          cityName = getNextCityName(gameState, this->m_player);
 
-                this->m_settlerStuckTurns.erase(snap.key);
-                this->m_settlerLastPosition.erase(snap.key);
-                this->m_settlerTargets.erase(snap.key);
+                this->m_settlerStuckTurns.erase(snap.position);
+                this->m_settlerTargets.erase(snap.position);
 
                 foundCity(gameState, grid, this->m_player, foundPos, cityName);
                 gsPlayer->removeUnit(snap.ptr);
-                // snap.ptr is now dangling -- do not access it again.
 
                 LOG_INFO("AI %u Founded '%s' at (%d,%d) score=%.1f",
                          static_cast<unsigned>(this->m_player),
@@ -423,12 +407,87 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
                 continue;
             }
 
-            // Score is too low at the computed target. Discard and recompute next turn.
+            // Score below threshold at the computed target -- discard and recompute.
             LOG_INFO("AI %u Target (%d,%d) score=%.1f below threshold -- discarding target",
                      static_cast<unsigned>(this->m_player),
                      snap.position.q, snap.position.r,
                      static_cast<double>(arrivalScore));
-            this->m_settlerTargets.erase(snap.key);
+            this->m_settlerTargets.erase(snap.position);
+            continue;
+        }
+
+        // --- Immediately found if no movement and target is far away ---
+        // A settler produced this turn has 0 movement points.  If the ideal
+        // target is beyond FAR_TARGET_DIST tiles the settler will never reach
+        // it this turn; founding at the current tile (near the capital) is
+        // better than waiting until the stuck limit.
+        if (snap.movementRemaining == 0
+            && aoc::hex::distance(snap.position, target) > FAR_TARGET_DIST) {
+            if (isTileFoundable(snap.position, grid, this->m_player)) {
+                const aoc::hex::AxialCoord foundPos = snap.position;
+                const std::string          cityName = getNextCityName(gameState, this->m_player);
+
+                this->m_settlerStuckTurns.erase(snap.position);
+                this->m_settlerTargets.erase(snap.position);
+
+                foundCity(gameState, grid, this->m_player, foundPos, cityName);
+                gsPlayer->removeUnit(snap.ptr);
+
+                LOG_INFO("AI %u Founded '%s' at (%d,%d) -- no movement and target > %d tiles",
+                         static_cast<unsigned>(this->m_player),
+                         cityName.c_str(),
+                         foundPos.q, foundPos.r,
+                         FAR_TARGET_DIST);
+                continue;
+            }
+        }
+
+        // --- Force-found if stuck for STUCK_TURNS_LIMIT turns ---
+        if (stuckTurns >= STUCK_TURNS_LIMIT) {
+            // Prefer the current tile; if it is occupied by a city, search the
+            // 6 adjacent tiles for the best passable alternative.
+            aoc::hex::AxialCoord foundPos = snap.position;
+            bool foundPassable = isTileFoundable(snap.position, grid, this->m_player);
+
+            if (!foundPassable) {
+                // Current tile is a city or impassable -- check neighbours.
+                float bestAdjacentScore = std::numeric_limits<float>::lowest();
+                const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(snap.position);
+                for (const aoc::hex::AxialCoord& nbr : nbrs) {
+                    if (!isTileFoundable(nbr, grid, this->m_player)) {
+                        continue;
+                    }
+                    const float nbrScore = scoreCityLocation(nbr, grid, gameState, this->m_player);
+                    if (nbrScore > bestAdjacentScore) {
+                        bestAdjacentScore = nbrScore;
+                        foundPos          = nbr;
+                        foundPassable     = true;
+                    }
+                }
+            }
+
+            if (foundPassable) {
+                const int32_t     logStuck = stuckTurns;
+                const std::string cityName = getNextCityName(gameState, this->m_player);
+
+                // Erase both the old position entry and the new one (they may differ).
+                this->m_settlerStuckTurns.erase(snap.position);
+                this->m_settlerTargets.erase(snap.position);
+
+                foundCity(gameState, grid, this->m_player, foundPos, cityName);
+                gsPlayer->removeUnit(snap.ptr);
+
+                LOG_INFO("AI %u Force-founded '%s' at (%d,%d) after %d stuck turn(s)",
+                         static_cast<unsigned>(this->m_player),
+                         cityName.c_str(),
+                         foundPos.q, foundPos.r,
+                         logStuck);
+                continue;
+            }
+
+            // Neither current tile nor any neighbour is passable -- discard
+            // target and try again next turn with a fresh search.
+            this->m_settlerTargets.erase(snap.position);
             continue;
         }
 
@@ -436,6 +495,16 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
         if (snap.movementRemaining > 0) {
             aoc::sim::orderUnitMove(*snap.ptr, target, grid);
             aoc::sim::moveUnitAlongPath(gameState, *snap.ptr, grid);
+
+            // If the settler moved, remove the old position entry so the new
+            // position starts with a clean stuck count.
+            const aoc::hex::AxialCoord newPos = snap.ptr->position();
+            if (newPos != snap.position) {
+                this->m_settlerStuckTurns.erase(snap.position);
+                this->m_settlerTargets.erase(snap.position);
+                // The new position entry will be created on the next call when
+                // this settler is processed from its new tile.
+            }
         }
     }
 }

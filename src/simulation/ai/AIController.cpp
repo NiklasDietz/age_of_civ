@@ -239,9 +239,15 @@ static float scoreSettler(const LeaderBehavior& behavior,
     };
     const float treasuryScore = std::max(0.35f, treasuryOk.score(treasury));
 
-    // Single-city multiplier: when the player has only one city expansion is
-    // the highest-priority action -- double the base score.
-    const float singleCityBoost = (ownedCities <= 1) ? 2.0f : 1.0f;
+    // Continuous expansion multiplier: scales from 4.0x at 0 cities down to
+    // 1.0x at targetCities.  This keeps settler production as the dominant
+    // priority until the empire reaches its target size, instead of the old
+    // binary singleCityBoost that dropped to 1.0x at 2 cities.
+    // Formula: max(1.0, (targetCities - ownedCities) / 2.0 + 1.0)
+    // Examples (target=8): 0 cities->5.0, 1->4.5, 2->4.0, 4->3.0, 6->2.0, 8->1.0
+    const float expansionBoost = std::max(
+        1.0f,
+        (static_cast<float>(targetCities - ownedCities) / 2.0f) + 1.0f);
 
     constexpr float BASE_WEIGHT = 0.95f;
 
@@ -252,7 +258,7 @@ static float scoreSettler(const LeaderBehavior& behavior,
            * noSettlerScore
            * safetyScore
            * treasuryScore
-           * singleCityBoost;
+           * expansionBoost;
 }
 
 // -------------------------------------------------------------------------
