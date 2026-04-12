@@ -94,6 +94,7 @@ add_library(aoc_lib STATIC
     src/simulation/ai/LeaderPersonality.cpp
     src/simulation/ai/BehaviorTree.cpp
     src/simulation/ai/UtilityScoring.cpp
+    src/simulation/ai/UtilityAI.cpp
     src/simulation/resource/ResourceTypes.cpp
     src/simulation/resource/ProductionChain.cpp
     src/simulation/resource/EconomySimulation.cpp

@@ -31,6 +31,7 @@
 #include "aoc/simulation/ai/AIEconomicStrategy.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/ai/UtilityScoring.hpp"
+#include "aoc/simulation/ai/UtilityAI.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/map/HexGrid.hpp"
@@ -148,15 +149,223 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
 }
 
 // ============================================================================
-// City actions: priority-based production queue management
+// City actions: utility-scored production queue management
 //
-// Priority order per city:
-//   1. Settler if < N cities and pop > threshold and no settler already
-//   2. Builder if unimproved tiles and no builders
-//   3. Military unit if total military < cities * M + 2
-//   4. District or building -- pick most valuable
-//   5. Default: best military unit
+// Each city with an empty production queue scores ALL buildable options
+// through UtilityAI considerations and picks the highest-scoring one.
+// Scores are products of per-consideration [0,1] values, so a consideration
+// of 0 fully disqualifies an option. Personality weights act as multipliers
+// on category base scores. A 10% randomization band prevents every AI from
+// picking identically when scores are near-equal.
 // ============================================================================
+
+// -------------------------------------------------------------------------
+// Internal: scored production candidate
+// -------------------------------------------------------------------------
+
+struct ProductionCandidate {
+    ProductionQueueItem item;
+    float               score = 0.0f;
+};
+
+// -------------------------------------------------------------------------
+// Internal: count unimproved tiles owned by the player near a city
+// -------------------------------------------------------------------------
+
+static int32_t countUnimprovedOwnedTiles(const aoc::map::HexGrid& grid,
+                                          PlayerId player,
+                                          const aoc::hex::AxialCoord& cityLoc) {
+    int32_t unimproved = 0;
+    const std::array<aoc::hex::AxialCoord, 6> neighbors = aoc::hex::neighbors(cityLoc);
+    for (const aoc::hex::AxialCoord& nbr : neighbors) {
+        if (!grid.isValid(nbr)) { continue; }
+        const int32_t idx = grid.toIndex(nbr);
+        if (grid.owner(idx) == player &&
+            grid.improvement(idx) == aoc::map::ImprovementType::None &&
+            grid.movementCost(idx) > 0) {
+            ++unimproved;
+        }
+    }
+    return unimproved;
+}
+
+// -------------------------------------------------------------------------
+// Internal: check whether any enemy unit is within a given hex radius
+// -------------------------------------------------------------------------
+
+static bool enemyWithinRadius(const std::vector<aoc::hex::AxialCoord>& enemyPositions,
+                               const aoc::hex::AxialCoord& origin,
+                               int32_t radius) {
+    for (const aoc::hex::AxialCoord& pos : enemyPositions) {
+        if (aoc::hex::distance(pos, origin) <= radius) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// -------------------------------------------------------------------------
+// Internal: score a settler candidate for this city using utility curves
+// -------------------------------------------------------------------------
+
+static float scoreSettler(const LeaderBehavior& behavior,
+                           int32_t ownedCities,
+                           int32_t targetCities,
+                           int32_t cityPop,
+                           int32_t settlerCount,
+                           int32_t militaryUnits,
+                           float   treasury) {
+    // expansion_need: desire falls from 1.0 (no cities) to 0.0 (at target)
+    const aoc::sim::ai::UtilityConsideration expansionNeed{
+        0.0f, static_cast<float>(targetCities),
+        aoc::sim::ai::UtilityCurve::inverse()
+    };
+    // pop_ready: prefer pop >= 2 but allow pop 1 at reduced score
+    const float popScore = (cityPop >= 2) ? 1.0f : 0.4f;
+
+    // no_settler_exists: strongly avoid a second queued settler
+    const float noSettlerScore = (settlerCount == 0) ? 1.0f : 0.1f;
+
+    // safety: soft penalty when undefended -- floor at 0.6 so lack of military
+    // never fully blocks expansion.  A single-city civ with no units must still
+    // expand or it falls too far behind.
+    const float safetyScore = (militaryUnits >= ownedCities) ? 1.0f : 0.6f;
+
+    // treasury_ok: clamp the minimum to 0.35 so an empty treasury does not
+    // zero-out the entire settler score.  A poor empire still needs cities.
+    const aoc::sim::ai::UtilityConsideration treasuryOk{
+        0.0f, 200.0f,
+        aoc::sim::ai::UtilityCurve::linear(1.0f, 0.0f)
+    };
+    const float treasuryScore = std::max(0.35f, treasuryOk.score(treasury));
+
+    // Single-city multiplier: when the player has only one city expansion is
+    // the highest-priority action -- double the base score.
+    const float singleCityBoost = (ownedCities <= 1) ? 2.0f : 1.0f;
+
+    constexpr float BASE_WEIGHT = 0.95f;
+
+    return BASE_WEIGHT
+           * behavior.prodSettlers
+           * expansionNeed.score(static_cast<float>(ownedCities))
+           * popScore
+           * noSettlerScore
+           * safetyScore
+           * treasuryScore
+           * singleCityBoost;
+}
+
+// -------------------------------------------------------------------------
+// Internal: score a military unit candidate using utility curves
+// -------------------------------------------------------------------------
+
+static float scoreMilitary(const LeaderBehavior& behavior,
+                            int32_t militaryUnits,
+                            int32_t ownedCities,
+                            bool    enemyNearby,
+                            float   treasury) {
+    const int32_t desiredPerCity = 3;
+    const int32_t desiredTotal   = ownedCities * desiredPerCity;
+
+    // military_need: inverse -- want more when below 3 per city
+    const aoc::sim::ai::UtilityConsideration militaryNeed{
+        0.0f, static_cast<float>(std::max(1, desiredTotal)),
+        aoc::sim::ai::UtilityCurve::inverse()
+    };
+
+    // threat_exists: doubled score when an enemy is nearby
+    const float threatScore = enemyNearby ? 1.0f : 0.5f;
+
+    // can_afford: soft gold check -- very low treasury is a blocker
+    const aoc::sim::ai::UtilityConsideration canAfford{
+        0.0f, 50.0f,
+        aoc::sim::ai::UtilityCurve::logistic(8.0f, 0.5f)
+    };
+
+    // zero_military_emergency: double score when completely defenseless
+    const float emergencyMultiplier = (militaryUnits == 0) ? 2.0f : 1.0f;
+
+    constexpr float BASE_WEIGHT = 0.8f;
+
+    return BASE_WEIGHT
+           * behavior.prodMilitary
+           * behavior.militaryAggression
+           * militaryNeed.score(static_cast<float>(militaryUnits))
+           * threatScore
+           * canAfford.score(treasury)
+           * emergencyMultiplier;
+}
+
+// -------------------------------------------------------------------------
+// Internal: score a builder candidate using utility curves
+// -------------------------------------------------------------------------
+
+static float scoreBuilder(const LeaderBehavior& behavior,
+                           int32_t unimprovedTiles,
+                           int32_t workedTiles,
+                           int32_t builderCount) {
+    // tiles_need: fraction of worked tiles that are unimproved
+    const aoc::sim::ai::UtilityConsideration tilesNeed{
+        0.0f, static_cast<float>(std::max(1, workedTiles)),
+        aoc::sim::ai::UtilityCurve::linear(1.0f, 0.0f)
+    };
+
+    // no_builder: strongly prefer having at least one builder
+    const float noBuilderScore = (builderCount == 0) ? 1.0f : 0.2f;
+
+    constexpr float BASE_WEIGHT = 0.6f;
+
+    return BASE_WEIGHT
+           * behavior.prodBuilders
+           * tilesNeed.score(static_cast<float>(unimprovedTiles))
+           * noBuilderScore;
+}
+
+// -------------------------------------------------------------------------
+// Internal: score a trader candidate using utility curves
+// -------------------------------------------------------------------------
+
+static float scoreTrader(const LeaderBehavior& behavior,
+                          bool    hasForeignTrade,
+                          int32_t traderCount,
+                          int32_t cityCount) {
+    // has_trade_civic: hard prerequisite -- score is zero without it
+    if (!hasForeignTrade) { return 0.0f; }
+
+    // trade_need: want traders up to min(cityCount, 3)
+    const int32_t maxTraders = std::min(cityCount, 3);
+    const float tradeScore = (traderCount < maxTraders) ? 0.8f : 0.1f;
+
+    constexpr float BASE_WEIGHT = 0.4f;
+
+    return BASE_WEIGHT * behavior.economicFocus * tradeScore;
+}
+
+// -------------------------------------------------------------------------
+// Internal: score a building candidate using the existing utility scorer
+// with the UtilityAI base-weight pattern applied
+// -------------------------------------------------------------------------
+
+static float scoreBuildingCandidate(const LeaderBehavior& behavior,
+                                     BuildingId buildingId,
+                                     const aoc::sim::AIContext& aiCtx) {
+    // Delegate to the specialized building scorer in UtilityScoring, then
+    // apply the building production weight and scale to a [0,1]-ish range.
+    const float rawScore = scoreBuildingForLeader(behavior, buildingId, aiCtx);
+
+    // Raw scores are in the 40-200 range. Normalize against a 200-point ceiling
+    // so the building score participates in the same 0-1 product as other candidates.
+    constexpr float BUILDING_SCORE_MAX = 200.0f;
+    constexpr float BASE_WEIGHT        = 0.5f;
+
+    return BASE_WEIGHT
+           * behavior.prodBuildings
+           * aoc::sim::ai::normalizeValue(rawScore, 0.0f, BUILDING_SCORE_MAX);
+}
+
+// -------------------------------------------------------------------------
+// Main city action function
+// -------------------------------------------------------------------------
 
 void AIController::executeCityActions(aoc::game::GameState& gameState,
                                        aoc::map::HexGrid& grid) {
@@ -168,58 +377,26 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
     const UnitCounts unitCounts = countPlayerUnits(gameState, this->m_player);
     const int32_t ownedCityCount = gsPlayer->cityCount();
 
-    // Check if any owned tile near cities lacks improvements
-    bool needsBuilder = false;
-    if (unitCounts.builders == 0) {
-        for (const std::unique_ptr<aoc::game::City>& cityPtr : gsPlayer->cities()) {
-            const std::array<aoc::hex::AxialCoord, 6> cityNeighbors =
-                aoc::hex::neighbors(cityPtr->location());
-            for (const aoc::hex::AxialCoord& nbr : cityNeighbors) {
-                if (!grid.isValid(nbr)) { continue; }
-                const int32_t idx = grid.toIndex(nbr);
-                if (grid.owner(idx) == this->m_player &&
-                    grid.improvement(idx) == aoc::map::ImprovementType::None &&
-                    grid.movementCost(idx) > 0) {
-                    needsBuilder = true;
-                    break;
-                }
-            }
-            if (needsBuilder) { break; }
-        }
-    }
-
-    // Get leader personality for this AI's civilization
     const aoc::sim::CivId myCivId = gsPlayer->civId();
     const LeaderPersonalityDef& personality = leaderPersonality(myCivId);
     const AIScaledTargets targets = computeScaledTargets(personality.behavior);
 
-    const int32_t desiredMilitary = ownedCityCount * targets.desiredMilitaryPerCity + 2;
-    const bool needsMilitary = unitCounts.military < desiredMilitary;
-    const bool needsSettler = ownedCityCount < targets.maxCities && unitCounts.settlers == 0;
+    // Traders require Foreign Trade civic (CivicId{2})
+    const bool hasForeignTrade = gsPlayer->civics().hasCompleted(CivicId{2});
+    const bool playerHasCoins  = gsPlayer->monetary().totalCoinCount() > 0;
 
-    const UnitTypeId bestMilitaryId = bestAvailableMilitaryUnit(gameState, this->m_player);
+    const UnitTypeId bestMilitaryId  = bestAvailableMilitaryUnit(gameState, this->m_player);
     const UnitTypeDef& bestMilitaryDef = unitTypeDef(bestMilitaryId);
 
-    bool settlerEnqueued = false;
-    bool builderEnqueued = false;
-    int32_t militaryProducers = 0;
-    const int32_t maxMilitaryProducers = std::max(0, ownedCityCount / 2 - 1);
-    int32_t traderProducers = 0;
-    // Traders require Foreign Trade civic (CivicId{2}) -- one of the first civics
-    const bool hasForeignTrade = gsPlayer->civics().hasCompleted(CivicId{2});
-    const bool needsTrader = hasForeignTrade
-        && unitCounts.traders < std::min(ownedCityCount, 3);
+    const float treasuryFloat = static_cast<float>(gsPlayer->treasury());
 
-    const bool playerHasCoins = gsPlayer->monetary().totalCoinCount() > 0;
-
-    // Collect enemy military positions for emergency threat check
-    struct EnemyUnitPos { aoc::hex::AxialCoord position; };
-    std::vector<EnemyUnitPos> enemyMilitaryPositions;
+    // Pre-collect enemy military positions once so per-city threat checks are O(E) not O(C*E)
+    std::vector<aoc::hex::AxialCoord> enemyMilitaryPositions;
     for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
         if (other->id() == this->m_player) { continue; }
         for (const std::unique_ptr<aoc::game::Unit>& u : other->units()) {
             if (isMilitary(unitTypeDef(u->typeId()).unitClass)) {
-                enemyMilitaryPositions.push_back({u->position()});
+                enemyMilitaryPositions.push_back(u->position());
             }
         }
     }
@@ -244,165 +421,155 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             }
         }
 
-        ProductionQueueItem item{};
+        // ----------------------------------------------------------------
+        // Gather city-local context
+        // ----------------------------------------------------------------
 
-        // EMERGENCY: Check for enemy military units within 5 hexes of this city.
-        bool emergencyThreat = false;
+        const aoc::sim::CityDistrictsComponent& districts = city.districts();
+        const bool enemyNearby = enemyWithinRadius(enemyMilitaryPositions, city.location(), 10);
+
+        // Count unimproved tiles in the city's first ring for builder scoring
+        const int32_t unimprovedTiles =
+            countUnimprovedOwnedTiles(grid, this->m_player, city.location());
+        // workedTiles approximation: 6 ring-1 tiles are the normal work radius
+        constexpr int32_t RING1_TILES = 6;
+
+        // ----------------------------------------------------------------
+        // Build the candidate list and score each option
+        // ----------------------------------------------------------------
+
+        std::vector<ProductionCandidate> candidates;
+        candidates.reserve(32);
+
+        // --- Settler ---
+        if (ownedCityCount < targets.maxCities) {
+            const float settlerScore = scoreSettler(
+                personality.behavior,
+                ownedCityCount,
+                targets.maxCities,
+                city.population(),
+                unitCounts.settlers,
+                unitCounts.military,
+                treasuryFloat
+            );
+            if (settlerScore > 0.0f) {
+                ProductionCandidate candidate{};
+                candidate.item.type      = ProductionItemType::Unit;
+                candidate.item.itemId    = 3u;
+                candidate.item.name      = "Settler";
+                candidate.item.totalCost = static_cast<float>(
+                    unitTypeDef(UnitTypeId{3}).productionCost);
+                candidate.item.progress  = 0.0f;
+                candidate.score          = settlerScore;
+                candidates.push_back(std::move(candidate));
+            }
+        }
+
+        // --- Military unit ---
         if (bestMilitaryId.isValid()) {
-            for (const EnemyUnitPos& ep : enemyMilitaryPositions) {
-                if (aoc::hex::distance(ep.position, city.location()) <= 5) {
-                    emergencyThreat = true;
-                    break;
+            const float militaryScore = scoreMilitary(
+                personality.behavior,
+                unitCounts.military,
+                ownedCityCount,
+                enemyNearby,
+                treasuryFloat
+            );
+            if (militaryScore > 0.0f) {
+                ProductionCandidate candidate{};
+                candidate.item.type      = ProductionItemType::Unit;
+                candidate.item.itemId    = bestMilitaryId.value;
+                candidate.item.name      = std::string(bestMilitaryDef.name);
+                candidate.item.totalCost = static_cast<float>(bestMilitaryDef.productionCost);
+                candidate.item.progress  = 0.0f;
+                candidate.score          = militaryScore;
+                candidates.push_back(std::move(candidate));
+            }
+        }
+
+        // --- Builder ---
+        {
+            const float builderScore = scoreBuilder(
+                personality.behavior,
+                unimprovedTiles,
+                RING1_TILES,
+                unitCounts.builders
+            );
+            if (builderScore > 0.0f) {
+                ProductionCandidate candidate{};
+                candidate.item.type      = ProductionItemType::Unit;
+                candidate.item.itemId    = 5u;
+                candidate.item.name      = "Builder";
+                candidate.item.totalCost = static_cast<float>(
+                    unitTypeDef(UnitTypeId{5}).productionCost);
+                candidate.item.progress  = 0.0f;
+                candidate.score          = builderScore;
+                candidates.push_back(std::move(candidate));
+            }
+        }
+
+        // --- Trader ---
+        {
+            const float traderScore = scoreTrader(
+                personality.behavior,
+                hasForeignTrade,
+                unitCounts.traders,
+                ownedCityCount
+            );
+            if (traderScore > 0.0f) {
+                ProductionCandidate candidate{};
+                candidate.item.type      = ProductionItemType::Unit;
+                candidate.item.itemId    = 30u;
+                candidate.item.name      = "Trader";
+                candidate.item.totalCost = static_cast<float>(
+                    unitTypeDef(UnitTypeId{30}).productionCost);
+                candidate.item.progress  = 0.0f;
+                candidate.score          = traderScore;
+                candidates.push_back(std::move(candidate));
+            }
+        }
+
+        // --- Buildings ---
+        {
+            aoc::sim::AIContext aiCtx{};
+            aiCtx.ownedCities      = ownedCityCount;
+            aiCtx.totalPopulation  = gsPlayer->totalPopulation();
+            aiCtx.militaryUnits    = unitCounts.military;
+            aiCtx.builderUnits     = unitCounts.builders;
+            aiCtx.settlerUnits     = unitCounts.settlers;
+            aiCtx.isThreatened     = unitCounts.military < 3;
+            aiCtx.needsImprovements = (unimprovedTiles > 0 && unitCounts.builders == 0);
+            aiCtx.hasMint          = districts.hasBuilding(BuildingId{24});
+            aiCtx.hasCoins         = playerHasCoins;
+            aiCtx.hasCampus        = districts.hasDistrict(DistrictType::Campus);
+            aiCtx.hasCommercial    = districts.hasDistrict(DistrictType::Commercial);
+            aiCtx.treasury         = static_cast<CurrencyAmount>(gsPlayer->treasury());
+            aiCtx.targetMaxCities  = targets.maxCities;
+            aiCtx.desiredMilitary  = ownedCityCount * targets.desiredMilitaryPerCity + 2;
+
+            for (uint16_t bidx = 0;
+                     bidx < static_cast<uint16_t>(BUILDING_DEFS.size()); ++bidx) {
+                const BuildingDef& bdef = BUILDING_DEFS[bidx];
+                if (!canBuildBuilding(gameState, this->m_player, city, bdef.id)) {
+                    continue;
+                }
+                const float buildingScore =
+                    scoreBuildingCandidate(personality.behavior, bdef.id, aiCtx);
+                if (buildingScore > 0.0f) {
+                    ProductionCandidate candidate{};
+                    candidate.item.type      = ProductionItemType::Building;
+                    candidate.item.itemId    = bdef.id.value;
+                    candidate.item.name      = std::string(bdef.name);
+                    candidate.item.totalCost = static_cast<float>(bdef.productionCost);
+                    candidate.item.progress  = 0.0f;
+                    candidate.score          = buildingScore;
+                    candidates.push_back(std::move(candidate));
                 }
             }
         }
-        if (emergencyThreat && unitCounts.military < ownedCityCount) {
-            item.type = ProductionItemType::Unit;
-            item.itemId = bestMilitaryId.value;
-            item.name = std::string(bestMilitaryDef.name);
-            item.totalCost = static_cast<float>(bestMilitaryDef.productionCost);
-            item.progress = 0.0f;
-            ++militaryProducers;
-            LOG_INFO("AI %u EMERGENCY: Enqueued %.*s in %s (enemy nearby!)",
-                     static_cast<unsigned>(this->m_player),
-                     static_cast<int>(bestMilitaryDef.name.size()),
-                     bestMilitaryDef.name.data(),
-                     city.name().c_str());
-        }
 
-        // Priority 0: Military defense - build if we have fewer than half the desired military
-        const bool criticalMilitaryNeed = item.name.empty()
-            && (unitCounts.military < desiredMilitary / 2)
-            && bestMilitaryId.isValid() && militaryProducers == 0;
-        if (criticalMilitaryNeed) {
-            item.type = ProductionItemType::Unit;
-            item.itemId = bestMilitaryId.value;
-            item.name = std::string(bestMilitaryDef.name);
-            item.totalCost = static_cast<float>(bestMilitaryDef.productionCost);
-            item.progress = 0.0f;
-            ++militaryProducers;
-            LOG_INFO("AI %u Enqueued %.*s in %s (defense priority)",
-                     static_cast<unsigned>(this->m_player),
-                     static_cast<int>(bestMilitaryDef.name.size()),
-                     bestMilitaryDef.name.data(),
-                     city.name().c_str());
-        }
-        // Priority 1a: Early settler -- when this is the only city and expansion is needed,
-        // queue a settler before capital infrastructure so expansion starts within the first
-        // 5-10 turns. The capital's industrial build chain can wait until city 2 is founded.
-        if (item.name.empty() && needsSettler && !settlerEnqueued && ownedCityCount == 1
-                && city.population() >= 1) {
-            item.type = ProductionItemType::Unit;
-            item.itemId = 3;
-            item.name = "Settler";
-            item.totalCost = static_cast<float>(unitTypeDef(UnitTypeId{3}).productionCost);
-            item.progress = 0.0f;
-            settlerEnqueued = true;
-            LOG_INFO("AI %u Enqueued Settler in %s (early expansion, pop %d)",
-                     static_cast<unsigned>(this->m_player),
-                     city.name().c_str(), city.population());
-        }
-        // Priority 1b: Industrial district in capital (enables production chain).
-        else if (city.isOriginalCapital()) {
-            const aoc::sim::CityDistrictsComponent& capDistricts = city.districts();
-            const bool capHasIndustrial = capDistricts.hasDistrict(DistrictType::Industrial);
-            const bool capHasForge = capDistricts.hasBuilding(BuildingId{0});
-            const bool capHasWorkshop = capDistricts.hasBuilding(BuildingId{1});
-
-            if (!capHasIndustrial) {
-                item.type = ProductionItemType::District;
-                item.itemId = static_cast<uint16_t>(DistrictType::Industrial);
-                item.name = "Industrial Zone";
-                item.totalCost = 60.0f;
-                item.progress = 0.0f;
-                LOG_INFO("AI %u Enqueued Industrial Zone in %s (capital priority)",
-                         static_cast<unsigned>(this->m_player), city.name().c_str());
-            } else if (!capHasForge) {
-                item.type = ProductionItemType::Building;
-                item.itemId = 0;
-                item.name = "Forge";
-                item.totalCost = 60.0f;
-                item.progress = 0.0f;
-                LOG_INFO("AI %u Enqueued Forge in %s (capital priority)",
-                         static_cast<unsigned>(this->m_player), city.name().c_str());
-            } else if (!capHasWorkshop) {
-                item.type = ProductionItemType::Building;
-                item.itemId = 1;
-                item.name = "Workshop";
-                item.totalCost = 40.0f;
-                item.progress = 0.0f;
-                LOG_INFO("AI %u Enqueued Workshop in %s (capital priority)",
-                         static_cast<unsigned>(this->m_player), city.name().c_str());
-            }
-            // If capital already has all three, fall through to next priority
-        }
-        // Priority 2: First Trader
-        if (item.name.empty() && traderProducers == 0 && needsTrader && unitCounts.traders == 0) {
-            item.type = ProductionItemType::Unit;
-            item.itemId = 30;  // Trader
-            item.name = "Trader";
-            item.totalCost = static_cast<float>(unitTypeDef(UnitTypeId{30}).productionCost);
-            item.progress = 0.0f;
-            ++traderProducers;
-            LOG_INFO("AI %u Enqueued Trader in %s (first trader priority)",
-                     static_cast<unsigned>(this->m_player), city.name().c_str());
-        }
-        // Priority 3: Settler
-        if (item.name.empty() && needsSettler && !settlerEnqueued
-                && city.population() >= targets.settlePopThreshold) {
-            item.type = ProductionItemType::Unit;
-            item.itemId = 3;
-            item.name = "Settler";
-            item.totalCost = static_cast<float>(unitTypeDef(UnitTypeId{3}).productionCost);
-            item.progress = 0.0f;
-            settlerEnqueued = true;
-            LOG_INFO("AI %u Enqueued Settler in %s (pop %d)",
-                     static_cast<unsigned>(this->m_player),
-                     city.name().c_str(), city.population());
-        }
-        // Priority 4: Builder
-        if (item.name.empty() && needsBuilder && !builderEnqueued) {
-            item.type = ProductionItemType::Unit;
-            item.itemId = 5;
-            item.name = "Builder";
-            item.totalCost = static_cast<float>(unitTypeDef(UnitTypeId{5}).productionCost);
-            item.progress = 0.0f;
-            builderEnqueued = true;
-            LOG_INFO("AI %u Enqueued Builder in %s",
-                     static_cast<unsigned>(this->m_player), city.name().c_str());
-        }
-        // Priority 5: Additional Traders
-        if (item.name.empty() && traderProducers == 0 && needsTrader) {
-            item.type = ProductionItemType::Unit;
-            item.itemId = 30;
-            item.name = "Trader";
-            item.totalCost = static_cast<float>(unitTypeDef(UnitTypeId{30}).productionCost);
-            item.progress = 0.0f;
-            ++traderProducers;
-            LOG_INFO("AI %u Enqueued Trader in %s",
-                     static_cast<unsigned>(this->m_player), city.name().c_str());
-        }
-        // Priority 6: Military units (limited to half of cities)
-        if (item.name.empty() && needsMilitary && militaryProducers < maxMilitaryProducers) {
-            item.type = ProductionItemType::Unit;
-            item.itemId = bestMilitaryId.value;
-            item.name = std::string(bestMilitaryDef.name);
-            item.totalCost = static_cast<float>(bestMilitaryDef.productionCost);
-            item.progress = 0.0f;
-            ++militaryProducers;
-            LOG_INFO("AI %u Enqueued %.*s in %s",
-                     static_cast<unsigned>(this->m_player),
-                     static_cast<int>(bestMilitaryDef.name.size()),
-                     bestMilitaryDef.name.data(),
-                     city.name().c_str());
-        }
-        // Priority 7+8: Districts, then Buildings, then Fallback
-        if (item.name.empty()) {
-            bool enqueuedSomething = false;
-
-            const aoc::sim::CityDistrictsComponent& existingDistricts = city.districts();
-
-            // Check if city is coastal (any neighbor is water)
+        // --- Districts ---
+        {
+            // Check if city is coastal (any ring-1 neighbor is water)
             bool isCityCoastal = false;
             {
                 const std::array<aoc::hex::AxialCoord, 6> cityNbrs =
@@ -416,143 +583,110 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 }
             }
 
-            // District priority order depends on what's already built
-            DistrictType districtPriority[5];
-            int32_t districtCosts[5];
-            const bool hasIndustrial = existingDistricts.hasDistrict(DistrictType::Industrial);
-            const bool hasHarbor = existingDistricts.hasDistrict(DistrictType::Harbor);
+            // Utility weights for district types. Scores are personality-adjusted
+            // and then normalized so they compare fairly with unit/building scores.
+            // Each district type is scored independently so the best one wins.
+            struct DistrictOption {
+                DistrictType type;
+                float        baseCost;
+                float        utilityScore;
+            };
 
-            if (!hasIndustrial) {
-                districtPriority[0] = DistrictType::Industrial;  districtCosts[0] = 60;
-                if (isCityCoastal && !hasHarbor) {
-                    districtPriority[1] = DistrictType::Harbor;      districtCosts[1] = 70;
-                    districtPriority[2] = DistrictType::Commercial;  districtCosts[2] = 60;
-                } else {
-                    districtPriority[1] = DistrictType::Commercial;  districtCosts[1] = 60;
-                    districtPriority[2] = DistrictType::Harbor;      districtCosts[2] = 70;
-                }
-                districtPriority[3] = DistrictType::Campus;      districtCosts[3] = 55;
-                districtPriority[4] = DistrictType::Encampment;  districtCosts[4] = 55;
-            } else {
-                if (isCityCoastal && !hasHarbor) {
-                    districtPriority[0] = DistrictType::Harbor;      districtCosts[0] = 70;
-                    districtPriority[1] = DistrictType::Commercial;  districtCosts[1] = 60;
-                } else {
-                    districtPriority[0] = DistrictType::Commercial;  districtCosts[0] = 60;
-                    districtPriority[1] = DistrictType::Harbor;      districtCosts[1] = 70;
-                }
-                districtPriority[2] = DistrictType::Campus;      districtCosts[2] = 55;
-                districtPriority[3] = DistrictType::Encampment;  districtCosts[3] = 55;
-                districtPriority[4] = DistrictType::Industrial;  districtCosts[4] = 60;
-            }
+            const std::array<DistrictOption, 5> districtOptions = {{
+                { DistrictType::Industrial,
+                  60.0f,
+                  0.5f * personality.behavior.prodBuildings * personality.behavior.economicFocus },
+                { DistrictType::Commercial,
+                  60.0f,
+                  0.45f * personality.behavior.economicFocus },
+                { DistrictType::Campus,
+                  55.0f,
+                  0.45f * personality.behavior.scienceFocus },
+                { DistrictType::Encampment,
+                  55.0f,
+                  0.35f * personality.behavior.militaryAggression },
+                { DistrictType::Harbor,
+                  70.0f,
+                  isCityCoastal
+                      ? 0.4f * personality.behavior.economicFocus
+                      : 0.0f },
+            }};
 
-            int32_t totalBuildings = 0;
-            for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& d :
-                     existingDistricts.districts) {
-                totalBuildings += static_cast<int32_t>(d.buildings.size());
-            }
-            const int32_t existingDistrictCount =
-                static_cast<int32_t>(existingDistricts.districts.size());
+            for (const DistrictOption& opt : districtOptions) {
+                if (opt.utilityScore <= 0.0f) { continue; }
+                if (districts.hasDistrict(opt.type)) { continue; }
 
-            const bool shouldBuildDistrict = (existingDistrictCount <= 1)
-                || (totalBuildings >= existingDistrictCount - 1);
-
-            if (shouldBuildDistrict) {
-                for (int32_t di = 0; di < 5 && !enqueuedSomething; ++di) {
-                    const DistrictType dtype = districtPriority[di];
-                    if (!existingDistricts.hasDistrict(dtype)) {
-                        item.type = ProductionItemType::District;
-                        item.itemId = static_cast<uint16_t>(dtype);
-                        item.name = std::string(districtTypeName(dtype));
-                        item.totalCost = static_cast<float>(districtCosts[di]);
-                        item.progress = 0.0f;
-                        enqueuedSomething = true;
-                        LOG_INFO("AI %u Enqueued district %.*s in %s",
-                                 static_cast<unsigned>(this->m_player),
-                                 static_cast<int>(districtTypeName(dtype).size()),
-                                 districtTypeName(dtype).data(),
-                                 city.name().c_str());
-                    }
-                }
-            }
-
-            // --- Buildings scored by utility function ---
-            if (!enqueuedSomething) {
-                aoc::sim::AIContext aiCtx{};
-                aiCtx.ownedCities = ownedCityCount;
-                aiCtx.totalPopulation = gsPlayer->totalPopulation();
-                aiCtx.militaryUnits = unitCounts.military;
-                aiCtx.builderUnits = unitCounts.builders;
-                aiCtx.settlerUnits = unitCounts.settlers;
-                aiCtx.isThreatened = unitCounts.military < 3;
-                aiCtx.needsImprovements = needsBuilder;
-                aiCtx.hasMint = existingDistricts.hasBuilding(BuildingId{24});
-                aiCtx.hasCoins = playerHasCoins;
-                aiCtx.hasCampus = existingDistricts.hasDistrict(DistrictType::Campus);
-                aiCtx.hasCommercial = existingDistricts.hasDistrict(DistrictType::Commercial);
-                aiCtx.targetMaxCities = targets.maxCities;
-                aiCtx.desiredMilitary = desiredMilitary;
-
-                float bestScore = -1.0f;
-                BuildingId bestBid{0};
-                for (uint16_t bidx = 0;
-                         bidx < static_cast<uint16_t>(BUILDING_DEFS.size()); ++bidx) {
-                    const BuildingDef& bdef = BUILDING_DEFS[bidx];
-                    if (!canBuildBuilding(gameState, this->m_player, city, bdef.id)) {
-                        continue;
-                    }
-                    float score = scoreBuildingForLeader(personality.behavior, bdef.id, aiCtx);
-                    if (score > bestScore) {
-                        bestScore = score;
-                        bestBid = bdef.id;
-                    }
-                }
-
-                if (bestScore > 0.0f) {
-                    const BuildingDef& bdef = BUILDING_DEFS[bestBid.value];
-                    item.type = ProductionItemType::Building;
-                    item.itemId = bdef.id.value;
-                    item.name = std::string(bdef.name);
-                    item.totalCost = static_cast<float>(bdef.productionCost);
-                    item.progress = 0.0f;
-                    enqueuedSomething = true;
-                    LOG_INFO("AI %u Enqueued building %.*s in %s (score %.1f)",
-                             static_cast<unsigned>(this->m_player),
-                             static_cast<int>(bdef.name.size()),
-                             bdef.name.data(),
-                             city.name().c_str(),
-                             static_cast<double>(bestScore));
-                }
-            }
-
-            // Try any building (fallback when utility scoring found nothing)
-            if (!enqueuedSomething) {
-                for (const BuildingDef& bdef : BUILDING_DEFS) {
-                    if (!canBuildBuilding(gameState, this->m_player, city, bdef.id)) {
-                        continue;
-                    }
-                    item.type = ProductionItemType::Building;
-                    item.itemId = bdef.id.value;
-                    item.name = std::string(bdef.name);
-                    item.totalCost = static_cast<float>(bdef.productionCost);
-                    item.progress = 0.0f;
-                    enqueuedSomething = true;
-                    break;
-                }
-            }
-
-            // Fallback: produce best military unit
-            if (!enqueuedSomething) {
-                item.type = ProductionItemType::Unit;
-                item.itemId = bestMilitaryId.value;
-                item.name = std::string(bestMilitaryDef.name);
-                item.totalCost = static_cast<float>(bestMilitaryDef.productionCost);
-                item.progress = 0.0f;
+                ProductionCandidate candidate{};
+                candidate.item.type      = ProductionItemType::District;
+                candidate.item.itemId    = static_cast<uint16_t>(opt.type);
+                candidate.item.name      = std::string(districtTypeName(opt.type));
+                candidate.item.totalCost = opt.baseCost;
+                candidate.item.progress  = 0.0f;
+                candidate.score          = opt.utilityScore;
+                candidates.push_back(std::move(candidate));
             }
         }
 
-        item.totalCost *= aoc::sim::GamePace::instance().costMultiplier;
-        queue.queue.push_back(std::move(item));
+        // ----------------------------------------------------------------
+        // Select from the top candidates with 10% randomization band.
+        //
+        // Pick the highest score, then collect all candidates within 90% of
+        // that peak. Choose uniformly from that set using a deterministic
+        // per-city hash so different cities make different decisions each turn
+        // without a full PRNG dependency here.
+        // ----------------------------------------------------------------
+
+        if (candidates.empty()) {
+            // Absolute last resort: produce the best available military unit
+            if (bestMilitaryId.isValid()) {
+                ProductionQueueItem fallbackItem{};
+                fallbackItem.type      = ProductionItemType::Unit;
+                fallbackItem.itemId    = bestMilitaryId.value;
+                fallbackItem.name      = std::string(bestMilitaryDef.name);
+                fallbackItem.totalCost = static_cast<float>(bestMilitaryDef.productionCost)
+                                         * aoc::sim::GamePace::instance().costMultiplier;
+                fallbackItem.progress  = 0.0f;
+                queue.queue.push_back(std::move(fallbackItem));
+                ++cityIndex;
+                continue;
+            }
+            ++cityIndex;
+            continue;
+        }
+
+        float topScore = 0.0f;
+        for (const ProductionCandidate& c : candidates) {
+            if (c.score > topScore) { topScore = c.score; }
+        }
+
+        // Gather all candidates within 10% of the top score
+        std::vector<std::size_t> topIndices;
+        topIndices.reserve(candidates.size());
+        const float scoreFloor = topScore * 0.9f;
+        for (std::size_t i = 0; i < candidates.size(); ++i) {
+            if (candidates[i].score >= scoreFloor) {
+                topIndices.push_back(i);
+            }
+        }
+
+        // Deterministic tie-break: hash (cityIndex, cityIndex^turnSeed) to pick
+        // uniformly from the near-top set. This gives each city a stable but
+        // varied choice without requiring the RNG to be threaded through here.
+        const std::size_t choiceHash =
+            (static_cast<std::size_t>(cityIndex) * 6364136223846793005ULL + 1442695040888963407ULL)
+            ^ (static_cast<std::size_t>(ownedCityCount) * 2654435761ULL);
+        const std::size_t chosenIdx = topIndices[choiceHash % topIndices.size()];
+
+        ProductionQueueItem chosen = candidates[chosenIdx].item;
+        chosen.totalCost *= aoc::sim::GamePace::instance().costMultiplier;
+
+        LOG_INFO("AI %u Enqueued %s in %s (utility %.3f)",
+                 static_cast<unsigned>(this->m_player),
+                 chosen.name.c_str(),
+                 city.name().c_str(),
+                 static_cast<double>(candidates[chosenIdx].score));
+
+        queue.queue.push_back(std::move(chosen));
         ++cityIndex;
     }
 }
@@ -600,6 +734,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             const int32_t relationThreshold = hardAI ? -10 : -20;
             const int32_t warChanceThreshold = hardAI ? 5 : 3;
 
+            // Standard war declaration: military advantage + strained relations.
             if (!easyAI && ourMilitary > 0 && theirMilitary >= 0 &&
                 static_cast<float>(ourMilitary) >
                     militaryRatioThreshold * static_cast<float>(theirMilitary) &&
@@ -610,6 +745,27 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                 if (warChance < warChanceThreshold) {
                     diplomacy.declareWar(this->m_player, other);
                     LOG_INFO("AI %u Declared war on player %u (military %d vs %d, relations %d)",
+                             static_cast<unsigned>(this->m_player),
+                             static_cast<unsigned>(other),
+                             ourMilitary, theirMilitary, relationScore);
+                }
+            }
+
+            // Opportunistic war declaration: 2:1 military advantage regardless of
+            // relations.  This fires when the player has built a dominant force and
+            // the opponent is clearly outmatched.  Requires at least 4 own units so
+            // early scouting noise does not trigger wars.
+            if (!easyAI && !rel.isAtWar && ourMilitary >= 4 &&
+                static_cast<float>(ourMilitary) >=
+                    2.0f * static_cast<float>(std::max(1, theirMilitary))) {
+                const int32_t warChance =
+                    ((ourMilitary * 11 + theirMilitary * 17 +
+                      static_cast<int32_t>(this->m_player) * 37) % 10);
+                const int32_t threshold = hardAI ? 4 : 2;
+                if (warChance < threshold) {
+                    diplomacy.declareWar(this->m_player, other);
+                    LOG_INFO("AI %u Declared opportunistic war on player %u "
+                             "(2:1 advantage: %d vs %d, relations %d)",
                              static_cast<unsigned>(this->m_player),
                              static_cast<unsigned>(other),
                              ourMilitary, theirMilitary, relationScore);

@@ -146,8 +146,19 @@ void processUnitMaintenance(aoc::game::Player& player) {
         player.monetary().consecutiveNegativeTurns = 0;
     }
 
-    // Disband most expensive military unit immediately if treasury drops below -20
-    if (player.treasury() < -20) {
+    // Count current military units to enforce the minimum garrison.
+    int32_t militaryCount = 0;
+    for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+        if (isMilitary(unit->typeDef().unitClass)) {
+            ++militaryCount;
+        }
+    }
+    constexpr int32_t MIN_GARRISON = 2;
+
+    // Disband most expensive military unit on immediate bankruptcy, but only
+    // when the player has more than the minimum garrison.  Treasury threshold is
+    // -200 to avoid wiping units from a brief gold dip.
+    if (player.treasury() < -200 && militaryCount > MIN_GARRISON) {
         aoc::game::Unit* disbandTarget = nullptr;
         int32_t worstCost = 0;
         for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
@@ -155,20 +166,23 @@ void processUnitMaintenance(aoc::game::Player& player) {
                 continue;
             }
             const bool isMil = isMilitary(unit->typeDef().unitClass);
-            int32_t cost = unit->typeDef().maintenanceGold();
+            const int32_t cost = unit->typeDef().maintenanceGold();
             // Prefer disbanding military units first (highest gold cost)
             if (isMil && cost > worstCost) {
                 worstCost = cost;
                 disbandTarget = unit.get();
             }
         }
-        // Fall back to any non-settler unit if no military found
+        // Fall back to any non-settler, non-military unit if no military candidate
         if (disbandTarget == nullptr) {
             for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
                 if (unit->typeDef().unitClass == UnitClass::Settler) {
                     continue;
                 }
-                int32_t cost = unit->typeDef().maintenanceGold();
+                if (isMilitary(unit->typeDef().unitClass)) {
+                    continue;
+                }
+                const int32_t cost = unit->typeDef().maintenanceGold();
                 if (cost > worstCost) {
                     worstCost = cost;
                     disbandTarget = unit.get();
@@ -186,15 +200,19 @@ void processUnitMaintenance(aoc::game::Player& player) {
         }
     }
 
-    // Sustained bankruptcy (>= 3 turns below -100): disband most expensive unit
-    if (player.monetary().consecutiveNegativeTurns >= 3 && player.treasury() < -100) {
+    // Sustained bankruptcy (>= 5 turns below -200): disband most expensive unit,
+    // still respecting the minimum garrison.
+    if (player.monetary().consecutiveNegativeTurns >= 5
+        && player.treasury() < -200
+        && militaryCount > MIN_GARRISON)
+    {
         aoc::game::Unit* disbandTarget = nullptr;
         int32_t worstCost = 0;
         for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
             if (unit->typeDef().unitClass == UnitClass::Settler) {
                 continue;
             }
-            int32_t cost = unit->typeDef().maintenanceGold();
+            const int32_t cost = unit->typeDef().maintenanceGold();
             if (cost > worstCost) {
                 worstCost = cost;
                 disbandTarget = unit.get();
@@ -208,7 +226,7 @@ void processUnitMaintenance(aoc::game::Player& player) {
                      static_cast<long long>(player.treasury()),
                      disbandTarget->typeDef().name.data());
             player.removeUnit(disbandTarget);
-            // Reset counter so we don't disband every turn at exactly 3 turns
+            // Reset counter so we don't disband every turn at exactly the threshold
             player.monetary().consecutiveNegativeTurns = 0;
         }
     }
