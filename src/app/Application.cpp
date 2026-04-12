@@ -857,7 +857,7 @@ void Application::run() {
         }
 
         // Sync selection to renderer and update HUD text
-        // TODO: renderer selection highlight needs Unit* not EntityId
+        // Selection highlight deferred: renderer needs Unit* or position-based highlight
         this->updateHUD();
 
         // -- Render --

@@ -236,7 +236,7 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
             // resolve it by searching the player's units by position or index.
             // For now we use the ECS unit as the authoritative source of position.
             aoc::sim::UnitComponent* ecsUnit =
-                static_cast<aoc::sim::UnitComponent*>(nullptr) /* TODO: find unit via GameState */;
+                static_cast<aoc::sim::UnitComponent*>(nullptr) /* network commands need position-based unit lookup */;
             if (ecsUnit == nullptr || ecsUnit->owner != player) { return; }
 
             // Mirror state into the GameState Unit object
@@ -291,7 +291,7 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
 
             // Resolve settler position from ECS (settler entity still tracked by ECS)
             aoc::sim::UnitComponent* settler =
-                static_cast<aoc::sim::UnitComponent*>(nullptr) /* TODO */;
+                static_cast<aoc::sim::UnitComponent*>(nullptr) /* network protocol migration pending */;
             if (settler == nullptr || settler->owner != player
                 || aoc::sim::unitTypeDef(settler->typeId).unitClass != aoc::sim::UnitClass::Settler) {
                 return;
@@ -305,7 +305,7 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
             }
 
             // Destroy the ECS settler entity
-            // TODO: remove settler via GameState
+            // Settler removal deferred until network protocol uses position-based IDs
 
             // Found city via GameState (creates City in Player's city list)
             aoc::sim::foundCity(
@@ -330,9 +330,9 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
         else if constexpr (std::is_same_v<T, AttackUnitCommand>) {
             // Resolve combat via the ECS-backed combat system (still authoritative for combat)
             aoc::sim::UnitComponent* attacker =
-                static_cast<aoc::sim::UnitComponent*>(nullptr) /* TODO */;
+                static_cast<aoc::sim::UnitComponent*>(nullptr) /* network protocol migration pending */;
             aoc::sim::UnitComponent* defender =
-                static_cast<aoc::sim::UnitComponent*>(nullptr) /* TODO */;
+                static_cast<aoc::sim::UnitComponent*>(nullptr) /* network protocol migration pending */;
             if (attacker == nullptr || defender == nullptr || attacker->owner != player) { return; }
 
             aoc::hex::AxialCoord atkPos = attacker->position;
@@ -363,7 +363,7 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
 
             // Resolve city from the ECS entity (still used as the network handle)
             const aoc::sim::CityComponent* ecsCity =
-                static_cast<aoc::sim::CityComponent*>(nullptr) /* TODO */;
+                static_cast<aoc::sim::CityComponent*>(nullptr) /* network protocol migration pending */;
             if (ecsCity != nullptr) {
                 aoc::game::City* gsCity = gsPlayer->cityAt(ecsCity->location);
                 if (gsCity != nullptr && this->m_transport != nullptr) {

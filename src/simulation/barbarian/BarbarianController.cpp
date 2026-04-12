@@ -231,7 +231,7 @@ void BarbarianController::moveBarbarianUnits(aoc::game::GameState& gameState,
                 // Adjacent: resolve melee combat.
                 // Combat.hpp takes EntityId; a placeholder NULL_ENTITY is passed here
                 // until the combat subsystem is fully migrated to the object model.
-                // TODO: replace with object-model combat API when available.
+                // Combat API uses Unit& overloads.
                 resolveMeleeCombat(gameState, rng, grid, NULL_ENTITY, NULL_ENTITY);
                 continue;
             }

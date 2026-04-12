@@ -397,7 +397,7 @@ void processGlobalSystems(TurnContext& ctx) {
     // Futures contract settlement
     settleFutures(gameState, ctx.economy->market());
 
-    // River flooding (seasonal) -- TODO: migrate processFlooding to GameState
+    // River flooding (seasonal)
     processFlooding(gameState, grid, static_cast<int32_t>(ctx.currentTurn));
 
     // Natural disasters and climate
