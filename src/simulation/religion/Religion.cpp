@@ -10,7 +10,6 @@
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
-#include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -65,6 +64,11 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
     float faithGain = 0.0f;
 
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        // Base faith income: every city produces 1 faith per turn regardless of buildings.
+        // Without this floor, players never accumulate enough faith to found a pantheon
+        // in the early game when tiles with faith yield are rare.
+        faithGain += 1.0f;
+
         // Faith from worked tiles
         for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
             if (grid.isValid(tile)) {
@@ -74,7 +78,7 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
             }
         }
 
-        // Faith from Holy Site district (+2 base)
+        // Faith from Holy Site district (+2 base, on top of the per-city 1)
         if (city->districts().hasDistrict(DistrictType::HolySite)) {
             faithGain += 2.0f;
         }
@@ -154,33 +158,92 @@ void applyReligionBonuses(aoc::game::Player& player) {
 // checkReligiousVictory
 // ============================================================================
 
-bool checkReligiousVictory(const aoc::game::GameState& gameState, PlayerId player) {
-    const aoc::game::Player* gsPlayer = gameState.player(player);
-    if (gsPlayer == nullptr) {
-        return false;
-    }
-
-    if (gsPlayer->faith().foundedReligion == NO_RELIGION) {
-        return false;
-    }
-
-    ReligionId playerReligion = gsPlayer->faith().foundedReligion;
-
-    // Check if this religion is dominant in the majority of all cities
+bool checkReligiousVictory(const aoc::game::GameState& gameState, PlayerId& outWinner) {
     int32_t totalCities = 0;
-    int32_t followerCities = 0;
 
-    for (const std::unique_ptr<aoc::game::Player>& otherPlayer : gameState.players()) {
-        for (const std::unique_ptr<aoc::game::City>& city : otherPlayer->cities()) {
-            ++totalCities;
-            if (city->religion().dominantReligion() == playerReligion) {
-                ++followerCities;
+    // Count all cities once
+    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+        totalCities += static_cast<int32_t>(p->cities().size());
+    }
+    if (totalCities == 0) {
+        return false;
+    }
+
+    // For each player who founded a religion, check if it dominates > 50% of all cities
+    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+        const ReligionId religion = p->faith().foundedReligion;
+        if (religion == NO_RELIGION) {
+            continue;
+        }
+
+        int32_t followerCities = 0;
+        for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+            for (const std::unique_ptr<aoc::game::City>& city : other->cities()) {
+                if (city->religion().dominantReligion() == religion) {
+                    ++followerCities;
+                }
             }
+        }
+
+        if (followerCities * 2 > totalCities) {
+            outWinner = p->id();
+            return true;
         }
     }
 
-    // Win if religion is dominant in > 50% of all cities
-    return (totalCities > 0 && followerCities * 2 > totalCities);
+    return false;
+}
+
+// ============================================================================
+// processAIReligionFounding
+// ============================================================================
+
+void processAIReligionFounding(aoc::game::GameState& gameState) {
+    GlobalReligionTracker& tracker = gameState.religionTracker();
+
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) { continue; }
+        // Human players use the UI screen to found religions manually
+        if (playerPtr->isHuman()) { continue; }
+
+        PlayerFaithComponent& faith = playerPtr->faith();
+
+        // Step 1: Found a pantheon once PANTHEON_FAITH_COST is reached
+        if (!faith.hasPantheon && faith.faith >= PANTHEON_FAITH_COST) {
+            faith.hasPantheon = true;
+            faith.pantheonBelief = 4;  // "Choral Music" -- amenities (index 4 in BELIEFS)
+            faith.faith -= PANTHEON_FAITH_COST;
+            LOG_INFO("Player %u [Religion.cpp:processAIReligionFounding] founded pantheon "
+                     "(faith remaining: %.1f)",
+                     static_cast<unsigned>(playerPtr->id()),
+                     static_cast<double>(faith.faith));
+        }
+
+        // Step 2: Found a religion once RELIGION_FAITH_COST is reached and slots remain
+        if (faith.hasPantheon
+                && faith.foundedReligion == NO_RELIGION
+                && faith.faith >= RELIGION_FAITH_COST
+                && tracker.canFoundReligion()) {
+            // Pick religion name by cycling through the available names
+            const std::string religionName(
+                RELIGION_NAMES[tracker.religionsFoundedCount % RELIGION_NAMES.size()]);
+            const ReligionId newId = tracker.foundReligion(religionName, playerPtr->id());
+            faith.foundedReligion = newId;
+            faith.faith -= RELIGION_FAITH_COST;
+
+            // Seed initial pressure in the player's own cities
+            for (const std::unique_ptr<aoc::game::City>& city : playerPtr->cities()) {
+                city->religion().addPressure(newId, 5.0f);
+            }
+
+            LOG_INFO("Player %u [Religion.cpp:processAIReligionFounding] founded religion "
+                     "'%s' (id %u, faith remaining: %.1f)",
+                     static_cast<unsigned>(playerPtr->id()),
+                     religionName.c_str(),
+                     static_cast<unsigned>(newId),
+                     static_cast<double>(faith.faith));
+        }
+    }
 }
 
 } // namespace aoc::sim

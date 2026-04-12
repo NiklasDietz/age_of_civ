@@ -238,6 +238,11 @@ struct MonetaryStateComponent {
     // -- System duration tracking --
     int32_t turnsInCurrentSystem = 0;
 
+    // -- Bankruptcy tracking --
+    /// Number of consecutive turns the treasury has been negative.
+    /// Resets to zero whenever treasury >= 0.
+    int32_t consecutiveNegativeTurns = 0;
+
     // ========================================================================
     // Coin tier computation
     // ========================================================================

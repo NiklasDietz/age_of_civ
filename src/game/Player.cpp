@@ -21,6 +21,7 @@ Player::Player(PlayerId id)
     this->m_civics.owner = id;
     this->m_monetary.owner = id;
     this->m_faith.owner = id;
+    this->m_bubble.owner = id;
 
     this->m_tech.initialize();
     this->m_civics.initialize();

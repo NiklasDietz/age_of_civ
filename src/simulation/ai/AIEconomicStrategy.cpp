@@ -40,21 +40,41 @@ namespace aoc::sim {
 
 static void aiBondStrategy(aoc::game::GameState& gameState, PlayerId player,
                            int32_t difficulty) {
+    // Bond investment is restricted to hard difficulty (>= 2) to prevent
+    // AI flooding the market with bonds on every turn at lower difficulties.
+    if (difficulty < 2) { return; }
+
+    // Cooldown: only evaluate bond purchases every 10 turns to avoid
+    // issuing ~27 bonds per turn across 12 players (Bug 7).
+    if (gameState.currentTurn() % 10 != 0) { return; }
+
     aoc::game::Player* myPlayer = gameState.player(player);
     if (myPlayer == nullptr) { return; }
     MonetaryStateComponent& myState = myPlayer->monetary();
 
-    // Buy bonds from weaker players (investment + leverage)
-    // Only on normal/hard difficulty
-    if (difficulty < 1) { return; }
+    // Require a healthy treasury before locking gold into bonds.
+    if (myState.treasury <= 500) { return; }
+
+    const PlayerBondComponent& myBonds = myPlayer->bonds();
 
     for (const std::unique_ptr<aoc::game::Player>& otherPtr : gameState.players()) {
         if (otherPtr == nullptr || otherPtr->id() == player) { continue; }
 
+        // Limit total bond holdings to 3 per player pair to prevent
+        // the AI from accumulating unlimited leverage over a single civ.
+        int32_t bondsHeld = 0;
+        for (const BondIssue& bond : myBonds.heldBonds) {
+            if (bond.issuer == otherPtr->id()) {
+                ++bondsHeld;
+            }
+        }
+        if (bondsHeld >= 3) { continue; }
+
         const MonetaryStateComponent& other = otherPtr->monetary();
 
-        // Buy bonds if we have surplus treasury and the other player has lower GDP
-        if (myState.treasury > 200 && other.gdp < myState.gdp) {
+        // Buy bonds when we have surplus treasury and the target has lower GDP
+        // (weaker economy = higher yield, better investment return).
+        if (other.gdp < myState.gdp) {
             CurrencyAmount investAmount = std::min(
                 myState.treasury / 4,
                 static_cast<CurrencyAmount>(100));

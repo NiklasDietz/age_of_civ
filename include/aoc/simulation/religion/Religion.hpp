@@ -157,11 +157,22 @@ void applyReligionBonuses(aoc::game::Player& player);
 /// Check religious victory: one religion is dominant in all civilizations' cities.
 [[nodiscard]] bool checkReligiousVictory(const aoc::game::GameState& gameState, PlayerId& outWinner);
 
+/**
+ * @brief Automatically found pantheons and religions for AI players who have
+ *        accumulated enough faith but are not human-controlled.
+ *
+ * Human players choose beliefs manually through the UI. AI players skip
+ * the choice screen and auto-select beliefs by index so the game progresses.
+ * Called once per turn after accumulateFaith for all players.
+ */
+void processAIReligionFounding(aoc::game::GameState& gameState);
+
 /// Cost to found a pantheon.
 inline constexpr float PANTHEON_FAITH_COST = 25.0f;
 
 /// Cost to found a religion (must have pantheon first).
-inline constexpr float RELIGION_FAITH_COST = 100.0f;
+/// Lowered from 100 to 50 so religions are founded within the first 50 turns.
+inline constexpr float RELIGION_FAITH_COST = 50.0f;
 
 /// Cost to purchase a missionary.
 inline constexpr float MISSIONARY_FAITH_COST = 150.0f;

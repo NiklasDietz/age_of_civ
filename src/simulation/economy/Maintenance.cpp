@@ -112,16 +112,82 @@ void processUnitMaintenance(aoc::game::Player& player) {
         return;
     }
 
-    player.addGold(-totalMaintenance);
-    if (paidUnits > 0) {
-        LOG_INFO("Player %u unit maintenance: %d military units, cost %lld gold (treasury: %lld)",
-                 static_cast<unsigned>(player.id()), paidUnits,
-                 static_cast<long long>(totalMaintenance),
+    // Spending brake: if treasury is already negative, skip non-essential
+    // (non-military) maintenance. Military must still be paid.
+    if (player.treasury() < 0) {
+        CurrencyAmount militaryOnly = 0;
+        for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+            if (isMilitary(unit->typeDef().unitClass)) {
+                militaryOnly += static_cast<CurrencyAmount>(unit->typeDef().maintenanceGold());
+            }
+        }
+        // Only pay military maintenance when already in deficit
+        player.addGold(-militaryOnly);
+        LOG_INFO("Player %u unit maintenance (deficit mode): %lld gold military only "
+                 "(treasury: %lld)",
+                 static_cast<unsigned>(player.id()),
+                 static_cast<long long>(militaryOnly),
                  static_cast<long long>(player.treasury()));
+    } else {
+        player.addGold(-totalMaintenance);
+        if (paidUnits > 0) {
+            LOG_INFO("Player %u unit maintenance: %d military units, cost %lld gold "
+                     "(treasury: %lld)",
+                     static_cast<unsigned>(player.id()), paidUnits,
+                     static_cast<long long>(totalMaintenance),
+                     static_cast<long long>(player.treasury()));
+        }
     }
 
-    // Disband most expensive unit if treasury is critically low
+    // Update consecutive negative-treasury counter
+    if (player.treasury() < 0) {
+        ++player.monetary().consecutiveNegativeTurns;
+    } else {
+        player.monetary().consecutiveNegativeTurns = 0;
+    }
+
+    // Disband most expensive military unit immediately if treasury drops below -20
     if (player.treasury() < -20) {
+        aoc::game::Unit* disbandTarget = nullptr;
+        int32_t worstCost = 0;
+        for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+            if (unit->typeDef().unitClass == UnitClass::Settler) {
+                continue;
+            }
+            const bool isMil = isMilitary(unit->typeDef().unitClass);
+            int32_t cost = unit->typeDef().maintenanceGold();
+            // Prefer disbanding military units first (highest gold cost)
+            if (isMil && cost > worstCost) {
+                worstCost = cost;
+                disbandTarget = unit.get();
+            }
+        }
+        // Fall back to any non-settler unit if no military found
+        if (disbandTarget == nullptr) {
+            for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+                if (unit->typeDef().unitClass == UnitClass::Settler) {
+                    continue;
+                }
+                int32_t cost = unit->typeDef().maintenanceGold();
+                if (cost > worstCost) {
+                    worstCost = cost;
+                    disbandTarget = unit.get();
+                }
+            }
+        }
+        if (disbandTarget != nullptr) {
+            LOG_WARN("Player %u [Maintenance.cpp:processUnitMaintenance] bankrupt: "
+                     "disbanded %s (cost %d gold/turn, treasury %lld)",
+                     static_cast<unsigned>(player.id()),
+                     disbandTarget->typeDef().name.data(),
+                     worstCost,
+                     static_cast<long long>(player.treasury()));
+            player.removeUnit(disbandTarget);
+        }
+    }
+
+    // Sustained bankruptcy (>= 3 turns below -100): disband most expensive unit
+    if (player.monetary().consecutiveNegativeTurns >= 3 && player.treasury() < -100) {
         aoc::game::Unit* disbandTarget = nullptr;
         int32_t worstCost = 0;
         for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
@@ -135,9 +201,15 @@ void processUnitMaintenance(aoc::game::Player& player) {
             }
         }
         if (disbandTarget != nullptr) {
+            LOG_WARN("Player %u [Maintenance.cpp:processUnitMaintenance] sustained "
+                     "bankruptcy (%d turns, treasury %lld): disbanded %s",
+                     static_cast<unsigned>(player.id()),
+                     player.monetary().consecutiveNegativeTurns,
+                     static_cast<long long>(player.treasury()),
+                     disbandTarget->typeDef().name.data());
             player.removeUnit(disbandTarget);
-            LOG_INFO("Player %u disbanded a unit due to low treasury",
-                     static_cast<unsigned>(player.id()));
+            // Reset counter so we don't disband every turn at exactly 3 turns
+            player.monetary().consecutiveNegativeTurns = 0;
         }
     }
 }

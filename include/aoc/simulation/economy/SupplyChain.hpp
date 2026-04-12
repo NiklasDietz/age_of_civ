@@ -57,6 +57,10 @@ struct PlayerSupplyChainComponent {
         0, 0, 0, 0, 0, 0, 0, 0
     };
 
+    /// True if production was below the crisis threshold last turn.
+    /// Used to log the crisis only on the turn it begins, not every subsequent turn.
+    bool wasInCrisisLastTurn = false;
+
     /// Overall production multiplier from supply chain health.
     /// Weighted average: goods used in more recipes have more impact.
     [[nodiscard]] float productionMultiplier() const {

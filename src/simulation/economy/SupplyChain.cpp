@@ -39,7 +39,11 @@ void updateSupplyChainHealth(aoc::game::GameState& gameState, PlayerId player) {
         constexpr int32_t HEALTHY_THRESHOLD = 3;
 
         if (stock >= HEALTHY_THRESHOLD) {
-            chain.supplyHealth[idx]    = chain.supplyHealth[idx] * 0.70f + 1.0f * 0.30f;
+            // Healthy supply: push health toward 1.0 with a strong pull.
+            // Base bonus of 0.10f added each tick ensures new civs start healthy
+            // even before they've accumulated any strategic resource stockpile.
+            chain.supplyHealth[idx] = std::min(1.0f,
+                chain.supplyHealth[idx] * 0.70f + 1.0f * 0.30f + 0.10f);
             chain.stockpileBuffer[idx] = std::min(10, stock / 2);
         } else if (stock > 0) {
             chain.supplyHealth[idx]    = chain.supplyHealth[idx] * 0.90f + 0.50f * 0.10f;
@@ -58,18 +62,28 @@ void updateSupplyChainHealth(aoc::game::GameState& gameState, PlayerId player) {
 }
 
 void processSupplyChains(aoc::game::GameState& gameState) {
+    // Crisis threshold: only report when production drops below 70% (not 80% or 100%).
+    // This eliminates spam for civs that are slightly below full health but not in crisis.
+    constexpr float CRISIS_LOG_THRESHOLD = 0.70f;
+
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         if (playerPtr == nullptr) { continue; }
 
         updateSupplyChainHealth(gameState, playerPtr->id());
 
-        const PlayerSupplyChainComponent& chain = playerPtr->supplyChain();
-        float prodMult = chain.productionMultiplier();
-        if (prodMult < 0.80f) {
-            LOG_INFO("Player %u supply chain crisis: production at %.0f%%",
+        PlayerSupplyChainComponent& chain = playerPtr->supplyChain();
+        const float prodMult = chain.productionMultiplier();
+        const bool inCrisisNow = (prodMult < CRISIS_LOG_THRESHOLD);
+
+        // Log only on the turn the crisis begins, not every subsequent turn
+        if (inCrisisNow && !chain.wasInCrisisLastTurn) {
+            LOG_WARN("Player %u [SupplyChain.cpp:processSupplyChains] supply chain crisis "
+                     "started: production at %.0f%%",
                      static_cast<unsigned>(playerPtr->id()),
                      static_cast<double>(prodMult) * 100.0);
         }
+
+        chain.wasInCrisisLastTurn = inCrisisNow;
     }
 }
 

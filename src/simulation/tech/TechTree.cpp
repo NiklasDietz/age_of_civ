@@ -173,7 +173,7 @@ bool advanceResearch(PlayerTechComponent& tech, float sciencePoints) {
 
     const TechDef& def = techDef(tech.currentResearch);
     // Recursive tech cost scaling: techs with deeper dependency trees cost more.
-    // Each prerequisite in the full tree adds 15% to the base cost.
+    // Each already-researched tech adds 5% to the base cost.
     int32_t numPrereqs = 0;
     for (uint16_t ti = 0; ti < techCount(); ++ti) {
         if (tech.hasResearched(TechId{ti})) {
@@ -181,7 +181,17 @@ bool advanceResearch(PlayerTechComponent& tech, float sciencePoints) {
         }
     }
     float depthMultiplier = 1.0f + static_cast<float>(numPrereqs) * 0.05f;
-    float scaledCost = static_cast<float>(def.researchCost) * GamePace::instance().costMultiplier * depthMultiplier;
+
+    // Early-era techs (Ancient through Medieval, eras 0-2) cost 30% less to
+    // ensure a reasonable research pace when science output is 2-5 per turn.
+    // Without this reduction, reaching Textiles from scratch takes 40+ turns
+    // instead of the intended ~15.
+    float eraDiscountMultiplier = (def.era.value <= 2) ? 0.70f : 1.0f;
+
+    float scaledCost = static_cast<float>(def.researchCost)
+                     * GamePace::instance().costMultiplier
+                     * depthMultiplier
+                     * eraDiscountMultiplier;
     if (tech.researchProgress >= scaledCost) {
         LOG_INFO("Player %u researched: %.*s",
                  static_cast<unsigned>(tech.owner),

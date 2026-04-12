@@ -75,7 +75,9 @@ static float scoreCityLocation(aoc::hex::AxialCoord pos,
 
             if (city->owner() == player) {
                 if (dist < 4) {
-                    score -= 50.0f;
+                    // Reduced from -50 to -20: still discourages very close placement
+                    // but doesn't make the whole region unviable for expansion.
+                    score -= 20.0f;
                 } else if (dist > 8) {
                     score -= static_cast<float>(dist - 8) * 2.0f;
                 } else if (dist >= 4 && dist <= 6) {

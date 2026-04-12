@@ -370,6 +370,10 @@ void processGlobalSystems(TurnContext& ctx) {
     // Religious spread (global, affects all cities)
     processReligiousSpread(gameState, grid);
 
+    // AI religion founding: auto-found pantheons and religions for non-human players
+    // once they accumulate sufficient faith. Human players use the UI screen.
+    processAIReligionFounding(gameState);
+
     // Barbarians
     if (ctx.barbarians != nullptr) {
         ctx.barbarians->executeTurn(gameState, grid, *ctx.rng);

@@ -287,7 +287,22 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                      bestMilitaryDef.name.data(),
                      city.name().c_str());
         }
-        // Priority 1: Industrial district in capital (enables production chain).
+        // Priority 1a: Early settler -- when this is the only city and expansion is needed,
+        // queue a settler before capital infrastructure so expansion starts within the first
+        // 5-10 turns. The capital's industrial build chain can wait until city 2 is founded.
+        if (item.name.empty() && needsSettler && !settlerEnqueued && ownedCityCount == 1
+                && city.population() >= 1) {
+            item.type = ProductionItemType::Unit;
+            item.itemId = 3;
+            item.name = "Settler";
+            item.totalCost = static_cast<float>(unitTypeDef(UnitTypeId{3}).productionCost);
+            item.progress = 0.0f;
+            settlerEnqueued = true;
+            LOG_INFO("AI %u Enqueued Settler in %s (early expansion, pop %d)",
+                     static_cast<unsigned>(this->m_player),
+                     city.name().c_str(), city.population());
+        }
+        // Priority 1b: Industrial district in capital (enables production chain).
         else if (city.isOriginalCapital()) {
             const aoc::sim::CityDistrictsComponent& capDistricts = city.districts();
             const bool capHasIndustrial = capDistricts.hasDistrict(DistrictType::Industrial);

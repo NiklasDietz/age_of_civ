@@ -38,12 +38,16 @@ float computePlayerScience(const aoc::game::Player& player,
             }
         }
 
-        // 2. Population base science (0.5 per citizen -- buildings are the real driver)
-        cityScience += static_cast<float>(city->population()) * 0.5f;
+        // 2. Population base science (1.5 per citizen).
+        // Raised from 0.5 to ensure early cities with 1-2 pop can realistically
+        // advance through the tech tree within a normal game length.
+        cityScience += static_cast<float>(city->population()) * 1.5f;
 
-        // 3. Palace bonus (capital gets extra science, matching Civ 6 Palace)
+        // 3. Palace bonus: capital gets extra science from the seat of government.
+        // Raised from 3 to 5 to give the capital a meaningful research advantage
+        // that compensates for early-game lack of science buildings.
         if (city->isOriginalCapital()) {
-            cityScience += 3.0f;
+            cityScience += 5.0f;
         }
 
         // 4. Building bonuses and multiplier

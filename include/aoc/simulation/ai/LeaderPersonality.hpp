@@ -334,19 +334,21 @@ struct AIScaledTargets {
 [[nodiscard]] inline AIScaledTargets computeScaledTargets(const LeaderBehavior& behavior) {
     AIScaledTargets targets{};
 
-    // Max cities: expansionist leaders want more (up to 8), cautious want less (3)
-    targets.maxCities = static_cast<int32_t>(4.0f * behavior.expansionism);
-    targets.maxCities = (targets.maxCities < 3) ? 3 : (targets.maxCities > 8) ? 8 : targets.maxCities;
+    // Max cities: expansionist leaders want more (up to 12), cautious want at least 4.
+    // Base of 8 ensures all AI players are actively expanding by mid-game.
+    targets.maxCities = static_cast<int32_t>(8.0f * behavior.expansionism);
+    targets.maxCities = (targets.maxCities < 4) ? 4 : (targets.maxCities > 12) ? 12 : targets.maxCities;
 
     // Military per city: aggressive leaders maintain larger armies
     targets.desiredMilitaryPerCity = static_cast<int32_t>(
         2.0f * behavior.militaryAggression);
     targets.desiredMilitaryPerCity = (targets.desiredMilitaryPerCity < 1) ? 1 : targets.desiredMilitaryPerCity;
 
-    // Settle population threshold: expansionists settle earlier
+    // Settle population threshold: expansionists settle as soon as pop 1,
+    // cautious leaders wait until pop 2. Minimum is 1 so the AI doesn't stall.
     targets.settlePopThreshold = static_cast<int32_t>(
-        2.0f + (1.0f - behavior.expansionism) * 2.0f);
-    targets.settlePopThreshold = (targets.settlePopThreshold < 2) ? 2 : targets.settlePopThreshold;
+        1.0f + (1.0f - behavior.expansionism) * 1.0f);
+    targets.settlePopThreshold = (targets.settlePopThreshold < 1) ? 1 : targets.settlePopThreshold;
 
     targets.warThreshold = behavior.warDeclarationThreshold;
     targets.techMilBias = behavior.techMilitary;

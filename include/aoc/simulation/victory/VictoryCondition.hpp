@@ -26,7 +26,7 @@
  * Cumulative VP at game end determines the winner.
  *
  * Losing conditions (collapse) can eliminate a player:
- *   - Economic collapse: GDP < 50% of peak for 10 turns
+ *   - Economic collapse: GDP < 25% of peak for 30 turns (peak floor 100, min turn 100)
  *   - Revolution: average loyalty < 30 for 5 turns
  *   - Conquest: capital lost + 75% cities lost
  *   - Debt spiral: sovereign default + hyperinflation simultaneously
@@ -90,7 +90,7 @@ enum class VictoryType : uint8_t {
 
 enum class CollapseType : uint8_t {
     None              = 0,
-    EconomicCollapse  = 1,  ///< GDP < 50% of peak for 10 turns
+    EconomicCollapse  = 1,  ///< GDP < 25% of peak for 30 turns (peak floor 100, min turn 100)
     Revolution        = 2,  ///< Average loyalty < 30 for 5 turns
     Conquest          = 3,  ///< Lost capital + 75% of cities
     DebtSpiral        = 4,  ///< Default + hyperinflation simultaneously
@@ -175,9 +175,14 @@ void performEraEvaluation(aoc::game::GameState& gameState);
 /**
  * @brief Check for losing conditions (collapse) for all players.
  *
- * @param world  ECS world.
+ * Eliminations are suppressed before turn 100 and require GDP to have fallen
+ * below 25% of peak (not 50%) for at least 30 consecutive turns.  A non-zero
+ * peak GDP floor of 100 prevents early-game noise from triggering collapse.
+ *
+ * @param gameState  Game state containing all player data.
+ * @param currentTurn  Current turn number, used for the minimum-turn guard.
  */
-void checkCollapseConditions(aoc::game::GameState& gameState);
+void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber currentTurn);
 
 /**
  * @brief Check Global Integration Project progress.

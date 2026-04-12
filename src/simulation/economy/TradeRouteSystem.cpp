@@ -245,18 +245,40 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     trader.turnsActive = 0;
     trader.maxTrips = -1;  // Permanent route
 
-    // Determine route type based on city infrastructure
+    // Determine route type based on city infrastructure and tech.
+    //
+    // Selection priority (highest first):
+    //   1. Air  -- both cities have Airport (BuildingId{14}) AND owner has Aviation (TechId{26})
+    //   2. Sea  -- both cities are coastal (adjacent to water, regardless of Harbor district)
+    //   3. Land -- fallback
+    //
+    // Sea routes previously required both cities to have the Harbor district.
+    // That caused 100% Land routes because AI rarely places Harbor districts before
+    // needing trade routes. Coastal adjacency is the correct natural precondition.
     const CityDistrictsComponent& originDistricts = originCity->districts();
     const CityDistrictsComponent& destDistricts   = destCity->districts();
 
-    bool originHasAirport = originDistricts.hasBuilding(BuildingId{14});  // Airport
+    // Airport: BuildingId{14} unlocked by Aviation (TechId{26})
+    bool ownerHasAviation = ownerPlayer->tech().hasResearched(TechId{26});
+    bool originHasAirport = originDistricts.hasBuilding(BuildingId{14});
     bool destHasAirport   = destDistricts.hasBuilding(BuildingId{14});
-    bool originHasHarbor  = originDistricts.hasDistrict(DistrictType::Harbor);
-    bool destHasHarbor    = destDistricts.hasDistrict(DistrictType::Harbor);
 
-    if (originHasAirport && destHasAirport) {
+    // Coastal check: at least one neighbor tile is water
+    auto isCityCoastal = [&grid](const aoc::game::City* city) -> bool {
+        std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(city->location());
+        for (const aoc::hex::AxialCoord& nbr : nbrs) {
+            if (grid.isValid(nbr) && aoc::map::isWater(grid.terrain(grid.toIndex(nbr)))) {
+                return true;
+            }
+        }
+        return false;
+    };
+    bool originIsCoastal = isCityCoastal(originCity);
+    bool destIsCoastal   = isCityCoastal(destCity);
+
+    if (ownerHasAviation && originHasAirport && destHasAirport) {
         trader.routeType = TradeRouteType::Air;
-    } else if (originHasHarbor && destHasHarbor) {
+    } else if (originIsCoastal && destIsCoastal) {
         trader.routeType = TradeRouteType::Sea;
     } else {
         trader.routeType = TradeRouteType::Land;

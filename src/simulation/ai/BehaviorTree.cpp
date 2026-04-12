@@ -104,7 +104,7 @@ static NodePtr actionBuildSettler() {
                     bestCity = cityPtr.get();
                 }
             }
-            if (bestCity == nullptr || bestPop < 2) { return Status::Failure; }
+            if (bestCity == nullptr) { return Status::Failure; }
 
             ProductionQueueItem item{};
             item.type = ProductionItemType::Unit;

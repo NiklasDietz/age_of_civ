@@ -361,28 +361,52 @@ void performEraEvaluation(aoc::game::GameState& gameState) {
 // Collapse (losing conditions)
 // ============================================================================
 
-void checkCollapseConditions(aoc::game::GameState& gameState) {
+// Minimum peak GDP before economic collapse can trigger. Civilizations with very
+// low peak GDP are still in the early expansion phase where natural volatility
+// would otherwise cause spurious eliminations.
+static constexpr int32_t COLLAPSE_PEAK_GDP_FLOOR = 100;
+
+// GDP must fall below this fraction of peak GDP to count as a collapse turn.
+// 25% (divide by 4) is far more forgiving than the original 50% threshold and
+// matches the intent of a true civilisational collapse rather than a recession.
+static constexpr int32_t COLLAPSE_GDP_DIVISOR = 4;
+
+// Number of consecutive below-threshold turns required before elimination fires.
+static constexpr int32_t COLLAPSE_TURNS_REQUIRED = 30;
+
+// No player can be eliminated before this turn, preventing early-game accidents
+// from snowballing into immediate game-overs.
+static constexpr TurnNumber COLLAPSE_MIN_TURN = 100;
+
+void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber currentTurn) {
     for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
         VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
         if (tracker.isEliminated) {
             continue;
         }
 
-        // 1. Economic collapse: GDP < 50% of peak for 10 turns
+        // 1. Economic collapse: GDP < 25% of peak for 30 consecutive turns,
+        //    only after turn 100 and only when peak GDP was meaningful (>= 100).
         {
             const CurrencyAmount currentGDP = gsPlayer->monetary().gdp;
-            if (tracker.peakGDP > 0
-                && currentGDP < static_cast<CurrencyAmount>(tracker.peakGDP) / 2) {
+            const bool peakIsMeaningful = (tracker.peakGDP >= COLLAPSE_PEAK_GDP_FLOOR);
+            const CurrencyAmount collapseFloor =
+                static_cast<CurrencyAmount>(tracker.peakGDP) / COLLAPSE_GDP_DIVISOR;
+            if (peakIsMeaningful && currentGDP < collapseFloor) {
                 ++tracker.turnsGDPBelowHalf;
             } else {
                 tracker.turnsGDPBelowHalf = 0;
             }
         }
-        if (tracker.turnsGDPBelowHalf >= 10) {
+        if (tracker.turnsGDPBelowHalf >= COLLAPSE_TURNS_REQUIRED
+            && currentTurn >= COLLAPSE_MIN_TURN) {
             tracker.activeCollapse = CollapseType::EconomicCollapse;
             tracker.isEliminated = true;
-            LOG_INFO("Player %u ELIMINATED: economic collapse (GDP < 50%% of peak for 10 turns)",
-                     static_cast<unsigned>(gsPlayer->id()));
+            LOG_INFO("Player %u ELIMINATED: economic collapse "
+                     "(GDP < 25%% of peak for %d turns, peak was %d)",
+                     static_cast<unsigned>(gsPlayer->id()),
+                     COLLAPSE_TURNS_REQUIRED,
+                     tracker.peakGDP);
             continue;
         }
 
@@ -544,7 +568,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
 void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
                            const EconomySimulation& economy, TurnNumber currentTurn) {
     computeCSI(gameState, grid, economy);
-    checkCollapseConditions(gameState);
+    checkCollapseConditions(gameState, currentTurn);
     updateIntegrationProject(gameState);
 
     // Era evaluation every 30 turns
