@@ -95,8 +95,11 @@ inline constexpr int32_t CITY_STATE_FULL_COUNT = 24;
 
 /**
  * @brief Generate a quest for a city-state aimed at a nearby player.
+ *
+ * @param cityStateIndex  Index into GameState::cityStates().
  */
-void generateCityStateQuest(aoc::game::GameState& gameState, EntityId cityStateEntity,
+void generateCityStateQuest(aoc::game::GameState& gameState,
+                            std::size_t cityStateIndex,
                             PlayerId targetPlayer);
 
 /**

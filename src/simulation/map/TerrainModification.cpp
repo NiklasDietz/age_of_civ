@@ -7,7 +7,6 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 namespace aoc::sim {
@@ -70,8 +69,7 @@ bool canBuildTerrainProject(const aoc::map::HexGrid& grid,
     }
 }
 
-ErrorCode executeTerrainProject(aoc::ecs::World& /*world*/,
-                                aoc::map::HexGrid& grid,
+ErrorCode executeTerrainProject(aoc::map::HexGrid& grid,
                                 int32_t tileIndex,
                                 TerrainProjectType type) {
     if (!canBuildTerrainProject(grid, tileIndex, type)) {
@@ -89,7 +87,7 @@ ErrorCode executeTerrainProject(aoc::ecs::World& /*world*/,
 
         case TerrainProjectType::Tunnel:
             // Mountain becomes passable (movement cost 2 instead of impassable)
-            // We represent this by changing the terrain to Hills/Plains
+            // Represented by changing terrain to Plains with Hills feature.
             grid.setTerrain(tileIndex, aoc::map::TerrainType::Plains);
             grid.setFeature(tileIndex, aoc::map::FeatureType::Hills);
             LOG_INFO("Tunnel built through mountain at tile %d", tileIndex);

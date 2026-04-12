@@ -4,6 +4,8 @@
  */
 
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/simulation/economy/EconomicDepth.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -15,7 +17,6 @@
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -29,7 +30,6 @@ namespace aoc::sim {
 
 ErrorCode buyFuture(aoc::game::GameState& gameState, const Market& market,
                      PlayerId buyer, uint16_t goodId, int32_t amount) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     if (amount <= 0 || goodId >= market.goodsCount()) {
         return ErrorCode::InvalidArgument;
     }
@@ -37,39 +37,25 @@ ErrorCode buyFuture(aoc::game::GameState& gameState, const Market& market,
     int32_t price = market.price(goodId);
     CurrencyAmount totalCost = static_cast<CurrencyAmount>(price * amount);
 
-    // Deduct cost from buyer
-    aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-        world.getPool<MonetaryStateComponent>();
-    if (monetaryPool == nullptr) { return ErrorCode::InvalidArgument; }
-
-    for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-        if (monetaryPool->data()[i].owner == buyer) {
-            if (monetaryPool->data()[i].treasury < totalCost) {
-                return ErrorCode::InsufficientResources;
-            }
-            monetaryPool->data()[i].treasury -= totalCost;
-            break;
-        }
+    aoc::game::Player* buyerPlayer = gameState.player(buyer);
+    if (buyerPlayer == nullptr) {
+        return ErrorCode::InvalidArgument;
     }
 
-    // Create futures contract
-    aoc::ecs::ComponentPool<PlayerFuturesComponent>* futuresPool =
-        world.getPool<PlayerFuturesComponent>();
-    if (futuresPool != nullptr) {
-        for (uint32_t i = 0; i < futuresPool->size(); ++i) {
-            if (futuresPool->data()[i].owner == buyer) {
-                FuturesContract contract{};
-                contract.buyer = buyer;
-                contract.seller = INVALID_PLAYER;
-                contract.goodId = goodId;
-                contract.amount = amount;
-                contract.contractPrice = price;
-                contract.turnsToSettlement = 5;
-                futuresPool->data()[i].contracts.push_back(contract);
-                break;
-            }
-        }
+    MonetaryStateComponent& monetary = buyerPlayer->monetary();
+    if (monetary.treasury < totalCost) {
+        return ErrorCode::InsufficientResources;
     }
+    monetary.treasury -= totalCost;
+
+    FuturesContract contract{};
+    contract.buyer   = buyer;
+    contract.seller  = INVALID_PLAYER;
+    contract.goodId  = goodId;
+    contract.amount  = amount;
+    contract.contractPrice     = price;
+    contract.turnsToSettlement = 5;
+    buyerPlayer->futures().contracts.push_back(contract);
 
     LOG_INFO("Player %u bought future: %d x good %u at price %d",
              static_cast<unsigned>(buyer), amount, static_cast<unsigned>(goodId), price);
@@ -78,77 +64,48 @@ ErrorCode buyFuture(aoc::game::GameState& gameState, const Market& market,
 
 ErrorCode sellFuture(aoc::game::GameState& gameState, const Market& market,
                       PlayerId seller, uint16_t goodId, int32_t amount) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     if (amount <= 0 || goodId >= market.goodsCount()) {
         return ErrorCode::InvalidArgument;
     }
 
-    int32_t price = market.price(goodId);
+    int32_t price    = market.price(goodId);
     CurrencyAmount revenue = static_cast<CurrencyAmount>(price * amount);
 
-    // Seller receives gold now, promises to deliver goods later
-    aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-        world.getPool<MonetaryStateComponent>();
-    if (monetaryPool != nullptr) {
-        for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-            if (monetaryPool->data()[i].owner == seller) {
-                monetaryPool->data()[i].treasury += revenue;
-                break;
-            }
-        }
+    aoc::game::Player* sellerPlayer = gameState.player(seller);
+    if (sellerPlayer == nullptr) {
+        return ErrorCode::InvalidArgument;
     }
 
-    aoc::ecs::ComponentPool<PlayerFuturesComponent>* futuresPool =
-        world.getPool<PlayerFuturesComponent>();
-    if (futuresPool != nullptr) {
-        for (uint32_t i = 0; i < futuresPool->size(); ++i) {
-            if (futuresPool->data()[i].owner == seller) {
-                FuturesContract contract{};
-                contract.buyer = INVALID_PLAYER;
-                contract.seller = seller;
-                contract.goodId = goodId;
-                contract.amount = amount;
-                contract.contractPrice = price;
-                contract.turnsToSettlement = 5;
-                futuresPool->data()[i].contracts.push_back(contract);
-                break;
-            }
-        }
-    }
+    sellerPlayer->monetary().treasury += revenue;
+
+    FuturesContract contract{};
+    contract.buyer             = INVALID_PLAYER;
+    contract.seller            = seller;
+    contract.goodId            = goodId;
+    contract.amount            = amount;
+    contract.contractPrice     = price;
+    contract.turnsToSettlement = 5;
+    sellerPlayer->futures().contracts.push_back(contract);
 
     return ErrorCode::Ok;
 }
 
 void settleFutures(aoc::game::GameState& gameState, Market& market) {
-    aoc::ecs::ComponentPool<PlayerFuturesComponent>* futuresPool =
-        world.getPool<PlayerFuturesComponent>();
-    if (futuresPool == nullptr) { return; }
-    aoc::ecs::World& world = gameState.legacyWorld();
-
-    for (uint32_t p = 0; p < futuresPool->size(); ++p) {
-        aoc::ecs::World& world = gameState.legacyWorld();
-        std::vector<FuturesContract>& contracts = futuresPool->data()[p].contracts;
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) { continue; }
+        std::vector<FuturesContract>& contracts = playerPtr->futures().contracts;
         std::vector<FuturesContract>::iterator it = contracts.begin();
         while (it != contracts.end()) {
             --it->turnsToSettlement;
             if (it->turnsToSettlement <= 0) {
-                // Settlement: buyer receives goods at contract price
-                // If current market price > contract price: buyer profits
-                // If current market price < contract price: buyer loses
                 int32_t currentPrice = market.price(it->goodId);
-                int32_t priceDiff = currentPrice - it->contractPrice;
-                CurrencyAmount settlement = static_cast<CurrencyAmount>(
-                    priceDiff * it->amount);
+                int32_t priceDiff    = currentPrice - it->contractPrice;
+                CurrencyAmount settlement = static_cast<CurrencyAmount>(priceDiff * it->amount);
 
-                // Apply profit/loss to buyer
-                aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-                    world.getPool<MonetaryStateComponent>();
-                if (monetaryPool != nullptr && it->buyer != INVALID_PLAYER) {
-                    for (uint32_t m = 0; m < monetaryPool->size(); ++m) {
-                        if (monetaryPool->data()[m].owner == it->buyer) {
-                            monetaryPool->data()[m].treasury += settlement;
-                            break;
-                        }
+                if (it->buyer != INVALID_PLAYER) {
+                    aoc::game::Player* buyerPlayer = gameState.player(it->buyer);
+                    if (buyerPlayer != nullptr) {
+                        buyerPlayer->monetary().treasury += settlement;
                     }
                 }
 
@@ -165,69 +122,48 @@ void settleFutures(aoc::game::GameState& gameState, Market& market) {
 // ============================================================================
 
 void checkLaborStrikes(aoc::game::GameState& gameState) {
-    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-        world.getPool<CityComponent>();
-    if (cityPool == nullptr) { return; }
-    aoc::ecs::World& world = gameState.legacyWorld();
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) { continue; }
 
-    for (uint32_t c = 0; c < cityPool->size(); ++c) {
-        aoc::ecs::World& world = gameState.legacyWorld();
-        const CityComponent& city = cityPool->data()[c];
-        EntityId cityEntity = cityPool->entities()[c];
-        if (city.owner == BARBARIAN_PLAYER) { continue; }
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+            if (cityPtr == nullptr) { continue; }
 
-        // Check amenities
-        const CityHappinessComponent* happiness =
-            world.tryGetComponent<CityHappinessComponent>(cityEntity);
-        if (happiness == nullptr) { continue; }
+            const CityHappinessComponent& happiness = cityPtr->happiness();
+            float netAmenities = happiness.amenities - happiness.demand;
+            if (netAmenities >= 0.0f) { continue; }  // Happy city, no strike risk
 
-        float netAmenities = happiness->amenities - happiness->demand;
-        if (netAmenities >= 0.0f) { continue; }  // Happy city, no strike risk
-
-        // Count industrial buildings
-        const CityDistrictsComponent* districts =
-            world.tryGetComponent<CityDistrictsComponent>(cityEntity);
-        if (districts == nullptr) { continue; }
-
-        int32_t industrialBuildings = 0;
-        for (const CityDistrictsComponent::PlacedDistrict& d : districts->districts) {
-            if (d.type == DistrictType::Industrial) {
-                industrialBuildings += static_cast<int32_t>(d.buildings.size());
+            int32_t industrialBuildings = 0;
+            for (const CityDistrictsComponent::PlacedDistrict& d : cityPtr->districts().districts) {
+                if (d.type == DistrictType::Industrial) {
+                    industrialBuildings += static_cast<int32_t>(d.buildings.size());
+                }
             }
-        }
 
-        if (industrialBuildings < 3) { continue; }
+            if (industrialBuildings < 3) { continue; }
 
-        // Strike trigger!
-        CityStrikeComponent* strike =
-            world.tryGetComponent<CityStrikeComponent>(cityEntity);
-        if (strike == nullptr) {
-            CityStrikeComponent newStrike{};
-            world.addComponent<CityStrikeComponent>(cityEntity, std::move(newStrike));
-            strike = world.tryGetComponent<CityStrikeComponent>(cityEntity);
-        }
-        if (strike != nullptr && !strike->isOnStrike) {
-            strike->isOnStrike = true;
-            strike->strikeTurnsRemaining = 3;
-            LOG_INFO("LABOR STRIKE in city %s! Industrial buildings shut down for 3 turns",
-                     city.name.c_str());
+            CityStrikeComponent& strike = cityPtr->strike();
+            if (!strike.isOnStrike) {
+                strike.isOnStrike             = true;
+                strike.strikeTurnsRemaining   = 3;
+                LOG_INFO("LABOR STRIKE in city %s! Industrial buildings shut down for 3 turns",
+                         cityPtr->name().c_str());
+            }
         }
     }
 }
 
 void processStrikes(aoc::game::GameState& gameState) {
-    aoc::ecs::ComponentPool<CityStrikeComponent>* strikePool =
-        world.getPool<CityStrikeComponent>();
-    if (strikePool == nullptr) { return; }
-
-    for (uint32_t i = 0; i < strikePool->size(); ++i) {
-        CityStrikeComponent& strike = strikePool->data()[i];
-        if (!strike.isOnStrike) { continue; }
-
-        --strike.strikeTurnsRemaining;
-        if (strike.strikeTurnsRemaining <= 0) {
-            strike.isOnStrike = false;
-            LOG_INFO("Strike ended in a city");
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) { continue; }
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+            if (cityPtr == nullptr) { continue; }
+            CityStrikeComponent& strike = cityPtr->strike();
+            if (!strike.isOnStrike) { continue; }
+            --strike.strikeTurnsRemaining;
+            if (strike.strikeTurnsRemaining <= 0) {
+                strike.isOnStrike = false;
+                LOG_INFO("Strike ended in city %s", cityPtr->name().c_str());
+            }
         }
     }
 }
@@ -237,23 +173,14 @@ void processStrikes(aoc::game::GameState& gameState) {
 // ============================================================================
 
 void processInsurancePremiums(aoc::game::GameState& gameState) {
-    aoc::ecs::ComponentPool<PlayerInsuranceComponent>* insPool =
-        world.getPool<PlayerInsuranceComponent>();
-    aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-        world.getPool<MonetaryStateComponent>();
-    if (insPool == nullptr || monetaryPool == nullptr) { return; }
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) { continue; }
 
-    for (uint32_t i = 0; i < insPool->size(); ++i) {
-        const PlayerInsuranceComponent& ins = insPool->data()[i];
+        const PlayerInsuranceComponent& ins = playerPtr->insurance();
         int32_t premium = ins.totalPremium();
         if (premium <= 0) { continue; }
 
-        for (uint32_t m = 0; m < monetaryPool->size(); ++m) {
-            if (monetaryPool->data()[m].owner == ins.owner) {
-                monetaryPool->data()[m].treasury -= static_cast<CurrencyAmount>(premium);
-                break;
-            }
-        }
+        playerPtr->monetary().treasury -= static_cast<CurrencyAmount>(premium);
     }
 }
 
@@ -261,12 +188,10 @@ void processInsurancePremiums(aoc::game::GameState& gameState) {
 // Economic Espionage
 // ============================================================================
 
-ErrorCode executeEconSpyMission(aoc::game::GameState& gameState,
+ErrorCode executeEconSpyMission(aoc::game::GameState& /*gameState*/,
                                  EntityId /*spyEntity*/,
                                  EconSpyMission mission) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     switch (mission) {
-        aoc::ecs::World& world = gameState.legacyWorld();
         case EconSpyMission::StealRecipe:
             LOG_INFO("Economic espionage: recipe stolen!");
             break;
@@ -276,17 +201,9 @@ ErrorCode executeEconSpyMission(aoc::game::GameState& gameState,
         case EconSpyMission::InsiderTrading:
             LOG_INFO("Economic espionage: insider trading intelligence gathered!");
             break;
-        case EconSpyMission::Counterfeit: {
+        case EconSpyMission::Counterfeit:
             LOG_INFO("Economic espionage: counterfeit coins introduced!");
-            // Damage target's trust
-            aoc::ecs::ComponentPool<CurrencyTrustComponent>* trustPool =
-                world.getPool<CurrencyTrustComponent>();
-            if (trustPool != nullptr) {
-                // Find the target (spy's target city's owner)
-                // Simplified: just log for now
-            }
             break;
-        }
         default:
             break;
     }
@@ -298,88 +215,82 @@ ErrorCode executeEconSpyMission(aoc::game::GameState& gameState,
 // ============================================================================
 
 void processMigration(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid) {
-    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-        world.getPool<CityComponent>();
-    if (cityPool == nullptr) { return; }
-    aoc::ecs::World& world = gameState.legacyWorld();
+    // Collect all cities with their owner and entity index for migration hashing.
+    struct CityRecord {
+        aoc::game::City*  cityPtr;
+        PlayerId          owner;
+        uint32_t          entityIndex;  // Used for deterministic migration hash
+    };
 
-    // Compare QoL between neighboring cities across borders
-    for (uint32_t a = 0; a < cityPool->size(); ++a) {
-        const CityComponent& cityA = cityPool->data()[a];
-        if (cityA.owner == BARBARIAN_PLAYER || cityA.owner == INVALID_PLAYER) {
-            continue;
+    std::vector<CityRecord> allCities;
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) { continue; }
+        PlayerId ownerId = playerPtr->id();
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+            if (cityPtr == nullptr) { continue; }
+            // Use a stable hash based on city location coordinates
+            uint32_t hashIdx = static_cast<uint32_t>(cityPtr->location().q * 1000
+                                                    + cityPtr->location().r);
+            allCities.push_back({cityPtr.get(), ownerId, hashIdx});
         }
+    }
 
-        const CityHappinessComponent* happyA =
-            world.tryGetComponent<CityHappinessComponent>(cityPool->entities()[a]);
-        float qolA = (happyA != nullptr) ? (happyA->amenities - happyA->demand) : 0.0f;
+    for (std::size_t a = 0; a < allCities.size(); ++a) {
+        aoc::game::City* cityA = allCities[a].cityPtr;
+        float qolA = cityA->happiness().amenities - cityA->happiness().demand;
 
-        for (uint32_t b = a + 1; b < cityPool->size(); ++b) {
-            const CityComponent& cityB = cityPool->data()[b];
-            if (cityB.owner == BARBARIAN_PLAYER || cityB.owner == INVALID_PLAYER) {
-                continue;
-            }
-            if (cityB.owner == cityA.owner) {
+        for (std::size_t b = a + 1; b < allCities.size(); ++b) {
+            aoc::game::City* cityB = allCities[b].cityPtr;
+
+            if (allCities[b].owner == allCities[a].owner) {
                 continue;  // Same player, no migration
             }
 
-            // Check if cities are near each other (within 10 hexes)
-            int32_t dist = hex::distance(cityA.location, cityB.location);
+            int32_t dist = hex::distance(cityA->location(), cityB->location());
             if (dist > 10) { continue; }
 
-            const CityHappinessComponent* happyB =
-                world.tryGetComponent<CityHappinessComponent>(cityPool->entities()[b]);
-            float qolB = (happyB != nullptr) ? (happyB->amenities - happyB->demand) : 0.0f;
-
+            float qolB    = cityB->happiness().amenities - cityB->happiness().demand;
             float qolDiff = qolB - qolA;
             if (std::abs(qolDiff) < 3.0f) { continue; }
 
-            // Check immigration policies
-            aoc::ecs::ComponentPool<PlayerMigrationComponent>* migPool =
-                world.getPool<PlayerMigrationComponent>();
-            if (migPool == nullptr) { continue; }
-
             // Determine source and destination
-            CityComponent* source = nullptr;
-            CityComponent* dest = nullptr;
-            EntityId sourceEntity = NULL_ENTITY;
+            aoc::game::City* source = nullptr;
+            aoc::game::City* dest   = nullptr;
+            PlayerId destOwner      = INVALID_PLAYER;
+            uint32_t sourceHash     = 0;
 
             if (qolDiff > 0.0f) {
-                // B is better, A loses population
-                source = const_cast<CityComponent*>(&cityA);
-                dest = const_cast<CityComponent*>(&cityB);
-                sourceEntity = cityPool->entities()[a];
+                source     = cityA;
+                dest       = cityB;
+                destOwner  = allCities[b].owner;
+                sourceHash = allCities[a].entityIndex;
             } else {
-                source = const_cast<CityComponent*>(&cityB);
-                dest = const_cast<CityComponent*>(&cityA);
-                sourceEntity = cityPool->entities()[b];
+                source     = cityB;
+                dest       = cityA;
+                destOwner  = allCities[a].owner;
+                sourceHash = allCities[b].entityIndex;
             }
 
             // Check destination's immigration policy
-            ImmigrationPolicy destPolicy = ImmigrationPolicy::Controlled;
-            for (uint32_t m = 0; m < migPool->size(); ++m) {
-                if (migPool->data()[m].owner == dest->owner) {
-                    destPolicy = migPool->data()[m].policy;
-                    break;
-                }
-            }
-
+            aoc::game::Player* destPlayer = gameState.player(destOwner);
+            if (destPlayer == nullptr) { continue; }
+            ImmigrationPolicy destPolicy = destPlayer->migration().policy;
             if (destPolicy == ImmigrationPolicy::Closed) { continue; }
 
-            // Migration happens slowly: 1 citizen per 10 turns
-            // Use hash for determinism
-            uint32_t migHash = static_cast<uint32_t>(sourceEntity.index) * 2654435761u;
+            // Migration happens slowly: 1 citizen per 10 turns (deterministic hash)
+            uint32_t migHash = sourceHash * 2654435761u;
             if ((migHash % 10) != 0) { continue; }
 
-            if (source->population > 2) {
-                --source->population;
-                ++dest->population;
+            if (source->population() > 2) {
+                source->setPopulation(source->population() - 1);
+                dest->setPopulation(dest->population() + 1);
                 LOG_INFO("Migration: 1 citizen moved from %s to %s (QoL difference %.1f)",
-                         source->name.c_str(), dest->name.c_str(),
+                         source->name().c_str(), dest->name().c_str(),
                          static_cast<double>(std::abs(qolDiff)));
             }
         }
     }
+    (void)grid;  // Grid reserved for future distance/road weighting
 }
 
 } // namespace aoc::sim

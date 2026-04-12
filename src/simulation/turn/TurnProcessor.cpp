@@ -4,7 +4,6 @@
  *
  * All ECS bridge synchronisation has been removed. Game state is accessed
  * exclusively through the GameState / Player / City / Unit object model.
- * The only remaining legacyWorld() calls are for subsystems that have not yet
  * been fully migrated: GlobalClimateComponent, GlobalOilReserves,
  * PlayerBubbleComponent, PlayerEnergyComponent, and processFlooding().
  */
@@ -95,6 +94,9 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/game/Unit.hpp"
+
+// Civilization definitions (for city name lists)
+#include "aoc/simulation/civilization/Civilization.hpp"
 
 // Energy
 #include "aoc/simulation/economy/EnergyDependency.hpp"
@@ -210,6 +212,26 @@ aoc::game::City& foundCity(aoc::game::GameState& gameState,
              location.q, location.r);
 
     return city;
+}
+
+std::string getNextCityName(const aoc::game::GameState& gameState, PlayerId player) {
+    const aoc::game::Player* gsPlayer = gameState.player(player);
+
+    // Determine how many cities this player already owns to pick the next name.
+    int32_t cityCount = (gsPlayer != nullptr) ? gsPlayer->cityCount() : 0;
+
+    // Find the player's civilization to get its city name list.
+    CivId civId{0};
+    if (gsPlayer != nullptr) {
+        civId = gsPlayer->civId();
+    }
+
+    const CivilizationDef& civ = civDef(civId);
+    if (cityCount < static_cast<int32_t>(MAX_CIV_CITY_NAMES)) {
+        return std::string(civ.cityNames[static_cast<std::size_t>(cityCount)]);
+    }
+
+    return std::string(civ.name) + " City " + std::to_string(cityCount + 1);
 }
 
 // ============================================================================
@@ -376,68 +398,44 @@ void processGlobalSystems(TurnContext& ctx) {
     settleFutures(gameState, ctx.economy->market());
 
     // River flooding (seasonal) -- TODO: migrate processFlooding to GameState
-    processFlooding(gameState.legacyWorld(), grid, static_cast<int32_t>(ctx.currentTurn));
+    processFlooding(gameState, grid, static_cast<int32_t>(ctx.currentTurn));
 
     // Natural disasters and climate
     {
-        float globalTemp = 14.0f;
-
-        // TODO: migrate GlobalClimateComponent to GameState
-        aoc::ecs::ComponentPool<GlobalClimateComponent>* climatePool =
-            gameState.legacyWorld().getPool<GlobalClimateComponent>();
-        if (climatePool != nullptr && climatePool->size() > 0) {
-            globalTemp = climatePool->data()[0].globalTemperature;
-        }
+        const float globalTemp = gameState.climate().globalTemperature;
         processNaturalDisasters(gameState, grid, static_cast<int32_t>(ctx.currentTurn), globalTemp);
 
-        if (climatePool != nullptr) {
-            for (uint32_t ci = 0; ci < climatePool->size(); ++ci) {
-                GlobalClimateComponent& climate = climatePool->data()[ci];
+        GlobalClimateComponent& climate = gameState.climate();
 
-                // Accumulate CO2 from population across all cities of all players
-                for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
-                    for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
-                        const float co2PerCity = static_cast<float>(city->population()) * 0.1f;
-                        climate.addCO2(co2PerCity);
-                    }
-                }
-
-                // Industrial pollution CO2
-                climate.addCO2(static_cast<float>(totalIndustrialCO2(gameState)));
-                climate.processTurn(grid, *ctx.rng);
+        // Accumulate CO2 from population across all cities of all players
+        for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+            for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
+                const float co2PerCity = static_cast<float>(city->population()) * 0.1f;
+                climate.addCO2(co2PerCity);
             }
         }
+
+        // Industrial pollution CO2
+        climate.addCO2(static_cast<float>(totalIndustrialCO2(gameState)));
+        climate.processTurn(grid, *ctx.rng);
     }
 
     // Energy dependency and peak oil tracking
     {
-        // TODO: migrate GlobalOilReserves to GameState
-        aoc::ecs::ComponentPool<GlobalOilReserves>* oilPool =
-            gameState.legacyWorld().getPool<GlobalOilReserves>();
-        if (oilPool != nullptr && oilPool->size() > 0) {
-            updateGlobalOilReserves(grid, oilPool->data()[0]);
-        }
+        updateGlobalOilReserves(grid, gameState.oilReserves());
 
-        // TODO: migrate PlayerEnergyComponent to Player
-        aoc::ecs::ComponentPool<PlayerEnergyComponent>* energyPool =
-            gameState.legacyWorld().getPool<PlayerEnergyComponent>();
-        if (energyPool != nullptr) {
-            for (uint32_t ei = 0; ei < energyPool->size(); ++ei) {
-                PlayerEnergyComponent& energy = energyPool->data()[ei];
+        for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+            PlayerEnergyComponent& energy = playerPtr->energy();
 
-                // Sum oil consumed from city stockpiles for this player
-                int32_t oilConsumed = 0;
-                const aoc::game::Player* energyPlayer = gameState.player(energy.owner);
-                if (energyPlayer != nullptr) {
-                    for (const std::unique_ptr<aoc::game::City>& city : energyPlayer->cities()) {
-                        oilConsumed += city->stockpile().getAmount(goods::OIL);
-                    }
-                }
-
-                const int32_t renewables = countRenewableBuildings(gameState, energy.owner);
-                updateEnergyDependency(energy, oilConsumed, renewables);
-                processOilShock(energy);
+            // Sum oil consumed from city stockpiles for this player
+            int32_t oilConsumed = 0;
+            for (const std::unique_ptr<aoc::game::City>& city : playerPtr->cities()) {
+                oilConsumed += city->stockpile().getAmount(goods::OIL);
             }
+
+            const int32_t renewables = countRenewableBuildings(gameState, playerPtr->id());
+            updateEnergyDependency(energy, oilConsumed, renewables);
+            processOilShock(energy);
         }
     }
 
@@ -461,22 +459,12 @@ void processGlobalSystems(TurnContext& ctx) {
     processBlackMarketTrade(gameState);
 
     // Speculation bubbles (per player)
-    // TODO: migrate PlayerBubbleComponent to Player
-    {
-        aoc::ecs::ComponentPool<PlayerBubbleComponent>* bubblePool =
-            gameState.legacyWorld().getPool<PlayerBubbleComponent>();
-        if (bubblePool != nullptr) {
-            for (uint32_t bi = 0; bi < bubblePool->size(); ++bi) {
-                PlayerBubbleComponent& bubble = bubblePool->data()[bi];
-                const aoc::game::Player* bubblePlayer = gameState.player(bubble.owner);
-                if (bubblePlayer == nullptr) { continue; }
-
-                const aoc::sim::MonetaryStateComponent& mon = bubblePlayer->monetary();
-                // Shock triggers: inflation spike or negative treasury
-                const bool hasShock = (mon.inflationRate > 0.15f || mon.treasury < 0);
-                processSpeculationBubble(bubble, mon.gdp, mon.interestRate, hasShock);
-            }
-        }
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        PlayerBubbleComponent& bubble = playerPtr->bubble();
+        const aoc::sim::MonetaryStateComponent& mon = playerPtr->monetary();
+        // Shock triggers: inflation spike or negative treasury
+        const bool hasShock = (mon.inflationRate > 0.15f || mon.treasury < 0);
+        processSpeculationBubble(bubble, mon.gdp, mon.interestRate, hasShock);
     }
 
     // Per-player: unemployment and education

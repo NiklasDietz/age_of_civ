@@ -24,7 +24,7 @@
 #include <cstdint>
 
 namespace vulkan_app::renderer { class Renderer2D; }
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::render {
@@ -67,7 +67,7 @@ struct OverlayState {
  * @param player     Active player (for filtering).
  */
 void renderMapOverlays(vulkan_app::renderer::Renderer2D& renderer,
-                       const aoc::ecs::World& world,
+                       const aoc::game::GameState& gameState,
                        const aoc::map::HexGrid& grid,
                        const OverlayState& state,
                        float cameraX, float cameraY, float zoom,
@@ -85,7 +85,7 @@ void renderInfrastructureOverlay(vulkan_app::renderer::Renderer2D& renderer,
  * @brief Render pollution overlay (brown tint on polluted tiles).
  */
 void renderPollutionOverlay(vulkan_app::renderer::Renderer2D& renderer,
-                            const aoc::ecs::World& world,
+                            const aoc::game::GameState& gameState,
                             const aoc::map::HexGrid& grid,
                             float cameraX, float cameraY, float zoom);
 
@@ -93,7 +93,7 @@ void renderPollutionOverlay(vulkan_app::renderer::Renderer2D& renderer,
  * @brief Render active trade routes as colored lines on the map.
  */
 void renderTradeRouteOverlay(vulkan_app::renderer::Renderer2D& renderer,
-                             const aoc::ecs::World& world,
+                             const aoc::game::GameState& gameState,
                              const aoc::map::HexGrid& grid,
                              float cameraX, float cameraY, float zoom,
                              PlayerId player);

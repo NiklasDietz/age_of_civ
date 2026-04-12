@@ -4,9 +4,9 @@
  */
 
 #include "aoc/replay/ReplayRecorder.hpp"
-#include "aoc/ecs/World.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/core/Log.hpp"
 
@@ -14,56 +14,26 @@
 
 namespace aoc::replay {
 
-void ReplayRecorder::recordFrame(const aoc::ecs::World& world, TurnNumber turn) {
+void ReplayRecorder::recordFrame(const aoc::game::GameState& gameState, TurnNumber turn) {
     ReplayFrame frame{};
     frame.turn = turn;
 
-    // Count units and cities per player
-    const aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* unitPool =
-        world.getPool<aoc::sim::UnitComponent>();
-    const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
-        world.getPool<aoc::sim::CityComponent>();
-    const aoc::ecs::ComponentPool<aoc::sim::PlayerTechComponent>* techPool =
-        world.getPool<aoc::sim::PlayerTechComponent>();
-    // Gather stats for up to MAX_PLAYERS players
-    for (uint8_t p = 0; p < MAX_PLAYERS; ++p) {
+    const uint16_t techCnt = aoc::sim::techCount();
+
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         ReplayFrame::PlayerSnapshot snap{};
-        snap.owner = p;
+        snap.owner = playerPtr->id();
 
-        // Count military units
-        if (unitPool != nullptr) {
-            for (uint32_t i = 0; i < unitPool->size(); ++i) {
-                const aoc::sim::UnitComponent& unit = unitPool->data()[i];
-                if (unit.owner == p) {
-                    ++snap.military;
-                }
-            }
+        snap.military = playerPtr->militaryUnitCount();
+
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+            ++snap.territory;
+            snap.population += cityPtr->population();
         }
 
-        // Count cities and total population
-        if (cityPool != nullptr) {
-            for (uint32_t i = 0; i < cityPool->size(); ++i) {
-                const aoc::sim::CityComponent& city = cityPool->data()[i];
-                if (city.owner == p) {
-                    ++snap.territory;
-                    snap.population += city.population;
-                }
-            }
-        }
-
-        // Count researched techs
-        if (techPool != nullptr) {
-            for (uint32_t i = 0; i < techPool->size(); ++i) {
-                const aoc::sim::PlayerTechComponent& tech = techPool->data()[i];
-                if (tech.owner == p) {
-                    const uint16_t techCnt = aoc::sim::techCount();
-                    for (uint16_t t = 0; t < techCnt; ++t) {
-                        if (tech.hasResearched(TechId{t})) {
-                            ++snap.techs;
-                        }
-                    }
-                    break;
-                }
+        for (uint16_t t = 0; t < techCnt; ++t) {
+            if (playerPtr->tech().hasResearched(TechId{t})) {
+                ++snap.techs;
             }
         }
 
@@ -71,7 +41,6 @@ void ReplayRecorder::recordFrame(const aoc::ecs::World& world, TurnNumber turn) 
         snap.score = snap.military * 5 + snap.territory * 20 +
                      snap.population * 2 + snap.techs * 10;
 
-        // Only add snapshot if the player has any presence
         if (snap.military > 0 || snap.territory > 0) {
             frame.players.push_back(snap);
         }

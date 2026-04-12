@@ -11,6 +11,7 @@
 #include <string_view>
 
 namespace aoc::game { class GameState; }
+namespace aoc::game { class Unit; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -66,6 +67,6 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
 
 /// Activate a Great Person's one-time ability.
 void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
-                          EntityId greatPersonEntity);
+                          aoc::game::Unit& gpUnit);
 
 } // namespace aoc::sim

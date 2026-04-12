@@ -3,102 +3,27 @@
  * @brief City power grid computation, fuel consumption, and nuclear meltdown.
  */
 
-#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/production/PowerGrid.hpp"
 #include "aoc/simulation/production/Waste.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
-#include "aoc/ecs/World.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
 
 namespace aoc::sim {
 
-CityPowerComponent computeCityPower(aoc::game::GameState& gameState,
-                                     const aoc::map::HexGrid& grid,
-                                     EntityId cityEntity) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    CityPowerComponent result{};
-    aoc::ecs::World& world = gameState.legacyWorld();
-
-    const CityDistrictsComponent* districts =
-        world.tryGetComponent<CityDistrictsComponent>(cityEntity);
-    if (districts == nullptr) {
-        return result;
-    }
-
-    CityStockpileComponent* stockpile =
-        world.tryGetComponent<CityStockpileComponent>(cityEntity);
-
-    const CityComponent* city = world.tryGetComponent<CityComponent>(cityEntity);
-
-    // Check each power plant building
-    for (const PowerPlantDef& plantDef : POWER_PLANT_DEFS) {
-        if (!districts->hasBuilding(plantDef.buildingId)) {
-            continue;
-        }
-
-        // Hydroelectric requires river adjacency
-        if (plantDef.requiresRiver && city != nullptr) {
-            bool hasRiver = false;
-            int32_t cityIndex = grid.toIndex(city->location);
-            if (grid.isValid(city->location) && grid.riverEdges(cityIndex) != 0) {
-                hasRiver = true;
-            }
-            if (!hasRiver) {
-                continue;  // No river, hydroelectric doesn't work
-            }
-        }
-
-        // Consume fuel if required
-        if (plantDef.fuelGoodId != 0xFFFF && stockpile != nullptr) {
-            int32_t available = stockpile->getAmount(plantDef.fuelGoodId);
-            if (available < plantDef.fuelPerTurn) {
-                continue;  // Not enough fuel, plant doesn't operate
-            }
-            [[maybe_unused]] bool ok = stockpile->consumeGoods(plantDef.fuelGoodId, plantDef.fuelPerTurn);
-        }
-
-        result.energySupply += plantDef.energyOutput;
-
-        // Track emissions as waste
-        if (plantDef.emissions > 0) {
-            CityPollutionComponent* pollution =
-                world.tryGetComponent<CityPollutionComponent>(cityEntity);
-            if (pollution == nullptr) {
-                CityPollutionComponent newPollution{};
-                world.addComponent<CityPollutionComponent>(cityEntity, std::move(newPollution));
-                pollution = world.tryGetComponent<CityPollutionComponent>(cityEntity);
-            }
-            if (pollution != nullptr) {
-                pollution->co2ContributionPerTurn += plantDef.emissions;
-                pollution->wasteAccumulated += plantDef.emissions;
-            }
-        }
-
-        if (plantDef.type == PowerPlantType::Nuclear) {
-            result.hasNuclear = true;
-        }
-    }
-
-    // Compute energy demand from industrial buildings
-    for (const CityDistrictsComponent::PlacedDistrict& district : districts->districts) {
-        for (BuildingId bid : district.buildings) {
-            result.energyDemand += buildingEnergyDemand(bid);
-        }
-    }
-
-    return result;
-}
+namespace {
 
 /// Apply fallout to tiles in a hex radius around a city.
-static void applyFalloutRadius(aoc::map::HexGrid& grid, aoc::hex::AxialCoord center,
-                                int32_t radius, int16_t durationTurns) {
+void applyFalloutRadius(aoc::map::HexGrid& grid, aoc::hex::AxialCoord center,
+                         int32_t radius, int16_t durationTurns) {
     std::vector<aoc::hex::AxialCoord> affected;
     affected.reserve(static_cast<std::size_t>(radius * radius * 3 + 1));
     aoc::hex::spiral(center, radius, std::back_inserter(affected));
@@ -112,18 +37,69 @@ static void applyFalloutRadius(aoc::map::HexGrid& grid, aoc::hex::AxialCoord cen
     }
 }
 
-bool checkNuclearMeltdown(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
-                          EntityId cityEntity, uint32_t turnHash) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    const CityDistrictsComponent* districts =
-        world.tryGetComponent<CityDistrictsComponent>(cityEntity);
-    if (districts == nullptr) {
-        return false;
+} // anonymous namespace
+
+CityPowerComponent computeCityPower(aoc::game::GameState& /*gameState*/,
+                                     const aoc::map::HexGrid& grid,
+                                     aoc::game::City& city) {
+    CityPowerComponent result{};
+
+    const CityDistrictsComponent& districts = city.districts();
+    CityStockpileComponent&       stockpile  = city.stockpile();
+    CityPollutionComponent&       pollution  = city.pollution();
+
+    for (const PowerPlantDef& plantDef : POWER_PLANT_DEFS) {
+        if (!districts.hasBuilding(plantDef.buildingId)) {
+            continue;
+        }
+
+        if (plantDef.requiresRiver) {
+            bool hasRiver = false;
+            const aoc::hex::AxialCoord loc = city.location();
+            int32_t cityIndex = grid.toIndex(loc);
+            if (grid.isValid(loc) && grid.riverEdges(cityIndex) != 0) {
+                hasRiver = true;
+            }
+            if (!hasRiver) {
+                continue;
+            }
+        }
+
+        if (plantDef.fuelGoodId != 0xFFFF) {
+            int32_t available = stockpile.getAmount(plantDef.fuelGoodId);
+            if (available < plantDef.fuelPerTurn) {
+                continue;
+            }
+            [[maybe_unused]] bool ok = stockpile.consumeGoods(plantDef.fuelGoodId, plantDef.fuelPerTurn);
+        }
+
+        result.energySupply += plantDef.energyOutput;
+
+        if (plantDef.emissions > 0) {
+            pollution.co2ContributionPerTurn += plantDef.emissions;
+            pollution.wasteAccumulated       += plantDef.emissions;
+        }
+
+        if (plantDef.type == PowerPlantType::Nuclear) {
+            result.hasNuclear = true;
+        }
     }
 
-    // Find the nuclear plant
+    for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
+        for (BuildingId bid : district.buildings) {
+            result.energyDemand += buildingEnergyDemand(bid);
+        }
+    }
+
+    return result;
+}
+
+bool checkNuclearMeltdown(aoc::game::GameState& /*gameState*/, aoc::map::HexGrid& grid,
+                          aoc::game::City& city, uint32_t turnHash) {
+    const CityDistrictsComponent& districts = city.districts();
+
     bool hasNuclear = false;
-    for (const CityDistrictsComponent::PlacedDistrict& district : districts->districts) {
+    for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
         for (BuildingId bid : district.buildings) {
             if (bid == POWER_PLANT_DEFS[3].buildingId) {
                 hasNuclear = true;
@@ -143,102 +119,60 @@ bool checkNuclearMeltdown(aoc::game::GameState& gameState, aoc::map::HexGrid& gr
         return false;
     }
 
-    // MELTDOWN!
-    const CityComponent* city = world.tryGetComponent<CityComponent>(cityEntity);
-    const char* cityName = (city != nullptr) ? city->name.c_str() : "unknown";
-
     LOG_INFO("NUCLEAR MELTDOWN in city %s! Massive pollution, population halved.",
-             cityName);
+             city.name().c_str());
 
-    // Destroy the nuclear plant building
-    CityDistrictsComponent* mutableDistricts =
-        world.tryGetComponent<CityDistrictsComponent>(cityEntity);
-    if (mutableDistricts != nullptr) {
-        for (CityDistrictsComponent::PlacedDistrict& district : mutableDistricts->districts) {
-            std::vector<BuildingId>::iterator it = std::find(district.buildings.begin(), district.buildings.end(),
-                                POWER_PLANT_DEFS[3].buildingId);
-            if (it != district.buildings.end()) {
-                district.buildings.erase(it);
-                break;
-            }
+    CityDistrictsComponent& mutableDistricts = city.districts();
+    for (CityDistrictsComponent::PlacedDistrict& district : mutableDistricts.districts) {
+        std::vector<BuildingId>::iterator it = std::find(
+            district.buildings.begin(), district.buildings.end(),
+            POWER_PLANT_DEFS[3].buildingId);
+        if (it != district.buildings.end()) {
+            district.buildings.erase(it);
+            break;
         }
     }
 
-    // Massive pollution
-    CityPollutionComponent* pollution =
-        world.tryGetComponent<CityPollutionComponent>(cityEntity);
-    if (pollution == nullptr) {
-        CityPollutionComponent newPollution{};
-        world.addComponent<CityPollutionComponent>(cityEntity, std::move(newPollution));
-        pollution = world.tryGetComponent<CityPollutionComponent>(cityEntity);
-    }
-    if (pollution != nullptr) {
-        pollution->wasteAccumulated += 100;
+    city.pollution().wasteAccumulated += 100;
+
+    if (city.population() > 1) {
+        city.setPopulation(city.population() / 2);
     }
 
-    // Halve population
-    CityComponent* mutableCity = world.tryGetComponent<CityComponent>(cityEntity);
-    if (mutableCity != nullptr && mutableCity->population > 1) {
-        mutableCity->population /= 2;
-    }
-
-    // Apply fallout to 1-hex radius around city for 20 turns
-    if (city != nullptr) {
-        applyFalloutRadius(grid, city->location, 1, 20);
-        LOG_INFO("Nuclear fallout applied: 1-hex radius, 20 turns around %s", cityName);
-    }
+    applyFalloutRadius(grid, city.location(), 1, 20);
+    LOG_INFO("Nuclear fallout applied: 1-hex radius, 20 turns around %s",
+             city.name().c_str());
 
     return true;
 }
 
-void applyBombedNuclearFallout(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
-                                EntityId cityEntity) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    const CityComponent* city = world.tryGetComponent<CityComponent>(cityEntity);
-    if (city == nullptr) {
-        return;
-    }
-
-    // Check if the city has a nuclear plant
-    const CityDistrictsComponent* districts =
-        world.tryGetComponent<CityDistrictsComponent>(cityEntity);
-    if (districts == nullptr || !districts->hasBuilding(POWER_PLANT_DEFS[3].buildingId)) {
+void applyBombedNuclearFallout(aoc::game::GameState& /*gameState*/, aoc::map::HexGrid& grid,
+                                aoc::game::City& city) {
+    if (!city.districts().hasBuilding(POWER_PLANT_DEFS[3].buildingId)) {
         return;
     }
 
     LOG_INFO("NUCLEAR PLANT BOMBED in %s! Massive fallout, 2-hex radius, 40 turns.",
-             city->name.c_str());
+             city.name().c_str());
 
-    // Destroy the nuclear plant
-    CityDistrictsComponent* mutableDistricts =
-        world.tryGetComponent<CityDistrictsComponent>(cityEntity);
-    if (mutableDistricts != nullptr) {
-        for (CityDistrictsComponent::PlacedDistrict& district : mutableDistricts->districts) {
-            std::vector<BuildingId>::iterator it = std::find(
-                district.buildings.begin(), district.buildings.end(),
-                POWER_PLANT_DEFS[3].buildingId);
-            if (it != district.buildings.end()) {
-                district.buildings.erase(it);
-                break;
-            }
+    CityDistrictsComponent& mutableDistricts = city.districts();
+    for (CityDistrictsComponent::PlacedDistrict& district : mutableDistricts.districts) {
+        std::vector<BuildingId>::iterator it = std::find(
+            district.buildings.begin(), district.buildings.end(),
+            POWER_PLANT_DEFS[3].buildingId);
+        if (it != district.buildings.end()) {
+            district.buildings.erase(it);
+            break;
         }
     }
 
-    // Halve population (same as meltdown)
-    CityComponent* mutableCity = world.tryGetComponent<CityComponent>(cityEntity);
-    if (mutableCity != nullptr && mutableCity->population > 1) {
-        mutableCity->population /= 2;
+    if (city.population() > 1) {
+        city.setPopulation(city.population() / 2);
     }
 
-    // Apply fallout: 2-hex radius, 40 turns (double the accidental meltdown)
-    applyFalloutRadius(grid, city->location, 2, 40);
+    applyFalloutRadius(grid, city.location(), 2, 40);
 
-    // Massive pollution
-    CityPollutionComponent* pollution =
-        world.tryGetComponent<CityPollutionComponent>(cityEntity);
-    if (pollution != nullptr) {
-        pollution->wasteAccumulated += 200;
-    }
+    city.pollution().wasteAccumulated += 200;
 }
 
 } // namespace aoc::sim

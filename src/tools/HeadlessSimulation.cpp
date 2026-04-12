@@ -15,7 +15,6 @@
  *   Corruption, CrisisType, IndustrialRevolution, GovernmentType
  */
 
-#include "aoc/ecs/World.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/MapGenerator.hpp"
@@ -117,53 +116,40 @@ struct PlayerSnapshot {
     uint8_t governmentType = 0;
 };
 
-PlayerSnapshot snapshotPlayer(const aoc::ecs::World& world,
-                               aoc::PlayerId player) {
+/**
+ * @brief Build a turn snapshot for one player from the GameState object model.
+ *
+ * All data is read from Player/City/Unit objects rather than ECS component pools.
+ */
+PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
+                               aoc::PlayerId playerId) {
     PlayerSnapshot snap{};
-    snap.player = player;
+    snap.player = playerId;
+
+    const aoc::game::Player* player = gameState.player(playerId);
+    if (player == nullptr) {
+        return snap;
+    }
 
     // Monetary state
-    const aoc::ecs::ComponentPool<aoc::sim::MonetaryStateComponent>* mPool =
-        world.getPool<aoc::sim::MonetaryStateComponent>();
-    if (mPool != nullptr) {
-        for (uint32_t i = 0; i < mPool->size(); ++i) {
-            if (mPool->data()[i].owner == player) {
-                snap.gdp = mPool->data()[i].gdp;
-                snap.treasury = mPool->data()[i].treasury;
-                snap.coinTier = static_cast<uint8_t>(mPool->data()[i].effectiveCoinTier);
-                snap.monetarySystem = static_cast<uint8_t>(mPool->data()[i].system);
-                snap.inflationRate = mPool->data()[i].inflationRate;
-                break;
-            }
-        }
-    }
+    const aoc::sim::MonetaryStateComponent& ms = player->monetary();
+    snap.gdp = ms.gdp;
+    snap.treasury = ms.treasury;
+    snap.coinTier = static_cast<uint8_t>(ms.effectiveCoinTier);
+    snap.monetarySystem = static_cast<uint8_t>(ms.system);
+    snap.inflationRate = ms.inflationRate;
 
     // Cities and population
-    const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cPool =
-        world.getPool<aoc::sim::CityComponent>();
-    if (cPool != nullptr) {
-        for (uint32_t i = 0; i < cPool->size(); ++i) {
-            if (cPool->data()[i].owner == player) {
-                ++snap.cities;
-                snap.population += cPool->data()[i].population;
-            }
-        }
-    }
+    snap.cities = player->cityCount();
+    snap.population = player->totalPopulation();
 
-    // Happiness
-    const aoc::ecs::ComponentPool<aoc::sim::CityHappinessComponent>* hPool =
-        world.getPool<aoc::sim::CityHappinessComponent>();
-    if (hPool != nullptr && cPool != nullptr) {
+    // Happiness: average across all cities with a happiness component
+    {
         float totalHappy = 0.0f;
         int32_t happyCities = 0;
-        for (uint32_t i = 0; i < cPool->size(); ++i) {
-            if (cPool->data()[i].owner != player) { continue; }
-            const aoc::sim::CityHappinessComponent* h =
-                world.tryGetComponent<aoc::sim::CityHappinessComponent>(cPool->entities()[i]);
-            if (h != nullptr) {
-                totalHappy += h->amenities - h->demand;
-                ++happyCities;
-            }
+        for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
+            totalHappy += city->happiness().amenities - city->happiness().demand;
+            ++happyCities;
         }
         if (happyCities > 0) {
             snap.avgHappiness = totalHappy / static_cast<float>(happyCities);
@@ -171,109 +157,53 @@ PlayerSnapshot snapshotPlayer(const aoc::ecs::World& world,
     }
 
     // Military units
-    const aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* uPool =
-        world.getPool<aoc::sim::UnitComponent>();
-    if (uPool != nullptr) {
-        for (uint32_t i = 0; i < uPool->size(); ++i) {
-            if (uPool->data()[i].owner == player
-                && aoc::sim::isMilitary(aoc::sim::unitTypeDef(uPool->data()[i].typeId).unitClass)) {
-                ++snap.militaryUnits;
-            }
+    snap.militaryUnits = player->militaryUnitCount();
+
+    // Techs researched: count set bits in completedTechs bitset
+    {
+        const aoc::sim::PlayerTechComponent& tech = player->tech();
+        for (std::size_t b = 0; b < tech.completedTechs.size(); ++b) {
+            if (tech.completedTechs[b]) { ++snap.techsResearched; }
         }
     }
 
-    // Techs researched
-    const aoc::ecs::ComponentPool<aoc::sim::PlayerTechComponent>* tPool =
-        world.getPool<aoc::sim::PlayerTechComponent>();
-    if (tPool != nullptr) {
-        for (uint32_t i = 0; i < tPool->size(); ++i) {
-            if (tPool->data()[i].owner == player) {
-                for (std::size_t b = 0; b < tPool->data()[i].completedTechs.size(); ++b) {
-                    if (tPool->data()[i].completedTechs[b]) { ++snap.techsResearched; }
-                }
-                break;
-            }
-        }
+    // Victory tracker: CSI, era VP, culture
+    {
+        const aoc::sim::VictoryTrackerComponent& vt = player->victoryTracker();
+        snap.compositeCSI = vt.compositeCSI;
+        snap.eraVP = vt.eraVictoryPoints;
+        snap.cultureTotal = vt.totalCultureAccumulated;
     }
 
-    // Victory tracker
-    const aoc::ecs::ComponentPool<aoc::sim::VictoryTrackerComponent>* vPool =
-        world.getPool<aoc::sim::VictoryTrackerComponent>();
-    if (vPool != nullptr) {
-        for (uint32_t i = 0; i < vPool->size(); ++i) {
-            if (vPool->data()[i].owner == player) {
-                snap.compositeCSI = vPool->data()[i].compositeCSI;
-                snap.eraVP = vPool->data()[i].eraVictoryPoints;
-                snap.cultureTotal = vPool->data()[i].totalCultureAccumulated;
-                break;
-            }
-        }
-    }
-
-    // Crisis
-    const aoc::ecs::ComponentPool<aoc::sim::CurrencyCrisisComponent>* crPool =
-        world.getPool<aoc::sim::CurrencyCrisisComponent>();
-    if (crPool != nullptr) {
-        for (uint32_t i = 0; i < crPool->size(); ++i) {
-            if (crPool->data()[i].owner == player) {
-                snap.crisisType = static_cast<uint8_t>(crPool->data()[i].activeCrisis);
-                break;
-            }
-        }
-    }
+    // Currency crisis
+    snap.crisisType = static_cast<uint8_t>(player->currencyCrisis().activeCrisis);
 
     // Industrial revolution
-    const aoc::ecs::ComponentPool<aoc::sim::PlayerIndustrialComponent>* indPool =
-        world.getPool<aoc::sim::PlayerIndustrialComponent>();
-    if (indPool != nullptr) {
-        for (uint32_t i = 0; i < indPool->size(); ++i) {
-            if (indPool->data()[i].owner == player) {
-                snap.industrialRev = static_cast<uint8_t>(indPool->data()[i].currentRevolution);
-                break;
-            }
-        }
+    snap.industrialRev = static_cast<uint8_t>(player->industrial().currentRevolution);
+
+    // Government and corruption
+    {
+        const aoc::sim::PlayerGovernmentComponent& gov = player->government();
+        snap.governmentType = static_cast<uint8_t>(gov.government);
+        snap.corruption = aoc::sim::computeCorruption(gov.government, snap.cities, 0.0f);
     }
 
-    // Government
-    const aoc::ecs::ComponentPool<aoc::sim::PlayerGovernmentComponent>* gPool =
-        world.getPool<aoc::sim::PlayerGovernmentComponent>();
-    if (gPool != nullptr) {
-        for (uint32_t i = 0; i < gPool->size(); ++i) {
-            if (gPool->data()[i].owner == player) {
-                snap.governmentType = static_cast<uint8_t>(gPool->data()[i].government);
-
-                // Compute corruption
-                int32_t cityCount = snap.cities;
-                snap.corruption = aoc::sim::computeCorruption(
-                    gPool->data()[i].government, cityCount, 0.0f);
-                break;
-            }
-        }
-    }
-
-    // Trade partners: count from both TradeRouteComponent and TraderComponent
+    // Trade partners: count unique partner players from the GameState trade route list
     {
         std::unordered_set<aoc::PlayerId> partners;
-        const aoc::ecs::ComponentPool<aoc::sim::TradeRouteComponent>* trPool =
-            world.getPool<aoc::sim::TradeRouteComponent>();
-        if (trPool != nullptr) {
-            for (uint32_t i = 0; i < trPool->size(); ++i) {
-                if (trPool->data()[i].sourcePlayer == player) {
-                    partners.insert(trPool->data()[i].destPlayer);
-                }
-                if (trPool->data()[i].destPlayer == player) {
-                    partners.insert(trPool->data()[i].sourcePlayer);
-                }
+        for (const aoc::sim::TradeRouteComponent& route : gameState.tradeRoutes()) {
+            if (route.sourcePlayer == playerId && route.destPlayer != playerId) {
+                partners.insert(route.destPlayer);
+            }
+            if (route.destPlayer == playerId && route.sourcePlayer != playerId) {
+                partners.insert(route.sourcePlayer);
             }
         }
-        const aoc::ecs::ComponentPool<aoc::sim::TraderComponent>* traderPool =
-            world.getPool<aoc::sim::TraderComponent>();
-        if (traderPool != nullptr) {
-            for (uint32_t i = 0; i < traderPool->size(); ++i) {
-                const aoc::sim::TraderComponent& trader = traderPool->data()[i];
-                if (trader.owner == player && trader.destOwner != player) {
-                    partners.insert(trader.destOwner);
-                }
+        // Also count active trader units this player owns
+        for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
+            const aoc::sim::TraderComponent& trader = unit->trader();
+            if (trader.destOwner != playerId && trader.destOwner != aoc::INVALID_PLAYER) {
+                partners.insert(trader.destOwner);
             }
         }
         snap.tradePartners = static_cast<int32_t>(partners.size());
@@ -301,15 +231,10 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         << "TradePartners,CompositeCSI,EraVP,AvgHappiness,"
         << "Corruption,CrisisType,IndustrialRev,GovernmentType\n";
 
-    // Initialize world
-    aoc::ecs::World world;
     aoc::map::HexGrid grid;
     aoc::Random rng(42);  // Fixed seed for reproducibility
 
-    // Initialize game pace (default Standard; overridden by config in main())
-    // The GamePace singleton is set before this function is called if config specifies game_length.
-
-    // Generate map (use Realistic for resource placement)
+    // Generate map
     aoc::map::MapGenerator::Config mapConfig{};
     mapConfig.width = 80;
     mapConfig.height = 52;
@@ -320,7 +245,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
     LOG_INFO("Map generated: %dx%d", mapConfig.width, mapConfig.height);
 
-    // Create players (all AI)
+    // Initialize simulation subsystems
     aoc::sim::DiplomacyManager diplomacy;
     diplomacy.initialize(static_cast<uint8_t>(playerCount));
 
@@ -339,13 +264,15 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     std::vector<aoc::hex::AxialCoord> startPositions;
     constexpr int32_t MIN_START_DISTANCE = 8;
 
-    // Spawn each AI player with a starting city and settler
+    // Initialize GameState before the spawning loop so foundCity can populate it.
+    aoc::game::GameState gameState;
+    gameState.initialize(playerCount);
+
+    // Spawn each AI player with a starting city and scout
     for (int32_t p = 0; p < playerCount; ++p) {
         aoc::PlayerId player = static_cast<aoc::PlayerId>(p);
 
-        // Find a land tile for the starting city with good food potential.
-        // Score candidates by total food yield of the center + 6 neighbors,
-        // preferring grassland and rejecting desert/tundra-heavy locations.
+        // Score candidate tiles by food potential, rejecting bad starts
         aoc::hex::AxialCoord startPos{0, 0};
         float bestScore = -1.0f;
         for (int32_t attempts = 0; attempts < 2000; ++attempts) {
@@ -358,7 +285,6 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             }
             aoc::hex::AxialCoord candidate = aoc::hex::offsetToAxial({rx, ry});
 
-            // Check minimum distance from all existing starts
             bool tooClose = false;
             for (const aoc::hex::AxialCoord& existing : startPositions) {
                 if (aoc::hex::distance(candidate, existing) < MIN_START_DISTANCE) {
@@ -366,11 +292,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                     break;
                 }
             }
-            if (tooClose) {
-                continue;
-            }
+            if (tooClose) { continue; }
 
-            // Score location: total food from center + neighbors
             float score = 0.0f;
             aoc::map::TileYield centerYield = grid.tileYield(idx);
             score += static_cast<float>(std::max(centerYield.food, static_cast<int8_t>(2))) * 2.0f;
@@ -394,10 +317,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 }
             }
 
-            // Reject locations with fewer than 3 usable land neighbors
-            if (landNeighbors < 3) {
-                continue;
-            }
+            if (landNeighbors < 3) { continue; }
 
             if (score > bestScore) {
                 bestScore = score;
@@ -407,10 +327,10 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
         startPositions.push_back(startPos);
 
-        // Create city using unified foundCity (creates ALL required components)
+        // Found starting city (creates City in player's city list via GameState)
         std::string cityName = std::string(
             aoc::sim::civDef(static_cast<aoc::sim::CivId>(p % aoc::sim::CIV_COUNT)).cityNames[0]);
-        aoc::sim::foundCity(world, grid, player, startPos, cityName, true, 1);
+        aoc::sim::foundCity(gameState, grid, player, startPos, cityName, true, 1);
 
         // Guarantee minimum resources near starting position
         std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(startPos);
@@ -438,9 +358,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             }
         }
 
-        // Guarantee 2 unique luxury resources near each player's capital.
-        // Each player gets different luxury types from a rotating pool so that
-        // trade for luxuries is meaningful (player A has Wine+Spices, B has Silk+Furs, etc.)
+        // Place 2 unique luxury resources near each player's capital
         {
             constexpr uint16_t LUXURY_POOL[] = {
                 aoc::sim::goods::WINE, aoc::sim::goods::SPICES, aoc::sim::goods::SILK,
@@ -450,7 +368,6 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             };
             constexpr int32_t LUXURY_POOL_SIZE = 12;
 
-            // Each player gets 2 unique luxuries, offset by player index
             int32_t luxPlaced = 0;
             std::vector<aoc::hex::AxialCoord> ring2;
             ring2.reserve(12);
@@ -471,54 +388,42 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             }
         }
 
-        // Create player entity with monetary state
-        aoc::EntityId playerEntity = world.createEntity();
-        aoc::sim::MonetaryStateComponent monetary{};
-        monetary.owner = player;
-        monetary.system = aoc::sim::MonetarySystemType::Barter;
-        monetary.treasury = 100;
-        world.addComponent<aoc::sim::MonetaryStateComponent>(playerEntity, std::move(monetary));
+        // Configure player state via the GameState Player object (no ECS entity creation)
+        aoc::game::Player* gsPlayer = gameState.player(player);
+        if (gsPlayer != nullptr) {
+            gsPlayer->setCivId(static_cast<aoc::sim::CivId>(p % aoc::sim::CIV_COUNT));
+            gsPlayer->setHuman(false);
+            gsPlayer->setTreasury(100);
 
-        aoc::sim::PlayerEconomyComponent econ{};
-        econ.owner = player;
-        econ.treasury = 100;
-        world.addComponent<aoc::sim::PlayerEconomyComponent>(playerEntity, std::move(econ));
+            // Initialize monetary state
+            gsPlayer->monetary().owner = player;
+            gsPlayer->monetary().system = aoc::sim::MonetarySystemType::Barter;
+            gsPlayer->monetary().treasury = 100;
 
-        aoc::sim::PlayerTechComponent tech{};
-        tech.owner = player;
-        tech.initialize();
-        // Give first tech for free so AI has something to work with
-        tech.completedTechs[0] = true;
-        tech.currentResearch = aoc::TechId{1};  // Start researching next tech
-        world.addComponent<aoc::sim::PlayerTechComponent>(playerEntity, std::move(tech));
+            // Initialize economy component
+            gsPlayer->economy().owner = player;
+            gsPlayer->economy().treasury = 100;
 
-        aoc::sim::PlayerCivicComponent civic{};
-        civic.owner = player;
-        civic.initialize();
-        civic.currentResearch = aoc::CivicId{0};  // Start researching Code of Laws
-        world.addComponent<aoc::sim::PlayerCivicComponent>(playerEntity, std::move(civic));
+            // Initialize tech
+            gsPlayer->tech().owner = player;
+            gsPlayer->tech().initialize();
+            gsPlayer->tech().completedTechs[0] = true;
+            gsPlayer->tech().currentResearch = aoc::TechId{1};
 
-        aoc::sim::PlayerEurekaComponent eureka{};
-        eureka.owner = player;
-        world.addComponent<aoc::sim::PlayerEurekaComponent>(playerEntity, std::move(eureka));
+            // Initialize civics
+            gsPlayer->civics().owner = player;
+            gsPlayer->civics().initialize();
+            gsPlayer->civics().currentResearch = aoc::CivicId{0};
 
-        aoc::sim::PlayerGovernmentComponent gov{};
-        gov.owner = player;
-        world.addComponent<aoc::sim::PlayerGovernmentComponent>(playerEntity, std::move(gov));
+            // Initialize government
+            gsPlayer->government().owner = player;
 
-        aoc::sim::VictoryTrackerComponent victory{};
-        victory.owner = player;
-        world.addComponent<aoc::sim::VictoryTrackerComponent>(playerEntity, std::move(victory));
+            // Initialize victory tracker
+            gsPlayer->victoryTracker().owner = player;
 
-        aoc::sim::PlayerCivilizationComponent civComp{};
-        civComp.owner = player;
-        civComp.civId = static_cast<aoc::sim::CivId>(p % aoc::sim::CIV_COUNT);
-        world.addComponent<aoc::sim::PlayerCivilizationComponent>(playerEntity, std::move(civComp));
-
-        // Create a scout unit
-        aoc::EntityId unitEntity = world.createEntity();
-        world.addComponent<aoc::sim::UnitComponent>(
-            unitEntity, aoc::sim::UnitComponent::create(player, aoc::UnitTypeId{2}, startPos));
+            // Add scout unit to the player's unit list
+            gsPlayer->addUnit(aoc::UnitTypeId{2}, startPos);
+        }
 
         // Create AI controller
         aiControllers.emplace_back(player);
@@ -530,43 +435,10 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                  startPos.q, startPos.r);
     }
 
-    // Initialize GameState object model -- shares the same ECS World
-    aoc::game::GameState gameState;
-    gameState.setExternalWorld(&world);
-    gameState.initialize(playerCount);
-    for (int32_t p = 0; p < playerCount; ++p) {
-        aoc::game::Player* gsPlayer = gameState.player(static_cast<aoc::PlayerId>(p));
-        gsPlayer->setCivId(static_cast<aoc::sim::CivId>(p % aoc::sim::CIV_COUNT));
-        gsPlayer->setHuman(false);
-        gsPlayer->setTreasury(100);
-
-        // Mirror the starting city into GameState
-        aoc::game::City& gsCity = gsPlayer->addCity(
-            startPositions[static_cast<std::size_t>(p)],
-            std::string(aoc::sim::civDef(static_cast<aoc::sim::CivId>(
-                p % aoc::sim::CIV_COUNT)).cityNames[0]));
-        gsCity.setOriginalCapital(true);
-        gsCity.setOriginalOwner(static_cast<aoc::PlayerId>(p));
-
-        // Mirror the scout unit into GameState
-        gsPlayer->addUnit(aoc::UnitTypeId{2}, startPositions[static_cast<std::size_t>(p)]);
-
-        // Mirror initial tech state
-        gsPlayer->tech().owner = static_cast<aoc::PlayerId>(p);
-        gsPlayer->tech().initialize();
-        gsPlayer->tech().completedTechs[0] = true;
-        gsPlayer->tech().currentResearch = aoc::TechId{1};
-
-        // Mirror initial civic state
-        gsPlayer->civics().owner = static_cast<aoc::PlayerId>(p);
-        gsPlayer->civics().initialize();
-        gsPlayer->civics().currentResearch = aoc::CivicId{0};
-    }
     LOG_INFO("GameState initialized for %d players", playerCount);
 
     // Build TurnContext
     aoc::sim::TurnContext turnCtx{};
-    // world accessed via gameState.legacyWorld()
     turnCtx.grid = &grid;
     turnCtx.economy = &economy;
     turnCtx.diplomacy = &diplomacy;
@@ -577,14 +449,13 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         turnCtx.aiControllers.push_back(&ai);
         turnCtx.allPlayers.push_back(ai.player());
     }
-    turnCtx.humanPlayer = aoc::INVALID_PLAYER;  // No human in headless
+    turnCtx.humanPlayer = aoc::INVALID_PLAYER;
     turnCtx.currentTurn = 0;
 
     // === Main simulation loop ===
     for (int32_t turn = 1; turn <= maxTurns; ++turn) {
         turnCtx.currentTurn = static_cast<aoc::TurnNumber>(turn);
 
-        // Single unified turn processing for ALL players
         aoc::sim::processTurn(turnCtx);
 
         // Detailed economy log every 25 turns
@@ -597,19 +468,14 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 float science = aoc::sim::computePlayerScience(*gsp, grid);
                 float culture = aoc::sim::computePlayerCulture(*gsp, grid);
 
-                // Count active trade routes
+                // Count active trade routes (trader units owned by this player)
                 int32_t activeRoutes = 0;
-                const aoc::ecs::ComponentPool<aoc::sim::TraderComponent>* traderPool =
-                    world.getPool<aoc::sim::TraderComponent>();
-                if (traderPool != nullptr) {
-                    for (uint32_t ti = 0; ti < traderPool->size(); ++ti) {
-                        if (traderPool->data()[ti].owner == static_cast<aoc::PlayerId>(p)) {
-                            ++activeRoutes;
-                        }
+                for (const std::unique_ptr<aoc::game::Unit>& unit : gsp->units()) {
+                    if (unit->trader().destOwner != aoc::INVALID_PLAYER) {
+                        ++activeRoutes;
                     }
                 }
 
-                // Current research
                 const char* techName = gsp->tech().currentResearch.isValid()
                     ? aoc::sim::techDef(gsp->tech().currentResearch).name.data() : "none";
                 const char* civicName = gsp->civics().currentResearch.isValid()
@@ -623,36 +489,24 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                          techName, civicName, activeRoutes,
                          static_cast<int>(gsp->monetary().system));
 
-                // Resource stockpile summary (aggregate across all cities)
+                // Resource stockpile summary: aggregate across all cities
                 int32_t ironOre = 0, copperOre = 0, coal = 0, wood = 0, stone = 0;
                 int32_t ironIngots = 0, tools = 0, steel = 0, lumber = 0;
                 int32_t machinery = 0, electronics = 0, consGoods = 0;
-                const aoc::ecs::ComponentPool<aoc::sim::CityStockpileComponent>* stockPool =
-                    world.getPool<aoc::sim::CityStockpileComponent>();
-                const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cpPool =
-                    world.getPool<aoc::sim::CityComponent>();
-                if (stockPool != nullptr && cpPool != nullptr) {
-                    for (uint32_t si = 0; si < stockPool->size(); ++si) {
-                        aoc::EntityId cityEnt = stockPool->entities()[si];
-                        const aoc::sim::CityComponent* cc =
-                            world.tryGetComponent<aoc::sim::CityComponent>(cityEnt);
-                        if (cc == nullptr || cc->owner != static_cast<aoc::PlayerId>(p)) {
-                            continue;
-                        }
-                        const aoc::sim::CityStockpileComponent& st = stockPool->data()[si];
-                        ironOre    += st.getAmount(aoc::sim::goods::IRON_ORE);
-                        copperOre  += st.getAmount(aoc::sim::goods::COPPER_ORE);
-                        coal       += st.getAmount(aoc::sim::goods::COAL);
-                        wood       += st.getAmount(aoc::sim::goods::WOOD);
-                        stone      += st.getAmount(aoc::sim::goods::STONE);
-                        ironIngots += st.getAmount(aoc::sim::goods::IRON_INGOTS);
-                        tools      += st.getAmount(aoc::sim::goods::TOOLS);
-                        steel      += st.getAmount(aoc::sim::goods::STEEL);
-                        lumber     += st.getAmount(aoc::sim::goods::LUMBER);
-                        machinery  += st.getAmount(aoc::sim::goods::MACHINERY);
-                        electronics += st.getAmount(aoc::sim::goods::ELECTRONICS);
-                        consGoods  += st.getAmount(aoc::sim::goods::CONSUMER_GOODS);
-                    }
+                for (const std::unique_ptr<aoc::game::City>& city : gsp->cities()) {
+                    const aoc::sim::CityStockpileComponent& st = city->stockpile();
+                    ironOre    += st.getAmount(aoc::sim::goods::IRON_ORE);
+                    copperOre  += st.getAmount(aoc::sim::goods::COPPER_ORE);
+                    coal       += st.getAmount(aoc::sim::goods::COAL);
+                    wood       += st.getAmount(aoc::sim::goods::WOOD);
+                    stone      += st.getAmount(aoc::sim::goods::STONE);
+                    ironIngots += st.getAmount(aoc::sim::goods::IRON_INGOTS);
+                    tools      += st.getAmount(aoc::sim::goods::TOOLS);
+                    steel      += st.getAmount(aoc::sim::goods::STEEL);
+                    lumber     += st.getAmount(aoc::sim::goods::LUMBER);
+                    machinery  += st.getAmount(aoc::sim::goods::MACHINERY);
+                    electronics += st.getAmount(aoc::sim::goods::ELECTRONICS);
+                    consGoods  += st.getAmount(aoc::sim::goods::CONSUMER_GOODS);
                 }
                 LOG_INFO("    Resources: Iron=%d Cu=%d Coal=%d Wood=%d Stone=%d | "
                          "Ingots=%d Tools=%d Steel=%d Lumber=%d | "
@@ -661,28 +515,23 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                          ironIngots, tools, steel, lumber,
                          machinery, electronics, consGoods);
 
-                // Trade cargo details
-                if (traderPool != nullptr) {
-                    for (uint32_t ti = 0; ti < traderPool->size(); ++ti) {
-                        const aoc::sim::TraderComponent& trader = traderPool->data()[ti];
-                        if (trader.owner != static_cast<aoc::PlayerId>(p)) { continue; }
-                        const aoc::sim::CityComponent* destCity =
-                            world.tryGetComponent<aoc::sim::CityComponent>(trader.destCity);
-                        std::string cargoStr;
-                        for (const aoc::sim::TradeCargo& c : trader.cargo) {
-                            if (!cargoStr.empty()) { cargoStr += ", "; }
-                            cargoStr += "g" + std::to_string(c.goodId);
-                            cargoStr += "x" + std::to_string(c.amount);
-                        }
-                        const char* routeTypeNames[] = {"Land", "Sea", "Air"};
-                        LOG_INFO("    Trade[%s]: -> %s (P%u) trips=%d gold=%lld cargo=[%s]",
-                                 routeTypeNames[static_cast<int>(trader.routeType)],
-                                 (destCity != nullptr) ? destCity->name.c_str() : "?",
-                                 static_cast<unsigned>((destCity != nullptr) ? destCity->owner : 255),
-                                 trader.completedTrips,
-                                 static_cast<long long>(trader.goldEarnedThisTurn),
-                                 cargoStr.c_str());
+                // Trade cargo details for each active trader unit
+                for (const std::unique_ptr<aoc::game::Unit>& unit : gsp->units()) {
+                    const aoc::sim::TraderComponent& trader = unit->trader();
+                    if (trader.destOwner == aoc::INVALID_PLAYER) { continue; }
+                    std::string cargoStr;
+                    for (const aoc::sim::TradeCargo& c : trader.cargo) {
+                        if (!cargoStr.empty()) { cargoStr += ", "; }
+                        cargoStr += "g" + std::to_string(c.goodId);
+                        cargoStr += "x" + std::to_string(c.amount);
                     }
+                    const char* routeTypeNames[] = {"Land", "Sea", "Air"};
+                    LOG_INFO("    Trade[%s]: -> P%u trips=%d gold=%lld cargo=[%s]",
+                             routeTypeNames[static_cast<int>(trader.routeType)],
+                             static_cast<unsigned>(trader.destOwner),
+                             trader.completedTrips,
+                             static_cast<long long>(trader.goldEarnedThisTurn),
+                             cargoStr.c_str());
                 }
             }
         }
@@ -694,55 +543,30 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 const aoc::game::Player* dp = gameState.player(static_cast<aoc::PlayerId>(p));
                 if (dp == nullptr) { continue; }
 
-                // Happiness from ECS
+                // Happiness: average across all cities
                 float avgHappiness = 0.0f;
                 int32_t happyCities = 0;
-                const aoc::ecs::ComponentPool<aoc::sim::CityHappinessComponent>* happyPool =
-                    world.getPool<aoc::sim::CityHappinessComponent>();
-                const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cpPool2 =
-                    world.getPool<aoc::sim::CityComponent>();
-                if (happyPool != nullptr && cpPool2 != nullptr) {
-                    for (uint32_t hi = 0; hi < happyPool->size(); ++hi) {
-                        aoc::EntityId hEnt = happyPool->entities()[hi];
-                        const aoc::sim::CityComponent* hc =
-                            world.tryGetComponent<aoc::sim::CityComponent>(hEnt);
-                        if (hc != nullptr && hc->owner == static_cast<aoc::PlayerId>(p)) {
-                            avgHappiness += happyPool->data()[hi].happiness;
-                            ++happyCities;
-                        }
-                    }
-                    if (happyCities > 0) {
-                        avgHappiness /= static_cast<float>(happyCities);
-                    }
+                for (const std::unique_ptr<aoc::game::City>& city : dp->cities()) {
+                    avgHappiness += city->happiness().happiness;
+                    ++happyCities;
+                }
+                if (happyCities > 0) {
+                    avgHappiness /= static_cast<float>(happyCities);
                 }
 
-                // Needs summary
-                const aoc::ecs::ComponentPool<aoc::sim::PlayerEconomyComponent>* econP =
-                    world.getPool<aoc::sim::PlayerEconomyComponent>();
-                int32_t needsCount = 0;
-                int32_t uniqueLux = 0;
-                if (econP != nullptr) {
-                    for (uint32_t ei = 0; ei < econP->size(); ++ei) {
-                        if (econP->data()[ei].owner == static_cast<aoc::PlayerId>(p)) {
-                            needsCount = static_cast<int32_t>(econP->data()[ei].totalNeeds.size());
-                            uniqueLux = econP->data()[ei].uniqueLuxuryCount;
-                            break;
-                        }
-                    }
-                }
+                // Needs summary from player economy component
+                int32_t needsCount = static_cast<int32_t>(dp->economy().totalNeeds.size());
+                int32_t uniqueLux = dp->economy().uniqueLuxuryCount;
 
-                // Count trade routes by type
+                // Count trade routes by type from trader units
                 int32_t landRoutes = 0, seaRoutes = 0, airRoutes = 0;
-                const aoc::ecs::ComponentPool<aoc::sim::TraderComponent>* trP =
-                    world.getPool<aoc::sim::TraderComponent>();
-                if (trP != nullptr) {
-                    for (uint32_t ti = 0; ti < trP->size(); ++ti) {
-                        if (trP->data()[ti].owner != static_cast<aoc::PlayerId>(p)) { continue; }
-                        switch (trP->data()[ti].routeType) {
-                            case aoc::sim::TradeRouteType::Land: ++landRoutes; break;
-                            case aoc::sim::TradeRouteType::Sea:  ++seaRoutes; break;
-                            case aoc::sim::TradeRouteType::Air:  ++airRoutes; break;
-                        }
+                for (const std::unique_ptr<aoc::game::Unit>& unit : dp->units()) {
+                    const aoc::sim::TraderComponent& tr = unit->trader();
+                    if (tr.destOwner == aoc::INVALID_PLAYER) { continue; }
+                    switch (tr.routeType) {
+                        case aoc::sim::TradeRouteType::Land: ++landRoutes; break;
+                        case aoc::sim::TradeRouteType::Sea:  ++seaRoutes; break;
+                        case aoc::sim::TradeRouteType::Air:  ++airRoutes; break;
                     }
                 }
 
@@ -752,9 +576,9 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             }
         }
 
-        // === Log snapshot for each player ===
+        // Write snapshot row for each player
         for (int32_t p = 0; p < playerCount; ++p) {
-            PlayerSnapshot snap = snapshotPlayer(world, static_cast<aoc::PlayerId>(p));
+            PlayerSnapshot snap = snapshotPlayer(gameState, static_cast<aoc::PlayerId>(p));
             csv << turn << ","
                 << static_cast<int>(snap.player) << ","
                 << snap.gdp << ","
@@ -779,7 +603,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
         // Check victory
         aoc::sim::VictoryResult vr = aoc::sim::checkVictoryConditions(
-            world, static_cast<aoc::TurnNumber>(turn), static_cast<aoc::TurnNumber>(maxTurns));
+            gameState, static_cast<aoc::TurnNumber>(turn), static_cast<aoc::TurnNumber>(maxTurns));
         if (vr.type != aoc::sim::VictoryType::None) {
             printProgressBar(turn, maxTurns);
             std::fprintf(stderr, "\n\n  GAME OVER on turn %d: Player %u wins (type %d)\n",
@@ -788,12 +612,10 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             break;
         }
 
-        // Progress bar
         printProgressBar(turn, maxTurns);
 
-        // Detailed logging at intervals
         if (turn % 25 == 0) {
-            PlayerSnapshot s0 = snapshotPlayer(world, 0);
+            PlayerSnapshot s0 = snapshotPlayer(gameState, 0);
             std::fprintf(stderr, "\n  Turn %d: P0 pop=%d cities=%d techs=%d GDP=%lld\n",
                          turn, s0.population, s0.cities, s0.techsResearched,
                          static_cast<long long>(s0.gdp));
@@ -813,7 +635,6 @@ int main(int argc, char* argv[]) {
     int32_t players = 4;
     std::string outputPath = "simulation_log.csv";
 
-    // Check if first arg is a .yaml/.yml config file
     bool loadedConfig = false;
     if (argc >= 2) {
         std::string arg1(argv[1]);
@@ -825,7 +646,6 @@ int main(int argc, char* argv[]) {
                 players    = config.getInt("player_count", 4);
                 outputPath = config.getString("output_file", "simulation_log.csv");
 
-                // Game length preset (overrides max_turns if set)
                 std::string gameLengthStr = config.getString("game_length", "");
                 if (!gameLengthStr.empty()) {
                     aoc::sim::GameLength gl = aoc::sim::parseGameLength(gameLengthStr);
@@ -854,7 +674,6 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Parse named arguments (--turns N, --players N, --map-size WxH, --log-level X, --output F)
     if (!loadedConfig) {
         int32_t mapWidth = 60;
         int32_t mapHeight = 40;
@@ -874,11 +693,10 @@ int main(int argc, char* argv[]) {
                     mapHeight = std::atoi(sizeStr.substr(xPos + 1).c_str());
                 }
             } else if (arg == "--log-level" && i + 1 < argc) {
-                ++i;  // Consumed but log level is set elsewhere
+                ++i;
             } else if (arg == "--seed" && i + 1 < argc) {
-                ++i;  // Consumed
+                ++i;
             } else {
-                // Try as positional
                 int val = std::atoi(arg.c_str());
                 if (val > 0 && turns == 200) { turns = val; }
                 else if (val > 0 && players == 4) { players = val; }
@@ -899,7 +717,6 @@ int main(int argc, char* argv[]) {
 
     int result = runHeadlessSimulation(turns, players, outputPath);
 
-    // Final newline after progress bar
     std::fprintf(stderr, "\n\n");
     return result;
 }

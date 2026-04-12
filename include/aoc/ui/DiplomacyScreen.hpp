@@ -15,11 +15,15 @@ namespace aoc::sim {
 class DiplomacyManager;
 }
 
+namespace aoc::game {
+class GameState;
+}
+
 namespace aoc::ui {
 
 class DiplomacyScreen final : public ScreenBase {
 public:
-    void setContext(aoc::ecs::World* world, PlayerId humanPlayer,
+    void setContext(aoc::game::GameState* gameState, PlayerId humanPlayer,
                     aoc::sim::DiplomacyManager* diplomacy);
 
     void open(UIManager& ui) override;
@@ -27,7 +31,7 @@ public:
     void refresh(UIManager& ui) override;
 
 private:
-    aoc::ecs::World*             m_world     = nullptr;
+    aoc::game::GameState*        m_gameState = nullptr;
     aoc::sim::DiplomacyManager*  m_diplomacy = nullptr;
     PlayerId                     m_player    = INVALID_PLAYER;
     WidgetId                     m_playerList = INVALID_WIDGET;

@@ -5,17 +5,20 @@
 
 #include "aoc/game/GameState.hpp"
 #include "aoc/simulation/unit/SupplyLines.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
+
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/game/Unit.hpp"
 
 #include <algorithm>
 #include <queue>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace aoc::sim {
@@ -23,18 +26,14 @@ namespace aoc::sim {
 void computeSupplyLines(aoc::game::GameState& gameState,
                         const aoc::map::HexGrid& grid,
                         PlayerId player) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    // Collect all supply sources (cities and forts owned by player)
+    // Collect all supply sources (cities and forts owned by this player)
     std::vector<int32_t> supplySources;
 
-    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-        world.getPool<CityComponent>();
-    if (cityPool != nullptr) {
-        for (uint32_t c = 0; c < cityPool->size(); ++c) {
-            if (cityPool->data()[c].owner == player) {
-                int32_t idx = grid.toIndex(cityPool->data()[c].location);
-                supplySources.push_back(idx);
-            }
+    const aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer != nullptr) {
+        for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+            const int32_t idx = grid.toIndex(city->location());
+            supplySources.push_back(idx);
         }
     }
 
@@ -48,11 +47,9 @@ void computeSupplyLines(aoc::game::GameState& gameState,
 
     if (supplySources.empty()) {
         // No supply sources: all units unsupplied
-        aoc::ecs::ComponentPool<UnitSupplyComponent>* supplyPool =
-            world.getPool<UnitSupplyComponent>();
-        if (supplyPool != nullptr) {
-            for (uint32_t i = 0; i < supplyPool->size(); ++i) {
-                supplyPool->data()[i].isSupplied = false;
+        if (gsPlayer != nullptr) {
+            for (const std::unique_ptr<aoc::game::Unit>& unit : gsPlayer->units()) {
+                unit->supply().isSupplied = false;
             }
         }
         return;
@@ -69,21 +66,21 @@ void computeSupplyLines(aoc::game::GameState& gameState,
     }
 
     while (!frontier.empty()) {
-        int32_t current = frontier.front();
+        const int32_t current = frontier.front();
         frontier.pop();
-        int32_t currentDist = supplyDistance[current];
+        const int32_t currentDist = supplyDistance[current];
 
         // Max range depends on infrastructure at current tile
-        int32_t maxRange = supplyRange(grid.infrastructureTier(current));
+        const int32_t maxRange = supplyRange(grid.infrastructureTier(current));
         if (currentDist >= maxRange) {
             continue;
         }
 
-        hex::AxialCoord currentAxial = grid.toAxial(current);
-        std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(currentAxial);
+        const hex::AxialCoord currentAxial = grid.toAxial(current);
+        const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(currentAxial);
         for (const hex::AxialCoord& nbr : nbrs) {
             if (!grid.isValid(nbr)) { continue; }
-            int32_t nbrIdx = grid.toIndex(nbr);
+            const int32_t nbrIdx = grid.toIndex(nbr);
 
             // Can only supply through passable land
             if (aoc::map::isWater(grid.terrain(nbrIdx))
@@ -91,7 +88,7 @@ void computeSupplyLines(aoc::game::GameState& gameState,
                 continue;
             }
 
-            int32_t newDist = currentDist + 1;
+            const int32_t newDist = currentDist + 1;
             std::unordered_map<int32_t, int32_t>::iterator it = supplyDistance.find(nbrIdx);
             if (it == supplyDistance.end() || newDist < it->second) {
                 supplyDistance[nbrIdx] = newDist;
@@ -101,62 +98,44 @@ void computeSupplyLines(aoc::game::GameState& gameState,
     }
 
     // Update each military unit's supply status
-    aoc::ecs::ComponentPool<UnitComponent>* unitPool =
-        world.getPool<UnitComponent>();
-    if (unitPool == nullptr) { return; }
+    if (gsPlayer == nullptr) { return; }
+    for (const std::unique_ptr<aoc::game::Unit>& unit : gsPlayer->units()) {
+        if (!isMilitary(unit->typeDef().unitClass)) { continue; }
 
-    for (uint32_t u = 0; u < unitPool->size(); ++u) {
-        UnitComponent& unit = unitPool->data()[u];
-        if (unit.owner != player) { continue; }
-        if (!isMilitary(unitTypeDef(unit.typeId).unitClass)) { continue; }
-
-        EntityId unitEntity = unitPool->entities()[u];
-        int32_t unitTileIdx = grid.toIndex(unit.position);
-
-        // Get or create supply component
-        UnitSupplyComponent* supply =
-            world.tryGetComponent<UnitSupplyComponent>(unitEntity);
-        if (supply == nullptr) {
-            UnitSupplyComponent newSupply{};
-            world.addComponent<UnitSupplyComponent>(unitEntity, std::move(newSupply));
-            supply = world.tryGetComponent<UnitSupplyComponent>(unitEntity);
-        }
-        if (supply == nullptr) { continue; }
+        const int32_t unitTileIdx = grid.toIndex(unit->position());
+        UnitSupplyComponent& supply = unit->supply();
 
         std::unordered_map<int32_t, int32_t>::iterator it = supplyDistance.find(unitTileIdx);
         if (it != supplyDistance.end()) {
-            supply->isSupplied = true;
-            supply->distanceFromSupply = it->second;
-            supply->maxSupplyRange = supplyRange(grid.infrastructureTier(unitTileIdx));
+            supply.isSupplied = true;
+            supply.distanceFromSupply = it->second;
+            supply.maxSupplyRange = supplyRange(grid.infrastructureTier(unitTileIdx));
         } else {
-            supply->isSupplied = false;
-            supply->distanceFromSupply = 999;
+            supply.isSupplied = false;
+            supply.distanceFromSupply = 999;
         }
     }
 }
 
 void applySupplyAttrition(aoc::game::GameState& gameState, PlayerId player) {
-    aoc::ecs::ComponentPool<UnitComponent>* unitPool =
-        world.getPool<UnitComponent>();
-    aoc::ecs::ComponentPool<UnitSupplyComponent>* supplyPool =
-        world.getPool<UnitSupplyComponent>();
-    if (unitPool == nullptr || supplyPool == nullptr) { return; }
-    aoc::ecs::World& world = gameState.legacyWorld();
+    aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer == nullptr) { return; }
 
-    for (uint32_t i = 0; i < supplyPool->size(); ++i) {
-        const UnitSupplyComponent& supply = supplyPool->data()[i];
+    // Collect units that are unsupplied (iterate copy list to allow removal)
+    std::vector<aoc::game::Unit*> toKill;
+    for (const std::unique_ptr<aoc::game::Unit>& unit : gsPlayer->units()) {
+        const UnitSupplyComponent& supply = unit->supply();
         if (supply.isSupplied) { continue; }
 
-        EntityId entity = supplyPool->entities()[i];
-        UnitComponent* unit = world.tryGetComponent<UnitComponent>(entity);
-        if (unit == nullptr || unit->owner != player) { continue; }
-
-        // Attrition damage
-        unit->hitPoints -= UNSUPPLIED_ATTRITION_HP;
-        if (unit->hitPoints <= 0) {
-            world.destroyEntity(entity);
-            LOG_INFO("Unit destroyed by supply attrition");
+        unit->setHitPoints(unit->hitPoints() - UNSUPPLIED_ATTRITION_HP);
+        if (unit->isDead()) {
+            toKill.push_back(unit.get());
         }
+    }
+
+    for (aoc::game::Unit* dead : toKill) {
+        gsPlayer->removeUnit(dead);
+        LOG_INFO("Unit destroyed by supply attrition");
     }
 }
 

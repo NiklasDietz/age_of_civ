@@ -22,7 +22,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -49,7 +49,7 @@ public:
     void toggleUnit(EntityId unitEntity);
 
     /// Select all units in a rectangular region (drag box).
-    void selectInRegion(const aoc::ecs::World& world,
+    void selectInRegion(const aoc::game::GameState& gameState,
                         const aoc::map::HexGrid& grid,
                         PlayerId player,
                         hex::AxialCoord corner1,
@@ -73,14 +73,14 @@ public:
     // ========================================================================
 
     /// Move all selected units toward a target tile.
-    void moveAllTo(aoc::ecs::World& world, const aoc::map::HexGrid& grid,
+    void moveAllTo(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
                    hex::AxialCoord target);
 
     /// Fortify all selected units.
-    void fortifyAll(aoc::ecs::World& world);
+    void fortifyAll(aoc::game::GameState& gameState);
 
     /// Set all selected units to auto-explore.
-    void autoExploreAll(aoc::ecs::World& world);
+    void autoExploreAll(aoc::game::GameState& gameState);
 
     // ========================================================================
     // Control groups (Ctrl+1-9 to save, 1-9 to recall)
@@ -118,12 +118,12 @@ struct CityRallyPointComponent {
  * @param cityEntity  City to set rally point for.
  * @param target      Target tile for the rally point.
  */
-void setRallyPoint(aoc::ecs::World& world, EntityId cityEntity, hex::AxialCoord target);
+void setRallyPoint(aoc::game::GameState& gameState, EntityId cityEntity, hex::AxialCoord target);
 
 /**
  * @brief Clear a city's rally point.
  */
-void clearRallyPoint(aoc::ecs::World& world, EntityId cityEntity);
+void clearRallyPoint(aoc::game::GameState& gameState, EntityId cityEntity);
 
 /**
  * @brief Process rally points: move newly produced units toward their city's rally point.
@@ -131,6 +131,6 @@ void clearRallyPoint(aoc::ecs::World& world, EntityId cityEntity);
  * Called after production completes. Any unit at a city center that has
  * a rally point will pathfind toward the rally target.
  */
-void processRallyPoints(aoc::ecs::World& world, const aoc::map::HexGrid& grid);
+void processRallyPoints(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid);
 
 } // namespace aoc::sim

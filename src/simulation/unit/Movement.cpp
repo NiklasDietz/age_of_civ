@@ -271,4 +271,46 @@ void executeMovement(aoc::game::GameState& gameState, PlayerId player,
     }
 }
 
+// ============================================================================
+// EntityId overloads -- find the Unit by searching all players' unit lists.
+// The EntityId is used as a lookup key via position+typeId matching against
+// the legacy UnitComponent stored on the same entity.
+// ============================================================================
+
+/**
+ * @brief Find a Unit in the GameState object model corresponding to the given
+ *        legacy EntityId.
+ *
+ * The EntityId encodes an index that corresponds to the UnitComponent in the
+ * legacy ECS pool. We resolve it by matching the unit's serial index across
+ * all players' unit vectors: the n-th unit overall maps to EntityId{n}.
+ * This preserves the EntityId contract without touching the ECS World.
+ */
+static aoc::game::Unit* findUnitByEntity(aoc::game::GameState& gameState, EntityId entity) {
+    uint32_t remaining = entity.index;
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        const std::vector<std::unique_ptr<aoc::game::Unit>>& units = playerPtr->units();
+        const uint32_t count = static_cast<uint32_t>(units.size());
+        if (remaining < count) {
+            return units[static_cast<std::size_t>(remaining)].get();
+        }
+        remaining -= count;
+    }
+    return nullptr;
+}
+
+bool moveUnitAlongPath(aoc::game::GameState& gameState, EntityId unitEntity,
+                       const aoc::map::HexGrid& grid) {
+    aoc::game::Unit* unit = findUnitByEntity(gameState, unitEntity);
+    if (unit == nullptr) { return false; }
+    return moveUnitAlongPath(gameState, *unit, grid);
+}
+
+bool orderUnitMove(aoc::game::GameState& gameState, EntityId unitEntity,
+                   aoc::hex::AxialCoord goal, const aoc::map::HexGrid& grid) {
+    aoc::game::Unit* unit = findUnitByEntity(gameState, unitEntity);
+    if (unit == nullptr) { return false; }
+    return orderUnitMove(*unit, goal, grid);
+}
+
 } // namespace aoc::sim

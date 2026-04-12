@@ -3,109 +3,78 @@
  * @brief Naval unit embarkation, disembarkation, and water traversal logic.
  */
 
-#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/unit/Naval.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
-#include <cassert>
+#include "aoc/game/Unit.hpp"
 
 namespace aoc::sim {
 
-bool tryEmbark(aoc::game::GameState& gameState,
-               EntityId unitEntity,
+bool tryEmbark(aoc::game::Unit& unit,
                hex::AxialCoord coastTile,
                const aoc::map::HexGrid& grid) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    if (!world.isAlive(unitEntity)) {
-        return false;
-    }
-
-    UnitComponent& unit = world.getComponent<UnitComponent>(unitEntity);
-    const UnitTypeDef& def = unitTypeDef(unit.typeId);
+    const UnitTypeDef& def = unit.typeDef();
 
     // Only land units can embark (not naval, not already embarked)
     if (isNaval(def.unitClass)) {
         return false;
     }
-    if (unit.state == UnitState::Embarked) {
+    if (unit.state() == UnitState::Embarked) {
         return false;
     }
 
-    // Target must be a coast tile
     if (!grid.isValid(coastTile)) {
         return false;
     }
-    int32_t targetIndex = grid.toIndex(coastTile);
-    aoc::map::TerrainType terrain = grid.terrain(targetIndex);
-    if (terrain != aoc::map::TerrainType::Coast) {
+    const int32_t targetIndex = grid.toIndex(coastTile);
+    if (grid.terrain(targetIndex) != aoc::map::TerrainType::Coast) {
+        return false;
+    }
+    if (hex::distance(unit.position(), coastTile) != 1) {
         return false;
     }
 
-    // Must be adjacent
-    int32_t dist = hex::distance(unit.position, coastTile);
-    if (dist != 1) {
-        return false;
-    }
-
-    // Embark: move to coast tile, set state, consume all movement
-    unit.position = coastTile;
-    unit.state = UnitState::Embarked;
-    unit.movementRemaining = 0;
+    unit.setPosition(coastTile);
+    unit.setState(UnitState::Embarked);
+    unit.setMovementRemaining(0);
 
     LOG_INFO("Unit embarked at (%d,%d)", coastTile.q, coastTile.r);
     return true;
 }
 
-bool tryDisembark(aoc::game::GameState& gameState,
-                  EntityId unitEntity,
+bool tryDisembark(aoc::game::Unit& unit,
                   hex::AxialCoord landTile,
                   const aoc::map::HexGrid& grid) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    if (!world.isAlive(unitEntity)) {
+    if (unit.state() != UnitState::Embarked) {
         return false;
     }
 
-    UnitComponent& unit = world.getComponent<UnitComponent>(unitEntity);
-
-    // Must be embarked
-    if (unit.state != UnitState::Embarked) {
-        return false;
-    }
-
-    // Target must be passable land
     if (!grid.isValid(landTile)) {
         return false;
     }
-    int32_t targetIndex = grid.toIndex(landTile);
-    aoc::map::TerrainType terrain = grid.terrain(targetIndex);
+    const int32_t targetIndex = grid.toIndex(landTile);
+    const aoc::map::TerrainType terrain = grid.terrain(targetIndex);
     if (aoc::map::isWater(terrain) || aoc::map::isImpassable(terrain)) {
         return false;
     }
-
-    // Must be adjacent
-    int32_t dist = hex::distance(unit.position, landTile);
-    if (dist != 1) {
+    if (hex::distance(unit.position(), landTile) != 1) {
         return false;
     }
 
-    // Disembark: move to land tile, set state to Idle, consume all movement
-    unit.position = landTile;
-    unit.state = UnitState::Idle;
-    unit.movementRemaining = 0;
+    unit.setPosition(landTile);
+    unit.setState(UnitState::Idle);
+    unit.setMovementRemaining(0);
 
     LOG_INFO("Unit disembarked at (%d,%d)", landTile.q, landTile.r);
     return true;
 }
 
 bool canTraverseWater(UnitTypeId typeId) {
-    const UnitTypeDef& def = unitTypeDef(typeId);
-    return isNaval(def.unitClass);
+    return isNaval(unitTypeDef(typeId).unitClass);
 }
 
 } // namespace aoc::sim

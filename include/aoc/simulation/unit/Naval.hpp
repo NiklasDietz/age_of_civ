@@ -8,52 +8,43 @@
 #include "aoc/core/Types.hpp"
 #include "aoc/map/HexCoord.hpp"
 
-namespace aoc::game {
-class GameState;
-}
-
-namespace aoc::map {
-class HexGrid;
-}
+namespace aoc::game { class Unit; }
+namespace aoc::map  { class HexGrid; }
 
 namespace aoc::sim {
 
 /**
- * @brief Attempt to embark a land unit onto a coast tile.
+ * @brief Attempt to embark a land unit onto an adjacent coast tile.
  *
  * Changes the unit state to Embarked and consumes all remaining movement.
- * The unit must be a land unit adjacent to the target coast tile.
+ * The unit must be a non-naval land unit adjacent to the target coast tile.
  *
- * @param world      ECS world containing unit components.
- * @param unitEntity Entity ID of the land unit to embark.
- * @param coastTile  Target coast/water tile.
+ * @param unit       The land unit to embark.
+ * @param coastTile  Target coast tile.
  * @param grid       Hex grid for terrain checks.
  * @return true if embarkation succeeded.
  */
-[[nodiscard]] bool tryEmbark(aoc::game::GameState& gameState,
-                              EntityId unitEntity,
+[[nodiscard]] bool tryEmbark(aoc::game::Unit& unit,
                               hex::AxialCoord coastTile,
                               const aoc::map::HexGrid& grid);
 
 /**
- * @brief Attempt to disembark an embarked unit onto a land tile.
+ * @brief Attempt to disembark an embarked unit onto an adjacent land tile.
  *
  * Changes the unit state back to Idle and consumes all remaining movement.
  * The unit must be Embarked and adjacent to the target land tile.
  *
- * @param world      ECS world containing unit components.
- * @param unitEntity Entity ID of the embarked unit.
- * @param landTile   Target land tile.
- * @param grid       Hex grid for terrain checks.
+ * @param unit      The embarked unit.
+ * @param landTile  Target land tile.
+ * @param grid      Hex grid for terrain checks.
  * @return true if disembarkation succeeded.
  */
-[[nodiscard]] bool tryDisembark(aoc::game::GameState& gameState,
-                                EntityId unitEntity,
+[[nodiscard]] bool tryDisembark(aoc::game::Unit& unit,
                                 hex::AxialCoord landTile,
                                 const aoc::map::HexGrid& grid);
 
 /**
- * @brief Check if a unit type can traverse water tiles.
+ * @brief Check if a unit type can traverse water tiles natively.
  *
  * Returns true for Naval class units. Embarked status is checked separately
  * via the unit's current state.

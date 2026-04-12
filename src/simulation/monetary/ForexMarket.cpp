@@ -3,11 +3,11 @@
  * @brief Foreign exchange market implementation.
  */
 
-#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/monetary/ForexMarket.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
-#include "aoc/ecs/World.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -26,8 +26,8 @@ float computeFundamentalRate(const MonetaryStateComponent& state,
         rate *= std::clamp(gdpRatio, 0.5f, 2.0f);
     }
 
-    // Interest rate differential: higher rates attract capital (stronger currency)
-    // Baseline assumed at 5%
+    // Interest rate differential: higher rates attract capital (stronger currency).
+    // Baseline assumed at 5%.
     float interestDiff = state.interestRate - 0.05f;
     rate *= (1.0f + interestDiff * 2.0f);  // +/-10% per 5% rate diff
 
@@ -49,60 +49,37 @@ float computeFundamentalRate(const MonetaryStateComponent& state,
 ErrorCode buyCurrency(aoc::game::GameState& gameState,
                        PlayerId buyer, PlayerId target,
                        CurrencyAmount goldAmount) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     if (goldAmount <= 0 || buyer == target) {
         return ErrorCode::InvalidArgument;
     }
 
-    aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-        world.getPool<MonetaryStateComponent>();
-    aoc::ecs::ComponentPool<CurrencyExchangeComponent>* forexPool =
-        world.getPool<CurrencyExchangeComponent>();
-
-    if (monetaryPool == nullptr || forexPool == nullptr) {
+    aoc::game::Player* buyerPlayer  = gameState.player(buyer);
+    aoc::game::Player* targetPlayer = gameState.player(target);
+    if (buyerPlayer == nullptr || targetPlayer == nullptr) {
         return ErrorCode::InvalidArgument;
     }
 
-    // Find buyer's monetary state (needs treasury)
-    MonetaryStateComponent* buyerState = nullptr;
-    for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-        if (monetaryPool->data()[i].owner == buyer) {
-            buyerState = &monetaryPool->data()[i];
-            break;
-        }
-    }
-    if (buyerState == nullptr || buyerState->treasury < goldAmount) {
+    MonetaryStateComponent& buyerState = buyerPlayer->monetary();
+    if (buyerState.treasury < goldAmount) {
         return ErrorCode::InsufficientResources;
     }
 
-    // Find target's forex component
-    CurrencyExchangeComponent* targetForex = nullptr;
-    CurrencyExchangeComponent* buyerForex = nullptr;
-    for (uint32_t i = 0; i < forexPool->size(); ++i) {
-        if (forexPool->data()[i].owner == target) { targetForex = &forexPool->data()[i]; }
-        if (forexPool->data()[i].owner == buyer)  { buyerForex = &forexPool->data()[i]; }
-    }
-    if (targetForex == nullptr) {
-        return ErrorCode::InvalidArgument;
-    }
+    CurrencyExchangeComponent& targetForex = targetPlayer->currencyExchange();
+    CurrencyExchangeComponent& buyerForex  = buyerPlayer->currencyExchange();
 
     // Execute: buyer spends gold, gets foreign currency reserves
-    buyerState->treasury -= goldAmount;
-    if (buyerForex != nullptr) {
-        buyerForex->foreignReserves += goldAmount;  // Stored as foreign currency
-    }
+    buyerState.treasury    -= goldAmount;
+    buyerForex.foreignReserves += goldAmount;
 
-    // Buy pressure on target currency (normalized by target GDP to prevent tiny amounts
-    // from moving massive economies)
+    // Buy pressure on target currency, normalised by target GDP to prevent tiny amounts
+    // from moving massive economies.
     float pressureScale = 1.0f;
-    for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-        if (monetaryPool->data()[i].owner == target && monetaryPool->data()[i].gdp > 0) {
-            pressureScale = static_cast<float>(goldAmount)
-                          / static_cast<float>(monetaryPool->data()[i].gdp);
-            break;
-        }
+    const MonetaryStateComponent& targetState = targetPlayer->monetary();
+    if (targetState.gdp > 0) {
+        pressureScale = static_cast<float>(goldAmount)
+                      / static_cast<float>(targetState.gdp);
     }
-    targetForex->netOrderFlow += pressureScale * 10.0f;
+    targetForex.netOrderFlow += pressureScale * 10.0f;
 
     LOG_INFO("Forex: player %u bought %lld gold of player %u's currency (buy pressure: +%.2f)",
              static_cast<unsigned>(buyer),
@@ -116,61 +93,39 @@ ErrorCode buyCurrency(aoc::game::GameState& gameState,
 ErrorCode sellCurrency(aoc::game::GameState& gameState,
                         PlayerId seller, PlayerId target,
                         CurrencyAmount currencyAmount) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     if (currencyAmount <= 0 || seller == target) {
         return ErrorCode::InvalidArgument;
     }
 
-    aoc::ecs::ComponentPool<CurrencyExchangeComponent>* forexPool =
-        world.getPool<CurrencyExchangeComponent>();
-    aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-        world.getPool<MonetaryStateComponent>();
-
-    if (forexPool == nullptr || monetaryPool == nullptr) {
+    aoc::game::Player* sellerPlayer = gameState.player(seller);
+    aoc::game::Player* targetPlayer = gameState.player(target);
+    if (sellerPlayer == nullptr || targetPlayer == nullptr) {
         return ErrorCode::InvalidArgument;
     }
 
-    // Find seller's forex (needs foreign reserves of target currency)
-    CurrencyExchangeComponent* sellerForex = nullptr;
-    CurrencyExchangeComponent* targetForex = nullptr;
-    for (uint32_t i = 0; i < forexPool->size(); ++i) {
-        if (forexPool->data()[i].owner == seller) { sellerForex = &forexPool->data()[i]; }
-        if (forexPool->data()[i].owner == target) { targetForex = &forexPool->data()[i]; }
-    }
-    if (sellerForex == nullptr || targetForex == nullptr) {
-        return ErrorCode::InvalidArgument;
-    }
-    if (sellerForex->foreignReserves < currencyAmount) {
+    CurrencyExchangeComponent& sellerForex = sellerPlayer->currencyExchange();
+    CurrencyExchangeComponent& targetForex = targetPlayer->currencyExchange();
+
+    if (sellerForex.foreignReserves < currencyAmount) {
         return ErrorCode::InsufficientResources;
     }
 
     // Execute: seller dumps currency, gets gold equivalent
-    sellerForex->foreignReserves -= currencyAmount;
+    sellerForex.foreignReserves -= currencyAmount;
 
     // Gold received = amount * target exchange rate (stronger currency = more gold)
     CurrencyAmount goldReceived = static_cast<CurrencyAmount>(
-        static_cast<float>(currencyAmount) * targetForex->exchangeRate);
-    MonetaryStateComponent* sellerState = nullptr;
-    for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-        if (monetaryPool->data()[i].owner == seller) {
-            sellerState = &monetaryPool->data()[i];
-            break;
-        }
-    }
-    if (sellerState != nullptr) {
-        sellerState->treasury += goldReceived;
-    }
+        static_cast<float>(currencyAmount) * targetForex.exchangeRate);
+    sellerPlayer->monetary().treasury += goldReceived;
 
-    // Sell pressure on target currency
+    // Sell pressure on target currency, normalised by target GDP
     float pressureScale = 1.0f;
-    for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-        if (monetaryPool->data()[i].owner == target && monetaryPool->data()[i].gdp > 0) {
-            pressureScale = static_cast<float>(currencyAmount)
-                          / static_cast<float>(monetaryPool->data()[i].gdp);
-            break;
-        }
+    const MonetaryStateComponent& targetState = targetPlayer->monetary();
+    if (targetState.gdp > 0) {
+        pressureScale = static_cast<float>(currencyAmount)
+                      / static_cast<float>(targetState.gdp);
     }
-    targetForex->netOrderFlow -= pressureScale * 10.0f;
+    targetForex.netOrderFlow -= pressureScale * 10.0f;
 
     LOG_INFO("Forex: player %u sold %lld of player %u's currency (sell pressure: -%.2f)",
              static_cast<unsigned>(seller),
@@ -184,51 +139,33 @@ ErrorCode sellCurrency(aoc::game::GameState& gameState,
 ErrorCode defendCurrency(aoc::game::GameState& gameState,
                           PlayerId player,
                           CurrencyAmount amount) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     if (amount <= 0) {
         return ErrorCode::InvalidArgument;
     }
 
-    aoc::ecs::ComponentPool<CurrencyExchangeComponent>* forexPool =
-        world.getPool<CurrencyExchangeComponent>();
-    if (forexPool == nullptr) {
+    aoc::game::Player* playerObj = gameState.player(player);
+    if (playerObj == nullptr) {
         return ErrorCode::InvalidArgument;
     }
 
-    CurrencyExchangeComponent* forex = nullptr;
-    for (uint32_t i = 0; i < forexPool->size(); ++i) {
-        if (forexPool->data()[i].owner == player) {
-            forex = &forexPool->data()[i];
-            break;
-        }
-    }
-    if (forex == nullptr) {
-        return ErrorCode::InvalidArgument;
-    }
-    if (forex->foreignReserves < amount) {
+    CurrencyExchangeComponent& forex = playerObj->currencyExchange();
+    if (forex.foreignReserves < amount) {
         return ErrorCode::InsufficientResources;
     }
 
     // Spend reserves to create buy pressure on own currency
-    forex->foreignReserves -= amount;
-    forex->defenseSpending += amount;
-    forex->isDefendingRate = true;
-    forex->defenseTarget = forex->exchangeRate;
+    forex.foreignReserves -= amount;
+    forex.defenseSpending += amount;
+    forex.isDefendingRate  = true;
+    forex.defenseTarget    = forex.exchangeRate;
 
-    // Intervention creates strong buy pressure
-    aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-        world.getPool<MonetaryStateComponent>();
+    // Intervention creates strong buy pressure, normalised by own GDP
     float pressureScale = 1.0f;
-    if (monetaryPool != nullptr) {
-        for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-            if (monetaryPool->data()[i].owner == player && monetaryPool->data()[i].gdp > 0) {
-                pressureScale = static_cast<float>(amount)
-                              / static_cast<float>(monetaryPool->data()[i].gdp);
-                break;
-            }
-        }
+    const MonetaryStateComponent& state = playerObj->monetary();
+    if (state.gdp > 0) {
+        pressureScale = static_cast<float>(amount) / static_cast<float>(state.gdp);
     }
-    forex->netOrderFlow += pressureScale * 15.0f;  // Central bank is a bigger buyer
+    forex.netOrderFlow += pressureScale * 15.0f;  // Central bank is a bigger buyer
 
     LOG_INFO("Forex: player %u defending currency with %lld foreign reserves",
              static_cast<unsigned>(player), static_cast<long long>(amount));
@@ -237,69 +174,47 @@ ErrorCode defendCurrency(aoc::game::GameState& gameState,
 }
 
 void updateExchangeRates(aoc::game::GameState& gameState) {
-    aoc::ecs::ComponentPool<CurrencyExchangeComponent>* forexPool =
-        world.getPool<CurrencyExchangeComponent>();
-    aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-        world.getPool<MonetaryStateComponent>();
-    aoc::ecs::ComponentPool<CurrencyTrustComponent>* trustPool =
-        world.getPool<CurrencyTrustComponent>();
-
-    if (forexPool == nullptr || monetaryPool == nullptr) {
-        return;
-    }
-
-    // Compute average GDP for fundamental rate calculation
+    // Compute average GDP across fiat-money players for fundamental rate calculation
     CurrencyAmount totalGDP = 0;
-    int32_t fiatCount = 0;
-    for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-        if (monetaryPool->data()[i].system == MonetarySystemType::FiatMoney) {
-            totalGDP += monetaryPool->data()[i].gdp;
+    int32_t fiatCount       = 0;
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) {
+            continue;
+        }
+        const MonetaryStateComponent& state = playerPtr->monetary();
+        if (state.system == MonetarySystemType::FiatMoney) {
+            totalGDP += state.gdp;
             ++fiatCount;
         }
     }
     CurrencyAmount averageGDP = (fiatCount > 0) ? totalGDP / fiatCount : 1;
 
-    for (uint32_t i = 0; i < forexPool->size(); ++i) {
-        CurrencyExchangeComponent& forex = forexPool->data()[i];
-
-        // Find matching monetary and trust components
-        const MonetaryStateComponent* state = nullptr;
-        const CurrencyTrustComponent* trust = nullptr;
-        for (uint32_t m = 0; m < monetaryPool->size(); ++m) {
-            if (monetaryPool->data()[m].owner == forex.owner) {
-                state = &monetaryPool->data()[m];
-                break;
-            }
-        }
-        if (trustPool != nullptr) {
-            for (uint32_t t = 0; t < trustPool->size(); ++t) {
-                if (trustPool->data()[t].owner == forex.owner) {
-                    trust = &trustPool->data()[t];
-                    break;
-                }
-            }
-        }
-
-        if (state == nullptr || state->system != MonetarySystemType::FiatMoney) {
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) {
             continue;
         }
 
-        CurrencyTrustComponent defaultTrust{};
-        defaultTrust.owner = forex.owner;
-        const CurrencyTrustComponent& effectiveTrust = (trust != nullptr) ? *trust : defaultTrust;
+        CurrencyExchangeComponent& forex = playerPtr->currencyExchange();
+        const MonetaryStateComponent& state = playerPtr->monetary();
+
+        if (state.system != MonetarySystemType::FiatMoney) {
+            continue;
+        }
+
+        const CurrencyTrustComponent& trust = playerPtr->currencyTrust();
 
         // 1. Compute fundamental rate
-        forex.fundamentalRate = computeFundamentalRate(*state, effectiveTrust, averageGDP);
+        forex.fundamentalRate = computeFundamentalRate(state, trust, averageGDP);
 
         // 2. Apply trade balance (surplus strengthens, deficit weakens)
         float tradeBalanceEffect = 0.0f;
-        if (state->gdp > 0) {
+        if (state.gdp > 0) {
             tradeBalanceEffect = static_cast<float>(forex.tradeBalance)
-                               / static_cast<float>(state->gdp) * 2.0f;
+                               / static_cast<float>(state.gdp) * 2.0f;
         }
 
         // 3. Market rate adjusts: 20% drift toward fundamental + order flow + trade balance
-        float targetRate = forex.fundamentalRate + tradeBalanceEffect;
+        float targetRate      = forex.fundamentalRate + tradeBalanceEffect;
         float orderFlowEffect = forex.netOrderFlow * 0.05f;
 
         float newRate = forex.exchangeRate * 0.80f
@@ -309,21 +224,17 @@ void updateExchangeRates(aoc::game::GameState& gameState) {
         // 4. Clamp to prevent absurd values
         forex.exchangeRate = std::clamp(newRate, 0.20f, 5.0f);
 
-        // Log significant rate changes
-        float rateChange = forex.exchangeRate - (forex.exchangeRate - orderFlowEffect
-                          - targetRate * 0.20f + forex.exchangeRate * 0.20f);
         if (std::abs(forex.netOrderFlow) > 0.1f) {
             LOG_INFO("Forex: player %u rate %.3f (fundamental: %.3f, order flow: %.2f)",
-                     static_cast<unsigned>(forex.owner),
+                     static_cast<unsigned>(playerPtr->id()),
                      static_cast<double>(forex.exchangeRate),
                      static_cast<double>(forex.fundamentalRate),
                      static_cast<double>(forex.netOrderFlow));
         }
-        (void)rateChange;
 
-        // 5. Reset for next turn
-        forex.netOrderFlow = 0.0f;
-        forex.tradeBalance = 0;
+        // 5. Reset order-flow accumulators for next turn
+        forex.netOrderFlow    = 0.0f;
+        forex.tradeBalance    = 0;
         forex.defenseSpending = 0;
         forex.isDefendingRate = false;
     }

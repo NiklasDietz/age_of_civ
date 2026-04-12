@@ -4,12 +4,12 @@
  */
 
 #include "aoc/map/RiverGameplay.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
-#include "aoc/simulation/production/Waste.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -75,7 +75,7 @@ int32_t riverHousingBonus(const HexGrid& grid, int32_t tileIndex) {
 // Flooding
 // ============================================================================
 
-void processFlooding(aoc::ecs::World& /*world*/, HexGrid& grid, int32_t turnNumber) {
+void processFlooding(aoc::game::GameState& /*gameState*/, HexGrid& grid, int32_t turnNumber) {
     // Seasonal pattern: flooding more likely every 4 turns (simulating seasons)
     bool isFloodSeason = (turnNumber % 4) == 0;
     if (!isFloodSeason) {
@@ -199,50 +199,44 @@ float transportCostModifier(const HexGrid& grid, int32_t fromIndex, int32_t toIn
 // Watershed pollution
 // ============================================================================
 
-int32_t watershedPollutionPenalty(const aoc::ecs::World& world,
+int32_t watershedPollutionPenalty(const aoc::game::GameState& gameState,
                                   const HexGrid& grid,
                                   int32_t cityTileIndex) {
     if (grid.riverEdges(cityTileIndex) == 0) {
         return 0;  // Not on a river, no watershed effect
     }
 
-    // Find all cities upstream on the same river system
-    // "Upstream" = higher elevation tiles connected by river
+    // Find all cities upstream on the same river system.
+    // "Upstream" = higher or equal elevation tiles connected by river.
     int8_t cityElev = grid.elevation(cityTileIndex);
 
     int32_t totalUpstreamPollution = 0;
 
-    const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
-        world.getPool<aoc::sim::CityComponent>();
-    if (cityPool == nullptr) {
-        return 0;
-    }
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+            int32_t otherIndex = grid.toIndex(cityPtr->location());
+            if (otherIndex == cityTileIndex) {
+                continue;
+            }
 
-    for (uint32_t i = 0; i < cityPool->size(); ++i) {
-        const aoc::sim::CityComponent& otherCity = cityPool->data()[i];
-        int32_t otherIndex = grid.toIndex(otherCity.location);
-        if (otherIndex == cityTileIndex) {
-            continue;
-        }
+            // Must be on a river and at higher or equal elevation (upstream)
+            if (grid.riverEdges(otherIndex) == 0) {
+                continue;
+            }
+            if (grid.elevation(otherIndex) < cityElev) {
+                continue;  // Lower elevation = downstream, not upstream
+            }
 
-        // Must be on a river and at higher or equal elevation (upstream)
-        if (grid.riverEdges(otherIndex) == 0) {
-            continue;
-        }
-        if (grid.elevation(otherIndex) < cityElev) {
-            continue;  // Lower elevation = downstream, not upstream
-        }
+            // Check if connected by river corridor
+            if (!hasRiverCorridor(grid, otherIndex, cityTileIndex)) {
+                continue;
+            }
 
-        // Check if connected by river corridor
-        if (!hasRiverCorridor(grid, otherIndex, cityTileIndex)) {
-            continue;
-        }
-
-        // Check pollution level of upstream city
-        const aoc::sim::CityPollutionComponent* pollution =
-            world.tryGetComponent<aoc::sim::CityPollutionComponent>(cityPool->entities()[i]);
-        if (pollution != nullptr && pollution->wasteAccumulated > 10) {
-            totalUpstreamPollution += pollution->wasteAccumulated;
+            // Check pollution level of upstream city
+            const aoc::sim::CityPollutionComponent& pollution = cityPtr->pollution();
+            if (pollution.wasteAccumulated > 10) {
+                totalUpstreamPollution += pollution.wasteAccumulated;
+            }
         }
     }
 

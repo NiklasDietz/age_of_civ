@@ -3,7 +3,6 @@
  * @brief Communication speed computation and empire cohesion penalties.
  */
 
-#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/empire/CommunicationSpeed.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -13,11 +12,12 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
-#include "aoc/ecs/World.hpp"
-#include "aoc/core/Log.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/game/Unit.hpp"
 
 #include <algorithm>
-#include <cmath>
 
 namespace aoc::sim {
 
@@ -26,28 +26,18 @@ namespace aoc::sim {
 // ============================================================================
 
 CommTier determineCommTier(const aoc::game::GameState& gameState, PlayerId player) {
-    const aoc::ecs::ComponentPool<PlayerTechComponent>* techPool =
-        world.getPool<PlayerTechComponent>();
-    if (techPool == nullptr) {
+    const aoc::game::Player* playerObj = gameState.player(player);
+    if (playerObj == nullptr) {
         return CommTier::FootMessenger;
     }
 
-    const PlayerTechComponent* playerTech = nullptr;
-    for (uint32_t i = 0; i < techPool->size(); ++i) {
-        if (techPool->data()[i].owner == player) {
-            playerTech = &techPool->data()[i];
-            break;
-        }
-    }
-    if (playerTech == nullptr) {
-        return CommTier::FootMessenger;
-    }
+    const PlayerTechComponent& playerTech = playerObj->tech();
 
     // Check from highest tier downward, return first that's researched
     for (int32_t t = static_cast<int32_t>(CommTier::Internet); t >= 0; --t) {
-        CommTier tier = static_cast<CommTier>(t);
-        TechId required = commTierRequiredTech(tier);
-        if (!required.isValid() || playerTech->hasResearched(required)) {
+        CommTier tier    = static_cast<CommTier>(t);
+        TechId required  = commTierRequiredTech(tier);
+        if (!required.isValid() || playerTech.hasResearched(required)) {
             return tier;
         }
     }
@@ -62,148 +52,123 @@ CommTier determineCommTier(const aoc::game::GameState& gameState, PlayerId playe
 void updateCommunicationDistances(aoc::game::GameState& gameState,
                                    const aoc::map::HexGrid& grid,
                                    PlayerId player) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    // Find or create communication component
-    aoc::ecs::ComponentPool<PlayerCommunicationComponent>* commPool =
-        world.getPool<PlayerCommunicationComponent>();
-    if (commPool == nullptr) {
+    (void)grid;  // Grid is reserved for future road/terrain-weighted distance lookups
+
+    aoc::game::Player* playerObj = gameState.player(player);
+    if (playerObj == nullptr) {
         return;
     }
 
-    PlayerCommunicationComponent* comm = nullptr;
-    for (uint32_t i = 0; i < commPool->size(); ++i) {
-        if (commPool->data()[i].owner == player) {
-            comm = &commPool->data()[i];
-            break;
-        }
-    }
-    if (comm == nullptr) {
-        return;
-    }
+    PlayerCommunicationComponent& comm = playerObj->communication();
 
     // Determine comm tier
-    comm->currentTier = determineCommTier(world, player);
-    int32_t speed = commSpeedTilesPerTurn(comm->currentTier);
+    comm.currentTier = determineCommTier(gameState, player);
+    int32_t speed    = commSpeedTilesPerTurn(comm.currentTier);
 
     // Find the player's capital
-    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-        world.getPool<CityComponent>();
-    if (cityPool == nullptr) {
-        return;
-    }
-
     hex::AxialCoord capitalPos{0, 0};
     bool hasCapital = false;
-    for (uint32_t c = 0; c < cityPool->size(); ++c) {
-        if (cityPool->data()[c].owner == player && cityPool->data()[c].isOriginalCapital) {
-            capitalPos = cityPool->data()[c].location;
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+        if (cityPtr == nullptr) {
+            continue;
+        }
+        if (cityPtr->isOriginalCapital()) {
+            capitalPos = cityPtr->location();
             hasCapital = true;
             break;
         }
     }
     if (!hasCapital) {
         // Use first city as de-facto capital
-        for (uint32_t c = 0; c < cityPool->size(); ++c) {
-            if (cityPool->data()[c].owner == player) {
-                capitalPos = cityPool->data()[c].location;
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+            if (cityPtr != nullptr) {
+                capitalPos = cityPtr->location();
                 hasCapital = true;
                 break;
             }
         }
     }
     if (!hasCapital) {
-        comm->cityCount = 0;
+        comm.cityCount = 0;
         return;
     }
 
-    // Identify regional capitals (cities with Governor's Palace = BuildingId 22?)
-    // For now: any city with a "Hospital" or high-tier building acts as regional hub.
-    // We'll use a dedicated check for the Governor concept.
+    // Identify regional capitals: any city with a Commercial district + Bank
     struct RegionalCapital {
         hex::AxialCoord location;
     };
     std::vector<RegionalCapital> regionalCapitals;
 
-    for (uint32_t c = 0; c < cityPool->size(); ++c) {
-        if (cityPool->data()[c].owner != player) {
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+        if (cityPtr == nullptr) {
             continue;
         }
-        // A city with a Commercial Hub district + Bank acts as regional capital
-        const CityDistrictsComponent* districts =
-            world.tryGetComponent<CityDistrictsComponent>(cityPool->entities()[c]);
-        if (districts != nullptr && districts->hasDistrict(DistrictType::Commercial)
-            && districts->hasBuilding(BuildingId{20})) { // Bank = regional capital
-            if (cityPool->data()[c].location != capitalPos) {
-                regionalCapitals.push_back({cityPool->data()[c].location});
-            }
+        // A city with a Commercial Hub district + Bank (BuildingId 20) acts as regional capital
+        if (cityPtr->districts().hasDistrict(DistrictType::Commercial)
+            && cityPtr->districts().hasBuilding(BuildingId{20})
+            && cityPtr->location() != capitalPos) {
+            regionalCapitals.push_back({cityPtr->location()});
         }
     }
 
     // Compute communication distance for each city
-    comm->cityCount = 0;
-    for (uint32_t c = 0; c < cityPool->size(); ++c) {
-        if (cityPool->data()[c].owner != player) {
+    comm.cityCount = 0;
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+        if (cityPtr == nullptr) {
             continue;
         }
-        if (comm->cityCount >= PlayerCommunicationComponent::MAX_TRACKED_CITIES) {
+        if (comm.cityCount >= PlayerCommunicationComponent::MAX_TRACKED_CITIES) {
             break;
         }
 
-        hex::AxialCoord cityPos = cityPool->data()[c].location;
-        EntityId cityEntity = cityPool->entities()[c];
+        const hex::AxialCoord cityPos = cityPtr->location();
 
         // Hex distance from capital
         int32_t distFromCapital = hex::distance(cityPos, capitalPos);
 
-        // Check if closer to a regional capital
+        // Check if closer via a regional capital
         int32_t effectiveDist = distFromCapital;
         for (const RegionalCapital& rc : regionalCapitals) {
             int32_t distFromRC = hex::distance(cityPos, rc.location);
             if (distFromRC <= REGIONAL_CAPITAL_RADIUS) {
-                // Use distance to regional capital + distance of RC to capital
+                // RC halves the remaining distance to the main capital
                 int32_t rcToCapital = hex::distance(rc.location, capitalPos);
-                int32_t viaDist = distFromRC + rcToCapital / 2;  // RC halves remaining distance
+                int32_t viaDist     = distFromRC + rcToCapital / 2;
                 effectiveDist = std::min(effectiveDist, viaDist);
             }
         }
 
-        // Infrastructure bonus: if road/railway connects, effective speed is higher
-        // (already captured by comm tier for railway/telegraph/radio)
-
         // Communication distance = hex distance / comm speed
         float commDist = static_cast<float>(effectiveDist) / static_cast<float>(speed);
 
-        // Check for garrison
+        // Check for garrison: any military unit belonging to this player at this tile
         bool hasGarrison = false;
-        const aoc::ecs::ComponentPool<UnitComponent>* unitPool =
-            world.getPool<UnitComponent>();
-        if (unitPool != nullptr) {
-            for (uint32_t u = 0; u < unitPool->size(); ++u) {
-                const UnitComponent& unit = unitPool->data()[u];
-                if (unit.owner == player && unit.position == cityPos
-                    && isMilitary(unitTypeDef(unit.typeId).unitClass)) {
-                    hasGarrison = true;
-                    break;
-                }
+        for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerObj->units()) {
+            if (unitPtr == nullptr) {
+                continue;
             }
-        }
-
-        int32_t idx = comm->cityCount;
-        comm->cities[idx].cityEntity = cityEntity;
-        comm->cities[idx].hexDistance = distFromCapital;
-        comm->cities[idx].commDistance = commDist;
-        comm->cities[idx].isRegionalCapital = false;
-        comm->cities[idx].hasGarrison = hasGarrison;
-
-        // Check if this city IS a regional capital
-        for (const RegionalCapital& rc : regionalCapitals) {
-            if (cityPos == rc.location) {
-                comm->cities[idx].isRegionalCapital = true;
+            if (unitPtr->position() == cityPos && unitPtr->isMilitary()) {
+                hasGarrison = true;
                 break;
             }
         }
 
-        ++comm->cityCount;
+        int32_t idx                        = comm.cityCount;
+        comm.cities[idx].cityEntity        = NULL_ENTITY;  // EntityId not used in object model
+        comm.cities[idx].hexDistance       = distFromCapital;
+        comm.cities[idx].commDistance      = commDist;
+        comm.cities[idx].isRegionalCapital = false;
+        comm.cities[idx].hasGarrison       = hasGarrison;
+
+        // Check if this city IS a regional capital
+        for (const RegionalCapital& rc : regionalCapitals) {
+            if (cityPos == rc.location) {
+                comm.cities[idx].isRegionalCapital = true;
+                break;
+            }
+        }
+
+        ++comm.cityCount;
     }
 }
 
@@ -217,19 +182,19 @@ CityCommModifiers computeCityCommModifiers(
 
     float dist = commData.commDistance;
     if (dist <= 1.0f) {
-        return mods;  // Capital or adjacent city -- no penalty
+        return mods;  // Capital or adjacent city — no penalty
     }
 
     // Penalties scale with communication distance beyond 1.0
     float excessDist = dist - 1.0f;
 
-    mods.loyaltyPenalty = excessDist * COMM_LOYALTY_PENALTY_PER_TURN;
-    mods.corruptionAdd = excessDist * COMM_CORRUPTION_PER_TURN;
+    mods.loyaltyPenalty    = excessDist * COMM_LOYALTY_PENALTY_PER_TURN;
+    mods.corruptionAdd     = excessDist * COMM_CORRUPTION_PER_TURN;
 
-    float prodPenalty = excessDist * COMM_PRODUCTION_PENALTY_PER_TURN;
+    float prodPenalty      = excessDist * COMM_PRODUCTION_PENALTY_PER_TURN;
     mods.productionMultiplier = std::max(0.50f, 1.0f - prodPenalty);
 
-    float sciPenalty = excessDist * COMM_SCIENCE_PENALTY_PER_TURN;
+    float sciPenalty       = excessDist * COMM_SCIENCE_PENALTY_PER_TURN;
     mods.scienceMultiplier = std::max(0.50f, 1.0f - sciPenalty);
 
     // Garrison halves loyalty penalty
@@ -240,7 +205,7 @@ CityCommModifiers computeCityCommModifiers(
     // Regional capitals have reduced penalties (they ARE the local authority)
     if (commData.isRegionalCapital) {
         mods.loyaltyPenalty *= 0.5f;
-        mods.corruptionAdd *= 0.5f;
+        mods.corruptionAdd  *= 0.5f;
     }
 
     return mods;
@@ -251,29 +216,32 @@ CityCommModifiers computeCityCommModifiers(
 // ============================================================================
 
 void processCommunication(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid) {
-    aoc::ecs::ComponentPool<PlayerCommunicationComponent>* commPool =
-        world.getPool<PlayerCommunicationComponent>();
-    if (commPool == nullptr) {
-        return;
-    }
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) {
+            continue;
+        }
 
-    for (uint32_t i = 0; i < commPool->size(); ++i) {
-        PlayerCommunicationComponent& comm = commPool->data()[i];
-        updateCommunicationDistances(world, grid, comm.owner);
+        updateCommunicationDistances(gameState, grid, playerPtr->id());
 
-        // Apply loyalty penalties from communication distance
-        for (int32_t c = 0; c < comm.cityCount; ++c) {
-            const PlayerCommunicationComponent::CityCommData& cityComm = comm.cities[c];
+        const PlayerCommunicationComponent& comm = playerPtr->communication();
+
+        // Apply loyalty penalties derived from communication distance
+        int32_t cityIdx = 0;
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+            if (cityPtr == nullptr || cityIdx >= comm.cityCount) {
+                break;
+            }
+
+            const PlayerCommunicationComponent::CityCommData& cityComm = comm.cities[cityIdx];
             CityCommModifiers mods = computeCityCommModifiers(cityComm);
 
             if (mods.loyaltyPenalty > 0.01f) {
-                CityLoyaltyComponent* loyalty =
-                    world.tryGetComponent<CityLoyaltyComponent>(cityComm.cityEntity);
-                if (loyalty != nullptr) {
-                    loyalty->loyalty -= mods.loyaltyPenalty;
-                    loyalty->loyalty = std::max(0.0f, loyalty->loyalty);
-                }
+                CityLoyaltyComponent& loyalty = cityPtr->loyalty();
+                loyalty.loyalty -= mods.loyaltyPenalty;
+                loyalty.loyalty  = std::max(0.0f, loyalty.loyalty);
             }
+
+            ++cityIdx;
         }
     }
 }

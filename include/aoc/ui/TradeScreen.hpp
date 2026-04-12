@@ -18,11 +18,15 @@ class Market;
 class DiplomacyManager;
 }
 
+namespace aoc::game {
+class GameState;
+}
+
 namespace aoc::ui {
 
 class TradeScreen final : public ScreenBase {
 public:
-    void setContext(aoc::ecs::World* world, PlayerId humanPlayer,
+    void setContext(aoc::game::GameState* gameState, PlayerId humanPlayer,
                     const aoc::sim::Market* market,
                     aoc::sim::DiplomacyManager* diplomacy);
 
@@ -34,7 +38,7 @@ private:
     /// Build the trade columns for a selected partner.
     void buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId partner);
 
-    aoc::ecs::World*             m_world     = nullptr;
+    aoc::game::GameState*        m_gameState = nullptr;
     const aoc::sim::Market*      m_market    = nullptr;
     aoc::sim::DiplomacyManager*  m_diplomacy = nullptr;
     PlayerId                     m_player    = INVALID_PLAYER;

@@ -33,6 +33,7 @@
 #include "aoc/simulation/production/QualityTier.hpp"
 #include "aoc/simulation/economy/EconomicDepth.hpp"
 #include "aoc/simulation/production/Automation.hpp"
+#include "aoc/simulation/economy/TechUnemployment.hpp"
 
 #include <cstdint>
 #include <string>
@@ -197,6 +198,9 @@ public:
     [[nodiscard]] aoc::sim::CityAutomationComponent& automation() { return this->m_automation; }
     [[nodiscard]] const aoc::sim::CityAutomationComponent& automation() const { return this->m_automation; }
 
+    [[nodiscard]] aoc::sim::CityUnemploymentComponent& unemployment() { return this->m_unemployment; }
+    [[nodiscard]] const aoc::sim::CityUnemploymentComponent& unemployment() const { return this->m_unemployment; }
+
     // ========================================================================
     // Specialists
     // ========================================================================
@@ -250,6 +254,7 @@ private:
     aoc::sim::CityQualityComponent m_quality;
     aoc::sim::CityStrikeComponent m_strike;
     aoc::sim::CityAutomationComponent m_automation;
+    aoc::sim::CityUnemploymentComponent m_unemployment;
 
     // Specialist citizens
     int32_t m_entertainers = 0;

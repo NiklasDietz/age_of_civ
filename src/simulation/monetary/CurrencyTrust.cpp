@@ -3,12 +3,11 @@
  * @brief Currency trust scoring and reserve currency mechanics.
  */
 
-#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/ForexMarket.hpp"
-#include "aoc/simulation/economy/TradeRoute.hpp"
-#include "aoc/ecs/World.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -24,7 +23,6 @@ void computeCurrencyTrust(const aoc::game::GameState& gameState,
                           const MonetaryStateComponent& state,
                           CurrencyTrustComponent& trust,
                           int32_t playerCount) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     if (state.system != MonetarySystemType::FiatMoney) {
         return;
     }
@@ -64,14 +62,13 @@ void computeCurrencyTrust(const aoc::game::GameState& gameState,
     if (playerCount > 0) {
         // Count how many players have higher GDP
         int32_t gdpRank = 1;
-        const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-            world.getPool<MonetaryStateComponent>();
-        if (monetaryPool != nullptr) {
-            for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-                const MonetaryStateComponent& other = monetaryPool->data()[i];
-                if (other.owner != state.owner && other.gdp > state.gdp) {
-                    ++gdpRank;
-                }
+        for (const std::unique_ptr<aoc::game::Player>& otherPtr : gameState.players()) {
+            if (otherPtr == nullptr) {
+                continue;
+            }
+            const MonetaryStateComponent& other = otherPtr->monetary();
+            if (other.owner != state.owner && other.gdp > state.gdp) {
+                ++gdpRank;
             }
         }
 
@@ -147,43 +144,42 @@ void computeCurrencyTrust(const aoc::game::GameState& gameState,
 // ============================================================================
 
 void updateReserveCurrencyStatus(aoc::game::GameState& gameState) {
-    aoc::ecs::ComponentPool<CurrencyTrustComponent>* trustPool =
-        world.getPool<CurrencyTrustComponent>();
-    if (trustPool == nullptr) {
-        return;
-    }
-
     // Find the current reserve holder and the best candidate
     PlayerId currentReserve = INVALID_PLAYER;
-    PlayerId bestCandidate = INVALID_PLAYER;
-    float bestTrust = 0.0f;
+    PlayerId bestCandidate  = INVALID_PLAYER;
+    float bestTrust         = 0.0f;
 
-    for (uint32_t i = 0; i < trustPool->size(); ++i) {
-        CurrencyTrustComponent& trust = trustPool->data()[i];
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) {
+            continue;
+        }
+        const CurrencyTrustComponent& trust = playerPtr->currencyTrust();
         if (trust.isReserveCurrency) {
-            currentReserve = trust.owner;
+            currentReserve = playerPtr->id();
         }
         if (trust.trustScore > bestTrust) {
-            bestTrust = trust.trustScore;
-            bestCandidate = trust.owner;
+            bestTrust     = trust.trustScore;
+            bestCandidate = playerPtr->id();
         }
     }
 
     // Hysteresis: current holder keeps status above 0.7, new candidate needs 0.8
     constexpr float ACQUIRE_THRESHOLD = 0.80f;
-    constexpr float LOSE_THRESHOLD = 0.70f;
+    constexpr float LOSE_THRESHOLD    = 0.70f;
 
     // Check if current holder should lose status
     if (currentReserve != INVALID_PLAYER) {
-        for (uint32_t i = 0; i < trustPool->size(); ++i) {
-            CurrencyTrustComponent& trust = trustPool->data()[i];
-            if (trust.owner == currentReserve && trust.trustScore < LOSE_THRESHOLD) {
+        aoc::game::Player* reservePlayer = gameState.player(currentReserve);
+        if (reservePlayer != nullptr) {
+            CurrencyTrustComponent& trust = reservePlayer->currencyTrust();
+            if (trust.trustScore < LOSE_THRESHOLD) {
                 trust.isReserveCurrency = false;
-                trust.turnsAsReserve = 0;
-                currentReserve = INVALID_PLAYER;
+                trust.turnsAsReserve    = 0;
+                currentReserve          = INVALID_PLAYER;
                 LOG_INFO("Player %u lost reserve currency status (trust %.2f < %.2f)",
-                         static_cast<unsigned>(trust.owner), trust.trustScore, LOSE_THRESHOLD);
-                break;
+                         static_cast<unsigned>(reservePlayer->id()),
+                         static_cast<double>(trust.trustScore),
+                         static_cast<double>(LOSE_THRESHOLD));
             }
         }
     }
@@ -191,14 +187,13 @@ void updateReserveCurrencyStatus(aoc::game::GameState& gameState) {
     // If no current holder, check if a new candidate qualifies
     if (currentReserve == INVALID_PLAYER && bestCandidate != INVALID_PLAYER
         && bestTrust >= ACQUIRE_THRESHOLD) {
-        for (uint32_t i = 0; i < trustPool->size(); ++i) {
-            CurrencyTrustComponent& trust = trustPool->data()[i];
-            if (trust.owner == bestCandidate) {
-                trust.isReserveCurrency = true;
-                LOG_INFO("Player %u gained reserve currency status (trust %.2f)",
-                         static_cast<unsigned>(trust.owner), trust.trustScore);
-                break;
-            }
+        aoc::game::Player* newReserve = gameState.player(bestCandidate);
+        if (newReserve != nullptr) {
+            CurrencyTrustComponent& trust = newReserve->currencyTrust();
+            trust.isReserveCurrency = true;
+            LOG_INFO("Player %u gained reserve currency status (trust %.2f)",
+                     static_cast<unsigned>(newReserve->id()),
+                     static_cast<double>(trust.trustScore));
         }
     }
 }
@@ -224,40 +219,25 @@ float fiatTradeEfficiency(const CurrencyTrustComponent& trust) {
 
 float bilateralTradeEfficiency(const aoc::game::GameState& gameState,
                                PlayerId playerA, PlayerId playerB) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     float efficiencyA = 0.50f;  // Default barter
     float efficiencyB = 0.50f;
 
-    const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-        world.getPool<MonetaryStateComponent>();
-    const aoc::ecs::ComponentPool<CurrencyTrustComponent>* trustPool =
-        world.getPool<CurrencyTrustComponent>();
+    const aoc::game::Player* pa = gameState.player(playerA);
+    const aoc::game::Player* pb = gameState.player(playerB);
 
-    if (monetaryPool != nullptr) {
-        for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-            const MonetaryStateComponent& ms = monetaryPool->data()[i];
-            if (ms.owner == playerA) {
-                efficiencyA = ms.tradeEfficiency();
-                // Apply fiat trust if applicable
-                if (ms.system == MonetarySystemType::FiatMoney && trustPool != nullptr) {
-                    for (uint32_t j = 0; j < trustPool->size(); ++j) {
-                        if (trustPool->data()[j].owner == playerA) {
-                            efficiencyA = fiatTradeEfficiency(trustPool->data()[j]);
-                            break;
-                        }
-                    }
-                }
-            } else if (ms.owner == playerB) {
-                efficiencyB = ms.tradeEfficiency();
-                if (ms.system == MonetarySystemType::FiatMoney && trustPool != nullptr) {
-                    for (uint32_t j = 0; j < trustPool->size(); ++j) {
-                        if (trustPool->data()[j].owner == playerB) {
-                            efficiencyB = fiatTradeEfficiency(trustPool->data()[j]);
-                            break;
-                        }
-                    }
-                }
-            }
+    if (pa != nullptr) {
+        const MonetaryStateComponent& msA = pa->monetary();
+        efficiencyA = msA.tradeEfficiency();
+        if (msA.system == MonetarySystemType::FiatMoney) {
+            efficiencyA = fiatTradeEfficiency(pa->currencyTrust());
+        }
+    }
+
+    if (pb != nullptr) {
+        const MonetaryStateComponent& msB = pb->monetary();
+        efficiencyB = msB.tradeEfficiency();
+        if (msB.system == MonetarySystemType::FiatMoney) {
+            efficiencyB = fiatTradeEfficiency(pb->currencyTrust());
         }
     }
 
@@ -267,24 +247,15 @@ float bilateralTradeEfficiency(const aoc::game::GameState& gameState,
 
     // Exchange rate volatility penalty: if both are on fiat and their rates
     // differ significantly, trade is less efficient (exchange rate risk).
-    const aoc::ecs::ComponentPool<CurrencyExchangeComponent>* forexPool =
-        world.getPool<CurrencyExchangeComponent>();
-    if (forexPool != nullptr) {
-        const CurrencyExchangeComponent* forexA = nullptr;
-        const CurrencyExchangeComponent* forexB = nullptr;
-        for (uint32_t i = 0; i < forexPool->size(); ++i) {
-            if (forexPool->data()[i].owner == playerA) { forexA = &forexPool->data()[i]; }
-            if (forexPool->data()[i].owner == playerB) { forexB = &forexPool->data()[i]; }
-        }
-        if (forexA != nullptr && forexB != nullptr) {
-            float xRate = bilateralExchangeRate(*forexA, *forexB);
-            // Exchange rate far from 1.0 creates friction (hedging costs)
-            float deviation = std::abs(xRate - 1.0f);
-            if (deviation > 0.5f) {
-                // More than 50% deviation: up to 10% trade efficiency penalty
-                float penalty = std::min(0.10f, (deviation - 0.5f) * 0.10f);
-                baseEfficiency *= (1.0f - penalty);
-            }
+    if (pa != nullptr && pb != nullptr) {
+        const CurrencyExchangeComponent& forexA = pa->currencyExchange();
+        const CurrencyExchangeComponent& forexB = pb->currencyExchange();
+        float xRate    = bilateralExchangeRate(forexA, forexB);
+        float deviation = std::abs(xRate - 1.0f);
+        if (deviation > 0.5f) {
+            // More than 50% deviation: up to 10% trade efficiency penalty
+            float penalty = std::min(0.10f, (deviation - 0.5f) * 0.10f);
+            baseEfficiency *= (1.0f - penalty);
         }
     }
 

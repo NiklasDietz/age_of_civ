@@ -5,11 +5,9 @@
 
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
-#include <cmath>
 
 namespace aoc::sim {
 
@@ -42,7 +40,7 @@ constexpr int32_t DEFAULT_DURATION = 5;
 // Processing
 // ============================================================================
 
-bool processCurrencyCrisis(aoc::ecs::World& /*world*/,
+bool processCurrencyCrisis(aoc::game::GameState& /*gameState*/,
                            MonetaryStateComponent& state,
                            CurrencyCrisisComponent& crisis) {
     bool newCrisis = false;

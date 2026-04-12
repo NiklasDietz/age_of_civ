@@ -6,10 +6,11 @@
 #include "aoc/map/FogOfWar.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/Unit.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
-#include "aoc/ecs/World.hpp"
 
 namespace aoc::map {
 
@@ -21,7 +22,7 @@ void FogOfWar::initialize(int32_t tileCount, uint8_t playerCount) {
         TileVisibility::Unseen);
 }
 
-void FogOfWar::updateVisibility(const aoc::ecs::World& world,
+void FogOfWar::updateVisibility(const aoc::game::GameState& gameState,
                                  const HexGrid& grid,
                                  PlayerId player) {
     if (player >= this->m_playerCount) {
@@ -53,33 +54,22 @@ void FogOfWar::updateVisibility(const aoc::ecs::World& world,
         }
     };
 
-    // Reveal around units
-    const aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* unitPool =
-        world.getPool<aoc::sim::UnitComponent>();
-    if (unitPool != nullptr) {
-        for (uint32_t i = 0; i < unitPool->size(); ++i) {
-            const aoc::sim::UnitComponent& unit = unitPool->data()[i];
-            if (unit.owner != player) {
-                continue;
-            }
-            const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(unit.typeId);
-            int32_t sightRange = (def.unitClass == aoc::sim::UnitClass::Scout)
-                ? SCOUT_SIGHT_RANGE : DEFAULT_SIGHT_RANGE;
-            revealRadius(unit.position, sightRange);
-        }
+    const aoc::game::Player* ownerPlayer = gameState.player(player);
+    if (ownerPlayer == nullptr) {
+        return;
     }
 
-    // Reveal around cities
-    const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
-        world.getPool<aoc::sim::CityComponent>();
-    if (cityPool != nullptr) {
-        for (uint32_t i = 0; i < cityPool->size(); ++i) {
-            const aoc::sim::CityComponent& city = cityPool->data()[i];
-            if (city.owner != player) {
-                continue;
-            }
-            revealRadius(city.location, CITY_SIGHT_RANGE);
-        }
+    // Reveal around units owned by this player
+    for (const std::unique_ptr<aoc::game::Unit>& unitPtr : ownerPlayer->units()) {
+        const aoc::game::Unit& unit = *unitPtr;
+        int32_t sightRange = (unit.typeDef().unitClass == aoc::sim::UnitClass::Scout)
+            ? SCOUT_SIGHT_RANGE : DEFAULT_SIGHT_RANGE;
+        revealRadius(unit.position(), sightRange);
+    }
+
+    // Reveal around cities owned by this player
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : ownerPlayer->cities()) {
+        revealRadius(cityPtr->location(), CITY_SIGHT_RANGE);
     }
 }
 

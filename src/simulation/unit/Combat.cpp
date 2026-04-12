@@ -4,7 +4,6 @@
  */
 
 #include "aoc/simulation/unit/Combat.hpp"
-
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
@@ -413,6 +412,76 @@ CombatPreview previewCombat(const aoc::game::GameState& gameState,
     }
 
     return preview;
+}
+
+// ============================================================================
+// Legacy EntityId overloads
+// ============================================================================
+
+/**
+ * @brief Resolve an EntityId to a Unit via index across all players' unit vectors.
+ *
+ * The n-th unit overall (counting across all players in order) maps to EntityId{n}.
+ * This bridges the legacy EntityId callers to the GameState object model without
+ * touching the ECS World.
+ */
+static aoc::game::Unit* findUnitByEntity(aoc::game::GameState& gameState, EntityId entity) {
+    uint32_t remaining = entity.index;
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        const std::vector<std::unique_ptr<aoc::game::Unit>>& units = playerPtr->units();
+        const uint32_t count = static_cast<uint32_t>(units.size());
+        if (remaining < count) {
+            return units[static_cast<std::size_t>(remaining)].get();
+        }
+        remaining -= count;
+    }
+    return nullptr;
+}
+
+CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
+                                 aoc::Random& rng,
+                                 const aoc::map::HexGrid& grid,
+                                 EntityId attackerEntity,
+                                 EntityId defenderEntity) {
+    aoc::game::Unit* attacker = findUnitByEntity(gameState, attackerEntity);
+    aoc::game::Unit* defender = findUnitByEntity(gameState, defenderEntity);
+    if (attacker == nullptr || defender == nullptr) { return {}; }
+    return resolveMeleeCombat(gameState, rng, grid, *attacker, *defender);
+}
+
+CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
+                                  aoc::Random& rng,
+                                  const aoc::map::HexGrid& grid,
+                                  EntityId attackerEntity,
+                                  EntityId defenderEntity) {
+    aoc::game::Unit* attacker = findUnitByEntity(gameState, attackerEntity);
+    aoc::game::Unit* defender = findUnitByEntity(gameState, defenderEntity);
+    if (attacker == nullptr || defender == nullptr) { return {}; }
+    return resolveRangedCombat(gameState, rng, grid, *attacker, *defender);
+}
+
+static const aoc::game::Unit* findConstUnitByEntity(const aoc::game::GameState& gameState,
+                                                     EntityId entity) {
+    uint32_t remaining = entity.index;
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        const std::vector<std::unique_ptr<aoc::game::Unit>>& units = playerPtr->units();
+        const uint32_t count = static_cast<uint32_t>(units.size());
+        if (remaining < count) {
+            return units[static_cast<std::size_t>(remaining)].get();
+        }
+        remaining -= count;
+    }
+    return nullptr;
+}
+
+CombatPreview previewCombat(const aoc::game::GameState& gameState,
+                             const aoc::map::HexGrid& grid,
+                             EntityId attackerEntity,
+                             EntityId defenderEntity) {
+    const aoc::game::Unit* attacker = findConstUnitByEntity(gameState, attackerEntity);
+    const aoc::game::Unit* defender = findConstUnitByEntity(gameState, defenderEntity);
+    if (attacker == nullptr || defender == nullptr) { return {}; }
+    return previewCombat(gameState, grid, *attacker, *defender);
 }
 
 } // namespace aoc::sim

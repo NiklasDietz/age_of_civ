@@ -4,15 +4,15 @@
  */
 
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/simulation/city/Governor.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/tech/TechGating.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/map/HexGrid.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 namespace aoc::sim {
@@ -95,70 +95,59 @@ float scoreDistrictForFocus(CityFocus focus, DistrictType dtype) {
 
 void governorAutoQueue(aoc::game::GameState& gameState,
                         const aoc::map::HexGrid& grid,
-                        EntityId cityEntity,
+                        aoc::game::City& city,
                         PlayerId player) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    CityGovernorComponent* governor = world.tryGetComponent<CityGovernorComponent>(cityEntity);
-    if (governor == nullptr || !governor->isActive || !governor->autoQueueProduction) {
+    aoc::sim::CityGovernorComponent& governor = city.governor();
+    if (!governor.isActive || !governor.autoQueueProduction) {
         return;
     }
 
-    ProductionQueueComponent* queue = world.tryGetComponent<ProductionQueueComponent>(cityEntity);
-    if (queue == nullptr || !queue->isEmpty()) {
+    aoc::sim::ProductionQueueComponent& queue = city.production();
+    if (!queue.isEmpty()) {
         return;
     }
 
-    const CityComponent* city = world.tryGetComponent<CityComponent>(cityEntity);
-    if (city == nullptr) {
-        return;
-    }
-
-    CityFocus focus = governor->focus;
+    const CityFocus focus = governor.focus;
 
     // Check if template is active and has entries
-    if (queue->templateActive && !queue->productionTemplate.empty()) {
-        const ProductionTemplateEntry& tmpl = queue->productionTemplate.front();
+    if (queue.templateActive && !queue.productionTemplate.empty()) {
+        const ProductionTemplateEntry& tmpl = queue.productionTemplate.front();
         ProductionQueueItem item;
         item.type = tmpl.type;
         item.itemId = tmpl.itemId;
         item.name = tmpl.name;
         item.totalCost = tmpl.baseCost * GamePace::instance().costMultiplier;
         item.progress = 0.0f;
-        queue->queue.push_back(std::move(item));
+        queue.queue.push_back(std::move(item));
 
         // Rotate template (move first entry to end)
-        ProductionTemplateEntry front = std::move(queue->productionTemplate.front());
-        queue->productionTemplate.erase(queue->productionTemplate.begin());
-        queue->productionTemplate.push_back(std::move(front));
+        ProductionTemplateEntry front = std::move(queue.productionTemplate.front());
+        queue.productionTemplate.erase(queue.productionTemplate.begin());
+        queue.productionTemplate.push_back(std::move(front));
         return;
     }
 
-    // Governor auto-selects based on focus
-    const CityDistrictsComponent* districts =
-        world.tryGetComponent<CityDistrictsComponent>(cityEntity);
+    const aoc::sim::CityDistrictsComponent& districts = city.districts();
 
     // Step 1: Check if we need a district
     bool needsDistrict = false;
     DistrictType bestDistrict = DistrictType::CityCenter;
     float bestDistrictScore = -1.0f;
 
-    int32_t districtCount = (districts != nullptr)
-        ? static_cast<int32_t>(districts->districts.size()) : 0;
+    const int32_t districtCount = static_cast<int32_t>(districts.districts.size());
     int32_t buildingCount = 0;
-    if (districts != nullptr) {
-        for (const CityDistrictsComponent::PlacedDistrict& d : districts->districts) {
-            buildingCount += static_cast<int32_t>(d.buildings.size());
-        }
+    for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
+        buildingCount += static_cast<int32_t>(d.buildings.size());
     }
 
-    // Build district if we have enough buildings in existing districts
+    // Build a district if we have enough buildings in existing districts
     if (districtCount <= 1 || buildingCount >= districtCount - 1) {
         constexpr DistrictType ALL_DISTRICTS[] = {
             DistrictType::Commercial, DistrictType::Campus,
             DistrictType::Industrial, DistrictType::Encampment, DistrictType::Harbor
         };
         for (DistrictType dtype : ALL_DISTRICTS) {
-            if (districts != nullptr && districts->hasDistrict(dtype)) { continue; }
+            if (districts.hasDistrict(dtype)) { continue; }
             float score = scoreDistrictForFocus(focus, dtype);
             if (score > bestDistrictScore) {
                 bestDistrictScore = score;
@@ -168,12 +157,12 @@ void governorAutoQueue(aoc::game::GameState& gameState,
         }
     }
 
-    // Step 2: Score best building
+    // Step 2: Score best building using the City& overload of canBuildBuilding.
     float bestBuildingScore = -1.0f;
     BuildingId bestBuildingId{0};
     for (uint16_t bidx = 0; bidx < static_cast<uint16_t>(BUILDING_DEFS.size()); ++bidx) {
         const BuildingDef& bdef = BUILDING_DEFS[bidx];
-        if (!canBuildBuilding(world, player, cityEntity, bdef.id)) { continue; }
+        if (!canBuildBuilding(gameState, player, city, bdef.id)) { continue; }
         float score = scoreBuildingForFocus(focus, bdef);
         if (score > bestBuildingScore) {
             bestBuildingScore = score;
@@ -210,7 +199,7 @@ void governorAutoQueue(aoc::game::GameState& gameState,
 
     item.totalCost *= GamePace::instance().costMultiplier;
     item.progress = 0.0f;
-    queue->queue.push_back(std::move(item));
+    queue.queue.push_back(std::move(item));
 
     (void)grid;
 }
@@ -218,17 +207,13 @@ void governorAutoQueue(aoc::game::GameState& gameState,
 void processGovernors(aoc::game::GameState& gameState,
                        const aoc::map::HexGrid& grid,
                        PlayerId player) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
-    if (cityPool == nullptr) {
+    aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer == nullptr) {
         return;
     }
 
-    for (uint32_t i = 0; i < cityPool->size(); ++i) {
-        if (cityPool->data()[i].owner != player) { continue; }
-        EntityId cityEntity = cityPool->entities()[i];
-
-        governorAutoQueue(world, grid, cityEntity, player);
+    for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+        governorAutoQueue(gameState, grid, *city, player);
     }
 }
 

@@ -18,6 +18,7 @@
 
 namespace aoc::game {
 class GameState;
+class City;
 }
 
 namespace aoc::sim {
@@ -35,12 +36,19 @@ struct BuildableItem {
 
 /// Check if a player can build a specific building in a city.
 [[nodiscard]] bool canBuildBuilding(const aoc::game::GameState& gameState, PlayerId player,
-                                    EntityId cityEntity, BuildingId buildingId);
+                                    const aoc::game::City& city, BuildingId buildingId);
 
 /// Check if a player can build a specific wonder.
 [[nodiscard]] bool canBuildWonder(const aoc::game::GameState& gameState, PlayerId player, uint8_t wonderId);
 
 /// Get all buildable items for a city (units + buildings + wonders + districts).
+[[nodiscard]] std::vector<BuildableItem> getBuildableItems(const aoc::game::GameState& gameState,
+                                                           PlayerId player,
+                                                           const aoc::game::City& city);
+
+// Legacy EntityId overloads for code not yet migrated from ECS iteration
+[[nodiscard]] bool canBuildBuilding(const aoc::game::GameState& gameState, PlayerId player,
+                                    EntityId cityEntity, BuildingId buildingId);
 [[nodiscard]] std::vector<BuildableItem> getBuildableItems(const aoc::game::GameState& gameState,
                                                            PlayerId player, EntityId cityEntity);
 

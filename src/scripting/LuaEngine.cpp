@@ -10,8 +10,8 @@
  */
 
 #include "aoc/scripting/LuaEngine.hpp"
+#include "aoc/game/GameState.hpp"
 #include "aoc/map/HexGrid.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 extern "C" {
@@ -26,7 +26,7 @@ namespace aoc::scripting {
 
 struct LuaEngine::Impl {
     lua_State* luaState = nullptr;
-    aoc::ecs::World* world = nullptr;
+    aoc::game::GameState* gameState = nullptr;
     aoc::map::HexGrid* grid = nullptr;
 };
 
@@ -101,8 +101,8 @@ bool LuaEngine::executeString(std::string_view code) {
     return true;
 }
 
-void LuaEngine::bindGameState(aoc::ecs::World& world, aoc::map::HexGrid& grid) {
-    this->m_impl->world = &world;
+void LuaEngine::bindGameState(aoc::game::GameState& gameState, aoc::map::HexGrid& grid) {
+    this->m_impl->gameState = &gameState;
     this->m_impl->grid = &grid;
 
     lua_State* L = this->m_impl->luaState;

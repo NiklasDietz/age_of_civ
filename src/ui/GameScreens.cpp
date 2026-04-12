@@ -5,7 +5,9 @@
 
 #include "aoc/ui/GameScreens.hpp"
 #include "aoc/ui/UIManager.hpp"
-#include "aoc/ecs/World.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
@@ -99,12 +101,15 @@ WidgetId ScreenBase::createScreenFrame(UIManager& ui, const std::string& title,
 // ProductionScreen
 // ============================================================================
 
-void ProductionScreen::setContext(aoc::ecs::World* world, aoc::map::HexGrid* grid,
-                                  EntityId cityEntity, PlayerId player) {
-    this->m_world = world;
-    this->m_grid = grid;
-    this->m_cityEntity = cityEntity;
-    this->m_player = player;
+// Forward declaration — defined after CityDetailScreen below.
+static aoc::game::City* resolveCityByLocation(aoc::game::GameState*, PlayerId, aoc::hex::AxialCoord);
+
+void ProductionScreen::setContext(aoc::game::GameState* gameState, aoc::map::HexGrid* grid,
+                                   aoc::hex::AxialCoord cityLocation, PlayerId player) {
+    this->m_gameState  = gameState;
+    this->m_grid       = grid;
+    this->m_cityLocation = cityLocation;
+    this->m_player     = player;
 }
 
 void ProductionScreen::open(UIManager& ui) {
@@ -112,18 +117,28 @@ void ProductionScreen::open(UIManager& ui) {
         return;
     }
 
-    assert(this->m_world != nullptr);
+    assert(this->m_gameState != nullptr);
     this->m_isOpen = true;
 
     WidgetId innerPanel = this->createScreenFrame(
         ui, "Production", 450.0f, 500.0f, this->m_screenW, this->m_screenH);
 
+    // Locate the player and city in the GameState object model
+    aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
+    aoc::game::City* city = nullptr;
+    if (owningPlayer != nullptr) {
+        for (const std::unique_ptr<aoc::game::City>& c : owningPlayer->cities()) {
+            if (c->location() == this->m_cityLocation) {
+                city = c.get();
+                break;
+            }
+        }
+    }
+
     // Current queue label
     std::string queueText = "Queue: empty";
-    if (this->m_world->hasComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity)) {
-        const aoc::sim::ProductionQueueComponent& queue =
-            this->m_world->getComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity);
-        const aoc::sim::ProductionQueueItem* current = queue.currentItem();
+    if (city != nullptr) {
+        const aoc::sim::ProductionQueueItem* current = city->production().currentItem();
         if (current != nullptr) {
             queueText = "Building: " + current->name + " ("
                       + std::to_string(static_cast<int>(current->progress)) + "/"
@@ -150,7 +165,7 @@ void ProductionScreen::open(UIManager& ui) {
 
     // Build the list of available items using tech gating
     const std::vector<aoc::sim::BuildableItem> buildableItems =
-        aoc::sim::getBuildableItems(*this->m_world, this->m_player, this->m_cityEntity);
+        aoc::sim::getBuildableItems(*this->m_gameState, this->m_player, *resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation));
 
     for (const aoc::sim::BuildableItem& buildable : buildableItems) {
         std::string itemLabel = std::string(buildable.name) + " ("
@@ -194,15 +209,9 @@ void ProductionScreen::open(UIManager& ui) {
         const uint16_t itemId = buildable.id;
         const float itemCost = buildable.cost;
         const std::string itemName(buildable.name);
-        const EntityId cityEnt = this->m_cityEntity;
-        aoc::ecs::World* world = this->m_world;
-        btn.onClick = [world, cityEnt, itemType, itemId, itemCost, itemName]() {
-            if (!world->isAlive(cityEnt)) {
-                return;
-            }
-            aoc::sim::ProductionQueueComponent* queue =
-                world->tryGetComponent<aoc::sim::ProductionQueueComponent>(cityEnt);
-            if (queue == nullptr) {
+        aoc::game::City* cityPtr = city;
+        btn.onClick = [cityPtr, itemType, itemId, itemCost, itemName]() {
+            if (cityPtr == nullptr) {
                 return;
             }
             aoc::sim::ProductionQueueItem item{};
@@ -211,7 +220,7 @@ void ProductionScreen::open(UIManager& ui) {
             item.name      = itemName;
             item.totalCost = itemCost;
             item.progress  = 0.0f;
-            queue->queue.push_back(std::move(item));
+            cityPtr->production().queue.push_back(std::move(item));
             LOG_INFO("Enqueued: %s", itemName.c_str());
         };
 
@@ -235,16 +244,24 @@ void ProductionScreen::close(UIManager& ui) {
 }
 
 void ProductionScreen::refresh(UIManager& ui) {
-    if (!this->m_isOpen || this->m_world == nullptr) {
+    if (!this->m_isOpen || this->m_gameState == nullptr) {
         return;
     }
 
+    aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
+    aoc::game::City* city = nullptr;
+    if (owningPlayer != nullptr) {
+        for (const std::unique_ptr<aoc::game::City>& c : owningPlayer->cities()) {
+            if (c->location() == this->m_cityLocation) {
+                city = c.get();
+                break;
+            }
+        }
+    }
+
     std::string queueText = "Queue: empty";
-    if (this->m_world->isAlive(this->m_cityEntity) &&
-        this->m_world->hasComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity)) {
-        const aoc::sim::ProductionQueueComponent& queue =
-            this->m_world->getComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity);
-        const aoc::sim::ProductionQueueItem* current = queue.currentItem();
+    if (city != nullptr) {
+        const aoc::sim::ProductionQueueItem* current = city->production().currentItem();
         if (current != nullptr) {
             queueText = "Building: " + current->name + " ("
                       + std::to_string(static_cast<int>(current->progress)) + "/"
@@ -258,9 +275,9 @@ void ProductionScreen::refresh(UIManager& ui) {
 // TechScreen
 // ============================================================================
 
-void TechScreen::setContext(aoc::ecs::World* world, PlayerId player) {
-    this->m_world = world;
-    this->m_player = player;
+void TechScreen::setContext(aoc::game::GameState* gameState, PlayerId player) {
+    this->m_gameState = gameState;
+    this->m_player    = player;
 }
 
 void TechScreen::open(UIManager& ui) {
@@ -268,20 +285,16 @@ void TechScreen::open(UIManager& ui) {
         return;
     }
 
-    assert(this->m_world != nullptr);
+    assert(this->m_gameState != nullptr);
     this->m_isOpen = true;
 
     WidgetId innerPanel = this->createScreenFrame(
         ui, "Technology", 500.0f, 550.0f, this->m_screenW, this->m_screenH);
 
-    // Find player tech component
-    aoc::sim::PlayerTechComponent* playerTech = nullptr;
-    this->m_world->forEach<aoc::sim::PlayerTechComponent>(
-        [this, &playerTech](EntityId, aoc::sim::PlayerTechComponent& tech) {
-            if (tech.owner == this->m_player) {
-                playerTech = &tech;
-            }
-        });
+    // Find player tech component through the object model
+    const aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
+    const aoc::sim::PlayerTechComponent* playerTech =
+        (owningPlayer != nullptr) ? &owningPlayer->tech() : nullptr;
 
     // Current research label
     std::string currentText = "No active research";
@@ -331,19 +344,16 @@ void TechScreen::open(UIManager& ui) {
             btn.cornerRadius = 3.0f;
 
             const uint16_t techValue = tech.id.value;
-            aoc::ecs::World* world = this->m_world;
+            aoc::game::GameState* gsPtr = this->m_gameState;
             const PlayerId player = this->m_player;
-            btn.onClick = [world, player, techValue]() {
-                world->forEach<aoc::sim::PlayerTechComponent>(
-                    [player, techValue](EntityId, aoc::sim::PlayerTechComponent& tc) {
-                        if (tc.owner == player) {
-                            tc.currentResearch = TechId{techValue};
-                            tc.researchProgress = 0.0f;
-                            const aoc::sim::TechDef& def = aoc::sim::techDef(TechId{techValue});
-                            LOG_INFO("Now researching: %.*s",
-                                     static_cast<int>(def.name.size()), def.name.data());
-                        }
-                    });
+            btn.onClick = [gsPtr, player, techValue]() {
+                aoc::game::Player* p = gsPtr->player(player);
+                if (p == nullptr) { return; }
+                p->tech().currentResearch = TechId{techValue};
+                p->tech().researchProgress = 0.0f;
+                const aoc::sim::TechDef& def = aoc::sim::techDef(TechId{techValue});
+                LOG_INFO("Now researching: %.*s",
+                         static_cast<int>(def.name.size()), def.name.data());
             };
 
             (void)ui.createButton(this->m_techList, {0.0f, 0.0f, 460.0f, 24.0f}, std::move(btn));
@@ -372,17 +382,13 @@ void TechScreen::close(UIManager& ui) {
 }
 
 void TechScreen::refresh(UIManager& ui) {
-    if (!this->m_isOpen || this->m_world == nullptr) {
+    if (!this->m_isOpen || this->m_gameState == nullptr) {
         return;
     }
 
-    aoc::sim::PlayerTechComponent* playerTech = nullptr;
-    this->m_world->forEach<aoc::sim::PlayerTechComponent>(
-        [this, &playerTech](EntityId, aoc::sim::PlayerTechComponent& tech) {
-            if (tech.owner == this->m_player) {
-                playerTech = &tech;
-            }
-        });
+    const aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
+    const aoc::sim::PlayerTechComponent* playerTech =
+        (owningPlayer != nullptr) ? &owningPlayer->tech() : nullptr;
 
     std::string currentText = "No active research";
     if (playerTech != nullptr && playerTech->currentResearch.isValid()) {
@@ -398,9 +404,9 @@ void TechScreen::refresh(UIManager& ui) {
 // GovernmentScreen
 // ============================================================================
 
-void GovernmentScreen::setContext(aoc::ecs::World* world, PlayerId player) {
-    this->m_world = world;
-    this->m_player = player;
+void GovernmentScreen::setContext(aoc::game::GameState* gameState, PlayerId player) {
+    this->m_gameState = gameState;
+    this->m_player    = player;
 }
 
 void GovernmentScreen::open(UIManager& ui) {
@@ -408,20 +414,16 @@ void GovernmentScreen::open(UIManager& ui) {
         return;
     }
 
-    assert(this->m_world != nullptr);
+    assert(this->m_gameState != nullptr);
     this->m_isOpen = true;
 
     WidgetId innerPanel = this->createScreenFrame(
         ui, "Government", 450.0f, 400.0f, this->m_screenW, this->m_screenH);
 
-    // Find player government component
-    aoc::sim::PlayerGovernmentComponent* playerGov = nullptr;
-    this->m_world->forEach<aoc::sim::PlayerGovernmentComponent>(
-        [this, &playerGov](EntityId, aoc::sim::PlayerGovernmentComponent& gov) {
-            if (gov.owner == this->m_player) {
-                playerGov = &gov;
-            }
-        });
+    // Find player government component through object model
+    aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
+    aoc::sim::PlayerGovernmentComponent* playerGov =
+        (owningPlayer != nullptr) ? &owningPlayer->government() : nullptr;
 
     // Current government label
     std::string currentText = "Current: Unknown";
@@ -459,18 +461,15 @@ void GovernmentScreen::open(UIManager& ui) {
             btn.pressedColor = {0.15f, 0.15f, 0.2f, 0.9f};
             btn.cornerRadius = 3.0f;
 
-            aoc::ecs::World* world = this->m_world;
+            aoc::game::GameState* gsPtr = this->m_gameState;
             const PlayerId player = this->m_player;
-            btn.onClick = [world, player, govType]() {
-                world->forEach<aoc::sim::PlayerGovernmentComponent>(
-                    [player, govType](EntityId, aoc::sim::PlayerGovernmentComponent& gov) {
-                        if (gov.owner == player) {
-                            gov.government = govType;
-                            const aoc::sim::GovernmentDef& def = aoc::sim::governmentDef(govType);
-                            LOG_INFO("Switched government to: %.*s",
-                                     static_cast<int>(def.name.size()), def.name.data());
-                        }
-                    });
+            btn.onClick = [gsPtr, player, govType]() {
+                aoc::game::Player* p = gsPtr->player(player);
+                if (p == nullptr) { return; }
+                p->government().government = govType;
+                const aoc::sim::GovernmentDef& def = aoc::sim::governmentDef(govType);
+                LOG_INFO("Switched government to: %.*s",
+                         static_cast<int>(def.name.size()), def.name.data());
             };
 
             (void)ui.createButton(this->m_govList, {0.0f, 0.0f, 410.0f, 24.0f}, std::move(btn));
@@ -518,17 +517,13 @@ void GovernmentScreen::close(UIManager& ui) {
 }
 
 void GovernmentScreen::refresh(UIManager& ui) {
-    if (!this->m_isOpen || this->m_world == nullptr) {
+    if (!this->m_isOpen || this->m_gameState == nullptr) {
         return;
     }
 
-    aoc::sim::PlayerGovernmentComponent* playerGov = nullptr;
-    this->m_world->forEach<aoc::sim::PlayerGovernmentComponent>(
-        [this, &playerGov](EntityId, aoc::sim::PlayerGovernmentComponent& gov) {
-            if (gov.owner == this->m_player) {
-                playerGov = &gov;
-            }
-        });
+    const aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
+    const aoc::sim::PlayerGovernmentComponent* playerGov =
+        (owningPlayer != nullptr) ? &owningPlayer->government() : nullptr;
 
     std::string currentText = "Current: Unknown";
     if (playerGov != nullptr) {
@@ -542,12 +537,12 @@ void GovernmentScreen::refresh(UIManager& ui) {
 // EconomyScreen
 // ============================================================================
 
-void EconomyScreen::setContext(aoc::ecs::World* world, const aoc::map::HexGrid* grid,
+void EconomyScreen::setContext(aoc::game::GameState* gameState, const aoc::map::HexGrid* grid,
                                 PlayerId player, const aoc::sim::Market* market) {
-    this->m_world = world;
-    this->m_grid = grid;
-    this->m_player = player;
-    this->m_market = market;
+    this->m_gameState = gameState;
+    this->m_grid      = grid;
+    this->m_player    = player;
+    this->m_market    = market;
 }
 
 void EconomyScreen::open(UIManager& ui) {
@@ -555,20 +550,16 @@ void EconomyScreen::open(UIManager& ui) {
         return;
     }
 
-    assert(this->m_world != nullptr);
+    assert(this->m_gameState != nullptr);
     this->m_isOpen = true;
 
     WidgetId innerPanel = this->createScreenFrame(
         ui, "Economy", 500.0f, 500.0f, this->m_screenW, this->m_screenH);
 
-    // Find monetary state
-    aoc::sim::MonetaryStateComponent* monetary = nullptr;
-    this->m_world->forEach<aoc::sim::MonetaryStateComponent>(
-        [this, &monetary](EntityId, aoc::sim::MonetaryStateComponent& ms) {
-            if (ms.owner == this->m_player) {
-                monetary = &ms;
-            }
-        });
+    // Find monetary state through object model
+    const aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
+    const aoc::sim::MonetaryStateComponent* monetary =
+        (owningPlayer != nullptr) ? &owningPlayer->monetary() : nullptr;
 
     // Economy info label
     std::string infoText = "No economic data";
@@ -594,6 +585,7 @@ void EconomyScreen::open(UIManager& ui) {
         WidgetId taxRow = ui.createPanel(
             innerPanel, {0.0f, 0.0f, 200.0f, 26.0f},
             PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+
         Widget* taxRowWidget = ui.getWidget(taxRow);
         if (taxRowWidget != nullptr) {
             taxRowWidget->layoutDirection = LayoutDirection::Horizontal;
@@ -608,19 +600,16 @@ void EconomyScreen::open(UIManager& ui) {
         minusBtn.pressedColor = {0.2f, 0.15f, 0.15f, 0.9f};
         minusBtn.cornerRadius = 3.0f;
 
-        aoc::ecs::World* world = this->m_world;
+        aoc::game::GameState* gsPtr = this->m_gameState;
         const PlayerId player = this->m_player;
-        minusBtn.onClick = [world, player]() {
-            world->forEach<aoc::sim::MonetaryStateComponent>(
-                [player](EntityId, aoc::sim::MonetaryStateComponent& ms) {
-                    if (ms.owner == player) {
-                        ms.taxRate -= 0.05f;
-                        if (ms.taxRate < 0.0f) {
-                            ms.taxRate = 0.0f;
-                        }
-                        LOG_INFO("Tax rate: %d%%", static_cast<int>(ms.taxRate * 100.0f));
-                    }
-                });
+        minusBtn.onClick = [gsPtr, player]() {
+            aoc::game::Player* p = gsPtr->player(player);
+            if (p == nullptr) { return; }
+            p->monetary().taxRate -= 0.05f;
+            if (p->monetary().taxRate < 0.0f) {
+                p->monetary().taxRate = 0.0f;
+            }
+            LOG_INFO("Tax rate: %d%%", static_cast<int>(p->monetary().taxRate * 100.0f));
         };
 
         ButtonData plusBtn;
@@ -631,17 +620,14 @@ void EconomyScreen::open(UIManager& ui) {
         plusBtn.pressedColor = {0.15f, 0.2f, 0.15f, 0.9f};
         plusBtn.cornerRadius = 3.0f;
 
-        plusBtn.onClick = [world, player]() {
-            world->forEach<aoc::sim::MonetaryStateComponent>(
-                [player](EntityId, aoc::sim::MonetaryStateComponent& ms) {
-                    if (ms.owner == player) {
-                        ms.taxRate += 0.05f;
-                        if (ms.taxRate > 1.0f) {
-                            ms.taxRate = 1.0f;
-                        }
-                        LOG_INFO("Tax rate: %d%%", static_cast<int>(ms.taxRate * 100.0f));
-                    }
-                });
+        plusBtn.onClick = [gsPtr, player]() {
+            aoc::game::Player* p = gsPtr->player(player);
+            if (p == nullptr) { return; }
+            p->monetary().taxRate += 0.05f;
+            if (p->monetary().taxRate > 1.0f) {
+                p->monetary().taxRate = 1.0f;
+            }
+            LOG_INFO("Tax rate: %d%%", static_cast<int>(p->monetary().taxRate * 100.0f));
         };
 
         (void)ui.createButton(taxRow, {0.0f, 0.0f, 80.0f, 22.0f}, std::move(minusBtn));
@@ -678,13 +664,8 @@ void EconomyScreen::open(UIManager& ui) {
     }
 
     // Find player economy component for supply/demand
-    aoc::sim::PlayerEconomyComponent* playerEcon = nullptr;
-    this->m_world->forEach<aoc::sim::PlayerEconomyComponent>(
-        [this, &playerEcon](EntityId, aoc::sim::PlayerEconomyComponent& econ) {
-            if (econ.owner == this->m_player) {
-                playerEcon = &econ;
-            }
-        });
+    const aoc::sim::PlayerEconomyComponent* playerEcon =
+        (owningPlayer != nullptr) ? &owningPlayer->economy() : nullptr;
 
     // Collect goods data for sorting by trade volume
     struct GoodDisplayInfo {
@@ -742,13 +723,13 @@ void EconomyScreen::open(UIManager& ui) {
         info.demand = 0;
         if (playerEcon != nullptr) {
             {
-                std::unordered_map<uint16_t, int32_t>::iterator it = playerEcon->totalSupply.find(goodId);
+                std::unordered_map<uint16_t, int32_t>::const_iterator it = playerEcon->totalSupply.find(goodId);
                 if (it != playerEcon->totalSupply.end()) {
                     info.supply = it->second;
                 }
             }
             {
-                std::unordered_map<uint16_t, int32_t>::iterator it = playerEcon->totalDemand.find(goodId);
+                std::unordered_map<uint16_t, int32_t>::const_iterator it = playerEcon->totalDemand.find(goodId);
                 if (it != playerEcon->totalDemand.end()) {
                     info.demand = it->second;
                 }
@@ -821,8 +802,10 @@ void EconomyScreen::buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel) {
         this->m_tradeRoutePanel = INVALID_WIDGET;
     }
 
-    this->m_trSourceCity = NULL_ENTITY;
-    this->m_trDestCity = NULL_ENTITY;
+    this->m_trSourcePlayerIdx = -1;
+    this->m_trSourceCityIdx   = -1;
+    this->m_trDestPlayerIdx   = -1;
+    this->m_trDestCityIdx     = -1;
 
     this->m_tradeRoutePanel = ui.createPanel(
         parentPanel, {0.0f, 0.0f, 470.0f, 300.0f},
@@ -849,27 +832,26 @@ void EconomyScreen::buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel) {
         srcListW->childSpacing = 2.0f;
     }
 
-    const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
-        this->m_world->getPool<aoc::sim::CityComponent>();
-    if (cityPool != nullptr) {
-        for (uint32_t i = 0; i < cityPool->size(); ++i) {
-            const aoc::sim::CityComponent& city = cityPool->data()[i];
-            if (city.owner != this->m_player) {
-                continue;
-            }
-            EntityId cityEntity = cityPool->entities()[i];
+    const aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
+    if (owningPlayer != nullptr) {
+        const int32_t playerIdx = static_cast<int32_t>(this->m_player);
+        int32_t cityIdx = 0;
+        for (const std::unique_ptr<aoc::game::City>& city : owningPlayer->cities()) {
+            const int32_t capturedCityIdx = cityIdx;
             ButtonData srcBtn;
-            srcBtn.label = city.name;
+            srcBtn.label = city->name();
             srcBtn.fontSize = 10.0f;
             srcBtn.normalColor  = {0.2f, 0.25f, 0.2f, 0.9f};
             srcBtn.hoverColor   = {0.3f, 0.35f, 0.3f, 0.9f};
             srcBtn.pressedColor = {0.15f, 0.18f, 0.15f, 0.9f};
             srcBtn.cornerRadius = 2.0f;
-            srcBtn.onClick = [this, cityEntity]() {
-                this->m_trSourceCity = cityEntity;
+            srcBtn.onClick = [this, playerIdx, capturedCityIdx]() {
+                this->m_trSourcePlayerIdx = playerIdx;
+                this->m_trSourceCityIdx   = capturedCityIdx;
                 LOG_INFO("Trade route source city selected");
             };
             (void)ui.createButton(sourceList, {0.0f, 0.0f, 440.0f, 20.0f}, std::move(srcBtn));
+            ++cityIdx;
         }
     }
 
@@ -885,14 +867,15 @@ void EconomyScreen::buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel) {
         dstListW->childSpacing = 2.0f;
     }
 
-    if (cityPool != nullptr) {
-        for (uint32_t i = 0; i < cityPool->size(); ++i) {
-            const aoc::sim::CityComponent& city = cityPool->data()[i];
-            if (city.owner == this->m_player) {
-                continue;
-            }
-            EntityId cityEntity = cityPool->entities()[i];
-            std::string destLabel = city.name + " (P" + std::to_string(static_cast<unsigned>(city.owner)) + ")";
+    for (const std::unique_ptr<aoc::game::Player>& otherPlayer : this->m_gameState->players()) {
+        if (otherPlayer->id() == this->m_player) {
+            continue;
+        }
+        const int32_t destPlayerIdx = static_cast<int32_t>(otherPlayer->id());
+        int32_t cityIdx = 0;
+        for (const std::unique_ptr<aoc::game::City>& city : otherPlayer->cities()) {
+            const int32_t capturedCityIdx = cityIdx;
+            std::string destLabel = city->name() + " (P" + std::to_string(static_cast<unsigned>(otherPlayer->id())) + ")";
             ButtonData dstBtn;
             dstBtn.label = std::move(destLabel);
             dstBtn.fontSize = 10.0f;
@@ -900,11 +883,13 @@ void EconomyScreen::buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel) {
             dstBtn.hoverColor   = {0.35f, 0.3f, 0.3f, 0.9f};
             dstBtn.pressedColor = {0.18f, 0.15f, 0.15f, 0.9f};
             dstBtn.cornerRadius = 2.0f;
-            dstBtn.onClick = [this, cityEntity]() {
-                this->m_trDestCity = cityEntity;
+            dstBtn.onClick = [this, destPlayerIdx, capturedCityIdx]() {
+                this->m_trDestPlayerIdx = destPlayerIdx;
+                this->m_trDestCityIdx   = capturedCityIdx;
                 LOG_INFO("Trade route destination city selected");
             };
             (void)ui.createButton(destList, {0.0f, 0.0f, 440.0f, 20.0f}, std::move(dstBtn));
+            ++cityIdx;
         }
     }
 
@@ -917,73 +902,76 @@ void EconomyScreen::buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel) {
     establishBtn.pressedColor = {0.10f, 0.25f, 0.10f, 0.9f};
     establishBtn.cornerRadius = 4.0f;
     establishBtn.onClick = [this]() {
-        if (!this->m_trSourceCity.isValid() || !this->m_trDestCity.isValid()) {
+        if (this->m_trSourcePlayerIdx < 0 || this->m_trSourceCityIdx < 0
+            || this->m_trDestPlayerIdx < 0 || this->m_trDestCityIdx < 0) {
             LOG_INFO("Trade route: must select both source and destination cities");
             return;
         }
-        if (!this->m_world->isAlive(this->m_trSourceCity) ||
-            !this->m_world->isAlive(this->m_trDestCity)) {
+
+        const aoc::game::Player* srcPlayer =
+            this->m_gameState->player(static_cast<PlayerId>(this->m_trSourcePlayerIdx));
+        const aoc::game::Player* dstPlayer =
+            this->m_gameState->player(static_cast<PlayerId>(this->m_trDestPlayerIdx));
+
+        if (srcPlayer == nullptr || dstPlayer == nullptr) {
+            return;
+        }
+        if (this->m_trSourceCityIdx >= srcPlayer->cityCount()
+            || this->m_trDestCityIdx >= dstPlayer->cityCount()) {
             return;
         }
 
-        const aoc::sim::CityComponent& srcCity =
-            this->m_world->getComponent<aoc::sim::CityComponent>(this->m_trSourceCity);
-        const aoc::sim::CityComponent& dstCity =
-            this->m_world->getComponent<aoc::sim::CityComponent>(this->m_trDestCity);
+        const aoc::game::City& srcCity =
+            *srcPlayer->cities()[static_cast<std::size_t>(this->m_trSourceCityIdx)];
+        const aoc::game::City& dstCity =
+            *dstPlayer->cities()[static_cast<std::size_t>(this->m_trDestCityIdx)];
 
         // Compute path between cities
         std::optional<aoc::map::PathResult> pathResult = aoc::map::findPath(
-            *this->m_grid, srcCity.location, dstCity.location);
+            *this->m_grid, srcCity.location(), dstCity.location());
 
         if (!pathResult.has_value()) {
             LOG_INFO("Trade route: no path found between cities");
             return;
         }
 
-        // Create the trade route entity
-        EntityId routeEntity = this->m_world->createEntity();
+        // Create the trade route and add it to global state
         aoc::sim::TradeRouteComponent route{};
-        route.sourceCityId = this->m_trSourceCity;
-        route.destCityId = this->m_trDestCity;
-        route.sourcePlayer = srcCity.owner;
-        route.destPlayer = dstCity.owner;
-        route.path = pathResult->path;
+        route.sourceCityId   = EntityId{};  // Routes now identified by location, not legacy entity
+        route.destCityId     = EntityId{};
+        route.sourcePlayer   = srcPlayer->id();
+        route.destPlayer     = dstPlayer->id();
+        route.path           = pathResult->path;
         route.turnsRemaining = static_cast<int32_t>(pathResult->path.size()) / 5 + 1;
 
-        // Auto-fill cargo with top 3 surplus goods from source city
-        const aoc::sim::CityStockpileComponent* stockpile =
-            this->m_world->tryGetComponent<aoc::sim::CityStockpileComponent>(this->m_trSourceCity);
-        if (stockpile != nullptr) {
-            // Collect goods with positive stockpile amounts
-            std::vector<std::pair<uint16_t, int32_t>> surplusGoods;
-            for (const std::pair<const uint16_t, int32_t>& entry : stockpile->goods) {
-                if (entry.second > 0) {
-                    surplusGoods.push_back({entry.first, entry.second});
-                }
+        // Auto-fill cargo with top 3 surplus goods from source city stockpile
+        const aoc::sim::CityStockpileComponent& stockpile = srcCity.stockpile();
+        std::vector<std::pair<uint16_t, int32_t>> surplusGoods;
+        for (const std::pair<const uint16_t, int32_t>& entry : stockpile.goods) {
+            if (entry.second > 0) {
+                surplusGoods.push_back({entry.first, entry.second});
             }
-            // Sort by amount descending
-            std::sort(surplusGoods.begin(), surplusGoods.end(),
-                      [](const std::pair<uint16_t, int32_t>& a,
-                         const std::pair<uint16_t, int32_t>& b) {
-                          return a.second > b.second;
-                      });
-            // Take top 3
-            const std::size_t cargoCount = (surplusGoods.size() < 3) ? surplusGoods.size() : 3;
-            for (std::size_t c = 0; c < cargoCount; ++c) {
-                aoc::sim::TradeOffer offer{};
-                offer.goodId = surplusGoods[c].first;
-                offer.amountPerTurn = surplusGoods[c].second / 2;  // Ship half surplus
-                if (offer.amountPerTurn > 0) {
-                    route.cargo.push_back(std::move(offer));
-                }
+        }
+        std::sort(surplusGoods.begin(), surplusGoods.end(),
+                  [](const std::pair<uint16_t, int32_t>& a,
+                     const std::pair<uint16_t, int32_t>& b) {
+                      return a.second > b.second;
+                  });
+        const std::size_t cargoCount = (surplusGoods.size() < 3) ? surplusGoods.size() : 3;
+        for (std::size_t c = 0; c < cargoCount; ++c) {
+            aoc::sim::TradeOffer offer{};
+            offer.goodId = surplusGoods[c].first;
+            offer.amountPerTurn = surplusGoods[c].second / 2;  // Ship half surplus
+            if (offer.amountPerTurn > 0) {
+                route.cargo.push_back(std::move(offer));
             }
         }
 
-        this->m_world->addComponent<aoc::sim::TradeRouteComponent>(
-            routeEntity, std::move(route));
+        this->m_gameState->tradeRoutes().push_back(std::move(route));
 
         LOG_INFO("Trade route established from %s to %s (%d turns)",
-                 srcCity.name.c_str(), dstCity.name.c_str(), route.turnsRemaining);
+                 srcCity.name().c_str(), dstCity.name().c_str(),
+                 this->m_gameState->tradeRoutes().back().turnsRemaining);
     };
     (void)ui.createButton(this->m_tradeRoutePanel, {0.0f, 0.0f, 160.0f, 26.0f},
                      std::move(establishBtn));
@@ -1003,22 +991,20 @@ void EconomyScreen::close(UIManager& ui) {
     this->m_infoLabel = INVALID_WIDGET;
     this->m_marketList = INVALID_WIDGET;
     this->m_tradeRoutePanel = INVALID_WIDGET;
-    this->m_trSourceCity = NULL_ENTITY;
-    this->m_trDestCity = NULL_ENTITY;
+    this->m_trSourcePlayerIdx = -1;
+    this->m_trSourceCityIdx   = -1;
+    this->m_trDestPlayerIdx   = -1;
+    this->m_trDestCityIdx     = -1;
 }
 
 void EconomyScreen::refresh(UIManager& ui) {
-    if (!this->m_isOpen || this->m_world == nullptr) {
+    if (!this->m_isOpen || this->m_gameState == nullptr) {
         return;
     }
 
-    aoc::sim::MonetaryStateComponent* monetary = nullptr;
-    this->m_world->forEach<aoc::sim::MonetaryStateComponent>(
-        [this, &monetary](EntityId, aoc::sim::MonetaryStateComponent& ms) {
-            if (ms.owner == this->m_player) {
-                monetary = &ms;
-            }
-        });
+    const aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
+    const aoc::sim::MonetaryStateComponent* monetary =
+        (owningPlayer != nullptr) ? &owningPlayer->monetary() : nullptr;
 
     std::string infoText = "No economic data";
     if (monetary != nullptr) {
@@ -1049,19 +1035,11 @@ void EconomyScreen::refresh(UIManager& ui) {
 
         // Fiat trust info
         if (monetary->system == aoc::sim::MonetarySystemType::FiatMoney) {
-            const aoc::sim::CurrencyTrustComponent* trust = nullptr;
-            this->m_world->forEach<aoc::sim::CurrencyTrustComponent>(
-                [this, &trust](EntityId, aoc::sim::CurrencyTrustComponent& ct) {
-                    if (ct.owner == this->m_player) {
-                        trust = &ct;
-                    }
-                });
-            if (trust != nullptr) {
-                int trustPct = static_cast<int>(trust->trustScore * 100.0f);
-                infoText += "  Trust:" + std::to_string(trustPct) + "%";
-                if (trust->isReserveCurrency) {
-                    infoText += " [RESERVE]";
-                }
+            const aoc::sim::CurrencyTrustComponent& trust = owningPlayer->currencyTrust();
+            int trustPct = static_cast<int>(trust.trustScore * 100.0f);
+            infoText += "  Trust:" + std::to_string(trustPct) + "%";
+            if (trust.isReserveCurrency) {
+                infoText += " [RESERVE]";
             }
         }
     }
@@ -1072,12 +1050,28 @@ void EconomyScreen::refresh(UIManager& ui) {
 // CityDetailScreen
 // ============================================================================
 
-void CityDetailScreen::setContext(aoc::ecs::World* world, const aoc::map::HexGrid* grid,
-                                   EntityId cityEntity, PlayerId player) {
-    this->m_world = world;
-    this->m_grid = grid;
-    this->m_cityEntity = cityEntity;
-    this->m_player = player;
+void CityDetailScreen::setContext(aoc::game::GameState* gameState, const aoc::map::HexGrid* grid,
+                                   aoc::hex::AxialCoord cityLocation, PlayerId player) {
+    this->m_gameState  = gameState;
+    this->m_grid       = grid;
+    this->m_cityLocation = cityLocation;
+    this->m_player     = player;
+}
+
+/// Resolve the City object matching m_cityEntity for this screen.
+/// Returns nullptr when the city is no longer available.
+static aoc::game::City* resolveCityByLocation(aoc::game::GameState* gs,
+                                             PlayerId owner,
+                                             aoc::hex::AxialCoord cityLocation) {
+    if (gs == nullptr) { return nullptr; }
+    aoc::game::Player* p = gs->player(owner);
+    if (p == nullptr) { return nullptr; }
+    for (const std::unique_ptr<aoc::game::City>& c : p->cities()) {
+        if (c->location() == cityLocation) {
+            return c.get();
+        }
+    }
+    return nullptr;
 }
 
 void CityDetailScreen::open(UIManager& ui) {
@@ -1085,7 +1079,7 @@ void CityDetailScreen::open(UIManager& ui) {
         return;
     }
 
-    assert(this->m_world != nullptr);
+    assert(this->m_gameState != nullptr);
     this->m_isOpen = true;
 
     constexpr float kPanelWidth = 350.0f;
@@ -1136,17 +1130,15 @@ void CityDetailScreen::open(UIManager& ui) {
                         std::move(closeBtn));
     }
 
-    if (!this->m_world->isAlive(this->m_cityEntity) ||
-        !this->m_world->hasComponent<aoc::sim::CityComponent>(this->m_cityEntity)) {
+    const aoc::game::City* city = resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation);
+
+    if (city == nullptr) {
         this->m_detailLabel = ui.createLabel(
             innerPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
             LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
         ui.layout();
         return;
     }
-
-    const aoc::sim::CityComponent& city =
-        this->m_world->getComponent<aoc::sim::CityComponent>(this->m_cityEntity);
 
     // ====================================================================
     // Header bar: city name + population
@@ -1169,12 +1161,12 @@ void CityDetailScreen::open(UIManager& ui) {
             headerBar, {0.0f, 0.0f, 4.0f, 24.0f},
             PanelData{{0.3f, 0.6f, 0.95f, 1.0f}, 2.0f});
 
-        std::string nameText = "  " + city.name;
+        std::string nameText = "  " + city->name();
         this->m_detailLabel = ui.createLabel(
             headerBar, {0.0f, 4.0f, 200.0f, 18.0f},
             LabelData{std::move(nameText), {1.0f, 0.95f, 0.75f, 1.0f}, 16.0f});
 
-        std::string popText = "Pop " + std::to_string(city.population);
+        std::string popText = "Pop " + std::to_string(city->population());
         (void)ui.createLabel(
             headerBar, {0.0f, 5.0f, 100.0f, 16.0f},
             LabelData{std::move(popText), {0.7f, 0.85f, 0.7f, 1.0f}, 13.0f});
@@ -1339,15 +1331,12 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
     constexpr Color kSciColor = {0.3f, 0.55f, 0.95f, 1.0f};
     constexpr Color kCultColor = {0.7f, 0.35f, 0.85f, 1.0f};
 
-    if (!this->m_world->isAlive(this->m_cityEntity) ||
-        !this->m_world->hasComponent<aoc::sim::CityComponent>(this->m_cityEntity)) {
+    const aoc::game::City* city = resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation);
+    if (city == nullptr) {
         (void)ui.createLabel(contentPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
             LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
         return;
     }
-
-    const aoc::sim::CityComponent& city =
-        this->m_world->getComponent<aoc::sim::CityComponent>(this->m_cityEntity);
 
     // Scrollable area for tab content
     WidgetId scrollArea = ui.createScrollList(
@@ -1368,7 +1357,7 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
     int32_t totalSci  = 0;
     int32_t totalCult = 0;
 
-    for (const hex::AxialCoord& tile : city.workedTiles) {
+    for (const hex::AxialCoord& tile : city->workedTiles()) {
         if (!this->m_grid->isValid(tile)) {
             continue;
         }
@@ -1385,16 +1374,13 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
     int32_t bldgProd = 0;
     int32_t bldgSci  = 0;
     int32_t bldgGold = 0;
-    const aoc::sim::CityDistrictsComponent* districts =
-        this->m_world->tryGetComponent<aoc::sim::CityDistrictsComponent>(this->m_cityEntity);
-    if (districts != nullptr) {
-        for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& district : districts->districts) {
-            for (BuildingId bid : district.buildings) {
-                const aoc::sim::BuildingDef& bdef = aoc::sim::buildingDef(bid);
-                bldgProd += bdef.productionBonus;
-                bldgSci  += bdef.scienceBonus;
-                bldgGold += bdef.goldBonus;
-            }
+    const aoc::sim::CityDistrictsComponent& districts = city->districts();
+    for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
+        for (BuildingId bid : district.buildings) {
+            const aoc::sim::BuildingDef& bdef = aoc::sim::buildingDef(bid);
+            bldgProd += bdef.productionBonus;
+            bldgSci  += bdef.scienceBonus;
+            bldgGold += bdef.goldBonus;
         }
     }
 
@@ -1456,107 +1442,101 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
         LabelData{"  Loyalty", kHeaderTextColor, 11.0f});
 
     {
-        const aoc::sim::CityLoyaltyComponent* loyaltyComp =
-            this->m_world->tryGetComponent<aoc::sim::CityLoyaltyComponent>(this->m_cityEntity);
-        if (loyaltyComp != nullptr) {
-            const aoc::sim::LoyaltyStatus loyaltyStatus = loyaltyComp->status();
-            const char* statusName = aoc::sim::loyaltyStatusName(loyaltyStatus);
+        const aoc::sim::CityLoyaltyComponent& loyaltyComp = city->loyalty();
+        const aoc::sim::LoyaltyStatus loyaltyStatus = loyaltyComp.status();
+        const char* statusName = aoc::sim::loyaltyStatusName(loyaltyStatus);
 
-            Color loyaltyTextColor = {1.0f, 1.0f, 1.0f, 1.0f};
-            Color loyaltyBarColor = {0.3f, 0.9f, 0.3f, 0.9f};
-            switch (loyaltyStatus) {
-                case aoc::sim::LoyaltyStatus::Loyal:
-                    loyaltyTextColor = {0.3f, 0.9f, 0.3f, 1.0f};
-                    loyaltyBarColor = {0.2f, 0.7f, 0.2f, 0.9f};
-                    break;
-                case aoc::sim::LoyaltyStatus::Content:
-                    loyaltyTextColor = {0.85f, 0.85f, 0.85f, 1.0f};
-                    loyaltyBarColor = {0.5f, 0.7f, 0.3f, 0.9f};
-                    break;
-                case aoc::sim::LoyaltyStatus::Disloyal:
-                    loyaltyTextColor = {0.9f, 0.9f, 0.2f, 1.0f};
-                    loyaltyBarColor = {0.8f, 0.8f, 0.15f, 0.9f};
-                    break;
-                case aoc::sim::LoyaltyStatus::Unrest:
-                    loyaltyTextColor = {0.9f, 0.4f, 0.2f, 1.0f};
-                    loyaltyBarColor = {0.85f, 0.35f, 0.15f, 0.9f};
-                    break;
-                case aoc::sim::LoyaltyStatus::Revolt:
-                    loyaltyTextColor = {0.9f, 0.1f, 0.1f, 1.0f};
-                    loyaltyBarColor = {0.8f, 0.1f, 0.1f, 0.9f};
-                    break;
-            }
+        Color loyaltyTextColor = {1.0f, 1.0f, 1.0f, 1.0f};
+        Color loyaltyBarColor = {0.3f, 0.9f, 0.3f, 0.9f};
+        switch (loyaltyStatus) {
+            case aoc::sim::LoyaltyStatus::Loyal:
+                loyaltyTextColor = {0.3f, 0.9f, 0.3f, 1.0f};
+                loyaltyBarColor = {0.2f, 0.7f, 0.2f, 0.9f};
+                break;
+            case aoc::sim::LoyaltyStatus::Content:
+                loyaltyTextColor = {0.85f, 0.85f, 0.85f, 1.0f};
+                loyaltyBarColor = {0.5f, 0.7f, 0.3f, 0.9f};
+                break;
+            case aoc::sim::LoyaltyStatus::Disloyal:
+                loyaltyTextColor = {0.9f, 0.9f, 0.2f, 1.0f};
+                loyaltyBarColor = {0.8f, 0.8f, 0.15f, 0.9f};
+                break;
+            case aoc::sim::LoyaltyStatus::Unrest:
+                loyaltyTextColor = {0.9f, 0.4f, 0.2f, 1.0f};
+                loyaltyBarColor = {0.85f, 0.35f, 0.15f, 0.9f};
+                break;
+            case aoc::sim::LoyaltyStatus::Revolt:
+                loyaltyTextColor = {0.9f, 0.1f, 0.1f, 1.0f};
+                loyaltyBarColor = {0.8f, 0.1f, 0.1f, 0.9f};
+                break;
+        }
 
-            char loyaltyBuf[128];
-            const char* signStr = (loyaltyComp->loyaltyPerTurn >= 0.0f) ? "+" : "";
-            std::snprintf(loyaltyBuf, sizeof(loyaltyBuf),
-                "  %.0f / 100  %s    %s%.1f per turn",
-                static_cast<double>(loyaltyComp->loyalty), statusName,
-                signStr, static_cast<double>(loyaltyComp->loyaltyPerTurn));
-            (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
-                LabelData{std::string(loyaltyBuf), loyaltyTextColor, 11.0f});
+        char loyaltyBuf[128];
+        const char* signStr = (loyaltyComp.loyaltyPerTurn >= 0.0f) ? "+" : "";
+        std::snprintf(loyaltyBuf, sizeof(loyaltyBuf),
+            "  %.0f / 100  %s    %s%.1f per turn",
+            static_cast<double>(loyaltyComp.loyalty), statusName,
+            signStr, static_cast<double>(loyaltyComp.loyaltyPerTurn));
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{std::string(loyaltyBuf), loyaltyTextColor, 11.0f});
 
-            constexpr float kBarWidth = 470.0f;
-            constexpr float kBarHeight = 10.0f;
-            WidgetId barBg = ui.createPanel(
-                scrollArea, {0.0f, 0.0f, kBarWidth, kBarHeight},
-                PanelData{{0.08f, 0.08f, 0.10f, 0.9f}, 3.0f});
-            {
-                const float fillFraction = std::clamp(loyaltyComp->loyalty / 100.0f, 0.0f, 1.0f);
-                const float fillWidth = std::max(fillFraction * kBarWidth, 2.0f);
-                (void)ui.createPanel(
-                    barBg, {0.0f, 0.0f, fillWidth, kBarHeight},
-                    PanelData{loyaltyBarColor, 3.0f});
-            }
+        constexpr float kBarWidth = 470.0f;
+        constexpr float kBarHeight = 10.0f;
+        WidgetId barBg = ui.createPanel(
+            scrollArea, {0.0f, 0.0f, kBarWidth, kBarHeight},
+            PanelData{{0.08f, 0.08f, 0.10f, 0.9f}, 3.0f});
+        {
+            const float fillFraction = std::clamp(loyaltyComp.loyalty / 100.0f, 0.0f, 1.0f);
+            const float fillWidth = std::max(fillFraction * kBarWidth, 2.0f);
+            (void)ui.createPanel(
+                barBg, {0.0f, 0.0f, fillWidth, kBarHeight},
+                PanelData{loyaltyBarColor, 3.0f});
+        }
 
-            char factorBuf[128];
-            std::snprintf(factorBuf, sizeof(factorBuf),
-                "  Base: +%.0f   Own pressure: +%.1f   Foreign: %.1f",
-                static_cast<double>(loyaltyComp->baseLoyalty),
-                static_cast<double>(loyaltyComp->ownCityPressure),
-                static_cast<double>(loyaltyComp->foreignCityPressure));
+        char factorBuf[128];
+        std::snprintf(factorBuf, sizeof(factorBuf),
+            "  Base: +%.0f   Own pressure: +%.1f   Foreign: %.1f",
+            static_cast<double>(loyaltyComp.baseLoyalty),
+            static_cast<double>(loyaltyComp.ownCityPressure),
+            static_cast<double>(loyaltyComp.foreignCityPressure));
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 12.0f},
+            LabelData{std::string(factorBuf), kBodyTextColor, 9.0f});
+
+        std::string bonusLine = "  ";
+        if (loyaltyComp.governorBonus > 0.0f) {
+            char buf[48];
+            std::snprintf(buf, sizeof(buf), "Governor: +%.0f  ", static_cast<double>(loyaltyComp.governorBonus));
+            bonusLine += buf;
+        }
+        if (loyaltyComp.garrisonBonus > 0.0f) {
+            char buf[48];
+            std::snprintf(buf, sizeof(buf), "Garrison: +%.0f  ", static_cast<double>(loyaltyComp.garrisonBonus));
+            bonusLine += buf;
+        }
+        if (loyaltyComp.monumentBonus > 0.0f) {
+            char buf[48];
+            std::snprintf(buf, sizeof(buf), "Monument: +%.0f  ", static_cast<double>(loyaltyComp.monumentBonus));
+            bonusLine += buf;
+        }
+        if (loyaltyComp.ageEffect != 0.0f) {
+            char buf[48];
+            const char* ageSign = (loyaltyComp.ageEffect >= 0.0f) ? "+" : "";
+            std::snprintf(buf, sizeof(buf), "Age: %s%.0f  ", ageSign, static_cast<double>(loyaltyComp.ageEffect));
+            bonusLine += buf;
+        }
+        if (loyaltyComp.happinessEffect != 0.0f) {
+            char buf[48];
+            std::snprintf(buf, sizeof(buf), "Happiness: %.0f  ", static_cast<double>(loyaltyComp.happinessEffect));
+            bonusLine += buf;
+        }
+        if (loyaltyComp.capturedPenalty != 0.0f) {
+            char buf[48];
+            std::snprintf(buf, sizeof(buf), "Captured: %.0f", static_cast<double>(loyaltyComp.capturedPenalty));
+            bonusLine += buf;
+        }
+        if (bonusLine.size() > 2) {
             (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 12.0f},
-                LabelData{std::string(factorBuf), kBodyTextColor, 9.0f});
-
-            std::string bonusLine = "  ";
-            if (loyaltyComp->governorBonus > 0.0f) {
-                char buf[48];
-                std::snprintf(buf, sizeof(buf), "Governor: +%.0f  ", static_cast<double>(loyaltyComp->governorBonus));
-                bonusLine += buf;
-            }
-            if (loyaltyComp->garrisonBonus > 0.0f) {
-                char buf[48];
-                std::snprintf(buf, sizeof(buf), "Garrison: +%.0f  ", static_cast<double>(loyaltyComp->garrisonBonus));
-                bonusLine += buf;
-            }
-            if (loyaltyComp->monumentBonus > 0.0f) {
-                char buf[48];
-                std::snprintf(buf, sizeof(buf), "Monument: +%.0f  ", static_cast<double>(loyaltyComp->monumentBonus));
-                bonusLine += buf;
-            }
-            if (loyaltyComp->ageEffect != 0.0f) {
-                char buf[48];
-                const char* ageSign = (loyaltyComp->ageEffect >= 0.0f) ? "+" : "";
-                std::snprintf(buf, sizeof(buf), "Age: %s%.0f  ", ageSign, static_cast<double>(loyaltyComp->ageEffect));
-                bonusLine += buf;
-            }
-            if (loyaltyComp->happinessEffect != 0.0f) {
-                char buf[48];
-                std::snprintf(buf, sizeof(buf), "Happiness: %.0f  ", static_cast<double>(loyaltyComp->happinessEffect));
-                bonusLine += buf;
-            }
-            if (loyaltyComp->capturedPenalty != 0.0f) {
-                char buf[48];
-                std::snprintf(buf, sizeof(buf), "Captured: %.0f", static_cast<double>(loyaltyComp->capturedPenalty));
-                bonusLine += buf;
-            }
-            if (bonusLine.size() > 2) {
-                (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 12.0f},
-                    LabelData{std::move(bonusLine), kBodyTextColor, 9.0f});
-            }
-        } else {
-            (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
-                LabelData{"  N/A", kDimTextColor, 11.0f});
+                LabelData{std::move(bonusLine), kBodyTextColor, 9.0f});
         }
     }
 
@@ -1570,48 +1550,42 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
         LabelData{"  Happiness", kHeaderTextColor, 11.0f});
 
     {
-        const aoc::sim::CityHappinessComponent* happiness =
-            this->m_world->tryGetComponent<aoc::sim::CityHappinessComponent>(this->m_cityEntity);
-        if (happiness != nullptr) {
-            const int32_t netHappy = static_cast<int32_t>(happiness->amenities - happiness->demand + happiness->modifiers);
+        const aoc::sim::CityHappinessComponent& happiness = city->happiness();
+        const int32_t netHappy = static_cast<int32_t>(happiness.amenities - happiness.demand + happiness.modifiers);
 
-            Color happyIndicatorColor = {0.3f, 0.8f, 0.3f, 1.0f};
-            if (netHappy < 0) {
-                happyIndicatorColor = {0.85f, 0.3f, 0.3f, 1.0f};
-            } else if (netHappy == 0) {
-                happyIndicatorColor = {0.8f, 0.8f, 0.3f, 1.0f};
-            }
-
-            WidgetId happyRow = ui.createPanel(
-                scrollArea, {0.0f, 0.0f, kListWidth, 18.0f},
-                PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
-            {
-                Widget* hr = ui.getWidget(happyRow);
-                if (hr != nullptr) {
-                    hr->layoutDirection = LayoutDirection::Horizontal;
-                    hr->childSpacing = 6.0f;
-                    hr->padding = {2.0f, 4.0f, 2.0f, 4.0f};
-                }
-            }
-
-            (void)ui.createPanel(
-                happyRow, {0.0f, 1.0f, 12.0f, 12.0f},
-                PanelData{happyIndicatorColor, 6.0f});
-
-            char happyBuf[128];
-            std::snprintf(happyBuf, sizeof(happyBuf),
-                "%d amenities - %d demand + %d modifiers = %d net",
-                static_cast<int>(happiness->amenities),
-                static_cast<int>(happiness->demand),
-                static_cast<int>(happiness->modifiers),
-                netHappy);
-            (void)ui.createLabel(
-                happyRow, {0.0f, 0.0f, 420.0f, 14.0f},
-                LabelData{std::string(happyBuf), kBodyTextColor, 11.0f});
-        } else {
-            (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
-                LabelData{"  N/A", kDimTextColor, 11.0f});
+        Color happyIndicatorColor = {0.3f, 0.8f, 0.3f, 1.0f};
+        if (netHappy < 0) {
+            happyIndicatorColor = {0.85f, 0.3f, 0.3f, 1.0f};
+        } else if (netHappy == 0) {
+            happyIndicatorColor = {0.8f, 0.8f, 0.3f, 1.0f};
         }
+
+        WidgetId happyRow = ui.createPanel(
+            scrollArea, {0.0f, 0.0f, kListWidth, 18.0f},
+            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        {
+            Widget* hr = ui.getWidget(happyRow);
+            if (hr != nullptr) {
+                hr->layoutDirection = LayoutDirection::Horizontal;
+                hr->childSpacing = 6.0f;
+                hr->padding = {2.0f, 4.0f, 2.0f, 4.0f};
+            }
+        }
+
+        (void)ui.createPanel(
+            happyRow, {0.0f, 1.0f, 12.0f, 12.0f},
+            PanelData{happyIndicatorColor, 6.0f});
+
+        char happyBuf[128];
+        std::snprintf(happyBuf, sizeof(happyBuf),
+            "%d amenities - %d demand + %d modifiers = %d net",
+            static_cast<int>(happiness.amenities),
+            static_cast<int>(happiness.demand),
+            static_cast<int>(happiness.modifiers),
+            netHappy);
+        (void)ui.createLabel(
+            happyRow, {0.0f, 0.0f, 420.0f, 14.0f},
+            LabelData{std::string(happyBuf), kBodyTextColor, 11.0f});
     }
 
     (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
@@ -1627,15 +1601,11 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
         std::string prodName = "Nothing";
         float prodProgress = 0.0f;
         float prodTotal = 1.0f;
-        if (this->m_world->hasComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity)) {
-            const aoc::sim::ProductionQueueComponent& queue =
-                this->m_world->getComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity);
-            const aoc::sim::ProductionQueueItem* current = queue.currentItem();
-            if (current != nullptr) {
-                prodName = current->name;
-                prodProgress = current->progress;
-                prodTotal = current->totalCost;
-            }
+        const aoc::sim::ProductionQueueItem* current = city->production().currentItem();
+        if (current != nullptr) {
+            prodName    = current->name;
+            prodProgress = current->progress;
+            prodTotal   = current->totalCost;
         }
 
         char prodBuf[128];
@@ -1686,8 +1656,8 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
     constexpr Color kSeparatorColor = {0.22f, 0.24f, 0.30f, 0.6f};
     constexpr Color kProdColor = {0.9f, 0.55f, 0.2f, 1.0f};
 
-    if (!this->m_world->isAlive(this->m_cityEntity) ||
-        !this->m_world->hasComponent<aoc::sim::CityComponent>(this->m_cityEntity)) {
+    aoc::game::City* city = resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation);
+    if (city == nullptr) {
         (void)ui.createLabel(contentPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
             LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
         return;
@@ -1710,43 +1680,36 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
     (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
         LabelData{"  Production Queue", kHeaderTextColor, 11.0f});
 
-    if (this->m_world->hasComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity)) {
-        const aoc::sim::ProductionQueueComponent& queue =
-            this->m_world->getComponent<aoc::sim::ProductionQueueComponent>(this->m_cityEntity);
-
-        if (queue.queue.empty()) {
+    const aoc::sim::ProductionQueueComponent& queue = city->production();
+    if (queue.queue.empty()) {
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{"  (empty)", kDimTextColor, 11.0f});
+    } else {
+        for (const aoc::sim::ProductionQueueItem& item : queue.queue) {
+            char itemBuf[128];
+            std::snprintf(itemBuf, sizeof(itemBuf), "  %s   (%d / %d)",
+                item.name.c_str(),
+                static_cast<int>(item.progress),
+                static_cast<int>(item.totalCost));
             (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
-                LabelData{"  (empty)", kDimTextColor, 11.0f});
-        } else {
-            for (const aoc::sim::ProductionQueueItem& item : queue.queue) {
-                char itemBuf[128];
-                std::snprintf(itemBuf, sizeof(itemBuf), "  %s   (%d / %d)",
-                    item.name.c_str(),
-                    static_cast<int>(item.progress),
-                    static_cast<int>(item.totalCost));
-                (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
-                    LabelData{std::string(itemBuf), kBodyTextColor, 11.0f});
+                LabelData{std::string(itemBuf), kBodyTextColor, 11.0f});
 
-                // Progress bar per queue item
-                constexpr float kProdBarWidth = 470.0f;
-                constexpr float kProdBarHeight = 8.0f;
-                WidgetId barBg = ui.createPanel(
-                    scrollArea, {0.0f, 0.0f, kProdBarWidth, kProdBarHeight},
-                    PanelData{{0.08f, 0.08f, 0.10f, 0.9f}, 3.0f});
-                {
-                    const float fraction = (item.totalCost > 0.0f)
-                        ? std::clamp(item.progress / item.totalCost, 0.0f, 1.0f)
-                        : 0.0f;
-                    const float fillWidth = std::max(fraction * kProdBarWidth, 2.0f);
-                    (void)ui.createPanel(
-                        barBg, {0.0f, 0.0f, fillWidth, kProdBarHeight},
-                        PanelData{kProdColor, 3.0f});
-                }
+            // Progress bar per queue item
+            constexpr float kProdBarWidth = 470.0f;
+            constexpr float kProdBarHeight = 8.0f;
+            WidgetId barBg = ui.createPanel(
+                scrollArea, {0.0f, 0.0f, kProdBarWidth, kProdBarHeight},
+                PanelData{{0.08f, 0.08f, 0.10f, 0.9f}, 3.0f});
+            {
+                const float fraction = (item.totalCost > 0.0f)
+                    ? std::clamp(item.progress / item.totalCost, 0.0f, 1.0f)
+                    : 0.0f;
+                const float fillWidth = std::max(fraction * kProdBarWidth, 2.0f);
+                (void)ui.createPanel(
+                    barBg, {0.0f, 0.0f, fillWidth, kProdBarHeight},
+                    PanelData{kProdColor, 3.0f});
             }
         }
-    } else {
-        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
-            LabelData{"  No production queue", kDimTextColor, 11.0f});
     }
 
     (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
@@ -1759,7 +1722,7 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
         LabelData{"  Available Items", kHeaderTextColor, 11.0f});
 
     const std::vector<aoc::sim::BuildableItem> buildableItems =
-        aoc::sim::getBuildableItems(*this->m_world, this->m_player, this->m_cityEntity);
+        aoc::sim::getBuildableItems(*this->m_gameState, this->m_player, *resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation));
 
     if (buildableItems.empty()) {
         (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
@@ -1805,24 +1768,16 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
         const uint16_t itemId = buildable.id;
         const float itemCost = buildable.cost;
         const std::string itemName(buildable.name);
-        const EntityId cityEnt = this->m_cityEntity;
-        aoc::ecs::World* world = this->m_world;
-        btn.onClick = [world, cityEnt, itemType, itemId, itemCost, itemName]() {
-            if (!world->isAlive(cityEnt)) {
-                return;
-            }
-            aoc::sim::ProductionQueueComponent* queue =
-                world->tryGetComponent<aoc::sim::ProductionQueueComponent>(cityEnt);
-            if (queue == nullptr) {
-                return;
-            }
+        aoc::game::City* cityPtr = city;
+        btn.onClick = [cityPtr, itemType, itemId, itemCost, itemName]() {
+            if (cityPtr == nullptr) { return; }
             aoc::sim::ProductionQueueItem item{};
             item.type      = itemType;
             item.itemId    = itemId;
             item.name      = itemName;
             item.totalCost = itemCost;
             item.progress  = 0.0f;
-            queue->queue.push_back(std::move(item));
+            cityPtr->production().queue.push_back(std::move(item));
             LOG_INFO("Enqueued: %s", itemName.c_str());
         };
 
@@ -1841,8 +1796,8 @@ void CityDetailScreen::buildBuildingsTab(UIManager& ui, WidgetId contentPanel) {
     constexpr Color kHeaderTextColor = {0.9f, 0.85f, 0.6f, 1.0f};
     constexpr Color kDimTextColor = {0.55f, 0.55f, 0.60f, 0.8f};
 
-    if (!this->m_world->isAlive(this->m_cityEntity) ||
-        !this->m_world->hasComponent<aoc::sim::CityComponent>(this->m_cityEntity)) {
+    const aoc::game::City* city = resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation);
+    if (city == nullptr) {
         (void)ui.createLabel(contentPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
             LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
         return;
@@ -1864,10 +1819,9 @@ void CityDetailScreen::buildBuildingsTab(UIManager& ui, WidgetId contentPanel) {
     (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
         LabelData{"  Districts & Buildings", kHeaderTextColor, 11.0f});
 
-    const aoc::sim::CityDistrictsComponent* districts =
-        this->m_world->tryGetComponent<aoc::sim::CityDistrictsComponent>(this->m_cityEntity);
+    const aoc::sim::CityDistrictsComponent& districts = city->districts();
 
-    if (districts != nullptr && !districts->districts.empty()) {
+    if (!districts.districts.empty()) {
         constexpr std::array<Color, 4> kDistrictAccents = {{
             {0.20f, 0.24f, 0.38f, 0.9f},
             {0.26f, 0.20f, 0.35f, 0.9f},
@@ -1880,7 +1834,7 @@ void CityDetailScreen::buildBuildingsTab(UIManager& ui, WidgetId contentPanel) {
         int32_t bldgGold = 0;
         std::size_t districtIdx = 0;
 
-        for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& district : districts->districts) {
+        for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
             const Color accentColor = kDistrictAccents[districtIdx % kDistrictAccents.size()];
             ++districtIdx;
 
@@ -1945,19 +1899,15 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
     constexpr float kContentWidth = 330.0f;
     constexpr Color kHeaderBg = {0.18f, 0.20f, 0.28f, 0.95f};
     constexpr Color kHeaderTextColor = {0.9f, 0.85f, 0.6f, 1.0f};
-    constexpr Color kDimTextColor = {0.55f, 0.55f, 0.60f, 0.8f};
     constexpr Color kBodyTextColor = {0.78f, 0.80f, 0.82f, 1.0f};
     constexpr Color kSeparatorColor = {0.22f, 0.24f, 0.30f, 0.6f};
 
-    if (!this->m_world->isAlive(this->m_cityEntity) ||
-        !this->m_world->hasComponent<aoc::sim::CityComponent>(this->m_cityEntity)) {
+    aoc::game::City* city = resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation);
+    if (city == nullptr) {
         (void)ui.createLabel(contentPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
             LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
         return;
     }
-
-    const aoc::sim::CityComponent& city =
-        this->m_world->getComponent<aoc::sim::CityComponent>(this->m_cityEntity);
 
     WidgetId scrollArea = ui.createScrollList(
         contentPanel, {0.0f, 0.0f, kContentWidth, 520.0f},
@@ -1980,9 +1930,9 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
         char popBuf[128];
         std::snprintf(popBuf, sizeof(popBuf),
             "  Population: %d   |   Worked tiles: %d   |   Food surplus: %.1f",
-            city.population,
-            static_cast<int>(city.workedTiles.size()),
-            static_cast<double>(city.foodSurplus));
+            city->population(),
+            static_cast<int>(city->workedTiles().size()),
+            static_cast<double>(city->foodSurplus()));
         (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
             LabelData{std::string(popBuf), kBodyTextColor, 11.0f});
     }
@@ -1998,7 +1948,7 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
 
     {
         std::vector<hex::AxialCoord> borderTiles;
-        hex::spiral(city.location, 3, std::back_inserter(borderTiles));
+        hex::spiral(city->location(), 3, std::back_inserter(borderTiles));
 
         for (const hex::AxialCoord& tile : borderTiles) {
             if (!this->m_grid->isValid(tile)) {
@@ -2014,13 +1964,7 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
 
             const aoc::map::TileYield ty = this->m_grid->tileYield(tileIdx);
 
-            bool isWorked = false;
-            for (const hex::AxialCoord& wt : city.workedTiles) {
-                if (wt == tile) {
-                    isWorked = true;
-                    break;
-                }
-            }
+            const bool isWorked = city->isTileWorked(tile);
 
             char tileBuf[128];
             std::snprintf(tileBuf, sizeof(tileBuf),
@@ -2042,53 +1986,12 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
                                         citizenBtn.normalColor.b - 0.04f, 0.9f};
             citizenBtn.cornerRadius = 3.0f;
 
-            aoc::ecs::World* world = this->m_world;
-            const EntityId cityEnt = this->m_cityEntity;
+            aoc::game::City* cityPtr = city;
             const hex::AxialCoord toggleTile = tile;
-            citizenBtn.onClick = [world, cityEnt, toggleTile, isWorked]() {
-                if (!world->isAlive(cityEnt)) { return; }
-                aoc::sim::CityComponent* c =
-                    world->tryGetComponent<aoc::sim::CityComponent>(cityEnt);
-                if (c == nullptr) { return; }
-
-                if (isWorked) {
-                    if (toggleTile == c->location) { return; }
-                    for (std::size_t wi = 0; wi < c->workedTiles.size(); ++wi) {
-                        if (c->workedTiles[wi] == toggleTile) {
-                            c->workedTiles.erase(c->workedTiles.begin() +
-                                                  static_cast<std::ptrdiff_t>(wi));
-                            LOG_INFO("Citizen unassigned from (%d,%d)",
-                                     toggleTile.q, toggleTile.r);
-                            break;
-                        }
-                    }
-                } else {
-                    // City center is free: usedCitizens = workedTiles - 1 (center)
-                    int32_t usedCtz = static_cast<int32_t>(c->workedTiles.size()) - 1;
-                    if (usedCtz < 0) { usedCtz = 0; }
-                    if (usedCtz < c->population) {
-                        c->workedTiles.push_back(toggleTile);
-                        LOG_INFO("Citizen assigned to (%d,%d)",
-                                 toggleTile.q, toggleTile.r);
-                    } else {
-                        // Move a worker: remove last non-center tile
-                        bool movedWorker = false;
-                        for (std::size_t mi = c->workedTiles.size(); mi > 0; --mi) {
-                            if (c->workedTiles[mi - 1] != c->location) {
-                                c->workedTiles.erase(
-                                    c->workedTiles.begin() + static_cast<std::ptrdiff_t>(mi - 1));
-                                c->workedTiles.push_back(toggleTile);
-                                movedWorker = true;
-                                LOG_INFO("Citizen moved to (%d,%d) via button",
-                                         toggleTile.q, toggleTile.r);
-                                break;
-                            }
-                        }
-                        if (!movedWorker) {
-                            LOG_INFO("Cannot assign: need more population");
-                        }
-                    }
-                }
+            citizenBtn.onClick = [cityPtr, toggleTile]() {
+                if (cityPtr == nullptr) { return; }
+                cityPtr->toggleWorker(toggleTile);
+                LOG_INFO("Citizen toggled on tile (%d,%d)", toggleTile.q, toggleTile.r);
             };
 
             (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
@@ -2098,32 +2001,14 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
 }
 
 void CityDetailScreen::toggleWorkerOnTile(aoc::hex::AxialCoord tile) {
-    if (this->m_world == nullptr || !this->m_world->isAlive(this->m_cityEntity)) {
+    if (this->m_gameState == nullptr) {
         return;
     }
-    aoc::sim::CityComponent* city =
-        this->m_world->tryGetComponent<aoc::sim::CityComponent>(this->m_cityEntity);
+    aoc::game::City* city = resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation);
     if (city == nullptr) {
         return;
     }
 
-    // Never unassign the city center tile
-    if (tile == city->location) {
-        return;
-    }
-
-    // Check if the tile is already worked — if so, unassign
-    for (std::size_t i = 0; i < city->workedTiles.size(); ++i) {
-        if (city->workedTiles[i] == tile) {
-            city->workedTiles.erase(
-                city->workedTiles.begin() + static_cast<std::ptrdiff_t>(i));
-            LOG_INFO("Citizen unassigned from (%d,%d) via map click",
-                     tile.q, tile.r);
-            return;
-        }
-    }
-
-    // Tile is not worked — check if it is owned and within range, then assign
     if (this->m_grid == nullptr || !this->m_grid->isValid(tile)) {
         return;
     }
@@ -2131,37 +2016,15 @@ void CityDetailScreen::toggleWorkerOnTile(aoc::hex::AxialCoord tile) {
     if (this->m_grid->owner(tileIdx) != this->m_player) {
         return;
     }
-    if (aoc::hex::distance(city->location, tile) > 3) {
+    if (aoc::hex::distance(city->location(), tile) > 3) {
         return;
     }
     if (this->m_grid->movementCost(tileIdx) == 0) {
         return;
     }
-    // City center is free (doesn't use a citizen). Available slots = population.
-    // Used citizen slots = workedTiles.size() - 1 (center is always worked but free).
-    int32_t usedCitizens = static_cast<int32_t>(city->workedTiles.size()) - 1;  // -1 for center
-    if (usedCitizens < 0) { usedCitizens = 0; }
-    if (usedCitizens >= city->population) {
-        // Find the last non-center tile to reassign
-        bool moved = false;
-        for (std::size_t i = city->workedTiles.size(); i > 0; --i) {
-            if (city->workedTiles[i - 1] != city->location) {
-                LOG_INFO("Citizen moved from (%d,%d) to (%d,%d)",
-                         city->workedTiles[i - 1].q, city->workedTiles[i - 1].r,
-                         tile.q, tile.r);
-                city->workedTiles.erase(
-                    city->workedTiles.begin() + static_cast<std::ptrdiff_t>(i - 1));
-                moved = true;
-                break;
-            }
-        }
-        if (!moved) {
-            LOG_INFO("Cannot reassign: only the city center is worked (need more population)");
-            return;
-        }
-    }
-    city->workedTiles.push_back(tile);
-    LOG_INFO("Citizen assigned to (%d,%d) via map click", tile.q, tile.r);
+
+    city->toggleWorker(tile);
+    LOG_INFO("Citizen toggled on tile (%d,%d) via map click", tile.q, tile.r);
 }
 
 void CityDetailScreen::close(UIManager& ui) {
@@ -2181,20 +2044,18 @@ void CityDetailScreen::close(UIManager& ui) {
 }
 
 void CityDetailScreen::refresh(UIManager& ui) {
-    if (!this->m_isOpen || this->m_world == nullptr) {
+    if (!this->m_isOpen || this->m_gameState == nullptr) {
         return;
     }
 
-    if (!this->m_world->isAlive(this->m_cityEntity) ||
-        !this->m_world->hasComponent<aoc::sim::CityComponent>(this->m_cityEntity)) {
+    const aoc::game::City* city = resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation);
+    if (city == nullptr) {
         ui.setLabelText(this->m_detailLabel, "City not found");
         return;
     }
 
     // Update header label
-    const aoc::sim::CityComponent& city =
-        this->m_world->getComponent<aoc::sim::CityComponent>(this->m_cityEntity);
-    std::string nameText = "  " + city.name;
+    std::string nameText = "  " + city->name();
     ui.setLabelText(this->m_detailLabel, std::move(nameText));
 
     // Rebuild current tab content to reflect latest data

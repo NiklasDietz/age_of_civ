@@ -7,10 +7,11 @@
  * queues the highest-scoring option.
  */
 
+#include "aoc/game/City.hpp"
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
 #include "aoc/simulation/ai/AIResearchPlanner.hpp"
 #include "aoc/core/Log.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
@@ -18,36 +19,11 @@
 #include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
-#include "aoc/ecs/World.hpp"
 
 #include <limits>
 #include <unordered_set>
 
 namespace aoc::sim::ai {
-
-// ============================================================================
-// Helper: Count military units for threat assessment.
-// ============================================================================
-
-static int32_t countMilitaryUnits(const aoc::game::GameState& gameState, PlayerId player) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    int32_t count = 0;
-    const aoc::ecs::ComponentPool<UnitComponent>* unitPool =
-        world.getPool<UnitComponent>();
-    if (unitPool == nullptr) {
-        return count;
-    }
-    for (uint32_t i = 0; i < unitPool->size(); ++i) {
-        if (unitPool->data()[i].owner != player) {
-            continue;
-        }
-        const UnitTypeDef& def = unitTypeDef(unitPool->data()[i].typeId);
-        if (isMilitary(def.unitClass)) {
-            ++count;
-        }
-    }
-    return count;
-}
 
 // ============================================================================
 // Constructor
@@ -64,62 +40,36 @@ AIResearchPlanner::AIResearchPlanner(PlayerId player, aoc::ui::AIDifficulty diff
 // ============================================================================
 
 void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    const int32_t militaryCount = countMilitaryUnits(world, this->m_player);
+    aoc::game::Player* myPlayer = gameState.player(this->m_player);
+    if (myPlayer == nullptr) { return; }
+
+    const int32_t militaryCount = myPlayer->militaryUnitCount();
     const bool threatened = militaryCount < 3;
 
-    // Count owned cities for scaling thresholds
-    int32_t ownedCityCount = 0;
-    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-        world.getPool<CityComponent>();
-    if (cityPool != nullptr) {
-        for (uint32_t i = 0; i < cityPool->size(); ++i) {
-            if (cityPool->data()[i].owner == this->m_player) {
-                ++ownedCityCount;
-            }
-        }
-    }
+    const int32_t ownedCityCount = myPlayer->cityCount();
 
     // Collect set of buildings already built across all cities
     std::unordered_set<uint16_t> ownedBuildings;
-    const aoc::ecs::ComponentPool<CityDistrictsComponent>* distPool =
-        world.getPool<CityDistrictsComponent>();
-    if (distPool != nullptr && cityPool != nullptr) {
-        for (uint32_t i = 0; i < cityPool->size(); ++i) {
-            if (cityPool->data()[i].owner != this->m_player) {
-                continue;
-            }
-            const EntityId cityEntity = cityPool->entities()[i];
-            const CityDistrictsComponent* districts =
-                world.tryGetComponent<CityDistrictsComponent>(cityEntity);
-            if (districts != nullptr) {
-                for (const CityDistrictsComponent::PlacedDistrict& d : districts->districts) {
-                    for (const BuildingId& bid : d.buildings) {
-                        ownedBuildings.insert(bid.value);
-                    }
-                }
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : myPlayer->cities()) {
+        if (cityPtr == nullptr) { continue; }
+        for (const CityDistrictsComponent::PlacedDistrict& d : cityPtr->districts().districts) {
+            for (const BuildingId& bid : d.buildings) {
+                ownedBuildings.insert(bid.value);
             }
         }
     }
 
-    world.forEach<PlayerTechComponent>(
-        [this, threatened, &ownedBuildings, ownedCityCount, &world](
-            EntityId, PlayerTechComponent& tech) {
-            if (tech.owner != this->m_player) {
-                return;
-            }
-            if (tech.currentResearch.isValid()) {
-                return;  // Already researching
-            }
-            const std::vector<TechId> available = tech.availableTechs();
-            if (available.empty()) {
-                return;
-            }
-
+    // Tech research selection
+    PlayerTechComponent& tech = myPlayer->tech();
+    if (!tech.currentResearch.isValid()) {
+        const std::vector<TechId> available = tech.availableTechs();
+        if (!available.empty()) {
             TechId best = available[0];
             int32_t bestScore = std::numeric_limits<int32_t>::min();
 
             const bool hardAI = (this->m_difficulty == aoc::ui::AIDifficulty::Hard);
+            const CivId myCiv = myPlayer->civId();
+            const LeaderBehavior& beh = leaderPersonality(myCiv).behavior;
 
             for (const TechId& tid : available) {
                 const TechDef& def = techDef(tid);
@@ -162,18 +112,6 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                 score += ownedCityCount * 100;
 
                 // Leader personality tech bias
-                CivId myCiv = 0;
-                const aoc::ecs::ComponentPool<PlayerCivilizationComponent>* cp =
-                    world.getPool<PlayerCivilizationComponent>();
-                if (cp != nullptr) {
-                    for (uint32_t cc = 0; cc < cp->size(); ++cc) {
-                        if (cp->data()[cc].owner == this->m_player) {
-                            myCiv = cp->data()[cc].civId; break;
-                        }
-                    }
-                }
-                const LeaderBehavior& beh = leaderPersonality(myCiv).behavior;
-
                 if (!def.unlockedUnits.empty()) {
                     score = static_cast<int32_t>(static_cast<float>(score) * beh.techMilitary);
                 }
@@ -205,47 +143,42 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                      static_cast<unsigned>(this->m_player),
                      static_cast<int>(techDef(best).name.size()),
                      techDef(best).name.data());
-        });
+        }
+    }
 
-    // Civic research
-    world.forEach<PlayerCivicComponent>(
-        [this](EntityId, PlayerCivicComponent& civic) {
-            if (civic.owner != this->m_player) {
-                return;
-            }
-            if (civic.currentResearch.isValid()) {
-                return;
-            }
-            const uint16_t count = civicCount();
-            CivicId best{};
-            int32_t bestScore = std::numeric_limits<int32_t>::min();
-            for (uint16_t i = 0; i < count; ++i) {
-                CivicId id{i};
-                if (civic.canResearch(id)) {
-                    const CivicDef& def = civicDef(id);
-                    int32_t score = 0;
-                    if (!def.unlockedGovernmentIds.empty()) {
-                        score += 5000;
-                    }
-                    if (!def.unlockedPolicyIds.empty()) {
-                        score += 3000;
-                    }
-                    // Foreign Trade (CivicId{2}) enables Traders -- high early priority
-                    if (id == CivicId{2}) {
-                        score += 6000;
-                    }
-                    score -= def.cultureCost;
+    // Civic research selection
+    PlayerCivicComponent& civic = myPlayer->civics();
+    if (!civic.currentResearch.isValid()) {
+        const uint16_t count = civicCount();
+        CivicId best{};
+        int32_t bestScore = std::numeric_limits<int32_t>::min();
+        for (uint16_t i = 0; i < count; ++i) {
+            CivicId id{i};
+            if (civic.canResearch(id)) {
+                const CivicDef& def = civicDef(id);
+                int32_t score = 0;
+                if (!def.unlockedGovernmentIds.empty()) {
+                    score += 5000;
+                }
+                if (!def.unlockedPolicyIds.empty()) {
+                    score += 3000;
+                }
+                // Foreign Trade (CivicId{2}) enables Traders -- high early priority
+                if (id == CivicId{2}) {
+                    score += 6000;
+                }
+                score -= def.cultureCost;
 
-                    if (score > bestScore) {
-                        bestScore = score;
-                        best = id;
-                    }
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = id;
                 }
             }
-            if (best.isValid()) {
-                civic.currentResearch = best;
-            }
-        });
+        }
+        if (best.isValid()) {
+            civic.currentResearch = best;
+        }
+    }
 }
 
 } // namespace aoc::sim::ai

@@ -5,24 +5,25 @@
 
 #include "aoc/ui/TradeScreen.hpp"
 #include "aoc/ui/UIManager.hpp"
-#include "aoc/ecs/World.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
-#include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <cstring>
 #include <string>
+#include <unordered_map>
 
 namespace aoc::ui {
 
-void TradeScreen::setContext(aoc::ecs::World* world, PlayerId humanPlayer,
+void TradeScreen::setContext(aoc::game::GameState* gameState, PlayerId humanPlayer,
                               const aoc::sim::Market* market,
                               aoc::sim::DiplomacyManager* diplomacy) {
-    this->m_world     = world;
+    this->m_gameState = gameState;
     this->m_player    = humanPlayer;
     this->m_market    = market;
     this->m_diplomacy = diplomacy;
@@ -59,17 +60,16 @@ void TradeScreen::open(UIManager& ui) {
     }
 
     // Show known players (not self, not barbarians)
-    const aoc::ecs::ComponentPool<aoc::sim::PlayerCivilizationComponent>* civPool =
-        this->m_world->getPool<aoc::sim::PlayerCivilizationComponent>();
-    if (civPool != nullptr) {
-        for (uint32_t i = 0; i < civPool->size(); ++i) {
-            const aoc::sim::PlayerCivilizationComponent& civ = civPool->data()[i];
-            if (civ.owner == this->m_player || civ.owner == BARBARIAN_PLAYER) {
+    if (this->m_gameState != nullptr) {
+        for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState->players()) {
+            const PlayerId otherId = playerPtr->id();
+            if (otherId == this->m_player || otherId == BARBARIAN_PLAYER) {
                 continue;
             }
 
-            const aoc::sim::CivilizationDef& civDef = aoc::sim::civDef(civ.civId);
-            std::string label = std::string(civDef.name) + " (" + std::string(civDef.leaderName) + ")";
+            const aoc::sim::CivilizationDef& civDefRef = aoc::sim::civDef(playerPtr->civId());
+            std::string label = std::string(civDefRef.name) + " (" +
+                                std::string(civDefRef.leaderName) + ")";
 
             ButtonData btn;
             btn.label = std::move(label);
@@ -79,7 +79,7 @@ void TradeScreen::open(UIManager& ui) {
             btn.pressedColor = {0.15f, 0.15f, 0.2f, 0.9f};
             btn.cornerRadius = 3.0f;
 
-            const PlayerId partnerId = civ.owner;
+            const PlayerId partnerId = otherId;
             btn.onClick = [this, &ui, innerPanel, partnerId]() {
                 this->m_partner = partnerId;
                 // Remove old partner list and build trade columns
@@ -101,14 +101,10 @@ void TradeScreen::open(UIManager& ui) {
 void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId partner) {
     // Find partner civ name
     std::string partnerName = "Player " + std::to_string(static_cast<unsigned>(partner));
-    const aoc::ecs::ComponentPool<aoc::sim::PlayerCivilizationComponent>* civPool =
-        this->m_world->getPool<aoc::sim::PlayerCivilizationComponent>();
-    if (civPool != nullptr) {
-        for (uint32_t i = 0; i < civPool->size(); ++i) {
-            if (civPool->data()[i].owner == partner) {
-                partnerName = std::string(aoc::sim::civDef(civPool->data()[i].civId).name);
-                break;
-            }
+    if (this->m_gameState != nullptr) {
+        const aoc::game::Player* partnerPlayer = this->m_gameState->player(partner);
+        if (partnerPlayer != nullptr) {
+            partnerName = std::string(aoc::sim::civDef(partnerPlayer->civId()).name);
         }
     }
 
@@ -313,23 +309,14 @@ void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId
         float aiReceivesValue = static_cast<float>(this->m_offerGold);
         float aiGivesValue    = static_cast<float>(this->m_requestGold);
 
-        if (this->m_market != nullptr && this->m_world != nullptr) {
-            // Aggregate AI partner's total stockpile across all cities
+        if (this->m_market != nullptr && this->m_gameState != nullptr) {
+            // Aggregate AI partner's total stockpile across all their cities
             std::unordered_map<uint16_t, int32_t> partnerStockpile;
-            const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
-                this->m_world->getPool<aoc::sim::CityComponent>();
-            if (cityPool != nullptr) {
-                for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
-                    if (cityPool->data()[ci].owner != this->m_partner) {
-                        continue;
-                    }
-                    const aoc::sim::CityStockpileComponent* stockpile =
-                        this->m_world->tryGetComponent<aoc::sim::CityStockpileComponent>(
-                            cityPool->entities()[ci]);
-                    if (stockpile != nullptr) {
-                        for (const std::pair<const uint16_t, int32_t>& entry : stockpile->goods) {
-                            partnerStockpile[entry.first] += entry.second;
-                        }
+            const aoc::game::Player* partnerPlayer = this->m_gameState->player(this->m_partner);
+            if (partnerPlayer != nullptr) {
+                for (const std::unique_ptr<aoc::game::City>& city : partnerPlayer->cities()) {
+                    for (const std::pair<const uint16_t, int32_t>& entry : city->stockpile().goods) {
+                        partnerStockpile[entry.first] += entry.second;
                     }
                 }
             }
@@ -354,7 +341,6 @@ void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId
                 aiReceivesValue += static_cast<float>(this->m_offerAmounts[g])
                                  * baseValue * scarcityMultiplier;
                 // What AI gives (our request): valued at straight market price
-                // (AI values what it gives at market, what it gets with scarcity)
                 aiGivesValue += static_cast<float>(this->m_requestAmounts[g])
                               * baseValue;
             }

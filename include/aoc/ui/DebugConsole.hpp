@@ -30,7 +30,7 @@
 #include <string>
 #include <vector>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; class FogOfWar; }
 
 namespace aoc::ui {
@@ -52,7 +52,7 @@ public:
     void backspace();
 
     /// Execute the current input and clear it.
-    void execute(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+    void execute(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                  aoc::map::FogOfWar& fog, PlayerId humanPlayer);
 
     /// Get current input string (for rendering).

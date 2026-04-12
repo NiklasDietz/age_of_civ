@@ -4,10 +4,10 @@
  */
 
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/simulation/economy/SupplyChain.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -15,97 +15,59 @@
 namespace aoc::sim {
 
 void updateSupplyChainHealth(aoc::game::GameState& gameState, PlayerId player) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    aoc::ecs::ComponentPool<PlayerSupplyChainComponent>* chainPool =
-        world.getPool<PlayerSupplyChainComponent>();
-    if (chainPool == nullptr) {
+    aoc::game::Player* playerObj = gameState.player(player);
+    if (playerObj == nullptr) {
         return;
     }
 
-    PlayerSupplyChainComponent* chain = nullptr;
-    for (uint32_t i = 0; i < chainPool->size(); ++i) {
-        if (chainPool->data()[i].owner == player) {
-            chain = &chainPool->data()[i];
-            break;
-        }
-    }
-    if (chain == nullptr) {
-        return;
-    }
-
-    // Sum stockpiles of each critical good across all player's cities
-    aoc::ecs::ComponentPool<CityComponent>* cityPool =
-        world.getPool<CityComponent>();
-    aoc::ecs::ComponentPool<CityStockpileComponent>* stockpilePool =
-        world.getPool<CityStockpileComponent>();
-
-    if (cityPool == nullptr || stockpilePool == nullptr) {
-        return;
-    }
+    PlayerSupplyChainComponent& chain = playerObj->supplyChain();
 
     std::array<int32_t, CRITICAL_GOOD_COUNT> totalStockpile = {};
-    for (uint32_t i = 0; i < stockpilePool->size(); ++i) {
-        EntityId cityEntity = stockpilePool->entities()[i];
-        const CityComponent* city = world.tryGetComponent<CityComponent>(cityEntity);
-        if (city == nullptr || city->owner != player) {
-            continue;
-        }
-
-        const CityStockpileComponent& stockpile = stockpilePool->data()[i];
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+        if (cityPtr == nullptr) { continue; }
+        const CityStockpileComponent& stockpile = cityPtr->stockpile();
         for (int32_t g = 0; g < CRITICAL_GOOD_COUNT; ++g) {
             totalStockpile[static_cast<std::size_t>(g)] +=
                 stockpile.getAmount(CRITICAL_GOODS[g]);
         }
     }
 
-    // Update health for each critical good
     for (int32_t g = 0; g < CRITICAL_GOOD_COUNT; ++g) {
-        std::size_t idx = static_cast<std::size_t>(g);
-        int32_t stock = totalStockpile[idx];
+        std::size_t idx  = static_cast<std::size_t>(g);
+        int32_t    stock = totalStockpile[idx];
 
-        // Threshold: need at least 3 units to be "healthy"
         constexpr int32_t HEALTHY_THRESHOLD = 3;
 
         if (stock >= HEALTHY_THRESHOLD) {
-            // Well supplied: health recovers toward 1.0
-            chain->supplyHealth[idx] = chain->supplyHealth[idx] * 0.70f + 1.0f * 0.30f;
-            chain->stockpileBuffer[idx] = std::min(10, stock / 2);
+            chain.supplyHealth[idx]    = chain.supplyHealth[idx] * 0.70f + 1.0f * 0.30f;
+            chain.stockpileBuffer[idx] = std::min(10, stock / 2);
         } else if (stock > 0) {
-            // Low supply: health decays slowly
-            chain->supplyHealth[idx] = chain->supplyHealth[idx] * 0.90f + 0.50f * 0.10f;
-            chain->stockpileBuffer[idx] = stock;
+            chain.supplyHealth[idx]    = chain.supplyHealth[idx] * 0.90f + 0.50f * 0.10f;
+            chain.stockpileBuffer[idx] = stock;
         } else {
-            // Zero supply: use buffer, then health drops
-            if (chain->stockpileBuffer[idx] > 0) {
-                --chain->stockpileBuffer[idx];
-                chain->supplyHealth[idx] *= 0.95f;  // Slow decay while buffer lasts
+            if (chain.stockpileBuffer[idx] > 0) {
+                --chain.stockpileBuffer[idx];
+                chain.supplyHealth[idx] *= 0.95f;
             } else {
-                // No buffer: health drops fast
-                chain->supplyHealth[idx] *= 0.80f;  // 20% drop per turn
+                chain.supplyHealth[idx] *= 0.80f;
             }
         }
 
-        chain->supplyHealth[idx] = std::clamp(chain->supplyHealth[idx], 0.0f, 1.0f);
+        chain.supplyHealth[idx] = std::clamp(chain.supplyHealth[idx], 0.0f, 1.0f);
     }
 }
 
 void processSupplyChains(aoc::game::GameState& gameState) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    aoc::ecs::ComponentPool<PlayerSupplyChainComponent>* chainPool =
-        world.getPool<PlayerSupplyChainComponent>();
-    if (chainPool == nullptr) {
-        return;
-    }
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) { continue; }
 
-    for (uint32_t i = 0; i < chainPool->size(); ++i) {
-        updateSupplyChainHealth(world, chainPool->data()[i].owner);
+        updateSupplyChainHealth(gameState, playerPtr->id());
 
-        // Log critically low supply chains
-        const PlayerSupplyChainComponent& chain = chainPool->data()[i];
+        const PlayerSupplyChainComponent& chain = playerPtr->supplyChain();
         float prodMult = chain.productionMultiplier();
         if (prodMult < 0.80f) {
             LOG_INFO("Player %u supply chain crisis: production at %.0f%%",
-                     static_cast<unsigned>(chain.owner),
+                     static_cast<unsigned>(playerPtr->id()),
                      static_cast<double>(prodMult) * 100.0);
         }
     }

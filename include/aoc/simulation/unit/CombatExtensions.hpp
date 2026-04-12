@@ -34,7 +34,7 @@
 
 #include <cstdint>
 
-namespace aoc::game { class GameState; }
+namespace aoc::game { class GameState; class Unit; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -77,7 +77,8 @@ struct UnitFormationComponent {
  * @return Ok if successful.
  */
 [[nodiscard]] ErrorCode formCorps(aoc::game::GameState& gameState,
-                                   EntityId targetUnit, EntityId sourceUnit);
+                                   aoc::game::Unit& targetUnit,
+                                   aoc::game::Unit& sourceUnit);
 
 /**
  * @brief Add a third unit to a Corps to form an Army (or Armada).
@@ -85,7 +86,8 @@ struct UnitFormationComponent {
  * @return Ok if successful.
  */
 [[nodiscard]] ErrorCode formArmy(aoc::game::GameState& gameState,
-                                  EntityId corpsUnit, EntityId sourceUnit);
+                                  aoc::game::Unit& corpsUnit,
+                                  aoc::game::Unit& sourceUnit);
 
 // ============================================================================
 // Nuclear Weapons
@@ -96,9 +98,13 @@ enum class NukeType : uint8_t {
     ThermonuclearDevice = 1,  ///< 2-tile blast, -75% city pop
 };
 
-/// ECS component for a nuclear weapon (attached to the unit carrying it).
+/// Component tracking whether a unit is equipped with a nuclear weapon and its type.
+/// In the legacy ECS, presence of this component meant the unit was armed; in the
+/// new object model, every Unit owns one of these by composition, so `equipped`
+/// is used to distinguish armed units from unarmed ones.
 struct NuclearWeaponComponent {
-    NukeType type = NukeType::NuclearDevice;
+    bool     equipped = false;              ///< True when the unit carries an active warhead
+    NukeType type     = NukeType::NuclearDevice;
 };
 
 /**
@@ -111,16 +117,16 @@ struct NuclearWeaponComponent {
  * - Grievance with all civs
  * - Global warming contribution
  *
- * @param world       ECS world.
- * @param grid        Hex grid (tiles modified with Fallout).
- * @param launcherEntity  Unit/city launching the nuke.
- * @param targetTile  Target tile coordinate.
- * @param type        Nuclear or thermonuclear.
+ * @param gameState     Game state.
+ * @param grid          Hex grid (tiles modified with Fallout).
+ * @param launcherOwner Owner player of the launching unit.
+ * @param targetTile    Target tile coordinate.
+ * @param type          Nuclear or thermonuclear.
  * @return Ok if successful.
  */
 [[nodiscard]] ErrorCode launchNuclearStrike(aoc::game::GameState& gameState,
                                             aoc::map::HexGrid& grid,
-                                            EntityId launcherEntity,
+                                            PlayerId launcherOwner,
                                             hex::AxialCoord targetTile,
                                             NukeType type);
 
@@ -147,7 +153,7 @@ struct AirUnitComponent {
  */
 [[nodiscard]] ErrorCode executeBombingRun(aoc::game::GameState& gameState,
                                           aoc::map::HexGrid& grid,
-                                          EntityId bomberEntity,
+                                          aoc::game::Unit& bomber,
                                           hex::AxialCoord targetTile);
 
 /**
@@ -159,8 +165,8 @@ struct AirUnitComponent {
  * @return true if interception occurred.
  */
 bool attemptInterception(aoc::game::GameState& gameState,
-                         EntityId interceptorEntity,
-                         EntityId targetAirUnit);
+                         aoc::game::Unit& interceptor,
+                         aoc::game::Unit& target);
 
 /**
  * @brief Reset air unit sorties at the start of a turn.

@@ -16,8 +16,8 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::map {
@@ -50,7 +50,7 @@ public:
      * @param grid   Hex grid for coordinate conversion.
      * @param player The player whose visibility to update.
      */
-    void updateVisibility(const aoc::ecs::World& world,
+    void updateVisibility(const aoc::game::GameState& gameState,
                           const HexGrid& grid,
                           PlayerId player);
 

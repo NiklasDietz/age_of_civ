@@ -5,15 +5,15 @@
 
 #include "aoc/ui/ScoreScreen.hpp"
 #include "aoc/ui/UIManager.hpp"
-#include "aoc/ecs/World.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/game/Unit.hpp"
 #include "aoc/map/HexGrid.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
-#include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/core/Log.hpp"
 
@@ -26,12 +26,12 @@ namespace aoc::ui {
 // ScoreScreen
 // ============================================================================
 
-void ScoreScreen::setContext(aoc::ecs::World* world,
+void ScoreScreen::setContext(aoc::game::GameState* gameState,
                              const aoc::map::HexGrid* grid,
                              const aoc::sim::VictoryResult& result,
                              uint8_t playerCount,
                              std::function<void()> onReturnToMenu) {
-    this->m_world          = world;
+    this->m_gameState      = gameState;
     this->m_grid           = grid;
     this->m_victoryResult  = result;
     this->m_playerCount    = playerCount;
@@ -46,90 +46,84 @@ void ScoreScreen::computeScores() {
         this->m_scores[p].owner = p;
     }
 
-    // Military: sum of (combat strength) for each unit owned
-    this->m_world->forEach<aoc::sim::UnitComponent>(
-        [this](EntityId /*id*/, aoc::sim::UnitComponent& unit) {
-            if (unit.owner < this->m_playerCount) {
-                const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(unit.typeId);
-                int32_t strength = def.combatStrength;
-                if (strength == 0) {
-                    strength = def.rangedStrength;
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState->players()) {
+        const PlayerId ownerId = playerPtr->id();
+        if (ownerId >= this->m_playerCount) {
+            continue;
+        }
+
+        PlayerScoreEntry& entry = this->m_scores[ownerId];
+
+        // Military: sum of combat strength for each unit owned
+        for (const std::unique_ptr<aoc::game::Unit>& unit : playerPtr->units()) {
+            const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(unit->typeId());
+            int32_t strength = def.combatStrength;
+            if (strength == 0) {
+                strength = def.rangedStrength;
+            }
+            entry.military += strength;
+        }
+
+        // Science: count completed techs * 10
+        {
+            int32_t completedCount = 0;
+            const aoc::sim::PlayerTechComponent& tech = playerPtr->tech();
+            for (std::size_t i = 0; i < tech.completedTechs.size(); ++i) {
+                if (tech.completedTechs[i]) {
+                    ++completedCount;
                 }
-                this->m_scores[unit.owner].military += strength;
             }
-        });
+            entry.science = completedCount * 10;
+        }
 
-    // Science: count completed techs * 10
-    this->m_world->forEach<aoc::sim::PlayerTechComponent>(
-        [this](EntityId /*id*/, aoc::sim::PlayerTechComponent& tech) {
-            if (tech.owner < this->m_playerCount) {
-                int32_t completedCount = 0;
-                for (std::size_t i = 0; i < tech.completedTechs.size(); ++i) {
-                    if (tech.completedTechs[i]) {
-                        ++completedCount;
-                    }
-                }
-                this->m_scores[tech.owner].science = completedCount * 10;
-            }
-        });
+        // Culture: from victory tracker
+        entry.culture = static_cast<int32_t>(
+            playerPtr->victoryTracker().totalCultureAccumulated);
 
-    // Culture: from victory tracker
-    this->m_world->forEach<aoc::sim::VictoryTrackerComponent>(
-        [this](EntityId /*id*/, aoc::sim::VictoryTrackerComponent& vt) {
-            if (vt.owner < this->m_playerCount) {
-                this->m_scores[vt.owner].culture = static_cast<int32_t>(vt.totalCultureAccumulated);
-            }
-        });
+        // Economy: treasury + monetary money supply
+        {
+            const aoc::sim::MonetaryStateComponent& ms = playerPtr->monetary();
+            entry.economy = static_cast<int32_t>(playerPtr->treasury())
+                          + static_cast<int32_t>(ms.moneySupply)
+                          + ms.totalCoinValue();
+        }
 
-    // Economy: gold reserves as proxy for treasury + GDP
-    this->m_world->forEach<aoc::sim::MonetaryStateComponent>(
-        [this](EntityId /*id*/, aoc::sim::MonetaryStateComponent& ms) {
-            if (ms.owner < this->m_playerCount) {
-                this->m_scores[ms.owner].economy = static_cast<int32_t>(ms.treasury)
-                                                 + static_cast<int32_t>(ms.moneySupply)
-                                                 + ms.totalCoinValue();
-            }
-        });
-
-    // Cities: population * 5 + city count * 20
-    this->m_world->forEach<aoc::sim::CityComponent>(
-        [this](EntityId /*id*/, aoc::sim::CityComponent& city) {
-            if (city.owner < this->m_playerCount) {
-                this->m_scores[city.owner].cities += city.population * 5 + 20;
-            }
-        });
+        // Cities: population * 5 + city count * 20
+        for (const std::unique_ptr<aoc::game::City>& city : playerPtr->cities()) {
+            entry.cities += city->population() * 5 + 20;
+        }
+    }
 
     // Religion: count cities following each player's founded religion * 5
-    // First find which player founded which religion
+    // Build a map of religion -> founder player ID
     std::array<PlayerId, aoc::sim::MAX_RELIGIONS> religionFounder;
     religionFounder.fill(INVALID_PLAYER);
 
-    this->m_world->forEach<aoc::sim::PlayerFaithComponent>(
-        [&religionFounder](EntityId /*id*/, aoc::sim::PlayerFaithComponent& faith) {
-            if (faith.foundedReligion != aoc::sim::NO_RELIGION
-                && faith.foundedReligion < aoc::sim::MAX_RELIGIONS) {
-                religionFounder[faith.foundedReligion] = faith.owner;
-            }
-        });
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState->players()) {
+        const aoc::sim::PlayerFaithComponent& faith = playerPtr->faith();
+        if (faith.foundedReligion != aoc::sim::NO_RELIGION
+            && faith.foundedReligion < aoc::sim::MAX_RELIGIONS) {
+            religionFounder[faith.foundedReligion] = playerPtr->id();
+        }
+    }
 
-    this->m_world->forEach<aoc::sim::CityReligionComponent>(
-        [this, &religionFounder](EntityId /*id*/, aoc::sim::CityReligionComponent& rel) {
-            aoc::sim::ReligionId dominant = rel.dominantReligion();
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState->players()) {
+        for (const std::unique_ptr<aoc::game::City>& city : playerPtr->cities()) {
+            const aoc::sim::ReligionId dominant = city->religion().dominantReligion();
             if (dominant != aoc::sim::NO_RELIGION && dominant < aoc::sim::MAX_RELIGIONS) {
-                PlayerId founder = religionFounder[dominant];
+                const PlayerId founder = religionFounder[dominant];
                 if (founder < this->m_playerCount) {
                     this->m_scores[founder].religion += 5;
                 }
             }
-        });
+        }
+    }
 
     // Wonders: count per player * 15
-    const aoc::ecs::ComponentPool<aoc::sim::GlobalWonderTracker>* wonderPool =
-        this->m_world->getPool<aoc::sim::GlobalWonderTracker>();
-    if (wonderPool != nullptr && wonderPool->size() > 0) {
-        const aoc::sim::GlobalWonderTracker& tracker = wonderPool->data()[0];
+    {
+        const aoc::sim::GlobalWonderTracker& tracker = this->m_gameState->wonderTracker();
         for (uint8_t w = 0; w < aoc::sim::WONDER_COUNT; ++w) {
-            PlayerId builder = tracker.builtBy[w];
+            const PlayerId builder = tracker.builtBy[w];
             if (builder < this->m_playerCount) {
                 this->m_scores[builder].wonders += 15;
             }
@@ -193,18 +187,13 @@ void ScoreScreen::open(UIManager& ui) {
             ? Color{1.0f, 0.95f, 0.4f, 1.0f}
             : Color{0.85f, 0.85f, 0.85f, 1.0f};
 
-        // Build formatted score row
+        // Resolve civ name from player's civId
         std::string civName;
-        // Resolve civ name from the player's civ component
-        bool foundCiv = false;
-        this->m_world->forEach<aoc::sim::PlayerCivilizationComponent>(
-            [&entry, &civName, &foundCiv](EntityId /*id*/, aoc::sim::PlayerCivilizationComponent& pc) {
-                if (pc.owner == entry.owner) {
-                    civName = std::string(aoc::sim::civDef(pc.civId).name);
-                    foundCiv = true;
-                }
-            });
-        if (!foundCiv) {
+        const aoc::game::Player* playerObj = this->m_gameState->player(entry.owner);
+        if (playerObj != nullptr) {
+            civName = std::string(aoc::sim::civDef(playerObj->civId()).name);
+        }
+        if (civName.empty()) {
             civName = "P" + std::to_string(static_cast<unsigned>(entry.owner));
         }
 
@@ -215,7 +204,7 @@ void ScoreScreen::open(UIManager& ui) {
 
         // Helper to pad number to 6 chars
         constexpr std::size_t COL_WIDTH = 6;
-        // auto required: lambda type is unnameable
+        // Lambda type is unnameable — kept as a local lambda
         const auto padNum = [](int32_t val) -> std::string {
             std::string s = std::to_string(val);
             while (s.size() < COL_WIDTH) {

@@ -63,4 +63,10 @@ void refreshMovement(aoc::game::GameState& gameState, PlayerId player);
 void executeMovement(aoc::game::GameState& gameState, PlayerId player,
                      const aoc::map::HexGrid& grid);
 
+// Legacy EntityId overloads for callers not yet migrated to Unit&
+bool moveUnitAlongPath(aoc::game::GameState& gameState, EntityId unitEntity,
+                       const aoc::map::HexGrid& grid);
+bool orderUnitMove(aoc::game::GameState& gameState, EntityId unitEntity,
+                   aoc::hex::AxialCoord goal, const aoc::map::HexGrid& grid);
+
 } // namespace aoc::sim

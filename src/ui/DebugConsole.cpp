@@ -4,16 +4,14 @@
  */
 
 #include "aoc/ui/DebugConsole.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
-#include "aoc/simulation/city/CityLoyalty.hpp"
-#include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/FogOfWar.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -43,7 +41,7 @@ void DebugConsole::log(const std::string& msg) {
     LOG_INFO("[Console] %s", msg.c_str());
 }
 
-void DebugConsole::execute(aoc::ecs::World& world, aoc::map::HexGrid& grid,
+void DebugConsole::execute(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                             aoc::map::FogOfWar& fog, PlayerId humanPlayer) {
     if (this->m_input.empty()) {
         return;
@@ -71,7 +69,7 @@ void DebugConsole::execute(aoc::ecs::World& world, aoc::map::HexGrid& grid,
     // fog - Re-enable fog of war
     // ================================================================
     else if (command == "fog") {
-        fog.updateVisibility(world, grid, humanPlayer);
+        fog.updateVisibility(gameState, grid, humanPlayer);
         this->log("Fog of war re-enabled");
     }
     // ================================================================
@@ -80,12 +78,10 @@ void DebugConsole::execute(aoc::ecs::World& world, aoc::map::HexGrid& grid,
     else if (command == "gold") {
         int32_t amount = 0;
         stream >> amount;
-        world.forEach<aoc::sim::PlayerEconomyComponent>(
-            [humanPlayer, amount](EntityId, aoc::sim::PlayerEconomyComponent& ec) {
-                if (ec.owner == humanPlayer) {
-                    ec.treasury += static_cast<CurrencyAmount>(amount);
-                }
-            });
+        aoc::game::Player* player = gameState.player(humanPlayer);
+        if (player != nullptr) {
+            player->addGold(static_cast<CurrencyAmount>(amount));
+        }
         this->log("Added " + std::to_string(amount) + " gold");
     }
     // ================================================================
@@ -94,16 +90,11 @@ void DebugConsole::execute(aoc::ecs::World& world, aoc::map::HexGrid& grid,
     else if (command == "tech") {
         int32_t techId = 0;
         stream >> techId;
-        aoc::ecs::ComponentPool<aoc::sim::PlayerTechComponent>* techPool =
-            world.getPool<aoc::sim::PlayerTechComponent>();
-        if (techPool != nullptr) {
-            for (uint32_t i = 0; i < techPool->size(); ++i) {
-                if (techPool->data()[i].owner == humanPlayer) {
-                    if (static_cast<uint16_t>(techId) < techPool->data()[i].completedTechs.size()) {
-                        techPool->data()[i].completedTechs[static_cast<uint16_t>(techId)] = true;
-                    }
-                    break;
-                }
+        aoc::game::Player* player = gameState.player(humanPlayer);
+        if (player != nullptr) {
+            aoc::sim::PlayerTechComponent& tech = player->tech();
+            if (static_cast<uint16_t>(techId) < tech.completedTechs.size()) {
+                tech.completedTechs[static_cast<uint16_t>(techId)] = true;
             }
         }
         this->log("Researched tech " + std::to_string(techId));
@@ -112,16 +103,11 @@ void DebugConsole::execute(aoc::ecs::World& world, aoc::map::HexGrid& grid,
     // techall - Research all techs
     // ================================================================
     else if (command == "techall") {
-        aoc::ecs::ComponentPool<aoc::sim::PlayerTechComponent>* techPool =
-            world.getPool<aoc::sim::PlayerTechComponent>();
-        if (techPool != nullptr) {
-            for (uint32_t i = 0; i < techPool->size(); ++i) {
-                if (techPool->data()[i].owner == humanPlayer) {
-                    for (uint16_t t = 0; t < aoc::sim::techCount(); ++t) {
-                        techPool->data()[i].completedTechs[t] = true;
-                    }
-                    break;
-                }
+        aoc::game::Player* player = gameState.player(humanPlayer);
+        if (player != nullptr) {
+            aoc::sim::PlayerTechComponent& tech = player->tech();
+            for (uint16_t t = 0; t < aoc::sim::techCount(); ++t) {
+                tech.completedTechs[t] = true;
             }
         }
         this->log("All techs researched");
@@ -146,13 +132,10 @@ void DebugConsole::execute(aoc::ecs::World& world, aoc::map::HexGrid& grid,
         // Spawn at center of map as fallback
         aoc::hex::AxialCoord center = aoc::hex::offsetToAxial(
             {grid.width() / 2, grid.height() / 2});
-        EntityId unitEntity = world.createEntity();
-        world.addComponent<aoc::sim::UnitComponent>(
-            unitEntity,
-            aoc::sim::UnitComponent::create(
-                humanPlayer,
-                aoc::UnitTypeId{static_cast<uint16_t>(unitId)},
-                center));
+        aoc::game::Player* player = gameState.player(humanPlayer);
+        if (player != nullptr) {
+            player->addUnit(aoc::UnitTypeId{static_cast<uint16_t>(unitId)}, center);
+        }
         this->log("Spawned unit " + std::to_string(unitId) + " at map center");
     }
     // ================================================================
@@ -161,16 +144,11 @@ void DebugConsole::execute(aoc::ecs::World& world, aoc::map::HexGrid& grid,
     else if (command == "pop") {
         int32_t amount = 1;
         stream >> amount;
-        aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
-            world.getPool<aoc::sim::CityComponent>();
-        if (cityPool != nullptr) {
-            for (uint32_t i = 0; i < cityPool->size(); ++i) {
-                if (cityPool->data()[i].owner == humanPlayer) {
-                    cityPool->data()[i].population = amount;
-                    this->log("Set " + cityPool->data()[i].name + " pop to " + std::to_string(amount));
-                    break;
-                }
-            }
+        aoc::game::Player* player = gameState.player(humanPlayer);
+        if (player != nullptr && !player->cities().empty()) {
+            aoc::game::City& city = *player->cities().front();
+            city.setPopulation(amount);
+            this->log("Set " + city.name() + " pop to " + std::to_string(amount));
         }
     }
     // ================================================================
@@ -179,20 +157,10 @@ void DebugConsole::execute(aoc::ecs::World& world, aoc::map::HexGrid& grid,
     else if (command == "loyalty") {
         float value = 100.0f;
         stream >> value;
-        aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
-            world.getPool<aoc::sim::CityComponent>();
-        if (cityPool != nullptr) {
-            for (uint32_t i = 0; i < cityPool->size(); ++i) {
-                if (cityPool->data()[i].owner == humanPlayer) {
-                    aoc::sim::CityLoyaltyComponent* loyalty =
-                        world.tryGetComponent<aoc::sim::CityLoyaltyComponent>(cityPool->entities()[i]);
-                    if (loyalty != nullptr) {
-                        loyalty->loyalty = value;
-                        this->log("Set loyalty to " + std::to_string(static_cast<int>(value)));
-                    }
-                    break;
-                }
-            }
+        aoc::game::Player* player = gameState.player(humanPlayer);
+        if (player != nullptr && !player->cities().empty()) {
+            player->cities().front()->loyalty().loyalty = value;
+            this->log("Set loyalty to " + std::to_string(static_cast<int>(value)));
         }
     }
     // ================================================================
@@ -201,19 +169,14 @@ void DebugConsole::execute(aoc::ecs::World& world, aoc::map::HexGrid& grid,
     else if (command == "money") {
         std::string system;
         stream >> system;
-        aoc::ecs::ComponentPool<aoc::sim::MonetaryStateComponent>* monetaryPool =
-            world.getPool<aoc::sim::MonetaryStateComponent>();
-        if (monetaryPool != nullptr) {
-            for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-                if (monetaryPool->data()[i].owner == humanPlayer) {
-                    if (system == "barter")    { monetaryPool->data()[i].system = aoc::sim::MonetarySystemType::Barter; }
-                    if (system == "commodity") { monetaryPool->data()[i].system = aoc::sim::MonetarySystemType::CommodityMoney; }
-                    if (system == "gold")      { monetaryPool->data()[i].system = aoc::sim::MonetarySystemType::GoldStandard; }
-                    if (system == "fiat")      { monetaryPool->data()[i].system = aoc::sim::MonetarySystemType::FiatMoney; }
-                    this->log("Set monetary system to " + system);
-                    break;
-                }
-            }
+        aoc::game::Player* player = gameState.player(humanPlayer);
+        if (player != nullptr) {
+            aoc::sim::MonetaryStateComponent& ms = player->monetary();
+            if (system == "barter")    { ms.system = aoc::sim::MonetarySystemType::Barter; }
+            if (system == "commodity") { ms.system = aoc::sim::MonetarySystemType::CommodityMoney; }
+            if (system == "gold")      { ms.system = aoc::sim::MonetarySystemType::GoldStandard; }
+            if (system == "fiat")      { ms.system = aoc::sim::MonetarySystemType::FiatMoney; }
+            this->log("Set monetary system to " + system);
         }
     }
     // ================================================================

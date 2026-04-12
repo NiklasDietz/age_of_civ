@@ -4,9 +4,10 @@
  */
 
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/game/Unit.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/CombatExtensions.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
@@ -15,7 +16,6 @@
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
-#include "aoc/ecs/World.hpp"
 
 namespace aoc::sim {
 
@@ -33,7 +33,6 @@ const LeaderPersonalityDef& leaderPersonality(CivId civId) {
 static bool checkCondition(const aoc::game::GameState& gameState,
                            AgendaCondition condition,
                            PlayerId leader, PlayerId target) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     if (condition == AgendaCondition::None) {
         return false;
     }
@@ -42,14 +41,13 @@ static bool checkCondition(const aoc::game::GameState& gameState,
         case AgendaCondition::HasMoreMilitary: {
             int32_t leaderMil = 0;
             int32_t targetMil = 0;
-            const aoc::ecs::ComponentPool<UnitComponent>* unitPool =
-                world.getPool<UnitComponent>();
-            if (unitPool != nullptr) {
-                for (uint32_t i = 0; i < unitPool->size(); ++i) {
-                    if (isMilitary(unitTypeDef(unitPool->data()[i].typeId).unitClass)) {
-                        if (unitPool->data()[i].owner == leader) { ++leaderMil; }
-                        if (unitPool->data()[i].owner == target) { ++targetMil; }
-                    }
+            for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+                if (playerPtr == nullptr) { continue; }
+                for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerPtr->units()) {
+                    if (unitPtr == nullptr) { continue; }
+                    if (!isMilitary(unitPtr->typeDef().unitClass)) { continue; }
+                    if (playerPtr->id() == leader) { ++leaderMil; }
+                    if (playerPtr->id() == target) { ++targetMil; }
                 }
             }
             return targetMil > leaderMil;
@@ -58,14 +56,13 @@ static bool checkCondition(const aoc::game::GameState& gameState,
         case AgendaCondition::HasLessMilitary: {
             int32_t leaderMil = 0;
             int32_t targetMil = 0;
-            const aoc::ecs::ComponentPool<UnitComponent>* unitPool =
-                world.getPool<UnitComponent>();
-            if (unitPool != nullptr) {
-                for (uint32_t i = 0; i < unitPool->size(); ++i) {
-                    if (isMilitary(unitTypeDef(unitPool->data()[i].typeId).unitClass)) {
-                        if (unitPool->data()[i].owner == leader) { ++leaderMil; }
-                        if (unitPool->data()[i].owner == target) { ++targetMil; }
-                    }
+            for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+                if (playerPtr == nullptr) { continue; }
+                for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerPtr->units()) {
+                    if (unitPtr == nullptr) { continue; }
+                    if (!isMilitary(unitPtr->typeDef().unitClass)) { continue; }
+                    if (playerPtr->id() == leader) { ++leaderMil; }
+                    if (playerPtr->id() == target) { ++targetMil; }
                 }
             }
             return targetMil < leaderMil / 2;
@@ -74,19 +71,17 @@ static bool checkCondition(const aoc::game::GameState& gameState,
         case AgendaCondition::HasMoreLuxuries: {
             int32_t targetLux = 0;
             int32_t leaderLux = 0;
-            const aoc::ecs::ComponentPool<CityStockpileComponent>* stockPool =
-                world.getPool<CityStockpileComponent>();
-            const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-                world.getPool<CityComponent>();
-            if (stockPool != nullptr && cityPool != nullptr) {
-                for (uint32_t i = 0; i < stockPool->size(); ++i) {
-                    EntityId ce = stockPool->entities()[i];
-                    const CityComponent* city = world.tryGetComponent<CityComponent>(ce);
-                    if (city == nullptr) { continue; }
+            for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+                if (playerPtr == nullptr) { continue; }
+                const bool isLeader = (playerPtr->id() == leader);
+                const bool isTarget = (playerPtr->id() == target);
+                if (!isLeader && !isTarget) { continue; }
+                for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+                    if (cityPtr == nullptr) { continue; }
                     for (uint16_t g = goods::GOLD_ORE; g <= goods::INCENSE; ++g) {
-                        if (stockPool->data()[i].getAmount(g) > 0) {
-                            if (city->owner == target) { ++targetLux; }
-                            if (city->owner == leader) { ++leaderLux; }
+                        if (cityPtr->stockpile().getAmount(g) > 0) {
+                            if (isTarget) { ++targetLux; }
+                            if (isLeader) { ++leaderLux; }
                         }
                     }
                 }
@@ -97,13 +92,10 @@ static bool checkCondition(const aoc::game::GameState& gameState,
         case AgendaCondition::HasMoreCities: {
             int32_t targetCities = 0;
             int32_t leaderCities = 0;
-            const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-                world.getPool<CityComponent>();
-            if (cityPool != nullptr) {
-                for (uint32_t i = 0; i < cityPool->size(); ++i) {
-                    if (cityPool->data()[i].owner == target) { ++targetCities; }
-                    if (cityPool->data()[i].owner == leader) { ++leaderCities; }
-                }
+            for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+                if (playerPtr == nullptr) { continue; }
+                if (playerPtr->id() == target) { targetCities = playerPtr->cityCount(); }
+                if (playerPtr->id() == leader) { leaderCities = playerPtr->cityCount(); }
             }
             return targetCities > leaderCities;
         }
@@ -111,17 +103,17 @@ static bool checkCondition(const aoc::game::GameState& gameState,
         case AgendaCondition::HasHigherScience: {
             int32_t targetTechs = 0;
             int32_t leaderTechs = 0;
-            const aoc::ecs::ComponentPool<PlayerTechComponent>* techPool =
-                world.getPool<PlayerTechComponent>();
-            if (techPool != nullptr) {
-                for (uint32_t i = 0; i < techPool->size(); ++i) {
-                    int32_t count = 0;
-                    for (std::size_t b = 0; b < techPool->data()[i].completedTechs.size(); ++b) {
-                        if (techPool->data()[i].completedTechs[b]) { ++count; }
-                    }
-                    if (techPool->data()[i].owner == target) { targetTechs = count; }
-                    if (techPool->data()[i].owner == leader) { leaderTechs = count; }
+            for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+                if (playerPtr == nullptr) { continue; }
+                const bool isLeader = (playerPtr->id() == leader);
+                const bool isTarget = (playerPtr->id() == target);
+                if (!isLeader && !isTarget) { continue; }
+                int32_t count = 0;
+                for (std::size_t b = 0; b < playerPtr->tech().completedTechs.size(); ++b) {
+                    if (playerPtr->tech().completedTechs[b]) { ++count; }
                 }
+                if (isTarget) { targetTechs = count; }
+                if (isLeader) { leaderTechs = count; }
             }
             return targetTechs > leaderTechs;
         }
@@ -131,14 +123,12 @@ static bool checkCondition(const aoc::game::GameState& gameState,
             return false;
 
         case AgendaCondition::HasStrongEconomy: {
-            const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-                world.getPool<MonetaryStateComponent>();
-            if (monetaryPool == nullptr) { return false; }
             CurrencyAmount targetGDP = 0;
             CurrencyAmount leaderGDP = 0;
-            for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-                if (monetaryPool->data()[i].owner == target) { targetGDP = monetaryPool->data()[i].gdp; }
-                if (monetaryPool->data()[i].owner == leader) { leaderGDP = monetaryPool->data()[i].gdp; }
+            for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+                if (playerPtr == nullptr) { continue; }
+                if (playerPtr->id() == target) { targetGDP = playerPtr->monetary().gdp; }
+                if (playerPtr->id() == leader) { leaderGDP = playerPtr->monetary().gdp; }
             }
             return targetGDP > leaderGDP;
         }
@@ -156,12 +146,11 @@ static bool checkCondition(const aoc::game::GameState& gameState,
             return false;  // Would need trade route check
 
         case AgendaCondition::HasNuclearWeapons: {
-            const aoc::ecs::ComponentPool<NuclearWeaponComponent>* nukePool =
-                world.getPool<NuclearWeaponComponent>();
-            if (nukePool == nullptr) { return false; }
-            for (uint32_t i = 0; i < nukePool->size(); ++i) {
-                const UnitComponent* unit = world.tryGetComponent<UnitComponent>(nukePool->entities()[i]);
-                if (unit != nullptr && unit->owner == target) { return true; }
+            const aoc::game::Player* targetPlayer = gameState.player(target);
+            if (targetPlayer == nullptr) { return false; }
+            for (const std::unique_ptr<aoc::game::Unit>& unitPtr : targetPlayer->units()) {
+                if (unitPtr == nullptr) { continue; }
+                if (unitPtr->nuclear().equipped) { return true; }
             }
             return false;
         }
@@ -170,15 +159,9 @@ static bool checkCondition(const aoc::game::GameState& gameState,
             return false;  // Would need economic zone check
 
         case AgendaCondition::IsReserveCurrency: {
-            const aoc::ecs::ComponentPool<CurrencyTrustComponent>* trustPool =
-                world.getPool<CurrencyTrustComponent>();
-            if (trustPool == nullptr) { return false; }
-            for (uint32_t i = 0; i < trustPool->size(); ++i) {
-                if (trustPool->data()[i].owner == target && trustPool->data()[i].isReserveCurrency) {
-                    return true;
-                }
-            }
-            return false;
+            const aoc::game::Player* targetPlayer = gameState.player(target);
+            if (targetPlayer == nullptr) { return false; }
+            return targetPlayer->currencyTrust().isReserveCurrency;
         }
 
         default:
@@ -188,31 +171,19 @@ static bool checkCondition(const aoc::game::GameState& gameState,
 
 int32_t evaluateAgenda(const aoc::game::GameState& gameState,
                        PlayerId leader, PlayerId target) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    // Find the leader's civ ID
-    CivId leaderCiv{0};
-    aoc::ecs::World& world = gameState.legacyWorld();
-    const aoc::ecs::ComponentPool<PlayerCivilizationComponent>* civPool =
-        world.getPool<PlayerCivilizationComponent>();
-    if (civPool != nullptr) {
-        for (uint32_t i = 0; i < civPool->size(); ++i) {
-            if (civPool->data()[i].owner == leader) {
-                leaderCiv = civPool->data()[i].civId;
-                break;
-            }
-        }
-    }
+    const aoc::game::Player* leaderPlayer = gameState.player(leader);
+    CivId leaderCiv = (leaderPlayer != nullptr) ? leaderPlayer->civId() : CivId{0};
 
     const LeaderPersonalityDef& personality = leaderPersonality(leaderCiv);
     int32_t modifier = 0;
 
     // Like condition: +15 diplomatic points
-    if (checkCondition(world, personality.likeCondition, leader, target)) {
+    if (checkCondition(gameState, personality.likeCondition, leader, target)) {
         modifier += 15;
     }
 
     // Dislike condition: -20 diplomatic points
-    if (checkCondition(world, personality.dislikeCondition, leader, target)) {
+    if (checkCondition(gameState, personality.dislikeCondition, leader, target)) {
         modifier -= 20;
     }
 

@@ -5,12 +5,12 @@
 
 #include "aoc/simulation/citystate/CityStateQuest.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 namespace aoc::sim {
 
-void generateCityStateQuest(aoc::ecs::World& /*world*/, EntityId /*cityStateEntity*/,
+void generateCityStateQuest(aoc::game::GameState& /*gameState*/,
+                            std::size_t /*cityStateIndex*/,
                             PlayerId /*targetPlayer*/) {
     // Quest generation based on city-state type:
     // Militaristic -> DefeatBarbarian or TrainUnit
@@ -19,14 +19,13 @@ void generateCityStateQuest(aoc::ecs::World& /*world*/, EntityId /*cityStateEnti
     // Trade -> SendTradeRoute
     // Religious -> ConvertToReligion
     // Industrial -> TrainUnit (builder)
-    // Implementation creates a CityStateQuest component on the city-state entity
     LOG_INFO("City-state quest generated");
 }
 
-void checkCityStateQuests(aoc::ecs::World& /*world*/) {
-    // Iterate all city-state entities with quest components.
+void checkCityStateQuests(aoc::game::GameState& /*gameState*/) {
+    // Iterate all city-states with active quests via GameState::cityStates().
     // Check if the assigned player has completed the quest objective.
-    // If completed: award envoys, remove quest, generate new quest.
+    // If completed: award envoys, clear quest, generate new quest.
 }
 
 } // namespace aoc::sim

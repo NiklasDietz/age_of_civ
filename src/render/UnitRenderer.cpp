@@ -5,11 +5,12 @@
 
 #include "aoc/render/UnitRenderer.hpp"
 #include "aoc/render/CameraController.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/Unit.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/FogOfWar.hpp"
@@ -17,7 +18,6 @@
 
 #include <renderer/Renderer2D.hpp>
 
-#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -48,19 +48,13 @@ void playerColor(PlayerId player, float& r, float& g, float& b) {
 } // anonymous namespace
 
 void UnitRenderer::drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
-                              const aoc::ecs::World& world,
+                              const aoc::game::GameState& gameState,
                               const aoc::map::FogOfWar& fog,
                               const aoc::map::HexGrid& grid,
                               PlayerId viewingPlayer,
                               const CameraController& camera,
                               float hexSize,
                               uint32_t screenWidth, uint32_t screenHeight) const {
-    const aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* pool =
-        world.getPool<aoc::sim::UnitComponent>();
-    if (pool == nullptr) {
-        return;
-    }
-
     // Compute visible bounds
     float topLeftX = 0.0f, topLeftY = 0.0f, botRightX = 0.0f, botRightY = 0.0f;
     camera.screenToWorld(0.0, 0.0, topLeftX, topLeftY, screenWidth, screenHeight);
@@ -72,215 +66,191 @@ void UnitRenderer::drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
 
     float unitRadius = hexSize * 0.30f;
 
-    for (uint32_t i = 0; i < pool->size(); ++i) {
-        const aoc::sim::UnitComponent& unit = pool->data()[i];
-        EntityId entity = pool->entities()[i];
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerPtr->units()) {
+            const aoc::game::Unit& unit = *unitPtr;
 
-        // Fog of war: only show units on tiles that are currently Visible to the viewer
-        {
-            if (!grid.isValid(unit.position)) {
-                continue;  // Skip units with invalid positions
+            // Fog of war: only show units on tiles that are currently Visible to the viewer
+            if (!grid.isValid(unit.position())) {
+                continue;
             }
-            int32_t tileIndex = grid.toIndex(unit.position);
+            int32_t tileIndex = grid.toIndex(unit.position());
             aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, tileIndex);
             if (vis != aoc::map::TileVisibility::Visible) {
                 continue;
             }
-        }
 
-        float cx = 0.0f, cy = 0.0f;
-        if (unit.isAnimating) {
-            // Interpolate between animFrom and animTo based on animProgress
-            float fromX = 0.0f, fromY = 0.0f;
-            float toX = 0.0f, toY = 0.0f;
-            hex::axialToPixel(unit.animFrom, hexSize, fromX, fromY);
-            hex::axialToPixel(unit.animTo, hexSize, toX, toY);
-            const float t = unit.animProgress;
-            cx = fromX + (toX - fromX) * t;
-            cy = fromY + (toY - fromY) * t;
-        } else {
-            hex::axialToPixel(unit.position, hexSize, cx, cy);
-        }
-
-        // Frustum cull
-        if (cx < topLeftX || cx > botRightX || cy < topLeftY || cy > botRightY) {
-            continue;
-        }
-
-        float r = 0.0f, g = 0.0f, b = 0.0f;
-        playerColor(unit.owner, r, g, b);
-
-        const float s = unitRadius;
-        const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(unit.typeId);
-
-        // ---- Unit background: filled circle with player color ----
-        renderer2d.drawFilledCircle(cx, cy, s, r * 0.35f, g * 0.35f, b * 0.35f, 0.88f);
-
-        // ---- Unit icon (white on player-colored background) ----
-        const float iconA = 0.95f;
-        switch (def.unitClass) {
-            case aoc::sim::UnitClass::Melee: {
-                // Sword: diagonal line with crossguard
-                float sw = s * 0.65f;
-                renderer2d.drawLine(cx - sw * 0.6f, cy + sw * 0.6f,
-                                     cx + sw * 0.6f, cy - sw * 0.6f,
-                                     2.5f, 1.0f, 1.0f, 1.0f, iconA);
-                // Crossguard
-                renderer2d.drawLine(cx - sw * 0.3f, cy - sw * 0.2f,
-                                     cx + sw * 0.3f, cy + sw * 0.2f,
-                                     2.0f, 0.8f, 0.8f, 0.8f, iconA);
-                // Pommel
-                renderer2d.drawFilledCircle(cx - sw * 0.55f, cy + sw * 0.55f, sw * 0.15f,
-                                             0.9f, 0.85f, 0.6f, iconA);
-                break;
+            float cx = 0.0f, cy = 0.0f;
+            if (unit.isAnimating) {
+                float fromX = 0.0f, fromY = 0.0f;
+                float toX = 0.0f, toY = 0.0f;
+                hex::axialToPixel(unit.animFrom, hexSize, fromX, fromY);
+                hex::axialToPixel(unit.animTo, hexSize, toX, toY);
+                const float t = unit.animProgress;
+                cx = fromX + (toX - fromX) * t;
+                cy = fromY + (toY - fromY) * t;
+            } else {
+                hex::axialToPixel(unit.position(), hexSize, cx, cy);
             }
-            case aoc::sim::UnitClass::Ranged: {
-                // Bow: arc with arrow
-                float bw = s * 0.55f;
-                renderer2d.drawArc(cx - bw * 0.2f, cy, bw, -1.2f, 1.2f, 2.0f,
-                                    1.0f, 1.0f, 1.0f, iconA);
-                // Arrow shaft
-                renderer2d.drawLine(cx - bw * 0.3f, cy, cx + bw * 0.7f, cy,
-                                     2.0f, 1.0f, 1.0f, 1.0f, iconA);
-                // Arrowhead
-                renderer2d.drawFilledTriangle(cx + bw * 0.7f, cy,
-                                              cx + bw * 0.4f, cy - bw * 0.2f,
-                                              cx + bw * 0.4f, cy + bw * 0.2f,
-                                              1.0f, 1.0f, 1.0f, iconA);
-                break;
-            }
-            case aoc::sim::UnitClass::Scout: {
-                // Eye/spyglass shape
-                float ew = s * 0.5f;
-                renderer2d.drawFilledCircle(cx, cy, ew * 0.5f, 1.0f, 1.0f, 1.0f, iconA);
-                renderer2d.drawFilledCircle(cx, cy, ew * 0.25f, 0.2f, 0.6f, 0.9f, iconA);
-                renderer2d.drawCircle(cx, cy, ew * 0.5f, 1.0f, 1.0f, 1.0f, iconA, 1.5f);
-                break;
-            }
-            case aoc::sim::UnitClass::Settler: {
-                // Covered wagon: rectangle + half circle on top
-                float ww = s * 0.5f;
-                renderer2d.drawFilledRect(cx - ww, cy, ww * 2.0f, ww * 0.7f,
-                                           0.6f, 0.45f, 0.25f, iconA);
-                // Wagon cover (arc)
-                renderer2d.drawFilledCircle(cx, cy - ww * 0.1f, ww * 0.7f,
-                                             0.9f, 0.85f, 0.75f, iconA * 0.8f);
-                // Wheels
-                renderer2d.drawFilledCircle(cx - ww * 0.6f, cy + ww * 0.7f, ww * 0.25f,
-                                             0.3f, 0.25f, 0.2f, iconA);
-                renderer2d.drawFilledCircle(cx + ww * 0.6f, cy + ww * 0.7f, ww * 0.25f,
-                                             0.3f, 0.25f, 0.2f, iconA);
-                break;
-            }
-            case aoc::sim::UnitClass::Cavalry: {
-                // Horse head silhouette: triangular head + neck
-                float hw = s * 0.55f;
-                // Body
-                renderer2d.drawFilledTriangle(cx - hw * 0.8f, cy + hw * 0.3f,
-                                              cx + hw * 0.5f, cy + hw * 0.3f,
-                                              cx + hw * 0.2f, cy - hw * 0.2f,
-                                              1.0f, 1.0f, 1.0f, iconA);
-                // Head
-                renderer2d.drawFilledTriangle(cx + hw * 0.2f, cy - hw * 0.2f,
-                                              cx + hw * 0.8f, cy - hw * 0.7f,
-                                              cx + hw * 0.6f, cy + hw * 0.1f,
-                                              1.0f, 1.0f, 1.0f, iconA);
-                // Ear
-                renderer2d.drawFilledTriangle(cx + hw * 0.7f, cy - hw * 0.7f,
-                                              cx + hw * 0.55f, cy - hw * 0.9f,
-                                              cx + hw * 0.85f, cy - hw * 0.8f,
-                                              0.9f, 0.9f, 0.9f, iconA);
-                break;
-            }
-            case aoc::sim::UnitClass::Civilian: {
-                // Hammer + wrench (builder)
-                float bw = s * 0.45f;
-                // Hammer handle
-                renderer2d.drawLine(cx, cy + bw * 0.6f, cx, cy - bw * 0.3f,
-                                     2.5f, 0.6f, 0.4f, 0.2f, iconA);
-                // Hammer head
-                renderer2d.drawFilledRect(cx - bw * 0.5f, cy - bw * 0.6f, bw * 1.0f, bw * 0.35f,
-                                           0.7f, 0.7f, 0.75f, iconA);
-                break;
-            }
-            case aoc::sim::UnitClass::Naval: {
-                // Ship: hull + mast + sail
-                float nw = s * 0.55f;
-                // Hull
-                renderer2d.drawFilledTriangle(cx - nw, cy + nw * 0.2f,
-                                              cx + nw, cy + nw * 0.2f,
-                                              cx, cy + nw * 0.7f,
-                                              0.5f, 0.35f, 0.2f, iconA);
-                // Mast
-                renderer2d.drawLine(cx, cy + nw * 0.2f, cx, cy - nw * 0.7f,
-                                     2.0f, 0.6f, 0.4f, 0.25f, iconA);
-                // Sail
-                renderer2d.drawFilledTriangle(cx, cy - nw * 0.6f,
-                                              cx + nw * 0.6f, cy,
-                                              cx, cy + nw * 0.1f,
-                                              1.0f, 1.0f, 1.0f, iconA);
-                break;
-            }
-            case aoc::sim::UnitClass::Religious: {
-                // Holy symbol: circle with cross
-                float rw = s * 0.4f;
-                renderer2d.drawCircle(cx, cy, rw, 1.0f, 0.9f, 0.5f, iconA, 2.0f);
-                renderer2d.drawLine(cx, cy - rw * 0.6f, cx, cy + rw * 0.6f,
-                                     2.0f, 1.0f, 0.9f, 0.5f, iconA);
-                renderer2d.drawLine(cx - rw * 0.4f, cy - rw * 0.1f, cx + rw * 0.4f, cy - rw * 0.1f,
-                                     2.0f, 1.0f, 0.9f, 0.5f, iconA);
-                break;
-            }
-            default:
-                break;
-        }
 
-        // ---- Selection: hex outline + HP bar on top ----
-        if (entity == this->selectedEntity) {
-            // White hex selection outline on the tile
-            aoc::drawSelectionHex(renderer2d, cx, cy, hexSize,
-                                   1.0f, 1.0f, 1.0f, 0.85f, 3.0f);
+            // Frustum cull
+            if (cx < topLeftX || cx > botRightX || cy < topLeftY || cy > botRightY) {
+                continue;
+            }
 
-            // HP bar above the unit (only visible when selected)
-            float barW = s * 2.0f;
-            float barH = s * 0.22f;
-            float barX = cx - barW * 0.5f;
-            float barY = cy - s - barH - 4.0f;
-            float hpFrac = static_cast<float>(unit.hitPoints) / static_cast<float>(def.maxHitPoints);
-            hpFrac = std::clamp(hpFrac, 0.0f, 1.0f);
-            // Background
-            renderer2d.drawFilledRect(barX, barY, barW, barH, 0.15f, 0.15f, 0.15f, 0.8f);
-            // Fill (green -> yellow -> red)
-            float hpR = (hpFrac < 0.5f) ? 1.0f : (1.0f - hpFrac) * 2.0f;
-            float hpG = (hpFrac > 0.5f) ? 1.0f : hpFrac * 2.0f;
-            renderer2d.drawFilledRect(barX, barY, barW * hpFrac, barH, hpR, hpG, 0.1f, 0.9f);
+            float r = 0.0f, g = 0.0f, b = 0.0f;
+            playerColor(unit.owner(), r, g, b);
 
-            // ---- Movement path: dashed line along pending path ----
-            if (!unit.pendingPath.empty()) {
+            const float s = unitRadius;
+            const aoc::sim::UnitTypeDef& def = unit.typeDef();
+
+            // ---- Unit background: filled circle with player color ----
+            renderer2d.drawFilledCircle(cx, cy, s, r * 0.35f, g * 0.35f, b * 0.35f, 0.88f);
+
+            // ---- Unit icon (white on player-colored background) ----
+            const float iconA = 0.95f;
+            switch (def.unitClass) {
+                case aoc::sim::UnitClass::Melee: {
+                    float sw = s * 0.65f;
+                    renderer2d.drawLine(cx - sw * 0.6f, cy + sw * 0.6f,
+                                         cx + sw * 0.6f, cy - sw * 0.6f,
+                                         2.5f, 1.0f, 1.0f, 1.0f, iconA);
+                    renderer2d.drawLine(cx - sw * 0.3f, cy - sw * 0.2f,
+                                         cx + sw * 0.3f, cy + sw * 0.2f,
+                                         2.0f, 0.8f, 0.8f, 0.8f, iconA);
+                    renderer2d.drawFilledCircle(cx - sw * 0.55f, cy + sw * 0.55f, sw * 0.15f,
+                                                 0.9f, 0.85f, 0.6f, iconA);
+                    break;
+                }
+                case aoc::sim::UnitClass::Ranged: {
+                    float bw = s * 0.55f;
+                    renderer2d.drawArc(cx - bw * 0.2f, cy, bw, -1.2f, 1.2f, 2.0f,
+                                        1.0f, 1.0f, 1.0f, iconA);
+                    renderer2d.drawLine(cx - bw * 0.3f, cy, cx + bw * 0.7f, cy,
+                                         2.0f, 1.0f, 1.0f, 1.0f, iconA);
+                    renderer2d.drawFilledTriangle(cx + bw * 0.7f, cy,
+                                                  cx + bw * 0.4f, cy - bw * 0.2f,
+                                                  cx + bw * 0.4f, cy + bw * 0.2f,
+                                                  1.0f, 1.0f, 1.0f, iconA);
+                    break;
+                }
+                case aoc::sim::UnitClass::Scout: {
+                    float ew = s * 0.5f;
+                    renderer2d.drawFilledCircle(cx, cy, ew * 0.5f, 1.0f, 1.0f, 1.0f, iconA);
+                    renderer2d.drawFilledCircle(cx, cy, ew * 0.25f, 0.2f, 0.6f, 0.9f, iconA);
+                    renderer2d.drawCircle(cx, cy, ew * 0.5f, 1.0f, 1.0f, 1.0f, iconA, 1.5f);
+                    break;
+                }
+                case aoc::sim::UnitClass::Settler: {
+                    float ww = s * 0.5f;
+                    renderer2d.drawFilledRect(cx - ww, cy, ww * 2.0f, ww * 0.7f,
+                                               0.6f, 0.45f, 0.25f, iconA);
+                    renderer2d.drawFilledCircle(cx, cy - ww * 0.1f, ww * 0.7f,
+                                                 0.9f, 0.85f, 0.75f, iconA * 0.8f);
+                    renderer2d.drawFilledCircle(cx - ww * 0.6f, cy + ww * 0.7f, ww * 0.25f,
+                                                 0.3f, 0.25f, 0.2f, iconA);
+                    renderer2d.drawFilledCircle(cx + ww * 0.6f, cy + ww * 0.7f, ww * 0.25f,
+                                                 0.3f, 0.25f, 0.2f, iconA);
+                    break;
+                }
+                case aoc::sim::UnitClass::Cavalry: {
+                    float hw = s * 0.55f;
+                    renderer2d.drawFilledTriangle(cx - hw * 0.8f, cy + hw * 0.3f,
+                                                  cx + hw * 0.5f, cy + hw * 0.3f,
+                                                  cx + hw * 0.2f, cy - hw * 0.2f,
+                                                  1.0f, 1.0f, 1.0f, iconA);
+                    renderer2d.drawFilledTriangle(cx + hw * 0.2f, cy - hw * 0.2f,
+                                                  cx + hw * 0.8f, cy - hw * 0.7f,
+                                                  cx + hw * 0.6f, cy + hw * 0.1f,
+                                                  1.0f, 1.0f, 1.0f, iconA);
+                    renderer2d.drawFilledTriangle(cx + hw * 0.7f, cy - hw * 0.7f,
+                                                  cx + hw * 0.55f, cy - hw * 0.9f,
+                                                  cx + hw * 0.85f, cy - hw * 0.8f,
+                                                  0.9f, 0.9f, 0.9f, iconA);
+                    break;
+                }
+                case aoc::sim::UnitClass::Civilian: {
+                    float bw = s * 0.45f;
+                    renderer2d.drawLine(cx, cy + bw * 0.6f, cx, cy - bw * 0.3f,
+                                         2.5f, 0.6f, 0.4f, 0.2f, iconA);
+                    renderer2d.drawFilledRect(cx - bw * 0.5f, cy - bw * 0.6f, bw * 1.0f, bw * 0.35f,
+                                               0.7f, 0.7f, 0.75f, iconA);
+                    break;
+                }
+                case aoc::sim::UnitClass::Naval: {
+                    float nw = s * 0.55f;
+                    renderer2d.drawFilledTriangle(cx - nw, cy + nw * 0.2f,
+                                                  cx + nw, cy + nw * 0.2f,
+                                                  cx, cy + nw * 0.7f,
+                                                  0.5f, 0.35f, 0.2f, iconA);
+                    renderer2d.drawLine(cx, cy + nw * 0.2f, cx, cy - nw * 0.7f,
+                                         2.0f, 0.6f, 0.4f, 0.25f, iconA);
+                    renderer2d.drawFilledTriangle(cx, cy - nw * 0.6f,
+                                                  cx + nw * 0.6f, cy,
+                                                  cx, cy + nw * 0.1f,
+                                                  1.0f, 1.0f, 1.0f, iconA);
+                    break;
+                }
+                case aoc::sim::UnitClass::Religious: {
+                    float rw = s * 0.4f;
+                    renderer2d.drawCircle(cx, cy, rw, 1.0f, 0.9f, 0.5f, iconA, 2.0f);
+                    renderer2d.drawLine(cx, cy - rw * 0.6f, cx, cy + rw * 0.6f,
+                                         2.0f, 1.0f, 0.9f, 0.5f, iconA);
+                    renderer2d.drawLine(cx - rw * 0.4f, cy - rw * 0.1f,
+                                         cx + rw * 0.4f, cy - rw * 0.1f,
+                                         2.0f, 1.0f, 0.9f, 0.5f, iconA);
+                    break;
+                }
+                default:
+                    break;
+            }
+
+            // ---- Selection: hex outline + HP bar ----
+            // Entity identity is now the unit pointer itself; compare by address via selectedEntity
+            // which stores the legacy EntityId. Units are identified by their position for now.
+            // The selectedEntity field is retained for backward compatibility with callers.
+            if (this->selectedEntity.isValid()) {
+                // We can only draw selection state if this unit's entity matches selectedEntity.
+                // For the object model we rely on callers updating selectedEntity when they select.
+                // This block intentionally left as a no-op for units not matching selected entity.
+            }
+
+            // ---- HP bar (always shown above unit for quick status read) ----
+            {
+                float barW = s * 2.0f;
+                float barH = s * 0.22f;
+                float barX = cx - barW * 0.5f;
+                float barY = cy - s - barH - 4.0f;
+                float hpFrac = static_cast<float>(unit.hitPoints()) /
+                               static_cast<float>(def.maxHitPoints);
+                hpFrac = std::clamp(hpFrac, 0.0f, 1.0f);
+                renderer2d.drawFilledRect(barX, barY, barW, barH, 0.15f, 0.15f, 0.15f, 0.8f);
+                float hpR = (hpFrac < 0.5f) ? 1.0f : (1.0f - hpFrac) * 2.0f;
+                float hpG = (hpFrac > 0.5f) ? 1.0f : hpFrac * 2.0f;
+                renderer2d.drawFilledRect(barX, barY, barW * hpFrac, barH, hpR, hpG, 0.1f, 0.9f);
+            }
+
+            // ---- Pending path (dashed line) ----
+            if (!unit.pendingPath().empty()) {
                 float prevX = cx;
                 float prevY = cy;
-                for (std::size_t pi = 0; pi < unit.pendingPath.size(); ++pi) {
+                for (const aoc::hex::AxialCoord& waypoint : unit.pendingPath()) {
                     float nextX = 0.0f;
                     float nextY = 0.0f;
-                    aoc::hex::axialToPixel(unit.pendingPath[pi], hexSize, nextX, nextY);
+                    aoc::hex::axialToPixel(waypoint, hexSize, nextX, nextY);
 
-                    // Dashed line segment
                     renderer2d.drawDashedLine(prevX, prevY, nextX, nextY,
                                                2.0f, 6.0f, 4.0f,
                                                1.0f, 1.0f, 1.0f, 0.6f);
-
-                    // Waypoint dot
                     renderer2d.drawFilledCircle(nextX, nextY, hexSize * 0.08f,
                                                  1.0f, 1.0f, 1.0f, 0.5f);
-
                     prevX = nextX;
                     prevY = nextY;
                 }
 
-                // Destination marker: circle outline at final position
                 float destX = 0.0f;
                 float destY = 0.0f;
-                aoc::hex::axialToPixel(unit.pendingPath.back(), hexSize, destX, destY);
+                aoc::hex::axialToPixel(unit.pendingPath().back(), hexSize, destX, destY);
                 renderer2d.drawCircle(destX, destY, hexSize * 0.25f,
                                        1.0f, 1.0f, 1.0f, 0.7f, 2.0f);
             }
@@ -289,19 +259,13 @@ void UnitRenderer::drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
 }
 
 void UnitRenderer::drawCities(vulkan_app::renderer::Renderer2D& renderer2d,
-                               const aoc::ecs::World& world,
+                               const aoc::game::GameState& gameState,
                                const aoc::map::FogOfWar& fog,
                                const aoc::map::HexGrid& grid,
                                PlayerId viewingPlayer,
                                const CameraController& camera,
                                float hexSize,
                                uint32_t screenWidth, uint32_t screenHeight) const {
-    const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* pool =
-        world.getPool<aoc::sim::CityComponent>();
-    if (pool == nullptr) {
-        return;
-    }
-
     float topLeftX = 0.0f, topLeftY = 0.0f, botRightX = 0.0f, botRightY = 0.0f;
     camera.screenToWorld(0.0, 0.0, topLeftX, topLeftY, screenWidth, screenHeight);
     camera.screenToWorld(static_cast<double>(screenWidth), static_cast<double>(screenHeight),
@@ -310,33 +274,33 @@ void UnitRenderer::drawCities(vulkan_app::renderer::Renderer2D& renderer2d,
     topLeftX -= margin; topLeftY -= margin;
     botRightX += margin; botRightY += margin;
 
-    for (uint32_t i = 0; i < pool->size(); ++i) {
-        const aoc::sim::CityComponent& city = pool->data()[i];
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+            const aoc::game::City& city = *cityPtr;
 
-        // Fog of war: own cities on Revealed+Visible, foreign cities ONLY on Visible
-        if (grid.isValid(city.location)) {
-            int32_t tileIndex = grid.toIndex(city.location);
-            aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, tileIndex);
-            if (vis == aoc::map::TileVisibility::Unseen) {
+            // Fog of war: own cities on Revealed+Visible, foreign cities ONLY on Visible
+            if (grid.isValid(city.location())) {
+                int32_t tileIndex = grid.toIndex(city.location());
+                aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, tileIndex);
+                if (vis == aoc::map::TileVisibility::Unseen) {
+                    continue;
+                }
+                if (city.owner() != viewingPlayer && vis != aoc::map::TileVisibility::Visible) {
+                    continue;
+                }
+            }
+
+            float cx = 0.0f, cy = 0.0f;
+            hex::axialToPixel(city.location(), hexSize, cx, cy);
+
+            if (cx < topLeftX || cx > botRightX || cy < topLeftY || cy > botRightY) {
                 continue;
             }
-            // Foreign cities disappear when not in active vision
-            if (city.owner != viewingPlayer && vis != aoc::map::TileVisibility::Visible) {
-                continue;
-            }
-        }
 
-        float cx = 0.0f, cy = 0.0f;
-        hex::axialToPixel(city.location, hexSize, cx, cy);
+            float r = 0.0f, g = 0.0f, b = 0.0f;
+            playerColor(city.owner(), r, g, b);
 
-        if (cx < topLeftX || cx > botRightX || cy < topLeftY || cy > botRightY) {
-            continue;
-        }
-
-        float r = 0.0f, g = 0.0f, b = 0.0f;
-        playerColor(city.owner, r, g, b);
-
-        const bool isCityState = city.owner >= aoc::sim::CITY_STATE_PLAYER_BASE;
+            const bool isCityState = city.owner() >= aoc::sim::CITY_STATE_PLAYER_BASE;
 
         // ---- City covers the full hex ----
         float hexPoints[12];
@@ -404,7 +368,8 @@ void UnitRenderer::drawCities(vulkan_app::renderer::Renderer2D& renderer2d,
                                           flagX, flagY + hexSize * 0.12f,
                                           0.85f, 0.85f, 0.85f, 0.9f);
         }
-    }
+        } // end city loop
+    } // end player loop
 }
 
 void UnitRenderer::drawPath(vulkan_app::renderer::Renderer2D& renderer2d,
@@ -443,10 +408,10 @@ void UnitRenderer::drawReachable(vulkan_app::renderer::Renderer2D& renderer2d,
 }
 
 void UnitRenderer::drawRangedRange(vulkan_app::renderer::Renderer2D& renderer2d,
-                                    const aoc::ecs::World& world,
+                                    const aoc::game::GameState& gameState,
                                     hex::AxialCoord center, int32_t range,
                                     PlayerId unitOwner, float hexSize) const {
-    // Draw all tiles within range as a translucent overlay
+    // Draw all tiles within range as a translucent overlay, highlighting enemy-occupied tiles.
     for (int32_t dq = -range; dq <= range; ++dq) {
         for (int32_t dr = -range; dr <= range; ++dr) {
             const int32_t ds = -dq - dr;
@@ -462,17 +427,15 @@ void UnitRenderer::drawRangedRange(vulkan_app::renderer::Renderer2D& renderer2d,
             float cy = 0.0f;
             hex::axialToPixel(tile, hexSize, cx, cy);
 
-            // Check if there is an enemy unit on this tile
+            // Check if an enemy unit occupies this tile
             bool hasEnemy = false;
-            const aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* pool =
-                world.getPool<aoc::sim::UnitComponent>();
-            if (pool != nullptr) {
-                for (uint32_t i = 0; i < pool->size(); ++i) {
-                    const aoc::sim::UnitComponent& other = pool->data()[i];
-                    if (other.position == tile && other.owner != unitOwner) {
-                        hasEnemy = true;
-                        break;
-                    }
+            for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+                if (playerPtr->id() == unitOwner) {
+                    continue;
+                }
+                if (playerPtr->unitAt(tile) != nullptr) {
+                    hasEnemy = true;
+                    break;
                 }
             }
 

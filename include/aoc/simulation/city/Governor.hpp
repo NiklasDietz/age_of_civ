@@ -28,6 +28,7 @@
 #include <cstdint>
 
 namespace aoc::game { class GameState; }
+namespace aoc::game { class City; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -73,16 +74,16 @@ struct CityGovernorComponent {
  * @brief Run the governor for a city: auto-queue production based on focus.
  *
  * Called when a city's production queue is empty and the governor is active.
- * Selects the best item to produce based on the city's focus.
+ * Selects the best item to produce based on the city's focus and build constraints.
  *
- * @param world       ECS world.
- * @param grid        Hex grid.
- * @param cityEntity  The city entity.
- * @param player      Owning player.
+ * @param gameState  Full game state (needed for tech/civic checks).
+ * @param grid       Hex grid.
+ * @param city       The city to manage.
+ * @param player     Owning player.
  */
 void governorAutoQueue(aoc::game::GameState& gameState,
                         const aoc::map::HexGrid& grid,
-                        EntityId cityEntity,
+                        aoc::game::City& city,
                         PlayerId player);
 
 /**

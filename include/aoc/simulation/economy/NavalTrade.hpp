@@ -47,6 +47,7 @@
 
 #include "aoc/core/Types.hpp"
 #include "aoc/core/ErrorCodes.hpp"
+#include "aoc/simulation/economy/TradeRoute.hpp"
 
 #include <cstdint>
 
@@ -128,14 +129,14 @@ inline constexpr std::array<MerchantShipDef, 5> MERCHANT_SHIP_DEFS = {{
  *
  * Considers both land infrastructure and assigned merchant ships.
  *
- * @param world       ECS world.
- * @param grid        Hex grid.
- * @param routeEntity Entity of the trade route.
+ * @param gameState Game state providing player and unit access.
+ * @param grid      Hex grid for terrain and infrastructure queries.
+ * @param route     The trade route to evaluate.
  * @return Maximum cargo units per turn for this route.
  */
 [[nodiscard]] int32_t computeTradeRouteCapacity(const aoc::game::GameState& gameState,
                                                 const aoc::map::HexGrid& grid,
-                                                EntityId routeEntity);
+                                                const TradeRouteComponent& route);
 
 /**
  * @brief Process merchant ship fuel consumption.

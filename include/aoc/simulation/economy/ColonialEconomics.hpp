@@ -32,6 +32,7 @@
  *   - -10% trade efficiency (trading partners don't like it).
  */
 
+#include "aoc/map/HexCoord.hpp"
 #include "aoc/core/Types.hpp"
 #include "aoc/core/ErrorCodes.hpp"
 #include "aoc/map/HexCoord.hpp"
@@ -53,7 +54,7 @@ class Market;
 struct EconomicZone {
     PlayerId colonizer = INVALID_PLAYER;   ///< Player extracting resources
     PlayerId host = INVALID_PLAYER;        ///< Player whose city is being exploited
-    EntityId hostCityEntity = NULL_ENTITY;  ///< Which city
+    aoc::hex::AxialCoord hostCityLocation{};  ///< Which city
     float    extractionRate = 0.30f;        ///< Fraction of raw resources extracted (30%)
     float    paymentRate = 0.50f;           ///< Fraction of market value paid to host (50%)
     int32_t  turnsActive = 0;
@@ -64,9 +65,9 @@ struct GlobalEconomicZoneTracker {
     std::vector<EconomicZone> zones;
 
     /// Check if a city has an economic zone.
-    [[nodiscard]] bool hasZone(EntityId cityEntity) const {
+    [[nodiscard]] bool hasZone(aoc::hex::AxialCoord cityLocation) const {
         for (const EconomicZone& z : this->zones) {
-            if (z.hostCityEntity == cityEntity) {
+            if (z.hostCityLocation == cityLocation) {
                 return true;
             }
         }
@@ -74,9 +75,9 @@ struct GlobalEconomicZoneTracker {
     }
 
     /// Get the colonizer of a city (INVALID_PLAYER if none).
-    [[nodiscard]] PlayerId colonizer(EntityId cityEntity) const {
+    [[nodiscard]] PlayerId colonizer(aoc::hex::AxialCoord cityLocation) const {
         for (const EconomicZone& z : this->zones) {
-            if (z.hostCityEntity == cityEntity) {
+            if (z.hostCityLocation == cityLocation) {
                 return z.colonizer;
             }
         }
@@ -100,7 +101,7 @@ struct GlobalEconomicZoneTracker {
 [[nodiscard]] ErrorCode establishEconomicZone(aoc::game::GameState& gameState,
                                               GlobalEconomicZoneTracker& tracker,
                                               PlayerId colonizer,
-                                              EntityId hostCity);
+                                              aoc::hex::AxialCoord hostCityLocation, PlayerId host);
 
 /**
  * @brief Dissolve an economic zone (voluntarily or via revolt).
@@ -108,7 +109,7 @@ struct GlobalEconomicZoneTracker {
  * @param tracker     Global zone tracker.
  * @param hostCity    City whose zone is being dissolved.
  */
-void dissolveEconomicZone(GlobalEconomicZoneTracker& tracker, EntityId hostCity);
+void dissolveEconomicZone(GlobalEconomicZoneTracker& tracker, aoc::hex::AxialCoord hostCityLocation);
 
 /**
  * @brief Per-turn processing of all economic zones.

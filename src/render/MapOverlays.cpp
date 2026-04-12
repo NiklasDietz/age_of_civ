@@ -4,13 +4,13 @@
  */
 
 #include "aoc/render/MapOverlays.hpp"
-#include "aoc/simulation/production/Waste.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
-#include "aoc/ecs/World.hpp"
 
 #include <renderer/Renderer2D.hpp>
 
@@ -36,7 +36,7 @@ void hexToScreen(hex::AxialCoord coord, float cameraX, float cameraY, float zoom
 } // anonymous namespace
 
 void renderMapOverlays(vulkan_app::renderer::Renderer2D& renderer,
-                       const aoc::ecs::World& world,
+                       const aoc::game::GameState& gameState,
                        const aoc::map::HexGrid& grid,
                        const OverlayState& state,
                        float cameraX, float cameraY, float zoom,
@@ -45,10 +45,10 @@ void renderMapOverlays(vulkan_app::renderer::Renderer2D& renderer,
         renderInfrastructureOverlay(renderer, grid, cameraX, cameraY, zoom, player);
     }
     if (state.enabled[static_cast<int32_t>(OverlayType::Pollution)]) {
-        renderPollutionOverlay(renderer, world, grid, cameraX, cameraY, zoom);
+        renderPollutionOverlay(renderer, gameState, grid, cameraX, cameraY, zoom);
     }
     if (state.enabled[static_cast<int32_t>(OverlayType::TradeRoutes)]) {
-        renderTradeRouteOverlay(renderer, world, grid, cameraX, cameraY, zoom, player);
+        renderTradeRouteOverlay(renderer, gameState, grid, cameraX, cameraY, zoom, player);
     }
 }
 
@@ -80,63 +80,45 @@ void renderInfrastructureOverlay(vulkan_app::renderer::Renderer2D& renderer,
 }
 
 void renderPollutionOverlay(vulkan_app::renderer::Renderer2D& renderer,
-                            const aoc::ecs::World& world,
+                            const aoc::game::GameState& gameState,
                             const aoc::map::HexGrid& grid,
                             float cameraX, float cameraY, float zoom) {
-    const aoc::ecs::ComponentPool<aoc::sim::CityPollutionComponent>* pollPool =
-        world.getPool<aoc::sim::CityPollutionComponent>();
-    if (pollPool == nullptr) { return; }
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+            const aoc::sim::CityPollutionComponent& pollution = cityPtr->pollution();
+            if (pollution.wasteAccumulated < 10) { continue; }
 
-    const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
-        world.getPool<aoc::sim::CityComponent>();
-    if (cityPool == nullptr) { return; }
+            float cx = 0.0f;
+            float cy = 0.0f;
+            hexToScreen(cityPtr->location(), cameraX, cameraY, zoom, cx, cy);
 
-    for (uint32_t i = 0; i < pollPool->size(); ++i) {
-        const aoc::sim::CityPollutionComponent& pollution = pollPool->data()[i];
-        if (pollution.wasteAccumulated < 10) { continue; }
+            // Brown haze overlay, intensity based on pollution level
+            float alpha = std::min(0.5f, static_cast<float>(pollution.wasteAccumulated) * 0.005f);
+            float size = 24.0f * zoom;
 
-        // Find the city's location
-        EntityId cityEntity = pollPool->entities()[i];
-        const aoc::sim::CityComponent* city =
-            world.tryGetComponent<aoc::sim::CityComponent>(cityEntity);
-        if (city == nullptr) { continue; }
-
-        float cx = 0.0f;
-        float cy = 0.0f;
-        hexToScreen(city->location, cameraX, cameraY, zoom, cx, cy);
-
-        // Brown haze overlay, intensity based on pollution level
-        float alpha = std::min(0.5f, static_cast<float>(pollution.wasteAccumulated) * 0.005f);
-        float size = 24.0f * zoom;
-
-        renderer.drawFilledRect(cx - size / 2.0f, cy - size / 2.0f,
-                          size, size, 0.4f, 0.3f, 0.1f, alpha);
+            renderer.drawFilledRect(cx - size / 2.0f, cy - size / 2.0f,
+                              size, size, 0.4f, 0.3f, 0.1f, alpha);
+        }
     }
 }
 
 void renderTradeRouteOverlay(vulkan_app::renderer::Renderer2D& renderer,
-                             const aoc::ecs::World& world,
+                             const aoc::game::GameState& gameState,
                              const aoc::map::HexGrid& grid,
                              float cameraX, float cameraY, float zoom,
                              PlayerId player) {
-    const aoc::ecs::ComponentPool<aoc::sim::TradeRouteComponent>* tradePool =
-        world.getPool<aoc::sim::TradeRouteComponent>();
-    if (tradePool == nullptr) { return; }
-
-    for (uint32_t i = 0; i < tradePool->size(); ++i) {
-        const aoc::sim::TradeRouteComponent& route = tradePool->data()[i];
+    for (const aoc::sim::TradeRouteComponent& route : gameState.tradeRoutes()) {
         if (route.sourcePlayer != player && route.destPlayer != player) {
             continue;
         }
 
-        // Draw lines between path waypoints
+        // Draw gold lines between path waypoints
         for (std::size_t p = 0; p + 1 < route.path.size(); ++p) {
             float x1 = 0.0f, y1 = 0.0f;
             float x2 = 0.0f, y2 = 0.0f;
             hexToScreen(route.path[p], cameraX, cameraY, zoom, x1, y1);
             hexToScreen(route.path[p + 1], cameraX, cameraY, zoom, x2, y2);
 
-            // Gold colored line for trade routes
             renderer.drawLine(x1, y1, x2, y2, 0.9f, 0.8f, 0.2f, 0.6f);
         }
     }

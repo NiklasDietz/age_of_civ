@@ -33,6 +33,7 @@
 #include <cstdint>
 
 namespace aoc::game { class GameState; }
+namespace aoc::game { class City; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -136,15 +137,15 @@ struct CityPowerComponent {
  * Sums energy from all power plant buildings, subtracts fuel costs
  * from stockpile, and computes total demand from industrial buildings.
  *
- * @param world       ECS world.
+ * @param gameState   Game state (used for grid lookups).
  * @param grid        Hex grid (for river adjacency checks).
- * @param cityEntity  City to compute power for.
+ * @param city        City to compute power for.
  * @return Power state for this turn.
  */
 [[nodiscard]] CityPowerComponent computeCityPower(
     aoc::game::GameState& gameState,
     const aoc::map::HexGrid& grid,
-    EntityId cityEntity);
+    aoc::game::City& city);
 
 /**
  * @brief Check for nuclear meltdown.
@@ -154,13 +155,14 @@ struct CityPowerComponent {
  * adds massive pollution (100 waste), -50% population, city is
  * "irradiated" for 20 turns.
  *
- * @param world       ECS world.
- * @param cityEntity  City with nuclear plant.
+ * @param gameState   Game state.
+ * @param grid        Hex grid (for fallout application).
+ * @param city        City with nuclear plant.
  * @param turnHash    Deterministic hash for this turn.
  * @return true if meltdown occurred.
  */
 bool checkNuclearMeltdown(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
-                          EntityId cityEntity, uint32_t turnHash);
+                          aoc::game::City& city, uint32_t turnHash);
 
 /**
  * @brief Apply nuclear fallout from a bombed nuclear plant.
@@ -169,6 +171,6 @@ bool checkNuclearMeltdown(aoc::game::GameState& gameState, aoc::map::HexGrid& gr
  * Called from combat when a city with a nuclear plant is attacked.
  */
 void applyBombedNuclearFallout(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
-                                EntityId cityEntity);
+                                aoc::game::City& city);
 
 } // namespace aoc::sim

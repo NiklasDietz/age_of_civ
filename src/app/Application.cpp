@@ -70,43 +70,7 @@
 #include <cmath>
 #include <utility>
 
-namespace aoc::sim {
-
-std::string getNextCityName(const aoc::ecs::World& world, PlayerId player) {
-    // Find the player's civilization
-    CivId playerCivId = 0;
-    const aoc::ecs::ComponentPool<PlayerCivilizationComponent>* civPool =
-        world.getPool<PlayerCivilizationComponent>();
-    if (civPool != nullptr) {
-        for (uint32_t i = 0; i < civPool->size(); ++i) {
-            if (civPool->data()[i].owner == player) {
-                playerCivId = civPool->data()[i].civId;
-                break;
-            }
-        }
-    }
-
-    // Count existing cities owned by this player
-    int32_t cityCount = 0;
-    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-        world.getPool<CityComponent>();
-    if (cityPool != nullptr) {
-        for (uint32_t i = 0; i < cityPool->size(); ++i) {
-            if (cityPool->data()[i].owner == player) {
-                ++cityCount;
-            }
-        }
-    }
-
-    const CivilizationDef& civ = civDef(playerCivId);
-    if (cityCount >= 0 && static_cast<std::size_t>(cityCount) < MAX_CIV_CITY_NAMES) {
-        return std::string(civ.cityNames[static_cast<std::size_t>(cityCount)]);
-    }
-
-    return "City " + std::to_string(cityCount + 1);
-}
-
-} // namespace aoc::sim
+// getNextCityName is defined in TurnProcessor.cpp
 
 namespace aoc::app {
 
@@ -276,8 +240,7 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     this->m_fogOfWar.initialize(this->m_hexGrid.tileCount(), MAX_PLAYERS);
     this->m_diplomacy.initialize(config.playerCount);
 
-    // -- Initialize new GameState object model (shares the same ECS World) --
-    this->m_gameState.setExternalWorld(&this->m_world);
+    // -- Initialize new GameState object model --
     this->m_gameState.initialize(static_cast<int32_t>(config.playerCount));
     for (uint8_t i = 0; i < config.playerCount; ++i) {
         aoc::game::Player* gsPlayer = this->m_gameState.player(static_cast<PlayerId>(i));
@@ -298,70 +261,33 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
         this->spawnAIPlayer(playerId, config.players[i].civId);
     }
 
-    // -- War weariness and era score initialization --
+    // -- War weariness, era score, religion, grievance per-player initialization --
+    // These are owned by the GameState Player objects; no ECS entities needed.
     for (uint8_t p = 0; p < config.playerCount; ++p) {
         const PlayerId pid = static_cast<PlayerId>(p);
-        {
-            EntityId wwEntity = this->m_world.createEntity();
-            aoc::sim::PlayerWarWearinessComponent wwComp{};
-            wwComp.owner = pid;
-            this->m_world.addComponent<aoc::sim::PlayerWarWearinessComponent>(
-                wwEntity, std::move(wwComp));
-        }
-        {
-            EntityId esEntity = this->m_world.createEntity();
-            aoc::sim::PlayerEraScoreComponent esComp{};
-            esComp.owner = pid;
-            this->m_world.addComponent<aoc::sim::PlayerEraScoreComponent>(
-                esEntity, std::move(esComp));
+        aoc::game::Player* initPlayer = this->m_gameState.player(pid);
+        if (initPlayer != nullptr) {
+            initPlayer->warWeariness().owner = pid;
+            initPlayer->eraScore().owner     = pid;
+            initPlayer->faith().owner        = pid;
+            initPlayer->grievances().owner   = pid;
         }
     }
-    LOG_INFO("War weariness and era score initialized for %u players",
+    LOG_INFO("War weariness, era score, faith, and grievances initialized for %u players",
              static_cast<unsigned>(config.playerCount));
 
-    // -- Religion system initialization --
-    {
-        EntityId religionEntity = this->m_world.createEntity();
-        this->m_world.addComponent<aoc::sim::GlobalReligionTracker>(
-            religionEntity, aoc::sim::GlobalReligionTracker{});
+    // -- Religion tracker already part of GameState; reset it for new game --
+    this->m_gameState.religionTracker() = aoc::sim::GlobalReligionTracker{};
+    LOG_INFO("Religion system initialized for %u players",
+             static_cast<unsigned>(config.playerCount));
 
-        for (uint8_t p = 0; p < config.playerCount; ++p) {
-            EntityId faithEntity = this->m_world.createEntity();
-            aoc::sim::PlayerFaithComponent faithComp{};
-            faithComp.owner = static_cast<PlayerId>(p);
-            this->m_world.addComponent<aoc::sim::PlayerFaithComponent>(
-                faithEntity, std::move(faithComp));
-        }
-        LOG_INFO("Religion system initialized for %u players",
-                 static_cast<unsigned>(config.playerCount));
-    }
+    // -- World Congress already part of GameState; reset it for new game --
+    this->m_gameState.worldCongress() = aoc::sim::WorldCongressComponent{};
+    LOG_INFO("World Congress initialized (first session at turn 50)");
 
-    // -- Grievance system initialization --
-    for (uint8_t p = 0; p < config.playerCount; ++p) {
-        EntityId gEntity = this->m_world.createEntity();
-        aoc::sim::PlayerGrievanceComponent gComp{};
-        gComp.owner = static_cast<PlayerId>(p);
-        this->m_world.addComponent<aoc::sim::PlayerGrievanceComponent>(
-            gEntity, std::move(gComp));
-    }
-
-    // -- World Congress initialization --
-    {
-        EntityId wcEntity = this->m_world.createEntity();
-        aoc::sim::WorldCongressComponent wcComp{};
-        this->m_world.addComponent<aoc::sim::WorldCongressComponent>(
-            wcEntity, std::move(wcComp));
-        LOG_INFO("World Congress initialized (first session at turn 50)");
-    }
-
-    // -- Climate system initialization --
-    {
-        EntityId climateEntity = this->m_world.createEntity();
-        aoc::sim::GlobalClimateComponent climateComp{};
-        this->m_world.addComponent<aoc::sim::GlobalClimateComponent>(
-            climateEntity, std::move(climateComp));
-        LOG_INFO("Climate system initialized");
-    }
+    // -- Climate system already part of GameState; reset it for new game --
+    this->m_gameState.climate() = aoc::sim::GlobalClimateComponent{};
+    LOG_INFO("Climate system initialized");
 
     // -- Replay recorder --
     this->m_replayRecorder.clear();
@@ -375,12 +301,12 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
 
     // Spawn city-states
     const int32_t cityStateCount = static_cast<int32_t>(config.playerCount) * 2;
-    aoc::sim::spawnCityStates(this->m_world, this->m_hexGrid,
+    aoc::sim::spawnCityStates(this->m_gameState, this->m_hexGrid,
                                cityStateCount, this->m_gameRng);
 
     // Update fog of war for all players
     for (uint8_t i = 0; i < config.playerCount; ++i) {
-        this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, i);
+        this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, i);
     }
 
     // Diagnostic: count visible tiles for player 0
@@ -557,7 +483,7 @@ void Application::run() {
                 this->m_debugConsole.backspace();
             }
             if (this->m_inputManager.isKeyPressed(GLFW_KEY_ENTER)) {
-                this->m_debugConsole.execute(this->m_world, this->m_hexGrid,
+                this->m_debugConsole.execute(this->m_gameState, this->m_hexGrid,
                                               this->m_fogOfWar, 0);
             }
         }
@@ -567,17 +493,14 @@ void Application::run() {
 
         // -- Animated unit movement: advance animProgress each frame --
         {
-            aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* animPool =
-                this->m_world.getPool<aoc::sim::UnitComponent>();
-            if (animPool != nullptr) {
-                constexpr float ANIM_DURATION = 0.2f;
-                for (uint32_t ai = 0; ai < animPool->size(); ++ai) {
-                    aoc::sim::UnitComponent& animUnit = animPool->data()[ai];
-                    if (animUnit.isAnimating) {
-                        animUnit.animProgress += deltaTime / ANIM_DURATION;
-                        if (animUnit.animProgress >= 1.0f) {
-                            animUnit.animProgress = 1.0f;
-                            animUnit.isAnimating = false;
+            constexpr float ANIM_DURATION = 0.2f;
+            for (const std::unique_ptr<aoc::game::Player>& animPlayer : this->m_gameState.players()) {
+                for (const std::unique_ptr<aoc::game::Unit>& animUnit : animPlayer->units()) {
+                    if (animUnit->isAnimating) {
+                        animUnit->animProgress += deltaTime / ANIM_DURATION;
+                        if (animUnit->animProgress >= 1.0f) {
+                            animUnit->animProgress = 1.0f;
+                            animUnit->isAnimating = false;
                         }
                     }
                 }
@@ -593,34 +516,28 @@ void Application::run() {
 
         // -- Cycle to next unit needing orders (Tab key) --
         if (this->m_inputManager.isActionPressed(InputAction::CycleNextUnit) && !this->anyScreenOpen()) {
-            aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* cyclePool =
-                this->m_world.getPool<aoc::sim::UnitComponent>();
-            if (cyclePool != nullptr) {
-                EntityId nextUnit = NULL_ENTITY;
-                for (uint32_t ci = 0; ci < cyclePool->size(); ++ci) {
-                    const aoc::sim::UnitComponent& cu = cyclePool->data()[ci];
-                    if (cu.owner != 0) {
+            aoc::game::Player* cyclePlayer = this->m_gameState.player(0);
+            if (cyclePlayer != nullptr) {
+                aoc::game::Unit* nextUnit = nullptr;
+                for (const std::unique_ptr<aoc::game::Unit>& cu : cyclePlayer->units()) {
+                    if (cu->movementRemaining() <= 0) {
                         continue;
                     }
-                    if (cu.movementRemaining <= 0) {
+                    if (cu->state() == aoc::sim::UnitState::Sleeping ||
+                        cu->state() == aoc::sim::UnitState::Fortified) {
                         continue;
                     }
-                    if (cu.state == aoc::sim::UnitState::Sleeping ||
-                        cu.state == aoc::sim::UnitState::Fortified) {
+                    if (!cu->pendingPath().empty()) {
                         continue;
                     }
-                    if (!cu.pendingPath.empty()) {
-                        continue;
-                    }
-                    nextUnit = cyclePool->entities()[ci];
+                    nextUnit = cu.get();
                     break;
                 }
-                if (nextUnit.isValid()) {
-                    this->m_selectedEntity = nextUnit;
-                    const aoc::sim::UnitComponent& selU =
-                        this->m_world.getComponent<aoc::sim::UnitComponent>(nextUnit);
+                if (nextUnit != nullptr) {
+                    this->m_selectedUnit = nextUnit;
+                    this->m_selectedCity = nullptr;
                     float ucx = 0.0f, ucy = 0.0f;
-                    hex::axialToPixel(selU.position,
+                    hex::axialToPixel(nextUnit->position(),
                                       this->m_gameRenderer.mapRenderer().hexSize(), ucx, ucy);
                     this->m_cameraController.setPosition(ucx, ucy);
                 }
@@ -650,47 +567,41 @@ void Application::run() {
 
         // -- Screen toggle keys --
         if (this->m_inputManager.isActionPressed(InputAction::OpenTechTree)) {
-            this->m_techScreen.setContext(&this->m_world, 0);
+            this->m_techScreen.setContext(&this->m_gameState, 0);
             this->m_techScreen.toggle(this->m_uiManager);
         }
         if (this->m_inputManager.isActionPressed(InputAction::OpenEconomy)) {
-            this->m_economyScreen.setContext(&this->m_world, &this->m_hexGrid, 0, &this->m_economy.market());
+            this->m_economyScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0, &this->m_economy.market());
             this->m_economyScreen.toggle(this->m_uiManager);
         }
         if (this->m_inputManager.isActionPressed(InputAction::OpenGovernment)) {
-            this->m_governmentScreen.setContext(&this->m_world, 0);
+            this->m_governmentScreen.setContext(&this->m_gameState, 0);
             this->m_governmentScreen.toggle(this->m_uiManager);
         }
         if (this->m_inputManager.isActionPressed(InputAction::OpenReligion)) {
-            this->m_religionScreen.setContext(&this->m_world, &this->m_hexGrid, 0);
+            this->m_religionScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0);
             this->m_religionScreen.toggle(this->m_uiManager);
         }
         if (this->m_inputManager.isActionPressed(InputAction::OpenProductionPicker)) {
-            // Only open if a city is selected
-            if (this->m_selectedEntity.isValid() &&
-                this->m_world.isAlive(this->m_selectedEntity) &&
-                this->m_world.hasComponent<aoc::sim::CityComponent>(this->m_selectedEntity) &&
-                this->m_world.getComponent<aoc::sim::CityComponent>(this->m_selectedEntity).owner == 0) {
+            // Only open if an own city is selected
+            if (this->m_selectedCity != nullptr && this->m_selectedCity->owner() == 0) {
                 this->m_productionScreen.setContext(
-                    &this->m_world, &this->m_hexGrid, this->m_selectedEntity, 0);
+                    &this->m_gameState, &this->m_hexGrid, this->m_selectedCity->location(), 0);
                 this->m_productionScreen.toggle(this->m_uiManager);
             }
         }
 
         // -- Unit upgrade (U key) --
         if (this->m_inputManager.isActionPressed(InputAction::UpgradeUnit)) {
-            if (this->m_selectedEntity.isValid() &&
-                this->m_world.isAlive(this->m_selectedEntity) &&
-                this->m_world.hasComponent<aoc::sim::UnitComponent>(this->m_selectedEntity)) {
-                const aoc::sim::UnitComponent& selUnit =
-                    this->m_world.getComponent<aoc::sim::UnitComponent>(this->m_selectedEntity);
+            if (this->m_selectedUnit != nullptr) {
                 const std::vector<aoc::sim::UnitUpgradeDef> upgrades =
-                    aoc::sim::getAvailableUpgrades(selUnit.typeId);
+                    aoc::sim::getAvailableUpgrades(this->m_selectedUnit->typeId());
                 if (!upgrades.empty()) {
                     // Try the first available upgrade
                     const aoc::sim::UnitUpgradeDef& upg = upgrades[0];
                     bool success = aoc::sim::upgradeUnit(
-                        this->m_world, this->m_selectedEntity, upg.to, selUnit.owner);
+                        this->m_gameState, *this->m_selectedUnit, upg.to,
+                        this->m_selectedUnit->owner());
                     if (success) {
                         this->m_eventLog.addEvent("Unit upgraded!");
                     }
@@ -778,7 +689,7 @@ void Application::run() {
         // -- Quick save/load --
         if (this->m_inputManager.isActionPressed(InputAction::QuickSave)) {
             ErrorCode saveResult = aoc::save::saveGame(
-                "quicksave.aoc", this->m_world, this->m_hexGrid,
+                "quicksave.aoc", this->m_gameState, this->m_hexGrid,
                 this->m_turnManager, this->m_economy, this->m_diplomacy,
                 this->m_fogOfWar, this->m_gameRng);
             if (saveResult != ErrorCode::Ok) {
@@ -789,7 +700,7 @@ void Application::run() {
         }
         if (this->m_inputManager.isActionPressed(InputAction::QuickLoad)) {
             ErrorCode loadResult = aoc::save::loadGame(
-                "quicksave.aoc", this->m_world, this->m_hexGrid,
+                "quicksave.aoc", this->m_gameState, this->m_hexGrid,
                 this->m_turnManager, this->m_economy, this->m_diplomacy,
                 this->m_fogOfWar, this->m_gameRng);
             if (loadResult != ErrorCode::Ok) {
@@ -802,9 +713,9 @@ void Application::run() {
 
                 // Re-initialize fog of war from loaded state for all players
                 this->m_fogOfWar.initialize(this->m_hexGrid.tileCount(), MAX_PLAYERS);
-                this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, 0);
+                this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, 0);
                 for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
-                    this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, ai.player());
+                    this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, ai.player());
                 }
             }
         }
@@ -861,7 +772,7 @@ void Application::run() {
         // allow map interactions on the MAP area (left of the city panel).
         // Don't check m_uiConsumedInput — the HUD widgets shouldn't block tile clicks.
         if (this->onlyCityDetailScreenOpen()
-            && this->m_world.hasComponent<aoc::sim::CityComponent>(this->m_cityDetailScreen.cityEntity())
+            && this->m_gameState.player(0) != nullptr && this->m_gameState.player(0)->cityAt(this->m_cityDetailScreen.cityLocation()) != nullptr
             && this->m_inputManager.mouseX() < static_cast<double>(fbWidth) - 350.0) {
             // Left-click on a tile: toggle worker assignment
             if (this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT)) {
@@ -878,39 +789,30 @@ void Application::run() {
                 if (this->m_hexGrid.isValid(clickedTile)) {
                     // Check if clicked on a unit or different city → close panel and select
                     bool clickedOtherEntity = false;
-                    aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* unitPool =
-                        this->m_world.getPool<aoc::sim::UnitComponent>();
-                    if (unitPool != nullptr) {
-                        for (uint32_t ui2 = 0; ui2 < unitPool->size(); ++ui2) {
-                            if (unitPool->data()[ui2].position == clickedTile
-                                && unitPool->data()[ui2].owner == 0) {
-                                // Clicked on own unit: close city panel, select unit
-                                this->m_cityDetailScreen.close(this->m_uiManager);
-                                this->m_selectedEntity = unitPool->entities()[ui2];
-                                clickedOtherEntity = true;
-                                break;
-                            }
+                    aoc::game::Player* clickPlayer = this->m_gameState.player(0);
+                    if (clickPlayer != nullptr) {
+                        aoc::game::Unit* clickedUnit = clickPlayer->unitAt(clickedTile);
+                        if (clickedUnit != nullptr) {
+                            // Clicked on own unit: close city panel, select unit
+                            this->m_cityDetailScreen.close(this->m_uiManager);
+                            this->m_selectedUnit = clickedUnit;
+                            this->m_selectedCity = nullptr;
+                            clickedOtherEntity = true;
                         }
                     }
-                    if (!clickedOtherEntity) {
-                        aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
-                            this->m_world.getPool<aoc::sim::CityComponent>();
-                        if (cityPool != nullptr) {
-                            for (uint32_t ci2 = 0; ci2 < cityPool->size(); ++ci2) {
-                                if (cityPool->data()[ci2].location == clickedTile
-                                    && cityPool->data()[ci2].owner == 0
-                                    && cityPool->entities()[ci2] != this->m_cityDetailScreen.cityEntity()) {
-                                    // Clicked on different own city: switch to it
-                                    this->m_cityDetailScreen.close(this->m_uiManager);
-                                    this->m_selectedEntity = cityPool->entities()[ci2];
-                                    this->m_cityDetailScreen.setContext(
-                                        &this->m_world, &this->m_hexGrid,
-                                        this->m_selectedEntity, 0);
-                                    this->m_cityDetailScreen.open(this->m_uiManager);
-                                    clickedOtherEntity = true;
-                                    break;
-                                }
-                            }
+                    if (!clickedOtherEntity && clickPlayer != nullptr) {
+                        aoc::game::City* clickedCity = clickPlayer->cityAt(clickedTile);
+                        if (clickedCity != nullptr
+                            && clickedCity->location() != this->m_cityDetailScreen.cityLocation()) {
+                            // Clicked on different own city: switch to it
+                            this->m_cityDetailScreen.close(this->m_uiManager);
+                            this->m_selectedCity = clickedCity;
+                            this->m_selectedUnit = nullptr;
+                            this->m_cityDetailScreen.setContext(
+                                &this->m_gameState, &this->m_hexGrid,
+                                clickedCity->location(), 0);
+                            this->m_cityDetailScreen.open(this->m_uiManager);
+                            clickedOtherEntity = true;
                         }
                     }
                     if (!clickedOtherEntity) {
@@ -945,17 +847,17 @@ void Application::run() {
             this->m_gameRenderer.tooltipManager().update(
                 static_cast<float>(this->m_inputManager.mouseX()),
                 static_cast<float>(this->m_inputManager.mouseY()),
-                this->m_world, this->m_hexGrid,
+                this->m_gameState, this->m_hexGrid,
                 this->m_cameraController, this->m_fogOfWar,
                 PlayerId{0}, fbWidth, fbHeight,
-                this->m_selectedEntity);
+                NULL_ENTITY);
         } else {
             // Mouse is over UI - hide the map tooltip
             this->m_gameRenderer.tooltipManager().hide();
         }
 
         // Sync selection to renderer and update HUD text
-        this->m_gameRenderer.unitRenderer().selectedEntity = this->m_selectedEntity;
+        // TODO: renderer selection highlight needs Unit* not EntityId
         this->updateHUD();
 
         // -- Render --
@@ -982,7 +884,7 @@ void Application::run() {
             frame.frameIndex,
             this->m_cameraController,
             this->m_hexGrid,
-            this->m_world,
+            this->m_gameState,
             this->m_fogOfWar,
             PlayerId{0},
             this->m_uiManager,
@@ -1088,7 +990,7 @@ void Application::showReturnToMenuConfirm() {
     // "Save & Exit" button
     makeDlgBtn(btnRow, "Save", {0.15f, 0.40f, 0.15f, 0.9f}, [this]() {
         [[maybe_unused]] ErrorCode saveResult = aoc::save::saveGame(
-            "quicksave.aoc", this->m_world, this->m_hexGrid,
+            "quicksave.aoc", this->m_gameState, this->m_hexGrid,
             this->m_turnManager, this->m_economy, this->m_diplomacy,
             this->m_fogOfWar, this->m_gameRng);
         LOG_INFO("Game saved before returning to menu");
@@ -1151,16 +1053,16 @@ void Application::returnToMainMenu() {
         this->m_uiManager.removeWidget(this->m_unitActionPanel);
         this->m_unitActionPanel = aoc::ui::INVALID_WIDGET;
     }
-    this->m_actionPanelEntity = NULL_ENTITY;
+    this->m_actionPanelUnit = nullptr;
     if (this->m_helpOverlay != aoc::ui::INVALID_WIDGET) {
         this->m_uiManager.removeWidget(this->m_helpOverlay);
         this->m_helpOverlay = aoc::ui::INVALID_WIDGET;
     }
 
     // Reset game state
-    this->m_world = aoc::ecs::World{};
     this->m_hexGrid = aoc::map::HexGrid{};
-    this->m_selectedEntity = NULL_ENTITY;
+    this->m_selectedUnit = nullptr;
+    this->m_selectedCity = nullptr;
     this->m_gameOver = false;
     this->m_aiControllers.clear();
 
@@ -1362,53 +1264,41 @@ void Application::handleSelect() {
     hex::AxialCoord clickedTile = hex::pixelToAxial(worldX, worldY, hexSize);
 
     if (!this->m_hexGrid.isValid(clickedTile)) {
-        this->m_selectedEntity = NULL_ENTITY;
+        this->m_selectedUnit = nullptr;
+        this->m_selectedCity = nullptr;
         return;
     }
 
-    // Use GameState for fast ownership check, then find the ECS EntityId
-    // for backward compatibility with rendering and other ECS-based systems.
     aoc::game::Player* humanGs = this->m_gameState.humanPlayer();
 
-    // Check if one of OUR units is on this tile via GameState
-    if (humanGs != nullptr && humanGs->unitAt(clickedTile) != nullptr) {
-        // Confirmed our unit is here; find the ECS entity for rendering
-        aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* unitPool =
-            this->m_world.getPool<aoc::sim::UnitComponent>();
-        if (unitPool != nullptr) {
-            for (uint32_t i = 0; i < unitPool->size(); ++i) {
-                if (unitPool->data()[i].position == clickedTile
-                    && unitPool->data()[i].owner == 0) {
-                    this->m_selectedEntity = unitPool->entities()[i];
-                    return;
-                }
-            }
+    // Check if one of OUR units is on this tile
+    if (humanGs != nullptr) {
+        aoc::game::Unit* selectedUnit = humanGs->unitAt(clickedTile);
+        if (selectedUnit != nullptr) {
+            this->m_selectedUnit = selectedUnit;
+            this->m_selectedCity = nullptr;
+            return;
         }
     }
 
-    // Check if one of OUR cities is on this tile via GameState
-    if (humanGs != nullptr && humanGs->cityAt(clickedTile) != nullptr) {
-        // Confirmed our city is here; find the ECS entity for rendering
-        aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
-            this->m_world.getPool<aoc::sim::CityComponent>();
-        if (cityPool != nullptr) {
-            for (uint32_t i = 0; i < cityPool->size(); ++i) {
-                if (cityPool->data()[i].location == clickedTile
-                    && cityPool->data()[i].owner == 0) {
-                    this->m_selectedEntity = cityPool->entities()[i];
-                    // Open city detail screen
-                    this->m_cityDetailScreen.setContext(
-                        &this->m_world, &this->m_hexGrid, this->m_selectedEntity, 0);
-                    if (!this->m_cityDetailScreen.isOpen()) {
-                        this->m_cityDetailScreen.open(this->m_uiManager);
-                    }
-                    return;
-                }
+    // Check if one of OUR cities is on this tile
+    if (humanGs != nullptr) {
+        aoc::game::City* selectedCity = humanGs->cityAt(clickedTile);
+        if (selectedCity != nullptr) {
+            this->m_selectedCity = selectedCity;
+            this->m_selectedUnit = nullptr;
+            // Open city detail screen
+            this->m_cityDetailScreen.setContext(
+                &this->m_gameState, &this->m_hexGrid, clickedTile, 0);
+            if (!this->m_cityDetailScreen.isOpen()) {
+                this->m_cityDetailScreen.open(this->m_uiManager);
             }
+            return;
         }
     }
 
-    this->m_selectedEntity = NULL_ENTITY;
+    this->m_selectedUnit = nullptr;
+    this->m_selectedCity = nullptr;
 }
 
 void Application::handleContextAction() {
@@ -1426,19 +1316,15 @@ void Application::handleContextAction() {
         return;
     }
 
-    if (!this->m_selectedEntity.isValid() || !this->m_world.isAlive(this->m_selectedEntity)) {
+    if (this->m_selectedUnit == nullptr && this->m_selectedCity == nullptr) {
         return;
     }
 
     // Only allow actions on own entities
-    const aoc::sim::UnitComponent* selUnit =
-        this->m_world.tryGetComponent<aoc::sim::UnitComponent>(this->m_selectedEntity);
-    if (selUnit != nullptr && selUnit->owner != 0) {
+    if (this->m_selectedUnit != nullptr && this->m_selectedUnit->owner() != 0) {
         return;  // Can't control other players' units
     }
-    const aoc::sim::CityComponent* selCity =
-        this->m_world.tryGetComponent<aoc::sim::CityComponent>(this->m_selectedEntity);
-    if (selCity != nullptr && selCity->owner != 0) {
+    if (this->m_selectedCity != nullptr && this->m_selectedCity->owner() != 0) {
         return;  // Can't control other players' cities
     }
 
@@ -1450,42 +1336,39 @@ void Application::handleContextAction() {
         this->m_inputManager.mouseX(), this->m_inputManager.mouseY(),
         worldX, worldY, fbWidth, fbHeight);
 
-    float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
-    hex::AxialCoord targetTile = hex::pixelToAxial(worldX, worldY, hexSize);
+    const float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
+    const hex::AxialCoord targetTile = hex::pixelToAxial(worldX, worldY, hexSize);
 
     if (!this->m_hexGrid.isValid(targetTile)) {
         return;
     }
 
     // Handle right-click on a selected city
-    if (this->m_world.hasComponent<aoc::sim::CityComponent>(this->m_selectedEntity)) {
-        aoc::sim::CityComponent& city =
-            this->m_world.getComponent<aoc::sim::CityComponent>(this->m_selectedEntity);
+    if (this->m_selectedCity != nullptr) {
+        aoc::game::City& city = *this->m_selectedCity;
 
         // Right-click on city itself: open production picker
-        if (city.location == targetTile) {
-            aoc::sim::ProductionQueueComponent* queue =
-                this->m_world.tryGetComponent<aoc::sim::ProductionQueueComponent>(
-                    this->m_selectedEntity);
-            if (queue != nullptr && queue->isEmpty()) {
+        if (city.location() == targetTile) {
+            aoc::sim::ProductionQueueComponent& queue = city.production();
+            if (queue.isEmpty()) {
                 aoc::sim::ProductionQueueItem item{};
                 item.type = aoc::sim::ProductionItemType::Unit;
                 item.itemId = 0;  // Warrior
                 item.name = "Warrior";
                 item.totalCost = 40.0f;
                 item.progress = 0.0f;
-                queue->queue.push_back(std::move(item));
-                LOG_INFO("Enqueued Warrior in %s", city.name.c_str());
+                queue.queue.push_back(std::move(item));
+                LOG_INFO("Enqueued Warrior in %s", city.name().c_str());
             }
             return;
         }
 
         // Right-click on unowned tile adjacent to player's border: buy it
-        int32_t tileIdx = this->m_hexGrid.toIndex(targetTile);
+        const int32_t tileIdx = this->m_hexGrid.toIndex(targetTile);
         if (this->m_hexGrid.owner(tileIdx) == INVALID_PLAYER) {
             // Check if at least one neighbor is owned by this player
             bool adjacentToOwned = false;
-            std::array<aoc::hex::AxialCoord, 6> neighbors = aoc::hex::neighbors(targetTile);
+            const std::array<aoc::hex::AxialCoord, 6> neighbors = aoc::hex::neighbors(targetTile);
             for (const aoc::hex::AxialCoord& nbr : neighbors) {
                 if (this->m_hexGrid.isValid(nbr) &&
                     this->m_hexGrid.owner(this->m_hexGrid.toIndex(nbr)) == 0) {
@@ -1495,22 +1378,17 @@ void Application::handleContextAction() {
             }
             if (!adjacentToOwned) { return; }
 
-            int32_t dist = aoc::hex::distance(city.location, targetTile);
-            int32_t cost = 25 * std::max(1, dist);
+            const int32_t dist = aoc::hex::distance(city.location(), targetTile);
+            const int32_t cost = 25 * std::max(1, dist);
 
             // Two-click confirmation: first click shows cost, second click on same tile confirms
             if (this->m_pendingBuyTile == targetTile && this->m_pendingBuyConfirm) {
-                // Second click: execute purchase
-                aoc::sim::PlayerEconomyComponent* econ = nullptr;
-                this->m_world.forEach<aoc::sim::PlayerEconomyComponent>(
-                    [&econ](EntityId, aoc::sim::PlayerEconomyComponent& ec) {
-                        if (ec.owner == 0) { econ = &ec; }
-                    });
-
-                if (econ != nullptr && econ->treasury >= static_cast<CurrencyAmount>(cost)) {
-                    econ->treasury -= static_cast<CurrencyAmount>(cost);
+                // Second click: execute purchase via GameState player treasury
+                aoc::game::Player* buyPlayer = this->m_gameState.player(0);
+                if (buyPlayer != nullptr
+                    && buyPlayer->spendGold(static_cast<CurrencyAmount>(cost))) {
                     this->m_hexGrid.setOwner(tileIdx, 0);
-                    city.tilesClaimedCount += 1;
+                    city.incrementTilesClaimed();
                     this->m_notificationManager.push(
                         "Bought tile for " + std::to_string(cost) + " gold",
                         2.0f, 0.2f, 0.9f, 0.3f);
@@ -1534,186 +1412,120 @@ void Application::handleContextAction() {
         return;
     }
 
+    // From here: a unit is selected.
+    if (this->m_selectedUnit == nullptr) {
+        return;
+    }
+    aoc::game::Unit& unit = *this->m_selectedUnit;
+
     // Activate Great Person on right-click at their own tile
-    if (this->m_world.hasComponent<aoc::sim::GreatPersonComponent>(this->m_selectedEntity)) {
-        const aoc::sim::GreatPersonComponent& gpCheck =
-            this->m_world.getComponent<aoc::sim::GreatPersonComponent>(this->m_selectedEntity);
-        if (gpCheck.position == targetTile && !gpCheck.isActivated) {
-            aoc::sim::activateGreatPerson(this->m_world, this->m_hexGrid, this->m_selectedEntity);
-            this->m_selectedEntity = NULL_ENTITY;
+    {
+        aoc::sim::GreatPersonComponent& gp = unit.greatPerson();
+        if (gp.position == targetTile && !gp.isActivated && gp.defId < aoc::sim::GREAT_PERSON_COUNT) {
+            aoc::sim::activateGreatPerson(this->m_gameState, this->m_hexGrid, unit);
+            this->m_selectedUnit = nullptr;
             return;
         }
     }
 
-    // Only move units
-    if (!this->m_world.hasComponent<aoc::sim::UnitComponent>(this->m_selectedEntity)) {
-        return;
-    }
-
-    aoc::sim::UnitComponent& unit =
-        this->m_world.getComponent<aoc::sim::UnitComponent>(this->m_selectedEntity);
-
     // Religious unit actions: right-click on a city
     {
-        const aoc::sim::UnitTypeDef& relDef = aoc::sim::unitTypeDef(unit.typeId);
+        const aoc::sim::UnitTypeDef& relDef = unit.typeDef();
         if (relDef.unitClass == aoc::sim::UnitClass::Religious && unit.spreadCharges > 0) {
-            // Check if target tile has a city
-            const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
-                this->m_world.getPool<aoc::sim::CityComponent>();
-            if (cityPool != nullptr) {
-                for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
-                    const aoc::sim::CityComponent& city = cityPool->data()[ci];
-                    if (city.location != targetTile) {
-                        continue;
-                    }
-                    EntityId cityEntity = cityPool->entities()[ci];
-
-                    // Inquisitor: remove foreign religion from own city
-                    if (unit.typeId.value == 21 && city.owner == unit.owner) {
-                        aoc::sim::CityReligionComponent* cityRel =
-                            this->m_world.tryGetComponent<aoc::sim::CityReligionComponent>(cityEntity);
-                        if (cityRel != nullptr) {
-                            for (uint8_t ri = 0; ri < aoc::sim::MAX_RELIGIONS; ++ri) {
-                                if (ri != unit.spreadingReligion) {
-                                    cityRel->pressure[ri] = 0.0f;
-                                }
-                            }
-                            LOG_INFO("Inquisitor removed foreign religion from %s",
-                                     city.name.c_str());
-                        }
-                        --unit.spreadCharges;
-                        if (unit.spreadCharges <= 0) {
-                            this->m_world.destroyEntity(this->m_selectedEntity);
-                            this->m_selectedEntity = NULL_ENTITY;
-                        }
-                        return;
-                    }
-
-                    // Missionary/Apostle: spread religion to target city
-                    if (unit.typeId.value == 19 || unit.typeId.value == 20) {
-                        // Ensure city has a CityReligionComponent
-                        if (!this->m_world.hasComponent<aoc::sim::CityReligionComponent>(cityEntity)) {
-                            this->m_world.addComponent<aoc::sim::CityReligionComponent>(
-                                cityEntity, aoc::sim::CityReligionComponent{});
-                        }
-                        aoc::sim::CityReligionComponent& cityRel =
-                            this->m_world.getComponent<aoc::sim::CityReligionComponent>(cityEntity);
-
-                        const float pressure = (unit.typeId.value == 19) ? 100.0f : 150.0f;
-                        cityRel.addPressure(unit.spreadingReligion, pressure);
-                        --unit.spreadCharges;
-
-                        LOG_INFO("%.*s spread religion to %s (pressure +%d, charges left: %d)",
-                                 static_cast<int>(relDef.name.size()), relDef.name.data(),
-                                 city.name.c_str(), static_cast<int>(pressure),
-                                 static_cast<int>(unit.spreadCharges));
-
-                        if (unit.spreadCharges <= 0) {
-                            this->m_world.destroyEntity(this->m_selectedEntity);
-                            this->m_selectedEntity = NULL_ENTITY;
-                        }
-                        return;
-                    }
-                    break;
+            // Find city at target tile across all players
+            for (const std::unique_ptr<aoc::game::Player>& relPlayer : this->m_gameState.players()) {
+                aoc::game::City* relCity = relPlayer->cityAt(targetTile);
+                if (relCity == nullptr) {
+                    continue;
                 }
+
+                // Inquisitor: remove foreign religion from own city
+                if (unit.typeId().value == 21 && relCity->owner() == unit.owner()) {
+                    aoc::sim::CityReligionComponent& cityRel = relCity->religion();
+                    for (uint8_t ri = 0; ri < aoc::sim::MAX_RELIGIONS; ++ri) {
+                        if (ri != unit.spreadingReligion) {
+                            cityRel.pressure[ri] = 0.0f;
+                        }
+                    }
+                    LOG_INFO("Inquisitor removed foreign religion from %s",
+                             relCity->name().c_str());
+                    --unit.spreadCharges;
+                    if (unit.spreadCharges <= 0) {
+                        aoc::game::Player* relOwner = this->m_gameState.player(unit.owner());
+                        if (relOwner != nullptr) { relOwner->removeUnit(&unit); }
+                        this->m_selectedUnit = nullptr;
+                    }
+                    return;
+                }
+
+                // Missionary/Apostle: spread religion to target city
+                if (unit.typeId().value == 19 || unit.typeId().value == 20) {
+                    const float pressure = (unit.typeId().value == 19) ? 100.0f : 150.0f;
+                    relCity->religion().addPressure(unit.spreadingReligion, pressure);
+                    --unit.spreadCharges;
+
+                    LOG_INFO("%.*s spread religion to %s (pressure +%d, charges left: %d)",
+                             static_cast<int>(relDef.name.size()), relDef.name.data(),
+                             relCity->name().c_str(), static_cast<int>(pressure),
+                             static_cast<int>(unit.spreadCharges));
+
+                    if (unit.spreadCharges <= 0) {
+                        aoc::game::Player* relOwner = this->m_gameState.player(unit.owner());
+                        if (relOwner != nullptr) { relOwner->removeUnit(&unit); }
+                        this->m_selectedUnit = nullptr;
+                    }
+                    return;
+                }
+                break;
             }
         }
     }
 
+    const aoc::sim::UnitTypeDef& def = unit.typeDef();
+
     // If settler and target is valid land, found a city
-    const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(unit.typeId);
-    if (def.unitClass == aoc::sim::UnitClass::Settler && unit.position == targetTile) {
-        // Found city at current position
-        PlayerId cityOwner = unit.owner;
-        hex::AxialCoord cityPos = unit.position;
+    if (def.unitClass == aoc::sim::UnitClass::Settler && unit.position() == targetTile) {
+        const PlayerId cityOwner = unit.owner();
+        const hex::AxialCoord cityPos = unit.position();
 
-        EntityId cityEntity = this->m_world.createEntity();
-        const std::string cityName = aoc::sim::getNextCityName(this->m_world, cityOwner);
-        aoc::sim::CityComponent newCity =
-            aoc::sim::CityComponent::create(cityOwner, cityPos, cityName);
+        const std::string cityName = aoc::sim::getNextCityName(this->m_gameState, cityOwner);
 
-        // Check if this is the player's first city (original capital)
-        bool hasExistingCity = false;
-        const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* existingCities =
-            this->m_world.getPool<aoc::sim::CityComponent>();
-        if (existingCities != nullptr) {
-            for (uint32_t ci = 0; ci < existingCities->size(); ++ci) {
-                if (existingCities->data()[ci].owner == cityOwner) {
-                    hasExistingCity = true;
-                    break;
-                }
-            }
-        }
-        if (!hasExistingCity) {
-            newCity.isOriginalCapital = true;
-            newCity.originalOwner = cityOwner;
-        }
-
-        this->m_world.addComponent<aoc::sim::CityComponent>(
-            cityEntity, std::move(newCity));
-        this->m_world.addComponent<aoc::sim::ProductionQueueComponent>(
-            cityEntity, aoc::sim::ProductionQueueComponent{});
-
-        aoc::sim::CityDistrictsComponent districts{};
-        aoc::sim::CityDistrictsComponent::PlacedDistrict center;
-        center.type = aoc::sim::DistrictType::CityCenter;
-        center.location = cityPos;
-        districts.districts.push_back(std::move(center));
-        this->m_world.addComponent<aoc::sim::CityDistrictsComponent>(
-            cityEntity, std::move(districts));
-
-        // Attach religion component to new city
-        this->m_world.addComponent<aoc::sim::CityReligionComponent>(
-            cityEntity, aoc::sim::CityReligionComponent{});
-
-        aoc::sim::claimInitialTerritory(this->m_hexGrid, cityPos, cityOwner);
-
-        // Auto-assign workers to best tiles for the new city
-        aoc::sim::CityComponent& foundedCity =
-            this->m_world.getComponent<aoc::sim::CityComponent>(cityEntity);
-        aoc::sim::autoAssignWorkers(foundedCity, this->m_hexGrid);
-
-        // Mirror the new city into the GameState object model
         aoc::game::Player* gsFounder = this->m_gameState.player(cityOwner);
         if (gsFounder != nullptr) {
+            const bool isFirstCity = gsFounder->cityCount() == 0;
             aoc::game::City& gsCity = gsFounder->addCity(cityPos, cityName);
             gsCity.autoAssignWorkers(this->m_hexGrid);
-        }
-
-        this->m_world.destroyEntity(this->m_selectedEntity);
-        this->m_selectedEntity = cityEntity;
-        LOG_INFO("City founded!");
-
-        // Eureka: FoundCity condition
-        {
-            aoc::game::Player* eurekaPlayer = this->m_gameState.player(cityOwner);
-            if (eurekaPlayer != nullptr) {
-                aoc::sim::checkEurekaConditions(*eurekaPlayer,
-                                                aoc::sim::EurekaCondition::FoundCity);
+            if (isFirstCity) {
+                gsCity.setOriginalCapital(true);
+                gsCity.setOriginalOwner(cityOwner);
             }
+            aoc::sim::claimInitialTerritory(this->m_hexGrid, cityPos, cityOwner);
+
+            // Remove the settler unit
+            gsFounder->removeUnit(&unit);
+            this->m_selectedUnit = nullptr;
+            this->m_selectedCity = &gsCity;
+            LOG_INFO("City founded!");
+
+            aoc::sim::checkEurekaConditions(*gsFounder, aoc::sim::EurekaCondition::FoundCity);
         }
         return;
     }
 
     // Builder: build improvement at current position
-    if (def.unitClass == aoc::sim::UnitClass::Civilian && unit.position == targetTile) {
-        int32_t tileIndex = this->m_hexGrid.toIndex(unit.position);
-        aoc::map::ImprovementType bestImpr =
+    if (def.unitClass == aoc::sim::UnitClass::Civilian && unit.position() == targetTile) {
+        const int32_t tileIndex = this->m_hexGrid.toIndex(unit.position());
+        const aoc::map::ImprovementType bestImpr =
             aoc::sim::bestImprovementForTile(this->m_hexGrid, tileIndex);
 
         if (bestImpr != aoc::map::ImprovementType::None &&
             this->m_hexGrid.improvement(tileIndex) == aoc::map::ImprovementType::None) {
             this->m_hexGrid.setImprovement(tileIndex, bestImpr);
-
-            aoc::sim::UnitComponent& builderUnit =
-                this->m_world.getComponent<aoc::sim::UnitComponent>(this->m_selectedEntity);
-            if (builderUnit.chargesRemaining > 0) {
-                --builderUnit.chargesRemaining;
-            }
+            unit.useCharge();
 
             // Eureka: check if the built improvement triggers a boost
             if (bestImpr == aoc::map::ImprovementType::Quarry) {
-                aoc::game::Player* eurekaPlayer2 = this->m_gameState.player(unit.owner);
+                aoc::game::Player* eurekaPlayer2 = this->m_gameState.player(unit.owner());
                 if (eurekaPlayer2 != nullptr) {
                     aoc::sim::checkEurekaConditions(*eurekaPlayer2,
                                                     aoc::sim::EurekaCondition::BuildQuarry);
@@ -1721,11 +1533,12 @@ void Application::handleContextAction() {
             }
 
             LOG_INFO("Builder placed improvement at (%d,%d)",
-                     unit.position.q, unit.position.r);
+                     unit.position().q, unit.position().r);
 
-            if (builderUnit.chargesRemaining == 0) {
-                this->m_world.destroyEntity(this->m_selectedEntity);
-                this->m_selectedEntity = NULL_ENTITY;
+            if (!unit.hasCharges()) {
+                aoc::game::Player* builderOwner = this->m_gameState.player(unit.owner());
+                if (builderOwner != nullptr) { builderOwner->removeUnit(&unit); }
+                this->m_selectedUnit = nullptr;
                 LOG_INFO("Builder exhausted all charges");
             }
             return;
@@ -1733,46 +1546,40 @@ void Application::handleContextAction() {
     }
 
     // Embark: land unit right-clicking an adjacent water tile
-    int32_t targetIndex = this->m_hexGrid.toIndex(targetTile);
-    aoc::map::TerrainType targetTerrain = this->m_hexGrid.terrain(targetIndex);
-    if (!aoc::sim::isNaval(def.unitClass) && unit.state != aoc::sim::UnitState::Embarked
+    const int32_t targetIndex = this->m_hexGrid.toIndex(targetTile);
+    const aoc::map::TerrainType targetTerrain = this->m_hexGrid.terrain(targetIndex);
+    if (!aoc::sim::isNaval(def.unitClass) && unit.state() != aoc::sim::UnitState::Embarked
         && targetTerrain == aoc::map::TerrainType::Coast
-        && hex::distance(unit.position, targetTile) == 1) {
-        (void)aoc::sim::tryEmbark(this->m_world, this->m_selectedEntity, targetTile, this->m_hexGrid);
+        && hex::distance(unit.position(), targetTile) == 1) {
+        (void)aoc::sim::tryEmbark(unit, targetTile, this->m_hexGrid);
         return;
     }
 
     // Disembark: embarked unit right-clicking an adjacent land tile
-    if (unit.state == aoc::sim::UnitState::Embarked
+    if (unit.state() == aoc::sim::UnitState::Embarked
         && !aoc::map::isWater(targetTerrain) && !aoc::map::isImpassable(targetTerrain)
-        && hex::distance(unit.position, targetTile) == 1) {
-        (void)aoc::sim::tryDisembark(this->m_world, this->m_selectedEntity, targetTile, this->m_hexGrid);
+        && hex::distance(unit.position(), targetTile) == 1) {
+        (void)aoc::sim::tryDisembark(unit, targetTile, this->m_hexGrid);
         return;
     }
 
     // Save undo state before movement
-    this->m_undoState.entity = this->m_selectedEntity;
-    this->m_undoState.previousPosition = unit.position;
-    this->m_undoState.previousMovement = unit.movementRemaining;
+    this->m_undoState.unit = &unit;
+    this->m_undoState.previousPosition = unit.position();
+    this->m_undoState.previousMovement = unit.movementRemaining();
     this->m_undoState.hasState = true;
 
-    // Order movement
-    bool pathFound = aoc::sim::orderUnitMove(
-        this->m_world, this->m_selectedEntity, targetTile, this->m_hexGrid);
+    // Order movement using the object-model overload
+    const bool pathFound = aoc::sim::orderUnitMove(unit, targetTile, this->m_hexGrid);
     if (pathFound) {
-        // Remember position before movement to detect actual movement
-        const aoc::sim::UnitComponent& unitBefore =
-            this->m_world.getComponent<aoc::sim::UnitComponent>(this->m_selectedEntity);
-        aoc::hex::AxialCoord posBefore = unitBefore.position;
+        const aoc::hex::AxialCoord posBefore = unit.position();
 
         // Execute movement immediately for this turn's remaining movement points
-        aoc::sim::moveUnitAlongPath(this->m_world, this->m_selectedEntity, this->m_hexGrid);
+        aoc::sim::moveUnitAlongPath(this->m_gameState, unit, this->m_hexGrid);
 
         // Only update fog if the unit actually moved (not just path set with 0 MP)
-        const aoc::sim::UnitComponent& unitAfter =
-            this->m_world.getComponent<aoc::sim::UnitComponent>(this->m_selectedEntity);
-        if (unitAfter.position != posBefore) {
-            this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, 0);
+        if (unit.position() != posBefore) {
+            this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, 0);
         }
 
         // Refresh the unit action panel to show updated movement points
@@ -1790,25 +1597,19 @@ void Application::handleUndoAction() {
     if (!this->m_undoState.hasState) {
         return;
     }
-    if (!this->m_world.isAlive(this->m_undoState.entity)) {
+    if (this->m_undoState.unit == nullptr) {
         this->m_undoState.hasState = false;
         return;
     }
 
-    aoc::sim::UnitComponent* unit =
-        this->m_world.tryGetComponent<aoc::sim::UnitComponent>(this->m_undoState.entity);
-    if (unit == nullptr) {
-        this->m_undoState.hasState = false;
-        return;
-    }
-
-    unit->position = this->m_undoState.previousPosition;
-    unit->movementRemaining = this->m_undoState.previousMovement;
-    unit->pendingPath.clear();
-    unit->state = aoc::sim::UnitState::Idle;
+    aoc::game::Unit& unit = *this->m_undoState.unit;
+    unit.setPosition(this->m_undoState.previousPosition);
+    unit.setMovementRemaining(this->m_undoState.previousMovement);
+    unit.clearPath();
+    unit.setState(aoc::sim::UnitState::Idle);
 
     LOG_INFO("Undo: unit moved back to (%d,%d) with %d MP",
-             unit->position.q, unit->position.r, unit->movementRemaining);
+             unit.position().q, unit.position().r, unit.movementRemaining());
 
     this->m_undoState.hasState = false;
 }
@@ -1841,7 +1642,7 @@ void Application::handleEndTurn() {
     }
 
     // Execute any remaining unit movement for the human player
-    aoc::sim::executeMovement(this->m_world, 0, this->m_hexGrid);
+    aoc::sim::executeMovement(this->m_gameState, 0, this->m_hexGrid);
 
     // Simultaneous turns: human submits, AI auto-submits, then execute.
     // Sequential turns in war: if active, only allow the active player's turn
@@ -1867,7 +1668,7 @@ void Application::handleEndTurn() {
     }
 
     if (this->m_turnManager.allPlayersReady()) {
-        this->m_turnManager.executeTurn(this->m_world, this->m_scheduler);
+        this->m_turnManager.executeTurn(this->m_gameState);
 
         // Capture pre-turn tech/civic state for UI notifications
         const aoc::game::Player* humanGs = this->m_gameState.humanPlayer();
@@ -1876,7 +1677,7 @@ void Application::handleEndTurn() {
 
         // Build TurnContext and execute all game logic via TurnProcessor
         aoc::sim::TurnContext turnCtx{};
-        // world is accessed via gameState.legacyWorld()
+
         turnCtx.grid = &this->m_hexGrid;
         turnCtx.economy = &this->m_economy;
         turnCtx.diplomacy = &this->m_diplomacy;
@@ -1895,28 +1696,22 @@ void Application::handleEndTurn() {
 
         // AI movement execution (after AI decisions ran inside processTurn)
         for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
-            aoc::sim::executeMovement(this->m_world, ai.player(), this->m_hexGrid);
+            aoc::sim::executeMovement(this->m_gameState, ai.player(), this->m_hexGrid);
         }
 
         // Diplomacy modifier decay
         this->m_diplomacy.tickModifiers();
 
         // Process spy missions
-        aoc::sim::processSpyMissions(this->m_world, this->m_gameRng);
+        aoc::sim::processSpyMissions(this->m_gameState, this->m_gameRng);
 
         // Grievance tick
-        {
-            aoc::ecs::ComponentPool<aoc::sim::PlayerGrievanceComponent>* gPool =
-                this->m_world.getPool<aoc::sim::PlayerGrievanceComponent>();
-            if (gPool != nullptr) {
-                for (uint32_t gi = 0; gi < gPool->size(); ++gi) {
-                    gPool->data()[gi].tickGrievances();
-                }
-            }
+        for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState.players()) {
+            playerPtr->grievances().tickGrievances();
         }
 
         // World Congress
-        aoc::sim::processWorldCongress(this->m_world,
+        aoc::sim::processWorldCongress(this->m_gameState,
                                         this->m_turnManager.currentTurn(),
                                         this->m_gameRng);
 
@@ -1952,7 +1747,7 @@ void Application::handleEndTurn() {
             }
 
             if (!humanPost->tech().currentResearch.isValid()) {
-                this->m_techScreen.setContext(&this->m_world, 0);
+                this->m_techScreen.setContext(&this->m_gameState, 0);
                 this->m_techScreen.open(this->m_uiManager);
             }
         }
@@ -1977,7 +1772,7 @@ void Application::handleEndTurn() {
         }
 
         // Record replay frame
-        this->m_replayRecorder.recordFrame(this->m_world,
+        this->m_replayRecorder.recordFrame(this->m_gameState,
                                             this->m_turnManager.currentTurn());
 
         // Sound events for turn transition
@@ -1985,37 +1780,31 @@ void Application::handleEndTurn() {
         this->m_soundQueue.push(aoc::audio::SoundEffect::TurnEnd);
         this->m_soundQueue.push(aoc::audio::SoundEffect::TurnStart);
 
-        // Switch music track based on era
+        // Switch music track based on human player's era
         {
-            aoc::ecs::ComponentPool<aoc::sim::PlayerEraComponent>* eraPool =
-                this->m_world.getPool<aoc::sim::PlayerEraComponent>();
-            if (eraPool != nullptr) {
-                for (uint32_t ei = 0; ei < eraPool->size(); ++ei) {
-                    if (eraPool->data()[ei].owner == 0) {
-                        const uint16_t eraVal = eraPool->data()[ei].currentEra.value;
-                        if (eraVal < static_cast<uint16_t>(aoc::audio::MusicTrack::Count) - 2) {
-                            const aoc::audio::MusicTrack track =
-                                static_cast<aoc::audio::MusicTrack>(eraVal + 1);
-                            if (track != this->m_musicManager.track()) {
-                                this->m_musicManager.setTrack(track);
-                                LOG_INFO("Music track changed to era %u", eraVal);
-                            }
-                        }
-                        break;
+            const aoc::game::Player* humanPlayer = this->m_gameState.humanPlayer();
+            if (humanPlayer != nullptr) {
+                const uint16_t eraVal = humanPlayer->era().currentEra.value;
+                if (eraVal < static_cast<uint16_t>(aoc::audio::MusicTrack::Count) - 2) {
+                    const aoc::audio::MusicTrack track =
+                        static_cast<aoc::audio::MusicTrack>(eraVal + 1);
+                    if (track != this->m_musicManager.track()) {
+                        this->m_musicManager.setTrack(track);
+                        LOG_INFO("Music track changed to era %u", eraVal);
                     }
                 }
             }
         }
 
         // Update fog of war for all players
-        this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, 0);
+        this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, 0);
         for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
-            this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, ai.player());
+            this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, ai.player());
         }
 
         // Check victory conditions
         aoc::sim::VictoryResult vr = aoc::sim::checkVictoryConditions(
-            this->m_world, this->m_turnManager.currentTurn());
+            this->m_gameState, this->m_turnManager.currentTurn());
         if (vr.type != aoc::sim::VictoryType::None) {
             this->m_gameOver = true;
             this->m_victoryResult = vr;
@@ -2029,212 +1818,177 @@ void Application::handleEndTurn() {
 
             const uint8_t totalPlayers = static_cast<uint8_t>(1 + this->m_aiControllers.size());
             this->m_scoreScreen.setContext(
-                &this->m_world, &this->m_hexGrid, vr, totalPlayers,
+                &this->m_gameState, &this->m_hexGrid, vr, totalPlayers,
                 [this]() { this->returnToMainMenu(); });
             this->m_scoreScreen.open(this->m_uiManager);
         }
 
         // Government/policy unlocks from completed civics
-        this->m_world.forEach<aoc::sim::PlayerCivicComponent, aoc::sim::PlayerGovernmentComponent>(
-            [](EntityId, aoc::sim::PlayerCivicComponent& civic,
-               aoc::sim::PlayerGovernmentComponent& gov) {
-                const std::vector<aoc::sim::CivicDef>& civics = aoc::sim::allCivics();
-                for (const aoc::sim::CivicDef& cdef : civics) {
-                    if (!civic.hasCompleted(cdef.id)) {
-                        continue;
-                    }
-                    for (uint8_t govId : cdef.unlockedGovernmentIds) {
-                        if (govId < static_cast<uint8_t>(aoc::sim::GovernmentType::Count)) {
-                            gov.unlockGovernment(static_cast<aoc::sim::GovernmentType>(govId));
-                        }
-                    }
-                    for (uint8_t polId : cdef.unlockedPolicyIds) {
-                        if (polId < aoc::sim::POLICY_CARD_COUNT) {
-                            gov.unlockPolicy(polId);
-                        }
+        for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState.players()) {
+            aoc::sim::PlayerCivicComponent& civic = playerPtr->civics();
+            aoc::sim::PlayerGovernmentComponent& gov = playerPtr->government();
+            const std::vector<aoc::sim::CivicDef>& civics = aoc::sim::allCivics();
+            for (const aoc::sim::CivicDef& cdef : civics) {
+                if (!civic.hasCompleted(cdef.id)) {
+                    continue;
+                }
+                for (uint8_t govId : cdef.unlockedGovernmentIds) {
+                    if (govId < static_cast<uint8_t>(aoc::sim::GovernmentType::Count)) {
+                        gov.unlockGovernment(static_cast<aoc::sim::GovernmentType>(govId));
                     }
                 }
-            });
+                for (uint8_t polId : cdef.unlockedPolicyIds) {
+                    if (polId < aoc::sim::POLICY_CARD_COUNT) {
+                        gov.unlockPolicy(polId);
+                    }
+                }
+            }
+        }
 
         this->m_turnManager.beginNewTurn();
 
         // Clear undo state at the start of a new turn
         this->m_undoState.hasState = false;
 
-        // Wake sleeping units if enemies are within 2 hexes
+        // Wake sleeping units (human player only) if enemies are within 2 hexes
         {
-            aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* unitPool =
-                this->m_world.getPool<aoc::sim::UnitComponent>();
-            if (unitPool != nullptr) {
-                for (uint32_t i = 0; i < unitPool->size(); ++i) {
-                    aoc::sim::UnitComponent& sleeper = unitPool->data()[i];
-                    if (sleeper.owner != 0) {
+            aoc::game::Player* humanWake = this->m_gameState.humanPlayer();
+            if (humanWake != nullptr) {
+                for (const std::unique_ptr<aoc::game::Unit>& sleeperPtr : humanWake->units()) {
+                    aoc::game::Unit& sleeper = *sleeperPtr;
+                    if (!sleeper.isSleeping()) {
                         continue;
                     }
-                    if (sleeper.state != aoc::sim::UnitState::Sleeping) {
-                        continue;
-                    }
-                    // Check for enemy units within 2 hexes
                     bool enemyNearby = false;
-                    for (uint32_t j = 0; j < unitPool->size(); ++j) {
-                        const aoc::sim::UnitComponent& other = unitPool->data()[j];
-                        if (other.owner == sleeper.owner || other.owner == BARBARIAN_PLAYER) {
+                    for (const std::unique_ptr<aoc::game::Player>& otherPlayer : this->m_gameState.players()) {
+                        if (otherPlayer->id() == humanWake->id() || otherPlayer->id() == BARBARIAN_PLAYER) {
                             continue;
                         }
-                        if (hex::distance(sleeper.position, other.position) <= 2) {
-                            enemyNearby = true;
-                            break;
+                        for (const std::unique_ptr<aoc::game::Unit>& otherUnit : otherPlayer->units()) {
+                            if (hex::distance(sleeper.position(), otherUnit->position()) <= 2) {
+                                enemyNearby = true;
+                                break;
+                            }
                         }
+                        if (enemyNearby) { break; }
                     }
                     if (enemyNearby) {
-                        sleeper.state = aoc::sim::UnitState::Idle;
+                        sleeper.setState(aoc::sim::UnitState::Idle);
                         sleeper.autoExplore = false;
                         LOG_INFO("Sleeping unit at (%d,%d) woke up -- enemy nearby",
-                                 sleeper.position.q, sleeper.position.r);
+                                 sleeper.position().q, sleeper.position().r);
                     }
                 }
             }
         }
 
-        // Auto-explore: move scout units toward unexplored territory
+        // Auto-explore: move human scout units toward unexplored territory.
+        // Collect raw pointers first so iteration is stable if path-ordering
+        // indirectly modifies the unit list in edge cases.
         {
-            aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* unitPool =
-                this->m_world.getPool<aoc::sim::UnitComponent>();
-            if (unitPool != nullptr) {
-                // Collect entities first to avoid invalidation during movement
-                std::vector<EntityId> autoExploreUnits;
-                for (uint32_t i = 0; i < unitPool->size(); ++i) {
-                    const aoc::sim::UnitComponent& unit = unitPool->data()[i];
-                    if (unit.owner == 0 && unit.autoExplore) {
-                        autoExploreUnits.push_back(unitPool->entities()[i]);
+            aoc::game::Player* humanAutoExplore = this->m_gameState.humanPlayer();
+            if (humanAutoExplore != nullptr) {
+                std::vector<aoc::game::Unit*> autoExploreUnits;
+                for (const std::unique_ptr<aoc::game::Unit>& u : humanAutoExplore->units()) {
+                    if (u->autoExplore) {
+                        autoExploreUnits.push_back(u.get());
                     }
                 }
-                for (EntityId unitEntity : autoExploreUnits) {
-                    if (!this->m_world.isAlive(unitEntity)) {
-                        continue;
-                    }
-                    aoc::sim::UnitComponent& unit =
-                        this->m_world.getComponent<aoc::sim::UnitComponent>(unitEntity);
-                    // Find nearest unseen tile
-                    hex::AxialCoord bestTarget = unit.position;
+                const int32_t tileCount = this->m_hexGrid.tileCount();
+                for (aoc::game::Unit* unit : autoExploreUnits) {
+                    hex::AxialCoord bestTarget = unit->position();
                     int32_t bestDist = INT32_MAX;
-                    const int32_t tileCount = this->m_hexGrid.tileCount();
                     for (int32_t t = 0; t < tileCount; ++t) {
-                        aoc::map::TileVisibility vis =
-                            this->m_fogOfWar.visibility(0, t);
-                        if (vis != aoc::map::TileVisibility::Unseen) {
+                        if (this->m_fogOfWar.visibility(0, t) != aoc::map::TileVisibility::Unseen) {
                             continue;
                         }
-                        hex::AxialCoord tileCoord = this->m_hexGrid.toAxial(t);
-                        int32_t dist = hex::distance(unit.position, tileCoord);
+                        const hex::AxialCoord tileCoord = this->m_hexGrid.toAxial(t);
+                        const int32_t dist = hex::distance(unit->position(), tileCoord);
                         if (dist < bestDist) {
                             bestDist = dist;
                             bestTarget = tileCoord;
                         }
                     }
-                    if (bestDist < INT32_MAX && !(bestTarget == unit.position)) {
-                        aoc::sim::orderUnitMove(this->m_world, unitEntity,
-                                                bestTarget, this->m_hexGrid);
+                    if (bestDist < INT32_MAX && !(bestTarget == unit->position())) {
+                        aoc::sim::orderUnitMove(*unit, bestTarget, this->m_hexGrid);
                     }
                 }
             }
         }
 
-        // Auto-improve: civilian units with autoImprove build improvements or move to unimproved tiles
+        // Auto-improve: civilian units build improvements or move to the nearest
+        // unimproved owned tile. Builder is removed when all charges are consumed.
         {
-            aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* unitPool =
-                this->m_world.getPool<aoc::sim::UnitComponent>();
-            if (unitPool != nullptr) {
-                std::vector<EntityId> autoImproveUnits;
-                for (uint32_t i = 0; i < unitPool->size(); ++i) {
-                    const aoc::sim::UnitComponent& unit = unitPool->data()[i];
-                    if (unit.owner == 0 && unit.autoImprove) {
-                        autoImproveUnits.push_back(unitPool->entities()[i]);
+            aoc::game::Player* humanAutoImprove = this->m_gameState.humanPlayer();
+            if (humanAutoImprove != nullptr) {
+                std::vector<aoc::game::Unit*> autoImproveUnits;
+                for (const std::unique_ptr<aoc::game::Unit>& u : humanAutoImprove->units()) {
+                    if (u->autoImprove) {
+                        autoImproveUnits.push_back(u.get());
                     }
                 }
-                for (EntityId unitEntity : autoImproveUnits) {
-                    if (!this->m_world.isAlive(unitEntity)) {
-                        continue;
-                    }
-                    aoc::sim::UnitComponent& unit =
-                        this->m_world.getComponent<aoc::sim::UnitComponent>(unitEntity);
-                    if (unit.chargesRemaining == 0) {
+                for (aoc::game::Unit* unit : autoImproveUnits) {
+                    if (!unit->hasCharges()) {
                         continue;
                     }
 
-                    // Try to improve current tile
-                    const int32_t currentIdx = this->m_hexGrid.toIndex(unit.position);
+                    const int32_t currentIdx = this->m_hexGrid.toIndex(unit->position());
                     const aoc::map::ImprovementType bestImpr =
                         aoc::sim::bestImprovementForTile(this->m_hexGrid, currentIdx);
 
                     if (bestImpr != aoc::map::ImprovementType::None &&
                         this->m_hexGrid.improvement(currentIdx) == aoc::map::ImprovementType::None) {
                         this->m_hexGrid.setImprovement(currentIdx, bestImpr);
-                        if (unit.chargesRemaining > 0) {
-                            --unit.chargesRemaining;
-                        }
+                        unit->useCharge();
                         LOG_INFO("Auto-improve: built improvement at (%d,%d)",
-                                 unit.position.q, unit.position.r);
-                        if (unit.chargesRemaining == 0) {
-                            this->m_world.destroyEntity(unitEntity);
+                                 unit->position().q, unit->position().r);
+                        if (!unit->hasCharges()) {
+                            humanAutoImprove->removeUnit(unit);
                             LOG_INFO("Auto-improve: builder exhausted all charges");
                         }
                         continue;
                     }
 
                     // Find nearest unimproved owned tile and move there
-                    hex::AxialCoord bestTarget = unit.position;
+                    hex::AxialCoord bestTarget = unit->position();
                     int32_t bestDist = INT32_MAX;
                     const int32_t tileCount = this->m_hexGrid.tileCount();
                     for (int32_t t = 0; t < tileCount; ++t) {
-                        if (this->m_hexGrid.owner(t) != unit.owner) {
+                        if (this->m_hexGrid.owner(t) != unit->owner()) { continue; }
+                        if (this->m_hexGrid.improvement(t) != aoc::map::ImprovementType::None) { continue; }
+                        if (this->m_hexGrid.movementCost(t) == 0) { continue; }
+                        if (aoc::sim::bestImprovementForTile(this->m_hexGrid, t) == aoc::map::ImprovementType::None) {
                             continue;
                         }
-                        if (this->m_hexGrid.improvement(t) != aoc::map::ImprovementType::None) {
-                            continue;
-                        }
-                        if (this->m_hexGrid.movementCost(t) == 0) {
-                            continue;
-                        }
-                        const aoc::map::ImprovementType candidate =
-                            aoc::sim::bestImprovementForTile(this->m_hexGrid, t);
-                        if (candidate == aoc::map::ImprovementType::None) {
-                            continue;
-                        }
-                        hex::AxialCoord tileCoord = this->m_hexGrid.toAxial(t);
-                        int32_t dist = hex::distance(unit.position, tileCoord);
+                        const hex::AxialCoord tileCoord = this->m_hexGrid.toAxial(t);
+                        const int32_t dist = hex::distance(unit->position(), tileCoord);
                         if (dist < bestDist) {
                             bestDist = dist;
                             bestTarget = tileCoord;
                         }
                     }
-                    if (bestDist < INT32_MAX && !(bestTarget == unit.position)) {
-                        aoc::sim::orderUnitMove(this->m_world, unitEntity,
-                                                bestTarget, this->m_hexGrid);
+                    if (bestDist < INT32_MAX && !(bestTarget == unit->position())) {
+                        aoc::sim::orderUnitMove(*unit, bestTarget, this->m_hexGrid);
                     }
                 }
             }
         }
 
         // Refresh movement for next turn
-        aoc::sim::refreshMovement(this->m_world, 0);
+        aoc::sim::refreshMovement(this->m_gameState, 0);
 
-        // Multi-turn movement continuation: resume pending paths after refresh
+        // Multi-turn movement continuation: resume pending paths after movement refresh.
         {
-            aoc::ecs::ComponentPool<aoc::sim::UnitComponent>* unitPool =
-                this->m_world.getPool<aoc::sim::UnitComponent>();
-            if (unitPool != nullptr) {
-                std::vector<EntityId> pendingUnits;
-                for (uint32_t i = 0; i < unitPool->size(); ++i) {
-                    const aoc::sim::UnitComponent& unit = unitPool->data()[i];
-                    if (unit.owner == 0 && !unit.pendingPath.empty()) {
-                        pendingUnits.push_back(unitPool->entities()[i]);
+            aoc::game::Player* humanPending = this->m_gameState.humanPlayer();
+            if (humanPending != nullptr) {
+                std::vector<aoc::game::Unit*> pendingUnits;
+                for (const std::unique_ptr<aoc::game::Unit>& u : humanPending->units()) {
+                    if (!u->pendingPath().empty()) {
+                        pendingUnits.push_back(u.get());
                     }
                 }
-                for (EntityId unitEntity : pendingUnits) {
-                    if (this->m_world.isAlive(unitEntity)) {
-                        aoc::sim::moveUnitAlongPath(this->m_world, unitEntity, this->m_hexGrid);
-                    }
+                for (aoc::game::Unit* unit : pendingUnits) {
+                    aoc::sim::moveUnitAlongPath(this->m_gameState, *unit, this->m_hexGrid);
                 }
             }
         }
@@ -2251,7 +2005,6 @@ void Application::spawnStartingEntities(aoc::sim::CivId civId) {
     const int32_t mapW = this->m_hexGrid.width();
     const int32_t mapH = this->m_hexGrid.height();
     const float radiusX = static_cast<float>(mapW) * 0.35f;
-    const float radiusY = static_cast<float>(mapH) * 0.35f;
     // Small random offset for human player too (deterministic from map seed)
     const uint32_t humanHash = 42u * 2654435761u;
     const float humanOffX = (static_cast<float>(humanHash % 1000u) / 1000.0f - 0.5f)
@@ -2265,89 +2018,43 @@ void Application::spawnStartingEntities(aoc::sim::CivId civId) {
 
     hex::AxialCoord capitalPos = this->findNearbyLandTile(mapCenter);
 
-    // Create player economy entity with monetary state
-    EntityId playerEntity = this->m_world.createEntity();
-    aoc::sim::MonetaryStateComponent monetary{};
-    monetary.owner = 0;
-    monetary.system = aoc::sim::MonetarySystemType::Barter;
-    monetary.treasury = 100;
-    monetary.moneySupply = 0;
-    monetary.taxRate = 0.15f;
-    monetary.governmentSpending = 0;
-    this->m_world.addComponent<aoc::sim::MonetaryStateComponent>(playerEntity, std::move(monetary));
-
-    aoc::sim::PlayerEconomyComponent playerEcon{};
-    playerEcon.owner = 0;
-    playerEcon.treasury = 100;
-    this->m_world.addComponent<aoc::sim::PlayerEconomyComponent>(playerEntity, std::move(playerEcon));
-
-    aoc::sim::PlayerTechComponent techComp{};
-    techComp.owner = 0;
-    techComp.initialize();
-    techComp.currentResearch = TechId{0};  // Start researching Mining
-    this->m_world.addComponent<aoc::sim::PlayerTechComponent>(playerEntity, std::move(techComp));
-
-    aoc::sim::PlayerCivicComponent civicComp{};
-    civicComp.owner = 0;
-    civicComp.initialize();
-    civicComp.currentResearch = CivicId{0};  // Start researching Code of Laws
-    this->m_world.addComponent<aoc::sim::PlayerCivicComponent>(playerEntity, std::move(civicComp));
-
-    aoc::sim::PlayerEraComponent eraComp{};
-    eraComp.owner = 0;
-    this->m_world.addComponent<aoc::sim::PlayerEraComponent>(playerEntity, std::move(eraComp));
-
-    aoc::sim::VictoryTrackerComponent victoryComp{};
-    victoryComp.owner = 0;
-    this->m_world.addComponent<aoc::sim::VictoryTrackerComponent>(playerEntity, std::move(victoryComp));
-
-    aoc::sim::PlayerGovernmentComponent govComp{};
-    govComp.owner = 0;
-    govComp.government = aoc::sim::GovernmentType::Chiefdom;
-    this->m_world.addComponent<aoc::sim::PlayerGovernmentComponent>(playerEntity, std::move(govComp));
-
-    aoc::sim::PlayerCivilizationComponent civComp2{};
-    civComp2.owner = 0;
-    civComp2.civId = civId;
-    this->m_world.addComponent<aoc::sim::PlayerCivilizationComponent>(playerEntity, std::move(civComp2));
-
-    aoc::sim::PlayerGreatPeopleComponent gpComp{};
-    gpComp.owner = 0;
-    this->m_world.addComponent<aoc::sim::PlayerGreatPeopleComponent>(playerEntity, std::move(gpComp));
-
-    aoc::sim::PlayerEurekaComponent eurekaComp{};
-    eurekaComp.owner = 0;
-    this->m_world.addComponent<aoc::sim::PlayerEurekaComponent>(playerEntity, std::move(eurekaComp));
-
-    aoc::sim::PlayerTariffComponent tariffComp{};
-    tariffComp.owner = 0;
-    this->m_world.addComponent<aoc::sim::PlayerTariffComponent>(playerEntity, std::move(tariffComp));
-
-    aoc::sim::PlayerBankingComponent bankComp{};
-    bankComp.owner = 0;
-    this->m_world.addComponent<aoc::sim::PlayerBankingComponent>(playerEntity, std::move(bankComp));
-
-    // Create the global wonder tracker entity (one per game)
-    EntityId wonderTrackerEntity = this->m_world.createEntity();
-    this->m_world.addComponent<aoc::sim::GlobalWonderTracker>(
-        wonderTrackerEntity, aoc::sim::GlobalWonderTracker{});
-
-    // Spawn settler (player founds their own capital)
-    EntityId settler = this->m_world.createEntity();
-    this->m_world.addComponent<aoc::sim::UnitComponent>(
-        settler,
-        aoc::sim::UnitComponent::create(0, UnitTypeId{3}, capitalPos));
-
-    // Spawn warrior
-    hex::AxialCoord warriorPos = this->findNearbyLandTile({capitalPos.q + 1, capitalPos.r});
-    EntityId warrior = this->m_world.createEntity();
-    this->m_world.addComponent<aoc::sim::UnitComponent>(
-        warrior,
-        aoc::sim::UnitComponent::create(0, UnitTypeId{0}, warriorPos));
-
-    // Mirror starting units into the GameState object model
+    // Initialise all player state directly on the GameState object model.
     aoc::game::Player* humanPlayer = this->m_gameState.humanPlayer();
     if (humanPlayer != nullptr) {
+        humanPlayer->setCivId(civId);
+
+        aoc::sim::MonetaryStateComponent& monetary = humanPlayer->monetary();
+        monetary.owner = 0;
+        monetary.system = aoc::sim::MonetarySystemType::Barter;
+        monetary.treasury = 100;
+        monetary.moneySupply = 0;
+        monetary.taxRate = 0.15f;
+        monetary.governmentSpending = 0;
+
+        humanPlayer->economy().owner = 0;
+        humanPlayer->economy().treasury = 100;
+        humanPlayer->setTreasury(100);
+
+        humanPlayer->tech().owner = 0;
+        humanPlayer->tech().initialize();
+        humanPlayer->tech().currentResearch = TechId{0};  // Start researching Mining
+
+        humanPlayer->civics().owner = 0;
+        humanPlayer->civics().initialize();
+        humanPlayer->civics().currentResearch = CivicId{0};  // Start researching Code of Laws
+
+        humanPlayer->era().owner = 0;
+        humanPlayer->victoryTracker().owner = 0;
+
+        humanPlayer->government().owner = 0;
+        humanPlayer->government().government = aoc::sim::GovernmentType::Chiefdom;
+
+        humanPlayer->greatPeople().owner = 0;
+        humanPlayer->eureka().owner = 0;
+        humanPlayer->banking().owner = 0;
+
+        // Spawn starting units
+        hex::AxialCoord warriorPos = this->findNearbyLandTile({capitalPos.q + 1, capitalPos.r});
         humanPlayer->addUnit(UnitTypeId{3}, capitalPos);
         humanPlayer->addUnit(UnitTypeId{0}, warriorPos);
     }
@@ -2440,79 +2147,37 @@ void Application::spawnAIPlayer(PlayerId player, aoc::sim::CivId civId) {
     hex::AxialCoord warriorPos = this->findNearbyLandTile(
         {settlerPos.q + 1, settlerPos.r});
 
-    // Player entity with economy + tech
-    EntityId playerEntity = this->m_world.createEntity();
-
-    aoc::sim::MonetaryStateComponent monetary{};
-    monetary.owner = player;
-    monetary.system = aoc::sim::MonetarySystemType::Barter;
-    monetary.treasury = 100;
-    this->m_world.addComponent<aoc::sim::MonetaryStateComponent>(playerEntity, std::move(monetary));
-
-    aoc::sim::PlayerEconomyComponent playerEcon{};
-    playerEcon.owner = player;
-    playerEcon.treasury = 100;
-    this->m_world.addComponent<aoc::sim::PlayerEconomyComponent>(playerEntity, std::move(playerEcon));
-
-    aoc::sim::PlayerTechComponent techComp{};
-    techComp.owner = player;
-    techComp.initialize();
-    this->m_world.addComponent<aoc::sim::PlayerTechComponent>(playerEntity, std::move(techComp));
-
-    aoc::sim::PlayerCivicComponent civicComp{};
-    civicComp.owner = player;
-    civicComp.initialize();
-    this->m_world.addComponent<aoc::sim::PlayerCivicComponent>(playerEntity, std::move(civicComp));
-
-    aoc::sim::PlayerEraComponent eraComp{};
-    eraComp.owner = player;
-    this->m_world.addComponent<aoc::sim::PlayerEraComponent>(playerEntity, std::move(eraComp));
-
-    aoc::sim::VictoryTrackerComponent victoryComp{};
-    victoryComp.owner = player;
-    this->m_world.addComponent<aoc::sim::VictoryTrackerComponent>(playerEntity, std::move(victoryComp));
-
-    aoc::sim::PlayerGovernmentComponent govComp{};
-    govComp.owner = player;
-    govComp.government = aoc::sim::GovernmentType::Chiefdom;
-    this->m_world.addComponent<aoc::sim::PlayerGovernmentComponent>(playerEntity, std::move(govComp));
-
-    aoc::sim::PlayerCivilizationComponent civComp2{};
-    civComp2.owner = player;
-    civComp2.civId = civId;
-    this->m_world.addComponent<aoc::sim::PlayerCivilizationComponent>(playerEntity, std::move(civComp2));
-
-    aoc::sim::PlayerGreatPeopleComponent gpComp{};
-    gpComp.owner = player;
-    this->m_world.addComponent<aoc::sim::PlayerGreatPeopleComponent>(playerEntity, std::move(gpComp));
-
-    aoc::sim::PlayerEurekaComponent eurekaComp{};
-    eurekaComp.owner = player;
-    this->m_world.addComponent<aoc::sim::PlayerEurekaComponent>(playerEntity, std::move(eurekaComp));
-
-    aoc::sim::PlayerTariffComponent tariffComp{};
-    tariffComp.owner = player;
-    this->m_world.addComponent<aoc::sim::PlayerTariffComponent>(playerEntity, std::move(tariffComp));
-
-    aoc::sim::PlayerBankingComponent bankComp{};
-    bankComp.owner = player;
-    this->m_world.addComponent<aoc::sim::PlayerBankingComponent>(playerEntity, std::move(bankComp));
-
-    // Spawn settler (AI will auto-found city on first turn)
-    EntityId settler = this->m_world.createEntity();
-    this->m_world.addComponent<aoc::sim::UnitComponent>(
-        settler,
-        aoc::sim::UnitComponent::create(player, UnitTypeId{3}, settlerPos));
-
-    // Spawn warrior
-    EntityId warrior = this->m_world.createEntity();
-    this->m_world.addComponent<aoc::sim::UnitComponent>(
-        warrior,
-        aoc::sim::UnitComponent::create(player, UnitTypeId{0}, warriorPos));
-
-    // Mirror AI starting units into the GameState object model
+    // Initialise all AI player state directly on the GameState object model.
     aoc::game::Player* aiPlayer = this->m_gameState.player(player);
     if (aiPlayer != nullptr) {
+        aiPlayer->setCivId(civId);
+
+        aoc::sim::MonetaryStateComponent& monetary = aiPlayer->monetary();
+        monetary.owner = player;
+        monetary.system = aoc::sim::MonetarySystemType::Barter;
+        monetary.treasury = 100;
+
+        aiPlayer->economy().owner = player;
+        aiPlayer->economy().treasury = 100;
+        aiPlayer->setTreasury(100);
+
+        aiPlayer->tech().owner = player;
+        aiPlayer->tech().initialize();
+
+        aiPlayer->civics().owner = player;
+        aiPlayer->civics().initialize();
+
+        aiPlayer->era().owner = player;
+        aiPlayer->victoryTracker().owner = player;
+
+        aiPlayer->government().owner = player;
+        aiPlayer->government().government = aoc::sim::GovernmentType::Chiefdom;
+
+        aiPlayer->greatPeople().owner = player;
+        aiPlayer->eureka().owner = player;
+        aiPlayer->banking().owner = player;
+
+        // Spawn settler (AI will auto-found city on first turn) and warrior
         aiPlayer->addUnit(UnitTypeId{3}, settlerPos);
         aiPlayer->addUnit(UnitTypeId{0}, warriorPos);
     }
@@ -2600,14 +2265,9 @@ void Application::placeMapResources() {
                 }
 
                 if (rng.chance(placement.probability)) {
+                    // Resource yield is read directly from the HexGrid by the economy
+                    // simulation; no ECS entity is needed.
                     this->m_hexGrid.setResource(index, ResourceId{placement.goodId});
-
-                    // Create a tile resource ECS entity so the economy can harvest it
-                    EntityId resEntity = this->m_world.createEntity();
-                    this->m_world.addComponent<aoc::sim::TileResourceComponent>(
-                        resEntity,
-                        aoc::sim::TileResourceComponent{placement.goodId, 1, 1});
-
                     ++totalPlaced;
                     break;  // Only one resource per tile
                 }
@@ -2670,7 +2330,7 @@ void Application::buildHUD() {
     // RIGHT SIDE: Game screen buttons
     makeTopBtn(this->m_topBar, "Tech", 50.0f, [this]() {
         if (!this->m_techScreen.isOpen()) {
-            this->m_techScreen.setContext(&this->m_world, 0);
+            this->m_techScreen.setContext(&this->m_gameState, 0);
             this->m_techScreen.open(this->m_uiManager);
         } else {
             this->m_techScreen.close(this->m_uiManager);
@@ -2679,7 +2339,7 @@ void Application::buildHUD() {
 
     makeTopBtn(this->m_topBar, "Gov", 44.0f, [this]() {
         if (!this->m_governmentScreen.isOpen()) {
-            this->m_governmentScreen.setContext(&this->m_world, 0);
+            this->m_governmentScreen.setContext(&this->m_gameState, 0);
             this->m_governmentScreen.open(this->m_uiManager);
         } else {
             this->m_governmentScreen.close(this->m_uiManager);
@@ -2688,7 +2348,7 @@ void Application::buildHUD() {
 
     makeTopBtn(this->m_topBar, "Econ", 50.0f, [this]() {
         if (!this->m_economyScreen.isOpen()) {
-            this->m_economyScreen.setContext(&this->m_world, &this->m_hexGrid, 0, &this->m_economy.market());
+            this->m_economyScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0, &this->m_economy.market());
             this->m_economyScreen.open(this->m_uiManager);
         } else {
             this->m_economyScreen.close(this->m_uiManager);
@@ -2697,7 +2357,7 @@ void Application::buildHUD() {
 
     makeTopBtn(this->m_topBar, "Trade", 50.0f, [this]() {
         if (!this->m_tradeScreen.isOpen()) {
-            this->m_tradeScreen.setContext(&this->m_world, 0,
+            this->m_tradeScreen.setContext(&this->m_gameState, 0,
                                             &this->m_economy.market(),
                                             &this->m_diplomacy);
             this->m_tradeScreen.open(this->m_uiManager);
@@ -2708,7 +2368,7 @@ void Application::buildHUD() {
 
     makeTopBtn(this->m_topBar, "Diplo", 50.0f, [this]() {
         if (!this->m_diplomacyScreen.isOpen()) {
-            this->m_diplomacyScreen.setContext(&this->m_world, 0, &this->m_diplomacy);
+            this->m_diplomacyScreen.setContext(&this->m_gameState, 0, &this->m_diplomacy);
             this->m_diplomacyScreen.open(this->m_uiManager);
         } else {
             this->m_diplomacyScreen.close(this->m_uiManager);
@@ -2759,7 +2419,7 @@ void Application::buildHUD() {
 
             makeDropBtn(this->m_menuDropdown, "Save Game", [this]() {
                 ErrorCode result = aoc::save::saveGame(
-                    "quicksave.aoc", this->m_world, this->m_hexGrid,
+                    "quicksave.aoc", this->m_gameState, this->m_hexGrid,
                     this->m_turnManager, this->m_economy, this->m_diplomacy,
                     this->m_fogOfWar, this->m_gameRng);
                 if (result == ErrorCode::Ok) { LOG_INFO("Game saved"); }
@@ -2770,12 +2430,12 @@ void Application::buildHUD() {
 
             makeDropBtn(this->m_menuDropdown, "Load Game", [this]() {
                 ErrorCode result = aoc::save::loadGame(
-                    "quicksave.aoc", this->m_world, this->m_hexGrid,
+                    "quicksave.aoc", this->m_gameState, this->m_hexGrid,
                     this->m_turnManager, this->m_economy, this->m_diplomacy,
                     this->m_fogOfWar, this->m_gameRng);
                 if (result == ErrorCode::Ok) {
                     LOG_INFO("Game loaded");
-                    this->m_fogOfWar.updateVisibility(this->m_world, this->m_hexGrid, 0);
+                    this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, 0);
                 } else { LOG_ERROR("Load failed"); }
                 this->m_uiManager.removeWidget(this->m_menuDropdown);
                 this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
@@ -2915,17 +2575,7 @@ void Application::updateHUD() {
     // Update resource reveal state for map rendering (tech-gated resources)
     {
         std::vector<bool> revealed(aoc::sim::goodCount(), true);  // Default: all visible
-        const aoc::ecs::ComponentPool<aoc::sim::PlayerTechComponent>* techPool =
-            this->m_world.getPool<aoc::sim::PlayerTechComponent>();
-        const aoc::sim::PlayerTechComponent* playerTech = nullptr;
-        if (techPool != nullptr) {
-            for (uint32_t i = 0; i < techPool->size(); ++i) {
-                if (techPool->data()[i].owner == 0) {
-                    playerTech = &techPool->data()[i];
-                    break;
-                }
-            }
-        }
+        const aoc::sim::PlayerTechComponent* playerTech = (this->m_gameState.player(0) != nullptr) ? &this->m_gameState.player(0)->tech() : nullptr;
         for (uint16_t gid = 0; gid < aoc::sim::goodCount(); ++gid) {
             TechId revealTech = aoc::sim::resourceRevealTech(gid);
             if (revealTech.isValid()) {
@@ -2944,10 +2594,9 @@ void Application::updateHUD() {
     // Update economy label
     std::string econText;
     {
-        const aoc::ecs::ComponentPool<aoc::sim::MonetaryStateComponent>* monetaryPool =
-            this->m_world.getPool<aoc::sim::MonetaryStateComponent>();
-        if (monetaryPool != nullptr && monetaryPool->size() > 0) {
-            const aoc::sim::MonetaryStateComponent& ms = monetaryPool->data()[0];
+        const aoc::game::Player* econPlayer = this->m_gameState.player(0);
+        if (econPlayer != nullptr) {
+            const aoc::sim::MonetaryStateComponent& ms = econPlayer->monetary();
             econText = std::string(aoc::sim::monetarySystemName(ms.system));
             econText += "  T:" + std::to_string(ms.treasury);
             econText += "  " + std::string(aoc::sim::coinTierName(ms.effectiveCoinTier));
@@ -2964,18 +2613,14 @@ void Application::updateHUD() {
 
     // Update selection label
     std::string selText;
-    if (this->m_selectedEntity.isValid() && this->m_world.isAlive(this->m_selectedEntity)) {
-        if (this->m_world.hasComponent<aoc::sim::UnitComponent>(this->m_selectedEntity)) {
-            const aoc::sim::UnitComponent& unit =
-                this->m_world.getComponent<aoc::sim::UnitComponent>(this->m_selectedEntity);
-            const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(unit.typeId);
-            selText = std::string(def.name) + " HP:" + std::to_string(unit.hitPoints)
-                    + " MP:" + std::to_string(unit.movementRemaining);
-        } else if (this->m_world.hasComponent<aoc::sim::CityComponent>(this->m_selectedEntity)) {
-            const aoc::sim::CityComponent& city =
-                this->m_world.getComponent<aoc::sim::CityComponent>(this->m_selectedEntity);
-            selText = city.name + " Pop:" + std::to_string(city.population);
-        }
+    if (this->m_selectedUnit != nullptr) {
+        const aoc::sim::UnitTypeDef& def = this->m_selectedUnit->typeDef();
+        selText = std::string(def.name)
+                + " HP:" + std::to_string(this->m_selectedUnit->hitPoints())
+                + " MP:" + std::to_string(this->m_selectedUnit->movementRemaining());
+    } else if (this->m_selectedCity != nullptr) {
+        selText = this->m_selectedCity->name()
+                + " Pop:" + std::to_string(this->m_selectedCity->population());
     } else {
         selText = "No selection";
     }
@@ -3040,66 +2685,37 @@ void Application::updateHUD() {
             int32_t faithTotal = static_cast<int32_t>(humanHud->faith().faith);
             resText += "  Faith:" + std::to_string(faithTotal);
         } else {
-            // Fallback to ECS if GameState not yet populated
-            CurrencyAmount goldIncome = 0;
-            this->m_world.forEach<aoc::sim::PlayerEconomyComponent>(
-                [&resText, &goldIncome](EntityId, const aoc::sim::PlayerEconomyComponent& ec) {
-                    if (ec.owner == 0) {
-                        goldIncome = ec.incomePerTurn;
-                        resText = "Gold:" + std::to_string(static_cast<int64_t>(ec.treasury));
-                        if (ec.incomePerTurn >= 0) {
-                            resText += "(+" + std::to_string(static_cast<int64_t>(ec.incomePerTurn)) + "/turn)";
-                        } else {
-                            resText += "(" + std::to_string(static_cast<int64_t>(ec.incomePerTurn)) + "/turn)";
-                        }
-                    }
-                });
+            // GameState not yet populated — show zeroed values
+            resText = "Gold:0(+0/turn)";
 
-            float totalScience = aoc::sim::computePlayerScience(this->m_world, this->m_hexGrid, 0);
+            float totalScience = aoc::sim::computePlayerScience(this->m_gameState, this->m_hexGrid, 0);
             int32_t sciInt = static_cast<int32_t>(totalScience);
             resText += "  Sci:(+" + std::to_string(sciInt) + "/turn)";
 
-            float totalCulture = aoc::sim::computePlayerCulture(this->m_world, this->m_hexGrid, 0);
+            float totalCulture = aoc::sim::computePlayerCulture(this->m_gameState, this->m_hexGrid, 0);
             int32_t culInt = static_cast<int32_t>(totalCulture);
             resText += "  Cul:(+" + std::to_string(culInt) + "/turn)";
-
-            const aoc::ecs::ComponentPool<aoc::sim::PlayerFaithComponent>* faithPool =
-                this->m_world.getPool<aoc::sim::PlayerFaithComponent>();
-            if (faithPool != nullptr) {
-                for (uint32_t fi = 0; fi < faithPool->size(); ++fi) {
-                    if (faithPool->data()[fi].owner == 0) {
-                        int32_t faithTotal = static_cast<int32_t>(faithPool->data()[fi].faith);
-                        resText += "  Faith:" + std::to_string(faithTotal);
-                        break;
-                    }
-                }
-            }
+            resText += "  Faith:0";
         }
 
-        const aoc::ecs::ComponentPool<aoc::sim::CityStockpileComponent>* stockPool =
-            this->m_world.getPool<aoc::sim::CityStockpileComponent>();
-        if (stockPool != nullptr) {
-            // Aggregate resources across all player 0 cities
-            std::unordered_map<uint16_t, int32_t> totals;
-            for (uint32_t i = 0; i < stockPool->size(); ++i) {
-                EntityId cityEntity = stockPool->entities()[i];
-                const aoc::sim::CityComponent* city =
-                    this->m_world.tryGetComponent<aoc::sim::CityComponent>(cityEntity);
-                if (city == nullptr || city->owner != 0) {
-                    continue;
-                }
-                for (const std::pair<const uint16_t, int32_t>& entry : stockPool->data()[i].goods) {
-                    totals[entry.first] += entry.second;
-                }
-            }
-            // Display top resources with amounts > 0
-            for (const std::pair<const uint16_t, int32_t>& entry : totals) {
-                if (entry.second > 0 && entry.first < aoc::sim::goodCount()) {
-                    const aoc::sim::GoodDef& def = aoc::sim::goodDef(entry.first);
-                    if (!resText.empty()) {
-                        resText += "  ";
+        // Aggregate stockpile goods across all player 0 cities via GameState
+        {
+            const aoc::game::Player* stockPlayer = this->m_gameState.player(0);
+            if (stockPlayer != nullptr) {
+                std::unordered_map<uint16_t, int32_t> totals;
+                for (const std::unique_ptr<aoc::game::City>& city : stockPlayer->cities()) {
+                    for (const std::pair<const uint16_t, int32_t>& entry : city->stockpile().goods) {
+                        totals[entry.first] += entry.second;
                     }
-                    resText += std::string(def.name) + ":" + std::to_string(entry.second);
+                }
+                for (const std::pair<const uint16_t, int32_t>& entry : totals) {
+                    if (entry.second > 0 && entry.first < aoc::sim::goodCount()) {
+                        const aoc::sim::GoodDef& def = aoc::sim::goodDef(entry.first);
+                        if (!resText.empty()) {
+                            resText += "  ";
+                        }
+                        resText += std::string(def.name) + ":" + std::to_string(entry.second);
+                    }
                 }
             }
         }
@@ -3115,21 +2731,17 @@ void Application::updateHUD() {
         std::string researchText = "No research";
         float researchFraction = 0.0f;
 
-        const aoc::ecs::ComponentPool<aoc::sim::PlayerTechComponent>* techPool =
-            this->m_world.getPool<aoc::sim::PlayerTechComponent>();
-        if (techPool != nullptr) {
-            for (uint32_t i = 0; i < techPool->size(); ++i) {
-                const aoc::sim::PlayerTechComponent& tech = techPool->data()[i];
-                if (tech.owner == 0 && tech.currentResearch.isValid()) {
-                    const aoc::sim::TechDef& tdef = aoc::sim::techDef(tech.currentResearch);
-                    researchText = "Research: " + std::string(tdef.name) + " "
-                                 + std::to_string(static_cast<int>(tech.researchProgress))
-                                 + "/" + std::to_string(tdef.researchCost);
-                    if (tdef.researchCost > 0) {
-                        researchFraction = tech.researchProgress / static_cast<float>(tdef.researchCost);
-                        if (researchFraction > 1.0f) { researchFraction = 1.0f; }
-                    }
-                    break;
+        const aoc::game::Player* techPlayer = this->m_gameState.player(0);
+        if (techPlayer != nullptr) {
+            const aoc::sim::PlayerTechComponent& tech = techPlayer->tech();
+            if (tech.currentResearch.isValid()) {
+                const aoc::sim::TechDef& tdef = aoc::sim::techDef(tech.currentResearch);
+                researchText = "Research: " + std::string(tdef.name) + " "
+                             + std::to_string(static_cast<int>(tech.researchProgress))
+                             + "/" + std::to_string(tdef.researchCost);
+                if (tdef.researchCost > 0) {
+                    researchFraction = tech.researchProgress / static_cast<float>(tdef.researchCost);
+                    if (researchFraction > 1.0f) { researchFraction = 1.0f; }
                 }
             }
         }
@@ -3148,10 +2760,9 @@ void Application::updateHUD() {
         std::string prodText;
         float prodFraction = 0.0f;
 
-        if (this->m_selectedEntity.isValid() && this->m_world.isAlive(this->m_selectedEntity) &&
-            this->m_world.hasComponent<aoc::sim::CityComponent>(this->m_selectedEntity)) {
+        if (this->m_selectedCity != nullptr) {
             const aoc::sim::ProductionQueueComponent* queue =
-                this->m_world.tryGetComponent<aoc::sim::ProductionQueueComponent>(this->m_selectedEntity);
+                &this->m_selectedCity->production();
             if (queue != nullptr) {
                 const aoc::sim::ProductionQueueItem* current = queue->currentItem();
                 if (current != nullptr) {
@@ -3213,7 +2824,7 @@ void Application::updateHUD() {
 
 void Application::rebuildUnitActionPanel() {
     // Check if selection changed
-    if (this->m_actionPanelEntity == this->m_selectedEntity) {
+    if (this->m_actionPanelUnit == nullptr) {
         return;
     }
 
@@ -3222,11 +2833,10 @@ void Application::rebuildUnitActionPanel() {
         this->m_uiManager.removeWidget(this->m_unitActionPanel);
         this->m_unitActionPanel = aoc::ui::INVALID_WIDGET;
     }
-    this->m_actionPanelEntity = this->m_selectedEntity;
+    this->m_actionPanelUnit = this->m_selectedUnit;
 
     // If no unit selected, show minimal End Turn panel
-    if (!this->m_selectedEntity.isValid() || !this->m_world.isAlive(this->m_selectedEntity)
-        || !this->m_world.hasComponent<aoc::sim::UnitComponent>(this->m_selectedEntity)) {
+    if (this->m_selectedUnit == nullptr) {
         constexpr float MIN_W = 150.0f;
         constexpr float MIN_H = 50.0f;
         this->m_unitActionPanel = this->m_uiManager.createPanel(
@@ -3257,9 +2867,8 @@ void Application::rebuildUnitActionPanel() {
         return;
     }
 
-    const aoc::sim::UnitComponent& unit =
-        this->m_world.getComponent<aoc::sim::UnitComponent>(this->m_selectedEntity);
-    const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(unit.typeId);
+    const aoc::game::Unit& unit = *this->m_selectedUnit;
+    const aoc::sim::UnitTypeDef& def = unit.typeDef();
 
     // Count buttons to size the panel
     int32_t buttonCount = 2;  // Skip + Sleep always
@@ -3277,7 +2886,7 @@ void Application::rebuildUnitActionPanel() {
     }
 
     const std::vector<aoc::sim::UnitUpgradeDef> upgrades =
-        aoc::sim::getAvailableUpgrades(unit.typeId);
+        aoc::sim::getAvailableUpgrades(unit.typeId());
     if (!upgrades.empty()) {
         ++buttonCount;  // Upgrade
     }
@@ -3311,8 +2920,8 @@ void Application::rebuildUnitActionPanel() {
         char infoBuf[128];
         std::snprintf(infoBuf, sizeof(infoBuf), "%.*s   HP: %d/%d   MP: %d/%d",
                       static_cast<int>(def.name.size()), def.name.data(),
-                      unit.hitPoints, def.maxHitPoints,
-                      unit.movementRemaining, def.movementPoints);
+                      unit.hitPoints(), def.maxHitPoints,
+                      unit.movementRemaining(), def.movementPoints);
         (void)this->m_uiManager.createLabel(
             this->m_unitActionPanel,
             {0.0f, 0.0f, PANEL_W - PAD * 2.0f, 16.0f},
@@ -3345,8 +2954,8 @@ void Application::rebuildUnitActionPanel() {
     }
 
     // Helper to create action buttons
-    const EntityId selectedEnt = this->m_selectedEntity;
-    aoc::ecs::World* worldPtr = &this->m_world;
+    aoc::game::Unit* selectedUnitPtr = this->m_selectedUnit;
+    aoc::game::GameState* gsPtr = &this->m_gameState;
 
     // auto required: lambda type is unnameable
     auto makeActionBtn = [this](const std::string& label,
@@ -3372,39 +2981,30 @@ void Application::rebuildUnitActionPanel() {
 
     // -- Skip button (all units) --
     makeActionBtn("Skip", {0.25f, 0.25f, 0.30f, 0.9f},
-        [worldPtr, selectedEnt]() {
-            if (!worldPtr->isAlive(selectedEnt)) { return; }
-            aoc::sim::UnitComponent* u = worldPtr->tryGetComponent<aoc::sim::UnitComponent>(selectedEnt);
-            if (u != nullptr) {
-                u->movementRemaining = 0;
-                LOG_INFO("Unit skipped turn");
-            }
+        [this, selectedUnitPtr]() {
+            if (selectedUnitPtr == nullptr) { return; }
+            selectedUnitPtr->setMovementRemaining(0);
+            LOG_INFO("Unit skipped turn");
         });
 
     // -- Sleep button (all units) --
     makeActionBtn("Sleep", {0.25f, 0.25f, 0.30f, 0.9f},
-        [worldPtr, selectedEnt]() {
-            if (!worldPtr->isAlive(selectedEnt)) { return; }
-            aoc::sim::UnitComponent* u = worldPtr->tryGetComponent<aoc::sim::UnitComponent>(selectedEnt);
-            if (u != nullptr) {
-                u->state = aoc::sim::UnitState::Sleeping;
-                LOG_INFO("Unit sleeping");
-            }
+        [this, selectedUnitPtr]() {
+            if (selectedUnitPtr == nullptr) { return; }
+            selectedUnitPtr->setState(aoc::sim::UnitState::Sleeping);
+            LOG_INFO("Unit sleeping");
         });
 
     // -- Auto-Explore button (Scout units) --
     if (def.unitClass == aoc::sim::UnitClass::Scout) {
         makeActionBtn("Auto-Explore", {0.20f, 0.25f, 0.35f, 0.9f},
-            [worldPtr, selectedEnt]() {
-                if (!worldPtr->isAlive(selectedEnt)) { return; }
-                aoc::sim::UnitComponent* u = worldPtr->tryGetComponent<aoc::sim::UnitComponent>(selectedEnt);
-                if (u != nullptr) {
-                    u->autoExplore = !u->autoExplore;
-                    if (u->autoExplore) {
-                        LOG_INFO("Auto-explore enabled for scout");
-                    } else {
-                        LOG_INFO("Auto-explore disabled for scout");
-                    }
+            [this, selectedUnitPtr]() {
+                if (selectedUnitPtr == nullptr) { return; }
+                selectedUnitPtr->autoExplore = !selectedUnitPtr->autoExplore;
+                if (selectedUnitPtr->autoExplore) {
+                    LOG_INFO("Auto-explore enabled for scout");
+                } else {
+                    LOG_INFO("Auto-explore disabled for scout");
                 }
             });
     }
@@ -3412,78 +3012,41 @@ void Application::rebuildUnitActionPanel() {
     // -- Fortify button (military units) --
     if (aoc::sim::isMilitary(def.unitClass)) {
         makeActionBtn("Fortify", {0.20f, 0.30f, 0.20f, 0.9f},
-            [worldPtr, selectedEnt]() {
-                if (!worldPtr->isAlive(selectedEnt)) { return; }
-                aoc::sim::UnitComponent* u = worldPtr->tryGetComponent<aoc::sim::UnitComponent>(selectedEnt);
-                if (u != nullptr) {
-                    u->state = aoc::sim::UnitState::Fortified;
-                    LOG_INFO("Unit fortified (+25%% defense)");
-                }
+            [this, selectedUnitPtr]() {
+                if (selectedUnitPtr == nullptr) { return; }
+                selectedUnitPtr->setState(aoc::sim::UnitState::Fortified);
+                LOG_INFO("Unit fortified (+25%% defense)");
             });
     }
 
     // -- Found City button (Settler) --
     if (def.unitClass == aoc::sim::UnitClass::Settler) {
         makeActionBtn("Found City", {0.30f, 0.25f, 0.15f, 0.9f},
-            [this, selectedEnt]() {
-                if (!this->m_world.isAlive(selectedEnt)) { return; }
-                const aoc::sim::UnitComponent* u =
-                    this->m_world.tryGetComponent<aoc::sim::UnitComponent>(selectedEnt);
-                if (u == nullptr) { return; }
+            [this, selectedUnitPtr]() {
+                if (selectedUnitPtr == nullptr) { return; }
 
-                const PlayerId cityOwner = u->owner;
-                const hex::AxialCoord cityPos = u->position;
+                const PlayerId cityOwner = selectedUnitPtr->owner();
+                const aoc::hex::AxialCoord cityPos = selectedUnitPtr->position();
 
-                EntityId cityEntity = this->m_world.createEntity();
-                const std::string cityName = aoc::sim::getNextCityName(this->m_world, cityOwner);
-                aoc::sim::CityComponent newCity =
-                    aoc::sim::CityComponent::create(cityOwner, cityPos, cityName);
+                aoc::game::Player* gsFounder = this->m_gameState.player(cityOwner);
+                if (gsFounder == nullptr) { return; }
 
-                bool hasExistingCity = false;
-                const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* existingCities =
-                    this->m_world.getPool<aoc::sim::CityComponent>();
-                if (existingCities != nullptr) {
-                    for (uint32_t ci = 0; ci < existingCities->size(); ++ci) {
-                        if (existingCities->data()[ci].owner == cityOwner) {
-                            hasExistingCity = true;
-                            break;
-                        }
-                    }
-                }
-                if (!hasExistingCity) {
-                    newCity.isOriginalCapital = true;
-                    newCity.originalOwner = cityOwner;
-                }
-
-                this->m_world.addComponent<aoc::sim::CityComponent>(
-                    cityEntity, std::move(newCity));
-                this->m_world.addComponent<aoc::sim::ProductionQueueComponent>(
-                    cityEntity, aoc::sim::ProductionQueueComponent{});
-
-                aoc::sim::CityDistrictsComponent districts{};
-                aoc::sim::CityDistrictsComponent::PlacedDistrict center;
-                center.type = aoc::sim::DistrictType::CityCenter;
-                center.location = cityPos;
-                districts.districts.push_back(std::move(center));
-                this->m_world.addComponent<aoc::sim::CityDistrictsComponent>(
-                    cityEntity, std::move(districts));
+                const std::string cityName = aoc::sim::getNextCityName(this->m_gameState, cityOwner);
+                const bool isFirstCity = (gsFounder->cityCount() == 0);
 
                 aoc::sim::claimInitialTerritory(this->m_hexGrid, cityPos, cityOwner);
 
-                // Auto-assign workers to best tiles
-                aoc::sim::CityComponent& foundedCity2 =
-                    this->m_world.getComponent<aoc::sim::CityComponent>(cityEntity);
-                aoc::sim::autoAssignWorkers(foundedCity2, this->m_hexGrid);
-
-                // Mirror the new city into the GameState object model
-                aoc::game::Player* gsFounder2 = this->m_gameState.player(cityOwner);
-                if (gsFounder2 != nullptr) {
-                    aoc::game::City& gsCity2 = gsFounder2->addCity(cityPos, cityName);
-                    gsCity2.autoAssignWorkers(this->m_hexGrid);
+                aoc::game::City& newGsCity = gsFounder->addCity(cityPos, cityName);
+                if (isFirstCity) {
+                    newGsCity.setOriginalCapital(true);
+                    newGsCity.setOriginalOwner(cityOwner);
                 }
+                newGsCity.autoAssignWorkers(this->m_hexGrid);
 
-                this->m_world.destroyEntity(selectedEnt);
-                this->m_selectedEntity = cityEntity;
+                // Remove the settler from the owning player and clear selection
+                gsFounder->removeUnit(selectedUnitPtr);
+                this->m_selectedUnit = nullptr;
+                this->m_actionPanelUnit = nullptr;
                 LOG_INFO("City founded via action panel!");
 
                 {
@@ -3499,26 +3062,26 @@ void Application::rebuildUnitActionPanel() {
     // -- Improve button (Builder / Civilian) --
     if (def.unitClass == aoc::sim::UnitClass::Civilian) {
         makeActionBtn("Improve", {0.20f, 0.28f, 0.20f, 0.9f},
-            [this, selectedEnt]() {
-                if (!this->m_world.isAlive(selectedEnt)) { return; }
-                aoc::sim::UnitComponent* u =
-                    this->m_world.tryGetComponent<aoc::sim::UnitComponent>(selectedEnt);
-                if (u == nullptr) { return; }
+            [this, selectedUnitPtr]() {
+                if (selectedUnitPtr == nullptr) { return; }
 
-                const int32_t tileIndex = this->m_hexGrid.toIndex(u->position);
+                const int32_t tileIndex = this->m_hexGrid.toIndex(selectedUnitPtr->position());
                 const aoc::map::ImprovementType bestImpr =
                     aoc::sim::bestImprovementForTile(this->m_hexGrid, tileIndex);
 
                 if (bestImpr != aoc::map::ImprovementType::None &&
                     this->m_hexGrid.improvement(tileIndex) == aoc::map::ImprovementType::None) {
                     this->m_hexGrid.setImprovement(tileIndex, bestImpr);
-                    if (u->chargesRemaining > 0) {
-                        --u->chargesRemaining;
-                    }
+                    selectedUnitPtr->useCharge();
                     LOG_INFO("Builder placed improvement via action panel");
-                    if (u->chargesRemaining == 0) {
-                        this->m_world.destroyEntity(selectedEnt);
-                        this->m_selectedEntity = NULL_ENTITY;
+                    if (!selectedUnitPtr->hasCharges()) {
+                        const PlayerId ownerId = selectedUnitPtr->owner();
+                        aoc::game::Player* owner = this->m_gameState.player(ownerId);
+                        if (owner != nullptr) {
+                            owner->removeUnit(selectedUnitPtr);
+                        }
+                        this->m_selectedUnit = nullptr;
+                        this->m_actionPanelUnit = nullptr;
                         LOG_INFO("Builder exhausted all charges");
                     }
                 }
@@ -3526,17 +3089,13 @@ void Application::rebuildUnitActionPanel() {
 
         // -- Auto-Improve toggle (Civilian units) --
         makeActionBtn("Auto-Improve", {0.20f, 0.28f, 0.30f, 0.9f},
-            [worldPtr, selectedEnt]() {
-                if (!worldPtr->isAlive(selectedEnt)) { return; }
-                aoc::sim::UnitComponent* u =
-                    worldPtr->tryGetComponent<aoc::sim::UnitComponent>(selectedEnt);
-                if (u != nullptr) {
-                    u->autoImprove = !u->autoImprove;
-                    if (u->autoImprove) {
-                        LOG_INFO("Auto-improve enabled for builder");
-                    } else {
-                        LOG_INFO("Auto-improve disabled for builder");
-                    }
+            [this, selectedUnitPtr]() {
+                if (selectedUnitPtr == nullptr) { return; }
+                selectedUnitPtr->autoImprove = !selectedUnitPtr->autoImprove;
+                if (selectedUnitPtr->autoImprove) {
+                    LOG_INFO("Auto-improve enabled for builder");
+                } else {
+                    LOG_INFO("Auto-improve disabled for builder");
                 }
             });
     }
@@ -3544,14 +3103,19 @@ void Application::rebuildUnitActionPanel() {
     // -- Upgrade button (if upgrade available) --
     if (!upgrades.empty()) {
         const aoc::sim::UnitUpgradeDef& upg = upgrades[0];
-        const int32_t cost = aoc::sim::upgradeCost(unit.typeId, upg.to);
+        const int32_t cost = aoc::sim::upgradeCost(unit.typeId(), upg.to);
         const std::string upgLabel = "Upgrade (" + std::to_string(cost) + "g)";
         const UnitTypeId upgTo = upg.to;
-        const PlayerId owner = unit.owner;
+        const PlayerId owner = unit.owner();
+        const aoc::hex::AxialCoord unitPos = unit.position();
         makeActionBtn(upgLabel, {0.30f, 0.20f, 0.30f, 0.9f},
-            [worldPtr, selectedEnt, upgTo, owner]() {
-                if (!worldPtr->isAlive(selectedEnt)) { return; }
-                bool success = aoc::sim::upgradeUnit(*worldPtr, selectedEnt, upgTo, owner);
+            [this, gsPtr, selectedUnitPtr, upgTo, owner, unitPos]() {
+                if (selectedUnitPtr == nullptr) { return; }
+                aoc::game::Player* upgradePlayer = gsPtr->player(owner);
+                aoc::game::Unit* gsUnit = (upgradePlayer != nullptr)
+                    ? upgradePlayer->unitAt(unitPos) : nullptr;
+                if (gsUnit == nullptr) { return; }
+                bool success = aoc::sim::upgradeUnit(*gsPtr, *gsUnit, upgTo, owner);
                 if (success) {
                     LOG_INFO("Unit upgraded via action panel!");
                 }

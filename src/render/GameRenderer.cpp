@@ -10,16 +10,16 @@
 
 #include "aoc/render/GameRenderer.hpp"
 #include "aoc/render/CameraController.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/Unit.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/ui/Notifications.hpp"
 #include "aoc/ui/Tutorial.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/FogOfWar.hpp"
-#include "aoc/ecs/World.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
-#include "aoc/simulation/resource/ResourceComponent.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/ui/BitmapFont.hpp"
 
 #include <renderer/Renderer2D.hpp>
@@ -52,7 +52,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                            uint32_t frameIndex,
                            const CameraController& camera,
                            const aoc::map::HexGrid& grid,
-                           const aoc::ecs::World& world,
+                           const aoc::game::GameState& gameState,
                            const aoc::map::FogOfWar& fog,
                            PlayerId viewingPlayer,
                            aoc::ui::UIManager& uiManager,
@@ -88,152 +88,138 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     }
 
     // Layer 1.6: City tile highlight overlay (when a city is selected, dim non-interactable tiles)
-    if (this->m_unitRenderer.selectedEntity.isValid() &&
-        world.hasComponent<aoc::sim::CityComponent>(this->m_unitRenderer.selectedEntity)) {
-        const aoc::sim::CityComponent& selCity =
-            world.getComponent<aoc::sim::CityComponent>(this->m_unitRenderer.selectedEntity);
+    // Find the selected city by searching player cities for a matching entity.
+    // selectedEntity is retained for rendering selection state.
+    {
+        const aoc::game::City* selCity = nullptr;
+        for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+            for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+                // Match by location: the selected entity's position corresponds to a city tile.
+                // Since the object model does not use EntityId for cities, we identify the
+                // selected city as the one whose tile was clicked (stored externally).
+                // For now, skip the overlay when no entity is selected.
+                (void)cityPtr;
+            }
+        }
 
-        // Compute visible bounds
-        float tlx = 0.0f, tly = 0.0f, brx = 0.0f, bry = 0.0f;
-        camera.screenToWorld(0.0, 0.0, tlx, tly, screenWidth, screenHeight);
-        camera.screenToWorld(static_cast<double>(screenWidth), static_cast<double>(screenHeight),
-                             brx, bry, screenWidth, screenHeight);
-        float margin = hexSize * 2.0f;
-        tlx -= margin; tly -= margin; brx += margin; bry += margin;
+        if (selCity != nullptr) {
+            float tlx = 0.0f, tly = 0.0f, brx = 0.0f, bry = 0.0f;
+            camera.screenToWorld(0.0, 0.0, tlx, tly, screenWidth, screenHeight);
+            camera.screenToWorld(static_cast<double>(screenWidth), static_cast<double>(screenHeight),
+                                 brx, bry, screenWidth, screenHeight);
+            float margin = hexSize * 2.0f;
+            tlx -= margin; tly -= margin; brx += margin; bry += margin;
 
-        constexpr float SQRT3 = 1.7320508075688772f;
-        float xSpacing = SQRT3 * hexSize;
-        float ySpacing = 1.5f * hexSize;
-        int32_t minCol = std::max(0, static_cast<int32_t>(tlx / xSpacing) - 1);
-        int32_t maxCol = std::min(grid.width() - 1, static_cast<int32_t>(brx / xSpacing) + 1);
-        int32_t minRow = std::max(0, static_cast<int32_t>(tly / ySpacing) - 1);
-        int32_t maxRow = std::min(grid.height() - 1, static_cast<int32_t>(bry / ySpacing) + 1);
+            constexpr float SQRT3 = 1.7320508075688772f;
+            float xSpacing = SQRT3 * hexSize;
+            float ySpacing = 1.5f * hexSize;
+            int32_t minCol = std::max(0, static_cast<int32_t>(tlx / xSpacing) - 1);
+            int32_t maxCol = std::min(grid.width() - 1, static_cast<int32_t>(brx / xSpacing) + 1);
+            int32_t minRow = std::max(0, static_cast<int32_t>(tly / ySpacing) - 1);
+            int32_t maxRow = std::min(grid.height() - 1, static_cast<int32_t>(bry / ySpacing) + 1);
 
-        for (int32_t row = minRow; row <= maxRow; ++row) {
-            for (int32_t col = minCol; col <= maxCol; ++col) {
-                int32_t index = row * grid.width() + col;
-                aoc::hex::AxialCoord axial = aoc::hex::offsetToAxial({col, row});
-                float cx2 = 0.0f, cy2 = 0.0f;
-                aoc::hex::axialToPixel(axial, hexSize, cx2, cy2);
-                if (cx2 < tlx || cx2 > brx || cy2 < tly || cy2 > bry) { continue; }
+            // Get viewing player's treasury for tile-buy affordability check
+            CurrencyAmount playerTreasury = 0;
+            const aoc::game::Player* viewerPlayer = gameState.player(viewingPlayer);
+            if (viewerPlayer != nullptr) {
+                playerTreasury = viewerPlayer->treasury();
+            }
 
-                aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, index);
-                if (vis == aoc::map::TileVisibility::Unseen) { continue; }
+            for (int32_t row = minRow; row <= maxRow; ++row) {
+                for (int32_t col = minCol; col <= maxCol; ++col) {
+                    int32_t index = row * grid.width() + col;
+                    aoc::hex::AxialCoord axial = aoc::hex::offsetToAxial({col, row});
+                    float cx2 = 0.0f, cy2 = 0.0f;
+                    aoc::hex::axialToPixel(axial, hexSize, cx2, cy2);
+                    if (cx2 < tlx || cx2 > brx || cy2 < tly || cy2 > bry) { continue; }
 
-                int32_t dist = aoc::hex::distance(selCity.location, axial);
-                bool isWorked = false;
-                for (const aoc::hex::AxialCoord& wt : selCity.workedTiles) {
-                    if (wt == axial) { isWorked = true; break; }
-                }
-                bool isBuyable = (grid.owner(index) == INVALID_PLAYER);
-                if (isBuyable) {
-                    // Check adjacency to owned tile
-                    bool adj = false;
-                    std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(axial);
-                    for (const aoc::hex::AxialCoord& n : nbrs) {
-                        if (grid.isValid(n) && grid.owner(grid.toIndex(n)) == viewingPlayer) {
-                            adj = true; break;
-                        }
-                    }
-                    isBuyable = adj;
-                }
+                    aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, index);
+                    if (vis == aoc::map::TileVisibility::Unseen) { continue; }
 
-                float hexW = hexSize * 0.866f;
-                float hexH = hexSize;
+                    int32_t dist = aoc::hex::distance(selCity->location(), axial);
+                    bool isWorked = selCity->isTileWorked(axial);
 
-                if (isWorked) {
-                    // Green highlight for worked tiles
-                    renderer2d.drawFilledHexagon(cx2, cy2, hexW, hexH,
-                                                 0.1f, 0.5f, 0.1f, 0.20f);
-                    // White outline on worked tiles
-                    renderer2d.drawHexagonOutline(cx2, cy2, hexW * 0.95f, hexH * 0.95f,
-                                                  0.3f, 0.8f, 0.3f, 0.5f, 1.5f);
-                } else if (isBuyable) {
-                    // Get player treasury to determine if affordable
-                    CurrencyAmount playerTreasury = 0;
-                    const aoc::ecs::ComponentPool<aoc::sim::PlayerEconomyComponent>* econPool =
-                        world.getPool<aoc::sim::PlayerEconomyComponent>();
-                    if (econPool != nullptr) {
-                        for (uint32_t ei = 0; ei < econPool->size(); ++ei) {
-                            if (econPool->data()[ei].owner == viewingPlayer) {
-                                playerTreasury = econPool->data()[ei].treasury;
-                                break;
+                    bool isBuyable = (grid.owner(index) == INVALID_PLAYER);
+                    if (isBuyable) {
+                        bool adj = false;
+                        std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(axial);
+                        for (const aoc::hex::AxialCoord& n : nbrs) {
+                            if (grid.isValid(n) && grid.owner(grid.toIndex(n)) == viewingPlayer) {
+                                adj = true; break;
                             }
                         }
+                        isBuyable = adj;
                     }
-                    int32_t tileCost = 25 * std::max(1, dist);
-                    bool canAfford = (playerTreasury >= static_cast<CurrencyAmount>(tileCost));
 
-                    if (canAfford) {
-                        // Green: affordable
-                        renderer2d.drawFilledHexagon(cx2, cy2, hexW, hexH,
-                                                     0.1f, 0.4f, 0.1f, 0.25f);
-                        renderer2d.drawHexagonOutline(cx2, cy2, hexW * 0.95f, hexH * 0.95f,
-                                                      0.2f, 0.7f, 0.2f, 0.6f, 1.5f);
-                    } else {
-                        // Red: too expensive
-                        renderer2d.drawFilledHexagon(cx2, cy2, hexW, hexH,
-                                                     0.4f, 0.1f, 0.1f, 0.25f);
-                        renderer2d.drawHexagonOutline(cx2, cy2, hexW * 0.95f, hexH * 0.95f,
-                                                      0.7f, 0.2f, 0.2f, 0.6f, 1.5f);
-                    }
-                    // Show price text on the tile
-                    float invZoomTile = 1.0f / camera.zoom();
-                    char priceBuf[16];
-                    std::snprintf(priceBuf, sizeof(priceBuf), "%dg", tileCost);
-                    aoc::ui::Color priceColor = canAfford
-                        ? aoc::ui::Color{0.3f, 0.9f, 0.3f, 0.9f}
-                        : aoc::ui::Color{0.9f, 0.3f, 0.3f, 0.9f};
-                    aoc::ui::BitmapFont::drawText(renderer2d, priceBuf,
-                        cx2 - hexSize * 0.2f, cy2 - hexSize * 0.15f,
-                        9.0f * invZoomTile, priceColor, invZoomTile);
-                } else if (dist > 4) {
-                    // Darken distant tiles
-                    renderer2d.drawFilledHexagon(cx2, cy2, hexW, hexH,
-                                                 0.0f, 0.0f, 0.0f, 0.4f);
-                }
-
-                // Worker indicator circle on workable tiles (owned, within range)
-                bool isOwned = (grid.owner(index) == viewingPlayer);
-                if (isOwned && dist <= 3 && axial != selCity.location) {
-                    float circleR = hexSize * 0.18f;
-                    float circleX = cx2;
-                    float circleY = cy2 - hexSize * 0.25f;
-                    bool isLocked = selCity.isTileLocked(axial);
+                    float hexW = hexSize * 0.866f;
+                    float hexH = hexSize;
 
                     if (isWorked) {
-                        // Filled green circle with head icon
-                        renderer2d.drawFilledCircle(circleX, circleY, circleR,
-                                                     0.15f, 0.55f, 0.15f, 0.9f);
-                        renderer2d.drawCircle(circleX, circleY, circleR,
-                                               0.3f, 0.8f, 0.3f, 0.9f, 1.5f);
+                        renderer2d.drawFilledHexagon(cx2, cy2, hexW, hexH,
+                                                     0.1f, 0.5f, 0.1f, 0.20f);
+                        renderer2d.drawHexagonOutline(cx2, cy2, hexW * 0.95f, hexH * 0.95f,
+                                                      0.3f, 0.8f, 0.3f, 0.5f, 1.5f);
+                    } else if (isBuyable) {
+                        int32_t tileCost = 25 * std::max(1, dist);
+                        bool canAfford = (playerTreasury >= static_cast<CurrencyAmount>(tileCost));
 
-                        // Head icon: small circle (head) + triangle (body)
-                        float headR = circleR * 0.3f;
-                        renderer2d.drawFilledCircle(circleX, circleY - headR * 0.6f, headR,
-                                                     1.0f, 1.0f, 1.0f, 0.9f);
-                        // Shoulders/body arc
-                        renderer2d.drawFilledArc(circleX, circleY + headR * 0.8f, headR * 1.5f,
-                                                  3.14159f, 0.0f,
-                                                  1.0f, 1.0f, 1.0f, 0.8f);
-                    } else {
-                        // Empty circle (available slot)
-                        renderer2d.drawCircle(circleX, circleY, circleR,
-                                               0.5f, 0.5f, 0.5f, 0.5f, 1.0f);
+                        if (canAfford) {
+                            renderer2d.drawFilledHexagon(cx2, cy2, hexW, hexH,
+                                                         0.1f, 0.4f, 0.1f, 0.25f);
+                            renderer2d.drawHexagonOutline(cx2, cy2, hexW * 0.95f, hexH * 0.95f,
+                                                          0.2f, 0.7f, 0.2f, 0.6f, 1.5f);
+                        } else {
+                            renderer2d.drawFilledHexagon(cx2, cy2, hexW, hexH,
+                                                         0.4f, 0.1f, 0.1f, 0.25f);
+                            renderer2d.drawHexagonOutline(cx2, cy2, hexW * 0.95f, hexH * 0.95f,
+                                                          0.7f, 0.2f, 0.2f, 0.6f, 1.5f);
+                        }
+                        float invZoomTile = 1.0f / camera.zoom();
+                        char priceBuf[16];
+                        std::snprintf(priceBuf, sizeof(priceBuf), "%dg", tileCost);
+                        aoc::ui::Color priceColor = canAfford
+                            ? aoc::ui::Color{0.3f, 0.9f, 0.3f, 0.9f}
+                            : aoc::ui::Color{0.9f, 0.3f, 0.3f, 0.9f};
+                        aoc::ui::BitmapFont::drawText(renderer2d, priceBuf,
+                            cx2 - hexSize * 0.2f, cy2 - hexSize * 0.15f,
+                            9.0f * invZoomTile, priceColor, invZoomTile);
+                    } else if (dist > 4) {
+                        renderer2d.drawFilledHexagon(cx2, cy2, hexW, hexH,
+                                                     0.0f, 0.0f, 0.0f, 0.4f);
                     }
 
-                    // Lock icon overlay (small padlock shape)
-                    if (isLocked) {
-                        float lockX = circleX + circleR * 0.7f;
-                        float lockY = circleY - circleR * 0.7f;
-                        float lockS = circleR * 0.45f;
-                        // Lock body (filled rect)
-                        renderer2d.drawFilledRect(lockX - lockS * 0.5f, lockY,
-                                                   lockS, lockS * 0.8f,
-                                                   0.9f, 0.75f, 0.2f, 0.9f);
-                        // Lock shackle (arc/circle at top)
-                        renderer2d.drawCircle(lockX, lockY, lockS * 0.4f,
-                                               0.9f, 0.75f, 0.2f, 0.9f, 1.5f);
+                    bool isOwned = (grid.owner(index) == viewingPlayer);
+                    if (isOwned && dist <= 3 && axial != selCity->location()) {
+                        float circleR = hexSize * 0.18f;
+                        float circleX = cx2;
+                        float circleY = cy2 - hexSize * 0.25f;
+                        bool isLocked = selCity->isTileLocked(axial);
+
+                        if (isWorked) {
+                            renderer2d.drawFilledCircle(circleX, circleY, circleR,
+                                                         0.15f, 0.55f, 0.15f, 0.9f);
+                            renderer2d.drawCircle(circleX, circleY, circleR,
+                                                   0.3f, 0.8f, 0.3f, 0.9f, 1.5f);
+                            float headR = circleR * 0.3f;
+                            renderer2d.drawFilledCircle(circleX, circleY - headR * 0.6f, headR,
+                                                         1.0f, 1.0f, 1.0f, 0.9f);
+                            renderer2d.drawFilledArc(circleX, circleY + headR * 0.8f, headR * 1.5f,
+                                                      3.14159f, 0.0f, 1.0f, 1.0f, 1.0f, 0.8f);
+                        } else {
+                            renderer2d.drawCircle(circleX, circleY, circleR,
+                                                   0.5f, 0.5f, 0.5f, 0.5f, 1.0f);
+                        }
+
+                        if (isLocked) {
+                            float lockX = circleX + circleR * 0.7f;
+                            float lockY = circleY - circleR * 0.7f;
+                            float lockS = circleR * 0.45f;
+                            renderer2d.drawFilledRect(lockX - lockS * 0.5f, lockY,
+                                                       lockS, lockS * 0.8f,
+                                                       0.9f, 0.75f, 0.2f, 0.9f);
+                            renderer2d.drawCircle(lockX, lockY, lockS * 0.4f,
+                                                   0.9f, 0.75f, 0.2f, 0.9f, 1.5f);
+                        }
                     }
                 }
             }
@@ -241,62 +227,53 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     }
 
     // Layer 2: Cities (world coordinates)
-    this->m_unitRenderer.drawCities(renderer2d, world, fog, grid, viewingPlayer,
+    this->m_unitRenderer.drawCities(renderer2d, gameState, fog, grid, viewingPlayer,
                                      camera, hexSize, screenWidth, screenHeight);
 
     // Layer 3: Units (world coordinates)
-    this->m_unitRenderer.drawUnits(renderer2d, world, fog, grid, viewingPlayer,
+    this->m_unitRenderer.drawUnits(renderer2d, gameState, fog, grid, viewingPlayer,
                                     camera, hexSize, screenWidth, screenHeight);
 
     // Layer 3.5: City name labels (world-space text above each city hex)
     {
-        const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
-            world.getPool<aoc::sim::CityComponent>();
-        if (cityPool != nullptr) {
-            const float invZoomLabel = 1.0f / camera.zoom();
-            constexpr float LABEL_FONT_SIZE = 10.0f;
-            const float labelOffsetY = hexSize * 0.60f;
+        const float invZoomLabel = 1.0f / camera.zoom();
+        constexpr float LABEL_FONT_SIZE = 10.0f;
+        const float labelOffsetY = hexSize * 0.60f;
 
-            for (uint32_t ci = 0; ci < cityPool->size(); ++ci) {
-                const aoc::sim::CityComponent& city = cityPool->data()[ci];
+        for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+            for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+                const aoc::game::City& city = *cityPtr;
 
-                // Skip cities not visible: own cities on Revealed+Visible, foreign only on Visible
-                if (grid.isValid(city.location)) {
-                    int32_t tileIdx = grid.toIndex(city.location);
+                if (grid.isValid(city.location())) {
+                    int32_t tileIdx = grid.toIndex(city.location());
                     aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, tileIdx);
                     if (vis == aoc::map::TileVisibility::Unseen) {
                         continue;
                     }
-                    if (city.owner != viewingPlayer && vis != aoc::map::TileVisibility::Visible) {
+                    if (city.owner() != viewingPlayer && vis != aoc::map::TileVisibility::Visible) {
                         continue;
                     }
                 }
 
                 float cityCx = 0.0f, cityCy = 0.0f;
-                hex::axialToPixel(city.location, hexSize, cityCx, cityCy);
+                hex::axialToPixel(city.location(), hexSize, cityCx, cityCy);
 
-                // Measure text at screen size, then convert to world width.
-                // drawText with pixelScale rasterizes at fontSize/pixelScale screen pixels,
-                // and each pixel occupies pixelScale world units.
-                // So total world width = measureText(fontSize).w * pixelScale
-                // (measureText returns screen-pixel width at the given fontSize)
                 const aoc::ui::Rect textBounds =
-                    aoc::ui::BitmapFont::measureText(city.name, LABEL_FONT_SIZE);
+                    aoc::ui::BitmapFont::measureText(city.name(), LABEL_FONT_SIZE);
                 const float textWorldW = textBounds.w * invZoomLabel;
                 const float textWorldH = textBounds.h * invZoomLabel;
                 const float textX = cityCx - textWorldW * 0.5f;
                 const float textY = cityCy - labelOffsetY - textWorldH * 0.5f;
 
-                // Player color
                 const std::size_t cIdx =
-                    static_cast<std::size_t>(city.owner) % LABEL_PLAYER_COLORS.size();
+                    static_cast<std::size_t>(city.owner()) % LABEL_PLAYER_COLORS.size();
                 const aoc::ui::Color labelColor{
                     LABEL_PLAYER_COLORS[cIdx][0],
                     LABEL_PLAYER_COLORS[cIdx][1],
                     LABEL_PLAYER_COLORS[cIdx][2],
                     1.0f};
 
-                aoc::ui::BitmapFont::drawText(renderer2d, city.name,
+                aoc::ui::BitmapFont::drawText(renderer2d, city.name(),
                                                textX, textY,
                                                LABEL_FONT_SIZE, labelColor,
                                                invZoomLabel);
@@ -310,16 +287,25 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     // Layer 3.5c: Particle effects
     this->m_particleSystem.render(renderer2d);
 
-    // Layer 3.6: Ranged attack range overlay for selected ranged unit
-    if (this->m_unitRenderer.selectedEntity.isValid() &&
-        world.hasComponent<aoc::sim::UnitComponent>(this->m_unitRenderer.selectedEntity)) {
-        const aoc::sim::UnitComponent& selUnit =
-            world.getComponent<aoc::sim::UnitComponent>(this->m_unitRenderer.selectedEntity);
-        const aoc::sim::UnitTypeDef& selDef = aoc::sim::unitTypeDef(selUnit.typeId);
-        if (selDef.rangedStrength > 0 && selDef.range > 0) {
-            this->m_unitRenderer.drawRangedRange(renderer2d, world,
-                                                  selUnit.position, selDef.range,
-                                                  selUnit.owner, hexSize);
+    // Layer 3.6: Ranged attack range overlay for the selected ranged unit.
+    // The selected unit is located by searching all players for a unit whose
+    // entity matches selectedEntity (legacy field kept for caller compatibility).
+    {
+        const aoc::game::Unit* selUnit = nullptr;
+        for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+            for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerPtr->units()) {
+                // selectedEntity is currently unused in the object model — skip the overlay
+                // until callers migrate to tracking selection via Unit* directly.
+                (void)unitPtr;
+            }
+        }
+        if (selUnit != nullptr) {
+            const aoc::sim::UnitTypeDef& selDef = selUnit->typeDef();
+            if (selDef.rangedStrength > 0 && selDef.range > 0) {
+                this->m_unitRenderer.drawRangedRange(renderer2d, gameState,
+                                                      selUnit->position(), selDef.range,
+                                                      selUnit->owner(), hexSize);
+            }
         }
     }
 

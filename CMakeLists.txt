@@ -43,9 +43,6 @@ add_library(aoc_lib STATIC
     src/game/City.cpp
     src/game/Unit.cpp
 
-    # ECS
-    src/ecs/World.cpp
-
     # Map
     src/map/HexGrid.cpp
     src/map/MapGenerator.cpp

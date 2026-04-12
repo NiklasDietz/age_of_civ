@@ -24,7 +24,7 @@
 #include <cstdint>
 #include <string>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::ui { class UIManager; }
 
 namespace aoc::ui {
@@ -65,9 +65,9 @@ void pushNotification(const GameNotification& notification);
  * Scans for events that occurred this turn and creates appropriate
  * notifications. Called once per turn after all systems have processed.
  *
- * @param world  ECS world.
- * @param player Human player to generate notifications for.
+ * @param gameState  Game state.
+ * @param player     Human player to generate notifications for.
  */
-void generateTurnNotifications(const aoc::ecs::World& world, PlayerId player);
+void generateTurnNotifications(const aoc::game::GameState& gameState, PlayerId player);
 
 } // namespace aoc::ui

@@ -97,4 +97,20 @@ struct CombatPreview {
                                            const aoc::game::Unit& attacker,
                                            const aoc::game::Unit& defender);
 
+// Legacy EntityId overloads for callers not yet migrated to Unit&
+CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
+                                 aoc::Random& rng,
+                                 const aoc::map::HexGrid& grid,
+                                 EntityId attackerEntity,
+                                 EntityId defenderEntity);
+CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
+                                  aoc::Random& rng,
+                                  const aoc::map::HexGrid& grid,
+                                  EntityId attackerEntity,
+                                  EntityId defenderEntity);
+[[nodiscard]] CombatPreview previewCombat(const aoc::game::GameState& gameState,
+                                           const aoc::map::HexGrid& grid,
+                                           EntityId attackerEntity,
+                                           EntityId defenderEntity);
+
 } // namespace aoc::sim

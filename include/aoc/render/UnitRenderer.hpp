@@ -15,8 +15,8 @@ namespace vulkan_app::renderer {
 class Renderer2D;
 }
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::map {
@@ -34,7 +34,7 @@ public:
 
     /// Draw all units visible in the viewport.
     void drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
-                   const aoc::ecs::World& world,
+                   const aoc::game::GameState& gameState,
                    const aoc::map::FogOfWar& fog,
                    const aoc::map::HexGrid& grid,
                    PlayerId viewingPlayer,
@@ -44,7 +44,7 @@ public:
 
     /// Draw all cities visible in the viewport.
     void drawCities(vulkan_app::renderer::Renderer2D& renderer2d,
-                    const aoc::ecs::World& world,
+                    const aoc::game::GameState& gameState,
                     const aoc::map::FogOfWar& fog,
                     const aoc::map::HexGrid& grid,
                     PlayerId viewingPlayer,
@@ -64,7 +64,7 @@ public:
 
     /// Draw a translucent range indicator for ranged units with enemy highlights.
     void drawRangedRange(vulkan_app::renderer::Renderer2D& renderer2d,
-                         const aoc::ecs::World& world,
+                         const aoc::game::GameState& gameState,
                          hex::AxialCoord center, int32_t range,
                          PlayerId unitOwner, float hexSize) const;
 

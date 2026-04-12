@@ -30,7 +30,7 @@
 #include <string>
 #include <string_view>
 
-namespace aoc::ecs { class World; }
+namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::scripting {
@@ -67,7 +67,7 @@ public:
     bool executeString(std::string_view code);
 
     /// Bind game state for read access from scripts.
-    void bindGameState(aoc::ecs::World& world, aoc::map::HexGrid& grid);
+    void bindGameState(aoc::game::GameState& gameState, aoc::map::HexGrid& grid);
 
     /// Call a named Lua function (for event triggers, victory checks).
     /// @return true if the function returned truthy value.

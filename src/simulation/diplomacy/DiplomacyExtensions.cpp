@@ -3,15 +3,15 @@
  * @brief Era dedications, emergency system, extended World Congress.
  */
 
+#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyExtensions.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
 
 namespace aoc::sim {
 
-void triggerEmergency(aoc::ecs::World& /*world*/, GlobalEmergencyTracker& tracker,
+void triggerEmergency(aoc::game::GameState& /*gameState*/, GlobalEmergencyTracker& tracker,
                       EmergencyType type, PlayerId target) {
     if (tracker.emergencyCount >= 4) {
         return;  // Max concurrent emergencies
@@ -31,7 +31,7 @@ void triggerEmergency(aoc::ecs::World& /*world*/, GlobalEmergencyTracker& tracke
              static_cast<unsigned>(target));
 }
 
-void processEmergencies(aoc::ecs::World& /*world*/, GlobalEmergencyTracker& tracker) {
+void processEmergencies(aoc::game::GameState& /*gameState*/, GlobalEmergencyTracker& tracker) {
     for (int32_t i = 0; i < tracker.emergencyCount; ++i) {
         ActiveEmergency& em = tracker.emergencies[i];
         if (em.resolved) { continue; }

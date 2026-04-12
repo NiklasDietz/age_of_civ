@@ -4,17 +4,16 @@
  */
 
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/game/Unit.hpp"
 #include "aoc/simulation/economy/NavalTrade.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
-#include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
-#include "aoc/ecs/World.hpp"
-#include "aoc/core/Log.hpp"
 
 #include <algorithm>
 #include <queue>
@@ -27,15 +26,10 @@ namespace aoc::sim {
 // ============================================================================
 
 bool isRiverNavigable(const aoc::map::HexGrid& grid, int32_t tileIndex) {
-    // A river is navigable if this tile has river edges AND enough upstream
-    // river tiles feed into it. We count river-edge neighbors recursively
-    // upstream (higher elevation) to determine flow volume.
-
     if (grid.riverEdges(tileIndex) == 0) {
         return false;
     }
 
-    // Count connected river tiles upstream (BFS, limited depth)
     int32_t upstreamCount = 0;
     std::unordered_set<int32_t> visited;
     std::queue<int32_t> frontier;
@@ -52,19 +46,12 @@ bool isRiverNavigable(const aoc::map::HexGrid& grid, int32_t tileIndex) {
         std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(currentAxial);
 
         for (int dir = 0; dir < 6; ++dir) {
-            if (!grid.hasRiverOnEdge(current, dir)) {
-                continue;
-            }
+            if (!grid.hasRiverOnEdge(current, dir)) { continue; }
             hex::AxialCoord nbrAxial = nbrs[static_cast<std::size_t>(dir)];
-            if (!grid.isValid(nbrAxial)) {
-                continue;
-            }
+            if (!grid.isValid(nbrAxial)) { continue; }
             int32_t nbrIndex = grid.toIndex(nbrAxial);
-            if (visited.count(nbrIndex) > 0) {
-                continue;
-            }
+            if (visited.count(nbrIndex) > 0) { continue; }
 
-            // Only count upstream (higher or equal elevation)
             if (grid.elevation(nbrIndex) >= tileElev && grid.riverEdges(nbrIndex) != 0) {
                 ++upstreamCount;
                 visited.insert(nbrIndex);
@@ -79,12 +66,10 @@ bool isRiverNavigable(const aoc::map::HexGrid& grid, int32_t tileIndex) {
 bool canNavalUnitEnter(const aoc::map::HexGrid& grid, int32_t tileIndex) {
     aoc::map::TerrainType terrain = grid.terrain(tileIndex);
 
-    // Water tiles are always accessible to naval units (except ocean for some)
     if (terrain == aoc::map::TerrainType::Coast || terrain == aoc::map::TerrainType::Ocean) {
         return true;
     }
 
-    // Land tiles with navigable rivers can be entered
     if (!aoc::map::isWater(terrain) && !aoc::map::isImpassable(terrain)) {
         return isRiverNavigable(grid, tileIndex);
     }
@@ -98,24 +83,19 @@ bool canNavalUnitEnter(const aoc::map::HexGrid& grid, int32_t tileIndex) {
 
 int32_t computeTradeRouteCapacity(const aoc::game::GameState& gameState,
                                    const aoc::map::HexGrid& grid,
-                                   EntityId routeEntity) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    const TradeRouteComponent* route =
-        world.tryGetComponent<TradeRouteComponent>(routeEntity);
-    if (route == nullptr || route->path.empty()) {
-        return 1;  // Minimum capacity
+                                   const TradeRouteComponent& routeRef) {
+    const TradeRouteComponent* route = &routeRef;
+    if (route->path.empty()) {
+        return 1;
     }
 
-    // Determine if the route has sea/river segments
-    int32_t landSegments = 0;
-    int32_t seaSegments = 0;
+    int32_t landSegments  = 0;
+    int32_t seaSegments   = 0;
     int32_t riverSegments = 0;
 
     for (const hex::AxialCoord& coord : route->path) {
-        if (!grid.isValid(coord)) {
-            continue;
-        }
-        int32_t idx = grid.toIndex(coord);
+        if (!grid.isValid(coord)) { continue; }
+        int32_t idx               = grid.toIndex(coord);
         aoc::map::TerrainType terrain = grid.terrain(idx);
 
         if (aoc::map::isWater(terrain)) {
@@ -127,66 +107,50 @@ int32_t computeTradeRouteCapacity(const aoc::game::GameState& gameState,
         }
     }
 
-    // Land capacity based on infrastructure (minimum tier along path)
-    int32_t landCapacity = 2;  // Base road capacity
+    int32_t landCapacity = 2;
     if (landSegments > 0) {
         int32_t minTier = 3;
         for (const hex::AxialCoord& coord : route->path) {
-            if (!grid.isValid(coord)) {
-                continue;
-            }
+            if (!grid.isValid(coord)) { continue; }
             int32_t idx = grid.toIndex(coord);
             if (!aoc::map::isWater(grid.terrain(idx)) && !isRiverNavigable(grid, idx)) {
                 int32_t tier = grid.infrastructureTier(idx);
-                if (tier < minTier) {
-                    minTier = tier;
-                }
+                if (tier < minTier) { minTier = tier; }
             }
         }
-        // Capacity: road=2, railway=5, highway=8
+        // Capacity by road tier: none=1, road=2, railway=5, highway=8
         constexpr int32_t LAND_CAPACITY[] = {1, 2, 5, 8};
         landCapacity = LAND_CAPACITY[std::min(minTier, 3)];
     }
 
-    // Sea/river capacity based on assigned merchant ships
     int32_t navalCapacity = 0;
-    const aoc::ecs::ComponentPool<UnitComponent>* unitPool =
-        world.getPool<UnitComponent>();
-    if (unitPool != nullptr) {
-        for (uint32_t i = 0; i < unitPool->size(); ++i) {
-            const UnitComponent& unit = unitPool->data()[i];
-            if (unit.owner != route->sourcePlayer) {
-                continue;
-            }
-            // Check if this unit is a merchant ship on or near this route
+    const aoc::game::Player* sourcePlayer = gameState.player(route->sourcePlayer);
+    if (sourcePlayer != nullptr) {
+        for (const std::unique_ptr<aoc::game::Unit>& unitPtr : sourcePlayer->units()) {
+            if (unitPtr == nullptr) { continue; }
             for (const MerchantShipDef& shipDef : MERCHANT_SHIP_DEFS) {
-                if (unit.typeId == shipDef.unitTypeId) {
-                    // Check if the ship's position is on the route path
-                    for (const hex::AxialCoord& pathTile : route->path) {
-                        if (unit.position == pathTile) {
-                            navalCapacity += shipDef.cargoCapacity;
-                            break;
-                        }
+                if (unitPtr->typeId() != shipDef.unitTypeId) { continue; }
+                for (const hex::AxialCoord& pathTile : route->path) {
+                    if (unitPtr->position() == pathTile) {
+                        navalCapacity += shipDef.cargoCapacity;
+                        break;
                     }
-                    break;
                 }
+                break;
             }
         }
     }
 
-    // If route has sea/river segments but no ships, very limited capacity
     if ((seaSegments > 0 || riverSegments > 0) && navalCapacity == 0) {
-        navalCapacity = 1;  // Canoe-level trade
+        navalCapacity = 1;  // Canoe-level trade without assigned ships
     }
 
-    // Route capacity = bottleneck of land and sea segments
     if (landSegments == 0) {
-        return std::max(1, navalCapacity);  // Pure sea/river route
+        return std::max(1, navalCapacity);
     }
     if (seaSegments == 0 && riverSegments == 0) {
-        return std::max(1, landCapacity);  // Pure land route
+        return std::max(1, landCapacity);
     }
-    // Mixed route: bottleneck
     return std::max(1, std::min(landCapacity, navalCapacity));
 }
 
@@ -195,53 +159,33 @@ int32_t computeTradeRouteCapacity(const aoc::game::GameState& gameState,
 // ============================================================================
 
 void processMerchantShipFuel(aoc::game::GameState& gameState) {
-    aoc::ecs::ComponentPool<UnitComponent>* unitPool =
-        world.getPool<UnitComponent>();
-    if (unitPool == nullptr) {
-        return;
-    }
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) { continue; }
 
-    for (uint32_t i = 0; i < unitPool->size(); ++i) {
-        UnitComponent& unit = unitPool->data()[i];
+        for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerPtr->units()) {
+            if (unitPtr == nullptr) { continue; }
 
-        // Check if this unit is a fuel-consuming merchant ship
-        for (const MerchantShipDef& shipDef : MERCHANT_SHIP_DEFS) {
-            if (unit.typeId != shipDef.unitTypeId) {
-                continue;
-            }
-            if (shipDef.fuelGoodId == 0xFFFF || shipDef.fuelPerTurn <= 0) {
-                break;  // No fuel needed
-            }
+            for (const MerchantShipDef& shipDef : MERCHANT_SHIP_DEFS) {
+                if (unitPtr->typeId() != shipDef.unitTypeId) { continue; }
+                if (shipDef.fuelGoodId == 0xFFFF || shipDef.fuelPerTurn <= 0) { break; }
 
-            // Find a city owned by this player to consume fuel from
-            const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-                world.getPool<CityComponent>();
-            if (cityPool == nullptr) {
+                bool fuelConsumed = false;
+                for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+                    if (cityPtr == nullptr) { continue; }
+                    CityStockpileComponent& stockpile = cityPtr->stockpile();
+                    if (stockpile.getAmount(shipDef.fuelGoodId) >= shipDef.fuelPerTurn) {
+                        [[maybe_unused]] bool ok =
+                            stockpile.consumeGoods(shipDef.fuelGoodId, shipDef.fuelPerTurn);
+                        fuelConsumed = true;
+                        break;
+                    }
+                }
+
+                if (!fuelConsumed) {
+                    unitPtr->setMovementRemaining(0);
+                }
                 break;
             }
-
-            bool fuelConsumed = false;
-            for (uint32_t c = 0; c < cityPool->size(); ++c) {
-                if (cityPool->data()[c].owner != unit.owner) {
-                    continue;
-                }
-                EntityId cityEntity = cityPool->entities()[c];
-                CityStockpileComponent* stockpile =
-                    world.tryGetComponent<CityStockpileComponent>(cityEntity);
-                if (stockpile != nullptr
-                    && stockpile->getAmount(shipDef.fuelGoodId) >= shipDef.fuelPerTurn) {
-                    [[maybe_unused]] bool ok =
-                        stockpile->consumeGoods(shipDef.fuelGoodId, shipDef.fuelPerTurn);
-                    fuelConsumed = true;
-                    break;
-                }
-            }
-
-            if (!fuelConsumed) {
-                // No fuel: ship can't move this turn
-                unit.movementRemaining = 0;
-            }
-            break;
         }
     }
 }

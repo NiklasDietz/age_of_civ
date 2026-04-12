@@ -40,7 +40,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::game { class GameState; }
+namespace aoc::game { class GameState; class Unit; class City; }
 namespace aoc::map { class HexGrid; }
 namespace aoc::sim { class Market; class DiplomacyManager; }
 
@@ -62,8 +62,8 @@ enum class TradeRouteType : uint8_t {
 /// State of an active trade route (attached to the Trader entity).
 struct TraderComponent {
     PlayerId     owner = INVALID_PLAYER;
-    EntityId     originCity = NULL_ENTITY;
-    EntityId     destCity = NULL_ENTITY;
+    aoc::hex::AxialCoord originCityLocation{};
+    aoc::hex::AxialCoord destCityLocation{};
     PlayerId     destOwner = INVALID_PLAYER;  ///< Owner of destination city
 
     /// How this route travels.
@@ -151,8 +151,8 @@ struct TraderComponent {
                                              aoc::map::HexGrid& grid,
                                              const Market& market,
                                              const DiplomacyManager* diplomacy,
-                                             EntityId traderEntity,
-                                             EntityId destCity);
+                                             aoc::game::Unit& traderUnit,
+                                             aoc::game::City& destCity);
 
 /**
  * @brief Process all active trade routes for one turn.

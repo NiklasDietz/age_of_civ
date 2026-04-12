@@ -11,8 +11,6 @@
 #include "aoc/render/GameRenderer.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/FogOfWar.hpp"
-#include "aoc/ecs/World.hpp"
-#include "aoc/ecs/SystemScheduler.hpp"
 #include "aoc/simulation/turn/TurnManager.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
@@ -120,10 +118,8 @@ private:
     aoc::render::GameRenderer     m_gameRenderer;
 
     // Game state
-    aoc::game::GameState         m_gameState;  ///< New object model (Phase 2 migration)
+    aoc::game::GameState         m_gameState;
     aoc::map::HexGrid          m_hexGrid;
-    aoc::ecs::World            m_world;       ///< Legacy ECS (being migrated away)
-    aoc::ecs::SystemScheduler  m_scheduler;
     aoc::sim::TurnManager        m_turnManager;
     aoc::sim::EconomySimulation  m_economy;
     aoc::map::FogOfWar           m_fogOfWar;
@@ -132,8 +128,11 @@ private:
     aoc::sim::BarbarianController m_barbarianController;
     aoc::Random                  m_gameRng{0};  ///< Reseeded in startGame()
 
-    /// Currently selected entity (unit or city).
-    EntityId m_selectedEntity = NULL_ENTITY;
+    /// Currently selected unit (nullptr if none or city selected).
+    aoc::game::Unit* m_selectedUnit = nullptr;
+
+    /// Currently selected city (nullptr if none or unit selected).
+    aoc::game::City* m_selectedCity = nullptr;
 
     // UI
     aoc::ui::UIManager m_uiManager;
@@ -163,8 +162,8 @@ private:
     // Help overlay
     aoc::ui::WidgetId  m_helpOverlay = aoc::ui::INVALID_WIDGET;
 
-    /// The entity that was selected when the action panel was last built.
-    EntityId m_actionPanelEntity = NULL_ENTITY;
+    /// The unit selected when the action panel was last built (nullptr = no unit / city selected).
+    aoc::game::Unit* m_actionPanelUnit = nullptr;
 
     /// Show "Save before returning to main menu?" dialog.
     void showReturnToMenuConfirm();
@@ -229,7 +228,7 @@ private:
 
     /// Single-level undo state for the last unit movement.
     struct UndoState {
-        EntityId entity = NULL_ENTITY;
+        aoc::game::Unit* unit = nullptr;
         hex::AxialCoord previousPosition;
         int32_t previousMovement = 0;
         bool hasState = false;

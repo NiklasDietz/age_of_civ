@@ -24,7 +24,7 @@
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/barbarian/BarbarianController.hpp"
 #include "aoc/simulation/ai/AIController.hpp"
-#include "aoc/ecs/World.hpp"
+#include "aoc/game/GameState.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/MapGenerator.hpp"
 #include "aoc/core/Random.hpp"
@@ -69,10 +69,6 @@ public:
      */
     bool tick();
 
-    /// Access the world (for save/load, debugging).
-    [[nodiscard]] aoc::ecs::World& world() { return this->m_world; }
-    [[nodiscard]] const aoc::ecs::World& world() const { return this->m_world; }
-
     /// Access the grid.
     [[nodiscard]] aoc::map::HexGrid& grid() { return this->m_grid; }
     [[nodiscard]] const aoc::map::HexGrid& grid() const { return this->m_grid; }
@@ -101,7 +97,7 @@ private:
     void broadcastSnapshots();
 
     // Game state (owned by server)
-    aoc::ecs::World                       m_world;
+    aoc::game::GameState                  m_gameState;
     aoc::map::HexGrid                     m_grid;
     aoc::sim::EconomySimulation           m_economy;
     aoc::sim::DiplomacyManager            m_diplomacy;

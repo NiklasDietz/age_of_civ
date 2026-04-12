@@ -22,8 +22,8 @@
 #include <string>
 #include <vector>
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::map {
@@ -124,7 +124,7 @@ private:
  * @brief Save the complete game state to a file.
  *
  * @param filepath    Output file path.
- * @param world       ECS world with all entity/component data.
+ * @param gameState   Game state with all player/city/unit data.
  * @param grid        Hex map data.
  * @param turnManager Turn state.
  * @param economy     Market prices and production chain state.
@@ -135,7 +135,7 @@ private:
  */
 [[nodiscard]] ErrorCode saveGame(
     const std::string& filepath,
-    const aoc::ecs::World& world,
+    const aoc::game::GameState& gameState,
     const aoc::map::HexGrid& grid,
     const aoc::sim::TurnManager& turnManager,
     const aoc::sim::EconomySimulation& economy,
@@ -151,7 +151,7 @@ private:
  */
 [[nodiscard]] ErrorCode loadGame(
     const std::string& filepath,
-    aoc::ecs::World& world,
+    aoc::game::GameState& gameState,
     aoc::map::HexGrid& grid,
     aoc::sim::TurnManager& turnManager,
     aoc::sim::EconomySimulation& economy,

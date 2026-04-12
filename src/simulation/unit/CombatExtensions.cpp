@@ -4,15 +4,15 @@
  */
 
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/game/Unit.hpp"
 #include "aoc/simulation/unit/CombatExtensions.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -21,90 +21,89 @@
 namespace aoc::sim {
 
 // ============================================================================
+// Helper: find a Unit* across all players by position and owner
+// ============================================================================
+
+static aoc::game::Unit* findUnitAtPosition(aoc::game::GameState& gameState,
+                                            PlayerId owner,
+                                            hex::AxialCoord pos) {
+    aoc::game::Player* player = gameState.player(owner);
+    if (player == nullptr) { return nullptr; }
+    return player->unitAt(pos);
+}
+
+// ============================================================================
 // Corps / Armies
 // ============================================================================
 
 ErrorCode formCorps(aoc::game::GameState& gameState,
-                     EntityId targetUnit, EntityId sourceUnit) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    UnitComponent* target = world.tryGetComponent<UnitComponent>(targetUnit);
-    UnitComponent* source = world.tryGetComponent<UnitComponent>(sourceUnit);
-    if (target == nullptr || source == nullptr) {
-        return ErrorCode::InvalidArgument;
-    }
-
+                     aoc::game::Unit& target,
+                     aoc::game::Unit& source) {
     // Same type and owner
-    if (target->typeId != source->typeId || target->owner != source->owner) {
+    if (target.typeId() != source.typeId() || target.owner() != source.owner()) {
         return ErrorCode::InvalidArgument;
     }
 
     // Must be adjacent
-    if (hex::distance(target->position, source->position) > 1) {
+    if (hex::distance(target.position(), source.position()) > 1) {
         return ErrorCode::InvalidArgument;
     }
 
-    // Check current formation -- target must be Single
-    UnitFormationComponent* formation =
-        world.tryGetComponent<UnitFormationComponent>(targetUnit);
-    if (formation != nullptr && formation->level != FormationLevel::Single) {
+    // Target must be Single formation
+    if (target.formationLevel() != FormationLevel::Single) {
         return ErrorCode::InvalidArgument;
     }
 
-    // Create formation component
-    if (formation == nullptr) {
-        UnitFormationComponent newFormation{};
-        world.addComponent<UnitFormationComponent>(targetUnit, std::move(newFormation));
-        formation = world.tryGetComponent<UnitFormationComponent>(targetUnit);
-    }
-    if (formation != nullptr) {
-        bool naval = isNaval(unitTypeDef(target->typeId).unitClass);
-        formation->level = naval ? FormationLevel::Fleet : FormationLevel::Corps;
-        formation->unitsInFormation = 2;
-    }
+    const bool naval = isNaval(unitTypeDef(target.typeId()).unitClass);
+    target.setFormationLevel(naval ? FormationLevel::Fleet : FormationLevel::Corps);
 
     // Heal the combined unit (take the better HP)
-    target->hitPoints = std::max(target->hitPoints, source->hitPoints);
+    if (source.hitPoints() > target.hitPoints()) {
+        target.setHitPoints(source.hitPoints());
+    }
 
     // Destroy the source unit
-    world.destroyEntity(sourceUnit);
+    aoc::game::Player* gsPlayer = gameState.player(source.owner());
+    if (gsPlayer != nullptr) {
+        gsPlayer->removeUnit(&source);
+    }
 
     LOG_INFO("Formed %s from two %.*s units",
-             isNaval(unitTypeDef(target->typeId).unitClass) ? "Fleet" : "Corps",
-             static_cast<int>(unitTypeDef(target->typeId).name.size()),
-             unitTypeDef(target->typeId).name.data());
+             naval ? "Fleet" : "Corps",
+             static_cast<int>(unitTypeDef(target.typeId()).name.size()),
+             unitTypeDef(target.typeId()).name.data());
 
     return ErrorCode::Ok;
 }
 
 ErrorCode formArmy(aoc::game::GameState& gameState,
-                    EntityId corpsUnit, EntityId sourceUnit) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    UnitComponent* corps = world.tryGetComponent<UnitComponent>(corpsUnit);
-    UnitComponent* source = world.tryGetComponent<UnitComponent>(sourceUnit);
-    if (corps == nullptr || source == nullptr) {
+                    aoc::game::Unit& corps,
+                    aoc::game::Unit& source) {
+    if (corps.typeId() != source.typeId() || corps.owner() != source.owner()) {
         return ErrorCode::InvalidArgument;
     }
 
-    if (corps->typeId != source->typeId || corps->owner != source->owner) {
+    if (hex::distance(corps.position(), source.position()) > 1) {
         return ErrorCode::InvalidArgument;
     }
 
-    if (hex::distance(corps->position, source->position) > 1) {
+    // Corps must already be a Corps/Fleet formation
+    if (corps.formationLevel() != FormationLevel::Corps
+        && corps.formationLevel() != FormationLevel::Fleet) {
         return ErrorCode::InvalidArgument;
     }
 
-    UnitFormationComponent* formation =
-        world.tryGetComponent<UnitFormationComponent>(corpsUnit);
-    if (formation == nullptr || formation->unitsInFormation != 2) {
-        return ErrorCode::InvalidArgument;
+    const bool naval = isNaval(unitTypeDef(corps.typeId()).unitClass);
+    corps.setFormationLevel(naval ? FormationLevel::Armada : FormationLevel::Army);
+
+    if (source.hitPoints() > corps.hitPoints()) {
+        corps.setHitPoints(source.hitPoints());
     }
 
-    bool naval = isNaval(unitTypeDef(corps->typeId).unitClass);
-    formation->level = naval ? FormationLevel::Armada : FormationLevel::Army;
-    formation->unitsInFormation = 3;
-
-    corps->hitPoints = std::max(corps->hitPoints, source->hitPoints);
-    world.destroyEntity(sourceUnit);
+    aoc::game::Player* gsPlayer = gameState.player(source.owner());
+    if (gsPlayer != nullptr) {
+        gsPlayer->removeUnit(&source);
+    }
 
     LOG_INFO("Formed %s!", naval ? "Armada" : "Army");
 
@@ -117,16 +116,12 @@ ErrorCode formArmy(aoc::game::GameState& gameState,
 
 ErrorCode launchNuclearStrike(aoc::game::GameState& gameState,
                               aoc::map::HexGrid& grid,
-                              EntityId launcherEntity,
+                              PlayerId launcherOwner,
                               hex::AxialCoord targetTile,
                               NukeType type) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     // Determine blast radius and population damage
-    int32_t blastRadius = (type == NukeType::ThermonuclearDevice) ? 2 : 1;
-    float populationDamage = (type == NukeType::ThermonuclearDevice) ? 0.75f : 0.50f;
-
-    const UnitComponent* launcher = world.tryGetComponent<UnitComponent>(launcherEntity);
-    PlayerId launcherOwner = (launcher != nullptr) ? launcher->owner : INVALID_PLAYER;
+    const int32_t blastRadius = (type == NukeType::ThermonuclearDevice) ? 2 : 1;
+    const float populationDamage = (type == NukeType::ThermonuclearDevice) ? 0.75f : 0.50f;
 
     LOG_INFO("NUCLEAR STRIKE at (%d,%d)! Blast radius %d, %d%% population damage",
              targetTile.q, targetTile.r, blastRadius,
@@ -144,7 +139,6 @@ ErrorCode launchNuclearStrike(aoc::game::GameState& gameState,
         }
     }
     if (blastRadius >= 2) {
-        // Ring 2: neighbors of ring 1 not already included
         std::vector<hex::AxialCoord> ring2;
         for (const hex::AxialCoord& r1 : blastTiles) {
             std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(r1);
@@ -170,35 +164,31 @@ ErrorCode launchNuclearStrike(aoc::game::GameState& gameState,
     }
 
     // Destroy all units in blast zone
-    aoc::ecs::ComponentPool<UnitComponent>* unitPool = world.getPool<UnitComponent>();
-    if (unitPool != nullptr) {
-        std::vector<EntityId> toDestroy;
-        for (uint32_t i = 0; i < unitPool->size(); ++i) {
-            const UnitComponent& unit = unitPool->data()[i];
+    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+        std::vector<aoc::game::Unit*> toDestroy;
+        for (const std::unique_ptr<aoc::game::Unit>& unit : p->units()) {
             for (const hex::AxialCoord& blastTile : blastTiles) {
-                if (unit.position == blastTile) {
-                    toDestroy.push_back(unitPool->entities()[i]);
+                if (unit->position() == blastTile) {
+                    toDestroy.push_back(unit.get());
                     break;
                 }
             }
         }
-        for (EntityId e : toDestroy) {
-            world.destroyEntity(e);
+        for (aoc::game::Unit* dead : toDestroy) {
+            p->removeUnit(dead);
         }
     }
 
     // Damage cities in blast zone
-    aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
-    if (cityPool != nullptr) {
-        for (uint32_t i = 0; i < cityPool->size(); ++i) {
-            CityComponent& city = cityPool->data()[i];
+    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
             for (const hex::AxialCoord& blastTile : blastTiles) {
-                if (city.location == blastTile) {
-                    int32_t popLoss = static_cast<int32_t>(
-                        static_cast<float>(city.population) * populationDamage);
-                    city.population = std::max(1, city.population - popLoss);
+                if (city->location() == blastTile) {
+                    const int32_t popLoss = static_cast<int32_t>(
+                        static_cast<float>(city->population()) * populationDamage);
+                    city->setPopulation(std::max(1, city->population() - popLoss));
                     LOG_INFO("City %s lost %d population from nuclear strike",
-                             city.name.c_str(), popLoss);
+                             city->name().c_str(), popLoss);
                     break;
                 }
             }
@@ -207,35 +197,22 @@ ErrorCode launchNuclearStrike(aoc::game::GameState& gameState,
 
     // Apply Fallout to all blast tiles
     for (const hex::AxialCoord& tile : blastTiles) {
-        int32_t idx = grid.toIndex(tile);
-        // Remove improvements
+        const int32_t idx = grid.toIndex(tile);
         grid.setImprovement(idx, aoc::map::ImprovementType::None);
-        // Remove features (forest burns, etc.)
         grid.setFeature(idx, aoc::map::FeatureType::None);
     }
 
     // Add grievance with ALL civilizations (+50 each)
-    // Nuclear strike is the worst possible grievance: use ConqueredCity type
-    // with maximum severity to represent the global outrage.
-    aoc::ecs::ComponentPool<PlayerGrievanceComponent>* grievancePool =
-        world.getPool<PlayerGrievanceComponent>();
-    if (grievancePool != nullptr && launcherOwner != INVALID_PLAYER) {
-        for (uint32_t i = 0; i < grievancePool->size(); ++i) {
-            PlayerGrievanceComponent& pg = grievancePool->data()[i];
-            if (pg.owner != launcherOwner) {
-                Grievance g{};
-                g.type = GrievanceType::ConqueredCity;  // Worst available type
-                g.against = launcherOwner;
-                g.severity = 50;
-                g.turnsRemaining = 100;
-                pg.grievances.push_back(g);
-            }
+    if (launcherOwner != INVALID_PLAYER) {
+        for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+            if (p->id() == launcherOwner) { continue; }
+            Grievance g{};
+            g.type = GrievanceType::ConqueredCity;
+            g.against = launcherOwner;
+            g.severity = 50;
+            g.turnsRemaining = 100;
+            p->grievances().grievances.push_back(g);
         }
-    }
-
-    // Destroy the launcher unit (consumed)
-    if (launcher != nullptr) {
-        world.destroyEntity(launcherEntity);
     }
 
     return ErrorCode::Ok;
@@ -247,44 +224,45 @@ ErrorCode launchNuclearStrike(aoc::game::GameState& gameState,
 
 ErrorCode executeBombingRun(aoc::game::GameState& gameState,
                             aoc::map::HexGrid& grid,
-                            EntityId bomberEntity,
+                            aoc::game::Unit& bomber,
                             hex::AxialCoord targetTile) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    UnitComponent* bomber = world.tryGetComponent<UnitComponent>(bomberEntity);
-    AirUnitComponent* air = world.tryGetComponent<AirUnitComponent>(bomberEntity);
-    if (bomber == nullptr || air == nullptr) {
+    AirUnitComponent& air = bomber.airUnit();
+
+    if (air.sortiesRemaining <= 0) {
         return ErrorCode::InvalidArgument;
     }
 
-    if (air->sortiesRemaining <= 0) {
-        return ErrorCode::InvalidArgument;  // No sorties left
-    }
-
-    // Range check
+    // Range check: find base city location
     hex::AxialCoord basePos{0, 0};
-    const CityComponent* base = world.tryGetComponent<CityComponent>(air->baseCity);
-    if (base != nullptr) {
-        basePos = base->location;
+    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
+            const int32_t cityIdx = grid.toIndex(city->location());
+            if (grid.toIndex(city->location()) == cityIdx) {
+                // Identify base by searching for a city that matches the stored base
+                // (air.baseCity is legacy EntityId -- use proximity heuristic for now:
+                //  the city at the bomber's home position)
+                if (city->location() == bomber.position()) {
+                    basePos = city->location();
+                    break;
+                }
+            }
+        }
     }
-    if (hex::distance(basePos, targetTile) > air->operationalRange) {
-        return ErrorCode::InvalidArgument;  // Out of range
+    if (hex::distance(basePos, targetTile) > air.operationalRange) {
+        return ErrorCode::InvalidArgument;
     }
 
     // Check for interception by enemy fighters
-    aoc::ecs::ComponentPool<AirUnitComponent>* airPool = world.getPool<AirUnitComponent>();
-    if (airPool != nullptr) {
-        for (uint32_t i = 0; i < airPool->size(); ++i) {
-            AirUnitComponent& interceptor = airPool->data()[i];
-            if (!interceptor.isIntercepting) { continue; }
+    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+        if (p->id() == bomber.owner()) { continue; }
+        for (const std::unique_ptr<aoc::game::Unit>& interceptorUnit : p->units()) {
+            AirUnitComponent& intAir = interceptorUnit->airUnit();
+            if (!intAir.isIntercepting) { continue; }
 
-            const UnitComponent* intUnit = world.tryGetComponent<UnitComponent>(airPool->entities()[i]);
-            if (intUnit == nullptr || intUnit->owner == bomber->owner) { continue; }
-
-            if (attemptInterception(world, airPool->entities()[i], bomberEntity)) {
+            if (attemptInterception(gameState, *interceptorUnit, bomber)) {
                 // Bomber was intercepted -- take damage, abort mission
-                bomber->hitPoints -= 30;
-                if (bomber->hitPoints <= 0) {
-                    world.destroyEntity(bomberEntity);
+                bomber.takeDamage(30);
+                if (bomber.isDead()) {
                     return ErrorCode::Ok;  // Bomber destroyed
                 }
                 break;
@@ -296,7 +274,7 @@ ErrorCode executeBombingRun(aoc::game::GameState& gameState,
     if (!grid.isValid(targetTile)) {
         return ErrorCode::InvalidArgument;
     }
-    int32_t targetIdx = grid.toIndex(targetTile);
+    const int32_t targetIdx = grid.toIndex(targetTile);
 
     // Damage improvements
     aoc::map::ImprovementType imp = grid.improvement(targetIdx);
@@ -306,59 +284,45 @@ ErrorCode executeBombingRun(aoc::game::GameState& gameState,
     }
 
     // Damage units on the tile
-    aoc::ecs::ComponentPool<UnitComponent>* unitPool = world.getPool<UnitComponent>();
-    if (unitPool != nullptr) {
-        for (uint32_t i = 0; i < unitPool->size(); ++i) {
-            UnitComponent& unit = unitPool->data()[i];
-            if (unit.position == targetTile && unit.owner != bomber->owner) {
-                int32_t bombDamage = unitTypeDef(bomber->typeId).rangedStrength;
-                unit.hitPoints -= bombDamage;
-                if (unit.hitPoints <= 0) {
-                    world.destroyEntity(unitPool->entities()[i]);
-                }
-                break;
+    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+        if (p->id() == bomber.owner()) { continue; }
+        aoc::game::Unit* targetUnit = p->unitAt(targetTile);
+        if (targetUnit != nullptr) {
+            const int32_t bombDamage = unitTypeDef(bomber.typeId()).rangedStrength;
+            targetUnit->takeDamage(bombDamage);
+            if (targetUnit->isDead()) {
+                p->removeUnit(targetUnit);
             }
+            break;
         }
     }
 
-    --air->sortiesRemaining;
+    --air.sortiesRemaining;
     return ErrorCode::Ok;
 }
 
-bool attemptInterception(aoc::game::GameState& gameState,
-                         EntityId interceptorEntity,
-                         EntityId targetAirUnit) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    UnitComponent* interceptor = world.tryGetComponent<UnitComponent>(interceptorEntity);
-    AirUnitComponent* intAir = world.tryGetComponent<AirUnitComponent>(interceptorEntity);
-    UnitComponent* target = world.tryGetComponent<UnitComponent>(targetAirUnit);
-    AirUnitComponent* targetAir = world.tryGetComponent<AirUnitComponent>(targetAirUnit);
+bool attemptInterception(aoc::game::GameState& /*gameState*/,
+                         aoc::game::Unit& interceptor,
+                         aoc::game::Unit& target) {
+    AirUnitComponent& intAir = interceptor.airUnit();
+    AirUnitComponent& targetAir = target.airUnit();
 
-    if (interceptor == nullptr || intAir == nullptr
-        || target == nullptr || targetAir == nullptr) {
+    (void)targetAir;  // Not needed for damage computation
+
+    if (intAir.sortiesRemaining <= 0 || !intAir.isIntercepting) {
         return false;
     }
 
-    if (intAir->sortiesRemaining <= 0 || !intAir->isIntercepting) {
+    // Check range: interceptor base position (use interceptor's own position as base)
+    if (hex::distance(interceptor.position(), target.position()) > intAir.operationalRange) {
         return false;
     }
 
-    // Check range: interceptor must be able to reach the target's position
-    hex::AxialCoord intBase{0, 0};
-    const CityComponent* base = world.tryGetComponent<CityComponent>(intAir->baseCity);
-    if (base != nullptr) {
-        intBase = base->location;
-    }
-    if (hex::distance(intBase, target->position) > intAir->operationalRange) {
-        return false;
-    }
+    // Interception success: deal damage based on combat strength
+    const int32_t intStrength = unitTypeDef(interceptor.typeId()).combatStrength;
+    target.takeDamage(intStrength / 2);
 
-    // Interception success: deal damage to target based on combat strength
-    int32_t intStrength = unitTypeDef(interceptor->typeId).combatStrength;
-    target->hitPoints -= intStrength / 2;
-
-    // Interceptor uses a sortie
-    --intAir->sortiesRemaining;
+    --intAir.sortiesRemaining;
 
     LOG_INFO("Fighter intercepted enemy air unit, dealt %d damage", intStrength / 2);
 
@@ -366,17 +330,13 @@ bool attemptInterception(aoc::game::GameState& gameState,
 }
 
 void resetAirSorties(aoc::game::GameState& gameState, PlayerId player) {
-    aoc::ecs::ComponentPool<AirUnitComponent>* airPool =
-        world.getPool<AirUnitComponent>();
-    if (airPool == nullptr) {
-        return;
-    }
+    aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer == nullptr) { return; }
 
-    for (uint32_t i = 0; i < airPool->size(); ++i) {
-        const UnitComponent* unit =
-            world.tryGetComponent<UnitComponent>(airPool->entities()[i]);
-        if (unit != nullptr && unit->owner == player) {
-            airPool->data()[i].sortiesRemaining = airPool->data()[i].maxSorties;
+    for (const std::unique_ptr<aoc::game::Unit>& unit : gsPlayer->units()) {
+        AirUnitComponent& air = unit->airUnit();
+        if (air.maxSorties > 0) {
+            air.sortiesRemaining = air.maxSorties;
         }
     }
 }

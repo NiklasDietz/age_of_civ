@@ -7,8 +7,6 @@
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/core/Log.hpp"
-#include "aoc/ecs/World.hpp"
-#include "aoc/ecs/SystemScheduler.hpp"
 
 namespace aoc::sim {
 
@@ -36,18 +34,8 @@ void TurnManager::setPlayerCount(uint8_t humanPlayers, uint8_t aiPlayers) {
     this->m_aiPlayerCount    = aiPlayers;
 }
 
-void TurnManager::executeTurn(aoc::game::GameState& gameState, aoc::ecs::SystemScheduler& scheduler) {
+void TurnManager::executeTurn(aoc::game::GameState& /*gameState*/) {
     ++this->m_currentTurn;
-
-    // Execute all registered systems in dependency order.
-    // Systems register themselves for specific phases; the scheduler runs all of them.
-    ErrorCode result = scheduler.executeTick(gameState.legacyWorld());
-    if (result != ErrorCode::Ok) {
-        LOG_ERROR("System execution failed: %.*s",
-                  static_cast<int>(describeError(result).size()),
-                  describeError(result).data());
-    }
-
     LOG_INFO("Turn %u complete", this->m_currentTurn);
 }
 

@@ -4,6 +4,8 @@
  */
 
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/simulation/economy/AdvancedEconomics.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
@@ -13,7 +15,6 @@
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/map/HexGrid.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -34,7 +35,7 @@ float PlayerTariffComponent::effectiveImportTariff(PlayerId from) const {
 
 float applyTariffs(const PlayerTariffComponent& importer,
                    PlayerId exporter, float baseValue) {
-    const float tariffRate = importer.effectiveImportTariff(exporter);
+    const float tariffRate  = importer.effectiveImportTariff(exporter);
     const float clampedRate = std::clamp(tariffRate, 0.0f, 0.5f);
     return baseValue * (1.0f - clampedRate);
 }
@@ -49,20 +50,18 @@ float computeTransportCost(const aoc::map::HexGrid& grid,
     const int32_t dist = hex::distance(from, to);
     float cost = static_cast<float>(dist) * 0.02f * baseGoodValue;
 
-    // Check if origin or destination is coastal (harbors reduce cost by 30%)
     if (grid.isValid(from) && grid.isValid(to)) {
         const int32_t fromIdx = grid.toIndex(from);
-        const int32_t toIdx = grid.toIndex(to);
+        const int32_t toIdx   = grid.toIndex(to);
 
         const bool fromCoastal = (grid.terrain(fromIdx) == aoc::map::TerrainType::Coast);
-        const bool toCoastal = (grid.terrain(toIdx) == aoc::map::TerrainType::Coast);
+        const bool toCoastal   = (grid.terrain(toIdx)   == aoc::map::TerrainType::Coast);
         if (fromCoastal || toCoastal) {
             cost *= 0.7f;
         }
 
-        // Check for roads at origin and destination (roads reduce cost by 50%)
         const bool fromRoad = grid.hasRoad(fromIdx);
-        const bool toRoad = grid.hasRoad(toIdx);
+        const bool toRoad   = grid.hasRoad(toIdx);
         if (fromRoad && toRoad) {
             cost *= 0.5f;
         }
@@ -80,12 +79,8 @@ bool GlobalTradeBlocTracker::areInSameBloc(PlayerId a, PlayerId b) const {
         bool hasA = false;
         bool hasB = false;
         for (const PlayerId member : bloc.members) {
-            if (member == a) {
-                hasA = true;
-            }
-            if (member == b) {
-                hasB = true;
-            }
+            if (member == a) { hasA = true; }
+            if (member == b) { hasB = true; }
         }
         if (hasA && hasB) {
             return true;
@@ -99,12 +94,8 @@ float GlobalTradeBlocTracker::effectiveTariff(PlayerId importer, PlayerId export
         bool hasImporter = false;
         bool hasExporter = false;
         for (const PlayerId member : bloc.members) {
-            if (member == importer) {
-                hasImporter = true;
-            }
-            if (member == exporter) {
-                hasExporter = true;
-            }
+            if (member == importer) { hasImporter = true; }
+            if (member == exporter) { hasExporter = true; }
         }
         if (hasImporter && hasExporter) {
             return bloc.internalTariff;
@@ -113,7 +104,7 @@ float GlobalTradeBlocTracker::effectiveTariff(PlayerId importer, PlayerId export
             return bloc.externalTariff;
         }
     }
-    return 0.0f;  // No bloc involvement, no bloc-level tariff
+    return 0.0f;
 }
 
 // ============================================================================
@@ -122,31 +113,23 @@ float GlobalTradeBlocTracker::effectiveTariff(PlayerId importer, PlayerId export
 
 float computeTechSpillover(const aoc::game::GameState& gameState,
                            PlayerId player, PlayerId tradePartner) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     constexpr float SPILLOVER_RATE = 0.5f;
 
-    int32_t myTechs = 0;
-    int32_t partnerTechs = 0;
-
-    const aoc::ecs::ComponentPool<PlayerTechComponent>* techPool =
-        world.getPool<PlayerTechComponent>();
-    if (techPool == nullptr) {
+    const aoc::game::Player* myPlayer      = gameState.player(player);
+    const aoc::game::Player* partnerPlayer = gameState.player(tradePartner);
+    if (myPlayer == nullptr || partnerPlayer == nullptr) {
         return 0.0f;
     }
 
-    for (uint32_t i = 0; i < techPool->size(); ++i) {
-        const PlayerTechComponent& tech = techPool->data()[i];
-        int32_t completedCount = 0;
-        for (uint16_t t = 0; t < techCount(); ++t) {
-            if (tech.hasResearched(TechId{t})) {
-                ++completedCount;
-            }
+    int32_t myTechs      = 0;
+    int32_t partnerTechs = 0;
+
+    for (uint16_t t = 0; t < techCount(); ++t) {
+        if (myPlayer->tech().hasResearched(TechId{t})) {
+            ++myTechs;
         }
-        if (tech.owner == player) {
-            myTechs = completedCount;
-        }
-        if (tech.owner == tradePartner) {
-            partnerTechs = completedCount;
+        if (partnerPlayer->tech().hasResearched(TechId{t})) {
+            ++partnerTechs;
         }
     }
 
@@ -159,19 +142,13 @@ float computeTechSpillover(const aoc::game::GameState& gameState,
 }
 
 void processTechSpillover(aoc::game::GameState& gameState) {
-    const aoc::ecs::ComponentPool<TradeRouteComponent>* tradePool =
-        world.getPool<TradeRouteComponent>();
-    if (tradePool == nullptr) {
-        return;
-    }
+    const std::vector<TradeRouteComponent>& tradeRoutes = gameState.tradeRoutes();
 
-    // Accumulate spillover per player from all active trade routes
     std::unordered_map<PlayerId, float> spilloverAccum;
 
-    for (uint32_t i = 0; i < tradePool->size(); ++i) {
-        const TradeRouteComponent& route = tradePool->data()[i];
-        const float spilloverA = computeTechSpillover(world, route.sourcePlayer, route.destPlayer);
-        const float spilloverB = computeTechSpillover(world, route.destPlayer, route.sourcePlayer);
+    for (const TradeRouteComponent& route : tradeRoutes) {
+        const float spilloverA = computeTechSpillover(gameState, route.sourcePlayer, route.destPlayer);
+        const float spilloverB = computeTechSpillover(gameState, route.destPlayer, route.sourcePlayer);
 
         if (spilloverA > 0.0f) {
             spilloverAccum[route.sourcePlayer] += spilloverA;
@@ -181,20 +158,15 @@ void processTechSpillover(aoc::game::GameState& gameState) {
         }
     }
 
-    // Apply accumulated spillover as bonus science to each player's research
-    aoc::ecs::ComponentPool<PlayerTechComponent>* techPool =
-        world.getPool<PlayerTechComponent>();
-    if (techPool == nullptr) {
-        return;
-    }
-
-    for (uint32_t i = 0; i < techPool->size(); ++i) {
-        PlayerTechComponent& tech = techPool->data()[i];
-        const std::unordered_map<PlayerId, float>::const_iterator it = spilloverAccum.find(tech.owner);
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) { continue; }
+        const std::unordered_map<PlayerId, float>::const_iterator it =
+            spilloverAccum.find(playerPtr->id());
         if (it != spilloverAccum.end() && it->second > 0.0f) {
-            tech.researchProgress += it->second;
+            playerPtr->tech().researchProgress += it->second;
             LOG_DEBUG("Tech spillover: player %u gains %.1f science from trade",
-                      static_cast<unsigned>(tech.owner), static_cast<double>(it->second));
+                      static_cast<unsigned>(playerPtr->id()),
+                      static_cast<double>(it->second));
         }
     }
 }
@@ -205,20 +177,18 @@ void processTechSpillover(aoc::game::GameState& gameState) {
 
 void CityLaborComponent::autoAssign(int32_t totalPopulation) {
     if (totalPopulation <= 0) {
-        this->farmers = 0;
-        this->miners = 0;
-        this->merchants = 0;
+        this->farmers    = 0;
+        this->miners     = 0;
+        this->merchants  = 0;
         this->scientists = 0;
         return;
     }
 
-    // Base distribution: 40% farmers, 30% miners, 15% merchants, 15% scientists
     this->farmers    = static_cast<int32_t>(static_cast<float>(totalPopulation) * 0.4f);
     this->miners     = static_cast<int32_t>(static_cast<float>(totalPopulation) * 0.3f);
     this->merchants  = static_cast<int32_t>(static_cast<float>(totalPopulation) * 0.15f);
     this->scientists = static_cast<int32_t>(static_cast<float>(totalPopulation) * 0.15f);
 
-    // Assign remaining citizens (rounding remainder) to farmers
     const int32_t assigned = this->farmers + this->miners + this->merchants + this->scientists;
     this->farmers += (totalPopulation - assigned);
 }
@@ -257,7 +227,7 @@ float CityLaborComponent::scienceMultiplier() const {
 
 float diminishingReturns(int32_t currentStockpile, int32_t newProduction) {
     const float stockpileF = static_cast<float>(currentStockpile);
-    const float diminish = std::min(0.5f, stockpileF / 100.0f);
+    const float diminish   = std::min(0.5f, stockpileF / 100.0f);
     return static_cast<float>(newProduction) * (1.0f - diminish);
 }
 
@@ -267,20 +237,23 @@ float diminishingReturns(int32_t currentStockpile, int32_t newProduction) {
 
 float computeInfrastructureBonus(const aoc::game::GameState& gameState,
                                  const aoc::map::HexGrid& grid,
-                                 EntityId cityEntity) {
-    aoc::ecs::World& world = gameState.legacyWorld();
+                                 PlayerId cityOwner,
+                                 aoc::hex::AxialCoord cityLocation) {
     constexpr float BONUS_PER_INFRA = 0.05f;
-    constexpr float MAX_BONUS = 1.5f;
+    constexpr float MAX_BONUS       = 1.5f;
 
-    const CityComponent* city = world.tryGetComponent<CityComponent>(cityEntity);
+    const aoc::game::Player* owner = gameState.player(cityOwner);
+    if (owner == nullptr) {
+        return 1.0f;
+    }
+    const aoc::game::City* city = owner->cityAt(cityLocation);
     if (city == nullptr) {
         return 1.0f;
     }
 
     float bonus = 1.0f;
 
-    // Count road tiles in worked tiles
-    for (const hex::AxialCoord& tile : city->workedTiles) {
+    for (const hex::AxialCoord& tile : city->workedTiles()) {
         if (!grid.isValid(tile)) {
             continue;
         }
@@ -290,26 +263,18 @@ float computeInfrastructureBonus(const aoc::game::GameState& gameState,
         }
     }
 
-    // Check for harbor and market buildings
-    const CityDistrictsComponent* districts =
-        world.tryGetComponent<CityDistrictsComponent>(cityEntity);
-    if (districts != nullptr) {
-        // Harbor district (DistrictType::Harbor)
-        if (districts->hasDistrict(DistrictType::Harbor)) {
-            bonus += BONUS_PER_INFRA;
-        }
-        // Shipyard building (BuildingId{23})
-        if (districts->hasBuilding(BuildingId{23})) {
-            bonus += BONUS_PER_INFRA;
-        }
-        // Market building (BuildingId{6})
-        if (districts->hasBuilding(BuildingId{6})) {
-            bonus += BONUS_PER_INFRA;
-        }
-        // Bank building (BuildingId{20})
-        if (districts->hasBuilding(BuildingId{20})) {
-            bonus += BONUS_PER_INFRA;
-        }
+    const CityDistrictsComponent& districts = city->districts();
+    if (districts.hasDistrict(DistrictType::Harbor)) {
+        bonus += BONUS_PER_INFRA;
+    }
+    if (districts.hasBuilding(BuildingId{23})) {
+        bonus += BONUS_PER_INFRA;
+    }
+    if (districts.hasBuilding(BuildingId{6})) {
+        bonus += BONUS_PER_INFRA;
+    }
+    if (districts.hasBuilding(BuildingId{20})) {
+        bonus += BONUS_PER_INFRA;
     }
 
     return std::min(bonus, MAX_BONUS);
@@ -323,8 +288,8 @@ void PlayerBankingComponent::takeLoan(CurrencyAmount amount) {
     if (amount <= 0) {
         return;
     }
-    this->totalLoans += amount;
-    this->turnsUntilPayment = 5;  // First interest payment in 5 turns
+    this->totalLoans       += amount;
+    this->turnsUntilPayment = 5;
     LOG_INFO("Player %u took loan of %lld (total debt: %lld)",
              static_cast<unsigned>(this->owner),
              static_cast<long long>(amount),
@@ -333,14 +298,12 @@ void PlayerBankingComponent::takeLoan(CurrencyAmount amount) {
 
 void PlayerBankingComponent::processPayments(CurrencyAmount& treasury, CurrencyAmount gdp) {
     if (this->totalLoans <= 0) {
-        this->hasBankingCrisis = false;
-        this->crisisTurnsRemaining = 0;
+        this->hasBankingCrisis      = false;
+        this->crisisTurnsRemaining  = 0;
         return;
     }
 
-    // Process interest each turn
-    const CurrencyAmount interest =
-        this->totalLoans * this->loanInterestRate / 100;
+    const CurrencyAmount interest = this->totalLoans * this->loanInterestRate / 100;
     treasury -= interest;
 
     LOG_DEBUG("Player %u pays %lld interest on %lld debt",
@@ -348,10 +311,9 @@ void PlayerBankingComponent::processPayments(CurrencyAmount& treasury, CurrencyA
               static_cast<long long>(interest),
               static_cast<long long>(this->totalLoans));
 
-    // Debt crisis check: debt > 2 * GDP
     if (gdp > 0 && this->totalLoans > 2 * gdp) {
         if (!this->hasBankingCrisis) {
-            this->hasBankingCrisis = true;
+            this->hasBankingCrisis     = true;
             this->crisisTurnsRemaining = 10;
             LOG_ERROR("Player %u enters banking crisis! Debt %lld > 2 * GDP %lld",
                       static_cast<unsigned>(this->owner),
@@ -360,11 +322,10 @@ void PlayerBankingComponent::processPayments(CurrencyAmount& treasury, CurrencyA
         }
     }
 
-    // Tick down crisis
     if (this->hasBankingCrisis) {
         --this->crisisTurnsRemaining;
         if (this->crisisTurnsRemaining <= 0) {
-            this->hasBankingCrisis = false;
+            this->hasBankingCrisis     = false;
             this->crisisTurnsRemaining = 0;
             LOG_INFO("Player %u banking crisis resolved", static_cast<unsigned>(this->owner));
         }
@@ -377,41 +338,25 @@ void PlayerBankingComponent::processPayments(CurrencyAmount& treasury, CurrencyA
 
 float computeExchangeRate(const aoc::game::GameState& gameState,
                           PlayerId playerA, PlayerId playerB) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-        world.getPool<MonetaryStateComponent>();
-    if (monetaryPool == nullptr) {
+    const aoc::game::Player* pA = gameState.player(playerA);
+    const aoc::game::Player* pB = gameState.player(playerB);
+    if (pA == nullptr || pB == nullptr) {
         return 1.0f;
     }
 
-    MonetarySystemType systemA = MonetarySystemType::Barter;
-    MonetarySystemType systemB = MonetarySystemType::Barter;
-    float inflationA = 0.0f;
-    float inflationB = 0.0f;
+    const MonetarySystemType systemA   = pA->monetary().system;
+    const MonetarySystemType systemB   = pB->monetary().system;
+    const float              inflationA = pA->monetary().inflationRate;
+    const float              inflationB = pB->monetary().inflationRate;
 
-    for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-        const MonetaryStateComponent& state = monetaryPool->data()[i];
-        if (state.owner == playerA) {
-            systemA = state.system;
-            inflationA = state.inflationRate;
-        }
-        if (state.owner == playerB) {
-            systemB = state.system;
-            inflationB = state.inflationRate;
-        }
-    }
-
-    // Barter-Barter: direct trade at 1:1
     if (systemA == MonetarySystemType::Barter && systemB == MonetarySystemType::Barter) {
         return 1.0f;
     }
 
-    // Matching systems: trade at 1:1
     if (systemA == systemB) {
         return 1.0f;
     }
 
-    // Gold Standard vs Fiat: influenced by inflation
     const bool aIsGold = (systemA == MonetarySystemType::GoldStandard ||
                           systemA == MonetarySystemType::CommodityMoney);
     const bool bIsFiat = (systemB == MonetarySystemType::FiatMoney);
@@ -426,7 +371,6 @@ float computeExchangeRate(const aoc::game::GameState& gameState,
         return 1.0f / (1.0f + inflationA * 2.0f);
     }
 
-    // Different non-matching systems: 0.8 base rate
     return 0.8f;
 }
 
@@ -435,49 +379,33 @@ float computeExchangeRate(const aoc::game::GameState& gameState,
 // ============================================================================
 
 bool checkDebtCrisis(aoc::game::GameState& gameState, PlayerId player) {
-    aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-        world.getPool<MonetaryStateComponent>();
-    if (monetaryPool == nullptr) {
+    aoc::game::Player* playerObj = gameState.player(player);
+    if (playerObj == nullptr) {
         return false;
     }
 
-    for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-        MonetaryStateComponent& state = monetaryPool->data()[i];
-        if (state.owner != player) {
-            continue;
-        }
-
-        if (state.gdp <= 0) {
-            return false;
-        }
-
-        const bool inCrisis = (state.governmentDebt > 2 * state.gdp);
-        if (!inCrisis) {
-            return false;
-        }
-
-        LOG_INFO("Debt crisis for player %u: debt %lld > 2 * GDP %lld",
-                 static_cast<unsigned>(player),
-                 static_cast<long long>(state.governmentDebt),
-                 static_cast<long long>(state.gdp));
-
-        // Apply penalties via the banking component if present
-        aoc::ecs::ComponentPool<PlayerBankingComponent>* bankPool =
-            world.getPool<PlayerBankingComponent>();
-        if (bankPool != nullptr) {
-            for (uint32_t j = 0; j < bankPool->size(); ++j) {
-                PlayerBankingComponent& bank = bankPool->data()[j];
-                if (bank.owner == player && !bank.hasBankingCrisis) {
-                    bank.hasBankingCrisis = true;
-                    bank.crisisTurnsRemaining = 10;
-                }
-            }
-        }
-
-        return true;
+    MonetaryStateComponent& state = playerObj->monetary();
+    if (state.gdp <= 0) {
+        return false;
     }
 
-    return false;
+    const bool inCrisis = (state.governmentDebt > 2 * state.gdp);
+    if (!inCrisis) {
+        return false;
+    }
+
+    LOG_INFO("Debt crisis for player %u: debt %lld > 2 * GDP %lld",
+             static_cast<unsigned>(player),
+             static_cast<long long>(state.governmentDebt),
+             static_cast<long long>(state.gdp));
+
+    PlayerBankingComponent& bank = playerObj->banking();
+    if (!bank.hasBankingCrisis) {
+        bank.hasBankingCrisis     = true;
+        bank.crisisTurnsRemaining = 10;
+    }
+
+    return true;
 }
 
 // ============================================================================
@@ -486,66 +414,19 @@ bool checkDebtCrisis(aoc::game::GameState& gameState, PlayerId player) {
 
 void processAdvancedEconomics(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
                               PlayerId player, Market& /*market*/) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    // 1. Tech spillover from trade routes
-    processTechSpillover(world);
+    processTechSpillover(gameState);
 
-    // 2. Banking payments
-    aoc::ecs::ComponentPool<PlayerBankingComponent>* bankPool =
-        world.getPool<PlayerBankingComponent>();
-    if (bankPool != nullptr) {
-        for (uint32_t i = 0; i < bankPool->size(); ++i) {
-            PlayerBankingComponent& bank = bankPool->data()[i];
-            if (bank.owner != player) {
-                continue;
-            }
-
-            // Find player treasury and GDP
-            CurrencyAmount gdp = 0;
-            aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-                world.getPool<MonetaryStateComponent>();
-            if (monetaryPool != nullptr) {
-                for (uint32_t j = 0; j < monetaryPool->size(); ++j) {
-                    if (monetaryPool->data()[j].owner == player) {
-                        gdp = monetaryPool->data()[j].gdp;
-                        break;
-                    }
-                }
-            }
-
-            aoc::ecs::ComponentPool<PlayerEconomyComponent>* econPool =
-                world.getPool<PlayerEconomyComponent>();
-            if (econPool != nullptr) {
-                for (uint32_t j = 0; j < econPool->size(); ++j) {
-                    if (econPool->data()[j].owner == player) {
-                        bank.processPayments(econPool->data()[j].treasury, gdp);
-                        break;
-                    }
-                }
-            }
-        }
+    aoc::game::Player* playerObj = gameState.player(player);
+    if (playerObj != nullptr) {
+        PlayerBankingComponent& bank = playerObj->banking();
+        CurrencyAmount gdp           = playerObj->monetary().gdp;
+        bank.processPayments(playerObj->economy().treasury, gdp);
     }
 
-    // 3. Debt crisis check
-    [[maybe_unused]] const bool inDebtCrisis = checkDebtCrisis(world, player);
+    [[maybe_unused]] const bool inDebtCrisis = checkDebtCrisis(gameState, player);
 
-    // 4. Infrastructure bonus application to cities
-    aoc::ecs::ComponentPool<CityComponent>* cityPool =
-        world.getPool<CityComponent>();
-    if (cityPool != nullptr) {
-        for (uint32_t i = 0; i < cityPool->size(); ++i) {
-            const CityComponent& city = cityPool->data()[i];
-            if (city.owner != player) {
-                continue;
-            }
-            const EntityId cityEntity = cityPool->entities()[i];
-            const float infraBonus = computeInfrastructureBonus(world, grid, cityEntity);
-            if (infraBonus > 1.0f) {
-                LOG_DEBUG("City %s infrastructure bonus: %.2f",
-                          city.name.c_str(), static_cast<double>(infraBonus));
-            }
-        }
-    }
+    // Infrastructure bonus is applied per-city during production processing; skip here.
+    (void)grid;
 }
 
 } // namespace aoc::sim

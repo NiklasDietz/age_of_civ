@@ -5,12 +5,12 @@
 
 #include "aoc/ui/ReligionScreen.hpp"
 #include "aoc/ui/UIManager.hpp"
-#include "aoc/ecs/World.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/core/Log.hpp"
 
@@ -18,11 +18,11 @@
 
 namespace aoc::ui {
 
-void ReligionScreen::setContext(aoc::ecs::World* world, aoc::map::HexGrid* grid,
+void ReligionScreen::setContext(aoc::game::GameState* gameState, aoc::map::HexGrid* grid,
                                  PlayerId humanPlayer) {
-    this->m_world  = world;
-    this->m_grid   = grid;
-    this->m_player = humanPlayer;
+    this->m_gameState = gameState;
+    this->m_grid      = grid;
+    this->m_player    = humanPlayer;
 }
 
 void ReligionScreen::open(UIManager& ui) {
@@ -74,27 +74,19 @@ void ReligionScreen::close(UIManager& ui) {
 }
 
 void ReligionScreen::refresh(UIManager& ui) {
-    if (!this->m_isOpen || this->m_world == nullptr) {
+    if (!this->m_isOpen || this->m_gameState == nullptr) {
         return;
     }
 
-    // Find player faith
-    float currentFaith = 0.0f;
-    bool hasPantheon = false;
-    aoc::sim::ReligionId foundedReligion = aoc::sim::NO_RELIGION;
-
-    const aoc::ecs::ComponentPool<aoc::sim::PlayerFaithComponent>* faithPool =
-        this->m_world->getPool<aoc::sim::PlayerFaithComponent>();
-    if (faithPool != nullptr) {
-        for (uint32_t i = 0; i < faithPool->size(); ++i) {
-            if (faithPool->data()[i].owner == this->m_player) {
-                currentFaith = faithPool->data()[i].faith;
-                hasPantheon = faithPool->data()[i].hasPantheon;
-                foundedReligion = faithPool->data()[i].foundedReligion;
-                break;
-            }
-        }
+    const aoc::game::Player* player = this->m_gameState->player(this->m_player);
+    if (player == nullptr) {
+        return;
     }
+
+    const aoc::sim::PlayerFaithComponent& faith = player->faith();
+    const float currentFaith = faith.faith;
+    const bool hasPantheon = faith.hasPantheon;
+    const aoc::sim::ReligionId foundedReligion = faith.foundedReligion;
 
     // Update faith label text
     ui.setLabelText(this->m_faithLabel,
@@ -104,12 +96,8 @@ void ReligionScreen::refresh(UIManager& ui) {
     {
         std::string statusText;
         if (foundedReligion != aoc::sim::NO_RELIGION) {
-            const aoc::ecs::ComponentPool<aoc::sim::GlobalReligionTracker>* trackerPool =
-                this->m_world->getPool<aoc::sim::GlobalReligionTracker>();
-            if (trackerPool != nullptr && trackerPool->size() > 0) {
-                const aoc::sim::GlobalReligionTracker& tracker = trackerPool->data()[0];
-                statusText = "Religion: " + tracker.religions[foundedReligion].name;
-            }
+            const aoc::sim::GlobalReligionTracker& tracker = this->m_gameState->religionTracker();
+            statusText = "Religion: " + tracker.religions[foundedReligion].name;
         } else if (hasPantheon) {
             statusText = "Pantheon founded. Need " +
                 std::to_string(static_cast<int>(aoc::sim::RELIGION_FAITH_COST)) +
@@ -124,27 +112,19 @@ void ReligionScreen::refresh(UIManager& ui) {
 }
 
 void ReligionScreen::buildBeliefList(UIManager& ui) {
-    if (this->m_beliefList == INVALID_WIDGET || this->m_world == nullptr) {
+    if (this->m_beliefList == INVALID_WIDGET || this->m_gameState == nullptr) {
         return;
     }
 
-    // Find player faith state
-    float currentFaith = 0.0f;
-    bool hasPantheon = false;
-    aoc::sim::ReligionId foundedReligion = aoc::sim::NO_RELIGION;
-
-    const aoc::ecs::ComponentPool<aoc::sim::PlayerFaithComponent>* faithPool =
-        this->m_world->getPool<aoc::sim::PlayerFaithComponent>();
-    if (faithPool != nullptr) {
-        for (uint32_t i = 0; i < faithPool->size(); ++i) {
-            if (faithPool->data()[i].owner == this->m_player) {
-                currentFaith = faithPool->data()[i].faith;
-                hasPantheon = faithPool->data()[i].hasPantheon;
-                foundedReligion = faithPool->data()[i].foundedReligion;
-                break;
-            }
-        }
+    const aoc::game::Player* player = this->m_gameState->player(this->m_player);
+    if (player == nullptr) {
+        return;
     }
+
+    const aoc::sim::PlayerFaithComponent& faith = player->faith();
+    const float currentFaith = faith.faith;
+    const bool hasPantheon = faith.hasPantheon;
+    const aoc::sim::ReligionId foundedReligion = faith.foundedReligion;
 
     const std::array<aoc::sim::BeliefDef, aoc::sim::BELIEF_COUNT>& beliefs = aoc::sim::allBeliefs();
 
@@ -164,22 +144,21 @@ void ReligionScreen::buildBeliefList(UIManager& ui) {
         btnData.fontSize = 12.0f;
 
         if (canAfford) {
-            btnData.onClick = [this]() {
+            aoc::game::GameState* gsPtr = this->m_gameState;
+            const PlayerId playerId = this->m_player;
+            btnData.onClick = [gsPtr, playerId]() {
                 const std::array<aoc::sim::BeliefDef, aoc::sim::BELIEF_COUNT>& b = aoc::sim::allBeliefs();
-                aoc::ecs::ComponentPool<aoc::sim::PlayerFaithComponent>* fp =
-                    this->m_world->getPool<aoc::sim::PlayerFaithComponent>();
-                if (fp == nullptr) return;
-                for (uint32_t fi = 0; fi < fp->size(); ++fi) {
-                    if (fp->data()[fi].owner == this->m_player) {
-                        fp->data()[fi].faith -= aoc::sim::PANTHEON_FAITH_COST;
-                        fp->data()[fi].hasPantheon = true;
-                        fp->data()[fi].pantheonBelief = 4; // Divine Inspiration
-                        LOG_INFO("Player %u founded pantheon with belief: %.*s",
-                                 static_cast<unsigned>(this->m_player),
-                                 static_cast<int>(b[4].name.size()), b[4].name.data());
-                        break;
-                    }
+                aoc::game::Player* p = gsPtr->player(playerId);
+                if (p == nullptr) {
+                    return;
                 }
+                aoc::sim::PlayerFaithComponent& fp = p->faith();
+                fp.faith -= aoc::sim::PANTHEON_FAITH_COST;
+                fp.hasPantheon = true;
+                fp.pantheonBelief = 4; // Divine Inspiration
+                LOG_INFO("Player %u founded pantheon with belief: %.*s",
+                         static_cast<unsigned>(playerId),
+                         static_cast<int>(b[4].name.size()), b[4].name.data());
             };
         }
 
@@ -210,37 +189,35 @@ void ReligionScreen::buildBeliefList(UIManager& ui) {
         btnData.fontSize = 12.0f;
 
         if (canAfford) {
-            btnData.onClick = [this]() {
-                aoc::ecs::ComponentPool<aoc::sim::GlobalReligionTracker>* tp =
-                    this->m_world->getPool<aoc::sim::GlobalReligionTracker>();
-                aoc::ecs::ComponentPool<aoc::sim::PlayerFaithComponent>* fp =
-                    this->m_world->getPool<aoc::sim::PlayerFaithComponent>();
-                if (tp == nullptr || fp == nullptr || tp->size() == 0) return;
-
-                aoc::sim::GlobalReligionTracker& tracker = tp->data()[0];
-                if (!tracker.canFoundReligion()) return;
+            aoc::game::GameState* gsPtr = this->m_gameState;
+            const PlayerId playerId = this->m_player;
+            btnData.onClick = [gsPtr, playerId]() {
+                aoc::sim::GlobalReligionTracker& tracker = gsPtr->religionTracker();
+                if (!tracker.canFoundReligion()) {
+                    return;
+                }
 
                 std::string religionName = std::string(
                     aoc::sim::RELIGION_NAMES[tracker.religionsFoundedCount %
                                              aoc::sim::RELIGION_NAMES.size()]);
 
-                aoc::sim::ReligionId newId = tracker.foundReligion(religionName, this->m_player);
+                aoc::sim::ReligionId newId = tracker.foundReligion(religionName, playerId);
 
                 tracker.religions[newId].founderBelief  = 0;  // Tithe
                 tracker.religions[newId].worshipBelief  = 8;  // Cathedral
                 tracker.religions[newId].enhancerBelief = 12; // Missionary Zeal
 
-                for (uint32_t fi = 0; fi < fp->size(); ++fi) {
-                    if (fp->data()[fi].owner == this->m_player) {
-                        fp->data()[fi].faith -= aoc::sim::RELIGION_FAITH_COST;
-                        fp->data()[fi].foundedReligion = newId;
-                        tracker.religions[newId].followerBelief = fp->data()[fi].pantheonBelief;
-                        break;
-                    }
+                aoc::game::Player* p = gsPtr->player(playerId);
+                if (p == nullptr) {
+                    return;
                 }
+                aoc::sim::PlayerFaithComponent& fp = p->faith();
+                fp.faith -= aoc::sim::RELIGION_FAITH_COST;
+                fp.foundedReligion = newId;
+                tracker.religions[newId].followerBelief = fp.pantheonBelief;
 
                 LOG_INFO("Player %u founded religion: %s",
-                         static_cast<unsigned>(this->m_player), religionName.c_str());
+                         static_cast<unsigned>(playerId), religionName.c_str());
             };
         }
 
@@ -258,10 +235,8 @@ void ReligionScreen::buildBeliefList(UIManager& ui) {
     }
     // Has religion: show info and purchase buttons
     else {
-        const aoc::ecs::ComponentPool<aoc::sim::GlobalReligionTracker>* trackerPool =
-            this->m_world->getPool<aoc::sim::GlobalReligionTracker>();
-        if (trackerPool != nullptr && trackerPool->size() > 0) {
-            const aoc::sim::GlobalReligionTracker& tracker = trackerPool->data()[0];
+        {
+            const aoc::sim::GlobalReligionTracker& tracker = this->m_gameState->religionTracker();
             const aoc::sim::ReligionDef& religion = tracker.religions[foundedReligion];
 
             // Show beliefs
@@ -290,13 +265,11 @@ void ReligionScreen::buildBeliefList(UIManager& ui) {
                     LabelData{std::move(text), {0.9f, 0.8f, 0.5f, 1.0f}, 11.0f});
             }
 
-            // Count follower cities
+            // Count follower cities by iterating all players
             int32_t followerCount = 0;
-            const aoc::ecs::ComponentPool<aoc::sim::CityReligionComponent>* cityRelPool =
-                this->m_world->getPool<aoc::sim::CityReligionComponent>();
-            if (cityRelPool != nullptr) {
-                for (uint32_t ci = 0; ci < cityRelPool->size(); ++ci) {
-                    if (cityRelPool->data()[ci].dominantReligion() == foundedReligion) {
+            for (const std::unique_ptr<aoc::game::Player>& otherPlayer : this->m_gameState->players()) {
+                for (const std::unique_ptr<aoc::game::City>& city : otherPlayer->cities()) {
+                    if (city->religion().dominantReligion() == foundedReligion) {
                         ++followerCount;
                     }
                 }
@@ -359,78 +332,54 @@ void ReligionScreen::buildBeliefList(UIManager& ui) {
 }
 
 void ReligionScreen::spawnReligiousUnit(UnitTypeId typeId, aoc::sim::ReligionId religion) {
-    if (this->m_world == nullptr) {
+    if (this->m_gameState == nullptr) {
+        return;
+    }
+
+    aoc::game::Player* player = this->m_gameState->player(this->m_player);
+    if (player == nullptr) {
         return;
     }
 
     // Deduct faith
     const float cost = (typeId.value == 19) ? aoc::sim::MISSIONARY_FAITH_COST
                                             : aoc::sim::APOSTLE_FAITH_COST;
-    aoc::ecs::ComponentPool<aoc::sim::PlayerFaithComponent>* faithPool =
-        this->m_world->getPool<aoc::sim::PlayerFaithComponent>();
-    if (faithPool == nullptr) {
+    aoc::sim::PlayerFaithComponent& faith = player->faith();
+    if (faith.faith < cost) {
         return;
     }
+    faith.faith -= cost;
 
-    bool deducted = false;
-    for (uint32_t i = 0; i < faithPool->size(); ++i) {
-        if (faithPool->data()[i].owner == this->m_player) {
-            if (faithPool->data()[i].faith < cost) {
-                return;
-            }
-            faithPool->data()[i].faith -= cost;
-            deducted = true;
-            break;
-        }
-    }
-    if (!deducted) {
-        return;
-    }
-
-    // Find a city with a Holy Site to spawn the unit
+    // Find a city with a Holy Site to spawn the unit; fall back to any city
     hex::AxialCoord spawnLocation{0, 0};
     bool foundCity = false;
 
-    const aoc::ecs::ComponentPool<aoc::sim::CityComponent>* cityPool =
-        this->m_world->getPool<aoc::sim::CityComponent>();
-    if (cityPool != nullptr) {
-        for (uint32_t i = 0; i < cityPool->size(); ++i) {
-            const aoc::sim::CityComponent& city = cityPool->data()[i];
-            if (city.owner != this->m_player) {
-                continue;
-            }
-            EntityId cityEntity = cityPool->entities()[i];
-            const aoc::sim::CityDistrictsComponent* districts =
-                this->m_world->tryGetComponent<aoc::sim::CityDistrictsComponent>(cityEntity);
-            if (districts != nullptr && districts->hasDistrict(aoc::sim::DistrictType::HolySite)) {
-                spawnLocation = city.location;
-                foundCity = true;
-                break;
-            }
+    for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
+        if (city->districts().hasDistrict(aoc::sim::DistrictType::HolySite)) {
+            spawnLocation = city->location();
+            foundCity = true;
+            break;
         }
-        // Fallback: any owned city
-        if (!foundCity) {
-            for (uint32_t i = 0; i < cityPool->size(); ++i) {
-                if (cityPool->data()[i].owner == this->m_player) {
-                    spawnLocation = cityPool->data()[i].location;
-                    foundCity = true;
-                    break;
-                }
-            }
+    }
+
+    if (!foundCity) {
+        if (!player->cities().empty()) {
+            spawnLocation = player->cities().front()->location();
+            foundCity = true;
         }
     }
 
     if (!foundCity) {
         LOG_ERROR("Cannot spawn religious unit: no city found for player %u",
                   static_cast<unsigned>(this->m_player));
+        // Refund faith since spawn failed
+        faith.faith += cost;
         return;
     }
 
-    EntityId unitEntity = this->m_world->createEntity();
-    aoc::sim::UnitComponent unit = aoc::sim::UnitComponent::create(
-        this->m_player, typeId, spawnLocation);
-    unit.spreadingReligion = religion;
-    this->m_world->addComponent<aoc::sim::UnitComponent>(unitEntity, std::move(unit));
+    player->addUnit(typeId, spawnLocation);
+    // NOTE: religion spreading stored separately when Unit gains spreadingReligion field.
+    (void)religion;
 
     const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(typeId);
     LOG_INFO("Player %u purchased %.*s at (%d,%d)",

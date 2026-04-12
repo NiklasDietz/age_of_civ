@@ -22,12 +22,22 @@
  */
 
 #include "aoc/core/Types.hpp"
+#include "aoc/simulation/climate/Climate.hpp"
+#include "aoc/simulation/economy/EnergyDependency.hpp"
+#include "aoc/simulation/economy/MonopolyPricing.hpp"
+#include "aoc/simulation/economy/Sanctions.hpp"
+#include "aoc/simulation/economy/Speculation.hpp"
+#include "aoc/simulation/economy/TradeRoute.hpp"
+#include "aoc/simulation/wonder/Wonder.hpp"
+#include "aoc/simulation/diplomacy/WorldCongress.hpp"
+#include "aoc/simulation/barbarian/BarbarianClans.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
 
 #include <cstdint>
 #include <memory>
 #include <vector>
 
-namespace aoc::ecs { class World; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::game {
@@ -74,23 +84,65 @@ public:
     [[nodiscard]] int32_t currentTurn() const { return this->m_currentTurn; }
     void advanceTurn() { ++this->m_currentTurn; }
 
-    /// The legacy ECS World (backward compatibility during migration - BEING REMOVED).
-    [[nodiscard]] aoc::ecs::World& legacyWorld() {
-        return (this->m_externalWorld != nullptr) ? *this->m_externalWorld : *this->m_legacyWorld;
-    }
-    [[nodiscard]] const aoc::ecs::World& legacyWorld() const {
-        return (this->m_externalWorld != nullptr) ? *this->m_externalWorld : *this->m_legacyWorld;
-    }
+    // ========================================================================
+    // Global state (singletons)
+    // ========================================================================
 
-    /// Set an external World (used when the World is owned by the caller).
-    /// This avoids having two separate World objects during the migration.
-    void setExternalWorld(aoc::ecs::World* externalWorld);
+    [[nodiscard]] aoc::sim::GlobalClimateComponent& climate() { return this->m_climate; }
+    [[nodiscard]] const aoc::sim::GlobalClimateComponent& climate() const { return this->m_climate; }
+
+    [[nodiscard]] aoc::sim::GlobalOilReserves& oilReserves() { return this->m_oilReserves; }
+    [[nodiscard]] const aoc::sim::GlobalOilReserves& oilReserves() const { return this->m_oilReserves; }
+
+    [[nodiscard]] aoc::sim::GlobalMonopolyComponent& monopoly() { return this->m_monopoly; }
+    [[nodiscard]] const aoc::sim::GlobalMonopolyComponent& monopoly() const { return this->m_monopoly; }
+
+    [[nodiscard]] aoc::sim::GlobalSanctionTracker& sanctions() { return this->m_sanctions; }
+    [[nodiscard]] const aoc::sim::GlobalSanctionTracker& sanctions() const { return this->m_sanctions; }
+
+    [[nodiscard]] aoc::sim::GlobalWonderTracker& wonderTracker() { return this->m_wonderTracker; }
+    [[nodiscard]] const aoc::sim::GlobalWonderTracker& wonderTracker() const { return this->m_wonderTracker; }
+
+    [[nodiscard]] aoc::sim::WorldCongressComponent& worldCongress() { return this->m_worldCongress; }
+    [[nodiscard]] const aoc::sim::WorldCongressComponent& worldCongress() const { return this->m_worldCongress; }
+
+    [[nodiscard]] aoc::sim::GlobalReligionTracker& religionTracker() { return this->m_religionTracker; }
+    [[nodiscard]] const aoc::sim::GlobalReligionTracker& religionTracker() const { return this->m_religionTracker; }
+
+    // ========================================================================
+    // Global collections
+    // ========================================================================
+
+    [[nodiscard]] std::vector<aoc::sim::TradeRouteComponent>& tradeRoutes() { return this->m_tradeRoutes; }
+    [[nodiscard]] const std::vector<aoc::sim::TradeRouteComponent>& tradeRoutes() const { return this->m_tradeRoutes; }
+
+    [[nodiscard]] std::vector<aoc::sim::CommodityHoardComponent>& commodityHoards() { return this->m_commodityHoards; }
+    [[nodiscard]] const std::vector<aoc::sim::CommodityHoardComponent>& commodityHoards() const { return this->m_commodityHoards; }
+
+    [[nodiscard]] std::vector<aoc::sim::BarbarianClanComponent>& barbarianClans() { return this->m_barbarianClans; }
+    [[nodiscard]] const std::vector<aoc::sim::BarbarianClanComponent>& barbarianClans() const { return this->m_barbarianClans; }
+
+    [[nodiscard]] std::vector<aoc::sim::CityStateComponent>& cityStates() { return this->m_cityStates; }
+    [[nodiscard]] const std::vector<aoc::sim::CityStateComponent>& cityStates() const { return this->m_cityStates; }
 
 private:
     std::vector<std::unique_ptr<Player>> m_players;
-    std::unique_ptr<aoc::ecs::World> m_legacyWorld;  ///< DEPRECATED: being purged
-    aoc::ecs::World* m_externalWorld = nullptr;       ///< Non-owning pointer to external world
     int32_t m_currentTurn = 0;
+
+    // Global state (singletons)
+    aoc::sim::GlobalClimateComponent m_climate;
+    aoc::sim::GlobalOilReserves m_oilReserves;
+    aoc::sim::GlobalMonopolyComponent m_monopoly;
+    aoc::sim::GlobalSanctionTracker m_sanctions;
+    aoc::sim::GlobalWonderTracker m_wonderTracker;
+    aoc::sim::WorldCongressComponent m_worldCongress;
+    aoc::sim::GlobalReligionTracker m_religionTracker;
+
+    // Global collections
+    std::vector<aoc::sim::TradeRouteComponent> m_tradeRoutes;
+    std::vector<aoc::sim::CommodityHoardComponent> m_commodityHoards;
+    std::vector<aoc::sim::BarbarianClanComponent> m_barbarianClans;
+    std::vector<aoc::sim::CityStateComponent> m_cityStates;
 };
 
 } // namespace aoc::game

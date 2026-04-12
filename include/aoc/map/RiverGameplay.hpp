@@ -27,11 +27,11 @@
 
 #include <cstdint>
 
+namespace aoc::game { class GameState; }
+
 namespace aoc::map {
 class HexGrid;
 }
-
-namespace aoc::ecs { class World; }
 
 namespace aoc::map {
 
@@ -112,11 +112,11 @@ constexpr float RIVER_DEFENSE_BONUS = 1.25f;
  *   - 5% chance of crop destruction: improvements on the tile are damaged
  *   - Dam improvement on any upstream tile prevents flooding for downstream tiles
  *
- * @param world      ECS world (for city data, notifications).
+ * @param gameState  Game state (for city data and notifications).
  * @param grid       Hex grid.
  * @param turnNumber Current turn (for deterministic flooding pattern).
  */
-void processFlooding(aoc::ecs::World& world, HexGrid& grid, int32_t turnNumber);
+void processFlooding(aoc::game::GameState& gameState, HexGrid& grid, int32_t turnNumber);
 
 // ============================================================================
 // Trade corridor (river-based transport cost reduction)
@@ -162,12 +162,12 @@ void processFlooding(aoc::ecs::World& world, HexGrid& grid, int32_t turnNumber);
  * Traces river flow downstream from polluted cities. Cities on the same
  * river system below a polluted city get a health penalty.
  *
- * @param world  ECS world (for city pollution data).
- * @param grid   Hex grid.
+ * @param gameState  Game state (for city pollution data).
+ * @param grid       Hex grid.
  * @param cityTileIndex  Tile of the city to check.
  * @return Health penalty (0 = no upstream pollution, 1-3 based on severity).
  */
-[[nodiscard]] int32_t watershedPollutionPenalty(const aoc::ecs::World& world,
+[[nodiscard]] int32_t watershedPollutionPenalty(const aoc::game::GameState& gameState,
                                                 const HexGrid& grid,
                                                 int32_t cityTileIndex);
 

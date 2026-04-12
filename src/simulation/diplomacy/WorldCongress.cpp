@@ -5,7 +5,6 @@
 
 #include "aoc/game/GameState.hpp"
 #include "aoc/simulation/diplomacy/WorldCongress.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -59,48 +58,39 @@ bool WorldCongressComponent::isResolutionActive(Resolution res) const {
 
 void processWorldCongress(aoc::game::GameState& gameState, TurnNumber /*turn*/,
                            aoc::Random& rng) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    aoc::ecs::ComponentPool<WorldCongressComponent>* pool =
-        world.getPool<WorldCongressComponent>();
-    if (pool == nullptr) {
+    WorldCongressComponent& congress = gameState.worldCongress();
+
+    if (!congress.isActive) {
+        if (congress.turnsUntilNextSession > 0) {
+            --congress.turnsUntilNextSession;
+        }
+        if (congress.turnsUntilNextSession == 0) {
+            congress.isActive = true;
+            LOG_INFO("World Congress is now active");
+        }
         return;
     }
 
-    for (uint32_t i = 0; i < pool->size(); ++i) {
-        WorldCongressComponent& congress = pool->data()[i];
+    // If no active proposal, propose a new one every 30 turns
+    if (congress.currentProposal == Resolution::Count) {
+        --congress.turnsUntilNextSession;
+        if (congress.turnsUntilNextSession <= 0) {
+            // Pick a random resolution
+            const uint8_t resIdx = static_cast<uint8_t>(
+                rng.nextInt(0, static_cast<int32_t>(Resolution::Count) - 1));
+            congress.proposeResolution(static_cast<Resolution>(resIdx));
 
-        if (!congress.isActive) {
-            if (congress.turnsUntilNextSession > 0) {
-                --congress.turnsUntilNextSession;
+            // AI players vote randomly (simple heuristic)
+            for (uint8_t p = 0; p < 16; ++p) {
+                const int8_t aiVote = static_cast<int8_t>(rng.nextInt(-1, 1));
+                congress.castVote(p, aiVote);
             }
-            if (congress.turnsUntilNextSession == 0) {
-                congress.isActive = true;
-                LOG_INFO("World Congress is now active");
-            }
-            continue;
+
+            congress.turnsUntilNextSession = 30;
         }
-
-        // If no active proposal, propose a new one every 30 turns
-        if (congress.currentProposal == Resolution::Count) {
-            --congress.turnsUntilNextSession;
-            if (congress.turnsUntilNextSession <= 0) {
-                // Pick a random resolution
-                const uint8_t resIdx = static_cast<uint8_t>(
-                    rng.nextInt(0, static_cast<int32_t>(Resolution::Count) - 1));
-                congress.proposeResolution(static_cast<Resolution>(resIdx));
-
-                // AI players vote randomly (simple heuristic)
-                for (uint8_t p = 0; p < 16; ++p) {
-                    const int8_t aiVote = static_cast<int8_t>(rng.nextInt(-1, 1));
-                    congress.castVote(p, aiVote);
-                }
-
-                congress.turnsUntilNextSession = 30;
-            }
-        } else {
-            // Resolve the current proposal
-            congress.resolveVotes();
-        }
+    } else {
+        // Resolve the current proposal
+        [[maybe_unused]] const bool passed = congress.resolveVotes();
     }
 }
 

@@ -4,11 +4,10 @@
  */
 
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/simulation/event/WorldEvents.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
-#include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <array>
@@ -140,17 +139,10 @@ const WorldEventDef& worldEventDef(WorldEventId id) {
 }
 
 void checkWorldEvents(aoc::game::GameState& gameState, PlayerId player, int32_t turnNumber) {
-    aoc::ecs::ComponentPool<PlayerEventComponent>* eventPool =
-        world.getPool<PlayerEventComponent>();
-    if (eventPool == nullptr) { return; }
+    aoc::game::Player* playerObj = gameState.player(player);
+    if (playerObj == nullptr) { return; }
 
-    PlayerEventComponent* events = nullptr;
-    for (uint32_t i = 0; i < eventPool->size(); ++i) {
-        if (eventPool->data()[i].owner == player) {
-            events = &eventPool->data()[i];
-            break;
-        }
-    }
+    PlayerEventComponent* events = &playerObj->events();
     if (events == nullptr) { return; }
 
     // Don't trigger if there's already a pending event
@@ -178,19 +170,11 @@ void checkWorldEvents(aoc::game::GameState& gameState, PlayerId player, int32_t 
 }
 
 ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, int32_t choice) {
-    aoc::ecs::ComponentPool<PlayerEventComponent>* eventPool =
-        world.getPool<PlayerEventComponent>();
-    if (eventPool == nullptr) { return ErrorCode::InvalidArgument; }
-    aoc::ecs::World& world = gameState.legacyWorld();
+    aoc::game::Player* playerObj = gameState.player(player);
+    if (playerObj == nullptr) { return ErrorCode::InvalidArgument; }
 
-    PlayerEventComponent* events = nullptr;
-    for (uint32_t i = 0; i < eventPool->size(); ++i) {
-        if (eventPool->data()[i].owner == player) {
-            events = &eventPool->data()[i];
-            break;
-        }
-    }
-    if (events == nullptr || events->pendingEvent == static_cast<WorldEventId>(255)) {
+    PlayerEventComponent* events = &playerObj->events();
+    if (events->pendingEvent == static_cast<WorldEventId>(255)) {
         return ErrorCode::InvalidArgument;
     }
 
@@ -203,29 +187,16 @@ ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, in
 
     // Apply gold change
     if (chosen.goldChange != 0) {
-        aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-            world.getPool<MonetaryStateComponent>();
-        if (monetaryPool != nullptr) {
-            for (uint32_t m = 0; m < monetaryPool->size(); ++m) {
-                if (monetaryPool->data()[m].owner == player) {
-                    monetaryPool->data()[m].treasury += chosen.goldChange;
-                    break;
-                }
-            }
-        }
+        playerObj->monetary().treasury += chosen.goldChange;
     }
 
     // Apply population change to capital
     if (chosen.populationChange != 0) {
-        const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-            world.getPool<CityComponent>();
-        if (cityPool != nullptr) {
-            for (uint32_t c = 0; c < cityPool->size(); ++c) {
-                if (cityPool->data()[c].owner == player && cityPool->data()[c].isOriginalCapital) {
-                    CityComponent& city = const_cast<CityComponent&>(cityPool->data()[c]);
-                    city.population = std::max(1, city.population + chosen.populationChange);
-                    break;
-                }
+        for (const std::unique_ptr<aoc::game::City>& city : playerObj->cities()) {
+            if (city->isOriginalCapital()) {
+                const int32_t newPop = std::max(1, city->population() + chosen.populationChange);
+                city->setPopulation(newPop);
+                break;
             }
         }
     }
@@ -246,12 +217,8 @@ ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, in
 }
 
 void tickWorldEvents(aoc::game::GameState& gameState) {
-    aoc::ecs::ComponentPool<PlayerEventComponent>* eventPool =
-        world.getPool<PlayerEventComponent>();
-    if (eventPool == nullptr) { return; }
-
-    for (uint32_t i = 0; i < eventPool->size(); ++i) {
-        PlayerEventComponent& events = eventPool->data()[i];
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        PlayerEventComponent& events = playerPtr->events();
         if (events.activeEffectTurns > 0) {
             --events.activeEffectTurns;
             if (events.activeEffectTurns <= 0) {

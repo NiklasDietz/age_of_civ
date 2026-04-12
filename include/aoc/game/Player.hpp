@@ -28,6 +28,24 @@
 #include "aoc/simulation/victory/VictoryCondition.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
+#include "aoc/simulation/monetary/Bonds.hpp"
+#include "aoc/simulation/economy/StockMarket.hpp"
+#include "aoc/simulation/economy/EconomicDepth.hpp"
+#include "aoc/simulation/economy/SpeculationBubble.hpp"
+#include "aoc/simulation/economy/BlackMarket.hpp"
+#include "aoc/simulation/economy/EnergyDependency.hpp"
+#include "aoc/simulation/economy/HumanCapital.hpp"
+#include "aoc/simulation/economy/SupplyChain.hpp"
+#include "aoc/simulation/economy/AdvancedEconomics.hpp"
+#include "aoc/simulation/economy/IndustrialRevolution.hpp"
+#include "aoc/simulation/diplomacy/Grievance.hpp"
+#include "aoc/simulation/monetary/CurrencyTrust.hpp"
+#include "aoc/simulation/monetary/ForexMarket.hpp"
+#include "aoc/simulation/monetary/CurrencyWar.hpp"
+#include "aoc/simulation/monetary/CurrencyCrisis.hpp"
+#include "aoc/simulation/empire/CommunicationSpeed.hpp"
+#include "aoc/simulation/event/WorldEvents.hpp"
+#include "aoc/simulation/automation/Automation.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -153,6 +171,93 @@ public:
     [[nodiscard]] const aoc::sim::VictoryTrackerComponent& victoryTracker() const { return this->m_victoryTracker; }
 
     // ========================================================================
+    // Monetary instruments
+    // ========================================================================
+
+    [[nodiscard]] aoc::sim::PlayerBondComponent& bonds() { return this->m_bonds; }
+    [[nodiscard]] const aoc::sim::PlayerBondComponent& bonds() const { return this->m_bonds; }
+
+    [[nodiscard]] aoc::sim::PlayerStockPortfolioComponent& stockPortfolio() { return this->m_stockPortfolio; }
+    [[nodiscard]] const aoc::sim::PlayerStockPortfolioComponent& stockPortfolio() const { return this->m_stockPortfolio; }
+
+    [[nodiscard]] aoc::sim::PlayerFuturesComponent& futures() { return this->m_futures; }
+    [[nodiscard]] const aoc::sim::PlayerFuturesComponent& futures() const { return this->m_futures; }
+
+    [[nodiscard]] aoc::sim::PlayerIOUComponent& ious() { return this->m_ious; }
+    [[nodiscard]] const aoc::sim::PlayerIOUComponent& ious() const { return this->m_ious; }
+
+    [[nodiscard]] aoc::sim::PlayerInsuranceComponent& insurance() { return this->m_insurance; }
+    [[nodiscard]] const aoc::sim::PlayerInsuranceComponent& insurance() const { return this->m_insurance; }
+
+    [[nodiscard]] aoc::sim::PlayerBubbleComponent& bubble() { return this->m_bubble; }
+    [[nodiscard]] const aoc::sim::PlayerBubbleComponent& bubble() const { return this->m_bubble; }
+
+    // ========================================================================
+    // Economy (deep systems)
+    // ========================================================================
+
+    [[nodiscard]] aoc::sim::PlayerMigrationComponent& migration() { return this->m_migration; }
+    [[nodiscard]] const aoc::sim::PlayerMigrationComponent& migration() const { return this->m_migration; }
+
+    [[nodiscard]] aoc::sim::PlayerBlackMarketComponent& blackMarket() { return this->m_blackMarket; }
+    [[nodiscard]] const aoc::sim::PlayerBlackMarketComponent& blackMarket() const { return this->m_blackMarket; }
+
+    [[nodiscard]] aoc::sim::PlayerEnergyComponent& energy() { return this->m_energy; }
+    [[nodiscard]] const aoc::sim::PlayerEnergyComponent& energy() const { return this->m_energy; }
+
+    [[nodiscard]] aoc::sim::PlayerHumanCapitalComponent& humanCapital() { return this->m_humanCapital; }
+    [[nodiscard]] const aoc::sim::PlayerHumanCapitalComponent& humanCapital() const { return this->m_humanCapital; }
+
+    [[nodiscard]] aoc::sim::PlayerSupplyChainComponent& supplyChain() { return this->m_supplyChain; }
+    [[nodiscard]] const aoc::sim::PlayerSupplyChainComponent& supplyChain() const { return this->m_supplyChain; }
+
+    [[nodiscard]] aoc::sim::PlayerIndustrialComponent& industrial() { return this->m_industrial; }
+    [[nodiscard]] const aoc::sim::PlayerIndustrialComponent& industrial() const { return this->m_industrial; }
+
+    [[nodiscard]] aoc::sim::PlayerBankingComponent& banking() { return this->m_banking; }
+    [[nodiscard]] const aoc::sim::PlayerBankingComponent& banking() const { return this->m_banking; }
+
+    // ========================================================================
+    // Diplomacy (extended)
+    // ========================================================================
+
+    [[nodiscard]] aoc::sim::PlayerGrievanceComponent& grievances() { return this->m_grievances; }
+    [[nodiscard]] const aoc::sim::PlayerGrievanceComponent& grievances() const { return this->m_grievances; }
+
+    // ========================================================================
+    // Currency
+    // ========================================================================
+
+    [[nodiscard]] aoc::sim::CurrencyTrustComponent& currencyTrust() { return this->m_currencyTrust; }
+    [[nodiscard]] const aoc::sim::CurrencyTrustComponent& currencyTrust() const { return this->m_currencyTrust; }
+
+    [[nodiscard]] aoc::sim::CurrencyExchangeComponent& currencyExchange() { return this->m_currencyExchange; }
+    [[nodiscard]] const aoc::sim::CurrencyExchangeComponent& currencyExchange() const { return this->m_currencyExchange; }
+
+    [[nodiscard]] aoc::sim::CurrencyDevaluationComponent& currencyDevaluation() { return this->m_currencyDevaluation; }
+    [[nodiscard]] const aoc::sim::CurrencyDevaluationComponent& currencyDevaluation() const { return this->m_currencyDevaluation; }
+
+    [[nodiscard]] aoc::sim::CurrencyCrisisComponent& currencyCrisis() { return this->m_currencyCrisis; }
+    [[nodiscard]] const aoc::sim::CurrencyCrisisComponent& currencyCrisis() const { return this->m_currencyCrisis; }
+
+    // ========================================================================
+    // Empire management
+    // ========================================================================
+
+    [[nodiscard]] aoc::sim::PlayerCommunicationComponent& communication() { return this->m_communication; }
+    [[nodiscard]] const aoc::sim::PlayerCommunicationComponent& communication() const { return this->m_communication; }
+
+    // ========================================================================
+    // Events & Automation
+    // ========================================================================
+
+    [[nodiscard]] aoc::sim::PlayerEventComponent& events() { return this->m_events; }
+    [[nodiscard]] const aoc::sim::PlayerEventComponent& events() const { return this->m_events; }
+
+    [[nodiscard]] aoc::sim::PlayerResearchQueueComponent& researchQueue() { return this->m_researchQueue; }
+    [[nodiscard]] const aoc::sim::PlayerResearchQueueComponent& researchQueue() const { return this->m_researchQueue; }
+
+    // ========================================================================
     // Cities
     // ========================================================================
 
@@ -241,6 +346,39 @@ private:
 
     // Victory
     aoc::sim::VictoryTrackerComponent m_victoryTracker;
+
+    // Monetary instruments
+    aoc::sim::PlayerBondComponent m_bonds;
+    aoc::sim::PlayerStockPortfolioComponent m_stockPortfolio;
+    aoc::sim::PlayerFuturesComponent m_futures;
+    aoc::sim::PlayerIOUComponent m_ious;
+    aoc::sim::PlayerInsuranceComponent m_insurance;
+    aoc::sim::PlayerBubbleComponent m_bubble;
+
+    // Economy (deep systems)
+    aoc::sim::PlayerMigrationComponent m_migration;
+    aoc::sim::PlayerBlackMarketComponent m_blackMarket;
+    aoc::sim::PlayerEnergyComponent m_energy;
+    aoc::sim::PlayerHumanCapitalComponent m_humanCapital;
+    aoc::sim::PlayerSupplyChainComponent m_supplyChain;
+    aoc::sim::PlayerIndustrialComponent m_industrial;
+    aoc::sim::PlayerBankingComponent m_banking;
+
+    // Diplomacy (extended)
+    aoc::sim::PlayerGrievanceComponent m_grievances;
+
+    // Currency
+    aoc::sim::CurrencyTrustComponent m_currencyTrust;
+    aoc::sim::CurrencyExchangeComponent m_currencyExchange;
+    aoc::sim::CurrencyDevaluationComponent m_currencyDevaluation;
+    aoc::sim::CurrencyCrisisComponent m_currencyCrisis;
+
+    // Empire management
+    aoc::sim::PlayerCommunicationComponent m_communication;
+
+    // Events & Automation
+    aoc::sim::PlayerEventComponent m_events;
+    aoc::sim::PlayerResearchQueueComponent m_researchQueue;
 
     // Owned entities
     std::vector<std::unique_ptr<City>> m_cities;

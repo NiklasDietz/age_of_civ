@@ -4,14 +4,16 @@
  *        interdependence bonuses, losing conditions, and integration project.
  */
 
+#include "aoc/game/Unit.hpp"
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/simulation/victory/VictoryCondition.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/CityScience.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/city/CityLoyalty.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
@@ -21,7 +23,6 @@
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/core/Log.hpp"
 
@@ -74,136 +75,85 @@ static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
     const aoc::game::GameState& gameState,
     const aoc::map::HexGrid& grid,
     const EconomySimulation& economy) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-
     std::unordered_map<PlayerId, PlayerRawStats> stats;
 
-    // Cities: population, happiness, loyalty, improvements, wonders
-    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-        world.getPool<CityComponent>();
-    if (cityPool != nullptr) {
-        for (uint32_t i = 0; i < cityPool->size(); ++i) {
-            const CityComponent& city = cityPool->data()[i];
-            if (city.owner == INVALID_PLAYER || city.owner == BARBARIAN_PLAYER) {
-                continue;
-            }
-            PlayerRawStats& s = stats[city.owner];
-            s.owner = city.owner;
+    for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
+        const PlayerId pid = gsPlayer->id();
+        if (pid == INVALID_PLAYER || pid == BARBARIAN_PLAYER) {
+            continue;
+        }
+        PlayerRawStats& s = stats[pid];
+        s.owner = pid;
+
+        // Cities: population, happiness, loyalty, wonders
+        for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
             ++s.cityCount;
-            s.totalPopulation += city.population;
-
-            // Happiness
-            const CityHappinessComponent* happiness =
-                world.tryGetComponent<CityHappinessComponent>(cityPool->entities()[i]);
-            if (happiness != nullptr) {
-                s.avgHappiness += happiness->amenities - happiness->demand;
-            }
-
-            // Loyalty
-            const CityLoyaltyComponent* loyalty =
-                world.tryGetComponent<CityLoyaltyComponent>(cityPool->entities()[i]);
-            if (loyalty != nullptr) {
-                s.avgLoyalty += loyalty->loyalty;
-            }
-
-            // Wonders
-            const CityWondersComponent* wonders =
-                world.tryGetComponent<CityWondersComponent>(cityPool->entities()[i]);
-            if (wonders != nullptr) {
-                s.wonderCount += static_cast<int32_t>(wonders->wonders.size());
-            }
+            s.totalPopulation += city->population();
+            s.avgHappiness += city->happiness().amenities - city->happiness().demand;
+            s.avgLoyalty  += city->loyalty().loyalty;
+            s.wonderCount += static_cast<int32_t>(city->wonders().wonders.size());
+        }
+        if (s.cityCount > 0) {
+            s.avgHappiness /= static_cast<float>(s.cityCount);
+            s.avgLoyalty   /= static_cast<float>(s.cityCount);
         }
 
-        // Average happiness and loyalty
-        for (std::pair<const PlayerId, PlayerRawStats>& entry : stats) {
-            if (entry.second.cityCount > 0) {
-                entry.second.avgHappiness /= static_cast<float>(entry.second.cityCount);
-                entry.second.avgLoyalty /= static_cast<float>(entry.second.cityCount);
-            }
-        }
-    }
+        // Culture
+        s.culturePerTurn = computePlayerCulture(gameState, grid, pid);
 
-    // Culture
-    for (std::pair<const PlayerId, PlayerRawStats>& entry : stats) {
-        entry.second.culturePerTurn = computePlayerCulture(world, grid, entry.first);
-    }
-
-    // Techs
-    const aoc::ecs::ComponentPool<PlayerTechComponent>* techPool =
-        world.getPool<PlayerTechComponent>();
-    if (techPool != nullptr) {
-        for (uint32_t i = 0; i < techPool->size(); ++i) {
-            const PlayerTechComponent& tech = techPool->data()[i];
+        // Techs
+        {
             int32_t count = 0;
-            for (std::size_t bit = 0; bit < tech.completedTechs.size(); ++bit) {
-                if (tech.completedTechs[bit]) { ++count; }
+            for (std::size_t bit = 0; bit < gsPlayer->tech().completedTechs.size(); ++bit) {
+                if (gsPlayer->tech().completedTechs[bit]) { ++count; }
             }
-            stats[tech.owner].techsResearched = count;
-            stats[tech.owner].owner = tech.owner;
+            s.techsResearched = count;
         }
-    }
 
-    // Military units
-    const aoc::ecs::ComponentPool<UnitComponent>* unitPool =
-        world.getPool<UnitComponent>();
-    if (unitPool != nullptr) {
-        for (uint32_t i = 0; i < unitPool->size(); ++i) {
-            const UnitComponent& unit = unitPool->data()[i];
-            if (unit.owner == INVALID_PLAYER || unit.owner == BARBARIAN_PLAYER) {
-                continue;
-            }
-            PlayerRawStats& s = stats[unit.owner];
-            s.owner = unit.owner;
+        // Military units
+        for (const std::unique_ptr<aoc::game::Unit>& unit : gsPlayer->units()) {
             ++s.militaryUnits;
-            s.totalCombatStrength += static_cast<float>(unitTypeDef(unit.typeId).combatStrength);
+            s.totalCombatStrength +=
+                static_cast<float>(unitTypeDef(unit->typeId()).combatStrength);
         }
-    }
 
-    // Monetary: GDP, inflation, treasury, reserve currency
-    const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-        world.getPool<MonetaryStateComponent>();
-    if (monetaryPool != nullptr) {
-        for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-            const MonetaryStateComponent& ms = monetaryPool->data()[i];
-            PlayerRawStats& s = stats[ms.owner];
-            s.owner = ms.owner;
-            s.gdp = ms.gdp;
+        // Monetary: GDP, inflation, treasury
+        {
+            const aoc::sim::MonetaryStateComponent& ms = gsPlayer->monetary();
+            s.gdp           = ms.gdp;
             s.inflationRate = ms.inflationRate;
-            s.treasury = ms.treasury;
+            s.treasury      = ms.treasury;
         }
-    }
 
-    // Currency trust / reserve currency
-    const aoc::ecs::ComponentPool<CurrencyTrustComponent>* trustPool =
-        world.getPool<CurrencyTrustComponent>();
-    if (trustPool != nullptr) {
-        for (uint32_t i = 0; i < trustPool->size(); ++i) {
-            const CurrencyTrustComponent& ct = trustPool->data()[i];
-            stats[ct.owner].isReserveCurrency = ct.isReserveCurrency;
-        }
-    }
+        // Currency trust / reserve currency
+        s.isReserveCurrency = gsPlayer->currencyTrust().isReserveCurrency;
 
-    // Bonds
-    const aoc::ecs::ComponentPool<PlayerBondComponent>* bondPool =
-        world.getPool<PlayerBondComponent>();
-    if (bondPool != nullptr) {
-        for (uint32_t i = 0; i < bondPool->size(); ++i) {
-            const PlayerBondComponent& pb = bondPool->data()[i];
+        // Bonds
+        {
             CurrencyAmount held = 0;
-            for (const BondIssue& b : pb.heldBonds) {
+            for (const BondIssue& b : gsPlayer->bonds().heldBonds) {
                 held += b.principal + b.accruedInterest;
             }
-            stats[pb.owner].bondHoldings = held;
+            s.bondHoldings = held;
+        }
+
+        // Improved tiles
+        {
+            int32_t improved = 0;
+            for (int32_t t = 0; t < grid.tileCount(); ++t) {
+                if (grid.owner(t) == pid
+                    && grid.improvement(t) != aoc::map::ImprovementType::None) {
+                    ++improved;
+                }
+            }
+            s.improvedTiles = improved;
         }
     }
 
-    // Trade routes: partner count and volume
-    const aoc::ecs::ComponentPool<TradeRouteComponent>* tradePool =
-        world.getPool<TradeRouteComponent>();
-    if (tradePool != nullptr) {
+    // Trade routes: partner count and volume (global collection on GameState)
+    {
         std::unordered_map<PlayerId, std::unordered_set<PlayerId>> partnerSets;
-        for (uint32_t i = 0; i < tradePool->size(); ++i) {
-            const TradeRouteComponent& route = tradePool->data()[i];
+        for (const TradeRouteComponent& route : gameState.tradeRoutes()) {
             partnerSets[route.sourcePlayer].insert(route.destPlayer);
             partnerSets[route.destPlayer].insert(route.sourcePlayer);
 
@@ -214,20 +164,9 @@ static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
             stats[route.sourcePlayer].tradeVolume += cargoValue;
         }
         for (const std::pair<const PlayerId, std::unordered_set<PlayerId>>& entry : partnerSets) {
-            stats[entry.first].tradePartnerCount = static_cast<int32_t>(entry.second.size());
+            stats[entry.first].tradePartnerCount =
+                static_cast<int32_t>(entry.second.size());
         }
-    }
-
-    // Improved tiles (count from grid)
-    for (std::pair<const PlayerId, PlayerRawStats>& entry : stats) {
-        // Count tiles owned by this player that have improvements
-        int32_t improved = 0;
-        for (int32_t t = 0; t < grid.tileCount(); ++t) {
-            if (grid.owner(t) == entry.first && grid.improvement(t) != aoc::map::ImprovementType::None) {
-                ++improved;
-            }
-        }
-        entry.second.improvedTiles = improved;
     }
 
     return stats;
@@ -239,8 +178,7 @@ static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
 
 void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
                 const EconomySimulation& economy) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    std::unordered_map<PlayerId, PlayerRawStats> stats = gatherPlayerStats(world, grid, economy);
+    std::unordered_map<PlayerId, PlayerRawStats> stats = gatherPlayerStats(gameState, grid, economy);
     if (stats.empty()) {
         return;
     }
@@ -276,16 +214,10 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
         return value / avg;
     };
 
-    // Update each player's tracker
-    aoc::ecs::ComponentPool<VictoryTrackerComponent>* trackerPool =
-        world.getPool<VictoryTrackerComponent>();
-    if (trackerPool == nullptr) {
-        return;
-    }
-
-    for (uint32_t i = 0; i < trackerPool->size(); ++i) {
-        VictoryTrackerComponent& tracker = trackerPool->data()[i];
-        std::unordered_map<PlayerId, PlayerRawStats>::iterator it = stats.find(tracker.owner);
+    // Update each player's tracker via Player object model
+    for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
+        VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
+        std::unordered_map<PlayerId, PlayerRawStats>::iterator it = stats.find(gsPlayer->id());
         if (it == stats.end()) {
             continue;
         }
@@ -378,51 +310,51 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
 constexpr TurnNumber ERA_EVALUATION_INTERVAL = 30;
 
 void performEraEvaluation(aoc::game::GameState& gameState) {
-    aoc::ecs::ComponentPool<VictoryTrackerComponent>* trackerPool =
-        world.getPool<VictoryTrackerComponent>();
-    if (trackerPool == nullptr || trackerPool->size() == 0) {
+    if (gameState.players().empty()) {
         return;
     }
 
-    // For each category, find top 3 players
+    // For each category, find top 3 players by score.
+    // We work with raw Player pointers so we can award VP through the object model.
     for (int32_t cat = 0; cat < CSI_CATEGORY_COUNT; ++cat) {
-        // Collect {score, index} pairs
-        struct Entry { float score; uint32_t index; };
+        struct Entry {
+            float score;
+            aoc::game::Player* player;
+        };
         std::vector<Entry> entries;
-        entries.reserve(trackerPool->size());
-        for (uint32_t i = 0; i < trackerPool->size(); ++i) {
-            if (!trackerPool->data()[i].isEliminated) {
-                entries.push_back({trackerPool->data()[i].categoryScores[cat], i});
+        entries.reserve(gameState.players().size());
+        for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
+            const VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
+            if (!tracker.isEliminated) {
+                entries.push_back({tracker.categoryScores[cat], gsPlayer.get()});
             }
         }
         std::sort(entries.begin(), entries.end(),
                   [](const Entry& a, const Entry& b) { return a.score > b.score; });
 
         // Award VP: 1st=3, 2nd=2, 3rd=1
-        if (entries.size() >= 1) { trackerPool->data()[entries[0].index].eraVictoryPoints += 3; }
-        if (entries.size() >= 2) { trackerPool->data()[entries[1].index].eraVictoryPoints += 2; }
-        if (entries.size() >= 3) { trackerPool->data()[entries[2].index].eraVictoryPoints += 1; }
+        if (entries.size() >= 1) { entries[0].player->victoryTracker().eraVictoryPoints += 3; }
+        if (entries.size() >= 2) { entries[1].player->victoryTracker().eraVictoryPoints += 2; }
+        if (entries.size() >= 3) { entries[2].player->victoryTracker().eraVictoryPoints += 1; }
     }
 
-    // Bonus 5 VP for highest composite CSI
-    uint32_t bestIdx = 0;
+    // Bonus 5 VP for highest composite CSI; increment erasEvaluated for all players.
+    aoc::game::Player* bestPlayer = nullptr;
     float bestCSI = -1.0f;
-    for (uint32_t i = 0; i < trackerPool->size(); ++i) {
-        if (!trackerPool->data()[i].isEliminated
-            && trackerPool->data()[i].compositeCSI > bestCSI) {
-            bestCSI = trackerPool->data()[i].compositeCSI;
-            bestIdx = i;
+    for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
+        VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
+        ++tracker.erasEvaluated;
+        if (!tracker.isEliminated && tracker.compositeCSI > bestCSI) {
+            bestCSI = tracker.compositeCSI;
+            bestPlayer = gsPlayer.get();
         }
     }
-    trackerPool->data()[bestIdx].eraVictoryPoints += 5;
-
-    for (uint32_t i = 0; i < trackerPool->size(); ++i) {
-        ++trackerPool->data()[i].erasEvaluated;
+    if (bestPlayer != nullptr) {
+        bestPlayer->victoryTracker().eraVictoryPoints += 5;
+        LOG_INFO("Era evaluation complete. Top CSI: player %u (%.2f)",
+                 static_cast<unsigned>(bestPlayer->id()),
+                 static_cast<double>(bestCSI));
     }
-
-    LOG_INFO("Era evaluation complete. Top CSI: player %u (%.2f)",
-             static_cast<unsigned>(trackerPool->data()[bestIdx].owner),
-             static_cast<double>(bestCSI));
 }
 
 // ============================================================================
@@ -430,65 +362,41 @@ void performEraEvaluation(aoc::game::GameState& gameState) {
 // ============================================================================
 
 void checkCollapseConditions(aoc::game::GameState& gameState) {
-    aoc::ecs::ComponentPool<VictoryTrackerComponent>* trackerPool =
-        world.getPool<VictoryTrackerComponent>();
-    if (trackerPool == nullptr) {
-        return;
-    }
-
-    const aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-        world.getPool<MonetaryStateComponent>();
-    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-        world.getPool<CityComponent>();
-    const aoc::ecs::ComponentPool<CurrencyCrisisComponent>* crisisPool =
-        world.getPool<CurrencyCrisisComponent>();
-
-    for (uint32_t i = 0; i < trackerPool->size(); ++i) {
-        VictoryTrackerComponent& tracker = trackerPool->data()[i];
+    for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
+        VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
         if (tracker.isEliminated) {
             continue;
         }
 
         // 1. Economic collapse: GDP < 50% of peak for 10 turns
-        if (monetaryPool != nullptr) {
-            for (uint32_t m = 0; m < monetaryPool->size(); ++m) {
-                if (monetaryPool->data()[m].owner == tracker.owner) {
-                    CurrencyAmount currentGDP = monetaryPool->data()[m].gdp;
-                    if (tracker.peakGDP > 0
-                        && currentGDP < static_cast<CurrencyAmount>(tracker.peakGDP) / 2) {
-                        ++tracker.turnsGDPBelowHalf;
-                    } else {
-                        tracker.turnsGDPBelowHalf = 0;
-                    }
-                    break;
-                }
+        {
+            const CurrencyAmount currentGDP = gsPlayer->monetary().gdp;
+            if (tracker.peakGDP > 0
+                && currentGDP < static_cast<CurrencyAmount>(tracker.peakGDP) / 2) {
+                ++tracker.turnsGDPBelowHalf;
+            } else {
+                tracker.turnsGDPBelowHalf = 0;
             }
         }
         if (tracker.turnsGDPBelowHalf >= 10) {
             tracker.activeCollapse = CollapseType::EconomicCollapse;
             tracker.isEliminated = true;
             LOG_INFO("Player %u ELIMINATED: economic collapse (GDP < 50%% of peak for 10 turns)",
-                     static_cast<unsigned>(tracker.owner));
+                     static_cast<unsigned>(gsPlayer->id()));
             continue;
         }
 
         // 2. Revolution: average loyalty < 30 for 5 turns
-        if (cityPool != nullptr) {
+        {
             float totalLoyalty = 0.0f;
             int32_t cities = 0;
-            for (uint32_t c = 0; c < cityPool->size(); ++c) {
-                if (cityPool->data()[c].owner == tracker.owner) {
-                    const CityLoyaltyComponent* loyalty =
-                        world.tryGetComponent<CityLoyaltyComponent>(cityPool->entities()[c]);
-                    if (loyalty != nullptr) {
-                        totalLoyalty += loyalty->loyalty;
-                    } else {
-                        totalLoyalty += 100.0f;
-                    }
-                    ++cities;
-                }
+            for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+                totalLoyalty += city->loyalty().loyalty;
+                ++cities;
             }
-            float avgLoyalty = (cities > 0) ? totalLoyalty / static_cast<float>(cities) : 100.0f;
+            const float avgLoyalty = (cities > 0)
+                ? totalLoyalty / static_cast<float>(cities)
+                : 100.0f;
             if (avgLoyalty < 30.0f) {
                 ++tracker.turnsLowLoyalty;
             } else {
@@ -499,51 +407,39 @@ void checkCollapseConditions(aoc::game::GameState& gameState) {
             tracker.activeCollapse = CollapseType::Revolution;
             tracker.isEliminated = true;
             LOG_INFO("Player %u ELIMINATED: revolution (avg loyalty < 30 for 5 turns)",
-                     static_cast<unsigned>(tracker.owner));
+                     static_cast<unsigned>(gsPlayer->id()));
             continue;
         }
 
-        // 3. Conquest: lost capital + 75% of cities
-        if (cityPool != nullptr) {
+        // 3. Conquest: lost capital + only one city remaining
+        {
             bool hasCapital = false;
-            int32_t cities = 0;
-            for (uint32_t c = 0; c < cityPool->size(); ++c) {
-                if (cityPool->data()[c].owner == tracker.owner) {
-                    ++cities;
-                    if (cityPool->data()[c].isOriginalCapital) {
-                        hasCapital = true;
-                    }
+            const int32_t cities = gsPlayer->cityCount();
+            for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+                if (city->isOriginalCapital()) {
+                    hasCapital = true;
+                    break;
                 }
             }
             if (!hasCapital && cities <= 1) {
                 tracker.activeCollapse = CollapseType::Conquest;
                 tracker.isEliminated = true;
                 LOG_INFO("Player %u ELIMINATED: conquest (capital lost, %d cities remaining)",
-                         static_cast<unsigned>(tracker.owner), cities);
+                         static_cast<unsigned>(gsPlayer->id()), cities);
                 continue;
             }
         }
 
-        // 4. Debt spiral: default + hyperinflation simultaneously
-        if (crisisPool != nullptr && monetaryPool != nullptr) {
-            bool inDefault = false;
-            bool inHyper = false;
-            for (uint32_t c = 0; c < crisisPool->size(); ++c) {
-                if (crisisPool->data()[c].owner == tracker.owner) {
-                    if (crisisPool->data()[c].activeCrisis == CrisisType::SovereignDefault) {
-                        inDefault = true;
-                    }
-                    if (crisisPool->data()[c].activeCrisis == CrisisType::Hyperinflation) {
-                        inHyper = true;
-                    }
-                    break;
-                }
-            }
+        // 4. Debt spiral: sovereign default + hyperinflation simultaneously
+        {
+            const aoc::sim::CurrencyCrisisComponent& crisis = gsPlayer->currencyCrisis();
+            const bool inDefault = (crisis.activeCrisis == CrisisType::SovereignDefault);
+            const bool inHyper   = (crisis.activeCrisis == CrisisType::Hyperinflation);
             if (inDefault && inHyper) {
                 tracker.activeCollapse = CollapseType::DebtSpiral;
                 tracker.isEliminated = true;
                 LOG_INFO("Player %u ELIMINATED: debt spiral (default + hyperinflation)",
-                         static_cast<unsigned>(tracker.owner));
+                         static_cast<unsigned>(gsPlayer->id()));
                 continue;
             }
         }
@@ -559,14 +455,8 @@ constexpr float INTEGRATION_THRESHOLD = 1.5f;
 constexpr int32_t INTEGRATION_TURNS_REQUIRED = 10;
 
 void updateIntegrationProject(aoc::game::GameState& gameState) {
-    aoc::ecs::ComponentPool<VictoryTrackerComponent>* trackerPool =
-        world.getPool<VictoryTrackerComponent>();
-    if (trackerPool == nullptr) {
-        return;
-    }
-
-    for (uint32_t i = 0; i < trackerPool->size(); ++i) {
-        VictoryTrackerComponent& tracker = trackerPool->data()[i];
+    for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
+        VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
         if (tracker.isEliminated || tracker.integrationComplete) {
             continue;
         }
@@ -585,7 +475,7 @@ void updateIntegrationProject(aoc::game::GameState& gameState) {
             if (tracker.integrationProgress >= INTEGRATION_TURNS_REQUIRED) {
                 tracker.integrationComplete = true;
                 LOG_INFO("Player %u completed the GLOBAL INTEGRATION PROJECT!",
-                         static_cast<unsigned>(tracker.owner));
+                         static_cast<unsigned>(gsPlayer->id()));
             }
         } else {
             tracker.integrationProgress = 0;  // Reset if any category drops below
@@ -600,30 +490,28 @@ void updateIntegrationProject(aoc::game::GameState& gameState) {
 VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                                       TurnNumber currentTurn,
                                       TurnNumber maxTurns) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    const aoc::ecs::ComponentPool<VictoryTrackerComponent>* trackerPool =
-        world.getPool<VictoryTrackerComponent>();
-    if (trackerPool == nullptr) {
+    if (gameState.players().empty()) {
         return {};
     }
 
     // 1. Global Integration Project win
-    for (uint32_t i = 0; i < trackerPool->size(); ++i) {
-        if (trackerPool->data()[i].integrationComplete) {
-            return {VictoryType::Integration, trackerPool->data()[i].owner};
+    for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
+        const VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
+        if (tracker.integrationComplete) {
+            return {VictoryType::Integration, gsPlayer->id()};
         }
     }
 
     // 2. Last standing: all but one eliminated
     int32_t alive = 0;
     PlayerId lastAlive = INVALID_PLAYER;
-    for (uint32_t i = 0; i < trackerPool->size(); ++i) {
-        if (!trackerPool->data()[i].isEliminated) {
+    for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
+        if (!gsPlayer->victoryTracker().isEliminated) {
             ++alive;
-            lastAlive = trackerPool->data()[i].owner;
+            lastAlive = gsPlayer->id();
         }
     }
-    if (alive == 1 && trackerPool->size() > 1) {
+    if (alive == 1 && gameState.playerCount() > 1) {
         return {VictoryType::LastStanding, lastAlive};
     }
 
@@ -631,11 +519,11 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     if (currentTurn >= maxTurns) {
         PlayerId bestPlayer = INVALID_PLAYER;
         int32_t bestVP = -1;
-        for (uint32_t i = 0; i < trackerPool->size(); ++i) {
-            if (!trackerPool->data()[i].isEliminated
-                && trackerPool->data()[i].eraVictoryPoints > bestVP) {
-                bestVP = trackerPool->data()[i].eraVictoryPoints;
-                bestPlayer = trackerPool->data()[i].owner;
+        for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
+            const VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
+            if (!tracker.isEliminated && tracker.eraVictoryPoints > bestVP) {
+                bestVP = tracker.eraVictoryPoints;
+                bestPlayer = gsPlayer->id();
             }
         }
         if (bestPlayer != INVALID_PLAYER) {
@@ -655,62 +543,45 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
 
 void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
                            const EconomySimulation& economy, TurnNumber currentTurn) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    computeCSI(world, grid, economy);
-    checkCollapseConditions(world);
-    updateIntegrationProject(world);
+    computeCSI(gameState, grid, economy);
+    checkCollapseConditions(gameState);
+    updateIntegrationProject(gameState);
 
     // Era evaluation every 30 turns
     if (currentTurn > 0 && (currentTurn % ERA_EVALUATION_INTERVAL) == 0) {
-        performEraEvaluation(world);
+        performEraEvaluation(gameState);
     }
 }
 
-// Backwards-compatible overload (limited scoring without economy data)
+/**
+ * @brief Backwards-compatible overload: minimal scoring without full CSI.
+ *
+ * Used when economy data is unavailable (e.g., early-game or test contexts).
+ * Updates tech progress, culture accumulation, and a basic composite score.
+ */
 void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid) {
-    // Minimal update: just compute basic stats without full CSI
-    aoc::ecs::ComponentPool<VictoryTrackerComponent>* trackerPool =
-        world.getPool<VictoryTrackerComponent>();
-    if (trackerPool == nullptr) {
-        return;
-    }
+    for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
+        VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
 
-    const aoc::ecs::ComponentPool<PlayerTechComponent>* techPool =
-        world.getPool<PlayerTechComponent>();
-    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-        world.getPool<CityComponent>();
-
-    for (uint32_t i = 0; i < trackerPool->size(); ++i) {
-        VictoryTrackerComponent& tracker = trackerPool->data()[i];
-
-        // Techs
-        if (techPool != nullptr) {
-            for (uint32_t t = 0; t < techPool->size(); ++t) {
-                if (techPool->data()[t].owner == tracker.owner) {
-                    int32_t count = 0;
-                    for (std::size_t bit = 0; bit < techPool->data()[t].completedTechs.size(); ++bit) {
-                        if (techPool->data()[t].completedTechs[bit]) { ++count; }
-                    }
-                    tracker.scienceProgress = count;
-                    break;
-                }
+        // Techs: count completed bits
+        {
+            int32_t count = 0;
+            for (std::size_t bit = 0; bit < gsPlayer->tech().completedTechs.size(); ++bit) {
+                if (gsPlayer->tech().completedTechs[bit]) { ++count; }
             }
+            tracker.scienceProgress = count;
         }
 
         // Culture
-        tracker.totalCultureAccumulated += computePlayerCulture(world, grid, tracker.owner);
+        tracker.totalCultureAccumulated +=
+            computePlayerCulture(gameState, grid, gsPlayer->id());
 
-        // Basic score
-        int32_t cityCount = 0;
+        // Basic score: population + science + cities + culture
         int32_t pop = 0;
-        if (cityPool != nullptr) {
-            for (uint32_t c = 0; c < cityPool->size(); ++c) {
-                if (cityPool->data()[c].owner == tracker.owner) {
-                    ++cityCount;
-                    pop += cityPool->data()[c].population;
-                }
-            }
+        for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+            pop += city->population();
         }
+        const int32_t cityCount = gsPlayer->cityCount();
         tracker.score = pop * 5 + tracker.scienceProgress * 10 + cityCount * 20
                       + static_cast<int32_t>(tracker.totalCultureAccumulated);
     }

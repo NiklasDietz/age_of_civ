@@ -29,7 +29,7 @@
 
 #include <cstdint>
 
-namespace aoc::game { class GameState; }
+namespace aoc::game { class GameState; class City; }
 
 namespace aoc::sim {
 
@@ -107,14 +107,12 @@ struct CityPollutionComponent {
 /// Waste Treatment Plant building ID.
 inline constexpr BuildingId WASTE_TREATMENT_PLANT{25};
 
-/// Process waste treatment for a city (if it has the building).
+/// Process waste treatment for a city (if it has the Waste Treatment Plant building).
 /// Converts up to 5 waste/turn into Construction Materials.
-void processWasteTreatment(aoc::game::GameState& gameState, EntityId cityEntity);
+void processWasteTreatment(aoc::game::City& city);
 
-/// Process waste generation for all cities (called during production step).
-/// Accumulates waste based on recipes executed this turn.
-void accumulateWaste(aoc::game::GameState& gameState, EntityId cityEntity,
-                     BuildingId buildingUsed, int32_t batchesExecuted);
+/// Accumulate waste for a city based on a production recipe executed this turn.
+void accumulateWaste(aoc::game::City& city, BuildingId buildingUsed, int32_t batchesExecuted);
 
 /// Get the total CO2 contribution from all cities (for climate system).
 [[nodiscard]] int32_t totalIndustrialCO2(const aoc::game::GameState& gameState);

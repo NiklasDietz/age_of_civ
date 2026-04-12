@@ -125,7 +125,8 @@ struct CityLaborComponent {
 /// Returns a multiplier (1.0 = no bonus, up to 1.5 with full infrastructure).
 [[nodiscard]] float computeInfrastructureBonus(const aoc::game::GameState& gameState,
                                                const aoc::map::HexGrid& grid,
-                                               EntityId cityEntity);
+                                               PlayerId cityOwner,
+                                               aoc::hex::AxialCoord cityLocation);
 
 // ============================================================================
 // Credit / Banking

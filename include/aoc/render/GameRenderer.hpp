@@ -27,14 +27,15 @@ class Renderer2D;
 }
 }
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::map {
 class HexGrid;
 class FogOfWar;
 }
+
 
 namespace aoc::render {
 
@@ -52,7 +53,7 @@ public:
                 uint32_t frameIndex,
                 const CameraController& camera,
                 const aoc::map::HexGrid& grid,
-                const aoc::ecs::World& world,
+                const aoc::game::GameState& gameState,
                 const aoc::map::FogOfWar& fog,
                 PlayerId viewingPlayer,
                 aoc::ui::UIManager& uiManager,

@@ -4,8 +4,8 @@
  */
 
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -14,47 +14,38 @@ namespace aoc::sim {
 
 ErrorCode proposeBilateralDeal(aoc::game::GameState& gameState,
                                  PlayerId proposer, PlayerId partner) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     if (proposer == partner) {
         return ErrorCode::InvalidArgument;
     }
 
-    aoc::ecs::ComponentPool<PlayerTradeAgreementsComponent>* agreePool =
-        world.getPool<PlayerTradeAgreementsComponent>();
-    if (agreePool == nullptr) {
+    aoc::game::Player* proposerPlayer = gameState.player(proposer);
+    aoc::game::Player* partnerPlayer  = gameState.player(partner);
+    if (proposerPlayer == nullptr || partnerPlayer == nullptr) {
         return ErrorCode::InvalidArgument;
     }
 
-    // Find both players' components
-    PlayerTradeAgreementsComponent* proposerComp = nullptr;
-    PlayerTradeAgreementsComponent* partnerComp = nullptr;
-    for (uint32_t i = 0; i < agreePool->size(); ++i) {
-        if (agreePool->data()[i].owner == proposer) { proposerComp = &agreePool->data()[i]; }
-        if (agreePool->data()[i].owner == partner)  { partnerComp = &agreePool->data()[i]; }
-    }
-    if (proposerComp == nullptr || partnerComp == nullptr) {
-        return ErrorCode::InvalidArgument;
-    }
+    PlayerTradeAgreementsComponent& proposerComp = proposerPlayer->tradeAgreements();
+    PlayerTradeAgreementsComponent& partnerComp  = partnerPlayer->tradeAgreements();
 
     // Check if deal already exists
-    for (const TradeAgreementDef& existing : proposerComp->agreements) {
+    for (const TradeAgreementDef& existing : proposerComp.agreements) {
         if (existing.type == TradeAgreementType::BilateralDeal && existing.isActive) {
             for (PlayerId member : existing.members) {
                 if (member == partner) {
-                    return ErrorCode::InvalidArgument;  // Already have a deal
+                    return ErrorCode::InvalidArgument;
                 }
             }
         }
     }
 
     TradeAgreementDef deal;
-    deal.type = TradeAgreementType::BilateralDeal;
-    deal.members = {proposer, partner};
+    deal.type       = TradeAgreementType::BilateralDeal;
+    deal.members    = {proposer, partner};
     deal.turnsActive = 0;
-    deal.isActive = true;
+    deal.isActive   = true;
 
-    proposerComp->agreements.push_back(deal);
-    partnerComp->agreements.push_back(deal);
+    proposerComp.agreements.push_back(deal);
+    partnerComp.agreements.push_back(deal);
 
     LOG_INFO("Trade deal: bilateral agreement between player %u and %u (-20%% tariff)",
              static_cast<unsigned>(proposer), static_cast<unsigned>(partner));
@@ -64,29 +55,20 @@ ErrorCode proposeBilateralDeal(aoc::game::GameState& gameState,
 
 ErrorCode createFreeTradeZone(aoc::game::GameState& gameState,
                                 const std::vector<PlayerId>& members) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     if (members.size() < 3) {
         return ErrorCode::InvalidArgument;
     }
 
-    aoc::ecs::ComponentPool<PlayerTradeAgreementsComponent>* agreePool =
-        world.getPool<PlayerTradeAgreementsComponent>();
-    if (agreePool == nullptr) {
-        return ErrorCode::InvalidArgument;
-    }
-
     TradeAgreementDef ftz;
-    ftz.type = TradeAgreementType::FreeTradeZone;
-    ftz.members = members;
+    ftz.type        = TradeAgreementType::FreeTradeZone;
+    ftz.members     = members;
     ftz.turnsActive = 0;
-    ftz.isActive = true;
+    ftz.isActive    = true;
 
     for (PlayerId member : members) {
-        for (uint32_t i = 0; i < agreePool->size(); ++i) {
-            if (agreePool->data()[i].owner == member) {
-                agreePool->data()[i].agreements.push_back(ftz);
-                break;
-            }
+        aoc::game::Player* playerObj = gameState.player(member);
+        if (playerObj != nullptr) {
+            playerObj->tradeAgreements().agreements.push_back(ftz);
         }
     }
 
@@ -99,30 +81,21 @@ ErrorCode createFreeTradeZone(aoc::game::GameState& gameState,
 ErrorCode formCustomsUnion(aoc::game::GameState& gameState,
                              const std::vector<PlayerId>& members,
                              float externalTariff) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     if (members.size() < 2) {
         return ErrorCode::InvalidArgument;
     }
 
-    aoc::ecs::ComponentPool<PlayerTradeAgreementsComponent>* agreePool =
-        world.getPool<PlayerTradeAgreementsComponent>();
-    if (agreePool == nullptr) {
-        return ErrorCode::InvalidArgument;
-    }
-
     TradeAgreementDef cu;
-    cu.type = TradeAgreementType::CustomsUnion;
-    cu.members = members;
-    cu.turnsActive = 0;
-    cu.externalTariff = std::clamp(externalTariff, 0.0f, 0.50f);
-    cu.isActive = true;
+    cu.type            = TradeAgreementType::CustomsUnion;
+    cu.members         = members;
+    cu.turnsActive     = 0;
+    cu.externalTariff  = std::clamp(externalTariff, 0.0f, 0.50f);
+    cu.isActive        = true;
 
     for (PlayerId member : members) {
-        for (uint32_t i = 0; i < agreePool->size(); ++i) {
-            if (agreePool->data()[i].owner == member) {
-                agreePool->data()[i].agreements.push_back(cu);
-                break;
-            }
+        aoc::game::Player* playerObj = gameState.player(member);
+        if (playerObj != nullptr) {
+            playerObj->tradeAgreements().agreements.push_back(cu);
         }
     }
 
@@ -133,15 +106,9 @@ ErrorCode formCustomsUnion(aoc::game::GameState& gameState,
 }
 
 void processTradeAgreements(aoc::game::GameState& gameState) {
-    aoc::ecs::ComponentPool<PlayerTradeAgreementsComponent>* agreePool =
-        world.getPool<PlayerTradeAgreementsComponent>();
-    if (agreePool == nullptr) {
-        return;
-    }
-
-    for (uint32_t p = 0; p < agreePool->size(); ++p) {
-        PlayerTradeAgreementsComponent& comp = agreePool->data()[p];
-        for (TradeAgreementDef& agreement : comp.agreements) {
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) { continue; }
+        for (TradeAgreementDef& agreement : playerPtr->tradeAgreements().agreements) {
             if (agreement.isActive) {
                 ++agreement.turnsActive;
             }

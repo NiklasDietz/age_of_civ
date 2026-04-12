@@ -5,7 +5,8 @@
 
 #include "aoc/ui/DiplomacyScreen.hpp"
 #include "aoc/ui/UIManager.hpp"
-#include "aoc/ecs/World.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/core/Log.hpp"
@@ -14,9 +15,9 @@
 
 namespace aoc::ui {
 
-void DiplomacyScreen::setContext(aoc::ecs::World* world, PlayerId humanPlayer,
+void DiplomacyScreen::setContext(aoc::game::GameState* gameState, PlayerId humanPlayer,
                                   aoc::sim::DiplomacyManager* diplomacy) {
-    this->m_world     = world;
+    this->m_gameState = gameState;
     this->m_player    = humanPlayer;
     this->m_diplomacy = diplomacy;
 }
@@ -41,22 +42,19 @@ void DiplomacyScreen::open(UIManager& ui) {
         listWidget->childSpacing = 6.0f;
     }
 
-    // Iterate over known players
-    const aoc::ecs::ComponentPool<aoc::sim::PlayerCivilizationComponent>* civPool =
-        this->m_world->getPool<aoc::sim::PlayerCivilizationComponent>();
-    if (civPool == nullptr || this->m_diplomacy == nullptr) {
+    if (this->m_gameState == nullptr || this->m_diplomacy == nullptr) {
         ui.layout();
         return;
     }
 
-    for (uint32_t i = 0; i < civPool->size(); ++i) {
-        const aoc::sim::PlayerCivilizationComponent& civ = civPool->data()[i];
-        if (civ.owner == this->m_player || civ.owner == BARBARIAN_PLAYER) {
+    // Iterate over known players
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState->players()) {
+        const PlayerId otherId = playerPtr->id();
+        if (otherId == this->m_player || otherId == BARBARIAN_PLAYER) {
             continue;
         }
 
-        const PlayerId otherId = civ.owner;
-        const aoc::sim::CivilizationDef& civDef = aoc::sim::civDef(civ.civId);
+        const aoc::sim::CivilizationDef& civDefRef = aoc::sim::civDef(playerPtr->civId());
         const aoc::sim::PairwiseRelation& rel = this->m_diplomacy->relation(this->m_player, otherId);
         const int32_t score = rel.totalScore();
         const aoc::sim::DiplomaticStance stance = rel.stance();
@@ -71,13 +69,13 @@ void DiplomacyScreen::open(UIManager& ui) {
             ppWidget->childSpacing = 4.0f;
         }
 
-        // Civ name, leader name, and ability (D3: Leader Info)
-        std::string nameText = std::string(civDef.name) + " - " + std::string(civDef.leaderName);
+        // Civ name and leader name
+        std::string nameText = std::string(civDefRef.name) + " - " + std::string(civDefRef.leaderName);
         (void)ui.createLabel(playerPanel, {0.0f, 0.0f, 490.0f, 16.0f},
                               LabelData{std::move(nameText), {1.0f, 0.9f, 0.5f, 1.0f}, 13.0f});
 
         // Leader ability
-        std::string abilityText = "Ability: " + std::string(civDef.abilityName);
+        std::string abilityText = "Ability: " + std::string(civDefRef.abilityName);
         (void)ui.createLabel(playerPanel, {0.0f, 0.0f, 490.0f, 12.0f},
                               LabelData{std::move(abilityText), {0.7f, 0.8f, 0.9f, 1.0f}, 10.0f});
 

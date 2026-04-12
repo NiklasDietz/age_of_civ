@@ -14,7 +14,6 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/core/Log.hpp"
 

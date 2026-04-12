@@ -5,21 +5,17 @@
  */
 
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/game/Unit.hpp"
 #include "aoc/simulation/ai/AISettlerController.hpp"
 #include "aoc/core/Log.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
-#include "aoc/simulation/city/ProductionQueue.hpp"
-#include "aoc/simulation/city/District.hpp"
-#include "aoc/simulation/city/BorderExpansion.hpp"
-#include "aoc/simulation/religion/Religion.hpp"
-#include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/turn/TurnProcessor.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
-#include "aoc/ecs/World.hpp"
 
 namespace aoc::sim::ai {
 
@@ -27,11 +23,10 @@ namespace aoc::sim::ai {
 // Helper: Score a potential city location for settler placement.
 // ============================================================================
 
-static float scoreCityLocation(hex::AxialCoord pos,
+static float scoreCityLocation(aoc::hex::AxialCoord pos,
                                const aoc::map::HexGrid& grid,
                                const aoc::game::GameState& gameState,
                                PlayerId player) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     if (!grid.isValid(pos)) {
         return -1000.0f;
     }
@@ -48,9 +43,9 @@ static float scoreCityLocation(hex::AxialCoord pos,
 
     float score = 0.0f;
 
-    const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(pos);
+    const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(pos);
     int32_t coastCount = 0;
-    for (const hex::AxialCoord& nbr : nbrs) {
+    for (const aoc::hex::AxialCoord& nbr : nbrs) {
         if (!grid.isValid(nbr)) {
             continue;
         }
@@ -73,14 +68,12 @@ static float scoreCityLocation(hex::AxialCoord pos,
         score += 4.0f;
     }
 
-    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-        world.getPool<CityComponent>();
-    if (cityPool != nullptr) {
-        for (uint32_t i = 0; i < cityPool->size(); ++i) {
-            const CityComponent& city = cityPool->data()[i];
-            const int32_t dist = hex::distance(pos, city.location);
+    // Penalise positions that are too close to existing cities or too far from own cities
+    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
+            const int32_t dist = aoc::hex::distance(pos, city->location());
 
-            if (city.owner == player) {
+            if (city->owner() == player) {
                 if (dist < 4) {
                     score -= 50.0f;
                 } else if (dist > 8) {
@@ -119,84 +112,66 @@ AISettlerController::AISettlerController(PlayerId player, aoc::ui::AIDifficulty 
 
 void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
                                                 aoc::map::HexGrid& grid) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    aoc::ecs::ComponentPool<UnitComponent>* unitPool = world.getPool<UnitComponent>();
-    if (unitPool == nullptr) {
+    aoc::game::Player* gsPlayer = gameState.player(this->m_player);
+    if (gsPlayer == nullptr) {
         return;
     }
 
-    // Collect settler units (copy because founding destroys the entity)
-    struct SettlerInfo {
-        EntityId entity;
-        UnitComponent unit;
+    // Snapshot settler units (founding destroys the unit)
+    struct SettlerSnapshot {
+        aoc::game::Unit*     ptr;
+        aoc::hex::AxialCoord position;
+        int32_t              movementRemaining;
     };
-    std::vector<SettlerInfo> settlers;
-    for (uint32_t i = 0; i < unitPool->size(); ++i) {
-        if (unitPool->data()[i].owner == this->m_player &&
-            unitTypeDef(unitPool->data()[i].typeId).unitClass == UnitClass::Settler) {
-            settlers.push_back({unitPool->entities()[i], unitPool->data()[i]});
+    std::vector<SettlerSnapshot> settlers;
+    for (const std::unique_ptr<aoc::game::Unit>& u : gsPlayer->units()) {
+        if (unitTypeDef(u->typeId()).unitClass == UnitClass::Settler) {
+            settlers.push_back({u.get(), u->position(), u->movementRemaining()});
         }
     }
 
-    for (const SettlerInfo& info : settlers) {
-        if (!world.isAlive(info.entity)) {
+    for (const SettlerSnapshot& snap : settlers) {
+        if (snap.ptr->isDead()) {
             continue;
         }
 
         // Score candidate locations in a radius around the settler
         float bestScore = -999.0f;
-        hex::AxialCoord bestLocation = info.unit.position;
+        aoc::hex::AxialCoord bestLocation = snap.position;
 
-        std::vector<hex::AxialCoord> candidates;
+        std::vector<aoc::hex::AxialCoord> candidates;
         candidates.reserve(200);
-        hex::spiral(info.unit.position, 8, std::back_inserter(candidates));
+        aoc::hex::spiral(snap.position, 8, std::back_inserter(candidates));
 
-        for (const hex::AxialCoord& candidate : candidates) {
+        for (const aoc::hex::AxialCoord& candidate : candidates) {
             if (!grid.isValid(candidate)) {
                 continue;
             }
             const float locationScore = scoreCityLocation(
-                candidate, grid, world, this->m_player);
+                candidate, grid, gameState, this->m_player);
             if (locationScore > bestScore) {
                 bestScore = locationScore;
                 bestLocation = candidate;
             }
         }
 
-        // Found city if at the best location
-        if (bestLocation == info.unit.position && bestScore > -100.0f) {
-            EntityId cityEntity = world.createEntity();
-            const std::string aiCityName = getNextCityName(world, this->m_player);
-            world.addComponent<CityComponent>(
-                cityEntity,
-                CityComponent::create(this->m_player, info.unit.position, aiCityName));
-            world.addComponent<ProductionQueueComponent>(
-                cityEntity, ProductionQueueComponent{});
+        // Found city if at the best location and score is acceptable
+        if (bestLocation == snap.position && bestScore > -100.0f) {
+            const std::string aiCityName = getNextCityName(gameState, this->m_player);
+            foundCity(gameState, grid, this->m_player, snap.position, aiCityName);
+            gsPlayer->removeUnit(snap.ptr);
 
-            CityDistrictsComponent districts{};
-            CityDistrictsComponent::PlacedDistrict center;
-            center.type = DistrictType::CityCenter;
-            center.location = info.unit.position;
-            districts.districts.push_back(std::move(center));
-            world.addComponent<CityDistrictsComponent>(
-                cityEntity, std::move(districts));
-
-            world.addComponent<CityReligionComponent>(
-                cityEntity, CityReligionComponent{});
-
-            claimInitialTerritory(grid, info.unit.position, this->m_player);
-            world.destroyEntity(info.entity);
             LOG_INFO("AI %u Founded city at (%d,%d) score=%.1f",
                      static_cast<unsigned>(this->m_player),
-                     info.unit.position.q, info.unit.position.r,
+                     snap.position.q, snap.position.r,
                      static_cast<double>(bestScore));
             continue;
         }
 
         // Move toward the best location
-        if (bestLocation != info.unit.position && info.unit.movementRemaining > 0) {
-            orderUnitMove(world, info.entity, bestLocation, grid);
-            moveUnitAlongPath(world, info.entity, grid);
+        if (bestLocation != snap.position && snap.ptr->movementRemaining() > 0) {
+            orderUnitMove(*snap.ptr, bestLocation, grid);
+            moveUnitAlongPath(gameState, *snap.ptr, grid);
         }
     }
 }

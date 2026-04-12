@@ -16,9 +16,9 @@
 #include <string>
 
 namespace aoc::ui { class UIManager; }
-namespace aoc::ecs { class World; }
 namespace aoc::map { class HexGrid; }
 namespace aoc::sim { class Market; }
+namespace aoc::game { class GameState; }
 
 namespace aoc::ui {
 
@@ -63,16 +63,16 @@ protected:
 /// City production picker screen.
 class ProductionScreen final : public ScreenBase {
 public:
-    void setContext(aoc::ecs::World* world, aoc::map::HexGrid* grid,
-                    EntityId cityEntity, PlayerId player);
+    void setContext(aoc::game::GameState* gameState, aoc::map::HexGrid* grid,
+                    aoc::hex::AxialCoord cityLocation, PlayerId player);
     void open(UIManager& ui) override;
     void close(UIManager& ui) override;
     void refresh(UIManager& ui) override;
 
 private:
-    aoc::ecs::World* m_world = nullptr;
+    aoc::game::GameState* m_gameState = nullptr;
     aoc::map::HexGrid* m_grid = nullptr;
-    EntityId m_cityEntity = NULL_ENTITY;
+    aoc::hex::AxialCoord m_cityLocation{};
     PlayerId m_player = INVALID_PLAYER;
     WidgetId m_queueLabel = INVALID_WIDGET;
     WidgetId m_itemList = INVALID_WIDGET;
@@ -81,13 +81,13 @@ private:
 /// Technology research screen.
 class TechScreen final : public ScreenBase {
 public:
-    void setContext(aoc::ecs::World* world, PlayerId player);
+    void setContext(aoc::game::GameState* gameState, PlayerId player);
     void open(UIManager& ui) override;
     void close(UIManager& ui) override;
     void refresh(UIManager& ui) override;
 
 private:
-    aoc::ecs::World* m_world = nullptr;
+    aoc::game::GameState* m_gameState = nullptr;
     PlayerId m_player = INVALID_PLAYER;
     WidgetId m_currentLabel = INVALID_WIDGET;
     WidgetId m_techList = INVALID_WIDGET;
@@ -96,13 +96,13 @@ private:
 /// Government and policy management screen.
 class GovernmentScreen final : public ScreenBase {
 public:
-    void setContext(aoc::ecs::World* world, PlayerId player);
+    void setContext(aoc::game::GameState* gameState, PlayerId player);
     void open(UIManager& ui) override;
     void close(UIManager& ui) override;
     void refresh(UIManager& ui) override;
 
 private:
-    aoc::ecs::World* m_world = nullptr;
+    aoc::game::GameState* m_gameState = nullptr;
     PlayerId m_player = INVALID_PLAYER;
     WidgetId m_currentGovLabel = INVALID_WIDGET;
     WidgetId m_govList = INVALID_WIDGET;
@@ -111,7 +111,7 @@ private:
 /// Economy overview and market screen.
 class EconomyScreen final : public ScreenBase {
 public:
-    void setContext(aoc::ecs::World* world, const aoc::map::HexGrid* grid,
+    void setContext(aoc::game::GameState* gameState, const aoc::map::HexGrid* grid,
                     PlayerId player, const aoc::sim::Market* market = nullptr);
     void open(UIManager& ui) override;
     void close(UIManager& ui) override;
@@ -121,22 +121,25 @@ private:
     /// Build the trade route creation sub-panel.
     void buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel);
 
-    aoc::ecs::World* m_world = nullptr;
+    aoc::game::GameState* m_gameState = nullptr;
     const aoc::map::HexGrid* m_grid = nullptr;
     const aoc::sim::Market* m_market = nullptr;
     PlayerId m_player = INVALID_PLAYER;
     WidgetId m_infoLabel = INVALID_WIDGET;
     WidgetId m_marketList = INVALID_WIDGET;
     WidgetId m_tradeRoutePanel = INVALID_WIDGET;
-    EntityId m_trSourceCity = NULL_ENTITY;
-    EntityId m_trDestCity = NULL_ENTITY;
+    /// Source and destination cities for trade route creation, stored as indices into their player's city list.
+    int32_t m_trSourcePlayerIdx = -1;
+    int32_t m_trSourceCityIdx   = -1;
+    int32_t m_trDestPlayerIdx   = -1;
+    int32_t m_trDestCityIdx     = -1;
 };
 
 /// Detailed city information screen (right-side panel, does not block map input).
 class CityDetailScreen final : public ScreenBase {
 public:
-    void setContext(aoc::ecs::World* world, const aoc::map::HexGrid* grid,
-                    EntityId cityEntity, PlayerId player);
+    void setContext(aoc::game::GameState* gameState, const aoc::map::HexGrid* grid,
+                    aoc::hex::AxialCoord cityLocation, PlayerId player);
     void open(UIManager& ui) override;
     void close(UIManager& ui) override;
     void refresh(UIManager& ui) override;
@@ -152,7 +155,7 @@ public:
     void toggleWorkerOnTile(aoc::hex::AxialCoord tile);
 
     /// The city entity currently displayed by this screen.
-    [[nodiscard]] EntityId cityEntity() const { return this->m_cityEntity; }
+    [[nodiscard]] aoc::hex::AxialCoord cityLocation() const { return this->m_cityLocation; }
 
     /// Current active tab index.
     static constexpr int32_t TAB_OVERVIEW   = 0;
@@ -170,9 +173,9 @@ private:
     /// Update tab button colors to reflect the active tab.
     void updateTabButtonColors(UIManager& ui);
 
-    aoc::ecs::World* m_world = nullptr;
+    aoc::game::GameState* m_gameState = nullptr;
     const aoc::map::HexGrid* m_grid = nullptr;
-    EntityId m_cityEntity = NULL_ENTITY;
+    aoc::hex::AxialCoord m_cityLocation{};
     PlayerId m_player = INVALID_PLAYER;
     WidgetId m_detailLabel = INVALID_WIDGET;
     WidgetId m_contentPanel = INVALID_WIDGET;  ///< Panel that holds the active tab's content

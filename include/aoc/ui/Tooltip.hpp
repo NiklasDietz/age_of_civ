@@ -14,10 +14,6 @@ namespace vulkan_app::renderer {
 class Renderer2D;
 }
 
-namespace aoc::ecs {
-class World;
-}
-
 namespace aoc::map {
 class HexGrid;
 class FogOfWar;
@@ -25,6 +21,10 @@ class FogOfWar;
 
 namespace aoc::render {
 class CameraController;
+}
+
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::ui {
@@ -39,16 +39,17 @@ public:
      *
      * @param mouseX    Mouse screen X.
      * @param mouseY    Mouse screen Y.
-     * @param world     ECS world for unit/city queries.
+     * @param gameState Game state for unit/city/tech queries.
      * @param grid      Hex grid for terrain/yield data.
      * @param camera    Camera controller for screen-to-world conversion.
      * @param fog       Fog-of-war for visibility checks.
      * @param player    Viewing player ID.
      * @param screenW   Framebuffer width.
      * @param screenH   Framebuffer height.
+     * @param selectedEntity  Currently selected entity for combat preview.
      */
     void update(float mouseX, float mouseY,
-                const aoc::ecs::World& world,
+                const aoc::game::GameState& gameState,
                 const aoc::map::HexGrid& grid,
                 const aoc::render::CameraController& camera,
                 const aoc::map::FogOfWar& fog,

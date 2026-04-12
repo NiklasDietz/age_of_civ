@@ -27,6 +27,7 @@
 #include "aoc/core/ErrorCodes.hpp"
 #include "aoc/map/HexCoord.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 
@@ -103,15 +104,22 @@ struct BarbarianClanComponent {
 
 /**
  * @brief Bribe a barbarian clan to be passive for 20 turns.
+ *
+ * @param clanIndex  Index into GameState::barbarianClans().
  */
-[[nodiscard]] ErrorCode bribeClan(aoc::game::GameState& gameState, EntityId encampmentEntity,
+[[nodiscard]] ErrorCode bribeClan(aoc::game::GameState& gameState,
+                                   std::size_t clanIndex,
                                    PlayerId player);
 
 /**
  * @brief Hire a barbarian clan to attack a target player for 10 turns.
+ *
+ * @param clanIndex  Index into GameState::barbarianClans().
  */
-[[nodiscard]] ErrorCode hireClan(aoc::game::GameState& gameState, EntityId encampmentEntity,
-                                  PlayerId hirer, PlayerId target);
+[[nodiscard]] ErrorCode hireClan(aoc::game::GameState& gameState,
+                                  std::size_t clanIndex,
+                                  PlayerId hirer,
+                                  PlayerId target);
 
 /**
  * @brief Determine what unit type a barbarian encampment should spawn

@@ -16,10 +16,6 @@ namespace aoc::game {
 class GameState;
 }
 
-namespace aoc::ecs {
-class SystemScheduler;
-}
-
 namespace aoc::sim {
 
 class DiplomacyManager;
@@ -60,7 +56,8 @@ public:
      * Should be called when allPlayersReady() returns true.
      * Executes each phase sequentially via the system scheduler.
      */
-    void executeTurn(aoc::game::GameState& gameState, aoc::ecs::SystemScheduler& scheduler);
+    /// Advance one full turn: increment the turn counter and log completion.
+    void executeTurn(aoc::game::GameState& gameState);
 
     /// Reset readiness for a new input phase.
     void beginNewTurn();

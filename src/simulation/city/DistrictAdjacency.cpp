@@ -4,17 +4,16 @@
  */
 
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/simulation/city/DistrictAdjacency.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/CityLoyalty.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
-#include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -29,9 +28,7 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
                                       const aoc::game::GameState& gameState,
                                       DistrictType districtType,
                                       int32_t tileIndex) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     AdjacencyBonus bonus{};
-    aoc::ecs::World& world = gameState.legacyWorld();
     hex::AxialCoord center = grid.toAxial(tileIndex);
     std::array<hex::AxialCoord, 6> neighbors = hex::neighbors(center);
 
@@ -51,12 +48,11 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
     int32_t adjCityCenters = 0;
     [[maybe_unused]] int32_t adjCampusDistricts = 0;
 
-    const aoc::ecs::ComponentPool<CityDistrictsComponent>* distPool =
-        world.getPool<CityDistrictsComponent>();
+    (void)adjHills;
 
     for (const hex::AxialCoord& nbr : neighbors) {
         if (!grid.isValid(nbr)) { continue; }
-        int32_t nbrIdx = grid.toIndex(nbr);
+        const int32_t nbrIdx = grid.toIndex(nbr);
 
         aoc::map::TerrainType terrain = grid.terrain(nbrIdx);
         aoc::map::FeatureType feature = grid.feature(nbrIdx);
@@ -65,14 +61,13 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
         if (feature == aoc::map::FeatureType::Forest)   { ++adjForests; }
         if (feature == aoc::map::FeatureType::Jungle)   { ++adjRainforests; }
         if (feature == aoc::map::FeatureType::Hills)    { ++adjHills; }
-        if (grid.improvement(nbrIdx) == aoc::map::ImprovementType::Mine) { ++adjMines; }
+        if (grid.improvement(nbrIdx) == aoc::map::ImprovementType::Mine)   { ++adjMines; }
         if (grid.improvement(nbrIdx) == aoc::map::ImprovementType::Quarry) { ++adjQuarries; }
 
-        // Check for adjacent districts (any city's district on this tile)
-        // Also track specific district types for enhanced adjacency
-        if (distPool != nullptr) {
-            for (uint32_t d = 0; d < distPool->size(); ++d) {
-                for (const CityDistrictsComponent::PlacedDistrict& pd : distPool->data()[d].districts) {
+        // Check for adjacent districts across all cities of all players
+        for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+            for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
+                for (const CityDistrictsComponent::PlacedDistrict& pd : city->districts().districts) {
                     if (pd.location == nbr) {
                         ++adjDistricts;
                         if (pd.type == DistrictType::Harbor)     { ++adjHarborDistricts; }
@@ -103,32 +98,32 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
         case DistrictType::Campus:
             bonus.science += static_cast<float>(adjMountains) * 1.0f;
             bonus.science += static_cast<float>(adjRainforests) * 0.5f;
-            bonus.science += static_cast<float>(adjWonders) * 2.0f;  // Wonders inspire science
+            bonus.science += static_cast<float>(adjWonders) * 2.0f;
             break;
 
         case DistrictType::Commercial:
             bonus.gold += (adjRiverEdges > 0) ? 2.0f : 0.0f;
             bonus.gold += static_cast<float>(adjDistricts) * 0.5f;
-            bonus.gold += static_cast<float>(adjHarborDistricts) * 2.0f;  // Harbor synergy
+            bonus.gold += static_cast<float>(adjHarborDistricts) * 2.0f;
             break;
 
         case DistrictType::Industrial:
             bonus.production += static_cast<float>(adjMines) * 1.0f;
-            bonus.production += static_cast<float>(adjQuarries) * 1.0f;   // Quarries feed industry
+            bonus.production += static_cast<float>(adjQuarries) * 1.0f;
             bonus.production += static_cast<float>(adjDistricts) * 0.5f;
-            bonus.production += static_cast<float>(adjIndustrialDistricts) * 1.0f;  // Industrial clusters
+            bonus.production += static_cast<float>(adjIndustrialDistricts) * 1.0f;
             break;
 
         case DistrictType::Harbor:
             bonus.gold += static_cast<float>(adjCoastalResources) * 2.0f;
             bonus.gold += static_cast<float>(adjDistricts) * 1.0f;
-            bonus.gold += static_cast<float>(adjCityCenters) * 2.0f;  // City center synergy
+            bonus.gold += static_cast<float>(adjCityCenters) * 2.0f;
             break;
 
         case DistrictType::HolySite:
             bonus.faith += static_cast<float>(adjMountains) * 1.0f;
             bonus.faith += static_cast<float>(adjForests) * 0.5f;
-            bonus.faith += static_cast<float>(adjWonders) * 2.0f;  // Wonders inspire faith
+            bonus.faith += static_cast<float>(adjWonders) * 2.0f;
             break;
 
         case DistrictType::Encampment:
@@ -149,7 +144,6 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
 int32_t computeTileAppeal(const aoc::map::HexGrid& grid,
                           const aoc::game::GameState& gameState,
                           int32_t tileIndex) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     int32_t appeal = 0;
     hex::AxialCoord center = grid.toAxial(tileIndex);
     std::array<hex::AxialCoord, 6> neighbors = hex::neighbors(center);
@@ -165,24 +159,21 @@ int32_t computeTileAppeal(const aoc::map::HexGrid& grid,
 
     for (const hex::AxialCoord& nbr : neighbors) {
         if (!grid.isValid(nbr)) { continue; }
-        int32_t nbrIdx = grid.toIndex(nbr);
+        const int32_t nbrIdx = grid.toIndex(nbr);
 
         aoc::map::TerrainType terrain = grid.terrain(nbrIdx);
-        if (terrain == aoc::map::TerrainType::Coast) { appeal += 1; }
+        if (terrain == aoc::map::TerrainType::Coast)    { appeal += 1; }
         if (terrain == aoc::map::TerrainType::Mountain) { appeal += 1; }
 
         if (grid.naturalWonder(nbrIdx) != aoc::map::NaturalWonderType::None) { appeal += 2; }
 
-        // Improvements
         aoc::map::ImprovementType imp = grid.improvement(nbrIdx);
         if (imp == aoc::map::ImprovementType::Mine) { appeal -= 1; }
 
         // Adjacent districts
-        const aoc::ecs::ComponentPool<CityDistrictsComponent>* distPool =
-            world.getPool<CityDistrictsComponent>();
-        if (distPool != nullptr) {
-            for (uint32_t d = 0; d < distPool->size(); ++d) {
-                for (const CityDistrictsComponent::PlacedDistrict& pd : distPool->data()[d].districts) {
+        for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+            for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
+                for (const CityDistrictsComponent::PlacedDistrict& pd : city->districts().districts) {
                     if (pd.location == nbr) {
                         if (pd.type == DistrictType::Industrial) { appeal -= 1; }
                         if (pd.type == DistrictType::Encampment) { appeal -= 1; }
@@ -200,69 +191,47 @@ int32_t computeTileAppeal(const aoc::map::HexGrid& grid,
 // City Projects
 // ============================================================================
 
-void completeCityProject(aoc::game::GameState& gameState, EntityId cityEntity,
-                         CityProjectType project) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    CityComponent* city = world.tryGetComponent<CityComponent>(cityEntity);
-    if (city == nullptr) { return; }
-    aoc::ecs::World& world = gameState.legacyWorld();
-
+void completeCityProject(aoc::game::GameState& gameState,
+                          aoc::game::City& city,
+                          CityProjectType project) {
     switch (project) {
-        aoc::ecs::World& world = gameState.legacyWorld();
         case CityProjectType::BreadAndCircuses: {
-            CityLoyaltyComponent* loyalty =
-                world.tryGetComponent<CityLoyaltyComponent>(cityEntity);
-            if (loyalty != nullptr) {
-                loyalty->loyalty = std::min(100.0f, loyalty->loyalty + 20.0f);
-            }
-            LOG_INFO("City %s: Bread and Circuses completed (+20 loyalty)", city->name.c_str());
+            city.loyalty().loyalty = std::min(100.0f, city.loyalty().loyalty + 20.0f);
+            LOG_INFO("City %s: Bread and Circuses completed (+20 loyalty)", city.name().c_str());
             break;
         }
         case CityProjectType::CampusResearch: {
             // Grant science burst to the player's current research
-            aoc::ecs::ComponentPool<PlayerTechComponent>* techPool =
-                world.getPool<PlayerTechComponent>();
-            if (techPool != nullptr) {
-                for (uint32_t i = 0; i < techPool->size(); ++i) {
-                    if (techPool->data()[i].owner == city->owner) {
-                        techPool->data()[i].researchProgress += 50.0f;
-                        break;
-                    }
-                }
+            aoc::game::Player* gsPlayer = gameState.player(city.owner());
+            if (gsPlayer != nullptr) {
+                gsPlayer->tech().researchProgress += 50.0f;
             }
-            LOG_INFO("City %s: Campus Research Grant completed (+50 science)", city->name.c_str());
+            LOG_INFO("City %s: Campus Research Grant completed (+50 science)", city.name().c_str());
             break;
         }
         case CityProjectType::IndustrialSurge: {
             // Boost current production queue
-            ProductionQueueComponent* queue =
-                world.tryGetComponent<ProductionQueueComponent>(cityEntity);
-            if (queue != nullptr && !queue->isEmpty()) {
-                queue->addProgress(50.0f);
+            ProductionQueueComponent& queue = city.production();
+            if (!queue.isEmpty()) {
+                queue.addProgress(50.0f);
             }
-            LOG_INFO("City %s: Industrial Surge completed (+50 production)", city->name.c_str());
+            LOG_INFO("City %s: Industrial Surge completed (+50 production)", city.name().c_str());
             break;
         }
         case CityProjectType::CommercialInvestment: {
             // Grant gold burst to treasury
-            aoc::ecs::ComponentPool<MonetaryStateComponent>* monetaryPool =
-                world.getPool<MonetaryStateComponent>();
-            if (monetaryPool != nullptr) {
-                for (uint32_t i = 0; i < monetaryPool->size(); ++i) {
-                    if (monetaryPool->data()[i].owner == city->owner) {
-                        monetaryPool->data()[i].treasury += 100;
-                        break;
-                    }
-                }
+            aoc::game::Player* gsPlayer = gameState.player(city.owner());
+            if (gsPlayer != nullptr) {
+                gsPlayer->monetary().treasury += 100;
             }
-            LOG_INFO("City %s: Commercial Investment completed (+100 gold)", city->name.c_str());
+            LOG_INFO("City %s: Commercial Investment completed (+100 gold)", city.name().c_str());
             break;
         }
         case CityProjectType::ShipyardRush:
-            LOG_INFO("City %s: Shipyard Rush completed (next naval unit -50%% cost)", city->name.c_str());
+            LOG_INFO("City %s: Shipyard Rush completed (next naval unit -50%% cost)", city.name().c_str());
             break;
         case CityProjectType::MilitaryTraining:
-            LOG_INFO("City %s: Military Training completed (+XP for trained units)", city->name.c_str());
+            LOG_INFO("City %s: Military Training completed (+XP for trained units)", city.name().c_str());
             break;
         default:
             break;

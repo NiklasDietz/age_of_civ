@@ -4,12 +4,11 @@
  */
 
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/simulation/economy/EnergyDependency.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/map/HexGrid.hpp"
-#include "aoc/map/Terrain.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -20,11 +19,8 @@ void updateEnergyDependency(PlayerEnergyComponent& energy,
                              int32_t oilConsumed,
                              int32_t renewableBuildingCount) {
     energy.oilConsumedThisTurn = oilConsumed;
-    energy.renewableCapacity = renewableBuildingCount;
+    energy.renewableCapacity   = renewableBuildingCount;
 
-    // Dependency grows with oil consumption, decays without it.
-    // Each unit of oil consumed this turn adds ~1% dependency.
-    // Without consumption, dependency decays 2% per turn (slow withdrawal).
     if (oilConsumed > 0) {
         float growthRate = static_cast<float>(oilConsumed) * 0.01f;
         energy.oilDependency += growthRate;
@@ -32,11 +28,9 @@ void updateEnergyDependency(PlayerEnergyComponent& energy,
         energy.oilDependency -= 0.02f;
     }
 
-    // Renewable capacity reduces effective dependency
-    float renewableReduction = energy.renewableOffset() * 0.01f;
-    energy.oilDependency -= renewableReduction;
-
-    energy.oilDependency = std::clamp(energy.oilDependency, 0.0f, 1.0f);
+    float renewableReduction  = energy.renewableOffset() * 0.01f;
+    energy.oilDependency     -= renewableReduction;
+    energy.oilDependency      = std::clamp(energy.oilDependency, 0.0f, 1.0f);
 }
 
 void updateGlobalOilReserves(const aoc::map::HexGrid& grid,
@@ -53,19 +47,17 @@ void updateGlobalOilReserves(const aoc::map::HexGrid& grid,
         }
     }
 
-    // Set initial total on first call
     if (reserves.initialTotal == 0 && totalOil > 0) {
         reserves.initialTotal = totalOil;
     }
 
     reserves.totalRemaining = totalOil;
 
-    // Check for peak oil
     if (!reserves.peakOilReached && reserves.initialTotal > 0) {
         float remaining = static_cast<float>(reserves.totalRemaining)
                         / static_cast<float>(reserves.initialTotal);
         if (remaining < 0.50f) {
-            reserves.peakOilReached = true;
+            reserves.peakOilReached    = true;
             reserves.turnsSincePeakOil = 0;
             LOG_INFO("PEAK OIL reached! Global reserves at %.0f%% of initial",
                      static_cast<double>(remaining) * 100.0);
@@ -89,31 +81,15 @@ void processOilShock(PlayerEnergyComponent& energy) {
 }
 
 int32_t countRenewableBuildings(const aoc::game::GameState& gameState, PlayerId player) {
-    aoc::ecs::World& world = gameState.legacyWorld();
-    int32_t count = 0;
-
-    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-        world.getPool<CityComponent>();
-    const aoc::ecs::ComponentPool<CityDistrictsComponent>* distPool =
-        world.getPool<CityDistrictsComponent>();
-
-    if (cityPool == nullptr || distPool == nullptr) {
+    const aoc::game::Player* playerObj = gameState.player(player);
+    if (playerObj == nullptr) {
         return 0;
     }
 
-    for (uint32_t i = 0; i < cityPool->size(); ++i) {
-        if (cityPool->data()[i].owner != player) {
-            continue;
-        }
-        EntityId cityEntity = cityPool->entities()[i];
-
-        const CityDistrictsComponent* districts =
-            world.tryGetComponent<CityDistrictsComponent>(cityEntity);
-        if (districts == nullptr) {
-            continue;
-        }
-
-        for (const CityDistrictsComponent::PlacedDistrict& district : districts->districts) {
+    int32_t count = 0;
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+        if (cityPtr == nullptr) { continue; }
+        for (const CityDistrictsComponent::PlacedDistrict& district : cityPtr->districts().districts) {
             for (BuildingId bid : district.buildings) {
                 // Renewable energy buildings: Hydroelectric(28), Nuclear(29), Solar(30), Wind(31)
                 if (bid.value == 28 || bid.value == 29

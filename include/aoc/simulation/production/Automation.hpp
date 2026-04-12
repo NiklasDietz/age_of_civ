@@ -21,12 +21,9 @@
  * needed for production, freeing population for science/culture.
  */
 
-#include "aoc/core/Types.hpp"
-#include "aoc/simulation/resource/ResourceTypes.hpp"
-
 #include <cstdint>
 
-namespace aoc::game { class GameState; }
+namespace aoc::game { class City; }
 
 namespace aoc::sim {
 
@@ -61,13 +58,11 @@ struct CityAutomationComponent {
 /**
  * @brief Update automation state for a city.
  *
- * Reads Robot Workers from city stockpile, assigns them to automation,
- * handles maintenance consumption (1 robot per 10 turns).
- *
- * @param world       ECS world.
- * @param cityEntity  City to update.
+ * Reads Robot Workers from the city's stockpile, assigns them to the
+ * automation component, and handles maintenance consumption (1 robot per
+ * ROBOT_MAINTENANCE_INTERVAL turns).
  */
-void updateCityAutomation(aoc::game::GameState& gameState, EntityId cityEntity);
+void updateCityAutomation(aoc::game::City& city);
 
 /**
  * @brief Get the total worker capacity for a city (population + robots).

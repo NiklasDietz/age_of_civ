@@ -2,7 +2,7 @@
  * @file Happiness.cpp
  * @brief City happiness calculation using GameState object model.
  *
- * Migrated from ECS (aoc::ecs::World) to GameState (Player/City/Unit).
+ * Migrated to GameState (Player/City/Unit).
  * All component data is read directly from the object model, no ECS pools.
  */
 

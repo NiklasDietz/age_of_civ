@@ -14,11 +14,15 @@
 namespace aoc::map { class HexGrid; }
 namespace aoc::sim { using ReligionId = uint8_t; }
 
+namespace aoc::game {
+class GameState;
+}
+
 namespace aoc::ui {
 
 class ReligionScreen final : public ScreenBase {
 public:
-    void setContext(aoc::ecs::World* world, aoc::map::HexGrid* grid, PlayerId humanPlayer);
+    void setContext(aoc::game::GameState* gameState, aoc::map::HexGrid* grid, PlayerId humanPlayer);
 
     void open(UIManager& ui) override;
     void close(UIManager& ui) override;
@@ -31,12 +35,12 @@ private:
     /// Spawn a religious unit at the player's holy city.
     void spawnReligiousUnit(UnitTypeId typeId, aoc::sim::ReligionId religion);
 
-    aoc::ecs::World*    m_world  = nullptr;
-    aoc::map::HexGrid*  m_grid   = nullptr;
-    PlayerId             m_player = INVALID_PLAYER;
-    WidgetId             m_faithLabel   = INVALID_WIDGET;
-    WidgetId             m_statusLabel  = INVALID_WIDGET;
-    WidgetId             m_beliefList   = INVALID_WIDGET;
+    aoc::game::GameState* m_gameState = nullptr;
+    aoc::map::HexGrid*    m_grid      = nullptr;
+    PlayerId              m_player    = INVALID_PLAYER;
+    WidgetId              m_faithLabel   = INVALID_WIDGET;
+    WidgetId              m_statusLabel  = INVALID_WIDGET;
+    WidgetId              m_beliefList   = INVALID_WIDGET;
 };
 
 } // namespace aoc::ui

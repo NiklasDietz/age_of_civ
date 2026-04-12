@@ -5,18 +5,16 @@
 
 #include "aoc/game/GameState.hpp"
 #include "aoc/simulation/tech/CivicEffects.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
-#include "aoc/simulation/city/CityLoyalty.hpp"
-#include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/EurekaBoost.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
+
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 
 namespace aoc::sim {
 
 void applyCivicEffect(aoc::game::GameState& gameState, PlayerId player, uint8_t civicId) {
     for (int32_t i = 0; i < CIVIC_EFFECT_COUNT; ++i) {
-        aoc::ecs::World& world = gameState.legacyWorld();
         if (CIVIC_EFFECTS[i].civicId != civicId) {
             continue;
         }
@@ -50,20 +48,11 @@ void applyCivicEffect(aoc::game::GameState& gameState, PlayerId player, uint8_t 
                 break;
 
             case CivicEffectType::LoyaltyBoost: {
-                aoc::ecs::ComponentPool<CityLoyaltyComponent>* loyaltyPool =
-                    world.getPool<CityLoyaltyComponent>();
-                const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-                    world.getPool<CityComponent>();
-                if (loyaltyPool != nullptr && cityPool != nullptr) {
-                    for (uint32_t c = 0; c < cityPool->size(); ++c) {
-                        if (cityPool->data()[c].owner == player) {
-                            CityLoyaltyComponent* loyalty =
-                                world.tryGetComponent<CityLoyaltyComponent>(cityPool->entities()[c]);
-                            if (loyalty != nullptr) {
-                                loyalty->loyalty = std::min(100.0f,
-                                    loyalty->loyalty + static_cast<float>(effect.value));
-                            }
-                        }
+                aoc::game::Player* gsPlayer = gameState.player(player);
+                if (gsPlayer != nullptr) {
+                    for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+                        city->loyalty().loyalty = std::min(100.0f,
+                            city->loyalty().loyalty + static_cast<float>(effect.value));
                     }
                 }
                 LOG_INFO("Player %u: civic effect +%d loyalty in all cities",

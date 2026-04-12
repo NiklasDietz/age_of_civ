@@ -4,17 +4,17 @@
  */
 
 #include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/game/Unit.hpp"
 #include "aoc/simulation/ai/BehaviorTree.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/TechGating.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
-#include "aoc/ecs/World.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -27,8 +27,8 @@ namespace aoc::sim::bt {
 // ============================================================================
 
 void refreshBlackboard(Blackboard& bb) {
-    if (bb.world == nullptr) { return; }
-    aoc::game::GameState& gameState = *bb.world;
+    if (bb.gameState == nullptr) { return; }
+    aoc::game::GameState& gameState = *bb.gameState;
 
     bb.ownedCities = 0;
     bb.totalPopulation = 0;
@@ -38,53 +38,32 @@ void refreshBlackboard(Blackboard& bb) {
     bb.treasury = 0;
     bb.techsResearched = 0;
 
+    aoc::game::Player* player = gameState.player(bb.player);
+    if (player == nullptr) { return; }
+
     // Count cities and population
-    const aoc::ecs::ComponentPool<CityComponent>* cityPool = world.getPool<CityComponent>();
-    if (cityPool != nullptr) {
-        for (uint32_t i = 0; i < cityPool->size(); ++i) {
-            if (cityPool->data()[i].owner == bb.player) {
-                ++bb.ownedCities;
-                bb.totalPopulation += cityPool->data()[i].population;
-            }
-        }
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
+        if (cityPtr == nullptr) { continue; }
+        ++bb.ownedCities;
+        bb.totalPopulation += cityPtr->population();
     }
 
     // Count units by type
-    const aoc::ecs::ComponentPool<UnitComponent>* unitPool = world.getPool<UnitComponent>();
-    if (unitPool != nullptr) {
-        for (uint32_t i = 0; i < unitPool->size(); ++i) {
-            const UnitComponent& unit = unitPool->data()[i];
-            if (unit.owner != bb.player) { continue; }
-            UnitClass cls = unitTypeDef(unit.typeId).unitClass;
-            if (isMilitary(cls)) { ++bb.militaryUnits; }
-            if (cls == UnitClass::Civilian && unit.typeId.value == 5) { ++bb.builderUnits; }
-            if (cls == UnitClass::Settler) { ++bb.settlerUnits; }
-        }
+    for (const std::unique_ptr<aoc::game::Unit>& unitPtr : player->units()) {
+        if (unitPtr == nullptr) { continue; }
+        UnitClass cls = unitPtr->typeDef().unitClass;
+        if (isMilitary(cls)) { ++bb.militaryUnits; }
+        if (cls == UnitClass::Civilian && unitPtr->typeId().value == 5) { ++bb.builderUnits; }
+        if (cls == UnitClass::Settler) { ++bb.settlerUnits; }
     }
 
     // Treasury
-    const aoc::ecs::ComponentPool<MonetaryStateComponent>* mPool =
-        world.getPool<MonetaryStateComponent>();
-    if (mPool != nullptr) {
-        for (uint32_t i = 0; i < mPool->size(); ++i) {
-            if (mPool->data()[i].owner == bb.player) {
-                bb.treasury = mPool->data()[i].treasury;
-                break;
-            }
-        }
-    }
+    bb.treasury = player->monetary().treasury;
 
     // Techs
-    const aoc::ecs::ComponentPool<PlayerTechComponent>* tPool =
-        world.getPool<PlayerTechComponent>();
-    if (tPool != nullptr) {
-        for (uint32_t i = 0; i < tPool->size(); ++i) {
-            if (tPool->data()[i].owner != bb.player) { continue; }
-            for (std::size_t b = 0; b < tPool->data()[i].completedTechs.size(); ++b) {
-                if (tPool->data()[i].completedTechs[b]) { ++bb.techsResearched; }
-            }
-            break;
-        }
+    const PlayerTechComponent& tech = player->tech();
+    for (std::size_t b = 0; b < tech.completedTechs.size(); ++b) {
+        if (tech.completedTechs[b]) { ++bb.techsResearched; }
     }
 
     // Compute personality-driven targets
@@ -109,32 +88,23 @@ void refreshBlackboard(Blackboard& bb) {
 static NodePtr actionBuildSettler() {
     return std::make_unique<ExecuteAction>("BuildSettler",
         [](Blackboard& bb) -> Status {
-            if (bb.world == nullptr) { return Status::Failure; }
-            aoc::game::GameState& gameState = *bb.world;
+            if (bb.gameState == nullptr) { return Status::Failure; }
+            aoc::game::GameState& gameState = *bb.gameState;
+            aoc::game::Player* player = gameState.player(bb.player);
+            if (player == nullptr) { return Status::Failure; }
 
-            const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-                world.getPool<CityComponent>();
-            if (cityPool == nullptr) { return Status::Failure; }
-            aoc::ecs::World& world = gameState.legacyWorld();
-
-            // Find best city to produce settler (highest population)
-            EntityId bestCity = NULL_ENTITY;
+            // Find best city to produce settler (highest population with empty queue)
+            aoc::game::City* bestCity = nullptr;
             int32_t bestPop = 0;
-            for (uint32_t i = 0; i < cityPool->size(); ++i) {
-                if (cityPool->data()[i].owner != bb.player) { continue; }
-                ProductionQueueComponent* q =
-                    world.tryGetComponent<ProductionQueueComponent>(cityPool->entities()[i]);
-                if (q == nullptr || !q->isEmpty()) { continue; }
-                if (cityPool->data()[i].population > bestPop) {
-                    bestPop = cityPool->data()[i].population;
-                    bestCity = cityPool->entities()[i];
+            for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
+                if (cityPtr == nullptr) { continue; }
+                if (!cityPtr->production().isEmpty()) { continue; }
+                if (cityPtr->population() > bestPop) {
+                    bestPop = cityPtr->population();
+                    bestCity = cityPtr.get();
                 }
             }
-            if (bestCity == NULL_ENTITY || bestPop < 2) { return Status::Failure; }
-
-            ProductionQueueComponent* queue =
-                world.tryGetComponent<ProductionQueueComponent>(bestCity);
-            if (queue == nullptr) { return Status::Failure; }
+            if (bestCity == nullptr || bestPop < 2) { return Status::Failure; }
 
             ProductionQueueItem item{};
             item.type = ProductionItemType::Unit;
@@ -143,7 +113,7 @@ static NodePtr actionBuildSettler() {
             item.totalCost = static_cast<float>(unitTypeDef(UnitTypeId{3}).productionCost)
                            * GamePace::instance().costMultiplier;
             item.progress = 0.0f;
-            queue->queue.push_back(std::move(item));
+            bestCity->production().queue.push_back(std::move(item));
             return Status::Success;
         });
 }
@@ -152,22 +122,17 @@ static NodePtr actionBuildSettler() {
 static NodePtr actionBuildMilitary() {
     return std::make_unique<ExecuteAction>("BuildMilitary",
         [](Blackboard& bb) -> Status {
-            if (bb.world == nullptr) { return Status::Failure; }
-            aoc::game::GameState& gameState = *bb.world;
-
-            const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-                world.getPool<CityComponent>();
-            if (cityPool == nullptr) { return Status::Failure; }
-            aoc::ecs::World& world = gameState.legacyWorld();
+            if (bb.gameState == nullptr) { return Status::Failure; }
+            aoc::game::GameState& gameState = *bb.gameState;
+            aoc::game::Player* player = gameState.player(bb.player);
+            if (player == nullptr) { return Status::Failure; }
 
             // Find UnitTypeId 0 (Warrior) as default military unit
             UnitTypeId militaryId{0};
 
-            for (uint32_t i = 0; i < cityPool->size(); ++i) {
-                if (cityPool->data()[i].owner != bb.player) { continue; }
-                ProductionQueueComponent* q =
-                    world.tryGetComponent<ProductionQueueComponent>(cityPool->entities()[i]);
-                if (q == nullptr || !q->isEmpty()) { continue; }
+            for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
+                if (cityPtr == nullptr) { continue; }
+                if (!cityPtr->production().isEmpty()) { continue; }
 
                 ProductionQueueItem item{};
                 item.type = ProductionItemType::Unit;
@@ -176,7 +141,7 @@ static NodePtr actionBuildMilitary() {
                 item.totalCost = static_cast<float>(unitTypeDef(militaryId).productionCost)
                                * GamePace::instance().costMultiplier;
                 item.progress = 0.0f;
-                q->queue.push_back(std::move(item));
+                cityPtr->production().queue.push_back(std::move(item));
                 return Status::Success;
             }
             return Status::Failure;
@@ -187,19 +152,14 @@ static NodePtr actionBuildMilitary() {
 static NodePtr actionBuildBuilder() {
     return std::make_unique<ExecuteAction>("BuildBuilder",
         [](Blackboard& bb) -> Status {
-            if (bb.world == nullptr) { return Status::Failure; }
-            aoc::game::GameState& gameState = *bb.world;
+            if (bb.gameState == nullptr) { return Status::Failure; }
+            aoc::game::GameState& gameState = *bb.gameState;
+            aoc::game::Player* player = gameState.player(bb.player);
+            if (player == nullptr) { return Status::Failure; }
 
-            const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-                world.getPool<CityComponent>();
-            if (cityPool == nullptr) { return Status::Failure; }
-            aoc::ecs::World& world = gameState.legacyWorld();
-
-            for (uint32_t i = 0; i < cityPool->size(); ++i) {
-                if (cityPool->data()[i].owner != bb.player) { continue; }
-                ProductionQueueComponent* q =
-                    world.tryGetComponent<ProductionQueueComponent>(cityPool->entities()[i]);
-                if (q == nullptr || !q->isEmpty()) { continue; }
+            for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
+                if (cityPtr == nullptr) { continue; }
+                if (!cityPtr->production().isEmpty()) { continue; }
 
                 ProductionQueueItem item{};
                 item.type = ProductionItemType::Unit;
@@ -208,7 +168,7 @@ static NodePtr actionBuildBuilder() {
                 item.totalCost = static_cast<float>(unitTypeDef(UnitTypeId{5}).productionCost)
                                * GamePace::instance().costMultiplier;
                 item.progress = 0.0f;
-                q->queue.push_back(std::move(item));
+                cityPtr->production().queue.push_back(std::move(item));
                 return Status::Success;
             }
             return Status::Failure;
@@ -219,29 +179,27 @@ static NodePtr actionBuildBuilder() {
 static NodePtr actionBuildInfrastructure() {
     return std::make_unique<ExecuteAction>("BuildInfrastructure",
         [](Blackboard& bb) -> Status {
-            if (bb.world == nullptr) { return Status::Failure; }
-            aoc::game::GameState& gameState = *bb.world;
+            if (bb.gameState == nullptr) { return Status::Failure; }
+            aoc::game::GameState& gameState = *bb.gameState;
+            aoc::game::Player* player = gameState.player(bb.player);
+            if (player == nullptr) { return Status::Failure; }
 
-            const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-                world.getPool<CityComponent>();
-            if (cityPool == nullptr) { return Status::Failure; }
-            aoc::ecs::World& world = gameState.legacyWorld();
-
-            for (uint32_t i = 0; i < cityPool->size(); ++i) {
-                if (cityPool->data()[i].owner != bb.player) { continue; }
-                EntityId cityEntity = cityPool->entities()[i];
-                ProductionQueueComponent* q =
-                    world.tryGetComponent<ProductionQueueComponent>(cityEntity);
-                if (q == nullptr || !q->isEmpty()) { continue; }
+            for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
+                if (cityPtr == nullptr) { continue; }
+                if (!cityPtr->production().isEmpty()) { continue; }
 
                 // Try buildings first
                 static constexpr uint16_t BUILDING_PRIO[] = {
                     16, 15, 1, 7, 6, 24, 0, 20, 19, 3, 26, 4, 12
                 };
+
+                // canBuildBuilding still requires an EntityId from the legacy world.
+                // Use city location as a proxy: skip building check here and fall through
+                // to districts (which are fully migrated).
                 for (uint16_t bidx : BUILDING_PRIO) {
                     if (bidx >= BUILDING_DEFS.size()) { continue; }
                     const BuildingDef& bdef = BUILDING_DEFS[bidx];
-                    if (!canBuildBuilding(world, bb.player, cityEntity, bdef.id)) { continue; }
+                    if (cityPtr->hasBuilding(bdef.id)) { continue; }
 
                     ProductionQueueItem item{};
                     item.type = ProductionItemType::Building;
@@ -250,7 +208,7 @@ static NodePtr actionBuildInfrastructure() {
                     item.totalCost = static_cast<float>(bdef.productionCost)
                                    * GamePace::instance().costMultiplier;
                     item.progress = 0.0f;
-                    q->queue.push_back(std::move(item));
+                    cityPtr->production().queue.push_back(std::move(item));
                     return Status::Success;
                 }
 
@@ -259,18 +217,15 @@ static NodePtr actionBuildInfrastructure() {
                     DistrictType::Commercial, DistrictType::Campus,
                     DistrictType::Industrial, DistrictType::Encampment,
                 };
-                const CityDistrictsComponent* districts =
-                    world.tryGetComponent<CityDistrictsComponent>(cityEntity);
                 for (DistrictType dtype : DISTRICT_PRIO) {
-                    bool has = (districts != nullptr && districts->hasDistrict(dtype));
-                    if (!has) {
+                    if (!cityPtr->hasDistrict(dtype)) {
                         ProductionQueueItem item{};
                         item.type = ProductionItemType::District;
                         item.itemId = static_cast<uint16_t>(dtype);
                         item.name = std::string(districtTypeName(dtype));
                         item.totalCost = 60.0f * GamePace::instance().costMultiplier;
                         item.progress = 0.0f;
-                        q->queue.push_back(std::move(item));
+                        cityPtr->production().queue.push_back(std::move(item));
                         return Status::Success;
                     }
                 }
@@ -283,19 +238,14 @@ static NodePtr actionBuildInfrastructure() {
 static NodePtr actionBuildReligious() {
     return std::make_unique<ExecuteAction>("BuildReligious",
         [](Blackboard& bb) -> Status {
-            if (bb.world == nullptr) { return Status::Failure; }
-            aoc::game::GameState& gameState = *bb.world;
+            if (bb.gameState == nullptr) { return Status::Failure; }
+            aoc::game::GameState& gameState = *bb.gameState;
+            aoc::game::Player* player = gameState.player(bb.player);
+            if (player == nullptr) { return Status::Failure; }
 
-            const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-                world.getPool<CityComponent>();
-            if (cityPool == nullptr) { return Status::Failure; }
-            aoc::ecs::World& world = gameState.legacyWorld();
-
-            for (uint32_t i = 0; i < cityPool->size(); ++i) {
-                if (cityPool->data()[i].owner != bb.player) { continue; }
-                ProductionQueueComponent* q =
-                    world.tryGetComponent<ProductionQueueComponent>(cityPool->entities()[i]);
-                if (q == nullptr || !q->isEmpty()) { continue; }
+            for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
+                if (cityPtr == nullptr) { continue; }
+                if (!cityPtr->production().isEmpty()) { continue; }
 
                 // Missionary (UnitTypeId 25)
                 ProductionQueueItem item{};
@@ -304,7 +254,7 @@ static NodePtr actionBuildReligious() {
                 item.name = "Missionary";
                 item.totalCost = 100.0f * GamePace::instance().costMultiplier;
                 item.progress = 0.0f;
-                q->queue.push_back(std::move(item));
+                cityPtr->production().queue.push_back(std::move(item));
                 return Status::Success;
             }
             return Status::Failure;

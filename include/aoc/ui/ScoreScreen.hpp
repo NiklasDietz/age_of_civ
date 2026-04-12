@@ -12,6 +12,12 @@
 #include <string>
 #include <vector>
 
+namespace aoc::map { class HexGrid; }
+
+namespace aoc::game {
+class GameState;
+}
+
 namespace aoc::ui {
 
 /// Per-player score breakdown shown on the end-game screen.
@@ -31,7 +37,7 @@ struct PlayerScoreEntry {
 class ScoreScreen final : public ScreenBase {
 public:
     /// Set context before opening. Must be called each time before open().
-    void setContext(aoc::ecs::World* world,
+    void setContext(aoc::game::GameState* gameState,
                     const aoc::map::HexGrid* grid,
                     const aoc::sim::VictoryResult& result,
                     uint8_t playerCount,
@@ -45,11 +51,11 @@ private:
     /// Compute score entries for all players from current game state.
     void computeScores();
 
-    aoc::ecs::World*       m_world          = nullptr;
-    const aoc::map::HexGrid* m_grid         = nullptr;
-    aoc::sim::VictoryResult m_victoryResult  = {};
-    uint8_t                m_playerCount     = 0;
-    std::function<void()>  m_onReturnToMenu;
+    aoc::game::GameState*     m_gameState      = nullptr;
+    const aoc::map::HexGrid*  m_grid           = nullptr;
+    aoc::sim::VictoryResult   m_victoryResult  = {};
+    uint8_t                   m_playerCount    = 0;
+    std::function<void()>     m_onReturnToMenu;
     std::vector<PlayerScoreEntry> m_scores;
 };
 

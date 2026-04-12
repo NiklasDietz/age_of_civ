@@ -3,20 +3,20 @@
  * @brief City-state spawning, envoy processing, and per-turn bonuses.
  */
 
-#include "aoc/game/GameState.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
-#include "aoc/simulation/city/CityComponent.hpp"
+
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/game/Unit.hpp"
 #include "aoc/simulation/city/District.hpp"
-#include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/city/BorderExpansion.hpp"
-#include "aoc/simulation/unit/UnitComponent.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
-#include "aoc/ecs/World.hpp"
 
 #include <algorithm>
 #include <vector>
@@ -25,24 +25,21 @@ namespace aoc::sim {
 
 void spawnCityStates(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                       int32_t count, aoc::Random& rng) {
-    aoc::ecs::World& world = gameState.legacyWorld();
     const int32_t toSpawn = std::min(count, static_cast<int32_t>(CITY_STATE_COUNT));
 
-    // Collect existing city/unit positions to ensure minimum distance
+    // Collect existing city and unit positions to enforce minimum spacing.
     std::vector<hex::AxialCoord> occupiedPositions;
-    const aoc::ecs::ComponentPool<CityComponent>* cityPool =
-        world.getPool<CityComponent>();
-    if (cityPool != nullptr) {
-        for (uint32_t i = 0; i < cityPool->size(); ++i) {
-            occupiedPositions.push_back(cityPool->data()[i].location);
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::City>& city : playerPtr->cities()) {
+            occupiedPositions.push_back(city->location());
+        }
+        for (const std::unique_ptr<aoc::game::Unit>& unit : playerPtr->units()) {
+            occupiedPositions.push_back(unit->position());
         }
     }
-    const aoc::ecs::ComponentPool<UnitComponent>* unitPool =
-        world.getPool<UnitComponent>();
-    if (unitPool != nullptr) {
-        for (uint32_t i = 0; i < unitPool->size(); ++i) {
-            occupiedPositions.push_back(unitPool->data()[i].position);
-        }
+    // Include already-spawned city-state locations stored in gameState.
+    for (const CityStateComponent& cs : gameState.cityStates()) {
+        occupiedPositions.push_back(cs.location);
     }
 
     const int32_t width = grid.width();
@@ -53,7 +50,6 @@ void spawnCityStates(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
         const CityStateDef& csDef = CITY_STATE_DEFS[static_cast<std::size_t>(csIdx)];
         const PlayerId csPlayer = static_cast<PlayerId>(CITY_STATE_PLAYER_BASE + csIdx);
 
-        // Try to find a valid location
         hex::AxialCoord bestPos{0, 0};
         bool found = false;
 
@@ -62,7 +58,6 @@ void spawnCityStates(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
             const int32_t row = rng.nextInt(2, height - 3);
             const int32_t index = row * width + col;
 
-            // Must be walkable land
             if (aoc::map::isWater(grid.terrain(index)) ||
                 aoc::map::isImpassable(grid.terrain(index))) {
                 continue;
@@ -70,7 +65,6 @@ void spawnCityStates(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
 
             const hex::AxialCoord candidate = hex::offsetToAxial({col, row});
 
-            // Check minimum distance from all occupied positions
             bool tooClose = false;
             for (const hex::AxialCoord& occupied : occupiedPositions) {
                 if (hex::distance(candidate, occupied) < MIN_DISTANCE) {
@@ -93,50 +87,42 @@ void spawnCityStates(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
             continue;
         }
 
-        // Create city-state city entity
-        EntityId csEntity = world.createEntity();
-
-        CityComponent csCity = CityComponent::create(
-            csPlayer, bestPos, std::string(csDef.name));
-        csCity.population = 3;
-        world.addComponent<CityComponent>(csEntity, std::move(csCity));
-
-        ProductionQueueComponent queue{};
-        world.addComponent<ProductionQueueComponent>(csEntity, std::move(queue));
-
-        CityDistrictsComponent districts{};
-        CityDistrictsComponent::PlacedDistrict center;
-        center.type = DistrictType::CityCenter;
-        center.location = bestPos;
-        districts.districts.push_back(std::move(center));
-        world.addComponent<CityDistrictsComponent>(csEntity, std::move(districts));
-
-        // Add city-state component
+        // Register city-state metadata in the GameState collection.
         CityStateComponent csComp{};
-        csComp.defId = csDef.id;
-        csComp.type = csDef.type;
+        csComp.defId    = csDef.id;
+        csComp.type     = csDef.type;
         csComp.location = bestPos;
         csComp.envoys.fill(0);
         csComp.suzerain = INVALID_PLAYER;
-        world.addComponent<CityStateComponent>(csEntity, std::move(csComp));
+        gameState.cityStates().push_back(csComp);
 
-        // Claim territory
-        claimInitialTerritory(grid, bestPos, csPlayer);
+        // Create the city-state's city via the player object model.
+        // City-state players are allocated in the player list by the caller;
+        // if that player slot exists we use it, otherwise we skip city creation.
+        aoc::game::Player* csPlayerObj = gameState.player(csPlayer);
+        if (csPlayerObj != nullptr) {
+            aoc::game::City& csCity = csPlayerObj->addCity(bestPos, std::string(csDef.name));
+            csCity.setPopulation(3);
 
-        // Spawn a warrior for the city-state
-        const std::array<hex::AxialCoord, 6> neighbors = hex::neighbors(bestPos);
-        hex::AxialCoord warriorPos = bestPos;
-        for (const hex::AxialCoord& nbr : neighbors) {
-            if (grid.isValid(nbr) && grid.movementCost(grid.toIndex(nbr)) > 0) {
-                warriorPos = nbr;
-                break;
+            // Seed city-center district.
+            CityDistrictsComponent::PlacedDistrict center;
+            center.type     = DistrictType::CityCenter;
+            center.location = bestPos;
+            csCity.districts().districts.push_back(std::move(center));
+
+            claimInitialTerritory(grid, bestPos, csPlayer);
+
+            // Spawn a warrior adjacent to the city-state.
+            const std::array<hex::AxialCoord, 6> neighbors = hex::neighbors(bestPos);
+            hex::AxialCoord warriorPos = bestPos;
+            for (const hex::AxialCoord& nbr : neighbors) {
+                if (grid.isValid(nbr) && grid.movementCost(grid.toIndex(nbr)) > 0) {
+                    warriorPos = nbr;
+                    break;
+                }
             }
+            csPlayerObj->addUnit(UnitTypeId{0}, warriorPos);
         }
-
-        EntityId warriorEntity = world.createEntity();
-        world.addComponent<UnitComponent>(
-            warriorEntity,
-            UnitComponent::create(csPlayer, UnitTypeId{0}, warriorPos));
 
         occupiedPositions.push_back(bestPos);
 
@@ -147,30 +133,18 @@ void spawnCityStates(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
 }
 
 void processCityStateBonuses(aoc::game::GameState& gameState, PlayerId player) {
-    const aoc::ecs::ComponentPool<CityStateComponent>* csPool =
-        world.getPool<CityStateComponent>();
-    if (csPool == nullptr) {
+    const std::vector<CityStateComponent>& cityStates = gameState.cityStates();
+    if (cityStates.empty()) {
         return;
     }
 
-    // Find the player's economy component
-    PlayerEconomyComponent* econ = nullptr;
-    aoc::ecs::ComponentPool<PlayerEconomyComponent>* econPool =
-        world.getPool<PlayerEconomyComponent>();
-    if (econPool != nullptr) {
-        for (uint32_t i = 0; i < econPool->size(); ++i) {
-            if (econPool->data()[i].owner == player) {
-                econ = &econPool->data()[i];
-                break;
-            }
-        }
-    }
-    if (econ == nullptr) {
+    aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer == nullptr) {
         return;
     }
+    PlayerEconomyComponent& econ = gsPlayer->economy();
 
-    for (uint32_t i = 0; i < csPool->size(); ++i) {
-        const CityStateComponent& cs = csPool->data()[i];
+    for (const CityStateComponent& cs : cityStates) {
         if (player >= MAX_PLAYERS) {
             continue;
         }
@@ -179,7 +153,7 @@ void processCityStateBonuses(aoc::game::GameState& gameState, PlayerId player) {
             continue;
         }
 
-        // Determine bonus magnitude: 1 envoy = +1, 3 = +2, 6 = +3
+        // Bonus magnitude: 1 envoy = +1, 3 = +2, 6 = +3.
         int32_t bonusMagnitude = 0;
         if (envoyCount >= 6) {
             bonusMagnitude = 3;
@@ -189,29 +163,25 @@ void processCityStateBonuses(aoc::game::GameState& gameState, PlayerId player) {
             bonusMagnitude = 1;
         }
 
-        // Apply bonus based on city-state type
         const CurrencyAmount bonus = static_cast<CurrencyAmount>(bonusMagnitude);
         switch (cs.type) {
             case CityStateType::Militaristic:
-                // Production bonus is handled via city yield; for simplicity add gold
-                econ->treasury += bonus;
+                econ.treasury += bonus;
                 break;
             case CityStateType::Scientific:
-                // Science bonus -- add as gold equivalent for now
-                econ->treasury += bonus;
+                econ.treasury += bonus;
                 break;
             case CityStateType::Cultural:
-                // Culture bonus -- add as gold equivalent for now
-                econ->treasury += bonus;
+                econ.treasury += bonus;
                 break;
             case CityStateType::Trade:
-                econ->treasury += bonus * 2;
+                econ.treasury += bonus * 2;
                 break;
             case CityStateType::Religious:
-                econ->treasury += bonus;
+                econ.treasury += bonus;
                 break;
             case CityStateType::Industrial:
-                econ->treasury += bonus;
+                econ.treasury += bonus;
                 break;
             default:
                 break;

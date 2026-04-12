@@ -76,7 +76,7 @@ struct TurnContext {
     BarbarianController* barbarians = nullptr;
     aoc::Random* rng = nullptr;
 
-    /// GameState owns all game data. legacyWorld() provides ECS bridge.
+    /// GameState owns all game data.
     aoc::game::GameState* gameState = nullptr;
 
     /// All AI controllers (empty for headless sim that manages AI separately).

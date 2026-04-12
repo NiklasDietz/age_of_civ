@@ -12,6 +12,10 @@
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/CombatExtensions.hpp"
+#include "aoc/simulation/unit/SupplyLines.hpp"
+#include "aoc/simulation/economy/TradeRouteSystem.hpp"
+#include "aoc/simulation/diplomacy/Espionage.hpp"
+#include "aoc/simulation/greatpeople/GreatPeople.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -119,6 +123,16 @@ public:
     bool autoRenewRoute = false;
 
     // ========================================================================
+    // Religious spread (Missionaries, Apostles, Inquisitors)
+    // ========================================================================
+
+    /// Religion index this unit spreads (255 = not a religious unit).
+    uint8_t spreadingReligion = 255;
+
+    /// Remaining spread charges (-1 = not applicable).
+    int8_t spreadCharges = -1;
+
+    // ========================================================================
     // Animation (for rendering, not gameplay)
     // ========================================================================
 
@@ -126,6 +140,28 @@ public:
     float animProgress = 0.0f;
     aoc::hex::AxialCoord animFrom;
     aoc::hex::AxialCoord animTo;
+
+    // ========================================================================
+    // Extended subsystems (formerly ECS-only)
+    // ========================================================================
+
+    [[nodiscard]] aoc::sim::UnitSupplyComponent& supply() { return this->m_supply; }
+    [[nodiscard]] const aoc::sim::UnitSupplyComponent& supply() const { return this->m_supply; }
+
+    [[nodiscard]] aoc::sim::AirUnitComponent& airUnit() { return this->m_airUnit; }
+    [[nodiscard]] const aoc::sim::AirUnitComponent& airUnit() const { return this->m_airUnit; }
+
+    [[nodiscard]] aoc::sim::NuclearWeaponComponent& nuclear() { return this->m_nuclear; }
+    [[nodiscard]] const aoc::sim::NuclearWeaponComponent& nuclear() const { return this->m_nuclear; }
+
+    [[nodiscard]] aoc::sim::TraderComponent& trader() { return this->m_trader; }
+    [[nodiscard]] const aoc::sim::TraderComponent& trader() const { return this->m_trader; }
+
+    [[nodiscard]] aoc::sim::SpyComponent& spy() { return this->m_spy; }
+    [[nodiscard]] const aoc::sim::SpyComponent& spy() const { return this->m_spy; }
+
+    [[nodiscard]] aoc::sim::GreatPersonComponent& greatPerson() { return this->m_greatPerson; }
+    [[nodiscard]] const aoc::sim::GreatPersonComponent& greatPerson() const { return this->m_greatPerson; }
 
     // ========================================================================
     // Upgrade
@@ -154,6 +190,14 @@ private:
     int32_t m_chargesRemaining = 0;
 
     std::vector<aoc::hex::AxialCoord> m_pendingPath;
+
+    // Extended subsystems (formerly ECS-only)
+    aoc::sim::UnitSupplyComponent m_supply;
+    aoc::sim::AirUnitComponent m_airUnit;
+    aoc::sim::NuclearWeaponComponent m_nuclear;
+    aoc::sim::TraderComponent m_trader;
+    aoc::sim::SpyComponent m_spy;
+    aoc::sim::GreatPersonComponent m_greatPerson;
 };
 
 } // namespace aoc::game

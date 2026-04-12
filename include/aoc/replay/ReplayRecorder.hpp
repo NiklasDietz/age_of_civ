@@ -14,8 +14,8 @@
 #include <string>
 #include <vector>
 
-namespace aoc::ecs {
-class World;
+namespace aoc::game {
+class GameState;
 }
 
 namespace aoc::replay {
@@ -38,7 +38,7 @@ struct ReplayFrame {
 class ReplayRecorder {
 public:
     /// Record a snapshot of the current game state.
-    void recordFrame(const aoc::ecs::World& world, TurnNumber turn);
+    void recordFrame(const aoc::game::GameState& gameState, TurnNumber turn);
 
     /// Clear all recorded frames.
     void clear();
