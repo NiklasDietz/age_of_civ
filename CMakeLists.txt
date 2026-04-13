@@ -72,6 +72,7 @@ add_library(aoc_lib STATIC
     src/simulation/map/Infrastructure.cpp
     src/simulation/map/TerrainModification.cpp
     src/simulation/unit/SupplyLines.cpp
+    src/simulation/unit/ZoneOfControl.cpp
     src/simulation/event/WorldEvents.cpp
     src/simulation/barbarian/BarbarianController.cpp
     src/simulation/barbarian/BarbarianClans.cpp

@@ -56,6 +56,47 @@ enum class CityFocus : uint8_t {
     }
 }
 
+// ============================================================================
+// Named Governors (Civ 6 style, with promotion trees)
+// ============================================================================
+
+/// Unique named governors with specialized bonuses.
+enum class GovernorType : uint8_t {
+    None           = 0,
+    Financier      = 1,  ///< +20% gold, trade bonuses
+    Industrialist  = 2,  ///< +15% production, factory bonuses
+    Diplomat       = 3,  ///< +8 loyalty, spy resistance
+    General        = 4,  ///< +5 combat strength garrison, wall bonuses
+    Scholar        = 5,  ///< +15% science, great scientist points
+    Merchant       = 6,  ///< +1 trade route, +30% trade yield
+    Environmentalist = 7, ///< -50% pollution, clean energy bonuses
+
+    Count
+};
+
+inline constexpr int32_t NAMED_GOVERNOR_COUNT = 7;
+
+/// Governor promotion IDs (5 per governor = 35 total).
+enum class GovernorPromotion : uint8_t {
+    None = 0,
+    // Financier
+    TaxHaven, ForeignInvestment, MintMaster, TreasuryGuard, BondMarket,
+    // Industrialist
+    AutomatedFactory, ZoningCommissioner, ResourceProcessor, PowerSurge, PollutionControl,
+    // Diplomat
+    SpyMaster, CulturalAttache, PeaceKeeper, TradeEnvoy, GarrisonBoost,
+    // General
+    Citadel, Militia, WarHero, SupplyDepot, Fortifier,
+    // Scholar
+    ResearchGrant, EurekaBoost, Innovation, TechTransfer, LibraryBonus,
+    // Merchant
+    FreeMarket, Smuggler, MarketMaker, Monopolist, PortAuthority,
+    // Environmentalist
+    GreenEnergy, NationalPark, ReforestationGrant, WasteRecycling, CarbonCredit,
+
+    Count
+};
+
 /// Per-city governor state (ECS component).
 struct CityGovernorComponent {
     CityFocus focus = CityFocus::Balanced;
@@ -68,6 +109,51 @@ struct CityGovernorComponent {
 
     /// Auto-assign best worked tiles for the focus.
     bool autoAssignTiles = true;
+
+    // --- Named governor (Civ 6 style) ---
+    GovernorType assignedGovernor = GovernorType::None;
+    GovernorPromotion promotions[3] = {GovernorPromotion::None,
+                                        GovernorPromotion::None,
+                                        GovernorPromotion::None};
+    int32_t promotionCount = 0;
+    int32_t turnsActive = 0;
+
+    [[nodiscard]] bool hasNamedGovernor() const {
+        return this->assignedGovernor != GovernorType::None;
+    }
+
+    [[nodiscard]] bool hasPromotion(GovernorPromotion promo) const {
+        for (int32_t i = 0; i < this->promotionCount; ++i) {
+            if (this->promotions[i] == promo) { return true; }
+        }
+        return false;
+    }
+
+    bool addPromotion(GovernorPromotion promo) {
+        if (this->promotionCount >= 3) { return false; }
+        this->promotions[this->promotionCount++] = promo;
+        return true;
+    }
+
+    /// Governor bonuses (base, before promotions).
+    [[nodiscard]] float goldMultiplier() const {
+        if (this->assignedGovernor == GovernorType::Financier) { return 1.20f; }
+        if (this->assignedGovernor == GovernorType::Merchant) { return 1.10f; }
+        return 1.0f;
+    }
+    [[nodiscard]] float productionMultiplier() const {
+        if (this->assignedGovernor == GovernorType::Industrialist) { return 1.15f; }
+        return 1.0f;
+    }
+    [[nodiscard]] float scienceMultiplier() const {
+        if (this->assignedGovernor == GovernorType::Scholar) { return 1.15f; }
+        return 1.0f;
+    }
+    [[nodiscard]] float loyaltyBonus() const {
+        if (this->assignedGovernor == GovernorType::Diplomat) { return 8.0f; }
+        if (this->assignedGovernor != GovernorType::None) { return 4.0f; }
+        return 0.0f;
+    }
 };
 
 /**

@@ -41,6 +41,12 @@ enum class AIDifficulty : uint8_t {
     Hard,
 };
 
+/// Victory mode selection. Default = CSI score system; Classic = traditional Civ win conditions.
+enum class VictoryMode : uint8_t {
+    Default,   ///< CSI score + Era VP + Global Integration (the game's unique system)
+    Classic,   ///< Traditional win conditions: Domination, Science, Culture, Religion, Diplomatic, Score
+};
+
 /// Configuration from the setup screen passed to startGame.
 struct GameSetupConfig {
     aoc::map::MapType mapType = aoc::map::MapType::Continents;
@@ -49,6 +55,7 @@ struct GameSetupConfig {
     std::array<PlayerSlotConfig, 8> players;  ///< max 8 players
     bool sequentialTurnsInWar = false;        ///< Use sequential turns when at war
     AIDifficulty aiDifficulty = AIDifficulty::Normal; ///< AI difficulty level
+    VictoryMode victoryMode = VictoryMode::Default;   ///< Victory condition mode
 };
 
 using StartGameWithConfigCallback = std::function<void(const GameSetupConfig&)>;

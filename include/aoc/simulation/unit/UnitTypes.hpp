@@ -100,8 +100,8 @@ struct UnitTypeDef {
 // Unit type IDs: keep stable for serialization. Gaps are fine.
 // Format: {id, name, class, era, hp, melee, ranged, range, move, cost, reqTech, upgradesTo, upgradeCost}
 
-inline constexpr int32_t UNIT_TYPE_COUNT = 60;
-inline constexpr std::array<UnitTypeDef, 60> UNIT_TYPE_DEFS = {{
+inline constexpr int32_t UNIT_TYPE_COUNT = 64;
+inline constexpr std::array<UnitTypeDef, 64> UNIT_TYPE_DEFS = {{
     // ========================================================================
     // MELEE INFANTRY: Warrior -> Swordsman -> Man-at-Arms -> Musketman -> Infantry -> Mech Infantry
     // ========================================================================
@@ -208,6 +208,14 @@ inline constexpr std::array<UnitTypeDef, 60> UNIT_TYPE_DEFS = {{
     // Trade
     {UnitTypeId{30}, "Trader",          UnitClass::Trader,   UnitEra::Ancient,       60,  0,  0, 0, 3,  40, TechId{},   UnitTypeId{31}, 30},
     {UnitTypeId{31}, "Caravan",         UnitClass::Trader,   UnitEra::Medieval,      80,  0,  0, 0, 4,  80, TechId{5},  UnitTypeId{},   0},
+
+    // ========================================================================
+    // ESPIONAGE: Diplomat -> Spy
+    // Diplomat: early espionage (Writing tech), basic missions only.
+    // Spy: advanced espionage (Printing tech), all missions, can escape.
+    // ========================================================================
+    {UnitTypeId{55}, "Diplomat",        UnitClass::Civilian, UnitEra::Classical,     60,  0,  0, 0, 3,  60, TechId{3},  UnitTypeId{56}, 80},
+    {UnitTypeId{56}, "Spy",             UnitClass::Civilian, UnitEra::Renaissance,   60,  0,  0, 0, 4, 120, TechId{8},  UnitTypeId{},   0},
 }};
 
 /// Lookup a unit type definition by ID. IDs are not contiguous so this
