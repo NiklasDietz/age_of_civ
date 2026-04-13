@@ -7,6 +7,7 @@
  */
 
 #include "aoc/simulation/economy/Maintenance.hpp"
+#include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/monetary/Inflation.hpp"
@@ -47,6 +48,16 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
 
         // Population-based tax income: 1 gold per 2 citizens (baseline taxation)
         cityGold += static_cast<CurrencyAmount>(city->population() / 2);
+
+        // Industrial revolution per-citizen bonus: knowledge/services economy.
+        // Post-industrial nations generate wealth from citizens, not territory.
+        // A small 3-city nation with 20 pop at 3rd revolution (Digital Age)
+        // earns 20 * 3.5 = 70 extra gold/turn -- competitive with a 10-city empire.
+        const float indGoldPerCitizen = player.industrial().cumulativeGoldPerCitizen();
+        if (indGoldPerCitizen > 0.0f) {
+            cityGold += static_cast<CurrencyAmount>(
+                static_cast<float>(city->population()) * indGoldPerCitizen);
+        }
 
         // Gold from worked tiles
         for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {

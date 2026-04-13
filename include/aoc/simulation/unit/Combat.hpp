@@ -11,6 +11,7 @@
 
 #include "aoc/core/Types.hpp"
 #include "aoc/core/Random.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/map/HexCoord.hpp"
 
 #include <cstdint>
@@ -79,6 +80,23 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
  */
 [[nodiscard]] float terrainDefenseModifier(const aoc::map::HexGrid& grid,
                                             aoc::hex::AxialCoord position);
+
+/**
+ * @brief Class-based combat bonus multiplier (rock-paper-scissors matchups).
+ *
+ * Returns a multiplier > 1.0 if the attacker's class is strong against the
+ * defender's class, < 1.0 if weak, and 1.0 for neutral matchups.
+ *
+ * Matchup table (Civ-inspired):
+ *   AntiCavalry vs Cavalry/Armor:  +50% (spearmen beat horses)
+ *   Cavalry vs Ranged/Artillery:   +33% (fast flankers overwhelm ranged)
+ *   Ranged vs Melee:               +25% (kiting advantage)
+ *   Armor vs Melee/AntiCavalry:    +25% (mechanised advantage)
+ *   Artillery vs Armor:            +33% (indirect fire vs slow targets)
+ *   Air vs all ground (non-AA):    +25% (air superiority)
+ *   AntiCavalry vs Air/Helicopter: +50% (AA role for modern anti-cav)
+ */
+[[nodiscard]] float classMatchupModifier(UnitClass attackerClass, UnitClass defenderClass);
 
 /// Preview result for UI tooltip (no state changes applied).
 struct CombatPreview {

@@ -69,6 +69,8 @@ void DiplomacyManager::makePeace(PlayerId a, PlayerId b) {
 
     relAB.isAtWar = false;
     relBA.isAtWar = false;
+    relAB.turnsSincePeace = 0;
+    relBA.turnsSincePeace = 0;
 
     // auto required: lambda type is unnameable
     auto removeWar = [](std::vector<RelationModifier>& mods) {
@@ -127,6 +129,10 @@ void DiplomacyManager::formEconomicAlliance(PlayerId a, PlayerId b) {
 
 void DiplomacyManager::tickModifiers() {
     for (PairwiseRelation& rel : this->m_relations) {
+        // Increment peace cooldown timer
+        if (!rel.isAtWar && rel.turnsSincePeace < 1000) {
+            ++rel.turnsSincePeace;
+        }
         for (std::vector<RelationModifier>::iterator it = rel.modifiers.begin(); it != rel.modifiers.end(); ) {
             if (it->turnsRemaining > 0) {
                 --it->turnsRemaining;

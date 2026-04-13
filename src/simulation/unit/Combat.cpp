@@ -64,6 +64,47 @@ int32_t countAdjacentFriendlies(const aoc::game::GameState& gameState,
     return count;
 }
 
+float classMatchupModifier(UnitClass attackerClass, UnitClass defenderClass) {
+    // AntiCavalry (spears/pikes/AT guns) vs Cavalry/Armor: +50%
+    if (attackerClass == UnitClass::AntiCavalry
+        && (defenderClass == UnitClass::Cavalry || defenderClass == UnitClass::Armor)) {
+        return 1.50f;
+    }
+    // Cavalry vs Ranged/Artillery: +33% (fast flankers overwhelm slow shooters)
+    if (attackerClass == UnitClass::Cavalry
+        && (defenderClass == UnitClass::Ranged || defenderClass == UnitClass::Artillery)) {
+        return 1.33f;
+    }
+    // Ranged vs Melee: +25% (kiting advantage)
+    if (attackerClass == UnitClass::Ranged && defenderClass == UnitClass::Melee) {
+        return 1.25f;
+    }
+    // Armor vs Melee/AntiCavalry: +25% (mechanised advantage over infantry)
+    if (attackerClass == UnitClass::Armor
+        && (defenderClass == UnitClass::Melee || defenderClass == UnitClass::AntiCavalry)) {
+        return 1.25f;
+    }
+    // Artillery vs Armor: +33% (indirect fire vs slow heavy targets)
+    if (attackerClass == UnitClass::Artillery && defenderClass == UnitClass::Armor) {
+        return 1.33f;
+    }
+    // Air vs ground (excluding AntiCavalry which doubles as AA): +25%
+    if (attackerClass == UnitClass::Air && defenderClass != UnitClass::AntiCavalry
+        && defenderClass != UnitClass::Air && defenderClass != UnitClass::Helicopter) {
+        return 1.25f;
+    }
+    // AntiCavalry vs Air/Helicopter: +50% (AA role in modern era)
+    if (attackerClass == UnitClass::AntiCavalry
+        && (defenderClass == UnitClass::Air || defenderClass == UnitClass::Helicopter)) {
+        return 1.50f;
+    }
+    // Helicopter vs Artillery: +33% (gunships hunt artillery)
+    if (attackerClass == UnitClass::Helicopter && defenderClass == UnitClass::Artillery) {
+        return 1.33f;
+    }
+    return 1.0f;
+}
+
 namespace {
 
 /// Core damage formula: modified Lanchester-style.
@@ -149,6 +190,10 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     // Flanking bonus: +10% per adjacent friendly for attacker
     int32_t flanking = countAdjacentFriendlies(gameState, defender.position(), attacker.owner());
     atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
+
+    // Class matchup bonus (rock-paper-scissors)
+    atkStrength *= classMatchupModifier(atkDef.unitClass, defDef.unitClass);
+    defStrength *= classMatchupModifier(defDef.unitClass, atkDef.unitClass);
 
     // Fortification bonus
     if (defender.state() == aoc::sim::UnitState::Fortified) {
@@ -298,6 +343,9 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
         atkStrength *= elevMod;
     }
 
+    // Class matchup bonus (ranged)
+    atkStrength *= classMatchupModifier(atkDef.unitClass, defDef.unitClass);
+
     // War weariness combat penalty (ranged)
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
         const aoc::sim::PlayerWarWearinessComponent& ww = player->warWeariness();
@@ -379,6 +427,12 @@ CombatPreview previewCombat(const aoc::game::GameState& gameState,
     if (!isRanged) {
         int32_t flanking = countAdjacentFriendlies(gameState, defender.position(), attacker.owner());
         atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
+    }
+
+    // Class matchup bonus
+    atkStrength *= classMatchupModifier(atkDef.unitClass, defDef.unitClass);
+    if (!isRanged) {
+        defStrength *= classMatchupModifier(defDef.unitClass, atkDef.unitClass);
     }
 
     // Fortification bonus

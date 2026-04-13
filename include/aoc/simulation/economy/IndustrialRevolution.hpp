@@ -70,6 +70,7 @@ struct RevolutionBonuses {
     float productionMultiplier;       ///< Stacking multiplier on industrial production
     float tradeCapacityMultiplier;    ///< Bonus to all trade route capacity
     float scienceMultiplier;          ///< Science output bonus
+    float goldPerCitizenBonus;        ///< Extra gold per citizen (knowledge/services economy)
     float populationGrowthBonus;      ///< Growth rate boost in industrial cities
     float pollutionMultiplier;        ///< How much pollution is generated (higher = more)
     bool  unlockRailways;             ///< Enables Railway improvement
@@ -98,34 +99,37 @@ namespace rev_goods {
 
 inline constexpr std::array<RevolutionDef, 5> REVOLUTION_DEFS = {{
     // 1st: Steam Age -- Industrialization(11) + Coal + Iron
+    // Small nations (2+ cities) can industrialise — tech matters, not size.
     {IndustrialRevolutionId::First, "Steam Age",
      {{TechId{11}, TechId{}, TechId{}},
-      {rev_goods::COAL, rev_goods::IRON_ORE, rev_goods::NONE}, 2},
-     {1.50f, 1.0f, 1.0f, 1.15f, 1.5f, true, false, false, false}},
+      {rev_goods::COAL, rev_goods::IRON_ORE, rev_goods::NONE}, 1},
+     {1.50f, 1.0f, 1.0f, 0.5f, 1.15f, 1.5f, true, false, false, false}},
 
     // 2nd: Electric Age -- Electricity(14) + Oil + Steel
     {IndustrialRevolutionId::Second, "Electric Age",
      {{TechId{14}, TechId{}, TechId{}},
-      {rev_goods::OIL, rev_goods::STEEL_GOOD, rev_goods::NONE}, 3},
-     {1.25f, 1.5f, 1.10f, 1.10f, 1.3f, true, false, false, false}},
+      {rev_goods::OIL, rev_goods::STEEL_GOOD, rev_goods::NONE}, 2},
+     {1.25f, 1.5f, 1.10f, 1.0f, 1.10f, 1.3f, true, false, false, false}},
 
     // 3rd: Digital Age -- Computers(16) + Semiconductors
+    // Knowledge economy: each citizen generates significant gold (services sector).
     {IndustrialRevolutionId::Third, "Digital Age",
      {{TechId{16}, TechId{}, TechId{}},
-      {rev_goods::SEMICONDUCTORS_GOOD, rev_goods::NONE, rev_goods::NONE}, 4},
-     {1.15f, 2.0f, 1.20f, 1.0f, 1.0f, true, true, true, false}},
+      {rev_goods::SEMICONDUCTORS_GOOD, rev_goods::NONE, rev_goods::NONE}, 2},
+     {1.15f, 2.0f, 1.20f, 2.0f, 1.0f, 1.0f, true, true, true, false}},
 
     // 4th: Information Age -- Internet(27) + Computers(16) + Software
+    // Small tech-savvy nations can become economic powerhouses (Singapore model).
     {IndustrialRevolutionId::Fourth, "Information Age",
      {{TechId{27}, TechId{16}, TechId{}},
-      {rev_goods::SOFTWARE_GOOD, rev_goods::NONE, rev_goods::NONE}, 4},
-     {1.10f, 2.5f, 1.30f, 1.0f, 0.8f, true, true, true, false}},
+      {rev_goods::SOFTWARE_GOOD, rev_goods::NONE, rev_goods::NONE}, 2},
+     {1.10f, 2.5f, 1.30f, 3.0f, 1.0f, 0.8f, true, true, true, false}},
 
     // 5th: Post-Industrial -- Nuclear Fission(17) + expanded Fusion(64)
     {IndustrialRevolutionId::Fifth, "Post-Industrial",
      {{TechId{17}, TechId{64}, TechId{}},
-      {rev_goods::NONE, rev_goods::NONE, rev_goods::NONE}, 5},
-     {1.20f, 3.0f, 1.50f, 1.20f, 0.5f, true, true, true, true}},
+      {rev_goods::NONE, rev_goods::NONE, rev_goods::NONE}, 2},
+     {1.20f, 3.0f, 1.50f, 5.0f, 1.20f, 0.5f, true, true, true, true}},
 }};
 
 [[nodiscard]] inline constexpr const RevolutionDef& revolutionDef(IndustrialRevolutionId id) {
@@ -166,6 +170,17 @@ struct PlayerIndustrialComponent {
             mult *= REVOLUTION_DEFS[r - 1].bonuses.scienceMultiplier;
         }
         return mult;
+    }
+
+    /// Cumulative gold-per-citizen bonus from all achieved revolutions.
+    /// This represents the shift from land-based to knowledge/services economy:
+    /// post-industrial nations generate wealth from citizens, not territory.
+    [[nodiscard]] float cumulativeGoldPerCitizen() const {
+        float total = 0.0f;
+        for (uint8_t r = 1; r <= static_cast<uint8_t>(this->currentRevolution); ++r) {
+            total += REVOLUTION_DEFS[r - 1].bonuses.goldPerCitizenBonus;
+        }
+        return total;
     }
 
     /// Whether railways are unlocked (1st revolution+).

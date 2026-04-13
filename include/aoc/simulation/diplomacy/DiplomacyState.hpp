@@ -56,6 +56,7 @@ enum class DiplomaticStance : uint8_t {
 struct PairwiseRelation {
     int32_t baseScore = 0;   ///< Base relation score (from modifiers + events)
     bool    isAtWar   = false;
+    int32_t turnsSincePeace = 100; ///< Turns since last peace treaty (starts high = no cooldown)
     bool    hasOpenBorders     = false;
     bool    hasDefensiveAlliance = false;
     bool    hasMilitaryAlliance  = false;   ///< Share visibility, join wars

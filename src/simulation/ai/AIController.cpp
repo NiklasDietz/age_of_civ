@@ -16,6 +16,7 @@
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
+#include "aoc/simulation/unit/Combat.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/ProductionSystem.hpp"
@@ -48,10 +49,86 @@ namespace aoc::sim::ai {
 // Helper: Find the best military unit type ID the player can produce.
 // ============================================================================
 
+/**
+ * @brief Analyze enemy military composition visible near our cities.
+ *
+ * Returns a per-UnitClass count of enemy units within 15 tiles of any
+ * of our cities. The AI uses this to pick counter-units.
+ */
+struct EnemyComposition {
+    int32_t counts[static_cast<std::size_t>(UnitClass::Count)] = {};
+    int32_t total = 0;
+
+    [[nodiscard]] float fraction(UnitClass cls) const {
+        if (this->total == 0) { return 0.0f; }
+        return static_cast<float>(this->counts[static_cast<std::size_t>(cls)])
+             / static_cast<float>(this->total);
+    }
+};
+
+static EnemyComposition analyzeEnemyComposition(const aoc::game::GameState& gameState,
+                                                 PlayerId player) {
+    EnemyComposition comp{};
+    const aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer == nullptr) { return comp; }
+
+    std::vector<aoc::hex::AxialCoord> ownCityLocs;
+    for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+        ownCityLocs.push_back(city->location());
+    }
+
+    for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+        if (other->id() == player) { continue; }
+        for (const std::unique_ptr<aoc::game::Unit>& unitPtr : other->units()) {
+            const UnitTypeDef& def = unitTypeDef(unitPtr->typeId());
+            if (!isMilitary(def.unitClass)) { continue; }
+            for (const aoc::hex::AxialCoord& cityLoc : ownCityLocs) {
+                if (aoc::hex::distance(unitPtr->position(), cityLoc) <= 15) {
+                    comp.counts[static_cast<std::size_t>(def.unitClass)] += 1;
+                    comp.total += 1;
+                    break;
+                }
+            }
+        }
+    }
+    return comp;
+}
+
+/**
+ * @brief Score a unit type based on how well it counters the observed enemy composition.
+ *
+ * Uses the classMatchupModifier table: for each enemy class that has presence,
+ * the candidate unit gets bonus score proportional to its matchup advantage.
+ */
+static float counterUnitScore(UnitClass candidateClass, const EnemyComposition& enemyComp) {
+    if (enemyComp.total == 0) { return 1.0f; }
+
+    float score = 0.0f;
+    for (uint8_t c = 0; c < static_cast<uint8_t>(UnitClass::Count); ++c) {
+        const UnitClass enemyClass = static_cast<UnitClass>(c);
+        const float fraction = enemyComp.fraction(enemyClass);
+        if (fraction <= 0.0f) { continue; }
+        // matchup > 1.0 means we're strong against them
+        const float matchup = classMatchupModifier(candidateClass, enemyClass);
+        score += fraction * matchup;
+    }
+    return score;
+}
+
+/**
+ * @brief Pick the best military unit to build, considering both raw strength
+ *        and how well it counters nearby enemy units.
+ *
+ * Final score = (combatStrength + rangedStrength) * counterBonus.
+ * This means a slightly weaker unit that hard-counters the enemy composition
+ * can beat a stronger unit that has neutral matchups.
+ */
 static UnitTypeId bestAvailableMilitaryUnit(const aoc::game::GameState& gameState,
                                             PlayerId player) {
+    const EnemyComposition enemyComp = analyzeEnemyComposition(gameState, player);
+
     UnitTypeId bestId{0};
-    int32_t bestStrength = 0;
+    float bestScore = 0.0f;
 
     for (const UnitTypeDef& def : UNIT_TYPE_DEFS) {
         if (!isMilitary(def.unitClass) || isNaval(def.unitClass)) {
@@ -60,9 +137,11 @@ static UnitTypeId bestAvailableMilitaryUnit(const aoc::game::GameState& gameStat
         if (!canBuildUnit(gameState, player, def.id)) {
             continue;
         }
-        const int32_t strength = def.combatStrength + def.rangedStrength;
-        if (strength > bestStrength) {
-            bestStrength = strength;
+        const float rawStrength = static_cast<float>(def.combatStrength + def.rangedStrength);
+        const float counterBonus = counterUnitScore(def.unitClass, enemyComp);
+        const float score = rawStrength * counterBonus;
+        if (score > bestScore) {
+            bestScore = score;
             bestId = def.id;
         }
     }
@@ -818,6 +897,15 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
     const int32_t ourMilitary = militaryCounts[static_cast<std::size_t>(this->m_player)];
     const uint8_t playerCount = diplomacy.playerCount();
 
+    // Leader personality drives war/peace thresholds.
+    // Aggressive leaders (Montezuma: aggression=1.7, warThreshold=1.0) declare
+    // war easily; peaceful leaders (Gandhi: aggression=0.2, warThreshold=5.0)
+    // almost never do.
+    const aoc::game::Player* gsPlayer = gameState.player(this->m_player);
+    const LeaderPersonalityDef& personality =
+        leaderPersonality(gsPlayer != nullptr ? gsPlayer->civId() : CivId{0});
+    const LeaderBehavior& beh = personality.behavior;
+
     for (uint8_t other = 0; other < playerCount; ++other) {
         if (other == this->m_player) { continue; }
 
@@ -826,56 +914,100 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
         const int32_t relationScore = rel.totalScore();
 
         if (rel.isAtWar) {
-            if (theirMilitary > ourMilitary) {
+            // Peace threshold: leaders with high peaceAcceptanceThreshold accept
+            // peace readily; grudge-holding leaders fight on even when outmatched.
+            const float peaceMilRatio = (ourMilitary > 0)
+                ? static_cast<float>(theirMilitary) / static_cast<float>(ourMilitary)
+                : 10.0f;
+            // Gandhi (peace=0.2, grudge=0.2) sues for peace at ratio 0.8
+            // Montezuma (peace=0.8, grudge=0.9) fights until ratio 2.0+
+            const float peaceThreshold = 1.0f + beh.grudgeHolding - beh.peaceAcceptanceThreshold;
+            if (peaceMilRatio > std::max(peaceThreshold, 0.5f)) {
                 diplomacy.makePeace(this->m_player, other);
-                LOG_INFO("AI %u Proposed peace with player %u (outmilitaried %d vs %d)",
+                LOG_INFO("AI %u Proposed peace with player %u (ratio %.2f > threshold %.2f)",
                          static_cast<unsigned>(this->m_player),
                          static_cast<unsigned>(other),
-                         ourMilitary, theirMilitary);
+                         static_cast<double>(peaceMilRatio),
+                         static_cast<double>(peaceThreshold));
             }
         } else {
             const bool easyAI = (this->m_difficulty == aoc::ui::AIDifficulty::Easy);
             const bool hardAI = (this->m_difficulty == aoc::ui::AIDifficulty::Hard);
 
-            const float militaryRatioThreshold = hardAI ? 1.2f : 1.5f;
-            const int32_t relationThreshold = hardAI ? -10 : -20;
-            const int32_t warChanceThreshold = hardAI ? 5 : 3;
+            // War declaration threshold: personality-driven.
+            // Low warDeclarationThreshold (Montezuma=1.0) = easy to trigger war.
+            // High warDeclarationThreshold (Gandhi=5.0) = almost never declares war.
+            // militaryAggression lowers the required advantage, but always needs
+            // at least 1.2:1 even for the most aggressive leaders.
+            // Gandhi (0.2): needs 1.5/sqrt(0.2)=3.35:1 -- almost never.
+            // Montezuma (1.7): needs 1.5/sqrt(1.7)=1.15:1 -- at slight advantage.
+            // Frederick (1.5): needs 1.5/sqrt(1.5)=1.22:1.
+            const float baseMilRatio = hardAI ? 1.3f : 1.5f;
+            const float milRatioThreshold = std::max(1.2f,
+                baseMilRatio / std::sqrt(std::max(beh.militaryAggression, 0.1f)));
+            // Relation threshold: aggressive leaders tolerate worse relations less.
+            // Gandhi needs relations below -100; Montezuma triggers at -30.
+            const int32_t baseRelThreshold = hardAI ? -20 : -30;
+            const int32_t relationThreshold = static_cast<int32_t>(
+                static_cast<float>(baseRelThreshold)
+                / std::sqrt(std::max(beh.militaryAggression, 0.1f)));
+            // War chance per turn: low base (1-2 out of 10) scaled by aggression.
+            // Montezuma: 1 * 1.7 = 1 (10% chance); Gandhi: 1 * 0.2 = 0 (never).
+            const int32_t baseWarChance = hardAI ? 2 : 1;
+            const int32_t warChanceThreshold = static_cast<int32_t>(
+                static_cast<float>(baseWarChance) * beh.militaryAggression);
+
+            // Peace cooldown: cannot re-declare war within 15 turns of a peace treaty.
+            constexpr int32_t WAR_COOLDOWN_TURNS = 15;
+            if (rel.turnsSincePeace < WAR_COOLDOWN_TURNS) { continue; }
 
             // Standard war declaration: military advantage + strained relations.
-            if (!easyAI && ourMilitary > 0 && theirMilitary >= 0 &&
+            if (!easyAI && !rel.isAtWar && ourMilitary > 0 && theirMilitary >= 0 &&
                 static_cast<float>(ourMilitary) >
-                    militaryRatioThreshold * static_cast<float>(theirMilitary) &&
+                    milRatioThreshold * static_cast<float>(std::max(1, theirMilitary)) &&
                 relationScore < relationThreshold) {
                 const int32_t warChance =
                     ((ourMilitary * 7 + theirMilitary * 13 +
                       static_cast<int32_t>(this->m_player) * 31) % 10);
                 if (warChance < warChanceThreshold) {
                     diplomacy.declareWar(this->m_player, other);
-                    LOG_INFO("AI %u Declared war on player %u (military %d vs %d, relations %d)",
+                    LOG_INFO("AI %u Declared war on player %u (military %d vs %d, "
+                             "relations %d, aggression %.2f)",
                              static_cast<unsigned>(this->m_player),
                              static_cast<unsigned>(other),
-                             ourMilitary, theirMilitary, relationScore);
+                             ourMilitary, theirMilitary, relationScore,
+                             static_cast<double>(beh.militaryAggression));
                 }
             }
 
-            // Opportunistic war declaration: 2:1 military advantage regardless of
-            // relations.  This fires when the player has built a dominant force and
-            // the opponent is clearly outmatched.  Requires at least 4 own units so
-            // early scouting noise does not trigger wars.
-            if (!easyAI && !rel.isAtWar && ourMilitary >= 4 &&
-                static_cast<float>(ourMilitary) >=
-                    2.0f * static_cast<float>(std::max(1, theirMilitary))) {
-                const int32_t warChance =
-                    ((ourMilitary * 11 + theirMilitary * 17 +
-                      static_cast<int32_t>(this->m_player) * 37) % 10);
-                const int32_t threshold = hardAI ? 4 : 2;
-                if (warChance < threshold) {
-                    diplomacy.declareWar(this->m_player, other);
-                    LOG_INFO("AI %u Declared opportunistic war on player %u "
-                             "(2:1 advantage: %d vs %d, relations %d)",
-                             static_cast<unsigned>(this->m_player),
-                             static_cast<unsigned>(other),
-                             ourMilitary, theirMilitary, relationScore);
+            // Opportunistic war: personality modulates the threshold.
+            // Aggressive leaders (aggression > 1.5) attack at ~1.5:1 ratio.
+            // Peaceful leaders (aggression < 0.5) never attack opportunistically.
+            if (beh.militaryAggression < 0.5f) {
+                // Peaceful leaders skip opportunistic wars entirely.
+            } else {
+                const float oppoRatioThreshold = std::max(1.5f,
+                    2.5f / std::sqrt(beh.militaryAggression));
+                const int32_t oppoMinUnits = 4;
+                if (!easyAI && !rel.isAtWar && ourMilitary >= oppoMinUnits &&
+                    static_cast<float>(ourMilitary) >=
+                        oppoRatioThreshold * static_cast<float>(std::max(1, theirMilitary))) {
+                    const int32_t warChance =
+                        ((ourMilitary * 11 + theirMilitary * 17 +
+                          static_cast<int32_t>(this->m_player) * 37) % 10);
+                    const int32_t threshold = hardAI ? 2 : 1;
+                    if (warChance < threshold) {
+                        diplomacy.declareWar(this->m_player, other);
+                        LOG_INFO("AI %u Declared opportunistic war on player %u "
+                                 "(%.1f:1 advantage: %d vs %d, aggression %.2f)",
+                                 static_cast<unsigned>(this->m_player),
+                                 static_cast<unsigned>(other),
+                                 static_cast<double>(
+                                     static_cast<float>(ourMilitary) /
+                                     static_cast<float>(std::max(1, theirMilitary))),
+                                 ourMilitary, theirMilitary,
+                                 static_cast<double>(beh.militaryAggression));
+                    }
                 }
             }
 
@@ -1287,12 +1419,20 @@ void AIController::considerPurchases(aoc::game::GameState& gameState) {
     if (treasury < 100) { return; }
 
     const aoc::sim::ai::AIBlackboard& bb = gsPlayer->blackboard();
+    const LeaderPersonalityDef& personality =
+        leaderPersonality(gsPlayer->civId());
+    const LeaderBehavior& beh = personality.behavior;
 
     // Military purchase: buy when below minimum garrison OR under threat.
+    // Aggressive leaders (Montezuma: aggression=1.7) buy military more eagerly;
+    // peaceful leaders (Gandhi: aggression=0.2) only buy when critically threatened.
     const int32_t milCount = gsPlayer->militaryUnitCount();
     const int32_t cityCount = gsPlayer->cityCount();
-    const bool needsMilitary = milCount < cityCount * 2;
-    const bool underThreat = bb.threatLevel > 0.3f;
+    const int32_t desiredGarrison = static_cast<int32_t>(
+        static_cast<float>(cityCount) * 2.0f * beh.militaryAggression);
+    const bool needsMilitary = milCount < std::max(desiredGarrison, cityCount);
+    const float threatThreshold = 0.5f - beh.militaryAggression * 0.2f;
+    const bool underThreat = bb.threatLevel > std::max(threatThreshold, 0.1f);
     if ((needsMilitary || underThreat)
         && treasury >= 200
         && !gsPlayer->cities().empty()) {
@@ -1346,9 +1486,10 @@ void AIController::considerPurchases(aoc::game::GameState& gameState) {
     }
 
     // ROI-based building purchase: buy if payback period is reasonable.
-    float maxPaybackTurns = 30.0f;
-    if (treasury > 5000) { maxPaybackTurns = 60.0f; }
-    if (treasury > 10000) { maxPaybackTurns = 100.0f; }
+    // Economic leaders (Cleopatra: economicFocus=1.8) accept longer payback periods.
+    float maxPaybackTurns = 30.0f * beh.economicFocus;
+    if (treasury > 5000) { maxPaybackTurns = 60.0f * beh.economicFocus; }
+    if (treasury > 10000) { maxPaybackTurns = 100.0f * beh.economicFocus; }
 
     for (const std::unique_ptr<aoc::game::City>& cityPtr : gsPlayer->cities()) {
         for (const BuildingDef& bdef : BUILDING_DEFS) {
@@ -1357,9 +1498,9 @@ void AIController::considerPurchases(aoc::game::GameState& gameState) {
             const int32_t goldCost = purchaseCost(static_cast<float>(bdef.productionCost));
             if (goldCost <= 0 || treasury < static_cast<CurrencyAmount>(goldCost)) { continue; }
 
-            // Estimate yield per turn from this building.
-            const float yieldPerTurn = static_cast<float>(bdef.goldBonus)
-                                     + static_cast<float>(bdef.scienceBonus) * 0.5f
+            // Estimate yield per turn, weighted by leader's priorities.
+            const float yieldPerTurn = static_cast<float>(bdef.goldBonus) * beh.economicFocus
+                                     + static_cast<float>(bdef.scienceBonus) * 0.5f * beh.scienceFocus
                                      + static_cast<float>(bdef.productionBonus) * 0.8f;
             if (yieldPerTurn <= 0.0f) { continue; }
 
