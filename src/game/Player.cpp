@@ -92,7 +92,17 @@ const Unit* Player::unitAt(aoc::hex::AxialCoord location) const {
 Unit& Player::addUnit(UnitTypeId typeId, aoc::hex::AxialCoord position) {
     this->m_units.push_back(
         std::make_unique<Unit>(this->m_id, typeId, position));
-    return *this->m_units.back();
+    Unit& newUnit = *this->m_units.back();
+
+    // Initialize spy component for Diplomat (55) and Spy (56) units
+    if (typeId.value == 55 || typeId.value == 56) {
+        newUnit.spy().owner = this->m_id;
+        newUnit.spy().location = position;
+        newUnit.spy().level = (typeId.value == 56)
+            ? aoc::sim::SpyLevel::Agent : aoc::sim::SpyLevel::Recruit;
+    }
+
+    return newUnit;
 }
 
 void Player::removeUnit(Unit* unit) {

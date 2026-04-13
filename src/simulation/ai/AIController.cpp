@@ -865,6 +865,51 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             }
         }
 
+        // --- Walls priority ---
+        // Build walls when enemy is nearby and city doesn't have them yet.
+        // Wall BuildingId 17 = Ancient Walls
+        if (enemyNearby && !city.hasBuilding(BuildingId{17})
+            && canBuildBuilding(gameState, this->m_player, city, BuildingId{17})) {
+            ProductionCandidate candidate{};
+            candidate.item.type      = ProductionItemType::Building;
+            candidate.item.itemId    = 17u;
+            candidate.item.name      = "Ancient Walls";
+            candidate.item.totalCost = 80.0f;
+            candidate.item.progress  = 0.0f;
+            candidate.score          = 0.9f * personality.behavior.militaryAggression;
+            candidates.push_back(std::move(candidate));
+        }
+
+        // --- Spy unit production ---
+        // Build a Diplomat/Spy if we have none and have the tech.
+        // UnitTypeId{55} = Diplomat, UnitTypeId{56} = Spy
+        {
+            bool hasSpy = false;
+            for (const std::unique_ptr<aoc::game::Unit>& u : gsPlayer->units()) {
+                if (u->spy().owner != INVALID_PLAYER) {
+                    hasSpy = true;
+                    break;
+                }
+            }
+            if (!hasSpy) {
+                UnitTypeId spyUnitId{56};
+                if (!canBuildUnit(gameState, this->m_player, spyUnitId)) {
+                    spyUnitId = UnitTypeId{55};  // Fallback to Diplomat
+                }
+                if (canBuildUnit(gameState, this->m_player, spyUnitId)) {
+                    const UnitTypeDef& spyDef = unitTypeDef(spyUnitId);
+                    ProductionCandidate candidate{};
+                    candidate.item.type      = ProductionItemType::Unit;
+                    candidate.item.itemId    = spyUnitId.value;
+                    candidate.item.name      = std::string(spyDef.name);
+                    candidate.item.totalCost = static_cast<float>(spyDef.productionCost);
+                    candidate.item.progress  = 0.0f;
+                    candidate.score          = 0.3f;  // Moderate priority
+                    candidates.push_back(std::move(candidate));
+                }
+            }
+        }
+
         // ----------------------------------------------------------------
         // Select from the top candidates with 10% randomization band.
         //

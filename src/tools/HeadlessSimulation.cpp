@@ -25,6 +25,7 @@
 #include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/simulation/turn/TurnProcessor.hpp"
 #include "aoc/simulation/turn/TurnEventLog.hpp"
+#include "aoc/simulation/map/GoodyHuts.hpp"
 
 // Simulation systems
 #include "aoc/simulation/turn/TurnManager.hpp"
@@ -443,6 +444,10 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
     LOG_INFO("GameState initialized for %d players", playerCount);
 
+    // Place goody huts (ancient ruins) on the map
+    aoc::sim::GoodyHutState goodyHuts;
+    aoc::sim::placeGoodyHuts(goodyHuts, grid, startPositions, rng);
+
     // Build TurnContext
     aoc::sim::TurnContext turnCtx{};
     turnCtx.grid = &grid;
@@ -483,6 +488,25 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         eventLog.clear();
 
         aoc::sim::processTurn(turnCtx);
+
+        // --- Goody hut exploration ---
+        // Check all units against hut locations after movement.
+        if (!goodyHuts.hutLocations.empty()) {
+            for (int32_t p = 0; p < playerCount; ++p) {
+                aoc::game::Player* gsp = gameState.player(static_cast<aoc::PlayerId>(p));
+                if (gsp == nullptr) { continue; }
+                for (const std::unique_ptr<aoc::game::Unit>& unitPtr : gsp->units()) {
+                    aoc::sim::GoodyHutReward reward = aoc::sim::checkAndClaimGoodyHut(
+                        goodyHuts, gameState, *gsp, unitPtr->position(), rng);
+                    if (reward != aoc::sim::GoodyHutReward::Count) {
+                        eventLog.record(aoc::sim::TurnEventType::CityFounded,
+                                        static_cast<aoc::PlayerId>(p),
+                                        aoc::INVALID_PLAYER, static_cast<int32_t>(reward), 0,
+                                        "Goody hut claimed");
+                    }
+                }
+            }
+        }
 
         // --- Player meeting detection ---
         // Two players meet when any unit/city of one is within sight range (3 tiles)
