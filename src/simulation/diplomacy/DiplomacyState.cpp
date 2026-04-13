@@ -27,6 +27,25 @@ const PairwiseRelation& DiplomacyManager::relation(PlayerId a, PlayerId b) const
     return this->m_relations[static_cast<std::size_t>(a) * this->m_playerCount + b];
 }
 
+void DiplomacyManager::meetPlayers(PlayerId a, PlayerId b, int32_t currentTurn) {
+    if (a == b) { return; }
+    PairwiseRelation& relAB = this->relation(a, b);
+    PairwiseRelation& relBA = this->relation(b, a);
+    if (!relAB.hasMet) {
+        relAB.hasMet = true;
+        relAB.metOnTurn = currentTurn;
+        relBA.hasMet = true;
+        relBA.metOnTurn = currentTurn;
+        LOG_INFO("First contact: Player %u met Player %u on turn %d",
+                 static_cast<unsigned>(a), static_cast<unsigned>(b), currentTurn);
+    }
+}
+
+bool DiplomacyManager::haveMet(PlayerId a, PlayerId b) const {
+    if (a == b) { return true; }
+    return this->relation(a, b).hasMet;
+}
+
 void DiplomacyManager::addModifier(PlayerId a, PlayerId b, RelationModifier modifier) {
     this->relation(a, b).modifiers.push_back(modifier);
     // Mirror: symmetric relation
@@ -38,6 +57,14 @@ void DiplomacyManager::addModifier(PlayerId a, PlayerId b, RelationModifier modi
 void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target) {
     PairwiseRelation& relAB = this->relation(aggressor, target);
     PairwiseRelation& relBA = this->relation(target, aggressor);
+
+    // War implies meeting
+    if (!relAB.hasMet) {
+        relAB.hasMet = true;
+        relAB.metOnTurn = 0;
+        relBA.hasMet = true;
+        relBA.metOnTurn = 0;
+    }
 
     relAB.isAtWar = true;
     relBA.isAtWar = true;

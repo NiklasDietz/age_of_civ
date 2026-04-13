@@ -47,6 +47,15 @@ public:
     /// Check if all human players have ended their turn.
     [[nodiscard]] bool allPlayersReady() const;
 
+    /// Number of players that haven't submitted their turn yet.
+    [[nodiscard]] int32_t playersStillActing() const;
+
+    /// Whether the given player is the last one still acting this turn.
+    /// In the UI, this triggers the "waiting for you" banner on the end-turn button.
+    /// For ML training, this is a temporal pressure signal: external state is frozen,
+    /// the agent must commit all remaining actions now.
+    [[nodiscard]] bool isLastPlayer(PlayerId player) const;
+
     /// Set the number of human players (AI players auto-submit).
     void setPlayerCount(uint8_t humanPlayers, uint8_t aiPlayers);
 

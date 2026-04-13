@@ -24,6 +24,7 @@
 #include "aoc/core/SimpleYaml.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/simulation/turn/TurnProcessor.hpp"
+#include "aoc/simulation/turn/TurnEventLog.hpp"
 
 // Simulation systems
 #include "aoc/simulation/turn/TurnManager.hpp"
@@ -226,8 +227,11 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         return 1;
     }
 
-    // CSV header
-    csv << "Turn,Player,GDP,Treasury,CoinTier,MonetarySystem,Inflation,"
+    // CSV header — includes game-level context and training signals.
+    // IsLastPlayer: 1 if this player is the last to finish their turn (temporal
+    // pressure signal — external state is frozen, must commit all actions now).
+    csv << "Turn,Player,PlayerCount,MapWidth,MapHeight,CivId,MetPlayersMask,IsLastPlayer,"
+        << "GDP,Treasury,CoinTier,MonetarySystem,Inflation,"
         << "Population,Cities,Military,TechsResearched,CultureTotal,"
         << "TradePartners,CompositeCSI,EraVP,AvgHappiness,"
         << "Corruption,CrisisType,IndustrialRev,GovernmentType\n";
@@ -454,11 +458,94 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     turnCtx.humanPlayer = aoc::INVALID_PLAYER;
     turnCtx.currentTurn = 0;
 
+    // Mid-turn event log for ML training data
+    aoc::sim::TurnEventLog eventLog;
+    turnCtx.eventLog = &eventLog;
+
+    // Event CSV: separate file with sub-turn granularity
+    std::string eventPath = outputPath;
+    {
+        std::size_t dotPos = eventPath.rfind('.');
+        if (dotPos != std::string::npos) {
+            eventPath.insert(dotPos, "_events");
+        } else {
+            eventPath += "_events";
+        }
+    }
+    std::ofstream eventCsv(eventPath);
+    if (eventCsv.is_open()) {
+        eventCsv << "Turn,SubStep,EventType,Player,OtherPlayer,Value1,Value2,Detail\n";
+    }
+
     // === Main simulation loop ===
     for (int32_t turn = 1; turn <= maxTurns; ++turn) {
         turnCtx.currentTurn = static_cast<aoc::TurnNumber>(turn);
+        eventLog.clear();
 
         aoc::sim::processTurn(turnCtx);
+
+        // --- Player meeting detection ---
+        // Two players meet when any unit/city of one is within sight range (3 tiles)
+        // of any unit/city of the other. Checked once per turn.
+        constexpr int32_t MEETING_SIGHT_RANGE = 3;
+        for (int32_t pa = 0; pa < playerCount; ++pa) {
+            for (int32_t pb = pa + 1; pb < playerCount; ++pb) {
+                const aoc::PlayerId pidA = static_cast<aoc::PlayerId>(pa);
+                const aoc::PlayerId pidB = static_cast<aoc::PlayerId>(pb);
+                if (diplomacy.haveMet(pidA, pidB)) { continue; }
+
+                const aoc::game::Player* playerA = gameState.player(pidA);
+                const aoc::game::Player* playerB = gameState.player(pidB);
+                if (playerA == nullptr || playerB == nullptr) { continue; }
+
+                // Collect all positions of player A (units + cities)
+                bool met = false;
+                for (const std::unique_ptr<aoc::game::Unit>& uA : playerA->units()) {
+                    if (met) { break; }
+                    for (const std::unique_ptr<aoc::game::Unit>& uB : playerB->units()) {
+                        if (aoc::hex::distance(uA->position(), uB->position()) <= MEETING_SIGHT_RANGE) {
+                            met = true; break;
+                        }
+                    }
+                    if (!met) {
+                        for (const std::unique_ptr<aoc::game::City>& cB : playerB->cities()) {
+                            if (aoc::hex::distance(uA->position(), cB->location()) <= MEETING_SIGHT_RANGE) {
+                                met = true; break;
+                            }
+                        }
+                    }
+                }
+                if (!met) {
+                    for (const std::unique_ptr<aoc::game::City>& cA : playerA->cities()) {
+                        if (met) { break; }
+                        for (const std::unique_ptr<aoc::game::Unit>& uB : playerB->units()) {
+                            if (aoc::hex::distance(cA->location(), uB->position()) <= MEETING_SIGHT_RANGE) {
+                                met = true; break;
+                            }
+                        }
+                    }
+                }
+                if (met) {
+                    diplomacy.meetPlayers(pidA, pidB, turn);
+                    eventLog.record(aoc::sim::TurnEventType::PlayersMet,
+                                    pidA, pidB, 0, 0, "First contact");
+                }
+            }
+        }
+
+        // Flush mid-turn events to event CSV
+        if (eventCsv.is_open()) {
+            for (const aoc::sim::TurnEvent& evt : eventLog.events()) {
+                eventCsv << turn << ","
+                         << evt.subStep << ","
+                         << aoc::sim::TurnEventLog::eventTypeName(evt.type) << ","
+                         << static_cast<int>(evt.player) << ","
+                         << static_cast<int>(evt.otherPlayer) << ","
+                         << evt.value1 << ","
+                         << evt.value2 << ","
+                         << evt.detail << "\n";
+            }
+        }
 
         // Detailed economy log every 25 turns
         if (turn % 25 == 0 || turn == 1) {
@@ -581,8 +668,32 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         // Write snapshot row for each player
         for (int32_t p = 0; p < playerCount; ++p) {
             PlayerSnapshot snap = snapshotPlayer(gameState, static_cast<aoc::PlayerId>(p));
+            // Game-level context columns
+            const aoc::game::Player* snapPlayer = gameState.player(static_cast<aoc::PlayerId>(p));
+            const uint8_t civId = (snapPlayer != nullptr)
+                ? static_cast<uint8_t>(snapPlayer->civId()) : 0u;
+            // MetPlayersMask: bit i is set if player p has met player i.
+            // The ML pipeline uses this to mask out unmet players' data.
+            uint16_t metMask = 0;
+            for (int32_t other = 0; other < playerCount; ++other) {
+                if (other == p) { metMask |= (1u << other); continue; }
+                if (diplomacy.haveMet(static_cast<aoc::PlayerId>(p),
+                                       static_cast<aoc::PlayerId>(other))) {
+                    metMask |= (1u << other);
+                }
+            }
+            // In headless mode, AI players process sequentially so the last
+            // player (highest index) is the "last player" each turn.
+            const int32_t isLastPlayer = (p == playerCount - 1) ? 1 : 0;
+
             csv << turn << ","
                 << static_cast<int>(snap.player) << ","
+                << playerCount << ","
+                << mapConfig.width << ","
+                << mapConfig.height << ","
+                << static_cast<int>(civId) << ","
+                << metMask << ","
+                << isLastPlayer << ","
                 << snap.gdp << ","
                 << snap.treasury << ","
                 << static_cast<int>(snap.coinTier) << ","

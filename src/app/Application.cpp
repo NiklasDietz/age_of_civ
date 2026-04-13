@@ -1187,6 +1187,12 @@ void Application::run() {
         this->m_economyScreen.refresh(this->m_uiManager);
         this->m_cityDetailScreen.refresh(this->m_uiManager);
         this->m_tradeScreen.refresh(this->m_uiManager);
+
+        // "Waiting for you" banner: show when human is last player still acting
+        if (this->m_lastPlayerBanner != aoc::ui::INVALID_WIDGET && !this->m_spectatorMode) {
+            const bool isLast = this->m_turnManager.isLastPlayer(0);
+            this->m_uiManager.setVisible(this->m_lastPlayerBanner, isLast);
+        }
         this->m_diplomacyScreen.refresh(this->m_uiManager);
         this->m_religionScreen.refresh(this->m_uiManager);
         this->m_scoreScreen.refresh(this->m_uiManager);
@@ -2928,6 +2934,25 @@ void Application::buildHUD() {
         this->m_endTurnButton,
         {0.0f, 0.0f, 130.0f, 40.0f},
         std::move(endTurnBtn));
+
+    // "Waiting for you" banner above the end-turn button — visible when
+    // the human player is the last one still acting this turn.
+    this->m_lastPlayerBanner = this->m_uiManager.createPanel(
+        {0.0f, 0.0f, 150.0f, 24.0f},
+        aoc::ui::PanelData{{0.8f, 0.6f, 0.1f, 0.9f}, 4.0f});
+    {
+        aoc::ui::Widget* bannerPanel = this->m_uiManager.getWidget(this->m_lastPlayerBanner);
+        if (bannerPanel != nullptr) {
+            bannerPanel->anchor = aoc::ui::Anchor::BottomRight;
+            bannerPanel->marginRight  = 10.0f;
+            bannerPanel->marginBottom = 65.0f;
+            bannerPanel->isVisible = false;  // Hidden by default
+        }
+    }
+    this->m_uiManager.createLabel(
+        this->m_lastPlayerBanner,
+        {4.0f, 2.0f, 142.0f, 20.0f},
+        aoc::ui::LabelData{"Waiting for you!", {1.0f, 1.0f, 1.0f, 1.0f}, 12.0f});
 
     // Victory announcement panel (hidden until game over, centered on screen)
     aoc::ui::WidgetId victoryPanel = this->m_uiManager.createPanel(

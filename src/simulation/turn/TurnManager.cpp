@@ -29,6 +29,31 @@ bool TurnManager::allPlayersReady() const {
     return true;
 }
 
+int32_t TurnManager::playersStillActing() const {
+    const uint8_t total = static_cast<uint8_t>(this->m_humanPlayerCount + this->m_aiPlayerCount);
+    int32_t count = 0;
+    for (uint8_t i = 0; i < total; ++i) {
+        if (!this->m_playerReady[i]) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool TurnManager::isLastPlayer(PlayerId player) const {
+    if (player >= MAX_PLAYERS || this->m_playerReady[player]) {
+        return false;  // Already submitted
+    }
+    // Check if all OTHER players are ready
+    const uint8_t total = static_cast<uint8_t>(this->m_humanPlayerCount + this->m_aiPlayerCount);
+    for (uint8_t i = 0; i < total; ++i) {
+        if (i != player && !this->m_playerReady[i]) {
+            return false;  // Someone else is still acting
+        }
+    }
+    return true;
+}
+
 void TurnManager::setPlayerCount(uint8_t humanPlayers, uint8_t aiPlayers) {
     this->m_humanPlayerCount = humanPlayers;
     this->m_aiPlayerCount    = aiPlayers;

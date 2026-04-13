@@ -160,6 +160,7 @@ private:
     aoc::ui::WidgetId  m_selectionLabel = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId  m_economyLabel   = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId  m_endTurnButton  = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId  m_lastPlayerBanner = aoc::ui::INVALID_WIDGET; ///< "Waiting for you" glow
     aoc::ui::WidgetId  m_topBar         = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId  m_resourceLabel  = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId  m_menuDropdown   = aoc::ui::INVALID_WIDGET;

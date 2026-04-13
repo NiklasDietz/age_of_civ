@@ -55,6 +55,8 @@ enum class DiplomaticStance : uint8_t {
 /// Pairwise relation data between two players.
 struct PairwiseRelation {
     int32_t baseScore = 0;   ///< Base relation score (from modifiers + events)
+    bool    hasMet    = false; ///< Whether these players have discovered each other
+    int32_t metOnTurn = -1;   ///< Turn when first contact occurred (-1 = never met)
     bool    isAtWar   = false;
     int32_t turnsSincePeace = 100; ///< Turns since last peace treaty (starts high = no cooldown)
     bool    hasOpenBorders     = false;
@@ -91,6 +93,12 @@ public:
     /// Get the relation between two players. Order doesn't matter (symmetric).
     [[nodiscard]] PairwiseRelation& relation(PlayerId a, PlayerId b);
     [[nodiscard]] const PairwiseRelation& relation(PlayerId a, PlayerId b) const;
+
+    /// Record first contact between two players.
+    void meetPlayers(PlayerId a, PlayerId b, int32_t currentTurn);
+
+    /// Whether two players have met.
+    [[nodiscard]] bool haveMet(PlayerId a, PlayerId b) const;
 
     /// Add a relation modifier between two players.
     void addModifier(PlayerId a, PlayerId b, RelationModifier modifier);

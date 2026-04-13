@@ -1,0 +1,41 @@
+============================================================
+RECOMMENDED UTILITY AI WEIGHT ADJUSTMENTS
+Based on trained model analysis
+============================================================
+
+--- Feature Importance (late game is most predictive of winner) ---
+  CompositeCSI        : importance=1.000  → (no direct mapping)
+  TechsResearched     : importance=0.823  → scoreBuildingCandidate
+  CultureTotal        : importance=0.777  → (no direct mapping)
+  EraVP               : importance=0.662  → (no direct mapping)
+  Military            : importance=0.614  → scoreMilitary
+  Population          : importance=0.602  → scoreBuilder
+  MapWidth            : importance=0.554  → (no direct mapping)
+  GDP                 : importance=0.543  → (no direct mapping)
+  Treasury            : importance=0.533  → considerPurchases
+  CrisisType          : importance=0.461  → (no direct mapping)
+
+--- Sensitivity: Marginal Win-Probability per Unit ---
+  (Positive = increasing this helps win)
+  Treasury            : +0.651075 win-prob per unit
+  CultureTotal        : +0.144499 win-prob per unit
+  GDP                 : +0.143779 win-prob per unit
+  EraVP               : +0.002049 win-prob per unit
+  Population          : +0.000520 win-prob per unit
+  TechsResearched     : +0.000456 win-prob per unit
+  Military            : +0.000253 win-prob per unit
+  CivId               : -0.000064 win-prob per unit
+  GovernmentType      : -0.000031 win-prob per unit
+  MonetarySystem      : -0.000022 win-prob per unit
+
+--- Concrete C++ Recommendations ---
+
+  1. HIGHEST PRIORITY: 'CompositeCSI' dominates late-game prediction.
+
+  2. PHASE-SPECIFIC TUNING:
+     Early game (turns 1-100): 'TechsResearched' matters most
+     Late game (turns 200-300): 'CompositeCSI' matters most
+     → AI should shift strategy from TechsResearched-focus to CompositeCSI-focus around turn 150
+
+  3. MILITARY: Each additional unit adds +0.000253 win probability
+     → At 10 units, that's +0.0025 total advantage

@@ -910,6 +910,10 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
         if (other == this->m_player) { continue; }
 
         PairwiseRelation& rel = diplomacy.relation(this->m_player, other);
+
+        // Cannot interact with players we haven't met yet
+        if (!rel.hasMet) { continue; }
+
         const int32_t theirMilitary = militaryCounts[static_cast<std::size_t>(other)];
         const int32_t relationScore = rel.totalScore();
 

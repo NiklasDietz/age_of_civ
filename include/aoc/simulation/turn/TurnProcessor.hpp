@@ -61,6 +61,7 @@ class EconomySimulation;
 class DiplomacyManager;
 class Market;
 class BarbarianController;
+class TurnEventLog;
 
 namespace ai { class AIController; }
 
@@ -90,6 +91,9 @@ struct TurnContext {
 
     /// Current turn number.
     TurnNumber currentTurn = 0;
+
+    /// Mid-turn event log for ML training. Null if not recording.
+    TurnEventLog* eventLog = nullptr;
 };
 
 /**

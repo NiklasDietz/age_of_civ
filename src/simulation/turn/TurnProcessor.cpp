@@ -9,6 +9,7 @@
  */
 
 #include "aoc/simulation/turn/TurnProcessor.hpp"
+#include "aoc/simulation/turn/TurnEventLog.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
 
 #include "aoc/map/HexGrid.hpp"
@@ -536,6 +537,35 @@ void processGlobalSystems(TurnContext& ctx) {
 // ============================================================================
 
 void processTurn(TurnContext& ctx) {
+    TurnEventLog* eventLog = ctx.eventLog;
+
+    // Snapshot pre-turn state for event detection
+    struct PlayerPre {
+        int32_t techs = 0;
+        int32_t cities = 0;
+        int32_t units = 0;
+        int32_t military = 0;
+        bool atWar[MAX_PLAYERS] = {};
+    };
+    std::vector<PlayerPre> preState;
+    preState.resize(ctx.allPlayers.size());
+    for (std::size_t i = 0; i < ctx.allPlayers.size(); ++i) {
+        const aoc::game::Player* p = ctx.gameState->player(ctx.allPlayers[i]);
+        if (p == nullptr) { continue; }
+        preState[i].techs = static_cast<int32_t>(std::count(p->tech().completedTechs.begin(), p->tech().completedTechs.end(), true));
+        preState[i].cities = p->cityCount();
+        preState[i].units = static_cast<int32_t>(p->units().size());
+        preState[i].military = p->militaryUnitCount();
+        if (ctx.diplomacy != nullptr) {
+            for (std::size_t j = 0; j < ctx.allPlayers.size(); ++j) {
+                if (i != j) {
+                    preState[i].atWar[j] = ctx.diplomacy->relation(
+                        ctx.allPlayers[i], ctx.allPlayers[j]).isAtWar;
+                }
+            }
+        }
+    }
+
     // 1. AI decisions
     for (ai::AIController* ai : ctx.aiControllers) {
         if (ai != nullptr) {
@@ -554,6 +584,56 @@ void processTurn(TurnContext& ctx) {
 
     // 4. Global systems
     processGlobalSystems(ctx);
+
+    // Detect and record events by diffing post-turn state
+    if (eventLog != nullptr) {
+        for (std::size_t i = 0; i < ctx.allPlayers.size(); ++i) {
+            const PlayerId pid = ctx.allPlayers[i];
+            const aoc::game::Player* p = ctx.gameState->player(pid);
+            if (p == nullptr) { continue; }
+
+            const int32_t newTechs = static_cast<int32_t>(std::count(p->tech().completedTechs.begin(), p->tech().completedTechs.end(), true));
+            if (newTechs > preState[i].techs) {
+                eventLog->record(TurnEventType::TechResearched, pid,
+                                 INVALID_PLAYER, newTechs, 0, "Tech completed");
+            }
+
+            const int32_t newCities = p->cityCount();
+            if (newCities > preState[i].cities) {
+                eventLog->record(TurnEventType::CityFounded, pid,
+                                 INVALID_PLAYER, newCities, 0, "New city");
+            }
+
+            const int32_t newUnits = static_cast<int32_t>(p->units().size());
+            if (newUnits > preState[i].units) {
+                eventLog->record(TurnEventType::UnitProduced, pid,
+                                 INVALID_PLAYER, newUnits - preState[i].units, 0,
+                                 "Unit produced");
+            }
+
+            const int32_t newMil = p->militaryUnitCount();
+            if (newMil < preState[i].military) {
+                eventLog->record(TurnEventType::UnitKilled, pid,
+                                 INVALID_PLAYER, preState[i].military - newMil, 0,
+                                 "Unit lost");
+            }
+
+            // War state changes
+            if (ctx.diplomacy != nullptr) {
+                for (std::size_t j = 0; j < ctx.allPlayers.size(); ++j) {
+                    if (i == j) { continue; }
+                    const bool nowAtWar = ctx.diplomacy->relation(pid, ctx.allPlayers[j]).isAtWar;
+                    if (nowAtWar && !preState[i].atWar[j]) {
+                        eventLog->record(TurnEventType::WarDeclared, pid,
+                                         ctx.allPlayers[j], 0, 0, "War declared");
+                    } else if (!nowAtWar && preState[i].atWar[j]) {
+                        eventLog->record(TurnEventType::PeaceMade, pid,
+                                         ctx.allPlayers[j], 0, 0, "Peace made");
+                    }
+                }
+            }
+        }
+    }
 
     ++ctx.currentTurn;
 }
