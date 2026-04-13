@@ -45,6 +45,9 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
             cityGold += 5;
         }
 
+        // Population-based tax income: 1 gold per 2 citizens (baseline taxation)
+        cityGold += static_cast<CurrencyAmount>(city->population() / 2);
+
         // Gold from worked tiles
         for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
             if (grid.isValid(tile)) {

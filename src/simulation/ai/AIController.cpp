@@ -1190,6 +1190,24 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
     const int32_t cityCount = gsPlayer->cityCount();
     const int32_t playerCount = gameState.playerCount();
 
+    // Dynamic gold allocation: raise goldAllocation when treasury is low,
+    // lower it when flush with gold to boost science/luxury.
+    {
+        const CurrencyAmount treasury = gsPlayer->treasury();
+        if (treasury < 0) {
+            // In debt: maximise gold income
+            myState.goldAllocation    = std::min(myState.goldAllocation + 0.05f, 0.90f);
+            myState.scienceAllocation = std::max(myState.scienceAllocation - 0.03f, 0.05f);
+            myState.luxuryAllocation  = 1.0f - myState.goldAllocation - myState.scienceAllocation;
+        } else if (treasury > 2000) {
+            // Wealthy: shift towards science
+            myState.goldAllocation    = std::max(myState.goldAllocation - 0.02f, 0.40f);
+            myState.scienceAllocation = std::min(myState.scienceAllocation + 0.01f, 0.40f);
+            myState.luxuryAllocation  = 1.0f - myState.goldAllocation - myState.scienceAllocation;
+        }
+        myState.luxuryAllocation = std::max(myState.luxuryAllocation, 0.05f);
+    }
+
     // Count distinct trade partners from global trade routes
     int32_t tradePartnerCount = 0;
     {
@@ -1271,34 +1289,43 @@ void AIController::considerPurchases(aoc::game::GameState& gameState) {
     const aoc::sim::ai::AIBlackboard& bb = gsPlayer->blackboard();
 
     // Military purchase: buy when below minimum garrison OR under threat.
-    const bool needsMilitary = gsPlayer->militaryUnitCount() < gsPlayer->cityCount() * 2;
+    const int32_t milCount = gsPlayer->militaryUnitCount();
+    const int32_t cityCount = gsPlayer->cityCount();
+    const bool needsMilitary = milCount < cityCount * 2;
     const bool underThreat = bb.threatLevel > 0.3f;
     if ((needsMilitary || underThreat)
         && treasury >= 200
         && !gsPlayer->cities().empty()) {
         aoc::game::City& capital = *gsPlayer->cities().front();
-        // Find best available military unit.
+        // Find best affordable military unit (prefer strongest that we can afford).
         UnitTypeId bestId{0};
         int32_t bestStrength = 0;
         for (const UnitTypeDef& def : UNIT_TYPE_DEFS) {
             if (!isMilitary(def.unitClass) || isNaval(def.unitClass)) { continue; }
             if (!canBuildUnit(gameState, this->m_player, def.id)) { continue; }
+            const int32_t unitCost = purchaseCost(static_cast<float>(def.productionCost));
+            if (treasury < static_cast<CurrencyAmount>(unitCost)) { continue; }
             const int32_t str = def.combatStrength + def.rangedStrength;
             if (str > bestStrength) {
                 bestStrength = str;
                 bestId = def.id;
             }
         }
-        const int32_t cost = purchaseCost(static_cast<float>(unitTypeDef(bestId).productionCost));
-        if (cost > 0 && treasury >= static_cast<CurrencyAmount>(cost)) {
-            const ErrorCode result = purchaseInCity(gameState, *gsPlayer, capital,
-                                                     ProductionItemType::Unit, bestId.value);
-            if (result == ErrorCode::Ok) { return; }
+        if (bestStrength > 0) {
+            const int32_t cost = purchaseCost(static_cast<float>(unitTypeDef(bestId).productionCost));
+            if (cost > 0 && treasury >= static_cast<CurrencyAmount>(cost)) {
+                const ErrorCode result = purchaseInCity(gameState, *gsPlayer, capital,
+                                                         ProductionItemType::Unit, bestId.value);
+                if (result == ErrorCode::Ok) { return; }
+            }
         }
     }
 
     // Settler purchase: buy when expanding and have surplus gold.
-    if (bb.expansionOpportunity > 0.3f && treasury >= 500 && !gsPlayer->cities().empty()) {
+    // Buy if blackboard says expand, OR if we have few cities and a healthy treasury.
+    const bool wantsExpansion = bb.expansionOpportunity > 0.3f
+                             || (cityCount < 4 && treasury >= 500);
+    if (wantsExpansion && !gsPlayer->cities().empty()) {
         // Check no settler already exists.
         bool hasSettler = false;
         for (const std::unique_ptr<aoc::game::Unit>& unitPtr : gsPlayer->units()) {

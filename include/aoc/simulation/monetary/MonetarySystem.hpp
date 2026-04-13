@@ -217,9 +217,9 @@ struct MonetaryStateComponent {
     // -- Output allocation slider (gold/science/luxury split) --
     // Fraction of city output allocated to each purpose. Should sum to ~1.0.
     // Gold: goes to treasury. Science: boosts research. Luxury: boosts happiness.
-    Percentage     goldAllocation     = 0.50f;  ///< 50% to treasury
-    Percentage     scienceAllocation  = 0.30f;  ///< 30% bonus to science
-    Percentage     luxuryAllocation   = 0.20f;  ///< 20% converted to happiness amenities
+    Percentage     goldAllocation     = 0.70f;  ///< 70% to treasury
+    Percentage     scienceAllocation  = 0.20f;  ///< 20% bonus to science
+    Percentage     luxuryAllocation   = 0.10f;  ///< 10% converted to happiness amenities
 
     // -- Fiscal policy --
     Percentage     taxRate            = 0.15f;
