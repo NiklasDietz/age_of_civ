@@ -46,6 +46,7 @@
 #include "aoc/simulation/empire/CommunicationSpeed.hpp"
 #include "aoc/simulation/event/WorldEvents.hpp"
 #include "aoc/simulation/automation/Automation.hpp"
+#include "aoc/simulation/ai/AIBlackboard.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -298,6 +299,19 @@ public:
     [[nodiscard]] int32_t militaryUnitCount() const;
 
     // ========================================================================
+    // AI Blackboard
+    // ========================================================================
+
+    /**
+     * @brief Mutable access to the AI blackboard for advisor writes and reads.
+     *
+     * Human players own a blackboard too; it is simply never written by advisors.
+     * This keeps the data layout uniform and avoids nullable pointer overhead.
+     */
+    [[nodiscard]] aoc::sim::ai::AIBlackboard& blackboard() { return this->m_blackboard; }
+    [[nodiscard]] const aoc::sim::ai::AIBlackboard& blackboard() const { return this->m_blackboard; }
+
+    // ========================================================================
     // Derived queries
     // ========================================================================
 
@@ -383,6 +397,9 @@ private:
     // Owned entities
     std::vector<std::unique_ptr<City>> m_cities;
     std::vector<std::unique_ptr<Unit>> m_units;
+
+    // AI coordination blackboard (written by advisors, read by all AI subsystems)
+    aoc::sim::ai::AIBlackboard m_blackboard;
 };
 
 } // namespace aoc::game

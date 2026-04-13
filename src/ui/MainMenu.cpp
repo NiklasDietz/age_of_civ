@@ -78,22 +78,24 @@ static void setButtonSelected(UIManager& ui, WidgetId id, bool selected) {
 void MainMenu::build(UIManager& ui, float screenW, float screenH,
                      StartGameCallback onStartGame, QuitCallback onQuit,
                      std::function<void()> onSettings,
-                     std::function<void()> onTutorial) {
+                     std::function<void()> onTutorial,
+                     std::function<void()> onSpectate) {
     assert(!this->m_isBuilt);
 
     this->m_onStartGame = std::move(onStartGame);
     this->m_onQuit      = std::move(onQuit);
     this->m_onSettings  = std::move(onSettings);
     this->m_onTutorial  = std::move(onTutorial);
+    this->m_onSpectate  = std::move(onSpectate);
 
     // Full-screen dark background
     this->m_rootPanel = ui.createPanel(
         {0.0f, 0.0f, screenW, screenH},
         PanelData{BG_DARK, 0.0f});
 
-    // Centered content panel
+    // Centered content panel — extra 42px for the Spectate button row.
     constexpr float PANEL_W = 420.0f;
-    constexpr float PANEL_H = 320.0f;
+    constexpr float PANEL_H = 362.0f;
     const float panelX = (screenW - PANEL_W) * 0.5f;
     const float panelY = (screenH - PANEL_H) * 0.5f;
 
@@ -175,6 +177,25 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
             contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
     }
 
+    // --- Spectate button ---
+    if (this->m_onSpectate) {
+        ButtonData btn;
+        btn.label        = "Spectate AI Game";
+        btn.fontSize     = 14.0f;
+        btn.normalColor  = {0.15f, 0.25f, 0.45f, 0.90f};
+        btn.hoverColor   = {0.20f, 0.35f, 0.60f, 0.90f};
+        btn.pressedColor = {0.10f, 0.18f, 0.32f, 0.90f};
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this]() {
+            if (this->m_onSpectate) {
+                this->m_onSpectate();
+            }
+        };
+        [[maybe_unused]] WidgetId spectateBtn = ui.createButton(
+            contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+    }
+
     // --- Quit button ---
     {
         ButtonData btn;
@@ -213,7 +234,7 @@ void MainMenu::updateLayout(UIManager& ui, float screenW, float screenH) {
     // Re-center the content panel (first child of root)
     if (!root->children.empty()) {
         constexpr float PANEL_W = 420.0f;
-        constexpr float PANEL_H = 320.0f;
+        constexpr float PANEL_H = 362.0f;
         Widget* content = ui.getWidget(root->children[0]);
         if (content != nullptr) {
             content->requestedBounds.x = (screenW - PANEL_W) * 0.5f;
@@ -230,6 +251,9 @@ void MainMenu::destroy(UIManager& ui) {
     this->m_rootPanel   = INVALID_WIDGET;
     this->m_onStartGame = nullptr;
     this->m_onQuit      = nullptr;
+    this->m_onSettings  = nullptr;
+    this->m_onTutorial  = nullptr;
+    this->m_onSpectate  = nullptr;
     this->m_isBuilt     = false;
     LOG_INFO("Main menu destroyed");
 }

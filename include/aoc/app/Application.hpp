@@ -37,6 +37,7 @@
 #include "aoc/core/ErrorCodes.hpp"
 #include "aoc/core/Types.hpp"
 #include "aoc/map/MapGenerator.hpp"
+#include "aoc/ui/SpectatorHUD.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -79,6 +80,25 @@ public:
 
     /// Transition from main menu to gameplay using full setup config.
     void startGame(const aoc::ui::GameSetupConfig& config);
+
+    /**
+     * @brief Start an all-AI spectator session.
+     *
+     * Configures a new game where every player slot is AI-controlled,
+     * reveals all tiles, and enters spectator mode where turns auto-advance.
+     *
+     * @param playerCount  Number of AI civilizations to simulate (2-12).
+     * @param maxTurns     Maximum turns before spectator auto-pauses (100-2000).
+     */
+    void startSpectate(int32_t playerCount, int32_t maxTurns);
+
+    /// Defer spectator start until the first frame of run() so the render
+    /// pipeline and window are fully initialized.
+    void setDeferredSpectate(int32_t playerCount, int32_t maxTurns) {
+        this->m_deferredSpectate = true;
+        this->m_deferredSpectatePlayers = playerCount;
+        this->m_deferredSpectateTurns = maxTurns;
+    }
 
 private:
     void onResize(uint32_t width, uint32_t height);
@@ -250,6 +270,73 @@ private:
 
     /// HUD label shown when the game ends.
     aoc::ui::WidgetId m_victoryLabel = aoc::ui::INVALID_WIDGET;
+
+    // ========================================================================
+    // Spectator mode state
+    // ========================================================================
+
+    /// Deferred spectator start (set before run(), executed on first frame).
+    bool m_deferredSpectate = false;
+    int32_t m_deferredSpectatePlayers = 8;
+    int32_t m_deferredSpectateTurns = 500;
+
+    /// True when the game is running in all-AI spectator mode.
+    bool m_spectatorMode = false;
+
+    /// Turn advance speed: 1.0 = one turn per second, 10.0 = ten turns per second.
+    float m_spectatorSpeed = 1.0f;
+
+    /// Fractional turn accumulator — incremented by deltaTime * speed each frame.
+    float m_spectatorTurnAccumulator = 0.0f;
+
+    /// Whether the simulation advance is paused (user can still pan/zoom camera).
+    bool m_spectatorPaused = false;
+
+    /// Maximum turns before spectator auto-pauses; set by startSpectate().
+    int32_t m_spectatorMaxTurns = 500;
+
+    /// Camera follow target: -1 = free camera, 0-11 = follow that player's capital.
+    int32_t m_spectatorFollowPlayer = -1;
+
+    /// Whether fog of war is shown per followed player (false = reveal all tiles).
+    bool m_spectatorFogEnabled = false;
+
+    /// Renderer for the spectator HUD overlay (status bar + scoreboard).
+    aoc::ui::SpectatorHUD m_spectatorHUD;
+
+    /**
+     * @brief Advance one spectator turn: run processTurn, update fog, check victory.
+     *
+     * Extracted from the frame loop to keep run() readable.
+     */
+    void spectatorAdvanceTurn();
+
+    /**
+     * @brief Update the camera position to track the followed player's capital.
+     *
+     * No-op when m_spectatorFollowPlayer is -1 (free camera).
+     */
+    void spectatorUpdateFollowCamera();
+
+    /**
+     * @brief Reveal all tiles for all players (spectator "omniscient" view).
+     */
+    void spectatorRevealAll();
+
+    /**
+     * @brief Draw the spectator HUD overlay on top of the game view.
+     *
+     * Opens its own Renderer2D begin/end batch and submits to the active
+     * Vulkan command buffer stored internally in the current frame context.
+     * Must be called within an active render pass.
+     *
+     * @param cmdBufferPtr Opaque pointer to the VkCommandBuffer for the frame.
+     *                     Typed as void* to avoid pulling <vulkan/vulkan.h> into
+     *                     the header; Application.cpp casts it back internally.
+     * @param frameWidth   Current framebuffer width.
+     * @param frameHeight  Current framebuffer height.
+     */
+    void spectatorDrawHUD(void* cmdBufferPtr, uint32_t frameWidth, uint32_t frameHeight);
 };
 
 } // namespace aoc::app

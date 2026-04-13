@@ -95,6 +95,7 @@ add_library(aoc_lib STATIC
     src/simulation/ai/BehaviorTree.cpp
     src/simulation/ai/UtilityScoring.cpp
     src/simulation/ai/UtilityAI.cpp
+    src/simulation/ai/AIAdvisors.cpp
     src/simulation/resource/ResourceTypes.cpp
     src/simulation/resource/ProductionChain.cpp
     src/simulation/resource/EconomySimulation.cpp
@@ -180,6 +181,7 @@ add_library(aoc_lib STATIC
     src/ui/Encyclopedia.cpp
     src/ui/GameNotifications.cpp
     src/ui/DebugConsole.cpp
+    src/ui/SpectatorHUD.cpp
 
     # Networking / Server-Client
     src/net/Transport.cpp

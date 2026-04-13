@@ -55,11 +55,17 @@ using StartGameWithConfigCallback = std::function<void(const GameSetupConfig&)>;
 
 class MainMenu {
 public:
-    /// Build the main menu widgets. Callbacks fire when buttons are clicked.
+    /**
+     * @brief Build the main menu widgets.
+     *
+     * All callbacks except onStartGame and onQuit are optional.
+     * onSpectate is invoked when the user clicks "Spectate".
+     */
     void build(UIManager& ui, float screenW, float screenH,
                StartGameCallback onStartGame, QuitCallback onQuit,
-               std::function<void()> onSettings = {},
-               std::function<void()> onTutorial = {});
+               std::function<void()> onSettings  = {},
+               std::function<void()> onTutorial  = {},
+               std::function<void()> onSpectate  = {});
 
     /// Rebuild positions after resize.
     void updateLayout(UIManager& ui, float screenW, float screenH);
@@ -78,6 +84,7 @@ private:
     QuitCallback m_onQuit;
     std::function<void()> m_onSettings;
     std::function<void()> m_onTutorial;
+    std::function<void()> m_onSpectate;
 };
 
 // ============================================================================

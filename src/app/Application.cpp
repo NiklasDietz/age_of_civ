@@ -46,6 +46,7 @@
 #include "aoc/simulation/turn/TurnProcessor.hpp"
 #include "aoc/save/Serializer.hpp"
 #include "aoc/ui/BitmapFont.hpp"
+#include "aoc/ui/SpectatorHUD.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <renderer/GraphicsDevice.hpp>
@@ -337,9 +338,220 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
              static_cast<unsigned>(config.playerCount));
 }
 
+void Application::startSpectate(int32_t playerCount, int32_t maxTurns) {
+    // Clamp parameters to valid ranges.
+    // GameSetupConfig::players array has 8 slots; cap at 8.
+    if (playerCount < 2)  { playerCount = 2;  }
+    if (playerCount > 8)  { playerCount = 8;  }
+    if (maxTurns < 100)   { maxTurns = 100;   }
+    if (maxTurns > 2000)  { maxTurns = 2000;  }
+
+    // Build an all-AI GameSetupConfig and delegate to startGame().
+    aoc::ui::GameSetupConfig config{};
+    config.mapType    = aoc::map::MapType::Continents;
+    config.mapSize    = aoc::map::MapSize::Standard;
+    config.playerCount = static_cast<uint8_t>(playerCount);
+    config.aiDifficulty = aoc::ui::AIDifficulty::Normal;
+    config.sequentialTurnsInWar = false;
+
+    for (int32_t i = 0; i < playerCount; ++i) {
+        config.players[static_cast<std::size_t>(i)].isActive = true;
+        // All slots are AI — no human player in spectator mode.
+        config.players[static_cast<std::size_t>(i)].isHuman  = false;
+        config.players[static_cast<std::size_t>(i)].civId    =
+            static_cast<uint8_t>(i % static_cast<int32_t>(aoc::sim::CIV_COUNT));
+    }
+
+    // startGame() normally treats slot 0 as human and calls spawnStartingEntities().
+    // In spectator mode every slot is AI, so startGame() must set up slot 0 as AI.
+    // We temporarily mark slot 0 as human to let startGame() run through the normal
+    // code path (which always spawns entities for slot 0); then immediately flip the
+    // flag back to AI so no human input is expected.
+    config.players[0].isHuman = true;
+    this->startGame(config);
+    aoc::game::Player* slot0 = this->m_gameState.player(0);
+    if (slot0 != nullptr) {
+        slot0->setHuman(false);
+    }
+
+    // Add an AI controller for player 0 (the slot startGame() treated as human).
+    this->m_aiControllers.emplace(this->m_aiControllers.begin(),
+                                   aoc::PlayerId{0},
+                                   config.aiDifficulty);
+
+    // Reveal all tiles immediately — spectator sees everything.
+    this->spectatorRevealAll();
+
+    // Initialize spectator state.
+    this->m_spectatorMode          = true;
+    this->m_spectatorMaxTurns      = maxTurns;
+    this->m_spectatorPaused        = false;
+    this->m_spectatorSpeed         = 1.0f;
+    this->m_spectatorTurnAccumulator = 0.0f;
+    this->m_spectatorFollowPlayer  = -1;
+    this->m_spectatorFogEnabled    = false;
+
+    // Hide the end-turn button — spectator does not need it.
+    if (this->m_endTurnButton != aoc::ui::INVALID_WIDGET) {
+        this->m_uiManager.setVisible(this->m_endTurnButton, false);
+    }
+
+    // Center camera on the actual pixel-space center of the map.
+    // The map uses offset coordinates (col, row) internally.
+    // Tile (0,0) is at pixel ~(0,0). Tile (width-1, height-1) is at the bottom-right.
+    // Compute pixel position of the last tile to find the map extent.
+    const aoc::hex::OffsetCoord lastOffset{
+        this->m_hexGrid.width() - 1,
+        this->m_hexGrid.height() - 1};
+    const aoc::hex::AxialCoord lastAxial = aoc::hex::offsetToAxial(lastOffset);
+    float maxPx = 0.0f;
+    float maxPy = 0.0f;
+    aoc::hex::axialToPixel(lastAxial, this->m_gameRenderer.mapRenderer().hexSize(),
+                            maxPx, maxPy);
+    // Center is half of the max extent
+    this->m_cameraController.setPosition(maxPx * 0.5f, maxPy * 0.5f);
+    this->m_cameraController.setZoom(0.5f);
+
+    LOG_INFO("Spectator: camera at (%.0f, %.0f) map extent (%.0f, %.0f)",
+             maxPx * 0.5f, maxPy * 0.5f, maxPx, maxPy);
+    LOG_INFO("Spectator mode started: %d AI players, max %d turns", playerCount, maxTurns);
+}
+
+void Application::spectatorRevealAll() {
+    const int32_t tileCount = this->m_hexGrid.tileCount();
+    const int32_t playerCount = this->m_gameState.playerCount();
+    for (int32_t p = 0; p < playerCount; ++p) {
+        for (int32_t t = 0; t < tileCount; ++t) {
+            this->m_fogOfWar.setVisibility(static_cast<aoc::PlayerId>(p), t,
+                                            aoc::map::TileVisibility::Visible);
+        }
+    }
+}
+
+void Application::spectatorAdvanceTurn() {
+    // Build TurnContext for all AI players (no human player).
+    aoc::sim::TurnContext turnCtx{};
+    turnCtx.grid         = &this->m_hexGrid;
+    turnCtx.economy      = &this->m_economy;
+    turnCtx.diplomacy    = &this->m_diplomacy;
+    turnCtx.barbarians   = &this->m_barbarianController;
+    turnCtx.rng          = &this->m_gameRng;
+    turnCtx.gameState    = &this->m_gameState;
+    turnCtx.humanPlayer  = aoc::INVALID_PLAYER;
+    turnCtx.currentTurn  = static_cast<aoc::TurnNumber>(
+        this->m_turnManager.currentTurn() + 1);
+
+    for (aoc::sim::ai::AIController& ai : this->m_aiControllers) {
+        turnCtx.aiControllers.push_back(&ai);
+        turnCtx.allPlayers.push_back(ai.player());
+    }
+
+    // Submit all players so the TurnManager is ready.
+    for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
+        this->m_turnManager.submitEndTurn(ai.player());
+    }
+
+    if (this->m_turnManager.allPlayersReady()) {
+        this->m_turnManager.executeTurn(this->m_gameState);
+
+        aoc::sim::processTurn(turnCtx);
+
+        // Execute AI movement after processTurn (AI decisions ran inside it).
+        for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
+            aoc::sim::executeMovement(this->m_gameState, ai.player(), this->m_hexGrid);
+        }
+
+        this->m_diplomacy.tickModifiers();
+        aoc::sim::processSpyMissions(this->m_gameState, this->m_gameRng);
+
+        for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState.players()) {
+            playerPtr->grievances().tickGrievances();
+        }
+
+        aoc::sim::processWorldCongress(this->m_gameState,
+                                        this->m_turnManager.currentTurn(),
+                                        this->m_gameRng);
+
+        // Update fog of war: reveal all if fog is disabled, else update per-player.
+        if (!this->m_spectatorFogEnabled) {
+            this->spectatorRevealAll();
+        } else {
+            const int32_t playerCount = this->m_gameState.playerCount();
+            for (int32_t p = 0; p < playerCount; ++p) {
+                this->m_fogOfWar.updateVisibility(
+                    this->m_gameState, this->m_hexGrid, static_cast<aoc::PlayerId>(p));
+            }
+        }
+
+        // Check victory conditions.
+        aoc::sim::VictoryResult vr = aoc::sim::checkVictoryConditions(
+            this->m_gameState, this->m_turnManager.currentTurn());
+        if (vr.type != aoc::sim::VictoryType::None) {
+            this->m_spectatorPaused = true;
+            LOG_INFO("Spectator: Player %u wins by type %d at turn %u",
+                     static_cast<unsigned>(vr.winner),
+                     static_cast<int>(vr.type),
+                     static_cast<unsigned>(this->m_turnManager.currentTurn()));
+        }
+
+        this->m_replayRecorder.recordFrame(this->m_gameState,
+                                            this->m_turnManager.currentTurn());
+        this->m_turnManager.beginNewTurn();
+    }
+}
+
+void Application::spectatorUpdateFollowCamera() {
+    if (this->m_spectatorFollowPlayer < 0) {
+        return;
+    }
+    const aoc::game::Player* followed =
+        this->m_gameState.player(static_cast<aoc::PlayerId>(this->m_spectatorFollowPlayer));
+    if (followed == nullptr || followed->cityCount() == 0) {
+        return;
+    }
+    // Pan to the first city (the capital).
+    const aoc::hex::AxialCoord capitalLoc = followed->cities().front()->location();
+    float cx = 0.0f;
+    float cy = 0.0f;
+    hex::axialToPixel(capitalLoc, this->m_gameRenderer.mapRenderer().hexSize(), cx, cy);
+    this->m_cameraController.setPosition(cx, cy);
+}
+
+void Application::spectatorDrawHUD(void* cmdBufferPtr, uint32_t frameWidth, uint32_t frameHeight) {
+    VkCommandBuffer cmdBuffer = static_cast<VkCommandBuffer>(cmdBufferPtr);
+    const float screenW = static_cast<float>(frameWidth);
+    const float screenH = static_cast<float>(frameHeight);
+
+    this->m_renderer2d->begin();
+
+    // Draw spectator status bar and player scoreboard.
+    this->m_spectatorHUD.drawStatusBar(
+        *this->m_renderer2d,
+        static_cast<int32_t>(this->m_turnManager.currentTurn()),
+        this->m_spectatorMaxTurns,
+        this->m_spectatorSpeed,
+        this->m_spectatorPaused,
+        this->m_spectatorFollowPlayer,
+        screenW, screenH);
+
+    this->m_spectatorHUD.drawScoreboard(
+        *this->m_renderer2d,
+        this->m_gameState,
+        screenW, screenH);
+
+    this->m_renderer2d->end(cmdBuffer);
+}
+
 void Application::run() {
     if (!this->m_initialized) {
         return;
+    }
+
+    // Deferred spectator start: trigger after the window and render pipeline
+    // are fully active (first iteration of run loop).
+    if (this->m_deferredSpectate) {
+        this->m_deferredSpectate = false;
+        this->startSpectate(this->m_deferredSpectatePlayers, this->m_deferredSpectateTurns);
     }
 
     using Clock = std::chrono::steady_clock;
@@ -488,6 +700,127 @@ void Application::run() {
             }
         }
 
+        // ================================================================
+        // Spectator mode input and turn advancement
+        // ================================================================
+        if (this->m_spectatorMode && !this->m_debugConsole.isOpen()) {
+            // Space: toggle pause/resume.
+            if (this->m_inputManager.isKeyPressed(GLFW_KEY_SPACE)) {
+                this->m_spectatorPaused = !this->m_spectatorPaused;
+                LOG_INFO("Spectator: %s", this->m_spectatorPaused ? "paused" : "resumed");
+            }
+
+            // Equal/Plus: increase speed through preset steps.
+            if (this->m_inputManager.isKeyPressed(GLFW_KEY_EQUAL)) {
+                constexpr float SPEED_STEPS[] = {1.0f, 2.0f, 5.0f, 10.0f, 50.0f, 100.0f, 1000.0f};
+                constexpr int32_t STEP_COUNT =
+                    static_cast<int32_t>(sizeof(SPEED_STEPS) / sizeof(SPEED_STEPS[0]));
+                for (int32_t s = 0; s < STEP_COUNT - 1; ++s) {
+                    if (this->m_spectatorSpeed < SPEED_STEPS[s + 1] - 0.01f) {
+                        this->m_spectatorSpeed = SPEED_STEPS[s + 1];
+                        LOG_INFO("Spectator speed: %.0fx", static_cast<double>(this->m_spectatorSpeed));
+                        break;
+                    }
+                }
+            }
+
+            // Minus: decrease speed through preset steps.
+            if (this->m_inputManager.isKeyPressed(GLFW_KEY_MINUS)) {
+                constexpr float SPEED_STEPS[] = {1.0f, 2.0f, 5.0f, 10.0f, 50.0f, 100.0f, 1000.0f};
+                constexpr int32_t STEP_COUNT =
+                    static_cast<int32_t>(sizeof(SPEED_STEPS) / sizeof(SPEED_STEPS[0]));
+                for (int32_t s = STEP_COUNT - 1; s > 0; --s) {
+                    if (this->m_spectatorSpeed > SPEED_STEPS[s - 1] + 0.01f) {
+                        this->m_spectatorSpeed = SPEED_STEPS[s - 1];
+                        LOG_INFO("Spectator speed: %.0fx", static_cast<double>(this->m_spectatorSpeed));
+                        break;
+                    }
+                }
+            }
+
+            // Digit keys 1-9: follow player 0-8.
+            for (int32_t dk = GLFW_KEY_1; dk <= GLFW_KEY_9; ++dk) {
+                if (this->m_inputManager.isKeyPressed(dk)) {
+                    const int32_t followIdx = dk - GLFW_KEY_1;
+                    if (followIdx < this->m_gameState.playerCount()) {
+                        this->m_spectatorFollowPlayer = followIdx;
+                        LOG_INFO("Spectator: following player %d", followIdx);
+                        this->spectatorUpdateFollowCamera();
+                    }
+                }
+            }
+
+            // Key 0: follow player 9.
+            if (this->m_inputManager.isKeyPressed(GLFW_KEY_0)) {
+                const int32_t followIdx = 9;
+                if (followIdx < this->m_gameState.playerCount()) {
+                    this->m_spectatorFollowPlayer = followIdx;
+                    LOG_INFO("Spectator: following player 9");
+                    this->spectatorUpdateFollowCamera();
+                }
+            }
+
+            // F: switch to free camera.
+            if (this->m_inputManager.isKeyPressed(GLFW_KEY_F)) {
+                this->m_spectatorFollowPlayer = -1;
+                LOG_INFO("Spectator: free camera");
+            }
+
+            // Tab: cycle to next player.
+            if (this->m_inputManager.isKeyPressed(GLFW_KEY_TAB)) {
+                const int32_t count = this->m_gameState.playerCount();
+                if (count > 0) {
+                    this->m_spectatorFollowPlayer =
+                        (this->m_spectatorFollowPlayer + 2) % count;
+                    LOG_INFO("Spectator: cycling to player %d", this->m_spectatorFollowPlayer);
+                    this->spectatorUpdateFollowCamera();
+                }
+            }
+
+            // G: toggle fog of war between omniscient and per-player-follow view.
+            if (this->m_inputManager.isKeyPressed(GLFW_KEY_G)) {
+                this->m_spectatorFogEnabled = !this->m_spectatorFogEnabled;
+                if (!this->m_spectatorFogEnabled) {
+                    this->spectatorRevealAll();
+                }
+                LOG_INFO("Spectator fog: %s",
+                         this->m_spectatorFogEnabled ? "enabled (follow player)" : "disabled (reveal all)");
+            }
+
+            // Turn advancement: accumulate deltaTime and fire when threshold reached.
+            // At speed 1.0 this fires once per second; at speed 1000.0 it fires
+            // many turns per frame to keep the simulation from stalling.
+            if (!this->m_spectatorPaused) {
+                this->m_spectatorTurnAccumulator += deltaTime * this->m_spectatorSpeed;
+
+                // Cap the number of turns processed per frame to avoid hitching.
+                constexpr int32_t MAX_TURNS_PER_FRAME = 50;
+                int32_t turnsThisFrame = 0;
+                while (this->m_spectatorTurnAccumulator >= 1.0f
+                       && turnsThisFrame < MAX_TURNS_PER_FRAME
+                       && !this->m_spectatorPaused) {
+                    this->m_spectatorTurnAccumulator -= 1.0f;
+                    this->spectatorAdvanceTurn();
+                    ++turnsThisFrame;
+
+                    if (this->m_turnManager.currentTurn()
+                            >= static_cast<aoc::TurnNumber>(this->m_spectatorMaxTurns)) {
+                        this->m_spectatorPaused = true;
+                        LOG_INFO("Spectator: reached maximum turn limit (%d)",
+                                 this->m_spectatorMaxTurns);
+                    }
+                }
+                // Discard any leftover accumulation so we don't catch up with a burst
+                // once unpaused after hitting the limit.
+                if (this->m_spectatorPaused) {
+                    this->m_spectatorTurnAccumulator = 0.0f;
+                }
+            }
+
+            // Update camera follow target each frame so the camera smoothly tracks.
+            this->spectatorUpdateFollowCamera();
+        }
+
         // Camera update is deferred until after UI input to prevent scroll conflicts
         // (see below after UI input handling)
 
@@ -514,8 +847,9 @@ void Application::run() {
         // -- Update notifications --
         this->m_notificationManager.update(deltaTime);
 
-        // -- Cycle to next unit needing orders (Tab key) --
-        if (this->m_inputManager.isActionPressed(InputAction::CycleNextUnit) && !this->anyScreenOpen()) {
+        // -- Cycle to next unit needing orders (Tab key, human mode only) --
+        if (!this->m_spectatorMode
+            && this->m_inputManager.isActionPressed(InputAction::CycleNextUnit) && !this->anyScreenOpen()) {
             aoc::game::Player* cyclePlayer = this->m_gameState.player(0);
             if (cyclePlayer != nullptr) {
                 aoc::game::Unit* nextUnit = nullptr;
@@ -554,7 +888,8 @@ void Application::run() {
         }
 
         // -- Toggle tile yield display (Y key) --
-        if (this->m_inputManager.isKeyPressed(GLFW_KEY_Y) && !this->m_debugConsole.isOpen()) {
+        if (!this->m_spectatorMode
+            && this->m_inputManager.isKeyPressed(GLFW_KEY_Y) && !this->m_debugConsole.isOpen()) {
             this->m_settingsMenu.settings().showTileYields =
                 !this->m_settingsMenu.settings().showTileYields;
             this->m_gameRenderer.showTileYields =
@@ -565,24 +900,29 @@ void Application::run() {
                 2.0f, 0.8f, 0.8f, 0.8f);
         }
 
-        // -- Screen toggle keys --
-        if (this->m_inputManager.isActionPressed(InputAction::OpenTechTree)) {
+        // -- Screen toggle keys (human mode only) --
+        if (!this->m_spectatorMode
+            && this->m_inputManager.isActionPressed(InputAction::OpenTechTree)) {
             this->m_techScreen.setContext(&this->m_gameState, 0);
             this->m_techScreen.toggle(this->m_uiManager);
         }
-        if (this->m_inputManager.isActionPressed(InputAction::OpenEconomy)) {
+        if (!this->m_spectatorMode
+            && this->m_inputManager.isActionPressed(InputAction::OpenEconomy)) {
             this->m_economyScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0, &this->m_economy.market());
             this->m_economyScreen.toggle(this->m_uiManager);
         }
-        if (this->m_inputManager.isActionPressed(InputAction::OpenGovernment)) {
+        if (!this->m_spectatorMode
+            && this->m_inputManager.isActionPressed(InputAction::OpenGovernment)) {
             this->m_governmentScreen.setContext(&this->m_gameState, 0);
             this->m_governmentScreen.toggle(this->m_uiManager);
         }
-        if (this->m_inputManager.isActionPressed(InputAction::OpenReligion)) {
+        if (!this->m_spectatorMode
+            && this->m_inputManager.isActionPressed(InputAction::OpenReligion)) {
             this->m_religionScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0);
             this->m_religionScreen.toggle(this->m_uiManager);
         }
-        if (this->m_inputManager.isActionPressed(InputAction::OpenProductionPicker)) {
+        if (!this->m_spectatorMode
+            && this->m_inputManager.isActionPressed(InputAction::OpenProductionPicker)) {
             // Only open if an own city is selected
             if (this->m_selectedCity != nullptr && this->m_selectedCity->owner() == 0) {
                 this->m_productionScreen.setContext(
@@ -591,8 +931,9 @@ void Application::run() {
             }
         }
 
-        // -- Unit upgrade (U key) --
-        if (this->m_inputManager.isActionPressed(InputAction::UpgradeUnit)) {
+        // -- Unit upgrade (U key, human mode only) --
+        if (!this->m_spectatorMode
+            && this->m_inputManager.isActionPressed(InputAction::UpgradeUnit)) {
             if (this->m_selectedUnit != nullptr) {
                 const std::vector<aoc::sim::UnitUpgradeDef> upgrades =
                     aoc::sim::getAvailableUpgrades(this->m_selectedUnit->typeId());
@@ -609,8 +950,9 @@ void Application::run() {
             }
         }
 
-        // -- Help overlay (F1) --
-        if (this->m_inputManager.isActionPressed(InputAction::ShowHelp)) {
+        // -- Help overlay (F1, human mode only) --
+        if (!this->m_spectatorMode
+            && this->m_inputManager.isActionPressed(InputAction::ShowHelp)) {
             if (this->m_helpOverlay != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.removeWidget(this->m_helpOverlay);
                 this->m_helpOverlay = aoc::ui::INVALID_WIDGET;
@@ -686,8 +1028,9 @@ void Application::run() {
             }
         }
 
-        // -- Quick save/load --
-        if (this->m_inputManager.isActionPressed(InputAction::QuickSave)) {
+        // -- Quick save/load (human mode only) --
+        if (!this->m_spectatorMode
+            && this->m_inputManager.isActionPressed(InputAction::QuickSave)) {
             ErrorCode saveResult = aoc::save::saveGame(
                 "quicksave.aoc", this->m_gameState, this->m_hexGrid,
                 this->m_turnManager, this->m_economy, this->m_diplomacy,
@@ -698,7 +1041,8 @@ void Application::run() {
                           describeError(saveResult).data());
             }
         }
-        if (this->m_inputManager.isActionPressed(InputAction::QuickLoad)) {
+        if (!this->m_spectatorMode
+            && this->m_inputManager.isActionPressed(InputAction::QuickLoad)) {
             ErrorCode loadResult = aoc::save::loadGame(
                 "quicksave.aoc", this->m_gameState, this->m_hexGrid,
                 this->m_turnManager, this->m_economy, this->m_diplomacy,
@@ -762,8 +1106,8 @@ void Application::run() {
             }
         }
 
-        // -- Game input (only if UI didn't consume it and no screen is open) --
-        if (!this->m_uiConsumedInput && !this->anyScreenOpen()) {
+        // -- Game input (only in human mode, only if UI didn't consume it and no screen is open) --
+        if (!this->m_spectatorMode && !this->m_uiConsumedInput && !this->anyScreenOpen()) {
             this->handleSelect();
             this->handleContextAction();
             this->handleUndoAction();
@@ -771,7 +1115,8 @@ void Application::run() {
         // When only the city detail panel is open (right-side, non-blocking),
         // allow map interactions on the MAP area (left of the city panel).
         // Don't check m_uiConsumedInput — the HUD widgets shouldn't block tile clicks.
-        if (this->onlyCityDetailScreenOpen()
+        if (!this->m_spectatorMode
+            && this->onlyCityDetailScreenOpen()
             && this->m_gameState.player(0) != nullptr && this->m_gameState.player(0)->cityAt(this->m_cityDetailScreen.cityLocation()) != nullptr
             && this->m_inputManager.mouseX() < static_cast<double>(fbWidth) - 350.0) {
             // Left-click on a tile: toggle worker assignment
@@ -825,7 +1170,8 @@ void Application::run() {
             // Right-click: tile buying (existing context action logic)
             this->handleContextAction();
         }
-        if (!this->anyScreenOpen() && this->m_inputManager.isActionPressed(InputAction::EndTurn)) {
+        if (!this->m_spectatorMode
+            && !this->anyScreenOpen() && this->m_inputManager.isActionPressed(InputAction::EndTurn)) {
             this->handleEndTurn();
         }
 
@@ -892,6 +1238,15 @@ void Application::run() {
             &this->m_eventLog,
             &this->m_notificationManager,
             &this->m_tutorialManager);
+
+        // Spectator HUD overlay (own begin/end batch, screen-space)
+        if (false && this->m_spectatorMode) { // DEBUG: disabled HUD
+            // Reset camera to screen-space so HUD coords are in pixels.
+            this->m_renderer2d->resetCamera();
+            this->m_renderer2d->setZoom(1.0f);
+            this->spectatorDrawHUD(static_cast<void*>(frame.commandBuffer),
+                                    frame.extent.width, frame.extent.height);
+        }
 
         // Debug console overlay (own begin/end batch, screen-space)
         if (this->m_debugConsole.isOpen()) {
@@ -1066,6 +1421,14 @@ void Application::returnToMainMenu() {
     this->m_gameOver = false;
     this->m_aiControllers.clear();
 
+    // Reset spectator state
+    this->m_spectatorMode            = false;
+    this->m_spectatorPaused          = false;
+    this->m_spectatorSpeed           = 1.0f;
+    this->m_spectatorTurnAccumulator = 0.0f;
+    this->m_spectatorFollowPlayer    = -1;
+    this->m_spectatorFogEnabled      = false;
+
     // Switch to main menu
     this->m_appState = AppState::MainMenu;
     const std::pair<uint32_t, uint32_t> menuFbSize = this->m_window.framebufferSize();
@@ -1126,6 +1489,13 @@ void Application::buildMainMenu(float screenW, float screenH) {
             tutorialConfig.players[1].civId    = 1;
             this->startGame(tutorialConfig);
             this->m_tutorialManager.start();
+        },
+        [this]() {
+            // Spectate: start an all-AI game with default parameters.
+            this->m_mainMenu.destroy(this->m_uiManager);
+            this->m_settingsMenu.destroy(this->m_uiManager);
+            // 8 AI civilizations for a rich mid-size game; 500-turn limit.
+            this->startSpectate(8, 500);
         });
 }
 

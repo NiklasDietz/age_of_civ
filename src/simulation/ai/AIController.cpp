@@ -12,6 +12,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/ai/AIController.hpp"
+#include "aoc/simulation/ai/AIAdvisors.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
@@ -132,6 +133,51 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                                 DiplomacyManager& diplomacy,
                                 const Market& market,
                                 aoc::Random& rng) {
+    // -----------------------------------------------------------------------
+    // Advisor updates: run at varying frequencies to maintain a fresh view of
+    // the game situation.  All results are posted to the player's AIBlackboard
+    // so downstream scoring and posture evaluation can read them cheaply.
+    // -----------------------------------------------------------------------
+    aoc::game::Player* advisorPlayer = gameState.player(this->m_player);
+    if (advisorPlayer != nullptr) {
+        aoc::sim::ai::AIBlackboard& bb = advisorPlayer->blackboard();
+        const int32_t currentTurn = gameState.currentTurn();
+        const StrategicPosture prevPosture = bb.posture;
+
+        // Military advisor runs every turn: threat changes fast.
+        aoc::sim::ai::updateMilitaryAssessment(gameState, *advisorPlayer);
+
+        if (currentTurn - bb.lastEconomyUpdate >= 5) {
+            aoc::sim::ai::updateEconomyAssessment(*advisorPlayer);
+            bb.lastEconomyUpdate = currentTurn;
+        }
+        if (currentTurn - bb.lastExpansionUpdate >= 10) {
+            aoc::sim::ai::updateExpansionAssessment(gameState, *advisorPlayer, grid);
+            bb.lastExpansionUpdate = currentTurn;
+        }
+        if (currentTurn - bb.lastResearchUpdate >= 10) {
+            aoc::sim::ai::updateResearchAssessment(gameState, *advisorPlayer);
+            bb.lastResearchUpdate = currentTurn;
+        }
+        if (currentTurn - bb.lastDiplomacyUpdate >= 20) {
+            aoc::sim::ai::updateDiplomacyAssessment(gameState, *advisorPlayer, diplomacy);
+            bb.lastDiplomacyUpdate = currentTurn;
+        }
+
+        aoc::sim::ai::evaluateStrategicPosture(*advisorPlayer);
+
+        if (bb.posture != prevPosture) {
+            static constexpr const char* POSTURE_NAMES[] = {
+                "Expansion", "Development", "MilitaryBuildup",
+                "Aggression", "Defense", "Economic"
+            };
+            const char* postureName =
+                POSTURE_NAMES[static_cast<std::size_t>(bb.posture)];
+            LOG_INFO("AI %u Strategic posture changed to: %s",
+                     static_cast<unsigned>(this->m_player), postureName);
+        }
+    }
+
     this->manageGovernment(gameState);
     this->m_researchPlanner.selectResearch(gameState);
     this->executeCityActions(gameState, grid);
@@ -214,7 +260,8 @@ static float scoreSettler(const LeaderBehavior& behavior,
                            int32_t cityPop,
                            int32_t settlerCount,
                            int32_t militaryUnits,
-                           float   treasury) {
+                           float   treasury,
+                           float   expansionOpportunity) {
     // expansion_need: desire falls from 1.0 (no cities) to 0.0 (at target)
     const aoc::sim::ai::UtilityConsideration expansionNeed{
         0.0f, static_cast<float>(targetCities),
@@ -251,6 +298,10 @@ static float scoreSettler(const LeaderBehavior& behavior,
 
     constexpr float BASE_WEIGHT = 0.95f;
 
+    // expansionOpportunity [0,1] from the expansion advisor amplifies the score
+    // when the blackboard confirms good founding sites exist.
+    const float opportunityBoost = 1.0f + expansionOpportunity;
+
     return BASE_WEIGHT
            * behavior.prodSettlers
            * expansionNeed.score(static_cast<float>(ownedCities))
@@ -258,7 +309,8 @@ static float scoreSettler(const LeaderBehavior& behavior,
            * noSettlerScore
            * safetyScore
            * treasuryScore
-           * expansionBoost;
+           * expansionBoost
+           * opportunityBoost;
 }
 
 // -------------------------------------------------------------------------
@@ -269,7 +321,8 @@ static float scoreMilitary(const LeaderBehavior& behavior,
                             int32_t militaryUnits,
                             int32_t ownedCities,
                             bool    enemyNearby,
-                            float   treasury) {
+                            float   treasury,
+                            float   threatLevel) {
     const int32_t desiredPerCity = 3;
     const int32_t desiredTotal   = ownedCities * desiredPerCity;
 
@@ -291,6 +344,11 @@ static float scoreMilitary(const LeaderBehavior& behavior,
     // zero_military_emergency: double score when completely defenseless
     const float emergencyMultiplier = (militaryUnits == 0) ? 2.0f : 1.0f;
 
+    // threatLevel [0,1] from the military advisor amplifies the score when the
+    // blackboard confirms nearby enemy forces; combines with the local enemyNearby
+    // flag for a layered threat response.
+    const float threatLevelBoost = 1.0f + threatLevel;
+
     constexpr float BASE_WEIGHT = 0.8f;
 
     return BASE_WEIGHT
@@ -299,7 +357,8 @@ static float scoreMilitary(const LeaderBehavior& behavior,
            * militaryNeed.score(static_cast<float>(militaryUnits))
            * threatScore
            * canAfford.score(treasury)
-           * emergencyMultiplier;
+           * emergencyMultiplier
+           * threatLevelBoost;
 }
 
 // -------------------------------------------------------------------------
@@ -354,7 +413,8 @@ static float scoreTrader(const LeaderBehavior& behavior,
 
 static float scoreBuildingCandidate(const LeaderBehavior& behavior,
                                      BuildingId buildingId,
-                                     const aoc::sim::AIContext& aiCtx) {
+                                     const aoc::sim::AIContext& aiCtx,
+                                     float techGap) {
     // Delegate to the specialized building scorer in UtilityScoring, then
     // apply the building production weight and scale to a [0,1]-ish range.
     const float rawScore = scoreBuildingForLeader(behavior, buildingId, aiCtx);
@@ -364,9 +424,18 @@ static float scoreBuildingCandidate(const LeaderBehavior& behavior,
     constexpr float BUILDING_SCORE_MAX = 200.0f;
     constexpr float BASE_WEIGHT        = 0.5f;
 
-    return BASE_WEIGHT
-           * behavior.prodBuildings
-           * aoc::sim::ai::normalizeValue(rawScore, 0.0f, BUILDING_SCORE_MAX);
+    float score = BASE_WEIGHT
+                  * behavior.prodBuildings
+                  * aoc::sim::ai::normalizeValue(rawScore, 0.0f, BUILDING_SCORE_MAX);
+
+    // Science buildings (Library=7, University=19, Research Lab=12): boost when
+    // the research advisor signals this player is falling behind the tech average.
+    const uint16_t bid = buildingId.value;
+    if (bid == 7u || bid == 19u || bid == 12u) {
+        score *= (1.0f + techGap);
+    }
+
+    return score;
 }
 
 // -------------------------------------------------------------------------
@@ -379,6 +448,14 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
     if (gsPlayer == nullptr) {
         return;
     }
+
+    // Snapshot blackboard values used throughout this function so the compiler
+    // can keep them in registers and we avoid repeated pointer indirections.
+    const aoc::sim::ai::AIBlackboard& bb    = gsPlayer->blackboard();
+    const StrategicPosture currentPosture   = bb.posture;
+    const float bbExpansionOpportunity      = bb.expansionOpportunity;
+    const float bbThreatLevel               = bb.threatLevel;
+    const float bbTechGap                   = bb.techGap;
 
     const UnitCounts unitCounts = countPlayerUnits(gameState, this->m_player);
     const int32_t ownedCityCount = gsPlayer->cityCount();
@@ -456,7 +533,8 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 city.population(),
                 unitCounts.settlers,
                 unitCounts.military,
-                treasuryFloat
+                treasuryFloat,
+                bbExpansionOpportunity
             );
             if (settlerScore > 0.0f) {
                 ProductionCandidate candidate{};
@@ -466,7 +544,9 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 candidate.item.totalCost = static_cast<float>(
                     unitTypeDef(UnitTypeId{3}).productionCost);
                 candidate.item.progress  = 0.0f;
-                candidate.score          = settlerScore;
+                candidate.score          = settlerScore
+                    * postureMultiplier(currentPosture,
+                                        false, true, false, false, false, false);
                 candidates.push_back(std::move(candidate));
             }
         }
@@ -478,7 +558,8 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 unitCounts.military,
                 ownedCityCount,
                 enemyNearby,
-                treasuryFloat
+                treasuryFloat,
+                bbThreatLevel
             );
             if (militaryScore > 0.0f) {
                 ProductionCandidate candidate{};
@@ -487,7 +568,9 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 candidate.item.name      = std::string(bestMilitaryDef.name);
                 candidate.item.totalCost = static_cast<float>(bestMilitaryDef.productionCost);
                 candidate.item.progress  = 0.0f;
-                candidate.score          = militaryScore;
+                candidate.score          = militaryScore
+                    * postureMultiplier(currentPosture,
+                                        true, false, false, false, false, false);
                 candidates.push_back(std::move(candidate));
             }
         }
@@ -508,7 +591,9 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 candidate.item.totalCost = static_cast<float>(
                     unitTypeDef(UnitTypeId{5}).productionCost);
                 candidate.item.progress  = 0.0f;
-                candidate.score          = builderScore;
+                candidate.score          = builderScore
+                    * postureMultiplier(currentPosture,
+                                        false, false, true, false, false, false);
                 candidates.push_back(std::move(candidate));
             }
         }
@@ -529,7 +614,9 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 candidate.item.totalCost = static_cast<float>(
                     unitTypeDef(UnitTypeId{30}).productionCost);
                 candidate.item.progress  = 0.0f;
-                candidate.score          = traderScore;
+                candidate.score          = traderScore
+                    * postureMultiplier(currentPosture,
+                                        false, false, false, false, false, true);
                 candidates.push_back(std::move(candidate));
             }
         }
@@ -559,15 +646,27 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                     continue;
                 }
                 const float buildingScore =
-                    scoreBuildingCandidate(personality.behavior, bdef.id, aiCtx);
+                    scoreBuildingCandidate(personality.behavior, bdef.id, aiCtx, bbTechGap);
                 if (buildingScore > 0.0f) {
+                    // Classify for posture multiplier: science=Library/University/ResearchLab,
+                    // gold=Market/Bank/StockExchange/Mint.
+                    const uint16_t bid = bdef.id.value;
+                    const bool isScienceBuilding =
+                        (bid == 7u || bid == 19u || bid == 12u);
+                    const bool isGoldBuilding =
+                        (bid == 6u || bid == 20u || bid == 21u || bid == 24u);
+                    const float postureMult = postureMultiplier(
+                        currentPosture,
+                        false, false, false,
+                        isScienceBuilding, isGoldBuilding, false);
+
                     ProductionCandidate candidate{};
                     candidate.item.type      = ProductionItemType::Building;
                     candidate.item.itemId    = bdef.id.value;
                     candidate.item.name      = std::string(bdef.name);
                     candidate.item.totalCost = static_cast<float>(bdef.productionCost);
                     candidate.item.progress  = 0.0f;
-                    candidate.score          = buildingScore;
+                    candidate.score          = buildingScore * postureMult;
                     candidates.push_back(std::move(candidate));
                 }
             }

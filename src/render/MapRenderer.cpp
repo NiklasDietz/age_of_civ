@@ -1,4 +1,5 @@
 /**
+#include "aoc/core/Log.hpp"
  * @file MapRenderer.cpp
  * @brief Hex map rendering with terrain colors, features, and rivers.
  */
@@ -68,11 +69,22 @@ void MapRenderer::draw(vulkan_app::renderer::Renderer2D& renderer2d,
     const float xSpacing = SQRT3 * this->m_hexSize;
     const float ySpacing = 1.5f  * this->m_hexSize;
 
-    const int32_t minCol = std::max(0,          static_cast<int32_t>(topLeftX  / xSpacing) - 1);
-    const int32_t maxCol = std::min(width  - 1, static_cast<int32_t>(botRightX / xSpacing) + 1);
-    const int32_t minRow = std::max(0,          static_cast<int32_t>(topLeftY  / ySpacing) - 1);
-    const int32_t maxRow = std::min(height - 1, static_cast<int32_t>(botRightY / ySpacing) + 1);
+    const int32_t minCol = std::max(0,          static_cast<int32_t>(std::max(0.0f, topLeftX)  / xSpacing) - 1);
+    const int32_t maxCol = std::min(width  - 1, static_cast<int32_t>(std::max(0.0f, botRightX) / xSpacing) + 1);
+    const int32_t minRow = std::max(0,          static_cast<int32_t>(std::max(0.0f, topLeftY)  / ySpacing) - 1);
+    const int32_t maxRow = std::min(height - 1, static_cast<int32_t>(std::max(0.0f, botRightY) / ySpacing) + 1);
 
+    // Debug: log frustum once per second
+    static int32_t dbgCnt = 0;
+    if (++dbgCnt % 60 == 1) {
+        int32_t unseenN = 0, visN = 0;
+        for (int32_t dr = minRow; dr <= maxRow; ++dr)
+            for (int32_t dc = minCol; dc <= maxCol; ++dc) {
+                if (fog.visibility(viewingPlayer, dr * width + dc) == aoc::map::TileVisibility::Unseen) ++unseenN; else ++visN;
+            }
+        fprintf(stderr, "MapDraw: TL=(%.0f,%.0f) BR=(%.0f,%.0f) rows=%d..%d cols=%d..%d vis=%d unseen=%d player=%u",
+                 topLeftX, topLeftY, botRightX, botRightY, minRow, maxRow, minCol, maxCol, visN, unseenN, static_cast<unsigned>(viewingPlayer)); fflush(stderr);
+    }
     for (int32_t row = minRow; row <= maxRow; ++row) {
         for (int32_t col = minCol; col <= maxCol; ++col) {
             const int32_t index = row * width + col;
@@ -378,10 +390,10 @@ void MapRenderer::drawTerritoryBorders(vulkan_app::renderer::Renderer2D& rendere
     const float xSpacing = SQRT3_B * this->m_hexSize;
     const float ySpacing = 1.5f   * this->m_hexSize;
 
-    const int32_t minCol = std::max(0,          static_cast<int32_t>(topLeftX  / xSpacing) - 1);
-    const int32_t maxCol = std::min(width  - 1, static_cast<int32_t>(botRightX / xSpacing) + 1);
-    const int32_t minRow = std::max(0,          static_cast<int32_t>(topLeftY  / ySpacing) - 1);
-    const int32_t maxRow = std::min(height - 1, static_cast<int32_t>(botRightY / ySpacing) + 1);
+    const int32_t minCol = std::max(0,          static_cast<int32_t>(std::max(0.0f, topLeftX)  / xSpacing) - 1);
+    const int32_t maxCol = std::min(width  - 1, static_cast<int32_t>(std::max(0.0f, botRightX) / xSpacing) + 1);
+    const int32_t minRow = std::max(0,          static_cast<int32_t>(std::max(0.0f, topLeftY)  / ySpacing) - 1);
+    const int32_t maxRow = std::min(height - 1, static_cast<int32_t>(std::max(0.0f, botRightY) / ySpacing) + 1);
 
     for (int32_t row = minRow; row <= maxRow; ++row) {
         for (int32_t col = minCol; col <= maxCol; ++col) {
@@ -492,10 +504,10 @@ void MapRenderer::drawToBuffer(DrawCommandBuffer& buffer,
     const float xSpacing = SQRT3 * this->m_hexSize;
     const float ySpacing = 1.5f  * this->m_hexSize;
 
-    const int32_t minCol = std::max(0,          static_cast<int32_t>(topLeftX  / xSpacing) - 1);
-    const int32_t maxCol = std::min(width  - 1, static_cast<int32_t>(botRightX / xSpacing) + 1);
-    const int32_t minRow = std::max(0,          static_cast<int32_t>(topLeftY  / ySpacing) - 1);
-    const int32_t maxRow = std::min(height - 1, static_cast<int32_t>(botRightY / ySpacing) + 1);
+    const int32_t minCol = std::max(0,          static_cast<int32_t>(std::max(0.0f, topLeftX)  / xSpacing) - 1);
+    const int32_t maxCol = std::min(width  - 1, static_cast<int32_t>(std::max(0.0f, botRightX) / xSpacing) + 1);
+    const int32_t minRow = std::max(0,          static_cast<int32_t>(std::max(0.0f, topLeftY)  / ySpacing) - 1);
+    const int32_t maxRow = std::min(height - 1, static_cast<int32_t>(std::max(0.0f, botRightY) / ySpacing) + 1);
 
     for (int32_t row = minRow; row <= maxRow; ++row) {
         for (int32_t col = minCol; col <= maxCol; ++col) {
