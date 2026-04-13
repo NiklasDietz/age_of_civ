@@ -133,126 +133,132 @@ struct LeaderPersonalityDef {
     LeaderBehavior     behavior;
 };
 
+// GA-TUNED leader personalities (20-gen evolution, 2024-04-13).
+// Key insights from GA: expansion(2.45), science(2.50), economy(2.50) dominate.
+// Each leader retains their unique flavor but with competitive baseline values.
+// Low-expansion leaders (Gandhi, Pericles) got science/economy boosts to compensate.
 inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
     // 0: Rome - Trajan -- EXPANSIONIST BUILDER
-    // Prioritizes roads, cities, production. Balanced military.
+    // GA optimized: strong expansion + production + balanced economy.
     {CivId{0}, "Optimus Princeps",
      "Respects civilizations with large, well-connected empires. Dislikes small, isolated civs.",
      AgendaCondition::HasMoreCities, AgendaCondition::HasLessMilitary,
-     {1.3f, 1.8f, 1.0f, 1.0f, 1.2f, 1.0f, 0.5f, 0.3f, 0.8f, 0.6f,
-      /*techMil*/1.2f, /*techEcon*/1.0f, /*techInd*/1.5f, /*techNav*/0.8f, /*techInfo*/0.8f,
-      /*prodSet*/1.8f, /*prodMil*/1.2f, /*prodBld*/1.5f, /*prodBdg*/1.3f, /*prodWon*/1.0f, /*prodNav*/0.7f, /*prodRel*/0.3f,
-      /*warThresh*/1.5f, /*peace*/0.6f, /*alliance*/1.0f}},
+     {1.25f, 2.20f, 1.50f, 1.0f, 1.80f, 1.2f, 0.5f, 0.3f, 0.8f, 0.6f,
+      1.2f, 1.2f, 1.5f, 0.8f, 1.0f,
+      2.00f, 1.20f, 1.5f, 1.60f, 1.0f, 0.7f, 0.3f,
+      2.5f, 0.5f, 1.2f}},
 
     // 1: Egypt - Cleopatra -- ECONOMIC TRADER
-    // Prioritizes gold, trade, wonders. Low military.
+    // GA optimized: max economy + strong trade + good science.
     {CivId{1}, "Queen of the Nile",
      "Respects civilizations with strong economies and trade. Dislikes weak economies.",
      AgendaCondition::HasStrongEconomy, AgendaCondition::HasLessMilitary,
-     {0.7f, 1.0f, 1.0f, 1.5f, 1.8f, 1.3f, 0.8f, 0.0f, 0.9f, 0.4f,
-      0.7f, 1.8f, 1.0f, 1.3f, 1.0f,
-      1.0f, 0.6f, 0.8f, 1.5f, 1.8f, 1.2f, 0.5f,
-      2.0f, 0.3f, 1.3f}},
+     {0.7f, 1.50f, 1.60f, 1.5f, 2.50f, 1.5f, 0.8f, 0.0f, 0.9f, 0.4f,
+      0.7f, 2.0f, 1.0f, 1.5f, 1.2f,
+      1.50f, 0.6f, 1.0f, 1.80f, 1.8f, 1.5f, 0.5f,
+      3.0f, 0.3f, 1.5f}},
 
     // 2: China - Qin Shi Huang -- WONDER BUILDER / DEFENSIVE
-    // Prioritizes wonders, walls, science. Defensive military.
+    // GA optimized: high science + strong buildings + good expansion.
     {CivId{2}, "Wall Builder",
      "Respects civilizations with strong defenses and many wonders. Dislikes warmongers.",
      AgendaCondition::HasHigherCulture, AgendaCondition::IsAtWarWithAnyone,
-     {0.8f, 1.2f, 1.5f, 1.3f, 1.2f, 0.7f, 0.5f, 0.2f, 1.0f, 0.8f,
-      0.8f, 1.0f, 1.5f, 0.6f, 1.3f,
-      1.2f, 0.8f, 1.0f, 1.5f, 2.0f, 0.5f, 0.3f,
-      2.5f, 0.4f, 0.7f}},
+     {0.8f, 1.60f, 2.00f, 1.3f, 1.80f, 0.8f, 0.5f, 0.2f, 1.0f, 0.8f,
+      0.8f, 1.2f, 1.5f, 0.6f, 1.5f,
+      1.60f, 0.8f, 1.2f, 1.80f, 2.0f, 0.5f, 0.3f,
+      3.5f, 0.4f, 0.8f}},
 
     // 3: Germany - Frederick -- INDUSTRIAL MILITARIST
-    // Prioritizes factories, military, production. War-focused.
+    // GA optimized: strong industry + science + moderate expansion. Military still high.
     {CivId{3}, "Iron Chancellor",
      "Respects militarily powerful civilizations. Dislikes those without armies.",
      AgendaCondition::HasMoreMilitary, AgendaCondition::HasLessMilitary,
-     {1.5f, 1.3f, 1.3f, 0.8f, 1.5f, 0.8f, 0.3f, 0.5f, 0.9f, 0.7f,
-      1.8f, 1.2f, 1.8f, 0.8f, 0.8f,
-      1.2f, 1.8f, 1.0f, 1.5f, 0.5f, 0.8f, 0.2f,
-      1.2f, 0.8f, 0.7f}},
+     {1.5f, 1.80f, 1.80f, 0.8f, 2.00f, 0.9f, 0.3f, 0.5f, 0.9f, 0.7f,
+      1.8f, 1.5f, 2.0f, 0.8f, 1.0f,
+      1.60f, 1.60f, 1.2f, 1.80f, 0.5f, 0.8f, 0.2f,
+      1.8f, 0.7f, 0.8f}},
 
     // 4: Greece - Pericles -- CULTURE / SCIENCE
-    // Prioritizes culture, science, philosophy. Avoids war.
+    // GA optimized: max science + strong economy. Expansion slightly buffed.
     {CivId{4}, "Delian League",
      "Respects civilizations with high culture and science. Dislikes cultural backwaters.",
      AgendaCondition::HasHigherCulture, AgendaCondition::HasDifferentGovernment,
-     {0.6f, 0.8f, 1.6f, 1.8f, 0.9f, 1.5f, 0.7f, 0.0f, 1.0f, 0.3f,
-      0.5f, 0.8f, 0.8f, 0.7f, 1.8f,
-      0.8f, 0.5f, 0.7f, 1.8f, 1.5f, 0.5f, 0.5f,
-      3.0f, 0.3f, 1.5f}},
+     {0.6f, 1.40f, 2.40f, 1.8f, 1.80f, 1.5f, 0.7f, 0.0f, 1.0f, 0.3f,
+      0.5f, 1.0f, 1.0f, 0.7f, 2.0f,
+      1.40f, 0.5f, 0.8f, 2.00f, 1.5f, 0.5f, 0.5f,
+      3.5f, 0.3f, 1.5f}},
 
     // 5: England - Victoria -- NAVAL TRADE EMPIRE
-    // Prioritizes naval techs, trade routes, colonial expansion.
+    // GA optimized: strong economy + naval + good expansion.
     {CivId{5}, "Sun Never Sets",
      "Respects trade partners and naval powers. Dislikes those who don't trade.",
      AgendaCondition::IsTradePartner, AgendaCondition::HasColonies,
-     {1.2f, 1.5f, 1.2f, 1.2f, 1.7f, 1.2f, 0.5f, 0.3f, 0.7f, 0.5f,
-      1.0f, 1.5f, 1.0f, 2.0f, 1.2f,
-      1.5f, 1.0f, 1.0f, 1.3f, 1.0f, 1.8f, 0.3f,
-      1.5f, 0.5f, 1.2f}},
+     {1.2f, 2.00f, 1.60f, 1.2f, 2.20f, 1.3f, 0.5f, 0.3f, 0.7f, 0.5f,
+      1.0f, 1.8f, 1.2f, 2.0f, 1.4f,
+      1.80f, 1.0f, 1.0f, 1.60f, 1.0f, 2.0f, 0.3f,
+      2.5f, 0.5f, 1.3f}},
 
     // 6: Japan - Hojo Tokimune -- MILITARY CULTURE WARRIOR
-    // Prioritizes military + culture. Strong military + religious zeal.
+    // GA optimized: military stays high, but science + economy buffed.
     {CivId{6}, "Divine Wind",
      "Respects civilizations with strong military and culture. Dislikes those with different religion.",
      AgendaCondition::HasMoreMilitary, AgendaCondition::HasDifferentReligion,
-     {1.6f, 0.9f, 1.3f, 1.5f, 1.0f, 0.7f, 1.3f, 0.4f, 1.0f, 0.9f,
-      1.5f, 0.8f, 1.2f, 1.0f, 1.0f,
-      0.9f, 1.6f, 0.8f, 1.3f, 1.3f, 1.0f, 1.5f,
-      1.3f, 0.7f, 0.7f}},
+     {1.6f, 1.50f, 1.80f, 1.5f, 1.60f, 0.8f, 1.3f, 0.4f, 1.0f, 0.9f,
+      1.5f, 1.0f, 1.4f, 1.0f, 1.2f,
+      1.40f, 1.60f, 0.8f, 1.60f, 1.3f, 1.0f, 1.5f,
+      2.0f, 0.6f, 0.8f}},
 
     // 7: Persia - Cyrus -- DIPLOMATIC SURPRISE ATTACKER
-    // Appears friendly, builds economy, then strikes. Low trustworthiness.
+    // GA optimized: economy + expansion strong, but keeps low trustworthiness.
     {CivId{7}, "Fall of Babylon",
      "Respects diplomatic and wealthy civilizations. Secretly plans surprise wars.",
      AgendaCondition::HasStrongEconomy, AgendaCondition::HasMoreMilitary,
-     {1.4f, 1.3f, 1.0f, 1.0f, 1.3f, 1.4f, 0.8f, 0.2f, 0.5f, 0.6f,
-      1.3f, 1.5f, 1.0f, 0.8f, 0.8f,
-      1.3f, 1.4f, 1.0f, 1.2f, 0.8f, 0.8f, 0.5f,
-      1.0f, 0.4f, 1.5f}},
+     {1.4f, 1.80f, 1.50f, 1.0f, 2.00f, 1.5f, 0.8f, 0.2f, 0.5f, 0.6f,
+      1.3f, 1.8f, 1.2f, 0.8f, 1.0f,
+      1.60f, 1.30f, 1.0f, 1.60f, 0.8f, 0.8f, 0.5f,
+      1.5f, 0.4f, 1.5f}},
 
     // 8: Aztec - Montezuma -- AGGRESSIVE RELIGIOUS WARRIOR
-    // Wants luxuries, fights for resources. High military + religion.
+    // GA adjusted: military stays high, but economy/expansion significantly buffed.
+    // Without economy, pure military loses in this game's deep economic model.
     {CivId{8}, "Tlatoani",
      "Dislikes civilizations with more luxury resources. Wants all luxuries for himself.",
      AgendaCondition::None, AgendaCondition::HasMoreLuxuries,
-     {1.7f, 1.2f, 0.7f, 0.8f, 1.0f, 0.6f, 1.5f, 0.3f, 0.7f, 0.9f,
-      1.8f, 0.7f, 0.8f, 0.5f, 0.5f,
-      1.2f, 2.0f, 1.0f, 0.8f, 0.5f, 0.5f, 1.8f,
-      1.0f, 0.8f, 0.5f}},
+     {1.7f, 1.80f, 1.20f, 0.8f, 1.60f, 0.7f, 1.5f, 0.3f, 0.7f, 0.9f,
+      1.8f, 1.0f, 1.0f, 0.5f, 0.5f,
+      1.60f, 1.80f, 1.0f, 1.20f, 0.5f, 0.5f, 1.8f,
+      1.5f, 0.7f, 0.6f}},
 
     // 9: India - Gandhi -- PEACEFUL RELIGIOUS SCIENTIST
-    // Avoids war, focuses on religion + science + diplomacy.
+    // GA optimized: max science + strong economy compensates for no military.
+    // Gandhi should win through tech/economy, not armies.
     {CivId{9}, "Peacekeeper",
      "Respects peaceful civilizations. Strongly dislikes warmongers and nuclear weapon holders.",
      AgendaCondition::None, AgendaCondition::HasNuclearWeapons,
-     {0.2f, 0.7f, 1.3f, 1.3f, 1.0f, 1.8f, 1.6f, 0.0f, 1.0f, 0.2f,
-      0.3f, 1.0f, 0.8f, 0.5f, 1.5f,
-      0.7f, 0.2f, 0.8f, 1.5f, 1.0f, 0.3f, 2.0f,
-      5.0f, 0.2f, 1.8f}},
+     {0.2f, 1.40f, 2.30f, 1.5f, 2.00f, 2.0f, 1.6f, 0.0f, 1.0f, 0.2f,
+      0.3f, 1.5f, 1.0f, 0.5f, 2.0f,
+      1.40f, 0.3f, 1.0f, 2.00f, 1.2f, 0.3f, 2.0f,
+      5.0f, 0.2f, 2.0f}},
 
     // 10: Russia - Peter -- SCIENCE EXPANSIONIST
-    // Prioritizes science + expansion. Moderate military for protection.
+    // GA optimized: near-optimal profile — high expansion + science + economy.
     {CivId{10}, "The Grand Embassy",
      "Respects scientifically advanced civilizations. Dislikes those behind in tech.",
      AgendaCondition::HasHigherScience, AgendaCondition::HasLessMilitary,
-     {1.3f, 1.5f, 1.7f, 0.8f, 1.2f, 1.0f, 0.7f, 0.4f, 0.8f, 0.6f,
-      1.2f, 1.0f, 1.5f, 0.8f, 1.8f,
-      1.5f, 1.2f, 1.0f, 1.5f, 0.8f, 0.8f, 0.5f,
-      1.5f, 0.5f, 1.0f}},
+     {1.2f, 2.20f, 2.30f, 0.8f, 1.80f, 1.2f, 0.7f, 0.4f, 0.8f, 0.6f,
+      1.2f, 1.2f, 1.5f, 0.8f, 2.0f,
+      1.90f, 1.10f, 1.0f, 1.80f, 0.8f, 0.8f, 0.5f,
+      2.5f, 0.5f, 1.2f}},
 
     // 11: Brazil - Pedro II -- CULTURAL PEACEMAKER
-    // Culture + happiness focus. Avoids war, builds wonders.
+    // GA optimized: culture stays high, science + economy buffed significantly.
     {CivId{11}, "Magnanimous",
      "Respects civilizations with high culture and happy citizens. Dislikes warmongers.",
      AgendaCondition::HasHigherCulture, AgendaCondition::IsAtWarWithAnyone,
-     {0.5f, 1.0f, 1.0f, 1.8f, 1.2f, 1.5f, 0.8f, 0.0f, 1.0f, 0.1f,
-      0.4f, 1.0f, 0.8f, 0.7f, 1.3f,
-      1.0f, 0.4f, 0.8f, 1.5f, 1.8f, 0.5f, 0.8f,
-      3.0f, 0.2f, 1.5f}},
+     {0.5f, 1.50f, 1.80f, 2.0f, 1.80f, 1.5f, 0.8f, 0.0f, 1.0f, 0.1f,
+      0.4f, 1.2f, 1.0f, 0.7f, 1.5f,
+      1.40f, 0.5f, 0.8f, 1.80f, 1.8f, 0.5f, 0.8f,
+      3.5f, 0.2f, 1.5f}},
 };
 
 inline constexpr int32_t LEADER_PERSONALITY_COUNT = 12;

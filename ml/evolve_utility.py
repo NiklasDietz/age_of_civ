@@ -220,13 +220,27 @@ def _run_single_game(args_tuple) -> dict:
     if not rows:
         return {}
 
-    max_turn = max(int(r["Turn"]) for r in rows)
-    final_scores = {}
-    for row in rows:
-        if int(row["Turn"]) == max_turn:
-            player_id = int(row["Player"])
-            final_scores[player_id] = float(row.get("EraVP", 0))
-    return final_scores
+    try:
+        # Filter out malformed rows
+        valid_rows = [r for r in rows
+                      if r.get("Turn") is not None and r.get("Player") is not None
+                      and r["Turn"] != "" and r["Player"] != ""]
+        if not valid_rows:
+            return {}
+
+        max_turn = max(int(r["Turn"]) for r in valid_rows)
+        final_scores = {}
+        for row in valid_rows:
+            if int(row["Turn"]) == max_turn:
+                player_id = int(row["Player"])
+                era_vp = row.get("EraVP")
+                if era_vp is not None and era_vp != "":
+                    final_scores[player_id] = float(era_vp)
+                else:
+                    final_scores[player_id] = 0.0
+        return final_scores
+    except (ValueError, KeyError):
+        return {}
 
 
 def evaluate_fitness(individual: Individual, num_games: int = 3,
