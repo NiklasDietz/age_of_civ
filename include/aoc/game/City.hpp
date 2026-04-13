@@ -23,6 +23,7 @@
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Governor.hpp"
+#include "aoc/simulation/city/CityBombardment.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
@@ -160,6 +161,13 @@ public:
     [[nodiscard]] const aoc::sim::CityGovernorComponent& governor() const { return this->m_governor; }
 
     // ========================================================================
+    // Walls (destructible fortifications)
+    // ========================================================================
+
+    [[nodiscard]] aoc::sim::CityWallState& walls() { return this->m_walls; }
+    [[nodiscard]] const aoc::sim::CityWallState& walls() const { return this->m_walls; }
+
+    // ========================================================================
     // Stockpile (resources stored in this city)
     // ========================================================================
 
@@ -255,6 +263,7 @@ private:
     aoc::sim::CityStrikeComponent m_strike;
     aoc::sim::CityAutomationComponent m_automation;
     aoc::sim::CityUnemploymentComponent m_unemployment;
+    aoc::sim::CityWallState m_walls;
 
     // Specialist citizens
     int32_t m_entertainers = 0;

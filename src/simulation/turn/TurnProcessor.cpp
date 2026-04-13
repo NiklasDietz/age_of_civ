@@ -58,6 +58,9 @@
 // Victory
 #include "aoc/simulation/victory/VictoryCondition.hpp"
 
+// Promotions
+#include "aoc/simulation/unit/Promotion.hpp"
+
 // Barbarians
 #include "aoc/simulation/barbarian/BarbarianController.hpp"
 
@@ -344,6 +347,47 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
     processUnitMaintenance(*gsPlayer);
     processBuildingMaintenance(*gsPlayer);
 
+    // --- Per-turn unit healing ---
+    // Units heal each turn based on territory:
+    //   Friendly territory: 20 HP (near city within 3 tiles)
+    //   Own territory:      10 HP (in own borders)
+    //   Neutral territory:   5 HP
+    //   Fortified:          +5 HP bonus
+    //   Embarked/Zero Move:  0 HP (no healing)
+    for (const std::unique_ptr<aoc::game::Unit>& unitPtr : gsPlayer->units()) {
+        if (unitPtr->hitPoints() >= unitPtr->typeDef().maxHitPoints) { continue; }
+        if (unitPtr->state() == UnitState::Embarked) { continue; }
+        if (unitPtr->movementRemaining() <= 0
+            && unitPtr->state() != UnitState::Fortified) { continue; }
+
+        int32_t healAmount = 5;  // Neutral territory base
+
+        // Check if near own city (friendly territory)
+        bool nearOwnCity = false;
+        for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+            if (aoc::hex::distance(unitPtr->position(), city->location()) <= 3) {
+                nearOwnCity = true;
+                break;
+            }
+        }
+        if (nearOwnCity) {
+            healAmount = 20;
+        } else {
+            // Check if in own territory (could expand with border check)
+            healAmount = 10;
+        }
+
+        // Fortification bonus
+        if (unitPtr->state() == UnitState::Fortified) {
+            healAmount += 5;
+        }
+
+        const int32_t newHP = std::min(
+            unitPtr->hitPoints() + healAmount,
+            unitPtr->typeDef().maxHitPoints);
+        unitPtr->setHitPoints(newHP);
+    }
+
     // City connections: uses GameState directly
     processCityConnections(*gsPlayer, grid);
 
@@ -396,6 +440,12 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
 
     // City-state bonuses
     processCityStateBonuses(*ctx.gameState, player);
+
+    // Unit promotions: AI auto-selects, human gets UI prompt
+    {
+        const bool isHuman = (player == ctx.humanPlayer);
+        processUnitPromotions(*gsPlayer, isHuman);
+    }
 
     // Governor: auto-queue production for cities with governors
     processGovernors(*ctx.gameState, grid, player);

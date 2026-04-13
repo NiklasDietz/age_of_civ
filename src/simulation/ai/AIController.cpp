@@ -17,6 +17,7 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
+#include "aoc/simulation/diplomacy/EspionageSystem.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/ProductionSystem.hpp"
@@ -271,6 +272,57 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
     this->executeDiplomacyActions(gameState, diplomacy, market);
     this->manageTradeRoutes(gameState, grid, market, diplomacy);
     this->considerPurchases(gameState);
+
+    // --- AI Spy Management ---
+    // Assign idle spies to missions based on strategic priorities.
+    // Prioritizes: CounterIntelligence when under threat, MonitorTreasury
+    // for intel, StealTechnology when behind in tech, SiphonFunds when wealthy.
+    {
+        aoc::game::Player* spyPlayer = gameState.player(this->m_player);
+        if (spyPlayer != nullptr) {
+            const aoc::sim::ai::AIBlackboard& bb = spyPlayer->blackboard();
+            for (const std::unique_ptr<aoc::game::Unit>& unitPtr : spyPlayer->units()) {
+                SpyComponent& spy = unitPtr->spy();
+                if (spy.owner == INVALID_PLAYER) { continue; }
+                if (spy.turnsRemaining > 0) { continue; }  // Already on a mission
+
+                // Find an enemy city to target
+                aoc::hex::AxialCoord targetLoc = spy.location;
+                bool foundTarget = false;
+                for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+                    if (other->id() == this->m_player) { continue; }
+                    if (other->cities().empty()) { continue; }
+                    // Pick the nearest enemy city
+                    for (const std::unique_ptr<aoc::game::City>& city : other->cities()) {
+                        targetLoc = city->location();
+                        foundTarget = true;
+                        break;
+                    }
+                    if (foundTarget) { break; }
+                }
+
+                if (!foundTarget) { continue; }
+
+                // Choose mission based on strategic needs
+                SpyMission mission = SpyMission::GatherIntelligence;
+                if (bb.threatLevel > 0.5f) {
+                    mission = SpyMission::CounterIntelligence;
+                } else if (bb.techGap > 0.3f) {
+                    mission = SpyMission::StealTechnology;
+                } else if (bb.goldPressure > 0.5f) {
+                    mission = SpyMission::SiphonFunds;
+                } else if (spyPlayer->treasury() > 1000) {
+                    mission = SpyMission::MarketManipulation;
+                } else {
+                    mission = SpyMission::MonitorTreasury;
+                }
+
+                spy.location = targetLoc;
+                [[maybe_unused]] ErrorCode spyResult =
+                    assignSpyMission(gameState, *unitPtr, mission);
+            }
+        }
+    }
 
     refreshMovement(gameState, this->m_player);
 }

@@ -26,6 +26,7 @@
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/victory/VictoryCondition.hpp"
+#include "aoc/simulation/victory/SpaceRace.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/monetary/Bonds.hpp"
@@ -170,6 +171,9 @@ public:
 
     [[nodiscard]] aoc::sim::VictoryTrackerComponent& victoryTracker() { return this->m_victoryTracker; }
     [[nodiscard]] const aoc::sim::VictoryTrackerComponent& victoryTracker() const { return this->m_victoryTracker; }
+
+    [[nodiscard]] aoc::sim::PlayerSpaceRaceComponent& spaceRace() { return this->m_spaceRace; }
+    [[nodiscard]] const aoc::sim::PlayerSpaceRaceComponent& spaceRace() const { return this->m_spaceRace; }
 
     // ========================================================================
     // Monetary instruments
@@ -360,6 +364,7 @@ private:
 
     // Victory
     aoc::sim::VictoryTrackerComponent m_victoryTracker;
+    aoc::sim::PlayerSpaceRaceComponent m_spaceRace;
 
     // Monetary instruments
     aoc::sim::PlayerBondComponent m_bonds;

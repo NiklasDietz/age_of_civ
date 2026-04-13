@@ -16,6 +16,7 @@
 #include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/simulation/diplomacy/Espionage.hpp"
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
+#include "aoc/simulation/unit/Promotion.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -163,6 +164,9 @@ public:
     [[nodiscard]] aoc::sim::GreatPersonComponent& greatPerson() { return this->m_greatPerson; }
     [[nodiscard]] const aoc::sim::GreatPersonComponent& greatPerson() const { return this->m_greatPerson; }
 
+    [[nodiscard]] aoc::sim::UnitExperienceComponent& experience() { return this->m_experience; }
+    [[nodiscard]] const aoc::sim::UnitExperienceComponent& experience() const { return this->m_experience; }
+
     // ========================================================================
     // Upgrade
     // ========================================================================
@@ -198,6 +202,7 @@ private:
     aoc::sim::TraderComponent m_trader;
     aoc::sim::SpyComponent m_spy;
     aoc::sim::GreatPersonComponent m_greatPerson;
+    aoc::sim::UnitExperienceComponent m_experience;
 };
 
 } // namespace aoc::game

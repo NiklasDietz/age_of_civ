@@ -6,6 +6,7 @@
  */
 
 #include "aoc/core/Types.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
 
 #include <array>
 #include <cstdint>
@@ -76,5 +77,75 @@ struct UnitExperienceComponent {
         return total;
     }
 };
+
+/// Get available promotions for a unit (ones it hasn't already taken).
+[[nodiscard]] inline std::vector<PromotionId> availablePromotions(
+    const UnitExperienceComponent& xp) {
+    std::vector<PromotionId> available;
+    for (std::size_t i = 0; i < PROMOTION_DEFS.size(); ++i) {
+        const PromotionId pid = PROMOTION_DEFS[i].id;
+        bool alreadyHas = false;
+        for (const PromotionId& existing : xp.promotions) {
+            if (existing == pid) { alreadyHas = true; break; }
+        }
+        if (!alreadyHas) {
+            available.push_back(pid);
+        }
+    }
+    return available;
+}
+
+/// AI auto-selects the best promotion for a unit based on its class.
+/// Melee: prefer Battlecry > Blitz > Elite.
+/// Ranged: prefer Tortoise > Elite > Medic.
+/// Cavalry: prefer Commando > Blitz > Battlecry.
+[[nodiscard]] inline PromotionId aiSelectPromotion(
+    const UnitExperienceComponent& xp, UnitClass unitClass) {
+    const std::vector<PromotionId> available = availablePromotions(xp);
+    if (available.empty()) { return PromotionId{0}; }
+
+    // Preference order by unit class
+    std::array<uint8_t, 6> preference{};
+    switch (unitClass) {
+        case UnitClass::Melee:
+        case UnitClass::AntiCavalry:
+            preference = {0, 4, 5, 1, 3, 2};  // Battlecry, Blitz, Elite...
+            break;
+        case UnitClass::Ranged:
+        case UnitClass::Artillery:
+            preference = {1, 5, 3, 0, 4, 2};  // Tortoise, Elite, Medic...
+            break;
+        case UnitClass::Cavalry:
+        case UnitClass::Armor:
+            preference = {2, 4, 0, 5, 1, 3};  // Commando, Blitz, Battlecry...
+            break;
+        default:
+            preference = {5, 0, 4, 1, 3, 2};  // Elite first for other types
+            break;
+    }
+
+    for (uint8_t prefId : preference) {
+        const PromotionId pid{prefId};
+        for (const PromotionId& avail : available) {
+            if (avail == pid) { return pid; }
+        }
+    }
+    return available.front();
+}
+
+} // namespace aoc::sim
+
+// Forward-declared game types for the promotion processor (implemented in .cpp).
+namespace aoc::game { class Player; }
+
+namespace aoc::sim {
+
+/**
+ * @brief Process promotions for all units of a player.
+ *
+ * For AI players: auto-select and apply the best promotion.
+ * For human players: skip (UI prompts for choice).
+ */
+void processUnitPromotions(aoc::game::Player& player, bool isHuman);
 
 } // namespace aoc::sim

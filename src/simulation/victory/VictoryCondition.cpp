@@ -9,6 +9,8 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/victory/VictoryCondition.hpp"
+#include "aoc/simulation/victory/SpaceRace.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/CityScience.hpp"
@@ -539,7 +541,89 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
         return {VictoryType::LastStanding, lastAlive};
     }
 
-    // 3. Turn limit: highest cumulative Era VP wins
+    // ================================================================
+    // Classic Victory Conditions (checked alongside default system)
+    // These trigger regardless of VictoryMode — the mode only determines
+    // whether they're the PRIMARY win conditions or bonus achievements.
+    // ================================================================
+
+    // 3a. Domination Victory: own every other civ's original capital
+    {
+        for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
+            if (candidate->victoryTracker().isEliminated) { continue; }
+            bool ownsAllCapitals = true;
+            for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+                if (other->id() == candidate->id()) { continue; }
+                if (other->victoryTracker().isEliminated) { continue; }
+                // Check if candidate owns the other's original capital
+                bool foundCapital = false;
+                for (const std::unique_ptr<aoc::game::City>& city : candidate->cities()) {
+                    if (city->isOriginalCapital() && city->originalOwner() != candidate->id()) {
+                        // This is a captured capital — check if it was from 'other'
+                        if (city->originalOwner() == other->id()) {
+                            foundCapital = true;
+                            break;
+                        }
+                    }
+                }
+                if (!foundCapital) {
+                    ownsAllCapitals = false;
+                    break;
+                }
+            }
+            if (ownsAllCapitals && alive > 1) {
+                LOG_INFO("Player %u wins by DOMINATION (owns all original capitals)",
+                         static_cast<unsigned>(candidate->id()));
+                return {VictoryType::Domination, candidate->id()};
+            }
+        }
+    }
+
+    // 3b. Science Victory: completed all Space Race projects
+    {
+        for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
+            if (candidate->victoryTracker().isEliminated) { continue; }
+            if (candidate->spaceRace().allCompleted()) {
+                LOG_INFO("Player %u wins by SCIENCE (all space projects completed)",
+                         static_cast<unsigned>(candidate->id()));
+                return {VictoryType::Science, candidate->id()};
+            }
+        }
+    }
+
+    // 3c. Religious Victory: your religion is dominant in >50% of every other civ's cities
+    {
+        for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
+            if (candidate->victoryTracker().isEliminated) { continue; }
+            const ReligionId myReligion = candidate->faith().foundedReligion;
+            if (myReligion == NO_RELIGION) { continue; }
+
+            bool dominatesAll = true;
+            for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+                if (other->id() == candidate->id()) { continue; }
+                if (other->victoryTracker().isEliminated) { continue; }
+                if (other->cities().empty()) { continue; }
+
+                int32_t followingCities = 0;
+                for (const std::unique_ptr<aoc::game::City>& city : other->cities()) {
+                    if (city->religion().dominantReligion() == myReligion) {
+                        ++followingCities;
+                    }
+                }
+                if (followingCities * 2 <= static_cast<int32_t>(other->cities().size())) {
+                    dominatesAll = false;
+                    break;
+                }
+            }
+            if (dominatesAll) {
+                LOG_INFO("Player %u wins by RELIGION (dominant in all civs)",
+                         static_cast<unsigned>(candidate->id()));
+                return {VictoryType::Religion, candidate->id()};
+            }
+        }
+    }
+
+    // 4. Turn limit: highest cumulative Era VP wins
     if (currentTurn >= maxTurns) {
         PlayerId bestPlayer = INVALID_PLAYER;
         int32_t bestVP = -1;
