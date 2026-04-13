@@ -226,4 +226,71 @@ void processProductionQueues(aoc::game::GameState& gameState,
     }
 }
 
+ErrorCode purchaseInCity(aoc::game::GameState& /*gameState*/,
+                         aoc::game::Player& player,
+                         aoc::game::City& city,
+                         ProductionItemType type,
+                         uint16_t itemId) {
+    float baseCost = 0.0f;
+
+    if (type == ProductionItemType::Unit) {
+        const UnitTypeDef& udef = unitTypeDef(UnitTypeId{itemId});
+        baseCost = static_cast<float>(udef.productionCost);
+    } else if (type == ProductionItemType::Building) {
+        const BuildingDef& bdef = buildingDef(BuildingId{itemId});
+        baseCost = static_cast<float>(bdef.productionCost);
+    } else {
+        return ErrorCode::InvalidArgument;
+    }
+
+    const int32_t goldCost = purchaseCost(baseCost);
+    if (goldCost <= 0) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    if (player.treasury() < static_cast<CurrencyAmount>(goldCost)) {
+        return ErrorCode::InsufficientResources;
+    }
+
+    // Deduct gold.
+    player.setTreasury(player.treasury() - static_cast<CurrencyAmount>(goldCost));
+
+    // Create the item immediately.
+    if (type == ProductionItemType::Unit) {
+        player.addUnit(UnitTypeId{itemId}, city.location());
+        LOG_INFO("Purchased %.*s in %s for %d gold (player %u)",
+                 static_cast<int>(unitTypeDef(UnitTypeId{itemId}).name.size()),
+                 unitTypeDef(UnitTypeId{itemId}).name.data(),
+                 city.name().c_str(),
+                 goldCost,
+                 static_cast<unsigned>(player.id()));
+    } else if (type == ProductionItemType::Building) {
+        const BuildingDef& bdef = buildingDef(BuildingId{itemId});
+        CityDistrictsComponent& districts = city.districts();
+        bool placed = false;
+        for (CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
+            if (district.type == bdef.requiredDistrict) {
+                district.buildings.push_back(BuildingId{itemId});
+                placed = true;
+                break;
+            }
+        }
+        if (!placed) {
+            CityDistrictsComponent::PlacedDistrict newDistrict;
+            newDistrict.type = bdef.requiredDistrict;
+            newDistrict.location = city.location();
+            newDistrict.buildings.push_back(BuildingId{itemId});
+            districts.districts.push_back(std::move(newDistrict));
+        }
+        LOG_INFO("Purchased %.*s in %s for %d gold (player %u)",
+                 static_cast<int>(bdef.name.size()),
+                 bdef.name.data(),
+                 city.name().c_str(),
+                 goldCost,
+                 static_cast<unsigned>(player.id()));
+    }
+
+    return ErrorCode::Ok;
+}
+
 } // namespace aoc::sim

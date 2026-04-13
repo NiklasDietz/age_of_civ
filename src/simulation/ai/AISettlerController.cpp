@@ -169,17 +169,19 @@ static constexpr uint16_t STRATEGIC_RESOURCE_ID_MAX = 12;
             const int32_t dist = aoc::hex::distance(pos, city->location());
 
             if (city->owner() == player) {
-                // Too close to own city: tiles overlap and culture areas overlap.
+                // Hard disqualification: Civ 6 rule requires 3+ tiles between cities.
                 if (dist < 3) {
-                    score -= 40.0f;
+                    return -9999.0f;
                 } else if (dist > 10) {
                     // Too far from own empire: hard to connect and defend.
                     score -= static_cast<float>(dist - 10) * 3.0f;
                 }
             } else {
-                // Dangerous forward settle: risk of early war.
-                if (dist < 4) {
-                    score -= 20.0f;
+                // Penalty for settling near enemy/city-state cities (but not disqualification).
+                if (dist < 3) {
+                    score -= 15.0f;
+                } else if (dist < 4) {
+                    score -= 10.0f;
                 }
             }
         }
@@ -205,6 +207,32 @@ static constexpr uint16_t STRATEGIC_RESOURCE_ID_MAX = 12;
     }
     const PlayerId owner = grid.owner(idx);
     return owner == INVALID_PLAYER || owner == player;
+}
+
+/**
+ * @brief Returns true when @p pos is at least 3 tiles from every existing city
+ *        across all players.  This enforces the same minimum city distance rule
+ *        that scoreCityLocation applies, but for force-founding code paths that
+ *        skip the scorer.
+ *
+ * @param pos        Candidate founding position.
+ * @param gameState  Full game state used to iterate all players and cities.
+ */
+/// Returns true when @p pos is at least 3 tiles from every city owned by
+/// the SAME player.  In Civ 6, the minimum city distance applies to your
+/// own cities only -- you CAN settle adjacent to enemy or city-state cities.
+[[nodiscard]] static bool isFarEnoughFromOwnCities(aoc::hex::AxialCoord pos,
+                                                    const aoc::game::GameState& gameState,
+                                                    PlayerId owner) {
+    constexpr int32_t MIN_CITY_DISTANCE = 3;
+    const aoc::game::Player* ownerPlayer = gameState.player(owner);
+    if (ownerPlayer == nullptr) { return true; }
+    for (const std::unique_ptr<aoc::game::City>& city : ownerPlayer->cities()) {
+        if (aoc::hex::distance(pos, city->location()) < MIN_CITY_DISTANCE) {
+            return false;
+        }
+    }
+    return true;
 }
 
 // ============================================================================
@@ -275,14 +303,13 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
     // Reducing from 2 to 1 ensures a settler produced at a city tile (which
     // has 0 movement that turn) founds immediately on its next turn rather
     // than waiting a full extra turn.
-    constexpr int32_t STUCK_TURNS_LIMIT = 1;
+    constexpr int32_t STUCK_TURNS_LIMIT = 5;
     // Search radius for best city location.
     constexpr int32_t SEARCH_RADIUS     = 15;
     // Minimum score for a tile to be considered a valid founding site.
     constexpr float   FOUND_SCORE_MIN   = -500.0f;
     // If the target is farther than this and the settler has no movement,
     // found at the current tile to avoid the unit sitting idle forever.
-    constexpr int32_t FAR_TARGET_DIST   = 5;
 
     for (const SettlerSnapshot& snap : settlers) {
         // Safety check: unit may have been killed by events between snapshot and loop.
@@ -345,9 +372,12 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
             }
 
             if (bestScore <= -9999.0f) {
-                // Every candidate was disqualified.  Found at current tile if
-                // habitable, otherwise skip this turn.
-                if (isTileFoundable(snap.position, grid, this->m_player)) {
+                // Every scored candidate was disqualified.  Attempt to found at
+                // the current tile only if it also passes the minimum distance
+                // check -- the scorer returns -9999 for proximity violations,
+                // but isTileFoundable does not, so we must guard here too.
+                if (isTileFoundable(snap.position, grid, this->m_player)
+                    && isFarEnoughFromOwnCities(snap.position, gameState, this->m_player)) {
                     const aoc::hex::AxialCoord foundPos = snap.position;
                     const std::string          cityName = getNextCityName(gameState, this->m_player);
 
@@ -416,57 +446,48 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
             continue;
         }
 
-        // --- Immediately found if no movement and target is far away ---
-        // A settler produced this turn has 0 movement points.  If the ideal
-        // target is beyond FAR_TARGET_DIST tiles the settler will never reach
-        // it this turn; founding at the current tile (near the capital) is
-        // better than waiting until the stuck limit.
-        if (snap.movementRemaining == 0
-            && aoc::hex::distance(snap.position, target) > FAR_TARGET_DIST) {
-            if (isTileFoundable(snap.position, grid, this->m_player)) {
-                const aoc::hex::AxialCoord foundPos = snap.position;
-                const std::string          cityName = getNextCityName(gameState, this->m_player);
-
-                this->m_settlerStuckTurns.erase(snap.position);
-                this->m_settlerTargets.erase(snap.position);
-
-                foundCity(gameState, grid, this->m_player, foundPos, cityName);
-                gsPlayer->removeUnit(snap.ptr);
-
-                LOG_INFO("AI %u Founded '%s' at (%d,%d) -- no movement and target > %d tiles",
-                         static_cast<unsigned>(this->m_player),
-                         cityName.c_str(),
-                         foundPos.q, foundPos.r,
-                         FAR_TARGET_DIST);
-                continue;
-            }
+        // Skip settlers with 0 movement (just produced this turn).
+        // They will gain movement next turn and walk toward their target.
+        if (snap.movementRemaining == 0) {
+            continue;
         }
 
         // --- Force-found if stuck for STUCK_TURNS_LIMIT turns ---
         if (stuckTurns >= STUCK_TURNS_LIMIT) {
-            // Prefer the current tile; if it is occupied by a city, search the
-            // 6 adjacent tiles for the best passable alternative.
-            aoc::hex::AxialCoord foundPos = snap.position;
-            bool foundPassable = isTileFoundable(snap.position, grid, this->m_player);
+            // Prefer the current tile; require both isTileFoundable AND the
+            // 3-tile minimum city distance.  isTileFoundable only checks terrain
+            // and ownership -- it does not enforce proximity -- so we must check
+            // both.  If the current tile is too close to an existing city, skip
+            // this turn: the settler will move on its next turn and the stuck
+            // counter naturally resets when it reaches a valid tile.
+            aoc::hex::AxialCoord foundPos   = snap.position;
+            bool                 foundValid = isTileFoundable(snap.position, grid, this->m_player)
+                                              && isFarEnoughFromOwnCities(snap.position, gameState, this->m_player);
 
-            if (!foundPassable) {
-                // Current tile is a city or impassable -- check neighbours.
+            if (!foundValid) {
+                // Current tile is impassable, owned, or too close to a city.
+                // Search the 6 immediate neighbours for the best valid alternative.
                 float bestAdjacentScore = std::numeric_limits<float>::lowest();
                 const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(snap.position);
                 for (const aoc::hex::AxialCoord& nbr : nbrs) {
                     if (!isTileFoundable(nbr, grid, this->m_player)) {
                         continue;
                     }
+                    if (!isFarEnoughFromOwnCities(nbr, gameState, this->m_player)) {
+                        continue;
+                    }
+                    // scoreCityLocation also enforces the distance rule, so a
+                    // score above -9999 means the tile is genuinely usable.
                     const float nbrScore = scoreCityLocation(nbr, grid, gameState, this->m_player);
                     if (nbrScore > bestAdjacentScore) {
                         bestAdjacentScore = nbrScore;
                         foundPos          = nbr;
-                        foundPassable     = true;
+                        foundValid        = true;
                     }
                 }
             }
 
-            if (foundPassable) {
+            if (foundValid) {
                 const int32_t     logStuck = stuckTurns;
                 const std::string cityName = getNextCityName(gameState, this->m_player);
 
@@ -485,8 +506,14 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
                 continue;
             }
 
-            // Neither current tile nor any neighbour is passable -- discard
-            // target and try again next turn with a fresh search.
+            // No valid tile at the current position or its neighbours -- skip
+            // this turn without founding.  The settler will move next turn and
+            // the stuck counter resets when it reaches a new tile.
+            LOG_INFO("AI %u Settler at (%d,%d) stuck %d turn(s) but all nearby tiles "
+                     "violate minimum city distance -- skipping turn",
+                     static_cast<unsigned>(this->m_player),
+                     snap.position.q, snap.position.r,
+                     stuckTurns);
             this->m_settlerTargets.erase(snap.position);
             continue;
         }

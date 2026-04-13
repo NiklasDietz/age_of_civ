@@ -69,6 +69,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <random>
 #include <utility>
 
 // getNextCityName is defined in TurnProcessor.cpp
@@ -203,11 +204,15 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     aoc::map::MapGenerator::Config mapConfig{};
     mapConfig.width   = dims.first;
     mapConfig.height  = dims.second;
-    // Use current time as seed for unique maps each game
-    const uint32_t timeSeed = static_cast<uint32_t>(
-        std::chrono::steady_clock::now().time_since_epoch().count() & 0xFFFFFFFFu);
+    // Use hardware entropy for a unique map seed each launch.  steady_clock
+    // truncated to 32 bits loses entropy on systems where the clock advances
+    // slowly between launches; random_device draws from the OS entropy pool
+    // (getrandom/CryptGenRandom) giving true per-launch uniqueness.
+    std::random_device rd;
+    const uint32_t timeSeed = rd();
     mapConfig.seed = timeSeed;
-    this->m_gameRng = aoc::Random(timeSeed + 1);  // Different seed but derived from same time
+    LOG_INFO("Map seed: %u", timeSeed);
+    this->m_gameRng = aoc::Random(timeSeed + 1);
     mapConfig.mapType = config.mapType;
     mapConfig.mapSize = config.mapSize;
     aoc::map::MapGenerator::generate(mapConfig, this->m_hexGrid);

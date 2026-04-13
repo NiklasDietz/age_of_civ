@@ -131,6 +131,9 @@ namespace aoc::sim {
  * on yield scoring, claims the surrounding tiles on the hex grid, and logs
  * the event. Returns a reference to the newly created City.
  */
+/// Minimum hex distance between any two cities (Civ 6 rule: 3 tiles apart).
+static constexpr int32_t MIN_CITY_DISTANCE = 3;
+
 aoc::game::City& foundCity(aoc::game::GameState& gameState,
                             aoc::map::HexGrid& grid,
                             PlayerId owner,
@@ -140,6 +143,47 @@ aoc::game::City& foundCity(aoc::game::GameState& gameState,
                             int32_t startingPop) {
     aoc::game::Player* gsPlayer = gameState.player(owner);
     assert(gsPlayer != nullptr && "foundCity: player not found in GameState");
+
+    // Enforce minimum distance from the SAME player's existing cities.
+    // In Civ 6, the 3-tile rule applies to your own cities only.
+    for (const std::unique_ptr<aoc::game::City>& existingCity : gsPlayer->cities()) {
+        const int32_t dist = aoc::hex::distance(location, existingCity->location());
+        if (dist < MIN_CITY_DISTANCE) {
+            // Too close to own city - find the nearest valid tile by spiraling outward.
+            std::vector<aoc::hex::AxialCoord> candidates;
+            candidates.reserve(50);
+            aoc::hex::spiral(location, MIN_CITY_DISTANCE + 2, std::back_inserter(candidates));
+
+            bool relocated = false;
+            for (const aoc::hex::AxialCoord& alt : candidates) {
+                if (!grid.isValid(alt)) { continue; }
+                const int32_t altIdx = grid.toIndex(alt);
+                if (aoc::map::isWater(grid.terrain(altIdx))
+                    || aoc::map::isImpassable(grid.terrain(altIdx))) {
+                    continue;
+                }
+                bool tooCloseToOwn = false;
+                for (const std::unique_ptr<aoc::game::City>& ownCity : gsPlayer->cities()) {
+                    if (aoc::hex::distance(alt, ownCity->location()) < MIN_CITY_DISTANCE) {
+                        tooCloseToOwn = true;
+                        break;
+                    }
+                }
+                if (!tooCloseToOwn) {
+                    location = alt;
+                    relocated = true;
+                    LOG_INFO("foundCity: relocated from too-close position to (%d,%d)",
+                             location.q, location.r);
+                    break;
+                }
+            }
+            if (!relocated) {
+                LOG_WARN("foundCity: could not find valid location %d+ tiles from own cities",
+                         MIN_CITY_DISTANCE);
+            }
+            break;
+        }
+    }
 
     aoc::game::City& city = gsPlayer->addCity(location, name);
     city.setOriginalCapital(isOriginalCapital);

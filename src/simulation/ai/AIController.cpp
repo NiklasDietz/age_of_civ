@@ -18,6 +18,7 @@
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/city/ProductionSystem.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
@@ -190,6 +191,7 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                                   static_cast<int32_t>(this->m_difficulty));
     this->executeDiplomacyActions(gameState, diplomacy, market);
     this->manageTradeRoutes(gameState, grid, market, diplomacy);
+    this->considerPurchases(gameState);
 
     refreshMovement(gameState, this->m_player);
 }
@@ -1251,6 +1253,95 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
                      myState.totalCoinCount(),
                      cityCount, tradePartnerCount,
                      static_cast<double>(myState.inflationRate));
+        }
+    }
+}
+
+// ============================================================================
+// Gold purchasing: buy units or buildings when it makes strategic sense
+// ============================================================================
+
+void AIController::considerPurchases(aoc::game::GameState& gameState) {
+    aoc::game::Player* gsPlayer = gameState.player(this->m_player);
+    if (gsPlayer == nullptr) { return; }
+
+    const CurrencyAmount treasury = gsPlayer->treasury();
+    if (treasury < 100) { return; }
+
+    const aoc::sim::ai::AIBlackboard& bb = gsPlayer->blackboard();
+
+    // Military purchase: buy when below minimum garrison OR under threat.
+    const bool needsMilitary = gsPlayer->militaryUnitCount() < gsPlayer->cityCount() * 2;
+    const bool underThreat = bb.threatLevel > 0.3f;
+    if ((needsMilitary || underThreat)
+        && treasury >= 200
+        && !gsPlayer->cities().empty()) {
+        aoc::game::City& capital = *gsPlayer->cities().front();
+        // Find best available military unit.
+        UnitTypeId bestId{0};
+        int32_t bestStrength = 0;
+        for (const UnitTypeDef& def : UNIT_TYPE_DEFS) {
+            if (!isMilitary(def.unitClass) || isNaval(def.unitClass)) { continue; }
+            if (!canBuildUnit(gameState, this->m_player, def.id)) { continue; }
+            const int32_t str = def.combatStrength + def.rangedStrength;
+            if (str > bestStrength) {
+                bestStrength = str;
+                bestId = def.id;
+            }
+        }
+        const int32_t cost = purchaseCost(static_cast<float>(unitTypeDef(bestId).productionCost));
+        if (cost > 0 && treasury >= static_cast<CurrencyAmount>(cost)) {
+            const ErrorCode result = purchaseInCity(gameState, *gsPlayer, capital,
+                                                     ProductionItemType::Unit, bestId.value);
+            if (result == ErrorCode::Ok) { return; }
+        }
+    }
+
+    // Settler purchase: buy when expanding and have surplus gold.
+    if (bb.expansionOpportunity > 0.3f && treasury >= 500 && !gsPlayer->cities().empty()) {
+        // Check no settler already exists.
+        bool hasSettler = false;
+        for (const std::unique_ptr<aoc::game::Unit>& unitPtr : gsPlayer->units()) {
+            if (unitTypeDef(unitPtr->typeId()).unitClass == UnitClass::Settler) {
+                hasSettler = true;
+                break;
+            }
+        }
+        if (!hasSettler) {
+            aoc::game::City& capital = *gsPlayer->cities().front();
+            const int32_t settlerCost = purchaseCost(static_cast<float>(unitTypeDef(UnitTypeId{3}).productionCost));
+            if (treasury >= static_cast<CurrencyAmount>(settlerCost)) {
+                const ErrorCode result = purchaseInCity(gameState, *gsPlayer, capital,
+                                                         ProductionItemType::Unit, 3);
+                if (result == ErrorCode::Ok) { return; }
+            }
+        }
+    }
+
+    // ROI-based building purchase: buy if payback period is reasonable.
+    float maxPaybackTurns = 30.0f;
+    if (treasury > 5000) { maxPaybackTurns = 60.0f; }
+    if (treasury > 10000) { maxPaybackTurns = 100.0f; }
+
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : gsPlayer->cities()) {
+        for (const BuildingDef& bdef : BUILDING_DEFS) {
+            if (!canBuildBuilding(gameState, this->m_player, *cityPtr, bdef.id)) { continue; }
+
+            const int32_t goldCost = purchaseCost(static_cast<float>(bdef.productionCost));
+            if (goldCost <= 0 || treasury < static_cast<CurrencyAmount>(goldCost)) { continue; }
+
+            // Estimate yield per turn from this building.
+            const float yieldPerTurn = static_cast<float>(bdef.goldBonus)
+                                     + static_cast<float>(bdef.scienceBonus) * 0.5f
+                                     + static_cast<float>(bdef.productionBonus) * 0.8f;
+            if (yieldPerTurn <= 0.0f) { continue; }
+
+            const float paybackTurns = static_cast<float>(goldCost) / yieldPerTurn;
+            if (paybackTurns <= maxPaybackTurns) {
+                const ErrorCode result = purchaseInCity(gameState, *gsPlayer, *cityPtr,
+                                                         ProductionItemType::Building, bdef.id.value);
+                if (result == ErrorCode::Ok) { return; }
+            }
         }
     }
 }

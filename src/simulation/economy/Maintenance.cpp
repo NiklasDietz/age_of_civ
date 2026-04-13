@@ -95,13 +95,83 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
 }
 
 void processUnitMaintenance(aoc::game::Player& player) {
+    // Hard floor: the treasury must never drop below -500.  Below this point
+    // debt compounds faster than any realistic income can recover it.
+    constexpr CurrencyAmount TREASURY_HARD_FLOOR    = -500;
+    // Threshold at which we switch to military-only mode.
+    constexpr CurrencyAmount TREASURY_DEFICIT_LIMIT = 0;
+    // Minimum garrison we never disband below.
+    constexpr int32_t        MIN_GARRISON           = 2;
+    // Maximum tax rate applied automatically when bankrupt to boost income.
+    constexpr float          MAX_TAX_RATE           = 0.40f;
+
+    // When deeply bankrupt, force maximum tax rate to maximise income recovery.
+    if (player.treasury() < TREASURY_HARD_FLOOR) {
+        if (player.monetary().taxRate < MAX_TAX_RATE) {
+            player.monetary().taxRate = MAX_TAX_RATE;
+            LOG_WARN("Player %u [Maintenance.cpp:processUnitMaintenance] treasury %lld "
+                     "below hard floor -- tax rate forced to %.2f",
+                     static_cast<unsigned>(player.id()),
+                     static_cast<long long>(player.treasury()),
+                     static_cast<double>(MAX_TAX_RATE));
+        }
+    }
+
+    // Count military units before any potential disband.
+    int32_t militaryCount = 0;
+    for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+        if (isMilitary(unit->typeDef().unitClass)) {
+            ++militaryCount;
+        }
+    }
+
+    // Aggressive disband at the hard floor: remove the most expensive military
+    // unit immediately so the treasury stops bleeding.
+    if (player.treasury() < TREASURY_HARD_FLOOR && militaryCount > MIN_GARRISON) {
+        aoc::game::Unit* disbandTarget = nullptr;
+        int32_t worstCost = 0;
+        for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+            if (unit->typeDef().unitClass == UnitClass::Settler) {
+                continue;
+            }
+            const int32_t cost = unit->typeDef().maintenanceGold();
+            if (isMilitary(unit->typeDef().unitClass) && cost > worstCost) {
+                worstCost    = cost;
+                disbandTarget = unit.get();
+            }
+        }
+        // Fall back to any non-settler unit if no military candidate found.
+        if (disbandTarget == nullptr) {
+            for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+                if (unit->typeDef().unitClass == UnitClass::Settler) {
+                    continue;
+                }
+                const int32_t cost = unit->typeDef().maintenanceGold();
+                if (cost > worstCost) {
+                    worstCost    = cost;
+                    disbandTarget = unit.get();
+                }
+            }
+        }
+        if (disbandTarget != nullptr) {
+            LOG_WARN("Player %u [Maintenance.cpp:processUnitMaintenance] hard-floor "
+                     "bankruptcy (treasury %lld): disbanding %s (cost %d gold/turn)",
+                     static_cast<unsigned>(player.id()),
+                     static_cast<long long>(player.treasury()),
+                     disbandTarget->typeDef().name.data(),
+                     worstCost);
+            player.removeUnit(disbandTarget);
+            --militaryCount;
+        }
+    }
+
     // Per-unit maintenance: each military unit costs gold based on its era.
     // Civilian units (settlers, builders, traders, scouts) are free.
     CurrencyAmount totalMaintenance = 0;
     int32_t paidUnits = 0;
 
     for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
-        int32_t cost = unit->typeDef().maintenanceGold();
+        const int32_t cost = unit->typeDef().maintenanceGold();
         if (cost > 0) {
             totalMaintenance += static_cast<CurrencyAmount>(cost);
             ++paidUnits;
@@ -112,26 +182,35 @@ void processUnitMaintenance(aoc::game::Player& player) {
         return;
     }
 
-    // Spending brake: if treasury is already negative, skip non-essential
-    // (non-military) maintenance. Military must still be paid.
-    if (player.treasury() < 0) {
-        CurrencyAmount militaryOnly = 0;
-        for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
-            if (isMilitary(unit->typeDef().unitClass)) {
-                militaryOnly += static_cast<CurrencyAmount>(unit->typeDef().maintenanceGold());
-            }
-        }
-        // Only pay military maintenance when already in deficit
-        player.addGold(-militaryOnly);
-        LOG_INFO("Player %u unit maintenance (deficit mode): %lld gold military only "
-                 "(treasury: %lld)",
+    if (player.treasury() < TREASURY_DEFICIT_LIMIT) {
+        // Already in deficit: skip ALL unit maintenance -- paying it would push
+        // the treasury further negative and trigger the hard floor faster.
+        // The disband logic above already sheds the most expensive unit each
+        // turn, which is the correct pressure relief mechanism.
+        LOG_INFO("Player %u unit maintenance skipped (treasury %lld < 0): "
+                 "would have cost %lld gold",
                  static_cast<unsigned>(player.id()),
-                 static_cast<long long>(militaryOnly),
-                 static_cast<long long>(player.treasury()));
+                 static_cast<long long>(player.treasury()),
+                 static_cast<long long>(totalMaintenance));
     } else {
-        player.addGold(-totalMaintenance);
-        if (paidUnits > 0) {
-            LOG_INFO("Player %u unit maintenance: %d military units, cost %lld gold "
+        // Treasury is non-negative: pay in full, but apply the hard floor to
+        // avoid a single large maintenance bill punching through it.
+        const CurrencyAmount afterDeduction = player.treasury() - totalMaintenance;
+        if (afterDeduction < TREASURY_HARD_FLOOR) {
+            // Partial payment: only deduct down to the floor.
+            const CurrencyAmount allowed = player.treasury() - TREASURY_HARD_FLOOR;
+            if (allowed > 0) {
+                player.addGold(-allowed);
+            }
+            LOG_INFO("Player %u unit maintenance partially paid: %lld of %lld gold "
+                     "(hard floor hit, treasury: %lld)",
+                     static_cast<unsigned>(player.id()),
+                     static_cast<long long>(allowed > 0 ? allowed : 0),
+                     static_cast<long long>(totalMaintenance),
+                     static_cast<long long>(player.treasury()));
+        } else {
+            player.addGold(-totalMaintenance);
+            LOG_INFO("Player %u unit maintenance: %d units, cost %lld gold "
                      "(treasury: %lld)",
                      static_cast<unsigned>(player.id()), paidUnits,
                      static_cast<long long>(totalMaintenance),
@@ -139,71 +218,18 @@ void processUnitMaintenance(aoc::game::Player& player) {
         }
     }
 
-    // Update consecutive negative-treasury counter
+    // Update consecutive negative-treasury counter.
     if (player.treasury() < 0) {
         ++player.monetary().consecutiveNegativeTurns;
     } else {
         player.monetary().consecutiveNegativeTurns = 0;
     }
 
-    // Count current military units to enforce the minimum garrison.
-    int32_t militaryCount = 0;
-    for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
-        if (isMilitary(unit->typeDef().unitClass)) {
-            ++militaryCount;
-        }
-    }
-    constexpr int32_t MIN_GARRISON = 2;
-
-    // Disband most expensive military unit on immediate bankruptcy, but only
-    // when the player has more than the minimum garrison.  Treasury threshold is
-    // -200 to avoid wiping units from a brief gold dip.
-    if (player.treasury() < -200 && militaryCount > MIN_GARRISON) {
-        aoc::game::Unit* disbandTarget = nullptr;
-        int32_t worstCost = 0;
-        for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
-            if (unit->typeDef().unitClass == UnitClass::Settler) {
-                continue;
-            }
-            const bool isMil = isMilitary(unit->typeDef().unitClass);
-            const int32_t cost = unit->typeDef().maintenanceGold();
-            // Prefer disbanding military units first (highest gold cost)
-            if (isMil && cost > worstCost) {
-                worstCost = cost;
-                disbandTarget = unit.get();
-            }
-        }
-        // Fall back to any non-settler, non-military unit if no military candidate
-        if (disbandTarget == nullptr) {
-            for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
-                if (unit->typeDef().unitClass == UnitClass::Settler) {
-                    continue;
-                }
-                if (isMilitary(unit->typeDef().unitClass)) {
-                    continue;
-                }
-                const int32_t cost = unit->typeDef().maintenanceGold();
-                if (cost > worstCost) {
-                    worstCost = cost;
-                    disbandTarget = unit.get();
-                }
-            }
-        }
-        if (disbandTarget != nullptr) {
-            LOG_WARN("Player %u [Maintenance.cpp:processUnitMaintenance] bankrupt: "
-                     "disbanded %s (cost %d gold/turn, treasury %lld)",
-                     static_cast<unsigned>(player.id()),
-                     disbandTarget->typeDef().name.data(),
-                     worstCost,
-                     static_cast<long long>(player.treasury()));
-            player.removeUnit(disbandTarget);
-        }
-    }
-
-    // Sustained bankruptcy (>= 5 turns below -200): disband most expensive unit,
-    // still respecting the minimum garrison.
+    // Sustained bankruptcy (>= 5 consecutive turns below -200): disband the
+    // most expensive unit, still respecting the minimum garrison.
+    constexpr CurrencyAmount SUSTAINED_THRESHOLD = -200;
     if (player.monetary().consecutiveNegativeTurns >= 5
-        && player.treasury() < -200
+        && player.treasury() < SUSTAINED_THRESHOLD
         && militaryCount > MIN_GARRISON)
     {
         aoc::game::Unit* disbandTarget = nullptr;
@@ -214,7 +240,7 @@ void processUnitMaintenance(aoc::game::Player& player) {
             }
             const int32_t cost = unit->typeDef().maintenanceGold();
             if (cost > worstCost) {
-                worstCost = cost;
+                worstCost    = cost;
                 disbandTarget = unit.get();
             }
         }
@@ -226,30 +252,43 @@ void processUnitMaintenance(aoc::game::Player& player) {
                      static_cast<long long>(player.treasury()),
                      disbandTarget->typeDef().name.data());
             player.removeUnit(disbandTarget);
-            // Reset counter so we don't disband every turn at exactly the threshold
+            // Reset counter so we don't disband every turn once over the threshold.
             player.monetary().consecutiveNegativeTurns = 0;
         }
     }
 }
 
 void processBuildingMaintenance(aoc::game::Player& player) {
+    // Skip all building and district maintenance when the treasury is already
+    // deeply in debt.  City-center upkeep (the +2 per city sprawl cost) is
+    // also deferred -- the unit maintenance hard floor is the primary recovery
+    // mechanism at this point.
+    constexpr CurrencyAmount SKIP_THRESHOLD = -200;
+    if (player.treasury() < SKIP_THRESHOLD) {
+        LOG_INFO("Player %u building/city maintenance skipped (treasury %lld < %lld)",
+                 static_cast<unsigned>(player.id()),
+                 static_cast<long long>(player.treasury()),
+                 static_cast<long long>(SKIP_THRESHOLD));
+        return;
+    }
+
     CurrencyAmount totalMaintenance = 0;
 
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         const CityDistrictsComponent& districts = city->districts();
 
-        // District maintenance: 1 gold per non-CityCenter district
+        // District maintenance: 1 gold per non-CityCenter district.
         for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
             if (district.type != DistrictType::CityCenter) {
                 totalMaintenance += 1;
             }
-            // Building maintenance from building definitions
+            // Building maintenance from building definitions.
             for (BuildingId bid : district.buildings) {
                 totalMaintenance += static_cast<CurrencyAmount>(buildingDef(bid).maintenanceCost);
             }
         }
 
-        // Per-city maintenance: 2 gold per city beyond the first (empire sprawl)
+        // Per-city maintenance: 2 gold per city beyond the first (empire sprawl).
         if (!city->isOriginalCapital()) {
             totalMaintenance += 2;
         }
@@ -259,17 +298,34 @@ void processBuildingMaintenance(aoc::game::Player& player) {
         return;
     }
 
-    // Scale by inflation price level
-    float priceMultiplier = priceLevelMaintenanceMultiplier(
+    // Scale by inflation price level.
+    const float priceMultiplier = priceLevelMaintenanceMultiplier(
         player.monetary().priceLevel);
     const CurrencyAmount adjustedMaintenance = static_cast<CurrencyAmount>(
         static_cast<float>(totalMaintenance) * priceMultiplier);
 
-    player.addGold(-adjustedMaintenance);
-    LOG_INFO("Player %u building/city maintenance: %lld gold (treasury: %lld)",
-             static_cast<unsigned>(player.id()),
-             static_cast<long long>(adjustedMaintenance),
-             static_cast<long long>(player.treasury()));
+    // Apply the hard floor: never let a single maintenance tick punch the
+    // treasury below -500.
+    constexpr CurrencyAmount TREASURY_HARD_FLOOR = -500;
+    const CurrencyAmount afterDeduction = player.treasury() - adjustedMaintenance;
+    if (afterDeduction < TREASURY_HARD_FLOOR) {
+        const CurrencyAmount allowed = player.treasury() - TREASURY_HARD_FLOOR;
+        if (allowed > 0) {
+            player.addGold(-allowed);
+        }
+        LOG_INFO("Player %u building/city maintenance partially paid: %lld of %lld gold "
+                 "(hard floor hit, treasury: %lld)",
+                 static_cast<unsigned>(player.id()),
+                 static_cast<long long>(allowed > 0 ? allowed : 0),
+                 static_cast<long long>(adjustedMaintenance),
+                 static_cast<long long>(player.treasury()));
+    } else {
+        player.addGold(-adjustedMaintenance);
+        LOG_INFO("Player %u building/city maintenance: %lld gold (treasury: %lld)",
+                 static_cast<unsigned>(player.id()),
+                 static_cast<long long>(adjustedMaintenance),
+                 static_cast<long long>(player.treasury()));
+    }
 }
 
 } // namespace aoc::sim

@@ -64,6 +64,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/game/Unit.hpp"
 
+#include <random>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -232,13 +233,14 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         << "Corruption,CrisisType,IndustrialRev,GovernmentType\n";
 
     aoc::map::HexGrid grid;
-    aoc::Random rng(42);  // Fixed seed for reproducibility
+    std::random_device rd;
+    aoc::Random rng(rd());
 
     // Generate map
     aoc::map::MapGenerator::Config mapConfig{};
     mapConfig.width = 80;
     mapConfig.height = 52;
-    mapConfig.seed = 42;
+    mapConfig.seed = rng.next();
     mapConfig.mapType = aoc::map::MapType::Realistic;
     aoc::map::MapGenerator generator;
     generator.generate(mapConfig, grid);
