@@ -235,6 +235,28 @@ struct MonetaryStateComponent {
     // -- Debasement (Commodity Money stage only) --
     DebasementState debasement;
 
+    // -- Fiat currency specifics --
+    /// Player-chosen currency name (e.g., "Dollar", "Yuan", "Mark").
+    /// Default: civilization name + "Crown" (e.g., "Roman Crown").
+    char currencyName[32] = "Crown";
+
+    /// Fiat trust score [0.0, 1.0]. Determines trade acceptance and exchange rate.
+    /// Trust depends on: GDP rank, inflation, debt-to-GDP, military, trade partners.
+    /// Below 0.3: severe trade penalties, partners demand commodity payment.
+    /// 0.3-0.6: fiat accepted at discount.
+    /// 0.6-0.8: normal fiat acceptance.
+    /// Above 0.8: candidate for reserve currency.
+    Percentage fiatTrust = 0.5f;
+
+    /// Whether this player holds reserve currency status (global acceptance).
+    bool isReserveCurrency = false;
+
+    /// Cumulative money printed (fiat only). Drives inflation via Fisher equation.
+    CurrencyAmount totalMoneyPrinted = 0;
+
+    /// Amount to print this turn (set by government policy).
+    CurrencyAmount printAmountThisTurn = 0;
+
     // -- System duration tracking --
     int32_t turnsInCurrentSystem = 0;
 
@@ -277,6 +299,57 @@ struct MonetaryStateComponent {
     /// Total raw coin count across all tiers.
     [[nodiscard]] int32_t totalCoinCount() const {
         return this->copperCoinReserves + this->silverCoinReserves + this->goldCoinReserves;
+    }
+
+    // ========================================================================
+    // Fiat money printing (only available in FiatMoney stage)
+    // ========================================================================
+
+    /**
+     * @brief Print fiat money: add to money supply and treasury.
+     *
+     * This is theoretically worthless paper that only has value because
+     * trade partners trust it. Printing more money:
+     *   - Immediately adds gold to treasury (government spending power)
+     *   - Increases money supply (M in Fisher equation: M*V = P*Y)
+     *   - Causes inflation proportional to money printed / GDP
+     *   - Erodes fiat trust if done excessively
+     *
+     * The temptation: print money to fund wars, buildings, research.
+     * The risk: hyperinflation destroys the economy.
+     *
+     * @param amount  How much to print. Capped at 10% of GDP per turn.
+     * @return Actual amount printed (may be capped).
+     */
+    CurrencyAmount printMoney(CurrencyAmount amount) {
+        if (this->system != MonetarySystemType::FiatMoney) {
+            return 0;  // Can only print in fiat stage
+        }
+        // Cap at 10% of GDP per turn to prevent instant hyperinflation
+        const CurrencyAmount maxPrint = std::max(
+            static_cast<CurrencyAmount>(1),
+            static_cast<CurrencyAmount>(this->gdp / 10));
+        const CurrencyAmount actualPrint = std::min(amount, maxPrint);
+
+        this->treasury += actualPrint;
+        this->moneySupply += actualPrint;
+        this->totalMoneyPrinted += actualPrint;
+        this->printAmountThisTurn = actualPrint;
+
+        // Direct inflation impact: printed money / GDP
+        if (this->gdp > 0) {
+            this->inflationRate += static_cast<float>(actualPrint)
+                                 / static_cast<float>(this->gdp);
+        }
+        return actualPrint;
+    }
+
+    /// Set the currency name (e.g. "Dollar", "Yuan", "Drachma").
+    void setCurrencyName(const char* name) {
+        std::size_t len = 0;
+        while (name[len] != '\0' && len < 31) { ++len; }
+        for (std::size_t i = 0; i < len; ++i) { this->currencyName[i] = name[i]; }
+        this->currencyName[len] = '\0';
     }
 
     // ========================================================================

@@ -189,24 +189,27 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
       3.5f, 0.3f, 1.5f}},
 
     // 5: England - Victoria -- NAVAL TRADE EMPIRE
-    // GA optimized: strong economy + naval + good expansion.
+    // Fix: reduced naval dependency so England doesn't stall on landlocked maps.
+    // prodNaval 2.0→1.2, prodSettlers 1.80→2.10, expansion 2.0→2.30 for land fallback.
     {CivId{5}, "Sun Never Sets",
      "Respects trade partners and naval powers. Dislikes those who don't trade.",
      AgendaCondition::IsTradePartner, AgendaCondition::HasColonies,
-     {1.2f, 2.00f, 1.60f, 1.2f, 2.20f, 1.3f, 0.5f, 0.3f, 0.7f, 0.5f,
-      1.0f, 1.8f, 1.2f, 2.0f, 1.4f,
-      1.80f, 1.0f, 1.0f, 1.60f, 1.0f, 2.0f, 0.3f,
+     {1.2f, 2.30f, 1.60f, 1.2f, 2.20f, 1.3f, 0.5f, 0.3f, 0.7f, 0.5f,
+      1.0f, 1.8f, 1.2f, 1.5f, 1.4f,
+      2.10f, 1.0f, 1.0f, 1.60f, 1.0f, 1.2f, 0.3f,
       2.5f, 0.5f, 1.3f}},
 
     // 6: Japan - Hojo Tokimune -- MILITARY CULTURE WARRIOR
-    // GA optimized: military stays high, but science + economy buffed.
+    // Fix: significant economy/science buff. Military culture still high but
+    // prodMilitary reduced 1.6→1.3, science 1.8→2.1, economy 1.6→2.0.
+    // Japan needs economy to fuel its military ambitions.
     {CivId{6}, "Divine Wind",
      "Respects civilizations with strong military and culture. Dislikes those with different religion.",
      AgendaCondition::HasMoreMilitary, AgendaCondition::HasDifferentReligion,
-     {1.6f, 1.50f, 1.80f, 1.5f, 1.60f, 0.8f, 1.3f, 0.4f, 1.0f, 0.9f,
-      1.5f, 1.0f, 1.4f, 1.0f, 1.2f,
-      1.40f, 1.60f, 0.8f, 1.60f, 1.3f, 1.0f, 1.5f,
-      2.0f, 0.6f, 0.8f}},
+     {1.5f, 1.80f, 2.10f, 1.5f, 2.00f, 0.9f, 1.3f, 0.4f, 1.0f, 0.9f,
+      1.5f, 1.2f, 1.4f, 1.0f, 1.2f,
+      1.60f, 1.30f, 1.0f, 1.80f, 1.3f, 1.0f, 1.5f,
+      2.2f, 0.6f, 0.9f}},
 
     // 7: Persia - Cyrus -- DIPLOMATIC SURPRISE ATTACKER
     // GA optimized: economy + expansion strong, but keeps low trustworthiness.

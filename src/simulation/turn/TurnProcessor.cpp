@@ -417,9 +417,48 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
     applyReligionBonuses(*gsPlayer);
 
     // Science and tech research
+    // Science costs gold: each point of science generated costs 0.2 gold (research
+    // funding). This means a player generating 100 science/turn pays 20 gold/turn
+    // for research — making science an investment with ROI from better tech.
+    // If the player can't afford it, science is reduced proportionally (unfunded
+    // research operates at minimum 50% efficiency).
     {
-        const float science = computePlayerScience(*gsPlayer, grid);
+        float science = computePlayerScience(*gsPlayer, grid);
         const float culture = computePlayerCulture(*gsPlayer, grid);
+
+        // Science funding cost: 0.2 gold per science point
+        constexpr float SCIENCE_FUNDING_COST = 0.2f;
+        const CurrencyAmount fundingCost = static_cast<CurrencyAmount>(science * SCIENCE_FUNDING_COST);
+        if (fundingCost > 0) {
+            if (gsPlayer->treasury() >= fundingCost) {
+                gsPlayer->addGold(-fundingCost);
+            } else {
+                // Can't fully fund: research at reduced efficiency (min 50%)
+                const float affordableFraction = (gsPlayer->treasury() > 0)
+                    ? static_cast<float>(gsPlayer->treasury()) / static_cast<float>(fundingCost)
+                    : 0.0f;
+                const float efficiency = 0.5f + affordableFraction * 0.5f;
+                science *= efficiency;
+                if (gsPlayer->treasury() > 0) {
+                    gsPlayer->addGold(-gsPlayer->treasury());  // Spend what we can
+                }
+            }
+        }
+
+        // Goods-based science boost: having certain goods in any city stockpile
+        // accelerates research. Computers (+15%), Glass (+5%), Paper/Books (+5%).
+        // This incentivizes producing these goods and creates the loop:
+        //   Research Computers tech → produce Computer goods → research faster.
+        {
+            bool hasComputers = false;
+            bool hasGlass = false;
+            for (const std::unique_ptr<aoc::game::City>& cityPtr : gsPlayer->cities()) {
+                if (cityPtr->stockpile().getAmount(77) > 0) { hasComputers = true; } // Computers
+                if (cityPtr->stockpile().getAmount(76) > 0) { hasGlass = true; }     // Glass
+            }
+            if (hasComputers) { science *= 1.15f; }
+            if (hasGlass) { science *= 1.05f; }
+        }
 
         advanceResearch(gsPlayer->tech(), science);
         advanceCivicResearch(gsPlayer->civics(), culture, &gsPlayer->government());

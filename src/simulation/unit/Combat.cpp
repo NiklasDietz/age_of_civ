@@ -291,15 +291,40 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
         }
     }
 
-    // If the defender was killed and the attacker survived, award gold to the
-    // attacking player for clearing a barbarian encampment on that tile.
-    if (result.defenderKilled && !result.attackerKilled && attackerOwner != BARBARIAN_PLAYER) {
-        if (defenderOwner == BARBARIAN_PLAYER) {
-            aoc::game::Player* atkPlayer = gameState.player(attackerOwner);
-            if (atkPlayer != nullptr) {
-                atkPlayer->addGold(25);
-                LOG_INFO("Player %u earned 25 gold from clearing barbarian encampment",
-                         static_cast<unsigned>(attackerOwner));
+    // Military economic benefits when a unit is killed:
+    if (result.defenderKilled && !result.attackerKilled) {
+        aoc::game::Player* atkPlayer = gameState.player(attackerOwner);
+
+        if (defenderOwner == BARBARIAN_PLAYER && atkPlayer != nullptr) {
+            // Barbarian encampment clearance bonus
+            atkPlayer->addGold(25);
+            LOG_INFO("Player %u earned 25 gold from clearing barbarian encampment",
+                     static_cast<unsigned>(attackerOwner));
+        } else if (atkPlayer != nullptr) {
+            // Pillaging: destroying an enemy unit yields resources.
+            // Gold from the unit's production cost (30% of cost as plunder).
+            const int32_t unitCost = defender.typeDef().productionCost;
+            const CurrencyAmount plunderGold = static_cast<CurrencyAmount>(unitCost * 3 / 10);
+            if (plunderGold > 0) {
+                atkPlayer->addGold(plunderGold);
+                LOG_INFO("Player %u pillaged %lld gold from destroying %.*s",
+                         static_cast<unsigned>(attackerOwner),
+                         static_cast<long long>(plunderGold),
+                         static_cast<int>(defender.typeDef().name.size()),
+                         defender.typeDef().name.data());
+            }
+
+            // Bonus pillage gold if the tile has improvements or resources.
+            // Represents looting infrastructure — like Civ 6's pillaging.
+            const int32_t tileIdx = grid.toIndex(defenderTile);
+            if (grid.resource(tileIdx).isValid()
+                || grid.improvement(tileIdx) != aoc::map::ImprovementType::None) {
+                constexpr CurrencyAmount TILE_PILLAGE_BONUS = 15;
+                atkPlayer->addGold(TILE_PILLAGE_BONUS);
+                LOG_INFO("Player %u pillaged tile improvements at (%d,%d) for %lld gold",
+                         static_cast<unsigned>(attackerOwner),
+                         defenderTile.q, defenderTile.r,
+                         static_cast<long long>(TILE_PILLAGE_BONUS));
             }
         }
     }

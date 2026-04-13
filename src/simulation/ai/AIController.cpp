@@ -1024,6 +1024,22 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             // Montezuma (peace=0.8, grudge=0.9) fights until ratio 2.0+
             const float peaceThreshold = 1.0f + beh.grudgeHolding - beh.peaceAcceptanceThreshold;
             if (peaceMilRatio > std::max(peaceThreshold, 0.5f)) {
+                // War reparations: the weaker side (proposing peace) pays 10% of
+                // their treasury to the stronger side. This makes war economically
+                // meaningful — winning wars pays for the military investment.
+                aoc::game::Player* loser = gameState.player(this->m_player);
+                aoc::game::Player* winner = gameState.player(other);
+                if (loser != nullptr && winner != nullptr && loser->treasury() > 0) {
+                    const CurrencyAmount reparations = std::max(
+                        static_cast<CurrencyAmount>(1),
+                        loser->treasury() / 10);
+                    loser->addGold(-reparations);
+                    winner->addGold(reparations);
+                    LOG_INFO("AI %u paid %lld gold in war reparations to player %u",
+                             static_cast<unsigned>(this->m_player),
+                             static_cast<long long>(reparations),
+                             static_cast<unsigned>(other));
+                }
                 diplomacy.makePeace(this->m_player, other);
                 LOG_INFO("AI %u Proposed peace with player %u (ratio %.2f > threshold %.2f)",
                          static_cast<unsigned>(this->m_player),
@@ -1463,6 +1479,26 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
     for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
         if (other->id() != this->m_player && other->monetary().gdp > myState.gdp) {
             ++gdpRank;
+        }
+    }
+
+    // Fiat money printing: if on fiat and in deficit, print money to cover
+    // shortfall. But only if inflation is below 10% — don't hyperinflate.
+    // This represents governments deficit-spending by printing money, which is
+    // the key behavior of fiat economies (for better or worse).
+    if (myState.system == MonetarySystemType::FiatMoney
+        && gsPlayer->treasury() < 0
+        && myState.inflationRate < 0.10f) {
+        const CurrencyAmount shortfall = -gsPlayer->treasury();
+        // Print up to half the shortfall — don't cover everything, force some austerity
+        const CurrencyAmount toPrint = std::max(
+            static_cast<CurrencyAmount>(1), shortfall / 2);
+        const CurrencyAmount printed = myState.printMoney(toPrint);
+        if (printed > 0) {
+            LOG_INFO("AI %u printed %lld fiat money (inflation now %.2f%%)",
+                     static_cast<unsigned>(this->m_player),
+                     static_cast<long long>(printed),
+                     static_cast<double>(myState.inflationRate * 100.0f));
         }
     }
 

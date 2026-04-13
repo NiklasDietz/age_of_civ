@@ -8,6 +8,8 @@
 
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/city/District.hpp"
+
+#include <cmath>
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/monetary/Inflation.hpp"
 #include "aoc/simulation/monetary/FiscalPolicy.hpp"
@@ -105,11 +107,26 @@ void computeCityHappiness(aoc::game::Player& player) {
         // Deduplicated luxury amenities
         happiness.amenities += luxuryAmenityPerCity;
 
-        // Processed luxury goods (NOT deduplicated)
+        // Processed goods happiness: having consumer goods, food, clothing, and
+        // electronics in the city stockpile = citizens are well-supplied.
+        // Scales with quantity (diminishing returns via sqrt) so producing MORE
+        // goods of each type makes your cities happier — driving demand for the
+        // entire supply chain. This is the key incentive for industrialization.
         const CityStockpileComponent& stockpile = city->stockpile();
-        if (stockpile.getAmount(goods::CLOTHING) > 0)           { happiness.amenities += 1.5f; }
-        if (stockpile.getAmount(goods::ADV_CONSUMER_GOODS) > 0) { happiness.amenities += 2.0f; }
-        if (stockpile.getAmount(goods::CONSUMER_GOODS) > 0)     { happiness.amenities += 1.0f; }
+        {
+            auto goodsHappiness = [&stockpile](uint16_t goodId, float baseBonus) -> float {
+                const int32_t amount = stockpile.getAmount(goodId);
+                if (amount <= 0) { return 0.0f; }
+                // sqrt scaling: 1 unit = baseBonus, 4 units = 2x, 9 units = 3x, capped at 4x
+                return std::min(baseBonus * std::sqrt(static_cast<float>(amount)), baseBonus * 4.0f);
+            };
+            happiness.amenities += goodsHappiness(goods::CONSUMER_GOODS, 0.5f);
+            happiness.amenities += goodsHappiness(goods::CLOTHING, 0.7f);
+            happiness.amenities += goodsHappiness(goods::ADV_CONSUMER_GOODS, 1.0f);
+            happiness.amenities += goodsHappiness(goods::PROCESSED_FOOD, 0.3f);
+            // Electronics (ID 75) represent modern quality of life
+            happiness.amenities += goodsHappiness(75, 0.8f);
+        }
 
         // Specialist entertainers: +2 amenity each
         happiness.amenities += static_cast<float>(city->entertainers()) * 2.0f;

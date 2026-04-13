@@ -1,0 +1,2 @@
+- Make genetic algorithm c++ based and use more parallelism. Also on use of this use all available cores. if its feasible to do genetic algorithmns on gpu do it with vulkan computer shader. but first tell me so then i can provide you with helper libs i made to interact with vulkan.
+- Make a trade window that makes setting up traderoutes easier

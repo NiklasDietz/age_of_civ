@@ -591,8 +591,19 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
                 const char* techName = gsp->tech().currentResearch.isValid()
                     ? aoc::sim::techDef(gsp->tech().currentResearch).name.data() : "none";
-                const char* civicName = gsp->civics().currentResearch.isValid()
-                    ? aoc::sim::civicDef(gsp->civics().currentResearch).name.data() : "none";
+                // Show the last completed civic (not current research, which resets
+                // between completions and appears as "none" at snapshot time).
+                const char* civicName = "none";
+                {
+                    const aoc::sim::PlayerCivicComponent& civics = gsp->civics();
+                    // Find the highest-index completed civic
+                    for (int32_t ci = static_cast<int32_t>(aoc::sim::civicCount()) - 1; ci >= 0; --ci) {
+                        if (civics.hasCompleted(aoc::CivicId{static_cast<uint16_t>(ci)})) {
+                            civicName = aoc::sim::civicDef(aoc::CivicId{static_cast<uint16_t>(ci)}).name.data();
+                            break;
+                        }
+                    }
+                }
 
                 LOG_INFO("  P%d: Pop=%d Cities=%d Treasury=%lld Science=%.1f Culture=%.1f "
                          "Tech=%s Civic=%s TradeRoutes=%d MonSys=%d",

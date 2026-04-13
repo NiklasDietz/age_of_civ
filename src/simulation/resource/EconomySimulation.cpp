@@ -438,9 +438,50 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
 
                 const float revMultiplier = playerPtr->industrial().cumulativeProductionMultiplier();
 
+                // Tool efficiency: industrial buildings need Tools (good 63) to
+                // operate at full capacity. Without tools, output is reduced to 60%.
+                // This creates demand for the tools supply chain and makes the
+                // Forge→Tools production path economically important.
+                float toolEff = 1.0f;
+                if (recipe->requiredBuilding.value <= 14  // Industrial buildings (0-14)
+                    && recipe->requiredBuilding.value != 6  // Not Market
+                    && recipe->requiredBuilding.value != 7) { // Not Library
+                    constexpr uint16_t TOOLS_GOOD_ID = 63;
+                    if (stockpile.getAmount(TOOLS_GOOD_ID) > 0) {
+                        // Consume 1 tool per 3 recipe batches (tools wear out)
+                        if (state.totalRecipesExecuted % 3 == 0) {
+                            [[maybe_unused]] bool toolConsumed =
+                                stockpile.consumeGoods(TOOLS_GOOD_ID, 1);
+                        }
+                    } else {
+                        toolEff = 0.60f;  // No tools = 60% efficiency
+                    }
+                }
+
+                // Small nation specialization bonus: nations with ≤4 cities that
+                // produce high-value goods (tier 4+: electronics, computers,
+                // software, semiconductors, microchips) get a 25% output boost.
+                // This models the Singapore/Switzerland/Israel effect: small
+                // nations that invest in high-tech can out-produce large nations
+                // per capita. Before industrialization, large nations dominate
+                // through raw material volume. After, small tech-savvy nations
+                // can compete through quality and specialization.
+                float specializationBonus = 1.0f;
+                if (playerPtr->cityCount() <= 4) {
+                    const uint16_t outGood = recipe->outputGoodId;
+                    // High-value goods: Electronics(75), Computers(77), Software(108),
+                    // Semiconductors(84), Microchips(85), Adv Machinery(73), Aircraft(82)
+                    if (outGood == 75 || outGood == 77 || outGood == 108
+                        || outGood == 84 || outGood == 85 || outGood == 73
+                        || outGood == 82) {
+                        specializationBonus = 1.25f;
+                    }
+                }
+
                 const int32_t boostedOutput = std::max(1, static_cast<int32_t>(
                     static_cast<float>(recipe->outputAmount)
-                    * infraBonus * envModifier * powerEff * expMultiplier * revMultiplier));
+                    * infraBonus * envModifier * powerEff * expMultiplier
+                    * revMultiplier * toolEff * specializationBonus));
                 stockpile.addGoods(recipe->outputGoodId, boostedOutput);
 
                 bool hasPrecisionInstr = stockpile.getAmount(goods::PRECISION_INSTRUMENTS) > 0;

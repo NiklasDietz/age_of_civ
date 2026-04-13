@@ -46,8 +46,12 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
             cityGold += 5;
         }
 
-        // Population-based tax income: 1 gold per 2 citizens (baseline taxation)
-        cityGold += static_cast<CurrencyAmount>(city->population() / 2);
+        // Population-based tax income: 1 gold per citizen.
+        // Citizens pay taxes — a pop-10 city should produce 10 gold from taxation
+        // alone. This is the primary income source and scales naturally with empire
+        // size: more cities → more population → more tax revenue → can afford
+        // more buildings and units. No artificial discounts needed.
+        cityGold += static_cast<CurrencyAmount>(city->population());
 
         // Industrial revolution per-citizen bonus: knowledge/services economy.
         // Post-industrial nations generate wealth from citizens, not territory.
@@ -70,7 +74,9 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
         // Specialist taxmen: +3 gold each (read from ECS sync'd data or default 0)
         // Taxmen gold is handled here since we compute per-city gold
 
-        // District and building gold bonuses
+        // District and building gold bonuses (only from commercial/harbor buildings).
+        // Industrial buildings do NOT generate gold directly — they produce goods
+        // that are sold on the market for coins. Gold comes from trade, not abstraction.
         const CityDistrictsComponent& districts = city->districts();
         for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
             if (d.type == DistrictType::Commercial) {
@@ -82,6 +88,28 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
             for (BuildingId bid : d.buildings) {
                 cityGold += static_cast<CurrencyAmount>(buildingDef(bid).goldBonus);
             }
+        }
+
+        // Goods-based economy bonus: cities with stockpiled goods generate tax
+        // from economic activity. Each unit of consumer goods, processed food,
+        // clothing, and electronics in the stockpile represents economic output
+        // that the government taxes. This is the natural income loop:
+        //   Produce goods → sell/consume → economic activity → tax revenue.
+        // Max 10 gold/city from this to prevent runaway.
+        {
+            constexpr uint16_t CONSUMER_GOODS_ID = 72;
+            constexpr uint16_t PROCESSED_FOOD_ID = 70;
+            constexpr uint16_t CLOTHING_ID = 79;
+            constexpr uint16_t ELECTRONICS_ID = 75;
+
+            const CityStockpileComponent& stock = city->stockpile();
+            int32_t economicActivityGold = 0;
+            // Each 5 consumer goods in stock → +1 gold (taxed consumption)
+            economicActivityGold += stock.getAmount(CONSUMER_GOODS_ID) / 5;
+            economicActivityGold += stock.getAmount(PROCESSED_FOOD_ID) / 5;
+            economicActivityGold += stock.getAmount(CLOTHING_ID) / 3;
+            economicActivityGold += stock.getAmount(ELECTRONICS_ID) / 2;
+            cityGold += static_cast<CurrencyAmount>(std::min(economicActivityGold, 10));
         }
 
         // Distance-based corruption: reduces gold based on distance from capital.
