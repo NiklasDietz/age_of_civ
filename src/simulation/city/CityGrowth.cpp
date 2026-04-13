@@ -162,10 +162,45 @@ static void processSingleCityGrowth(aoc::game::City& city,
         surplus *= 1.5f;
     }
 
-    city.setFoodSurplus(city.foodSurplus() + surplus);
+    // --- Food as tradeable good ---
+    // Positive surplus: grows the city, but excess above 2x growth need
+    // is converted to stockpiled Wheat goods (can be sold on the market).
+    // Negative surplus: before starvation, consume Wheat from city stockpile.
+    constexpr uint16_t WHEAT_GOOD_ID = 40;
+    constexpr float FOOD_TO_GOODS_RATIO = 0.5f;  // 2 surplus food → 1 Wheat good
+    constexpr float GOODS_TO_FOOD_RATIO = 1.5f;   // 1 Wheat good → 1.5 food (processing loss)
 
-    // Growth check
     float needed = foodForGrowth(city.population());
+
+    if (surplus > 0.0f) {
+        // Cap: city only benefits from up to 2x what it needs for growth.
+        // Excess is converted to Wheat goods and added to stockpile.
+        const float maxUsableSurplus = needed * 2.0f;
+        if (surplus > maxUsableSurplus) {
+            const float excessFood = surplus - maxUsableSurplus;
+            const int32_t goodsProduced = static_cast<int32_t>(excessFood * FOOD_TO_GOODS_RATIO);
+            if (goodsProduced > 0) {
+                city.stockpile().addGoods(WHEAT_GOOD_ID, goodsProduced);
+            }
+            surplus = maxUsableSurplus;
+        }
+    } else if (surplus < 0.0f) {
+        // Deficit: consume Wheat from stockpile to offset food shortage.
+        // This prevents starvation for cities that import food via trade.
+        const int32_t wheatAvailable = city.stockpile().getAmount(WHEAT_GOOD_ID);
+        if (wheatAvailable > 0) {
+            const float foodNeeded = -surplus;
+            const int32_t wheatToConsume = std::min(
+                wheatAvailable,
+                static_cast<int32_t>(foodNeeded / GOODS_TO_FOOD_RATIO) + 1);
+            const float foodRecovered = static_cast<float>(wheatToConsume) * GOODS_TO_FOOD_RATIO;
+            [[maybe_unused]] bool consumed =
+                city.stockpile().consumeGoods(WHEAT_GOOD_ID, wheatToConsume);
+            surplus += foodRecovered;  // May become positive
+        }
+    }
+
+    city.setFoodSurplus(city.foodSurplus() + surplus);
     if (city.foodSurplus() >= needed) {
         // Granary (BuildingId{15}): preserves 50% of food stock after growth
         bool hasGranary = city.hasBuilding(BuildingId{15});

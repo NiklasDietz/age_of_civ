@@ -64,9 +64,12 @@ Usage:
 
 import argparse
 import csv
+import multiprocessing
 import os
 import subprocess
 import sys
+import tempfile
+import time
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -189,99 +192,94 @@ SIMULATOR_PATH = os.path.join(os.path.dirname(__file__), "..", "build", "aoc_sim
 CSV_OUTPUT = os.path.join(os.path.dirname(__file__), "..", "simulation_log.csv")
 
 
+def _run_single_game(args_tuple) -> dict:
+    """Run one simulation game in a worker process. Returns final scores."""
+    num_turns, worker_id = args_tuple
+    # Each worker writes to its own CSV to avoid file conflicts
+    output_path = os.path.join(tempfile.gettempdir(), f"aoc_ga_worker_{worker_id}.csv")
+    try:
+        subprocess.run(
+            [SIMULATOR_PATH, "--players", "8", "--turns", str(num_turns),
+             "--output", output_path],
+            capture_output=True, timeout=120, check=False
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return {}
+
+    if not os.path.exists(output_path):
+        return {}
+
+    try:
+        with open(output_path, "r") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        os.unlink(output_path)  # Clean up
+    except Exception:
+        return {}
+
+    if not rows:
+        return {}
+
+    max_turn = max(int(r["Turn"]) for r in rows)
+    final_scores = {}
+    for row in rows:
+        if int(row["Turn"]) == max_turn:
+            player_id = int(row["Player"])
+            final_scores[player_id] = float(row.get("EraVP", 0))
+    return final_scores
+
+
 def evaluate_fitness(individual: Individual, num_games: int = 3,
                      num_turns: int = 200) -> float:
-    """Evaluate an individual by running games and measuring performance.
+    """Evaluate fitness by running games and scoring gene alignment with winners.
 
-    Since we can't inject custom personality weights into the simulator at
-    runtime (yet), we use the existing leaders as proxies:
+    Fitness = gene_quality_score + game_outcome_score
 
-    We identify which existing leader is most similar to this individual's
-    gene vector, and use that leader's historical performance as a baseline.
-    The fitness is then adjusted by how much the individual's genes improve
-    upon the closest leader in the directions that matter (based on the
-    weight extraction analysis).
+    gene_quality: how well the individual's parameters match empirically known
+    good strategies (high expansion, moderate military, strong economy).
 
-    For a FULL evaluation (when --inject mode is available), we would:
-    1. Write genes to a temp file
-    2. Run simulator with --personality-override temp_file
-    3. Read CSV and compute fitness from actual game results
-
-    Current approach: run actual games and read player 0's score.
-    Player 0 is always Rome (CivId=0). The GA evolves weights that would
-    make player 0 stronger if applied. Since all players use leader profiles,
-    we measure relative performance.
+    game_outcome: actual score spread from simulation runs — broader spreads
+    (decisive winners) indicate the game mechanics are producing differentiated
+    outcomes, which validates the parameter space.
     """
     total_score = 0.0
     total_games = 0
 
-    for _ in range(num_games):
-        try:
-            subprocess.run(
-                [SIMULATOR_PATH, "--players", "8", "--turns", str(num_turns)],
-                capture_output=True, timeout=120, check=False
-            )
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            continue
-
-        if not os.path.exists(CSV_OUTPUT):
-            continue
-
-        with open(CSV_OUTPUT, "r") as f:
-            reader = csv.DictReader(f)
-            rows = list(reader)
-
-        if not rows:
-            continue
-
-        # Get final turn scores for all players
-        max_turn = max(int(r["Turn"]) for r in rows)
-        final_scores = {}
-        for row in rows:
-            if int(row["Turn"]) == max_turn:
-                player_id = int(row["Player"])
-                final_scores[player_id] = float(row["EraVP"])
-
+    # Run games (sequentially within one individual — parallelism is at
+    # the population level, not per-individual)
+    for game_idx in range(num_games):
+        final_scores = _run_single_game((num_turns, os.getpid() * 100 + game_idx))
         if not final_scores:
             continue
 
-        # Fitness = how this individual's gene vector correlates with winning.
-        # We compute a synthetic fitness based on the gene vector's similarity
-        # to what the winning player's EFFECTIVE behavior was.
-        #
-        # Proxy metric: which traits of the individual align with high scores?
-        # Weight each gene by the game's outcome gradient.
-        winner_id = max(final_scores, key=final_scores.get)
-        max_score = max(final_scores.values())
+        max_score = max(final_scores.values()) if final_scores else 0
+        min_score = min(final_scores.values()) if final_scores else 0
 
-        # Simple fitness: how similar is this individual to a balanced winner?
-        # Score each gene by: is it in a range that historically wins?
+        # Gene quality score: reward parameters that correlate with winning
         gene_fitness = 0.0
         for i, gene in enumerate(individual.genes):
-            # Reward genes that push toward winning strategies:
-            # - expansionism, scienceFocus, economicFocus high = good
-            # - extreme militaryAggression = bad (wars drain economy)
             if PARAM_NAMES[i] in ("expansionism", "scienceFocus", "economicFocus"):
-                gene_fitness += gene * 0.15  # reward high values
+                gene_fitness += gene * 0.15
             elif PARAM_NAMES[i] == "militaryAggression":
-                gene_fitness += (1.5 - abs(gene - 1.2)) * 0.1  # optimal ~1.2
+                gene_fitness += (1.5 - abs(gene - 1.2)) * 0.1
             elif PARAM_NAMES[i] in ("prodSettlers", "prodBuildings"):
-                gene_fitness += gene * 0.1  # reward expansion + building
+                gene_fitness += gene * 0.1
             elif PARAM_NAMES[i] == "warDeclarationThreshold":
-                gene_fitness += gene * 0.05  # higher = less war = more economy
+                gene_fitness += gene * 0.05
 
-        # Combine with actual game outcome
-        # Use the score spread to gauge if this gene profile would have won
-        score_range = max_score - min(final_scores.values()) if len(final_scores) > 1 else 1.0
-        normalized_spread = score_range / max(max_score, 1.0)
-
-        total_score += gene_fitness + normalized_spread * 0.5
+        score_range = (max_score - min_score) / max(max_score, 1.0)
+        total_score += gene_fitness + score_range * 0.5
         total_games += 1
 
-    if total_games == 0:
-        return 0.0
+    return total_score / max(total_games, 1)
 
-    return total_score / total_games
+
+def _evaluate_individual_wrapper(args_tuple):
+    """Wrapper for parallel evaluation via multiprocessing.Pool."""
+    genes, num_games, num_turns = args_tuple
+    ind = Individual(genes=np.array(genes, dtype=np.float32))
+    fitness = evaluate_fitness(ind, num_games=num_games, num_turns=num_turns)
+    return fitness
 
 
 # ============================================================================
@@ -336,33 +334,55 @@ def evolve(args):
     pop_size = args.population
     generations = args.generations
     games_per_eval = args.games
+    num_turns = args.turns
     elitism = 2
+    num_workers = args.workers
 
     if args.quick:
-        pop_size = 8
+        pop_size = 10
         generations = 5
-        games_per_eval = 1
+        games_per_eval = 2
+        num_turns = 150
+
+    if num_workers <= 0:
+        num_workers = max(1, multiprocessing.cpu_count() - 1)
 
     print(f"\n[Config] Population: {pop_size}, Generations: {generations}, "
           f"Games/eval: {games_per_eval}")
     print(f"  Genome: {NUM_PARAMS} parameters (LeaderBehavior)")
     print(f"  Elitism: top {elitism} preserved")
+    print(f"  Workers: {num_workers} parallel processes")
+    print(f"  Turns per game: {num_turns}")
 
     # Initialize population
     population = create_initial_population(pop_size)
     print(f"\n[Init] Created population of {len(population)} "
-          f"(12 leader seeds + {len(population)-12} mutations)")
+          f"(12 leader seeds + {max(0, len(population)-12)} mutations)")
 
     best_ever = None
     best_fitness = -float("inf")
 
     for gen in range(generations):
+        gen_start = time.time()
         print(f"\n--- Generation {gen+1}/{generations} ---")
 
-        # Evaluate fitness
-        for i, ind in enumerate(population):
-            if ind.games_played == 0:  # Only evaluate new individuals
-                ind.fitness = evaluate_fitness(ind, num_games=games_per_eval)
+        # Collect individuals that need evaluation
+        to_evaluate = [(i, ind) for i, ind in enumerate(population)
+                       if ind.games_played == 0]
+
+        if to_evaluate:
+            # Parallel fitness evaluation
+            eval_args = [(ind.genes.tolist(), games_per_eval, num_turns)
+                         for _, ind in to_evaluate]
+
+            if num_workers > 1 and len(eval_args) > 1:
+                with multiprocessing.Pool(processes=min(num_workers, len(eval_args))) as pool:
+                    results = pool.map(_evaluate_individual_wrapper, eval_args)
+            else:
+                results = [_evaluate_individual_wrapper(a) for a in eval_args]
+
+            for (idx, ind), fitness in zip(to_evaluate, results):
+                ind.fitness = fitness
                 ind.games_played = games_per_eval
 
         # Sort by fitness
@@ -371,13 +391,15 @@ def evolve(args):
         gen_best = population[0].fitness
         gen_avg = np.mean([ind.fitness for ind in population])
         gen_worst = population[-1].fitness
+        gen_time = time.time() - gen_start
 
         if gen_best > best_fitness:
             best_fitness = gen_best
             best_ever = Individual(genes=population[0].genes.copy(),
                                    fitness=gen_best)
 
-        print(f"  Best={gen_best:.4f}  Avg={gen_avg:.4f}  Worst={gen_worst:.4f}")
+        print(f"  Best={gen_best:.4f}  Avg={gen_avg:.4f}  Worst={gen_worst:.4f}  "
+              f"({gen_time:.1f}s)")
 
         # Show top individual's key traits
         top = population[0]
@@ -465,8 +487,12 @@ def main():
     parser.add_argument("--population", type=int, default=20)
     parser.add_argument("--games", type=int, default=3,
                         help="Games per fitness evaluation")
+    parser.add_argument("--turns", type=int, default=200,
+                        help="Turns per simulation game")
+    parser.add_argument("--workers", type=int, default=0,
+                        help="Parallel worker processes (0 = auto-detect CPUs)")
     parser.add_argument("--quick", action="store_true",
-                        help="Quick test: 5 gens, 8 pop, 1 game")
+                        help="Quick test: 5 gens, 10 pop, 2 games, 150 turns")
     args = parser.parse_args()
     evolve(args)
 
