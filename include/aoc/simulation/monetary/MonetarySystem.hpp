@@ -217,7 +217,7 @@ struct MonetaryStateComponent {
 
     // -- Money supply (paper/fiat currency in GoldStandard/Fiat) --
     CurrencyAmount moneySupply    = 0;    ///< Total currency in circulation
-    CurrencyAmount treasury       = 100;  ///< Government cash on hand (spending power)
+    CurrencyAmount treasury       = 0;    ///< Government cash = coin stockpile. Starts at 0 (barter).
     Percentage     goldBackingRatio = 1.0f; ///< Paper currency per gold coin (gold standard only)
 
     // -- Inflation --

@@ -872,6 +872,39 @@ void EconomySimulation::updateCoinReservesFromStockpiles(aoc::game::GameState& g
         if (state.system == MonetarySystemType::CommodityMoney) {
             state.moneySupply = static_cast<CurrencyAmount>(state.totalCoinValue());
         }
+
+        // === CORE MONETARY IDENTITY ===
+        // In barter: treasury = 0 (no money exists)
+        // In commodity money: treasury = total coin value (coins ARE money)
+        // In gold standard: treasury = coin value * backing ratio
+        // In fiat: treasury is tracked separately (government can print)
+        //
+        // This makes money REAL: you can only spend what you've minted.
+        // No abstract "+100 starting gold". No money from nothing.
+        if (state.system == MonetarySystemType::Barter) {
+            // In barter, government has no money. All "purchases" must be
+            // done through production, not gold buying.
+            // Keep treasury at whatever it accumulated from previous systems
+            // or set to 0 if they've never had money.
+            if (state.totalCoinCount() == 0) {
+                playerPtr->setTreasury(0);
+                state.treasury = 0;
+            }
+        } else if (state.system == MonetarySystemType::CommodityMoney) {
+            // Treasury IS the coin stockpile. Every coin minted adds to treasury.
+            // Every expense removes coins. What you see = what you have.
+            const CurrencyAmount coinWealth = static_cast<CurrencyAmount>(state.totalCoinValue());
+            playerPtr->setTreasury(coinWealth);
+            state.treasury = coinWealth;
+        } else if (state.system == MonetarySystemType::GoldStandard) {
+            // Paper notes backed by gold: treasury = coins * backing ratio
+            const CurrencyAmount coinWealth = static_cast<CurrencyAmount>(state.totalCoinValue());
+            const CurrencyAmount paperWealth = static_cast<CurrencyAmount>(
+                static_cast<float>(coinWealth) * state.goldBackingRatio);
+            playerPtr->setTreasury(coinWealth + paperWealth);
+            state.treasury = coinWealth + paperWealth;
+        }
+        // Fiat: treasury managed separately via printMoney() and taxation
     }
 }
 

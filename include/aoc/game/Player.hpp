@@ -341,7 +341,7 @@ private:
     aoc::sim::PlayerCivicComponent m_civics;
 
     // Economy
-    CurrencyAmount m_treasury = 100;
+    CurrencyAmount m_treasury = 0;  ///< Starts at 0: no money at game start (barter)
     CurrencyAmount m_incomePerTurn = 0;
     aoc::sim::MonetaryStateComponent m_monetary;
 
