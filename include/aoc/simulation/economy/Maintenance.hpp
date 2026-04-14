@@ -22,6 +22,37 @@ class Player;
 
 namespace aoc::sim {
 
+/// Detailed per-turn economic breakdown for diagnostic analysis.
+struct EconomicBreakdown {
+    // Income sources
+    CurrencyAmount incomeTax         = 0;  ///< Population-based taxation
+    CurrencyAmount incomeCommercial  = 0;  ///< Commercial districts + buildings (Market/Bank/etc)
+    CurrencyAmount incomeIndustrial  = 0;  ///< Industrial revolution per-citizen bonus
+    CurrencyAmount incomeTileGold    = 0;  ///< Gold from worked tiles
+    CurrencyAmount incomeGoodsEcon   = 0;  ///< Taxable economic activity from goods stockpiles
+    CurrencyAmount incomeCapital     = 0;  ///< Palace bonus (+5)
+    CurrencyAmount totalIncome       = 0;  ///< Sum of all income (before goldAllocation split)
+    CurrencyAmount effectiveIncome   = 0;  ///< After goldAllocation (what goes to treasury)
+
+    // Expense sinks
+    CurrencyAmount expenseUnits      = 0;  ///< Unit maintenance
+    CurrencyAmount expenseBuildings  = 0;  ///< Building + district + city sprawl maintenance
+    CurrencyAmount expenseScience    = 0;  ///< Science funding cost
+    CurrencyAmount totalExpense      = 0;  ///< Sum of all expenses
+
+    // Net
+    CurrencyAmount netFlow           = 0;  ///< effectiveIncome - totalExpense
+
+    // Goods economy
+    int32_t goodsProduced    = 0;  ///< Total goods produced this turn
+    int32_t goodsConsumed    = 0;  ///< Total goods consumed this turn
+    int32_t goodsStockpiled  = 0;  ///< Total goods in all city stockpiles
+};
+
+/// Compute economic breakdown for a player (read-only, no side effects).
+[[nodiscard]] EconomicBreakdown computeEconomicBreakdown(
+    const aoc::game::Player& player, const aoc::map::HexGrid& grid);
+
 /**
  * @brief Compute gold income for a player from their cities and add to treasury.
  *

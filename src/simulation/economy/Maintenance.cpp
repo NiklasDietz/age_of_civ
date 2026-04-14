@@ -22,6 +22,84 @@
 
 namespace aoc::sim {
 
+EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
+                                            const aoc::map::HexGrid& grid) {
+    EconomicBreakdown bd{};
+
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        // Capital Palace
+        if (city->isOriginalCapital()) { bd.incomeCapital += 5; }
+
+        // Population tax: 1 per citizen
+        bd.incomeTax += static_cast<CurrencyAmount>(city->population());
+
+        // Industrial revolution per-citizen
+        const float indGold = player.industrial().cumulativeGoldPerCitizen();
+        if (indGold > 0.0f) {
+            bd.incomeIndustrial += static_cast<CurrencyAmount>(
+                static_cast<float>(city->population()) * indGold);
+        }
+
+        // Tile gold
+        for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
+            if (grid.isValid(tile)) {
+                bd.incomeTileGold += static_cast<CurrencyAmount>(
+                    grid.tileYield(grid.toIndex(tile)).gold);
+            }
+        }
+
+        // District/building gold
+        const CityDistrictsComponent& districts = city->districts();
+        for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
+            if (d.type == DistrictType::Commercial) { bd.incomeCommercial += 4; }
+            if (d.type == DistrictType::Harbor)     { bd.incomeCommercial += 2; }
+            for (BuildingId bid : d.buildings) {
+                bd.incomeCommercial += static_cast<CurrencyAmount>(buildingDef(bid).goldBonus);
+            }
+        }
+
+        // Goods economic activity
+        {
+            const CityStockpileComponent& stock = city->stockpile();
+            int32_t ecoGold = 0;
+            ecoGold += stock.getAmount(72) / 5;   // Consumer Goods
+            ecoGold += stock.getAmount(70) / 5;   // Processed Food
+            ecoGold += stock.getAmount(79) / 3;   // Clothing
+            ecoGold += stock.getAmount(75) / 2;   // Electronics
+            bd.incomeGoodsEcon += static_cast<CurrencyAmount>(std::min(ecoGold, 10));
+        }
+
+        // Building maintenance
+        for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
+            if (d.type != DistrictType::CityCenter) { bd.expenseBuildings += 1; }
+            for (BuildingId bid : d.buildings) {
+                bd.expenseBuildings += static_cast<CurrencyAmount>(buildingDef(bid).maintenanceCost);
+            }
+        }
+        if (!city->isOriginalCapital()) { bd.expenseBuildings += 2; }
+
+        // Goods stockpile count
+        for (const std::pair<const uint16_t, int32_t>& entry : city->stockpile().goods) {
+            bd.goodsStockpiled += entry.second;
+        }
+    }
+
+    // Unit maintenance
+    for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+        const int32_t cost = unit->typeDef().maintenanceGold();
+        if (cost > 0) { bd.expenseUnits += static_cast<CurrencyAmount>(cost); }
+    }
+
+    bd.totalIncome = bd.incomeCapital + bd.incomeTax + bd.incomeIndustrial
+                   + bd.incomeTileGold + bd.incomeCommercial + bd.incomeGoodsEcon;
+    bd.effectiveIncome = static_cast<CurrencyAmount>(
+        static_cast<float>(bd.totalIncome) * player.monetary().goldAllocation);
+    bd.totalExpense = bd.expenseUnits + bd.expenseBuildings;
+    bd.netFlow = bd.effectiveIncome - bd.totalExpense;
+
+    return bd;
+}
+
 CurrencyAmount processGoldIncome(aoc::game::Player& player,
                                   const aoc::map::HexGrid& grid) {
     CurrencyAmount goldIncome = 0;

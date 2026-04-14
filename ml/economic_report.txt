@@ -1,0 +1,57 @@
+======================================================================
+ECONOMIC HEALTH DIAGNOSTIC REPORT
+Based on 10 simulations
+======================================================================
+
+--- 1. WHERE DOES MONEY COME FROM? ---
+  Commercial          :   62.6 gold/turn avg (72.1%)
+  Tax                 :   15.5 gold/turn avg (17.8%)
+  Industrial Rev      :    5.5 gold/turn avg ( 6.3%)
+  Goods Econ          :    3.0 gold/turn avg ( 3.5%)
+  Tile Gold           :    0.2 gold/turn avg ( 0.3%)
+  TOTAL               :   86.9 gold/turn
+
+--- 2. WHERE DOES MONEY GO? ---
+  Units               :   93.1 gold/turn avg (64.1%)
+  Buildings           :   52.1 gold/turn avg (35.9%)
+  TOTAL               :  145.2 gold/turn
+  NET (income-expense): -58.3 gold/turn
+
+--- 3. GOODS ECONOMY ---
+  Avg goods stockpiled per player: 3754
+  Median: 3505, Max: 11489, Min: 1192
+  Players with 0 goods: 0/80
+
+--- 4. MONETARY SYSTEM DISTRIBUTION ---
+  Barter              :  47 players (59%)
+  CommodityMoney      :   4 players (5%)
+  GoldStandard        :  29 players (36%)
+
+--- 5. SMALL NATION VIABILITY (≤3 cities) ---
+  Count: 24 players
+  Profitable (treasury ≥ 0): 24/24 (100%)
+  Avg treasury: +42418
+  Range: [+18287, +50313]
+
+--- 6. LARGE NATION SUSTAINABILITY (≥8 cities) ---
+  Count: 33 players
+  Profitable (treasury ≥ 0): 33/33 (100%)
+  Avg treasury: +50444
+  Range: [+50164, +50931]
+
+--- 7. WINNER vs LOSER PROFILE ---
+  Metric                   Winner      Loser      Delta
+  -------------------- ---------- ---------- ----------
+  Cities                      9.9        5.7       +4.2
+  Population                 25.2       14.1      +11.1
+  Treasury                50536.0    47512.6    +3023.4
+  Income/turn               207.9       75.3     +132.6
+  Expense/turn              303.1      120.5     +182.6
+  Net flow                 -116.4      -53.6      -62.8
+  Goods stock              6173.2     3408.3    +2764.9
+  Era VP                    287.2       80.1     +207.1
+
+--- 8. ISSUES DETECTED ---
+  CRITICAL: Average income (87) is less than 80% of expenses (145). Players will chronically go bankrupt.
+  WARNING: 59% of players still in Barter at game end. AI may not be building Mints or minting coins.
+  WARNING: Goods stockpiles averaging >500. Demand may be too low — goods are piling up without being consumed.

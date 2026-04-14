@@ -82,13 +82,16 @@ struct UnitTypeDef {
     /// Up to 2 different resource requirements (e.g., Tank: Steel + Fuel).
     UnitResourceReq resourceReqs[2] = {};
 
-    /// Per-turn gold maintenance for this unit (Civ 6 style, scales with era).
+    /// Per-turn gold maintenance. Scales gently with era so late-game armies
+    /// don't bankrupt the economy. Ancient=1, Classical=1, Medieval=2, Renaissance=2,
+    /// Modern=3, Atomic=3, Information=4. This keeps armies affordable relative to
+    /// income growth from population and commercial buildings.
     [[nodiscard]] constexpr int32_t maintenanceGold() const {
         if (this->unitClass == UnitClass::Settler || this->unitClass == UnitClass::Civilian
             || this->unitClass == UnitClass::Trader || this->unitClass == UnitClass::Scout) {
             return 0;  // Civilian units have no maintenance
         }
-        return static_cast<int32_t>(this->era) + 1;
+        return static_cast<int32_t>(this->era) / 2 + 1;
     }
 
     /// Whether this unit requires any strategic resources to produce.

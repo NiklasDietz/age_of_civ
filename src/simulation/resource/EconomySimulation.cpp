@@ -270,6 +270,50 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
             }
         }
 
+        // Population-based consumption: citizens consume goods each turn.
+        // This is the core demand driver that makes production meaningful.
+        // Without it, goods pile up in stockpiles with no purpose.
+        {
+            const int32_t totalPop = playerPtr->totalPopulation();
+
+            // Food: 1 Wheat per 3 citizens (supplementing tile food yields)
+            econ.totalNeeds[goods::WHEAT] += totalPop / 3;
+
+            // Consumer Goods: modern citizens expect manufactured products
+            if (totalPop > 3) {
+                econ.totalNeeds[goods::CONSUMER_GOODS] += (totalPop - 3) / 3 + 1;
+            }
+
+            // Processed Food: larger cities need processed food, not just raw wheat
+            if (totalPop > 8) {
+                econ.totalNeeds[goods::PROCESSED_FOOD] += (totalPop - 8) / 4 + 1;
+            }
+
+            // Clothing: all citizens need clothing
+            econ.totalNeeds[goods::CLOTHING] += totalPop / 5 + 1;
+
+            // Advanced Consumer Goods: wealthy large populations
+            if (totalPop > 15) {
+                econ.totalNeeds[goods::ADV_CONSUMER_GOODS] += (totalPop - 15) / 5 + 1;
+            }
+
+            // Actually consume these goods from stockpiles each turn
+            // (not just register as demand — actually deplete them)
+            for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+                if (cityPtr == nullptr) { continue; }
+                CityStockpileComponent& stock = cityPtr->stockpile();
+                const int32_t cityPop = cityPtr->population();
+                [[maybe_unused]] bool c1 = stock.consumeGoods(goods::WHEAT, cityPop / 3);
+                if (cityPop > 3) {
+                    [[maybe_unused]] bool c2 = stock.consumeGoods(goods::CONSUMER_GOODS, (cityPop - 3) / 4);
+                }
+                if (cityPop > 5) {
+                    [[maybe_unused]] bool c3 = stock.consumeGoods(goods::PROCESSED_FOOD, (cityPop - 5) / 5);
+                }
+                [[maybe_unused]] bool c4 = stock.consumeGoods(goods::CLOTHING, cityPop / 6);
+            }
+        }
+
         // Count unique luxuries
         constexpr uint16_t RAW_LUXURY_IDS[] = {
             goods::WINE, goods::SPICES, goods::SILK, goods::IVORY, goods::GEMS,

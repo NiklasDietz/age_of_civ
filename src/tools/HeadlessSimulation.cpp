@@ -25,6 +25,7 @@
 #include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/simulation/turn/TurnProcessor.hpp"
 #include "aoc/simulation/turn/TurnEventLog.hpp"
+#include "aoc/simulation/economy/Maintenance.hpp"
 #include "aoc/simulation/map/GoodyHuts.hpp"
 
 // Simulation systems
@@ -235,7 +236,10 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         << "GDP,Treasury,CoinTier,MonetarySystem,Inflation,"
         << "Population,Cities,Military,TechsResearched,CultureTotal,"
         << "TradePartners,CompositeCSI,EraVP,AvgHappiness,"
-        << "Corruption,CrisisType,IndustrialRev,GovernmentType\n";
+        << "Corruption,CrisisType,IndustrialRev,GovernmentType,"
+        << "IncomeTax,IncomeCommercial,IncomeIndustrial,IncomeTileGold,"
+        << "IncomeGoodsEcon,TotalIncome,EffectiveIncome,"
+        << "ExpenseUnits,ExpenseBuildings,TotalExpense,NetFlow,GoodsStockpiled\n";
 
     aoc::map::HexGrid grid;
     std::random_device rd;
@@ -746,7 +750,22 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 << snap.corruption << ","
                 << static_cast<int>(snap.crisisType) << ","
                 << static_cast<int>(snap.industrialRev) << ","
-                << static_cast<int>(snap.governmentType) << "\n";
+                << static_cast<int>(snap.governmentType) << ",";
+            // Economic breakdown columns
+            if (snapPlayer != nullptr) {
+                aoc::sim::EconomicBreakdown bd =
+                    aoc::sim::computeEconomicBreakdown(*snapPlayer, grid);
+                csv << bd.incomeTax << "," << bd.incomeCommercial << ","
+                    << bd.incomeIndustrial << "," << bd.incomeTileGold << ","
+                    << bd.incomeGoodsEcon << "," << bd.totalIncome << ","
+                    << bd.effectiveIncome << ","
+                    << bd.expenseUnits << "," << bd.expenseBuildings << ","
+                    << bd.totalExpense << "," << bd.netFlow << ","
+                    << bd.goodsStockpiled;
+            } else {
+                csv << "0,0,0,0,0,0,0,0,0,0,0,0";
+            }
+            csv << "\n";
         }
 
         // Check victory

@@ -865,6 +865,24 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             }
         }
 
+        // --- Mint priority ---
+        // Capital should build a Mint early to enable commodity money transition.
+        // Without a Mint, the player stays in Barter forever (71% of players stuck).
+        // BuildingId 24 = Mint. Only in capital (CityCenter district).
+        if (city.isOriginalCapital()
+            && !city.hasBuilding(BuildingId{24})
+            && canBuildBuilding(gameState, this->m_player, city, BuildingId{24})
+            && gsPlayer->monetary().system == MonetarySystemType::Barter) {
+            ProductionCandidate candidate{};
+            candidate.item.type      = ProductionItemType::Building;
+            candidate.item.itemId    = 24u;
+            candidate.item.name      = "Mint";
+            candidate.item.totalCost = 70.0f;
+            candidate.item.progress  = 0.0f;
+            candidate.score          = 1.5f;  // High priority — enables entire monetary system
+            candidates.push_back(std::move(candidate));
+        }
+
         // --- Walls priority ---
         // Build walls when enemy is nearby and city doesn't have them yet.
         // Wall BuildingId 17 = Ancient Walls
