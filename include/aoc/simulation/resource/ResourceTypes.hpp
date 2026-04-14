@@ -286,6 +286,17 @@ struct ProductionRecipe {
     int32_t                   outputAmount;
     BuildingId                requiredBuilding; ///< Building needed in the city
     int32_t                   turnsToProcess;   ///< Production time (1 = instant next turn)
+
+    /// Worker slots consumed per batch. Basic recipes need 1 worker, advanced
+    /// recipes need 2-3. This is the natural "human capital" bottleneck:
+    /// - A city with 10 pop has 5 worker slots (pop/2)
+    /// - Basic recipe (ingots, lumber): 1 slot → 5 batches possible
+    /// - Advanced recipe (electronics, computers): 3 slots → 1 batch possible
+    /// - Resource-rich cities put workers on mines, leaving fewer for factories
+    /// - Education-focused cities can run more advanced recipes per capita
+    /// This naturally creates the resource curse: raw materials are easy but
+    /// high-value goods require human capital investment.
+    int32_t                   workerSlots = 1;
 };
 
 /// Get all production recipes.

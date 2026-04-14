@@ -37,6 +37,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 namespace aoc::sim {
@@ -166,13 +167,26 @@ struct MonetaryTransitionReq {
 
 /// Transition requirements. Based on currency strength, not specific metal type.
 /// A civ with 100 copper coins can reach Gold Standard just as well as one with 4 gold coins.
+///
+/// Historical note: China invented paper money (fiat) in the Song Dynasty (1024 CE),
+/// centuries before Europe. The conditions were: high trade volume (metal coins too
+/// heavy), Paper Making + Banking tech, and government credibility. We allow early
+/// fiat transition when trade volume is high enough, even without modern Economics.
+///
+/// The Gold Standard -> Fiat transition has two paths:
+///   Path A (modern): Economics tech + high currency strength + stability
+///   Path B (early/Song): Printing tech + 3 trade partners + low inflation
+/// Both require 5+ turns in Gold Standard for stability track record.
 inline constexpr std::array<MonetaryTransitionReq, 3> MONETARY_TRANSITIONS = {{
     // Barter -> Commodity Money: need any coins worth >= 3 currency units
     {MonetarySystemType::CommodityMoney, TechId{},  3,    1, 0, 0, 1.0f},
     // Commodity -> Gold Standard: need banking tech, significant reserves, 2 cities
     {MonetarySystemType::GoldStandard,   TechId{9}, 50,   2, 0, 0, 1.0f},
-    // Gold Standard -> Fiat: need economics tech, stability, sufficient economy
-    {MonetarySystemType::FiatMoney,      TechId{13},100,  3, 5, 0, 0.15f},
+    // Gold Standard -> Fiat: Printing (TechId{9}) or Economics (TechId{13}).
+    // Lowered currency strength requirement. Needs 3+ trade partners (the trade
+    // volume that makes metal coins impractical, like Song Dynasty Sichuan).
+    // Max inflation 15%: must demonstrate monetary discipline first.
+    {MonetarySystemType::FiatMoney,      TechId{9}, 75,   2, 5, 3, 0.15f},
 }};
 
 // ============================================================================
@@ -238,7 +252,7 @@ struct MonetaryStateComponent {
     // -- Fiat currency specifics --
     /// Player-chosen currency name (e.g., "Dollar", "Yuan", "Mark").
     /// Default: civilization name + "Crown" (e.g., "Roman Crown").
-    char currencyName[32] = "Crown";
+    std::string currencyName = "Crown";
 
     /// Fiat trust score [0.0, 1.0]. Determines trade acceptance and exchange rate.
     /// Trust depends on: GDP rank, inflation, debt-to-GDP, military, trade partners.
@@ -345,11 +359,8 @@ struct MonetaryStateComponent {
     }
 
     /// Set the currency name (e.g. "Dollar", "Yuan", "Drachma").
-    void setCurrencyName(const char* name) {
-        std::size_t len = 0;
-        while (name[len] != '\0' && len < 31) { ++len; }
-        for (std::size_t i = 0; i < len; ++i) { this->currencyName[i] = name[i]; }
-        this->currencyName[len] = '\0';
+    void setCurrencyName(std::string_view name) {
+        this->currencyName = std::string(name);
     }
 
     // ========================================================================

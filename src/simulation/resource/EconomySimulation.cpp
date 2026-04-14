@@ -359,8 +359,10 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 }
 
                 int32_t robotSlots = city->automation().bonusRecipeSlots();
-                const int32_t maxRecipes = totalWorkerCapacity(city->population(), robotSlots);
-                if (state.totalRecipesExecuted >= maxRecipes) {
+                const int32_t maxSlots = totalWorkerCapacity(city->population(), robotSlots);
+                // Each recipe consumes workerSlots (1 for basic, 2-3 for advanced).
+                // A city can only run recipes whose total slots fit within capacity.
+                if (state.totalRecipesExecuted + recipe->workerSlots > maxSlots) {
                     continue;
                 }
 
@@ -458,30 +460,10 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                     }
                 }
 
-                // Small nation specialization bonus: nations with ≤4 cities that
-                // produce high-value goods (tier 4+: electronics, computers,
-                // software, semiconductors, microchips) get a 25% output boost.
-                // This models the Singapore/Switzerland/Israel effect: small
-                // nations that invest in high-tech can out-produce large nations
-                // per capita. Before industrialization, large nations dominate
-                // through raw material volume. After, small tech-savvy nations
-                // can compete through quality and specialization.
-                float specializationBonus = 1.0f;
-                if (playerPtr->cityCount() <= 4) {
-                    const uint16_t outGood = recipe->outputGoodId;
-                    // High-value goods: Electronics(75), Computers(77), Software(108),
-                    // Semiconductors(84), Microchips(85), Adv Machinery(73), Aircraft(82)
-                    if (outGood == 75 || outGood == 77 || outGood == 108
-                        || outGood == 84 || outGood == 85 || outGood == 73
-                        || outGood == 82) {
-                        specializationBonus = 1.25f;
-                    }
-                }
-
                 const int32_t boostedOutput = std::max(1, static_cast<int32_t>(
                     static_cast<float>(recipe->outputAmount)
                     * infraBonus * envModifier * powerEff * expMultiplier
-                    * revMultiplier * toolEff * specializationBonus));
+                    * revMultiplier * toolEff));
                 stockpile.addGoods(recipe->outputGoodId, boostedOutput);
 
                 bool hasPrecisionInstr = stockpile.getAmount(goods::PRECISION_INSTRUMENTS) > 0;
@@ -521,7 +503,7 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                     }
                 }
 
-                ++state.totalRecipesExecuted;
+                state.totalRecipesExecuted += recipe->workerSlots;
                 ++state.buildingBatchesUsed[recipe->requiredBuilding.value];
             }
         }

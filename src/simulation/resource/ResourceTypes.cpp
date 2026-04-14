@@ -373,6 +373,53 @@ std::vector<ProductionRecipe> buildRecipes() {
         {{goods::SUGAR, 3}},
         goods::BIOFUEL, 1, BuildingId{33}, 1});
 
+    // ================================================================
+    // Worker slots: advanced recipes need more educated workers per batch.
+    // This is the natural "human capital bottleneck":
+    //   - Tier 1 (raw processing): 1 worker slot (default)
+    //   - Tier 2 (tools, steel): 1 worker slot
+    //   - Tier 3 (machinery, electronics): 2 worker slots
+    //   - Tier 4 (computers, semiconductors, aircraft): 3 worker slots
+    //
+    // A city with pop 10 has 5 worker slots. It can run:
+    //   5 basic recipes, OR 2 advanced + 1 basic, OR 1 high-tech + 1 advanced
+    //
+    // Resource-rich cities spend workers on raw extraction → can't do advanced.
+    // Education-focused cities with labs/factories → run high-tier recipes.
+    // This IS the resource curse: raw materials don't make you rich, human
+    // capital does. Small educated nations naturally out-produce large
+    // resource-dependent ones in high-value goods.
+    // ================================================================
+    for (ProductionRecipe& r : recipes) {
+        switch (r.recipeId) {
+            // Tier 3: 2 worker slots
+            case 9:   // Machinery
+            case 10:  // Electronics
+            case 18:  // Surface Plate
+            case 19:  // Precision Instruments
+            case 20:  // Interchangeable Parts
+            case 23:  // Computers
+            case 28:  // Telecom Equipment
+            case 29:  // Advanced Consumer Goods
+                r.workerSlots = 2;
+                break;
+            // Tier 4: 3 worker slots
+            case 12:  // Advanced Machinery
+            case 13:  // Industrial Equipment
+            case 21:  // Semiconductors
+            case 22:  // Microchips
+            case 24:  // Software
+            case 25:  // Aircraft Components
+            case 26:  // Aircraft
+            case 27:  // Armored Vehicles
+            case 37:  // Robot Workers
+                r.workerSlots = 3;
+                break;
+            default:
+                break;  // Stays at 1
+        }
+    }
+
     return recipes;
 }
 

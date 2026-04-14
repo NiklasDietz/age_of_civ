@@ -63,14 +63,47 @@ void computeInflation(MonetaryStateComponent& state,
         velocityChange = (state.velocityOfMoney - previousVelocity) / previousVelocity;
     }
 
-    // Core inflation calculation
-    state.inflationRate = moneyGrowth + velocityChange - gdpGrowth;
+    // Core inflation calculation (Fisher equation baseline)
+    float fisherInflation = moneyGrowth + velocityChange - gdpGrowth;
+
+    // MMT correction: inflation depends on spending vs productive CAPACITY,
+    // not just money supply. If GDP is growing (economy has spare capacity),
+    // printing money is less inflationary. If GDP is stagnant/shrinking
+    // (capacity constraint), printing is fully inflationary.
+    //
+    // The formula: actual inflation = fisher_inflation * capacity_pressure
+    //   capacity_pressure = 1.0 when fully utilized (gdpGrowth <= 0)
+    //   capacity_pressure = 0.3 when economy is growing fast (gdpGrowth > 5%)
+    //
+    // This means: a government that prints money to build roads/factories
+    // during a recession causes little inflation (spare workers absorb it).
+    // A government that prints during a boom causes severe inflation.
+    float capacityPressure = 1.0f;
+    if (gdpGrowth > 0.0f) {
+        // Growing economy has spare capacity → printing is less inflationary
+        // Fast growth (>5%/turn) reduces inflation impact to 30%
+        capacityPressure = std::max(0.3f, 1.0f - gdpGrowth * 14.0f);
+    } else if (gdpGrowth < -0.02f) {
+        // Shrinking economy → money chases fewer goods → more inflationary
+        capacityPressure = std::min(1.5f, 1.0f + std::abs(gdpGrowth) * 10.0f);
+    }
+
+    state.inflationRate = fisherInflation * capacityPressure;
+
+    // Fiat money printing inflation (direct impact from printMoney())
+    // This is ADDITIVE — printing always creates some inflation regardless
+    // of capacity, but capacity_pressure modulates how much.
+    if (state.printAmountThisTurn > 0 && currentGDP > 0) {
+        float printingInflation = static_cast<float>(state.printAmountThisTurn)
+                                / static_cast<float>(currentGDP);
+        state.inflationRate += printingInflation * capacityPressure;
+        state.printAmountThisTurn = 0;  // Reset for next turn
+    }
 
     // Treasury hoarding pressure: excess gold causes inflation
     if (currentGDP > 0 && state.treasury > 0) {
         float treasuryToGDP = static_cast<float>(state.treasury) / static_cast<float>(currentGDP);
         if (treasuryToGDP > 2.0f) {
-            // Treasury exceeds 2x GDP -- excess money creates inflation
             float excessPressure = (treasuryToGDP - 2.0f) * 0.01f;
             state.inflationRate += excessPressure;
         }
