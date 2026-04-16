@@ -5,10 +5,10 @@
  * @brief Terrain modification projects: canals, tunnels, land reclamation.
  *
  * === Canals ===
- * Connect two bodies of water through 1 tile of land.
- * Requirements: tile must be between two water/coast tiles (or a city).
- * Effect: naval units and trade ships can pass through.
- * Cost: 200 production, requires Industrial tech.
+ * Connect two bodies of water through land tiles.
+ * Requirements: tile must be between two water/coast/canal tiles (or a city).
+ * Effect: naval units and trade ships can pass through. Owner collects tolls.
+ * Cost: 600 production, requires Steam Power tech. Multi-tile canals supported.
  *
  * === Tunnels ===
  * Connect two tiles separated by a mountain.
@@ -52,7 +52,7 @@ enum class TerrainProjectType : uint8_t {
 /// Production cost for each terrain project.
 [[nodiscard]] constexpr int32_t terrainProjectCost(TerrainProjectType type) {
     switch (type) {
-        case TerrainProjectType::Canal:           return 200;
+        case TerrainProjectType::Canal:           return 600;
         case TerrainProjectType::Tunnel:          return 300;
         case TerrainProjectType::LandReclamation: return 250;
         case TerrainProjectType::Deforestation:   return 0;   // Instant, gives production

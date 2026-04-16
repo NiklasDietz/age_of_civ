@@ -422,7 +422,9 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         struct TollEntry {
             PlayerId owner;
             int32_t  foreignTiles;  // tiles of this owner on the path
+            int32_t  canalTiles;    // canal tiles traversed (charged premium toll)
             float    tollRate;
+            float    canalTollRate; // additional per-tile canal transit fee
         };
         std::vector<TollEntry> tollEntries;
 
@@ -445,19 +447,24 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             }
 
             float rate = ownerPlayer->tariffs().effectiveTollRate(trader.owner);
-            if (rate <= 0.0f) { continue; }
+            bool isCanal = grid.hasCanal(idx);
+
+            // Canal tiles always charge toll (even if territory rate is 0)
+            if (rate <= 0.0f && !isCanal) { continue; }
 
             // Aggregate by owner
             bool found = false;
             for (TollEntry& te : tollEntries) {
                 if (te.owner == tileOwner) {
                     ++te.foreignTiles;
+                    if (isCanal) { ++te.canalTiles; }
                     found = true;
                     break;
                 }
             }
             if (!found) {
-                tollEntries.push_back({tileOwner, 1, rate});
+                float canalRate = isCanal ? ownerPlayer->tariffs().canalTollRate : 0.0f;
+                tollEntries.push_back({tileOwner, 1, isCanal ? 1 : 0, rate, canalRate});
             }
         }
 
@@ -473,10 +480,14 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         //              refuse (pass through anyway) if hostile and toll > 25%.
         //              rerouting is deferred to route establishment (Step 4b).
         for (TollEntry& te : tollEntries) {
-            CurrencyAmount totalToll = static_cast<CurrencyAmount>(
-                static_cast<float>(cargoValue) * te.tollRate
+            // Territory toll: proportional to path fraction through this owner's land
+            float territoryToll = static_cast<float>(cargoValue) * te.tollRate
                 * static_cast<float>(te.foreignTiles)
-                / static_cast<float>(std::max(static_cast<int32_t>(trader.path.size()), 1)));
+                / static_cast<float>(std::max(static_cast<int32_t>(trader.path.size()), 1));
+            // Canal surcharge: flat per-tile premium for canal transit (major infrastructure)
+            float canalSurcharge = static_cast<float>(cargoValue) * te.canalTollRate
+                * static_cast<float>(te.canalTiles);
+            CurrencyAmount totalToll = static_cast<CurrencyAmount>(territoryToll + canalSurcharge);
             if (totalToll <= 0) { totalToll = 1; }
 
             aoc::game::Player* traderPlayer = gameState.player(trader.owner);

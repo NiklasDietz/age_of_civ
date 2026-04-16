@@ -19,20 +19,26 @@ bool canBuildTerrainProject(const aoc::map::HexGrid& grid,
 
     switch (type) {
         case TerrainProjectType::Canal: {
-            // Must be land tile between two water bodies
+            // Must be land tile (not water, mountain, or existing canal)
             if (aoc::map::isWater(terrain) || aoc::map::isImpassable(terrain)) {
                 return false;
             }
-            // Check for at least 2 adjacent water tiles
+            if (grid.improvement(tileIndex) == aoc::map::ImprovementType::Canal) {
+                return false;  // Already a canal
+            }
+            // Need at least 2 adjacent water or canal tiles (supports multi-tile canals)
             hex::AxialCoord center = grid.toAxial(tileIndex);
             std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(center);
-            int32_t waterNeighbors = 0;
+            int32_t navigableNeighbors = 0;
             for (const hex::AxialCoord& n : nbrs) {
-                if (grid.isValid(n) && aoc::map::isWater(grid.terrain(grid.toIndex(n)))) {
-                    ++waterNeighbors;
+                if (!grid.isValid(n)) { continue; }
+                int32_t nbrIdx = grid.toIndex(n);
+                if (aoc::map::isWater(grid.terrain(nbrIdx))
+                    || grid.improvement(nbrIdx) == aoc::map::ImprovementType::Canal) {
+                    ++navigableNeighbors;
                 }
             }
-            return waterNeighbors >= 2;
+            return navigableNeighbors >= 2;
         }
 
         case TerrainProjectType::Tunnel: {
@@ -78,11 +84,11 @@ ErrorCode executeTerrainProject(aoc::map::HexGrid& grid,
 
     switch (type) {
         case TerrainProjectType::Canal:
-            // Convert land to coast (creates a navigable channel)
-            grid.setTerrain(tileIndex, aoc::map::TerrainType::Coast);
+            // Place canal improvement: land stays land but becomes navigable by ships.
+            // Clear existing features (excavation removes vegetation) but keep terrain.
             grid.setFeature(tileIndex, aoc::map::FeatureType::None);
-            grid.setImprovement(tileIndex, aoc::map::ImprovementType::None);
-            LOG_INFO("Canal built at tile %d", tileIndex);
+            grid.setImprovement(tileIndex, aoc::map::ImprovementType::Canal);
+            LOG_INFO("Canal built at tile %d -- navigable waterway created", tileIndex);
             break;
 
         case TerrainProjectType::Tunnel:

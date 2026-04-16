@@ -74,8 +74,8 @@ void updateNavalPassageViolations(aoc::game::GameState& gameState,
 
             int32_t tileIdx = grid.toIndex(pos);
 
-            // Only applies to water tiles
-            if (!aoc::map::isWater(grid.terrain(tileIdx))) { continue; }
+            // Applies to water tiles and canal tiles (both are navigable)
+            if (!aoc::map::isWater(grid.terrain(tileIdx)) && !grid.hasCanal(tileIdx)) { continue; }
 
             PlayerId tileOwner = grid.owner(tileIdx);
             if (tileOwner == INVALID_PLAYER || tileOwner == violator) { continue; }
@@ -116,7 +116,7 @@ void updateNavalPassageViolations(aoc::game::GameState& gameState,
                         aoc::hex::AxialCoord pos = unit->position();
                         if (!grid.isValid(pos)) { continue; }
                         int32_t idx = grid.toIndex(pos);
-                        if (!aoc::map::isWater(grid.terrain(idx))) { continue; }
+                        if (!aoc::map::isWater(grid.terrain(idx)) && !grid.hasCanal(idx)) { continue; }
                         if (grid.owner(idx) != b) { continue; }
                         if (isNearHarbor(gameState, b, pos, NEAR_HARBOR_RADIUS)) {
                             effectiveTurns = rel.turnsWithNavalViolation * 2;

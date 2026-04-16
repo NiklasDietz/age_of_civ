@@ -25,6 +25,16 @@ bool canPlaceImprovement(const aoc::map::HexGrid& grid,
         return false;
     }
 
+    // Cannot overwrite a canal (canals are major infrastructure projects)
+    if (grid.hasCanal(index)) {
+        return false;
+    }
+
+    // Canals are built via terrain projects (city production), not by builders
+    if (type == aoc::map::ImprovementType::Canal) {
+        return false;
+    }
+
     switch (type) {
         case aoc::map::ImprovementType::Farm:
             // Farm on grassland or plains (not on hills, forest, or jungle)
@@ -77,6 +87,16 @@ bool canPlaceImprovement(const aoc::map::HexGrid& grid,
             // Road on any land tile
             return !aoc::map::isWater(terrain);
 
+        case aoc::map::ImprovementType::Railway:
+        case aoc::map::ImprovementType::Highway:
+        case aoc::map::ImprovementType::Dam:
+        case aoc::map::ImprovementType::Vineyard:
+        case aoc::map::ImprovementType::SilkFarm:
+        case aoc::map::ImprovementType::SpiceFarm:
+        case aoc::map::ImprovementType::DyeWorks:
+        case aoc::map::ImprovementType::CottonField:
+        case aoc::map::ImprovementType::Workshop:
+        case aoc::map::ImprovementType::Canal:
         case aoc::map::ImprovementType::None:
         case aoc::map::ImprovementType::Count:
             return false;

@@ -289,9 +289,29 @@ void MapRenderer::drawTile(vulkan_app::renderer::Renderer2D& renderer2d,
         renderer2d.drawCircle(cx, cy, s * 1.3f, 1.0f, 0.88f, 0.35f, wa * 0.6f, 2.0f);
     }
 
-    // ---- Improvement indicator (small icon at top of hex) ----
+    // ---- Canal: blue waterway stripe through the hex ----
     map::ImprovementType improvement = grid.improvement(tileIndex);
-    if (improvement != map::ImprovementType::None && improvement != map::ImprovementType::Road) {
+    if (improvement == map::ImprovementType::Canal) {
+        const float ca = dimmed ? 0.25f : 0.65f;
+        const float canalW = hs * 0.35f;
+        // Central water channel (vertical stripe)
+        renderer2d.drawFilledRect(cx - canalW * 0.5f, cy - hs * 0.6f,
+                                  canalW, hs * 1.2f,
+                                  0.18f, 0.42f, 0.68f, ca);
+        // Stone banks on each side
+        const float bankW = hs * 0.06f;
+        const float bankA = dimmed ? 0.2f : 0.55f;
+        renderer2d.drawFilledRect(cx - canalW * 0.5f - bankW, cy - hs * 0.6f,
+                                  bankW, hs * 1.2f,
+                                  0.50f, 0.48f, 0.42f, bankA);
+        renderer2d.drawFilledRect(cx + canalW * 0.5f, cy - hs * 0.6f,
+                                  bankW, hs * 1.2f,
+                                  0.50f, 0.48f, 0.42f, bankA);
+    }
+
+    // ---- Improvement indicator (small icon at top of hex) ----
+    if (improvement != map::ImprovementType::None && improvement != map::ImprovementType::Road
+        && improvement != map::ImprovementType::Canal) {
         const float s = hs * 0.12f;
         const float iy = cy - hs * 0.35f;
         const float ia = dimmed ? 0.3f : 0.7f;

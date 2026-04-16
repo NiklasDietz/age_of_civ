@@ -233,6 +233,7 @@ enum class ImprovementType : uint8_t;
         case 11: return {0, 1, 0, 0, 0, 0};  // Railway:      +1 production
         case 12: return {0, 0, 1, 0, 0, 0};  // Highway:      +1 gold
         case 13: return {0, 1, 0, 0, 0, 0};  // Dam:          +1 production
+        case 20: return {0, 0, 2, 0, 0, 0};  // Canal:        +2 gold (toll revenue)
         default: return {};                   // None / unknown
     }
 }

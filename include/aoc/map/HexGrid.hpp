@@ -59,6 +59,7 @@ enum class ImprovementType : uint8_t {
     DyeWorks,   ///< Plains/Forest edge. Produces dyes (luxury). Renewable.
     CottonField,///< Grassland/Plains. Produces cotton (strategic). Renewable.
     Workshop,   ///< Any land. Produces tools/consumer goods (+2 production, +1 gold).
+    Canal,      ///< Artificial waterway: ships can traverse. Built via city terrain project.
 
     Count
 };
@@ -222,6 +223,9 @@ public:
     /// True if the tile has any road-type infrastructure (road, railway, highway).
     [[nodiscard]] bool hasRoad(int32_t index) const { this->assertIndex(index); return this->m_road[static_cast<std::size_t>(index)] != 0; }
 
+    /// True if the tile has a canal improvement (navigable by ships).
+    [[nodiscard]] bool hasCanal(int32_t index) const { this->assertIndex(index); return this->m_improvement[static_cast<std::size_t>(index)] == ImprovementType::Canal; }
+
     /// Get the infrastructure tier: 0=none, 1=road, 2=railway, 3=highway.
     [[nodiscard]] int32_t infrastructureTier(int32_t index) const {
         this->assertIndex(index);
@@ -263,21 +267,27 @@ public:
     }
 
     /// Movement cost for a naval unit (0 = impassable for ships).
-    /// All water tiles cost 1 MP. Land is impassable.
+    /// All water tiles and canal tiles cost 1 MP. Other land is impassable.
     [[nodiscard]] int32_t navalMovementCost(int32_t index) const {
         TerrainType t = this->terrain(index);
         if (aoc::map::isWater(t)) {
             return 1;
         }
+        if (this->improvement(index) == ImprovementType::Canal) {
+            return 1;  // Canal creates a navigable waterway through land
+        }
         return 0;  // Land tiles are impassable for naval units
     }
 
     /// Movement cost for early naval units (no Navigation tech).
-    /// Can only traverse Coast and ShallowWater, not deep Ocean.
+    /// Can only traverse Coast, ShallowWater, and canals (not deep Ocean).
     [[nodiscard]] int32_t shallowNavalMovementCost(int32_t index) const {
         TerrainType t = this->terrain(index);
         if (aoc::map::isShallowWater(t)) {
             return 1;
+        }
+        if (this->improvement(index) == ImprovementType::Canal) {
+            return 1;  // Canals are always navigable regardless of tech
         }
         return 0;  // Deep ocean and land are impassable
     }
