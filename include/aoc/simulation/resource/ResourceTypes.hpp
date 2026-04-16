@@ -223,6 +223,7 @@ namespace goods {
     inline constexpr uint16_t CHARCOAL            = 79;  ///< Wood-based fuel, early coal substitute
     inline constexpr uint16_t DEUTERIUM           = 80;  ///< Fusion fuel, extracted from coastal water
     inline constexpr uint16_t BIOFUEL             = 81;  ///< Renewable fuel from crops, substitutes for Fuel
+    inline constexpr uint16_t GOLD_CONTACTS      = 82;  ///< Gold plating for electronics; late-game use of gold ore
 
     // -- Advanced goods (100-139) --
     inline constexpr uint16_t MACHINERY            = 100;
@@ -243,12 +244,12 @@ namespace goods {
     // -- Monetary goods (140-159) -- produced at Mint from raw metals
     inline constexpr uint16_t COPPER_COINS         = 140;
     inline constexpr uint16_t SILVER_COINS         = 141;
-    inline constexpr uint16_t GOLD_COINS           = 142;
+    inline constexpr uint16_t GOLD_BARS            = 142;  ///< Treasury reserve bars, NOT circulating coins
 
     // -- Automation goods (160-169) --
     inline constexpr uint16_t ROBOT_WORKERS        = 143;
 
-    inline constexpr uint16_t GOOD_COUNT = 152;
+    inline constexpr uint16_t GOOD_COUNT = 153;
 } // namespace goods
 
 // ============================================================================
@@ -297,6 +298,17 @@ struct ProductionRecipe {
     /// This naturally creates the resource curse: raw materials are easy but
     /// high-value goods require human capital investment.
     int32_t                   workerSlots = 1;
+
+    /// Technology required to execute this recipe. Default TechId{} means
+    /// no tech gate (available from turn 1). Used to lock higher-tier minting
+    /// behind research: silver coins require Currency, gold bars require Metallurgy.
+    TechId                    requiredTech = TechId{};
+
+    /// Recycling recipes deconstruct goods back into raw materials (e.g. melt
+    /// coins into ore). They form cycles with forward recipes in the production
+    /// DAG and must be excluded from topological dependency tracking. They
+    /// execute after all forward recipes in a turn.
+    bool                      isRecycling = false;
 };
 
 /// Get all production recipes.

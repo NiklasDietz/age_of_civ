@@ -39,13 +39,13 @@ ErrorCode buyGold(MonetaryStateComponent& state,
         return ErrorCode::InsufficientResources;
     }
 
-    state.goldCoinReserves += static_cast<int32_t>(goldAmount);
+    state.goldBarReserves += static_cast<int32_t>(goldAmount);
     state.treasury     -= totalCost;
     state.moneySupply  -= totalCost;  // Currency removed from circulation
 
     // Recalculate backing ratio if on gold standard
     if (state.system == MonetarySystemType::GoldStandard && state.moneySupply > 0) {
-        state.goldBackingRatio = static_cast<float>(state.goldCoinReserves)
+        state.goldBackingRatio = static_cast<float>(state.goldBarReserves)
                                / static_cast<float>(state.moneySupply);
     }
 
@@ -56,18 +56,18 @@ ErrorCode buyGold(MonetaryStateComponent& state,
 ErrorCode sellGold(MonetaryStateComponent& state,
                     CurrencyAmount goldAmount,
                     CurrencyAmount goldPrice) {
-    if (state.goldCoinReserves < static_cast<int32_t>(goldAmount)) {
+    if (state.goldBarReserves < static_cast<int32_t>(goldAmount)) {
         return ErrorCode::InsufficientResources;
     }
 
     CurrencyAmount currencyGained = goldAmount * goldPrice;
-    state.goldCoinReserves -= static_cast<int32_t>(goldAmount);
+    state.goldBarReserves -= static_cast<int32_t>(goldAmount);
     state.treasury     += currencyGained;
     state.moneySupply  += currencyGained;  // Currency enters circulation
 
     // Recalculate backing ratio
     if (state.system == MonetarySystemType::GoldStandard && state.moneySupply > 0) {
-        state.goldBackingRatio = static_cast<float>(state.goldCoinReserves)
+        state.goldBackingRatio = static_cast<float>(state.goldBarReserves)
                                / static_cast<float>(state.moneySupply);
     }
 
@@ -102,10 +102,10 @@ ErrorCode debaseCurrency(MonetaryStateComponent& state, float ratio) {
 
     // Produce extra coins from the debasement (stretch the metal).
     // Bonus coins = ratio * current reserves for the highest tier held.
-    if (state.goldCoinReserves > 0) {
+    if (state.goldBarReserves > 0) {
         int32_t bonus = std::max(1, static_cast<int32_t>(
-            static_cast<float>(state.goldCoinReserves) * ratio));
-        state.goldCoinReserves += bonus;
+            static_cast<float>(state.goldBarReserves) * ratio));
+        state.goldBarReserves += bonus;
     } else if (state.silverCoinReserves > 0) {
         int32_t bonus = std::max(1, static_cast<int32_t>(
             static_cast<float>(state.silverCoinReserves) * ratio));

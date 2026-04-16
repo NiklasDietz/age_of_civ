@@ -1015,7 +1015,7 @@ void EconomyScreen::refresh(UIManager& ui) {
             || monetary->system == aoc::sim::MonetarySystemType::GoldStandard) {
             infoText += "  Cu:" + std::to_string(monetary->copperCoinReserves)
                       + " Ag:" + std::to_string(monetary->silverCoinReserves)
-                      + " Au:" + std::to_string(monetary->goldCoinReserves);
+                      + " Au:" + std::to_string(monetary->goldBarReserves);
         }
 
         infoText += "  Tier:" + std::string(aoc::sim::coinTierName(monetary->effectiveCoinTier))

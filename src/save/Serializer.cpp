@@ -471,7 +471,7 @@ void writeMonetarySection(WriteBuffer& out, const aoc::game::GameState& gameStat
         section.writeI64(m.treasury);
         section.writeI32(m.copperCoinReserves);
         section.writeI32(m.silverCoinReserves);
-        section.writeI32(m.goldCoinReserves);
+        section.writeI32(m.goldBarReserves);
         section.writeU8(static_cast<uint8_t>(m.effectiveCoinTier));
         section.writeF32(m.goldBackingRatio);
         section.writeF32(m.inflationRate);
@@ -1482,7 +1482,7 @@ ErrorCode loadGame(const std::string& filepath,
                     m.treasury = buf.readI64();
                     m.copperCoinReserves = buf.readI32();
                     m.silverCoinReserves = buf.readI32();
-                    m.goldCoinReserves = buf.readI32();
+                    m.goldBarReserves = buf.readI32();
                     m.effectiveCoinTier = static_cast<aoc::sim::CoinTier>(buf.readU8());
                     m.goldBackingRatio = buf.readF32();
                     m.inflationRate = buf.readF32();

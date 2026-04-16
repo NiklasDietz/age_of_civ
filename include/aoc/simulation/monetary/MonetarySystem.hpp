@@ -10,20 +10,21 @@
  *   Barter -> CommodityMoney -> GoldStandard -> FiatMoney
  *
  * In the CommodityMoney stage, currency is physical coins minted from
- * copper, silver, or gold ore. The player's effective coin tier depends
- * on which metals they actually hold:
+ * copper or silver ore. Only one coin type is legal tender at a time
+ * (Gresham's Law). When a civ transitions to silver money, copper coins
+ * are demonetized and become a meltable commodity (copper ore for
+ * electronics chains). Gold is NEVER coined -- it is smelted into bars
+ * that serve as treasury reserves backing paper money (Gold Standard).
  *
  *   CoinTier::None    -- no coins (Barter only)
  *   CoinTier::Copper  -- local trade, low efficiency
  *   CoinTier::Silver  -- regional trade, medium efficiency
- *   CoinTier::Gold    -- international trade, high efficiency
+ *   CoinTier::Gold    -- gold bars held (treasury reserve tier)
  *
  * Coins flow between civilizations through trade: the net importer pays
- * the net exporter in their highest-tier coin (price-specie flow).
- * This means a civ without gold mines can still accumulate gold coins
- * by running persistent trade surpluses -- exactly as in real economics.
+ * the net exporter in their active legal tender coin (price-specie flow).
  *
- * Gold Standard issues paper notes backed by gold coin reserves.
+ * Gold Standard issues paper notes backed by gold bar reserves.
  * Fiat Money removes the gold backing but requires trust from trade
  * partners to be accepted (see CurrencyTrust.hpp).
  *
@@ -49,7 +50,7 @@ namespace aoc::sim {
 enum class MonetarySystemType : uint8_t {
     Barter,          ///< No currency. Trade is direct good-for-good.
     CommodityMoney,  ///< Metal coins ARE money. Value = metal's intrinsic value.
-    GoldStandard,    ///< Paper currency backed by gold coin reserves at fixed rate.
+    GoldStandard,    ///< Paper currency backed by gold bar reserves at fixed rate.
     FiatMoney,       ///< Unbacked government currency. Full monetary control.
 
     Count
@@ -73,7 +74,7 @@ enum class CoinTier : uint8_t {
     None   = 0,   ///< No coins at all (barter)
     Copper = 1,   ///< Copper coins only
     Silver = 2,   ///< Silver coins available
-    Gold   = 3,   ///< Gold coins available
+    Gold   = 3,   ///< Gold bars held (treasury reserves)
 
     Count
 };
@@ -110,8 +111,8 @@ inline constexpr int32_t COIN_TIER_THRESHOLD = 3;
 inline constexpr int32_t COPPER_COIN_VALUE = 1;
 /// Value of one silver coin in base currency units.
 inline constexpr int32_t SILVER_COIN_VALUE = 5;
-/// Value of one gold coin in base currency units.
-inline constexpr int32_t GOLD_COIN_VALUE = 25;
+/// Value of one gold bar in base currency units (treasury reserve, not circulating).
+inline constexpr int32_t GOLD_BAR_VALUE = 25;
 
 /// Currency strength thresholds for trade efficiency tiers.
 /// A civ with 100 copper coins (strength 100) trades as well as one with 4 gold (strength 100).
@@ -145,7 +146,7 @@ inline constexpr int32_t STRENGTH_INTERNATIONAL  = 100;  ///< Full international
     switch (tier) {
         case CoinTier::Copper: return goods::COPPER_COINS;
         case CoinTier::Silver: return goods::SILVER_COINS;
-        case CoinTier::Gold:   return goods::GOLD_COINS;
+        case CoinTier::Gold:   return goods::GOLD_BARS;
         default:               return goods::COPPER_COINS;
     }
 }
@@ -212,7 +213,7 @@ struct MonetaryStateComponent {
     // -- Coin reserves (actual physical coin stockpiles, aggregated from cities) --
     int32_t copperCoinReserves = 0;
     int32_t silverCoinReserves = 0;
-    int32_t goldCoinReserves   = 0;
+    int32_t goldBarReserves   = 0;
 
     // -- Current effective coin tier (recomputed each turn) --
     CoinTier effectiveCoinTier = CoinTier::None;
@@ -220,7 +221,7 @@ struct MonetaryStateComponent {
     // -- Money supply (paper/fiat currency in GoldStandard/Fiat) --
     CurrencyAmount moneySupply    = 0;    ///< Total currency in circulation
     CurrencyAmount treasury       = 0;    ///< Government cash = coin stockpile. Starts at 0 (barter).
-    Percentage     goldBackingRatio = 1.0f; ///< Paper currency per gold coin (gold standard only)
+    Percentage     goldBackingRatio = 1.0f; ///< Paper currency per gold bar (gold standard only)
 
     // -- Inflation --
     Percentage     inflationRate  = 0.0f; ///< Current per-turn CPI change
@@ -287,7 +288,7 @@ struct MonetaryStateComponent {
 
     /// Recompute the effective coin tier from actual coin reserves.
     void updateCoinTier() {
-        if (this->goldCoinReserves >= COIN_TIER_THRESHOLD) {
+        if (this->goldBarReserves >= COIN_TIER_THRESHOLD) {
             this->effectiveCoinTier = CoinTier::Gold;
         } else if (this->silverCoinReserves >= COIN_TIER_THRESHOLD) {
             this->effectiveCoinTier = CoinTier::Silver;
@@ -299,22 +300,54 @@ struct MonetaryStateComponent {
     }
 
     /// Total coin reserves across all tiers (weighted by denomination value).
-    /// Uses historical ratios: copper=1, silver=5, gold=25.
+    /// Uses historical ratios: copper=1, silver=5, gold bar=25.
+    /// Includes ALL reserves regardless of legal tender status (used for
+    /// money supply calculation on system transitions).
     [[nodiscard]] int32_t totalCoinValue() const {
         return this->copperCoinReserves * COPPER_COIN_VALUE
              + this->silverCoinReserves * SILVER_COIN_VALUE
-             + this->goldCoinReserves   * GOLD_COIN_VALUE;
+             + this->goldBarReserves   * GOLD_BAR_VALUE;
     }
 
-    /// Currency strength: total metal-weighted value of all coin reserves.
-    /// Determines trade efficiency independent of which specific metals are held.
+    /// Currency strength: only counts the ACTIVE legal tender (Gresham's Law).
+    /// Demonetized coins still exist in reserves but do not contribute.
+    ///
+    ///   Barter/early CommodityMoney: copper coins only
+    ///   CommodityMoney (silver tier): silver coins only (copper is demonetized)
+    ///   GoldStandard: silver coins + gold bars (silver circulates, gold backs paper)
+    ///   Fiat: based on money supply, metals are just commodities
     [[nodiscard]] int32_t currencyStrength() const {
-        return this->totalCoinValue();
+        switch (this->system) {
+            case MonetarySystemType::Barter:
+                // Any coinage counts toward exiting barter (copper, silver, or gold bars)
+                return this->copperCoinReserves * COPPER_COIN_VALUE
+                     + this->silverCoinReserves * SILVER_COIN_VALUE
+                     + this->goldBarReserves   * GOLD_BAR_VALUE;
+
+            case MonetarySystemType::CommodityMoney:
+                // Only the active legal tender counts (Gresham's Law)
+                if (this->effectiveCoinTier == CoinTier::Silver) {
+                    return this->silverCoinReserves * SILVER_COIN_VALUE;
+                }
+                return this->copperCoinReserves * COPPER_COIN_VALUE;
+
+            case MonetarySystemType::GoldStandard:
+                // Silver remains everyday currency; gold bars back paper notes
+                return this->silverCoinReserves * SILVER_COIN_VALUE
+                     + this->goldBarReserves   * GOLD_BAR_VALUE;
+
+            case MonetarySystemType::FiatMoney:
+                // Fiat strength is based on money supply, not metals
+                return static_cast<int32_t>(this->moneySupply);
+
+            default:
+                return 0;
+        }
     }
 
-    /// Total raw coin count across all tiers.
+    /// Total raw coin/bar count across all tiers (unweighted).
     [[nodiscard]] int32_t totalCoinCount() const {
-        return this->copperCoinReserves + this->silverCoinReserves + this->goldCoinReserves;
+        return this->copperCoinReserves + this->silverCoinReserves + this->goldBarReserves;
     }
 
     // ========================================================================
@@ -430,21 +463,23 @@ struct MonetaryStateComponent {
 
         switch (target) {
             case MonetarySystemType::CommodityMoney:
-                // Coins ARE money. Money supply = total coin value.
-                this->moneySupply = static_cast<CurrencyAmount>(this->totalCoinValue());
+                // Active legal tender coins ARE money. Demonetized coins are commodities.
+                this->moneySupply = static_cast<CurrencyAmount>(this->currencyStrength());
                 this->goldBackingRatio = 1.0f;
                 this->debasement = {};
                 break;
 
             case MonetarySystemType::GoldStandard:
-                // Issue paper notes backed by total coin reserves at 2:1 ratio.
-                this->moneySupply = static_cast<CurrencyAmount>(this->totalCoinValue()) * 2;
+                // Paper notes backed by silver coins + gold bars at 2:1 ratio.
+                // Copper coins (if any remain) are demonetized commodities.
+                this->moneySupply = static_cast<CurrencyAmount>(this->currencyStrength()) * 2;
                 this->goldBackingRatio = 0.5f;
                 this->debasement = {};  // Paper money, debasement no longer applies
                 break;
 
             case MonetarySystemType::FiatMoney:
                 // Money is no longer backed by gold. Keep current supply.
+                // Gold bars become a commodity (raw material for gold contacts).
                 this->goldBackingRatio = 0.0f;
                 break;
 
@@ -507,16 +542,16 @@ struct MonetaryStateComponent {
         }
     }
 
-    /// Get the total metal reserves value used for gold standard backing checks.
-    /// In gold standard, all coin types back the paper currency (weighted by denomination).
-    /// In fiat, metal is just a commodity (value comes from market).
+    /// Metal reserves backing the currency (phase-aware).
+    /// In GoldStandard: silver coins + gold bars back the paper currency.
+    /// In Fiat: metals are just commodities, no backing.
     [[nodiscard]] CurrencyAmount metalReserves() const {
-        return static_cast<CurrencyAmount>(this->totalCoinValue());
+        return static_cast<CurrencyAmount>(this->currencyStrength());
     }
 
-    /// Legacy accessor (gold-specific reserves for gold buy/sell operations).
+    /// Gold bar reserves accessor (for gold buy/sell operations).
     [[nodiscard]] CurrencyAmount goldReserves() const {
-        return static_cast<CurrencyAmount>(this->goldCoinReserves);
+        return static_cast<CurrencyAmount>(this->goldBarReserves);
     }
 };
 

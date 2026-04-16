@@ -87,16 +87,16 @@ void executeAssetFreeze(aoc::game::GameState& gameState,
     int32_t silverSeized = static_cast<int32_t>(
         static_cast<float>(targetState.silverCoinReserves) * SEIZURE_FRACTION);
     int32_t goldSeized   = static_cast<int32_t>(
-        static_cast<float>(targetState.goldCoinReserves) * SEIZURE_FRACTION);
+        static_cast<float>(targetState.goldBarReserves) * SEIZURE_FRACTION);
 
     targetState.copperCoinReserves -= copperSeized;
     targetState.silverCoinReserves -= silverSeized;
-    targetState.goldCoinReserves   -= goldSeized;
+    targetState.goldBarReserves   -= goldSeized;
     targetState.updateCoinTier();
 
     sanctionerState.copperCoinReserves += copperSeized;
     sanctionerState.silverCoinReserves += silverSeized;
-    sanctionerState.goldCoinReserves   += goldSeized;
+    sanctionerState.goldBarReserves   += goldSeized;
     sanctionerState.updateCoinTier();
 
     // Cancel bonds held by target that were issued by sanctioner

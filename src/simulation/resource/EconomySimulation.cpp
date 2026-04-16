@@ -410,6 +410,12 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                     continue;
                 }
 
+                // Tech gate: skip recipe if the player hasn't researched the required tech
+                if (recipe->requiredTech.isValid()
+                    && !playerPtr->tech().hasResearched(recipe->requiredTech)) {
+                    continue;
+                }
+
                 const CityDistrictsComponent& districts = city->districts();
                 if (!districts.hasBuilding(recipe->requiredBuilding)) {
                     continue;
@@ -524,7 +530,7 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
 
                 if (recipe->outputGoodId == goods::COPPER_COINS
                     || recipe->outputGoodId == goods::SILVER_COINS
-                    || recipe->outputGoodId == goods::GOLD_COINS) {
+                    || recipe->outputGoodId == goods::GOLD_BARS) {
                     int32_t existing = stockpile.getAmount(recipe->outputGoodId);
                     if (existing <= boostedOutput) {
                         LOG_INFO("First coins minted: %d x good %u in '%s' (player %u)",
@@ -801,12 +807,12 @@ void EconomySimulation::settleTradeInCoins(aoc::game::GameState& gameState) {
 
         int32_t remaining = effectivePayment;
 
-        if (remaining > 0 && payerState.goldCoinReserves > 0) {
-            int32_t goldToTransfer = std::min(payerState.goldCoinReserves,
-                (remaining + GOLD_COIN_VALUE - 1) / GOLD_COIN_VALUE);
-            payerState.goldCoinReserves -= goldToTransfer;
-            recvState.goldCoinReserves  += goldToTransfer;
-            remaining -= goldToTransfer * GOLD_COIN_VALUE;
+        if (remaining > 0 && payerState.goldBarReserves > 0) {
+            int32_t goldToTransfer = std::min(payerState.goldBarReserves,
+                (remaining + GOLD_BAR_VALUE - 1) / GOLD_BAR_VALUE);
+            payerState.goldBarReserves -= goldToTransfer;
+            recvState.goldBarReserves  += goldToTransfer;
+            remaining -= goldToTransfer * GOLD_BAR_VALUE;
         }
         if (remaining > 0 && payerState.silverCoinReserves > 0) {
             int32_t silverToTransfer = std::min(payerState.silverCoinReserves,
@@ -837,14 +843,14 @@ void EconomySimulation::updateCoinReservesFromStockpiles(aoc::game::GameState& g
         MonetaryStateComponent& state = playerPtr->monetary();
         state.copperCoinReserves = 0;
         state.silverCoinReserves = 0;
-        state.goldCoinReserves   = 0;
+        state.goldBarReserves   = 0;
 
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
             if (cityPtr == nullptr) { continue; }
             const CityStockpileComponent& stockpile = cityPtr->stockpile();
             state.copperCoinReserves += stockpile.getAmount(goods::COPPER_COINS);
             state.silverCoinReserves += stockpile.getAmount(goods::SILVER_COINS);
-            state.goldCoinReserves   += stockpile.getAmount(goods::GOLD_COINS);
+            state.goldBarReserves   += stockpile.getAmount(goods::GOLD_BARS);
         }
 
         CoinTier previousTier = state.effectiveCoinTier;
@@ -857,7 +863,7 @@ void EconomySimulation::updateCoinReservesFromStockpiles(aoc::game::GameState& g
                      static_cast<unsigned>(playerPtr->id()),
                      static_cast<int>(coinTierName(state.effectiveCoinTier).size()),
                      coinTierName(state.effectiveCoinTier).data(),
-                     state.copperCoinReserves, state.silverCoinReserves, state.goldCoinReserves);
+                     state.copperCoinReserves, state.silverCoinReserves, state.goldBarReserves);
         }
 
         if (state.effectiveCoinTier != previousTier) {

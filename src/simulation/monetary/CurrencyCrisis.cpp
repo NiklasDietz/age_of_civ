@@ -60,12 +60,12 @@ bool processCurrencyCrisis(aoc::game::GameState& /*gameState*/,
             case CrisisType::BankRun: {
                 // Gold reserves drain each turn
                 int32_t drain = std::max(1, static_cast<int32_t>(
-                    static_cast<float>(state.goldCoinReserves) * BANK_RUN_DRAIN_RATE));
-                state.goldCoinReserves = std::max(0, state.goldCoinReserves - drain);
+                    static_cast<float>(state.goldBarReserves) * BANK_RUN_DRAIN_RATE));
+                state.goldBarReserves = std::max(0, state.goldBarReserves - drain);
                 state.updateCoinTier();
 
                 // If reserves hit zero: forced devaluation
-                if (state.goldCoinReserves <= 0
+                if (state.goldBarReserves <= 0
                     && state.system == MonetarySystemType::GoldStandard) {
                     // Paper currency loses 50% of value
                     state.moneySupply /= 2;
@@ -134,11 +134,11 @@ bool processCurrencyCrisis(aoc::game::GameState& /*gameState*/,
     }
     // 2. Bank Run (Gold Standard only)
     else if (state.system == MonetarySystemType::GoldStandard
-             && state.goldCoinReserves > 0
+             && state.goldBarReserves > 0
              && state.inflationRate > BANK_RUN_INFLATION_THRESHOLD) {
-        float debtToGold = (state.goldCoinReserves > 0)
+        float debtToGold = (state.goldBarReserves > 0)
             ? static_cast<float>(state.governmentDebt)
-              / static_cast<float>(state.goldCoinReserves)
+              / static_cast<float>(state.goldBarReserves)
             : 999.0f;
         if (debtToGold > BANK_RUN_DEBT_RATIO) {
             crisis.activeCrisis = CrisisType::BankRun;

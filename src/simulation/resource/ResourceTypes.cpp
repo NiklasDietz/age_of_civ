@@ -88,6 +88,7 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     defs[goods::CHARCOAL]             = {goods::CHARCOAL,             "Charcoal",             GoodCategory::Processed, 10, false, 0.3f};
     defs[goods::DEUTERIUM]            = {goods::DEUTERIUM,            "Deuterium",            GoodCategory::Processed, 100, true, 0.5f};
     defs[goods::BIOFUEL]              = {goods::BIOFUEL,              "Biofuel",              GoodCategory::Processed, 30, false, 0.4f};
+    defs[goods::GOLD_CONTACTS]        = {goods::GOLD_CONTACTS,        "Gold Contacts",        GoodCategory::Processed, 90, true,  0.6f};
 
     // Advanced (100+) -- high elasticity (0.8)
     defs[goods::MACHINERY]            = {goods::MACHINERY,            "Machinery",            GoodCategory::Advanced, 70, true,  0.8f};
@@ -108,7 +109,7 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     // Monetary goods (140+) -- low elasticity (stable value as currency)
     defs[goods::COPPER_COINS] = {goods::COPPER_COINS, "Copper Coins", GoodCategory::Monetary, 10, false, 0.2f};
     defs[goods::SILVER_COINS] = {goods::SILVER_COINS, "Silver Coins", GoodCategory::Monetary, 20, false, 0.2f};
-    defs[goods::GOLD_COINS]   = {goods::GOLD_COINS,   "Gold Coins",   GoodCategory::Monetary, 40, false, 0.2f};
+    defs[goods::GOLD_BARS]   = {goods::GOLD_BARS,   "Gold Bars",   GoodCategory::Monetary, 40, false, 0.2f};
 
     // Automation goods
     defs[goods::ROBOT_WORKERS] = {goods::ROBOT_WORKERS, "Robot Workers", GoodCategory::Advanced, 300, false, 0.8f};
@@ -312,11 +313,13 @@ std::vector<ProductionRecipe> buildRecipes() {
 
     recipes.push_back({35, "Mint Silver Coins",
         {{goods::SILVER_ORE, 2}},
-        goods::SILVER_COINS, 2, BuildingId{24}, 1});
+        goods::SILVER_COINS, 2, BuildingId{24}, 1,
+        1, TechId{5}});  // Requires Currency tech
 
-    recipes.push_back({36, "Mint Gold Coins",
+    recipes.push_back({36, "Smelt Gold Bars",
         {{goods::GOLD_ORE, 2}},
-        goods::GOLD_COINS, 1, BuildingId{24}, 1});
+        goods::GOLD_BARS, 1, BuildingId{24}, 1,
+        1, TechId{8}});  // Requires Metallurgy tech
 
     // ================================================================
     // Automation: Robot Workers (late-game)
@@ -374,6 +377,37 @@ std::vector<ProductionRecipe> buildRecipes() {
         goods::BIOFUEL, 1, BuildingId{33}, 1});
 
     // ================================================================
+    // Demonetization: melt old coins back into raw ore.
+    // Copper coins become copper ore (feeds electronics chain: ore -> wire -> electronics).
+    // Silver coins become silver ore (future silver processing chains).
+    // Available whenever a player has coins and a Forge -- the AI decides
+    // when to melt (only after the coin type is demonetized).
+    // ================================================================
+    recipes.push_back({46, "Melt Copper Coins",
+        {{goods::COPPER_COINS, 3}},
+        goods::COPPER_ORE, 2, BuildingId{0}, 1,
+        1, TechId{5}, true});  // Forge, Currency tech, recycling
+
+    recipes.push_back({47, "Melt Silver Coins",
+        {{goods::SILVER_COINS, 2}},
+        goods::SILVER_ORE, 1, BuildingId{0}, 1,
+        1, TechId{9}, true});  // Forge, Banking tech, recycling
+
+    // ================================================================
+    // Gold-to-electronics chain: gold ore freed up after Fiat transition
+    // becomes raw material for gold contacts used in premium microchips.
+    // This gives gold ore late-game economic value beyond treasury backing.
+    // ================================================================
+    recipes.push_back({48, "Plate Gold Contacts",
+        {{goods::GOLD_ORE, 2}},
+        goods::GOLD_CONTACTS, 1, BuildingId{4}, 2});  // Electronics Plant
+
+    recipes.push_back({49, "Produce Premium Microchips",
+        {{goods::GOLD_CONTACTS, 1}, {goods::ELECTRONICS, 1}},
+        goods::MICROCHIPS, 2, BuildingId{11}, 3,       // Semiconductor Fab, 2x output vs standard
+        2, TechId{14}});  // 2 worker slots, requires Electricity tech
+
+    // ================================================================
     // Worker slots: advanced recipes need more educated workers per batch.
     // This is the natural "human capital bottleneck":
     //   - Tier 1 (raw processing): 1 worker slot (default)
@@ -401,6 +435,7 @@ std::vector<ProductionRecipe> buildRecipes() {
             case 23:  // Computers
             case 28:  // Telecom Equipment
             case 29:  // Advanced Consumer Goods
+            case 48:  // Gold Contacts
                 r.workerSlots = 2;
                 break;
             // Tier 4: 3 worker slots
@@ -413,6 +448,7 @@ std::vector<ProductionRecipe> buildRecipes() {
             case 26:  // Aircraft
             case 27:  // Armored Vehicles
             case 37:  // Robot Workers
+            case 49:  // Premium Microchips (gold contacts)
                 r.workerSlots = 3;
                 break;
             default:
