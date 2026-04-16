@@ -1,2 +1,5 @@
 - Make genetic algorithm c++ based and use more parallelism. Also on use of this use all available cores. if its feasible to do genetic algorithmns on gpu do it with vulkan computer shader. but first tell me so then i can provide you with helper libs i made to interact with vulkan.
 - Make a trade window that makes setting up traderoutes easier
+- When a country is small, will it still have a chance to win based on the current machanics? with all of them i tried to make this possible. please elaborate
+- Make it so that strategic positions make countries richer, for example having the control over a narrow straigh in the ocean for example or mountains etc, so players would need to have a trade agreement so their merchants can traverse these strategic positions.
+- or would it maybe make sense to have minting being unlocked with metallurgy and then players can device weather they want ot convert their gold to money? because later in the game gold could be needed for high tech electronics or something like that. think about that and tell me what you think!
