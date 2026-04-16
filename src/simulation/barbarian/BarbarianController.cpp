@@ -39,6 +39,7 @@ static constexpr int32_t AGGRO_RANGE                = 3;
 
 /// Count barbarian units within a given radius of a position.
 static int32_t countBarbarianUnitsNear(const aoc::game::GameState& gameState,
+                                        const aoc::map::HexGrid& grid,
                                         hex::AxialCoord center,
                                         int32_t radius) {
     const aoc::game::Player* barbPlayer = gameState.player(BARBARIAN_PLAYER);
@@ -48,7 +49,7 @@ static int32_t countBarbarianUnitsNear(const aoc::game::GameState& gameState,
 
     int32_t count = 0;
     for (const std::unique_ptr<aoc::game::Unit>& unit : barbPlayer->units()) {
-        if (hex::distance(unit->position(), center) <= radius) {
+        if (grid.distance(unit->position(), center) <= radius) {
             ++count;
         }
     }
@@ -58,6 +59,7 @@ static int32_t countBarbarianUnitsNear(const aoc::game::GameState& gameState,
 /// Find the closest non-barbarian unit within a given range.
 /// Returns a pointer to the unit, or nullptr if none found.
 static aoc::game::Unit* findNearestTarget(const aoc::game::GameState& gameState,
+                                           const aoc::map::HexGrid& grid,
                                            hex::AxialCoord position,
                                            int32_t range) {
     aoc::game::Unit* closest = nullptr;
@@ -68,7 +70,7 @@ static aoc::game::Unit* findNearestTarget(const aoc::game::GameState& gameState,
             continue;
         }
         for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
-            int32_t dist = hex::distance(unit->position(), position);
+            int32_t dist = grid.distance(unit->position(), position);
             if (dist <= range && dist < bestDist) {
                 bestDist = dist;
                 closest  = unit.get();
@@ -80,11 +82,12 @@ static aoc::game::Unit* findNearestTarget(const aoc::game::GameState& gameState,
 
 /// Check if any city from any player is within the given distance of a tile.
 static bool isTooCloseToCity(const aoc::game::GameState& gameState,
+                              const aoc::map::HexGrid& grid,
                               hex::AxialCoord tile,
                               int32_t minDistance) {
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
         for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
-            if (hex::distance(city->location(), tile) < minDistance) {
+            if (grid.distance(city->location(), tile) < minDistance) {
                 return true;
             }
         }
@@ -145,7 +148,7 @@ void BarbarianController::spawnEncampments(aoc::game::GameState& gameState,
         }
 
         // Must be far from any city.
-        if (isTooCloseToCity(gameState, candidate, MIN_DISTANCE_FROM_CITY)) {
+        if (isTooCloseToCity(gameState, grid, candidate, MIN_DISTANCE_FROM_CITY)) {
             continue;
         }
 
@@ -182,7 +185,7 @@ void BarbarianController::spawnUnitsFromEncampments(aoc::game::GameState& gameSt
         }
 
         // Check if there are already enough barbarian units near this camp.
-        if (countBarbarianUnitsNear(gameState, camp.location, 4) >= MAX_NEARBY_BARBARIAN_UNITS) {
+        if (countBarbarianUnitsNear(gameState, grid, camp.location, 4) >= MAX_NEARBY_BARBARIAN_UNITS) {
             continue;
         }
 
@@ -222,7 +225,7 @@ void BarbarianController::moveBarbarianUnits(aoc::game::GameState& gameState,
         }
 
         // Look for a nearby non-barbarian unit to attack.
-        aoc::game::Unit* target = findNearestTarget(gameState, unit->position(), AGGRO_RANGE);
+        aoc::game::Unit* target = findNearestTarget(gameState, grid, unit->position(), AGGRO_RANGE);
 
         if (target != nullptr && !target->isDead()) {
             int32_t dist = grid.distance(unit->position(), target->position());

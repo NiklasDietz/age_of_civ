@@ -37,12 +37,14 @@ bool isMilitaryUnit(UnitClass uc) {
 }
 
 /// Check if any city owned by `owner` is within `radius` tiles of `pos`.
-bool isNearCity(const aoc::game::GameState& gameState, PlayerId owner,
+bool isNearCity(const aoc::game::GameState& gameState,
+                const aoc::map::HexGrid& grid,
+                PlayerId owner,
                 aoc::hex::AxialCoord pos, int32_t radius) {
     const aoc::game::Player* player = gameState.player(owner);
     if (player == nullptr) { return false; }
     for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
-        if (aoc::hex::distance(pos, city->location()) <= radius) {
+        if (grid.distance(pos, city->location()) <= radius) {
             return true;
         }
     }
@@ -116,7 +118,7 @@ void updateBorderViolations(aoc::game::GameState& gameState,
                         if (!grid.isValid(pos)) { continue; }
                         int32_t idx = grid.toIndex(pos);
                         if (grid.owner(idx) != b) { continue; }
-                        if (isNearCity(gameState, b, pos, NEAR_CITY_RADIUS)) {
+                        if (isNearCity(gameState, grid, b, pos, NEAR_CITY_RADIUS)) {
                             effectiveTurns = rel.turnsWithViolation * 2;
                             break;
                         }

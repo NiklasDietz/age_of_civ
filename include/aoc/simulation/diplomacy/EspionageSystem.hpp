@@ -14,6 +14,7 @@
 #include <cstdint>
 
 namespace aoc::game { class Unit; }
+namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
 
@@ -26,7 +27,9 @@ namespace aoc::sim {
  * @param gameState  Top-level game state.
  * @param rng        Random number generator for success rolls.
  */
-void processSpyMissions(aoc::game::GameState& gameState, aoc::Random& rng);
+void processSpyMissions(aoc::game::GameState& gameState,
+                        const aoc::map::HexGrid& grid,
+                        aoc::Random& rng);
 
 /**
  * @brief Assign a spy mission to a unit that has spy capability.

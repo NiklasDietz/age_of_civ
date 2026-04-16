@@ -112,7 +112,7 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
 
             bool tooClose = false;
             for (const aoc::hex::AxialCoord& existing : startPositions) {
-                if (aoc::hex::distance(candidate, existing) < MIN_START_DISTANCE) {
+                if (grid.distance(candidate, existing) < MIN_START_DISTANCE) {
                     tooClose = true;
                     break;
                 }
@@ -324,13 +324,13 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
                 for (const std::unique_ptr<aoc::game::Unit>& uA : playerA->units()) {
                     if (met) { break; }
                     for (const std::unique_ptr<aoc::game::Unit>& uB : playerB->units()) {
-                        if (aoc::hex::distance(uA->position(), uB->position()) <= MEETING_SIGHT_RANGE) {
+                        if (grid.distance(uA->position(), uB->position()) <= MEETING_SIGHT_RANGE) {
                             met = true; break;
                         }
                     }
                     if (!met) {
                         for (const std::unique_ptr<aoc::game::City>& cB : playerB->cities()) {
-                            if (aoc::hex::distance(uA->position(), cB->location()) <= MEETING_SIGHT_RANGE) {
+                            if (grid.distance(uA->position(), cB->location()) <= MEETING_SIGHT_RANGE) {
                                 met = true; break;
                             }
                         }
@@ -340,7 +340,7 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
                     for (const std::unique_ptr<aoc::game::City>& cA : playerA->cities()) {
                         if (met) { break; }
                         for (const std::unique_ptr<aoc::game::Unit>& uB : playerB->units()) {
-                            if (aoc::hex::distance(cA->location(), uB->position()) <= MEETING_SIGHT_RANGE) {
+                            if (grid.distance(cA->location(), uB->position()) <= MEETING_SIGHT_RANGE) {
                                 met = true; break;
                             }
                         }

@@ -478,7 +478,7 @@ void Application::spectatorAdvanceTurn() {
         }
 
         this->m_diplomacy.tickModifiers();
-        aoc::sim::processSpyMissions(this->m_gameState, this->m_gameRng);
+        aoc::sim::processSpyMissions(this->m_gameState, this->m_hexGrid, this->m_gameRng);
 
         for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState.players()) {
             playerPtr->grievances().tickGrievances();
@@ -2104,7 +2104,7 @@ void Application::handleEndTurn() {
         this->m_diplomacy.tickModifiers();
 
         // Process spy missions
-        aoc::sim::processSpyMissions(this->m_gameState, this->m_gameRng);
+        aoc::sim::processSpyMissions(this->m_gameState, this->m_hexGrid, this->m_gameRng);
 
         // Grievance tick
         for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState.players()) {

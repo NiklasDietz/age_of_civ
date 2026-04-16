@@ -17,6 +17,7 @@
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/city/CityLoyalty.hpp"
+#include "aoc/map/HexGrid.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <cassert>
@@ -53,6 +54,7 @@ static aoc::game::Player* findCityOwner(aoc::game::GameState& gameState,
 
 /// Check if any counter-spy is defending a location.
 static int32_t counterSpyLevel(const aoc::game::GameState& gameState,
+                                const aoc::map::HexGrid& grid,
                                 PlayerId targetPlayer,
                                 aoc::hex::AxialCoord location) {
     const aoc::game::Player* player = gameState.player(targetPlayer);
@@ -62,7 +64,7 @@ static int32_t counterSpyLevel(const aoc::game::GameState& gameState,
     for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
         const SpyComponent& spy = unit->spy();
         if (spy.currentMission == SpyMission::CounterIntelligence
-            && aoc::hex::distance(spy.location, location) <= 1) {
+            && grid.distance(spy.location, location) <= 1) {
             int32_t lvl = spy.effectiveLevel(SpyMission::CounterIntelligence);
             if (lvl > bestLevel) { bestLevel = lvl; }
         }
@@ -263,7 +265,9 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
 // Main processing
 // ============================================================================
 
-void processSpyMissions(aoc::game::GameState& gameState, aoc::Random& rng) {
+void processSpyMissions(aoc::game::GameState& gameState,
+                        const aoc::map::HexGrid& grid,
+                        aoc::Random& rng) {
     struct SpyEntry {
         aoc::game::Player* player;
         aoc::game::Unit*   unit;
@@ -310,7 +314,7 @@ void processSpyMissions(aoc::game::GameState& gameState, aoc::Random& rng) {
         // Mission complete — find counter-spy level at target
         aoc::game::Player* targetPlayer = findCityOwner(gameState, spy.owner, spy.location);
         const int32_t counterLvl = (targetPlayer != nullptr)
-            ? counterSpyLevel(gameState, targetPlayer->id(), spy.location) : 0;
+            ? counterSpyLevel(gameState, grid, targetPlayer->id(), spy.location) : 0;
 
         // Roll for success
         const float successChance = missionSuccessRate(spy, spy.currentMission, counterLvl);

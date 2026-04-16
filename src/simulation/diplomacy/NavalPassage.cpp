@@ -34,12 +34,14 @@ bool isNavalMilitaryUnit(UnitClass unitClass) {
 
 /// Check if any city owned by `owner` has a harbor within `radius` tiles of `pos`.
 /// Harbors are city-adjacent water tiles, so we check proximity to coastal cities.
-bool isNearHarbor(const aoc::game::GameState& gameState, PlayerId owner,
+bool isNearHarbor(const aoc::game::GameState& gameState,
+                  const aoc::map::HexGrid& grid,
+                  PlayerId owner,
                   aoc::hex::AxialCoord pos, int32_t radius) {
     const aoc::game::Player* player = gameState.player(owner);
     if (player == nullptr) { return false; }
     for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
-        if (aoc::hex::distance(pos, city->location()) <= radius) {
+        if (grid.distance(pos, city->location()) <= radius) {
             return true;
         }
     }
@@ -118,7 +120,7 @@ void updateNavalPassageViolations(aoc::game::GameState& gameState,
                         int32_t idx = grid.toIndex(pos);
                         if (!aoc::map::isWater(grid.terrain(idx)) && !grid.hasCanal(idx)) { continue; }
                         if (grid.owner(idx) != b) { continue; }
-                        if (isNearHarbor(gameState, b, pos, NEAR_HARBOR_RADIUS)) {
+                        if (isNearHarbor(gameState, grid, b, pos, NEAR_HARBOR_RADIUS)) {
                             effectiveTurns = rel.turnsWithNavalViolation * 2;
                             break;
                         }
