@@ -40,12 +40,15 @@ void executeFiscalPolicy(MonetaryStateComponent& state, CurrencyAmount gdp) {
         // Running a deficit: borrow (add to debt)
         state.governmentDebt += state.deficit;
     } else {
-        // Running a surplus: pay down debt
+        // Running a surplus: pay down debt only.
+        // NOTE: surplus is NOT added to state.treasury here.
+        // Treasury is managed exclusively by processGoldIncome and Maintenance,
+        // which use player.m_treasury (the Player object's spending account).
+        // Adding surplus here caused double-counting: fiscal policy surplus AND
+        // income from processGoldIncome both accumulated into separate fields.
         CurrencyAmount surplus = -state.deficit;
         CurrencyAmount debtPayment = std::min(surplus, state.governmentDebt);
         state.governmentDebt -= debtPayment;
-        // Remaining surplus goes to treasury
-        state.treasury += (surplus - debtPayment);
     }
 
     // Interest on debt: annual rate applied per turn

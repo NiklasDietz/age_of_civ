@@ -830,13 +830,21 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 float        utilityScore;
             };
 
+            // In barter mode, the Commercial district unlocks the Mint which is the
+            // ONLY path out of barter. Override economic score with a high fixed bonus.
+            const float commercialScore = (gsPlayer->monetary().system == MonetarySystemType::Barter
+                                           && city.isOriginalCapital()
+                                           && !districts.hasDistrict(DistrictType::Commercial))
+                                          ? 1.4f   // High — need Commercial before Mint
+                                          : 0.45f * personality.behavior.economicFocus;
+
             const std::array<DistrictOption, 5> districtOptions = {{
                 { DistrictType::Industrial,
                   60.0f,
                   0.5f * personality.behavior.prodBuildings * personality.behavior.economicFocus },
                 { DistrictType::Commercial,
                   60.0f,
-                  0.45f * personality.behavior.economicFocus },
+                  commercialScore },
                 { DistrictType::Campus,
                   55.0f,
                   0.45f * personality.behavior.scienceFocus },
@@ -866,9 +874,10 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
         }
 
         // --- Mint priority ---
-        // Capital should build a Mint early to enable commodity money transition.
-        // Without a Mint, the player stays in Barter forever (71% of players stuck).
-        // BuildingId 24 = Mint. Only in capital (CityCenter district).
+        // Capital must build a Mint before anything else when in Barter.
+        // Settlers score ~2.14 in expansion phase, so Mint needs to score higher.
+        // Score 4.0 ensures Mint is always first production in the capital.
+        // BuildingId 24 = Mint. Only CityCenter district required (always present).
         if (city.isOriginalCapital()
             && !city.hasBuilding(BuildingId{24})
             && canBuildBuilding(gameState, this->m_player, city, BuildingId{24})
@@ -879,7 +888,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             candidate.item.name      = "Mint";
             candidate.item.totalCost = 70.0f;
             candidate.item.progress  = 0.0f;
-            candidate.score          = 1.5f;  // High priority — enables entire monetary system
+            candidate.score          = 4.0f;  // Must beat settlers (~2.14) and military
             candidates.push_back(std::move(candidate));
         }
 
@@ -1543,6 +1552,25 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
         nextTarget, cityCount, tradePartnerCount, gdpRank, playerCount);
     if (result == ErrorCode::Ok) {
         myState.transitionTo(nextTarget);
+
+        // Bootstrap treasury on first monetization: coins in circulation
+        // become the initial government spending power.  Without this, the
+        // player would start the monetary era with 0 treasury while already
+        // owing maintenance on all the units built during barter.
+        if (nextTarget == MonetarySystemType::CommodityMoney) {
+            // Bootstrap treasury: coins in circulation + population savings.
+            // Represents the accumulated wealth that gets monetized when coins
+            // are introduced. Without this the player starts with 0 treasury
+            // while owing maintenance on all barter-era units immediately.
+            if (gsPlayer != nullptr && gsPlayer->treasury() <= 0) {
+                const CurrencyAmount coinValue =
+                    static_cast<CurrencyAmount>(myState.totalCoinValue());
+                const CurrencyAmount popSavings =
+                    static_cast<CurrencyAmount>(gsPlayer->totalPopulation() * 4);
+                gsPlayer->setTreasury(coinValue + popSavings);
+            }
+        }
+
         LOG_INFO("AI player %u transitioned to %.*s",
                  static_cast<unsigned>(this->m_player),
                  static_cast<int>(monetarySystemName(nextTarget).size()),

@@ -12,6 +12,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -247,6 +248,20 @@ static void processSingleCityGrowth(aoc::game::City& city,
                         + static_cast<float>(yield.production)
                         + static_cast<float>(yield.gold) * 0.5f
                         + static_cast<float>(yield.science) * 0.5f;
+            // Resource tiles get a priority bonus: they feed production chains
+            // (copper ore → coins, iron ore → ingots, etc.) and without this bonus
+            // cities deprioritise them in favour of pure food tiles, starving the
+            // economy of raw materials.  Matches the +5 bonus applied at founding.
+            if (grid.resource(idx).isValid()) {
+                value += 3.0f;
+                // Minting ores get an extra +8 so they are worked before high-food
+                // tiles like cattle (food=4, base=12) and are assigned by pop=2.
+                const uint16_t resId = grid.resource(idx).value;
+                if (resId == aoc::sim::goods::COPPER_ORE
+                    || resId == aoc::sim::goods::SILVER_ORE) {
+                    value += 8.0f;
+                }
+            }
             if (value > bestYieldValue) {
                 bestYieldValue = value;
                 bestTile = tile;

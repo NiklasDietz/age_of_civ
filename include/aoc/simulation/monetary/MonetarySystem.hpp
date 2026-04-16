@@ -180,8 +180,10 @@ struct MonetaryTransitionReq {
 inline constexpr std::array<MonetaryTransitionReq, 3> MONETARY_TRANSITIONS = {{
     // Barter -> Commodity Money: need any coins worth >= 3 currency units
     {MonetarySystemType::CommodityMoney, TechId{},  3,    1, 0, 0, 1.0f},
-    // Commodity -> Gold Standard: need banking tech, significant reserves, 2 cities
-    {MonetarySystemType::GoldStandard,   TechId{9}, 50,   2, 0, 0, 1.0f},
+    // Commodity -> Gold Standard: need banking tech, moderate reserves, 2 cities.
+    // 20 copper coins (strength 20) or 4 silver coins is achievable before
+    // copper ore depletes (~80 turns of mining at 1 ore/turn).
+    {MonetarySystemType::GoldStandard,   TechId{9}, 20,   2, 0, 0, 1.0f},
     // Gold Standard -> Fiat: Printing (TechId{9}) or Economics (TechId{13}).
     // Lowered currency strength requirement. Needs 3+ trade partners (the trade
     // volume that makes metal coins impractical, like Song Dynasty Sichuan).

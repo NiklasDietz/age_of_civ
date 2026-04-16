@@ -8,6 +8,7 @@
 
 #include "aoc/simulation/economy/Maintenance.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
+#include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/monetary/Inflation.hpp"
@@ -25,6 +26,32 @@ namespace aoc::sim {
 EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
                                             const aoc::map::HexGrid& grid) {
     EconomicBreakdown bd{};
+
+    // In barter mode with no coins, no monetary income exists.
+    if (player.monetary().system == MonetarySystemType::Barter
+        && player.monetary().totalCoinCount() == 0) {
+        // Still compute expenses and goods so the diagnostic is useful.
+        for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+            const CityDistrictsComponent& districts = city->districts();
+            for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
+                if (d.type != DistrictType::CityCenter) { bd.expenseBuildings += 1; }
+                for (BuildingId bid : d.buildings) {
+                    bd.expenseBuildings += static_cast<CurrencyAmount>(buildingDef(bid).maintenanceCost);
+                }
+            }
+            if (!city->isOriginalCapital()) { bd.expenseBuildings += 2; }
+            for (const std::pair<const uint16_t, int32_t>& entry : city->stockpile().goods) {
+                bd.goodsStockpiled += entry.second;
+            }
+        }
+        for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+            const int32_t cost = unit->typeDef().maintenanceGold();
+            if (cost > 0) { bd.expenseUnits += static_cast<CurrencyAmount>(cost); }
+        }
+        bd.totalExpense = bd.expenseUnits + bd.expenseBuildings;
+        bd.netFlow      = -bd.totalExpense;
+        return bd;
+    }
 
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         // Capital Palace
@@ -48,35 +75,34 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
             }
         }
 
-        // District/building gold
+        // Commercial district tax + building bonuses (monetary era only)
         const CityDistrictsComponent& districts = city->districts();
         for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
-            if (d.type == DistrictType::Commercial) { bd.incomeCommercial += 4; }
+            if (d.type == DistrictType::Commercial) { bd.incomeCommercial += 3; }
             if (d.type == DistrictType::Harbor)     { bd.incomeCommercial += 2; }
             for (BuildingId bid : d.buildings) {
                 bd.incomeCommercial += static_cast<CurrencyAmount>(buildingDef(bid).goldBonus);
             }
         }
 
-        // Goods economic activity
+        // Goods economic activity (Phase B: increased caps/rates)
         {
             const CityStockpileComponent& stock = city->stockpile();
             int32_t ecoGold = 0;
-            ecoGold += stock.getAmount(72) / 5;   // Consumer Goods
-            ecoGold += stock.getAmount(70) / 5;   // Processed Food
-            ecoGold += stock.getAmount(79) / 3;   // Clothing
-            ecoGold += stock.getAmount(75) / 2;   // Electronics
-            bd.incomeGoodsEcon += static_cast<CurrencyAmount>(std::min(ecoGold, 10));
+            ecoGold += stock.getAmount(72) / 4;   // Consumer Goods
+            ecoGold += stock.getAmount(70) / 4;   // Processed Food
+            ecoGold += stock.getAmount(79) / 2;   // Clothing
+            ecoGold += stock.getAmount(75) / 1;   // Electronics
+            bd.incomeGoodsEcon += static_cast<CurrencyAmount>(std::min(ecoGold, 15));
         }
 
-        // Building maintenance
+        // Building maintenance (no flat district fee; only building definitions)
         for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
-            if (d.type != DistrictType::CityCenter) { bd.expenseBuildings += 1; }
             for (BuildingId bid : d.buildings) {
                 bd.expenseBuildings += static_cast<CurrencyAmount>(buildingDef(bid).maintenanceCost);
             }
         }
-        if (!city->isOriginalCapital()) { bd.expenseBuildings += 2; }
+        if (!city->isOriginalCapital()) { bd.expenseBuildings += 1; }  // sprawl
 
         // Goods stockpile count
         for (const std::pair<const uint16_t, int32_t>& entry : city->stockpile().goods) {
@@ -88,6 +114,32 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
     for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
         const int32_t cost = unit->typeDef().maintenanceGold();
         if (cost > 0) { bd.expenseUnits += static_cast<CurrencyAmount>(cost); }
+    }
+
+    // Phase B: Money-supply taxation (mirrors processGoldIncome logic)
+    {
+        const int32_t moneySupply = player.monetary().totalCoinValue();
+        if (moneySupply > 0) {
+            float collectionEfficiency = 0.50f;
+            for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+                const CityDistrictsComponent& districts = city->districts();
+                for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
+                    if (d.type == DistrictType::Commercial) { collectionEfficiency += 0.05f; }
+                    for (BuildingId bid : d.buildings) {
+                        const uint16_t bv = bid.value;
+                        if (bv == 6u)  { collectionEfficiency += 0.08f; }
+                        if (bv == 20u) { collectionEfficiency += 0.12f; }
+                        if (bv == 21u) { collectionEfficiency += 0.18f; }
+                        if (bv == 13u) { collectionEfficiency += 0.10f; }
+                    }
+                }
+            }
+            collectionEfficiency = std::min(collectionEfficiency, 1.0f);
+            constexpr float MONEY_VELOCITY = 0.35f;
+            bd.incomeCommercial += static_cast<CurrencyAmount>(
+                static_cast<float>(moneySupply) * MONEY_VELOCITY
+                * player.monetary().taxRate * collectionEfficiency);
+        }
     }
 
     bd.totalIncome = bd.incomeCapital + bd.incomeTax + bd.incomeIndustrial
@@ -102,6 +154,14 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
 
 CurrencyAmount processGoldIncome(aoc::game::Player& player,
                                   const aoc::map::HexGrid& grid) {
+    // In pure barter mode no money exists yet — income is zero.
+    // Coins must first be minted before any treasury income can flow.
+    if (player.monetary().system == MonetarySystemType::Barter
+        && player.monetary().totalCoinCount() == 0) {
+        player.setIncomePerTurn(0);
+        return 0;
+    }
+
     CurrencyAmount goldIncome = 0;
 
     // Find capital location for distance-based corruption
@@ -152,42 +212,41 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
         // Specialist taxmen: +3 gold each (read from ECS sync'd data or default 0)
         // Taxmen gold is handled here since we compute per-city gold
 
-        // District and building gold bonuses (only from commercial/harbor buildings).
-        // Industrial buildings do NOT generate gold directly — they produce goods
-        // that are sold on the market for coins. Gold comes from trade, not abstraction.
+        // Commercial buildings tax merchant activity (market stalls, banking fees,
+        // stock trade commissions). In monetary eras this is REAL taxable commerce.
+        // In barter it's 0 (our barter guard handles that at the function level).
+        // Harbor port fees apply in all monetary phases.
         const CityDistrictsComponent& districts = city->districts();
         for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
             if (d.type == DistrictType::Commercial) {
-                cityGold += 4;
+                cityGold += 3;  // Commercial district hub: tax on local trade
             }
             if (d.type == DistrictType::Harbor) {
-                cityGold += 2;
+                cityGold += 2;  // Port fees
             }
             for (BuildingId bid : d.buildings) {
                 cityGold += static_cast<CurrencyAmount>(buildingDef(bid).goldBonus);
             }
         }
 
-        // Goods-based economy bonus: cities with stockpiled goods generate tax
-        // from economic activity. Each unit of consumer goods, processed food,
-        // clothing, and electronics in the stockpile represents economic output
-        // that the government taxes. This is the natural income loop:
-        //   Produce goods → sell/consume → economic activity → tax revenue.
-        // Max 10 gold/city from this to prevent runaway.
+        // Goods-based commerce tax: goods circulating in the city represent
+        // real economic activity that the government taxes. This is the natural
+        // income loop: produce goods → local market activity → tax revenue.
+        // Goods-rich cities pay more taxes because they have a larger real economy.
+        // Max 15 gold/city so supply-side improvements are meaningful but not dominant.
         {
             constexpr uint16_t CONSUMER_GOODS_ID = 72;
             constexpr uint16_t PROCESSED_FOOD_ID = 70;
-            constexpr uint16_t CLOTHING_ID = 79;
-            constexpr uint16_t ELECTRONICS_ID = 75;
+            constexpr uint16_t CLOTHING_ID       = 79;
+            constexpr uint16_t ELECTRONICS_ID    = 75;
 
             const CityStockpileComponent& stock = city->stockpile();
             int32_t economicActivityGold = 0;
-            // Each 5 consumer goods in stock → +1 gold (taxed consumption)
-            economicActivityGold += stock.getAmount(CONSUMER_GOODS_ID) / 5;
-            economicActivityGold += stock.getAmount(PROCESSED_FOOD_ID) / 5;
-            economicActivityGold += stock.getAmount(CLOTHING_ID) / 3;
-            economicActivityGold += stock.getAmount(ELECTRONICS_ID) / 2;
-            cityGold += static_cast<CurrencyAmount>(std::min(economicActivityGold, 10));
+            economicActivityGold += stock.getAmount(CONSUMER_GOODS_ID) / 4;   // was /5
+            economicActivityGold += stock.getAmount(PROCESSED_FOOD_ID) / 4;   // was /5
+            economicActivityGold += stock.getAmount(CLOTHING_ID)        / 2;   // was /3
+            economicActivityGold += stock.getAmount(ELECTRONICS_ID)     / 1;   // was /2
+            cityGold += static_cast<CurrencyAmount>(std::min(economicActivityGold, 15));
         }
 
         // Distance-based corruption: reduces gold based on distance from capital.
@@ -205,6 +264,52 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
         goldIncome += cityGold;
     }
 
+    // Phase B: Money-supply taxation via velocity-adjusted GDP.
+    // Income = moneySupply × velocity × taxRate × collectionEfficiency.
+    //
+    // Velocity (0.2 = 20% of coins change hands per turn, i.e. each coin
+    // is used in a transaction about once every 5 turns) converts the coin
+    // STOCK into a GDP FLOW suitable for taxation.  Without velocity the 15%
+    // tax rate would be applied to the full stockpile each turn — yielding far
+    // too much revenue and making coin accumulation the only goal.
+    //
+    // This makes the mining → minting → velocity loop meaningful:
+    //   more coins → higher GDP flow → more tax revenue (but not proportionally
+    //   more, because velocity limits how fast the economy can use them).
+    //
+    // Commercial buildings increase collection efficiency (base 0.50):
+    //   Market +8%, Bank +12%, StockExchange +18%, Telecom Hub +10%, district hub +5%.
+    {
+        const int32_t moneySupply = player.monetary().totalCoinValue();
+        if (moneySupply > 0) {
+            constexpr float MONEY_VELOCITY = 0.35f;  // 35% of supply transacts per turn
+
+            float collectionEfficiency = 0.50f;
+            for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+                const CityDistrictsComponent& districts = city->districts();
+                for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
+                    if (d.type == DistrictType::Commercial) {
+                        collectionEfficiency += 0.05f;
+                    }
+                    for (BuildingId bid : d.buildings) {
+                        const uint16_t bv = bid.value;
+                        if (bv == 6u)  { collectionEfficiency += 0.08f; }   // Market
+                        if (bv == 20u) { collectionEfficiency += 0.12f; }   // Bank
+                        if (bv == 21u) { collectionEfficiency += 0.18f; }   // Stock Exchange
+                        if (bv == 13u) { collectionEfficiency += 0.10f; }   // Telecom Hub
+                    }
+                }
+            }
+            collectionEfficiency = std::min(collectionEfficiency, 1.0f);
+
+            const float taxRate = player.monetary().taxRate;
+            // Effective rate: taxRate × velocity × efficiency
+            const CurrencyAmount taxRevenue = static_cast<CurrencyAmount>(
+                static_cast<float>(moneySupply) * MONEY_VELOCITY * taxRate * collectionEfficiency);
+            goldIncome += taxRevenue;
+        }
+    }
+
     // Apply gold allocation slider: only the gold fraction goes to treasury.
     // The rest is allocated to science and luxury bonuses (handled in their respective systems).
     CurrencyAmount effectiveGold = static_cast<CurrencyAmount>(
@@ -215,6 +320,13 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
 }
 
 void processUnitMaintenance(aoc::game::Player& player) {
+    // In barter mode with no coins, money doesn't exist yet.
+    // Units are maintained by the city's food/production (not tracked monetarily).
+    if (player.monetary().system == MonetarySystemType::Barter
+        && player.monetary().totalCoinCount() == 0) {
+        return;
+    }
+
     // Hard floor: the treasury must never drop below -500.  Below this point
     // debt compounds faster than any realistic income can recover it.
     constexpr CurrencyAmount TREASURY_HARD_FLOOR    = -500;
@@ -379,6 +491,12 @@ void processUnitMaintenance(aoc::game::Player& player) {
 }
 
 void processBuildingMaintenance(aoc::game::Player& player) {
+    // In barter mode with no coins, money doesn't exist yet — no building upkeep.
+    if (player.monetary().system == MonetarySystemType::Barter
+        && player.monetary().totalCoinCount() == 0) {
+        return;
+    }
+
     // Skip all building and district maintenance when the treasury is already
     // deeply in debt.  City-center upkeep (the +2 per city sprawl cost) is
     // also deferred -- the unit maintenance hard floor is the primary recovery
@@ -397,20 +515,21 @@ void processBuildingMaintenance(aoc::game::Player& player) {
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         const CityDistrictsComponent& districts = city->districts();
 
-        // District maintenance: 1 gold per non-CityCenter district.
+        // Building maintenance from building definitions only.
+        // Districts themselves no longer add flat maintenance — their upkeep
+        // is embodied in the buildings inside them.  Removing the district flat
+        // fee reduces the early-game maintenance burden so players can sustain
+        // an empire while the coin economy is still bootstrapping.
         for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
-            if (district.type != DistrictType::CityCenter) {
-                totalMaintenance += 1;
-            }
-            // Building maintenance from building definitions.
             for (BuildingId bid : district.buildings) {
                 totalMaintenance += static_cast<CurrencyAmount>(buildingDef(bid).maintenanceCost);
             }
         }
 
-        // Per-city maintenance: 2 gold per city beyond the first (empire sprawl).
+        // Per-city maintenance: 1 gold per city beyond the first (empire sprawl).
+        // Reduced from 2 to 1 — sprawl costs are still present but less punishing.
         if (!city->isOriginalCapital()) {
-            totalMaintenance += 2;
+            totalMaintenance += 1;
         }
     }
 

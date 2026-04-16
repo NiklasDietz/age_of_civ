@@ -219,6 +219,14 @@ aoc::game::City& foundCity(aoc::game::GameState& gameState,
         score += static_cast<float>(yield.gold) * 1.0f;
         if (grid.resource(idx).isValid()) {
             score += 5.0f;  // Strong preference for resource tiles
+            // Minting ores get an extra bonus so the city immediately starts
+            // producing coins once the Mint is built.  Without this, high-food
+            // tiles (cattle) always win and copper ore is never worked until pop≥4.
+            const uint16_t resId = grid.resource(idx).value;
+            if (resId == aoc::sim::goods::COPPER_ORE
+                || resId == aoc::sim::goods::SILVER_ORE) {
+                score += 8.0f;
+            }
         }
         tileScores.push_back({n, score});
     }
@@ -346,6 +354,10 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
     // Maintenance: per-unit era-scaled, per-building, per-district, per-city
     processUnitMaintenance(*gsPlayer);
     processBuildingMaintenance(*gsPlayer);
+
+    // Sync monetary().treasury from the actual spending account so AI decisions
+    // and display both see the real value.
+    gsPlayer->monetary().treasury = gsPlayer->treasury();
 
     // --- Per-turn unit healing ---
     // Units heal each turn based on territory:

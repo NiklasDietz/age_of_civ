@@ -873,38 +873,42 @@ void EconomySimulation::updateCoinReservesFromStockpiles(aoc::game::GameState& g
             state.moneySupply = static_cast<CurrencyAmount>(state.totalCoinValue());
         }
 
-        // === CORE MONETARY IDENTITY ===
-        // In barter: treasury = 0 (no money exists)
-        // In commodity money: treasury = total coin value (coins ARE money)
-        // In gold standard: treasury = coin value * backing ratio
-        // In fiat: treasury is tracked separately (government can print)
+        // === MONEY SUPPLY UPDATE ===
+        // The coin stockpile determines the money supply, which governs:
+        //   - Trade efficiency
+        //   - Tax revenue base (taxation of circulating coins)
+        //   - Inflation (more coins vs more goods)
         //
-        // This makes money REAL: you can only spend what you've minted.
-        // No abstract "+100 starting gold". No money from nothing.
+        // Treasury is NOT directly set to coinValue here. Treasury is the
+        // government's spending account: it accumulates from income (taxation of
+        // the money supply) and is drained by expenses (unit/building maintenance).
+        // Starting at 0 with no money, it grows as coins are minted and taxed.
+        //
+        // This fixes the critical bug where treasury was overwritten each turn,
+        // undoing all income and expense calculations from the previous turn.
+        //
+        // In BARTER mode (no coins): treasury is forced to 0 (no spending power).
+        // In COMMODITY/GOLD/FIAT: moneySupply tracks coin pool, treasury accumulates.
         if (state.system == MonetarySystemType::Barter) {
-            // In barter, government has no money. All "purchases" must be
-            // done through production, not gold buying.
-            // Keep treasury at whatever it accumulated from previous systems
-            // or set to 0 if they've never had money.
             if (state.totalCoinCount() == 0) {
                 playerPtr->setTreasury(0);
                 state.treasury = 0;
             }
-        } else if (state.system == MonetarySystemType::CommodityMoney) {
-            // Treasury IS the coin stockpile. Every coin minted adds to treasury.
-            // Every expense removes coins. What you see = what you have.
-            const CurrencyAmount coinWealth = static_cast<CurrencyAmount>(state.totalCoinValue());
-            playerPtr->setTreasury(coinWealth);
-            state.treasury = coinWealth;
-        } else if (state.system == MonetarySystemType::GoldStandard) {
-            // Paper notes backed by gold: treasury = coins * backing ratio
-            const CurrencyAmount coinWealth = static_cast<CurrencyAmount>(state.totalCoinValue());
-            const CurrencyAmount paperWealth = static_cast<CurrencyAmount>(
-                static_cast<float>(coinWealth) * state.goldBackingRatio);
-            playerPtr->setTreasury(coinWealth + paperWealth);
-            state.treasury = coinWealth + paperWealth;
+            // Once coins exist (transition just happened), let treasury accumulate.
+        } else {
+            // Update money supply for display, trade efficiency, and inflation.
+            // CommodityMoney: moneySupply = physical coins
+            // GoldStandard: moneySupply = coins + paper notes
+            // Fiat: moneySupply also includes printed notes (managed separately)
+            if (state.system == MonetarySystemType::CommodityMoney) {
+                state.moneySupply = static_cast<CurrencyAmount>(state.totalCoinValue());
+            } else if (state.system == MonetarySystemType::GoldStandard) {
+                const int32_t coinWealth = state.totalCoinValue();
+                state.moneySupply = static_cast<CurrencyAmount>(
+                    static_cast<float>(coinWealth) * (1.0f + state.goldBackingRatio));
+            }
+            // Fiat moneySupply is managed by printMoney() and tracked separately.
         }
-        // Fiat: treasury managed separately via printMoney() and taxation
     }
 }
 

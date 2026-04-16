@@ -6,11 +6,10 @@
  */
 
 #include "aoc/simulation/city/CityConnection.hpp"
-#include "aoc/game/Player.hpp"
+#include "aoc/game/Player.hpp"  // includes MonetarySystem.hpp transitively
 #include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
-#include "aoc/core/Log.hpp"
 
 #include <queue>
 #include <unordered_set>
@@ -57,6 +56,12 @@ bool isCityConnected(const aoc::map::HexGrid& grid,
 int32_t processCityConnections(aoc::game::Player& player,
                                 const aoc::map::HexGrid& grid) {
     constexpr int32_t CONNECTION_BONUS = 3;
+
+    // In barter mode with no coins, road connection bonuses don't exist yet.
+    if (player.monetary().system == MonetarySystemType::Barter
+        && player.monetary().totalCoinCount() == 0) {
+        return 0;
+    }
 
     // Find capital
     aoc::hex::AxialCoord capitalPos{0, 0};

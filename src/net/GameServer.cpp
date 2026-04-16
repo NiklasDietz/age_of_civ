@@ -109,7 +109,7 @@ void GameServer::initialize(const GameConfig& config) {
         if (gsPlayer != nullptr) {
             gsPlayer->setCivId(static_cast<aoc::sim::CivId>(civId));
             gsPlayer->setHuman(p < config.humanPlayerCount);
-            gsPlayer->setTreasury(100);
+            gsPlayer->setTreasury(0);
 
             // Initialize tech state
             gsPlayer->tech().owner = player;
@@ -122,11 +122,11 @@ void GameServer::initialize(const GameConfig& config) {
 
             // Initialize monetary state
             gsPlayer->monetary().owner = player;
-            gsPlayer->monetary().treasury = 100;
+            gsPlayer->monetary().treasury = 0;
 
             // Initialize economy component
             gsPlayer->economy().owner = player;
-            gsPlayer->economy().treasury = 100;
+            gsPlayer->economy().treasury = 0;
 
             // Initialize government
             gsPlayer->government().owner = player;

@@ -252,7 +252,7 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
         aoc::game::Player* gsPlayer = this->m_gameState.player(static_cast<PlayerId>(i));
         gsPlayer->setCivId(config.players[i].civId);
         gsPlayer->setHuman(config.players[i].isHuman);
-        gsPlayer->setTreasury(100);
+        gsPlayer->setTreasury(0);
     }
     LOG_INFO("GameState initialized for %u players",
              static_cast<unsigned>(config.playerCount));
@@ -2407,14 +2407,14 @@ void Application::spawnStartingEntities(aoc::sim::CivId civId) {
         aoc::sim::MonetaryStateComponent& monetary = humanPlayer->monetary();
         monetary.owner = 0;
         monetary.system = aoc::sim::MonetarySystemType::Barter;
-        monetary.treasury = 100;
+        monetary.treasury = 0;
         monetary.moneySupply = 0;
         monetary.taxRate = 0.15f;
         monetary.governmentSpending = 0;
 
         humanPlayer->economy().owner = 0;
-        humanPlayer->economy().treasury = 100;
-        humanPlayer->setTreasury(100);
+        humanPlayer->economy().treasury = 0;
+        humanPlayer->setTreasury(0);
 
         humanPlayer->tech().owner = 0;
         humanPlayer->tech().initialize();
@@ -2536,11 +2536,11 @@ void Application::spawnAIPlayer(PlayerId player, aoc::sim::CivId civId) {
         aoc::sim::MonetaryStateComponent& monetary = aiPlayer->monetary();
         monetary.owner = player;
         monetary.system = aoc::sim::MonetarySystemType::Barter;
-        monetary.treasury = 100;
+        monetary.treasury = 0;
 
         aiPlayer->economy().owner = player;
-        aiPlayer->economy().treasury = 100;
-        aiPlayer->setTreasury(100);
+        aiPlayer->economy().treasury = 0;
+        aiPlayer->setTreasury(0);
 
         aiPlayer->tech().owner = player;
         aiPlayer->tech().initialize();

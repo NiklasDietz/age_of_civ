@@ -138,7 +138,7 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
     // Monetary state
     const aoc::sim::MonetaryStateComponent& ms = player->monetary();
     snap.gdp = ms.gdp;
-    snap.treasury = ms.treasury;
+    snap.treasury = player->treasury();  // Use Player::m_treasury (actual spending account)
     snap.coinTier = static_cast<uint8_t>(ms.effectiveCoinTier);
     snap.monetarySystem = static_cast<uint8_t>(ms.system);
     snap.inflationRate = ms.inflationRate;
@@ -350,12 +350,17 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             grid.setResource(centerIdx, aoc::ResourceId{aoc::sim::goods::WHEAT});
             grid.setReserves(centerIdx, aoc::sim::defaultReserves(aoc::sim::goods::WHEAT));
         }
-        int32_t resourcesPlaced = 0;
+        // Starter resources placed adjacent to each capital.
+        // COPPER_ORE first: minting ores must be guaranteed even for coastal cities
+        // where some ring-1 tiles are water.  Placement falls back to ring-2 if
+        // ring-1 is exhausted before all minting ores are placed.
         const uint16_t STARTER_RESOURCES[] = {
-            aoc::sim::goods::IRON_ORE, aoc::sim::goods::COPPER_ORE,
-            aoc::sim::goods::WOOD, aoc::sim::goods::STONE,
-            aoc::sim::goods::COAL, aoc::sim::goods::CATTLE
+            aoc::sim::goods::COPPER_ORE, aoc::sim::goods::SILVER_ORE,
+            aoc::sim::goods::IRON_ORE,   aoc::sim::goods::WOOD,
+            aoc::sim::goods::STONE,      aoc::sim::goods::CATTLE
         };
+        int32_t resourcesPlaced = 0;
+        // Pass 1: ring-1 neighbors
         for (const aoc::hex::AxialCoord& nbr2 : nbrs) {
             if (!grid.isValid(nbr2)) { continue; }
             int32_t nbrIdx = grid.toIndex(nbr2);
@@ -366,6 +371,25 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 grid.setResource(nbrIdx, aoc::ResourceId{STARTER_RESOURCES[resourcesPlaced]});
                 grid.setReserves(nbrIdx, aoc::sim::defaultReserves(STARTER_RESOURCES[resourcesPlaced]));
                 ++resourcesPlaced;
+            }
+        }
+        // Pass 2: ring-2 fallback — ensure minting ores (indices 0,1) are placed
+        // even for coastal cities where ring-1 has few valid land tiles.
+        if (resourcesPlaced < 2) {
+            std::vector<aoc::hex::AxialCoord> ring2;
+            ring2.reserve(12);
+            aoc::hex::ring(startPos, 2, std::back_inserter(ring2));
+            for (const aoc::hex::AxialCoord& tile : ring2) {
+                if (resourcesPlaced >= 2) { break; }
+                if (!grid.isValid(tile)) { continue; }
+                int32_t tileIdx = grid.toIndex(tile);
+                if (!grid.resource(tileIdx).isValid()
+                    && !aoc::map::isWater(grid.terrain(tileIdx))
+                    && !aoc::map::isImpassable(grid.terrain(tileIdx))) {
+                    grid.setResource(tileIdx, aoc::ResourceId{STARTER_RESOURCES[resourcesPlaced]});
+                    grid.setReserves(tileIdx, aoc::sim::defaultReserves(STARTER_RESOURCES[resourcesPlaced]));
+                    ++resourcesPlaced;
+                }
             }
         }
 
@@ -404,16 +428,16 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         if (gsPlayer != nullptr) {
             gsPlayer->setCivId(static_cast<aoc::sim::CivId>(p % aoc::sim::CIV_COUNT));
             gsPlayer->setHuman(false);
-            gsPlayer->setTreasury(100);
+            gsPlayer->setTreasury(0);  // No money at start: barter economy
 
             // Initialize monetary state
             gsPlayer->monetary().owner = player;
             gsPlayer->monetary().system = aoc::sim::MonetarySystemType::Barter;
-            gsPlayer->monetary().treasury = 100;
+            gsPlayer->monetary().treasury = 0;
 
             // Initialize economy component
             gsPlayer->economy().owner = player;
-            gsPlayer->economy().treasury = 100;
+            gsPlayer->economy().treasury = 0;
 
             // Initialize tech
             gsPlayer->tech().owner = player;
