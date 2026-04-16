@@ -188,4 +188,26 @@ CurrencyAmount pillageTrader(aoc::game::GameState& gameState,
 [[nodiscard]] int32_t countActiveTradeRoutes(const aoc::game::GameState& gameState,
                                               PlayerId player);
 
+/// Preview information for a potential trade route (no side effects).
+struct TradeRouteEstimate {
+    int32_t        distanceTiles  = 0;   ///< Path length in tiles.
+    int32_t        roundTripTurns = 0;   ///< Estimated turns for one round trip.
+    CurrencyAmount estimatedGoldPerTrip = 0;  ///< Rough gold income per round trip.
+    TradeRouteType routeType = TradeRouteType::Land;
+};
+
+/**
+ * @brief Estimate trade route income without establishing the route.
+ *
+ * Computes distance, route type, and a rough gold estimate based on
+ * market price differentials between origin and destination stockpiles.
+ * Used by the UI to show previews before the player confirms.
+ */
+[[nodiscard]] TradeRouteEstimate estimateTradeRouteIncome(
+    const aoc::game::GameState& gameState,
+    const aoc::map::HexGrid& grid,
+    const Market& market,
+    const aoc::game::Unit& traderUnit,
+    const aoc::game::City& destCity);
+
 } // namespace aoc::sim

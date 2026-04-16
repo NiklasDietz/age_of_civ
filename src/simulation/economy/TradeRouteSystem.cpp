@@ -418,8 +418,7 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         // Scan upcoming tiles to compute toll per foreign owner
         struct TollEntry {
             PlayerId owner;
-            int32_t  foreignTiles;      // tiles of this owner on the path
-            int32_t  chokepointTiles;   // tiles that are chokepoints (+50% toll)
+            int32_t  foreignTiles;  // tiles of this owner on the path
             float    tollRate;
         };
         std::vector<TollEntry> tollEntries;
@@ -445,21 +444,17 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             float rate = ownerPlayer->tariffs().effectiveTollRate(trader.owner);
             if (rate <= 0.0f) { continue; }
 
-            // Track chokepoint tiles for +50% toll bonus
-            bool isChoke = grid.isChokepoint(idx);
-
             // Aggregate by owner
             bool found = false;
             for (TollEntry& te : tollEntries) {
                 if (te.owner == tileOwner) {
                     ++te.foreignTiles;
-                    if (isChoke) { ++te.chokepointTiles; }
                     found = true;
                     break;
                 }
             }
             if (!found) {
-                tollEntries.push_back({tileOwner, 1, isChoke ? 1 : 0, rate});
+                tollEntries.push_back({tileOwner, 1, rate});
             }
         }
 
@@ -475,13 +470,9 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         //              refuse (pass through anyway) if hostile and toll > 25%.
         //              rerouting is deferred to route establishment (Step 4b).
         for (TollEntry& te : tollEntries) {
-            // Base toll from normal tiles + 50% premium from chokepoint tiles
-            int32_t normalTiles = te.foreignTiles - te.chokepointTiles;
-            float effectiveTiles = static_cast<float>(normalTiles)
-                                 + static_cast<float>(te.chokepointTiles) * 1.5f;
             CurrencyAmount totalToll = static_cast<CurrencyAmount>(
                 static_cast<float>(cargoValue) * te.tollRate
-                * effectiveTiles
+                * static_cast<float>(te.foreignTiles)
                 / static_cast<float>(std::max(static_cast<int32_t>(trader.path.size()), 1)));
             if (totalToll <= 0) { totalToll = 1; }
 
