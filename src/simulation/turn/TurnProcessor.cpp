@@ -46,6 +46,7 @@
 #include "aoc/simulation/unit/Movement.hpp"
 
 // Diplomacy
+#include "aoc/simulation/diplomacy/BorderViolation.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 
@@ -590,7 +591,12 @@ void processGlobalSystems(TurnContext& ctx) {
     }
 
     // Physical trade routes: move Traders, exchange goods
-    processTradeRoutes(gameState, grid, ctx.economy->market());
+    processTradeRoutes(gameState, grid, ctx.economy->market(), ctx.diplomacy);
+
+    // Soft border violation detection: scan military units in foreign territory
+    if (ctx.diplomacy != nullptr) {
+        updateBorderViolations(gameState, grid, *ctx.diplomacy);
+    }
 
     // Stock market: dividends, value updates
     processStockMarket(gameState);

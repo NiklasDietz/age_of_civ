@@ -165,6 +165,9 @@ public:
     [[nodiscard]] aoc::sim::PlayerTradeAgreementsComponent& tradeAgreements() { return this->m_tradeAgreements; }
     [[nodiscard]] const aoc::sim::PlayerTradeAgreementsComponent& tradeAgreements() const { return this->m_tradeAgreements; }
 
+    [[nodiscard]] aoc::sim::PlayerTariffComponent& tariffs() { return this->m_tariffs; }
+    [[nodiscard]] const aoc::sim::PlayerTariffComponent& tariffs() const { return this->m_tariffs; }
+
     // ========================================================================
     // Victory
     // ========================================================================
@@ -361,6 +364,7 @@ private:
     // Economy (extended)
     aoc::sim::PlayerEconomyComponent m_economy;  ///< Supply/demand/needs tracking
     aoc::sim::PlayerTradeAgreementsComponent m_tradeAgreements;
+    aoc::sim::PlayerTariffComponent m_tariffs;
 
     // Victory
     aoc::sim::VictoryTrackerComponent m_victoryTracker;

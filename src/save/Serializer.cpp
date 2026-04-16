@@ -678,6 +678,17 @@ void writeDiplomacySection(WriteBuffer& out, const aoc::sim::DiplomacyManager& d
                 section.writeI32(mod.amount);
                 section.writeI32(mod.turnsRemaining);
             }
+            // Reputation modifiers (political reputation system)
+            section.writeU32(static_cast<uint32_t>(rel.reputationModifiers.size()));
+            for (const aoc::sim::ReputationModifier& mod : rel.reputationModifiers) {
+                section.writeI32(mod.amount);
+                section.writeI32(mod.turnsRemaining);
+            }
+            // Border violation state
+            section.writeI32(rel.unitsInTerritory);
+            section.writeI32(rel.turnsWithViolation);
+            section.writeU8(rel.casusBelliGranted ? uint8_t{1} : uint8_t{0});
+            section.writeU8(rel.warningIssued ? uint8_t{1} : uint8_t{0});
         }
     }
 
@@ -1690,6 +1701,20 @@ ErrorCode loadGame(const std::string& filepath,
                             mod.turnsRemaining = buf.readI32();
                             rel.modifiers.push_back(std::move(mod));
                         }
+                        // Reputation modifiers (political reputation system)
+                        uint32_t repModCount = buf.readU32();
+                        rel.reputationModifiers.reserve(repModCount);
+                        for (uint32_t m = 0; m < repModCount; ++m) {
+                            aoc::sim::ReputationModifier repMod{};
+                            repMod.amount = buf.readI32();
+                            repMod.turnsRemaining = buf.readI32();
+                            rel.reputationModifiers.push_back(repMod);
+                        }
+                        // Border violation state
+                        rel.unitsInTerritory = buf.readI32();
+                        rel.turnsWithViolation = buf.readI32();
+                        rel.casusBelliGranted = buf.readU8() != 0;
+                        rel.warningIssued = buf.readU8() != 0;
                     }
                 }
                 break;

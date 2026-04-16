@@ -24,6 +24,7 @@ void HexGrid::initialize(int32_t width, int32_t height) {
     this->m_improvement.assign(count, ImprovementType::None);
     this->m_road.assign(count, 0);
     this->m_naturalWonder.assign(count, NaturalWonderType::None);
+    this->m_chokepoint.assign(count, ChokepointType::None);
     this->m_falloutTurns.assign(count, 0);
     this->m_preFalloutFeature.assign(count, FeatureType::None);
 }

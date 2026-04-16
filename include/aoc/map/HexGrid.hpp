@@ -20,6 +20,15 @@
 
 namespace aoc::map {
 
+/// Strategic chokepoint type (computed once at map generation).
+enum class ChokepointType : uint8_t {
+    None,            ///< Not a chokepoint
+    LandChokepoint,  ///< Walkable tile with 4+ impassable neighbors
+    MountainPass,    ///< Walkable tile surrounded by 3+ mountain tiles
+    WaterStrait,     ///< Coast/shallow water between two ocean bodies
+    Isthmus,         ///< 1-2 tile wide land bridge between water bodies
+};
+
 /// Tile improvement built by a Builder unit.
 enum class ImprovementType : uint8_t {
     None,
@@ -191,6 +200,11 @@ public:
         return 0;
     }
 
+    // -- Chokepoint (computed at map generation, read-only at runtime) --
+    [[nodiscard]] ChokepointType chokepoint(int32_t index) const { this->assertIndex(index); return this->m_chokepoint[static_cast<std::size_t>(index)]; }
+    void setChokepoint(int32_t index, ChokepointType type) { this->assertIndex(index); this->m_chokepoint[static_cast<std::size_t>(index)] = type; }
+    [[nodiscard]] bool isChokepoint(int32_t index) const { return this->chokepoint(index) != ChokepointType::None; }
+
     // ========================================================================
     // Computed properties
     // ========================================================================
@@ -315,6 +329,9 @@ private:
     std::vector<ImprovementType>  m_improvement;
     std::vector<uint8_t>          m_road;            ///< 1 if tile has road, 0 otherwise
     std::vector<NaturalWonderType> m_naturalWonder;
+
+    // Strategic chokepoints (computed at map generation)
+    std::vector<ChokepointType> m_chokepoint;
 
     // Nuclear fallout tracking
     std::vector<int16_t>     m_falloutTurns;     ///< Turns of fallout remaining (0 = no fallout)

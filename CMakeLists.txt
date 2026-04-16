@@ -71,6 +71,7 @@ add_library(aoc_lib STATIC
     src/simulation/map/Improvement.cpp
     src/simulation/map/Infrastructure.cpp
     src/simulation/map/TerrainModification.cpp
+    src/simulation/map/Chokepoint.cpp
     src/simulation/map/GoodyHuts.cpp
     src/simulation/unit/SupplyLines.cpp
     src/simulation/unit/ZoneOfControl.cpp
@@ -79,6 +80,7 @@ add_library(aoc_lib STATIC
     src/simulation/barbarian/BarbarianController.cpp
     src/simulation/barbarian/BarbarianClans.cpp
     src/simulation/climate/NaturalDisasters.cpp
+    src/simulation/diplomacy/BorderViolation.cpp
     src/simulation/diplomacy/DiplomacyState.cpp
     src/simulation/diplomacy/EspionageSystem.cpp
     src/simulation/diplomacy/WarWeariness.cpp

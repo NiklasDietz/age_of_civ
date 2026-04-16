@@ -1185,6 +1185,96 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                              relationScore, complementaryGoods);
                 }
             }
+
+            // ----------------------------------------------------------------
+            // Border violation response (personality-driven)
+            // ----------------------------------------------------------------
+            // Check if 'other' has units in OUR territory (we are territory owner).
+            const PairwiseRelation& violatorRel = diplomacy.relation(other, this->m_player);
+            if (violatorRel.unitsInTerritory > 0 && violatorRel.turnsWithViolation > 0) {
+                // Tolerance thresholds vary by aggression:
+                //   Aggressive (>1.2): 0-2 turns tolerance -> ultimatum -> war
+                //   Defensive (0.6-1.2): 3-5 turns -> demand withdrawal, fortify
+                //   Diplomatic (0.3-0.6): 5-10 turns -> protest, seek allies
+                //   Passive (<0.3): 10+ turns -> complain but tolerate
+                int32_t baseTolerance = 5;
+                if (beh.militaryAggression > 1.2f) {
+                    baseTolerance = 2;
+                } else if (beh.militaryAggression > 0.6f) {
+                    baseTolerance = 4;
+                } else if (beh.militaryAggression > 0.3f) {
+                    baseTolerance = 8;
+                } else {
+                    baseTolerance = 12;
+                }
+
+                // Power ratio modulates tolerance: if violator is 2x+ stronger,
+                // double tolerance. Small nations endure what they must.
+                const float powerRatio = (ourMilitary > 0)
+                    ? static_cast<float>(theirMilitary) / static_cast<float>(ourMilitary)
+                    : 10.0f;
+                if (powerRatio > 2.0f) {
+                    baseTolerance *= 2;
+                }
+
+                const int32_t violationTurns = violatorRel.turnsWithViolation;
+
+                if (violationTurns > baseTolerance && violatorRel.casusBelliGranted) {
+                    // Beyond tolerance and casus belli granted: declare war
+                    // (if not already at war and we have military capability)
+                    if (ourMilitary > 0 && beh.militaryAggression > 0.3f) {
+                        diplomacy.declareWar(this->m_player, other);
+                        LOG_INFO("AI %u Declared war on Player %u for border violation "
+                                 "(%d turns, tolerance %d, aggression %.2f)",
+                                 static_cast<unsigned>(this->m_player),
+                                 static_cast<unsigned>(other),
+                                 violationTurns, baseTolerance,
+                                 static_cast<double>(beh.militaryAggression));
+                    }
+                } else if (violationTurns > baseTolerance / 2) {
+                    // Past half-tolerance: add relation penalty
+                    diplomacy.addModifier(this->m_player, other,
+                        {"Troops in our territory", -5, 10});
+                }
+
+                // Set higher toll rates against violators
+                aoc::game::Player* ourPlayer = gameState.player(this->m_player);
+                if (ourPlayer != nullptr) {
+                    float violatorToll = 0.25f + beh.militaryAggression * 0.10f;
+                    violatorToll = std::min(violatorToll, 0.50f);
+                    ourPlayer->tariffs().perPlayerTollRates[other] = violatorToll;
+                }
+            }
+
+            // ----------------------------------------------------------------
+            // AI toll rate management (based on relation + reputation)
+            // ----------------------------------------------------------------
+            {
+                aoc::game::Player* ourPlayer = gameState.player(this->m_player);
+                if (ourPlayer != nullptr && violatorRel.unitsInTerritory == 0) {
+                    const int32_t repScore = rel.reputationScore();
+                    float tollRate = 0.10f;  // Neutral default
+                    if (relationScore > 10) {
+                        tollRate = 0.05f;    // Friendly
+                    }
+                    if (relationScore > 40 || rel.hasDefensiveAlliance) {
+                        tollRate = 0.0f;     // Allied
+                    }
+                    if (relationScore < -10) {
+                        tollRate = 0.20f;    // Unfriendly
+                    }
+                    if (relationScore < -40) {
+                        tollRate = 0.35f + beh.militaryAggression * 0.05f;
+                        tollRate = std::min(tollRate, 0.50f);  // Hostile
+                    }
+                    // Reputation modulates: untrustworthy players pay more
+                    if (repScore < -20) {
+                        tollRate += 0.05f;
+                        tollRate = std::min(tollRate, 0.50f);
+                    }
+                    ourPlayer->tariffs().perPlayerTollRates[other] = tollRate;
+                }
+            }
         }
     }
 }

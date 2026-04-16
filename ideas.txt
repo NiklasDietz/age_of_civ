@@ -1,3 +1,11 @@
 - Make the game world not a 2d plane like civ 6 but as a globe, which should be possible iwth the tiles we have right? i mean without morphine their shape. os is there a better shape for this? also maybe you can internally keep the map as 2d but with the right connections at the end to make path planning easier, or do whatever makes more sense but explain to me why you did it the way you did.
 - Also if we do that maybe have an alternative world view for the players who prefer a 2d view?
-- At this point of the game would it make sense to move to a game engine, or is sticking with the vulkan renderer of mine still fine?
+- At this point of the game would it make sense to move to a game engine, or is sticking with the vulkan renderer of mine still fine? and if a changewould make sense should i use unreal engine, unity engine or godot?
+- Make players be able to build canals which create artifial waterways that they could make use for by toll of other players wanting to use this. this should cost a lot, because its a huge project!
+
+ Chokepoint detection at map generation
+Is this needed for the ai to determine if it has a valuable position?
+
+Also now with this player having more realitic choices they can make and enforce them in ai players through this point system. are there maybe more mechanics that we have where it would make sense to do something like that?
+
+Also have you implemented everything from @todo.txt  

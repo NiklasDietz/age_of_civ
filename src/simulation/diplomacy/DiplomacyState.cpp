@@ -154,17 +154,39 @@ void DiplomacyManager::formEconomicAlliance(PlayerId a, PlayerId b) {
              static_cast<unsigned>(a), static_cast<unsigned>(b));
 }
 
+void DiplomacyManager::addReputationModifier(PlayerId a, PlayerId b,
+                                               int32_t amount, int32_t decayTurns) {
+    ReputationModifier mod{amount, decayTurns};
+    this->relation(a, b).reputationModifiers.push_back(mod);
+    // NOT symmetric: reputation is directional. "A's reputation with B" is
+    // independent of "B's reputation with A". You can be trustworthy toward
+    // one player and a backstabber toward another.
+}
+
 void DiplomacyManager::tickModifiers() {
     for (PairwiseRelation& rel : this->m_relations) {
         // Increment peace cooldown timer
         if (!rel.isAtWar && rel.turnsSincePeace < 1000) {
             ++rel.turnsSincePeace;
         }
+        // Decay relation modifiers
         for (std::vector<RelationModifier>::iterator it = rel.modifiers.begin(); it != rel.modifiers.end(); ) {
             if (it->turnsRemaining > 0) {
                 --it->turnsRemaining;
                 if (it->turnsRemaining == 0) {
                     it = rel.modifiers.erase(it);
+                    continue;
+                }
+            }
+            ++it;
+        }
+        // Decay reputation modifiers
+        for (std::vector<ReputationModifier>::iterator it = rel.reputationModifiers.begin();
+             it != rel.reputationModifiers.end(); ) {
+            if (it->turnsRemaining > 0) {
+                --it->turnsRemaining;
+                if (it->turnsRemaining == 0) {
+                    it = rel.reputationModifiers.erase(it);
                     continue;
                 }
             }

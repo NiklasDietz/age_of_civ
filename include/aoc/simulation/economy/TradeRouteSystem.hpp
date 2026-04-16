@@ -91,6 +91,9 @@ struct TraderComponent {
     /// Gold earned this turn from trade.
     CurrencyAmount goldEarnedThisTurn = 0;
 
+    /// Toll paid this turn to territory owners along the route.
+    CurrencyAmount tollPaidThisTurn = 0;
+
     /// Cumulative science/culture spread bonus.
     float scienceSpread = 0.0f;
     float cultureSpread = 0.0f;
@@ -158,9 +161,11 @@ struct TraderComponent {
  * @brief Process all active trade routes for one turn.
  *
  * Uses market prices for gold calculation and demand-driven cargo selection.
+ * Collects tolls when traders traverse foreign territory (soft border system).
  */
 void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
-                         const Market& market);
+                         const Market& market,
+                         const DiplomacyManager* diplomacy);
 
 /**
  * @brief Pillage a Trader unit (called when enemy attacks it).

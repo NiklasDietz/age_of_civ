@@ -14,9 +14,12 @@
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/economy/Market.hpp"
+#include "aoc/simulation/economy/AdvancedEconomics.hpp"
+#include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Pathfinding.hpp"
+#include "aoc/ui/GameNotifications.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -179,6 +182,35 @@ bool evaluateTradeConsent(const aoc::game::GameState& gameState,
     }
 
     return score > 0.0f;
+}
+
+/// Compute total market value of cargo currently carried by a trader.
+CurrencyAmount computeCargoValue(const std::vector<TradeCargo>& cargo, const Market& market) {
+    CurrencyAmount total = 0;
+    for (const TradeCargo& c : cargo) {
+        int32_t price = market.marketData(c.goodId).currentPrice;
+        if (price <= 0) { price = 1; }
+        total += static_cast<CurrencyAmount>(c.amount) * static_cast<CurrencyAmount>(price);
+    }
+    return total;
+}
+
+/// Check if two players share a FTZ or Customs Union (0% toll between members).
+bool areInFreeTradeAgreement(const aoc::game::Player& territoryOwner, PlayerId trader) {
+    const PlayerTradeAgreementsComponent& agreements = territoryOwner.tradeAgreements();
+    for (const TradeAgreementDef& agreement : agreements.agreements) {
+        if (!agreement.isActive) { continue; }
+        if (agreement.type != TradeAgreementType::FreeTradeZone
+            && agreement.type != TradeAgreementType::CustomsUnion) {
+            continue;
+        }
+        bool traderIsMember = false;
+        for (PlayerId member : agreement.members) {
+            if (member == trader) { traderIsMember = true; break; }
+        }
+        if (traderIsMember) { return true; }
+    }
+    return false;
 }
 
 } // anonymous namespace
@@ -344,7 +376,8 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
 }
 
 void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
-                         const Market& market) {
+                         const Market& market,
+                         const DiplomacyManager* diplomacy) {
     // Collect all active trader units across all players
     std::vector<aoc::game::Unit*> traderUnits;
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
@@ -362,6 +395,16 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         TraderComponent& trader = unitPtr->trader();
 
         ++trader.turnsActive;
+        trader.tollPaidThisTurn = 0;
+
+        // Compute cargo value once for toll calculation this turn
+        CurrencyAmount cargoValue = computeCargoValue(trader.cargo, market);
+
+        // ----------------------------------------------------------------
+        // Toll pre-scan: look ahead at tiles the trader will cross this turn
+        // and compute total expected toll per territory owner. AI decides
+        // once per turn whether to accept, reroute, or refuse for each owner.
+        // ----------------------------------------------------------------
 
         // Determine movement speed based on terrain under the Trader
         int32_t tileIdx = grid.isValid(unitPtr->position())
@@ -372,7 +415,134 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 || grid.improvement(tileIdx) == aoc::map::ImprovementType::Highway);
         int32_t speed = trader.movementSpeed(onRoad, onRailway);
 
-        // Move along path
+        // Scan upcoming tiles to compute toll per foreign owner
+        struct TollEntry {
+            PlayerId owner;
+            int32_t  foreignTiles;      // tiles of this owner on the path
+            int32_t  chokepointTiles;   // tiles that are chokepoints (+50% toll)
+            float    tollRate;
+        };
+        std::vector<TollEntry> tollEntries;
+
+        int32_t scanIdx = trader.pathIndex;
+        for (int32_t step = 0; step < speed; ++step) {
+            if (scanIdx >= static_cast<int32_t>(trader.path.size()) - 1) { break; }
+            ++scanIdx;
+            aoc::hex::AxialCoord tile = trader.path[static_cast<std::size_t>(scanIdx)];
+            if (!grid.isValid(tile)) { continue; }
+            int32_t idx = grid.toIndex(tile);
+            PlayerId tileOwner = grid.owner(idx);
+            if (tileOwner == INVALID_PLAYER || tileOwner == trader.owner) { continue; }
+
+            aoc::game::Player* ownerPlayer = gameState.player(tileOwner);
+            if (ownerPlayer == nullptr) { continue; }
+            if (areInFreeTradeAgreement(*ownerPlayer, trader.owner)) { continue; }
+            if (diplomacy != nullptr) {
+                const PairwiseRelation& rel = diplomacy->relation(tileOwner, trader.owner);
+                if (rel.hasOpenBorders) { continue; }
+            }
+
+            float rate = ownerPlayer->tariffs().effectiveTollRate(trader.owner);
+            if (rate <= 0.0f) { continue; }
+
+            // Track chokepoint tiles for +50% toll bonus
+            bool isChoke = grid.isChokepoint(idx);
+
+            // Aggregate by owner
+            bool found = false;
+            for (TollEntry& te : tollEntries) {
+                if (te.owner == tileOwner) {
+                    ++te.foreignTiles;
+                    if (isChoke) { ++te.chokepointTiles; }
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                tollEntries.push_back({tileOwner, 1, isChoke ? 1 : 0, rate});
+            }
+        }
+
+        // AI toll decision per territory owner.
+        // Decision factors:
+        //   - tollRate vs cargo profit margin
+        //   - diplomatic relation (friendly -> accept, hostile -> refuse)
+        //   - reputation consequences (-5 for refusal, +1 for payment)
+        //   - military presence (garrison near route increases accept likelihood)
+        //
+        // Human players always accept for now (UI for decline comes later).
+        // AI decision: accept if toll < 30% of cargo value OR relation is friendly.
+        //              refuse (pass through anyway) if hostile and toll > 25%.
+        //              rerouting is deferred to route establishment (Step 4b).
+        for (TollEntry& te : tollEntries) {
+            // Base toll from normal tiles + 50% premium from chokepoint tiles
+            int32_t normalTiles = te.foreignTiles - te.chokepointTiles;
+            float effectiveTiles = static_cast<float>(normalTiles)
+                                 + static_cast<float>(te.chokepointTiles) * 1.5f;
+            CurrencyAmount totalToll = static_cast<CurrencyAmount>(
+                static_cast<float>(cargoValue) * te.tollRate
+                * effectiveTiles
+                / static_cast<float>(std::max(static_cast<int32_t>(trader.path.size()), 1)));
+            if (totalToll <= 0) { totalToll = 1; }
+
+            aoc::game::Player* traderPlayer = gameState.player(trader.owner);
+            bool isAI = (traderPlayer != nullptr && !traderPlayer->isHuman());
+            bool acceptToll = true;
+
+            if (isAI && diplomacy != nullptr) {
+                const PairwiseRelation& rel = diplomacy->relation(trader.owner, te.owner);
+                int32_t score = rel.totalScore();
+                float tollFraction = (cargoValue > 0)
+                    ? static_cast<float>(totalToll) / static_cast<float>(cargoValue)
+                    : 1.0f;
+
+                // Hostile relations + expensive toll -> refuse and pass through
+                if (score < -10 && tollFraction > 0.25f) {
+                    acceptToll = false;
+                }
+                // Very hostile -> refuse even cheap tolls
+                if (score < -40 && tollFraction > 0.10f) {
+                    acceptToll = false;
+                }
+            }
+
+            if (acceptToll) {
+                // Pay toll: credit territory owner, debit trader
+                aoc::game::Player* tollReceiver = gameState.player(te.owner);
+                if (tollReceiver != nullptr) { tollReceiver->addGold(totalToll); }
+                if (traderPlayer != nullptr) { traderPlayer->addGold(-totalToll); }
+                trader.tollPaidThisTurn += totalToll;
+
+                // Reputation: +1 for honoring toll
+                if (diplomacy != nullptr) {
+                    const_cast<DiplomacyManager*>(diplomacy)->addReputationModifier(
+                        trader.owner, te.owner, 1, 20);
+                }
+            } else {
+                // Refuse toll and pass through anyway: -5 reputation
+                if (diplomacy != nullptr) {
+                    const_cast<DiplomacyManager*>(diplomacy)->addReputationModifier(
+                        trader.owner, te.owner, -5, 30);
+                }
+
+                // Notify territory owner of refusal
+                LOG_INFO("Player %u's trader refused %lld toll from Player %u and passed through",
+                         static_cast<unsigned>(trader.owner),
+                         static_cast<long long>(totalToll),
+                         static_cast<unsigned>(te.owner));
+
+                aoc::ui::pushNotification({
+                    aoc::ui::NotificationCategory::Diplomacy,
+                    "Toll Refused",
+                    "A trade caravan from Player " + std::to_string(trader.owner)
+                        + " refused your toll and passed through your territory.",
+                    te.owner,
+                    3
+                });
+            }
+        }
+
+        // Move along path (tolls already settled above)
         for (int32_t step = 0; step < speed; ++step) {
             if (trader.pathIndex >= static_cast<int32_t>(trader.path.size()) - 1) {
                 break;  // Arrived

@@ -7,6 +7,7 @@
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
+#include "aoc/simulation/map/Chokepoint.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -105,6 +106,9 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
         placeNaturalWonders(outGrid, rng);
         placeBasicResources(config, outGrid, rng);
     }
+
+    // Detect strategic chokepoints after all terrain is finalized
+    aoc::sim::detectChokepoints(outGrid);
 }
 
 void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Random& rng) {

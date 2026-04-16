@@ -24,7 +24,7 @@ class Market;
 // Tariffs
 // ============================================================================
 
-/// Per-player tariff settings (ECS component).
+/// Per-player tariff and toll settings (ECS component).
 struct PlayerTariffComponent {
     PlayerId owner = INVALID_PLAYER;
     float importTariffRate = 0.0f;  ///< 0.0 to 0.5 (0% to 50%)
@@ -32,8 +32,18 @@ struct PlayerTariffComponent {
     /// Per-player tariff overrides (e.g., higher tariff on specific rival).
     std::unordered_map<PlayerId, float> perPlayerTariffs;
 
+    // -- Territory toll rates (charged on trade routes passing through) --
+    float defaultTollRate = 0.10f;  ///< Global toll rate for all players (0.0 to 0.5)
+    /// Per-player toll overrides (e.g., allies=0%, rivals=0.30+).
+    std::unordered_map<PlayerId, float> perPlayerTollRates;
+
     /// Get the effective import tariff for goods coming from a specific player.
     [[nodiscard]] float effectiveImportTariff(PlayerId from) const;
+
+    /// Get the effective toll rate charged to a specific trader passing through territory.
+    /// Checks per-player override first, then default rate. Clamped to [0.0, 0.5].
+    /// Free Trade Zone / Customs Union membership results in 0% toll (checked externally).
+    [[nodiscard]] float effectiveTollRate(PlayerId trader) const;
 };
 
 /// Apply tariffs to a trade deal value. Returns the post-tariff value.

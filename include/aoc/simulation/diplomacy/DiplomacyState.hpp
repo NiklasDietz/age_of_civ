@@ -52,6 +52,15 @@ enum class DiplomaticStance : uint8_t {
     return DiplomaticStance::Allied;
 }
 
+/// A time-decaying reputation modifier. Reputation tracks how honorably a player
+/// behaves: paying tolls, respecting borders, honoring agreements. AI uses this
+/// to decide toll rates, alliance offers, and war declarations. Human players
+/// see the score but aren't bound by it.
+struct ReputationModifier {
+    int32_t amount;          ///< Positive = trustworthy, negative = untrustworthy
+    int32_t turnsRemaining;  ///< 0 = permanent
+};
+
 /// Pairwise relation data between two players.
 struct PairwiseRelation {
     int32_t baseScore = 0;   ///< Base relation score (from modifiers + events)
@@ -67,6 +76,21 @@ struct PairwiseRelation {
     bool    hasEmbargo         = false;
     std::vector<RelationModifier> modifiers;
 
+    // -- Soft border violation tracking --
+    // Units CAN enter foreign territory without Open Borders. The consequences
+    // are diplomatic (reputation penalty, casus belli), not mechanical barriers.
+    int32_t unitsInTerritory    = 0;   ///< Military units currently in territory (updated per turn)
+    int32_t turnsWithViolation  = 0;   ///< Consecutive turns with units present
+    bool    casusBelliGranted   = false; ///< Territory owner can declare war without third-party penalty
+    bool    warningIssued       = false; ///< First warning notification sent
+
+    // -- Political reputation (separate from relation score) --
+    // Reputation tracks behavioral trustworthiness: paying tolls, respecting
+    // borders, honoring agreements. AI reads this when setting toll rates and
+    // deciding diplomatic responses. Human players see the score and its
+    // effects (e.g., higher tolls) but make their own choices.
+    std::vector<ReputationModifier> reputationModifiers;
+
     /// Compute the total score = baseScore + sum of active modifiers.
     [[nodiscard]] int32_t totalScore() const {
         int32_t total = this->baseScore;
@@ -80,6 +104,19 @@ struct PairwiseRelation {
 
     [[nodiscard]] DiplomaticStance stance() const {
         return stanceFromScore(this->totalScore());
+    }
+
+    /// Political reputation score: sum of active reputation modifiers, clamped [-100, +100].
+    /// Positive = trustworthy (honors agreements, pays tolls, respects borders).
+    /// Negative = untrustworthy (violates borders, refuses tolls, breaks deals).
+    [[nodiscard]] int32_t reputationScore() const {
+        int32_t total = 0;
+        for (const ReputationModifier& mod : this->reputationModifiers) {
+            total += mod.amount;
+        }
+        if (total < -100) return -100;
+        if (total > 100)  return 100;
+        return total;
     }
 };
 
@@ -102,6 +139,11 @@ public:
 
     /// Add a relation modifier between two players.
     void addModifier(PlayerId a, PlayerId b, RelationModifier modifier);
+
+    /// Add a reputation modifier between two players. Reputation is separate from
+    /// relation score: it tracks behavioral trustworthiness (toll payment, border
+    /// respect, agreement honoring). AI reads it for toll rates and diplomacy.
+    void addReputationModifier(PlayerId a, PlayerId b, int32_t amount, int32_t decayTurns);
 
     /// Declare war between two players.
     void declareWar(PlayerId aggressor, PlayerId target);

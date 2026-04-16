@@ -519,6 +519,9 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                 const aoc::map::FeatureType feat = grid.feature(tileIdx);
                 if (feat == aoc::map::FeatureType::Hills)  { borderScore += 5; }
                 if (feat == aoc::map::FeatureType::Forest) { borderScore += 3; }
+                // Chokepoints are high-priority garrison positions: +20 score.
+                // Controls toll income and blocks enemy advance.
+                if (grid.isChokepoint(tileIdx)) { borderScore += 20; }
                 borderScore -= aoc::hex::distance(unit->position(), tile);
 
                 if (borderScore > bestBorderScore) {
