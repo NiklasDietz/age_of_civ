@@ -524,14 +524,20 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         aoc::sim::processTurn(turnCtx);
 
         // --- Goody hut exploration ---
-        // Check all units against hut locations after movement.
+        // Snapshot unit positions first because claiming a hut can add a free
+        // unit to the player, which reallocates the units vector.
         if (!goodyHuts.hutLocations.empty()) {
             for (int32_t p = 0; p < playerCount; ++p) {
                 aoc::game::Player* gsp = gameState.player(static_cast<aoc::PlayerId>(p));
                 if (gsp == nullptr) { continue; }
+                std::vector<aoc::hex::AxialCoord> positions;
+                positions.reserve(gsp->units().size());
                 for (const std::unique_ptr<aoc::game::Unit>& unitPtr : gsp->units()) {
+                    positions.push_back(unitPtr->position());
+                }
+                for (const aoc::hex::AxialCoord& pos : positions) {
                     aoc::sim::GoodyHutReward reward = aoc::sim::checkAndClaimGoodyHut(
-                        goodyHuts, gameState, *gsp, unitPtr->position(), rng);
+                        goodyHuts, gameState, *gsp, pos, rng);
                     if (reward != aoc::sim::GoodyHutReward::Count) {
                         eventLog.record(aoc::sim::TurnEventType::CityFounded,
                                         static_cast<aoc::PlayerId>(p),

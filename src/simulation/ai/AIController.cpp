@@ -41,6 +41,8 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
+#include "aoc/simulation/map/TerrainModification.hpp"
+#include "aoc/map/FogOfWar.hpp"
 
 #include <unordered_set>
 
@@ -211,6 +213,7 @@ AIController::AIController(PlayerId player, aoc::ui::AIDifficulty difficulty)
 
 void AIController::executeTurn(aoc::game::GameState& gameState,
                                 aoc::map::HexGrid& grid,
+                                const aoc::map::FogOfWar* fogOfWar,
                                 DiplomacyManager& diplomacy,
                                 const Market& market,
                                 aoc::Random& rng) {
@@ -272,6 +275,7 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
     this->executeDiplomacyActions(gameState, diplomacy, market);
     this->manageTradeRoutes(gameState, grid, market, diplomacy);
     this->considerPurchases(gameState);
+    this->considerCanalBuilding(gameState, grid, fogOfWar);
 
     // --- AI Spy Management ---
     // Assign idle spies to missions based on strategic priorities.
@@ -1273,6 +1277,25 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                         tollRate = std::min(tollRate, 0.50f);
                     }
                     ourPlayer->tariffs().perPlayerTollRates[other] = tollRate;
+
+                    // Canal toll: premium pricing for canal transit.
+                    // Economically-focused AIs charge more (canals are investments),
+                    // allies get discounts, hostiles pay maximum.
+                    float canalToll = 0.20f + beh.economicFocus * 0.05f;
+                    if (relationScore > 10) {
+                        canalToll = 0.10f;   // Friendly discount
+                    }
+                    if (relationScore > 40 || rel.hasDefensiveAlliance) {
+                        canalToll = 0.05f;   // Allied: near-free access
+                    }
+                    if (relationScore < -10) {
+                        canalToll = 0.30f + beh.economicFocus * 0.05f;
+                    }
+                    if (relationScore < -40) {
+                        canalToll = 0.45f;   // Hostile: near-maximum
+                    }
+                    canalToll = std::min(canalToll, 0.50f);
+                    ourPlayer->tariffs().perPlayerCanalTollRates[other] = canalToll;
                 }
             }
         }
@@ -1783,6 +1806,172 @@ void AIController::considerPurchases(aoc::game::GameState& gameState) {
                                                          ProductionItemType::Building, bdef.id.value);
                 if (result == ErrorCode::Ok) { return; }
             }
+        }
+    }
+}
+
+// ============================================================================
+// Canal building: scan owned isthmus/chokepoint tiles for canal opportunities
+// ============================================================================
+
+void AIController::considerCanalBuilding(aoc::game::GameState& gameState,
+                                          aoc::map::HexGrid& grid,
+                                          const aoc::map::FogOfWar* fogOfWar) {
+    aoc::game::Player* gsPlayer = gameState.player(this->m_player);
+    if (gsPlayer == nullptr) { return; }
+
+    // Canal requires Industrial Era — gate on base Industrialization (TechId{11}).
+    constexpr TechId INDUSTRIALIZATION_TECH = TechId{11};
+    if (!gsPlayer->tech().hasResearched(INDUSTRIALIZATION_TECH)) {
+        return;
+    }
+
+    constexpr CurrencyAmount CANAL_GOLD_COST = 300;
+    if (gsPlayer->treasury() < CANAL_GOLD_COST) {
+        return;
+    }
+
+    // ---- Step 1: Measure trade traffic visible to this player ----
+    // Only count traders the player can actually see via fog of war.
+    // When fog of war is unavailable (headless mode), fall back to tile ownership.
+    const int32_t totalTiles = grid.width() * grid.height();
+    std::vector<int32_t> tradeProximity(static_cast<std::size_t>(totalTiles), 0);
+    int32_t tradeTrafficTiles = 0;
+    int32_t visibleActiveTraders = 0;
+
+    const auto tileIsVisible = [&](int32_t tileIdx) -> bool {
+        if (fogOfWar != nullptr) {
+            aoc::map::TileVisibility vis = fogOfWar->visibility(this->m_player, tileIdx);
+            return vis == aoc::map::TileVisibility::Visible;
+        }
+        // Fallback: treat owned tiles as visible
+        return grid.owner(tileIdx) == this->m_player;
+    };
+
+    for (const std::unique_ptr<aoc::game::Player>& pPtr : gameState.players()) {
+        for (const std::unique_ptr<aoc::game::Unit>& u : pPtr->units()) {
+            if (unitTypeDef(u->typeId()).unitClass != UnitClass::Trader) { continue; }
+            const TraderComponent& trader = u->trader();
+            if (trader.path.empty()) { continue; }
+
+            bool traderVisible = false;
+            for (const aoc::hex::AxialCoord& pathTile : trader.path) {
+                if (!grid.isValid(pathTile)) { continue; }
+                int32_t idx = grid.toIndex(pathTile);
+                if (!tileIsVisible(idx)) { continue; }
+
+                // Tile is visible — we can observe this trader
+                traderVisible = true;
+                ++tradeTrafficTiles;
+
+                // Build proximity heatmap: only for visible tiles and their
+                // visible neighbors. This ensures the heatmap only reflects
+                // what the player actually observes.
+                tradeProximity[static_cast<std::size_t>(idx)] += 2;
+                std::array<aoc::hex::AxialCoord, 6> ring1 = aoc::hex::neighbors(pathTile);
+                for (const aoc::hex::AxialCoord& n1 : ring1) {
+                    if (!grid.isValid(n1)) { continue; }
+                    int32_t n1Idx = grid.toIndex(n1);
+                    if (tileIsVisible(n1Idx)) {
+                        tradeProximity[static_cast<std::size_t>(n1Idx)] += 1;
+                    }
+                }
+            }
+            if (traderVisible) { ++visibleActiveTraders; }
+        }
+    }
+
+    // Need meaningful observed trade traffic before investing in canals.
+    // At least 2 traders visible in our territory and 4+ route tiles.
+    if (visibleActiveTraders < 2 || tradeTrafficTiles < 4) {
+        return;
+    }
+
+    const LeaderPersonalityDef& personality = leaderPersonality(gsPlayer->civId());
+    const LeaderBehavior& beh = personality.behavior;
+
+    // ---- Step 3: Score canal candidate tiles ----
+    struct CanalCandidate {
+        int32_t tileIndex;
+        float   score;
+    };
+    std::vector<CanalCandidate> candidates;
+
+    for (int32_t i = 0; i < totalTiles; ++i) {
+        if (grid.owner(i) != this->m_player) { continue; }
+        if (!aoc::sim::canBuildTerrainProject(grid, i, aoc::sim::TerrainProjectType::Canal)) {
+            continue;
+        }
+
+        // Skip tiles with zero trade proximity — no traders nearby, canal is useless
+        int32_t proximity = tradeProximity[static_cast<std::size_t>(i)];
+        if (proximity == 0) { continue; }
+
+        // Count adjacent canals — tiles next to existing canals are just
+        // extending a canal field, not creating a new strategic shortcut.
+        aoc::hex::AxialCoord center = grid.toAxial(i);
+        std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(center);
+        int32_t adjacentCanals = 0;
+        for (const aoc::hex::AxialCoord& n : nbrs) {
+            if (!grid.isValid(n)) { continue; }
+            if (grid.improvement(grid.toIndex(n)) == aoc::map::ImprovementType::Canal) {
+                ++adjacentCanals;
+            }
+        }
+        // Skip if already bordered by a canal — prevents canal sprawl
+        if (adjacentCanals > 0) { continue; }
+
+        aoc::map::ChokepointType cpType = grid.chokepoint(i);
+        float score = 0.0f;
+
+        // Base score from geography
+        if (cpType == aoc::map::ChokepointType::Isthmus) {
+            score = 10.0f;
+        } else if (cpType == aoc::map::ChokepointType::LandChokepoint) {
+            score = 4.0f;
+        } else {
+            score = 1.0f;
+        }
+
+        // Trade proximity multiplier: more trade traffic = more valuable canal
+        score *= (1.0f + static_cast<float>(proximity) * 0.3f);
+
+        // Economic leaders value canals more (toll revenue)
+        score *= (0.5f + beh.economicFocus);
+
+        // Naval-focused leaders also value canals (fleet mobility)
+        score *= (0.5f + beh.techNaval * 0.5f);
+
+        // Minimum score threshold
+        if (score >= 3.0f) {
+            candidates.push_back({i, score});
+        }
+    }
+
+    if (candidates.empty()) { return; }
+
+    // Pick the best candidate
+    CanalCandidate best = candidates[0];
+    for (std::size_t c = 1; c < candidates.size(); ++c) {
+        if (candidates[c].score > best.score) {
+            best = candidates[c];
+        }
+    }
+
+    // Build one canal per turn (expensive, strategic decision)
+    if (gsPlayer->spendGold(CANAL_GOLD_COST)) {
+        ErrorCode result = aoc::sim::executeTerrainProject(
+            grid, best.tileIndex, aoc::sim::TerrainProjectType::Canal);
+        if (result == ErrorCode::Ok) {
+            aoc::hex::AxialCoord pos = grid.toAxial(best.tileIndex);
+            LOG_INFO("AI %u built canal at (%d, %d) -- score %.1f, traffic %d, cost %d gold",
+                     static_cast<unsigned>(this->m_player),
+                     static_cast<int>(pos.q), static_cast<int>(pos.r),
+                     static_cast<double>(best.score),
+                     static_cast<int>(tradeTrafficTiles),
+                     static_cast<int>(CANAL_GOLD_COST));
+        } else {
+            gsPlayer->addGold(CANAL_GOLD_COST);
         }
     }
 }

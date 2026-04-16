@@ -8,7 +8,7 @@
  * Connect two bodies of water through land tiles.
  * Requirements: tile must be between two water/coast/canal tiles (or a city).
  * Effect: naval units and trade ships can pass through. Owner collects tolls.
- * Cost: 600 production, requires Steam Power tech. Multi-tile canals supported.
+ * Cost: 600 production, requires Industrialization tech. Multi-tile canals supported.
  *
  * === Tunnels ===
  * Connect two tiles separated by a mountain.

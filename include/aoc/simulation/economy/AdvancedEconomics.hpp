@@ -37,8 +37,10 @@ struct PlayerTariffComponent {
     /// Per-player toll overrides (e.g., allies=0%, rivals=0.30+).
     std::unordered_map<PlayerId, float> perPlayerTollRates;
 
-    // -- Canal toll rate (premium charged for canal transit, on top of territory toll) --
-    float canalTollRate = 0.25f;  ///< Additional toll for each canal tile traversed (0.0 to 0.5)
+    // -- Canal toll rates (premium charged for canal transit, on top of territory toll) --
+    float defaultCanalTollRate = 0.25f;  ///< Default canal transit fee per tile (0.0 to 0.5)
+    /// Per-player canal toll overrides (e.g., allies=0.10, rivals=0.50).
+    std::unordered_map<PlayerId, float> perPlayerCanalTollRates;
 
     /// Get the effective import tariff for goods coming from a specific player.
     [[nodiscard]] float effectiveImportTariff(PlayerId from) const;
@@ -47,6 +49,11 @@ struct PlayerTariffComponent {
     /// Checks per-player override first, then default rate. Clamped to [0.0, 0.5].
     /// Free Trade Zone / Customs Union membership results in 0% toll (checked externally).
     [[nodiscard]] float effectiveTollRate(PlayerId trader) const;
+
+    /// Get the effective canal toll rate for a specific trader.
+    /// Canal tolls are a premium on top of territory tolls, reflecting the
+    /// infrastructure investment. Per-player overrides allow diplomatic pricing.
+    [[nodiscard]] float effectiveCanalTollRate(PlayerId trader) const;
 };
 
 /// Apply tariffs to a trade deal value. Returns the post-tariff value.

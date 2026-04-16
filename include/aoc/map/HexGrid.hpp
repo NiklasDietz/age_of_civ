@@ -279,6 +279,12 @@ public:
         return 0;  // Land tiles are impassable for naval units
     }
 
+    /// Naval movement cost excluding canals (water-only pathfinding).
+    /// Used to find alternative routes that avoid canal tolls.
+    [[nodiscard]] int32_t navalMovementCostNoCanals(int32_t index) const {
+        return aoc::map::isWater(this->terrain(index)) ? 1 : 0;
+    }
+
     /// Movement cost for early naval units (no Navigation tech).
     /// Can only traverse Coast, ShallowWater, and canals (not deep Ocean).
     [[nodiscard]] int32_t shallowNavalMovementCost(int32_t index) const {

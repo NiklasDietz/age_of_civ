@@ -1,3 +1,0 @@
-- At this point of the game would it make sense to move to a game engine, or is sticking with the vulkan renderer of mine still fine? and if a changewould make sense should i use unreal engine, unity engine or godot?
-- Make players be able to build canals which create artifial waterways that they could make use for by toll of other players wanting to use this. this should cost a lot, because its a huge project!
-- would it make sense to switch to c++26?

@@ -445,6 +445,7 @@ void Application::spectatorAdvanceTurn() {
     // Build TurnContext for all AI players (no human player).
     aoc::sim::TurnContext turnCtx{};
     turnCtx.grid         = &this->m_hexGrid;
+    turnCtx.fogOfWar     = &this->m_fogOfWar;
     turnCtx.economy      = &this->m_economy;
     turnCtx.diplomacy    = &this->m_diplomacy;
     turnCtx.barbarians   = &this->m_barbarianController;
@@ -2076,6 +2077,7 @@ void Application::handleEndTurn() {
         aoc::sim::TurnContext turnCtx{};
 
         turnCtx.grid = &this->m_hexGrid;
+        turnCtx.fogOfWar = &this->m_fogOfWar;
         turnCtx.economy = &this->m_economy;
         turnCtx.diplomacy = &this->m_diplomacy;
         turnCtx.barbarians = &this->m_barbarianController;

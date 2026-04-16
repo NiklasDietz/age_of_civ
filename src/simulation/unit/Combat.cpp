@@ -243,9 +243,11 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
         attacker.setMovementRemaining(0);  // Melee attack ends movement
     }
 
-    // Snapshot owner IDs before units are potentially removed
+    // Snapshot info before units are removed (removeUnit frees memory).
     PlayerId attackerOwner = attacker.owner();
     PlayerId defenderOwner = defender.owner();
+    const int32_t defenderProductionCost = defender.typeDef().productionCost;
+    const std::string_view defenderName = defender.typeDef().name;
 
     // Clean up dead units: find the owning player and remove the unit
     if (result.defenderKilled) {
@@ -282,16 +284,20 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
             }
 
             defPlayer->removeUnit(&defender);
+            // defender reference is now DANGLING — do not use after this point
         }
     }
     if (result.attackerKilled) {
         aoc::game::Player* atkPlayer = findOwningPlayer(gameState, &attacker);
         if (atkPlayer != nullptr) {
             atkPlayer->removeUnit(&attacker);
+            // attacker reference is now DANGLING — do not use after this point
         }
     }
 
-    // Military economic benefits when a unit is killed:
+    // Military economic benefits when a unit is killed.
+    // Uses snapshotted values (defenderProductionCost, defenderName) because
+    // the defender Unit has already been freed by removeUnit above.
     if (result.defenderKilled && !result.attackerKilled) {
         aoc::game::Player* atkPlayer = gameState.player(attackerOwner);
 
@@ -303,15 +309,15 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
         } else if (atkPlayer != nullptr) {
             // Pillaging: destroying an enemy unit yields resources.
             // Gold from the unit's production cost (30% of cost as plunder).
-            const int32_t unitCost = defender.typeDef().productionCost;
-            const CurrencyAmount plunderGold = static_cast<CurrencyAmount>(unitCost * 3 / 10);
+            const CurrencyAmount plunderGold =
+                static_cast<CurrencyAmount>(defenderProductionCost * 3 / 10);
             if (plunderGold > 0) {
                 atkPlayer->addGold(plunderGold);
                 LOG_INFO("Player %u pillaged %lld gold from destroying %.*s",
                          static_cast<unsigned>(attackerOwner),
                          static_cast<long long>(plunderGold),
-                         static_cast<int>(defender.typeDef().name.size()),
-                         defender.typeDef().name.data());
+                         static_cast<int>(defenderName.size()),
+                         defenderName.data());
             }
 
             // Bonus pillage gold if the tile has improvements or resources.

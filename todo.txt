@@ -1,17 +1,1 @@
-- Make the game world not a 2d plane like civ 6 but as a globe, which should be possible iwth the tiles we have right? i mean without morphine their shape. os is there a better shape for this? also maybe you can internally keep the map as 2d but with the right connections at the end to make path planning easier, or do whatever makes more sense but explain to me why you did it the way you did.
-- Also if we do that maybe have an alternative world view for the players who prefer a 2d view?
-
--Implement these suggestion of you:
-More mechanics where the player-choice + reputation system could apply:
-
-Yes, a few natural extensions:
-
-Resource embargo / trade bans — A player could refuse to sell specific resources to another player. Violating an agreed embargo (e.g., selling weapons-grade resources to a mutual enemy) would cost reputation. AI personality determines how seriously it takes embargo requests.
-
-Passage rights for naval routes — Similar to land tolls but for coastal waters. A player controlling a coastline could charge naval passage fees. Refusing and sailing through anyway → reputation hit, same escalation cascade.
-
-Alliance obligations — When an ally is attacked, failing to provide military aid (or at least an economic sanction against the attacker) could cost reputation with all alliance members. The "Defend an ally when attacked: +15" modifier is already in the plan but the enforcement side (penalty for NOT defending) isn't implemented yet.
-
-Treaty compliance — Peace treaties, non-aggression pacts, or arms-limitation agreements where violations are tracked via reputation rather than hard-coded enforcement. A player can break a treaty, but pays the reputation cost.
-
-These are all natural fits for the same pattern: soft enforcement via reputation rather than hard game-engine walls.
+for the class that manages the tracking of stuff in the players visible area, maybe make a event system in the game which sends events to these classes if its corresponds to a players visible area. we could use this to tweaks the ai more through the GA, or is there a thought issue?

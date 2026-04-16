@@ -39,6 +39,12 @@ float PlayerTariffComponent::effectiveTollRate(PlayerId trader) const {
     return std::clamp(rate, 0.0f, 0.5f);
 }
 
+float PlayerTariffComponent::effectiveCanalTollRate(PlayerId trader) const {
+    const std::unordered_map<PlayerId, float>::const_iterator it = this->perPlayerCanalTollRates.find(trader);
+    float rate = (it != this->perPlayerCanalTollRates.end()) ? it->second : this->defaultCanalTollRate;
+    return std::clamp(rate, 0.0f, 0.5f);
+}
+
 float applyTariffs(const PlayerTariffComponent& importer,
                    PlayerId exporter, float baseValue) {
     const float tariffRate  = importer.effectiveImportTariff(exporter);

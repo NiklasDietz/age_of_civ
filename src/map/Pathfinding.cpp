@@ -54,7 +54,8 @@ std::optional<PathResult> findPath(const HexGrid& grid,
                                     int32_t maxCost,
                                     const aoc::game::GameState* gameState,
                                     PlayerId movingPlayer,
-                                    bool isNavalPath) {
+                                    bool isNavalPath,
+                                    bool avoidCanals) {
     if (!grid.isValid(start) || !grid.isValid(goal)) {
         return std::nullopt;
     }
@@ -64,9 +65,14 @@ std::optional<PathResult> findPath(const HexGrid& grid,
     }
 
     // Check goal is passable (use appropriate cost function)
-    const int32_t goalCost = isNavalPath
-        ? grid.navalMovementCost(grid.toIndex(goal))
-        : grid.movementCost(grid.toIndex(goal));
+    int32_t goalCost = 0;
+    if (isNavalPath) {
+        goalCost = avoidCanals
+            ? grid.navalMovementCostNoCanals(grid.toIndex(goal))
+            : grid.navalMovementCost(grid.toIndex(goal));
+    } else {
+        goalCost = grid.movementCost(grid.toIndex(goal));
+    }
     if (goalCost == 0) {
         return std::nullopt;
     }
@@ -111,9 +117,14 @@ std::optional<PathResult> findPath(const HexGrid& grid,
                 continue;
             }
 
-            int32_t moveCost = isNavalPath
-                ? grid.navalMovementCost(grid.toIndex(neighbor))
-                : grid.movementCost(grid.toIndex(neighbor));
+            int32_t moveCost = 0;
+            if (isNavalPath) {
+                moveCost = avoidCanals
+                    ? grid.navalMovementCostNoCanals(grid.toIndex(neighbor))
+                    : grid.navalMovementCost(grid.toIndex(neighbor));
+            } else {
+                moveCost = grid.movementCost(grid.toIndex(neighbor));
+            }
             if (moveCost == 0) {
                 continue;  // Impassable
             }

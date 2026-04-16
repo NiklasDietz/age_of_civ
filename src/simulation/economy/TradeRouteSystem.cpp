@@ -335,8 +335,80 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
                 static_cast<float>(from.r) * (1.0f - t) + static_cast<float>(to.r) * t));
             trader.path.push_back(aoc::hex::AxialCoord{q, r});
         }
+    } else if (trader.routeType == TradeRouteType::Sea) {
+        // Sea routes: compare canal vs no-canal path for profitability.
+        // Canal paths are shorter but charge tolls — only use if time savings
+        // outweigh the toll cost.
+        std::optional<aoc::map::PathResult> canalPath = aoc::map::findPath(
+            grid, from, to, 0, nullptr, INVALID_PLAYER, true, false);
+        std::optional<aoc::map::PathResult> noCanalPath = aoc::map::findPath(
+            grid, from, to, 0, nullptr, INVALID_PLAYER, true, true);
+
+        bool useCanal = false;
+        if (canalPath.has_value() && noCanalPath.has_value()) {
+            int32_t canalLen = static_cast<int32_t>(canalPath->path.size());
+            int32_t noCanalLen = static_cast<int32_t>(noCanalPath->path.size());
+            int32_t savedTiles = noCanalLen - canalLen;
+
+            if (savedTiles > 0) {
+                // Estimate canal toll cost for this path
+                CurrencyAmount estimatedToll = 0;
+                for (const aoc::hex::AxialCoord& tile : canalPath->path) {
+                    if (!grid.isValid(tile)) { continue; }
+                    int32_t idx = grid.toIndex(tile);
+                    if (!grid.hasCanal(idx)) { continue; }
+                    PlayerId canalOwner = grid.owner(idx);
+                    if (canalOwner == INVALID_PLAYER || canalOwner == trader.owner) { continue; }
+                    aoc::game::Player* ownerP = gameState.player(canalOwner);
+                    if (ownerP == nullptr) { continue; }
+                    // Rough toll estimate: 25% of average cargo value per canal tile
+                    float canalRate = ownerP->tariffs().effectiveCanalTollRate(trader.owner);
+                    estimatedToll += static_cast<CurrencyAmount>(100.0f * canalRate);
+                }
+
+                // Estimate time-savings value: each saved tile = earlier delivery.
+                // Sea trader speed ~5 tiles/turn. Cargo delivers gold = cargoValue * goldMultiplier.
+                // Saved turns = savedTiles / speed. Value of saved time = goldPerTurn * savedTurns.
+                constexpr float SEA_SPEED = 5.0f;
+                constexpr float ESTIMATED_CARGO_VALUE = 200.0f;  // Rough average
+                float savedTurns = static_cast<float>(savedTiles) / SEA_SPEED;
+                float goldPerTurn = ESTIMATED_CARGO_VALUE * trader.goldMultiplier()
+                    / (static_cast<float>(canalLen) * 2.0f / SEA_SPEED);
+                float timeSavingsValue = goldPerTurn * savedTurns;
+
+                useCanal = timeSavingsValue > static_cast<float>(estimatedToll);
+            }
+            // If canal path isn't shorter, no reason to use it
+        } else if (canalPath.has_value() && !noCanalPath.has_value()) {
+            // Canal is the only way through
+            useCanal = true;
+        }
+
+        if (useCanal && canalPath.has_value()) {
+            trader.path = canalPath->path;
+            LOG_INFO("Trade route using canal shortcut (saves %d tiles)",
+                     noCanalPath.has_value()
+                         ? static_cast<int>(noCanalPath->path.size()) - static_cast<int>(canalPath->path.size())
+                         : 0);
+        } else if (noCanalPath.has_value()) {
+            trader.path = noCanalPath->path;
+        } else if (canalPath.has_value()) {
+            trader.path = canalPath->path;
+        } else {
+            // Both failed: fall back to straight line
+            int32_t dist = grid.distance(from, to);
+            trader.path.clear();
+            for (int32_t step = 0; step <= dist; ++step) {
+                float t = (dist > 0) ? static_cast<float>(step) / static_cast<float>(dist) : 0.0f;
+                int32_t q = static_cast<int32_t>(std::round(
+                    static_cast<float>(from.q) * (1.0f - t) + static_cast<float>(to.q) * t));
+                int32_t r = static_cast<int32_t>(std::round(
+                    static_cast<float>(from.r) * (1.0f - t) + static_cast<float>(to.r) * t));
+                trader.path.push_back(aoc::hex::AxialCoord{q, r});
+            }
+        }
     } else {
-        // Land and Sea routes: use A* pathfinding
+        // Land routes: use A* pathfinding
         std::optional<aoc::map::PathResult> pathResult = aoc::map::findPath(
             grid, from, to, 0, nullptr, INVALID_PLAYER);
         if (pathResult.has_value()) {
@@ -463,7 +535,7 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 }
             }
             if (!found) {
-                float canalRate = isCanal ? ownerPlayer->tariffs().canalTollRate : 0.0f;
+                float canalRate = isCanal ? ownerPlayer->tariffs().effectiveCanalTollRate(trader.owner) : 0.0f;
                 tollEntries.push_back({tileOwner, 1, isCanal ? 1 : 0, rate, canalRate});
             }
         }

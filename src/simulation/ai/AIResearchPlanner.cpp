@@ -129,8 +129,23 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                     score = static_cast<int32_t>(static_cast<float>(score) * beh.techInformation);
                 }
 
-                // Prefer cheaper techs as tiebreaker
-                score -= def.researchCost;
+                // Expanded techs (no unlocks) still have strategic value: they enable
+                // terrain projects (canals, tunnels) and serve as prerequisites for
+                // important military/economic branches. Without this base score,
+                // expanded techs would never be researched because they score near-zero
+                // while base techs with unlocks score 10000+.
+                if (def.unlockedBuildings.empty() && def.unlockedUnits.empty()
+                    && def.unlockedGoods.empty()) {
+                    score += 8000 + static_cast<int32_t>(def.era.value) * 1000;
+                    // Industrial+ era techs scaled by industrial tech preference
+                    if (def.era.value >= 4) {
+                        score = static_cast<int32_t>(static_cast<float>(score) * beh.techIndustrial);
+                    }
+                }
+
+                // Prefer cheaper techs as tiebreaker (scaled to 10% of cost so
+                // high-cost techs aren't disproportionately penalized)
+                score -= def.researchCost / 10;
 
                 if (score > bestScore) {
                     bestScore = score;

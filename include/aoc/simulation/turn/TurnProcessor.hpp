@@ -53,7 +53,7 @@
 
 namespace aoc::game { class GameState; }
 namespace aoc::game { class City; }
-namespace aoc::map { class HexGrid; }
+namespace aoc::map { class HexGrid; class FogOfWar; }
 
 namespace aoc::sim {
 
@@ -74,6 +74,7 @@ namespace ai { class AIController; }
  */
 struct TurnContext {
     aoc::map::HexGrid* grid = nullptr;
+    aoc::map::FogOfWar* fogOfWar = nullptr;  ///< Optional: null in headless mode
     EconomySimulation* economy = nullptr;
     DiplomacyManager* diplomacy = nullptr;
     BarbarianController* barbarians = nullptr;

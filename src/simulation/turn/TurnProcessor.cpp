@@ -690,8 +690,8 @@ void processTurn(TurnContext& ctx) {
     // 1. AI decisions
     for (ai::AIController* ai : ctx.aiControllers) {
         if (ai != nullptr) {
-            ai->executeTurn(*ctx.gameState, *ctx.grid, *ctx.diplomacy,
-                           ctx.economy->market(), *ctx.rng);
+            ai->executeTurn(*ctx.gameState, *ctx.grid, ctx.fogOfWar,
+                           *ctx.diplomacy, ctx.economy->market(), *ctx.rng);
         }
     }
 

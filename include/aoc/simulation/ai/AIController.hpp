@@ -23,6 +23,7 @@ class GameState;
 
 namespace aoc::map {
 class HexGrid;
+class FogOfWar;
 }
 
 namespace aoc::sim {
@@ -48,6 +49,7 @@ public:
      */
     void executeTurn(aoc::game::GameState& gameState,
                      aoc::map::HexGrid& grid,
+                     const aoc::map::FogOfWar* fogOfWar,
                      DiplomacyManager& diplomacy,
                      const Market& market,
                      aoc::Random& rng);
@@ -79,6 +81,11 @@ private:
 
     /// Consider purchasing units or buildings with gold (ROI-based).
     void considerPurchases(aoc::game::GameState& gameState);
+
+    /// Scan owned tiles for strategic canal opportunities and build when profitable.
+    void considerCanalBuilding(aoc::game::GameState& gameState,
+                               aoc::map::HexGrid& grid,
+                               const aoc::map::FogOfWar* fogOfWar);
 
     PlayerId              m_player;
     aoc::ui::AIDifficulty m_difficulty;

@@ -44,7 +44,8 @@ struct PathResult {
     int32_t maxCost = 0,
     const aoc::game::GameState* gameState = nullptr,
     PlayerId movingPlayer = INVALID_PLAYER,
-    bool isNavalPath = false);
+    bool isNavalPath = false,
+    bool avoidCanals = false);
 
 /**
  * @brief Get all tiles reachable from a starting tile within a movement budget.
