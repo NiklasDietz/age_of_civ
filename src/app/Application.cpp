@@ -1187,6 +1187,7 @@ void Application::run() {
         this->m_economyScreen.refresh(this->m_uiManager);
         this->m_cityDetailScreen.refresh(this->m_uiManager);
         this->m_tradeScreen.refresh(this->m_uiManager);
+        this->m_tradeRouteSetupScreen.refresh(this->m_uiManager);
 
         // "Waiting for you" banner: show when human is last player still acting
         if (this->m_lastPlayerBanner != aoc::ui::INVALID_WIDGET && !this->m_spectatorMode) {
@@ -1571,6 +1572,7 @@ void Application::onResize(uint32_t width, uint32_t height) {
         this->m_governmentScreen.setScreenSize(newW, newH);
         this->m_economyScreen.setScreenSize(newW, newH);
         this->m_tradeScreen.setScreenSize(newW, newH);
+        this->m_tradeRouteSetupScreen.setScreenSize(newW, newH);
         this->m_diplomacyScreen.setScreenSize(newW, newH);
         this->m_religionScreen.setScreenSize(newW, newH);
         this->m_scoreScreen.setScreenSize(newW, newH);
@@ -1595,6 +1597,10 @@ void Application::onResize(uint32_t width, uint32_t height) {
         if (this->m_tradeScreen.isOpen()) {
             this->m_tradeScreen.close(this->m_uiManager);
             this->m_tradeScreen.open(this->m_uiManager);
+        }
+        if (this->m_tradeRouteSetupScreen.isOpen()) {
+            this->m_tradeRouteSetupScreen.close(this->m_uiManager);
+            this->m_tradeRouteSetupScreen.open(this->m_uiManager);
         }
         if (this->m_diplomacyScreen.isOpen()) {
             this->m_diplomacyScreen.close(this->m_uiManager);
@@ -2747,6 +2753,17 @@ void Application::buildHUD() {
         }
     });
 
+    makeTopBtn(this->m_topBar, "Routes", 60.0f, [this]() {
+        if (!this->m_tradeRouteSetupScreen.isOpen()) {
+            this->m_tradeRouteSetupScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0,
+                                                      &this->m_economy.market(),
+                                                      &this->m_diplomacy);
+            this->m_tradeRouteSetupScreen.open(this->m_uiManager);
+        } else {
+            this->m_tradeRouteSetupScreen.close(this->m_uiManager);
+        }
+    });
+
     makeTopBtn(this->m_topBar, "Diplo", 50.0f, [this]() {
         if (!this->m_diplomacyScreen.isOpen()) {
             this->m_diplomacyScreen.setContext(&this->m_gameState, 0, &this->m_diplomacy);
@@ -3558,6 +3575,7 @@ bool Application::anyScreenOpen() const {
         || this->m_economyScreen.isOpen()
         || this->m_cityDetailScreen.isOpen()
         || this->m_tradeScreen.isOpen()
+        || this->m_tradeRouteSetupScreen.isOpen()
         || this->m_diplomacyScreen.isOpen()
         || this->m_religionScreen.isOpen()
         || this->m_scoreScreen.isOpen();
@@ -3570,6 +3588,7 @@ bool Application::onlyCityDetailScreenOpen() const {
         && !this->m_governmentScreen.isOpen()
         && !this->m_economyScreen.isOpen()
         && !this->m_tradeScreen.isOpen()
+        && !this->m_tradeRouteSetupScreen.isOpen()
         && !this->m_diplomacyScreen.isOpen()
         && !this->m_religionScreen.isOpen()
         && !this->m_scoreScreen.isOpen();
@@ -3582,6 +3601,7 @@ void Application::closeAllScreens() {
     this->m_economyScreen.close(this->m_uiManager);
     this->m_cityDetailScreen.close(this->m_uiManager);
     this->m_tradeScreen.close(this->m_uiManager);
+    this->m_tradeRouteSetupScreen.close(this->m_uiManager);
     this->m_diplomacyScreen.close(this->m_uiManager);
     this->m_religionScreen.close(this->m_uiManager);
     this->m_scoreScreen.close(this->m_uiManager);

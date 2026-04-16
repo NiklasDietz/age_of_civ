@@ -96,6 +96,47 @@ struct LeaderBehavior {
     float warDeclarationThreshold = 1.5f;  ///< Military advantage needed to declare war
     float peaceAcceptanceThreshold = 0.5f; ///< How readily to accept peace deals
     float allianceDesire = 1.0f;           ///< How eagerly to form alliances
+
+    /// Number of float parameters in LeaderBehavior (for GA serialization).
+    static constexpr int32_t PARAM_COUNT = 25;
+
+    /// Serialize all weights to a flat float array (for GA genome representation).
+    void toArray(float* out) const {
+        out[0]  = this->militaryAggression;  out[1]  = this->expansionism;
+        out[2]  = this->scienceFocus;        out[3]  = this->cultureFocus;
+        out[4]  = this->economicFocus;       out[5]  = this->diplomaticOpenness;
+        out[6]  = this->religiousZeal;       out[7]  = this->nukeWillingness;
+        out[8]  = this->trustworthiness;     out[9]  = this->grudgeHolding;
+        out[10] = this->techMilitary;        out[11] = this->techEconomic;
+        out[12] = this->techIndustrial;      out[13] = this->techNaval;
+        out[14] = this->techInformation;
+        out[15] = this->prodSettlers;        out[16] = this->prodMilitary;
+        out[17] = this->prodBuilders;        out[18] = this->prodBuildings;
+        out[19] = this->prodWonders;         out[20] = this->prodNaval;
+        out[21] = this->prodReligious;
+        out[22] = this->warDeclarationThreshold;
+        out[23] = this->peaceAcceptanceThreshold;
+        out[24] = this->allianceDesire;
+    }
+
+    /// Deserialize from a flat float array.
+    void fromArray(const float* in) {
+        this->militaryAggression  = in[0];   this->expansionism        = in[1];
+        this->scienceFocus        = in[2];   this->cultureFocus        = in[3];
+        this->economicFocus       = in[4];   this->diplomaticOpenness  = in[5];
+        this->religiousZeal       = in[6];   this->nukeWillingness     = in[7];
+        this->trustworthiness     = in[8];   this->grudgeHolding       = in[9];
+        this->techMilitary        = in[10];  this->techEconomic        = in[11];
+        this->techIndustrial      = in[12];  this->techNaval           = in[13];
+        this->techInformation     = in[14];
+        this->prodSettlers        = in[15];  this->prodMilitary        = in[16];
+        this->prodBuilders        = in[17];  this->prodBuildings       = in[18];
+        this->prodWonders         = in[19];  this->prodNaval           = in[20];
+        this->prodReligious       = in[21];
+        this->warDeclarationThreshold  = in[22];
+        this->peaceAcceptanceThreshold = in[23];
+        this->allianceDesire           = in[24];
+    }
 };
 
 // ============================================================================

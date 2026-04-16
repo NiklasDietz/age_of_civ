@@ -23,7 +23,9 @@
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <unordered_map>
 
 namespace aoc::sim {
 
@@ -686,6 +688,134 @@ int32_t countActiveTradeRoutes(const aoc::game::GameState& gameState, PlayerId p
         }
     }
     return count;
+}
+
+TradeRouteEstimate estimateTradeRouteIncome(
+    const aoc::game::GameState& gameState,
+    const aoc::map::HexGrid& grid,
+    const Market& market,
+    const aoc::game::Unit& traderUnit,
+    const aoc::game::City& destCity) {
+
+    TradeRouteEstimate estimate{};
+
+    // Find origin city (closest owned city to the Trader)
+    const aoc::game::Player* ownerPlayer = gameState.player(traderUnit.owner());
+    if (ownerPlayer == nullptr || ownerPlayer->cityCount() == 0) {
+        return estimate;
+    }
+
+    const aoc::game::City* originCity = nullptr;
+    int32_t bestDist = 9999;
+    for (const std::unique_ptr<aoc::game::City>& c : ownerPlayer->cities()) {
+        int32_t dist = aoc::hex::distance(traderUnit.position(), c->location());
+        if (dist < bestDist) {
+            bestDist = dist;
+            originCity = c.get();
+        }
+    }
+    if (originCity == nullptr) {
+        return estimate;
+    }
+
+    // Determine route type (mirrors establishTradeRoute logic)
+    bool ownerHasAviation = ownerPlayer->tech().hasResearched(TechId{26});
+    bool originHasAirport = originCity->districts().hasBuilding(BuildingId{14});
+    bool destHasAirport   = destCity.districts().hasBuilding(BuildingId{14});
+
+    bool originIsCoastal = false;
+    bool destIsCoastal   = false;
+    {
+        std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(originCity->location());
+        for (const aoc::hex::AxialCoord& nbr : nbrs) {
+            if (grid.isValid(nbr) && aoc::map::isWater(grid.terrain(grid.toIndex(nbr)))) {
+                originIsCoastal = true;
+                break;
+            }
+        }
+    }
+    {
+        std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(destCity.location());
+        for (const aoc::hex::AxialCoord& nbr : nbrs) {
+            if (grid.isValid(nbr) && aoc::map::isWater(grid.terrain(grid.toIndex(nbr)))) {
+                destIsCoastal = true;
+                break;
+            }
+        }
+    }
+
+    if (ownerHasAviation && originHasAirport && destHasAirport) {
+        estimate.routeType = TradeRouteType::Air;
+    } else if (originIsCoastal && destIsCoastal) {
+        estimate.routeType = TradeRouteType::Sea;
+    } else {
+        estimate.routeType = TradeRouteType::Land;
+    }
+
+    // Distance estimate
+    int32_t straightDist = aoc::hex::distance(originCity->location(), destCity.location());
+    // A* paths are typically ~20% longer than straight-line on hex grids
+    estimate.distanceTiles = static_cast<int32_t>(static_cast<float>(straightDist) * 1.2f);
+
+    // Speed estimate (assume no roads for conservative estimate)
+    TraderComponent tempTrader{};
+    tempTrader.routeType = estimate.routeType;
+    int32_t speed = tempTrader.movementSpeed(false, false);
+    if (speed <= 0) { speed = 2; }
+    estimate.roundTripTurns = (estimate.distanceTiles * 2) / speed + 1;
+
+    // Gold estimate: sum market value of top surplus goods that would be traded.
+    // Simple heuristic: look at origin surplus goods, price them at market value,
+    // then apply route type multiplier.
+    const CityStockpileComponent& originStock = originCity->stockpile();
+    const CityStockpileComponent& destStock   = destCity.stockpile();
+
+    // Collect origin surplus, scored by demand at destination
+    struct ScoredGood {
+        uint16_t goodId;
+        int32_t  value;
+    };
+    std::vector<ScoredGood> scoredGoods;
+
+    for (const std::pair<const uint16_t, int32_t>& entry : originStock.goods) {
+        if (entry.second <= 0) { continue; }
+        int32_t marketPrice = market.price(entry.first);
+        if (marketPrice <= 0) { continue; }
+
+        // Demand multiplier: goods the destination lacks are worth more
+        int32_t destAmount = 0;
+        const std::unordered_map<uint16_t, int32_t>::const_iterator it =
+            destStock.goods.find(entry.first);
+        if (it != destStock.goods.end()) {
+            destAmount = it->second;
+        }
+        float demandMult = (destAmount == 0) ? 2.0f : 1.0f;
+
+        int32_t tradeAmount = entry.second / 2;  // Ship half surplus
+        if (tradeAmount <= 0) { tradeAmount = 1; }
+        int32_t value = static_cast<int32_t>(
+            static_cast<float>(tradeAmount * marketPrice) * demandMult);
+        scoredGoods.push_back({entry.first, value});
+    }
+
+    std::sort(scoredGoods.begin(), scoredGoods.end(),
+              [](const ScoredGood& a, const ScoredGood& b) {
+                  return a.value > b.value;
+              });
+
+    int32_t maxSlots = tempTrader.maxCargoSlots();
+    int32_t totalValue = 0;
+    int32_t slotCount = 0;
+    for (const ScoredGood& sg : scoredGoods) {
+        if (slotCount >= maxSlots) { break; }
+        totalValue += sg.value;
+        ++slotCount;
+    }
+
+    estimate.estimatedGoldPerTrip = static_cast<CurrencyAmount>(
+        static_cast<float>(totalValue) * tempTrader.goldMultiplier());
+
+    return estimate;
 }
 
 } // namespace aoc::sim

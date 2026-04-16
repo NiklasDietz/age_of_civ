@@ -174,6 +174,7 @@ add_library(aoc_lib STATIC
     src/ui/UIManager.cpp
     src/ui/GameScreens.cpp
     src/ui/TradeScreen.cpp
+    src/ui/TradeRouteSetupScreen.cpp
     src/ui/DiplomacyScreen.cpp
     src/ui/EventLog.cpp
     src/ui/Tooltip.cpp
@@ -393,6 +394,12 @@ target_link_libraries(aoc_simulate PRIVATE aoc_lib)
 
 # Provide a main() for the headless tool
 target_compile_definitions(aoc_simulate PRIVATE AOC_HEADLESS_MAIN)
+
+# --------------------------------------------------------------------------
+# C++ Genetic Algorithm for Utility AI optimization
+# --------------------------------------------------------------------------
+
+add_subdirectory(ml/cpp)
 
 # --------------------------------------------------------------------------
 # Tests (optional)

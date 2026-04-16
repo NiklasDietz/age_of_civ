@@ -21,6 +21,7 @@
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ui/GameScreens.hpp"
 #include "aoc/ui/TradeScreen.hpp"
+#include "aoc/ui/TradeRouteSetupScreen.hpp"
 #include "aoc/ui/DiplomacyScreen.hpp"
 #include "aoc/ui/ReligionScreen.hpp"
 #include "aoc/ui/EventLog.hpp"
@@ -200,6 +201,7 @@ private:
     aoc::ui::EconomyScreen      m_economyScreen;
     aoc::ui::CityDetailScreen   m_cityDetailScreen;
     aoc::ui::TradeScreen        m_tradeScreen;
+    aoc::ui::TradeRouteSetupScreen m_tradeRouteSetupScreen;
     aoc::ui::DiplomacyScreen    m_diplomacyScreen;
     aoc::ui::ReligionScreen     m_religionScreen;
     aoc::ui::ScoreScreen        m_scoreScreen;

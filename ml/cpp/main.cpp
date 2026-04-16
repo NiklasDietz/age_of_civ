@@ -1,0 +1,316 @@
+/**
+ * @file main.cpp
+ * @brief CLI entry point for the C++ genetic algorithm that optimizes
+ *        LeaderBehavior weights via headless simulation tournaments.
+ *
+ * Mirrors the Python evolve_utility.py interface with equivalent CLI flags.
+ * Runs the full evolution loop: population init, fitness evaluation via
+ * embedded simulation, tournament selection, crossover, mutation, elitism.
+ * Outputs C++ LeaderBehavior initializers and a human-readable summary file.
+ */
+
+#include "GeneticAlgorithm.hpp"
+#include "FitnessEvaluator.hpp"
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <numeric>
+#include <random>
+#include <string>
+#include <vector>
+
+namespace {
+
+struct CLIArgs {
+    int32_t generations  = 50;
+    int32_t population   = 20;
+    int32_t gamesPerEval = 3;
+    int32_t turnsPerGame = 200;
+    int32_t workers      = 0;
+    bool    quick        = false;
+    uint64_t seed        = 0;
+    bool    seedProvided = false;
+};
+
+/// Parse a single integer argument. Returns false on failure.
+[[nodiscard]] bool parseIntArg(const char* value, int32_t& out, const char* name) {
+    char* endPtr = nullptr;
+    long parsed = std::strtol(value, &endPtr, 10);
+    if (endPtr == value || *endPtr != '\0' || parsed <= 0) {
+        std::fprintf(stderr, "[Error] Invalid value for %s: '%s' (must be positive integer)\n",
+                     name, value);
+        return false;
+    }
+    out = static_cast<int32_t>(parsed);
+    return true;
+}
+
+/// Parse command-line arguments. Returns false on error.
+[[nodiscard]] bool parseCLI(int argc, char* argv[], CLIArgs& args) {
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--quick") == 0) {
+            args.quick = true;
+        } else if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
+            std::fprintf(stderr,
+                "Usage: aoc_evolve [OPTIONS]\n"
+                "\n"
+                "Options:\n"
+                "  --generations N   Number of GA generations (default: 50)\n"
+                "  --population N    Population size (default: 20)\n"
+                "  --games N         Games per fitness evaluation (default: 3)\n"
+                "  --turns N         Turns per simulation game (default: 200)\n"
+                "  --workers N       Thread count (0 = auto-detect, default: 0)\n"
+                "  --seed N          RNG seed (default: random)\n"
+                "  --quick           Quick test: 5 gens, 10 pop, 2 games, 150 turns\n"
+                "  --help, -h        Show this help message\n");
+            return false;
+        } else if (i + 1 < argc) {
+            if (std::strcmp(argv[i], "--generations") == 0) {
+                if (!parseIntArg(argv[++i], args.generations, "--generations")) { return false; }
+            } else if (std::strcmp(argv[i], "--population") == 0) {
+                if (!parseIntArg(argv[++i], args.population, "--population")) { return false; }
+            } else if (std::strcmp(argv[i], "--games") == 0) {
+                if (!parseIntArg(argv[++i], args.gamesPerEval, "--games")) { return false; }
+            } else if (std::strcmp(argv[i], "--turns") == 0) {
+                if (!parseIntArg(argv[++i], args.turnsPerGame, "--turns")) { return false; }
+            } else if (std::strcmp(argv[i], "--workers") == 0) {
+                char* endPtr = nullptr;
+                long parsed = std::strtol(argv[++i], &endPtr, 10);
+                if (endPtr == argv[i] || *endPtr != '\0' || parsed < 0) {
+                    std::fprintf(stderr, "[Error] Invalid value for --workers: '%s'\n", argv[i]);
+                    return false;
+                }
+                args.workers = static_cast<int32_t>(parsed);
+            } else if (std::strcmp(argv[i], "--seed") == 0) {
+                char* endPtr = nullptr;
+                unsigned long long parsed = std::strtoull(argv[++i], &endPtr, 10);
+                if (endPtr == argv[i] || *endPtr != '\0') {
+                    std::fprintf(stderr, "[Error] Invalid value for --seed: '%s'\n", argv[i]);
+                    return false;
+                }
+                args.seed = static_cast<uint64_t>(parsed);
+                args.seedProvided = true;
+            } else {
+                std::fprintf(stderr, "[Error] Unknown argument: '%s'\n", argv[i]);
+                return false;
+            }
+        } else {
+            std::fprintf(stderr, "[Error] Unknown or incomplete argument: '%s'\n", argv[i]);
+            return false;
+        }
+    }
+    return true;
+}
+
+/// Save a human-readable summary of the evolved tiers to a text file.
+void saveSummary(const aoc::ga::DifficultyTiers& tiers, const char* path) {
+    std::ofstream file(path);
+    if (!file.is_open()) {
+        std::fprintf(stderr, "[Warning] Could not open '%s' for writing\n", path);
+        return;
+    }
+
+    static constexpr const char* PARAM_NAMES[aoc::ga::NUM_PARAMS] = {
+        "militaryAggression", "expansionism", "scienceFocus", "cultureFocus",
+        "economicFocus", "diplomaticOpenness", "religiousZeal", "nukeWillingness",
+        "trustworthiness", "grudgeHolding",
+        "techMilitary", "techEconomic", "techIndustrial", "techNaval", "techInformation",
+        "prodSettlers", "prodMilitary", "prodBuilders", "prodBuildings", "prodWonders",
+        "prodNaval", "prodReligious",
+        "warDeclarationThreshold", "peaceAcceptanceThreshold", "allianceDesire",
+    };
+
+    file << "Evolved Utility AI Weights (C++ GA)\n";
+    file << "==================================================\n\n";
+
+    struct TierEntry {
+        const char* name;
+        const aoc::ga::Individual* individual;
+    };
+    std::array<TierEntry, 3> entries = {{
+        {"Hard",   &tiers.hard},
+        {"Medium", &tiers.medium},
+        {"Easy",   &tiers.easy},
+    }};
+
+    for (const TierEntry& entry : entries) {
+        file << entry.name << " AI (fitness=" << entry.individual->fitness << "):\n";
+        for (int32_t i = 0; i < aoc::ga::NUM_PARAMS; ++i) {
+            std::size_t idx = static_cast<std::size_t>(i);
+            // Pad name to 30 chars for alignment
+            std::string nameStr(PARAM_NAMES[i]);
+            while (nameStr.size() < 30) { nameStr += ' '; }
+            file << "  " << nameStr << " = "
+                 << entry.individual->genes[idx] << "\n";
+        }
+        file << "\n";
+    }
+
+    file.close();
+    std::fprintf(stderr, "[Saved] %s\n", path);
+}
+
+} // anonymous namespace
+
+int main(int argc, char* argv[]) {
+    CLIArgs args{};
+    if (!parseCLI(argc, argv, args)) {
+        return 1;
+    }
+
+    // Apply --quick overrides
+    if (args.quick) {
+        args.population   = 10;
+        args.generations  = 5;
+        args.gamesPerEval = 2;
+        args.turnsPerGame = 150;
+    }
+
+    // Seed RNG
+    uint64_t masterSeed = args.seed;
+    if (!args.seedProvided) {
+        std::random_device rd;
+        masterSeed = (static_cast<uint64_t>(rd()) << 32) | static_cast<uint64_t>(rd());
+    }
+    std::mt19937 rng(masterSeed);
+
+    // Print banner
+    std::fprintf(stderr, "============================================================\n");
+    std::fprintf(stderr, "Age of Civilization -- C++ Genetic Algorithm for Utility AI\n");
+    std::fprintf(stderr, "============================================================\n\n");
+    std::fprintf(stderr, "[Config] Population: %d, Generations: %d, Games/eval: %d\n",
+                 args.population, args.generations, args.gamesPerEval);
+    std::fprintf(stderr, "  Genome: %d parameters (LeaderBehavior)\n", aoc::ga::NUM_PARAMS);
+    std::fprintf(stderr, "  Elitism: top 2 preserved\n");
+    std::fprintf(stderr, "  Turns per game: %d\n", args.turnsPerGame);
+    std::fprintf(stderr, "  Seed: %llu\n", static_cast<unsigned long long>(masterSeed));
+
+    // Build GA config
+    aoc::ga::GAConfig config{};
+    config.populationSize = args.population;
+    config.generations    = args.generations;
+    config.gamesPerEval   = args.gamesPerEval;
+    config.turnsPerGame   = args.turnsPerGame;
+    config.playerCount    = 8;
+    config.elitism        = 2;
+    config.tournamentSize = 3;
+    config.mutationRate   = 0.2f;
+    config.mutationSigma  = 0.15f;
+    config.resetRate      = 0.1f;
+    config.threadCount    = args.workers;
+
+    aoc::ga::ParamBounds bounds = aoc::ga::defaultBounds();
+
+    // Initialize population
+    std::vector<aoc::ga::Individual> population =
+        aoc::ga::createInitialPopulation(args.population, rng, bounds);
+
+    int32_t seeded = std::min(12, args.population);
+    std::fprintf(stderr, "\n[Init] Created population of %d (%d leader seeds + %d mutations)\n",
+                 args.population, seeded, std::max(0, args.population - seeded));
+
+    float bestEverFitness = -1e9f;
+    aoc::ga::Individual bestEver{};
+
+    // Main evolution loop
+    for (int32_t gen = 0; gen < args.generations; ++gen) {
+        std::chrono::steady_clock::time_point genStart = std::chrono::steady_clock::now();
+
+        std::fprintf(stderr, "\n--- Generation %d/%d ---\n", gen + 1, args.generations);
+
+        // Evaluate fitness for individuals that need it
+        uint64_t genSeed = masterSeed + static_cast<uint64_t>(gen) * 1000003;
+        aoc::ga::evaluatePopulation(population, config, genSeed);
+
+        // Sort by fitness (descending)
+        std::sort(population.begin(), population.end(),
+                  [](const aoc::ga::Individual& a, const aoc::ga::Individual& b) {
+                      return a.fitness > b.fitness;
+                  });
+
+        // Compute generation statistics
+        float genBest  = population.front().fitness;
+        float genWorst = population.back().fitness;
+        float genSum   = 0.0f;
+        for (const aoc::ga::Individual& ind : population) {
+            genSum += ind.fitness;
+        }
+        float genAvg = genSum / static_cast<float>(population.size());
+
+        std::chrono::steady_clock::time_point genEnd = std::chrono::steady_clock::now();
+        double genSeconds = std::chrono::duration<double>(genEnd - genStart).count();
+
+        if (genBest > bestEverFitness) {
+            bestEverFitness = genBest;
+            bestEver = population.front();
+        }
+
+        std::fprintf(stderr, "  Best=%.4f  Avg=%.4f  Worst=%.4f  (%.1fs)\n",
+                     static_cast<double>(genBest), static_cast<double>(genAvg),
+                     static_cast<double>(genWorst), genSeconds);
+
+        // Show top individual's key traits
+        const aoc::ga::Individual& top = population.front();
+        std::fprintf(stderr, "  Top: mil=%.2f exp=%.2f sci=%.2f eco=%.2f "
+                     "prodSett=%.2f prodMil=%.2f\n",
+                     static_cast<double>(top.genes[0]),   // militaryAggression
+                     static_cast<double>(top.genes[1]),   // expansionism
+                     static_cast<double>(top.genes[2]),   // scienceFocus
+                     static_cast<double>(top.genes[4]),   // economicFocus
+                     static_cast<double>(top.genes[15]),  // prodSettlers
+                     static_cast<double>(top.genes[16])); // prodMilitary
+
+        // Skip breeding on last generation
+        if (gen == args.generations - 1) {
+            break;
+        }
+
+        // Create next generation
+        std::vector<aoc::ga::Individual> nextPopulation;
+        nextPopulation.reserve(static_cast<std::size_t>(args.population));
+
+        // Elitism: preserve top N unchanged
+        for (int32_t e = 0; e < config.elitism && e < static_cast<int32_t>(population.size()); ++e) {
+            nextPopulation.push_back(population[static_cast<std::size_t>(e)]);
+        }
+
+        // Breed the rest via tournament selection + crossover + mutation
+        while (static_cast<int32_t>(nextPopulation.size()) < args.population) {
+            aoc::ga::Individual parentA = aoc::ga::tournamentSelect(
+                population, config.tournamentSize, rng);
+            aoc::ga::Individual parentB = aoc::ga::tournamentSelect(
+                population, config.tournamentSize, rng);
+            aoc::ga::Individual child = aoc::ga::crossover(parentA, parentB, rng);
+            child = aoc::ga::mutate(child, config.mutationRate, config.mutationSigma,
+                                    config.resetRate, bounds, rng);
+            nextPopulation.push_back(child);
+        }
+
+        population = std::move(nextPopulation);
+    }
+
+    // Extract difficulty tiers from final sorted population
+    std::fprintf(stderr, "\n============================================================\n");
+    std::fprintf(stderr, "EVOLVED DIFFICULTY TIERS\n");
+    std::fprintf(stderr, "============================================================\n");
+
+    aoc::ga::DifficultyTiers tiers = aoc::ga::extractTiers(population);
+
+    aoc::ga::printAsCppInitializer(tiers.hard, "Hard");
+    aoc::ga::printAsCppInitializer(tiers.medium, "Medium");
+    aoc::ga::printAsCppInitializer(tiers.easy, "Easy");
+
+    // Save summary file
+    saveSummary(tiers, "evolved_summary.txt");
+
+    std::fprintf(stderr, "\n[Done] Best ever fitness: %.4f\n",
+                 static_cast<double>(bestEverFitness));
+
+    return 0;
+}
