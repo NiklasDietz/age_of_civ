@@ -165,7 +165,7 @@ struct TraderComponent {
  */
 void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                          const Market& market,
-                         const DiplomacyManager* diplomacy);
+                         DiplomacyManager* diplomacy);
 
 /**
  * @brief Pillage a Trader unit (called when enemy attacks it).

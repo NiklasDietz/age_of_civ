@@ -91,7 +91,7 @@ namespace aoc::sim::ai {
     // Penalise positions too close to existing cities.
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
         for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
-            const int32_t dist = aoc::hex::distance(pos, city->location());
+            const int32_t dist = grid.distance(pos, city->location());
             if (dist < 3) {
                 score -= 40.0f;
             } else if (dist > 10) {
@@ -320,7 +320,7 @@ void updateExpansionAssessment(const aoc::game::GameState& gameState,
         // Ensure minimum spacing between recommended sites.
         bool tooClose = false;
         for (const aoc::hex::AxialCoord& existing : bb.bestCitySites) {
-            if (aoc::hex::distance(site.coord, existing) < 3) {
+            if (grid.distance(site.coord, existing) < 3) {
                 tooClose = true;
                 break;
             }

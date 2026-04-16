@@ -70,7 +70,7 @@ void processAutoExplore(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 if (grid.owner(idx) != INVALID_PLAYER) { continue; }
                 if (grid.movementCost(idx) <= 0) { continue; }
 
-                const int32_t dist = aoc::hex::distance(unit->position(), tile);
+                const int32_t dist = grid.distance(unit->position(), tile);
                 if (dist < bestDist) {
                     bestDist = dist;
                     bestTarget = tile;
@@ -86,7 +86,7 @@ void processAutoExplore(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     }
 }
 
-void processAlertStance(aoc::game::GameState& gameState, const aoc::map::HexGrid& /*grid*/, PlayerId player) {
+void processAlertStance(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid, PlayerId player) {
     aoc::game::Player* gsPlayer = gameState.player(player);
     if (gsPlayer == nullptr) { return; }
 
@@ -103,7 +103,7 @@ void processAlertStance(aoc::game::GameState& gameState, const aoc::map::HexGrid
         for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
             if (other->id() == player) { continue; }
             for (const std::unique_ptr<aoc::game::Unit>& enemyUnit : other->units()) {
-                const int32_t dist = aoc::hex::distance(unit->position(), enemyUnit->position());
+                const int32_t dist = grid.distance(unit->position(), enemyUnit->position());
                 if (dist <= unit->alertRadius) {
                     enemyNearby = true;
                     break;

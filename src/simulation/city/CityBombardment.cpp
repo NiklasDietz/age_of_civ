@@ -66,7 +66,7 @@ void processCityBombardment(aoc::game::GameState& gameState,
                     if (other->id() == player) { continue; }
                     for (const std::unique_ptr<aoc::game::Unit>& unit : other->units()) {
                         if (isMilitary(unit->typeDef().unitClass)
-                            && aoc::hex::distance(unit->position(), city->location()) <= 3) {
+                            && grid.distance(unit->position(), city->location()) <= 3) {
                             enemyNearby = true;
                             break;
                         }
@@ -93,7 +93,7 @@ void processCityBombardment(aoc::game::GameState& gameState,
             if (otherPlayer->id() == player) { continue; }
             for (const std::unique_ptr<aoc::game::Unit>& unit : otherPlayer->units()) {
                 if (!isMilitary(unit->typeDef().unitClass)) { continue; }
-                const int32_t dist = aoc::hex::distance(unit->position(), city->location());
+                const int32_t dist = grid.distance(unit->position(), city->location());
                 if (dist > 0 && dist <= attackRange && unit->hitPoints() < weakestHP) {
                     weakestHP = unit->hitPoints();
                     bestTarget = unit.get();

@@ -87,7 +87,7 @@ float MapGenerator::fractalNoise(float x, float y, int octaves, float frequency,
 // ============================================================================
 
 void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
-    outGrid.initialize(config.width, config.height);
+    outGrid.initialize(config.width, config.height, config.topology);
 
     aoc::Random rng(config.seed);
 
@@ -553,7 +553,7 @@ void MapGenerator::placeNaturalWonders(HexGrid& grid, aoc::Random& rng) {
             const hex::AxialCoord candidate = hex::offsetToAxial({col, row});
             bool tooClose = false;
             for (const hex::AxialCoord& prev : placedPositions) {
-                if (hex::distance(candidate, prev) < MIN_WONDER_DISTANCE) {
+                if (grid.distance(candidate, prev) < MIN_WONDER_DISTANCE) {
                     tooClose = true;
                     break;
                 }

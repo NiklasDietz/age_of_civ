@@ -175,7 +175,7 @@ void TradeRouteSetupScreen::buildDestinationPanel(UIManager& ui, WidgetId innerP
         for (const std::unique_ptr<aoc::game::City>& city : ownerPlayer->cities()) {
             // Skip the origin city (closest city to trader — show it but grayed out
             // if it's the same tile as the trader)
-            int32_t dist = aoc::hex::distance(this->m_selectedTrader->position(), city->location());
+            int32_t dist = this->m_grid->distance(this->m_selectedTrader->position(), city->location());
 
             char distBuf[32];
             std::snprintf(distBuf, sizeof(distBuf), " (%d tiles)", dist);
@@ -222,7 +222,7 @@ void TradeRouteSetupScreen::buildDestinationPanel(UIManager& ui, WidgetId innerP
         const aoc::sim::CivilizationDef& civDefRef = aoc::sim::civDef(otherPlayer->civId());
 
         for (const std::unique_ptr<aoc::game::City>& city : otherPlayer->cities()) {
-            int32_t dist = aoc::hex::distance(
+            int32_t dist = this->m_grid->distance(
                 this->m_selectedTrader->position(), city->location());
 
             char distBuf[64];
@@ -326,7 +326,7 @@ void TradeRouteSetupScreen::buildRoutePreview(UIManager& ui, WidgetId innerPanel
         const aoc::game::City* originCity = nullptr;
         int32_t bestDist = 9999;
         for (const std::unique_ptr<aoc::game::City>& c : ownerPlayer->cities()) {
-            int32_t dist = aoc::hex::distance(this->m_selectedTrader->position(), c->location());
+            int32_t dist = this->m_grid->distance(this->m_selectedTrader->position(), c->location());
             if (dist < bestDist) {
                 bestDist = dist;
                 originCity = c.get();

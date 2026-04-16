@@ -16,11 +16,15 @@
 namespace aoc::sim {
 
 enum class GrievanceType : uint8_t {
-    SettledNearBorders,  ///< -10, decays over 30 turns
-    BrokePromise,        ///< -20, decays over 50 turns
-    DeclaredWarOnAlly,   ///< -30, permanent
-    ConqueredCity,       ///< -15 per city, decays over 40 turns
-    TradeEmbargo,        ///< -10, while active
+    SettledNearBorders,        ///< -10, decays over 30 turns
+    BrokePromise,              ///< -20, decays over 50 turns
+    DeclaredWarOnAlly,         ///< -30, permanent
+    ConqueredCity,             ///< -15 per city, decays over 40 turns
+    TradeEmbargo,              ///< -10, while active
+    ViolatedEmbargo,           ///< -15, decays over 40 turns
+    FailedAllianceObligation,  ///< -25, decays over 60 turns
+    BrokeNonAggression,        ///< -30, permanent
+    DMZViolation,              ///< -10, decays over 20 turns
 };
 
 struct Grievance {

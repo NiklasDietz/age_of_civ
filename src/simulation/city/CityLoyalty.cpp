@@ -58,7 +58,7 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             for (const std::unique_ptr<aoc::game::City>& nearCity : otherPlayer->cities()) {
                 if (nearCity->location() == city->location()) { continue; }  // Skip self
 
-                int32_t dist = aoc::hex::distance(city->location(), nearCity->location());
+                int32_t dist = grid.distance(city->location(), nearCity->location());
                 if (dist > LOYALTY_PRESSURE_RADIUS || dist <= 0) { continue; }
 
                 float pressure = static_cast<float>(nearCity->population()) * 0.5f
@@ -134,7 +134,7 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             for (const std::unique_ptr<aoc::game::Player>& otherPlayer : gameState.players()) {
                 if (otherPlayer->id() == player) { continue; }
                 for (const std::unique_ptr<aoc::game::City>& nearCity : otherPlayer->cities()) {
-                    int32_t dist = aoc::hex::distance(city->location(), nearCity->location());
+                    int32_t dist = grid.distance(city->location(), nearCity->location());
                     if (dist > LOYALTY_PRESSURE_RADIUS || dist <= 0) { continue; }
                     float pressure = static_cast<float>(nearCity->population()) * 0.5f
                                    / static_cast<float>(dist);

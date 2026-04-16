@@ -92,7 +92,7 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
 // ============================================================================
 
 void processReligiousSpread(aoc::game::GameState& gameState,
-                             const aoc::map::HexGrid& /*grid*/) {
+                             const aoc::map::HexGrid& grid) {
     constexpr int32_t SPREAD_RANGE = 3;
     constexpr float BASE_PASSIVE_PRESSURE = 0.5f;
 
@@ -126,7 +126,7 @@ void processReligiousSpread(aoc::game::GameState& gameState,
 
         for (const CityInfo& target : cities) {
             if (target.cityPtr == source.cityPtr) { continue; }
-            int32_t dist = aoc::hex::distance(source.location, target.location);
+            int32_t dist = grid.distance(source.location, target.location);
             if (dist > SPREAD_RANGE) { continue; }
 
             target.cityPtr->religion().addPressure(source.dominantReligion, pressure);

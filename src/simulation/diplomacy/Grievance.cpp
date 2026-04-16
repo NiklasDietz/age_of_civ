@@ -36,6 +36,22 @@ void PlayerGrievanceComponent::addGrievance(GrievanceType type, PlayerId against
             g.severity       = -10;
             g.turnsRemaining = 0; // lasts while active
             break;
+        case GrievanceType::ViolatedEmbargo:
+            g.severity       = -15;
+            g.turnsRemaining = 40;
+            break;
+        case GrievanceType::FailedAllianceObligation:
+            g.severity       = -25;
+            g.turnsRemaining = 60;
+            break;
+        case GrievanceType::BrokeNonAggression:
+            g.severity       = -30;
+            g.turnsRemaining = 0; // permanent
+            break;
+        case GrievanceType::DMZViolation:
+            g.severity       = -10;
+            g.turnsRemaining = 20;
+            break;
     }
 
     this->grievances.push_back(g);

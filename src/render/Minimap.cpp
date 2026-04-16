@@ -110,15 +110,51 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d,
     const float vpW = (viewW / worldWidth) * mapW;
     const float vpH = (viewH / worldHeight) * mapH;
 
-    // Clamp viewport rect to minimap bounds
-    const float clampedX = std::max(mapX, std::min(vpX, mapX + mapW));
-    const float clampedY = std::max(mapY, std::min(vpY, mapY + mapH));
-    const float clampedW = std::min(vpW, mapX + mapW - clampedX);
-    const float clampedH = std::min(vpH, mapY + mapH - clampedY);
+    // For cylindrical wrapping: if viewport straddles the seam, draw two rects
+    if (camera.worldWidth() > 0.0f) {
+        const float clampedY2 = std::max(mapY, std::min(vpY, mapY + mapH));
+        const float clampedH2 = std::min(vpH, mapY + mapH - clampedY2);
 
-    if (clampedW > 1.0f && clampedH > 1.0f) {
-        renderer2d.drawRect(clampedX, clampedY, clampedW, clampedH,
-                           1.0f, 1.0f, 1.0f, 0.8f, 1.5f);
+        if (vpX < mapX) {
+            // Left part wraps to right side
+            float rightX = mapX + mapW + vpX - mapX;  // wrap portion
+            float rightW = mapX - vpX;
+            float leftW  = vpW - rightW;
+            if (leftW > 1.0f && clampedH2 > 1.0f) {
+                renderer2d.drawRect(mapX, clampedY2, leftW, clampedH2,
+                                   1.0f, 1.0f, 1.0f, 0.8f, 1.5f);
+            }
+            if (rightW > 1.0f && clampedH2 > 1.0f) {
+                renderer2d.drawRect(rightX, clampedY2, rightW, clampedH2,
+                                   1.0f, 1.0f, 1.0f, 0.8f, 1.5f);
+            }
+        } else if (vpX + vpW > mapX + mapW) {
+            // Right part wraps to left side
+            float leftW  = vpX + vpW - (mapX + mapW);
+            float rightW = vpW - leftW;
+            if (rightW > 1.0f && clampedH2 > 1.0f) {
+                renderer2d.drawRect(vpX, clampedY2, rightW, clampedH2,
+                                   1.0f, 1.0f, 1.0f, 0.8f, 1.5f);
+            }
+            if (leftW > 1.0f && clampedH2 > 1.0f) {
+                renderer2d.drawRect(mapX, clampedY2, leftW, clampedH2,
+                                   1.0f, 1.0f, 1.0f, 0.8f, 1.5f);
+            }
+        } else if (vpW > 1.0f && clampedH2 > 1.0f) {
+            renderer2d.drawRect(vpX, clampedY2, vpW, clampedH2,
+                               1.0f, 1.0f, 1.0f, 0.8f, 1.5f);
+        }
+    } else {
+        // Flat topology: clamp viewport rect to minimap bounds
+        const float clampedX = std::max(mapX, std::min(vpX, mapX + mapW));
+        const float clampedY = std::max(mapY, std::min(vpY, mapY + mapH));
+        const float clampedW = std::min(vpW, mapX + mapW - clampedX);
+        const float clampedH = std::min(vpH, mapY + mapH - clampedY);
+
+        if (clampedW > 1.0f && clampedH > 1.0f) {
+            renderer2d.drawRect(clampedX, clampedY, clampedW, clampedH,
+                               1.0f, 1.0f, 1.0f, 0.8f, 1.5f);
+        }
     }
 }
 

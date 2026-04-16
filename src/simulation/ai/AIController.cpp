@@ -1483,7 +1483,7 @@ void AIController::manageTradeRoutes(aoc::game::GameState& gameState, aoc::map::
 
                 float score = 0.0f;
                 const int32_t dist =
-                    aoc::hex::distance(traderUnit->position(), cityPtr->location());
+                    grid.distance(traderUnit->position(), cityPtr->location());
                 const float distPenalty =
                     1.0f / static_cast<float>(std::max(1, dist));
 

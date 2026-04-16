@@ -34,7 +34,7 @@ bool tryEmbark(aoc::game::Unit& unit,
     if (grid.terrain(targetIndex) != aoc::map::TerrainType::Coast) {
         return false;
     }
-    if (hex::distance(unit.position(), coastTile) != 1) {
+    if (grid.distance(unit.position(), coastTile) != 1) {
         return false;
     }
 
@@ -61,7 +61,7 @@ bool tryDisembark(aoc::game::Unit& unit,
     if (aoc::map::isWater(terrain) || aoc::map::isImpassable(terrain)) {
         return false;
     }
-    if (hex::distance(unit.position(), landTile) != 1) {
+    if (grid.distance(unit.position(), landTile) != 1) {
         return false;
     }
 

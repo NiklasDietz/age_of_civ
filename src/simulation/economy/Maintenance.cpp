@@ -252,7 +252,7 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
         // Distance-based corruption: reduces gold based on distance from capital.
         // Varies by government type (Communism has 0 distance corruption).
         if (!city->isOriginalCapital() && govDef.distanceCorruptionRate > 0.0f) {
-            int32_t dist = aoc::hex::distance(city->location(), capitalLocation);
+            int32_t dist = grid.distance(city->location(), capitalLocation);
             float maxDist = static_cast<float>(std::max(grid.width(), grid.height()));
             float distFraction = static_cast<float>(dist) / maxDist;
             float corruptionPct = govDef.corruptionRate + distFraction * govDef.distanceCorruptionRate * 0.1f;

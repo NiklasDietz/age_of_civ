@@ -50,6 +50,8 @@
 #include "aoc/simulation/economy/AdvancedEconomics.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/DealTerms.hpp"
+#include "aoc/simulation/diplomacy/AllianceObligations.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/government/Government.hpp"
@@ -259,6 +261,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     // Initialize simulation subsystems
     aoc::sim::DiplomacyManager diplomacy;
     diplomacy.initialize(static_cast<uint8_t>(playerCount));
+    aoc::sim::GlobalDealTracker dealTracker;
+    aoc::sim::AllianceObligationTracker allianceTracker;
 
     aoc::sim::EconomySimulation economy;
     economy.initialize();
@@ -298,7 +302,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
             bool tooClose = false;
             for (const aoc::hex::AxialCoord& existing : startPositions) {
-                if (aoc::hex::distance(candidate, existing) < MIN_START_DISTANCE) {
+                if (grid.distance(candidate, existing) < MIN_START_DISTANCE) {
                     tooClose = true;
                     break;
                 }
@@ -482,6 +486,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     turnCtx.economy = &economy;
     turnCtx.diplomacy = &diplomacy;
     turnCtx.barbarians = &barbarians;
+    turnCtx.dealTracker = &dealTracker;
+    turnCtx.allianceTracker = &allianceTracker;
     turnCtx.rng = &rng;
     turnCtx.gameState = &gameState;
     for (aoc::sim::ai::AIController& ai : aiControllers) {
@@ -555,13 +561,13 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                 for (const std::unique_ptr<aoc::game::Unit>& uA : playerA->units()) {
                     if (met) { break; }
                     for (const std::unique_ptr<aoc::game::Unit>& uB : playerB->units()) {
-                        if (aoc::hex::distance(uA->position(), uB->position()) <= MEETING_SIGHT_RANGE) {
+                        if (grid.distance(uA->position(), uB->position()) <= MEETING_SIGHT_RANGE) {
                             met = true; break;
                         }
                     }
                     if (!met) {
                         for (const std::unique_ptr<aoc::game::City>& cB : playerB->cities()) {
-                            if (aoc::hex::distance(uA->position(), cB->location()) <= MEETING_SIGHT_RANGE) {
+                            if (grid.distance(uA->position(), cB->location()) <= MEETING_SIGHT_RANGE) {
                                 met = true; break;
                             }
                         }
@@ -571,7 +577,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                     for (const std::unique_ptr<aoc::game::City>& cA : playerA->cities()) {
                         if (met) { break; }
                         for (const std::unique_ptr<aoc::game::Unit>& uB : playerB->units()) {
-                            if (aoc::hex::distance(cA->location(), uB->position()) <= MEETING_SIGHT_RANGE) {
+                            if (grid.distance(cA->location(), uB->position()) <= MEETING_SIGHT_RANGE) {
                                 met = true; break;
                             }
                         }

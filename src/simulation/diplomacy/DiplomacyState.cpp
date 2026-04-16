@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/AllianceObligations.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -54,7 +55,8 @@ void DiplomacyManager::addModifier(PlayerId a, PlayerId b, RelationModifier modi
     }
 }
 
-void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target) {
+void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target,
+                                   AllianceObligationTracker* allianceTracker) {
     PairwiseRelation& relAB = this->relation(aggressor, target);
     PairwiseRelation& relBA = this->relation(target, aggressor);
 
@@ -68,6 +70,10 @@ void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target) {
 
     relAB.isAtWar = true;
     relBA.isAtWar = true;
+
+    // Track aggressor for treaty compliance (NonAggression enforcement)
+    relAB.lastWarAggressor = aggressor;
+    relBA.lastWarAggressor = aggressor;
 
     // War declaration adds a large negative modifier
     RelationModifier warMod{"Declared war", -50, 0};  // Permanent until peace
@@ -85,6 +91,11 @@ void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target) {
     relBA.hasResearchAgreement = false;
     relAB.hasEconomicAlliance = false;
     relBA.hasEconomicAlliance = false;
+
+    // Generate alliance obligations for the target's allies
+    if (allianceTracker != nullptr) {
+        allianceTracker->onWarDeclared(aggressor, target, *this);
+    }
 
     LOG_INFO("Player %u declared war on Player %u",
              static_cast<unsigned>(aggressor), static_cast<unsigned>(target));
@@ -228,6 +239,46 @@ void DiplomacyManager::setEmbargo(PlayerId a, PlayerId b, bool embargo) {
 
 bool DiplomacyManager::hasEmbargo(PlayerId a, PlayerId b) const {
     return this->relation(a, b).hasEmbargo;
+}
+
+void DiplomacyManager::setResourceEmbargo(PlayerId a, PlayerId b,
+                                            uint16_t goodId, bool embargo) {
+    PairwiseRelation& relAB = this->relation(a, b);
+    PairwiseRelation& relBA = this->relation(b, a);
+
+    if (embargo) {
+        // Add to both directions (symmetric)
+        relAB.embargoedGoods.push_back(goodId);
+        relBA.embargoedGoods.push_back(goodId);
+        LOG_INFO("Resource embargo set: Player %u <-> Player %u, good %u",
+                 static_cast<unsigned>(a), static_cast<unsigned>(b),
+                 static_cast<unsigned>(goodId));
+    } else {
+        // Remove from both directions
+        // auto required: lambda type is unnameable
+        auto removeGood = [goodId](std::vector<uint16_t>& goods) {
+            goods.erase(std::remove(goods.begin(), goods.end(), goodId), goods.end());
+        };
+        removeGood(relAB.embargoedGoods);
+        removeGood(relBA.embargoedGoods);
+        LOG_INFO("Resource embargo lifted: Player %u <-> Player %u, good %u",
+                 static_cast<unsigned>(a), static_cast<unsigned>(b),
+                 static_cast<unsigned>(goodId));
+    }
+}
+
+bool DiplomacyManager::hasResourceEmbargo(PlayerId a, PlayerId b, uint16_t goodId) const {
+    return this->relation(a, b).isGoodEmbargoed(goodId);
+}
+
+void DiplomacyManager::broadcastReputationPenalty(PlayerId violator, int32_t amount,
+                                                    int32_t decayTurns) {
+    for (uint8_t p = 0; p < this->m_playerCount; ++p) {
+        PlayerId other = static_cast<PlayerId>(p);
+        if (other == violator) { continue; }
+        if (!this->haveMet(violator, other)) { continue; }
+        this->addReputationModifier(violator, other, amount, decayTurns);
+    }
 }
 
 bool DiplomacyManager::isAtWar(PlayerId a, PlayerId b) const {

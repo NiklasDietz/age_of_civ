@@ -80,11 +80,31 @@ struct OffsetCoord {
     return x < 0 ? -x : x;
 }
 
-/// Manhattan distance on the hex grid.
+/// Manhattan distance on the hex grid (flat / non-wrapping).
 [[nodiscard]] constexpr int32_t distance(AxialCoord a, AxialCoord b) {
     CubeCoord ac = axialToCube(a);
     CubeCoord bc = axialToCube(b);
     return (abs(ac.q - bc.q) + abs(ac.r - bc.r) + abs(ac.s - bc.s)) / 2;
+}
+
+/// Distance accounting for east-west cylindrical wrapping.
+/// Computes the minimum distance across direct path and the two wrapped paths
+/// (shifting by +gridWidth and -gridWidth in offset-column space).
+[[nodiscard]] inline int32_t wrappedDistance(AxialCoord a, AxialCoord b, int32_t gridWidth) {
+    int32_t direct = distance(a, b);
+
+    // Shift b by +gridWidth columns in offset space, convert back to axial
+    OffsetCoord ob = axialToOffset(b);
+    OffsetCoord shiftedPlus  = {ob.col + gridWidth, ob.row};
+    OffsetCoord shiftedMinus = {ob.col - gridWidth, ob.row};
+
+    int32_t dPlus  = distance(a, offsetToAxial(shiftedPlus));
+    int32_t dMinus = distance(a, offsetToAxial(shiftedMinus));
+
+    int32_t minDist = direct;
+    if (dPlus  < minDist) { minDist = dPlus; }
+    if (dMinus < minDist) { minDist = dMinus; }
+    return minDist;
 }
 
 // ============================================================================

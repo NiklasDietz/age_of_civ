@@ -7,9 +7,10 @@
 
 namespace aoc::map {
 
-void HexGrid::initialize(int32_t width, int32_t height) {
-    this->m_width  = width;
-    this->m_height = height;
+void HexGrid::initialize(int32_t width, int32_t height, MapTopology topology) {
+    this->m_width    = width;
+    this->m_height   = height;
+    this->m_topology = topology;
 
     std::size_t count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
 

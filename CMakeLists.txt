@@ -87,6 +87,8 @@ add_library(aoc_lib STATIC
     src/simulation/diplomacy/Grievance.cpp
     src/simulation/diplomacy/WorldCongress.cpp
     src/simulation/diplomacy/DealTerms.cpp
+    src/simulation/diplomacy/NavalPassage.cpp
+    src/simulation/diplomacy/AllianceObligations.cpp
     src/simulation/climate/Climate.cpp
     src/simulation/victory/VictoryCondition.cpp
     src/simulation/government/Government.cpp

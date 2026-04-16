@@ -74,6 +74,7 @@ struct PairwiseRelation {
     bool    hasResearchAgreement = false;   ///< +10% science for both
     bool    hasEconomicAlliance  = false;   ///< Shared market prices, reduced tariffs
     bool    hasEmbargo         = false;
+    std::vector<uint16_t> embargoedGoods; ///< Per-resource embargo list (good IDs)
     std::vector<RelationModifier> modifiers;
 
     // -- Soft border violation tracking --
@@ -83,6 +84,14 @@ struct PairwiseRelation {
     int32_t turnsWithViolation  = 0;   ///< Consecutive turns with units present
     bool    casusBelliGranted   = false; ///< Territory owner can declare war without third-party penalty
     bool    warningIssued       = false; ///< First warning notification sent
+
+    // -- Naval passage violation tracking (mirrors land border violations) --
+    int32_t navalUnitsInWaters    = 0;   ///< Naval military units in owned waters (updated per turn)
+    int32_t turnsWithNavalViolation = 0; ///< Consecutive turns with naval units present
+    bool    navalWarningIssued    = false; ///< First naval warning notification sent
+
+    // -- Treaty tracking --
+    PlayerId lastWarAggressor = INVALID_PLAYER; ///< Who started the last war (for NonAggression enforcement)
 
     // -- Political reputation (separate from relation score) --
     // Reputation tracks behavioral trustworthiness: paying tolls, respecting
@@ -104,6 +113,15 @@ struct PairwiseRelation {
 
     [[nodiscard]] DiplomaticStance stance() const {
         return stanceFromScore(this->totalScore());
+    }
+
+    /// Check if a specific good is embargoed (blanket embargo or per-resource).
+    [[nodiscard]] bool isGoodEmbargoed(uint16_t goodId) const {
+        if (this->hasEmbargo) { return true; }
+        for (uint16_t id : this->embargoedGoods) {
+            if (id == goodId) { return true; }
+        }
+        return false;
     }
 
     /// Political reputation score: sum of active reputation modifiers, clamped [-100, +100].
@@ -146,7 +164,10 @@ public:
     void addReputationModifier(PlayerId a, PlayerId b, int32_t amount, int32_t decayTurns);
 
     /// Declare war between two players.
-    void declareWar(PlayerId aggressor, PlayerId target);
+    /// If an AllianceObligationTracker is provided, alliance obligations are
+    /// generated for the target's allies automatically.
+    void declareWar(PlayerId aggressor, PlayerId target,
+                    struct AllianceObligationTracker* allianceTracker = nullptr);
 
     /// Make peace between two players.
     void makePeace(PlayerId a, PlayerId b);
@@ -182,6 +203,16 @@ public:
 
     /// Check if a trade embargo exists between two players.
     [[nodiscard]] bool hasEmbargo(PlayerId a, PlayerId b) const;
+
+    /// Set or lift a per-resource embargo between two players.
+    void setResourceEmbargo(PlayerId a, PlayerId b, uint16_t goodId, bool embargo);
+
+    /// Check if a specific resource is embargoed between two players.
+    [[nodiscard]] bool hasResourceEmbargo(PlayerId a, PlayerId b, uint16_t goodId) const;
+
+    /// Apply a reputation penalty from `violator` to ALL players that have met them.
+    /// Used for global dishonor events (breaking treaties, etc.).
+    void broadcastReputationPenalty(PlayerId violator, int32_t amount, int32_t decayTurns);
 
 private:
     /// Flat NxN matrix: index = a * playerCount + b.

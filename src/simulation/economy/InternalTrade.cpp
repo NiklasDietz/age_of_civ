@@ -44,7 +44,7 @@ constexpr float ROAD_DISTANCE_FACTOR = 0.5f;
 float effectiveDistance(const aoc::map::HexGrid& grid,
                        hex::AxialCoord from,
                        hex::AxialCoord to) {
-    const int32_t rawDist = hex::distance(from, to);
+    const int32_t rawDist = grid.distance(from, to);
     const float   baseDist = static_cast<float>(rawDist);
 
     if (grid.isValid(from) && grid.isValid(to)) {

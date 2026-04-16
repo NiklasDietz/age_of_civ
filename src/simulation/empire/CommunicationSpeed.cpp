@@ -52,7 +52,7 @@ CommTier determineCommTier(const aoc::game::GameState& gameState, PlayerId playe
 void updateCommunicationDistances(aoc::game::GameState& gameState,
                                    const aoc::map::HexGrid& grid,
                                    PlayerId player) {
-    (void)grid;  // Grid is reserved for future road/terrain-weighted distance lookups
+    // Grid is used for wrapping-aware distance computation.
 
     aoc::game::Player* playerObj = gameState.player(player);
     if (playerObj == nullptr) {
@@ -124,15 +124,15 @@ void updateCommunicationDistances(aoc::game::GameState& gameState,
         const hex::AxialCoord cityPos = cityPtr->location();
 
         // Hex distance from capital
-        int32_t distFromCapital = hex::distance(cityPos, capitalPos);
+        int32_t distFromCapital = grid.distance(cityPos, capitalPos);
 
         // Check if closer via a regional capital
         int32_t effectiveDist = distFromCapital;
         for (const RegionalCapital& rc : regionalCapitals) {
-            int32_t distFromRC = hex::distance(cityPos, rc.location);
+            int32_t distFromRC = grid.distance(cityPos, rc.location);
             if (distFromRC <= REGIONAL_CAPITAL_RADIUS) {
                 // RC halves the remaining distance to the main capital
-                int32_t rcToCapital = hex::distance(rc.location, capitalPos);
+                int32_t rcToCapital = grid.distance(rc.location, capitalPos);
                 int32_t viaDist     = distFromRC + rcToCapital / 2;
                 effectiveDist = std::min(effectiveDist, viaDist);
             }

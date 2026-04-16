@@ -136,7 +136,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                     aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, index);
                     if (vis == aoc::map::TileVisibility::Unseen) { continue; }
 
-                    int32_t dist = aoc::hex::distance(selCity->location(), axial);
+                    int32_t dist = grid.distance(selCity->location(), axial);
                     bool isWorked = selCity->isTileWorked(axial);
 
                     bool isBuyable = (grid.owner(index) == INVALID_PLAYER);

@@ -69,31 +69,38 @@ void MapRenderer::draw(vulkan_app::renderer::Renderer2D& renderer2d,
     const float xSpacing = SQRT3 * this->m_hexSize;
     const float ySpacing = 1.5f  * this->m_hexSize;
 
-    const int32_t minCol = std::max(0,          static_cast<int32_t>(std::max(0.0f, topLeftX)  / xSpacing) - 1);
-    const int32_t maxCol = std::min(width  - 1, static_cast<int32_t>(std::max(0.0f, botRightX) / xSpacing) + 1);
+    const bool cylindrical = (grid.topology() == aoc::map::MapTopology::Cylindrical);
+
+    // For cylindrical topology: don't clamp columns — let them extend beyond
+    // [0, width) so tiles wrap seamlessly. Use wrapped col for data lookup,
+    // raw col for pixel position.
+    const int32_t minCol = cylindrical
+        ? (static_cast<int32_t>(topLeftX / xSpacing) - 1)
+        : std::max(0, static_cast<int32_t>(std::max(0.0f, topLeftX) / xSpacing) - 1);
+    const int32_t maxCol = cylindrical
+        ? (static_cast<int32_t>(botRightX / xSpacing) + 1)
+        : std::min(width - 1, static_cast<int32_t>(std::max(0.0f, botRightX) / xSpacing) + 1);
     const int32_t minRow = std::max(0,          static_cast<int32_t>(std::max(0.0f, topLeftY)  / ySpacing) - 1);
     const int32_t maxRow = std::min(height - 1, static_cast<int32_t>(std::max(0.0f, botRightY) / ySpacing) + 1);
 
-    // Debug: log frustum once per second
-    static int32_t dbgCnt = 0;
-    if (++dbgCnt % 60 == 1) {
-        int32_t unseenN = 0, visN = 0;
-        for (int32_t dr = minRow; dr <= maxRow; ++dr)
-            for (int32_t dc = minCol; dc <= maxCol; ++dc) {
-                if (fog.visibility(viewingPlayer, dr * width + dc) == aoc::map::TileVisibility::Unseen) ++unseenN; else ++visN;
-            }
-        fprintf(stderr, "MapDraw: TL=(%.0f,%.0f) BR=(%.0f,%.0f) rows=%d..%d cols=%d..%d vis=%d unseen=%d player=%u",
-                 topLeftX, topLeftY, botRightX, botRightY, minRow, maxRow, minCol, maxCol, visN, unseenN, static_cast<unsigned>(viewingPlayer)); fflush(stderr);
-    }
     for (int32_t row = minRow; row <= maxRow; ++row) {
         for (int32_t col = minCol; col <= maxCol; ++col) {
-            const int32_t index = row * width + col;
+            // Wrap column for data lookup (cylindrical), or skip if OOB (flat)
+            int32_t dataCol = col;
+            if (cylindrical) {
+                dataCol = ((col % width) + width) % width;
+            } else {
+                if (col < 0 || col >= width) { continue; }
+            }
+            const int32_t index = row * width + dataCol;
 
             const aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, index);
             if (vis == aoc::map::TileVisibility::Unseen) {
                 continue;
             }
 
+            // Use the RAW (unwrapped) col for pixel position so tiles render
+            // at the correct screen location across the seam.
             const hex::AxialCoord axial = hex::offsetToAxial({col, row});
             float cx = 0.0f, cy = 0.0f;
             hex::axialToPixel(axial, this->m_hexSize, cx, cy);
@@ -390,14 +397,25 @@ void MapRenderer::drawTerritoryBorders(vulkan_app::renderer::Renderer2D& rendere
     const float xSpacing = SQRT3_B * this->m_hexSize;
     const float ySpacing = 1.5f   * this->m_hexSize;
 
-    const int32_t minCol = std::max(0,          static_cast<int32_t>(std::max(0.0f, topLeftX)  / xSpacing) - 1);
-    const int32_t maxCol = std::min(width  - 1, static_cast<int32_t>(std::max(0.0f, botRightX) / xSpacing) + 1);
+    const bool cylindricalB = (grid.topology() == aoc::map::MapTopology::Cylindrical);
+    const int32_t minCol = cylindricalB
+        ? (static_cast<int32_t>(topLeftX / xSpacing) - 1)
+        : std::max(0, static_cast<int32_t>(std::max(0.0f, topLeftX) / xSpacing) - 1);
+    const int32_t maxCol = cylindricalB
+        ? (static_cast<int32_t>(botRightX / xSpacing) + 1)
+        : std::min(width - 1, static_cast<int32_t>(std::max(0.0f, botRightX) / xSpacing) + 1);
     const int32_t minRow = std::max(0,          static_cast<int32_t>(std::max(0.0f, topLeftY)  / ySpacing) - 1);
     const int32_t maxRow = std::min(height - 1, static_cast<int32_t>(std::max(0.0f, botRightY) / ySpacing) + 1);
 
     for (int32_t row = minRow; row <= maxRow; ++row) {
         for (int32_t col = minCol; col <= maxCol; ++col) {
-            const int32_t index = row * width + col;
+            int32_t dataCol = col;
+            if (cylindricalB) {
+                dataCol = ((col % width) + width) % width;
+            } else {
+                if (col < 0 || col >= width) { continue; }
+            }
+            const int32_t index = row * width + dataCol;
             const PlayerId tileOwner = grid.owner(index);
             if (tileOwner == INVALID_PLAYER) {
                 continue;
@@ -569,8 +587,13 @@ void MapRenderer::drawYieldLabels(vulkan_app::renderer::Renderer2D& renderer2d,
     constexpr float SQRT3 = 1.7320508075688772f;
     const float xSpacing = SQRT3 * this->m_hexSize;
     const float ySpacing = 1.5f * this->m_hexSize;
-    const int32_t minCol = std::max(0, static_cast<int32_t>(topLeftX / xSpacing) - 1);
-    const int32_t maxCol = std::min(width - 1, static_cast<int32_t>(botRightX / xSpacing) + 1);
+    const bool cylindricalY = (grid.topology() == aoc::map::MapTopology::Cylindrical);
+    const int32_t minCol = cylindricalY
+        ? (static_cast<int32_t>(topLeftX / xSpacing) - 1)
+        : std::max(0, static_cast<int32_t>(topLeftX / xSpacing) - 1);
+    const int32_t maxCol = cylindricalY
+        ? (static_cast<int32_t>(botRightX / xSpacing) + 1)
+        : std::min(width - 1, static_cast<int32_t>(botRightX / xSpacing) + 1);
     const int32_t minRow = std::max(0, static_cast<int32_t>(topLeftY / ySpacing) - 1);
     const int32_t maxRow = std::min(height - 1, static_cast<int32_t>(botRightY / ySpacing) + 1);
 
@@ -578,7 +601,13 @@ void MapRenderer::drawYieldLabels(vulkan_app::renderer::Renderer2D& renderer2d,
 
     for (int32_t row = minRow; row <= maxRow; ++row) {
         for (int32_t col = minCol; col <= maxCol; ++col) {
-            const int32_t index = row * width + col;
+            int32_t dataCol = col;
+            if (cylindricalY) {
+                dataCol = ((col % width) + width) % width;
+            } else {
+                if (col < 0 || col >= width) { continue; }
+            }
+            const int32_t index = row * width + dataCol;
             const aoc::map::TileVisibility vis = fog.visibility(viewingPlayer, index);
             if (vis != aoc::map::TileVisibility::Visible) { continue; }
 

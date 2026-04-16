@@ -12,6 +12,7 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/Grievance.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/economy/AdvancedEconomics.hpp"
@@ -257,7 +258,7 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     }
 
     for (const std::unique_ptr<aoc::game::City>& c : ownerPlayer->cities()) {
-        int32_t dist = aoc::hex::distance(traderUnit->position(), c->location());
+        int32_t dist = grid.distance(traderUnit->position(), c->location());
         if (dist < bestDist) {
             bestDist = dist;
             originCity = c.get();
@@ -324,7 +325,7 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
 
     if (trader.routeType == TradeRouteType::Air) {
         // Air routes: direct line (planes don't need paths through terrain)
-        int32_t dist = aoc::hex::distance(from, to);
+        int32_t dist = grid.distance(from, to);
         trader.path.clear();
         for (int32_t step = 0; step <= dist; ++step) {
             float t = (dist > 0) ? static_cast<float>(step) / static_cast<float>(dist) : 0.0f;
@@ -342,7 +343,7 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
             trader.path = pathResult->path;
         } else {
             // Pathfinding failed: fall back to straight line
-            int32_t dist = aoc::hex::distance(from, to);
+            int32_t dist = grid.distance(from, to);
             trader.path.clear();
             for (int32_t step = 0; step <= dist; ++step) {
                 float t = (dist > 0) ? static_cast<float>(step) / static_cast<float>(dist) : 0.0f;
@@ -379,7 +380,7 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
 
 void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                          const Market& market,
-                         const DiplomacyManager* diplomacy) {
+                         DiplomacyManager* diplomacy) {
     // Collect all active trader units across all players
     std::vector<aoc::game::Unit*> traderUnits;
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
@@ -557,6 +558,34 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         if (targetCity != nullptr) {
             CityStockpileComponent& targetStock = targetCity->stockpile();
 
+            // Check for embargo violations: if trader delivers embargoed goods
+            // between different players, apply reputation penalty.
+            PlayerId traderOwner = trader.owner;
+            PlayerId cityOwner = targetCity->owner();
+            if (diplomacy != nullptr && traderOwner != cityOwner
+                && traderOwner != INVALID_PLAYER && cityOwner != INVALID_PLAYER) {
+                const PairwiseRelation& rel = diplomacy->relation(traderOwner, cityOwner);
+                for (const TradeCargo& c : trader.cargo) {
+                    if (rel.isGoodEmbargoed(c.goodId)) {
+                        // -5 reputation per violation, 30-turn decay
+                        diplomacy->addReputationModifier(traderOwner, cityOwner, -5, 30);
+
+                        aoc::game::Player* embargoPartner = gameState.player(cityOwner);
+                        if (embargoPartner != nullptr) {
+                            embargoPartner->grievances().addGrievance(
+                                GrievanceType::ViolatedEmbargo, traderOwner);
+                        }
+
+                        LOG_INFO("Embargo violation: Player %u traded embargoed good %u "
+                                 "to Player %u's city",
+                                 static_cast<unsigned>(traderOwner),
+                                 static_cast<unsigned>(c.goodId),
+                                 static_cast<unsigned>(cityOwner));
+                        break;  // One grievance per delivery, not per good
+                    }
+                }
+            }
+
             // Unload cargo and earn gold based on market prices
             CurrencyAmount goldEarned = 0;
             for (const TradeCargo& c : trader.cargo) {
@@ -708,7 +737,7 @@ TradeRouteEstimate estimateTradeRouteIncome(
     const aoc::game::City* originCity = nullptr;
     int32_t bestDist = 9999;
     for (const std::unique_ptr<aoc::game::City>& c : ownerPlayer->cities()) {
-        int32_t dist = aoc::hex::distance(traderUnit.position(), c->location());
+        int32_t dist = grid.distance(traderUnit.position(), c->location());
         if (dist < bestDist) {
             bestDist = dist;
             originCity = c.get();
@@ -753,7 +782,7 @@ TradeRouteEstimate estimateTradeRouteIncome(
     }
 
     // Distance estimate
-    int32_t straightDist = aoc::hex::distance(originCity->location(), destCity.location());
+    int32_t straightDist = grid.distance(originCity->location(), destCity.location());
     // A* paths are typically ~20% longer than straight-line on hex grids
     estimate.distanceTiles = static_cast<int32_t>(static_cast<float>(straightDist) * 1.2f);
 

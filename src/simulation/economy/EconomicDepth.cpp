@@ -246,7 +246,7 @@ void processMigration(aoc::game::GameState& gameState, const aoc::map::HexGrid& 
                 continue;  // Same player, no migration
             }
 
-            int32_t dist = hex::distance(cityA->location(), cityB->location());
+            int32_t dist = grid.distance(cityA->location(), cityB->location());
             if (dist > 10) { continue; }
 
             float qolB    = cityB->happiness().amenities - cityB->happiness().demand;

@@ -48,7 +48,7 @@ void placeGoodyHuts(GoodyHutState& state, const aoc::map::HexGrid& grid,
         // Not too close to starting positions
         bool tooClose = false;
         for (const aoc::hex::AxialCoord& start : startPositions) {
-            if (aoc::hex::distance(pos, start) < 5) {
+            if (grid.distance(pos, start) < 5) {
                 tooClose = true;
                 break;
             }
@@ -58,7 +58,7 @@ void placeGoodyHuts(GoodyHutState& state, const aoc::map::HexGrid& grid,
         // Not too close to other huts
         bool nearOtherHut = false;
         for (const aoc::hex::AxialCoord& existing : state.hutLocations) {
-            if (aoc::hex::distance(pos, existing) < 4) {
+            if (grid.distance(pos, existing) < 4) {
                 nearOtherHut = true;
                 break;
             }

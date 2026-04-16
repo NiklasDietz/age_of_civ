@@ -56,11 +56,16 @@ public:
     void setPosition(float x, float y) { this->m_cameraX = x; this->m_cameraY = y; }
     void setZoom(float z) { this->m_zoom = z; }
 
+    /// Set world width for cylindrical wrapping (0 = no wrapping).
+    void setWorldWidth(float w) { this->m_worldWidth = w; }
+    [[nodiscard]] float worldWidth() const { return this->m_worldWidth; }
+
 private:
     Config m_config;
-    float  m_cameraX = 0.0f;
-    float  m_cameraY = 0.0f;
-    float  m_zoom    = 1.0f;
+    float  m_cameraX    = 0.0f;
+    float  m_cameraY    = 0.0f;
+    float  m_zoom       = 1.0f;
+    float  m_worldWidth = 0.0f;  ///< >0 when cylindrical wrapping is active
 };
 
 } // namespace aoc::render

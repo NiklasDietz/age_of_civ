@@ -134,7 +134,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                     continue;
                 }
 
-                const int32_t dist = aoc::hex::distance(builder.position, tile);
+                const int32_t dist = grid.distance(builder.position, tile);
                 if (dist < bestDist) {
                     bestDist = dist;
                     bestTarget = tile;
@@ -182,7 +182,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                 if (!canProspect(grid, tIdx)) { continue; }
                 if (targetedTiles.find(tile) != targetedTiles.end()) { continue; }
 
-                const int32_t dist = aoc::hex::distance(builder.position, tile);
+                const int32_t dist = grid.distance(builder.position, tile);
                 if (dist < bestDist) {
                     bestDist = dist;
                     bestTarget = tile;

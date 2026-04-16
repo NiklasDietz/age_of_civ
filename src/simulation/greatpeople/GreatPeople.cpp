@@ -242,7 +242,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                 if (cityPtr == nullptr) {
                     continue;
                 }
-                const int32_t dist = hex::distance(gp.position, cityPtr->location());
+                const int32_t dist = grid.distance(gp.position, cityPtr->location());
                 if (dist < bestDist) {
                     bestDist    = dist;
                     nearestCity = cityPtr.get();
@@ -261,7 +261,7 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                 if (unitPtr == nullptr) {
                     continue;
                 }
-                if (hex::distance(unitPtr->position(), gp.position) <= 2) {
+                if (grid.distance(unitPtr->position(), gp.position) <= 2) {
                     unitPtr->setHitPoints(unitPtr->typeDef().maxHitPoints);
                 }
             }

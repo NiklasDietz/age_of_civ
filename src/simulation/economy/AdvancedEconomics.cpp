@@ -53,7 +53,7 @@ float applyTariffs(const PlayerTariffComponent& importer,
 float computeTransportCost(const aoc::map::HexGrid& grid,
                            hex::AxialCoord from, hex::AxialCoord to,
                            float baseGoodValue) {
-    const int32_t dist = hex::distance(from, to);
+    const int32_t dist = grid.distance(from, to);
     float cost = static_cast<float>(dist) * 0.02f * baseGoodValue;
 
     if (grid.isValid(from) && grid.isValid(to)) {

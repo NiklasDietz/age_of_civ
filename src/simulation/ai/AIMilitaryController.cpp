@@ -298,7 +298,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
             int32_t                  bestTargetDist = std::numeric_limits<int32_t>::max();
 
             for (const EnemyUnitSnapshot& enemy : enemySnapshots) {
-                const int32_t dist = aoc::hex::distance(unit->position(), enemy.position);
+                const int32_t dist = grid.distance(unit->position(), enemy.position);
                 if (dist <= def.range && dist < bestTargetDist) {
                     bestTargetDist = dist;
                     bestTarget     = &enemy;
@@ -367,7 +367,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
             int32_t                  nearestDist   = std::numeric_limits<int32_t>::max();
 
             for (const EnemyUnitSnapshot& enemy : enemySnapshots) {
-                const int32_t dist = aoc::hex::distance(unit->position(), enemy.position);
+                const int32_t dist = grid.distance(unit->position(), enemy.position);
                 if (dist <= 3 && dist < nearestDist) {
                     nearestDist  = dist;
                     nearestEnemy = &enemy;
@@ -383,7 +383,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                     if (!grid.isValid(nbr) || grid.movementCost(grid.toIndex(nbr)) <= 0) {
                         continue;
                     }
-                    const int32_t d = aoc::hex::distance(nbr, nearestEnemy->position);
+                    const int32_t d = grid.distance(nbr, nearestEnemy->position);
                     if (d < bestMoveDist) {
                         bestMoveDist = d;
                         bestMove     = nbr;
@@ -405,7 +405,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
 
             for (const aoc::hex::AxialCoord& cityLoc : ownCityLocs) {
                 for (const EnemyUnitSnapshot& enemy : enemySnapshots) {
-                    if (aoc::hex::distance(cityLoc, enemy.position) <= 3) {
+                    if (grid.distance(cityLoc, enemy.position) <= 3) {
                         cityThreatened    = true;
                         threatenedCityPos = cityLoc;
                         break;
@@ -417,7 +417,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
             }
 
             if (cityThreatened) {
-                const int32_t distToCity = aoc::hex::distance(unit->position(), threatenedCityPos);
+                const int32_t distToCity = grid.distance(unit->position(), threatenedCityPos);
                 if (distToCity > 1) {
                     aoc::sim::orderUnitMove(*unit, threatenedCityPos, grid);
                     aoc::sim::moveUnitAlongPath(gameState, *unit, grid);
@@ -434,7 +434,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
             // Hard difficulty: prioritise enemy cities for offensive pressure.
             if (hardMode) {
                 for (const EnemyCitySnapshot& ecity : enemyCities) {
-                    const int32_t dist = aoc::hex::distance(unit->position(), ecity.position);
+                    const int32_t dist = grid.distance(unit->position(), ecity.position);
                     if (dist < closestDist) {
                         closestDist   = dist;
                         closestTarget = ecity.position;
@@ -443,7 +443,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
             }
 
             for (const EnemyUnitSnapshot& enemy : enemySnapshots) {
-                const int32_t dist = aoc::hex::distance(unit->position(), enemy.position);
+                const int32_t dist = grid.distance(unit->position(), enemy.position);
                 if (dist < closestDist) {
                     closestDist   = dist;
                     closestTarget = enemy.position;
@@ -452,7 +452,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
 
             if (!hardMode) {
                 for (const EnemyCitySnapshot& ecity : enemyCities) {
-                    const int32_t dist = aoc::hex::distance(unit->position(), ecity.position);
+                    const int32_t dist = grid.distance(unit->position(), ecity.position);
                     if (dist < closestDist) {
                         closestDist   = dist;
                         closestTarget = ecity.position;
@@ -468,7 +468,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                     if (!grid.isValid(nbr) || grid.movementCost(grid.toIndex(nbr)) <= 0) {
                         continue;
                     }
-                    const int32_t d = aoc::hex::distance(nbr, closestTarget);
+                    const int32_t d = grid.distance(nbr, closestTarget);
                     if (d < bestMoveDist) {
                         bestMoveDist = d;
                         bestMove     = nbr;
@@ -522,7 +522,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                 // Chokepoints are high-priority garrison positions: +20 score.
                 // Controls toll income and blocks enemy advance.
                 if (grid.isChokepoint(tileIdx)) { borderScore += 20; }
-                borderScore -= aoc::hex::distance(unit->position(), tile);
+                borderScore -= grid.distance(unit->position(), tile);
 
                 if (borderScore > bestBorderScore) {
                     bestBorderScore = borderScore;
@@ -593,7 +593,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                 bool hasNearCity = false;
                 for (const std::unique_ptr<aoc::game::City>& city : other->cities()) {
                     for (const aoc::hex::AxialCoord& ownCity : ownCityLocs) {
-                        if (aoc::hex::distance(city->location(), ownCity) <= 15) {
+                        if (grid.distance(city->location(), ownCity) <= 15) {
                             hasNearCity = true;
                             break;
                         }
@@ -628,9 +628,9 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
 
                     // Find the nearest enemy city to this unit.
                     aoc::hex::AxialCoord targetCity = targetPlayer->cities().front()->location();
-                    int32_t              bestDist   = aoc::hex::distance(unit->position(), targetCity);
+                    int32_t              bestDist   = grid.distance(unit->position(), targetCity);
                     for (const std::unique_ptr<aoc::game::City>& city : targetPlayer->cities()) {
-                        const int32_t d = aoc::hex::distance(unit->position(), city->location());
+                        const int32_t d = grid.distance(unit->position(), city->location());
                         if (d < bestDist) {
                             bestDist   = d;
                             targetCity = city->location();
@@ -647,7 +647,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                             if (!grid.isValid(nbr) || grid.movementCost(grid.toIndex(nbr)) <= 0) {
                                 continue;
                             }
-                            const int32_t d = aoc::hex::distance(nbr, targetCity);
+                            const int32_t d = grid.distance(nbr, targetCity);
                             if (d < bestMoveDist) {
                                 bestMoveDist = d;
                                 bestMove     = nbr;

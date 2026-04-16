@@ -47,7 +47,10 @@
 
 // Diplomacy
 #include "aoc/simulation/diplomacy/BorderViolation.hpp"
+#include "aoc/simulation/diplomacy/NavalPassage.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/DealTerms.hpp"
+#include "aoc/simulation/diplomacy/AllianceObligations.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 
 // Government
@@ -152,7 +155,7 @@ aoc::game::City& foundCity(aoc::game::GameState& gameState,
     // Enforce minimum distance from the SAME player's existing cities.
     // In Civ 6, the 3-tile rule applies to your own cities only.
     for (const std::unique_ptr<aoc::game::City>& existingCity : gsPlayer->cities()) {
-        const int32_t dist = aoc::hex::distance(location, existingCity->location());
+        const int32_t dist = grid.distance(location, existingCity->location());
         if (dist < MIN_CITY_DISTANCE) {
             // Too close to own city - find the nearest valid tile by spiraling outward.
             std::vector<aoc::hex::AxialCoord> candidates;
@@ -169,7 +172,7 @@ aoc::game::City& foundCity(aoc::game::GameState& gameState,
                 }
                 bool tooCloseToOwn = false;
                 for (const std::unique_ptr<aoc::game::City>& ownCity : gsPlayer->cities()) {
-                    if (aoc::hex::distance(alt, ownCity->location()) < MIN_CITY_DISTANCE) {
+                    if (grid.distance(alt, ownCity->location()) < MIN_CITY_DISTANCE) {
                         tooCloseToOwn = true;
                         break;
                     }
@@ -313,7 +316,7 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
             for (const std::unique_ptr<aoc::game::Player>& other : ctx.gameState->players()) {
                 if (other->id() == player) { continue; }
                 for (const std::unique_ptr<aoc::game::City>& foreignCity : other->cities()) {
-                    if (aoc::hex::distance(ownUnit->position(), foreignCity->location()) <= 4) {
+                    if (grid.distance(ownUnit->position(), foreignCity->location()) <= 4) {
                         metAnotherCiv = true;
                         break;
                     }
@@ -329,7 +332,7 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
                 for (const std::unique_ptr<aoc::game::Player>& other : ctx.gameState->players()) {
                     if (other->id() == player) { continue; }
                     for (const std::unique_ptr<aoc::game::Unit>& foreignUnit : other->units()) {
-                        if (aoc::hex::distance(foreignUnit->position(), ownCity->location()) <= 4) {
+                        if (grid.distance(foreignUnit->position(), ownCity->location()) <= 4) {
                             metAnotherCiv = true;
                             break;
                         }
@@ -378,7 +381,7 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
         // Check if near own city (friendly territory)
         bool nearOwnCity = false;
         for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
-            if (aoc::hex::distance(unitPtr->position(), city->location()) <= 3) {
+            if (grid.distance(unitPtr->position(), city->location()) <= 3) {
                 nearOwnCity = true;
                 break;
             }
@@ -596,6 +599,7 @@ void processGlobalSystems(TurnContext& ctx) {
     // Soft border violation detection: scan military units in foreign territory
     if (ctx.diplomacy != nullptr) {
         updateBorderViolations(gameState, grid, *ctx.diplomacy);
+        updateNavalPassageViolations(gameState, grid, *ctx.diplomacy);
     }
 
     // Stock market: dividends, value updates
@@ -603,6 +607,16 @@ void processGlobalSystems(TurnContext& ctx) {
 
     // Trade agreements: tick durations
     processTradeAgreements(gameState);
+
+    // Diplomatic deals: enforce terms (reparations, DMZ, arms limits, non-aggression)
+    if (ctx.dealTracker != nullptr && ctx.diplomacy != nullptr) {
+        processDeals(gameState, *ctx.dealTracker, *ctx.diplomacy, grid);
+    }
+
+    // Alliance obligations: tick countdowns, check fulfillment, apply penalties
+    if (ctx.allianceTracker != nullptr && ctx.diplomacy != nullptr) {
+        ctx.allianceTracker->tickObligations(*ctx.diplomacy, gameState);
+    }
 
     // Supply chain health: check import dependencies
     processSupplyChains(gameState);

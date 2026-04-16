@@ -248,7 +248,7 @@ ErrorCode executeBombingRun(aoc::game::GameState& gameState,
             }
         }
     }
-    if (hex::distance(basePos, targetTile) > air.operationalRange) {
+    if (grid.distance(basePos, targetTile) > air.operationalRange) {
         return ErrorCode::InvalidArgument;
     }
 

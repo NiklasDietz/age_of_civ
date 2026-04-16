@@ -133,7 +133,7 @@ std::optional<PathResult> findPath(const HexGrid& grid,
             std::unordered_map<hex::AxialCoord, int32_t>::iterator it = costSoFar.find(neighbor);
             if (it == costSoFar.end() || newCost < it->second) {
                 costSoFar[neighbor] = newCost;
-                int32_t heuristic = hex::distance(neighbor, goal);
+                int32_t heuristic = grid.distance(neighbor, goal);
                 openSet.push({neighbor, newCost + heuristic});
                 cameFrom[neighbor] = current;
             }

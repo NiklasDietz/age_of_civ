@@ -20,6 +20,12 @@
 
 namespace aoc::map {
 
+/// Map topology: how the grid handles edges.
+enum class MapTopology : uint8_t {
+    Flat,         ///< Bounded rectangle (original behavior)
+    Cylindrical,  ///< East-west wrap, north/south poles are hard boundaries
+};
+
 /// Strategic chokepoint type (computed once at map generation).
 enum class ChokepointType : uint8_t {
     None,            ///< Not a chokepoint
@@ -65,19 +71,35 @@ public:
      * @brief Initialize the grid with the given dimensions.
      *
      * All tiles are set to Ocean with no features or resources.
+     * Topology defaults to Flat for backward compatibility.
      */
-    void initialize(int32_t width, int32_t height);
+    void initialize(int32_t width, int32_t height,
+                    MapTopology topology = MapTopology::Flat);
 
     [[nodiscard]] int32_t width() const { return this->m_width; }
     [[nodiscard]] int32_t height() const { return this->m_height; }
     [[nodiscard]] int32_t tileCount() const { return this->m_width * this->m_height; }
+    [[nodiscard]] MapTopology topology() const { return this->m_topology; }
 
     // ========================================================================
     // Coordinate validation and indexing
     // ========================================================================
 
+    /// Wrap an offset coordinate for cylindrical topology.
+    /// For Flat topology, returns the coordinate unchanged.
+    [[nodiscard]] hex::OffsetCoord wrapOffset(hex::OffsetCoord c) const {
+        if (this->m_topology == MapTopology::Cylindrical) {
+            c.col = ((c.col % this->m_width) + this->m_width) % this->m_width;
+        }
+        return c;
+    }
+
     /// Check if an offset coordinate is within bounds.
+    /// For Cylindrical topology, columns always wrap (only row bounds matter).
     [[nodiscard]] bool isValid(hex::OffsetCoord c) const {
+        if (this->m_topology == MapTopology::Cylindrical) {
+            return c.row >= 0 && c.row < this->m_height;
+        }
         return c.col >= 0 && c.col < this->m_width
             && c.row >= 0 && c.row < this->m_height;
     }
@@ -87,13 +109,15 @@ public:
         return this->isValid(hex::axialToOffset(a));
     }
 
-    /// Convert offset coordinate to flat array index. Asserts in-bounds.
+    /// Convert offset coordinate to flat array index. Wraps for Cylindrical.
     [[nodiscard]] int32_t toIndex(hex::OffsetCoord c) const {
-        assert(this->isValid(c));
+        c = this->wrapOffset(c);
+        assert(c.col >= 0 && c.col < this->m_width);
+        assert(c.row >= 0 && c.row < this->m_height);
         return c.row * this->m_width + c.col;
     }
 
-    /// Convert axial coordinate to flat array index. Asserts in-bounds.
+    /// Convert axial coordinate to flat array index. Wraps for Cylindrical.
     [[nodiscard]] int32_t toIndex(hex::AxialCoord a) const {
         return this->toIndex(hex::axialToOffset(a));
     }
@@ -107,6 +131,15 @@ public:
     /// Convert flat index to axial coordinate.
     [[nodiscard]] hex::AxialCoord toAxial(int32_t index) const {
         return hex::offsetToAxial(this->toOffset(index));
+    }
+
+    /// Distance between two axial coordinates, accounting for wrapping.
+    /// Use this instead of hex::distance() for gameplay logic.
+    [[nodiscard]] int32_t distance(hex::AxialCoord a, hex::AxialCoord b) const {
+        if (this->m_topology == MapTopology::Cylindrical) {
+            return hex::wrappedDistance(a, b, this->m_width);
+        }
+        return hex::distance(a, b);
     }
 
     // ========================================================================
@@ -316,6 +349,7 @@ private:
 
     int32_t m_width  = 0;
     int32_t m_height = 0;
+    MapTopology m_topology = MapTopology::Flat;
 
     // SoA tile storage -- one entry per tile, indexed by (row * width + col)
     std::vector<TerrainType> m_terrain;

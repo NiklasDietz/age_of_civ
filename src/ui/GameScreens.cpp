@@ -2016,7 +2016,7 @@ void CityDetailScreen::toggleWorkerOnTile(aoc::hex::AxialCoord tile) {
     if (this->m_grid->owner(tileIdx) != this->m_player) {
         return;
     }
-    if (aoc::hex::distance(city->location(), tile) > 3) {
+    if (this->m_grid->distance(city->location(), tile) > 3) {
         return;
     }
     if (this->m_grid->movementCost(tileIdx) == 0) {

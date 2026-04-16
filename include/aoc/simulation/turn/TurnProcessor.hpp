@@ -62,6 +62,8 @@ class DiplomacyManager;
 class Market;
 class BarbarianController;
 class TurnEventLog;
+struct GlobalDealTracker;
+struct AllianceObligationTracker;
 
 namespace ai { class AIController; }
 
@@ -75,6 +77,8 @@ struct TurnContext {
     EconomySimulation* economy = nullptr;
     DiplomacyManager* diplomacy = nullptr;
     BarbarianController* barbarians = nullptr;
+    GlobalDealTracker* dealTracker = nullptr;
+    AllianceObligationTracker* allianceTracker = nullptr;
     aoc::Random* rng = nullptr;
 
     /// GameState owns all game data.

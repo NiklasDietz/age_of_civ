@@ -225,7 +225,7 @@ void BarbarianController::moveBarbarianUnits(aoc::game::GameState& gameState,
         aoc::game::Unit* target = findNearestTarget(gameState, unit->position(), AGGRO_RANGE);
 
         if (target != nullptr && !target->isDead()) {
-            int32_t dist = hex::distance(unit->position(), target->position());
+            int32_t dist = grid.distance(unit->position(), target->position());
 
             if (dist == 1) {
                 // Adjacent: resolve melee combat.
@@ -249,7 +249,7 @@ void BarbarianController::moveBarbarianUnits(aoc::game::GameState& gameState,
                 if (cost == 0) {
                     continue;
                 }
-                int32_t nbrDist = hex::distance(nbr, target->position());
+                int32_t nbrDist = grid.distance(nbr, target->position());
                 if (nbrDist < bestDist) {
                     bestDist = nbrDist;
                     bestMove = nbr;

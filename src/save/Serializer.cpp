@@ -204,6 +204,7 @@ void writeMapSection(WriteBuffer& out, const aoc::map::HexGrid& grid) {
     WriteBuffer section;
     section.writeI32(grid.width());
     section.writeI32(grid.height());
+    section.writeU8(static_cast<uint8_t>(grid.topology()));
 
     int32_t count = grid.tileCount();
     for (int32_t i = 0; i < count; ++i) {
@@ -1195,7 +1196,8 @@ ErrorCode loadGame(const std::string& filepath,
             case SectionId::MapGrid: {
                 int32_t width  = buf.readI32();
                 int32_t height = buf.readI32();
-                grid.initialize(width, height);
+                aoc::map::MapTopology topology = static_cast<aoc::map::MapTopology>(buf.readU8());
+                grid.initialize(width, height, topology);
                 int32_t count = width * height;
                 for (int32_t i = 0; i < count; ++i) {
                     grid.setTerrain(i, static_cast<aoc::map::TerrainType>(buf.readU8()));

@@ -14,6 +14,8 @@
 #include "aoc/simulation/turn/TurnManager.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/DealTerms.hpp"
+#include "aoc/simulation/diplomacy/AllianceObligations.hpp"
 #include "aoc/simulation/victory/VictoryCondition.hpp"
 #include "aoc/simulation/ai/AIController.hpp"
 #include "aoc/simulation/barbarian/BarbarianController.hpp"
@@ -147,6 +149,8 @@ private:
     aoc::sim::DiplomacyManager   m_diplomacy;
     std::vector<aoc::sim::ai::AIController> m_aiControllers;
     aoc::sim::BarbarianController m_barbarianController;
+    aoc::sim::GlobalDealTracker   m_dealTracker;
+    aoc::sim::AllianceObligationTracker m_allianceTracker;
     aoc::Random                  m_gameRng{0};  ///< Reseeded in startGame()
 
     /// Currently selected unit (nullptr if none or city selected).

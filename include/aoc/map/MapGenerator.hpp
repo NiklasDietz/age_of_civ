@@ -52,8 +52,9 @@ public:
         float    mountainRatio = 0.05f;
         float    forestRatio   = 0.20f;
         float    hillRatio     = 0.15f;
-        MapType  mapType   = MapType::Continents;  ///< Landmass generation style
-        MapSize  mapSize   = MapSize::Standard;     ///< Preset size (overrides width/height when applied)
+        MapType     mapType   = MapType::Continents;  ///< Landmass generation style
+        MapSize     mapSize   = MapSize::Standard;     ///< Preset size (overrides width/height when applied)
+        MapTopology topology  = MapTopology::Flat;     ///< Grid topology (Flat or Cylindrical)
     };
 
     /**

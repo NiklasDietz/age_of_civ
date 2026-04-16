@@ -166,7 +166,7 @@ static constexpr uint16_t STRATEGIC_RESOURCE_ID_MAX = 12;
     // City distance penalties and bonuses.
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         for (const std::unique_ptr<aoc::game::City>& city : playerPtr->cities()) {
-            const int32_t dist = aoc::hex::distance(pos, city->location());
+            const int32_t dist = grid.distance(pos, city->location());
 
             if (city->owner() == player) {
                 // Hard disqualification: Civ 6 rule requires 3+ tiles between cities.

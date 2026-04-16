@@ -67,7 +67,7 @@ void spawnCityStates(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
 
             bool tooClose = false;
             for (const hex::AxialCoord& occupied : occupiedPositions) {
-                if (hex::distance(candidate, occupied) < MIN_DISTANCE) {
+                if (grid.distance(candidate, occupied) < MIN_DISTANCE) {
                     tooClose = true;
                     break;
                 }

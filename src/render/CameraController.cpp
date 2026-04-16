@@ -68,6 +68,14 @@ void CameraController::update(const aoc::app::InputManager& input, float deltaTi
         this->m_zoom *= 1.0f - this->m_config.zoomSpeed * 2.0f * deltaTime;
         this->m_zoom = std::max(this->m_zoom, this->m_config.minZoom);
     }
+
+    // --- Cylindrical wrapping: wrap camera X within [0, worldWidth) ---
+    if (this->m_worldWidth > 0.0f) {
+        this->m_cameraX = std::fmod(this->m_cameraX, this->m_worldWidth);
+        if (this->m_cameraX < 0.0f) {
+            this->m_cameraX += this->m_worldWidth;
+        }
+    }
 }
 
 void CameraController::screenToWorld(double screenX, double screenY,

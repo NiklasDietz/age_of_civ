@@ -35,8 +35,11 @@
 #include <vector>
 
 namespace aoc::game { class GameState; }
+namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
+
+class DiplomacyManager;
 
 // ============================================================================
 // Deal term types
@@ -58,6 +61,7 @@ enum class DealTermType : uint8_t {
     NonAggression,      ///< No attacks for N turns
     MutualDefense,      ///< Join war if ally is attacked (not aggressor)
     OpenBorders,        ///< Units can pass through territory
+    ArmsLimitation,     ///< Cap on military unit count for both parties
 
     Count
 };
@@ -74,6 +78,7 @@ struct DealTerm {
     uint16_t     goodId = 0;                    ///< For GoodsExchange
     int32_t      goodAmount = 0;                ///< For GoodsExchange
     int32_t      zoneRadius = 3;                ///< For DemilitarizedZone
+    int32_t      maxMilitaryUnits = 0;          ///< For ArmsLimitation (0 = unlimited)
 };
 
 // ============================================================================
@@ -156,14 +161,22 @@ struct GlobalDealTracker {
                                    int32_t dealIndex);
 
 /**
- * @brief Break a deal (violate terms). Applies grievance penalties.
+ * @brief Break a deal (violate terms). Applies grievance and reputation penalties.
+ *
+ * NonAggression broken: -30 reputation with victim, -15 with ALL known players.
+ * Other deals broken: -10 reputation with counterparty.
  */
 void breakDeal(aoc::game::GameState& gameState, GlobalDealTracker& tracker,
-               PlayerId breaker, int32_t dealIndex);
+               DiplomacyManager& diplomacy, PlayerId breaker, int32_t dealIndex);
 
 /**
  * @brief Process active deals per turn (enforce terms, tick durations).
+ *
+ * Enforces: WarReparations (gold transfer), NonAggression (auto-break on war),
+ * DemilitarizedZone (reputation penalty for military units in zone),
+ * ArmsLimitation (reputation penalty for exceeding unit cap).
  */
-void processDeals(aoc::game::GameState& gameState, GlobalDealTracker& tracker);
+void processDeals(aoc::game::GameState& gameState, GlobalDealTracker& tracker,
+                  DiplomacyManager& diplomacy, const aoc::map::HexGrid& grid);
 
 } // namespace aoc::sim

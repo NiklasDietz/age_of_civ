@@ -66,7 +66,7 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
                 bool damaged = false;
                 for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
                     for (const std::unique_ptr<aoc::game::City>& city : playerPtr->cities()) {
-                        if (hex::distance(city->location(), center) <= 2) {
+                        if (grid.distance(city->location(), center) <= 2) {
                             CityDistrictsComponent& districts = city->districts();
                             for (CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
                                 if (!d.buildings.empty()) {

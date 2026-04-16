@@ -218,6 +218,14 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     aoc::map::MapGenerator::generate(mapConfig, this->m_hexGrid);
     LOG_INFO("Map generated (%dx%d)", this->m_hexGrid.width(), this->m_hexGrid.height());
 
+    // Set camera world width for cylindrical wrapping
+    if (this->m_hexGrid.topology() == aoc::map::MapTopology::Cylindrical) {
+        constexpr float SQRT3 = 1.7320508075688772f;
+        float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
+        float worldWidth = static_cast<float>(this->m_hexGrid.width()) * SQRT3 * hexSize;
+        this->m_cameraController.setWorldWidth(worldWidth);
+    }
+
     // -- Count human and AI players --
     uint8_t humanCount = 0;
     uint8_t aiCount    = 0;
@@ -440,6 +448,8 @@ void Application::spectatorAdvanceTurn() {
     turnCtx.economy      = &this->m_economy;
     turnCtx.diplomacy    = &this->m_diplomacy;
     turnCtx.barbarians   = &this->m_barbarianController;
+    turnCtx.dealTracker  = &this->m_dealTracker;
+    turnCtx.allianceTracker = &this->m_allianceTracker;
     turnCtx.rng          = &this->m_gameRng;
     turnCtx.gameState    = &this->m_gameState;
     turnCtx.humanPlayer  = aoc::INVALID_PLAYER;
@@ -1765,7 +1775,7 @@ void Application::handleContextAction() {
             }
             if (!adjacentToOwned) { return; }
 
-            const int32_t dist = aoc::hex::distance(city.location(), targetTile);
+            const int32_t dist = this->m_hexGrid.distance(city.location(), targetTile);
             const int32_t cost = 25 * std::max(1, dist);
 
             // Two-click confirmation: first click shows cost, second click on same tile confirms
@@ -1937,7 +1947,7 @@ void Application::handleContextAction() {
     const aoc::map::TerrainType targetTerrain = this->m_hexGrid.terrain(targetIndex);
     if (!aoc::sim::isNaval(def.unitClass) && unit.state() != aoc::sim::UnitState::Embarked
         && targetTerrain == aoc::map::TerrainType::Coast
-        && hex::distance(unit.position(), targetTile) == 1) {
+        && this->m_hexGrid.distance(unit.position(), targetTile) == 1) {
         (void)aoc::sim::tryEmbark(unit, targetTile, this->m_hexGrid);
         return;
     }
@@ -1945,7 +1955,7 @@ void Application::handleContextAction() {
     // Disembark: embarked unit right-clicking an adjacent land tile
     if (unit.state() == aoc::sim::UnitState::Embarked
         && !aoc::map::isWater(targetTerrain) && !aoc::map::isImpassable(targetTerrain)
-        && hex::distance(unit.position(), targetTile) == 1) {
+        && this->m_hexGrid.distance(unit.position(), targetTile) == 1) {
         (void)aoc::sim::tryDisembark(unit, targetTile, this->m_hexGrid);
         return;
     }
@@ -2069,6 +2079,8 @@ void Application::handleEndTurn() {
         turnCtx.economy = &this->m_economy;
         turnCtx.diplomacy = &this->m_diplomacy;
         turnCtx.barbarians = &this->m_barbarianController;
+        turnCtx.dealTracker = &this->m_dealTracker;
+        turnCtx.allianceTracker = &this->m_allianceTracker;
         turnCtx.rng = &this->m_gameRng;
         turnCtx.gameState = &this->m_gameState;
         turnCtx.humanPlayer = 0;
@@ -2252,7 +2264,7 @@ void Application::handleEndTurn() {
                             continue;
                         }
                         for (const std::unique_ptr<aoc::game::Unit>& otherUnit : otherPlayer->units()) {
-                            if (hex::distance(sleeper.position(), otherUnit->position()) <= 2) {
+                            if (this->m_hexGrid.distance(sleeper.position(), otherUnit->position()) <= 2) {
                                 enemyNearby = true;
                                 break;
                             }
@@ -2290,7 +2302,7 @@ void Application::handleEndTurn() {
                             continue;
                         }
                         const hex::AxialCoord tileCoord = this->m_hexGrid.toAxial(t);
-                        const int32_t dist = hex::distance(unit->position(), tileCoord);
+                        const int32_t dist = this->m_hexGrid.distance(unit->position(), tileCoord);
                         if (dist < bestDist) {
                             bestDist = dist;
                             bestTarget = tileCoord;
@@ -2348,7 +2360,7 @@ void Application::handleEndTurn() {
                             continue;
                         }
                         const hex::AxialCoord tileCoord = this->m_hexGrid.toAxial(t);
-                        const int32_t dist = hex::distance(unit->position(), tileCoord);
+                        const int32_t dist = this->m_hexGrid.distance(unit->position(), tileCoord);
                         if (dist < bestDist) {
                             bestDist = dist;
                             bestTarget = tileCoord;
