@@ -797,38 +797,51 @@ void EconomySimulation::settleTradeInCoins(aoc::game::GameState& gameState) {
         aoc::game::Player* receiverPlayer = gameState.player(receiver);
         if (payerPlayer == nullptr || receiverPlayer == nullptr) { continue; }
 
-        MonetaryStateComponent& payerState = payerPlayer->monetary();
-        MonetaryStateComponent& recvState  = receiverPlayer->monetary();
-
         float efficiency = bilateralTradeEfficiency(gameState, payer, receiver);
         int32_t effectivePayment = static_cast<int32_t>(
             static_cast<float>(paymentValue) * efficiency * 0.05f);
         effectivePayment = std::max(1, effectivePayment);
 
+        // Transfer coins via city stockpiles (not just reserve fields) so that
+        // updateCoinReservesFromStockpiles() picks them up correctly.
+        // Coins are withdrawn from the payer's first city (capital) and deposited
+        // into the receiver's first city. This is how ore-less civs acquire coins:
+        // through trade surpluses (price-specie flow).
+        if (payerPlayer->cities().empty() || receiverPlayer->cities().empty()) { continue; }
+        CityStockpileComponent& payerStock = payerPlayer->cities().front()->stockpile();
+        CityStockpileComponent& recvStock  = receiverPlayer->cities().front()->stockpile();
+
         int32_t remaining = effectivePayment;
 
-        if (remaining > 0 && payerState.goldBarReserves > 0) {
-            int32_t goldToTransfer = std::min(payerState.goldBarReserves,
-                (remaining + GOLD_BAR_VALUE - 1) / GOLD_BAR_VALUE);
-            payerState.goldBarReserves -= goldToTransfer;
-            recvState.goldBarReserves  += goldToTransfer;
-            remaining -= goldToTransfer * GOLD_BAR_VALUE;
+        // Transfer highest-value coins first (gold bars > silver > copper)
+        if (remaining > 0) {
+            int32_t payerGold = payerStock.getAmount(goods::GOLD_BARS);
+            if (payerGold > 0) {
+                int32_t goldToTransfer = std::min(payerGold,
+                    (remaining + GOLD_BAR_VALUE - 1) / GOLD_BAR_VALUE);
+                [[maybe_unused]] bool ok1 = payerStock.consumeGoods(goods::GOLD_BARS, goldToTransfer);
+                recvStock.addGoods(goods::GOLD_BARS, goldToTransfer);
+                remaining -= goldToTransfer * GOLD_BAR_VALUE;
+            }
         }
-        if (remaining > 0 && payerState.silverCoinReserves > 0) {
-            int32_t silverToTransfer = std::min(payerState.silverCoinReserves,
-                (remaining + SILVER_COIN_VALUE - 1) / SILVER_COIN_VALUE);
-            payerState.silverCoinReserves -= silverToTransfer;
-            recvState.silverCoinReserves  += silverToTransfer;
-            remaining -= silverToTransfer * SILVER_COIN_VALUE;
+        if (remaining > 0) {
+            int32_t payerSilver = payerStock.getAmount(goods::SILVER_COINS);
+            if (payerSilver > 0) {
+                int32_t silverToTransfer = std::min(payerSilver,
+                    (remaining + SILVER_COIN_VALUE - 1) / SILVER_COIN_VALUE);
+                [[maybe_unused]] bool ok2 = payerStock.consumeGoods(goods::SILVER_COINS, silverToTransfer);
+                recvStock.addGoods(goods::SILVER_COINS, silverToTransfer);
+                remaining -= silverToTransfer * SILVER_COIN_VALUE;
+            }
         }
-        if (remaining > 0 && payerState.copperCoinReserves > 0) {
-            int32_t copperToTransfer = std::min(payerState.copperCoinReserves, remaining);
-            payerState.copperCoinReserves -= copperToTransfer;
-            recvState.copperCoinReserves  += copperToTransfer;
+        if (remaining > 0) {
+            int32_t payerCopper = payerStock.getAmount(goods::COPPER_COINS);
+            if (payerCopper > 0) {
+                int32_t copperToTransfer = std::min(payerCopper, remaining);
+                [[maybe_unused]] bool ok3 = payerStock.consumeGoods(goods::COPPER_COINS, copperToTransfer);
+                recvStock.addGoods(goods::COPPER_COINS, copperToTransfer);
+            }
         }
-
-        payerState.updateCoinTier();
-        recvState.updateCoinTier();
     }
 }
 
