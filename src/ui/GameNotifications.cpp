@@ -20,7 +20,10 @@
 namespace aoc::ui {
 
 namespace {
-    std::vector<GameNotification> g_pendingNotifications;
+    /// Thread-local queue so parallel headless simulations (GA fitness eval)
+    /// don't race on a shared vector. The game UI runs single-threaded, so
+    /// thread_local behaves identically to a global for interactive play.
+    thread_local std::vector<GameNotification> g_pendingNotifications;
 }
 
 void pushNotification(const GameNotification& notification) {
