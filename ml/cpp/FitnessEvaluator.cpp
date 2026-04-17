@@ -375,16 +375,24 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
 }
 
 float evaluateFitness(const Individual& individual,
-                       int32_t gamesPerEval,
-                       int32_t turnsPerGame,
-                       int32_t playerCount,
+                       const GAConfig& config,
                        uint64_t baseSeed) {
     float totalScore = 0.0f;
     int32_t validGames = 0;
 
-    for (int32_t game = 0; game < gamesPerEval; ++game) {
+    for (int32_t game = 0; game < config.gamesPerEval; ++game) {
         uint64_t gameSeed = baseSeed + static_cast<uint64_t>(game) * 7919;
-        SimulationResult simResult = runSimulation(turnsPerGame, playerCount, gameSeed);
+
+        int32_t turns = config.turnsList.empty()
+            ? config.turnsPerGame
+            : config.turnsList[static_cast<std::size_t>(game)
+                                % config.turnsList.size()];
+        int32_t playerCount = config.playersList.empty()
+            ? config.playerCount
+            : config.playersList[static_cast<std::size_t>(game)
+                                  % config.playersList.size()];
+
+        SimulationResult simResult = runSimulation(turns, playerCount, gameSeed);
 
         if (!simResult.valid || simResult.eraVP.empty()) {
             continue;
@@ -451,8 +459,7 @@ void evaluatePopulation(std::vector<Individual>& population,
         for (std::size_t idx : toEvaluate) {
             uint64_t individualSeed = baseSeed + idx * 104729;
             population[idx].fitness = evaluateFitness(
-                population[idx], config.gamesPerEval, config.turnsPerGame,
-                config.playerCount, individualSeed);
+                population[idx], config, individualSeed);
             population[idx].gamesPlayed = config.gamesPerEval;
         }
         return;
@@ -471,8 +478,7 @@ void evaluatePopulation(std::vector<Individual>& population,
                                idx, baseSeed]() {
             uint64_t individualSeed = baseSeed + idx * 104729;
             float fitness = evaluateFitness(
-                population[idx], config.gamesPerEval, config.turnsPerGame,
-                config.playerCount, individualSeed);
+                population[idx], config, individualSeed);
 
             {
                 std::lock_guard<std::mutex> lock(resultMutex);

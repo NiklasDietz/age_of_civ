@@ -74,6 +74,15 @@ struct GAConfig {
     float   mutationSigma   = 0.15f;
     float   resetRate       = 0.1f;   ///< Probability of reset mutation vs Gaussian
     int32_t threadCount     = 0;      ///< 0 = auto-detect
+
+    /// Optional per-game turn counts. When non-empty, game k uses
+    /// turnsList[k % turnsList.size()] instead of turnsPerGame. Enables
+    /// mixed-size training (short + long games in one fitness eval).
+    std::vector<int32_t> turnsList;
+
+    /// Optional per-game player counts. When non-empty, game k uses
+    /// playersList[k % playersList.size()] instead of playerCount.
+    std::vector<int32_t> playersList;
 };
 
 /// Difficulty tier results.

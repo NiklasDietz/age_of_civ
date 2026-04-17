@@ -13,8 +13,10 @@
 #include "FitnessEvaluator.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -27,15 +29,25 @@
 
 namespace {
 
+/// Set by SIGINT/SIGTERM handler to request graceful shutdown between generations.
+std::atomic<bool> g_stopRequested{false};
+
+extern "C" void gaSignalHandler(int /*sig*/) {
+    g_stopRequested.store(true, std::memory_order_release);
+}
+
 struct CLIArgs {
     int32_t generations  = 50;
     int32_t population   = 20;
     int32_t gamesPerEval = 3;
     int32_t turnsPerGame = 200;
+    int32_t playerCount  = 8;
     int32_t workers      = 0;
     bool    quick        = false;
     uint64_t seed        = 0;
     bool    seedProvided = false;
+    std::vector<int32_t> turnsList;
+    std::vector<int32_t> playersList;
 };
 
 /// Parse a single integer argument. Returns false on failure.
@@ -51,6 +63,37 @@ struct CLIArgs {
     return true;
 }
 
+/// Parse a comma-separated list of positive integers (e.g. "150,250,400").
+[[nodiscard]] bool parseIntList(const char* value, std::vector<int32_t>& out,
+                                 const char* name) {
+    out.clear();
+    const char* p = value;
+    while (*p != '\0') {
+        char* endPtr = nullptr;
+        long parsed = std::strtol(p, &endPtr, 10);
+        if (endPtr == p || parsed <= 0) {
+            std::fprintf(stderr,
+                "[Error] Invalid integer in %s: '%s' (expected comma-separated positive ints)\n",
+                name, value);
+            return false;
+        }
+        out.push_back(static_cast<int32_t>(parsed));
+        p = endPtr;
+        if (*p == ',') {
+            ++p;
+        } else if (*p != '\0') {
+            std::fprintf(stderr,
+                "[Error] Invalid separator in %s: '%s' (use commas)\n", name, value);
+            return false;
+        }
+    }
+    if (out.empty()) {
+        std::fprintf(stderr, "[Error] %s is empty\n", name);
+        return false;
+    }
+    return true;
+}
+
 /// Parse command-line arguments. Returns false on error.
 [[nodiscard]] bool parseCLI(int argc, char* argv[], CLIArgs& args) {
     for (int i = 1; i < argc; ++i) {
@@ -61,14 +104,19 @@ struct CLIArgs {
                 "Usage: aoc_evolve [OPTIONS]\n"
                 "\n"
                 "Options:\n"
-                "  --generations N   Number of GA generations (default: 50)\n"
-                "  --population N    Population size (default: 20)\n"
-                "  --games N         Games per fitness evaluation (default: 3)\n"
-                "  --turns N         Turns per simulation game (default: 200)\n"
-                "  --workers N       Thread count (0 = auto-detect, default: 0)\n"
-                "  --seed N          RNG seed (default: random)\n"
-                "  --quick           Quick test: 5 gens, 10 pop, 2 games, 150 turns\n"
-                "  --help, -h        Show this help message\n");
+                "  --generations N       Number of GA generations (default: 50)\n"
+                "  --population N        Population size (default: 20)\n"
+                "  --games N             Games per fitness evaluation (default: 3)\n"
+                "  --turns N             Turns per simulation game (default: 200)\n"
+                "  --players N           Players per game (default: 8)\n"
+                "  --turns-list A,B,C    Mixed turn counts, cycled per game\n"
+                "                        (e.g. 150,250,400). Overrides --turns.\n"
+                "  --players-list A,B,C  Mixed player counts, cycled per game\n"
+                "                        (e.g. 4,6,8). Overrides --players.\n"
+                "  --workers N           Thread count (0 = auto-detect, default: 0)\n"
+                "  --seed N              RNG seed (default: random)\n"
+                "  --quick               Quick test: 5 gens, 10 pop, 2 games, 150 turns\n"
+                "  --help, -h            Show this help message\n");
             return false;
         } else if (i + 1 < argc) {
             if (std::strcmp(argv[i], "--generations") == 0) {
@@ -79,6 +127,12 @@ struct CLIArgs {
                 if (!parseIntArg(argv[++i], args.gamesPerEval, "--games")) { return false; }
             } else if (std::strcmp(argv[i], "--turns") == 0) {
                 if (!parseIntArg(argv[++i], args.turnsPerGame, "--turns")) { return false; }
+            } else if (std::strcmp(argv[i], "--players") == 0) {
+                if (!parseIntArg(argv[++i], args.playerCount, "--players")) { return false; }
+            } else if (std::strcmp(argv[i], "--turns-list") == 0) {
+                if (!parseIntList(argv[++i], args.turnsList, "--turns-list")) { return false; }
+            } else if (std::strcmp(argv[i], "--players-list") == 0) {
+                if (!parseIntList(argv[++i], args.playersList, "--players-list")) { return false; }
             } else if (std::strcmp(argv[i], "--workers") == 0) {
                 char* endPtr = nullptr;
                 long parsed = std::strtol(argv[++i], &endPtr, 10);
@@ -172,6 +226,10 @@ int main(int argc, char* argv[]) {
         args.turnsPerGame = 150;
     }
 
+    // Register signal handlers for graceful shutdown (Ctrl-C / kill).
+    std::signal(SIGINT,  gaSignalHandler);
+    std::signal(SIGTERM, gaSignalHandler);
+
     // Seed RNG
     uint64_t masterSeed = args.seed;
     if (!args.seedProvided) {
@@ -179,6 +237,17 @@ int main(int argc, char* argv[]) {
         masterSeed = (static_cast<uint64_t>(rd()) << 32) | static_cast<uint64_t>(rd());
     }
     std::mt19937 rng(masterSeed);
+
+    // Auto-bump gamesPerEval so every list entry is sampled at least once.
+    {
+        std::size_t listMax = std::max(args.turnsList.size(), args.playersList.size());
+        if (listMax > 0 && static_cast<std::size_t>(args.gamesPerEval) < listMax) {
+            args.gamesPerEval = static_cast<int32_t>(listMax);
+            std::fprintf(stderr,
+                "[Config] Bumped --games to %d to cover all list entries.\n",
+                args.gamesPerEval);
+        }
+    }
 
     // Print banner
     std::fprintf(stderr, "============================================================\n");
@@ -188,7 +257,20 @@ int main(int argc, char* argv[]) {
                  args.population, args.generations, args.gamesPerEval);
     std::fprintf(stderr, "  Genome: %d parameters (LeaderBehavior)\n", aoc::ga::NUM_PARAMS);
     std::fprintf(stderr, "  Elitism: top 2 preserved\n");
-    std::fprintf(stderr, "  Turns per game: %d\n", args.turnsPerGame);
+    if (args.turnsList.empty()) {
+        std::fprintf(stderr, "  Turns per game: %d\n", args.turnsPerGame);
+    } else {
+        std::fprintf(stderr, "  Turns per game (cycled):");
+        for (int32_t t : args.turnsList) { std::fprintf(stderr, " %d", t); }
+        std::fprintf(stderr, "\n");
+    }
+    if (args.playersList.empty()) {
+        std::fprintf(stderr, "  Players per game: %d\n", args.playerCount);
+    } else {
+        std::fprintf(stderr, "  Players per game (cycled):");
+        for (int32_t p : args.playersList) { std::fprintf(stderr, " %d", p); }
+        std::fprintf(stderr, "\n");
+    }
     std::fprintf(stderr, "  Seed: %llu\n", static_cast<unsigned long long>(masterSeed));
 
     // Build GA config
@@ -197,7 +279,9 @@ int main(int argc, char* argv[]) {
     config.generations    = args.generations;
     config.gamesPerEval   = args.gamesPerEval;
     config.turnsPerGame   = args.turnsPerGame;
-    config.playerCount    = 8;
+    config.playerCount    = args.playerCount;
+    config.turnsList      = args.turnsList;
+    config.playersList    = args.playersList;
     config.elitism        = 2;
     config.tournamentSize = 3;
     config.mutationRate   = 0.2f;
@@ -265,6 +349,22 @@ int main(int argc, char* argv[]) {
                      static_cast<double>(top.genes[4]),   // economicFocus
                      static_cast<double>(top.genes[15]),  // prodSettlers
                      static_cast<double>(top.genes[16])); // prodMilitary
+
+        // Per-generation checkpoint: overwrite so the latest tiers are always on disk.
+        // If the run is killed mid-evolution the user still has usable weights.
+        {
+            aoc::ga::DifficultyTiers checkpointTiers = aoc::ga::extractTiers(population);
+            saveSummary(checkpointTiers, "ga_checkpoint.txt");
+        }
+
+        // Graceful shutdown: handle SIGINT/SIGTERM between generations.
+        if (g_stopRequested.load(std::memory_order_acquire)) {
+            std::fprintf(stderr,
+                "\n[Signal] Stop requested after generation %d. "
+                "Writing final summary from current population.\n",
+                gen + 1);
+            break;
+        }
 
         // Skip breeding on last generation
         if (gen == args.generations - 1) {
