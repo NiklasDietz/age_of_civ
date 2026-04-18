@@ -45,6 +45,8 @@ struct CLIArgs {
     int32_t playerCount  = 8;
     int32_t workers      = 0;
     bool    quick        = false;
+    bool    trackBestGen = false;  ///< Log generation index + elapsed time
+                                   ///< for each new best-ever fitness.
     uint64_t seed        = 0;
     bool    seedProvided = false;
     std::vector<int32_t> turnsList;
@@ -100,6 +102,8 @@ struct CLIArgs {
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--quick") == 0) {
             args.quick = true;
+        } else if (std::strcmp(argv[i], "--track-best-gen") == 0) {
+            args.trackBestGen = true;
         } else if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
             std::fprintf(stderr,
                 "Usage: aoc_evolve [OPTIONS]\n"
@@ -117,6 +121,11 @@ struct CLIArgs {
                 "  --workers N           Thread count (0 = auto-detect, default: 0)\n"
                 "  --seed N              RNG seed (default: random)\n"
                 "  --quick               Quick test: 5 gens, 10 pop, 2 games, 150 turns\n"
+                "  --track-best-gen      Log the generation at which each new\n"
+                "                        best-ever fitness was reached, and print\n"
+                "                        a final summary of convergence. Use this\n"
+                "                        on long runs to learn how many generations\n"
+                "                        you actually need.\n"
                 "  --help, -h            Show this help message\n");
             return false;
         } else if (i + 1 < argc) {
@@ -305,6 +314,18 @@ int main(int argc, char* argv[]) {
 
     float bestEverFitness = -1e9f;
     aoc::ga::Individual bestEver{};
+    int32_t bestEverGen = -1;
+    double  bestEverElapsed = 0.0;
+
+    // Convergence history: (generation, bestEver so far). Only populated when
+    // --track-best-gen is on. Lets the final summary report when the best
+    // genome was actually found so the user can right-size future runs.
+    struct BestGenEntry {
+        int32_t gen;
+        float   fitness;
+        double  elapsedSec;
+    };
+    std::vector<BestGenEntry> bestGenHistory;
 
     // Rolling window of recent generation durations for ETA.
     std::deque<double> recentGenSeconds;
@@ -371,6 +392,14 @@ int main(int argc, char* argv[]) {
         if (genBest > bestEverFitness) {
             bestEverFitness = genBest;
             bestEver = population.front();
+            bestEverGen = gen + 1;
+            bestEverElapsed = totalElapsed;
+            if (args.trackBestGen) {
+                bestGenHistory.push_back({gen + 1, genBest, totalElapsed});
+                std::fprintf(stderr,
+                    "  [NewBest] gen %d fitness=%.4f at %.1fs\n",
+                    gen + 1, static_cast<double>(genBest), totalElapsed);
+            }
         }
 
         // Cross-gen ASCII progress bar + ETA
@@ -481,6 +510,31 @@ int main(int argc, char* argv[]) {
 
     std::fprintf(stderr, "\n[Done] Best ever fitness: %.4f\n",
                  static_cast<double>(bestEverFitness));
+
+    if (args.trackBestGen) {
+        std::fprintf(stderr, "\n============================================================\n");
+        std::fprintf(stderr, "CONVERGENCE SUMMARY\n");
+        std::fprintf(stderr, "============================================================\n");
+        if (bestEverGen > 0) {
+            std::fprintf(stderr,
+                "Best-ever fitness %.4f first reached at generation %d of %d (%.1fs).\n",
+                static_cast<double>(bestEverFitness), bestEverGen,
+                args.generations, bestEverElapsed);
+            const int32_t wastedGens = args.generations - bestEverGen;
+            if (wastedGens > 0) {
+                std::fprintf(stderr,
+                    "%d generation(s) after the best did not improve -- consider "
+                    "running ~%d generations next time.\n",
+                    wastedGens, bestEverGen);
+            }
+        }
+        std::fprintf(stderr, "\nNew-best timeline (%zu entries):\n",
+                     bestGenHistory.size());
+        for (const BestGenEntry& e : bestGenHistory) {
+            std::fprintf(stderr, "  gen %4d  fit=%.4f  t=%.1fs\n",
+                         e.gen, static_cast<double>(e.fitness), e.elapsedSec);
+        }
+    }
 
     return 0;
 }
