@@ -27,7 +27,7 @@ struct ImprovementDef {
 };
 
 /// Hard-coded improvement definitions.
-inline constexpr std::array<ImprovementDef, 21> IMPROVEMENT_DEFS = {{
+inline constexpr std::array<ImprovementDef, 22> IMPROVEMENT_DEFS = {{
     {aoc::map::ImprovementType::Farm,         "Farm",          {1, 0, 0, 0, 0, 0}, TechId{},   3},
     {aoc::map::ImprovementType::Mine,         "Mine",          {0, 1, 0, 0, 0, 0}, TechId{0},  3},
     {aoc::map::ImprovementType::Plantation,   "Plantation",    {0, 0, 1, 0, 0, 0}, TechId{},   4},
@@ -49,6 +49,7 @@ inline constexpr std::array<ImprovementDef, 21> IMPROVEMENT_DEFS = {{
     {aoc::map::ImprovementType::CottonField,  "Cotton Field",  {0, 1, 1, 0, 0, 0}, TechId{},   3}, // +1 prod, +1 gold
     {aoc::map::ImprovementType::Workshop,     "Workshop",      {0, 2, 1, 0, 0, 0}, TechId{0},  5}, // +2 prod, +1 gold (manufactured goods)
     {aoc::map::ImprovementType::Canal,        "Canal",         {0, 0, 2, 0, 0, 0}, TechId{11}, 0}, // +2 gold (toll revenue). Requires Industrialization. Built via terrain project, not builder.
+    {aoc::map::ImprovementType::MountainMine, "Mountain Mine", {0, 1, 0, 0, 0, 0}, TechId{0},  5}, // +1 prod. Mountain + metal resource + adjacent owned land. Requires Mining.
     {aoc::map::ImprovementType::None,         "None",          {0, 0, 0, 0, 0, 0}, TechId{},   0},
 }};
 

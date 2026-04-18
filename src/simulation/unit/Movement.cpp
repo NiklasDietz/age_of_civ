@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/unit/Movement.hpp"
+#include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
@@ -157,6 +158,15 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
         unit.animProgress = 0.0f;
         unit.animFrom     = oldPosition;
         unit.animTo       = nextTile;
+
+        if (unitIsMilitary) {
+            aoc::sim::VisibilityEvent ev{};
+            ev.type = aoc::sim::VisibilityEventType::EnemyUnitSpotted;
+            ev.location = nextTile;
+            ev.actor = unit.owner();
+            ev.payload = static_cast<int32_t>(unit.typeId().value);
+            gameState.visibilityBus().emit(ev);
+        }
 
         // City capture: a military unit stepping onto an enemy city captures it
         if (unitIsMilitary) {

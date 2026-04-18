@@ -33,6 +33,7 @@
 #include "aoc/simulation/barbarian/BarbarianClans.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
+#include "aoc/simulation/event/VisibilityEvents.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -109,6 +110,9 @@ public:
     [[nodiscard]] aoc::sim::GlobalReligionTracker& religionTracker() { return this->m_religionTracker; }
     [[nodiscard]] const aoc::sim::GlobalReligionTracker& religionTracker() const { return this->m_religionTracker; }
 
+    [[nodiscard]] aoc::sim::VisibilityEventBus& visibilityBus() { return this->m_visibilityBus; }
+    [[nodiscard]] const aoc::sim::VisibilityEventBus& visibilityBus() const { return this->m_visibilityBus; }
+
     // ========================================================================
     // Global collections
     // ========================================================================
@@ -137,6 +141,7 @@ private:
     aoc::sim::GlobalWonderTracker m_wonderTracker;
     aoc::sim::WorldCongressComponent m_worldCongress;
     aoc::sim::GlobalReligionTracker m_religionTracker;
+    aoc::sim::VisibilityEventBus m_visibilityBus;
 
     // Global collections
     std::vector<aoc::sim::TradeRouteComponent> m_tradeRoutes;

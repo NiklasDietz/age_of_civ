@@ -17,6 +17,7 @@
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/economy/AdvancedEconomics.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
+#include "aoc/simulation/automation/Automation.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
@@ -752,6 +753,13 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             if (trader.maxTrips > 0 && trader.completedTrips >= trader.maxTrips) {
                 LOG_INFO("Trade route expired after %d trips (player %u)",
                          trader.completedTrips, static_cast<unsigned>(trader.owner));
+                if (unitPtr->autoRenewRoute) {
+                    queueAutoRenewRequest(gameState, trader.owner,
+                                          trader.originCityLocation,
+                                          trader.destCityLocation,
+                                          trader.destOwner,
+                                          trader.routeType);
+                }
                 toRemove.push_back(unitPtr);
                 continue;
             }
@@ -802,6 +810,14 @@ CurrencyAmount pillageTrader(aoc::game::GameState& gameState,
              static_cast<unsigned>(pillager),
              static_cast<long long>(totalValue),
              static_cast<unsigned>(trader.owner));
+
+    if (traderUnit->autoRenewRoute) {
+        queueAutoRenewRequest(gameState, trader.owner,
+                              trader.originCityLocation,
+                              trader.destCityLocation,
+                              trader.destOwner,
+                              trader.routeType);
+    }
 
     aoc::game::Player* traderOwner = gameState.player(traderUnit->owner());
     if (traderOwner != nullptr) {

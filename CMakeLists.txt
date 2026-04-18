@@ -6,12 +6,63 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Use ccache if available
-find_program(CCACHE_PROGRAM ccache)
-if(CCACHE_PROGRAM)
-    set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
-    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
-    message(STATUS "Using ccache: ${CCACHE_PROGRAM}")
+# --------------------------------------------------------------------------
+# Platform detection (single source of truth for per-OS logic below)
+# --------------------------------------------------------------------------
+# AOC_PLATFORM_LINUX     -- desktop Linux (not Apple)
+# AOC_PLATFORM_WINDOWS   -- Win32 (MSVC or MinGW)
+# AOC_PLATFORM_MACOS     -- Apple/macOS (Vulkan supplied by MoltenVK)
+set(AOC_PLATFORM_LINUX   FALSE)
+set(AOC_PLATFORM_WINDOWS FALSE)
+set(AOC_PLATFORM_MACOS   FALSE)
+if(WIN32)
+    set(AOC_PLATFORM_WINDOWS TRUE)
+    message(STATUS "Target platform: Windows (${CMAKE_CXX_COMPILER_ID})")
+elseif(APPLE)
+    set(AOC_PLATFORM_MACOS TRUE)
+    message(STATUS "Target platform: macOS (Vulkan via MoltenVK)")
+elseif(UNIX)
+    set(AOC_PLATFORM_LINUX TRUE)
+    message(STATUS "Target platform: Linux/Unix")
+else()
+    message(FATAL_ERROR "Unsupported platform. Expected Linux, Windows, or macOS.")
+endif()
+
+# Use ccache if available (available on all three platforms; on Windows via
+# choco/scoop install ccache). Skipped automatically on MSVC since CMake's
+# ccache integration with the MSVC frontend is brittle -- users who want it
+# should configure it explicitly.
+if(NOT MSVC)
+    find_program(CCACHE_PROGRAM ccache)
+    if(CCACHE_PROGRAM)
+        set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+        set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+        message(STATUS "Using ccache: ${CCACHE_PROGRAM}")
+    endif()
+endif()
+
+# --------------------------------------------------------------------------
+# Windows / MSVC baseline: keep std:: headers sane and match our C++20 mode.
+# --------------------------------------------------------------------------
+if(MSVC)
+    # /utf-8   -- treat source + execution as UTF-8 (matches Linux default).
+    # /Zc:__cplusplus -- report the real C++ standard in __cplusplus.
+    # /Zc:preprocessor -- conforming preprocessor (needed for some macros).
+    # /EHsc    -- standard C++ exception model.
+    # NOMINMAX -- kill the Windows.h min/max macros that break std::min/max.
+    # WIN32_LEAN_AND_MEAN -- drop rarely-needed Win32 headers to cut build time.
+    add_compile_options(/utf-8 /Zc:__cplusplus /Zc:preprocessor /EHsc)
+    add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
+    # MSVC's parallel compile-per-target (separate from CMake's -j).
+    add_compile_options(/MP)
+endif()
+
+# On macOS + AppleClang the default deployment target can be too low for C++20
+# library features (<filesystem>, <ranges>). Require 11.0 which covers all the
+# Vulkan-capable Macs (Intel Big Sur+, Apple Silicon from day one).
+if(AOC_PLATFORM_MACOS AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING
+        "Minimum macOS version required to run the build" FORCE)
 endif()
 
 # --------------------------------------------------------------------------
@@ -28,11 +79,60 @@ option(AOC_HEADLESS "Build without Vulkan/GLFW (sim + GA tools only)" OFF)
 # --------------------------------------------------------------------------
 
 if(NOT AOC_HEADLESS)
-    # Vulkan renderer submodule (builds as C++17 internally, that is fine)
+    # ---- Vulkan SDK discovery ---------------------------------------------
+    # find_package(Vulkan) is called again inside third_party/vulkan_renderer
+    # and vulkan_utils, but we call it here first so we can report a helpful
+    # error message early if the SDK is missing on Windows / macOS.
+    #
+    # Platform notes:
+    #   Linux   -- vulkan-loader + vulkan-headers from distro packages.
+    #   Windows -- VULKAN_SDK env var points at C:\VulkanSDK\<ver>. CMake's
+    #              FindVulkan reads $ENV{VULKAN_SDK} automatically.
+    #   macOS   -- LunarG SDK ships MoltenVK (libvulkan.1.dylib + ICD).
+    #              Homebrew's molten-vk + vulkan-headers also works.
+    if(AOC_PLATFORM_WINDOWS AND NOT DEFINED ENV{VULKAN_SDK})
+        message(WARNING
+            "VULKAN_SDK environment variable is not set. Install the LunarG "
+            "Vulkan SDK from https://vulkan.lunarg.com/sdk/home#windows and "
+            "re-run cmake from a shell where VULKAN_SDK is exported.")
+    endif()
+    if(AOC_PLATFORM_MACOS AND NOT DEFINED ENV{VULKAN_SDK})
+        message(STATUS
+            "VULKAN_SDK not set -- relying on find_package(Vulkan) to locate "
+            "MoltenVK via the system loader (Homebrew molten-vk) or LunarG SDK.")
+    endif()
+    find_package(Vulkan REQUIRED)
+    message(STATUS "Vulkan library: ${Vulkan_LIBRARY}")
+    message(STATUS "Vulkan includes: ${Vulkan_INCLUDE_DIR}")
+
+    # Vulkan renderer submodule (builds as C++17 internally, that is fine).
+    # This subdir calls find_package(Vulkan) again -- harmless, it caches.
     add_subdirectory(third_party/vulkan_renderer)
 
-    # GLFW -- required for windowing
+    # GLFW -- required for windowing. Discovery differs per platform:
+    #   Linux   -- find_package(glfw3) via distro's glfw3Config.cmake.
+    #   macOS   -- Homebrew installs the same config (glfw formula).
+    #   Windows -- easiest path is vcpkg (vcpkg install glfw3), which drops
+    #              the config files in the vcpkg CMake toolchain. Standalone
+    #              builds must set glfw3_DIR to <glfw>/lib/cmake/glfw3.
     find_package(glfw3 REQUIRED)
+
+    # macOS-specific: MoltenVK runs on top of Metal, so every binary that
+    # links Vulkan transitively needs a handful of Apple frameworks. We
+    # collect them here and attach them to aoc_lib once the target exists.
+    if(AOC_PLATFORM_MACOS)
+        find_library(AOC_COCOA_FRAMEWORK     Cocoa     REQUIRED)
+        find_library(AOC_IOKIT_FRAMEWORK     IOKit     REQUIRED)
+        find_library(AOC_QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
+        find_library(AOC_METAL_FRAMEWORK     Metal     REQUIRED)
+        find_library(AOC_FOUNDATION_FRAMEWORK Foundation REQUIRED)
+        set(AOC_MACOS_FRAMEWORKS
+            ${AOC_COCOA_FRAMEWORK}
+            ${AOC_IOKIT_FRAMEWORK}
+            ${AOC_QUARTZCORE_FRAMEWORK}
+            ${AOC_METAL_FRAMEWORK}
+            ${AOC_FOUNDATION_FRAMEWORK})
+    endif()
 endif()
 
 # --------------------------------------------------------------------------
@@ -129,6 +229,7 @@ set(AOC_LIB_SOURCES
     src/simulation/unit/ZoneOfControl.cpp
     src/simulation/unit/Promotion.cpp
     src/simulation/event/WorldEvents.cpp
+    src/simulation/event/VisibilityEvents.cpp
     src/simulation/barbarian/BarbarianController.cpp
     src/simulation/barbarian/BarbarianClans.cpp
     src/simulation/climate/NaturalDisasters.cpp
@@ -300,9 +401,34 @@ if(NOT AOC_HEADLESS)
             vulkan_renderer_lib
             glfw
     )
+    # macOS: MoltenVK sits on top of Metal/QuartzCore/Cocoa/IOKit.
+    # These frameworks are needed at link time for any binary that ends up
+    # touching the Vulkan loader.
+    if(AOC_PLATFORM_MACOS)
+        target_link_libraries(aoc_lib PUBLIC ${AOC_MACOS_FRAMEWORKS})
+    endif()
 else()
     target_compile_definitions(aoc_lib PUBLIC AOC_HEADLESS_BUILD)
 endif()
+
+# --------------------------------------------------------------------------
+# Platform system libraries needed by aoc_lib's own code
+# --------------------------------------------------------------------------
+# Linux/macOS: dlopen/dlsym for Lua and runtime shader compiler loading
+# (the vulkan_utils submodule already pulls ${CMAKE_DL_LIBS} for itself, but
+# our own translation units may also need it in the future).
+#
+# Windows: link ws2_32/iphlpapi defensively so the net/ stub compiles now
+# and real socket code added later doesn't require a second CMake change.
+if(AOC_PLATFORM_WINDOWS)
+    target_link_libraries(aoc_lib PUBLIC ws2_32 iphlpapi)
+elseif(AOC_PLATFORM_LINUX)
+    target_link_libraries(aoc_lib PUBLIC ${CMAKE_DL_LIBS})
+endif()
+
+# std::thread, std::jthread, std::counting_semaphore
+find_package(Threads REQUIRED)
+target_link_libraries(aoc_lib PUBLIC Threads::Threads)
 
 target_compile_features(aoc_lib PUBLIC cxx_std_20)
 
@@ -367,7 +493,28 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         -pipe
     )
 elseif(MSVC)
-    target_compile_options(aoc_lib PRIVATE /W4 /permissive-)
+    # /W4 is the practical max; /Wall floods with noise from system headers.
+    # /permissive- enforces standard-conforming C++ (two-phase name lookup etc).
+    # /wd4244 /wd4267: narrowing warnings that map to -Wconversion, already
+    #     reported by Clang/GCC builds; avoid double-noise on MSVC dev boxes.
+    target_compile_options(aoc_lib PRIVATE /W4 /permissive- /wd4244 /wd4267)
+endif()
+
+# --------------------------------------------------------------------------
+# Shader toolchain (glslangValidator / glslc) -- informational check
+# --------------------------------------------------------------------------
+# The renderer compiles GLSL -> SPIR-V at runtime via libshaderc
+# (vulkan_utils/ShaderBuilder.cpp loads it via dlopen/LoadLibrary). No build-
+# time shader compilation is wired up, so we only emit a status message if
+# the SDK-provided CLI tools are visible. Find_program looks on PATH, which
+# the LunarG SDK installers populate on all three platforms.
+find_program(AOC_GLSLANG_VALIDATOR glslangValidator)
+find_program(AOC_GLSLC glslc)
+if(AOC_GLSLANG_VALIDATOR)
+    message(STATUS "Found glslangValidator: ${AOC_GLSLANG_VALIDATOR}")
+endif()
+if(AOC_GLSLC)
+    message(STATUS "Found glslc: ${AOC_GLSLC}")
 endif()
 
 # --------------------------------------------------------------------------

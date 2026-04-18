@@ -60,6 +60,9 @@ enum class ImprovementType : uint8_t {
     CottonField,///< Grassland/Plains. Produces cotton (strategic). Renewable.
     Workshop,   ///< Any land. Produces tools/consumer goods (+2 production, +1 gold).
     Canal,      ///< Artificial waterway: ships can traverse. Built via city terrain project.
+    MountainMine, ///< Mountain-only metal extraction. Requires mountain tile with a metal
+                  ///< resource and at least one adjacent non-mountain tile owned by the
+                  ///< builder's player. Does not make the mountain passable for units.
 
     Count
 };

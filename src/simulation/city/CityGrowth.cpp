@@ -237,8 +237,21 @@ static void processSingleCityGrowth(aoc::game::City& city,
             if (alreadyWorked) { continue; }
 
             int32_t idx = grid.toIndex(tile);
-            if (aoc::map::isWater(grid.terrain(idx)) || aoc::map::isImpassable(grid.terrain(idx))) {
-                continue;
+            {
+                const aoc::map::TerrainType nTerrain = grid.terrain(idx);
+                if (aoc::map::isWater(nTerrain)) { continue; }
+                if (aoc::map::isImpassable(nTerrain)) {
+                    // Mountain tiles with mountain-mineable metals are workable,
+                    // everything else impassable (deep ocean, shallow water) is not.
+                    const ResourceId mRes = grid.resource(idx);
+                    const bool workableMountain =
+                        (nTerrain == aoc::map::TerrainType::Mountain
+                         && mRes.isValid()
+                         && aoc::sim::isMountainMetal(mRes.value));
+                    if (!workableMountain) {
+                        continue;
+                    }
+                }
             }
             // Only work tiles owned by this city's player
             if (grid.owner(idx) != city.owner()) { continue; }
@@ -260,6 +273,12 @@ static void processSingleCityGrowth(aoc::game::City& city,
                 if (resId == aoc::sim::goods::COPPER_ORE
                     || resId == aoc::sim::goods::SILVER_ORE) {
                     value += 8.0f;
+                }
+                // Mountain metal tiles have zero terrain yield, so without a boost
+                // they would never beat food tiles. Keep them competitive.
+                if (grid.terrain(idx) == aoc::map::TerrainType::Mountain
+                    && aoc::sim::isMountainMetal(resId)) {
+                    value += 6.0f;
                 }
             }
             if (value > bestYieldValue) {

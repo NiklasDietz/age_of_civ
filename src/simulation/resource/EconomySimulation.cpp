@@ -127,7 +127,8 @@ void EconomySimulation::harvestResources(aoc::game::GameState& gameState,
                 }
 
                 int32_t yield = 1;
-                if (imp == aoc::map::ImprovementType::Mine) {
+                if (imp == aoc::map::ImprovementType::Mine
+                    || imp == aoc::map::ImprovementType::MountainMine) {
                     yield = 2;
                 } else if (imp == aoc::map::ImprovementType::Plantation
                            || imp == aoc::map::ImprovementType::Camp

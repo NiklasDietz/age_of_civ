@@ -12,6 +12,7 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/map/Improvement.hpp"
+#include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 
@@ -103,6 +104,43 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
             }
         }
 
+        // Step 1b: If standing on an owned land tile next to an unmined mountain
+        // metal deposit, build a Mountain Mine there. The mountain itself is
+        // impassable, so the builder stays where it is; the improvement is
+        // applied to the adjacent mountain tile.
+        if (grid.owner(currentIdx) == this->m_player &&
+            grid.movementCost(currentIdx) > 0) {
+            const std::array<aoc::hex::AxialCoord, 6> mountainNbrs =
+                aoc::hex::neighbors(builder.position);
+            bool builtMountainMine = false;
+            for (const aoc::hex::AxialCoord& nbr : mountainNbrs) {
+                if (!grid.isValid(nbr)) { continue; }
+                const int32_t nbrIdx = grid.toIndex(nbr);
+                if (grid.terrain(nbrIdx) != aoc::map::TerrainType::Mountain) { continue; }
+                if (grid.improvement(nbrIdx) != aoc::map::ImprovementType::None) { continue; }
+                if (!canPlaceImprovement(grid, nbrIdx, aoc::map::ImprovementType::MountainMine)) {
+                    continue;
+                }
+                grid.setImprovement(nbrIdx, aoc::map::ImprovementType::MountainMine);
+                // Claim the mountain tile for the player so the city can work it.
+                if (grid.owner(nbrIdx) == INVALID_PLAYER) {
+                    grid.setOwner(nbrIdx, this->m_player);
+                }
+                builder.ptr->useCharge();
+                LOG_INFO("AI %u Builder built Mountain Mine on adjacent mountain (%d,%d)",
+                         static_cast<unsigned>(this->m_player),
+                         nbr.q, nbr.r);
+                builtMountainMine = true;
+                if (!builder.ptr->hasCharges()) {
+                    gsPlayer->removeUnit(builder.ptr);
+                }
+                break;
+            }
+            if (builtMountainMine) {
+                continue;
+            }
+        }
+
         // Step 2: Find nearest unimproved owned tile near any city
         aoc::hex::AxialCoord bestTarget = builder.position;
         int32_t bestDist = std::numeric_limits<int32_t>::max();
@@ -164,6 +202,12 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                 LOG_INFO("AI %u Builder prospected and found resource at (%d,%d)",
                          static_cast<unsigned>(this->m_player),
                          builder.position.q, builder.position.r);
+                aoc::sim::VisibilityEvent ev{};
+                ev.type = aoc::sim::VisibilityEventType::ResourceRevealed;
+                ev.location = builder.position;
+                ev.actor = this->m_player;
+                ev.payload = static_cast<int32_t>(grid.resource(prospectIdx).value);
+                gameState.visibilityBus().emit(ev);
             }
             continue;
         }

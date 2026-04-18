@@ -20,8 +20,9 @@ bool canPlaceImprovement(const aoc::map::HexGrid& grid,
         return false;
     }
 
-    // Cannot improve mountains
-    if (terrain == aoc::map::TerrainType::Mountain) {
+    // Mountains only accept MountainMine; everything else is blocked.
+    if (terrain == aoc::map::TerrainType::Mountain
+        && type != aoc::map::ImprovementType::MountainMine) {
         return false;
     }
 
@@ -87,6 +88,47 @@ bool canPlaceImprovement(const aoc::map::HexGrid& grid,
             // Road on any land tile
             return !aoc::map::isWater(terrain);
 
+        case aoc::map::ImprovementType::MountainMine: {
+            // MountainMine requires: mountain tile, a metal resource on it, and at
+            // least one adjacent non-mountain tile that belongs to the same player.
+            // The adjacency requirement is what keeps mountains impassable while
+            // still letting a neighbouring city's workers access the deposit.
+            if (terrain != aoc::map::TerrainType::Mountain) {
+                return false;
+            }
+            ResourceId resId = grid.resource(index);
+            if (!resId.isValid() || !isMountainMetal(resId.value)) {
+                return false;
+            }
+            const PlayerId tileOwner = grid.owner(index);
+            aoc::hex::AxialCoord center = grid.toAxial(index);
+            std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(center);
+            for (const aoc::hex::AxialCoord& nbr : nbrs) {
+                if (!grid.isValid(nbr)) {
+                    continue;
+                }
+                int32_t nbrIdx = grid.toIndex(nbr);
+                if (grid.terrain(nbrIdx) == aoc::map::TerrainType::Mountain) {
+                    continue;
+                }
+                if (aoc::map::isWater(grid.terrain(nbrIdx))) {
+                    continue;
+                }
+                // Non-mountain land neighbour. If the mountain tile has no owner
+                // yet, any owned non-mountain neighbour is sufficient. Otherwise
+                // the neighbour must share the mountain's owner.
+                const PlayerId nbrOwner = grid.owner(nbrIdx);
+                if (tileOwner != INVALID_PLAYER) {
+                    if (nbrOwner == tileOwner) {
+                        return true;
+                    }
+                } else if (nbrOwner != INVALID_PLAYER) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         case aoc::map::ImprovementType::Railway:
         case aoc::map::ImprovementType::Highway:
         case aoc::map::ImprovementType::Dam:
@@ -118,8 +160,12 @@ aoc::map::ImprovementType bestImprovementForTile(
         return aoc::map::ImprovementType::None;
     }
 
-    // Mountains
+    // Mountains: only the Mountain Mine is allowed, and only when the tile hosts a
+    // metal resource and has an adjacent non-mountain land tile that is owned.
     if (terrain == aoc::map::TerrainType::Mountain) {
+        if (canPlaceImprovement(grid, index, aoc::map::ImprovementType::MountainMine)) {
+            return aoc::map::ImprovementType::MountainMine;
+        }
         return aoc::map::ImprovementType::None;
     }
 

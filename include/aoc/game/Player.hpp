@@ -265,6 +265,9 @@ public:
     [[nodiscard]] aoc::sim::PlayerResearchQueueComponent& researchQueue() { return this->m_researchQueue; }
     [[nodiscard]] const aoc::sim::PlayerResearchQueueComponent& researchQueue() const { return this->m_researchQueue; }
 
+    [[nodiscard]] aoc::sim::PlayerTradeAutoRenewComponent& tradeAutoRenew() { return this->m_tradeAutoRenew; }
+    [[nodiscard]] const aoc::sim::PlayerTradeAutoRenewComponent& tradeAutoRenew() const { return this->m_tradeAutoRenew; }
+
     // ========================================================================
     // Cities
     // ========================================================================
@@ -402,6 +405,7 @@ private:
     // Events & Automation
     aoc::sim::PlayerEventComponent m_events;
     aoc::sim::PlayerResearchQueueComponent m_researchQueue;
+    aoc::sim::PlayerTradeAutoRenewComponent m_tradeAutoRenew;
 
     // Owned entities
     std::vector<std::unique_ptr<City>> m_cities;

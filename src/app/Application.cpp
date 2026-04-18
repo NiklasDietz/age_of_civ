@@ -3518,6 +3518,46 @@ void Application::rebuildUnitActionPanel() {
                 }
             });
 
+        // -- Mine Mountain button: build MountainMine on an adjacent metal-bearing
+        // mountain tile. The builder stays on its current passable tile; the
+        // improvement is applied to the neighbor.
+        makeActionBtn("Mine Mountain", {0.28f, 0.20f, 0.30f, 0.9f},
+            [this, selectedUnitPtr]() {
+                if (selectedUnitPtr == nullptr) { return; }
+                const PlayerId ownerId = selectedUnitPtr->owner();
+                const int32_t currentIdx = this->m_hexGrid.toIndex(selectedUnitPtr->position());
+                if (this->m_hexGrid.owner(currentIdx) != ownerId) { return; }
+                if (this->m_hexGrid.movementCost(currentIdx) <= 0) { return; }
+
+                const std::array<aoc::hex::AxialCoord, 6> nbrs =
+                    aoc::hex::neighbors(selectedUnitPtr->position());
+                for (const aoc::hex::AxialCoord& nbr : nbrs) {
+                    if (!this->m_hexGrid.isValid(nbr)) { continue; }
+                    const int32_t nbrIdx = this->m_hexGrid.toIndex(nbr);
+                    if (this->m_hexGrid.terrain(nbrIdx) != aoc::map::TerrainType::Mountain) { continue; }
+                    if (this->m_hexGrid.improvement(nbrIdx) != aoc::map::ImprovementType::None) { continue; }
+                    if (!aoc::sim::canPlaceImprovement(this->m_hexGrid, nbrIdx,
+                            aoc::map::ImprovementType::MountainMine)) {
+                        continue;
+                    }
+                    this->m_hexGrid.setImprovement(nbrIdx, aoc::map::ImprovementType::MountainMine);
+                    if (this->m_hexGrid.owner(nbrIdx) == INVALID_PLAYER) {
+                        this->m_hexGrid.setOwner(nbrIdx, ownerId);
+                    }
+                    selectedUnitPtr->useCharge();
+                    LOG_INFO("Builder placed MountainMine on adjacent mountain via action panel");
+                    if (!selectedUnitPtr->hasCharges()) {
+                        aoc::game::Player* owner = this->m_gameState.player(ownerId);
+                        if (owner != nullptr) {
+                            owner->removeUnit(selectedUnitPtr);
+                        }
+                        this->m_selectedUnit = nullptr;
+                        this->m_actionPanelUnit = nullptr;
+                    }
+                    break;
+                }
+            });
+
         // -- Auto-Improve toggle (Civilian units) --
         makeActionBtn("Auto-Improve", {0.20f, 0.28f, 0.30f, 0.9f},
             [this, selectedUnitPtr]() {

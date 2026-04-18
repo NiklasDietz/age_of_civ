@@ -42,6 +42,12 @@ struct PlayerTariffComponent {
     /// Per-player canal toll overrides (e.g., allies=0.10, rivals=0.50).
     std::unordered_map<PlayerId, float> perPlayerCanalTollRates;
 
+    /// Auto-tariff manager: set by player to delegate tariff/toll tuning to
+    /// the automation system. When enabled, the per-turn processor rewrites
+    /// importTariffRate and perPlayerTariffs/perPlayerTollRates based on
+    /// treasury health and diplomatic stance.
+    bool autoTariffs = false;
+
     /// Get the effective import tariff for goods coming from a specific player.
     [[nodiscard]] float effectiveImportTariff(PlayerId from) const;
 

@@ -122,6 +122,7 @@ public:
     int32_t alertRadius = 3;
     bool autoImprove = false;
     bool autoRenewRoute = false;
+    bool autoSpreadReligion = false;
 
     // ========================================================================
     // Religious spread (Missionaries, Apostles, Inquisitors)

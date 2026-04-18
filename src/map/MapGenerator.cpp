@@ -1069,8 +1069,77 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
         }
     }
 
+    // ---- Mountain-metal pass: a fraction of metal deposits spawn on mountains
+    // that are accessible from an adjacent non-mountain land tile. This keeps
+    // mountains impassable while rewarding players who explore rugged terrain
+    // via the Mountain Mine improvement.
+    int32_t mountainMetalsPlaced = 0;
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            const int32_t index = row * width + col;
+            if (grid.terrain(index) != TerrainType::Mountain) {
+                continue;
+            }
+            if (grid.resource(index).isValid()) {
+                continue;
+            }
+            if (grid.naturalWonder(index) != NaturalWonderType::None) {
+                continue;
+            }
+
+            // Require at least one non-mountain, non-water neighbour so the
+            // tile is reachable by a Builder on adjacent land.
+            const hex::AxialCoord axial = hex::offsetToAxial({col, row});
+            const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(axial);
+            bool hasAccessibleNeighbour = false;
+            for (const hex::AxialCoord& n : nbrs) {
+                if (!grid.isValid(n)) { continue; }
+                const int32_t nIndex = grid.toIndex(n);
+                const TerrainType nt = grid.terrain(nIndex);
+                if (nt == TerrainType::Mountain) { continue; }
+                if (isWater(nt)) { continue; }
+                hasAccessibleNeighbour = true;
+                break;
+            }
+            if (!hasAccessibleNeighbour) {
+                continue;
+            }
+
+            // Volcanic / convergent mountains are the richest; others still have
+            // a small chance. Total expected metal rate on accessible mountains
+            // is roughly 15%.
+            const BoundaryType bType = boundary[static_cast<std::size_t>(index)];
+            const bool isVolcanic = (bType == BoundaryType::Convergent);
+
+            ResourceId placed{};
+            if (isVolcanic) {
+                if      (resRng.chance(0.06f)) { placed = ResourceId{aoc::sim::goods::IRON_ORE}; }
+                else if (resRng.chance(0.05f)) { placed = ResourceId{aoc::sim::goods::COPPER_ORE}; }
+                else if (resRng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::SILVER_ORE}; }
+                else if (resRng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::GOLD_ORE}; }
+            } else {
+                if      (resRng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::IRON_ORE}; }
+                else if (resRng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::COPPER_ORE}; }
+                else if (resRng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::SILVER_ORE}; }
+                else if (resRng.chance(0.01f)) { placed = ResourceId{aoc::sim::goods::GOLD_ORE}; }
+            }
+
+            if (placed.isValid()) {
+                grid.setResource(index, placed);
+                grid.setReserves(index, aoc::sim::defaultReserves(placed.value));
+                ++mountainMetalsPlaced;
+                LOG_INFO("Mountain metal placed at (%d,%d): %.*s",
+                         col, row,
+                         static_cast<int>(aoc::sim::goodDef(placed.value).name.size()),
+                         aoc::sim::goodDef(placed.value).name.data());
+            }
+        }
+    }
+    totalPlaced += mountainMetalsPlaced;
+
     (void)config;  // mapSize/type already used indirectly
-    LOG_INFO("Geology-based resource placement: %d resources placed", totalPlaced);
+    LOG_INFO("Geology-based resource placement: %d resources placed (%d on mountains)",
+             totalPlaced, mountainMetalsPlaced);
 }
 
 // ============================================================================
@@ -1166,8 +1235,61 @@ void MapGenerator::placeBasicResources(const Config& config, HexGrid& grid,
         }
     }
 
+    // ---- Mountain-metal pass (basic map generator) ----
+    // Drop metal deposits on mountains that have a non-mountain land neighbour,
+    // so a Builder standing on adjacent land can access them via Mountain Mine.
+    int32_t mountainMetalsPlaced = 0;
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            int32_t index = row * width + col;
+            if (grid.terrain(index) != TerrainType::Mountain) {
+                continue;
+            }
+            if (grid.resource(index).isValid()) {
+                continue;
+            }
+            if (grid.naturalWonder(index) != NaturalWonderType::None) {
+                continue;
+            }
+
+            hex::AxialCoord axial = hex::offsetToAxial({col, row});
+            std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(axial);
+            bool hasAccessibleNeighbour = false;
+            for (const hex::AxialCoord& n : nbrs) {
+                if (!grid.isValid(n)) { continue; }
+                int32_t nIndex = grid.toIndex(n);
+                TerrainType nt = grid.terrain(nIndex);
+                if (nt == TerrainType::Mountain) { continue; }
+                if (isWater(nt)) { continue; }
+                hasAccessibleNeighbour = true;
+                break;
+            }
+            if (!hasAccessibleNeighbour) {
+                continue;
+            }
+
+            ResourceId placed{};
+            if      (rng.chance(0.05f)) { placed = ResourceId{aoc::sim::goods::IRON_ORE}; }
+            else if (rng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::COPPER_ORE}; }
+            else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::SILVER_ORE}; }
+            else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::GOLD_ORE}; }
+
+            if (placed.isValid()) {
+                grid.setResource(index, placed);
+                grid.setReserves(index, aoc::sim::defaultReserves(placed.value));
+                ++mountainMetalsPlaced;
+                LOG_INFO("Mountain metal placed at (%d,%d): %.*s",
+                         col, row,
+                         static_cast<int>(aoc::sim::goodDef(placed.value).name.size()),
+                         aoc::sim::goodDef(placed.value).name.data());
+            }
+        }
+    }
+    totalPlaced += mountainMetalsPlaced;
+
     (void)config;
-    LOG_INFO("Basic resource placement: %d resources placed", totalPlaced);
+    LOG_INFO("Basic resource placement: %d resources placed (%d on mountains)",
+             totalPlaced, mountainMetalsPlaced);
 }
 
 } // namespace aoc::map

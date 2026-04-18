@@ -50,6 +50,10 @@ struct PlayerGovernmentComponent {
     GovernmentAction activeAction = GovernmentAction::None;
     int32_t actionTurnsRemaining = 0;
 
+    /// Player-enabled auto-policy manager: fill empty slots with best unlocked policies
+    /// each turn using flat utility scoring. Ignored during anarchy.
+    bool autoPolicies = false;
+
     /// Check if a government type has been unlocked.
     [[nodiscard]] bool isGovernmentUnlocked(GovernmentType type) const {
         return (this->unlockedGovernments & static_cast<uint16_t>(1u << static_cast<uint8_t>(type))) != 0u;
@@ -119,5 +123,17 @@ struct PlayerGovernmentComponent {
  * Uses GameState Player directly (no ECS).
  */
 void processGovernment(aoc::game::Player& player);
+
+/**
+ * @brief Fill empty policy slots with the highest-scoring unlocked policies.
+ *
+ * Respects slot types (Military/Economic/Diplomatic/Wildcard). Uses a flat
+ * sum of modifier contributions; caller can scale the result afterwards via
+ * a LeaderBehavior if gene-aware weighting is needed. Already-equipped slots
+ * are left untouched so existing player choices are preserved.
+ *
+ * @param gov  Player government component to mutate.
+ */
+void equipBestPolicies(PlayerGovernmentComponent& gov);
 
 } // namespace aoc::sim

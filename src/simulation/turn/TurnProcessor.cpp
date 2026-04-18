@@ -31,6 +31,7 @@
 // Economy
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/economy/Maintenance.hpp"
 #include "aoc/simulation/economy/AdvancedEconomics.hpp"
 #include "aoc/simulation/economy/EconomicDepth.hpp"
@@ -93,6 +94,7 @@
 // Automation
 #include "aoc/simulation/city/Governor.hpp"
 #include "aoc/simulation/automation/Automation.hpp"
+#include "aoc/simulation/event/VisibilityEvents.hpp"
 
 // AI
 #include "aoc/simulation/ai/AIController.hpp"
@@ -216,8 +218,21 @@ aoc::game::City& foundCity(aoc::game::GameState& gameState,
     for (int32_t n = 0; n < 6; ++n) {
         if (!grid.isValid(neighbors[static_cast<std::size_t>(n)])) { continue; }
         int32_t idx = grid.toIndex(neighbors[static_cast<std::size_t>(n)]);
-        if (aoc::map::isWater(grid.terrain(idx)) || aoc::map::isImpassable(grid.terrain(idx))) {
+        aoc::map::TerrainType nTerrain = grid.terrain(idx);
+        if (aoc::map::isWater(nTerrain)) {
             continue;
+        }
+        // Mountain tiles are impassable, but if they host a mountain-mineable
+        // metal we allow citizens to work them (resource extraction only; terrain
+        // yields remain zero). Everything else impassable is still skipped.
+        if (aoc::map::isImpassable(nTerrain)) {
+            const ResourceId mRes = grid.resource(idx);
+            const bool workableMountain = (nTerrain == aoc::map::TerrainType::Mountain
+                                           && mRes.isValid()
+                                           && aoc::sim::isMountainMetal(mRes.value));
+            if (!workableMountain) {
+                continue;
+            }
         }
         float score = 0.0f;
         aoc::map::TileYield yield = grid.tileYield(idx);
@@ -233,6 +248,12 @@ aoc::game::City& foundCity(aoc::game::GameState& gameState,
             if (resId == aoc::sim::goods::COPPER_ORE
                 || resId == aoc::sim::goods::SILVER_ORE) {
                 score += 8.0f;
+            }
+            // Mountain metal tiles have zero terrain yield; give them a boost
+            // so the city actually puts a worker there.
+            if (grid.terrain(idx) == aoc::map::TerrainType::Mountain
+                && aoc::sim::isMountainMetal(resId)) {
+                score += 6.0f;
             }
         }
         tileScores.push_back({n, score});
@@ -273,6 +294,14 @@ aoc::game::City& foundCity(aoc::game::GameState& gameState,
     LOG_INFO("City founded: %s by player %u at (%d,%d)",
              name.c_str(), static_cast<unsigned>(owner),
              location.q, location.r);
+
+    {
+        VisibilityEvent ev{};
+        ev.type = VisibilityEventType::CityFounded;
+        ev.location = location;
+        ev.actor = owner;
+        gameState.visibilityBus().emit(ev);
+    }
 
     return city;
 }
@@ -510,6 +539,8 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
 
     // Automation: research queue, auto-explore, military alert
     processAutomation(*ctx.gameState, grid, player);
+    processAutoTariffs(*ctx.gameState, ctx.diplomacy, player);
+    processAutoSpreadReligion(*ctx.gameState, grid, ctx.diplomacy, player);
 }
 
 // ============================================================================
@@ -620,6 +651,15 @@ void processGlobalSystems(TurnContext& ctx) {
 
     // Physical trade routes: move Traders, exchange goods
     processTradeRoutes(gameState, grid, ctx.economy->market(), ctx.diplomacy);
+
+    // Auto-renew queued trade routes (per-player). Runs after processTradeRoutes
+    // so pending requests enqueued during expiration this turn are handled next
+    // turn, giving UI a tick to show the expiration notification first.
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) { continue; }
+        processAutoRenewTradeRoutes(gameState, grid, ctx.economy->market(),
+                                    ctx.diplomacy, playerPtr->id());
+    }
 
     // Soft border violation detection: scan military units in foreign territory
     if (ctx.diplomacy != nullptr) {
@@ -740,6 +780,14 @@ void processTurn(TurnContext& ctx) {
 
     // 4. Global systems
     processGlobalSystems(ctx);
+
+    // 5. Visibility-filtered event dispatch (fog is up to date from step 1/3)
+    if (ctx.fogOfWar != nullptr) {
+        processVisibilityEvents(*ctx.gameState, *ctx.grid, *ctx.fogOfWar,
+                                ctx.gameState->visibilityBus());
+    } else {
+        ctx.gameState->visibilityBus().clear();
+    }
 
     // Detect and record events by diffing post-turn state
     if (eventLog != nullptr) {

@@ -15,6 +15,7 @@
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
+#include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/core/Log.hpp"
@@ -189,6 +190,15 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
         comp.defId       = defId;
         comp.position    = spawnPos;
         comp.isActivated = false;
+
+        {
+            VisibilityEvent ev{};
+            ev.type = VisibilityEventType::GreatPersonSpawned;
+            ev.location = spawnPos;
+            ev.actor = player;
+            ev.payload = static_cast<int32_t>(defId);
+            gameState.visibilityBus().emit(ev);
+        }
 
         // Reset points and increment recruited count
         gpComp.points[typeIdx]    -= thresh;

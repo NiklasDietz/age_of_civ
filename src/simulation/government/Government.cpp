@@ -194,4 +194,77 @@ void processGovernment(aoc::game::Player& player) {
     }
 }
 
+void equipBestPolicies(PlayerGovernmentComponent& gov) {
+    if (gov.isInAnarchy()) { return; }
+
+    const GovernmentDef& gdef = governmentDef(gov.government);
+
+    struct SlotInfo {
+        uint8_t        slotIndex;
+        PolicySlotType slotType;
+    };
+    std::array<SlotInfo, MAX_POLICY_SLOTS> slots{};
+    uint8_t slotCount = 0;
+    uint8_t idx = 0;
+    for (uint8_t s = 0; s < gdef.militarySlots   && idx < MAX_POLICY_SLOTS; ++s, ++idx) {
+        slots[slotCount++] = {idx, PolicySlotType::Military};
+    }
+    for (uint8_t s = 0; s < gdef.economicSlots   && idx < MAX_POLICY_SLOTS; ++s, ++idx) {
+        slots[slotCount++] = {idx, PolicySlotType::Economic};
+    }
+    for (uint8_t s = 0; s < gdef.diplomaticSlots && idx < MAX_POLICY_SLOTS; ++s, ++idx) {
+        slots[slotCount++] = {idx, PolicySlotType::Diplomatic};
+    }
+    for (uint8_t s = 0; s < gdef.wildcardSlots   && idx < MAX_POLICY_SLOTS; ++s, ++idx) {
+        slots[slotCount++] = {idx, PolicySlotType::Wildcard};
+    }
+
+    std::array<bool, POLICY_CARD_COUNT> alreadyEquipped{};
+    for (uint8_t s = 0; s < MAX_POLICY_SLOTS; ++s) {
+        const int8_t pid = gov.activePolicies[s];
+        if (pid != EMPTY_POLICY_SLOT && pid >= 0
+            && static_cast<uint8_t>(pid) < POLICY_CARD_COUNT) {
+            alreadyEquipped[static_cast<std::size_t>(pid)] = true;
+        }
+    }
+
+    for (uint8_t i = 0; i < slotCount; ++i) {
+        const SlotInfo& slot = slots[i];
+        if (gov.activePolicies[slot.slotIndex] != EMPTY_POLICY_SLOT) { continue; }
+
+        int8_t bestPolicy = EMPTY_POLICY_SLOT;
+        float  bestValue  = -1.0f;
+
+        for (uint8_t p = 0; p < POLICY_CARD_COUNT; ++p) {
+            if (!gov.isPolicyUnlocked(p)) { continue; }
+            if (alreadyEquipped[p])       { continue; }
+
+            const PolicyCardDef& pdef = policyCardDef(p);
+            if (pdef.slotType != slot.slotType
+                && slot.slotType != PolicySlotType::Wildcard) {
+                continue;
+            }
+
+            const float value = pdef.modifiers.productionMultiplier
+                              + pdef.modifiers.goldMultiplier
+                              + pdef.modifiers.scienceMultiplier
+                              + pdef.modifiers.cultureMultiplier
+                              + pdef.modifiers.faithMultiplier
+                              + pdef.modifiers.combatStrengthBonus * 0.1f
+                              + pdef.modifiers.tradeRouteBonus     * 0.1f
+                              + pdef.modifiers.productionPerCity   * 0.2f
+                              + pdef.modifiers.loyaltyBonus        * 0.05f;
+            if (value > bestValue) {
+                bestValue  = value;
+                bestPolicy = static_cast<int8_t>(p);
+            }
+        }
+
+        if (bestPolicy != EMPTY_POLICY_SLOT) {
+            gov.activePolicies[slot.slotIndex] = bestPolicy;
+            alreadyEquipped[static_cast<std::size_t>(bestPolicy)] = true;
+        }
+    }
+}
+
 } // namespace aoc::sim

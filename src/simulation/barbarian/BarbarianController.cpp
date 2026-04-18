@@ -11,6 +11,7 @@
 #include "aoc/simulation/barbarian/BarbarianClans.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
+#include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/map/HexCoord.hpp"
@@ -161,6 +162,14 @@ void BarbarianController::spawnEncampments(aoc::game::GameState& gameState,
 
         // Also spawn an initial warrior at the encampment.
         barbPlayer->addUnit(barbarianSpawnUnit(this->m_turnCounter), candidate);
+
+        {
+            VisibilityEvent ev{};
+            ev.type = VisibilityEventType::BarbarianCampSighted;
+            ev.location = candidate;
+            ev.actor = INVALID_PLAYER;
+            gameState.visibilityBus().emit(ev);
+        }
 
         LOG_INFO("Barbarian encampment spawned at (%d,%d)", candidate.q, candidate.r);
         return;

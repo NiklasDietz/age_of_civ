@@ -15,6 +15,7 @@
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
+#include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/simulation/tech/EraScore.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -217,6 +218,14 @@ void processProductionQueues(aoc::game::GameState& gameState,
                              static_cast<int>(item.name.size()),
                              item.name.c_str(),
                              city->name().c_str());
+                    {
+                        VisibilityEvent ev{};
+                        ev.type = VisibilityEventType::WonderCompleted;
+                        ev.location = city->location();
+                        ev.actor = city->owner();
+                        ev.payload = static_cast<int32_t>(wonderId);
+                        gameState.visibilityBus().emit(ev);
+                    }
                     break;
                 }
             }

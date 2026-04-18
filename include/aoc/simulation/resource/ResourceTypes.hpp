@@ -252,6 +252,16 @@ namespace goods {
     inline constexpr uint16_t GOOD_COUNT = 153;
 } // namespace goods
 
+/// Is this good a metal resource that can spawn on mountain tiles?
+/// Used by map generation and Mountain Mine improvement placement.
+/// Mountain-spawnable metals: iron, copper, silver, gold.
+[[nodiscard]] inline constexpr bool isMountainMetal(uint16_t goodId) {
+    return goodId == goods::IRON_ORE
+        || goodId == goods::COPPER_ORE
+        || goodId == goods::SILVER_ORE
+        || goodId == goods::GOLD_ORE;
+}
+
 // ============================================================================
 // Good definitions table
 // ============================================================================
