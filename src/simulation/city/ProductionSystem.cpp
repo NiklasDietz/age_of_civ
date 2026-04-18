@@ -212,12 +212,13 @@ void processProductionQueues(aoc::game::GameState& gameState,
                 }
                 case ProductionItemType::Wonder: {
                     WonderId wonderId = static_cast<WonderId>(item.itemId);
-                    // Add to city's wonder list
                     city->wonders().wonders.push_back(wonderId);
-                    LOG_INFO("Completed wonder %.*s in %s",
+                    gameState.wonderTracker().markBuilt(wonderId, city->owner());
+                    LOG_INFO("Completed wonder %.*s in %s (player %u)",
                              static_cast<int>(item.name.size()),
                              item.name.c_str(),
-                             city->name().c_str());
+                             city->name().c_str(),
+                             static_cast<unsigned>(city->owner()));
                     {
                         VisibilityEvent ev{};
                         ev.type = VisibilityEventType::WonderCompleted;

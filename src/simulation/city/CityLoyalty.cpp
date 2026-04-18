@@ -128,8 +128,35 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         loyalty.loyalty += change;
         loyalty.loyalty = std::clamp(loyalty.loyalty, 0.0f, 100.0f);
 
-        // Check for city flip at 0 loyalty
-        if (loyalty.loyalty <= 0.0f) {
+        // Track consecutive turns below the Unrest threshold.
+        if (loyalty.loyalty < 40.0f) {
+            ++loyalty.unrestTurns;
+        } else {
+            loyalty.unrestTurns = 0;
+        }
+
+        // Secession path: sustained unrest in a distant city flips even above 0.
+        // Captures "periphery secession" missed by the loyalty <= 0 gate when
+        // pressure keeps the city hovering in Unrest without hitting bottom.
+        bool triggerSecession = (loyalty.loyalty <= 0.0f);
+        if (!triggerSecession && loyalty.unrestTurns >= 3) {
+            int32_t distFromCapital = 0;
+            for (const std::unique_ptr<aoc::game::City>& other : gsPlayer->cities()) {
+                if (other->isOriginalCapital()) {
+                    distFromCapital = grid.distance(city->location(), other->location());
+                    break;
+                }
+            }
+            if (distFromCapital >= 5) {
+                triggerSecession = true;
+                LOG_INFO("SECESSION: %s (player %u) unrest %d turns, %d from capital",
+                         city->name().c_str(),
+                         static_cast<unsigned>(player),
+                         loyalty.unrestTurns, distFromCapital);
+            }
+        }
+
+        if (triggerSecession) {
             // Find the dominant neighbor (most pressure from nearby foreign cities)
             std::unordered_map<PlayerId, float> neighborPressure;
             for (const std::unique_ptr<aoc::game::Player>& otherPlayer : gameState.players()) {
@@ -161,6 +188,8 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 formerOwner->grievances().addGrievance(
                     GrievanceType::LostCityToSecession, gainer);
             }
+
+            loyalty.unrestTurns = 0;
 
             if (bestNeighbor != INVALID_PLAYER) {
                 LOG_INFO("REVOLT: %s (player %u) loyalty 0 -- flips to player %u!",

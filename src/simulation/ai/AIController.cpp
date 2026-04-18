@@ -17,10 +17,12 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
+#include "aoc/simulation/unit/CombatExtensions.hpp"
 #include "aoc/simulation/diplomacy/EspionageSystem.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/ProductionSystem.hpp"
+#include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
@@ -44,6 +46,7 @@
 #include "aoc/simulation/map/TerrainModification.hpp"
 #include "aoc/map/FogOfWar.hpp"
 
+#include <limits>
 #include <unordered_set>
 
 namespace aoc::sim::ai {
@@ -353,6 +356,70 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
         }
     }
 
+    // --- AI Nuclear Strike Decision ---
+    // Gated on: (a) Nuclear Fission researched (TechId 17), (b) currently at war
+    // with someone, (c) nukeWillingness * riskTolerance passes roll. One strike
+    // attempt per player per turn. Arms the nearest military unit with a warhead
+    // and targets the weakest enemy city.
+    {
+        aoc::game::Player* nukePlayer = gameState.player(this->m_player);
+        if (nukePlayer != nullptr && nukePlayer->tech().hasResearched(TechId{17})) {
+            bool atWar = false;
+            PlayerId enemyId = INVALID_PLAYER;
+            for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+                if (other->id() == this->m_player) { continue; }
+                if (diplomacy.isAtWar(this->m_player, other->id())) {
+                    atWar = true;
+                    enemyId = other->id();
+                    break;
+                }
+            }
+            if (atWar && enemyId != INVALID_PLAYER) {
+                const LeaderBehavior& bh =
+                    leaderPersonality(nukePlayer->civId()).behavior;
+                const float launchScore = bh.nukeWillingness * bh.riskTolerance;
+                const float roll = rng.nextFloat(0.0f, 1.0f);
+
+                if (roll < launchScore * 0.20f) {
+                    aoc::game::Player* enemy = gameState.player(enemyId);
+                    aoc::hex::AxialCoord targetLoc{};
+                    int32_t weakestPop = std::numeric_limits<int32_t>::max();
+                    bool haveTarget = false;
+                    if (enemy != nullptr) {
+                        for (const std::unique_ptr<aoc::game::City>& c : enemy->cities()) {
+                            if (c->population() < weakestPop) {
+                                weakestPop = c->population();
+                                targetLoc = c->location();
+                                haveTarget = true;
+                            }
+                        }
+                    }
+                    aoc::game::Unit* launcher = nullptr;
+                    for (const std::unique_ptr<aoc::game::Unit>& u : nukePlayer->units()) {
+                        if (u->isMilitary() && !u->isDead()) {
+                            launcher = u.get();
+                            break;
+                        }
+                    }
+                    if (haveTarget && launcher != nullptr) {
+                        launcher->nuclear().equipped = true;
+                        launcher->nuclear().type = NukeType::NuclearDevice;
+                        LOG_INFO("AI %u NUCLEAR STRIKE decision: target p%u at (%d,%d) "
+                                 "score=%.2f roll=%.2f",
+                                 static_cast<unsigned>(this->m_player),
+                                 static_cast<unsigned>(enemyId),
+                                 targetLoc.q, targetLoc.r,
+                                 static_cast<double>(launchScore),
+                                 static_cast<double>(roll));
+                        [[maybe_unused]] ErrorCode nec = launchNuclearStrike(
+                            gameState, grid, this->m_player, targetLoc,
+                            NukeType::NuclearDevice);
+                    }
+                }
+            }
+        }
+    }
+
     refreshMovement(gameState, this->m_player);
 }
 
@@ -559,11 +626,14 @@ static float scoreTrader(const LeaderBehavior& behavior,
     // has_trade_civic: hard prerequisite -- score is zero without it
     if (!hasForeignTrade) { return 0.0f; }
 
-    // trade_need: want traders up to min(cityCount, 3)
-    const int32_t maxTraders = std::min(cityCount, 3);
-    const float tradeScore = (traderCount < maxTraders) ? 0.8f : 0.1f;
+    // trade_need: want traders up to min(cityCount, 3). Cities=1 is common
+    // early, so always allow at least 1 trader when civic is unlocked.
+    const int32_t maxTraders = std::max(1, std::min(cityCount, 3));
+    const float tradeScore = (traderCount < maxTraders) ? 1.0f : 0.1f;
 
-    constexpr float BASE_WEIGHT = 0.4f;
+    // Bumped from 0.4 so traders actually get produced against building
+    // candidates (buildings score ~1.0 normalized).
+    constexpr float BASE_WEIGHT = 1.2f;
 
     return BASE_WEIGHT * behavior.economicFocus * tradeScore;
 }
@@ -963,6 +1033,51 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                     candidate.score          = 0.3f;  // Moderate priority
                     candidates.push_back(std::move(candidate));
                 }
+            }
+        }
+
+        // --- Wonders ---
+        // Score each buildable wonder using cultureFocus + prodWonders genes.
+        // Buildable = tech prereq met, not already built globally.
+        {
+            const std::array<WonderDef, WONDER_COUNT>& allWonders = allWonderDefs();
+            const float wonderBase = 200.0f
+                * personality.behavior.cultureFocus
+                * personality.behavior.prodWonders;
+
+            for (const WonderDef& wdef : allWonders) {
+                if (!canBuildWonder(gameState, this->m_player, wdef.id)) {
+                    continue;
+                }
+                if (city.wonders().hasWonder(wdef.id)) {
+                    continue;
+                }
+
+                float wonderScore = wonderBase;
+                // Scale by effect magnitude so strong wonders get built first.
+                wonderScore += 40.0f * wdef.effect.scienceBonus
+                            * personality.behavior.scienceFocus;
+                wonderScore += 40.0f * wdef.effect.cultureBonus
+                            * personality.behavior.cultureFocus;
+                wonderScore += 30.0f * wdef.effect.goldBonus
+                            * personality.behavior.economicFocus;
+                wonderScore += 30.0f * wdef.effect.faithBonus
+                            * personality.behavior.religiousZeal;
+                // Normalize to compare with unit/building scores (~1-5 range).
+                wonderScore *= 0.01f;
+
+                if (wonderScore <= 0.0f) { continue; }
+
+                ProductionCandidate candidate{};
+                candidate.item.type      = ProductionItemType::Wonder;
+                candidate.item.itemId    = static_cast<uint16_t>(wdef.id);
+                candidate.item.name      = std::string(wdef.name);
+                candidate.item.totalCost = static_cast<float>(wdef.productionCost);
+                candidate.item.progress  = 0.0f;
+                candidate.score          = wonderScore
+                    * postureMultiplier(currentPosture,
+                                        false, false, false, false, false, false);
+                candidates.push_back(std::move(candidate));
             }
         }
 
@@ -1530,7 +1645,7 @@ void AIController::manageTradeRoutes(aoc::game::GameState& gameState, aoc::map::
     std::vector<aoc::game::Unit*> idleTraders;
     for (const std::unique_ptr<aoc::game::Unit>& u : gsPlayer->units()) {
         if (unitTypeDef(u->typeId()).unitClass != UnitClass::Trader) { continue; }
-        if (!u->trader().owner != INVALID_PLAYER) {
+        if (u->trader().owner == INVALID_PLAYER) {
             idleTraders.push_back(u.get());
         }
     }
@@ -1600,6 +1715,9 @@ void AIController::manageTradeRoutes(aoc::game::GameState& gameState, aoc::map::
             const ErrorCode result = establishTradeRoute(
                 gameState, grid, market, &diplomacy, *traderUnit, *bestCity);
             if (result == ErrorCode::Ok) {
+                // AI always auto-renews trade routes so tech diffusion and
+                // economy stay active late-game (route lifetime is a few trips).
+                traderUnit->autoRenewRoute = true;
                 LOG_INFO("AI %u established trade route to %s (player %u, score %.0f)",
                          static_cast<unsigned>(this->m_player),
                          bestCity->name().c_str(),

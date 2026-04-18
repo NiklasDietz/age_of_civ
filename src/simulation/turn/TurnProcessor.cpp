@@ -91,6 +91,9 @@
 // Production
 #include "aoc/simulation/production/Waste.hpp"
 
+// Unit supply
+#include "aoc/simulation/unit/SupplyLines.hpp"
+
 // Automation
 #include "aoc/simulation/city/Governor.hpp"
 #include "aoc/simulation/automation/Automation.hpp"
@@ -383,6 +386,11 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
     if (gsPlayer->cityCount() >= 2) {
         checkEurekaConditions(*gsPlayer, EurekaCondition::FoundCity);
     }
+
+    // Supply lines: compute per-unit supply status, then attrition.
+    // Attrition only kicks in for unsupplied military units (far from cities/forts).
+    computeSupplyLines(*ctx.gameState, grid, player);
+    applySupplyAttrition(*ctx.gameState, player);
 
     // Gold income: reads from Player/City objects, writes to Player::treasury()
     processGoldIncome(*gsPlayer, grid);

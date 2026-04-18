@@ -48,8 +48,13 @@ void runAIInvestmentDecisions(aoc::game::GameState& gameState) {
 
         // Self-investment preference for economic leaders with spare cash.
         if (bh.economicFocus > 1.2f) {
-            [[maybe_unused]] ErrorCode ec =
+            ErrorCode ec =
                 investInEconomy(gameState, investor->id(), investor->id(), investSize);
+            LOG_INFO("AI %u invest SELF %d (bubble=%d, ec=%d)",
+                     static_cast<unsigned>(investor->id()),
+                     static_cast<int>(investSize),
+                     static_cast<int>(bubble.phase),
+                     static_cast<int>(ec));
             continue;
         }
 
@@ -67,8 +72,14 @@ void runAIInvestmentDecisions(aoc::game::GameState& gameState) {
             }
         }
         if (best == nullptr) { continue; }
-        [[maybe_unused]] ErrorCode ec =
+        ErrorCode ec =
             investInEconomy(gameState, investor->id(), best->id(), investSize);
+        LOG_INFO("AI %u invest FOREIGN p%u amt=%d (bubble=%d, ec=%d)",
+                 static_cast<unsigned>(investor->id()),
+                 static_cast<unsigned>(best->id()),
+                 static_cast<int>(investSize),
+                 static_cast<int>(bubble.phase),
+                 static_cast<int>(ec));
     }
 }
 

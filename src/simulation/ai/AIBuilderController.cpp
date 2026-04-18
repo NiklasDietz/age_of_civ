@@ -145,6 +145,54 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
         aoc::hex::AxialCoord bestTarget = builder.position;
         int32_t bestDist = std::numeric_limits<int32_t>::max();
 
+        // Step 2a: Priority hunt for owned land tiles adjacent to an unmined
+        // mountain metal deposit. Mountain mines are high-value but unreachable
+        // via the generic unimproved-tile search (mountains are impassable).
+        // Widened to rings 1-6 since metal deposits are sparse and borders grow
+        // over time.
+        for (const aoc::hex::AxialCoord& cityLoc : cityLocations) {
+            std::vector<aoc::hex::AxialCoord> searchTiles;
+            searchTiles.reserve(120);
+            aoc::hex::ring(cityLoc, 1, std::back_inserter(searchTiles));
+            aoc::hex::ring(cityLoc, 2, std::back_inserter(searchTiles));
+            aoc::hex::ring(cityLoc, 3, std::back_inserter(searchTiles));
+            aoc::hex::ring(cityLoc, 4, std::back_inserter(searchTiles));
+            aoc::hex::ring(cityLoc, 5, std::back_inserter(searchTiles));
+            aoc::hex::ring(cityLoc, 6, std::back_inserter(searchTiles));
+
+            for (const aoc::hex::AxialCoord& tile : searchTiles) {
+                if (!grid.isValid(tile)) { continue; }
+                const int32_t tIdx = grid.toIndex(tile);
+                if (grid.owner(tIdx) != this->m_player) { continue; }
+                if (grid.movementCost(tIdx) <= 0) { continue; }
+                if (targetedTiles.find(tile) != targetedTiles.end()) { continue; }
+
+                // Check if this owned land tile is adjacent to a mountain
+                // where a Mountain Mine can be placed.
+                const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(tile);
+                bool hasMountainMineOpportunity = false;
+                for (const aoc::hex::AxialCoord& nbr : nbrs) {
+                    if (!grid.isValid(nbr)) { continue; }
+                    const int32_t nbrIdx = grid.toIndex(nbr);
+                    if (grid.terrain(nbrIdx) != aoc::map::TerrainType::Mountain) { continue; }
+                    if (grid.improvement(nbrIdx) != aoc::map::ImprovementType::None) { continue; }
+                    if (canPlaceImprovement(grid, nbrIdx, aoc::map::ImprovementType::MountainMine)) {
+                        hasMountainMineOpportunity = true;
+                        break;
+                    }
+                }
+                if (!hasMountainMineOpportunity) { continue; }
+
+                const int32_t dist = grid.distance(builder.position, tile);
+                // Weight: prioritize mountain-mine tiles heavily (bias -3 hexes).
+                const int32_t weighted = dist - 3;
+                if (weighted < bestDist) {
+                    bestDist = weighted;
+                    bestTarget = tile;
+                }
+            }
+        }
+
         for (const aoc::hex::AxialCoord& cityLoc : cityLocations) {
             std::vector<aoc::hex::AxialCoord> cityTiles;
             cityTiles.reserve(18);

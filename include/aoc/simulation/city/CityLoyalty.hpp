@@ -99,6 +99,8 @@ struct CityLoyaltyComponent {
     float ageEffect           = 0.0f;  ///< +/-5 from Golden/Dark Age
     float capturedPenalty     = 0.0f;  ///< -3 if recently captured
 
+    int32_t unrestTurns       = 0;     ///< Consecutive turns with loyalty < 25
+
     /// Current loyalty status tier.
     [[nodiscard]] LoyaltyStatus status() const {
         return loyaltyToStatus(this->loyalty);

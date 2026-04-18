@@ -83,6 +83,10 @@ void resolvePendingAIEvents(aoc::game::GameState& gameState) {
 
         const WorldEventDef& eventDef = worldEventDef(events.pendingEvent);
         const int32_t choice = chooseEventChoice(gameState, playerObj->id(), eventDef);
+        LOG_INFO("AI %u event choice: event=%u pick=%d",
+                 static_cast<unsigned>(playerObj->id()),
+                 static_cast<unsigned>(events.pendingEvent),
+                 choice);
         const ErrorCode ec = resolveWorldEvent(gameState, playerObj->id(), choice);
         if (ec != ErrorCode::Ok) {
             LOG_INFO("AI %u failed to resolve pending world event (code %d)",

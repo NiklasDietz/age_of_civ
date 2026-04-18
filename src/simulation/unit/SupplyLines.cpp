@@ -128,6 +128,11 @@ void applySupplyAttrition(aoc::game::GameState& gameState, PlayerId player) {
         if (supply.isSupplied) { continue; }
 
         unit->setHitPoints(unit->hitPoints() - UNSUPPLIED_ATTRITION_HP);
+        LOG_INFO("Supply attrition: player %u unit at (%d,%d) hp=%d (dist=%d)",
+                 static_cast<unsigned>(player),
+                 unit->position().q, unit->position().r,
+                 unit->hitPoints(),
+                 supply.distanceFromSupply);
         if (unit->isDead()) {
             toKill.push_back(unit.get());
         }

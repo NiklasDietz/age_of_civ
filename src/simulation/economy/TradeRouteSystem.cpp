@@ -705,9 +705,9 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         trader.scienceSpread += 0.5f;
         trader.cultureSpread += 0.3f;
 
-        // Tech diffusion: if traderOwner knows techs cityOwner is researching,
-        // grant a small science boost to cityOwner's current research. Resets
-        // the accumulator after each delivery so diffusion stays bounded.
+        // Tech diffusion: trade spreads ideas between civs.
+        // Lag-civ receives a general science boost on every delivery scaled by
+        // the origin-target tech gap. Exact-match research gets an extra bonus.
         if (targetCity != nullptr) {
             PlayerId traderOwner = trader.owner;
             PlayerId cityOwner = targetCity->owner();
@@ -718,10 +718,25 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 if (originPlayer != nullptr && targetPlayer != nullptr) {
                     const PlayerTechComponent& originTech = originPlayer->tech();
                     PlayerTechComponent& targetTech = targetPlayer->tech();
-                    TechId current = targetTech.currentResearch;
-                    if (current.isValid() && originTech.hasResearched(current)
-                        && !targetTech.hasResearched(current)) {
-                        float boost = trader.scienceSpread * 0.1f;
+
+                    int32_t originCount = 0;
+                    int32_t targetCount = 0;
+                    for (bool b : originTech.completedTechs) { originCount += b ? 1 : 0; }
+                    for (bool b : targetTech.completedTechs) { targetCount += b ? 1 : 0; }
+                    const int32_t techGap = originCount - targetCount;
+
+                    if (techGap > 0 && targetTech.currentResearch.isValid()) {
+                        // Base diffusion: scales with tech gap, always applied.
+                        float boost = trader.scienceSpread
+                                    * (0.1f + 0.02f * static_cast<float>(techGap));
+                        // Exact match bonus: origin knows target's current research.
+                        if (originTech.hasResearched(targetTech.currentResearch)) {
+                            boost *= 2.5f;
+                        }
+                        LOG_INFO("Tech diffusion: player %u -> player %u, boost=%.2f (gap=%d)",
+                                 static_cast<unsigned>(traderOwner),
+                                 static_cast<unsigned>(cityOwner),
+                                 static_cast<double>(boost), techGap);
                         advanceResearch(targetTech, boost);
                     }
                     trader.scienceSpread = 0.0f;
