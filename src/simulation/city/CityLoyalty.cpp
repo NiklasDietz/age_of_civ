@@ -108,9 +108,11 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             loyalty.happinessEffect = city->happiness().happiness * 2.0f;
         }
 
-        // Recently captured penalty
+        // Recently captured penalty. Bumped from -3 to -8 so captured
+        // cities drop into Unrest and trigger the secession mechanic.
+        // Stronger distance scaling broke capture dynamics entirely.
         if (city->originalOwner() != INVALID_PLAYER && city->originalOwner() != city->owner()) {
-            loyalty.capturedPenalty = -3.0f;
+            loyalty.capturedPenalty = -8.0f;
         }
 
         // Sum it all up

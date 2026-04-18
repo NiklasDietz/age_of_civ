@@ -333,11 +333,11 @@ std::string getNextCityName(const aoc::game::GameState& gameState, PlayerId play
 // Per-player turn processing
 // ============================================================================
 
-void processPlayerTurn(TurnContext& ctx, PlayerId player) {
-    assert(ctx.gameState != nullptr && "GameState is required for turn processing");
+void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
+    assert(turnContext.gameState != nullptr && "GameState is required for turn processing");
 
-    aoc::map::HexGrid& grid = *ctx.grid;
-    aoc::game::Player* gsPlayer = ctx.gameState->player(player);
+    aoc::map::HexGrid& grid = *turnContext.grid;
+    aoc::game::Player* gsPlayer = turnContext.gameState->player(player);
     assert(gsPlayer != nullptr && "processPlayerTurn: invalid player id");
 
     // Civilization meeting detection: check if any of our units/cities are
@@ -348,7 +348,7 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
         // Check our units against all foreign cities
         for (const std::unique_ptr<aoc::game::Unit>& ownUnit : gsPlayer->units()) {
             if (metAnotherCiv) { break; }
-            for (const std::unique_ptr<aoc::game::Player>& other : ctx.gameState->players()) {
+            for (const std::unique_ptr<aoc::game::Player>& other : turnContext.gameState->players()) {
                 if (other->id() == player) { continue; }
                 for (const std::unique_ptr<aoc::game::City>& foreignCity : other->cities()) {
                     if (grid.distance(ownUnit->position(), foreignCity->location()) <= 4) {
@@ -364,7 +364,7 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
         if (!metAnotherCiv) {
             for (const std::unique_ptr<aoc::game::City>& ownCity : gsPlayer->cities()) {
                 if (metAnotherCiv) { break; }
-                for (const std::unique_ptr<aoc::game::Player>& other : ctx.gameState->players()) {
+                for (const std::unique_ptr<aoc::game::Player>& other : turnContext.gameState->players()) {
                     if (other->id() == player) { continue; }
                     for (const std::unique_ptr<aoc::game::Unit>& foreignUnit : other->units()) {
                         if (grid.distance(foreignUnit->position(), ownCity->location()) <= 4) {
@@ -389,8 +389,8 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
 
     // Supply lines: compute per-unit supply status, then attrition.
     // Attrition only kicks in for unsupplied military units (far from cities/forts).
-    computeSupplyLines(*ctx.gameState, grid, player);
-    applySupplyAttrition(*ctx.gameState, player);
+    computeSupplyLines(*turnContext.gameState, grid, player);
+    applySupplyAttrition(*turnContext.gameState, player);
 
     // Gold income: reads from Player/City objects, writes to Player::treasury()
     processGoldIncome(*gsPlayer, grid);
@@ -448,10 +448,10 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
     processCityConnections(*gsPlayer, grid);
 
     // Advanced economics (tariffs, banking, debt)
-    processAdvancedEconomics(*ctx.gameState, grid, player, ctx.economy->market());
+    processAdvancedEconomics(*turnContext.gameState, grid, player, turnContext.economy->market());
 
     // War weariness
-    processWarWeariness(*gsPlayer, *ctx.diplomacy);
+    processWarWeariness(*gsPlayer, *turnContext.diplomacy);
 
     // Golden/Dark age effects
     processAgeEffects(*gsPlayer);
@@ -463,7 +463,7 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
     computeCityHappiness(*gsPlayer);
 
     // City loyalty
-    computeCityLoyalty(*ctx.gameState, grid, player);
+    computeCityLoyalty(*turnContext.gameState, grid, player);
 
     // Government processing
     processGovernment(*gsPlayer);
@@ -516,48 +516,72 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player) {
             if (hasGlass) { science *= 1.05f; }
         }
 
+        // Catch-up bonus: players well behind the tech leader get a science
+        // multiplier proportional to the gap. Keeps laggards in contention
+        // and prevents runaway science snowball. Max +60% when 4+ techs behind.
+        {
+            int32_t myTechs = 0;
+            int32_t maxTechs = 0;
+            for (uint16_t ti = 0; ti < techCount(); ++ti) {
+                if (gsPlayer->tech().hasResearched(TechId{ti})) { ++myTechs; }
+            }
+            for (const std::unique_ptr<aoc::game::Player>& otherPtr : turnContext.gameState->players()) {
+                if (otherPtr == nullptr) { continue; }
+                int32_t ot = 0;
+                for (uint16_t ti = 0; ti < techCount(); ++ti) {
+                    if (otherPtr->tech().hasResearched(TechId{ti})) { ++ot; }
+                }
+                if (ot > maxTechs) { maxTechs = ot; }
+            }
+            const int32_t gap = maxTechs - myTechs;
+            if (gap >= 2) {
+                const float bonus = std::min(0.60f, 0.15f * static_cast<float>(gap));
+                science *= (1.0f + bonus);
+            }
+        }
+
         advanceResearch(gsPlayer->tech(), science);
         advanceCivicResearch(gsPlayer->civics(), culture, &gsPlayer->government());
     }
 
     // Production queues
-    processProductionQueues(*ctx.gameState, grid, player);
+    processProductionQueues(*turnContext.gameState, grid, player);
 
     // City bombardment
-    processCityBombardment(*ctx.gameState, grid, player, *ctx.rng);
+    processCityBombardment(*turnContext.gameState, grid, player, *turnContext.rng);
 
     // Border expansion
     processBorderExpansion(*gsPlayer, grid);
 
     // Great people
-    accumulateGreatPeoplePoints(*ctx.gameState, player);
-    checkGreatPeopleRecruitment(*ctx.gameState, player);
+    accumulateGreatPeoplePoints(*turnContext.gameState, player);
+    checkGreatPeopleRecruitment(*turnContext.gameState, player);
 
     // City-state bonuses
-    processCityStateBonuses(*ctx.gameState, player);
+    processCityStateBonuses(*turnContext.gameState, player);
 
     // Unit promotions: AI auto-selects, human gets UI prompt
     {
-        const bool isHuman = (player == ctx.humanPlayer);
+        const bool isHuman = (player == turnContext.humanPlayer);
         processUnitPromotions(*gsPlayer, isHuman);
     }
 
     // Governor: auto-queue production for cities with governors
-    processGovernors(*ctx.gameState, grid, player);
+    processGovernors(*turnContext.gameState, grid, player);
 
     // Automation: research queue, auto-explore, military alert
-    processAutomation(*ctx.gameState, grid, player);
-    processAutoTariffs(*ctx.gameState, ctx.diplomacy, player);
-    processAutoSpreadReligion(*ctx.gameState, grid, ctx.diplomacy, player);
+    processAutomation(*turnContext.gameState, grid, player);
+    processAutoTariffs(*turnContext.gameState, turnContext.diplomacy, player);
+    processAutoSpreadReligion(*turnContext.gameState, grid, turnContext.diplomacy, player);
 }
 
 // ============================================================================
 // Global systems (not per-player)
 // ============================================================================
 
-void processGlobalSystems(TurnContext& ctx) {
-    aoc::game::GameState& gameState = *ctx.gameState;
-    aoc::map::HexGrid& grid = *ctx.grid;
+void processGlobalSystems(TurnContext& turnContext) {
+    aoc::game::GameState& gameState = *turnContext.gameState;
+    aoc::map::HexGrid& grid = *turnContext.grid;
 
     // Religious spread (global, affects all cities)
     processReligiousSpread(gameState, grid);
@@ -567,8 +591,8 @@ void processGlobalSystems(TurnContext& ctx) {
     processAIReligionFounding(gameState);
 
     // Barbarians
-    if (ctx.barbarians != nullptr) {
-        ctx.barbarians->executeTurn(gameState, grid, *ctx.rng);
+    if (turnContext.barbarians != nullptr) {
+        turnContext.barbarians->executeTurn(gameState, grid, *turnContext.rng);
     }
 
     // Communication speed (affects all players)
@@ -591,15 +615,15 @@ void processGlobalSystems(TurnContext& ctx) {
     processInsurancePremiums(gameState);
 
     // Futures contract settlement
-    settleFutures(gameState, ctx.economy->market());
+    settleFutures(gameState, turnContext.economy->market());
 
     // River flooding (seasonal)
-    processFlooding(gameState, grid, static_cast<int32_t>(ctx.currentTurn));
+    processFlooding(gameState, grid, static_cast<int32_t>(turnContext.currentTurn));
 
     // Natural disasters and climate
     {
         const float globalTemp = gameState.climate().globalTemperature;
-        processNaturalDisasters(gameState, grid, static_cast<int32_t>(ctx.currentTurn), globalTemp);
+        processNaturalDisasters(gameState, grid, static_cast<int32_t>(turnContext.currentTurn), globalTemp);
 
         GlobalClimateComponent& climate = gameState.climate();
 
@@ -613,7 +637,7 @@ void processGlobalSystems(TurnContext& ctx) {
 
         // Industrial pollution CO2
         climate.addCO2(static_cast<float>(totalIndustrialCO2(gameState)));
-        climate.processTurn(grid, *ctx.rng);
+        climate.processTurn(grid, *turnContext.rng);
 
         // Climate thresholds push narrative events into the per-player queue.
         // Once fired, the existing eventFired[] gate prevents re-trigger.
@@ -658,21 +682,21 @@ void processGlobalSystems(TurnContext& ctx) {
     }
 
     // Physical trade routes: move Traders, exchange goods
-    processTradeRoutes(gameState, grid, ctx.economy->market(), ctx.diplomacy);
+    processTradeRoutes(gameState, grid, turnContext.economy->market(), turnContext.diplomacy);
 
     // Auto-renew queued trade routes (per-player). Runs after processTradeRoutes
     // so pending requests enqueued during expiration this turn are handled next
     // turn, giving UI a tick to show the expiration notification first.
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         if (playerPtr == nullptr) { continue; }
-        processAutoRenewTradeRoutes(gameState, grid, ctx.economy->market(),
-                                    ctx.diplomacy, playerPtr->id());
+        processAutoRenewTradeRoutes(gameState, grid, turnContext.economy->market(),
+                                    turnContext.diplomacy, playerPtr->id());
     }
 
     // Soft border violation detection: scan military units in foreign territory
-    if (ctx.diplomacy != nullptr) {
-        updateBorderViolations(gameState, grid, *ctx.diplomacy);
-        updateNavalPassageViolations(gameState, grid, *ctx.diplomacy);
+    if (turnContext.diplomacy != nullptr) {
+        updateBorderViolations(gameState, grid, *turnContext.diplomacy);
+        updateNavalPassageViolations(gameState, grid, *turnContext.diplomacy);
     }
 
     // Stock market: dividends, value updates
@@ -685,8 +709,8 @@ void processGlobalSystems(TurnContext& ctx) {
     processTradeAgreements(gameState);
 
     // Diplomatic deals: enforce terms (reparations, DMZ, arms limits, non-aggression)
-    if (ctx.dealTracker != nullptr && ctx.diplomacy != nullptr) {
-        processDeals(gameState, *ctx.dealTracker, *ctx.diplomacy, grid);
+    if (turnContext.dealTracker != nullptr && turnContext.diplomacy != nullptr) {
+        processDeals(gameState, *turnContext.dealTracker, *turnContext.diplomacy, grid);
     }
 
     // Ideological friction: different post-industrial governments accrue
@@ -694,8 +718,8 @@ void processGlobalSystems(TurnContext& ctx) {
     accrueIdeologicalGrievances(gameState);
 
     // Alliance obligations: tick countdowns, check fulfillment, apply penalties
-    if (ctx.allianceTracker != nullptr && ctx.diplomacy != nullptr) {
-        ctx.allianceTracker->tickObligations(*ctx.diplomacy, gameState);
+    if (turnContext.allianceTracker != nullptr && turnContext.diplomacy != nullptr) {
+        turnContext.allianceTracker->tickObligations(*turnContext.diplomacy, gameState);
     }
 
     // Supply chain health: check import dependencies
@@ -718,14 +742,14 @@ void processGlobalSystems(TurnContext& ctx) {
     }
 
     // Per-player: unemployment and education
-    for (PlayerId player : ctx.allPlayers) {
+    for (PlayerId player : turnContext.allPlayers) {
         processUnemployment(gameState, player);
         updateHumanCapital(gameState, player);
     }
 
     // World events (per player)
-    for (PlayerId player : ctx.allPlayers) {
-        checkWorldEvents(gameState, player, static_cast<int32_t>(ctx.currentTurn));
+    for (PlayerId player : turnContext.allPlayers) {
+        checkWorldEvents(gameState, player, static_cast<int32_t>(turnContext.currentTurn));
     }
     // AI players pick a choice utility-style; humans keep their pending events
     // so the UI can present the dilemma.
@@ -733,15 +757,15 @@ void processGlobalSystems(TurnContext& ctx) {
     tickWorldEvents(gameState);
 
     // Victory tracking
-    updateVictoryTrackers(gameState, grid, *ctx.economy, ctx.currentTurn);
+    updateVictoryTrackers(gameState, grid, *turnContext.economy, turnContext.currentTurn);
 }
 
 // ============================================================================
 // Main turn entry point
 // ============================================================================
 
-void processTurn(TurnContext& ctx) {
-    TurnEventLog* eventLog = ctx.eventLog;
+void processTurn(TurnContext& turnContext) {
+    TurnEventLog* eventLog = turnContext.eventLog;
 
     // Snapshot pre-turn state for event detection
     struct PlayerPre {
@@ -752,56 +776,56 @@ void processTurn(TurnContext& ctx) {
         bool atWar[MAX_PLAYERS] = {};
     };
     std::vector<PlayerPre> preState;
-    preState.resize(ctx.allPlayers.size());
-    for (std::size_t i = 0; i < ctx.allPlayers.size(); ++i) {
-        const aoc::game::Player* p = ctx.gameState->player(ctx.allPlayers[i]);
+    preState.resize(turnContext.allPlayers.size());
+    for (std::size_t i = 0; i < turnContext.allPlayers.size(); ++i) {
+        const aoc::game::Player* p = turnContext.gameState->player(turnContext.allPlayers[i]);
         if (p == nullptr) { continue; }
         preState[i].techs = static_cast<int32_t>(std::count(p->tech().completedTechs.begin(), p->tech().completedTechs.end(), true));
         preState[i].cities = p->cityCount();
         preState[i].units = static_cast<int32_t>(p->units().size());
         preState[i].military = p->militaryUnitCount();
-        if (ctx.diplomacy != nullptr) {
-            for (std::size_t j = 0; j < ctx.allPlayers.size(); ++j) {
+        if (turnContext.diplomacy != nullptr) {
+            for (std::size_t j = 0; j < turnContext.allPlayers.size(); ++j) {
                 if (i != j) {
-                    preState[i].atWar[j] = ctx.diplomacy->relation(
-                        ctx.allPlayers[i], ctx.allPlayers[j]).isAtWar;
+                    preState[i].atWar[j] = turnContext.diplomacy->relation(
+                        turnContext.allPlayers[i], turnContext.allPlayers[j]).isAtWar;
                 }
             }
         }
     }
 
     // 1. AI decisions
-    for (ai::AIController* ai : ctx.aiControllers) {
+    for (ai::AIController* ai : turnContext.aiControllers) {
         if (ai != nullptr) {
-            ai->executeTurn(*ctx.gameState, *ctx.grid, ctx.fogOfWar,
-                           *ctx.diplomacy, ctx.economy->market(), *ctx.rng);
+            ai->executeTurn(*turnContext.gameState, *turnContext.grid, turnContext.fogOfWar,
+                           *turnContext.diplomacy, turnContext.economy->market(), *turnContext.rng);
         }
     }
 
     // 2. Economy simulation (harvest, produce, trade, market prices)
-    ctx.economy->executeTurn(*ctx.gameState, *ctx.grid);
+    turnContext.economy->executeTurn(*turnContext.gameState, *turnContext.grid);
 
     // 3. Per-player processing
-    for (PlayerId player : ctx.allPlayers) {
-        processPlayerTurn(ctx, player);
+    for (PlayerId player : turnContext.allPlayers) {
+        processPlayerTurn(turnContext, player);
     }
 
     // 4. Global systems
-    processGlobalSystems(ctx);
+    processGlobalSystems(turnContext);
 
     // 5. Visibility-filtered event dispatch (fog is up to date from step 1/3)
-    if (ctx.fogOfWar != nullptr) {
-        processVisibilityEvents(*ctx.gameState, *ctx.grid, *ctx.fogOfWar,
-                                ctx.gameState->visibilityBus());
+    if (turnContext.fogOfWar != nullptr) {
+        processVisibilityEvents(*turnContext.gameState, *turnContext.grid, *turnContext.fogOfWar,
+                                turnContext.gameState->visibilityBus());
     } else {
-        ctx.gameState->visibilityBus().clear();
+        turnContext.gameState->visibilityBus().clear();
     }
 
     // Detect and record events by diffing post-turn state
     if (eventLog != nullptr) {
-        for (std::size_t i = 0; i < ctx.allPlayers.size(); ++i) {
-            const PlayerId pid = ctx.allPlayers[i];
-            const aoc::game::Player* p = ctx.gameState->player(pid);
+        for (std::size_t i = 0; i < turnContext.allPlayers.size(); ++i) {
+            const PlayerId pid = turnContext.allPlayers[i];
+            const aoc::game::Player* p = turnContext.gameState->player(pid);
             if (p == nullptr) { continue; }
 
             const int32_t newTechs = static_cast<int32_t>(std::count(p->tech().completedTechs.begin(), p->tech().completedTechs.end(), true));
@@ -831,23 +855,23 @@ void processTurn(TurnContext& ctx) {
             }
 
             // War state changes
-            if (ctx.diplomacy != nullptr) {
-                for (std::size_t j = 0; j < ctx.allPlayers.size(); ++j) {
+            if (turnContext.diplomacy != nullptr) {
+                for (std::size_t j = 0; j < turnContext.allPlayers.size(); ++j) {
                     if (i == j) { continue; }
-                    const bool nowAtWar = ctx.diplomacy->relation(pid, ctx.allPlayers[j]).isAtWar;
+                    const bool nowAtWar = turnContext.diplomacy->relation(pid, turnContext.allPlayers[j]).isAtWar;
                     if (nowAtWar && !preState[i].atWar[j]) {
                         eventLog->record(TurnEventType::WarDeclared, pid,
-                                         ctx.allPlayers[j], 0, 0, "War declared");
+                                         turnContext.allPlayers[j], 0, 0, "War declared");
                     } else if (!nowAtWar && preState[i].atWar[j]) {
                         eventLog->record(TurnEventType::PeaceMade, pid,
-                                         ctx.allPlayers[j], 0, 0, "Peace made");
+                                         turnContext.allPlayers[j], 0, 0, "Peace made");
                     }
                 }
             }
         }
     }
 
-    ++ctx.currentTurn;
+    ++turnContext.currentTurn;
 }
 
 } // namespace aoc::sim

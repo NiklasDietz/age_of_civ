@@ -41,6 +41,7 @@ enum class Severity : uint8_t {
 /// hides the literal from the compiler's format checker.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#pragma GCC diagnostic ignored "-Wdouble-promotion"
 template<typename... Args>
 void logMessage(Severity severity, const char* file, int line,
                 const char* fmt, Args... args) {

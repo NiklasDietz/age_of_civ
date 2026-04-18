@@ -1113,15 +1113,15 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
 
             ResourceId placed{};
             if (isVolcanic) {
-                if      (resRng.chance(0.06f)) { placed = ResourceId{aoc::sim::goods::IRON_ORE}; }
-                else if (resRng.chance(0.05f)) { placed = ResourceId{aoc::sim::goods::COPPER_ORE}; }
-                else if (resRng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::SILVER_ORE}; }
-                else if (resRng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::GOLD_ORE}; }
+                if      (resRng.chance(0.15f)) { placed = ResourceId{aoc::sim::goods::IRON_ORE}; }
+                else if (resRng.chance(0.12f)) { placed = ResourceId{aoc::sim::goods::COPPER_ORE}; }
+                else if (resRng.chance(0.07f)) { placed = ResourceId{aoc::sim::goods::SILVER_ORE}; }
+                else if (resRng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::GOLD_ORE}; }
             } else {
-                if      (resRng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::IRON_ORE}; }
-                else if (resRng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::COPPER_ORE}; }
-                else if (resRng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::SILVER_ORE}; }
-                else if (resRng.chance(0.01f)) { placed = ResourceId{aoc::sim::goods::GOLD_ORE}; }
+                if      (resRng.chance(0.10f)) { placed = ResourceId{aoc::sim::goods::IRON_ORE}; }
+                else if (resRng.chance(0.07f)) { placed = ResourceId{aoc::sim::goods::COPPER_ORE}; }
+                else if (resRng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::SILVER_ORE}; }
+                else if (resRng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::GOLD_ORE}; }
             }
 
             if (placed.isValid()) {

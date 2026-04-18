@@ -133,9 +133,9 @@ aoc::game::City& foundCity(aoc::game::GameState& gameState,
  * This is the main entry point called by both Application.cpp and
  * HeadlessSimulation.cpp. It runs ALL game systems for ALL players.
  *
- * @param ctx  Turn context with all world references.
+ * @param turnContext  Turn context with all world references.
  */
-void processTurn(TurnContext& ctx);
+void processTurn(TurnContext& turnContext);
 
 /**
  * @brief Process per-player systems for a single player.
@@ -143,7 +143,7 @@ void processTurn(TurnContext& ctx);
  * Called internally by processTurn() for each player. Can also be
  * called independently for testing.
  */
-void processPlayerTurn(TurnContext& ctx, PlayerId player);
+void processPlayerTurn(TurnContext& turnContext, PlayerId player);
 
 /**
  * @brief Process global systems that are not per-player.
@@ -152,6 +152,6 @@ void processPlayerTurn(TurnContext& ctx, PlayerId player);
  * bubbles, labor strikes, migration, insurance premiums, futures settlement,
  * river flooding, world events, and victory tracking.
  */
-void processGlobalSystems(TurnContext& ctx);
+void processGlobalSystems(TurnContext& turnContext);
 
 } // namespace aoc::sim

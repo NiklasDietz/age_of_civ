@@ -88,15 +88,17 @@ void PlayerGrievanceComponent::tickGrievances() {
 }
 
 void accrueIdeologicalGrievances(::aoc::game::GameState& gameState) {
-    auto isIdeology = [](GovernmentType t) {
-        return t == GovernmentType::Democracy
-            || t == GovernmentType::Communism
-            || t == GovernmentType::Fascism;
+    // auto required: lambda type is unnameable
+    auto isIdeology = [](GovernmentType gov) {
+        return gov == GovernmentType::Democracy
+            || gov == GovernmentType::Communism
+            || gov == GovernmentType::Fascism;
     };
 
     constexpr int32_t CAP_PER_PAIR = -50;
 
-    const auto& playersVec = gameState.players();
+    const std::vector<std::unique_ptr<::aoc::game::Player>>& playersVec =
+        gameState.players();
     for (std::size_t i = 0; i < playersVec.size(); ++i) {
         ::aoc::game::Player* a = playersVec[i].get();
         if (a == nullptr) { continue; }

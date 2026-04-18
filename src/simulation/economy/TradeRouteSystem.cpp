@@ -101,21 +101,6 @@ static aoc::game::City* findCityByLocation(aoc::game::GameState& gameState,
     return nullptr;
 }
 
-/// Build a globally stable EntityId for a city (index = position in iteration order).
-EntityId cityEntityId(const aoc::game::GameState& gameState,
-                      const aoc::game::City* target) {
-    uint32_t idx = 0;
-    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
-        for (const std::unique_ptr<aoc::game::City>& c : p->cities()) {
-            if (c.get() == target) {
-                return EntityId{idx, 0};
-            }
-            ++idx;
-        }
-    }
-    return NULL_ENTITY;
-}
-
 /// Find a Trader unit by EntityId across all players.
 /// EntityId.index is the unit's sequence number in the global unit list.
 aoc::game::Unit* findTraderByEntityId(aoc::game::GameState& gameState, EntityId id) {
@@ -300,7 +285,8 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     bool originHasAirport = originDistricts.hasBuilding(BuildingId{14});
     bool destHasAirport   = destDistricts.hasBuilding(BuildingId{14});
 
-    // Coastal check: at least one neighbor tile is water
+    // Coastal check: at least one neighbor tile is water.
+    // auto required: lambda type is unnameable.
     auto isCityCoastal = [&grid](const aoc::game::City* city) -> bool {
         std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(city->location());
         for (const aoc::hex::AxialCoord& nbr : nbrs) {

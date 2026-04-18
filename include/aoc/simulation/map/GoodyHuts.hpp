@@ -77,7 +77,8 @@ struct GoodyHutState {
 
     /// Remove a hut (consumed by exploration).
     void removeHut(aoc::hex::AxialCoord pos) {
-        for (auto it = this->hutLocations.begin(); it != this->hutLocations.end(); ++it) {
+        for (std::vector<aoc::hex::AxialCoord>::iterator it = this->hutLocations.begin();
+             it != this->hutLocations.end(); ++it) {
             if (*it == pos) {
                 this->hutLocations.erase(it);
                 return;

@@ -79,7 +79,10 @@ static void aiBondStrategy(aoc::game::GameState& gameState, PlayerId player,
                 myState.treasury / 4,
                 static_cast<CurrencyAmount>(100));
             if (investAmount > 20) {
-                issueBond(gameState, other.owner, player, investAmount);
+                // Return ignored: failed bond purchase (insufficient funds on
+                // the buyer's side) just means this tick's investment skips;
+                // the strategy retries next turn.
+                (void)issueBond(gameState, other.owner, player, investAmount);
             }
         }
     }

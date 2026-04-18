@@ -21,18 +21,6 @@
 namespace aoc::sim {
 
 // ============================================================================
-// Helper: find a Unit* across all players by position and owner
-// ============================================================================
-
-static aoc::game::Unit* findUnitAtPosition(aoc::game::GameState& gameState,
-                                            PlayerId owner,
-                                            hex::AxialCoord pos) {
-    aoc::game::Player* player = gameState.player(owner);
-    if (player == nullptr) { return nullptr; }
-    return player->unitAt(pos);
-}
-
-// ============================================================================
 // Corps / Armies
 // ============================================================================
 

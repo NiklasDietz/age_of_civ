@@ -27,6 +27,7 @@
 #include "aoc/core/Types.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -86,7 +87,7 @@ public:
 
 private:
     struct Impl;
-    Impl* m_impl = nullptr;
+    std::unique_ptr<Impl> m_impl;
 };
 
 } // namespace aoc::scripting

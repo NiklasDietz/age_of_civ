@@ -570,13 +570,12 @@ void Application::run() {
         this->startSpectate(this->m_deferredSpectatePlayers, this->m_deferredSpectateTurns);
     }
 
-    using Clock = std::chrono::steady_clock;
-    Clock::time_point previousTime = Clock::now();
+    std::chrono::steady_clock::time_point previousTime = std::chrono::steady_clock::now();
     float fpsAccum = 0.0f;
     int32_t fpsFrameCount = 0;
 
     while (!this->m_window.shouldClose()) {
-        Clock::time_point currentTime = Clock::now();
+        std::chrono::steady_clock::time_point currentTime = std::chrono::steady_clock::now();
         float deltaTime = std::chrono::duration<float>(currentTime - previousTime).count();
         previousTime = currentTime;
 

@@ -55,7 +55,8 @@ void City::removeWorker(aoc::hex::AxialCoord tile) {
     if (tile == this->m_location) {
         return;
     }
-    auto it = std::find(this->m_workedTiles.begin(), this->m_workedTiles.end(), tile);
+    std::vector<aoc::hex::AxialCoord>::iterator it = std::find(
+        this->m_workedTiles.begin(), this->m_workedTiles.end(), tile);
     if (it != this->m_workedTiles.end()) {
         this->m_workedTiles.erase(it);
     }

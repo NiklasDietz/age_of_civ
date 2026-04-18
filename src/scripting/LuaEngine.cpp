@@ -30,24 +30,21 @@ struct LuaEngine::Impl {
     aoc::map::HexGrid* grid = nullptr;
 };
 
-LuaEngine::LuaEngine() : m_impl(new Impl()) {}
+LuaEngine::LuaEngine() : m_impl(std::make_unique<Impl>()) {}
 
 LuaEngine::~LuaEngine() {
     if (this->m_impl != nullptr && this->m_impl->luaState != nullptr) {
         lua_close(this->m_impl->luaState);
     }
-    delete this->m_impl;
 }
 
-LuaEngine::LuaEngine(LuaEngine&& other) noexcept : m_impl(other.m_impl) {
-    other.m_impl = nullptr;
-}
-
+LuaEngine::LuaEngine(LuaEngine&&) noexcept = default;
 LuaEngine& LuaEngine::operator=(LuaEngine&& other) noexcept {
     if (this != &other) {
-        delete this->m_impl;
-        this->m_impl = other.m_impl;
-        other.m_impl = nullptr;
+        if (this->m_impl != nullptr && this->m_impl->luaState != nullptr) {
+            lua_close(this->m_impl->luaState);
+        }
+        this->m_impl = std::move(other.m_impl);
     }
     return *this;
 }

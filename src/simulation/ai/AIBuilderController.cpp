@@ -9,7 +9,6 @@
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/ai/AIBuilderController.hpp"
 #include "aoc/core/Log.hpp"
-#include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/map/Improvement.hpp"
 #include "aoc/simulation/event/VisibilityEvents.hpp"
@@ -58,10 +57,11 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
         aoc::game::Unit*     ptr;
         aoc::hex::AxialCoord position;
     };
+    // Only actual Builder units (UnitTypeId{5}) -- other Civilian-class units
+    // (Medic, Diplomat, Spy) share the class but must not improve tiles.
     std::vector<BuilderSnapshot> builders;
     for (const std::unique_ptr<aoc::game::Unit>& u : gsPlayer->units()) {
-        if (unitTypeDef(u->typeId()).unitClass == UnitClass::Civilian &&
-            u->chargesRemaining() != 0) {
+        if (u->typeId().value == 5 && u->chargesRemaining() != 0) {
             builders.push_back({u.get(), u->position()});
         }
     }

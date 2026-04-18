@@ -1673,12 +1673,12 @@ ErrorCode loadGame(const std::string& filepath,
                     [[maybe_unused]] uint8_t owner = buf.readU8();
                     uint32_t warCount = buf.readU32();
                     for (uint32_t w = 0; w < warCount; ++w) {
-                        buf.readU8();  // aggressor
-                        buf.readU8();  // defender
-                        buf.readU8();  // casusBelli
-                        buf.readU32(); // startTurn
-                        buf.readI32(); // aggressorWarScore
-                        buf.readI32(); // defenderWarScore
+                        (void)buf.readU8();  // aggressor
+                        (void)buf.readU8();  // defender
+                        (void)buf.readU8();  // casusBelli
+                        (void)buf.readU32(); // startTurn
+                        (void)buf.readI32(); // aggressorWarScore
+                        (void)buf.readI32(); // defenderWarScore
                     }
                 }
                 break;
@@ -1769,17 +1769,17 @@ ErrorCode loadGame(const std::string& filepath,
                 // --- BarbarianEncampmentComponent (not yet in GameState object model: skip) ---
                 uint32_t barbCount = buf.readU32();
                 for (uint32_t i = 0; i < barbCount; ++i) {
-                    buf.readI32(); buf.readI32();  // location q, r
-                    buf.readI32(); buf.readI32();  // spawnCooldown, unitsSpawned
+                    (void)buf.readI32(); (void)buf.readI32();  // location q, r
+                    (void)buf.readI32(); (void)buf.readI32();  // spawnCooldown, unitsSpawned
                 }
 
                 // --- GreatPersonComponent (not yet in GameState object model: skip) ---
                 uint32_t gpPersonCount = buf.readU32();
                 for (uint32_t i = 0; i < gpPersonCount; ++i) {
-                    buf.readU8();  // owner
-                    buf.readU8();  // defId
-                    buf.readI32(); buf.readI32();  // position q, r
-                    buf.readU8();  // isActivated
+                    (void)buf.readU8();  // owner
+                    (void)buf.readU8();  // defId
+                    (void)buf.readI32(); (void)buf.readI32();  // position q, r
+                    (void)buf.readU8();  // isActivated
                 }
 
                 // --- SpyComponent: stored on Unit objects ---
@@ -1810,11 +1810,11 @@ ErrorCode loadGame(const std::string& filepath,
                 // --- UnitExperienceComponent (not yet in Unit object model: skip) ---
                 uint32_t expCount = buf.readU32();
                 for (uint32_t i = 0; i < expCount; ++i) {
-                    buf.readU32();  // unitIndex
-                    buf.readI32(); buf.readI32();  // experience, level
+                    (void)buf.readU32();  // unitIndex
+                    (void)buf.readI32(); (void)buf.readI32();  // experience, level
                     uint32_t promoCount = buf.readU32();
                     for (uint32_t p = 0; p < promoCount; ++p) {
-                        buf.readU16();  // PromotionId
+                        (void)buf.readU16();  // PromotionId
                     }
                 }
                 break;

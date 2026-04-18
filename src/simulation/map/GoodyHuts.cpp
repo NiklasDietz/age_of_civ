@@ -73,7 +73,7 @@ void placeGoodyHuts(GoodyHutState& state, const aoc::map::HexGrid& grid,
 }
 
 GoodyHutReward checkAndClaimGoodyHut(GoodyHutState& state,
-                                      aoc::game::GameState& gameState,
+                                      [[maybe_unused]] aoc::game::GameState& gameState,
                                       aoc::game::Player& player,
                                       aoc::hex::AxialCoord unitPosition,
                                       aoc::Random& rng) {

@@ -257,7 +257,8 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
         case SpyMission::RecruitDoubleAgent:
         case SpyMission::EstablishEmbassy:
         case SpyMission::CounterIntelligence:
-            break;  // Passive or handled elsewhere
+        case SpyMission::Count:
+            break;  // Passive, handled elsewhere, or sentinel.
     }
 }
 

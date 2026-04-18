@@ -50,12 +50,12 @@ struct AIContext {
 };
 
 [[nodiscard]] ProductionScores computeProductionUtility(
-    const LeaderBehavior& behavior, const AIContext& ctx);
+    const LeaderBehavior& behavior, const AIContext& context);
 
 [[nodiscard]] float scoreBuildingForLeader(
-    const LeaderBehavior& behavior, BuildingId buildingId, const AIContext& ctx);
+    const LeaderBehavior& behavior, BuildingId buildingId, const AIContext& context);
 
 [[nodiscard]] float scoreTechForLeader(
-    const LeaderBehavior& behavior, TechId techId, const AIContext& ctx);
+    const LeaderBehavior& behavior, TechId techId, const AIContext& context);
 
 } // namespace aoc::sim

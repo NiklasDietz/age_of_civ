@@ -218,7 +218,7 @@ std::vector<BuildableItem> getBuildableItems(const aoc::game::GameState& gameSta
 
 // Legacy EntityId overloads -- find city through ECS, delegate to City& version
 bool canBuildBuilding(const aoc::game::GameState& gameState, PlayerId player,
-                       EntityId cityEntity, BuildingId buildingId) {
+                       [[maybe_unused]] EntityId cityEntity, BuildingId buildingId) {
     const aoc::game::Player* gsPlayer = gameState.player(player);
     if (gsPlayer == nullptr) { return false; }
     // Find city by iterating player's cities (EntityId is no longer meaningful without ECS)

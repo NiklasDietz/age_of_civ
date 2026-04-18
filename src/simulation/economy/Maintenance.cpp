@@ -179,9 +179,11 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         CurrencyAmount cityGold = 0;
 
-        // Capital Palace bonus (+5 gold)
+        // Capital Palace bonus. Bumped from 5 to 10 so small empires
+        // can still fund 1-2 cheap buildings/turn instead of starving
+        // while waiting for pop to generate tax revenue.
         if (city->isOriginalCapital()) {
-            cityGold += 5;
+            cityGold += 10;
         }
 
         // Population-based tax income: 1 gold per citizen.

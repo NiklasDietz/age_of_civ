@@ -114,6 +114,7 @@ void computeCityHappiness(aoc::game::Player& player) {
         // entire supply chain. This is the key incentive for industrialization.
         const CityStockpileComponent& stockpile = city->stockpile();
         {
+            // auto required: lambda type is unnameable
             auto goodsHappiness = [&stockpile](uint16_t goodId, float baseBonus) -> float {
                 const int32_t amount = stockpile.getAmount(goodId);
                 if (amount <= 0) { return 0.0f; }

@@ -217,8 +217,10 @@ inline constexpr std::array<UnitTypeDef, 64> UNIT_TYPE_DEFS = {{
     // Diplomat: early espionage (Writing tech), basic missions only.
     // Spy: advanced espionage (Printing tech), all missions, can escape.
     // ========================================================================
-    {UnitTypeId{55}, "Diplomat",        UnitClass::Civilian, UnitEra::Classical,     60,  0,  0, 0, 3,  60, TechId{3},  UnitTypeId{56}, 80},
-    {UnitTypeId{56}, "Spy",             UnitClass::Civilian, UnitEra::Renaissance,   60,  0,  0, 0, 4, 120, TechId{8},  UnitTypeId{},   0},
+    // IDs 55/56 collided with Frigate/Ironclad, causing unitTypeDef() to
+    // return the naval unit for spy lookups.  Moved to 100/101.
+    {UnitTypeId{100}, "Diplomat",       UnitClass::Civilian, UnitEra::Classical,     60,  0,  0, 0, 3,  60, TechId{3},  UnitTypeId{101}, 80},
+    {UnitTypeId{101}, "Spy",            UnitClass::Civilian, UnitEra::Renaissance,   60,  0,  0, 0, 4, 120, TechId{8},  UnitTypeId{},    0},
 }};
 
 /// Lookup a unit type definition by ID. IDs are not contiguous so this

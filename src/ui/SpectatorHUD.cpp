@@ -193,6 +193,7 @@ void SpectatorHUD::drawScoreboard(vulkan_app::renderer::Renderer2D& renderer,
                            + std::to_string(csiInt % 100);
 
         // Pad each column manually using spaces (BitmapFont is monospaced).
+        // auto required: lambda types are unnameable.
         auto padRight = [](const std::string& s, int32_t width) -> std::string {
             if (static_cast<int32_t>(s.size()) >= width) {
                 return s.substr(0, static_cast<std::size_t>(width));

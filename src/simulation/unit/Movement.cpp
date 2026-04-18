@@ -168,7 +168,11 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
             gameState.visibilityBus().emit(ev);
         }
 
-        // City capture: a military unit stepping onto an enemy city captures it
+        // City capture: a military unit stepping onto an enemy city captures it.
+        // A previously captured city is not removed from the original owner's
+        // `m_cities` list, so `cityAt` can still find it there.  We must check
+        // the city's current owner before re-capturing to avoid logging (and
+        // re-firing setOwner on) a city that is already ours.
         if (unitIsMilitary) {
             for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
                 if (player->id() == unit.owner()) {
@@ -177,6 +181,9 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
                 aoc::game::City* city = player->cityAt(nextTile);
                 if (city == nullptr) {
                     continue;
+                }
+                if (city->owner() == unit.owner()) {
+                    continue;  // Already captured — stale entry in old owner's list.
                 }
 
                 const PlayerId previousOwner = city->owner();

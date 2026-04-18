@@ -149,7 +149,8 @@ void processInternalTrade(aoc::game::GameState& gameState,
                 continue;
             }
 
-            const aoc::game::City& deficitCity = *cities[deficitCities[bestDeficitIdx].cityIndex];
+            [[maybe_unused]] const aoc::game::City& deficitCity =
+                *cities[deficitCities[bestDeficitIdx].cityIndex];
 
             const int32_t transferAmount = static_cast<int32_t>(
                 static_cast<float>(surplus.surplus) * TRANSFER_FRACTION);

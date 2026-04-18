@@ -373,7 +373,6 @@ void processIOUPayments(aoc::game::GameState& gameState) {
             // Loan fully repaid or expired
             if (it->remaining <= 0) {
                 // Remove from debtor's loansReceived
-                aoc::game::Player* debtorPlayer = gameState.player(it->debtor);
                 if (debtorPlayer != nullptr) {
                     std::vector<IOUContract>& received = debtorPlayer->ious().loansReceived;
                     for (std::vector<IOUContract>::iterator rIt = received.begin();
@@ -388,7 +387,6 @@ void processIOUPayments(aoc::game::GameState& gameState) {
                 it = creditorIOU.loansGiven.erase(it);
             } else {
                 // Sync to debtor's copy
-                aoc::game::Player* debtorPlayer = gameState.player(it->debtor);
                 if (debtorPlayer != nullptr) {
                     for (IOUContract& received : debtorPlayer->ious().loansReceived) {
                         if (received.creditor == creditorPtr->id()

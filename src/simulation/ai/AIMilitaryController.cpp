@@ -576,9 +576,11 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
     // the declaration in the same turn.
     //
     // Conditions:
-    //   - own military >= 4 units (enough to mount an actual assault)
-    //   - threat ratio < 0.3 (no credible inbound threat)
-    //   - a reachable neighbour has <= half our military strength
+    //   - own military >= 2 units (small armies still raid weaker neighbours)
+    //   - threat ratio < 0.5 (no *overwhelming* inbound threat)
+    //   - a reachable neighbour has < 80% of our military strength
+    //     (loosened from <=50% so actual wars happen; previous gate was so
+    //     strict that early-game capture counts stayed in the single digits)
     // ----------------------------------------------------------------
     {
         const int32_t ownMilitary = gsPlayer->militaryUnitCount();
@@ -587,10 +589,10 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
         const LeaderBehavior& myBehavior = leaderPersonality(gsPlayer->civId()).behavior;
         const int32_t strikingRange = static_cast<int32_t>(
             std::clamp(15.0f * myBehavior.peripheryTolerance, 8.0f, 25.0f));
-        if (ownMilitary >= 4 && threatRatio < 0.3f) {
+        if (ownMilitary >= 2 && threatRatio < 0.5f) {
             // Identify the weakest neighbour within striking range.
             PlayerId  weakestNeighbour = INVALID_PLAYER;
-            int32_t   weakestMilitary  = ownMilitary / 2;  // must be <= half our strength
+            int32_t   weakestMilitary  = (ownMilitary * 4) / 5;  // < 80% of ours
 
             for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
                 if (other->id() == this->m_player) {

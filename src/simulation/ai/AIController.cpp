@@ -180,7 +180,9 @@ static UnitCounts countPlayerUnits(const aoc::game::GameState& gameState, Player
         if (isMilitary(def.unitClass)) {
             ++counts.military;
         }
-        if (def.unitClass == UnitClass::Civilian) {
+        // Only actual Builders (UnitTypeId{5}). Diplomat/Spy/Medic share
+        // UnitClass::Civilian but do not improve tiles.
+        if (u->typeId().value == 5) {
             ++counts.builders;
         }
         if (def.unitClass == UnitClass::Settler) {
@@ -564,28 +566,39 @@ static float scoreMilitary(const LeaderBehavior& behavior,
     // threat_exists: doubled score when an enemy is nearby
     const float threatScore = enemyNearby ? 1.0f : 0.5f;
 
-    // can_afford: soft gold check -- very low treasury is a blocker
-    const aoc::sim::ai::UtilityConsideration canAfford{
-        0.0f, 50.0f,
-        aoc::sim::ai::UtilityCurve::logistic(8.0f, 0.5f)
-    };
+    // can_afford gate removed: unit production is paid in hammers, not gold,
+    // so treasury<10 was zeroing military score even though the city could
+    // build just fine.  Gold only matters for rush-purchasing, handled
+    // elsewhere in considerPurchases.  Without this change, broke AIs never
+    // built any military, and only Modern AT (once treasury recovered) ever
+    // fired -- leaving mid-game armies empty.
 
-    // zero_military_emergency: double score when completely defenseless
-    const float emergencyMultiplier = (militaryUnits == 0) ? 2.0f : 1.0f;
+    // Undermanned multiplier: fires whenever military per city < 1.
+    // Previously only fired at militaryUnits==0, so after the starter warrior
+    // the boost vanished and settlers (~2.28) outscored military (~0.9) for
+    // the rest of the game.  Now scales continuously from 3.0x at 0 units
+    // down to 1.0x at one-per-city, so growing empires keep producing units.
+    const float perCityRatio = static_cast<float>(militaryUnits)
+                             / static_cast<float>(std::max(1, ownedCities));
+    const float emergencyMultiplier = std::max(1.0f, 3.0f - 2.0f * perCityRatio);
 
     // threatLevel [0,1] from the military advisor amplifies the score when the
     // blackboard confirms nearby enemy forces; combines with the local enemyNearby
     // flag for a layered threat response.
     const float threatLevelBoost = 1.0f + threatLevel;
 
-    constexpr float BASE_WEIGHT = 0.8f;
+    // Bumped to 3.0 so military wins against the trader spam (~1.8 with
+    // posture boost) and settler's expansion-boosted score (~2.28) when
+    // undermanned.  Prior 2.2 was still too low -- only 4-7 military
+    // produced per 600-turn game across 8 players.
+    constexpr float BASE_WEIGHT = 3.0f;
 
+    (void)treasury;  // no longer a factor — see canAfford comment above.
     return BASE_WEIGHT
            * behavior.prodMilitary
            * behavior.militaryAggression
            * militaryNeed.score(static_cast<float>(militaryUnits))
            * threatScore
-           * canAfford.score(treasury)
            * emergencyMultiplier
            * threatLevelBoost;
 }
@@ -597,22 +610,30 @@ static float scoreMilitary(const LeaderBehavior& behavior,
 static float scoreBuilder(const LeaderBehavior& behavior,
                            int32_t unimprovedTiles,
                            int32_t workedTiles,
-                           int32_t builderCount) {
+                           int32_t builderCount,
+                           int32_t ownedCities) {
     // tiles_need: fraction of worked tiles that are unimproved
     const aoc::sim::ai::UtilityConsideration tilesNeed{
         0.0f, static_cast<float>(std::max(1, workedTiles)),
         aoc::sim::ai::UtilityCurve::linear(1.0f, 0.0f)
     };
 
-    // no_builder: strongly prefer having at least one builder
-    const float noBuilderScore = (builderCount == 0) ? 1.0f : 0.2f;
+    // Each builder has 3 charges (Civ 6-style). Want roughly 1 builder per
+    // city so the empire can keep up with territorial growth. Scale from
+    // 2.0x when empire has no builders down to 1.0x once builderCount >=
+    // cities. Ceiling capped at 2.0x -- 3.0x produced ~200 builders per game.
+    const float perCityRatio = static_cast<float>(builderCount)
+                             / static_cast<float>(std::max(1, ownedCities));
+    const float undersupplyMultiplier = std::max(1.0f, 2.0f - perCityRatio);
 
-    constexpr float BASE_WEIGHT = 0.6f;
+    // 2.0 base. Higher caused builder spam; lower left them losing to
+    // settlers + districts across all seeds.
+    constexpr float BASE_WEIGHT = 2.0f;
 
     return BASE_WEIGHT
            * behavior.prodBuilders
            * tilesNeed.score(static_cast<float>(unimprovedTiles))
-           * noBuilderScore;
+           * undersupplyMultiplier;
 }
 
 // -------------------------------------------------------------------------
@@ -626,14 +647,17 @@ static float scoreTrader(const LeaderBehavior& behavior,
     // has_trade_civic: hard prerequisite -- score is zero without it
     if (!hasForeignTrade) { return 0.0f; }
 
-    // trade_need: want traders up to min(cityCount, 3). Cities=1 is common
-    // early, so always allow at least 1 trader when civic is unlocked.
-    const int32_t maxTraders = std::max(1, std::min(cityCount, 3));
+    // trade_need: want traders up to min(cityCount+1, 4). Cities=1 is
+    // common early, so allow 2 traders even in a single-city empire so
+    // trade routes actually form and tech diffusion has volume.
+    const int32_t maxTraders = std::max(2, std::min(cityCount + 1, 4));
     const float tradeScore = (traderCount < maxTraders) ? 1.0f : 0.1f;
 
-    // Bumped from 0.4 so traders actually get produced against building
-    // candidates (buildings score ~1.0 normalized).
-    constexpr float BASE_WEIGHT = 1.2f;
+    // Lowered to 0.8 -- 1.2 caused 40+ traders per game, drowning out
+    // military and builder production.  maxTraders already caps supply but
+    // trader attrition kept traderCount below the cap, so the score stayed
+    // at full 1.0 multiplier indefinitely.
+    constexpr float BASE_WEIGHT = 0.8f;
 
     return BASE_WEIGHT * behavior.economicFocus * tradeScore;
 }
@@ -813,7 +837,8 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 personality.behavior,
                 unimprovedTiles,
                 RING1_TILES,
-                unitCounts.builders
+                unitCounts.builders,
+                ownedCityCount
             );
             if (builderScore > 0.0f) {
                 ProductionCandidate candidate{};
@@ -937,23 +962,28 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                                           ? 1.4f   // High — need Commercial before Mint
                                           : 0.45f * personality.behavior.economicFocus;
 
+            // Base scores bumped (0.5 -> 1.4 etc.) so districts actually win
+            // over settlers (~2.14) and military (~1-2) once a city has room.
+            // Without this the AI never builds districts in most seeds, which
+            // kills Great People spawns and long-term yield growth.
             const std::array<DistrictOption, 5> districtOptions = {{
                 { DistrictType::Industrial,
                   60.0f,
-                  0.5f * personality.behavior.prodBuildings * personality.behavior.economicFocus },
+                  1.4f * personality.behavior.prodBuildings * personality.behavior.economicFocus },
                 { DistrictType::Commercial,
                   60.0f,
                   commercialScore },
                 { DistrictType::Campus,
                   55.0f,
-                  0.45f * personality.behavior.scienceFocus },
+                  1.3f * personality.behavior.scienceFocus
+                       * personality.behavior.greatPersonFocus },
                 { DistrictType::Encampment,
                   55.0f,
-                  0.35f * personality.behavior.militaryAggression },
+                  1.0f * personality.behavior.militaryAggression },
                 { DistrictType::Harbor,
                   70.0f,
                   isCityCoastal
-                      ? 0.4f * personality.behavior.economicFocus
+                      ? 1.1f * personality.behavior.economicFocus
                       : 0.0f },
             }};
 
@@ -1008,7 +1038,9 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
 
         // --- Spy unit production ---
         // Build a Diplomat/Spy if we have none and have the tech.
-        // UnitTypeId{55} = Diplomat, UnitTypeId{56} = Spy
+        // UnitTypeId{100} = Diplomat, UnitTypeId{101} = Spy (moved from 55/56
+        // after those collided with Frigate/Ironclad and unitTypeDef() kept
+        // returning the naval unit for spy lookups).
         {
             bool hasSpy = false;
             for (const std::unique_ptr<aoc::game::Unit>& u : gsPlayer->units()) {
@@ -1018,9 +1050,9 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 }
             }
             if (!hasSpy) {
-                UnitTypeId spyUnitId{56};
+                UnitTypeId spyUnitId{101};
                 if (!canBuildUnit(gameState, this->m_player, spyUnitId)) {
-                    spyUnitId = UnitTypeId{55};  // Fallback to Diplomat
+                    spyUnitId = UnitTypeId{100};  // Fallback to Diplomat
                 }
                 if (canBuildUnit(gameState, this->m_player, spyUnitId)) {
                     const UnitTypeDef& spyDef = unitTypeDef(spyUnitId);
@@ -1030,7 +1062,10 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                     candidate.item.name      = std::string(spyDef.name);
                     candidate.item.totalCost = static_cast<float>(spyDef.productionCost);
                     candidate.item.progress  = 0.0f;
-                    candidate.score          = 0.3f;  // Moderate priority
+                    // 3.5 gives spy parity with military (~3-6 post-posture)
+                    // so it wins sometimes but doesn't monopolize production
+                    // after spies die on failed missions.
+                    candidate.score          = 3.5f * personality.behavior.espionagePriority;
                     candidates.push_back(std::move(candidate));
                 }
             }
@@ -1041,7 +1076,12 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
         // Buildable = tech prereq met, not already built globally.
         {
             const std::array<WonderDef, WONDER_COUNT>& allWonders = allWonderDefs();
-            const float wonderBase = 200.0f
+            // Wonder scoring deliberately kept in the 1-4 range so a
+            // culture-focused leader prefers them but a militaristic one
+            // does not sink half of every city's hammers into wonders.
+            // Previous 200 base + 40/unit bonuses ballooned to 11-39,
+            // crushing military/settler/district candidates.
+            const float wonderBase = 80.0f
                 * personality.behavior.cultureFocus
                 * personality.behavior.prodWonders;
 
@@ -1054,16 +1094,14 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 }
 
                 float wonderScore = wonderBase;
-                // Scale by effect magnitude so strong wonders get built first.
-                wonderScore += 40.0f * wdef.effect.scienceBonus
+                wonderScore += 15.0f * wdef.effect.scienceBonus
                             * personality.behavior.scienceFocus;
-                wonderScore += 40.0f * wdef.effect.cultureBonus
+                wonderScore += 15.0f * wdef.effect.cultureBonus
                             * personality.behavior.cultureFocus;
-                wonderScore += 30.0f * wdef.effect.goldBonus
+                wonderScore += 12.0f * wdef.effect.goldBonus
                             * personality.behavior.economicFocus;
-                wonderScore += 30.0f * wdef.effect.faithBonus
+                wonderScore += 12.0f * wdef.effect.faithBonus
                             * personality.behavior.religiousZeal;
-                // Normalize to compare with unit/building scores (~1-5 range).
                 wonderScore *= 0.01f;
 
                 if (wonderScore <= 0.0f) { continue; }
@@ -1191,10 +1229,13 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             const float peaceMilRatio = (ourMilitary > 0)
                 ? static_cast<float>(theirMilitary) / static_cast<float>(ourMilitary)
                 : 10.0f;
-            // Gandhi (peace=0.2, grudge=0.2) sues for peace at ratio 0.8
-            // Montezuma (peace=0.8, grudge=0.9) fights until ratio 2.0+
-            const float peaceThreshold = 1.0f + beh.grudgeHolding - beh.peaceAcceptanceThreshold;
-            if (peaceMilRatio > std::max(peaceThreshold, 0.5f)) {
+            // Gandhi (peace=0.2, grudge=0.2) sues for peace at ratio ~1.3
+            // Montezuma (peace=0.8, grudge=0.9) fights until ratio 2.5+
+            // Base bumped 1.0 -> 1.5 so wars last long enough for nuke-tech
+            // civs to actually find at-war targets. Short wars also made
+            // secession, attrition, and spy missions under-trigger.
+            const float peaceThreshold = 1.5f + beh.grudgeHolding - beh.peaceAcceptanceThreshold;
+            if (peaceMilRatio > std::max(peaceThreshold, 0.8f)) {
                 // War reparations: the weaker side (proposing peace) pays 10% of
                 // their treasury to the stronger side. This makes war economically
                 // meaningful — winning wars pays for the military investment.
@@ -1230,18 +1271,18 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             // Gandhi (0.2): needs 1.5/sqrt(0.2)=3.35:1 -- almost never.
             // Montezuma (1.7): needs 1.5/sqrt(1.7)=1.15:1 -- at slight advantage.
             // Frederick (1.5): needs 1.5/sqrt(1.5)=1.22:1.
-            const float baseMilRatio = hardAI ? 1.3f : 1.5f;
-            const float milRatioThreshold = std::max(1.2f,
+            const float baseMilRatio = hardAI ? 1.15f : 1.3f;
+            const float milRatioThreshold = std::max(1.1f,
                 baseMilRatio / std::sqrt(std::max(beh.militaryAggression, 0.1f)));
             // Relation threshold: aggressive leaders tolerate worse relations less.
             // Gandhi needs relations below -100; Montezuma triggers at -30.
-            const int32_t baseRelThreshold = hardAI ? -20 : -30;
+            const int32_t baseRelThreshold = hardAI ? -5 : -15;
             const int32_t relationThreshold = static_cast<int32_t>(
                 static_cast<float>(baseRelThreshold)
                 / std::sqrt(std::max(beh.militaryAggression, 0.1f)));
-            // War chance per turn: low base (1-2 out of 10) scaled by aggression.
-            // Montezuma: 1 * 1.7 = 1 (10% chance); Gandhi: 1 * 0.2 = 0 (never).
-            const int32_t baseWarChance = hardAI ? 2 : 1;
+            // War chance per turn: bumped base so wars actually happen in
+            // mid/late game. Montezuma: 3 * 1.7 = 5 (50%); Gandhi still ~0.
+            const int32_t baseWarChance = hardAI ? 4 : 3;
             const int32_t warChanceThreshold = static_cast<int32_t>(
                 static_cast<float>(baseWarChance) * beh.militaryAggression);
 
@@ -1274,16 +1315,16 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             if (beh.militaryAggression < 0.5f) {
                 // Peaceful leaders skip opportunistic wars entirely.
             } else {
-                const float oppoRatioThreshold = std::max(1.5f,
-                    2.5f / std::sqrt(beh.militaryAggression));
-                const int32_t oppoMinUnits = 4;
+                const float oppoRatioThreshold = std::max(1.3f,
+                    2.0f / std::sqrt(beh.militaryAggression));
+                const int32_t oppoMinUnits = 3;
                 if (!easyAI && !rel.isAtWar && ourMilitary >= oppoMinUnits &&
                     static_cast<float>(ourMilitary) >=
                         oppoRatioThreshold * static_cast<float>(std::max(1, theirMilitary))) {
                     const int32_t warChance =
                         ((ourMilitary * 11 + theirMilitary * 17 +
                           static_cast<int32_t>(this->m_player) * 37) % 10);
-                    const int32_t threshold = hardAI ? 2 : 1;
+                    const int32_t threshold = hardAI ? 4 : 3;
                     if (warChance < threshold) {
                         diplomacy.declareWar(this->m_player, other);
                         LOG_INFO("AI %u Declared opportunistic war on player %u "

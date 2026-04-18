@@ -7,7 +7,7 @@
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/economy/StockMarket.hpp"
 #include "aoc/simulation/economy/SpeculationBubble.hpp"
-#include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/core/Log.hpp"
@@ -24,8 +24,16 @@ void runAIInvestmentDecisions(aoc::game::GameState& gameState) {
         const LeaderBehavior& bh =
             leaderPersonality(investor->civId()).behavior;
 
+        // Stock market requires Gold Standard+. Skip pre-industrial civs to
+        // avoid spamming InvalidMonetaryTransition rejections.
+        if (investor->monetary().system < MonetarySystemType::GoldStandard) {
+            continue;
+        }
+
         const CurrencyAmount treasury = investor->treasury();
-        if (treasury < 500) { continue; }
+        // Lowered from 500 to 200: small/mid economies have plausible idle
+        // gold above 200 mid-game. At 500 most runs never triggered.
+        if (treasury < 200) { continue; }
 
         // Bubble gate: during inflated phases, only confident speculators keep
         // buying. Cautious leaders sit out.
@@ -46,21 +54,11 @@ void runAIInvestmentDecisions(aoc::game::GameState& gameState) {
             static_cast<CurrencyAmount>(treasury / 5));
         if (investSize < 100) { continue; }
 
-        // Self-investment preference for economic leaders with spare cash.
-        if (bh.economicFocus > 1.2f) {
-            ErrorCode ec =
-                investInEconomy(gameState, investor->id(), investor->id(), investSize);
-            LOG_INFO("AI %u invest SELF %d (bubble=%d, ec=%d)",
-                     static_cast<unsigned>(investor->id()),
-                     static_cast<int>(investSize),
-                     static_cast<int>(bubble.phase),
-                     static_cast<int>(ec));
-            continue;
-        }
-
-        // Otherwise look for a reasonable foreign target. Pick the wealthiest
-        // non-hostile other player the speculation appetite tolerates.
-        if (bh.speculationAppetite < 1.0f) { continue; }
+        // investInEconomy rejects self-investment. Economic leaders with spare
+        // cash instead back a foreign economy; they get the same dividend flow
+        // without the API contract violation.
+        const float minAppetite = (bh.economicFocus > 1.2f) ? 0.5f : 1.0f;
+        if (bh.speculationAppetite < minAppetite) { continue; }
         aoc::game::Player* best = nullptr;
         CurrencyAmount bestTreasury = 0;
         for (const std::unique_ptr<aoc::game::Player>& otherPtr : gameState.players()) {

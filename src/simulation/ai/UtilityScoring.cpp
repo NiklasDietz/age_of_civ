@@ -14,7 +14,7 @@
 
 namespace aoc::sim {
 
-ProductionScores computeProductionUtility(const LeaderBehavior& b, const AIContext& ctx) {
+ProductionScores computeProductionUtility(const LeaderBehavior& b, const AIContext& context) {
     ProductionScores scores{};
 
     // ================================================================
@@ -23,19 +23,19 @@ ProductionScores computeProductionUtility(const LeaderBehavior& b, const AIConte
 
     // Settler: high value when below target cities
     scores.settler = 150.0f * b.expansionism * b.prodSettlers;
-    if (ctx.ownedCities >= ctx.targetMaxCities) { scores.settler = 0.0f; }
-    if (ctx.settlerUnits > 0) { scores.settler = 0.0f; }
-    if (ctx.totalPopulation < ctx.ownedCities * 2) { scores.settler *= 0.3f; }
+    if (context.ownedCities >= context.targetMaxCities) { scores.settler = 0.0f; }
+    if (context.settlerUnits > 0) { scores.settler = 0.0f; }
+    if (context.totalPopulation < context.ownedCities * 2) { scores.settler *= 0.3f; }
 
     // Builder: needed for improvements
     scores.builder = 80.0f * b.prodBuilders;
-    if (ctx.builderUnits > 0) { scores.builder *= 0.1f; }
-    if (ctx.needsImprovements) { scores.builder *= 2.0f; }
+    if (context.builderUnits > 0) { scores.builder *= 0.1f; }
+    if (context.needsImprovements) { scores.builder *= 2.0f; }
 
     // Military: scales with aggression and threat
     scores.military = 100.0f * b.militaryAggression * b.prodMilitary;
-    if (ctx.militaryUnits >= ctx.desiredMilitary) { scores.military *= 0.3f; }
-    if (ctx.isThreatened) { scores.military *= 3.0f; }
+    if (context.militaryUnits >= context.desiredMilitary) { scores.military *= 0.3f; }
+    if (context.isThreatened) { scores.military *= 3.0f; }
 
     // Naval military
     scores.navalMilitary = 60.0f * b.prodNaval;
@@ -52,11 +52,11 @@ ProductionScores computeProductionUtility(const LeaderBehavior& b, const AIConte
 
     // Science buildings (Library, University, Research Lab)
     scores.scienceBuilding = 120.0f * b.scienceFocus * b.prodBuildings;
-    if (!ctx.hasCampus) { scores.scienceBuilding *= 0.3f; }  // Need Campus first
+    if (!context.hasCampus) { scores.scienceBuilding *= 0.3f; }  // Need Campus first
 
     // Economic buildings (Market, Bank, Stock Exchange)
     scores.economicBuilding = 100.0f * b.economicFocus * b.prodBuildings;
-    if (!ctx.hasCommercial) { scores.economicBuilding *= 0.3f; }
+    if (!context.hasCommercial) { scores.economicBuilding *= 0.3f; }
 
     // Industrial buildings (Workshop, Factory, etc.)
     scores.industrialBuilding = 110.0f * b.prodBuildings * b.techIndustrial;
@@ -69,9 +69,9 @@ ProductionScores computeProductionUtility(const LeaderBehavior& b, const AIConte
 
     // Mint: HIGH priority if no coins yet (enables monetary advancement)
     scores.mintBuilding = 130.0f * b.economicFocus;
-    if (ctx.hasCoins) { scores.mintBuilding *= 0.2f; }  // Already have coins
-    if (ctx.hasMint) { scores.mintBuilding = 0.0f; }    // Already have Mint
-    if (!ctx.hasCommercial) { scores.mintBuilding *= 0.3f; }  // Need Commercial first
+    if (context.hasCoins) { scores.mintBuilding *= 0.2f; }  // Already have coins
+    if (context.hasMint) { scores.mintBuilding = 0.0f; }    // Already have Mint
+    if (!context.hasCommercial) { scores.mintBuilding *= 0.3f; }  // Need Commercial first
 
     // Power plants
     scores.powerPlant = 90.0f * b.techIndustrial * b.prodBuildings;
@@ -83,7 +83,7 @@ ProductionScores computeProductionUtility(const LeaderBehavior& b, const AIConte
 }
 
 float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
-                              const AIContext& ctx) {
+                              const AIContext& context) {
     float score = 50.0f;  // Base score for any building
 
     switch (buildingId.value) {
@@ -102,7 +102,7 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
         case 20: score = 110.0f * b.economicFocus; break;  // Bank
         case 21: score = 130.0f * b.economicFocus; break;  // Stock Exchange
         case 24: score = 140.0f * b.economicFocus;          // Mint!
-                 if (!ctx.hasCoins) { score *= 1.5f; }      // Huge bonus if no coins
+                 if (!context.hasCoins) { score *= 1.5f; }      // Huge bonus if no coins
                  break;
 
         // Industrial -- Forge and Workshop are critical: they enable the entire
@@ -133,7 +133,7 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
     }
 
     // Context bonus: treasury-rich players can afford expensive buildings
-    if (ctx.treasury > 5000) { score *= 1.2f; }
+    if (context.treasury > 5000) { score *= 1.2f; }
 
     // Pollution penalty scaled by environmentalism gene: green leaders
     // strongly avoid emitters; low-env leaders barely care. Cleaners
@@ -165,7 +165,7 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
 }
 
 float scoreTechForLeader(const LeaderBehavior& b, TechId techId,
-                          const AIContext& /*ctx*/) {
+                          const AIContext& /*context*/) {
     if (!techId.isValid() || techId.value >= techCount()) {
         return 0.0f;
     }

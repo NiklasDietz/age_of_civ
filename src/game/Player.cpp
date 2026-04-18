@@ -94,11 +94,12 @@ Unit& Player::addUnit(UnitTypeId typeId, aoc::hex::AxialCoord position) {
         std::make_unique<Unit>(this->m_id, typeId, position));
     Unit& newUnit = *this->m_units.back();
 
-    // Initialize spy component for Diplomat (55) and Spy (56) units
-    if (typeId.value == 55 || typeId.value == 56) {
+    // Initialize spy component for Diplomat (100) and Spy (101) units.
+    // IDs 55/56 were reassigned to 100/101 after colliding with Frigate/Ironclad.
+    if (typeId.value == 100 || typeId.value == 101) {
         newUnit.spy().owner = this->m_id;
         newUnit.spy().location = position;
-        newUnit.spy().level = (typeId.value == 56)
+        newUnit.spy().level = (typeId.value == 101)
             ? aoc::sim::SpyLevel::Agent : aoc::sim::SpyLevel::Recruit;
     }
 
@@ -109,7 +110,8 @@ void Player::removeUnit(Unit* unit) {
     if (unit == nullptr) {
         return;
     }
-    auto it = std::find_if(this->m_units.begin(), this->m_units.end(),
+    std::vector<std::unique_ptr<Unit>>::iterator it = std::find_if(
+        this->m_units.begin(), this->m_units.end(),
         [unit](const std::unique_ptr<Unit>& owned) {
             return owned.get() == unit;
         });

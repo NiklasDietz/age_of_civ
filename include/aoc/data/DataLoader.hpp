@@ -116,7 +116,7 @@ public:
     /**
      * @brief Load all game definitions from JSON files.
      *
-     * Reads from dataDirectory/definitions/*.json. Falls back to hardcoded
+     * Reads JSON files from dataDirectory/definitions/. Falls back to hardcoded
      * defaults for any file that is missing or unparseable.
      *
      * @param dataDirectory  Path to the data/ directory (e.g., "data" or "../data").

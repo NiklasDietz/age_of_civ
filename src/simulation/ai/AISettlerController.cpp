@@ -479,10 +479,22 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
 
             if (!foundValid) {
                 // Current tile is impassable, owned, or too close to a city.
-                // Search the 6 immediate neighbours for the best valid alternative.
+                // Expand the search radius the longer we're stuck -- a settler
+                // wedged between foreign cities and its own capital would
+                // otherwise idle forever.  Radius 1 after STUCK_TURNS_LIMIT,
+                // grows by +1 per 10 additional stuck turns, capped at 4.
+                const int32_t extraRings = (stuckTurns - STUCK_TURNS_LIMIT) / 10;
+                const int32_t searchRadius = std::min(4, 1 + extraRings);
+
                 float bestAdjacentScore = std::numeric_limits<float>::lowest();
-                const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(snap.position);
-                for (const aoc::hex::AxialCoord& nbr : nbrs) {
+                std::vector<aoc::hex::AxialCoord> candidates;
+                candidates.reserve(37);  // 1 + 6 + 12 + 18 = 37 for radius 3
+                aoc::hex::spiral(snap.position, searchRadius,
+                                 std::back_inserter(candidates));
+                for (const aoc::hex::AxialCoord& nbr : candidates) {
+                    if (nbr == snap.position) {
+                        continue;  // Already rejected above.
+                    }
                     if (!isTileFoundable(nbr, grid, this->m_player)) {
                         continue;
                     }
@@ -516,6 +528,22 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
                          cityName.c_str(),
                          foundPos.q, foundPos.r,
                          logStuck);
+                continue;
+            }
+
+            // Disband the settler if it has been trapped for more than 50
+            // turns even with radius-4 search -- it's stuck on a tile with no
+            // reachable foundable land.  Removing it frees production; the
+            // city can queue a fresh settler that will target a new direction.
+            if (stuckTurns >= 50) {
+                LOG_INFO("AI %u Disbanding settler at (%d,%d) after %d stuck turn(s) "
+                         "-- no foundable tile in range",
+                         static_cast<unsigned>(this->m_player),
+                         snap.position.q, snap.position.r,
+                         stuckTurns);
+                this->m_settlerStuckTurns.erase(snap.position);
+                this->m_settlerTargets.erase(snap.position);
+                gsPlayer->removeUnit(snap.ptr);
                 continue;
             }
 

@@ -362,7 +362,7 @@ public:
     [[nodiscard]] const uint8_t*     riverEdgesData() const { return this->m_riverEdges.data(); }
 
 private:
-    void assertIndex(int32_t index) const {
+    void assertIndex([[maybe_unused]] int32_t index) const {
         assert(index >= 0 && index < this->tileCount());
     }
 
