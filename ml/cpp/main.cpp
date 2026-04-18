@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <fstream>
 #include <numeric>
 #include <random>
@@ -288,6 +289,7 @@ int main(int argc, char* argv[]) {
     config.mutationSigma  = 0.15f;
     config.resetRate      = 0.1f;
     config.threadCount    = args.workers;
+    config.stopFlag       = &g_stopRequested;
 
     aoc::ga::ParamBounds bounds = aoc::ga::defaultBounds();
 
@@ -301,6 +303,21 @@ int main(int argc, char* argv[]) {
 
     float bestEverFitness = -1e9f;
     aoc::ga::Individual bestEver{};
+
+    // Rolling window of recent generation durations for ETA.
+    std::deque<double> recentGenSeconds;
+    constexpr std::size_t ETA_WINDOW = 10;
+    std::chrono::steady_clock::time_point trainStart =
+        std::chrono::steady_clock::now();
+
+    auto formatHMS = [](double seconds, char* out, std::size_t outSize) {
+        if (seconds < 0.0 || !std::isfinite(seconds)) { seconds = 0.0; }
+        long total = static_cast<long>(seconds);
+        long h = total / 3600;
+        long m = (total % 3600) / 60;
+        long s = total % 60;
+        std::snprintf(out, outSize, "%ldh%02ldm%02lds", h, m, s);
+    };
 
     // Main evolution loop
     for (int32_t gen = 0; gen < args.generations; ++gen) {
@@ -319,25 +336,76 @@ int main(int argc, char* argv[]) {
                   });
 
         // Compute generation statistics
-        float genBest  = population.front().fitness;
-        float genWorst = population.back().fitness;
-        float genSum   = 0.0f;
+        float genBest   = population.front().fitness;
+        float genWorst  = population.back().fitness;
+        float genMedian = population[population.size() / 2].fitness;
+        double genSum = 0.0;
         for (const aoc::ga::Individual& ind : population) {
-            genSum += ind.fitness;
+            genSum += static_cast<double>(ind.fitness);
         }
-        float genAvg = genSum / static_cast<float>(population.size());
+        double genAvg = genSum / static_cast<double>(population.size());
+        double sqSum = 0.0;
+        for (const aoc::ga::Individual& ind : population) {
+            double d = static_cast<double>(ind.fitness) - genAvg;
+            sqSum += d * d;
+        }
+        double genStddev = std::sqrt(sqSum / static_cast<double>(population.size()));
 
         std::chrono::steady_clock::time_point genEnd = std::chrono::steady_clock::now();
         double genSeconds = std::chrono::duration<double>(genEnd - genStart).count();
+
+        recentGenSeconds.push_back(genSeconds);
+        if (recentGenSeconds.size() > ETA_WINDOW) {
+            recentGenSeconds.pop_front();
+        }
+        double avgRecent = 0.0;
+        for (double s : recentGenSeconds) { avgRecent += s; }
+        avgRecent /= static_cast<double>(recentGenSeconds.size());
+        double totalElapsed = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - trainStart).count();
+        int32_t gensRemaining = args.generations - (gen + 1);
+        double etaSec = avgRecent * static_cast<double>(gensRemaining);
 
         if (genBest > bestEverFitness) {
             bestEverFitness = genBest;
             bestEver = population.front();
         }
 
-        std::fprintf(stderr, "  Best=%.4f  Avg=%.4f  Worst=%.4f  (%.1fs)\n",
-                     static_cast<double>(genBest), static_cast<double>(genAvg),
-                     static_cast<double>(genWorst), genSeconds);
+        // Cross-gen ASCII progress bar + ETA
+        constexpr int32_t BAR_W = 30;
+        int32_t gensDone = gen + 1;
+        int32_t filled = (gensDone * BAR_W + args.generations / 2) / args.generations;
+        char bar[BAR_W + 1];
+        for (int32_t i = 0; i < BAR_W; ++i) {
+            bar[i] = (i < filled) ? '#' : '.';
+        }
+        bar[BAR_W] = '\0';
+        double pct = 100.0 * static_cast<double>(gensDone)
+                   / static_cast<double>(args.generations);
+        char elapsedBuf[32];
+        char etaBuf[32];
+        formatHMS(totalElapsed, elapsedBuf, sizeof(elapsedBuf));
+        formatHMS(etaSec,       etaBuf,     sizeof(etaBuf));
+        std::fprintf(stderr,
+            "  [%s] %d/%d (%.1f%%)  gen %.1fs  avg %.1fs  elapsed %s  ETA %s\n",
+            bar, gensDone, args.generations, pct, genSeconds, avgRecent,
+            elapsedBuf, etaBuf);
+
+        std::fprintf(stderr,
+            "  Fitness: best=%.4f avg=%.4f median=%.4f worst=%.4f stddev=%.4f\n",
+            static_cast<double>(genBest), genAvg,
+            static_cast<double>(genMedian), static_cast<double>(genWorst),
+            genStddev);
+
+        // Top-3 fitnesses
+        std::size_t topN = std::min<std::size_t>(3, population.size());
+        std::fprintf(stderr, "  Top-%zu:", topN);
+        for (std::size_t i = 0; i < topN; ++i) {
+            std::fprintf(stderr, " #%zu=%.4f", i + 1,
+                         static_cast<double>(population[i].fitness));
+        }
+        std::fprintf(stderr, "  (best-ever=%.4f)\n",
+                     static_cast<double>(bestEverFitness));
 
         // Show top individual's key traits
         const aoc::ga::Individual& top = population.front();

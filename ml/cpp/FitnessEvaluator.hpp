@@ -11,6 +11,7 @@
 
 #include "GeneticAlgorithm.hpp"
 
+#include <atomic>
 #include <cstdint>
 #include <vector>
 
@@ -28,8 +29,11 @@ struct SimulationResult {
 
 /// Run a single headless simulation and return structured results.
 /// Thread-safe: creates its own GameState, grid, and RNG from the given seed.
+/// If stopFlag is non-null and becomes true, the sim exits early and
+/// returns a result with valid=false.
 [[nodiscard]] SimulationResult runSimulation(int32_t turns, int32_t playerCount,
-                                              uint64_t seed);
+                                              uint64_t seed,
+                                              const std::atomic<bool>* stopFlag = nullptr);
 
 /// Evaluate fitness of one individual by running multiple games.
 /// The individual's genes are used as Player 0's AI personality.

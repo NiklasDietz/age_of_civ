@@ -15,21 +15,73 @@ if(CCACHE_PROGRAM)
 endif()
 
 # --------------------------------------------------------------------------
+# Build options
+# --------------------------------------------------------------------------
+
+# Headless build: skips Vulkan/GLFW/renderer and the interactive `age_of_civ`
+# executable. Only `aoc_simulate` and `aoc_evolve` are built. Useful for
+# servers, CI, and GA training on machines without a GPU / Vulkan SDK.
+option(AOC_HEADLESS "Build without Vulkan/GLFW (sim + GA tools only)" OFF)
+
+# --------------------------------------------------------------------------
 # Dependencies
 # --------------------------------------------------------------------------
 
-# Vulkan renderer submodule (builds as C++17 internally, that is fine)
-add_subdirectory(third_party/vulkan_renderer)
+if(NOT AOC_HEADLESS)
+    # Vulkan renderer submodule (builds as C++17 internally, that is fine)
+    add_subdirectory(third_party/vulkan_renderer)
 
-# GLFW -- required for windowing (vulkan_utils links it optionally;
-# we need it unconditionally)
-find_package(glfw3 REQUIRED)
+    # GLFW -- required for windowing
+    find_package(glfw3 REQUIRED)
+endif()
+
+# --------------------------------------------------------------------------
+# Sources that pull in Vulkan/GLFW. Excluded from the headless build.
+# --------------------------------------------------------------------------
+
+set(AOC_GFX_ONLY_SOURCES
+    src/core/Selectable.cpp
+    src/render/CameraController.cpp
+    src/render/CombatAnimation.cpp
+    src/render/DrawCommandBuffer.cpp
+    src/render/GameRenderer.cpp
+    src/render/MapOverlays.cpp
+    src/render/MapRenderer.cpp
+    src/render/Minimap.cpp
+    src/render/Particles.cpp
+    src/render/SpriteRenderer.cpp
+    src/render/TextureAtlas.cpp
+    src/render/UnitRenderer.cpp
+    src/app/Application.cpp
+    src/app/Window.cpp
+    src/app/InputManager.cpp
+    src/app/HotkeyManager.cpp
+    src/app/UnitSelection.cpp
+    # All ui/ except GameNotifications pull in Renderer2D
+    src/ui/BitmapFont.cpp
+    src/ui/DebugConsole.cpp
+    src/ui/DiplomacyScreen.cpp
+    src/ui/Encyclopedia.cpp
+    src/ui/EventLog.cpp
+    src/ui/GameScreens.cpp
+    src/ui/MainMenu.cpp
+    src/ui/MapEditor.cpp
+    src/ui/Notifications.cpp
+    src/ui/ReligionScreen.cpp
+    src/ui/ScoreScreen.cpp
+    src/ui/SpectatorHUD.cpp
+    src/ui/Tooltip.cpp
+    src/ui/TradeRouteSetupScreen.cpp
+    src/ui/TradeScreen.cpp
+    src/ui/Tutorial.cpp
+    src/ui/UIManager.cpp
+)
 
 # --------------------------------------------------------------------------
 # Game library  (everything except main.cpp)
 # --------------------------------------------------------------------------
 
-add_library(aoc_lib STATIC
+set(AOC_LIB_SOURCES
     # Core
     src/core/ErrorCodes.cpp
     src/core/Selectable.cpp
@@ -222,6 +274,17 @@ add_library(aoc_lib STATIC
     src/render/SpriteRenderer.cpp
 )
 
+# Strip gfx-only sources in headless mode.
+if(AOC_HEADLESS)
+    list(LENGTH AOC_GFX_ONLY_SOURCES _gfx_count)
+    foreach(_gfx_src IN LISTS AOC_GFX_ONLY_SOURCES)
+        list(REMOVE_ITEM AOC_LIB_SOURCES "${_gfx_src}")
+    endforeach()
+    message(STATUS "Headless build: Vulkan/GLFW and ${_gfx_count} gfx sources excluded")
+endif()
+
+add_library(aoc_lib STATIC ${AOC_LIB_SOURCES})
+
 target_include_directories(aoc_lib
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -229,11 +292,15 @@ target_include_directories(aoc_lib
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 
-target_link_libraries(aoc_lib
-    PUBLIC
-        vulkan_renderer_lib
-        glfw
-)
+if(NOT AOC_HEADLESS)
+    target_link_libraries(aoc_lib
+        PUBLIC
+            vulkan_renderer_lib
+            glfw
+    )
+else()
+    target_compile_definitions(aoc_lib PUBLIC AOC_HEADLESS_BUILD)
+endif()
 
 target_compile_features(aoc_lib PUBLIC cxx_std_20)
 
@@ -302,9 +369,10 @@ elseif(MSVC)
 endif()
 
 # --------------------------------------------------------------------------
-# Main executable
+# Main executable (interactive; requires Vulkan + GLFW)
 # --------------------------------------------------------------------------
 
+if(NOT AOC_HEADLESS)
 add_executable(age_of_civ src/main.cpp)
 target_link_libraries(age_of_civ PRIVATE aoc_lib)
 
@@ -386,6 +454,8 @@ foreach(YAML_FILE ${AOC_DATA_YAML_FILES})
         COMMENT "Copying config file: ${YAML_FILENAME}"
     )
 endforeach()
+
+endif() # NOT AOC_HEADLESS
 
 # --------------------------------------------------------------------------
 # Headless simulation tool (AI-vs-AI for analysis)

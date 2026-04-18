@@ -46,7 +46,10 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <semaphore>
 #include <mutex>
 #include <numeric>
@@ -55,7 +58,8 @@
 
 namespace aoc::ga {
 
-SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed) {
+SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed,
+                                const std::atomic<bool>* stopFlag) {
     SimulationResult result{};
     result.eraVP.resize(static_cast<std::size_t>(playerCount), 0);
     result.compositeCSI.resize(static_cast<std::size_t>(playerCount), 0.0f);
@@ -284,6 +288,13 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
 
     // Main simulation loop (no CSV, no progress bar)
     for (int32_t turn = 1; turn <= turns; ++turn) {
+        // Fast SIGINT/SIGTERM abort: check once per turn. Relaxed load is
+        // fine — late by one turn is acceptable for a shutdown path.
+        if (stopFlag != nullptr && stopFlag->load(std::memory_order_relaxed)) {
+            result.valid = false;
+            return result;
+        }
+
         turnCtx.currentTurn = static_cast<aoc::TurnNumber>(turn);
         eventLog.clear();
 
@@ -381,6 +392,12 @@ float evaluateFitness(const Individual& individual,
     int32_t validGames = 0;
 
     for (int32_t game = 0; game < config.gamesPerEval; ++game) {
+        // Per-game abort check
+        if (config.stopFlag != nullptr
+            && config.stopFlag->load(std::memory_order_relaxed)) {
+            break;
+        }
+
         uint64_t gameSeed = baseSeed + static_cast<uint64_t>(game) * 7919;
 
         int32_t turns = config.turnsList.empty()
@@ -392,7 +409,8 @@ float evaluateFitness(const Individual& individual,
             : config.playersList[static_cast<std::size_t>(game)
                                   % config.playersList.size()];
 
-        SimulationResult simResult = runSimulation(turns, playerCount, gameSeed);
+        SimulationResult simResult = runSimulation(turns, playerCount, gameSeed,
+                                                    config.stopFlag);
 
         if (!simResult.valid || simResult.eraVP.empty()) {
             continue;
@@ -454,14 +472,56 @@ void evaluatePopulation(std::vector<Individual>& population,
     // Limit threads to work items
     threadCount = std::min(threadCount, static_cast<int32_t>(toEvaluate.size()));
 
+    const int32_t totalWork = static_cast<int32_t>(toEvaluate.size());
+    std::atomic<int32_t> completed{0};
+    std::chrono::steady_clock::time_point evalStart =
+        std::chrono::steady_clock::now();
+
+    auto renderProgress = [&](bool finalLine) {
+        int32_t done = completed.load(std::memory_order_acquire);
+        double elapsed = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - evalStart).count();
+        double rate = (elapsed > 0.0) ? static_cast<double>(done) / elapsed : 0.0;
+        double etaSec = (rate > 0.0 && done < totalWork)
+            ? static_cast<double>(totalWork - done) / rate
+            : 0.0;
+        constexpr int32_t BAR_W = 24;
+        int32_t filled = (totalWork > 0)
+            ? (done * BAR_W + totalWork / 2) / totalWork
+            : BAR_W;
+        char bar[BAR_W + 1];
+        for (int32_t i = 0; i < BAR_W; ++i) {
+            bar[i] = (i < filled) ? '#' : '.';
+        }
+        bar[BAR_W] = '\0';
+        double pct = (totalWork > 0)
+            ? 100.0 * static_cast<double>(done) / static_cast<double>(totalWork)
+            : 100.0;
+        std::fprintf(stderr,
+            "\r  [eval %s] %d/%d (%.1f%%) %.1fs  %.2f ind/s  ETA %.0fs   %s",
+            bar, done, totalWork, pct, elapsed, rate, etaSec,
+            finalLine ? "\n" : "");
+        std::fflush(stderr);
+    };
+
+    auto stopRequested = [&config]() {
+        return config.stopFlag != nullptr
+               && config.stopFlag->load(std::memory_order_relaxed);
+    };
+
     if (threadCount <= 1) {
         // Sequential fallback
+        renderProgress(false);
         for (std::size_t idx : toEvaluate) {
+            if (stopRequested()) { break; }
             uint64_t individualSeed = baseSeed + idx * 104729;
             population[idx].fitness = evaluateFitness(
                 population[idx], config, individualSeed);
             population[idx].gamesPlayed = config.gamesPerEval;
+            completed.fetch_add(1, std::memory_order_release);
+            renderProgress(false);
         }
+        renderProgress(true);
         return;
     }
 
@@ -471,11 +531,34 @@ void evaluatePopulation(std::vector<Individual>& population,
     std::vector<std::jthread> threads;
     threads.reserve(toEvaluate.size());
 
+    std::fprintf(stderr, "  [eval] %d individuals x %d games, %d workers\n",
+                 totalWork, config.gamesPerEval, threadCount);
+    renderProgress(false);
+
+    // Watcher jthread: print progress every 500ms until stop_token.
+    std::jthread watcher([&renderProgress](std::stop_token stop) {
+        while (!stop.stop_requested()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            if (stop.stop_requested()) { break; }
+            renderProgress(false);
+        }
+    });
+
     for (std::size_t idx : toEvaluate) {
+        // Stop dispatching new work on SIGINT. In-flight workers exit
+        // within one turn via runSimulation's per-turn check.
+        if (stopRequested()) { break; }
+
         semaphore.acquire();  // Block if pool is full
 
+        // Re-check after acquire in case stop arrived while blocked.
+        if (stopRequested()) {
+            semaphore.release();
+            break;
+        }
+
         threads.emplace_back([&population, &config, &semaphore, &resultMutex,
-                               idx, baseSeed]() {
+                               &completed, idx, baseSeed]() {
             uint64_t individualSeed = baseSeed + idx * 104729;
             float fitness = evaluateFitness(
                 population[idx], config, individualSeed);
@@ -486,11 +569,18 @@ void evaluatePopulation(std::vector<Individual>& population,
                 population[idx].gamesPlayed = config.gamesPerEval;
             }
 
+            completed.fetch_add(1, std::memory_order_release);
             semaphore.release();
         });
     }
 
-    // jthreads auto-join on destruction
+    // Wait for all workers first, then stop the watcher, then print final line.
+    for (std::jthread& t : threads) {
+        if (t.joinable()) { t.join(); }
+    }
+    watcher.request_stop();
+    watcher.join();
+    renderProgress(true);
 }
 
 } // namespace aoc::ga

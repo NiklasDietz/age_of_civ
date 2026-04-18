@@ -12,6 +12,7 @@
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <random>
 #include <vector>
@@ -83,6 +84,11 @@ struct GAConfig {
     /// Optional per-game player counts. When non-empty, game k uses
     /// playersList[k % playersList.size()] instead of playerCount.
     std::vector<int32_t> playersList;
+
+    /// External stop flag for fast SIGINT/SIGTERM abort. When non-null and
+    /// true, runSimulation / evaluateFitness / evaluatePopulation exit at
+    /// the next safe checkpoint (per-turn, per-game, per-individual).
+    const std::atomic<bool>* stopFlag = nullptr;
 };
 
 /// Difficulty tier results.
