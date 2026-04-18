@@ -11,6 +11,7 @@
 #include "aoc/simulation/city/Governor.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/tech/EraScore.hpp"
+#include "aoc/simulation/diplomacy/Grievance.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -149,6 +150,16 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                     bestPressure = entry.second;
                     bestNeighbor = entry.first;
                 }
+            }
+
+            // Former owner remembers the loss: permanent grievance against
+            // whoever gained the city (or a generic INVALID_PLAYER anchor for
+            // Free Cities so the severity still counts toward world-stance).
+            aoc::game::Player* formerOwner = gameState.player(player);
+            const PlayerId gainer = (bestNeighbor != INVALID_PLAYER) ? bestNeighbor : INVALID_PLAYER;
+            if (formerOwner != nullptr) {
+                formerOwner->grievances().addGrievance(
+                    GrievanceType::LostCityToSecession, gainer);
             }
 
             if (bestNeighbor != INVALID_PLAYER) {

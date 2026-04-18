@@ -278,47 +278,72 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
     this->considerCanalBuilding(gameState, grid, fogOfWar);
 
     // --- AI Spy Management ---
-    // Assign idle spies to missions based on strategic priorities.
-    // Prioritizes: CounterIntelligence when under threat, MonitorTreasury
-    // for intel, StealTechnology when behind in tech, SiphonFunds when wealthy.
+    // Gene-driven mission selection: each mission's utility is a product of
+    // leader focus genes and per-target context (threat, tech gap, wealth).
+    // The top-scoring mission wins; espionagePriority globally scales offensive
+    // vs defensive bias.
     {
         aoc::game::Player* spyPlayer = gameState.player(this->m_player);
         if (spyPlayer != nullptr) {
             const aoc::sim::ai::AIBlackboard& bb = spyPlayer->blackboard();
+            const LeaderBehavior& bh =
+                leaderPersonality(spyPlayer->civId()).behavior;
+
             for (const std::unique_ptr<aoc::game::Unit>& unitPtr : spyPlayer->units()) {
                 SpyComponent& spy = unitPtr->spy();
                 if (spy.owner == INVALID_PLAYER) { continue; }
-                if (spy.turnsRemaining > 0) { continue; }  // Already on a mission
+                if (spy.turnsRemaining > 0) { continue; }
 
-                // Find an enemy city to target
+                // Pick the richest enemy as target — proxies wealth for
+                // SiphonFunds and significance for all offensive ops.
                 aoc::hex::AxialCoord targetLoc = spy.location;
+                float bestEnemyWealth = 0.0f;
                 bool foundTarget = false;
                 for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
                     if (other->id() == this->m_player) { continue; }
                     if (other->cities().empty()) { continue; }
-                    // Pick the nearest enemy city
-                    for (const std::unique_ptr<aoc::game::City>& city : other->cities()) {
-                        targetLoc = city->location();
+                    const float w = static_cast<float>(other->treasury());
+                    if (!foundTarget || w > bestEnemyWealth) {
+                        bestEnemyWealth = w;
+                        for (const std::unique_ptr<aoc::game::City>& city : other->cities()) {
+                            targetLoc = city->location();
+                            break;
+                        }
                         foundTarget = true;
-                        break;
                     }
-                    if (foundTarget) { break; }
                 }
-
                 if (!foundTarget) { continue; }
 
-                // Choose mission based on strategic needs
+                const float techGap = std::max(0.0f, bb.techGap);
+                const float threat  = std::max(0.0f, bb.threatLevel);
+                const float wealthProxy = std::min(bestEnemyWealth / 1000.0f, 3.0f);
+                const float bubble = 1.0f; // Placeholder: MarketManipulation likes bubbles
+
+                struct Cand { SpyMission m; float s; };
+                const std::array<Cand, 8> cands = {{
+                    {SpyMission::StealTechnology,
+                        bh.scienceFocus * 100.0f * (0.5f + techGap)},
+                    {SpyMission::SabotageProduction,
+                        bh.militaryAggression * 80.0f * (0.5f + threat)},
+                    {SpyMission::SiphonFunds,
+                        bh.economicFocus * 90.0f * wealthProxy},
+                    {SpyMission::MarketManipulation,
+                        bh.speculationAppetite * 70.0f * bubble},
+                    {SpyMission::CounterIntelligence,
+                        (2.0f - bh.espionagePriority) * 60.0f * (0.5f + threat)},
+                    {SpyMission::FomentUnrest,
+                        bh.militaryAggression * 70.0f * (0.5f + threat)},
+                    {SpyMission::MonitorTreasury,
+                        bh.economicFocus * 40.0f},
+                    {SpyMission::GatherIntelligence,
+                        50.0f},
+                }};
+
                 SpyMission mission = SpyMission::GatherIntelligence;
-                if (bb.threatLevel > 0.5f) {
-                    mission = SpyMission::CounterIntelligence;
-                } else if (bb.techGap > 0.3f) {
-                    mission = SpyMission::StealTechnology;
-                } else if (bb.goldPressure > 0.5f) {
-                    mission = SpyMission::SiphonFunds;
-                } else if (spyPlayer->treasury() > 1000) {
-                    mission = SpyMission::MarketManipulation;
-                } else {
-                    mission = SpyMission::MonitorTreasury;
+                float bestScore = -1.0f;
+                for (const Cand& c : cands) {
+                    const float s = c.s * bh.espionagePriority;
+                    if (s > bestScore) { bestScore = s; mission = c.m; }
                 }
 
                 spy.location = targetLoc;
@@ -1400,13 +1425,32 @@ void AIController::manageGovernment(aoc::game::GameState& gameState) {
     if (gsPlayer == nullptr) { return; }
 
     aoc::sim::PlayerGovernmentComponent& gov = gsPlayer->government();
+    const LeaderBehavior& bh = leaderPersonality(gsPlayer->civId()).behavior;
 
+    // Default: keep the highest-id unlocked gov (unlock order = tech progression).
     GovernmentType bestGov = gov.government;
     for (uint8_t g = 0; g < GOVERNMENT_COUNT; ++g) {
         const GovernmentType gt = static_cast<GovernmentType>(g);
         if (gov.isGovernmentUnlocked(gt)) {
             bestGov = gt;
         }
+    }
+
+    // Post-industrial ideological pick overrides the linear default when
+    // available. High ideologicalFervor = strong commitment; low fervor keeps
+    // the pragmatic (default) choice.
+    const bool demUnlocked = gov.isGovernmentUnlocked(GovernmentType::Democracy);
+    const bool comUnlocked = gov.isGovernmentUnlocked(GovernmentType::Communism);
+    const bool fasUnlocked = gov.isGovernmentUnlocked(GovernmentType::Fascism);
+    if ((demUnlocked || comUnlocked || fasUnlocked) && bh.ideologicalFervor > 0.8f) {
+        const float fasScore = bh.militaryAggression + bh.ideologicalFervor;
+        const float demScore = bh.economicFocus + bh.ideologicalFervor;
+        const float comScore = bh.expansionism + bh.ideologicalFervor
+                             + (bh.trustworthiness < 0.6f ? 0.5f : 0.0f);
+        float best = -1.0f;
+        if (fasUnlocked && fasScore > best) { best = fasScore; bestGov = GovernmentType::Fascism; }
+        if (demUnlocked && demScore > best) { best = demScore; bestGov = GovernmentType::Democracy; }
+        if (comUnlocked && comScore > best) { best = comScore; bestGov = GovernmentType::Communism; }
     }
     if (bestGov != gov.government) {
         gov.government = bestGov;

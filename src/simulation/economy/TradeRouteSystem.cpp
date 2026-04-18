@@ -17,6 +17,7 @@
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/economy/AdvancedEconomics.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
+#include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Pathfinding.hpp"
@@ -702,6 +703,30 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         // Science/culture spread: trade spreads ideas
         trader.scienceSpread += 0.5f;
         trader.cultureSpread += 0.3f;
+
+        // Tech diffusion: if traderOwner knows techs cityOwner is researching,
+        // grant a small science boost to cityOwner's current research. Resets
+        // the accumulator after each delivery so diffusion stays bounded.
+        if (targetCity != nullptr) {
+            PlayerId traderOwner = trader.owner;
+            PlayerId cityOwner = targetCity->owner();
+            if (traderOwner != cityOwner && traderOwner != INVALID_PLAYER
+                && cityOwner != INVALID_PLAYER && trader.scienceSpread > 0.0f) {
+                aoc::game::Player* originPlayer = gameState.player(traderOwner);
+                aoc::game::Player* targetPlayer = gameState.player(cityOwner);
+                if (originPlayer != nullptr && targetPlayer != nullptr) {
+                    const PlayerTechComponent& originTech = originPlayer->tech();
+                    PlayerTechComponent& targetTech = targetPlayer->tech();
+                    TechId current = targetTech.currentResearch;
+                    if (current.isValid() && originTech.hasResearched(current)
+                        && !targetTech.hasResearched(current)) {
+                        float boost = trader.scienceSpread * 0.1f;
+                        advanceResearch(targetTech, boost);
+                    }
+                    trader.scienceSpread = 0.0f;
+                }
+            }
+        }
 
         if (trader.isReturning) {
             // Completed a full round trip

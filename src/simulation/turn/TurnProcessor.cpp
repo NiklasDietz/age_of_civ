@@ -47,6 +47,7 @@
 
 // Diplomacy
 #include "aoc/simulation/diplomacy/BorderViolation.hpp"
+#include "aoc/simulation/diplomacy/Grievance.hpp"
 #include "aoc/simulation/diplomacy/NavalPassage.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
@@ -83,6 +84,8 @@
 
 // Events
 #include "aoc/simulation/event/WorldEvents.hpp"
+#include "aoc/simulation/ai/AIEventChoice.hpp"
+#include "aoc/simulation/ai/AIInvestmentController.hpp"
 
 // Production
 #include "aoc/simulation/production/Waste.hpp"
@@ -572,6 +575,28 @@ void processGlobalSystems(TurnContext& ctx) {
         // Industrial pollution CO2
         climate.addCO2(static_cast<float>(totalIndustrialCO2(gameState)));
         climate.processTurn(grid, *ctx.rng);
+
+        // Climate thresholds push narrative events into the per-player queue.
+        // Once fired, the existing eventFired[] gate prevents re-trigger.
+        const bool floodThreshold = climate.seaLevelRise >= 5;
+        const bool droughtThreshold = climate.globalTemperature >= 2.0f;
+        if (floodThreshold || droughtThreshold) {
+            for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+                PlayerEventComponent& events = p->events();
+                if (events.pendingEvent != static_cast<WorldEventId>(255)) { continue; }
+                if (floodThreshold
+                    && !events.eventFired[static_cast<uint8_t>(WorldEventId::MigrantWave)]) {
+                    events.pendingEvent = WorldEventId::MigrantWave;
+                    events.pendingChoice = -1;
+                    continue;
+                }
+                if (droughtThreshold
+                    && !events.eventFired[static_cast<uint8_t>(WorldEventId::FamineWarning)]) {
+                    events.pendingEvent = WorldEventId::FamineWarning;
+                    events.pendingChoice = -1;
+                }
+            }
+        }
     }
 
     // Energy dependency and peak oil tracking
@@ -605,6 +630,9 @@ void processGlobalSystems(TurnContext& ctx) {
     // Stock market: dividends, value updates
     processStockMarket(gameState);
 
+    // AI investment decisions (gene-driven: speculationAppetite + riskTolerance)
+    ai::runAIInvestmentDecisions(gameState);
+
     // Trade agreements: tick durations
     processTradeAgreements(gameState);
 
@@ -612,6 +640,10 @@ void processGlobalSystems(TurnContext& ctx) {
     if (ctx.dealTracker != nullptr && ctx.diplomacy != nullptr) {
         processDeals(gameState, *ctx.dealTracker, *ctx.diplomacy, grid);
     }
+
+    // Ideological friction: different post-industrial governments accrue
+    // grievance every turn until they converge or hit the per-pair cap.
+    accrueIdeologicalGrievances(gameState);
 
     // Alliance obligations: tick countdowns, check fulfillment, apply penalties
     if (ctx.allianceTracker != nullptr && ctx.diplomacy != nullptr) {
@@ -647,6 +679,9 @@ void processGlobalSystems(TurnContext& ctx) {
     for (PlayerId player : ctx.allPlayers) {
         checkWorldEvents(gameState, player, static_cast<int32_t>(ctx.currentTurn));
     }
+    // AI players pick a choice utility-style; humans keep their pending events
+    // so the UI can present the dilemma.
+    ai::resolvePendingAIEvents(gameState);
     tickWorldEvents(gameState);
 
     // Victory tracking

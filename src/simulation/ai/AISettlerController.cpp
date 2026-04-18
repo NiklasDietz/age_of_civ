@@ -29,6 +29,7 @@
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/turn/TurnProcessor.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -83,7 +84,8 @@ static constexpr uint16_t STRATEGIC_RESOURCE_ID_MAX = 12;
 [[nodiscard]] static float scoreCityLocation(aoc::hex::AxialCoord pos,
                                               const aoc::map::HexGrid& grid,
                                               const aoc::game::GameState& gameState,
-                                              PlayerId player) {
+                                              PlayerId player,
+                                              float peripheryTolerance = 1.0f) {
     if (!grid.isValid(pos)) {
         return -9999.0f;
     }
@@ -172,9 +174,17 @@ static constexpr uint16_t STRATEGIC_RESOURCE_ID_MAX = 12;
                 // Hard disqualification: Civ 6 rule requires 3+ tiles between cities.
                 if (dist < 3) {
                     return -9999.0f;
-                } else if (dist > 10) {
-                    // Too far from own empire: hard to connect and defend.
-                    score -= static_cast<float>(dist - 10) * 3.0f;
+                } else {
+                    // Periphery tolerance shifts where "too far" starts and how
+                    // harshly it's penalised. Low-tol leaders (isolationist) feel
+                    // the penalty sooner and harder; high-tol leaders (colonial)
+                    // stretch further before it bites.
+                    const int32_t sweetSpot = static_cast<int32_t>(
+                        8.0f + 4.0f * peripheryTolerance);
+                    if (dist > sweetSpot) {
+                        const float penaltyPerTile = 3.0f * (2.0f - peripheryTolerance);
+                        score -= static_cast<float>(dist - sweetSpot) * penaltyPerTile;
+                    }
                 }
             } else {
                 // Penalty for settling near enemy/city-state cities (but not disqualification).
@@ -276,6 +286,9 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
         return;
     }
 
+    const float peripheryTol =
+        leaderPersonality(gsPlayer->civId()).behavior.peripheryTolerance;
+
     LOG_INFO("AI %u executeSettlerActions: %d cities, %d units",
              static_cast<unsigned>(this->m_player),
              gsPlayer->cityCount(),
@@ -364,7 +377,7 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
                     continue;
                 }
                 const float locationScore = scoreCityLocation(
-                    candidate, grid, gameState, this->m_player);
+                    candidate, grid, gameState, this->m_player, peripheryTol);
                 if (locationScore > bestScore) {
                     bestScore    = locationScore;
                     bestLocation = candidate;
@@ -417,7 +430,7 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
         // --- Found immediately when settler has arrived at the target ---
         if (snap.position == target) {
             const float arrivalScore = scoreCityLocation(
-                snap.position, grid, gameState, this->m_player);
+                snap.position, grid, gameState, this->m_player, peripheryTol);
 
             if (arrivalScore > FOUND_SCORE_MIN) {
                 const aoc::hex::AxialCoord foundPos = snap.position;
@@ -478,7 +491,7 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
                     }
                     // scoreCityLocation also enforces the distance rule, so a
                     // score above -9999 means the tile is genuinely usable.
-                    const float nbrScore = scoreCityLocation(nbr, grid, gameState, this->m_player);
+                    const float nbrScore = scoreCityLocation(nbr, grid, gameState, this->m_player, peripheryTol);
                     if (nbrScore > bestAdjacentScore) {
                         bestAdjacentScore = nbrScore;
                         foundPos          = nbr;

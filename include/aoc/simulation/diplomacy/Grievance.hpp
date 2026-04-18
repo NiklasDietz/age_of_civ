@@ -13,6 +13,8 @@
 #include <cstdint>
 #include <vector>
 
+namespace aoc::game { class GameState; }
+
 namespace aoc::sim {
 
 enum class GrievanceType : uint8_t {
@@ -25,6 +27,8 @@ enum class GrievanceType : uint8_t {
     FailedAllianceObligation,  ///< -25, decays over 60 turns
     BrokeNonAggression,        ///< -30, permanent
     DMZViolation,              ///< -10, decays over 20 turns
+    LostCityToSecession,       ///< -15 per city, permanent (bitter memory)
+    IdeologicalDifference,     ///< -5/turn, capped at -50 per pair
 };
 
 struct Grievance {
@@ -33,6 +37,11 @@ struct Grievance {
     int32_t       severity;
     int32_t       turnsRemaining; ///< 0 = permanent
 };
+
+/// Generate IdeologicalDifference grievances for every pair of players whose
+/// post-industrial governments differ. Call once per turn. Caps the
+/// accumulated total per pair at -50.
+void accrueIdeologicalGrievances(::aoc::game::GameState& gameState);
 
 /// Per-player grievance tracker (ECS component).
 struct PlayerGrievanceComponent {

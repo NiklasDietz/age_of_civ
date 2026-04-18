@@ -179,6 +179,8 @@ void saveSummary(const aoc::ga::DifficultyTiers& tiers, const char* path) {
         "prodSettlers", "prodMilitary", "prodBuilders", "prodBuildings", "prodWonders",
         "prodNaval", "prodReligious",
         "warDeclarationThreshold", "peaceAcceptanceThreshold", "allianceDesire",
+        "riskTolerance", "environmentalism", "peripheryTolerance", "greatPersonFocus",
+        "espionagePriority", "ideologicalFervor", "speculationAppetite",
     };
 
     file << "Evolved Utility AI Weights (C++ GA)\n";

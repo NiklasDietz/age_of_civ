@@ -20,10 +20,12 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
+#include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
 
+#include <algorithm>
 #include <limits>
 #include <vector>
 
@@ -580,8 +582,13 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
     // ----------------------------------------------------------------
     {
         const int32_t ownMilitary = gsPlayer->militaryUnitCount();
+        // Low peripheryTolerance leaders hate extending supply lines; scale
+        // striking range 8..25 tiles from the gene (baseline 15 at 1.0).
+        const LeaderBehavior& myBehavior = leaderPersonality(gsPlayer->civId()).behavior;
+        const int32_t strikingRange = static_cast<int32_t>(
+            std::clamp(15.0f * myBehavior.peripheryTolerance, 8.0f, 25.0f));
         if (ownMilitary >= 4 && threatRatio < 0.3f) {
-            // Identify the weakest neighbour within striking range (any city within 15 tiles).
+            // Identify the weakest neighbour within striking range.
             PlayerId  weakestNeighbour = INVALID_PLAYER;
             int32_t   weakestMilitary  = ownMilitary / 2;  // must be <= half our strength
 
@@ -593,7 +600,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                 bool hasNearCity = false;
                 for (const std::unique_ptr<aoc::game::City>& city : other->cities()) {
                     for (const aoc::hex::AxialCoord& ownCity : ownCityLocs) {
-                        if (grid.distance(city->location(), ownCity) <= 15) {
+                        if (grid.distance(city->location(), ownCity) <= strikingRange) {
                             hasNearCity = true;
                             break;
                         }

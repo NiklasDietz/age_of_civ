@@ -159,6 +159,26 @@ inline constexpr std::array<BuildingDef, 36> BUILDING_DEFS = {{
     return BUILDING_DEFS[id.value];
 }
 
+/// Pollution emission per turn (tons of CO2-equivalent). Positive = emits,
+/// negative = cleans (e.g. Waste Treatment). 0 = neutral.
+[[nodiscard]] inline constexpr int32_t buildingPollutionEmission(BuildingId id) {
+    switch (id.value) {
+        case 0:  return 1;   // Forge
+        case 2:  return 4;   // Refinery
+        case 3:  return 5;   // Factory
+        case 4:  return 3;   // Electronics Plant
+        case 5:  return 6;   // Industrial Complex
+        case 11: return 3;   // Semiconductor Fab
+        case 25: return -5;  // Waste Treatment (cleans)
+        case 26: return 8;   // Coal Plant
+        case 27: return 6;   // Oil Plant
+        case 29: return 2;   // Nuclear Plant
+        case 32: return 4;   // Gas Plant
+        case 33: return 2;   // Biofuel Plant
+        default: return 0;
+    }
+}
+
 // ============================================================================
 // ECS components
 // ============================================================================

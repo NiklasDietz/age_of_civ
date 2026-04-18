@@ -97,8 +97,17 @@ struct LeaderBehavior {
     float peaceAcceptanceThreshold = 0.5f; ///< How readily to accept peace deals
     float allianceDesire = 1.0f;           ///< How eagerly to form alliances
 
+    // Strategic/situational weights (indices 25-31)
+    float riskTolerance       = 1.0f;  ///< Event dilemmas, risky spy missions, speculation
+    float environmentalism    = 1.0f;  ///< Avoid pollution-heavy buildings
+    float peripheryTolerance  = 1.0f;  ///< Settle/hold cities far from capital
+    float greatPersonFocus    = 1.0f;  ///< Weight GP points vs raw yields
+    float espionagePriority   = 1.0f;  ///< Spy production + offensive missions
+    float ideologicalFervor   = 1.0f;  ///< Ideology grievance + switch eagerness
+    float speculationAppetite = 0.5f;  ///< Stock market investment size
+
     /// Number of float parameters in LeaderBehavior (for GA serialization).
-    static constexpr int32_t PARAM_COUNT = 25;
+    static constexpr int32_t PARAM_COUNT = 32;
 
     /// Serialize all weights to a flat float array (for GA genome representation).
     void toArray(float* out) const {
@@ -117,6 +126,10 @@ struct LeaderBehavior {
         out[22] = this->warDeclarationThreshold;
         out[23] = this->peaceAcceptanceThreshold;
         out[24] = this->allianceDesire;
+        out[25] = this->riskTolerance;       out[26] = this->environmentalism;
+        out[27] = this->peripheryTolerance;  out[28] = this->greatPersonFocus;
+        out[29] = this->espionagePriority;   out[30] = this->ideologicalFervor;
+        out[31] = this->speculationAppetite;
     }
 
     /// Deserialize from a flat float array.
@@ -136,6 +149,10 @@ struct LeaderBehavior {
         this->warDeclarationThreshold  = in[22];
         this->peaceAcceptanceThreshold = in[23];
         this->allianceDesire           = in[24];
+        this->riskTolerance       = in[25];  this->environmentalism    = in[26];
+        this->peripheryTolerance  = in[27];  this->greatPersonFocus    = in[28];
+        this->espionagePriority   = in[29];  this->ideologicalFervor   = in[30];
+        this->speculationAppetite = in[31];
     }
 };
 
@@ -187,7 +204,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
      {1.25f, 2.20f, 1.50f, 1.0f, 1.80f, 1.2f, 0.5f, 0.3f, 0.8f, 0.6f,
       1.2f, 1.2f, 1.5f, 0.8f, 1.0f,
       2.00f, 1.20f, 1.5f, 1.60f, 1.0f, 0.7f, 0.3f,
-      2.5f, 0.5f, 1.2f}},
+      2.5f, 0.5f, 1.2f,
+      1.2f, 0.7f, 1.8f, 1.2f, 1.0f, 1.2f, 1.0f}},
 
     // 1: Egypt - Cleopatra -- ECONOMIC TRADER
     // GA optimized: max economy + strong trade + good science.
@@ -197,7 +215,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
      {0.7f, 1.50f, 1.60f, 1.5f, 2.50f, 1.5f, 0.8f, 0.0f, 0.9f, 0.4f,
       0.7f, 2.0f, 1.0f, 1.5f, 1.2f,
       1.50f, 0.6f, 1.0f, 1.80f, 1.8f, 1.5f, 0.5f,
-      3.0f, 0.3f, 1.5f}},
+      3.0f, 0.3f, 1.5f,
+      1.0f, 1.0f, 1.2f, 1.3f, 1.2f, 0.8f, 1.5f}},
 
     // 2: China - Qin Shi Huang -- WONDER BUILDER / DEFENSIVE
     // GA optimized: high science + strong buildings + good expansion.
@@ -207,7 +226,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
      {0.8f, 1.60f, 2.00f, 1.3f, 1.80f, 0.8f, 0.5f, 0.2f, 1.0f, 0.8f,
       0.8f, 1.2f, 1.5f, 0.6f, 1.5f,
       1.60f, 0.8f, 1.2f, 1.80f, 2.0f, 0.5f, 0.3f,
-      3.5f, 0.4f, 0.8f}},
+      3.5f, 0.4f, 0.8f,
+      0.5f, 0.8f, 0.7f, 1.8f, 1.4f, 1.5f, 0.5f}},
 
     // 3: Germany - Frederick -- INDUSTRIAL MILITARIST
     // GA optimized: strong industry + science + moderate expansion. Military still high.
@@ -217,7 +237,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
      {1.5f, 1.80f, 1.80f, 0.8f, 2.00f, 0.9f, 0.3f, 0.5f, 0.9f, 0.7f,
       1.8f, 1.5f, 2.0f, 0.8f, 1.0f,
       1.60f, 1.60f, 1.2f, 1.80f, 0.5f, 0.8f, 0.2f,
-      1.8f, 0.7f, 0.8f}},
+      1.8f, 0.7f, 0.8f,
+      1.5f, 0.4f, 1.3f, 1.0f, 1.5f, 1.8f, 1.0f}},
 
     // 4: Greece - Pericles -- CULTURE / SCIENCE
     // GA optimized: max science + strong economy. Expansion slightly buffed.
@@ -227,7 +248,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
      {0.6f, 1.40f, 2.40f, 1.8f, 1.80f, 1.5f, 0.7f, 0.0f, 1.0f, 0.3f,
       0.5f, 1.0f, 1.0f, 0.7f, 2.0f,
       1.40f, 0.5f, 0.8f, 2.00f, 1.5f, 0.5f, 0.5f,
-      3.5f, 0.3f, 1.5f}},
+      3.5f, 0.3f, 1.5f,
+      0.7f, 1.4f, 0.9f, 2.2f, 0.9f, 1.0f, 0.7f}},
 
     // 5: England - Victoria -- NAVAL TRADE EMPIRE
     // Fix: reduced naval dependency so England doesn't stall on landlocked maps.
@@ -238,7 +260,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
      {1.2f, 2.30f, 1.60f, 1.2f, 2.20f, 1.3f, 0.5f, 0.3f, 0.7f, 0.5f,
       1.0f, 1.8f, 1.2f, 1.5f, 1.4f,
       2.10f, 1.0f, 1.0f, 1.60f, 1.0f, 1.2f, 0.3f,
-      2.5f, 0.5f, 1.3f}},
+      2.5f, 0.5f, 1.3f,
+      1.0f, 0.9f, 2.2f, 1.4f, 1.3f, 1.2f, 1.8f}},
 
     // 6: Japan - Hojo Tokimune -- MILITARY CULTURE WARRIOR
     // Fix: significant economy/science buff. Military culture still high but
@@ -250,7 +273,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
      {1.5f, 1.80f, 2.10f, 1.5f, 2.00f, 0.9f, 1.3f, 0.4f, 1.0f, 0.9f,
       1.5f, 1.2f, 1.4f, 1.0f, 1.2f,
       1.60f, 1.30f, 1.0f, 1.80f, 1.3f, 1.0f, 1.5f,
-      2.2f, 0.6f, 0.9f}},
+      2.2f, 0.6f, 0.9f,
+      1.3f, 1.0f, 0.8f, 1.6f, 1.1f, 1.3f, 0.8f}},
 
     // 7: Persia - Cyrus -- DIPLOMATIC SURPRISE ATTACKER
     // GA optimized: economy + expansion strong, but keeps low trustworthiness.
@@ -260,7 +284,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
      {1.4f, 1.80f, 1.50f, 1.0f, 2.00f, 1.5f, 0.8f, 0.2f, 0.5f, 0.6f,
       1.3f, 1.8f, 1.2f, 0.8f, 1.0f,
       1.60f, 1.30f, 1.0f, 1.60f, 0.8f, 0.8f, 0.5f,
-      1.5f, 0.4f, 1.5f}},
+      1.5f, 0.4f, 1.5f,
+      1.8f, 0.8f, 1.5f, 1.0f, 2.0f, 1.0f, 1.2f}},
 
     // 8: Aztec - Montezuma -- AGGRESSIVE RELIGIOUS WARRIOR
     // GA adjusted: military stays high, but economy/expansion significantly buffed.
@@ -271,7 +296,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
      {1.7f, 1.80f, 1.20f, 0.8f, 1.60f, 0.7f, 1.5f, 0.3f, 0.7f, 0.9f,
       1.8f, 1.0f, 1.0f, 0.5f, 0.5f,
       1.60f, 1.80f, 1.0f, 1.20f, 0.5f, 0.5f, 1.8f,
-      1.5f, 0.7f, 0.6f}},
+      1.5f, 0.7f, 0.6f,
+      2.2f, 0.5f, 1.0f, 0.8f, 1.2f, 1.6f, 0.6f}},
 
     // 9: India - Gandhi -- PEACEFUL RELIGIOUS SCIENTIST
     // GA optimized: max science + strong economy compensates for no military.
@@ -282,7 +308,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
      {0.2f, 1.40f, 2.30f, 1.5f, 2.00f, 2.0f, 1.6f, 0.0f, 1.0f, 0.2f,
       0.3f, 1.5f, 1.0f, 0.5f, 2.0f,
       1.40f, 0.3f, 1.0f, 2.00f, 1.2f, 0.3f, 2.0f,
-      5.0f, 0.2f, 2.0f}},
+      5.0f, 0.2f, 2.0f,
+      0.4f, 2.2f, 0.6f, 2.0f, 0.5f, 1.4f, 0.3f}},
 
     // 10: Russia - Peter -- SCIENCE EXPANSIONIST
     // GA optimized: near-optimal profile — high expansion + science + economy.
@@ -292,7 +319,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
      {1.2f, 2.20f, 2.30f, 0.8f, 1.80f, 1.2f, 0.7f, 0.4f, 0.8f, 0.6f,
       1.2f, 1.2f, 1.5f, 0.8f, 2.0f,
       1.90f, 1.10f, 1.0f, 1.80f, 0.8f, 0.8f, 0.5f,
-      2.5f, 0.5f, 1.2f}},
+      2.5f, 0.5f, 1.2f,
+      1.1f, 0.9f, 2.0f, 1.5f, 1.6f, 1.2f, 1.0f}},
 
     // 11: Brazil - Pedro II -- CULTURAL PEACEMAKER
     // GA optimized: culture stays high, science + economy buffed significantly.
@@ -302,7 +330,8 @@ inline constexpr LeaderPersonalityDef LEADER_PERSONALITIES[] = {
      {0.5f, 1.50f, 1.80f, 2.0f, 1.80f, 1.5f, 0.8f, 0.0f, 1.0f, 0.1f,
       0.4f, 1.2f, 1.0f, 0.7f, 1.5f,
       1.40f, 0.5f, 0.8f, 1.80f, 1.8f, 0.5f, 0.8f,
-      3.5f, 0.2f, 1.5f}},
+      3.5f, 0.2f, 1.5f,
+      0.6f, 1.8f, 1.0f, 1.8f, 0.7f, 0.9f, 1.1f}},
 };
 
 inline constexpr int32_t LEADER_PERSONALITY_COUNT = 12;

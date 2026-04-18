@@ -6,6 +6,7 @@
 #include "aoc/simulation/ai/UtilityScoring.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/simulation/city/District.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -133,6 +134,32 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
 
     // Context bonus: treasury-rich players can afford expensive buildings
     if (ctx.treasury > 5000) { score *= 1.2f; }
+
+    // Pollution penalty scaled by environmentalism gene: green leaders
+    // strongly avoid emitters; low-env leaders barely care. Cleaners
+    // (negative emission) get a bonus proportional to the same gene.
+    const int32_t pollution = buildingPollutionEmission(buildingId);
+    score -= static_cast<float>(pollution) * b.environmentalism * 5.0f;
+
+    // Great-People spawn affinity: buildings that contribute GP points get a
+    // bonus scaled by greatPersonFocus times the matching category gene.
+    // Campus -> Scientist, Industrial -> Engineer, Commercial -> Merchant,
+    // Encampment -> General, Monument -> Artist.
+    float gpBonus = 0.0f;
+    switch (buildingId.value) {
+        case  7: case 19: case 12:
+            gpBonus = 15.0f * b.scienceFocus; break;
+        case  0: case  1: case  3: case  5:
+            gpBonus = 15.0f * b.techIndustrial; break;
+        case  6: case 20: case 21: case 24:
+            gpBonus = 12.0f * b.economicFocus; break;
+        case 17: case 18:
+            gpBonus = 10.0f * b.militaryAggression; break;
+        case 16:
+            gpBonus = 10.0f * b.cultureFocus; break;
+        default: break;
+    }
+    score += gpBonus * b.greatPersonFocus;
 
     return score;
 }

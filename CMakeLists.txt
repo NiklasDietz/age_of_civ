@@ -155,6 +155,8 @@ set(AOC_LIB_SOURCES
     src/simulation/ai/UtilityScoring.cpp
     src/simulation/ai/UtilityAI.cpp
     src/simulation/ai/AIAdvisors.cpp
+    src/simulation/ai/AIEventChoice.cpp
+    src/simulation/ai/AIInvestmentController.cpp
     src/simulation/resource/ResourceTypes.cpp
     src/simulation/resource/ProductionChain.cpp
     src/simulation/resource/EconomySimulation.cpp

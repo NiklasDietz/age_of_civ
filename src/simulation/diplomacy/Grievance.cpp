@@ -4,6 +4,10 @@
  */
 
 #include "aoc/simulation/diplomacy/Grievance.hpp"
+#include "aoc/simulation/government/GovernmentComponent.hpp"
+#include "aoc/simulation/government/Government.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -52,6 +56,14 @@ void PlayerGrievanceComponent::addGrievance(GrievanceType type, PlayerId against
             g.severity       = -10;
             g.turnsRemaining = 20;
             break;
+        case GrievanceType::LostCityToSecession:
+            g.severity       = -15;
+            g.turnsRemaining = 0; // permanent
+            break;
+        case GrievanceType::IdeologicalDifference:
+            g.severity       = -5;
+            g.turnsRemaining = 8;
+            break;
     }
 
     this->grievances.push_back(g);
@@ -72,6 +84,39 @@ void PlayerGrievanceComponent::tickGrievances() {
             }
         }
         ++it;
+    }
+}
+
+void accrueIdeologicalGrievances(::aoc::game::GameState& gameState) {
+    auto isIdeology = [](GovernmentType t) {
+        return t == GovernmentType::Democracy
+            || t == GovernmentType::Communism
+            || t == GovernmentType::Fascism;
+    };
+
+    constexpr int32_t CAP_PER_PAIR = -50;
+
+    const auto& playersVec = gameState.players();
+    for (std::size_t i = 0; i < playersVec.size(); ++i) {
+        ::aoc::game::Player* a = playersVec[i].get();
+        if (a == nullptr) { continue; }
+        const GovernmentType govA = a->government().government;
+        if (!isIdeology(govA)) { continue; }
+
+        for (std::size_t j = i + 1; j < playersVec.size(); ++j) {
+            ::aoc::game::Player* b = playersVec[j].get();
+            if (b == nullptr) { continue; }
+            const GovernmentType govB = b->government().government;
+            if (!isIdeology(govB)) { continue; }
+            if (govA == govB) { continue; }
+
+            if (a->grievances().totalGrievanceAgainst(b->id()) > CAP_PER_PAIR) {
+                a->grievances().addGrievance(GrievanceType::IdeologicalDifference, b->id());
+            }
+            if (b->grievances().totalGrievanceAgainst(a->id()) > CAP_PER_PAIR) {
+                b->grievances().addGrievance(GrievanceType::IdeologicalDifference, a->id());
+            }
+        }
     }
 }
 
