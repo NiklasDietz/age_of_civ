@@ -59,6 +59,21 @@ ErrorCode issueBond(aoc::game::GameState& gameState,
         return ErrorCode::InvalidArgument;
     }
 
+    // Debt-capacity check: compute total outstanding principal the issuer owes
+    // and reject if accepting this bond would push expected maturity payment
+    // beyond the issuer's projected solvency (treasury + incoming principal).
+    // Prevents 90%+ default rates observed when bonds were forced onto weak
+    // civs without any capacity gate.
+    CurrencyAmount outstandingPrincipal = 0;
+    for (const BondIssue& existing : issuerPlayer->bonds().issuedBonds) {
+        outstandingPrincipal += existing.principal + existing.accruedInterest;
+    }
+    const CurrencyAmount MAX_DEBT_LOAD = issuerState.treasury + principal
+                                       + std::max<CurrencyAmount>(500, issuerState.gdp / 4);
+    if (outstandingPrincipal + principal * 2 > MAX_DEBT_LOAD) {
+        return ErrorCode::InsufficientResources;
+    }
+
     const bool hasDefaulted = issuerCrisis.hasDefaulted;
     float yield = computeBondYield(issuerState, hasDefaulted);
 
@@ -144,9 +159,15 @@ void processBondPayments(aoc::game::GameState& gameState) {
 
         std::vector<BondIssue>::iterator it = portfolio.issuedBonds.begin();
         while (it != portfolio.issuedBonds.end()) {
-            // Accrue interest
+            // Accrue interest. yieldRate is the total return over the bond's
+            // lifetime (e.g., 0.05 = 5% total). Spread it evenly across the
+            // original maturity so the final payment equals principal * (1+yield).
+            // Previously accrual was per-turn, producing 50%+ total interest on
+            // 10-turn bonds and driving ~90% default rates.
+            constexpr int32_t ORIGINAL_MATURITY_TURNS = 10;
             CurrencyAmount interest = static_cast<CurrencyAmount>(
-                static_cast<float>(it->principal) * it->yieldRate);
+                static_cast<float>(it->principal) * it->yieldRate
+                / static_cast<float>(ORIGINAL_MATURITY_TURNS));
             interest = std::max(static_cast<CurrencyAmount>(1), interest);
             it->accruedInterest += interest;
 

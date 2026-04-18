@@ -40,9 +40,10 @@ namespace aoc::sim {
 
 static void aiBondStrategy(aoc::game::GameState& gameState, PlayerId player,
                            int32_t difficulty) {
-    // Bond investment is restricted to hard difficulty (>= 2) to prevent
-    // AI flooding the market with bonds on every turn at lower difficulties.
-    if (difficulty < 2) { return; }
+    // Easy AI skips bonds to keep early-game economy gentle. Normal+Hard
+    // participate: the 10-turn cooldown, 3-per-pair cap, and treasury floor
+    // below already prevent bond flooding without a difficulty gate.
+    if (difficulty < 1) { return; }
 
     // Cooldown: only evaluate bond purchases every 10 turns to avoid
     // issuing ~27 bonds per turn across 12 players (Bug 7).
@@ -72,19 +73,30 @@ static void aiBondStrategy(aoc::game::GameState& gameState, PlayerId player,
 
         const MonetaryStateComponent& other = otherPtr->monetary();
 
-        // Buy bonds when we have surplus treasury and the target has lower GDP
-        // (weaker economy = higher yield, better investment return).
-        if (other.gdp < myState.gdp) {
-            CurrencyAmount investAmount = std::min(
-                myState.treasury / 4,
-                static_cast<CurrencyAmount>(100));
-            if (investAmount > 20) {
-                // Return ignored: failed bond purchase (insufficient funds on
-                // the buyer's side) just means this tick's investment skips;
-                // the strategy retries next turn.
-                (void)issueBond(gameState, other.owner, player, investAmount);
-            }
-        }
+        // Skip counterparties with an active default on record: their recent
+        // inability to service debt makes them a loss-making investment.
+        if (otherPtr->currencyCrisis().hasDefaulted) { continue; }
+
+        // Favor creditworthy targets: invest only when counterparty has enough
+        // treasury headroom to cover principal + expected interest at maturity
+        // (principal + 50% accrual on a 10-turn, 5% bond). Without this gate
+        // AIs force debt onto insolvent civs and defaults dominate maturities.
+        CurrencyAmount investAmount = std::min(
+            myState.treasury / 4,
+            static_cast<CurrencyAmount>(100));
+        if (investAmount <= 20) { continue; }
+
+        // Require target treasury to cover ~1.5x the principal + interest at
+        // maturity. Not a perfect predictor since treasury drifts before then,
+        // but filters out civs that are already cash-strapped at issue time.
+        const CurrencyAmount maturityPayment = investAmount + investAmount / 20;
+        if (other.treasury < maturityPayment + maturityPayment / 2) { continue; }
+
+        // Prefer investing in weaker (but solvent) economies for higher yield;
+        // skip peers stronger than us (they have no need to borrow from us).
+        if (other.gdp >= myState.gdp) { continue; }
+
+        (void)issueBond(gameState, other.owner, player, investAmount);
     }
 }
 
