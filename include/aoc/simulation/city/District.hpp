@@ -76,6 +76,8 @@ struct BuildingDef {
     uint16_t ongoingFuelGoodId = 0xFFFF;
     int32_t  ongoingFuelPerTurn = 0;
 
+    int32_t faithBonus = 0;    ///< Per-turn faith generated (Shrine/Temple/Cathedral)
+
     /// Whether this building requires any resources to construct.
     [[nodiscard]] constexpr bool hasResourceCost() const {
         return this->resourceCosts[0].isValid() || this->resourceCosts[1].isValid();
@@ -114,7 +116,7 @@ struct BuildingDef {
 
 // Format: {id, name, district, prodCost, maint, prodBonus, sciBonus, goldBonus, sciMult, resourceCosts, fuelGoodId, fuelPerTurn}
 // Resource costs and fuel added for mid/late-game buildings per plan Phase 1C/1D.
-inline constexpr std::array<BuildingDef, 36> BUILDING_DEFS = {{
+inline constexpr std::array<BuildingDef, 39> BUILDING_DEFS = {{
     //                                                                                                                     resourceCosts         fuel
     {BuildingId{0},  "Forge",              DistrictType::Industrial,  60, 1, 2, 0, 0, 1.0f},                            // no cost, no fuel
     {BuildingId{1},  "Workshop",           DistrictType::Industrial,  40, 1, 1, 0, 0, 1.0f},
@@ -153,6 +155,10 @@ inline constexpr std::array<BuildingDef, 36> BUILDING_DEFS = {{
     {BuildingId{33}, "Biofuel Plant",      DistrictType::Industrial, 120, 2, 1, 0, 0, 1.0f},                            // enables biofuel recipes
     {BuildingId{34}, "Geothermal Plant",   DistrictType::Industrial, 180, 1, 0, 0, 0, 1.0f},                            // free power, requires volcanic/mountain
     {BuildingId{35}, "Fusion Reactor",     DistrictType::Industrial, 500, 8, 0, 2, 0, 1.0f,  {{64, 3}, {76, 2}}, 80, 1}, // 3 Steel + 2 Glass to build, 1 Deuterium/turn
+    // Faith buildings -- gate each city's faith output. Must be built on HolySite district.
+    {BuildingId{36}, "Shrine",             DistrictType::HolySite,    40, 1, 0, 0, 0, 1.0f, {}, 0xFFFF, 0, 2},
+    {BuildingId{37}, "Temple",             DistrictType::HolySite,   100, 2, 0, 0, 0, 1.0f, {}, 0xFFFF, 0, 4},
+    {BuildingId{38}, "Cathedral",          DistrictType::HolySite,   200, 3, 0, 0, 2, 1.0f, {}, 0xFFFF, 0, 6},
 }};
 
 [[nodiscard]] inline constexpr const BuildingDef& buildingDef(BuildingId id) {

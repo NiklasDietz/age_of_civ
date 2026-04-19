@@ -129,6 +129,11 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
         case  9: score = 65.0f; break;  // Food Processing
         case 25: score = 50.0f; break;  // Waste Treatment
 
+        // Faith buildings (HolySite) -- scale by religiousZeal
+        case 36: score = 100.0f * b.religiousZeal; break;  // Shrine
+        case 37: score = 140.0f * b.religiousZeal; break;  // Temple
+        case 38: score = 170.0f * b.religiousZeal * b.cultureFocus; break;  // Cathedral
+
         default: score = 40.0f; break;
     }
 

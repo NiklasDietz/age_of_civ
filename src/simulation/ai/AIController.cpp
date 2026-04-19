@@ -133,6 +133,21 @@ static UnitTypeId bestAvailableMilitaryUnit(const aoc::game::GameState& gameStat
                                             PlayerId player) {
     const EnemyComposition enemyComp = analyzeEnemyComposition(gameState, player);
 
+    // Aggregate player's city stockpiles so we can filter out units whose
+    // resourceReqs we can't satisfy. Previously the AI enqueued Knights/Horsemen
+    // the city lacked Horses/Iron for, production "completed" without output
+    // (ProductionSystem drops stuck items silently), and the turn was wasted.
+    const aoc::game::Player* gsPlayer = gameState.player(player);
+    std::unordered_map<uint16_t, int32_t> totalStockpile;
+    if (gsPlayer != nullptr) {
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : gsPlayer->cities()) {
+            for (const std::pair<const uint16_t, int32_t>& entry
+                    : cityPtr->stockpile().goods) {
+                totalStockpile[entry.first] += entry.second;
+            }
+        }
+    }
+
     UnitTypeId bestId{0};
     float bestScore = 0.0f;
 
@@ -143,6 +158,19 @@ static UnitTypeId bestAvailableMilitaryUnit(const aoc::game::GameState& gameStat
         if (!canBuildUnit(gameState, player, def.id)) {
             continue;
         }
+
+        bool haveResources = true;
+        for (const UnitResourceReq& req : def.resourceReqs) {
+            if (req.isValid()) {
+                auto it = totalStockpile.find(req.goodId);
+                if (it == totalStockpile.end() || it->second < req.amount) {
+                    haveResources = false;
+                    break;
+                }
+            }
+        }
+        if (!haveResources) { continue; }
+
         const float rawStrength = static_cast<float>(def.combatStrength + def.rangedStrength);
         const float counterBonus = counterUnitScore(def.unitClass, enemyComp);
         const float score = rawStrength * counterBonus;
@@ -677,8 +705,12 @@ static float scoreBuildingCandidate(const LeaderBehavior& behavior,
 
     // Raw scores are in the 40-200 range. Normalize against a 200-point ceiling
     // so the building score participates in the same 0-1 product as other candidates.
+    // BASE_WEIGHT 2.2: generic industrial/commercial buildings (Market=90, Bank=110,
+    // Forge=200*techIndustrial) outcompete settlers (~2.14) once districts are built.
+    // Without this, AI built only Mint + tech-gap-boosted Library/University across
+    // 600-turn 8-player games.
     constexpr float BUILDING_SCORE_MAX = 200.0f;
-    constexpr float BASE_WEIGHT        = 0.5f;
+    constexpr float BASE_WEIGHT        = 2.2f;
 
     float score = BASE_WEIGHT
                   * behavior.prodBuildings
@@ -956,11 +988,14 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
 
             // In barter mode, the Commercial district unlocks the Mint which is the
             // ONLY path out of barter. Override economic score with a high fixed bonus.
+            // Otherwise give Commercial non-capital cities 1.15 * econFocus so it can
+            // beat Harbor (1.1) / match Industrial; prior 0.45 left most non-capitals
+            // without Market/Bank buildings across 600-turn games.
             const float commercialScore = (gsPlayer->monetary().system == MonetarySystemType::Barter
                                            && city.isOriginalCapital()
                                            && !districts.hasDistrict(DistrictType::Commercial))
                                           ? 1.4f   // High — need Commercial before Mint
-                                          : 0.45f * personality.behavior.economicFocus;
+                                          : 1.15f * personality.behavior.economicFocus;
 
             // Base scores bumped (0.5 -> 1.4 etc.) so districts actually win
             // over settlers (~2.14) and military (~1-2) once a city has room.
@@ -988,10 +1023,13 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 // HolySite gates all faith buildings, religion founding, and
                 // Great Prophet spawns. Weight by religiousZeal; cultureFocus
                 // folded in because faith also feeds cultural-policy paths.
+                // Additive (not multiplicative) blend so zealots with low culture
+                // still prioritize it. Boosted to 1.5 so pious civs can beat
+                // Industrial (1.4) in early game.
                 { DistrictType::HolySite,
                   55.0f,
-                  1.2f * personality.behavior.religiousZeal
-                       * personality.behavior.cultureFocus },
+                  0.9f * personality.behavior.religiousZeal
+                       + 0.6f * personality.behavior.cultureFocus },
             }};
 
             for (const DistrictOption& opt : districtOptions) {

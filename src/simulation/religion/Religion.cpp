@@ -82,6 +82,14 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
         if (city->districts().hasDistrict(DistrictType::HolySite)) {
             faithGain += 2.0f;
         }
+
+        // Faith from buildings (Shrine/Temple/Cathedral).
+        for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& d
+                : city->districts().districts) {
+            for (const BuildingId& bid : d.buildings) {
+                faithGain += static_cast<float>(buildingDef(bid).faithBonus);
+            }
+        }
     }
 
     playerFaith.faith += faithGain;
