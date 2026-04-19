@@ -127,6 +127,7 @@
 #include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/simulation/economy/SupplyChain.hpp"
 #include "aoc/simulation/economy/TradeRouteSystem.hpp"
+#include "aoc/simulation/economy/DomesticCourier.hpp"
 #include "aoc/simulation/economy/SpeculationBubble.hpp"
 #include "aoc/simulation/economy/MonopolyPricing.hpp"
 #include "aoc/simulation/economy/TechUnemployment.hpp"
@@ -711,6 +712,11 @@ void processGlobalSystems(TurnContext& turnContext) {
 
     // Physical trade routes: move Traders, exchange goods
     processTradeRoutes(gameState, grid, turnContext.economy->market(), turnContext.diplomacy);
+
+    // Domestic couriers: player-dispatched goods transport between own cities.
+    // Advances each active courier one turn, delivers on arrival, clamps
+    // stockpiles to per-city caps.
+    processDomesticCouriers(gameState, grid);
 
     // Auto-renew queued trade routes (per-player). Runs after processTradeRoutes
     // so pending requests enqueued during expiration this turn are handled next

@@ -19,6 +19,8 @@
 #include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/simulation/automation/Automation.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
+#include "aoc/simulation/tech/CivicTree.hpp"
+#include "aoc/simulation/government/Government.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Pathfinding.hpp"
@@ -726,6 +728,29 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                         advanceResearch(targetTech, boost);
                     }
                     trader.scienceSpread = 0.0f;
+
+                    // Culture/civic diffusion: same idea, scaled by civic gap.
+                    int32_t originCivics = 0;
+                    int32_t targetCivics = 0;
+                    const PlayerCivicComponent& originCivic = originPlayer->civics();
+                    PlayerCivicComponent& targetCivic = targetPlayer->civics();
+                    for (bool b : originCivic.completedCivics) { originCivics += b ? 1 : 0; }
+                    for (bool b : targetCivic.completedCivics) { targetCivics += b ? 1 : 0; }
+                    const int32_t civicGap = originCivics - targetCivics;
+                    if (civicGap > 0 && targetCivic.currentResearch.isValid()
+                        && trader.cultureSpread > 0.0f) {
+                        float cBoost = trader.cultureSpread
+                                    * (0.1f + 0.02f * static_cast<float>(civicGap));
+                        if (originCivic.hasCompleted(targetCivic.currentResearch)) {
+                            cBoost *= 2.5f;
+                        }
+                        LOG_INFO("Culture diffusion: player %u -> player %u, boost=%.2f (gap=%d)",
+                                 static_cast<unsigned>(traderOwner),
+                                 static_cast<unsigned>(cityOwner),
+                                 static_cast<double>(cBoost), civicGap);
+                        advanceCivicResearch(targetCivic, cBoost, &targetPlayer->government());
+                        trader.cultureSpread = 0.0f;
+                    }
                 }
             }
         }

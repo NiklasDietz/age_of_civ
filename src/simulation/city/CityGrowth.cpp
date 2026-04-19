@@ -204,7 +204,6 @@ static void processSingleCityGrowth(aoc::game::City& city,
     // Negative surplus: before starvation, consume Wheat from city stockpile.
     constexpr uint16_t WHEAT_GOOD_ID = 40;
     constexpr float FOOD_TO_GOODS_RATIO = 0.5f;  // 2 surplus food → 1 Wheat good
-    constexpr float GOODS_TO_FOOD_RATIO = 1.5f;   // 1 Wheat good → 1.5 food (processing loss)
 
     float needed = foodForGrowth(city.population());
 
@@ -221,18 +220,30 @@ static void processSingleCityGrowth(aoc::game::City& city,
             surplus = maxUsableSurplus;
         }
     } else if (surplus < 0.0f) {
-        // Deficit: consume Wheat from stockpile to offset food shortage.
-        // This prevents starvation for cities that import food via trade.
-        const int32_t wheatAvailable = city.stockpile().getAmount(WHEAT_GOOD_ID);
-        if (wheatAvailable > 0) {
-            const float foodNeeded = -surplus;
-            const int32_t wheatToConsume = std::min(
-                wheatAvailable,
-                static_cast<int32_t>(foodNeeded / GOODS_TO_FOOD_RATIO) + 1);
-            const float foodRecovered = static_cast<float>(wheatToConsume) * GOODS_TO_FOOD_RATIO;
-            [[maybe_unused]] bool consumed =
-                city.stockpile().consumeGoods(WHEAT_GOOD_ID, wheatToConsume);
-            surplus += foodRecovered;  // May become positive
+        // Deficit: consume any edible good from the city stockpile to offset
+        // food shortage. Processed food is most nutritious per unit (2.0x);
+        // raw staples fall back to 1.5x. Ordered most-valuable-first so raw
+        // staples are held in reserve when processed food is available.
+        struct FoodGood { uint16_t id; float ratio; };
+        constexpr FoodGood kFoods[] = {
+            {uint16_t{70},  2.0f},   // PROCESSED_FOOD
+            {uint16_t{40},  1.5f},   // WHEAT
+            {uint16_t{41},  1.5f},   // CATTLE
+            {uint16_t{42},  1.5f},   // FISH
+            {uint16_t{45},  1.5f},   // RICE
+        };
+        for (const FoodGood& fg : kFoods) {
+            if (surplus >= 0.0f) { break; }
+            const int32_t avail = city.stockpile().getAmount(fg.id);
+            if (avail <= 0) { continue; }
+            const float deficit = -surplus;
+            const int32_t toConsume = std::min(
+                avail,
+                static_cast<int32_t>(deficit / fg.ratio) + 1);
+            if (toConsume <= 0) { continue; }
+            const float recovered = static_cast<float>(toConsume) * fg.ratio;
+            [[maybe_unused]] bool consumed = city.stockpile().consumeGoods(fg.id, toConsume);
+            surplus += recovered;
         }
     }
 

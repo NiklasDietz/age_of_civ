@@ -11,6 +11,8 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/CombatExtensions.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
+#include "aoc/simulation/economy/DomesticCourier.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
@@ -261,6 +263,13 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     const int32_t defenderProductionCost = defender.typeDef().productionCost;
     const std::string_view defenderName = defender.typeDef().name;
 
+    // Snapshot Courier cargo if the defender is an undelivered domestic courier.
+    // Cargo is lost; attacker loots half basePrice * quantity as plunder gold.
+    const bool defenderIsCourier = (defender.typeId().value == 32);
+    const uint16_t defenderCargoGoodId   = defenderIsCourier ? defender.courier().goodId   : uint16_t{0};
+    const int32_t  defenderCargoQuantity = (defenderIsCourier && !defender.courier().delivered)
+                                            ? defender.courier().quantity : 0;
+
     // Clean up dead units: find the owning player and remove the unit
     if (result.defenderKilled) {
         aoc::game::Player* defPlayer = findOwningPlayer(gameState, &defender);
@@ -330,6 +339,21 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
                          static_cast<long long>(plunderGold),
                          static_cast<int>(defenderName.size()),
                          defenderName.data());
+            }
+
+            // Courier cargo loot: half basePrice * quantity of lost cargo.
+            if (defenderIsCourier && defenderCargoQuantity > 0) {
+                const aoc::sim::GoodDef& gd = aoc::sim::goodDef(defenderCargoGoodId);
+                const CurrencyAmount cargoGold =
+                    static_cast<CurrencyAmount>((gd.basePrice * defenderCargoQuantity) / 2);
+                if (cargoGold > 0) {
+                    atkPlayer->addGold(cargoGold);
+                    LOG_INFO("Player %u looted courier cargo: good %u x%d for %lld gold",
+                             static_cast<unsigned>(attackerOwner),
+                             static_cast<unsigned>(defenderCargoGoodId),
+                             defenderCargoQuantity,
+                             static_cast<long long>(cargoGold));
+                }
             }
 
             // Bonus pillage gold if the tile has improvements or resources.

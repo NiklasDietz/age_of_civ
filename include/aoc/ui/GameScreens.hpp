@@ -162,13 +162,15 @@ public:
     static constexpr int32_t TAB_PRODUCTION = 1;
     static constexpr int32_t TAB_BUILDINGS  = 2;
     static constexpr int32_t TAB_CITIZENS   = 3;
-    static constexpr int32_t TAB_COUNT      = 4;
+    static constexpr int32_t TAB_COURIERS   = 4;
+    static constexpr int32_t TAB_COUNT      = 5;
 
 private:
     void buildOverviewTab(UIManager& ui, WidgetId contentPanel);
     void buildProductionTab(UIManager& ui, WidgetId contentPanel);
     void buildBuildingsTab(UIManager& ui, WidgetId contentPanel);
     void buildCitizensTab(UIManager& ui, WidgetId contentPanel);
+    void buildCouriersTab(UIManager& ui, WidgetId contentPanel);
 
     /// Update tab button colors to reflect the active tab.
     void updateTabButtonColors(UIManager& ui);
@@ -180,7 +182,7 @@ private:
     WidgetId m_detailLabel = INVALID_WIDGET;
     WidgetId m_contentPanel = INVALID_WIDGET;  ///< Panel that holds the active tab's content
     std::array<WidgetId, TAB_COUNT> m_tabButtons = {
-        INVALID_WIDGET, INVALID_WIDGET, INVALID_WIDGET, INVALID_WIDGET};
+        INVALID_WIDGET, INVALID_WIDGET, INVALID_WIDGET, INVALID_WIDGET, INVALID_WIDGET};
     int32_t m_activeTab = TAB_OVERVIEW;
 };
 

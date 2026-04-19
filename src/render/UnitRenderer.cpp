@@ -191,6 +191,20 @@ void UnitRenderer::drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
                                                   1.0f, 1.0f, 1.0f, iconA);
                     break;
                 }
+                case aoc::sim::UnitClass::Trader: {
+                    // Crate / bundle: amber square with cross-straps.
+                    float tw = s * 0.55f;
+                    renderer2d.drawFilledRect(cx - tw * 0.7f, cy - tw * 0.55f,
+                                               tw * 1.4f, tw * 1.1f,
+                                               0.85f, 0.65f, 0.25f, iconA);
+                    renderer2d.drawLine(cx - tw * 0.7f, cy,
+                                         cx + tw * 0.7f, cy,
+                                         1.5f, 0.3f, 0.2f, 0.1f, iconA);
+                    renderer2d.drawLine(cx, cy - tw * 0.55f,
+                                         cx, cy + tw * 0.55f,
+                                         1.5f, 0.3f, 0.2f, 0.1f, iconA);
+                    break;
+                }
                 case aoc::sim::UnitClass::Religious: {
                     float rw = s * 0.4f;
                     renderer2d.drawCircle(cx, cy, rw, 1.0f, 0.9f, 0.5f, iconA, 2.0f);
@@ -228,6 +242,32 @@ void UnitRenderer::drawUnits(vulkan_app::renderer::Renderer2D& renderer2d,
                 float hpR = (hpFrac < 0.5f) ? 1.0f : (1.0f - hpFrac) * 2.0f;
                 float hpG = (hpFrac > 0.5f) ? 1.0f : hpFrac * 2.0f;
                 renderer2d.drawFilledRect(barX, barY, barW * hpFrac, barH, hpR, hpG, 0.1f, 0.9f);
+            }
+
+            // ---- Courier route overlay ----
+            // Undelivered courier draws remaining path segments in amber so
+            // players can visually verify where their goods are headed.
+            if (unit.typeId().value == 32) {
+                const aoc::sim::DomesticCourierComponent& cc = unit.courier();
+                if (!cc.delivered && !cc.path.empty()) {
+                    const std::size_t start = static_cast<std::size_t>(cc.pathIndex);
+                    float prevX = cx;
+                    float prevY = cy;
+                    for (std::size_t i = start + 1; i < cc.path.size(); ++i) {
+                        float nextX = 0.0f;
+                        float nextY = 0.0f;
+                        aoc::hex::axialToPixel(cc.path[i], hexSize, nextX, nextY);
+                        renderer2d.drawDashedLine(prevX, prevY, nextX, nextY,
+                                                   2.0f, 5.0f, 3.0f,
+                                                   0.85f, 0.65f, 0.25f, 0.7f);
+                        prevX = nextX;
+                        prevY = nextY;
+                    }
+                    float dx = 0.0f, dy = 0.0f;
+                    aoc::hex::axialToPixel(cc.path.back(), hexSize, dx, dy);
+                    renderer2d.drawCircle(dx, dy, hexSize * 0.22f,
+                                           0.85f, 0.65f, 0.25f, 0.8f, 2.0f);
+                }
             }
 
             // ---- Pending path (dashed line) ----

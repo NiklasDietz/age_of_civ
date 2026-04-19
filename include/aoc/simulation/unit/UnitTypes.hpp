@@ -103,8 +103,8 @@ struct UnitTypeDef {
 // Unit type IDs: keep stable for serialization. Gaps are fine.
 // Format: {id, name, class, era, hp, melee, ranged, range, move, cost, reqTech, upgradesTo, upgradeCost}
 
-inline constexpr int32_t UNIT_TYPE_COUNT = 64;
-inline constexpr std::array<UnitTypeDef, 64> UNIT_TYPE_DEFS = {{
+inline constexpr int32_t UNIT_TYPE_COUNT = 65;
+inline constexpr std::array<UnitTypeDef, 65> UNIT_TYPE_DEFS = {{
     // ========================================================================
     // MELEE INFANTRY: Warrior -> Swordsman -> Man-at-Arms -> Musketman -> Infantry -> Mech Infantry
     // ========================================================================
@@ -211,6 +211,10 @@ inline constexpr std::array<UnitTypeDef, 64> UNIT_TYPE_DEFS = {{
     // Trade
     {UnitTypeId{30}, "Trader",          UnitClass::Trader,   UnitEra::Ancient,       60,  0,  0, 0, 3,  40, TechId{},   UnitTypeId{31}, 30},
     {UnitTypeId{31}, "Caravan",         UnitClass::Trader,   UnitEra::Medieval,      80,  0,  0, 0, 4,  80, TechId{5},  UnitTypeId{},   0},
+
+    // Courier: domestic goods transport, player-dispatched only. Never appears
+    // in the production queue (productionCost 0 is filtered out by buildables).
+    {UnitTypeId{32}, "Courier",         UnitClass::Trader,   UnitEra::Ancient,       40,  0,  0, 0, 3,   0, TechId{},   UnitTypeId{},   0},
 
     // ========================================================================
     // ESPIONAGE: Diplomat -> Spy

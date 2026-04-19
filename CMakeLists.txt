@@ -296,6 +296,7 @@ set(AOC_LIB_SOURCES
     src/simulation/economy/TradeAgreement.cpp
     src/simulation/economy/SupplyChain.cpp
     src/simulation/economy/TradeRouteSystem.cpp
+    src/simulation/economy/DomesticCourier.cpp
     src/simulation/economy/SpeculationBubble.cpp
     src/simulation/economy/MonopolyPricing.cpp
     src/simulation/economy/TechUnemployment.cpp

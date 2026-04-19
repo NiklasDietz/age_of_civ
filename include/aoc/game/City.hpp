@@ -33,6 +33,7 @@
 #include "aoc/simulation/production/ProductionEfficiency.hpp"
 #include "aoc/simulation/production/QualityTier.hpp"
 #include "aoc/simulation/economy/EconomicDepth.hpp"
+#include "aoc/simulation/economy/DomesticCourier.hpp"
 #include "aoc/simulation/production/Automation.hpp"
 #include "aoc/simulation/economy/TechUnemployment.hpp"
 
@@ -255,6 +256,23 @@ public:
     [[nodiscard]] CitySize stage() const { return this->m_stage; }
     void setStage(CitySize s) { this->m_stage = s; }
 
+    // ========================================================================
+    // Standing orders (persistent courier dispatch rules)
+    // ========================================================================
+
+    [[nodiscard]] const std::vector<aoc::sim::StandingOrder>& standingOrders() const { return this->m_standingOrders; }
+    [[nodiscard]] std::vector<aoc::sim::StandingOrder>& standingOrders() { return this->m_standingOrders; }
+
+    /// Append a standing order. Caller is responsible for deduplication.
+    void addStandingOrder(const aoc::sim::StandingOrder& order) { this->m_standingOrders.push_back(order); }
+
+    /// Remove the standing order at `index`. No-op on out-of-range.
+    void removeStandingOrder(std::size_t index) {
+        if (index < this->m_standingOrders.size()) {
+            this->m_standingOrders.erase(this->m_standingOrders.begin() + static_cast<std::ptrdiff_t>(index));
+        }
+    }
+
 private:
     // Identity
     PlayerId m_owner;
@@ -302,6 +320,9 @@ private:
 
     // Settlement stage. New cities start as Hamlet unless constructor bumps it.
     CitySize m_stage = CitySize::Hamlet;
+
+    // Persistent dispatch rules for domestic couriers originating from this city.
+    std::vector<aoc::sim::StandingOrder> m_standingOrders;
 };
 
 } // namespace aoc::game

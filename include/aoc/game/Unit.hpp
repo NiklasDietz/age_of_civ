@@ -14,6 +14,7 @@
 #include "aoc/simulation/unit/CombatExtensions.hpp"
 #include "aoc/simulation/unit/SupplyLines.hpp"
 #include "aoc/simulation/economy/TradeRouteSystem.hpp"
+#include "aoc/simulation/economy/DomesticCourier.hpp"
 #include "aoc/simulation/diplomacy/Espionage.hpp"
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/unit/Promotion.hpp"
@@ -159,6 +160,9 @@ public:
     [[nodiscard]] aoc::sim::TraderComponent& trader() { return this->m_trader; }
     [[nodiscard]] const aoc::sim::TraderComponent& trader() const { return this->m_trader; }
 
+    [[nodiscard]] aoc::sim::DomesticCourierComponent& courier() { return this->m_courier; }
+    [[nodiscard]] const aoc::sim::DomesticCourierComponent& courier() const { return this->m_courier; }
+
     [[nodiscard]] aoc::sim::SpyComponent& spy() { return this->m_spy; }
     [[nodiscard]] const aoc::sim::SpyComponent& spy() const { return this->m_spy; }
 
@@ -201,6 +205,7 @@ private:
     aoc::sim::AirUnitComponent m_airUnit;
     aoc::sim::NuclearWeaponComponent m_nuclear;
     aoc::sim::TraderComponent m_trader;
+    aoc::sim::DomesticCourierComponent m_courier;
     aoc::sim::SpyComponent m_spy;
     aoc::sim::GreatPersonComponent m_greatPerson;
     aoc::sim::UnitExperienceComponent m_experience;

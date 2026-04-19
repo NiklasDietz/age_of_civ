@@ -24,6 +24,8 @@
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
+#include "aoc/simulation/economy/DomesticCourier.hpp"
+#include "aoc/game/Unit.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/map/Pathfinding.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
@@ -1193,7 +1195,7 @@ void CityDetailScreen::open(UIManager& ui) {
         }
 
         constexpr std::array<const char*, TAB_COUNT> kTabNames = {
-            "Overview", "Production", "Buildings", "Citizens"
+            "Overview", "Production", "Buildings", "Citizens", "Couriers"
         };
         constexpr Color kActiveTabColor   = {0.25f, 0.35f, 0.55f, 1.0f};
         constexpr Color kInactiveTabColor = {0.15f, 0.17f, 0.22f, 0.9f};
@@ -1276,6 +1278,7 @@ void CityDetailScreen::switchTab(UIManager& ui, int32_t tabIndex) {
         case TAB_PRODUCTION: this->buildProductionTab(ui, this->m_contentPanel); break;
         case TAB_BUILDINGS:  this->buildBuildingsTab(ui, this->m_contentPanel);  break;
         case TAB_CITIZENS:   this->buildCitizensTab(ui, this->m_contentPanel);   break;
+        case TAB_COURIERS:   this->buildCouriersTab(ui, this->m_contentPanel);   break;
         default: break;
     }
 
@@ -2047,6 +2050,260 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
 
             (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
                                    std::move(assignBtn));
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// buildCouriersTab -- dispatch goods to other own cities via domestic couriers
+// ----------------------------------------------------------------------------
+
+void CityDetailScreen::buildCouriersTab(UIManager& ui, WidgetId contentPanel) {
+    constexpr float kListWidth = 310.0f;
+    constexpr float kContentWidth = 330.0f;
+    constexpr Color kHeaderBg        = {0.18f, 0.20f, 0.28f, 0.95f};
+    constexpr Color kHeaderTextColor = {0.9f, 0.85f, 0.6f, 1.0f};
+    constexpr Color kBodyTextColor   = {0.78f, 0.80f, 0.82f, 1.0f};
+    constexpr Color kDimTextColor    = {0.55f, 0.55f, 0.60f, 0.8f};
+    constexpr Color kSeparatorColor  = {0.22f, 0.24f, 0.30f, 0.6f};
+
+    aoc::game::City* city = resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation);
+    if (city == nullptr || this->m_gameState == nullptr || this->m_grid == nullptr) {
+        (void)ui.createLabel(contentPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
+            LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
+        return;
+    }
+
+    aoc::game::Player* playerPtr = this->m_gameState->player(this->m_player);
+    if (playerPtr == nullptr) { return; }
+
+    WidgetId scrollArea = ui.createScrollList(
+        contentPanel, {0.0f, 0.0f, kContentWidth, 520.0f},
+        ScrollListData{{0.12f, 0.14f, 0.18f, 0.0f}, 0.0f, 0.0f});
+    {
+        Widget* listWidget = ui.getWidget(scrollArea);
+        if (listWidget != nullptr) {
+            listWidget->padding = {4.0f, 6.0f, 4.0f, 6.0f};
+            listWidget->childSpacing = 3.0f;
+        }
+    }
+
+    const int32_t slots  = aoc::sim::courierSlots(*city);
+    const int32_t active = aoc::sim::countActiveCouriersFrom(*this->m_gameState, this->m_player, city->location());
+    const int32_t cap    = aoc::sim::stockpileCap(*city);
+
+    // -- Header: slots + cap --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f}, PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Courier Dispatch", kHeaderTextColor, 11.0f});
+    {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf),
+            "  Slots: %d/%d   |   Stockpile cap: %d   |   Stage: %d",
+            active, slots, cap, static_cast<int>(city->stage()));
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{std::string(buf), kBodyTextColor, 11.0f});
+    }
+
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
+        PanelData{kSeparatorColor, 0.0f});
+
+    // -- Active outbound couriers --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f}, PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Active Outbound", kHeaderTextColor, 11.0f});
+
+    bool anyActive = false;
+    for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerPtr->units()) {
+        if (unitPtr == nullptr) { continue; }
+        if (unitPtr->typeId().value != 32) { continue; }
+        const aoc::sim::DomesticCourierComponent& cc = unitPtr->courier();
+        if (cc.delivered) { continue; }
+        if (cc.originCityLocation != city->location()) { continue; }
+        anyActive = true;
+
+        const aoc::game::City* dst = playerPtr->cityAt(cc.destCityLocation);
+        const std::string_view goodName = aoc::sim::goodDef(cc.goodId).name;
+        const int32_t totalHops = static_cast<int32_t>(cc.path.size());
+        const int32_t progress  = cc.pathIndex;
+        char buf[160];
+        std::snprintf(buf, sizeof(buf),
+            "  %.*s x%d -> %s  (%d/%d)",
+            static_cast<int>(goodName.size()), goodName.data(), cc.quantity,
+            dst ? dst->name().c_str() : "?",
+            progress, totalHops - 1);
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{std::string(buf), kBodyTextColor, 11.0f});
+    }
+    if (!anyActive) {
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{"  (none)", kDimTextColor, 11.0f});
+    }
+
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
+        PanelData{kSeparatorColor, 0.0f});
+
+    // -- Stockpile --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f}, PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Stockpile", kHeaderTextColor, 11.0f});
+
+    // Snapshot goods with amount > 0. Sort by amount desc for stable display.
+    std::vector<std::pair<uint16_t, int32_t>> goods;
+    goods.reserve(city->stockpile().goods.size());
+    for (const auto& kv : city->stockpile().goods) {
+        if (kv.second > 0) { goods.emplace_back(kv.first, kv.second); }
+    }
+    std::sort(goods.begin(), goods.end(),
+        [](const auto& a, const auto& b) { return a.second > b.second; });
+
+    if (goods.empty()) {
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{"  (empty)", kDimTextColor, 11.0f});
+    }
+    for (const auto& kv : goods) {
+        const std::string_view goodName = aoc::sim::goodDef(kv.first).name;
+        char buf[96];
+        std::snprintf(buf, sizeof(buf), "  %.*s: %d / %d",
+            static_cast<int>(goodName.size()), goodName.data(), kv.second, cap);
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{std::string(buf), kBodyTextColor, 11.0f});
+    }
+
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
+        PanelData{kSeparatorColor, 0.0f});
+
+    // -- Standing orders: persistent dispatch rules for this city --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f}, PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Standing Orders", kHeaderTextColor, 11.0f});
+
+    if (city->standingOrders().empty()) {
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{"  (none -- click + Standing below)", kDimTextColor, 11.0f});
+    }
+    for (std::size_t i = 0; i < city->standingOrders().size(); ++i) {
+        const aoc::sim::StandingOrder& order = city->standingOrders()[i];
+        const aoc::game::City* dst = playerPtr->cityAt(order.destCityLocation);
+        const std::string_view goodName = aoc::sim::goodDef(order.goodId).name;
+        char buf[160];
+        std::snprintf(buf, sizeof(buf),
+            "  Remove: %.*s x%d -> %s",
+            static_cast<int>(goodName.size()), goodName.data(),
+            order.batchSize,
+            dst ? dst->name().c_str() : "?");
+
+        ButtonData rmBtn;
+        rmBtn.label = std::string(buf);
+        rmBtn.fontSize = 10.0f;
+        rmBtn.normalColor  = {0.32f, 0.18f, 0.18f, 0.9f};
+        rmBtn.hoverColor   = {0.44f, 0.26f, 0.26f, 0.95f};
+        rmBtn.pressedColor = {0.26f, 0.14f, 0.14f, 0.9f};
+        rmBtn.cornerRadius = 3.0f;
+
+        aoc::game::City* cityMut = city;
+        const std::size_t idxCopy = i;
+        rmBtn.onClick = [cityMut, idxCopy]() {
+            if (cityMut != nullptr) { cityMut->removeStandingOrder(idxCopy); }
+        };
+
+        (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 18.0f},
+                               std::move(rmBtn));
+    }
+
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
+        PanelData{kSeparatorColor, 0.0f});
+
+    // -- Dispatch buttons: one per (good, destination city) pair --
+    (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f}, PanelData{kHeaderBg, 3.0f});
+    (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
+        LabelData{"  Dispatch", kHeaderTextColor, 11.0f});
+
+    if (goods.empty() || playerPtr->cityCount() < 2) {
+        (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+            LabelData{"  (need stockpile and 2+ cities)", kDimTextColor, 11.0f});
+    }
+
+    // Per-dispatch batch size. Covers the full stockpile up to a sane cap so
+    // the player doesn't spam-click for large moves.
+    constexpr int32_t kBatchSize = 10;
+
+    for (const auto& kv : goods) {
+        const uint16_t goodId = kv.first;
+        const int32_t available = kv.second;
+        const int32_t qtyToSend = (available < kBatchSize) ? available : kBatchSize;
+        const std::string_view goodName = aoc::sim::goodDef(goodId).name;
+
+        for (const std::unique_ptr<aoc::game::City>& otherCity : playerPtr->cities()) {
+            if (otherCity == nullptr) { continue; }
+            if (otherCity->location() == city->location()) { continue; }
+
+            char btnBuf[160];
+            std::snprintf(btnBuf, sizeof(btnBuf),
+                "  Send %d %.*s -> %s",
+                qtyToSend,
+                static_cast<int>(goodName.size()), goodName.data(),
+                otherCity->name().c_str());
+
+            ButtonData dispatchBtn;
+            dispatchBtn.label = std::string(btnBuf);
+            dispatchBtn.fontSize = 10.0f;
+            dispatchBtn.normalColor  = {0.18f, 0.26f, 0.32f, 0.9f};
+            dispatchBtn.hoverColor   = {0.26f, 0.36f, 0.44f, 0.95f};
+            dispatchBtn.pressedColor = {0.14f, 0.20f, 0.26f, 0.9f};
+            dispatchBtn.cornerRadius = 3.0f;
+
+            aoc::game::GameState* gsPtr = this->m_gameState;
+            const aoc::map::HexGrid* gridPtr = this->m_grid;
+            const PlayerId owner = this->m_player;
+            const aoc::hex::AxialCoord sourceLoc = city->location();
+            const aoc::hex::AxialCoord destLoc   = otherCity->location();
+            const int32_t qtyCap = qtyToSend;
+
+            dispatchBtn.onClick = [gsPtr, gridPtr, owner, sourceLoc, destLoc, goodId, qtyCap]() {
+                if (gsPtr == nullptr || gridPtr == nullptr) { return; }
+                const bool ok = aoc::sim::dispatchCourier(
+                    *gsPtr, *gridPtr, owner, sourceLoc, destLoc, goodId, qtyCap);
+                if (!ok) {
+                    LOG_INFO("Courier dispatch failed (no slots / no goods / no path)");
+                }
+            };
+
+            (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 18.0f},
+                                   std::move(dispatchBtn));
+
+            // Companion "Make Standing" button below. Adds persistent rule so
+            // the city re-dispatches this (good, batch) to the same destination
+            // each turn when stockpile + slot permit.
+            char standBuf[160];
+            std::snprintf(standBuf, sizeof(standBuf),
+                "    + Standing %d %.*s -> %s",
+                qtyToSend,
+                static_cast<int>(goodName.size()), goodName.data(),
+                otherCity->name().c_str());
+
+            ButtonData standBtn;
+            standBtn.label = std::string(standBuf);
+            standBtn.fontSize = 10.0f;
+            standBtn.normalColor  = {0.20f, 0.28f, 0.20f, 0.9f};
+            standBtn.hoverColor   = {0.28f, 0.38f, 0.28f, 0.95f};
+            standBtn.pressedColor = {0.14f, 0.22f, 0.14f, 0.9f};
+            standBtn.cornerRadius = 3.0f;
+
+            aoc::game::City* cityMut = city;
+            standBtn.onClick = [cityMut, destLoc, goodId, qtyCap]() {
+                if (cityMut == nullptr) { return; }
+                // Dedupe: skip if an identical order already exists.
+                for (const aoc::sim::StandingOrder& o : cityMut->standingOrders()) {
+                    if (o.destCityLocation == destLoc && o.goodId == goodId && o.batchSize == qtyCap) {
+                        return;
+                    }
+                }
+                cityMut->addStandingOrder(aoc::sim::StandingOrder{destLoc, goodId, qtyCap});
+            };
+
+            (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 16.0f},
+                                   std::move(standBtn));
         }
     }
 }

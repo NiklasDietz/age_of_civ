@@ -630,6 +630,19 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                         continue;
                     }
 
+                    // Supply-line check: don't push a unit farther than its
+                    // supply tolerance from the nearest friendly city. Low-
+                    // peripheryTolerance leaders halt advances early to avoid
+                    // attrition; high-periphery leaders push aggressively.
+                    int32_t distToOwnCity = std::numeric_limits<int32_t>::max();
+                    for (const aoc::hex::AxialCoord& ownLoc : ownCityLocs) {
+                        const int32_t d = grid.distance(unit->position(), ownLoc);
+                        if (d < distToOwnCity) { distToOwnCity = d; }
+                    }
+                    if (distToOwnCity > strikingRange) {
+                        continue;  // Overextended — hold position this turn.
+                    }
+
                     const aoc::game::Player* targetPlayer = gameState.player(weakestNeighbour);
                     if (targetPlayer == nullptr || targetPlayer->cities().empty()) {
                         continue;
