@@ -137,20 +137,39 @@ void clampGenes(std::array<float, NUM_PARAMS>& genes, const ParamBounds& bounds)
 }
 
 std::vector<Individual> createInitialPopulation(int32_t popSize, std::mt19937& rng,
-                                                 const ParamBounds& bounds) {
+                                                 const ParamBounds& bounds,
+                                                 int32_t seedLeader) {
     std::vector<Individual> population;
     population.reserve(static_cast<std::size_t>(popSize));
 
-    // Seed with existing leaders
+    const bool singleLeader = (seedLeader >= 0 && seedLeader < 12);
+    std::normal_distribution<float> mutDist(0.0f, 0.3f);
+    std::uniform_int_distribution<int32_t> parentDist(0, 11);
+
+    if (singleLeader) {
+        // Seed slot 0 with the un-mutated archetype so the target flavour
+        // is always in the gene pool. Fill remainder with mutations.
+        Individual seed{};
+        seed.genes = EXISTING_LEADERS[static_cast<std::size_t>(seedLeader)];
+        population.push_back(seed);
+        while (static_cast<int32_t>(population.size()) < popSize) {
+            Individual ind{};
+            ind.genes = EXISTING_LEADERS[static_cast<std::size_t>(seedLeader)];
+            for (int32_t j = 0; j < NUM_PARAMS; ++j) {
+                ind.genes[static_cast<std::size_t>(j)] += mutDist(rng);
+            }
+            clampGenes(ind.genes, bounds);
+            population.push_back(ind);
+        }
+        return population;
+    }
+
+    // Default: rotate through all 12 hand-crafted leaders, then mutations.
     for (int32_t i = 0; i < 12 && static_cast<int32_t>(population.size()) < popSize; ++i) {
         Individual ind{};
         ind.genes = EXISTING_LEADERS[static_cast<std::size_t>(i)];
         population.push_back(ind);
     }
-
-    // Fill remaining with mutations of existing leaders
-    std::normal_distribution<float> mutDist(0.0f, 0.3f);
-    std::uniform_int_distribution<int32_t> parentDist(0, 11);
 
     while (static_cast<int32_t>(population.size()) < popSize) {
         Individual ind{};

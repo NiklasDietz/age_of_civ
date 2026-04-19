@@ -9,6 +9,7 @@
  * DEBUG is disabled in NDEBUG (release) builds.
  */
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -23,6 +24,25 @@ enum class Severity : uint8_t {
     Error,
     Fatal,
 };
+
+/// Runtime minimum severity. Messages strictly below this are dropped
+/// before any formatting or I/O — cheap enough to leave always-on.
+/// Default: Debug (everything). GA harness bumps this to Warn to skip
+/// the per-turn INFO spam that otherwise dominates wall time.
+inline std::atomic<Severity> g_minSeverity{Severity::Debug};
+
+inline void setMinSeverity(Severity s) noexcept {
+    g_minSeverity.store(s, std::memory_order_relaxed);
+}
+
+[[nodiscard]] inline Severity minSeverity() noexcept {
+    return g_minSeverity.load(std::memory_order_relaxed);
+}
+
+[[nodiscard]] inline bool shouldLog(Severity s) noexcept {
+    return static_cast<uint8_t>(s) >=
+           static_cast<uint8_t>(g_minSeverity.load(std::memory_order_relaxed));
+}
 
 [[nodiscard]] constexpr const char* severityTag(Severity severity) {
     switch (severity) {
@@ -45,6 +65,7 @@ enum class Severity : uint8_t {
 template<typename... Args>
 void logMessage(Severity severity, const char* file, int line,
                 const char* fmt, Args... args) {
+    if (severity != Severity::Fatal && !shouldLog(severity)) { return; }
     std::time_t now = std::time(nullptr);
     std::tm tm{};
     localtime_r(&now, &tm);
@@ -67,6 +88,7 @@ void logMessage(Severity severity, const char* file, int line,
 /// Overload for zero variadic args (format string only, no printf args).
 inline void logMessage(Severity severity, const char* file, int line,
                        const char* msg) {
+    if (severity != Severity::Fatal && !shouldLog(severity)) { return; }
     std::time_t now = std::time(nullptr);
     std::tm tm{};
     localtime_r(&now, &tm);

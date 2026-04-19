@@ -31,6 +31,7 @@
 // Simulation systems
 #include "aoc/simulation/turn/TurnManager.hpp"
 #include "aoc/simulation/ai/AIController.hpp"
+#include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/barbarian/BarbarianController.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/simulation/city/CityGrowth.hpp"
@@ -70,10 +71,12 @@
 #include "aoc/game/Unit.hpp"
 
 #include <random>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -833,6 +836,113 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 }
 
 #ifdef AOC_HEADLESS_MAIN
+
+namespace {
+
+std::vector<aoc::sim::LeaderPersonalityDef> g_tunedDefs;
+
+/// Parse a per-leader results file (Hard AI block). Named-field extract so
+/// we tolerate field reordering. Missing fields keep LeaderBehavior defaults.
+bool parseTunedLeader(const std::string& path, aoc::sim::LeaderBehavior& out) {
+    std::ifstream in(path);
+    if (!in.is_open()) { return false; }
+
+    std::unordered_map<std::string, float> vals;
+    std::string line;
+    bool inHard = false;
+    while (std::getline(in, line)) {
+        if (line.rfind("Hard AI", 0) == 0)   { inHard = true; continue; }
+        if (line.rfind("Medium AI", 0) == 0) { break; }
+        if (!inHard) { continue; }
+
+        auto eq = line.find('=');
+        if (eq == std::string::npos) { continue; }
+        std::string name = line.substr(0, eq);
+        std::string val  = line.substr(eq + 1);
+        auto trim = [](std::string& s) {
+            while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) { s.erase(s.begin()); }
+            while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))  { s.pop_back(); }
+        };
+        trim(name); trim(val);
+        if (name.empty() || val.empty()) { continue; }
+        try { vals[name] = std::stof(val); } catch (...) { continue; }
+    }
+    if (vals.empty()) { return false; }
+
+    out = aoc::sim::LeaderBehavior{};
+    auto set = [&](const char* key, float& field) {
+        auto it = vals.find(key);
+        if (it != vals.end()) { field = it->second; }
+    };
+    set("militaryAggression",       out.militaryAggression);
+    set("expansionism",             out.expansionism);
+    set("scienceFocus",             out.scienceFocus);
+    set("cultureFocus",             out.cultureFocus);
+    set("economicFocus",            out.economicFocus);
+    set("diplomaticOpenness",       out.diplomaticOpenness);
+    set("religiousZeal",            out.religiousZeal);
+    set("nukeWillingness",          out.nukeWillingness);
+    set("trustworthiness",          out.trustworthiness);
+    set("grudgeHolding",            out.grudgeHolding);
+    set("techMilitary",             out.techMilitary);
+    set("techEconomic",             out.techEconomic);
+    set("techIndustrial",           out.techIndustrial);
+    set("techNaval",                out.techNaval);
+    set("techInformation",          out.techInformation);
+    set("prodSettlers",             out.prodSettlers);
+    set("prodMilitary",             out.prodMilitary);
+    set("prodBuilders",             out.prodBuilders);
+    set("prodBuildings",            out.prodBuildings);
+    set("prodWonders",              out.prodWonders);
+    set("prodNaval",                out.prodNaval);
+    set("prodReligious",            out.prodReligious);
+    set("warDeclarationThreshold",  out.warDeclarationThreshold);
+    set("peaceAcceptanceThreshold", out.peaceAcceptanceThreshold);
+    set("allianceDesire",           out.allianceDesire);
+    set("riskTolerance",            out.riskTolerance);
+    set("environmentalism",         out.environmentalism);
+    set("peripheryTolerance",       out.peripheryTolerance);
+    set("greatPersonFocus",         out.greatPersonFocus);
+    set("espionagePriority",        out.espionagePriority);
+    set("ideologicalFervor",        out.ideologicalFervor);
+    set("speculationAppetite",      out.speculationAppetite);
+    set("milBaseWeight",            out.milBaseWeight);
+    set("milThreatSensitivity",     out.milThreatSensitivity);
+    set("milEmergencySlope",        out.milEmergencySlope);
+    set("milOverstockPenalty",      out.milOverstockPenalty);
+    return true;
+}
+
+void loadTunedOverrides(const std::string& dir) {
+    static constexpr const char* NAMES[12] = {
+        "Trajan","Cleopatra","QinShiHuang","Frederick",
+        "Pericles","Victoria","Hojo","Cyrus",
+        "Montezuma","Gandhi","Peter","PedroII",
+    };
+    g_tunedDefs.clear();
+    g_tunedDefs.reserve(12);
+    int32_t loaded = 0;
+    for (int32_t i = 0; i < 12; ++i) {
+        char fn[512];
+        std::snprintf(fn, sizeof(fn), "%s/%02d_%s.txt", dir.c_str(), i, NAMES[i]);
+        aoc::sim::LeaderBehavior beh{};
+        if (!parseTunedLeader(fn, beh)) {
+            std::fprintf(stderr, "  [tuned-dir] skip (missing/empty): %s\n", fn);
+            continue;
+        }
+        g_tunedDefs.push_back(aoc::sim::LEADER_PERSONALITIES[i]);
+        g_tunedDefs.back().behavior = beh;
+        ++loaded;
+    }
+    for (auto& def : g_tunedDefs) {
+        aoc::sim::setLeaderPersonalityOverride(def.civId, &def);
+    }
+    std::fprintf(stderr, "  [tuned-dir] installed %d tuned leader overrides from %s\n",
+                 loaded, dir.c_str());
+}
+
+} // namespace
+
 int main(int argc, char* argv[]) {
     int32_t turns = 200;
     int32_t players = 4;
@@ -877,6 +987,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    std::string tunedDir;
     if (!loadedConfig) {
         int32_t mapWidth = 60;
         int32_t mapHeight = 40;
@@ -888,6 +999,8 @@ int main(int argc, char* argv[]) {
                 players = std::atoi(argv[++i]);
             } else if (arg == "--output" && i + 1 < argc) {
                 outputPath = argv[++i];
+            } else if (arg == "--tuned-dir" && i + 1 < argc) {
+                tunedDir = argv[++i];
             } else if (arg == "--map-size" && i + 1 < argc) {
                 std::string sizeStr(argv[++i]);
                 std::size_t xPos = sizeStr.find('x');
@@ -917,6 +1030,10 @@ int main(int argc, char* argv[]) {
     if (turns <= 0) { turns = 200; }
     if (players < 2) { players = 2; }
     if (players > 12) { players = 12; }
+
+    if (!tunedDir.empty()) {
+        loadTunedOverrides(tunedDir);
+    }
 
     int result = runHeadlessSimulation(turns, players, outputPath);
 

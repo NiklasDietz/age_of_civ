@@ -13,6 +13,8 @@
 #include "FitnessEvaluator.hpp"
 #include "ThreadPool.hpp"
 
+#include "aoc/core/Log.hpp"
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -55,6 +57,11 @@ struct CLIArgs {
     std::vector<int32_t> playersList;
     aoc::ga::OpponentMode opponentMode = aoc::ga::OpponentMode::Fixed;
     int32_t hallOfFameSize = 8;
+    /// -1 = all 12 leaders rotate; [0,11] = tune that one leader's archetype.
+    int32_t seedLeader = -1;
+    /// Default: warn — simulation INFO spam (per-turn maintenance/growth/
+    /// supply logs) dominates wall time and adds zero value for GA search.
+    aoc::log::Severity logLevel = aoc::log::Severity::Warn;
 };
 
 /// Parse a single integer argument. Returns false on failure.
@@ -135,6 +142,19 @@ struct CLIArgs {
                 "                          mixed    = per-slot random mix of the above\n"
                 "  --hof-size N          Hall of Fame size for champion/mixed modes\n"
                 "                        (default: 8)\n"
+                "  --seed-leader N       Tune one specific leader (0..11) by seeding\n"
+                "                        the entire population from that archetype.\n"
+                "                        Output is that leader's GA-evolved values.\n"
+                "                          0=Trajan 1=Cleopatra 2=QinShiHuang 3=Frederick\n"
+                "                          4=Pericles 5=Victoria  6=Hojo        7=Cyrus\n"
+                "                          8=Montezuma 9=Gandhi  10=Peter     11=PedroII\n"
+                "  --log-level LEVEL     Simulation log verbosity:\n"
+                "                          debug|info|warn|error|quiet\n"
+                "                        Default: warn. The GA does not need the\n"
+                "                        per-turn INFO spam from maintenance/supply\n"
+                "                        /climate systems -- those fprintfs cost\n"
+                "                        real wall time. Use 'info' to debug AI\n"
+                "                        behavior, 'quiet' (== fatal) for max speed.\n"
                 "  --quick               Quick test: 5 gens, 10 pop, 2 games, 150 turns\n"
                 "  --track-best-gen      Log the generation at which each new\n"
                 "                        best-ever fitness was reached, and print\n"
@@ -185,6 +205,29 @@ struct CLIArgs {
                 }
             } else if (std::strcmp(argv[i], "--hof-size") == 0) {
                 if (!parseIntArg(argv[++i], args.hallOfFameSize, "--hof-size")) { return false; }
+            } else if (std::strcmp(argv[i], "--seed-leader") == 0) {
+                char* endPtr = nullptr;
+                long parsed = std::strtol(argv[++i], &endPtr, 10);
+                if (endPtr == argv[i] || *endPtr != '\0' || parsed < 0 || parsed > 11) {
+                    std::fprintf(stderr,
+                        "[Error] Invalid --seed-leader '%s' (expected 0..11)\n", argv[i]);
+                    return false;
+                }
+                args.seedLeader = static_cast<int32_t>(parsed);
+            } else if (std::strcmp(argv[i], "--log-level") == 0) {
+                const char* val = argv[++i];
+                if      (std::strcmp(val, "debug") == 0) { args.logLevel = aoc::log::Severity::Debug; }
+                else if (std::strcmp(val, "info")  == 0) { args.logLevel = aoc::log::Severity::Info;  }
+                else if (std::strcmp(val, "warn")  == 0) { args.logLevel = aoc::log::Severity::Warn;  }
+                else if (std::strcmp(val, "error") == 0) { args.logLevel = aoc::log::Severity::Error; }
+                else if (std::strcmp(val, "quiet") == 0
+                      || std::strcmp(val, "fatal") == 0) { args.logLevel = aoc::log::Severity::Fatal; }
+                else {
+                    std::fprintf(stderr,
+                        "[Error] Invalid --log-level '%s' "
+                        "(expected: debug|info|warn|error|quiet)\n", val);
+                    return false;
+                }
             } else {
                 std::fprintf(stderr, "[Error] Unknown argument: '%s'\n", argv[i]);
                 return false;
@@ -263,6 +306,10 @@ int main(int argc, char* argv[]) {
         args.gamesPerEval = 2;
         args.turnsPerGame = 150;
     }
+
+    // Apply log-level gate: skips formatting + fprintf on filtered messages.
+    // Huge wall-time win for info-level sim spam (per-turn maintenance etc).
+    aoc::log::setMinSeverity(args.logLevel);
 
     // Register signal handlers for graceful shutdown (Ctrl-C / kill).
     std::signal(SIGINT,  gaSignalHandler);
@@ -350,11 +397,23 @@ int main(int argc, char* argv[]) {
 
     // Initialize population
     std::vector<aoc::ga::Individual> population =
-        aoc::ga::createInitialPopulation(args.population, rng, bounds);
+        aoc::ga::createInitialPopulation(args.population, rng, bounds, args.seedLeader);
 
-    int32_t seeded = std::min(12, args.population);
-    std::fprintf(stderr, "\n[Init] Created population of %d (%d leader seeds + %d mutations)\n",
-                 args.population, seeded, std::max(0, args.population - seeded));
+    if (args.seedLeader >= 0) {
+        static const char* LEADER_NAMES[12] = {
+            "Trajan", "Cleopatra", "QinShiHuang", "Frederick",
+            "Pericles", "Victoria", "Hojo", "Cyrus",
+            "Montezuma", "Gandhi", "Peter", "PedroII"
+        };
+        std::fprintf(stderr,
+            "\n[Init] Population seeded ENTIRELY from leader %d (%s) + mutations\n",
+            args.seedLeader, LEADER_NAMES[args.seedLeader]);
+    } else {
+        int32_t seeded = std::min(12, args.population);
+        std::fprintf(stderr,
+            "\n[Init] Created population of %d (%d leader seeds + %d mutations)\n",
+            args.population, seeded, std::max(0, args.population - seeded));
+    }
 
     // Hall of Fame: top-K individuals ever seen by fitness. Seeded at gen 0
     // from the hand-crafted leader profiles (first 12 entries of the initial

@@ -134,8 +134,12 @@ struct DifficultyTiers {
 void clampGenes(std::array<float, NUM_PARAMS>& genes, const ParamBounds& bounds);
 
 /// Create initial population seeded from existing leader profiles + mutations.
+/// When `seedLeader` is in [0, 11], ALL seeds (and mutation parents) are that
+/// single leader -- used to tune values for one specific archetype. Otherwise
+/// seeds rotate through all 12 leaders.
 std::vector<Individual> createInitialPopulation(int32_t popSize, std::mt19937& rng,
-                                                 const ParamBounds& bounds);
+                                                 const ParamBounds& bounds,
+                                                 int32_t seedLeader = -1);
 
 /// Tournament selection: pick tournamentSize random individuals, return best.
 Individual tournamentSelect(const std::vector<Individual>& population,
