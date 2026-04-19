@@ -1947,6 +1947,8 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
         LabelData{"  Manage Citizens", kHeaderTextColor, 11.0f});
 
     {
+        aoc::game::Player* playerMut = this->m_gameState->player(this->m_player);
+
         std::vector<hex::AxialCoord> borderTiles;
         hex::spiral(city->location(), aoc::sim::CITY_WORK_RADIUS, std::back_inserter(borderTiles));
 
@@ -1966,11 +1968,22 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
 
             const bool isWorked = city->isTileWorked(tile);
 
-            char tileBuf[128];
+            // Current managing city for this tile (override or nearest-city fallback).
+            std::string mgmtLabel = "[auto]";
+            if (playerMut != nullptr) {
+                const aoc::hex::AxialCoord* ov = playerMut->tileCityOverride(tileIdx);
+                if (ov != nullptr) {
+                    aoc::game::City* mgmtCity = playerMut->cityAt(*ov);
+                    mgmtLabel = mgmtCity ? mgmtCity->name() : std::string("?");
+                }
+            }
+
+            char tileBuf[160];
             std::snprintf(tileBuf, sizeof(tileBuf),
-                "%s (%d,%d)  F:%d  P:%d  G:%d",
+                "%s (%d,%d)  F:%d P:%d G:%d  [%s]",
                 isWorked ? "[W]" : "[ ]",
-                tile.q, tile.r, ty.food, ty.production, ty.gold);
+                tile.q, tile.r, ty.food, ty.production, ty.gold,
+                mgmtLabel.c_str());
 
             ButtonData citizenBtn;
             citizenBtn.label = std::string(tileBuf);
@@ -1996,6 +2009,44 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
 
             (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 20.0f},
                                    std::move(citizenBtn));
+
+            // Reassign-to-city cycle button: nearest -> city0 -> city1 -> ... -> nearest
+            ButtonData assignBtn;
+            assignBtn.label = std::string("   Reassign (") + mgmtLabel + ")";
+            assignBtn.fontSize = 9.0f;
+            assignBtn.normalColor = {0.16f, 0.18f, 0.24f, 0.85f};
+            assignBtn.hoverColor = {0.24f, 0.26f, 0.34f, 0.9f};
+            assignBtn.pressedColor = {0.12f, 0.14f, 0.20f, 0.85f};
+            assignBtn.cornerRadius = 3.0f;
+
+            aoc::game::Player* playerCap = playerMut;
+            const int32_t captureTileIdx = tileIdx;
+            assignBtn.onClick = [playerCap, captureTileIdx]() {
+                if (playerCap == nullptr) { return; }
+                const auto& cities = playerCap->cities();
+                if (cities.empty()) { return; }
+                const aoc::hex::AxialCoord* curr = playerCap->tileCityOverride(captureTileIdx);
+                int32_t nextIdx = 0;
+                if (curr != nullptr) {
+                    for (std::size_t i = 0; i < cities.size(); ++i) {
+                        if (cities[i] && cities[i]->location() == *curr) {
+                            nextIdx = static_cast<int32_t>(i) + 1;
+                            break;
+                        }
+                    }
+                }
+                if (nextIdx >= static_cast<int32_t>(cities.size())) {
+                    playerCap->clearTileCity(captureTileIdx);
+                    LOG_INFO("Tile %d -> [auto]", captureTileIdx);
+                } else {
+                    const aoc::hex::AxialCoord loc = cities[nextIdx]->location();
+                    playerCap->setTileCity(captureTileIdx, loc);
+                    LOG_INFO("Tile %d -> city at (%d,%d)", captureTileIdx, loc.q, loc.r);
+                }
+            };
+
+            (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
+                                   std::move(assignBtn));
         }
     }
 }
