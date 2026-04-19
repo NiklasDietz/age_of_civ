@@ -19,6 +19,7 @@
 #include "aoc/simulation/turn/TurnManager.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/simulation/ai/AIController.hpp"
+#include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/barbarian/BarbarianController.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/simulation/economy/Maintenance.hpp"
@@ -59,10 +60,41 @@
 namespace aoc::ga {
 
 SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed,
-                                const std::atomic<bool>* stopFlag) {
+                                const std::atomic<bool>* stopFlag,
+                                const Individual* individual) {
+    // Install Player 0's evolved personality as a thread-local override on
+    // civId 0 (Player 0's civ assignment: see gsPlayer->setCivId below).
+    // RAII guard clears the override on any return path, including early
+    // abort via stopFlag, so subsequent sims on this thread start clean.
+    struct PersonalityOverrideGuard {
+        aoc::sim::CivId civId{0};
+        bool installed = false;
+        ~PersonalityOverrideGuard() {
+            if (installed) {
+                aoc::sim::setLeaderPersonalityOverride(civId, nullptr);
+            }
+        }
+    } guard;
+    aoc::sim::LeaderPersonalityDef overrideDef{};
+    if (individual != nullptr) {
+        overrideDef = aoc::sim::LEADER_PERSONALITIES[0];
+        overrideDef.behavior = individual->toBehavior();
+        aoc::sim::setLeaderPersonalityOverride(aoc::sim::CivId{0}, &overrideDef);
+        guard.installed = true;
+    }
+
     SimulationResult result{};
-    result.eraVP.resize(static_cast<std::size_t>(playerCount), 0);
-    result.compositeCSI.resize(static_cast<std::size_t>(playerCount), 0.0f);
+    const std::size_t pc = static_cast<std::size_t>(playerCount);
+    result.eraVP.resize(pc, 0);
+    result.compositeCSI.resize(pc, 0.0f);
+    result.treasury.resize(pc, 0);
+    result.cityCount.resize(pc, 0);
+    result.peakCityCount.resize(pc, 0);
+    result.population.resize(pc, 0);
+    result.gdp.resize(pc, 0.0f);
+    result.avgHappiness.resize(pc, 0.0f);
+    result.totalIncome.resize(pc, 0.0f);
+    result.totalExpense.resize(pc, 0.0f);
 
     aoc::map::HexGrid grid;
     aoc::Random rng(seed);
@@ -300,6 +332,16 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
 
         aoc::sim::processTurn(turnCtx);
 
+        // Track peak city count (survival metric)
+        for (int32_t p = 0; p < playerCount; ++p) {
+            const aoc::game::Player* player =
+                gameState.player(static_cast<aoc::PlayerId>(p));
+            if (player == nullptr) { continue; }
+            const int32_t current = player->cityCount();
+            int32_t& peak = result.peakCityCount[static_cast<std::size_t>(p)];
+            if (current > peak) { peak = current; }
+        }
+
         // Goody hut exploration.
         // Snapshot unit positions first because claiming a hut can add a free
         // unit to the player, which reallocates the units vector.
@@ -373,13 +415,33 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
         turnManager.beginNewTurn();
     }
 
-    // Extract final scores
+    // Extract final scores + economic metrics for fitness evaluation
     for (int32_t p = 0; p < playerCount; ++p) {
+        const std::size_t idx = static_cast<std::size_t>(p);
         const aoc::game::Player* player = gameState.player(static_cast<aoc::PlayerId>(p));
-        if (player != nullptr) {
-            result.eraVP[static_cast<std::size_t>(p)] = player->victoryTracker().eraVictoryPoints;
-            result.compositeCSI[static_cast<std::size_t>(p)] = player->victoryTracker().compositeCSI;
+        if (player == nullptr) { continue; }
+
+        result.eraVP[idx]        = player->victoryTracker().eraVictoryPoints;
+        result.compositeCSI[idx] = player->victoryTracker().compositeCSI;
+        result.treasury[idx]     = static_cast<int32_t>(player->treasury());
+        result.cityCount[idx]    = player->cityCount();
+        result.gdp[idx]          = static_cast<float>(player->monetary().gdp);
+
+        int32_t popSum = 0;
+        float happySum = 0.0f;
+        int32_t happyN = 0;
+        for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
+            popSum += city->population();
+            happySum += city->happiness().happiness;
+            ++happyN;
         }
+        result.population[idx]   = popSum;
+        result.avgHappiness[idx] = (happyN > 0) ? (happySum / static_cast<float>(happyN)) : 0.0f;
+
+        aoc::sim::EconomicBreakdown bd =
+            aoc::sim::computeEconomicBreakdown(*player, grid);
+        result.totalIncome[idx]  = static_cast<float>(bd.totalIncome);
+        result.totalExpense[idx] = static_cast<float>(bd.totalExpense);
     }
     result.valid = true;
     return result;
@@ -388,6 +450,8 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
 float evaluateFitness(const Individual& individual,
                        const GAConfig& config,
                        uint64_t baseSeed) {
+    // Genes are installed onto Player 0 by runSimulation; fitness here
+    // evaluates game *outcomes* only.
     float totalScore = 0.0f;
     int32_t validGames = 0;
 
@@ -410,36 +474,76 @@ float evaluateFitness(const Individual& individual,
                                   % config.playersList.size()];
 
         SimulationResult simResult = runSimulation(turns, playerCount, gameSeed,
-                                                    config.stopFlag);
+                                                    config.stopFlag, &individual);
 
         if (!simResult.valid || simResult.eraVP.empty()) {
             continue;
         }
 
-        // Gene quality score: reward parameters that correlate with winning
-        float geneQuality = 0.0f;
-        for (int32_t i = 0; i < NUM_PARAMS; ++i) {
-            float gene = individual.genes[static_cast<std::size_t>(i)];
-            // Reward expansion, science, economy focus
-            if (i == 1 || i == 2 || i == 4) {  // expansionism, scienceFocus, economicFocus
-                geneQuality += gene * 0.15f;
-            } else if (i == 0) {  // militaryAggression — moderate is best
-                geneQuality += (1.5f - std::abs(gene - 1.2f)) * 0.1f;
-            } else if (i == 15 || i == 18) {  // prodSettlers, prodBuildings
-                geneQuality += gene * 0.1f;
-            } else if (i == 22) {  // warDeclarationThreshold
-                geneQuality += gene * 0.05f;
-            }
-        }
+        // Outcome-driven fitness for Player 0 (the individual under evaluation).
+        //
+        // Five weighted components, each normalised to roughly [0, 1] before
+        // weighting so they can be compared. Rewards *actually winning* and
+        // *playing sustainably*, not designer-chosen gene values.
+        //
+        // 1. relativeWin  : Player 0's EraVP vs the best rival. Positive when
+        //                   ahead, negative when behind. Dominant signal.
+        // 2. economicHealth: treasury / (turns * 5) clamped. Rewards solvency
+        //                   without over-rewarding hoarding.
+        // 3. survival     : cities held / peak cities reached. Punishes losing
+        //                   cities you once owned (secession, conquest).
+        // 4. balancedFlow : 1 - |deficit| / income, clamped [0, 1]. Rewards
+        //                   AIs whose expenses do not runaway past income.
+        // 5. happiness    : avg city happiness, shifted + clamped to [0, 1].
+        //                   Rewards governance, not just raw score.
+        constexpr std::size_t P0 = 0;
+        if (simResult.eraVP.size() <= P0) { continue; }
 
-        // Game outcome score: reward score spread (decisive winners = working AI)
-        int32_t maxVP = *std::max_element(simResult.eraVP.begin(), simResult.eraVP.end());
-        int32_t minVP = *std::min_element(simResult.eraVP.begin(), simResult.eraVP.end());
-        float scoreRange = (maxVP > 0)
-            ? static_cast<float>(maxVP - minVP) / static_cast<float>(maxVP)
+        const int32_t myVP = simResult.eraVP[P0];
+        int32_t bestRivalVP = 0;
+        for (std::size_t i = 1; i < simResult.eraVP.size(); ++i) {
+            if (simResult.eraVP[i] > bestRivalVP) { bestRivalVP = simResult.eraVP[i]; }
+        }
+        const float denomVP = static_cast<float>(std::max(1, std::max(myVP, bestRivalVP)));
+        const float relativeWin = static_cast<float>(myVP - bestRivalVP) / denomVP;  // [-1, 1]
+
+        const float treasuryF  = static_cast<float>(simResult.treasury[P0]);
+        const float turnsF     = static_cast<float>(std::max(1, turns));
+        float economicHealth   = treasuryF / (turnsF * 5.0f);
+        economicHealth = std::max(-1.0f, std::min(1.0f, economicHealth));
+
+        const int32_t peak = simResult.peakCityCount[P0];
+        const int32_t held = simResult.cityCount[P0];
+        const float survival = (peak > 0)
+            ? static_cast<float>(held) / static_cast<float>(peak)
             : 0.0f;
 
-        totalScore += geneQuality + scoreRange * 0.5f;
+        const float income  = simResult.totalIncome[P0];
+        const float expense = simResult.totalExpense[P0];
+        float balancedFlow;
+        if (income <= 0.0f) {
+            balancedFlow = 0.0f;
+        } else {
+            const float ratio = (income - expense) / income;  // [-large, 1]
+            balancedFlow = std::max(0.0f, std::min(1.0f, 0.5f + 0.5f * ratio));
+        }
+
+        const float rawHappy = simResult.avgHappiness[P0];
+        const float happiness = std::max(0.0f, std::min(1.0f, (rawHappy + 5.0f) / 10.0f));
+
+        // Survival gate: if P0 was eliminated (cities=0, peak>0), zero out other
+        // positive signals so the GA cannot reward a dead civ for treasury
+        // residue etc.
+        const bool eliminated = (peak > 0 && held == 0);
+        if (eliminated) {
+            totalScore += -1.0f;  // strong negative signal
+        } else {
+            totalScore += 1.0f  * relativeWin
+                        + 0.25f * economicHealth
+                        + 0.25f * survival
+                        + 0.20f * balancedFlow
+                        + 0.15f * happiness;
+        }
         ++validGames;
     }
 

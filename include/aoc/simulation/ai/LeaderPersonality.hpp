@@ -365,8 +365,24 @@ enum class DialogueContext : uint8_t {
 
 /**
  * @brief Get the leader personality for a civilization.
+ *
+ * If a per-thread override has been installed via
+ * setLeaderPersonalityOverride() for this civId, returns that. This is how
+ * the GA harness injects evolved genes into Player 0's AI decisions without
+ * mutating the global civ-type table.
  */
 [[nodiscard]] const LeaderPersonalityDef& leaderPersonality(CivId civId);
+
+/**
+ * @brief Install a per-thread personality override for a specific civId.
+ *
+ * Thread-local: each GA worker thread can set its own override without racing
+ * with other worker threads. Pass nullptr to clear.
+ *
+ * The override is owned by the caller and must outlive any call to
+ * leaderPersonality() that could return it.
+ */
+void setLeaderPersonalityOverride(CivId civId, const LeaderPersonalityDef* def);
 
 /**
  * @brief Evaluate agenda-based diplomatic modifier.

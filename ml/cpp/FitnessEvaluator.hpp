@@ -23,6 +23,22 @@ struct SimulationResult {
     std::vector<int32_t> eraVP;
     /// Per-player composite CSI scores.
     std::vector<float> compositeCSI;
+    /// Per-player final treasury (gold).
+    std::vector<int32_t> treasury;
+    /// Per-player final city count.
+    std::vector<int32_t> cityCount;
+    /// Per-player peak city count reached during the game (for survival metric).
+    std::vector<int32_t> peakCityCount;
+    /// Per-player final population sum.
+    std::vector<int32_t> population;
+    /// Per-player final GDP.
+    std::vector<float> gdp;
+    /// Per-player final average happiness across cities.
+    std::vector<float> avgHappiness;
+    /// Per-player final total income per turn.
+    std::vector<float> totalIncome;
+    /// Per-player final total expense per turn.
+    std::vector<float> totalExpense;
     /// Whether the simulation completed successfully.
     bool valid = false;
 };
@@ -31,9 +47,15 @@ struct SimulationResult {
 /// Thread-safe: creates its own GameState, grid, and RNG from the given seed.
 /// If stopFlag is non-null and becomes true, the sim exits early and
 /// returns a result with valid=false.
+///
+/// If `individual` is non-null, its genes are installed as Player 0's AI
+/// personality for the duration of this simulation via a thread-local
+/// override. Other players use the default civ-type personalities. This is
+/// how GA fitness evaluation actually exercises evolved genes.
 [[nodiscard]] SimulationResult runSimulation(int32_t turns, int32_t playerCount,
                                               uint64_t seed,
-                                              const std::atomic<bool>* stopFlag = nullptr);
+                                              const std::atomic<bool>* stopFlag = nullptr,
+                                              const Individual* individual = nullptr);
 
 /// Evaluate fitness of one individual by running multiple games.
 /// The individual's genes are used as Player 0's AI personality.

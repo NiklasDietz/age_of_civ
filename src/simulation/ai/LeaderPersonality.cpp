@@ -19,11 +19,28 @@
 
 namespace aoc::sim {
 
+// Per-thread override table. Indexed by civId so a GA worker can pin one
+// evolved personality onto e.g. Player 0's civ without disturbing the global
+// civ-type table or other threads' sims.
+namespace {
+thread_local const LeaderPersonalityDef*
+    s_overrides[LEADER_PERSONALITY_COUNT] = {};
+}
+
 const LeaderPersonalityDef& leaderPersonality(CivId civId) {
     if (civId < LEADER_PERSONALITY_COUNT) {
+        if (s_overrides[civId] != nullptr) {
+            return *s_overrides[civId];
+        }
         return LEADER_PERSONALITIES[civId];
     }
     return LEADER_PERSONALITIES[0];
+}
+
+void setLeaderPersonalityOverride(CivId civId, const LeaderPersonalityDef* def) {
+    if (civId < LEADER_PERSONALITY_COUNT) {
+        s_overrides[civId] = def;
+    }
 }
 
 // ============================================================================
