@@ -10,6 +10,9 @@
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/monetary/Inflation.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
+#include "aoc/simulation/tech/EraProgression.hpp"
+#include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
@@ -26,6 +29,14 @@ namespace aoc::sim {
 float computePlayerScience(const aoc::game::Player& player,
                             const aoc::map::HexGrid& grid) {
     float totalScience = 0.0f;
+
+    // Precompute per-player religion curve inputs.  Derived from researched
+    // techs rather than PlayerEraComponent::currentEra because the latter is
+    // not reliably updated during normal play.
+    const EraId playerEra = effectiveEraFromTech(player);
+    const int32_t renaissancePlusTechs = countRenaissancePlusTechs(player);
+    const float religionScienceCoef =
+        religionScienceCoefficient(playerEra, renaissancePlusTechs);
 
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         float cityScience = 0.0f;
@@ -65,6 +76,18 @@ float computePlayerScience(const aoc::game::Player& player,
 
         // 5. Apply multiplier
         cityScience *= bestMultiplier;
+
+        // 6. Religion-vs-education curve: net Devotion * era coefficient.
+        // Coefficient is positive in Ancient/Classical (monastic literacy
+        // bonus), zero in Medieval, and negative from Renaissance onward.
+        // City can offset the drain by building Library/University/Research
+        // Lab, which deduct from Devotion before the coefficient is applied.
+        {
+            const float netDevotion = computeCityNetDevotion(*city);
+            if (netDevotion > 0.0f) {
+                cityScience += netDevotion * religionScienceCoef;
+            }
+        }
 
         totalScience += cityScience;
     }

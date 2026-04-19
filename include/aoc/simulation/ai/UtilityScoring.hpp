@@ -47,6 +47,12 @@ struct AIContext {
     CurrencyAmount treasury;
     int32_t targetMaxCities;
     int32_t desiredMilitary;
+
+    /// Per-net-devotion science coefficient at the player's current era.
+    /// Positive in Ancient/Classical, zero in Medieval, negative from
+    /// Renaissance onward.  Used to scale faith-building scores so AIs
+    /// invest in religion when it pays and abandon it when the drain hits.
+    float religionScienceCoef = 0.0f;
 };
 
 [[nodiscard]] ProductionScores computeProductionUtility(

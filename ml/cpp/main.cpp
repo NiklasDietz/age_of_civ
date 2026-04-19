@@ -59,6 +59,9 @@ struct CLIArgs {
     int32_t hallOfFameSize = 8;
     /// -1 = all 12 leaders rotate; [0,11] = tune that one leader's archetype.
     int32_t seedLeader = -1;
+    /// Balance-winrate: reward rare winning victory types across a generation.
+    bool    balanceWinrate = false;
+    float   balanceBonus   = 0.8f;
     /// Default: warn — simulation INFO spam (per-turn maintenance/growth/
     /// supply logs) dominates wall time and adds zero value for GA search.
     aoc::log::Severity logLevel = aoc::log::Severity::Warn;
@@ -115,6 +118,8 @@ struct CLIArgs {
             args.quick = true;
         } else if (std::strcmp(argv[i], "--track-best-gen") == 0) {
             args.trackBestGen = true;
+        } else if (std::strcmp(argv[i], "--balance-winrate") == 0) {
+            args.balanceWinrate = true;
         } else if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
             std::fprintf(stderr,
                 "Usage: aoc_evolve [OPTIONS]\n"
@@ -155,6 +160,15 @@ struct CLIArgs {
                 "                        /climate systems -- those fprintfs cost\n"
                 "                        real wall time. Use 'info' to debug AI\n"
                 "                        behavior, 'quiet' (== fatal) for max speed.\n"
+                "  --balance-winrate     Reward genomes that win via currently-rare\n"
+                "                        victory types. Builds a per-generation\n"
+                "                        histogram of subject wins across games and\n"
+                "                        adds a per-game bonus proportional to how\n"
+                "                        under-represented that win type is. Pushes\n"
+                "                        the GA away from domination-spam convergence.\n"
+                "  --balance-bonus F     Max bonus added to the outcome score of a\n"
+                "                        win via the rarest type (default: 0.8).\n"
+                "                        Ignored when --balance-winrate is off.\n"
                 "  --quick               Quick test: 5 gens, 10 pop, 2 games, 150 turns\n"
                 "  --track-best-gen      Log the generation at which each new\n"
                 "                        best-ever fitness was reached, and print\n"
@@ -214,6 +228,15 @@ struct CLIArgs {
                     return false;
                 }
                 args.seedLeader = static_cast<int32_t>(parsed);
+            } else if (std::strcmp(argv[i], "--balance-bonus") == 0) {
+                char* endPtr = nullptr;
+                double parsed = std::strtod(argv[++i], &endPtr);
+                if (endPtr == argv[i] || *endPtr != '\0' || parsed < 0.0) {
+                    std::fprintf(stderr,
+                        "[Error] Invalid value for --balance-bonus: '%s'\n", argv[i]);
+                    return false;
+                }
+                args.balanceBonus = static_cast<float>(parsed);
             } else if (std::strcmp(argv[i], "--log-level") == 0) {
                 const char* val = argv[++i];
                 if      (std::strcmp(val, "debug") == 0) { args.logLevel = aoc::log::Severity::Debug; }
@@ -364,6 +387,11 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, " (HoF size %d)", args.hallOfFameSize);
     }
     std::fprintf(stderr, "\n");
+    if (args.balanceWinrate) {
+        std::fprintf(stderr,
+            "  Balance-winrate: ON (max bonus %.2f on rarest victory type)\n",
+            static_cast<double>(args.balanceBonus));
+    }
 
     // Build GA config
     aoc::ga::GAConfig config{};
@@ -383,6 +411,8 @@ int main(int argc, char* argv[]) {
     config.stopFlag       = &g_stopRequested;
     config.opponentMode   = args.opponentMode;
     config.hallOfFameSize = args.hallOfFameSize;
+    config.balanceWinrate = args.balanceWinrate;
+    config.balanceBonus   = args.balanceBonus;
 
     aoc::ga::ParamBounds bounds = aoc::ga::defaultBounds();
 

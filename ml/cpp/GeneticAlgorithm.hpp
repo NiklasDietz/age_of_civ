@@ -121,6 +121,21 @@ struct GAConfig {
     /// true, runSimulation / evaluateFitness / evaluatePopulation exit at
     /// the next safe checkpoint (per-turn, per-game, per-individual).
     const std::atomic<bool>* stopFlag = nullptr;
+
+    /// Balance-winrate mode: rewards individuals whose wins happen via
+    /// currently-rare victory types. Post-hoc pass over each generation
+    /// builds a histogram of (winner-subject) victory types across all
+    /// pop × games evaluations, then adds a per-game bonus to each win
+    /// proportional to how under-represented that type is. Pushes the
+    /// GA away from dominance-spam convergence toward a population that
+    /// wins through multiple mechanics.
+    bool  balanceWinrate = false;
+
+    /// Max per-game bonus applied on the rarest win type (added to the
+    /// outcome score for that game). Rare = currently-least-observed
+    /// victory type in the generation's win histogram. Dominant types
+    /// get bonus ~0.
+    float balanceBonus   = 0.8f;
 };
 
 /// Difficulty tier results.

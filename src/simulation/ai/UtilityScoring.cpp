@@ -129,12 +129,24 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
         case  9: score = 65.0f; break;  // Food Processing
         case 25: score = 50.0f; break;  // Waste Treatment
 
-        // Faith buildings (HolySite) -- scale by religiousZeal
+        // Faith buildings: base weighted by religiousZeal, then multiplied
+        // by era multiplier below so AIs eagerly build in Ancient/Classical
+        // (coef > 0) and abandon in Industrial+ (coef strongly negative).
         case 36: score = 100.0f * b.religiousZeal; break;  // Shrine
         case 37: score = 140.0f * b.religiousZeal; break;  // Temple
         case 38: score = 170.0f * b.religiousZeal * b.cultureFocus; break;  // Cathedral
 
         default: score = 40.0f; break;
+    }
+
+    // Era-dependent religion multiplier for faith buildings.  Positive
+    // coefficient in early eras (+0.5 Ancient/Classical) scales score up;
+    // negative in late eras scales it down, clamped so a religious leader
+    // still keeps a minimal sacred core and a secular one doesn't totally
+    // ignore shrines before the drain sets in.
+    if (buildingId.value == 36u || buildingId.value == 37u || buildingId.value == 38u) {
+        const float eraMult = std::clamp(1.0f + context.religionScienceCoef, 0.2f, 1.8f);
+        score *= eraMult;
     }
 
     // Context bonus: treasury-rich players can afford expensive buildings

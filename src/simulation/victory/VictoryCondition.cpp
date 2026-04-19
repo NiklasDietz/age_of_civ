@@ -629,6 +629,59 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
         }
     }
 
+    // 3d. Culture Victory: accumulated culture, wonder count, and clear lead.
+    // A civ wins if:
+    //   - totalCultureAccumulated >= CULTURE_VICTORY_THRESHOLD
+    //   - owns >= CULTURE_VICTORY_MIN_WONDERS wonders
+    //   - culture total is at least 2x the next-best non-eliminated civ
+    // The 2x gap prevents photo-finish flips near the threshold and forces
+    // the winner to have meaningfully out-produced everyone on culture.
+    if ((enabledTypes & VICTORY_MASK_CULTURE) != 0u) {
+        constexpr float CULTURE_VICTORY_THRESHOLD = 5000.0f;
+        constexpr int32_t CULTURE_VICTORY_MIN_WONDERS = 4;
+        constexpr float CULTURE_VICTORY_LEAD_RATIO = 1.4f;
+
+        PlayerId leader = INVALID_PLAYER;
+        float bestCulture = 0.0f;
+        int32_t leaderWonders = 0;
+
+        for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
+            if (candidate->victoryTracker().isEliminated) { continue; }
+            const float acc = candidate->victoryTracker().totalCultureAccumulated;
+            if (acc > bestCulture) {
+                bestCulture = acc;
+                leader = candidate->id();
+                int32_t wonders = 0;
+                for (const std::unique_ptr<aoc::game::City>& city : candidate->cities()) {
+                    wonders += static_cast<int32_t>(city->wonders().wonders.size());
+                }
+                leaderWonders = wonders;
+            }
+        }
+
+        if (leader != INVALID_PLAYER
+            && bestCulture >= CULTURE_VICTORY_THRESHOLD
+            && leaderWonders >= CULTURE_VICTORY_MIN_WONDERS) {
+            bool clearLead = true;
+            for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+                if (other->id() == leader) { continue; }
+                if (other->victoryTracker().isEliminated) { continue; }
+                const float otherAcc = other->victoryTracker().totalCultureAccumulated;
+                if (otherAcc * CULTURE_VICTORY_LEAD_RATIO > bestCulture) {
+                    clearLead = false;
+                    break;
+                }
+            }
+            if (clearLead) {
+                LOG_INFO("Player %u wins by CULTURE (culture=%.0f wonders=%d)",
+                         static_cast<unsigned>(leader),
+                         static_cast<double>(bestCulture),
+                         leaderWonders);
+                return {VictoryType::Culture, leader};
+            }
+        }
+    }
+
     // 4. Turn limit: highest cumulative Era VP wins
     if ((enabledTypes & VICTORY_MASK_SCORE) != 0u && currentTurn >= maxTurns) {
         PlayerId bestPlayer = INVALID_PLAYER;

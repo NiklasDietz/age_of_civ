@@ -98,6 +98,7 @@ struct CityLoyaltyComponent {
     float happinessEffect     = 0.0f;  ///< -2 per unhappiness point
     float ageEffect           = 0.0f;  ///< +/-5 from Golden/Dark Age
     float capturedPenalty     = 0.0f;  ///< -3 if recently captured
+    float devotionBonus       = 0.0f;  ///< Religion stabilisation bonus (eras 0-2 only)
 
     int32_t unrestTurns       = 0;     ///< Consecutive turns with loyalty < 25
 

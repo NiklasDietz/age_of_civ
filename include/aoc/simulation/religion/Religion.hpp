@@ -15,7 +15,7 @@
 #include <vector>
 
 namespace aoc::game { class GameState; }
-namespace aoc::game { class Player; class GameState; }
+namespace aoc::game { class Player; class GameState; class City; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
@@ -179,5 +179,60 @@ inline constexpr float MISSIONARY_FAITH_COST = 150.0f;
 
 /// Cost to purchase an apostle.
 inline constexpr float APOSTLE_FAITH_COST = 250.0f;
+
+// ============================================================================
+// Religion-vs-education science curve
+// ============================================================================
+//
+// Per-city "Devotion" = sum of faith-building investment (Shrine, Temple,
+// Cathedral, Holy Site district, dominant religion presence).  Per-city
+// "Education" = sum of campus-building investment (Library, University,
+// Research Lab).  Net Devotion = max(0, Devotion - Education).
+//
+// Net Devotion is multiplied by an era-dependent science coefficient:
+//   Era 0-1 (Ancient/Classical):  +0.50  -- monastic literacy boost
+//   Era 2   (Medieval):            0.00
+//   Era 3   (Renaissance):        -0.30  -- friction with empirical inquiry
+//   Era 4+  (Industrial onward):  -0.70  -- strong secularisation drag
+//
+// Each Renaissance-or-later tech researched adds an additional -0.05 kick to
+// the per-devotion coefficient, so civilisations that sprint through the tech
+// tree feel the conflict sooner even within a single era.
+//
+// Net Devotion also contributes loyalty in the early eras: +0.3 per net
+// devotion in eras 0-2, 0 afterward (religious authority fades with
+// modernity).
+//
+// Result: religion is a free early-game stabiliser, neutral at medieval,
+// progressively harmful to science at renaissance+ unless the city invests in
+// education buildings to cancel the drain.
+
+/// Compute a city's raw Devotion score.
+[[nodiscard]] float computeCityDevotion(const aoc::game::City& city);
+
+/// Compute a city's Education score.
+[[nodiscard]] float computeCityEducation(const aoc::game::City& city);
+
+/// Compute the net Devotion after education cancellation.
+[[nodiscard]] inline float computeCityNetDevotion(const aoc::game::City& city) {
+    const float devotion  = computeCityDevotion(city);
+    const float education = computeCityEducation(city);
+    return (devotion > education) ? (devotion - education) : 0.0f;
+}
+
+/// Derive the player's effective era from the highest-era tech researched.
+/// Robust workaround for the fact that PlayerEraComponent::currentEra is not
+/// reliably updated as research completes.
+[[nodiscard]] EraId effectiveEraFromTech(const aoc::game::Player& player);
+
+/// Count completed techs of era >= 3 (Renaissance onward).
+[[nodiscard]] int32_t countRenaissancePlusTechs(const aoc::game::Player& player);
+
+/// Per-net-devotion science coefficient at the given era and tech count.
+/// techsResearchedRenaissancePlus counts completed techs of era >= 3.
+[[nodiscard]] float religionScienceCoefficient(EraId era, int32_t techsResearchedRenaissancePlus);
+
+/// Per-net-devotion loyalty bonus at the given era.  Positive early, zero late.
+[[nodiscard]] float religionLoyaltyCoefficient(EraId era);
 
 } // namespace aoc::sim

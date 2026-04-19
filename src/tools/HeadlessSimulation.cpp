@@ -834,6 +834,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     }
 
     csv.close();
+
     LOG_INFO("Simulation complete. Data written to: %s", outputPath.c_str());
     return 0;
 }

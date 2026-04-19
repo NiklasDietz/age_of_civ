@@ -425,6 +425,8 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
         aoc::sim::VictoryResult vr = aoc::sim::checkVictoryConditions(
             gameState, static_cast<aoc::TurnNumber>(turn), static_cast<aoc::TurnNumber>(turns));
         if (vr.type != aoc::sim::VictoryType::None) {
+            result.victoryType = vr.type;
+            result.winner      = vr.winner;
             break;
         }
 
@@ -467,7 +469,11 @@ namespace {
 
 struct GameScore {
     float score = 0.0f;
-    bool  valid = false;
+    /// Victory type that ended the game (None if timed out).
+    aoc::sim::VictoryType victoryType = aoc::sim::VictoryType::None;
+    /// True if Player 0 (the evaluated subject) was the winner.
+    bool subjectWon = false;
+    bool valid = false;
 };
 
 /// Build the per-player override span for one game task based on
@@ -645,8 +651,10 @@ GameScore scoreOneGame(std::span<const Individual* const> overrides,
     //   survival     : cities held / peak cities.
     //   balancedFlow : 0.5 + 0.5 * (income - expense)/income.
     //   happiness    : avg happiness shifted/clamped to [0, 1].
-    out.score = playerOutcomeScore(simResult, P0, turns);
-    out.valid = true;
+    out.score       = playerOutcomeScore(simResult, P0, turns);
+    out.victoryType = simResult.victoryType;
+    out.subjectWon  = (simResult.winner == static_cast<aoc::PlayerId>(P0));
+    out.valid       = true;
     return out;
 }
 
@@ -745,90 +753,151 @@ void evaluatePopulation(std::vector<Individual>& population,
         return scoreOneGame(span, config, g, individualSeed);
     };
 
+    // Per-individual GameScore storage. Collected first so balance-winrate
+    // mode can compute a generation-wide rareness histogram before fitness
+    // is finalized.
+    std::vector<std::vector<GameScore>> perIndividualScores(toEvaluate.size());
+
     // Sequential fallback: no pool provided.
     if (pool == nullptr) {
         renderProgress(false);
-        for (std::size_t idx : toEvaluate) {
+        for (std::size_t k = 0; k < toEvaluate.size(); ++k) {
             if (stopRequested()) { break; }
-            uint64_t individualSeed = baseSeed + idx * 104729;
-            float total = 0.0f;
-            int32_t valid = 0;
+            const std::size_t idx = toEvaluate[k];
+            const uint64_t individualSeed = baseSeed + idx * 104729;
+            perIndividualScores[k].reserve(
+                static_cast<std::size_t>(config.gamesPerEval));
             for (int32_t g = 0; g < config.gamesPerEval; ++g) {
                 if (stopRequested()) { break; }
-                GameScore s = runTask(idx, g, individualSeed);
-                if (s.valid) { total += s.score; ++valid; }
+                perIndividualScores[k].push_back(runTask(idx, g, individualSeed));
                 completed.fetch_add(1, std::memory_order_release);
                 renderProgress(false);
             }
-            population[idx].fitness = (valid > 0)
-                ? total / static_cast<float>(valid) : 0.0f;
-            population[idx].gamesPlayed = config.gamesPerEval;
         }
         renderProgress(true);
-        return;
+    } else {
+        std::fprintf(stderr, "  [eval] %d individuals x %d games = %d tasks, %zu workers"
+                             "  (opponents: %s)%s\n",
+                     static_cast<int32_t>(toEvaluate.size()),
+                     config.gamesPerEval, totalGames, pool->size(),
+                     opponentModeName(config.opponentMode),
+                     config.balanceWinrate ? "  [balance-winrate]" : "");
+        renderProgress(false);
+
+        std::jthread watcher([&renderProgress](std::stop_token stop) {
+            while (!stop.stop_requested()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                if (stop.stop_requested()) { break; }
+                renderProgress(false);
+            }
+        });
+
+        // Flatten to game-level tasks: (pop × gamesPerEval) futures submitted
+        // up-front to the pool. Workers pull tasks as they finish, so straggler
+        // variance averages out across the larger task count.
+        //
+        // Opponent sampling happens INSIDE the worker via buildOverrides, so
+        // every task reads the current (immutable during eval) population and
+        // hallOfFame pointers. Both live on the main stack and are not mutated
+        // until evaluatePopulation returns.
+        struct IndivFutures {
+            std::vector<std::future<GameScore>> futures;
+        };
+        std::vector<IndivFutures> perIndividual(toEvaluate.size());
+
+        for (std::size_t k = 0; k < toEvaluate.size(); ++k) {
+            const std::size_t idx = toEvaluate[k];
+            const uint64_t individualSeed = baseSeed + idx * 104729;
+            perIndividual[k].futures.reserve(
+                static_cast<std::size_t>(config.gamesPerEval));
+            for (int32_t g = 0; g < config.gamesPerEval; ++g) {
+                if (stopRequested()) { break; }
+                perIndividual[k].futures.push_back(
+                    pool->submit([&runTask, idx, g, individualSeed, &completed] {
+                        GameScore s = runTask(idx, g, individualSeed);
+                        completed.fetch_add(1, std::memory_order_release);
+                        return s;
+                    }));
+            }
+        }
+
+        // Reduce per-individual: wait on that individual's game futures.
+        for (std::size_t k = 0; k < toEvaluate.size(); ++k) {
+            perIndividualScores[k].reserve(perIndividual[k].futures.size());
+            for (std::future<GameScore>& f : perIndividual[k].futures) {
+                perIndividualScores[k].push_back(f.get());
+            }
+        }
+
+        watcher.request_stop();
+        watcher.join();
+        renderProgress(true);
     }
 
-    std::fprintf(stderr, "  [eval] %d individuals x %d games = %d tasks, %zu workers"
-                         "  (opponents: %s)\n",
-                 static_cast<int32_t>(toEvaluate.size()),
-                 config.gamesPerEval, totalGames, pool->size(),
-                 opponentModeName(config.opponentMode));
-    renderProgress(false);
-
-    std::jthread watcher([&renderProgress](std::stop_token stop) {
-        while (!stop.stop_requested()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-            if (stop.stop_requested()) { break; }
-            renderProgress(false);
+    // Balance-winrate histogram: count subject-wins per victory type across
+    // the whole generation. Rareness[T] = gentle inverse frequency, scaled
+    // so the rarest type receives up to config.balanceBonus and the most
+    // common receives ~0.
+    constexpr std::size_t VT_COUNT = 8;  // Must match VictoryType enum size.
+    std::array<int32_t, VT_COUNT> winsByType{};
+    int32_t totalSubjectWins = 0;
+    if (config.balanceWinrate) {
+        for (const std::vector<GameScore>& games : perIndividualScores) {
+            for (const GameScore& s : games) {
+                if (!s.valid || !s.subjectWon) { continue; }
+                const std::size_t t = static_cast<std::size_t>(s.victoryType);
+                if (t < VT_COUNT) {
+                    ++winsByType[t];
+                    ++totalSubjectWins;
+                }
+            }
         }
-    });
+    }
 
-    // Flatten to game-level tasks: (pop × gamesPerEval) futures submitted
-    // up-front to the pool. Workers pull tasks as they finish, so straggler
-    // variance averages out across the larger task count.
-    //
-    // Opponent sampling happens INSIDE the worker via buildOverrides, so
-    // every task reads the current (immutable during eval) population and
-    // hallOfFame pointers. Both live on the main stack and are not mutated
-    // until evaluatePopulation returns.
-    struct IndivFutures {
-        std::vector<std::future<GameScore>> futures;
+    auto rarenessFor = [&](aoc::sim::VictoryType vt) -> float {
+        if (!config.balanceWinrate || totalSubjectWins <= 0) { return 0.0f; }
+        const std::size_t t = static_cast<std::size_t>(vt);
+        if (t >= VT_COUNT) { return 0.0f; }
+        const float freq = static_cast<float>(winsByType[t])
+                          / static_cast<float>(totalSubjectWins);
+        // 1 - freq in [0, 1): rarest near 1, dominant near 0.
+        return (1.0f - freq) * config.balanceBonus;
     };
-    std::vector<IndivFutures> perIndividual(toEvaluate.size());
 
-    for (std::size_t k = 0; k < toEvaluate.size(); ++k) {
-        const std::size_t idx = toEvaluate[k];
-        const uint64_t individualSeed = baseSeed + idx * 104729;
-        perIndividual[k].futures.reserve(
-            static_cast<std::size_t>(config.gamesPerEval));
-        for (int32_t g = 0; g < config.gamesPerEval; ++g) {
-            if (stopRequested()) { break; }
-            perIndividual[k].futures.push_back(
-                pool->submit([&runTask, idx, g, individualSeed, &completed] {
-                    GameScore s = runTask(idx, g, individualSeed);
-                    completed.fetch_add(1, std::memory_order_release);
-                    return s;
-                }));
-        }
-    }
-
-    // Reduce per-individual: wait on that individual's game futures, compute mean.
+    // Finalize fitness from collected scores. Adds per-win rareness bonus
+    // when balance-winrate is active so a rare-type winner outranks a
+    // dominant-type winner with equal base outcome.
     for (std::size_t k = 0; k < toEvaluate.size(); ++k) {
         const std::size_t idx = toEvaluate[k];
         float total = 0.0f;
         int32_t valid = 0;
-        for (std::future<GameScore>& f : perIndividual[k].futures) {
-            GameScore s = f.get();
-            if (s.valid) { total += s.score; ++valid; }
+        for (const GameScore& s : perIndividualScores[k]) {
+            if (!s.valid) { continue; }
+            float gameScore = s.score;
+            if (s.subjectWon) {
+                gameScore += rarenessFor(s.victoryType);
+            }
+            total += gameScore;
+            ++valid;
         }
         population[idx].fitness = (valid > 0)
             ? total / static_cast<float>(valid) : 0.0f;
         population[idx].gamesPlayed = config.gamesPerEval;
     }
 
-    watcher.request_stop();
-    watcher.join();
-    renderProgress(true);
+    if (config.balanceWinrate && totalSubjectWins > 0) {
+        static const char* VT_NAMES[VT_COUNT] = {
+            "None", "Score", "Integration", "LastStanding",
+            "Science", "Domination", "Culture", "Religion"
+        };
+        std::fprintf(stderr, "  [balance] wins by type:");
+        for (std::size_t t = 1; t < VT_COUNT; ++t) {
+            if (winsByType[t] > 0) {
+                std::fprintf(stderr, " %s=%d", VT_NAMES[t], winsByType[t]);
+            }
+        }
+        std::fprintf(stderr, "  (total=%d)\n", totalSubjectWins);
+    }
 }
 
 } // namespace aoc::ga

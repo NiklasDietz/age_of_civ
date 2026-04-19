@@ -10,6 +10,7 @@
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
+#include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -252,6 +253,123 @@ void processAIReligionFounding(aoc::game::GameState& gameState) {
                      static_cast<double>(faith.faith));
         }
     }
+}
+
+// ============================================================================
+// Religion-vs-education science curve
+// ============================================================================
+
+namespace {
+
+/// Devotion contribution per faith building / district state.  Values chosen
+/// so that a city investing in the full faith chain (Holy Site + Shrine +
+/// Temple + Cathedral) plus having a dominant religion scores 1 + 1 + 2 + 3 +
+/// 1 = 8 devotion -- enough to meaningfully cancel a Campus with Library +
+/// University (1 + 2 = 3 education) and still contribute to the science
+/// penalty.  Players who only put a Shrine in their capital sit at devotion
+/// 1-2, which is easily cancelled by a single Library.
+constexpr float DEVOTION_SHRINE          = 1.0f;
+constexpr float DEVOTION_TEMPLE          = 2.0f;
+constexpr float DEVOTION_CATHEDRAL       = 3.0f;
+constexpr float DEVOTION_HOLY_SITE       = 1.0f;
+constexpr float DEVOTION_DOMINANT_FAITH  = 1.0f;
+
+constexpr float EDUCATION_LIBRARY        = 1.0f;
+constexpr float EDUCATION_UNIVERSITY     = 2.0f;
+constexpr float EDUCATION_RESEARCH_LAB   = 3.0f;
+
+constexpr BuildingId BUILDING_LIBRARY      = BuildingId{7};
+constexpr BuildingId BUILDING_RESEARCH_LAB = BuildingId{12};
+constexpr BuildingId BUILDING_UNIVERSITY   = BuildingId{19};
+constexpr BuildingId BUILDING_SHRINE       = BuildingId{36};
+constexpr BuildingId BUILDING_TEMPLE       = BuildingId{37};
+constexpr BuildingId BUILDING_CATHEDRAL    = BuildingId{38};
+
+} // anonymous namespace
+
+float computeCityDevotion(const aoc::game::City& city) {
+    float devotion = 0.0f;
+
+    const CityDistrictsComponent& districts = city.districts();
+    if (districts.hasDistrict(DistrictType::HolySite)) {
+        devotion += DEVOTION_HOLY_SITE;
+    }
+    if (districts.hasBuilding(BUILDING_SHRINE))    { devotion += DEVOTION_SHRINE; }
+    if (districts.hasBuilding(BUILDING_TEMPLE))    { devotion += DEVOTION_TEMPLE; }
+    if (districts.hasBuilding(BUILDING_CATHEDRAL)) { devotion += DEVOTION_CATHEDRAL; }
+
+    if (city.religion().dominantReligion() != NO_RELIGION) {
+        devotion += DEVOTION_DOMINANT_FAITH;
+    }
+
+    return devotion;
+}
+
+float computeCityEducation(const aoc::game::City& city) {
+    float education = 0.0f;
+
+    const CityDistrictsComponent& districts = city.districts();
+    if (districts.hasBuilding(BUILDING_LIBRARY))      { education += EDUCATION_LIBRARY; }
+    if (districts.hasBuilding(BUILDING_UNIVERSITY))   { education += EDUCATION_UNIVERSITY; }
+    if (districts.hasBuilding(BUILDING_RESEARCH_LAB)) { education += EDUCATION_RESEARCH_LAB; }
+
+    return education;
+}
+
+EraId effectiveEraFromTech(const aoc::game::Player& player) {
+    const PlayerTechComponent& pt = player.tech();
+    const uint16_t total = techCount();
+    uint8_t maxEra = 0;
+    for (uint16_t ti = 0; ti < total; ++ti) {
+        if (pt.hasResearched(TechId{ti})) {
+            const uint8_t e = static_cast<uint8_t>(techDef(TechId{ti}).era.value);
+            if (e > maxEra) { maxEra = e; }
+        }
+    }
+    return EraId{maxEra};
+}
+
+int32_t countRenaissancePlusTechs(const aoc::game::Player& player) {
+    const PlayerTechComponent& pt = player.tech();
+    const uint16_t total = techCount();
+    int32_t count = 0;
+    for (uint16_t ti = 0; ti < total; ++ti) {
+        if (pt.hasResearched(TechId{ti}) && techDef(TechId{ti}).era.value >= 3) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+float religionScienceCoefficient(EraId era, int32_t techsResearchedRenaissancePlus) {
+    float baseline;
+    switch (era.value) {
+        case 0:
+        case 1:  baseline =  0.50f; break;   // Ancient/Classical: boon
+        case 2:  baseline =  0.00f; break;   // Medieval: neutral
+        case 3:  baseline = -0.30f; break;   // Renaissance: friction
+        default: baseline = -0.70f; break;   // Industrial+: drag
+    }
+
+    // Each Renaissance-or-later tech adds -0.05 to the coefficient.  Clamped
+    // so one civ sprinting through the entire tech tree cannot drive the
+    // coefficient absurdly negative and instantly destroy its own science.
+    if (techsResearchedRenaissancePlus > 0) {
+        constexpr float PER_TECH_KICK = -0.05f;
+        constexpr float MAX_KICK      = -1.50f;
+        float kick = static_cast<float>(techsResearchedRenaissancePlus) * PER_TECH_KICK;
+        if (kick < MAX_KICK) { kick = MAX_KICK; }
+        baseline += kick;
+    }
+
+    return baseline;
+}
+
+float religionLoyaltyCoefficient(EraId era) {
+    // Ancient through Medieval: religion is the state-stabilising force.
+    // Renaissance onward: secular institutions replace it, so Devotion no
+    // longer props up loyalty.
+    return (era.value <= 2) ? 0.30f : 0.0f;
 }
 
 } // namespace aoc::sim

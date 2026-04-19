@@ -11,6 +11,7 @@
 #include "aoc/simulation/city/Governor.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/tech/EraScore.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -38,6 +39,12 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     // Look up the player's age type (Golden/Dark/Normal)
     AgeType playerAge = gsPlayer->eraScore().currentAgeType;
 
+    // Religion provides a loyalty floor in the early eras (Ancient, Classical,
+    // Medieval) and nothing afterwards.  Computed once per player because the
+    // era coefficient is empire-wide.
+    const float devotionLoyaltyCoef =
+        religionLoyaltyCoefficient(effectiveEraFromTech(*gsPlayer));
+
     // Iterate all cities owned by this player
     for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
         CityLoyaltyComponent& loyalty = city->loyalty();
@@ -52,6 +59,7 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         loyalty.happinessEffect = 0.0f;
         loyalty.ageEffect = 0.0f;
         loyalty.capturedPenalty = 0.0f;
+        loyalty.devotionBonus = 0.0f;
 
         // City pressure from ALL nearby cities (own and foreign).
         // Iterates all players' cities to compute cross-player pressure.
@@ -115,6 +123,14 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             loyalty.capturedPenalty = -8.0f;
         }
 
+        // Devotion loyalty bonus: religion stabilises large empires in the
+        // early eras.  Coefficient becomes zero at Renaissance+, at which
+        // point the state -- not the church -- has to do the stabilising.
+        if (devotionLoyaltyCoef > 0.0f) {
+            const float netDevotion = computeCityNetDevotion(*city);
+            loyalty.devotionBonus = netDevotion * devotionLoyaltyCoef;
+        }
+
         // Sum it all up
         float change = loyalty.baseLoyalty
                      + loyalty.ownCityPressure
@@ -124,7 +140,8 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                      + loyalty.monumentBonus
                      + loyalty.ageEffect
                      + loyalty.happinessEffect
-                     + loyalty.capturedPenalty;
+                     + loyalty.capturedPenalty
+                     + loyalty.devotionBonus;
 
         loyalty.loyaltyPerTurn = change;
         loyalty.loyalty += change;

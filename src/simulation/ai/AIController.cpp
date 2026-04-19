@@ -37,6 +37,7 @@
 #include "aoc/simulation/ai/AIEconomicStrategy.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/ai/UtilityScoring.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/ai/UtilityAI.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -916,6 +917,9 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             aiCtx.treasury         = static_cast<CurrencyAmount>(gsPlayer->treasury());
             aiCtx.targetMaxCities  = targets.maxCities;
             aiCtx.desiredMilitary  = ownedCityCount * targets.desiredMilitaryPerCity + 2;
+            aiCtx.religionScienceCoef = aoc::sim::religionScienceCoefficient(
+                aoc::sim::effectiveEraFromTech(*gsPlayer),
+                aoc::sim::countRenaissancePlusTechs(*gsPlayer));
 
             for (uint16_t bidx = 0;
                      bidx < static_cast<uint16_t>(BUILDING_DEFS.size()); ++bidx) {
@@ -990,6 +994,10 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             // over settlers (~2.14) and military (~1-2) once a city has room.
             // Without this the AI never builds districts in most seeds, which
             // kills Great People spawns and long-term yield growth.
+            const float religionCoefNow = aoc::sim::religionScienceCoefficient(
+                aoc::sim::effectiveEraFromTech(*gsPlayer),
+                aoc::sim::countRenaissancePlusTechs(*gsPlayer));
+            const float holySiteEraMult = std::clamp(1.0f + religionCoefNow, 0.2f, 1.8f);
             const std::array<DistrictOption, 6> districtOptions = {{
                 { DistrictType::Industrial,
                   60.0f,
@@ -1013,12 +1021,14 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 // Great Prophet spawns. Weight by religiousZeal; cultureFocus
                 // folded in because faith also feeds cultural-policy paths.
                 // Additive (not multiplicative) blend so zealots with low culture
-                // still prioritize it. Boosted to 1.5 so pious civs can beat
-                // Industrial (1.4) in early game.
+                // still prioritize it.  The era religion-science coefficient
+                // scales the whole score so Ancient/Classical civs prioritise it
+                // while Industrial+ civs stop building Holy Sites.
                 { DistrictType::HolySite,
                   55.0f,
-                  0.9f * personality.behavior.religiousZeal
-                       + 0.6f * personality.behavior.cultureFocus },
+                  (1.3f * personality.behavior.religiousZeal
+                       + 0.8f * personality.behavior.cultureFocus)
+                  * holySiteEraMult },
             }};
 
             for (const DistrictOption& opt : districtOptions) {

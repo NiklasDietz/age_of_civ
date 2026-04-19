@@ -10,6 +10,7 @@
  */
 
 #include "GeneticAlgorithm.hpp"
+#include "aoc/simulation/victory/VictoryCondition.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -42,6 +43,10 @@ struct SimulationResult {
     std::vector<float> totalIncome;
     /// Per-player final total expense per turn.
     std::vector<float> totalExpense;
+    /// Victory type that ended the sim (None if timed out without winner).
+    aoc::sim::VictoryType victoryType = aoc::sim::VictoryType::None;
+    /// Winning player ID (INVALID_PLAYER if no winner).
+    aoc::PlayerId         winner      = aoc::INVALID_PLAYER;
     /// Whether the simulation completed successfully.
     bool valid = false;
 };
