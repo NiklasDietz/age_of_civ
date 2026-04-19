@@ -63,6 +63,7 @@
 
 // Victory
 #include "aoc/simulation/victory/VictoryCondition.hpp"
+#include "aoc/simulation/victory/SpaceRace.hpp"
 
 // Promotions
 #include "aoc/simulation/unit/Promotion.hpp"
@@ -596,6 +597,9 @@ void processGlobalSystems(TurnContext& turnContext) {
     // AI religion founding: auto-found pantheons and religions for non-human players
     // once they accumulate sufficient faith. Human players use the UI screen.
     processAIReligionFounding(gameState);
+
+    // Space Race progress toward Science Victory. Gates on Campus + required tech.
+    processSpaceRace(gameState, grid);
 
     // Barbarians
     if (turnContext.barbarians != nullptr) {

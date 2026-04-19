@@ -838,18 +838,24 @@ void evaluatePopulation(std::vector<Individual>& population,
     // the whole generation. Rareness[T] = gentle inverse frequency, scaled
     // so the rarest type receives up to config.balanceBonus and the most
     // common receives ~0.
+    //
+    // Also track ALL game endings (regardless of winner) for diagnostic output
+    // — this exposes whether non-Score/Culture conditions ever actually fire,
+    // independent of whether the evaluated subject happened to win.
     constexpr std::size_t VT_COUNT = 8;  // Must match VictoryType enum size.
     std::array<int32_t, VT_COUNT> winsByType{};
+    std::array<int32_t, VT_COUNT> allEndings{};
     int32_t totalSubjectWins = 0;
-    if (config.balanceWinrate) {
-        for (const std::vector<GameScore>& games : perIndividualScores) {
-            for (const GameScore& s : games) {
-                if (!s.valid || !s.subjectWon) { continue; }
-                const std::size_t t = static_cast<std::size_t>(s.victoryType);
-                if (t < VT_COUNT) {
-                    ++winsByType[t];
-                    ++totalSubjectWins;
-                }
+    int32_t totalValidGames  = 0;
+    for (const std::vector<GameScore>& games : perIndividualScores) {
+        for (const GameScore& s : games) {
+            if (!s.valid) { continue; }
+            ++totalValidGames;
+            const std::size_t t = static_cast<std::size_t>(s.victoryType);
+            if (t < VT_COUNT) { ++allEndings[t]; }
+            if (config.balanceWinrate && s.subjectWon && t < VT_COUNT) {
+                ++winsByType[t];
+                ++totalSubjectWins;
             }
         }
     }
@@ -885,18 +891,33 @@ void evaluatePopulation(std::vector<Individual>& population,
         population[idx].gamesPlayed = config.gamesPerEval;
     }
 
+    static const char* VT_NAMES[VT_COUNT] = {
+        "None", "Score", "Integration", "LastStanding",
+        "Science", "Domination", "Culture", "Religion"
+    };
     if (config.balanceWinrate && totalSubjectWins > 0) {
-        static const char* VT_NAMES[VT_COUNT] = {
-            "None", "Score", "Integration", "LastStanding",
-            "Science", "Domination", "Culture", "Religion"
-        };
-        std::fprintf(stderr, "  [balance] wins by type:");
+        std::fprintf(stderr, "  [balance] subject wins:");
         for (std::size_t t = 1; t < VT_COUNT; ++t) {
             if (winsByType[t] > 0) {
                 std::fprintf(stderr, " %s=%d", VT_NAMES[t], winsByType[t]);
             }
         }
         std::fprintf(stderr, "  (total=%d)\n", totalSubjectWins);
+    }
+    if (totalValidGames > 0) {
+        std::fprintf(stderr, "  [endings] all %d games:", totalValidGames);
+        int32_t reported = 0;
+        for (std::size_t t = 0; t < VT_COUNT; ++t) {
+            if (allEndings[t] > 0) {
+                std::fprintf(stderr, " %s=%d", VT_NAMES[t], allEndings[t]);
+                reported += allEndings[t];
+            }
+        }
+        const int32_t unfinished = totalValidGames - reported;
+        if (unfinished > 0) {
+            std::fprintf(stderr, " NoWinner=%d", unfinished);
+        }
+        std::fprintf(stderr, "\n");
     }
 }
 

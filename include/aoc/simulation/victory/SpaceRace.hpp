@@ -24,6 +24,14 @@
 #include <cstdint>
 #include <string_view>
 
+namespace aoc::game {
+class GameState;
+}
+
+namespace aoc::map {
+class HexGrid;
+}
+
 namespace aoc::sim {
 
 enum class SpaceProjectId : uint8_t {
@@ -82,5 +90,11 @@ struct PlayerSpaceRaceComponent {
         return SpaceProjectId::Count;
     }
 };
+
+/// Per-turn global processor: advances space-race progress for every
+/// eligible player (non-eliminated, owns a Campus, has researched the
+/// next project's required tech) using a fraction of their current
+/// science output.
+void processSpaceRace(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid);
 
 } // namespace aoc::sim

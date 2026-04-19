@@ -244,6 +244,7 @@ set(AOC_LIB_SOURCES
     src/simulation/diplomacy/AllianceObligations.cpp
     src/simulation/climate/Climate.cpp
     src/simulation/victory/VictoryCondition.cpp
+    src/simulation/victory/SpaceRace.cpp
     src/simulation/government/Government.cpp
     src/simulation/ai/AIController.cpp
     src/simulation/ai/AIResearchPlanner.cpp
