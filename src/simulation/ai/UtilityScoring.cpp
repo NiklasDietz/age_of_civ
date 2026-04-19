@@ -87,10 +87,10 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
     float score = 50.0f;  // Base score for any building
 
     switch (buildingId.value) {
-        // City Center
-        case 15: score = 70.0f; break;   // Granary: food, always useful
-        case 16: score = 80.0f * b.cultureFocus; break;  // Monument: culture
-        case 22: score = 60.0f; break;   // Hospital
+        // City Center — amenity sources, scaled up to combat empire-penalty unhappiness
+        case 15: score = 110.0f; break;   // Granary: food + amenity
+        case 16: score = 110.0f * b.cultureFocus; break;  // Monument: culture + amenity
+        case 22: score = 130.0f; break;   // Hospital: strongest amenity
 
         // Campus
         case  7: score = 100.0f * b.scienceFocus; break;  // Library

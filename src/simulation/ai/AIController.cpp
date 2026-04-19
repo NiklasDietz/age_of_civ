@@ -582,7 +582,7 @@ static float scoreMilitary(const LeaderBehavior& behavior,
                             bool    enemyNearby,
                             float   treasury,
                             float   threatLevel) {
-    const int32_t desiredPerCity = 3;
+    const int32_t desiredPerCity = 2;
     const int32_t desiredTotal   = ownedCities * desiredPerCity;
 
     // military_need: inverse -- want more when below 3 per city
@@ -608,7 +608,7 @@ static float scoreMilitary(const LeaderBehavior& behavior,
     // down to 1.0x at one-per-city, so growing empires keep producing units.
     const float perCityRatio = static_cast<float>(militaryUnits)
                              / static_cast<float>(std::max(1, ownedCities));
-    const float emergencyMultiplier = std::max(1.0f, 3.0f - 2.0f * perCityRatio);
+    const float emergencyMultiplier = std::max(1.0f, 2.2f - 1.5f * perCityRatio);
 
     // threatLevel [0,1] from the military advisor amplifies the score when the
     // blackboard confirms nearby enemy forces; combines with the local enemyNearby
@@ -619,7 +619,7 @@ static float scoreMilitary(const LeaderBehavior& behavior,
     // posture boost) and settler's expansion-boosted score (~2.28) when
     // undermanned.  Prior 2.2 was still too low -- only 4-7 military
     // produced per 600-turn game across 8 players.
-    constexpr float BASE_WEIGHT = 3.0f;
+    constexpr float BASE_WEIGHT = 1.5f;
 
     (void)treasury;  // no longer a factor — see canAfford comment above.
     return BASE_WEIGHT
@@ -1828,21 +1828,30 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
     const int32_t playerCount = gameState.playerCount();
 
     // Dynamic gold allocation: raise goldAllocation when treasury is low,
-    // lower it when flush with gold to boost science/luxury.
+    // lower it when flush with gold to boost science/luxury. If any city is
+    // unhappy, force luxury slider up regardless of treasury pressure -- unrest
+    // costs more than a temporary budget dip.
     {
         const CurrencyAmount treasury = gsPlayer->treasury();
-        if (treasury < 0) {
-            // In debt: maximise gold income
-            myState.goldAllocation    = std::min(myState.goldAllocation + 0.05f, 0.90f);
+        bool anyUnhappy = false;
+        for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+            if (city->happiness().happiness < 1.0f) { anyUnhappy = true; break; }
+        }
+        if (anyUnhappy && treasury > -1000) {
+            // Prioritise luxury when citizens restless AND we can still afford it
+            myState.luxuryAllocation  = std::min(myState.luxuryAllocation + 0.02f, 0.28f);
+            myState.scienceAllocation = std::max(myState.scienceAllocation - 0.015f, 0.05f);
+            myState.goldAllocation    = 1.0f - myState.luxuryAllocation - myState.scienceAllocation;
+        } else if (treasury < 0) {
+            myState.goldAllocation    = std::min(myState.goldAllocation + 0.05f, 0.85f);
             myState.scienceAllocation = std::max(myState.scienceAllocation - 0.03f, 0.05f);
             myState.luxuryAllocation  = 1.0f - myState.goldAllocation - myState.scienceAllocation;
         } else if (treasury > 2000) {
-            // Wealthy: shift towards science
             myState.goldAllocation    = std::max(myState.goldAllocation - 0.02f, 0.40f);
             myState.scienceAllocation = std::min(myState.scienceAllocation + 0.01f, 0.40f);
             myState.luxuryAllocation  = 1.0f - myState.goldAllocation - myState.scienceAllocation;
         }
-        myState.luxuryAllocation = std::max(myState.luxuryAllocation, 0.05f);
+        myState.luxuryAllocation = std::max(myState.luxuryAllocation, 0.10f);
     }
 
     // Count distinct trade partners from global trade routes
