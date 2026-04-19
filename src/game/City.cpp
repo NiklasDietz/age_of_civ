@@ -4,11 +4,12 @@
  */
 
 #include "aoc/game/City.hpp"
+#include "aoc/game/Player.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
 
 #include <algorithm>
-#include <iterator>
+#include <limits>
 
 namespace aoc::game {
 
@@ -91,7 +92,8 @@ void City::toggleTileLock(aoc::hex::AxialCoord tile) {
 }
 
 void City::autoAssignWorkers(const aoc::map::HexGrid& grid,
-                              aoc::sim::WorkerFocus focus) {
+                              aoc::sim::WorkerFocus focus,
+                              const Player* owner) {
     // Keep locked tiles and the city center, remove everything else
     std::vector<aoc::hex::AxialCoord> kept;
     kept.push_back(this->m_location);  // Center always worked (free)
@@ -112,30 +114,54 @@ void City::autoAssignWorkers(const aoc::map::HexGrid& grid,
         return;
     }
 
-    // Score all owned tiles within 3 hexes
+    // Score all tiles this city is allowed to work. No fixed radius: every
+    // tile that the owning player controls is a candidate, filtered by
+    // (a) per-tile manual override on the Player, or (b) nearest-city rule
+    // among the player's cities. A hard sanity cap of 12 hexes keeps runaway
+    // yield hunts local when cities are sparsely placed.
+    constexpr int32_t SANITY_CAP = 12;
+
     struct TileScore {
         aoc::hex::AxialCoord coord;
         float score;
     };
     std::vector<TileScore> candidates;
 
-    std::vector<aoc::hex::AxialCoord> nearby;
-    nearby.reserve(64);
-    aoc::hex::spiral(this->m_location, aoc::sim::CITY_WORK_RADIUS, std::back_inserter(nearby));
-
-    for (const aoc::hex::AxialCoord& tile : nearby) {
-        if (!grid.isValid(tile)) {
-            continue;
-        }
-        int32_t idx = grid.toIndex(tile);
+    const int32_t totalTiles = grid.tileCount();
+    for (int32_t idx = 0; idx < totalTiles; ++idx) {
         if (grid.owner(idx) != this->m_owner) {
             continue;
         }
         if (grid.movementCost(idx) == 0) {
             continue;
         }
+        const aoc::hex::AxialCoord tile = grid.toAxial(idx);
         if (tile == this->m_location) {
             continue;
+        }
+        if (grid.distance(tile, this->m_location) > SANITY_CAP) {
+            continue;
+        }
+
+        // City-assignment filter. If an override exists, only the matching
+        // city may work the tile. Otherwise nearest-city-of-owner wins.
+        if (owner != nullptr) {
+            const aoc::hex::AxialCoord* override = owner->tileCityOverride(idx);
+            if (override != nullptr) {
+                if (*override != this->m_location) { continue; }
+            } else {
+                int32_t bestDist = std::numeric_limits<int32_t>::max();
+                aoc::hex::AxialCoord bestLoc{};
+                for (const std::unique_ptr<City>& other : owner->cities()) {
+                    if (other == nullptr) { continue; }
+                    const int32_t d = grid.distance(tile, other->location());
+                    if (d < bestDist) {
+                        bestDist = d;
+                        bestLoc = other->location();
+                    }
+                }
+                if (bestLoc != this->m_location) { continue; }
+            }
         }
 
         // Skip already worked tiles

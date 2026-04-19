@@ -85,6 +85,22 @@ bool canBuildBuilding(const aoc::game::GameState& gameState, PlayerId player,
         }
     }
 
+    // Settlement-stage gate.
+    // Hamlet: nothing buildable yet (wait to grow into Village).
+    // Village: only a short allowlist of bootstrapping buildings.
+    //   15 = Granary, 17 = Ancient Walls, 36 = Shrine, 24 = Mint.
+    // Town/City: no stage restriction.
+    const aoc::game::CitySize stage = city.stage();
+    if (stage == aoc::game::CitySize::Hamlet) {
+        return false;
+    }
+    if (stage == aoc::game::CitySize::Village) {
+        const uint16_t bid = buildingId.value;
+        if (bid != 15 && bid != 17 && bid != 36 && bid != 24) {
+            return false;
+        }
+    }
+
     // Check tech prerequisite
     const aoc::game::Player* gsPlayer = gameState.player(player);
     if (gsPlayer == nullptr) { return false; }
@@ -223,10 +239,16 @@ std::vector<BuildableItem> getBuildableItems(const aoc::game::GameState& gameSta
         items.push_back(witem);
     }
 
-    // Districts -- show district types the city doesn't have yet
+    // Districts -- show district types the city doesn't have yet.
+    // Stage gate: only Town and City can place non-CityCenter districts.
+    const bool allowDistricts = city.stage() == aoc::game::CitySize::Town
+                             || city.stage() == aoc::game::CitySize::City;
     for (uint8_t d = 1; d < DISTRICT_TYPE_COUNT; ++d) {
         const DistrictType dtype = static_cast<DistrictType>(d);
         if (city.hasDistrict(dtype)) {
+            continue;
+        }
+        if (!allowDistricts) {
             continue;
         }
         BuildableItem item{};

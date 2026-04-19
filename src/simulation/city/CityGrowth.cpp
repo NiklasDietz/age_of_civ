@@ -131,6 +131,7 @@ void autoAssignWorkers(CityComponent& city, const aoc::map::HexGrid& grid,
 // ============================================================================
 
 static void processSingleCityGrowth(aoc::game::City& city,
+                                     const aoc::game::Player& player,
                                      const aoc::map::HexGrid& grid,
                                      bool hasFeudalismCivic,
                                      float cityHappiness) {
@@ -246,20 +247,50 @@ static void processSingleCityGrowth(aoc::game::City& city,
         }
         city.growPopulation(1);
 
-        // Auto-assign new citizen to best unworked tile within city workable radius.
+        // Stage promotion ladder:
+        //   Hamlet  -> Village at pop 3
+        //   Village -> Town    at pop 6 AND Granary built (BuildingId{15})
+        //   Town    -> City    at pop 11 AND any Tier-2 bldg (Library 16 / Market 11 / Temple 37)
+        const int32_t pop = city.population();
+        switch (city.stage()) {
+            case aoc::game::CitySize::Hamlet:
+                if (pop >= 3) { city.setStage(aoc::game::CitySize::Village); }
+                break;
+            case aoc::game::CitySize::Village:
+                if (pop >= 6 && city.hasBuilding(BuildingId{15})) {
+                    city.setStage(aoc::game::CitySize::Town);
+                }
+                break;
+            case aoc::game::CitySize::Town:
+                if (pop >= 11
+                    && (city.hasBuilding(BuildingId{16})
+                     || city.hasBuilding(BuildingId{11})
+                     || city.hasBuilding(BuildingId{37}))) {
+                    city.setStage(aoc::game::CitySize::City);
+                }
+                break;
+            case aoc::game::CitySize::City:
+                break;
+        }
+
+        // Auto-assign new citizen to the best unworked owned tile. No fixed
+        // radius: scan all player-owned tiles up to a sanity cap, honour the
+        // per-tile city override if present, else nearest-city rule.
+        constexpr int32_t GROWTH_SANITY_CAP = 12;
         aoc::hex::AxialCoord center = city.location();
-        std::vector<aoc::hex::AxialCoord> candidates;
-        candidates.reserve(64);
-        aoc::hex::spiral(center, CITY_WORK_RADIUS, std::back_inserter(candidates));
 
         float bestYieldValue = -1.0f;
         aoc::hex::AxialCoord bestTile = center;
         bool foundNew = false;
 
-        for (const aoc::hex::AxialCoord& tile : candidates) {
-            if (!grid.isValid(tile)) { continue; }
-            if (tile == center) { continue; }  // Center is already worked (free)
+        const int32_t totalTiles = grid.tileCount();
+        for (int32_t idx = 0; idx < totalTiles; ++idx) {
+            if (grid.owner(idx) != city.owner()) { continue; }
+            const aoc::hex::AxialCoord tile = grid.toAxial(idx);
+            if (tile == center) { continue; }
+            if (grid.distance(tile, center) > GROWTH_SANITY_CAP) { continue; }
 
+            // Already worked?
             bool alreadyWorked = false;
             for (const aoc::hex::AxialCoord& worked : city.workedTiles()) {
                 if (worked == tile) {
@@ -269,25 +300,35 @@ static void processSingleCityGrowth(aoc::game::City& city,
             }
             if (alreadyWorked) { continue; }
 
-            int32_t idx = grid.toIndex(tile);
-            {
-                const aoc::map::TerrainType nTerrain = grid.terrain(idx);
-                if (aoc::map::isWater(nTerrain)) { continue; }
-                if (aoc::map::isImpassable(nTerrain)) {
-                    // Mountain tiles with mountain-mineable metals are workable,
-                    // everything else impassable (deep ocean, shallow water) is not.
-                    const ResourceId mRes = grid.resource(idx);
-                    const bool workableMountain =
-                        (nTerrain == aoc::map::TerrainType::Mountain
-                         && mRes.isValid()
-                         && aoc::sim::isMountainMetal(mRes.value));
-                    if (!workableMountain) {
-                        continue;
+            // Terrain viability (matches the old check).
+            const aoc::map::TerrainType nTerrain = grid.terrain(idx);
+            if (aoc::map::isWater(nTerrain)) { continue; }
+            if (aoc::map::isImpassable(nTerrain)) {
+                const ResourceId mRes = grid.resource(idx);
+                const bool workableMountain =
+                    (nTerrain == aoc::map::TerrainType::Mountain
+                     && mRes.isValid()
+                     && aoc::sim::isMountainMetal(mRes.value));
+                if (!workableMountain) { continue; }
+            }
+
+            // City-assignment filter: override wins; else nearest city wins.
+            const aoc::hex::AxialCoord* override = player.tileCityOverride(idx);
+            if (override != nullptr) {
+                if (*override != center) { continue; }
+            } else {
+                int32_t bestDist = std::numeric_limits<int32_t>::max();
+                aoc::hex::AxialCoord bestLoc{};
+                for (const std::unique_ptr<aoc::game::City>& other : player.cities()) {
+                    if (other == nullptr) { continue; }
+                    const int32_t d = grid.distance(tile, other->location());
+                    if (d < bestDist) {
+                        bestDist = d;
+                        bestLoc = other->location();
                     }
                 }
+                if (bestLoc != center) { continue; }
             }
-            // Only work tiles owned by this city's player
-            if (grid.owner(idx) != city.owner()) { continue; }
 
             aoc::map::TileYield yield = grid.tileYield(idx);
             float value = static_cast<float>(yield.food) * 2.0f
@@ -353,7 +394,7 @@ void processCityGrowth(aoc::game::Player& player, const aoc::map::HexGrid& grid)
         // Happiness for celebration growth: read from CityHappinessComponent (synced from ECS).
         // Uses previous turn's happiness since happiness is computed after growth.
         float cityHappiness = city->happiness().happiness;
-        processSingleCityGrowth(*city, grid, hasFeudalismCivic, cityHappiness);
+        processSingleCityGrowth(*city, player, grid, hasFeudalismCivic, cityHappiness);
     }
 }
 

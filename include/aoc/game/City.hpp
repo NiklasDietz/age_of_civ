@@ -44,6 +44,20 @@ namespace aoc::map { class HexGrid; }
 
 namespace aoc::game {
 
+class Player;
+
+/// Settlement stage. Cities grow through these as population + buildings unlock.
+/// Hamlet: founded by Settler, pop 1-2, 1 work ring, no districts, no production queue items beyond improvements.
+/// Village: pop 3-5, 2 rings, basic buildings (Granary, Shrine, Barracks), still no districts.
+/// Town: pop 6-10 + Granary built, all districts unlock, combat units + walls.
+/// City: pop 11+ + any Tier-2 building (Library, Market, Temple), full late-game access.
+enum class CitySize : uint8_t {
+    Hamlet = 0,
+    Village,
+    Town,
+    City,
+};
+
 /**
  * @brief Complete per-city state.
  *
@@ -115,8 +129,15 @@ public:
     void toggleTileLock(aoc::hex::AxialCoord tile);
 
     /// Auto-assign workers based on focus priority.
+    ///
+    /// When `owner` is non-null, this city competes with the owner's other
+    /// cities for shared-border tiles (nearest-city rule, overridden by the
+    /// per-tile assignment map on the Player). When null, the city greedily
+    /// scores every tile it owns within sanity range -- used by bootstrap code
+    /// that runs before the owning Player has all cities wired up.
     void autoAssignWorkers(const aoc::map::HexGrid& grid,
-                            aoc::sim::WorkerFocus focus = aoc::sim::WorkerFocus::Balanced);
+                            aoc::sim::WorkerFocus focus = aoc::sim::WorkerFocus::Balanced,
+                            const Player* owner = nullptr);
 
     // ========================================================================
     // Production
@@ -227,6 +248,13 @@ public:
     [[nodiscard]] int32_t tilesClaimedCount() const { return this->m_tilesClaimedCount; }
     void incrementTilesClaimed() { ++this->m_tilesClaimedCount; }
 
+    // ========================================================================
+    // Settlement stage (Hamlet -> Village -> Town -> City)
+    // ========================================================================
+
+    [[nodiscard]] CitySize stage() const { return this->m_stage; }
+    void setStage(CitySize s) { this->m_stage = s; }
+
 private:
     // Identity
     PlayerId m_owner;
@@ -271,6 +299,9 @@ private:
     int32_t m_taxmen = 0;
 
     int32_t m_tilesClaimedCount = 0;
+
+    // Settlement stage. New cities start as Hamlet unless constructor bumps it.
+    CitySize m_stage = CitySize::Hamlet;
 };
 
 } // namespace aoc::game

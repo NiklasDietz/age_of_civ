@@ -1891,7 +1891,7 @@ void Application::handleContextAction() {
         if (gsFounder != nullptr) {
             const bool isFirstCity = gsFounder->cityCount() == 0;
             aoc::game::City& gsCity = gsFounder->addCity(cityPos, cityName);
-            gsCity.autoAssignWorkers(this->m_hexGrid);
+            gsCity.autoAssignWorkers(this->m_hexGrid, aoc::sim::WorkerFocus::Balanced, gsFounder);
             if (isFirstCity) {
                 gsCity.setOriginalCapital(true);
                 gsCity.setOriginalOwner(cityOwner);
@@ -3471,7 +3471,7 @@ void Application::rebuildUnitActionPanel() {
                     newGsCity.setOriginalCapital(true);
                     newGsCity.setOriginalOwner(cityOwner);
                 }
-                newGsCity.autoAssignWorkers(this->m_hexGrid);
+                newGsCity.autoAssignWorkers(this->m_hexGrid, aoc::sim::WorkerFocus::Balanced, gsFounder);
 
                 // Remove the settler from the owning player and clear selection
                 gsFounder->removeUnit(selectedUnitPtr);

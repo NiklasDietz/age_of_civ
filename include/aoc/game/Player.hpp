@@ -53,6 +53,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace aoc::map { class HexGrid; }
@@ -290,6 +291,38 @@ public:
     [[nodiscard]] int32_t cityCount() const { return static_cast<int32_t>(this->m_cities.size()); }
 
     // ========================================================================
+    // Per-tile city assignment
+    //
+    // A tile is always owned by at most one Player (grid.owner). When the
+    // player has multiple cities, each owned tile is logically managed by
+    // exactly one of them for worker placement and yield attribution.
+    //
+    // Default behaviour (no explicit entry): the tile goes to the player's
+    // nearest city. The player can override this at any time during their
+    // turn via `setTileCity` -- useful when two cities share a border and
+    // the player wants to steer a high-yield tile to a specific city.
+    // The override key is the tile's flat grid index; the value is the
+    // managing city's location (cities have no numeric ID, but their
+    // location is unique and stable).
+    // ========================================================================
+
+    /// Look up the managing-city location for a tile. Returns nullptr if no
+    /// override exists (fall back to nearest-city rule).
+    [[nodiscard]] const aoc::hex::AxialCoord* tileCityOverride(int32_t tileIdx) const {
+        auto it = this->m_tileCityAssignment.find(tileIdx);
+        return (it == this->m_tileCityAssignment.end()) ? nullptr : &it->second;
+    }
+
+    /// Assign a tile to a specific city of this player. Passing a default-
+    /// constructed coord clears the override and restores nearest-city logic.
+    void setTileCity(int32_t tileIdx, aoc::hex::AxialCoord cityLoc) {
+        this->m_tileCityAssignment[tileIdx] = cityLoc;
+    }
+    void clearTileCity(int32_t tileIdx) {
+        this->m_tileCityAssignment.erase(tileIdx);
+    }
+
+    // ========================================================================
     // Units
     // ========================================================================
 
@@ -415,6 +448,10 @@ private:
     // Owned entities
     std::vector<std::unique_ptr<City>> m_cities;
     std::vector<std::unique_ptr<Unit>> m_units;
+
+    // Per-tile manual city assignment (flat tile index -> managing city's
+    // location). Overrides the default nearest-city rule during worker placement.
+    std::unordered_map<int32_t, aoc::hex::AxialCoord> m_tileCityAssignment;
 
     // AI coordination blackboard (written by advisors, read by all AI subsystems)
     aoc::sim::ai::AIBlackboard m_blackboard;

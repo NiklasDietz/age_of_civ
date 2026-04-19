@@ -219,6 +219,15 @@ aoc::game::City& foundCity(aoc::game::GameState& gameState,
     city.setOriginalOwner(owner);
     city.setPopulation(startingPop);
 
+    // Settlement stage: every founding starts as a Hamlet. The original capital
+    // at game start begins further along the ladder so the opening turns still
+    // feel like a proper city game rather than a frontier-building sim.
+    if (isOriginalCapital) {
+        city.setStage(aoc::game::CitySize::Town);
+    } else {
+        city.setStage(aoc::game::CitySize::Hamlet);
+    }
+
     // Center tile is always worked (free slot -- does not consume a citizen)
     city.workedTiles().push_back(location);
 
