@@ -330,6 +330,17 @@ void updateExpansionAssessment(const aoc::game::GameState& gameState,
         }
     }
 
+    // Expansion exhaustion: advisor found zero viable sites but the player
+    // already owns cities.  Stamp the current turn so settler production and
+    // purchase back off for a cooldown window.
+    if (bb.bestCitySites.empty() && ownCities > 0) {
+        bb.expansionExhausted = true;
+        bb.expansionExhaustedTurn = gameState.currentTurn();
+        bb.expansionOpportunity = 0.0f;
+    } else if (!bb.bestCitySites.empty()) {
+        bb.expansionExhausted = false;
+    }
+
     LOG_DEBUG("AI %u [ExpansionAdvisor] cities=%d/%d expansionOpportunity=%.2f sites=%zu",
               static_cast<unsigned>(player.id()),
               ownCities, targetCities,

@@ -98,23 +98,25 @@ namespace rev_goods {
 }
 
 inline constexpr std::array<RevolutionDef, 5> REVOLUTION_DEFS = {{
-    // 1st: Steam Age -- Industrialization(11) + Coal + Iron
-    // Small nations (2+ cities) can industrialise — tech matters, not size.
+    // 1st: Steam Age -- Industrialization(11) + Surface Plate(18) + Food Preservation(21)
+    // Three era-4 techs gate the revolution so it cannot fire the turn
+    // Industrialization is researched.  Matching Civ 6 pacing (~t256/500, ~51%).
     {IndustrialRevolutionId::First, "Steam Age",
-     {{TechId{11}, TechId{}, TechId{}},
+     {{TechId{11}, TechId{18}, TechId{21}},
       {rev_goods::COAL, rev_goods::IRON_ORE, rev_goods::NONE}, 1},
      {1.50f, 1.0f, 1.0f, 0.5f, 1.15f, 1.5f, true, false, false, false}},
 
-    // 2nd: Electric Age -- Electricity(14) + Oil + Steel
+    // 2nd: Electric Age -- Electricity(14) + Precision Instruments(22) + Telecommunications(25)
+    // Three era-5 techs plus Oil + Steel goods.  Mass Production depends on it.
     {IndustrialRevolutionId::Second, "Electric Age",
-     {{TechId{14}, TechId{}, TechId{}},
+     {{TechId{14}, TechId{22}, TechId{25}},
       {rev_goods::OIL, rev_goods::STEEL_GOOD, rev_goods::NONE}, 2},
      {1.25f, 1.5f, 1.10f, 1.0f, 1.10f, 1.3f, true, false, false, false}},
 
-    // 3rd: Digital Age -- Computers(16) + Semiconductors
+    // 3rd: Digital Age -- Computers(16) + Semiconductors tech(23) + Semiconductors good
     // Knowledge economy: each citizen generates significant gold (services sector).
     {IndustrialRevolutionId::Third, "Digital Age",
-     {{TechId{16}, TechId{}, TechId{}},
+     {{TechId{16}, TechId{23}, TechId{}},
       {rev_goods::SEMICONDUCTORS_GOOD, rev_goods::NONE, rev_goods::NONE}, 2},
      {1.15f, 2.0f, 1.20f, 2.0f, 1.0f, 1.0f, true, true, true, false}},
 

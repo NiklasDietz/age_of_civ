@@ -520,7 +520,12 @@ static float scoreSettler(const LeaderBehavior& behavior,
                            int32_t settlerCount,
                            int32_t militaryUnits,
                            float   treasury,
-                           float   expansionOpportunity) {
+                           float   expansionOpportunity,
+                           bool    expansionExhausted) {
+    // Map is saturated: no viable city sites within scan radius.  Producing
+    // another settler would strand it or force a disband.  Hard-zero the score
+    // so the city picks military/infrastructure instead.
+    if (expansionExhausted) { return 0.0f; }
     // expansion_need: desire falls from 1.0 (no cities) to 0.0 (at target)
     const aoc::sim::ai::UtilityConsideration expansionNeed{
         0.0f, static_cast<float>(targetCities),
@@ -805,7 +810,8 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 unitCounts.settlers,
                 unitCounts.military,
                 treasuryFloat,
-                bbExpansionOpportunity
+                bbExpansionOpportunity,
+                bb.expansionExhausted
             );
             if (settlerScore > 0.0f) {
                 ProductionCandidate candidate{};
@@ -1999,8 +2005,11 @@ void AIController::considerPurchases(aoc::game::GameState& gameState) {
 
     // Settler purchase: buy when expanding and have surplus gold.
     // Buy if blackboard says expand, OR if we have few cities and a healthy treasury.
-    const bool wantsExpansion = bb.expansionOpportunity > 0.3f
-                             || (cityCount < 4 && treasury >= 500);
+    // Suppress entirely when the advisor reports no viable sites -- buying a
+    // settler that cannot be placed would just drain the treasury.
+    const bool wantsExpansion = !bb.expansionExhausted
+                             && (bb.expansionOpportunity > 0.3f
+                                 || (cityCount < 4 && treasury >= 500));
     if (wantsExpansion && !gsPlayer->cities().empty()) {
         // Check no settler already exists.
         bool hasSettler = false;

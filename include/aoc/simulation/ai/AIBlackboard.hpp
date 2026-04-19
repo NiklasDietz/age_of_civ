@@ -18,6 +18,13 @@
 
 namespace aoc::sim::ai {
 
+/// Turns the AI stays in "no viable city site" mode after a failed foundCity
+/// relocation or an empty ExpansionAdvisor site list.  Prevents wasting
+/// production on settlers that cannot be placed.  Long enough that map
+/// conditions (enemy territory, revealed coastline, captured cities) can
+/// plausibly change; short enough that the AI retries if the map opens up.
+inline constexpr int32_t EXPANSION_EXHAUSTED_COOLDOWN = 20;
+
 // ============================================================================
 // StrategicPosture
 //
@@ -104,6 +111,21 @@ struct AIBlackboard {
 
     /// Number of military units the AI should maintain.
     int32_t desiredMilitaryUnits = 2;
+
+    // -----------------------------------------------------------------------
+    // Expansion gating
+    // -----------------------------------------------------------------------
+
+    /// Last turn on which foundCity() failed to find a valid relocation or on
+    /// which the ExpansionAdvisor scored zero viable sites.  Settler production
+    /// and purchase are blocked for EXPANSION_EXHAUSTED_COOLDOWN turns after
+    /// this so the AI stops burning production on unfoundable cities.
+    int32_t expansionExhaustedTurn = -1000;
+
+    /// True when ExpansionAdvisor's last scan found no viable city sites and
+    /// the player already has at least one city.  Cleared once new sites
+    /// appear (e.g. enemy territory shrinks, tech reveals coast, etc.).
+    bool expansionExhausted = false;
 
     // -----------------------------------------------------------------------
     // Strategic posture (written by evaluateStrategicPosture)

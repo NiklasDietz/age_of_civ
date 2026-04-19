@@ -196,6 +196,13 @@ aoc::game::City& foundCity(aoc::game::GameState& gameState,
             if (!relocated) {
                 LOG_WARN("foundCity: could not find valid location %d+ tiles from own cities",
                          MIN_CITY_DISTANCE);
+                // Mark the player's AI as expansion-exhausted so the settler
+                // production/purchase paths stop wasting cycles until the
+                // map state changes (war outcome, new tech, etc.).
+                aoc::sim::ai::AIBlackboard& aiBb = gsPlayer->blackboard();
+                aiBb.expansionExhausted = true;
+                aiBb.expansionExhaustedTurn = gameState.currentTurn();
+                aiBb.expansionOpportunity = 0.0f;
             }
             break;
         }
@@ -640,21 +647,24 @@ void processGlobalSystems(TurnContext& turnContext) {
         climate.processTurn(grid, *turnContext.rng);
 
         // Climate thresholds push narrative events into the per-player queue.
-        // Once fired, the existing eventFired[] gate prevents re-trigger.
+        // The per-event cooldown (WORLD_EVENT_COOLDOWN_TURNS) prevents spam.
         const bool floodThreshold = climate.seaLevelRise >= 5;
         const bool droughtThreshold = climate.globalTemperature >= 2.0f;
         if (floodThreshold || droughtThreshold) {
+            const int32_t currentTurn = gameState.currentTurn();
             for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
                 PlayerEventComponent& events = p->events();
                 if (events.pendingEvent != static_cast<WorldEventId>(255)) { continue; }
                 if (floodThreshold
-                    && !events.eventFired[static_cast<uint8_t>(WorldEventId::MigrantWave)]) {
+                    && currentTurn - events.lastFiredTurn[static_cast<uint8_t>(WorldEventId::MigrantWave)]
+                        >= WORLD_EVENT_COOLDOWN_TURNS) {
                     events.pendingEvent = WorldEventId::MigrantWave;
                     events.pendingChoice = -1;
                     continue;
                 }
                 if (droughtThreshold
-                    && !events.eventFired[static_cast<uint8_t>(WorldEventId::FamineWarning)]) {
+                    && currentTurn - events.lastFiredTurn[static_cast<uint8_t>(WorldEventId::FamineWarning)]
+                        >= WORLD_EVENT_COOLDOWN_TURNS) {
                     events.pendingEvent = WorldEventId::FamineWarning;
                     events.pendingChoice = -1;
                 }

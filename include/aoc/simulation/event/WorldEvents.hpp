@@ -70,10 +70,15 @@ struct WorldEventDef {
 /// Total number of events.
 inline constexpr int32_t WORLD_EVENT_COUNT = static_cast<int32_t>(WorldEventId::Count);
 
-/// Per-player event state (tracks which events have fired).
+/// Cooldown between re-firings of the same event for the same player.
+inline constexpr int32_t WORLD_EVENT_COOLDOWN_TURNS = 30;
+
+/// Per-player event state. `lastFiredTurn[e]` is the turn number when event e
+/// last fired; events only re-fire after WORLD_EVENT_COOLDOWN_TURNS have passed.
+/// Initialized to a large negative value so the first firing is always eligible.
 struct PlayerEventComponent {
     PlayerId owner = INVALID_PLAYER;
-    bool     eventFired[WORLD_EVENT_COUNT] = {};
+    int32_t  lastFiredTurn[WORLD_EVENT_COUNT] = {};
     WorldEventId pendingEvent = static_cast<WorldEventId>(255); ///< 255 = none
     int32_t  pendingChoice = -1; ///< Player's selected choice (-1 = not chosen yet)
 

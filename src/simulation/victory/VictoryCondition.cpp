@@ -29,7 +29,9 @@
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -515,16 +517,19 @@ void updateIntegrationProject(aoc::game::GameState& gameState) {
 
 VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                                       TurnNumber currentTurn,
-                                      TurnNumber maxTurns) {
+                                      TurnNumber maxTurns,
+                                      uint32_t enabledTypes) {
     if (gameState.players().empty()) {
         return {};
     }
 
     // 1. Global Integration Project win
-    for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
-        const VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
-        if (tracker.integrationComplete) {
-            return {VictoryType::Integration, gsPlayer->id()};
+    if ((enabledTypes & VICTORY_MASK_INTEGRATION) != 0u) {
+        for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
+            const VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
+            if (tracker.integrationComplete) {
+                return {VictoryType::Integration, gsPlayer->id()};
+            }
         }
     }
 
@@ -537,7 +542,8 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
             lastAlive = gsPlayer->id();
         }
     }
-    if (alive == 1 && gameState.playerCount() > 1) {
+    if ((enabledTypes & VICTORY_MASK_LAST_STANDING) != 0u
+        && alive == 1 && gameState.playerCount() > 1) {
         return {VictoryType::LastStanding, lastAlive};
     }
 
@@ -548,7 +554,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     // ================================================================
 
     // 3a. Domination Victory: own every other civ's original capital
-    {
+    if ((enabledTypes & VICTORY_MASK_DOMINATION) != 0u) {
         for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
             if (candidate->victoryTracker().isEliminated) { continue; }
             bool ownsAllCapitals = true;
@@ -580,7 +586,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     }
 
     // 3b. Science Victory: completed all Space Race projects
-    {
+    if ((enabledTypes & VICTORY_MASK_SCIENCE) != 0u) {
         for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
             if (candidate->victoryTracker().isEliminated) { continue; }
             if (candidate->spaceRace().allCompleted()) {
@@ -592,7 +598,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     }
 
     // 3c. Religious Victory: your religion is dominant in >50% of every other civ's cities
-    {
+    if ((enabledTypes & VICTORY_MASK_RELIGION) != 0u) {
         for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
             if (candidate->victoryTracker().isEliminated) { continue; }
             const ReligionId myReligion = candidate->faith().foundedReligion;
@@ -624,7 +630,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     }
 
     // 4. Turn limit: highest cumulative Era VP wins
-    if (currentTurn >= maxTurns) {
+    if ((enabledTypes & VICTORY_MASK_SCORE) != 0u && currentTurn >= maxTurns) {
         PlayerId bestPlayer = INVALID_PLAYER;
         int32_t bestVP = -1;
         for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
@@ -643,6 +649,60 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     }
 
     return {};
+}
+
+// ============================================================================
+// Victory-type mask parser
+// ============================================================================
+
+uint32_t parseVictoryTypeMask(std::string_view list) {
+    if (list.empty()) { return VICTORY_MASK_ALL; }
+
+    struct Token { std::string_view name; uint32_t bit; };
+    constexpr Token kTable[] = {
+        {"score",        VICTORY_MASK_SCORE},
+        {"integration",  VICTORY_MASK_INTEGRATION},
+        {"laststanding", VICTORY_MASK_LAST_STANDING},
+        {"science",      VICTORY_MASK_SCIENCE},
+        {"domination",   VICTORY_MASK_DOMINATION},
+        {"culture",      VICTORY_MASK_CULTURE},
+        {"religion",     VICTORY_MASK_RELIGION},
+        {"all",          VICTORY_MASK_ALL},
+    };
+
+    auto normalize = [](std::string_view in) {
+        std::string out;
+        out.reserve(in.size());
+        for (char c : in) {
+            if (c == ' ' || c == '_' || c == '-') { continue; }
+            out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+        }
+        return out;
+    };
+
+    uint32_t mask = 0u;
+    std::size_t pos = 0;
+    while (pos <= list.size()) {
+        const std::size_t comma = list.find(',', pos);
+        const std::size_t end = (comma == std::string_view::npos) ? list.size() : comma;
+        const std::string_view tok = list.substr(pos, end - pos);
+        const std::string norm = normalize(tok);
+
+        bool matched = false;
+        for (const Token& entry : kTable) {
+            if (norm == entry.name) {
+                mask |= entry.bit;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched && !norm.empty()) {
+            LOG_WARN("parseVictoryTypeMask: unknown token '%s' (ignored)", norm.c_str());
+        }
+        if (comma == std::string_view::npos) { break; }
+        pos = comma + 1;
+    }
+    return (mask == 0u) ? VICTORY_MASK_ALL : mask;
 }
 
 // ============================================================================

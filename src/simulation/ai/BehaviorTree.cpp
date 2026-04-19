@@ -76,6 +76,10 @@ void refreshBlackboard(Blackboard& bb) {
     // Threat assessment: enemy military near our cities
     bb.isThreatened = bb.militaryUnits < 3 && bb.ownedCities > 0;
 
+    // Mirror the player's AIBlackboard flag: advisor-managed expansion
+    // exhaustion prevents the BT from queuing settlers that cannot be placed.
+    bb.expansionExhausted = player->blackboard().expansionExhausted;
+
     // Tick counter for weighted chance nodes
     bb.set("_tick_counter", bb.get("_tick_counter", 0.0f) + 1.0f);
 }

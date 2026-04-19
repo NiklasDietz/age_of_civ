@@ -41,6 +41,7 @@
 #include "aoc/core/Types.hpp"
 
 #include <cstdint>
+#include <string_view>
 
 namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
@@ -83,6 +84,30 @@ enum class VictoryType : uint8_t {
     Culture,
     Religion,
 };
+
+// ============================================================================
+// Victory-type bitmask: selects which win conditions may trigger a game end.
+//
+// Simulations and tests parse `--victory-types a,b,c` into an OR of these bits
+// and pass the mask to checkVictoryConditions().  The default mask allows every
+// condition so interactive games are unaffected.
+// ============================================================================
+
+inline constexpr uint32_t VICTORY_MASK_SCORE        = 1u << 0;
+inline constexpr uint32_t VICTORY_MASK_INTEGRATION  = 1u << 1;
+inline constexpr uint32_t VICTORY_MASK_LAST_STANDING = 1u << 2;
+inline constexpr uint32_t VICTORY_MASK_SCIENCE      = 1u << 3;
+inline constexpr uint32_t VICTORY_MASK_DOMINATION   = 1u << 4;
+inline constexpr uint32_t VICTORY_MASK_CULTURE      = 1u << 5;
+inline constexpr uint32_t VICTORY_MASK_RELIGION     = 1u << 6;
+inline constexpr uint32_t VICTORY_MASK_ALL          = 0x7Fu;
+
+/// Parse a comma-separated list like "score,science,domination" into a bitmask.
+/// Recognised tokens (case-insensitive): score, integration, laststanding,
+/// science, domination, culture, religion, all.
+/// Returns VICTORY_MASK_ALL on empty input.  Unknown tokens are ignored with a
+/// warning log.
+[[nodiscard]] uint32_t parseVictoryTypeMask(std::string_view list);
 
 // ============================================================================
 // Losing condition types
@@ -204,7 +229,8 @@ void updateIntegrationProject(aoc::game::GameState& gameState);
  */
 [[nodiscard]] VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                                                     TurnNumber currentTurn,
-                                                    TurnNumber maxTurns = 500);
+                                                    TurnNumber maxTurns = 500,
+                                                    uint32_t enabledTypes = VICTORY_MASK_ALL);
 
 /**
  * @brief Update victory trackers. Call once per turn.

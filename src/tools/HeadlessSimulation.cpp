@@ -224,8 +224,10 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
 } // anonymous namespace
 
 int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
-                          const std::string& outputPath) {
-    LOG_INFO("=== HEADLESS SIMULATION: %d turns, %d AI players ===", maxTurns, playerCount);
+                          const std::string& outputPath,
+                          uint32_t victoryMask) {
+    LOG_INFO("=== HEADLESS SIMULATION: %d turns, %d AI players, victoryMask=0x%x ===",
+             maxTurns, playerCount, victoryMask);
 
     // Open output CSV
     std::ofstream csv(outputPath);
@@ -809,7 +811,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
         // Check victory
         aoc::sim::VictoryResult vr = aoc::sim::checkVictoryConditions(
-            gameState, static_cast<aoc::TurnNumber>(turn), static_cast<aoc::TurnNumber>(maxTurns));
+            gameState, static_cast<aoc::TurnNumber>(turn),
+            static_cast<aoc::TurnNumber>(maxTurns), victoryMask);
         if (vr.type != aoc::sim::VictoryType::None) {
             printProgressBar(turn, maxTurns);
             std::fprintf(stderr, "\n\n  GAME OVER on turn %d: Player %u wins (type %d)\n",
@@ -948,6 +951,11 @@ int main(int argc, char* argv[]) {
     int32_t players = 4;
     std::string outputPath = "simulation_log.csv";
 
+    // Simulations default to Score+LastStanding so tests always terminate on
+    // VP.  `--victory-types` (CLI) or `victory_types:` (yaml) overrides.
+    uint32_t victoryMask =
+        aoc::sim::VICTORY_MASK_SCORE | aoc::sim::VICTORY_MASK_LAST_STANDING;
+
     bool loadedConfig = false;
     if (argc >= 2) {
         std::string arg1(argv[1]);
@@ -965,6 +973,12 @@ int main(int argc, char* argv[]) {
                     const aoc::sim::GameLengthDef& glDef = aoc::sim::gameLengthDef(gl);
                     turns = glDef.maxTurns;
                     aoc::sim::GamePace::instance().setFromLength(gl);
+                }
+
+                const std::string victoryTypesStr =
+                    config.getString("victory_types", "");
+                if (!victoryTypesStr.empty()) {
+                    victoryMask = aoc::sim::parseVictoryTypeMask(victoryTypesStr);
                 }
 
                 std::fprintf(stderr, "\n  === Age of Civilization: Headless Simulation ===\n\n");
@@ -1001,6 +1015,8 @@ int main(int argc, char* argv[]) {
                 outputPath = argv[++i];
             } else if (arg == "--tuned-dir" && i + 1 < argc) {
                 tunedDir = argv[++i];
+            } else if (arg == "--victory-types" && i + 1 < argc) {
+                victoryMask = aoc::sim::parseVictoryTypeMask(argv[++i]);
             } else if (arg == "--map-size" && i + 1 < argc) {
                 std::string sizeStr(argv[++i]);
                 std::size_t xPos = sizeStr.find('x');
@@ -1035,7 +1051,7 @@ int main(int argc, char* argv[]) {
         loadTunedOverrides(tunedDir);
     }
 
-    int result = runHeadlessSimulation(turns, players, outputPath);
+    int result = runHeadlessSimulation(turns, players, outputPath, victoryMask);
 
     std::fprintf(stderr, "\n\n");
     return result;

@@ -148,9 +148,10 @@ void checkWorldEvents(aoc::game::GameState& gameState, PlayerId player, int32_t 
     // Don't trigger if there's already a pending event
     if (events->pendingEvent != static_cast<WorldEventId>(255)) { return; }
 
-    // Check triggers (deterministic hash-based, once per 15-25 turns per event)
+    // Check triggers (deterministic hash-based). Each event can re-fire after
+    // WORLD_EVENT_COOLDOWN_TURNS have passed since its last firing.
     for (int32_t e = 0; e < WORLD_EVENT_COUNT; ++e) {
-        if (events->eventFired[e]) { continue; }
+        if (turnNumber - events->lastFiredTurn[e] < WORLD_EVENT_COOLDOWN_TURNS) { continue; }
 
         uint32_t hash = static_cast<uint32_t>(turnNumber) * 2654435761u
                       + static_cast<uint32_t>(e) * 104729u
@@ -208,8 +209,9 @@ ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, in
         events->activeEffectTurns = chosen.effectDuration;
     }
 
-    // Mark event as fired
-    events->eventFired[static_cast<uint8_t>(events->pendingEvent)] = true;
+    // Stamp firing turn for cooldown bookkeeping
+    events->lastFiredTurn[static_cast<uint8_t>(events->pendingEvent)] =
+        gameState.currentTurn();
     events->pendingEvent = static_cast<WorldEventId>(255);
     events->pendingChoice = choice;
 

@@ -36,83 +36,84 @@ std::vector<TechDef> buildTechDefs() {
     techs.push_back({TechId{9}, "Banking", EraId{3}, 350, {{TechId{5}, TechId{7}}}, {}, {}, {}});
     techs.push_back({TechId{10}, "Gunpowder", EraId{3}, 380, {{TechId{8}}}, {}, {}, {}});
 
-    // Era 4: Industrial -- costs 480-650
-    techs.push_back({TechId{11}, "Industrialization", EraId{4}, 580, {{TechId{8}, TechId{9}}},
+    // Era 4: Industrial -- costs ~900-1200 (raised from 480-650 so the Steam Age
+    // fires near turn ~250/500 instead of turn ~120, matching Civ 6 pacing).
+    techs.push_back({TechId{11}, "Industrialization", EraId{4}, 1150, {{TechId{8}, TechId{9}}},
         {}, {BuildingId{3}}, {}});
-    techs.push_back({TechId{12}, "Refining", EraId{4}, 520, {{TechId{11}}},
+    techs.push_back({TechId{12}, "Refining", EraId{4}, 1040, {{TechId{11}}},
         {}, {BuildingId{2}}, {}});
-    techs.push_back({TechId{13}, "Economics", EraId{4}, 480, {{TechId{9}}}, {}, {}, {}});
+    techs.push_back({TechId{13}, "Economics", EraId{4}, 960, {{TechId{9}}}, {}, {}, {}});
 
-    // Era 5: Modern -- costs 750-950
-    techs.push_back({TechId{14}, "Electricity", EraId{5}, 800, {{TechId{11}}},
+    // Era 5: Modern -- costs ~1500-1800 (raised from 750-950).
+    techs.push_back({TechId{14}, "Electricity", EraId{5}, 1600, {{TechId{11}}},
         {}, {BuildingId{4}}, {}});
-    techs.push_back({TechId{15}, "Mass Production", EraId{5}, 900, {{TechId{19}, TechId{12}}},
+    techs.push_back({TechId{15}, "Mass Production", EraId{5}, 1800, {{TechId{19}, TechId{12}}},
         {}, {BuildingId{5}}, {}});
 
-    // Era 6: Information -- costs 1100-1400
-    techs.push_back({TechId{16}, "Computers", EraId{6}, 1300, {{TechId{14}, TechId{23}}},
+    // Era 6: Information -- costs ~2600-2800 (raised from 1100-1400).
+    techs.push_back({TechId{16}, "Computers", EraId{6}, 2600, {{TechId{14}, TechId{23}}},
         {}, {BuildingId{12}}, {}});
-    techs.push_back({TechId{17}, "Nuclear Fission", EraId{6}, 1400, {{TechId{14}}}, {}, {}, {}});
+    techs.push_back({TechId{17}, "Nuclear Fission", EraId{6}, 2800, {{TechId{14}}}, {}, {}, {}});
 
     // ================================================================
     // NEW TECHS (18-27)
     // ================================================================
 
-    // Era 4: Industrial -- precision manufacturing chain
-    techs.push_back({TechId{18}, "Surface Plate", EraId{4}, 500,
+    // Era 4: Industrial -- precision manufacturing chain (costs scaled to era 4).
+    techs.push_back({TechId{18}, "Surface Plate", EraId{4}, 1000,
         {{TechId{8}, TechId{11}}},  // Metallurgy + Industrialization
         {}, {BuildingId{10}}, {}});  // Unlocks Precision Workshop
 
-    techs.push_back({TechId{19}, "Interchangeable Parts", EraId{4}, 600,
+    techs.push_back({TechId{19}, "Interchangeable Parts", EraId{4}, 1200,
         {{TechId{18}}},  // Surface Plate
         {}, {}, {}});
 
-    // Era 2: Medieval -- textiles
+    // Era 2: Medieval -- textiles (pre-industrial, unchanged).
     techs.push_back({TechId{20}, "Textiles", EraId{2}, 200,
         {{TechId{7}}},  // Apprenticeship
         {}, {BuildingId{8}}, {}});  // Unlocks Textile Mill
 
-    // Era 4: Industrial -- food preservation
-    techs.push_back({TechId{21}, "Food Preservation", EraId{4}, 560,
+    // Era 4: Industrial -- food preservation.
+    techs.push_back({TechId{21}, "Food Preservation", EraId{4}, 1120,
         {{TechId{11}}},  // Industrialization
         {}, {BuildingId{9}}, {}});  // Unlocks Food Processing Plant
 
-    // Era 5: Modern -- precision instruments
-    techs.push_back({TechId{22}, "Precision Instruments", EraId{5}, 930,
+    // Era 5: Modern -- precision instruments.
+    techs.push_back({TechId{22}, "Precision Instruments", EraId{5}, 1850,
         {{TechId{19}, TechId{14}}},  // Interchangeable Parts + Electricity
         {}, {}, {}});
 
-    // Era 5: Modern -- semiconductors
-    techs.push_back({TechId{23}, "Semiconductors", EraId{5}, 1050,
+    // Era 5: Modern -- semiconductors.
+    techs.push_back({TechId{23}, "Semiconductors", EraId{5}, 2100,
         {{TechId{22}}},  // Precision Instruments
         {}, {BuildingId{11}}, {}});  // Unlocks Semiconductor Fab
 
-    techs.push_back({TechId{24}, "Advanced Chemistry", EraId{5}, 850,
+    techs.push_back({TechId{24}, "Advanced Chemistry", EraId{5}, 1700,
         {{TechId{12}}},  // Refining
         {}, {}, {}});
 
-    // Era 5: Modern -- telecommunications
-    techs.push_back({TechId{25}, "Telecommunications", EraId{5}, 930,
+    // Era 5: Modern -- telecommunications.
+    techs.push_back({TechId{25}, "Telecommunications", EraId{5}, 1850,
         {{TechId{14}}},  // Electricity
         {}, {BuildingId{13}}, {}});  // Unlocks Telecom Hub
 
-    // Era 5: Modern -- aviation
-    techs.push_back({TechId{26}, "Aviation", EraId{5}, 1000,
+    // Era 5: Modern -- aviation.
+    techs.push_back({TechId{26}, "Aviation", EraId{5}, 2000,
         {{TechId{11}, TechId{12}}},  // Industrialization + Refining
         {}, {BuildingId{14}}, {}});  // Unlocks Airport
 
-    // Era 6: Information -- internet
-    techs.push_back({TechId{27}, "Internet", EraId{6}, 1560,
+    // Era 6: Information -- internet.
+    techs.push_back({TechId{27}, "Internet", EraId{6}, 3120,
         {{TechId{16}, TechId{25}}},  // Computers + Telecommunications
         {}, {}, {}});
 
-    // Era 7: Future -- fusion power
-    techs.push_back({TechId{28}, "Fusion Power", EraId{7}, 2000,
+    // Era 7: Future -- fusion power.
+    techs.push_back({TechId{28}, "Fusion Power", EraId{7}, 4000,
         {{TechId{17}, TechId{27}}},  // Nuclear Fission + Internet
         {}, {BuildingId{35}}, {}});  // Unlocks Fusion Reactor
 
-    // Era 6: Atomic -- ecology (biofuel)
-    techs.push_back({TechId{29}, "Ecology", EraId{6}, 1200,
+    // Era 6: Atomic -- ecology (biofuel).
+    techs.push_back({TechId{29}, "Ecology", EraId{6}, 2400,
         {{TechId{24}}},  // Advanced Chemistry
         {}, {BuildingId{33}}, {}});  // Unlocks Biofuel Plant
 

@@ -94,6 +94,7 @@ struct Blackboard {
     int32_t techsResearched = 0;
     bool    isAtWar = false;
     bool    isThreatened = false;
+    bool    expansionExhausted = false; ///< Mirrored from Player's AIBlackboard
     int32_t targetMaxCities = 4;
     int32_t desiredMilitary = 4;
 
@@ -270,6 +271,10 @@ private:
 [[nodiscard]] inline NodePtr needsSettler() {
     return std::make_unique<CheckCondition>("NeedsSettler",
         [](const Blackboard& bb) {
+            // Skip settlers when the advisor reports no viable founding sites:
+            // the new unit would stall outside a valid location and waste
+            // production for its lifetime.
+            if (bb.expansionExhausted) { return false; }
             return bb.ownedCities < bb.targetMaxCities && bb.settlerUnits == 0;
         });
 }
