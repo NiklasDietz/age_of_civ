@@ -10,6 +10,7 @@
  */
 
 #include "GeneticAlgorithm.hpp"
+#include "aoc/map/MapGenerator.hpp"
 #include "aoc/simulation/victory/VictoryCondition.hpp"
 
 #include <atomic>
@@ -71,7 +72,8 @@ struct SimulationResult {
 [[nodiscard]] SimulationResult runSimulation(int32_t turns, int32_t playerCount,
                                               uint64_t seed,
                                               const std::atomic<bool>* stopFlag = nullptr,
-                                              std::span<const Individual* const> overrides = {});
+                                              std::span<const Individual* const> overrides = {},
+                                              aoc::map::MapType mapType = aoc::map::MapType::Realistic);
 
 /// Evaluate fitness of one individual by running multiple games.
 /// The individual's genes are used as Player 0's AI personality.

@@ -10,6 +10,7 @@
  */
 
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
+#include "aoc/map/MapGenerator.hpp"
 
 #include <array>
 #include <atomic>
@@ -92,6 +93,13 @@ enum class OpponentMode : uint8_t {
 /// Human-readable name for logging.
 [[nodiscard]] const char* opponentModeName(OpponentMode mode);
 
+/// Parse map-type name (case-insensitive). Returns false on unknown.
+/// Accepts: continents, pangaea, archipelago, fractal, realistic.
+[[nodiscard]] bool parseMapType(std::string_view s, aoc::map::MapType& out);
+
+/// Human-readable name for logging.
+[[nodiscard]] const char* mapTypeName(aoc::map::MapType type);
+
 /// GA configuration.
 struct GAConfig {
     int32_t      populationSize  = 20;
@@ -116,6 +124,14 @@ struct GAConfig {
     /// Optional per-game player counts. When non-empty, game k uses
     /// playersList[k % playersList.size()] instead of playerCount.
     std::vector<int32_t> playersList;
+
+    /// Optional per-game map types. When non-empty, game k uses
+    /// mapsList[k % mapsList.size()] instead of the default Realistic.
+    /// Exposes each genome to varied geography (Continents vs Archipelago
+    /// vs Pangaea etc.) so evolved weights must generalize across naval,
+    /// land-war and expansion-friendly conditions instead of overfitting
+    /// one map family.
+    std::vector<aoc::map::MapType> mapsList;
 
     /// External stop flag for fast SIGINT/SIGTERM abort. When non-null and
     /// true, runSimulation / evaluateFitness / evaluatePopulation exit at

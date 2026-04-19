@@ -14,6 +14,7 @@
 #include "ThreadPool.hpp"
 
 #include "aoc/core/Log.hpp"
+#include "aoc/map/MapGenerator.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -55,6 +56,7 @@ struct CLIArgs {
     bool    seedProvided = false;
     std::vector<int32_t> turnsList;
     std::vector<int32_t> playersList;
+    std::vector<aoc::map::MapType> mapsList;
     aoc::ga::OpponentMode opponentMode = aoc::ga::OpponentMode::Fixed;
     int32_t hallOfFameSize = 8;
     /// -1 = all 12 leaders rotate; [0,11] = tune that one leader's archetype.
@@ -111,6 +113,42 @@ struct CLIArgs {
     return true;
 }
 
+/// Parse a comma-separated list of map-type names (e.g. "continents,archipelago").
+/// Empty string is rejected. Unknown names are rejected.
+[[nodiscard]] bool parseMapList(const char* value, std::vector<aoc::map::MapType>& out,
+                                 const char* name) {
+    out.clear();
+    std::string buf;
+    const char* p = value;
+    while (true) {
+        if (*p == ',' || *p == '\0') {
+            if (buf.empty()) {
+                std::fprintf(stderr, "[Error] Empty entry in %s\n", name);
+                return false;
+            }
+            aoc::map::MapType mt{};
+            if (!aoc::ga::parseMapType(buf, mt)) {
+                std::fprintf(stderr,
+                    "[Error] Invalid map type in %s: '%s' "
+                    "(expected: continents|pangaea|archipelago|fractal|realistic)\n",
+                    name, buf.c_str());
+                return false;
+            }
+            out.push_back(mt);
+            buf.clear();
+            if (*p == '\0') { break; }
+        } else {
+            buf.push_back(*p);
+        }
+        ++p;
+    }
+    if (out.empty()) {
+        std::fprintf(stderr, "[Error] %s is empty\n", name);
+        return false;
+    }
+    return true;
+}
+
 /// Parse command-line arguments. Returns false on error.
 [[nodiscard]] bool parseCLI(int argc, char* argv[], CLIArgs& args) {
     for (int i = 1; i < argc; ++i) {
@@ -134,6 +172,12 @@ struct CLIArgs {
                 "                        (e.g. 150,250,400). Overrides --turns.\n"
                 "  --players-list A,B,C  Mixed player counts, cycled per game\n"
                 "                        (e.g. 4,6,8). Overrides --players.\n"
+                "  --maps X,Y,Z          Cycle map types across games.\n"
+                "                        Names: continents|pangaea|archipelago|\n"
+                "                               fractal|realistic (default: realistic).\n"
+                "                        E.g. --maps continents,archipelago,pangaea\n"
+                "                        forces each genome to generalize across\n"
+                "                        naval, land-war and mixed geography.\n"
                 "  --workers N           Thread count (0 = auto-detect, default: 0)\n"
                 "  --seed N              RNG seed (default: random)\n"
                 "  --opponent-mode MODE  Opponent selection for non-evaluated players:\n"
@@ -192,6 +236,8 @@ struct CLIArgs {
                 if (!parseIntList(argv[++i], args.turnsList, "--turns-list")) { return false; }
             } else if (std::strcmp(argv[i], "--players-list") == 0) {
                 if (!parseIntList(argv[++i], args.playersList, "--players-list")) { return false; }
+            } else if (std::strcmp(argv[i], "--maps") == 0) {
+                if (!parseMapList(argv[++i], args.mapsList, "--maps")) { return false; }
             } else if (std::strcmp(argv[i], "--workers") == 0) {
                 char* endPtr = nullptr;
                 long parsed = std::strtol(argv[++i], &endPtr, 10);
@@ -348,7 +394,9 @@ int main(int argc, char* argv[]) {
 
     // Auto-bump gamesPerEval so every list entry is sampled at least once.
     {
-        std::size_t listMax = std::max(args.turnsList.size(), args.playersList.size());
+        std::size_t listMax = std::max({args.turnsList.size(),
+                                          args.playersList.size(),
+                                          args.mapsList.size()});
         if (listMax > 0 && static_cast<std::size_t>(args.gamesPerEval) < listMax) {
             args.gamesPerEval = static_cast<int32_t>(listMax);
             std::fprintf(stderr,
@@ -379,6 +427,15 @@ int main(int argc, char* argv[]) {
         for (int32_t p : args.playersList) { std::fprintf(stderr, " %d", p); }
         std::fprintf(stderr, "\n");
     }
+    if (args.mapsList.empty()) {
+        std::fprintf(stderr, "  Map type: realistic\n");
+    } else {
+        std::fprintf(stderr, "  Map types (cycled):");
+        for (aoc::map::MapType m : args.mapsList) {
+            std::fprintf(stderr, " %s", aoc::ga::mapTypeName(m));
+        }
+        std::fprintf(stderr, "\n");
+    }
     std::fprintf(stderr, "  Seed: %llu\n", static_cast<unsigned long long>(masterSeed));
     std::fprintf(stderr, "  Opponent mode: %s",
                  aoc::ga::opponentModeName(args.opponentMode));
@@ -402,6 +459,7 @@ int main(int argc, char* argv[]) {
     config.playerCount    = args.playerCount;
     config.turnsList      = args.turnsList;
     config.playersList    = args.playersList;
+    config.mapsList       = args.mapsList;
     config.elitism        = 2;
     config.tournamentSize = 3;
     config.mutationRate   = 0.2f;

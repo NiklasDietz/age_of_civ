@@ -11,16 +11,38 @@
             "cacheVariables": {
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
             },
+            "warnings": { "dev": true, "deprecated": true }
+        },
+
+        {
+            "name": "linux-base",
+            "hidden": true,
+            "inherits": "default",
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
             "environment": {
                 "CC": "clang",
                 "CXX": "clang++"
-            },
-            "warnings": { "dev": true, "deprecated": true }
+            }
         },
         {
-            "name": "debug",
-            "displayName": "Debug (ASan + UBSan)",
+            "name": "macos-base",
+            "hidden": true,
             "inherits": "default",
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
+        },
+        {
+            "name": "windows-base",
+            "hidden": true,
+            "inherits": "default",
+            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+            "generator": "Visual Studio 17 2022",
+            "architecture": { "value": "x64", "strategy": "set" }
+        },
+
+        {
+            "name": "debug",
+            "displayName": "Debug (Linux: ASan + UBSan)",
+            "inherits": "linux-base",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_CXX_FLAGS_DEBUG": "-g -O0 -gsplit-dwarf -fno-omit-frame-pointer -fsanitize=address,undefined",
@@ -30,8 +52,8 @@
         },
         {
             "name": "release",
-            "displayName": "Release (LTO, stripped)",
-            "inherits": "default",
+            "displayName": "Release (Linux: LTO, stripped)",
+            "inherits": "linux-base",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_CXX_FLAGS_RELEASE": "-O3 -march=native -DNDEBUG",
@@ -42,7 +64,7 @@
         },
         {
             "name": "perf",
-            "displayName": "High-Performance (Release + PGO-ready)",
+            "displayName": "High-Performance (Linux: Release + PGO-ready)",
             "inherits": "release",
             "cacheVariables": {
                 "CMAKE_CXX_FLAGS_RELEASE": "-O3 -march=native -DNDEBUG -fno-exceptions -fno-rtti",
@@ -51,36 +73,75 @@
         },
         {
             "name": "tsan",
-            "displayName": "Debug (ThreadSanitizer)",
-            "inherits": "default",
+            "displayName": "Debug (Linux: ThreadSanitizer)",
+            "inherits": "linux-base",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_CXX_FLAGS_DEBUG": "-g -O1 -fsanitize=thread -fno-omit-frame-pointer",
                 "CMAKE_EXE_LINKER_FLAGS_DEBUG": "-fsanitize=thread -fuse-ld=lld",
                 "CMAKE_SHARED_LINKER_FLAGS_DEBUG": "-fsanitize=thread -fuse-ld=lld"
             }
+        },
+
+        {
+            "name": "macos-debug",
+            "displayName": "macOS Debug (ASan + UBSan, MoltenVK)",
+            "inherits": "macos-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_FLAGS_DEBUG": "-g -O0 -fno-omit-frame-pointer -fsanitize=address,undefined",
+                "CMAKE_EXE_LINKER_FLAGS_DEBUG": "-fsanitize=address,undefined",
+                "CMAKE_OSX_DEPLOYMENT_TARGET": "11.0"
+            }
+        },
+        {
+            "name": "macos-release",
+            "displayName": "macOS Release (LTO, MoltenVK)",
+            "inherits": "macos-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_CXX_FLAGS_RELEASE": "-O3 -DNDEBUG",
+                "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON",
+                "CMAKE_OSX_DEPLOYMENT_TARGET": "11.0"
+            }
+        },
+
+        {
+            "name": "windows-debug",
+            "displayName": "Windows Debug (MSVC, Vulkan SDK)",
+            "inherits": "windows-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "windows-release",
+            "displayName": "Windows Release (MSVC, LTO, Vulkan SDK)",
+            "inherits": "windows-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON"
+            }
         }
     ],
 
     "buildPresets": [
+        { "name": "debug",           "configurePreset": "debug",           "jobs": 0 },
+        { "name": "release",         "configurePreset": "release",         "jobs": 0 },
+        { "name": "perf",            "configurePreset": "perf",            "jobs": 0 },
+        { "name": "tsan",            "configurePreset": "tsan",            "jobs": 0 },
+        { "name": "macos-debug",     "configurePreset": "macos-debug",     "jobs": 0 },
+        { "name": "macos-release",   "configurePreset": "macos-release",   "jobs": 0 },
         {
-            "name": "debug",
-            "configurePreset": "debug",
+            "name": "windows-debug",
+            "configurePreset": "windows-debug",
+            "configuration": "Debug",
             "jobs": 0
         },
         {
-            "name": "release",
-            "configurePreset": "release",
-            "jobs": 0
-        },
-        {
-            "name": "perf",
-            "configurePreset": "perf",
-            "jobs": 0
-        },
-        {
-            "name": "tsan",
-            "configurePreset": "tsan",
+            "name": "windows-release",
+            "configurePreset": "windows-release",
+            "configuration": "Release",
             "jobs": 0
         }
     ]

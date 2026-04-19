@@ -63,7 +63,8 @@ namespace aoc::ga {
 
 SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed,
                                 const std::atomic<bool>* stopFlag,
-                                std::span<const Individual* const> overrides) {
+                                std::span<const Individual* const> overrides,
+                                aoc::map::MapType mapType) {
     // Per-player personality overrides: install one LeaderPersonalityDef on
     // each player's civId (civId = p % CIV_COUNT). Storage is local to this
     // call so the setLeaderPersonalityOverride pointer stays valid for the
@@ -120,7 +121,7 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
     mapConfig.width = 80;
     mapConfig.height = 52;
     mapConfig.seed = rng.next();
-    mapConfig.mapType = aoc::map::MapType::Realistic;
+    mapConfig.mapType = mapType;
     aoc::map::MapGenerator generator;
     generator.generate(mapConfig, grid);
 
@@ -638,9 +639,13 @@ GameScore scoreOneGame(std::span<const Individual* const> overrides,
         ? config.playerCount
         : config.playersList[static_cast<std::size_t>(game)
                               % config.playersList.size()];
+    const aoc::map::MapType mapType = config.mapsList.empty()
+        ? aoc::map::MapType::Realistic
+        : config.mapsList[static_cast<std::size_t>(game)
+                           % config.mapsList.size()];
 
     SimulationResult simResult = runSimulation(turns, playerCount, gameSeed,
-                                                config.stopFlag, overrides);
+                                                config.stopFlag, overrides, mapType);
     if (!simResult.valid || simResult.eraVP.empty()) { return out; }
 
     constexpr std::size_t P0 = 0;

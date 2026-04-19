@@ -39,6 +39,31 @@ const char* opponentModeName(OpponentMode mode) {
     return "?";
 }
 
+bool parseMapType(std::string_view s, aoc::map::MapType& out) {
+    std::string lower;
+    lower.reserve(s.size());
+    for (char c : s) {
+        lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    if (lower == "continents")  { out = aoc::map::MapType::Continents;  return true; }
+    if (lower == "pangaea")     { out = aoc::map::MapType::Pangaea;     return true; }
+    if (lower == "archipelago") { out = aoc::map::MapType::Archipelago; return true; }
+    if (lower == "fractal")     { out = aoc::map::MapType::Fractal;     return true; }
+    if (lower == "realistic")   { out = aoc::map::MapType::Realistic;   return true; }
+    return false;
+}
+
+const char* mapTypeName(aoc::map::MapType type) {
+    switch (type) {
+        case aoc::map::MapType::Continents:  return "continents";
+        case aoc::map::MapType::Pangaea:     return "pangaea";
+        case aoc::map::MapType::Archipelago: return "archipelago";
+        case aoc::map::MapType::Fractal:     return "fractal";
+        case aoc::map::MapType::Realistic:   return "realistic";
+    }
+    return "?";
+}
+
 // ============================================================================
 // Existing leader profiles (12 leaders, mirrors Python EXISTING_LEADERS)
 // ============================================================================
