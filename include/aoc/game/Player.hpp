@@ -27,6 +27,7 @@
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/victory/VictoryCondition.hpp"
 #include "aoc/simulation/victory/SpaceRace.hpp"
+#include "aoc/simulation/culture/Tourism.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/monetary/Bonds.hpp"
@@ -177,6 +178,9 @@ public:
 
     [[nodiscard]] aoc::sim::PlayerSpaceRaceComponent& spaceRace() { return this->m_spaceRace; }
     [[nodiscard]] const aoc::sim::PlayerSpaceRaceComponent& spaceRace() const { return this->m_spaceRace; }
+
+    [[nodiscard]] aoc::sim::PlayerTourismComponent& tourism() { return this->m_tourism; }
+    [[nodiscard]] const aoc::sim::PlayerTourismComponent& tourism() const { return this->m_tourism; }
 
     // ========================================================================
     // Monetary instruments
@@ -372,6 +376,7 @@ private:
     // Victory
     aoc::sim::VictoryTrackerComponent m_victoryTracker;
     aoc::sim::PlayerSpaceRaceComponent m_spaceRace;
+    aoc::sim::PlayerTourismComponent m_tourism;
 
     // Monetary instruments
     aoc::sim::PlayerBondComponent m_bonds;

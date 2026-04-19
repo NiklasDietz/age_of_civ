@@ -221,6 +221,7 @@ set(AOC_LIB_SOURCES
     src/simulation/city/ProductionSystem.cpp
     src/simulation/city/BorderExpansion.cpp
     src/simulation/city/CityBombardment.cpp
+    src/simulation/culture/Tourism.cpp
     src/simulation/map/Improvement.cpp
     src/simulation/map/Infrastructure.cpp
     src/simulation/map/TerrainModification.cpp

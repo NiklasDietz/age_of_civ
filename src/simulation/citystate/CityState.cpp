@@ -11,6 +11,7 @@
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/BorderExpansion.hpp"
+#include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/core/Log.hpp"
@@ -164,24 +165,38 @@ void processCityStateBonuses(aoc::game::GameState& gameState, PlayerId player) {
         }
 
         const CurrencyAmount bonus = static_cast<CurrencyAmount>(bonusMagnitude);
+        const float magF = static_cast<float>(bonusMagnitude);
         switch (cs.type) {
             case CityStateType::Militaristic:
-                econ.treasury += bonus;
+                // Production bonus routed to every city that has a build queue.
+                // Each envoy tier gives +magF production to first queue item.
+                for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+                    if (!city->production().queue.empty()) {
+                        city->production().queue.front().progress += magF * 2.0f;
+                    }
+                }
                 break;
             case CityStateType::Scientific:
-                econ.treasury += bonus;
+                // Science: accelerate current research.
+                gsPlayer->tech().researchProgress += magF * 4.0f;
                 break;
             case CityStateType::Cultural:
-                econ.treasury += bonus;
+                // Culture: accelerate current civic research.
+                gsPlayer->civics().researchProgress += magF * 4.0f;
                 break;
             case CityStateType::Trade:
-                econ.treasury += bonus * 2;
+                econ.treasury += bonus * 3;
                 break;
             case CityStateType::Religious:
-                econ.treasury += bonus;
+                gsPlayer->faith().faith += magF * 3.0f;
                 break;
             case CityStateType::Industrial:
-                econ.treasury += bonus;
+                // Hammers to every city's current production.
+                for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+                    if (!city->production().queue.empty()) {
+                        city->production().queue.front().progress += magF * 3.0f;
+                    }
+                }
                 break;
             default:
                 break;

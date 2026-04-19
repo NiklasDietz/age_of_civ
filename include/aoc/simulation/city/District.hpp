@@ -31,6 +31,7 @@ enum class DistrictType : uint8_t {
     HolySite,       ///< Faith buildings
     Harbor,         ///< Coastal trade, fishing
     Encampment,     ///< Military buildings
+    Theatre,        ///< Culture buildings, great works
 
     Count
 };
@@ -40,7 +41,7 @@ static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType
 [[nodiscard]] constexpr std::string_view districtTypeName(DistrictType type) {
     constexpr std::array<std::string_view, DISTRICT_TYPE_COUNT> NAMES = {{
         "City Center", "Industrial Zone", "Commercial Hub", "Campus",
-        "Holy Site", "Harbor", "Encampment"
+        "Holy Site", "Harbor", "Encampment", "Theatre Square"
     }};
     return NAMES[static_cast<uint8_t>(type)];
 }
@@ -77,6 +78,8 @@ struct BuildingDef {
     int32_t  ongoingFuelPerTurn = 0;
 
     int32_t faithBonus = 0;    ///< Per-turn faith generated (Shrine/Temple/Cathedral)
+    int32_t cultureBonus = 0;  ///< Per-turn culture generated (Theatre buildings)
+    uint8_t greatWorksSlots = 0; ///< Capacity for housed great works
 
     /// Whether this building requires any resources to construct.
     [[nodiscard]] constexpr bool hasResourceCost() const {
@@ -116,7 +119,7 @@ struct BuildingDef {
 
 // Format: {id, name, district, prodCost, maint, prodBonus, sciBonus, goldBonus, sciMult, resourceCosts, fuelGoodId, fuelPerTurn}
 // Resource costs and fuel added for mid/late-game buildings per plan Phase 1C/1D.
-inline constexpr std::array<BuildingDef, 39> BUILDING_DEFS = {{
+inline constexpr std::array<BuildingDef, 43> BUILDING_DEFS = {{
     //                                                                                                                     resourceCosts         fuel
     {BuildingId{0},  "Forge",              DistrictType::Industrial,  60, 1, 2, 0, 0, 1.0f},                            // no cost, no fuel
     {BuildingId{1},  "Workshop",           DistrictType::Industrial,  40, 1, 1, 0, 0, 1.0f},
@@ -159,6 +162,13 @@ inline constexpr std::array<BuildingDef, 39> BUILDING_DEFS = {{
     {BuildingId{36}, "Shrine",             DistrictType::HolySite,    40, 1, 0, 0, 0, 1.0f, {}, 0xFFFF, 0, 2},
     {BuildingId{37}, "Temple",             DistrictType::HolySite,   100, 2, 0, 0, 0, 1.0f, {}, 0xFFFF, 0, 4},
     {BuildingId{38}, "Cathedral",          DistrictType::HolySite,   200, 3, 0, 0, 2, 1.0f, {}, 0xFFFF, 0, 6},
+    // Culture buildings -- Theatre Square district. cultureBonus per turn, greatWorksSlots for housing works.
+    {BuildingId{39}, "Amphitheater",       DistrictType::Theatre,     60, 1, 0, 0, 0, 1.0f, {}, 0xFFFF, 0, 0, 2, 2},
+    {BuildingId{40}, "Art Museum",         DistrictType::Theatre,    150, 2, 0, 0, 1, 1.0f, {}, 0xFFFF, 0, 0, 3, 3},
+    {BuildingId{41}, "Archaeological Museum", DistrictType::Theatre, 150, 2, 0, 0, 1, 1.0f, {}, 0xFFFF, 0, 0, 3, 3},
+    // Housing infrastructure: Aqueduct grants +4 housing. Requires adjacent river
+    // or mountain (enforced at production-time, not at def level).
+    {BuildingId{42}, "Aqueduct",           DistrictType::CityCenter,  80, 1, 0, 0, 0, 1.0f, {{44, 2}}}, // 2 Stone
 }};
 
 [[nodiscard]] inline constexpr const BuildingDef& buildingDef(BuildingId id) {

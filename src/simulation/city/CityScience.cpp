@@ -128,6 +128,16 @@ float computePlayerCulture(const aoc::game::Player& player,
         if (city->isOriginalCapital()) {
             totalCulture += 2.0f;
         }
+
+        // Building culture (Theatre Square district buildings)
+        const CityDistrictsComponent& districts = city->districts();
+        for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
+            for (BuildingId bid : district.buildings) {
+                if (bid.value < BUILDING_DEFS.size()) {
+                    totalCulture += static_cast<float>(buildingDef(bid).cultureBonus);
+                }
+            }
+        }
     }
 
     // Apply civilization culture multiplier

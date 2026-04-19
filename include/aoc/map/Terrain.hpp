@@ -235,6 +235,23 @@ enum class ImprovementType : uint8_t;
         case 13: return {0, 1, 0, 0, 0, 0};  // Dam:          +1 production
         case 20: return {0, 0, 2, 0, 0, 0};  // Canal:        +2 gold (toll revenue)
         case 21: return {0, 1, 0, 0, 0, 0};  // MountainMine: +1 production
+        case 22: return {0, 0, 0, 2, 0, 0};  // Observatory:  +2 science
+        case 23: return {0, 0, 0, 0, 1, 1};  // Monastery:    +1 culture, +1 faith
+        case 24: return {0, 0, 0, 0, 2, 0};  // HeritageSite: +2 culture
+        case 25: return {1, 0, 0, 0, 0, 0};  // TerraceFarm:  +1 food
+        case 26: return {-1, 2, 0, 0, 0, 0}; // BiogasPlant:  +2 prod, -1 food (consumes)
+        case 27: return {0, 0, 2, 1, 0, 0};  // SolarFarm:    +2 gold, +1 science
+        case 28: return {0, 2, 0, 0, 0, 0};  // WindFarm:     +2 production
+        case 29: return {0, 2, 2, 0, 0, 0};  // OffshorePlatform: +2 prod, +2 gold
+        case 30: return {-1, 2, 0, 0, 0, 0}; // RecyclingCenter: +2 prod, -1 food
+        case 31: return {0, 1, 0, 0, 0, 1};  // GeothermalVent:   +1 prod, +1 faith
+        case 32: return {3, 0, 0, 0, 0, 0};  // DesalinationPlant:+3 food
+        case 33: return {3, -1, 0, 0, 0, 0}; // VerticalFarm:     +3 food, -1 prod
+        case 34: return {-1, 0, 0, 3, 0, 0}; // DataCenter:       +3 science, -1 food
+        case 35: return {0, 0, 2, 0, 0, 0};  // TradingPost:      +2 gold
+        case 36: return {1, 0, 0, 0, 1, 0};  // MangroveNursery:  +1 food, +1 culture
+        case 37: return {2, 0, 0, 1, 0, 0};  // KelpFarm:         +2 food, +1 science
+        case 38: return {2, 0, 1, 0, 0, 0};  // FishFarm:         +2 food, +1 gold
         default: return {};                   // None / unknown
     }
 }

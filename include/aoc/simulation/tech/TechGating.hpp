@@ -20,6 +20,7 @@ namespace aoc::game {
 class GameState;
 class City;
 }
+namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
 
@@ -35,8 +36,12 @@ struct BuildableItem {
 [[nodiscard]] bool canBuildUnit(const aoc::game::GameState& gameState, PlayerId player, UnitTypeId unitType);
 
 /// Check if a player can build a specific building in a city.
+/// When `grid` is provided, spatial prerequisites (e.g. adjacent GeothermalVent
+/// tile for the GeothermalPlant building) are enforced. With `grid == nullptr`
+/// only tech + district gates are checked (UI listing fallback).
 [[nodiscard]] bool canBuildBuilding(const aoc::game::GameState& gameState, PlayerId player,
-                                    const aoc::game::City& city, BuildingId buildingId);
+                                    const aoc::game::City& city, BuildingId buildingId,
+                                    const aoc::map::HexGrid* grid = nullptr);
 
 /// Check if a player can build a specific wonder.
 [[nodiscard]] bool canBuildWonder(const aoc::game::GameState& gameState, PlayerId player, uint8_t wonderId);

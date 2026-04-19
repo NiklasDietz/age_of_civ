@@ -927,7 +927,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             for (uint16_t bidx = 0;
                      bidx < static_cast<uint16_t>(BUILDING_DEFS.size()); ++bidx) {
                 const BuildingDef& bdef = BUILDING_DEFS[bidx];
-                if (!canBuildBuilding(gameState, this->m_player, city, bdef.id)) {
+                if (!canBuildBuilding(gameState, this->m_player, city, bdef.id, &grid)) {
                     continue;
                 }
                 const float buildingScore =
@@ -1001,7 +1001,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 aoc::sim::effectiveEraFromTech(*gsPlayer),
                 aoc::sim::countRenaissancePlusTechs(*gsPlayer));
             const float holySiteEraMult = std::clamp(1.0f + religionCoefNow, 0.2f, 1.8f);
-            const std::array<DistrictOption, 6> districtOptions = {{
+            const std::array<DistrictOption, 7> districtOptions = {{
                 { DistrictType::Industrial,
                   60.0f,
                   1.4f * personality.behavior.prodBuildings * personality.behavior.economicFocus },
@@ -1032,6 +1032,14 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                   (1.3f * personality.behavior.religiousZeal
                        + 0.8f * personality.behavior.cultureFocus)
                   * holySiteEraMult },
+                // Theatre Square: Amphitheater/Art Museum/Arch. Museum. Gates
+                // culture output and Great Works slots. Weighted by cultureFocus
+                // and greatPersonFocus so AI tilted toward cultural/GP paths
+                // prioritises it.
+                { DistrictType::Theatre,
+                  55.0f,
+                  1.1f * personality.behavior.cultureFocus
+                       * personality.behavior.greatPersonFocus },
             }};
 
             for (const DistrictOption& opt : districtOptions) {

@@ -6,6 +6,8 @@
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
+#include "aoc/map/HexGrid.hpp"
+#include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/tech/TechGating.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -68,7 +70,8 @@ bool canBuildUnit(const aoc::game::GameState& gameState, PlayerId player, UnitTy
 }
 
 bool canBuildBuilding(const aoc::game::GameState& gameState, PlayerId player,
-                       const aoc::game::City& city, BuildingId buildingId) {
+                       const aoc::game::City& city, BuildingId buildingId,
+                       const aoc::map::HexGrid* grid) {
     // Check if the city already has this building
     if (city.hasBuilding(buildingId)) {
         return false;
@@ -105,6 +108,28 @@ bool canBuildBuilding(const aoc::game::GameState& gameState, PlayerId player,
 
     if (gatedByTech && !techResearched) {
         return false;
+    }
+
+    // Spatial prerequisite: GeothermalPlant (BuildingId{34}) requires a
+    // GeothermalVent improvement on at least one tile within the city's
+    // workable radius. Without a grid we cannot verify this; UI callers that
+    // omit the grid get a permissive answer, but actual production enqueue
+    // paths pass the grid.
+    if (grid != nullptr && buildingId.value == 34) {
+        bool hasVent = false;
+        std::vector<aoc::hex::AxialCoord> nearby;
+        nearby.reserve(64);
+        aoc::hex::spiral(city.location(), aoc::sim::CITY_WORK_RADIUS,
+                         std::back_inserter(nearby));
+        for (const aoc::hex::AxialCoord& t : nearby) {
+            if (!grid->isValid(t)) { continue; }
+            const int32_t ti = grid->toIndex(t);
+            if (grid->improvement(ti) == aoc::map::ImprovementType::GeothermalVent) {
+                hasVent = true;
+                break;
+            }
+        }
+        if (!hasVent) { return false; }
     }
 
     return true;

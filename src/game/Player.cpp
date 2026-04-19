@@ -22,6 +22,7 @@ Player::Player(PlayerId id)
     this->m_monetary.owner = id;
     this->m_faith.owner = id;
     this->m_bubble.owner = id;
+    this->m_tourism.owner = id;
 
     this->m_tech.initialize();
     this->m_civics.initialize();
@@ -180,7 +181,9 @@ CurrencyAmount Player::goldIncome(const aoc::map::HexGrid& grid) const {
             total += static_cast<CurrencyAmount>(yield.gold);
         }
     }
-    return total;
+    // Civilization ability: gold multiplier.
+    const float goldMult = aoc::sim::civDef(this->m_civId).modifiers.goldMultiplier;
+    return static_cast<CurrencyAmount>(static_cast<float>(total) * goldMult);
 }
 
 } // namespace aoc::game

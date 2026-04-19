@@ -15,8 +15,14 @@ bool canPlaceImprovement(const aoc::map::HexGrid& grid,
     aoc::map::TerrainType terrain = grid.terrain(index);
     aoc::map::FeatureType feature = grid.feature(index);
 
-    // Cannot improve water (except FishingBoats on coast with fish)
-    if (type != aoc::map::ImprovementType::FishingBoats && aoc::map::isWater(terrain)) {
+    // Cannot improve water except for the few water-capable improvements.
+    if (aoc::map::isWater(terrain)
+        && type != aoc::map::ImprovementType::FishingBoats
+        && type != aoc::map::ImprovementType::OffshorePlatform
+        && type != aoc::map::ImprovementType::DesalinationPlant
+        && type != aoc::map::ImprovementType::MangroveNursery
+        && type != aoc::map::ImprovementType::KelpFarm
+        && type != aoc::map::ImprovementType::FishFarm) {
         return false;
     }
 
@@ -129,6 +135,132 @@ bool canPlaceImprovement(const aoc::map::HexGrid& grid,
             return false;
         }
 
+        case aoc::map::ImprovementType::Observatory:
+            // Observatory on hills (any land).
+            return feature == aoc::map::FeatureType::Hills;
+
+        case aoc::map::ImprovementType::Monastery:
+            // Monastery on any non-water, non-mountain land. Forest/Jungle ok.
+            return !aoc::map::isWater(terrain) &&
+                   terrain != aoc::map::TerrainType::Mountain;
+
+        case aoc::map::ImprovementType::HeritageSite:
+            // Heritage site on any non-water, non-mountain land.
+            return !aoc::map::isWater(terrain) &&
+                   terrain != aoc::map::TerrainType::Mountain;
+
+        case aoc::map::ImprovementType::TerraceFarm:
+            // Terrace farm on hills (no other feature gating).
+            return feature == aoc::map::FeatureType::Hills;
+
+        case aoc::map::ImprovementType::BiogasPlant: {
+            // Biogas plant on any grassland/plains tile with an adjacent farm
+            // to draw food from.
+            if (terrain != aoc::map::TerrainType::Grassland &&
+                terrain != aoc::map::TerrainType::Plains) {
+                return false;
+            }
+            aoc::hex::AxialCoord center = grid.toAxial(index);
+            std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(center);
+            for (const aoc::hex::AxialCoord& n : nbrs) {
+                if (!grid.isValid(n)) { continue; }
+                if (grid.improvement(grid.toIndex(n)) == aoc::map::ImprovementType::Farm) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        case aoc::map::ImprovementType::SolarFarm:
+            // Solar farm on open desert (no feature).
+            return terrain == aoc::map::TerrainType::Desert &&
+                   feature == aoc::map::FeatureType::None;
+
+        case aoc::map::ImprovementType::WindFarm:
+            // Wind farm on hills or plains (open ground catches wind).
+            return feature == aoc::map::FeatureType::Hills ||
+                   (terrain == aoc::map::TerrainType::Plains &&
+                    feature == aoc::map::FeatureType::None);
+
+        case aoc::map::ImprovementType::OffshorePlatform: {
+            // Offshore platform on coast/shallow water with an oil resource.
+            if (!aoc::map::isShallowWater(terrain)) { return false; }
+            ResourceId resId = grid.resource(index);
+            return resId.isValid() && resId.value == aoc::sim::goods::OIL;
+        }
+
+        case aoc::map::ImprovementType::RecyclingCenter:
+            // Recycling center on any non-water, non-mountain land.
+            return !aoc::map::isWater(terrain) &&
+                   terrain != aoc::map::TerrainType::Mountain;
+
+        case aoc::map::ImprovementType::GeothermalVent: {
+            // Flag tile adjacent to a mountain, on any non-water land.
+            if (aoc::map::isWater(terrain)
+                || terrain == aoc::map::TerrainType::Mountain) {
+                return false;
+            }
+            aoc::hex::AxialCoord center = grid.toAxial(index);
+            std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(center);
+            for (const aoc::hex::AxialCoord& n : nbrs) {
+                if (!grid.isValid(n)) { continue; }
+                if (grid.terrain(grid.toIndex(n)) == aoc::map::TerrainType::Mountain) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        case aoc::map::ImprovementType::DesalinationPlant:
+            // Coast tile only.
+            return terrain == aoc::map::TerrainType::Coast;
+
+        case aoc::map::ImprovementType::VerticalFarm:
+            // Any land, non-mountain.
+            return !aoc::map::isWater(terrain)
+                && terrain != aoc::map::TerrainType::Mountain;
+
+        case aoc::map::ImprovementType::DataCenter:
+            // Any land, non-mountain.
+            return !aoc::map::isWater(terrain)
+                && terrain != aoc::map::TerrainType::Mountain;
+
+        case aoc::map::ImprovementType::TradingPost:
+            // Desert or Plains open ground.
+            return (terrain == aoc::map::TerrainType::Desert
+                 || terrain == aoc::map::TerrainType::Plains)
+                && feature != aoc::map::FeatureType::Hills
+                && feature != aoc::map::FeatureType::Forest
+                && feature != aoc::map::FeatureType::Jungle;
+
+        case aoc::map::ImprovementType::MangroveNursery: {
+            // Marsh feature on land, or Coast adjacent to a Marsh tile.
+            if (feature == aoc::map::FeatureType::Marsh) {
+                return true;
+            }
+            if (terrain != aoc::map::TerrainType::Coast) { return false; }
+            aoc::hex::AxialCoord center = grid.toAxial(index);
+            std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(center);
+            for (const aoc::hex::AxialCoord& n : nbrs) {
+                if (!grid.isValid(n)) { continue; }
+                if (grid.feature(grid.toIndex(n)) == aoc::map::FeatureType::Marsh) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        case aoc::map::ImprovementType::KelpFarm:
+            // Coast, no resource on the tile.
+            return terrain == aoc::map::TerrainType::Coast
+                && !grid.resource(index).isValid();
+
+        case aoc::map::ImprovementType::FishFarm:
+            // Coast or ShallowWater, no resource present.
+            return (terrain == aoc::map::TerrainType::Coast
+                 || terrain == aoc::map::TerrainType::ShallowWater)
+                && !grid.resource(index).isValid();
+
         case aoc::map::ImprovementType::Railway:
         case aoc::map::ImprovementType::Highway:
         case aoc::map::ImprovementType::Dam:
@@ -157,6 +289,15 @@ aoc::map::ImprovementType bestImprovementForTile(
         if (terrain == aoc::map::TerrainType::Coast && grid.resource(index).isValid()) {
             return aoc::map::ImprovementType::FishingBoats;
         }
+        // Coast w/o resource: alternate KelpFarm / FishFarm for variety.
+        if (terrain == aoc::map::TerrainType::Coast) {
+            return (index % 2 == 0) ? aoc::map::ImprovementType::FishFarm
+                                    : aoc::map::ImprovementType::KelpFarm;
+        }
+        if (terrain == aoc::map::TerrainType::ShallowWater
+            && !grid.resource(index).isValid()) {
+            return aoc::map::ImprovementType::FishFarm;
+        }
         return aoc::map::ImprovementType::None;
     }
 
@@ -169,8 +310,11 @@ aoc::map::ImprovementType bestImprovementForTile(
         return aoc::map::ImprovementType::None;
     }
 
-    // Hills -> Mine
+    // Hills -> Mine. If no resource, occasionally pick Observatory (science tile).
     if (feature == aoc::map::FeatureType::Hills) {
+        if (!grid.resource(index).isValid() && (index % 4 == 0)) {
+            return aoc::map::ImprovementType::Observatory;
+        }
         return aoc::map::ImprovementType::Mine;
     }
 
@@ -191,9 +335,12 @@ aoc::map::ImprovementType bestImprovementForTile(
         return aoc::map::ImprovementType::Pasture;
     }
 
-    // Grassland/plains -> Farm
+    // Grassland/plains -> Farm, occasional Monastery/HeritageSite for diversity.
     if (terrain == aoc::map::TerrainType::Grassland ||
         terrain == aoc::map::TerrainType::Plains) {
+        const int32_t bucket = index % 12;
+        if (bucket == 0) { return aoc::map::ImprovementType::Monastery; }
+        if (bucket == 1) { return aoc::map::ImprovementType::HeritageSite; }
         return aoc::map::ImprovementType::Farm;
     }
 

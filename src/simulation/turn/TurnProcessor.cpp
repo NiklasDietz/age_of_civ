@@ -64,6 +64,7 @@
 // Victory
 #include "aoc/simulation/victory/VictoryCondition.hpp"
 #include "aoc/simulation/victory/SpaceRace.hpp"
+#include "aoc/simulation/culture/Tourism.hpp"
 
 // Promotions
 #include "aoc/simulation/unit/Promotion.hpp"
@@ -76,6 +77,9 @@
 
 // City-States
 #include "aoc/simulation/citystate/CityState.hpp"
+#include "aoc/simulation/citystate/CityStateQuest.hpp"
+#include "aoc/simulation/diplomacy/EspionageSystem.hpp"
+#include "aoc/simulation/diplomacy/WorldCongress.hpp"
 
 // Climate & Disasters
 #include "aoc/simulation/climate/Climate.hpp"
@@ -732,6 +736,34 @@ void processGlobalSystems(TurnContext& turnContext) {
     // grievance every turn until they converge or hit the per-pair cap.
     accrueIdeologicalGrievances(gameState);
 
+    // Grievances -> relation score. Refresh a single "Grievances" modifier
+    // per ordered pair each turn using the accumulated grievance total.
+    // Without this step grievances are recorded but never influence
+    // DiplomacyState.totalScore, so AIs never develop hostility and wars
+    // rarely fire. Capped at -40 to leave room for other modifiers.
+    if (turnContext.diplomacy != nullptr) {
+        for (const std::unique_ptr<aoc::game::Player>& a : gameState.players()) {
+            for (const std::unique_ptr<aoc::game::Player>& b : gameState.players()) {
+                if (a->id() == b->id()) { continue; }
+                aoc::sim::PairwiseRelation& rel =
+                    turnContext.diplomacy->relation(a->id(), b->id());
+                // Remove existing Grievances modifier (single slot).
+                for (auto it = rel.modifiers.begin(); it != rel.modifiers.end(); ) {
+                    if (it->reason == "Grievances") { it = rel.modifiers.erase(it); }
+                    else { ++it; }
+                }
+                const int32_t gTotal =
+                    a->grievances().totalGrievanceAgainst(b->id());
+                if (gTotal > 0) {
+                    const int32_t penalty = std::min(gTotal / 2, 40);
+                    if (penalty > 0) {
+                        rel.modifiers.push_back({"Grievances", -penalty, 0});
+                    }
+                }
+            }
+        }
+    }
+
     // Alliance obligations: tick countdowns, check fulfillment, apply penalties
     if (turnContext.allianceTracker != nullptr && turnContext.diplomacy != nullptr) {
         turnContext.allianceTracker->tickObligations(*turnContext.diplomacy, gameState);
@@ -886,6 +918,51 @@ void processTurn(TurnContext& turnContext) {
                                          turnContext.allPlayers[j], 0, 0, "Peace made");
                     }
                 }
+            }
+        }
+    }
+
+    // --- Late-turn global systems previously wired only in Application.cpp ---
+    // Running here so headless simulations (and the GA) exercise them too.
+
+    // Decay per-turn diplomacy relation modifiers.
+    if (turnContext.diplomacy != nullptr) {
+        turnContext.diplomacy->tickModifiers();
+    }
+
+    // Espionage: resolve spy mission outcomes for all players.
+    if (turnContext.rng != nullptr && turnContext.grid != nullptr) {
+        processSpyMissions(*turnContext.gameState, *turnContext.grid, *turnContext.rng);
+    }
+
+    // Grievance decay per player. Moved here so grievances accumulated above
+    // shrink uniformly whether running via Application.cpp or headless.
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : turnContext.gameState->players()) {
+        playerPtr->grievances().tickGrievances();
+    }
+
+    // World Congress: propose / vote / resolve resolutions.
+    if (turnContext.rng != nullptr) {
+        processWorldCongress(*turnContext.gameState,
+                              static_cast<TurnNumber>(turnContext.currentTurn),
+                              *turnContext.rng);
+    }
+
+    // City-state quests: issue/resolve quests and award rewards.
+    checkCityStateQuests(*turnContext.gameState);
+
+    // Tourism per-player + cultural victory probe.
+    if (turnContext.grid != nullptr) {
+        for (const std::unique_ptr<aoc::game::Player>& playerPtr :
+                 turnContext.gameState->players()) {
+            if (playerPtr == nullptr) { continue; }
+            computeTourism(*turnContext.gameState, playerPtr->id(), *turnContext.grid);
+        }
+        const PlayerId culturalWinner = checkCulturalVictory(*turnContext.gameState);
+        if (culturalWinner != INVALID_PLAYER) {
+            aoc::game::Player* win = turnContext.gameState->player(culturalWinner);
+            if (win != nullptr) {
+                win->victoryTracker().eraVictoryPoints += 5;
             }
         }
     }

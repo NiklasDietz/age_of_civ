@@ -42,18 +42,21 @@ void computeCityHappiness(aoc::game::Player& player) {
         goods::PEARLS, goods::TEA, goods::COFFEE, goods::TOBACCO
     };
     int32_t uniqueLuxuryCount = 0;
+    // Monopoly bonus: holding >=3 units of any single luxury (across the
+    // whole empire) grants +1 extra unique-luxury-equivalent per type.
+    // Encourages specialization + trade of surplus.
+    int32_t monopolyBonusCount = 0;
     for (uint16_t luxId : RAW_LUXURY_IDS) {
-        bool playerHasThis = false;
+        int32_t totalStock = 0;
         for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
-            if (city->stockpile().getAmount(luxId) > 0) {
-                playerHasThis = true;
-                break;
-            }
+            totalStock += city->stockpile().getAmount(luxId);
         }
-        if (playerHasThis) {
+        if (totalStock > 0) {
             ++uniqueLuxuryCount;
+            if (totalStock >= 3) { ++monopolyBonusCount; }
         }
     }
+    uniqueLuxuryCount += monopolyBonusCount;
 
     int32_t playerCityCount = player.cityCount();
 

@@ -56,8 +56,8 @@ void autoAssignWorkers(CityComponent& city, const aoc::map::HexGrid& grid,
     std::vector<TileScore> candidates;
 
     std::vector<aoc::hex::AxialCoord> nearby;
-    nearby.reserve(40);
-    aoc::hex::spiral(city.location, 3, std::back_inserter(nearby));
+    nearby.reserve(64);
+    aoc::hex::spiral(city.location, CITY_WORK_RADIUS, std::back_inserter(nearby));
 
     for (const aoc::hex::AxialCoord& tile : nearby) {
         if (!grid.isValid(tile)) { continue; }
@@ -163,6 +163,40 @@ static void processSingleCityGrowth(aoc::game::City& city,
         surplus *= 1.5f;
     }
 
+    // Housing cap: independent of food. Above housing, growth throttles;
+    // 4 past housing, growth stops. Models Civ6 housing mechanic without
+    // a separate resource — reuses building presence + nearby farms.
+    // Base 4 (city center). Granary +2, Hospital +4.
+    // Farms in city radius contribute 0.5 housing each (capped at +4).
+    {
+        int32_t housing = 4;
+        if (city.hasBuilding(BuildingId{15})) { housing += 2; }  // Granary
+        if (city.hasBuilding(BuildingId{22})) { housing += 4; }  // Hospital
+        if (city.hasBuilding(BuildingId{42})) { housing += 4; }  // Aqueduct
+        // Count farm improvements inside the city's workable radius.
+        int32_t farmCount = 0;
+        std::vector<aoc::hex::AxialCoord> nearby;
+        nearby.reserve(64);
+        aoc::hex::spiral(city.location(), CITY_WORK_RADIUS, std::back_inserter(nearby));
+        for (const aoc::hex::AxialCoord& t : nearby) {
+            if (!grid.isValid(t)) { continue; }
+            const int32_t ti = grid.toIndex(t);
+            if (grid.owner(ti) != city.owner()) { continue; }
+            if (grid.improvement(ti) == aoc::map::ImprovementType::Farm) {
+                ++farmCount;
+            }
+        }
+        const int32_t farmHousing = std::min(farmCount / 2, 4);  // 2 farms → +1 housing, cap +4
+        housing += farmHousing;
+        const int32_t excess = city.population() - housing;
+        if (excess >= 4) {
+            surplus = 0.0f;
+        } else if (excess >= 1) {
+            // 1 → *0.75, 2 → *0.50, 3 → *0.25
+            surplus *= (1.0f - 0.25f * static_cast<float>(excess));
+        }
+    }
+
     // --- Food as tradeable good ---
     // Positive surplus: grows the city, but excess above 2x growth need
     // is converted to stockpiled Wheat goods (can be sold on the market).
@@ -212,12 +246,11 @@ static void processSingleCityGrowth(aoc::game::City& city,
         }
         city.growPopulation(1);
 
-        // Auto-assign new citizen to best unworked tile within radius 3 (37 tiles)
-        // This matches Civ 6 city workable area of 3 hex rings.
+        // Auto-assign new citizen to best unworked tile within city workable radius.
         aoc::hex::AxialCoord center = city.location();
         std::vector<aoc::hex::AxialCoord> candidates;
-        candidates.reserve(37);
-        aoc::hex::spiral(center, 3, std::back_inserter(candidates));
+        candidates.reserve(64);
+        aoc::hex::spiral(center, CITY_WORK_RADIUS, std::back_inserter(candidates));
 
         float bestYieldValue = -1.0f;
         aoc::hex::AxialCoord bestTile = center;

@@ -57,8 +57,15 @@ void processCityBombardment(aoc::game::GameState& gameState,
         syncWallState(*city);
 
         CityWallState& walls = city->walls();
+        // Encampment district adds a ranged-attack source independent of walls.
+        // Strength scales with Barracks presence. Range 2 base, +1 with Barracks.
+        const bool hasEncampment = city->districts().hasDistrict(DistrictType::Encampment);
+        const bool hasBarracks   = city->hasBuilding(BuildingId{18});
+        float encampStrength = hasEncampment ? (hasBarracks ? 32.0f : 22.0f) : 0.0f;
+        int32_t encampRange  = hasEncampment ? (hasBarracks ? 3 : 2) : 0;
+
         if (!walls.hasWalls() || !walls.isIntact()) {
-            // No walls or walls destroyed — city can't shoot.
+            // No walls or walls destroyed — normally can't shoot.
             // Repair walls if no enemy within 3 tiles.
             if (walls.hasWalls() && walls.currentHP < walls.maxHP) {
                 bool enemyNearby = false;
@@ -77,12 +84,24 @@ void processCityBombardment(aoc::game::GameState& gameState,
                     walls.repair();
                 }
             }
-            continue;
+            // Encampment district still shoots even without walls.
+            if (!hasEncampment) { continue; }
         }
 
-        // City shoots at enemies within range (ranged attack using wall strength).
-        const float bombardStrength = static_cast<float>(walls.rangedStrength);
-        const int32_t attackRange = walls.range;
+        // Base ranged attack: walls (if intact) OR encampment. Take the stronger
+        // of the two so an Encampment in a walled city still hits hard.
+        float bombardStrength = 0.0f;
+        int32_t attackRange = 0;
+        if (walls.hasWalls() && walls.isIntact()) {
+            bombardStrength = static_cast<float>(walls.rangedStrength);
+            attackRange     = walls.range;
+        }
+        if (hasEncampment && encampStrength > bombardStrength) {
+            bombardStrength = encampStrength;
+            attackRange     = std::max(attackRange, encampRange);
+        } else if (hasEncampment) {
+            attackRange = std::max(attackRange, encampRange);
+        }
 
         // Find the weakest enemy unit within range
         aoc::game::Unit* bestTarget = nullptr;

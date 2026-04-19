@@ -1948,7 +1948,7 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
 
     {
         std::vector<hex::AxialCoord> borderTiles;
-        hex::spiral(city->location(), 3, std::back_inserter(borderTiles));
+        hex::spiral(city->location(), aoc::sim::CITY_WORK_RADIUS, std::back_inserter(borderTiles));
 
         for (const hex::AxialCoord& tile : borderTiles) {
             if (!this->m_grid->isValid(tile)) {

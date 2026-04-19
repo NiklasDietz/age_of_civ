@@ -162,7 +162,7 @@ void governorAutoQueue(aoc::game::GameState& gameState,
     BuildingId bestBuildingId{0};
     for (uint16_t bidx = 0; bidx < static_cast<uint16_t>(BUILDING_DEFS.size()); ++bidx) {
         const BuildingDef& bdef = BUILDING_DEFS[bidx];
-        if (!canBuildBuilding(gameState, player, city, bdef.id)) { continue; }
+        if (!canBuildBuilding(gameState, player, city, bdef.id, &grid)) { continue; }
         float score = scoreBuildingForFocus(focus, bdef);
         if (score > bestBuildingScore) {
             bestBuildingScore = score;

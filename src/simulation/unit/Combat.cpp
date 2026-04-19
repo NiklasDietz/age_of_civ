@@ -157,6 +157,18 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     atkStrength += static_cast<float>(formationStrengthBonus(attacker.formationLevel()));
     defStrength += static_cast<float>(formationStrengthBonus(defender.formationLevel()));
 
+    // Civ ability: flat combat strength bonus for land units.
+    {
+        const aoc::game::Player* atkPlayer = gameState.player(attacker.owner());
+        const aoc::game::Player* defPlayer = gameState.player(defender.owner());
+        if (atkPlayer != nullptr) {
+            atkStrength += aoc::sim::civDef(atkPlayer->civId()).modifiers.combatStrengthBonus;
+        }
+        if (defPlayer != nullptr) {
+            defStrength += aoc::sim::civDef(defPlayer->civId()).modifiers.combatStrengthBonus;
+        }
+    }
+
     // Embarked units fight at 50% strength
     if (attacker.state() == aoc::sim::UnitState::Embarked) {
         atkStrength *= 0.5f;

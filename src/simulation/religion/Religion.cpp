@@ -93,6 +93,9 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
         }
     }
 
+    // Civilization ability: faith multiplier.
+    faithGain *= aoc::sim::civDef(player.civId()).modifiers.faithMultiplier;
+
     playerFaith.faith += faithGain;
 }
 

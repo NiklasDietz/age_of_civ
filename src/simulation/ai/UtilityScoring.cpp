@@ -136,6 +136,12 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
         case 37: score = 140.0f * b.religiousZeal; break;  // Temple
         case 38: score = 170.0f * b.religiousZeal * b.cultureFocus; break;  // Cathedral
 
+        // Theatre buildings: culture + great works. cultureFocus primary,
+        // greatPersonFocus secondary (Artists/Writers/Musicians spawn here).
+        case 39: score = 110.0f * b.cultureFocus; break;                           // Amphitheater
+        case 40: score = 150.0f * b.cultureFocus * b.greatPersonFocus; break;      // Art Museum
+        case 41: score = 150.0f * b.cultureFocus * b.greatPersonFocus; break;      // Archaeological Museum
+
         default: score = 40.0f; break;
     }
 
@@ -174,6 +180,8 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
             gpBonus = 10.0f * b.militaryAggression; break;
         case 16:
             gpBonus = 10.0f * b.cultureFocus; break;
+        case 39: case 40: case 41:
+            gpBonus = 18.0f * b.cultureFocus; break;  // Theatre -> Artist/Writer
         default: break;
     }
     score += gpBonus * b.greatPersonFocus;

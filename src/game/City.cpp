@@ -120,8 +120,8 @@ void City::autoAssignWorkers(const aoc::map::HexGrid& grid,
     std::vector<TileScore> candidates;
 
     std::vector<aoc::hex::AxialCoord> nearby;
-    nearby.reserve(40);
-    aoc::hex::spiral(this->m_location, 3, std::back_inserter(nearby));
+    nearby.reserve(64);
+    aoc::hex::spiral(this->m_location, aoc::sim::CITY_WORK_RADIUS, std::back_inserter(nearby));
 
     for (const aoc::hex::AxialCoord& tile : nearby) {
         if (!grid.isValid(tile)) {

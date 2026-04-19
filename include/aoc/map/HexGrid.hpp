@@ -64,6 +64,29 @@ enum class ImprovementType : uint8_t {
                   ///< resource and at least one adjacent non-mountain tile owned by the
                   ///< builder's player. Does not make the mountain passable for units.
 
+    // -- Yield improvements for science / culture / faith --
+    Observatory,  ///< +2 science. Hills only.
+    Monastery,    ///< +1 faith, +1 culture. Any land.
+    HeritageSite, ///< +2 culture. Any land.
+
+    // -- Modern / industrial improvements (late-era, tech-gated) --
+    TerraceFarm,       ///< +1 food on Hills. Early tech (Masonry).
+    BiogasPlant,       ///< +2 production, consumes adjacent farm food. Industrial era.
+    SolarFarm,         ///< Desert: +1 science, +2 gold. Requires Electricity.
+    WindFarm,          ///< Hills/Plains: +2 production. Requires Electricity.
+    OffshorePlatform,  ///< Coast + oil resource: +2 production, +2 gold. Requires Plastics.
+    RecyclingCenter,   ///< Any land: +2 production, -1 food. Reduces pollution. Late tech.
+
+    // -- Extended modern set --
+    GeothermalVent,      ///< Mountain-adjacent flag tile: +1 faith, +1 prod. Enables GeothermalPlant building.
+    DesalinationPlant,   ///< Coast tile: +3 food, buffs adjacent desert tiles. Requires Plastics.
+    VerticalFarm,        ///< Any owned land: +3 food, -1 prod. Requires Electricity.
+    DataCenter,          ///< Any owned land: +3 science, -1 food. Requires Computers.
+    TradingPost,         ///< Desert/Plains: +2 gold, bonus gold near foreign border. Classical.
+    MangroveNursery,     ///< Marsh or Coast adjacent to Marsh: +1 food +1 culture. Biology.
+    KelpFarm,            ///< Coast, no resource: +2 food +1 science. Biology.
+    FishFarm,            ///< Coast or ShallowWater, no resource: +2 food +1 gold. Masonry.
+
     Count
 };
 
