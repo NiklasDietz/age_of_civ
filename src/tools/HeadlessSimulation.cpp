@@ -22,6 +22,7 @@
 #include "aoc/core/Random.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/core/SimpleYaml.hpp"
+#include "aoc/core/DecisionLog.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/simulation/turn/TurnProcessor.hpp"
 #include "aoc/simulation/turn/TurnEventLog.hpp"
@@ -225,7 +226,8 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
 
 int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                           const std::string& outputPath,
-                          uint32_t victoryMask) {
+                          uint32_t victoryMask,
+                          const std::string& tracePath) {
     LOG_INFO("=== HEADLESS SIMULATION: %d turns, %d AI players, victoryMask=0x%x ===",
              maxTurns, playerCount, victoryMask);
 
@@ -505,6 +507,22 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     // Mid-turn event log for ML training data
     aoc::sim::TurnEventLog eventLog;
     turnCtx.eventLog = &eventLog;
+
+    // Structured per-decision binary log. Opt-in via --trace-file / trace_file:
+    // yaml key. Carries candidate scores, top alternates, per-turn summaries.
+    aoc::core::DecisionLog decisionLog;
+    if (!tracePath.empty()) {
+        aoc::core::FileHeader hdr{};
+        hdr.numPlayers = static_cast<uint8_t>(playerCount);
+        hdr.numTurns = static_cast<uint32_t>(maxTurns);
+        hdr.seed = rng.next();
+        if (!decisionLog.open(tracePath, hdr)) {
+            LOG_ERROR("Failed to open trace file: %s", tracePath.c_str());
+        } else {
+            turnCtx.decisionLog = &decisionLog;
+            LOG_INFO("Decision trace -> %s", tracePath.c_str());
+        }
+    }
 
     // Event CSV: separate file with sub-turn granularity
     std::string eventPath = outputPath;
@@ -951,6 +969,7 @@ int main(int argc, char* argv[]) {
     int32_t turns = 200;
     int32_t players = 4;
     std::string outputPath = "simulation_log.csv";
+    std::string tracePath;
 
     // Simulations default to Score+LastStanding so tests always terminate on
     // VP.  `--victory-types` (CLI) or `victory_types:` (yaml) overrides.
@@ -967,6 +986,7 @@ int main(int argc, char* argv[]) {
                 turns      = config.getInt("max_turns", 200);
                 players    = config.getInt("player_count", 4);
                 outputPath = config.getString("output_file", "simulation_log.csv");
+                tracePath  = config.getString("trace_file", "");
 
                 std::string gameLengthStr = config.getString("game_length", "");
                 if (!gameLengthStr.empty()) {
@@ -1014,6 +1034,8 @@ int main(int argc, char* argv[]) {
                 players = std::atoi(argv[++i]);
             } else if (arg == "--output" && i + 1 < argc) {
                 outputPath = argv[++i];
+            } else if (arg == "--trace-file" && i + 1 < argc) {
+                tracePath = argv[++i];
             } else if (arg == "--tuned-dir" && i + 1 < argc) {
                 tunedDir = argv[++i];
             } else if (arg == "--victory-types" && i + 1 < argc) {
@@ -1052,7 +1074,7 @@ int main(int argc, char* argv[]) {
         loadTunedOverrides(tunedDir);
     }
 
-    int result = runHeadlessSimulation(turns, players, outputPath, victoryMask);
+    int result = runHeadlessSimulation(turns, players, outputPath, victoryMask, tracePath);
 
     std::fprintf(stderr, "\n\n");
     return result;

@@ -183,6 +183,7 @@ set(AOC_GFX_ONLY_SOURCES
 
 set(AOC_LIB_SOURCES
     # Core
+    src/core/DecisionLog.cpp
     src/core/ErrorCodes.cpp
     src/core/Selectable.cpp
 
@@ -616,6 +617,13 @@ target_link_libraries(aoc_simulate PRIVATE aoc_lib)
 
 # Provide a main() for the headless tool
 target_compile_definitions(aoc_simulate PRIVATE AOC_HEADLESS_MAIN)
+
+# --------------------------------------------------------------------------
+# Decision-log dump tool (binary AOCL trace -> CSV)
+# --------------------------------------------------------------------------
+
+add_executable(aoc_trace_dump src/tools/TraceDump.cpp)
+target_link_libraries(aoc_trace_dump PRIVATE aoc_lib)
 
 # --------------------------------------------------------------------------
 # C++ Genetic Algorithm for Utility AI optimization

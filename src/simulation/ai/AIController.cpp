@@ -14,6 +14,7 @@
 #include "aoc/simulation/ai/AIController.hpp"
 #include "aoc/simulation/ai/AIAdvisors.hpp"
 #include "aoc/core/Log.hpp"
+#include "aoc/core/DecisionLog.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
@@ -47,7 +48,9 @@
 #include "aoc/simulation/map/TerrainModification.hpp"
 #include "aoc/map/FogOfWar.hpp"
 
+#include <algorithm>
 #include <limits>
+#include <span>
 #include <unordered_set>
 
 namespace aoc::sim::ai {
@@ -1221,6 +1224,48 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                  chosen.name.c_str(),
                  city.name().c_str(),
                  static_cast<double>(candidates[chosenIdx].score));
+
+        // Binary decision log: top-3 alternates (excluding chosen) + chosen.
+        if (aoc::core::DecisionLog* log = aoc::core::currentDecisionLog();
+            log != nullptr && log->active()) {
+            auto mapKind = [](ProductionItemType t) {
+                switch (t) {
+                    case ProductionItemType::Unit:     return aoc::core::ProductionItemKind::Unit;
+                    case ProductionItemType::Building: return aoc::core::ProductionItemKind::Building;
+                    case ProductionItemType::District: return aoc::core::ProductionItemKind::District;
+                    case ProductionItemType::Wonder:   return aoc::core::ProductionItemKind::Wonder;
+                }
+                return aoc::core::ProductionItemKind::Unknown;
+            };
+
+            std::vector<std::size_t> sorted(candidates.size());
+            for (std::size_t i = 0; i < candidates.size(); ++i) { sorted[i] = i; }
+            std::sort(sorted.begin(), sorted.end(),
+                      [&](std::size_t a, std::size_t b) {
+                          return candidates[a].score > candidates[b].score;
+                      });
+
+            std::vector<aoc::core::ProductionAlt> alts;
+            alts.reserve(3);
+            for (std::size_t i = 0; i < sorted.size() && alts.size() < 3; ++i) {
+                if (sorted[i] == chosenIdx) { continue; }
+                const ProductionCandidate& c = candidates[sorted[i]];
+                aoc::core::ProductionAlt alt{};
+                alt.itemId = c.item.itemId;
+                alt.score  = c.score;
+                alt.kind   = static_cast<uint8_t>(mapKind(c.item.type));
+                alts.push_back(alt);
+            }
+
+            log->logProduction(
+                static_cast<uint16_t>(gameState.currentTurn()),
+                static_cast<uint8_t>(this->m_player),
+                static_cast<uint16_t>(cityIndex),
+                mapKind(candidates[chosenIdx].item.type),
+                static_cast<uint32_t>(candidates[chosenIdx].item.itemId),
+                candidates[chosenIdx].score,
+                std::span<const aoc::core::ProductionAlt>(alts.data(), alts.size()));
+        }
 
         queue.queue.push_back(std::move(chosen));
         ++cityIndex;

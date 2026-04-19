@@ -12,6 +12,7 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/ai/AIResearchPlanner.hpp"
 #include "aoc/core/Log.hpp"
+#include "aoc/core/DecisionLog.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
@@ -20,8 +21,12 @@
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 
+#include <algorithm>
 #include <limits>
+#include <span>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace aoc::sim::ai {
 
@@ -70,6 +75,11 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
             const bool hardAI = (this->m_difficulty == aoc::ui::AIDifficulty::Hard);
             const CivId myCiv = myPlayer->civId();
             const LeaderBehavior& beh = leaderPersonality(myCiv).behavior;
+
+            aoc::core::DecisionLog* log = aoc::core::currentDecisionLog();
+            const bool logActive = log != nullptr && log->active();
+            std::vector<std::pair<TechId, int32_t>> scored;
+            if (logActive) { scored.reserve(available.size()); }
 
             for (const TechId& tid : available) {
                 const TechDef& def = techDef(tid);
@@ -151,6 +161,7 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                     bestScore = score;
                     best = tid;
                 }
+                if (logActive) { scored.emplace_back(tid, score); }
             }
 
             tech.currentResearch = best;
@@ -158,6 +169,26 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                      static_cast<unsigned>(this->m_player),
                      static_cast<int>(techDef(best).name.size()),
                      techDef(best).name.data());
+
+            if (logActive) {
+                std::sort(scored.begin(), scored.end(),
+                          [](const auto& a, const auto& b) { return a.second > b.second; });
+                std::vector<aoc::core::ResearchAlt> alts;
+                alts.reserve(3);
+                for (const auto& p : scored) {
+                    if (p.first.value == best.value) { continue; }
+                    aoc::core::ResearchAlt a{};
+                    a.techId = p.first.value;
+                    a.score  = static_cast<float>(p.second);
+                    alts.push_back(a);
+                    if (alts.size() >= 3) { break; }
+                }
+                log->logResearch(
+                    static_cast<uint16_t>(gameState.currentTurn()),
+                    static_cast<uint8_t>(this->m_player),
+                    best.value, static_cast<float>(bestScore),
+                    std::span<const aoc::core::ResearchAlt>(alts.data(), alts.size()));
+            }
         }
     }
 

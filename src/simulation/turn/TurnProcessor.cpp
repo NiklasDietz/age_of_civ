@@ -131,6 +131,7 @@
 
 // Logging
 #include "aoc/core/Log.hpp"
+#include "aoc/core/DecisionLog.hpp"
 
 #include <algorithm>
 #include <string>
@@ -779,6 +780,10 @@ void processGlobalSystems(TurnContext& turnContext) {
 // ============================================================================
 
 void processTurn(TurnContext& turnContext) {
+    // Install decision logger for this thread so AI call sites can reach it
+    // via currentDecisionLog() without threading a pointer through every API.
+    aoc::core::ScopedDecisionLog scopedLog(turnContext.decisionLog);
+
     TurnEventLog* eventLog = turnContext.eventLog;
 
     // Snapshot pre-turn state for event detection
@@ -882,6 +887,46 @@ void processTurn(TurnContext& turnContext) {
                     }
                 }
             }
+        }
+    }
+
+    // Per-turn per-player aggregate snapshot for the decision log. Emitted
+    // once at end-of-turn so readers can join production/research decisions
+    // to the state they produced.
+    if (turnContext.decisionLog != nullptr && turnContext.decisionLog->active()) {
+        for (std::size_t i = 0; i < turnContext.allPlayers.size(); ++i) {
+            const PlayerId pid = turnContext.allPlayers[i];
+            const aoc::game::Player* p = turnContext.gameState->player(pid);
+            if (p == nullptr) { continue; }
+
+            aoc::core::TurnSummary s{};
+            s.era = static_cast<uint8_t>(effectiveEraFromTech(*p).value);
+            s.cityCount = static_cast<uint16_t>(p->cityCount());
+            s.unitCount = static_cast<uint16_t>(p->units().size());
+            s.treasury = static_cast<int64_t>(p->treasury());
+            s.science = computePlayerScience(*p, *turnContext.grid);
+            s.culture = computePlayerCulture(*p, *turnContext.grid);
+            s.faith = p->faith().faith;
+            s.techsResearched = static_cast<uint16_t>(std::count(
+                p->tech().completedTechs.begin(), p->tech().completedTechs.end(), true));
+            s.grievanceCount = static_cast<uint16_t>(p->grievances().grievances.size());
+
+            uint8_t wars = 0;
+            if (turnContext.diplomacy != nullptr) {
+                for (std::size_t j = 0; j < turnContext.allPlayers.size(); ++j) {
+                    if (i == j) { continue; }
+                    if (turnContext.diplomacy->relation(pid, turnContext.allPlayers[j]).isAtWar) {
+                        ++wars;
+                    }
+                }
+            }
+            s.warCount = wars;
+            s.victoryTypeLead = 0; // Reserved: front-running victory type id.
+
+            turnContext.decisionLog->logTurnSummary(
+                static_cast<uint16_t>(turnContext.currentTurn),
+                static_cast<uint8_t>(pid),
+                s);
         }
     }
 

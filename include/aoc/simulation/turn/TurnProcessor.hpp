@@ -54,6 +54,7 @@
 namespace aoc::game { class GameState; }
 namespace aoc::game { class City; }
 namespace aoc::map { class HexGrid; class FogOfWar; }
+namespace aoc::core { class DecisionLog; }
 
 namespace aoc::sim {
 
@@ -99,6 +100,13 @@ struct TurnContext {
 
     /// Mid-turn event log for ML training. Null if not recording.
     TurnEventLog* eventLog = nullptr;
+
+    /// Per-decision structured binary log. Non-null = recording. Carries the
+    /// why behind each AI choice (candidate scores, top alternatives, plus a
+    /// per-turn per-player TurnSummary emitted at end-of-turn). Kept off by
+    /// default for GA runs; wired on for diagnostic single-sim invocations
+    /// via aoc_simulate --trace-file PATH.
+    aoc::core::DecisionLog* decisionLog = nullptr;
 };
 
 /**
