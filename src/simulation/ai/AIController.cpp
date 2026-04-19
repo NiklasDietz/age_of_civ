@@ -966,7 +966,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             // over settlers (~2.14) and military (~1-2) once a city has room.
             // Without this the AI never builds districts in most seeds, which
             // kills Great People spawns and long-term yield growth.
-            const std::array<DistrictOption, 5> districtOptions = {{
+            const std::array<DistrictOption, 6> districtOptions = {{
                 { DistrictType::Industrial,
                   60.0f,
                   1.4f * personality.behavior.prodBuildings * personality.behavior.economicFocus },
@@ -985,6 +985,13 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                   isCityCoastal
                       ? 1.1f * personality.behavior.economicFocus
                       : 0.0f },
+                // HolySite gates all faith buildings, religion founding, and
+                // Great Prophet spawns. Weight by religiousZeal; cultureFocus
+                // folded in because faith also feeds cultural-policy paths.
+                { DistrictType::HolySite,
+                  55.0f,
+                  1.2f * personality.behavior.religiousZeal
+                       * personality.behavior.cultureFocus },
             }};
 
             for (const DistrictOption& opt : districtOptions) {
