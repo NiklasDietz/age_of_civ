@@ -224,10 +224,34 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
 
 } // anonymous namespace
 
+namespace {
+[[nodiscard]] aoc::map::MapType parseMapTypeCli(std::string_view s) {
+    std::string lower(s);
+    for (char& c : lower) { c = static_cast<char>(std::tolower(c)); }
+    if (lower == "continents")  { return aoc::map::MapType::Continents; }
+    if (lower == "pangaea")     { return aoc::map::MapType::Pangaea; }
+    if (lower == "archipelago") { return aoc::map::MapType::Archipelago; }
+    if (lower == "fractal")     { return aoc::map::MapType::Fractal; }
+    if (lower == "realistic")   { return aoc::map::MapType::Realistic; }
+    return aoc::map::MapType::Realistic;
+}
+[[nodiscard]] const char* mapTypeLabel(aoc::map::MapType m) {
+    switch (m) {
+        case aoc::map::MapType::Continents:  return "Continents";
+        case aoc::map::MapType::Pangaea:     return "Pangaea";
+        case aoc::map::MapType::Archipelago: return "Archipelago";
+        case aoc::map::MapType::Fractal:     return "Fractal";
+        case aoc::map::MapType::Realistic:   return "Realistic";
+    }
+    return "?";
+}
+} // anonymous namespace
+
 int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                           const std::string& outputPath,
                           uint32_t victoryMask,
-                          const std::string& tracePath) {
+                          const std::string& tracePath,
+                          aoc::map::MapType mapType) {
     LOG_INFO("=== HEADLESS SIMULATION: %d turns, %d AI players, victoryMask=0x%x ===",
              maxTurns, playerCount, victoryMask);
 
@@ -259,7 +283,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     mapConfig.width = 80;
     mapConfig.height = 52;
     mapConfig.seed = rng.next();
-    mapConfig.mapType = aoc::map::MapType::Realistic;
+    mapConfig.mapType = mapType;
     aoc::map::MapGenerator generator;
     generator.generate(mapConfig, grid);
 
@@ -970,6 +994,7 @@ int main(int argc, char* argv[]) {
     int32_t players = 4;
     std::string outputPath = "simulation_log.csv";
     std::string tracePath;
+    aoc::map::MapType mapType = aoc::map::MapType::Realistic;
 
     // Simulations default to Score+LastStanding so tests always terminate on
     // VP.  `--victory-types` (CLI) or `victory_types:` (yaml) overrides.
@@ -987,6 +1012,8 @@ int main(int argc, char* argv[]) {
                 players    = config.getInt("player_count", 4);
                 outputPath = config.getString("output_file", "simulation_log.csv");
                 tracePath  = config.getString("trace_file", "");
+                const std::string mapTypeYaml = config.getString("map_type", "");
+                if (!mapTypeYaml.empty()) { mapType = parseMapTypeCli(mapTypeYaml); }
 
                 std::string gameLengthStr = config.getString("game_length", "");
                 if (!gameLengthStr.empty()) {
@@ -1036,6 +1063,8 @@ int main(int argc, char* argv[]) {
                 outputPath = argv[++i];
             } else if (arg == "--trace-file" && i + 1 < argc) {
                 tracePath = argv[++i];
+            } else if (arg == "--map-type" && i + 1 < argc) {
+                mapType = parseMapTypeCli(argv[++i]);
             } else if (arg == "--tuned-dir" && i + 1 < argc) {
                 tunedDir = argv[++i];
             } else if (arg == "--victory-types" && i + 1 < argc) {
@@ -1074,7 +1103,8 @@ int main(int argc, char* argv[]) {
         loadTunedOverrides(tunedDir);
     }
 
-    int result = runHeadlessSimulation(turns, players, outputPath, victoryMask, tracePath);
+    std::fprintf(stderr, "  Map:     %s\n", mapTypeLabel(mapType));
+    int result = runHeadlessSimulation(turns, players, outputPath, victoryMask, tracePath, mapType);
 
     std::fprintf(stderr, "\n\n");
     return result;
