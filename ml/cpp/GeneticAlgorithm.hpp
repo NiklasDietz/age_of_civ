@@ -15,6 +15,7 @@
 #include <atomic>
 #include <cstdint>
 #include <random>
+#include <string_view>
 #include <vector>
 
 namespace aoc::ga {
@@ -35,13 +36,15 @@ struct ParamBounds {
           0.3f, 0.3f, 0.3f, 0.3f, 0.3f,
           0.3f, 0.3f, 0.3f, 0.3f, 0.0f, 0.0f, 0.0f,
           0.5f, 0.1f, 0.3f,
-          0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.0f}},
+          0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.3f, 0.0f,
+          0.5f, 0.0f, 0.5f, 0.5f}},
         // max
         {{2.5f, 2.5f, 2.5f, 2.5f, 2.5f, 2.0f, 2.0f, 1.0f, 1.0f, 1.0f,
           2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
           2.5f, 2.5f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
           5.0f, 1.0f, 2.0f,
-          2.5f, 2.5f, 2.5f, 2.5f, 2.5f, 2.5f, 2.0f}}
+          2.5f, 2.5f, 2.5f, 2.5f, 2.5f, 2.5f, 2.0f,
+          3.0f, 2.5f, 2.5f, 3.0f}}
     };
 }
 
@@ -64,19 +67,46 @@ struct Individual {
     }
 };
 
+/// How opponents (non-evaluated players) are chosen each game.
+enum class OpponentMode : uint8_t {
+    /// Opponents use hand-crafted civ-type personalities (no override).
+    /// Legacy behavior. Deterministic per seed.
+    Fixed    = 0,
+    /// Opponents are random distinct individuals drawn from the current
+    /// population. True co-evolution: each generation's winners must beat
+    /// the generation's other genomes.
+    CoEvolve = 1,
+    /// Opponents sampled from the Hall of Fame (top-K best-ever so far).
+    /// Forces the population to beat historically strong genomes. HoF is
+    /// seeded from the hand-crafted LEADER_PERSONALITIES at startup so this
+    /// mode is usable from generation 0.
+    Champion = 2,
+    /// Per-slot random mix of Fixed/CoEvolve/Champion. Exposes each
+    /// individual to heterogeneous opponents in a single game.
+    Mixed    = 3,
+};
+
+/// Parse opponent-mode name (case-insensitive). Returns false on unknown.
+[[nodiscard]] bool parseOpponentMode(std::string_view s, OpponentMode& out);
+
+/// Human-readable name for logging.
+[[nodiscard]] const char* opponentModeName(OpponentMode mode);
+
 /// GA configuration.
 struct GAConfig {
-    int32_t populationSize  = 20;
-    int32_t generations     = 50;
-    int32_t gamesPerEval    = 3;
-    int32_t turnsPerGame    = 200;
-    int32_t playerCount     = 8;
-    int32_t elitism         = 2;
-    int32_t tournamentSize  = 3;
-    float   mutationRate    = 0.2f;
-    float   mutationSigma   = 0.15f;
-    float   resetRate       = 0.1f;   ///< Probability of reset mutation vs Gaussian
-    int32_t threadCount     = 0;      ///< 0 = auto-detect
+    int32_t      populationSize  = 20;
+    int32_t      generations     = 50;
+    int32_t      gamesPerEval    = 3;
+    int32_t      turnsPerGame    = 200;
+    int32_t      playerCount     = 8;
+    int32_t      elitism         = 2;
+    int32_t      tournamentSize  = 3;
+    float        mutationRate    = 0.2f;
+    float        mutationSigma   = 0.15f;
+    float        resetRate       = 0.1f; ///< Probability of reset mutation vs Gaussian
+    int32_t      threadCount     = 0;    ///< 0 = auto-detect
+    OpponentMode opponentMode    = OpponentMode::Fixed;
+    int32_t      hallOfFameSize  = 8;    ///< Top-K best-ever preserved for Champion mode
 
     /// Optional per-game turn counts. When non-empty, game k uses
     /// turnsList[k % turnsList.size()] instead of turnsPerGame. Enables

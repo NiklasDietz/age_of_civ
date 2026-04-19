@@ -11,6 +11,7 @@
 
 #include "GeneticAlgorithm.hpp"
 #include "FitnessEvaluator.hpp"
+#include "ThreadPool.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -26,6 +27,7 @@
 #include <numeric>
 #include <random>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -51,6 +53,8 @@ struct CLIArgs {
     bool    seedProvided = false;
     std::vector<int32_t> turnsList;
     std::vector<int32_t> playersList;
+    aoc::ga::OpponentMode opponentMode = aoc::ga::OpponentMode::Fixed;
+    int32_t hallOfFameSize = 8;
 };
 
 /// Parse a single integer argument. Returns false on failure.
@@ -120,6 +124,17 @@ struct CLIArgs {
                 "                        (e.g. 4,6,8). Overrides --players.\n"
                 "  --workers N           Thread count (0 = auto-detect, default: 0)\n"
                 "  --seed N              RNG seed (default: random)\n"
+                "  --opponent-mode MODE  Opponent selection for non-evaluated players:\n"
+                "                          fixed    = hand-crafted civ-type personalities\n"
+                "                                     (default, deterministic per seed)\n"
+                "                          coevolve = random distinct individuals from the\n"
+                "                                     current population (true co-evolution)\n"
+                "                          champion = samples from the Hall of Fame\n"
+                "                                     (top-K best-ever; seeded from hand-\n"
+                "                                     crafted leaders so usable at gen 0)\n"
+                "                          mixed    = per-slot random mix of the above\n"
+                "  --hof-size N          Hall of Fame size for champion/mixed modes\n"
+                "                        (default: 8)\n"
                 "  --quick               Quick test: 5 gens, 10 pop, 2 games, 150 turns\n"
                 "  --track-best-gen      Log the generation at which each new\n"
                 "                        best-ever fitness was reached, and print\n"
@@ -160,6 +175,16 @@ struct CLIArgs {
                 }
                 args.seed = static_cast<uint64_t>(parsed);
                 args.seedProvided = true;
+            } else if (std::strcmp(argv[i], "--opponent-mode") == 0) {
+                const char* val = argv[++i];
+                if (!aoc::ga::parseOpponentMode(val, args.opponentMode)) {
+                    std::fprintf(stderr,
+                        "[Error] Invalid --opponent-mode '%s' "
+                        "(expected: fixed|coevolve|champion|mixed)\n", val);
+                    return false;
+                }
+            } else if (std::strcmp(argv[i], "--hof-size") == 0) {
+                if (!parseIntArg(argv[++i], args.hallOfFameSize, "--hof-size")) { return false; }
             } else {
                 std::fprintf(stderr, "[Error] Unknown argument: '%s'\n", argv[i]);
                 return false;
@@ -190,6 +215,7 @@ void saveSummary(const aoc::ga::DifficultyTiers& tiers, const char* path) {
         "warDeclarationThreshold", "peaceAcceptanceThreshold", "allianceDesire",
         "riskTolerance", "environmentalism", "peripheryTolerance", "greatPersonFocus",
         "espionagePriority", "ideologicalFervor", "speculationAppetite",
+        "milBaseWeight", "milThreatSensitivity", "milEmergencySlope", "milOverstockPenalty",
     };
 
     file << "Evolved Utility AI Weights (C++ GA)\n";
@@ -284,6 +310,13 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "\n");
     }
     std::fprintf(stderr, "  Seed: %llu\n", static_cast<unsigned long long>(masterSeed));
+    std::fprintf(stderr, "  Opponent mode: %s",
+                 aoc::ga::opponentModeName(args.opponentMode));
+    if (args.opponentMode == aoc::ga::OpponentMode::Champion
+        || args.opponentMode == aoc::ga::OpponentMode::Mixed) {
+        std::fprintf(stderr, " (HoF size %d)", args.hallOfFameSize);
+    }
+    std::fprintf(stderr, "\n");
 
     // Build GA config
     aoc::ga::GAConfig config{};
@@ -301,8 +334,19 @@ int main(int argc, char* argv[]) {
     config.resetRate      = 0.1f;
     config.threadCount    = args.workers;
     config.stopFlag       = &g_stopRequested;
+    config.opponentMode   = args.opponentMode;
+    config.hallOfFameSize = args.hallOfFameSize;
 
     aoc::ga::ParamBounds bounds = aoc::ga::defaultBounds();
+
+    // Persistent pool for all parallel training work (reused across generations
+    // and any future parallel tasks: init, sensitivity sweeps, etc).
+    std::size_t poolSize = (args.workers > 0)
+        ? static_cast<std::size_t>(args.workers)
+        : std::thread::hardware_concurrency();
+    if (poolSize == 0) { poolSize = 4; }
+    aoc::ga::ThreadPool pool(poolSize);
+    std::fprintf(stderr, "[Init] ThreadPool: %zu workers\n", pool.size());
 
     // Initialize population
     std::vector<aoc::ga::Individual> population =
@@ -311,6 +355,29 @@ int main(int argc, char* argv[]) {
     int32_t seeded = std::min(12, args.population);
     std::fprintf(stderr, "\n[Init] Created population of %d (%d leader seeds + %d mutations)\n",
                  args.population, seeded, std::max(0, args.population - seeded));
+
+    // Hall of Fame: top-K individuals ever seen by fitness. Seeded at gen 0
+    // from the hand-crafted leader profiles (first 12 entries of the initial
+    // population) so Champion/Mixed modes have real opponents from turn 1.
+    //
+    // fitness is left at the default (0.0f). After gen 0 evaluation, the
+    // merge step replaces these with whichever of the current-pop top-K
+    // outperforms them -- including the seed leaders themselves, now
+    // carrying real fitness.
+    std::vector<aoc::ga::Individual> hallOfFame;
+    if (args.opponentMode == aoc::ga::OpponentMode::Champion
+        || args.opponentMode == aoc::ga::OpponentMode::Mixed) {
+        const std::size_t hofCap =
+            std::min(static_cast<std::size_t>(args.hallOfFameSize), population.size());
+        hallOfFame.reserve(hofCap);
+        for (std::size_t i = 0; i < hofCap; ++i) {
+            hallOfFame.push_back(population[i]);
+            hallOfFame.back().gamesPlayed = 0;
+            hallOfFame.back().fitness     = 0.0f;
+        }
+        std::fprintf(stderr, "[Init] Hall of Fame seeded with %zu hand-crafted leaders\n",
+                     hofCap);
+    }
 
     float bestEverFitness = -1e9f;
     aoc::ga::Individual bestEver{};
@@ -350,13 +417,33 @@ int main(int argc, char* argv[]) {
 
         // Evaluate fitness for individuals that need it
         uint64_t genSeed = masterSeed + static_cast<uint64_t>(gen) * 1000003;
-        aoc::ga::evaluatePopulation(population, config, genSeed);
+        const std::vector<aoc::ga::Individual>* hofPtr =
+            (args.opponentMode == aoc::ga::OpponentMode::Champion
+             || args.opponentMode == aoc::ga::OpponentMode::Mixed)
+            ? &hallOfFame : nullptr;
+        aoc::ga::evaluatePopulation(population, config, genSeed, &pool, hofPtr);
 
         // Sort by fitness (descending)
         std::sort(population.begin(), population.end(),
                   [](const aoc::ga::Individual& a, const aoc::ga::Individual& b) {
                       return a.fitness > b.fitness;
                   });
+
+        // Hall of Fame merge: union current-pop top-K with existing HoF,
+        // keep top-K by fitness. Preserves historical strong genomes so
+        // Champion-mode opponents stay strong even if the population drifts.
+        if (args.opponentMode == aoc::ga::OpponentMode::Champion
+            || args.opponentMode == aoc::ga::OpponentMode::Mixed) {
+            const std::size_t cap = static_cast<std::size_t>(args.hallOfFameSize);
+            for (std::size_t i = 0; i < std::min(cap, population.size()); ++i) {
+                hallOfFame.push_back(population[i]);
+            }
+            std::sort(hallOfFame.begin(), hallOfFame.end(),
+                      [](const aoc::ga::Individual& a, const aoc::ga::Individual& b) {
+                          return a.fitness > b.fitness;
+                      });
+            if (hallOfFame.size() > cap) { hallOfFame.resize(cap); }
+        }
 
         // Compute generation statistics
         float genBest   = population.front().fitness;

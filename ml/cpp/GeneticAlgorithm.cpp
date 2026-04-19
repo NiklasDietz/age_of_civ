@@ -6,63 +6,109 @@
 #include "GeneticAlgorithm.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
+#include <string>
 
 namespace aoc::ga {
+
+bool parseOpponentMode(std::string_view s, OpponentMode& out) {
+    std::string lower;
+    lower.reserve(s.size());
+    for (char c : s) {
+        lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    }
+    if (lower == "fixed")    { out = OpponentMode::Fixed;    return true; }
+    if (lower == "coevolve" || lower == "co-evolve") {
+        out = OpponentMode::CoEvolve; return true;
+    }
+    if (lower == "champion" || lower == "hof") {
+        out = OpponentMode::Champion; return true;
+    }
+    if (lower == "mixed")    { out = OpponentMode::Mixed;    return true; }
+    return false;
+}
+
+const char* opponentModeName(OpponentMode mode) {
+    switch (mode) {
+        case OpponentMode::Fixed:    return "fixed";
+        case OpponentMode::CoEvolve: return "coevolve";
+        case OpponentMode::Champion: return "champion";
+        case OpponentMode::Mixed:    return "mixed";
+    }
+    return "?";
+}
 
 // ============================================================================
 // Existing leader profiles (12 leaders, mirrors Python EXISTING_LEADERS)
 // ============================================================================
 
+// Trailing 4 floats in each row are the military-formula genes (indices 32-35):
+// milBaseWeight, milThreatSensitivity, milEmergencySlope, milOverstockPenalty.
+// Defaults 1.5/1.0/1.5/1.0 reproduce the pre-formula hardcoded behavior; a
+// few archetypes get archetype-appropriate deviations (warmongers more
+// threat-sensitive; pacifists dampened).
 static constexpr std::array<std::array<float, NUM_PARAMS>, 12> EXISTING_LEADERS = {{
     // Rome - Trajan
     {{1.3f, 1.8f, 1.0f, 1.0f, 1.2f, 1.0f, 0.5f, 0.3f, 0.8f, 0.6f,
       1.2f, 1.0f, 1.5f, 0.8f, 0.8f, 1.8f, 1.2f, 1.5f, 1.3f, 1.0f, 0.7f, 0.3f, 1.5f, 0.6f, 1.0f,
-      1.2f, 0.7f, 1.8f, 1.2f, 1.0f, 1.2f, 1.0f}},
+      1.2f, 0.7f, 1.8f, 1.2f, 1.0f, 1.2f, 1.0f,
+      1.6f, 1.0f, 1.5f, 1.0f}},
     // Egypt - Cleopatra
     {{0.7f, 1.0f, 1.0f, 1.5f, 1.8f, 1.3f, 0.8f, 0.0f, 0.9f, 0.4f,
       0.7f, 1.8f, 1.0f, 1.3f, 1.0f, 1.0f, 0.6f, 0.8f, 1.5f, 1.8f, 1.2f, 0.5f, 2.0f, 0.3f, 1.3f,
-      1.0f, 1.0f, 1.2f, 1.3f, 1.2f, 0.8f, 1.5f}},
+      1.0f, 1.0f, 1.2f, 1.3f, 1.2f, 0.8f, 1.5f,
+      1.2f, 0.9f, 1.3f, 1.2f}},
     // China - Qin Shi Huang
     {{0.8f, 1.2f, 1.5f, 1.3f, 1.2f, 0.7f, 0.5f, 0.2f, 1.0f, 0.8f,
       0.8f, 1.0f, 1.5f, 0.6f, 1.3f, 1.2f, 0.8f, 1.0f, 1.5f, 2.0f, 0.5f, 0.3f, 2.5f, 0.4f, 0.7f,
-      0.5f, 0.8f, 0.7f, 1.8f, 1.4f, 1.5f, 0.5f}},
+      0.5f, 0.8f, 0.7f, 1.8f, 1.4f, 1.5f, 0.5f,
+      1.4f, 1.3f, 1.6f, 0.9f}},
     // Germany - Frederick
     {{1.5f, 1.3f, 1.3f, 0.8f, 1.5f, 0.8f, 0.3f, 0.5f, 0.9f, 0.7f,
       1.8f, 1.2f, 1.8f, 0.8f, 0.8f, 1.2f, 1.8f, 1.0f, 1.5f, 0.5f, 0.8f, 0.2f, 1.2f, 0.8f, 0.7f,
-      1.5f, 0.4f, 1.3f, 1.0f, 1.5f, 1.8f, 1.0f}},
+      1.5f, 0.4f, 1.3f, 1.0f, 1.5f, 1.8f, 1.0f,
+      1.9f, 1.3f, 1.7f, 0.8f}},
     // Greece - Pericles
     {{0.6f, 0.8f, 1.6f, 1.8f, 0.9f, 1.5f, 0.7f, 0.0f, 1.0f, 0.3f,
       0.5f, 0.8f, 0.8f, 0.7f, 1.8f, 0.8f, 0.5f, 0.7f, 1.8f, 1.5f, 0.5f, 0.5f, 3.0f, 0.3f, 1.5f,
-      0.7f, 1.4f, 0.9f, 2.2f, 0.9f, 1.0f, 0.7f}},
+      0.7f, 1.4f, 0.9f, 2.2f, 0.9f, 1.0f, 0.7f,
+      1.1f, 0.8f, 1.3f, 1.2f}},
     // England - Victoria
     {{1.2f, 1.5f, 1.2f, 1.2f, 1.7f, 1.2f, 0.5f, 0.3f, 0.7f, 0.5f,
       1.0f, 1.5f, 1.0f, 2.0f, 1.2f, 1.5f, 1.0f, 1.0f, 1.3f, 1.0f, 1.8f, 0.3f, 1.5f, 0.5f, 1.2f,
-      1.0f, 0.9f, 2.2f, 1.4f, 1.3f, 1.2f, 1.8f}},
+      1.0f, 0.9f, 2.2f, 1.4f, 1.3f, 1.2f, 1.8f,
+      1.5f, 1.0f, 1.4f, 1.0f}},
     // Japan - Hojo
     {{1.6f, 0.9f, 1.3f, 1.5f, 1.0f, 0.7f, 1.3f, 0.4f, 1.0f, 0.9f,
       1.5f, 0.8f, 1.2f, 1.0f, 1.0f, 0.9f, 1.6f, 0.8f, 1.3f, 1.3f, 1.0f, 1.5f, 1.3f, 0.7f, 0.7f,
-      1.3f, 1.0f, 0.8f, 1.6f, 1.1f, 1.3f, 0.8f}},
+      1.3f, 1.0f, 0.8f, 1.6f, 1.1f, 1.3f, 0.8f,
+      1.7f, 1.2f, 1.6f, 0.9f}},
     // Persia - Cyrus
     {{1.4f, 1.3f, 1.0f, 1.0f, 1.3f, 1.4f, 0.8f, 0.2f, 0.5f, 0.6f,
       1.3f, 1.5f, 1.0f, 0.8f, 0.8f, 1.3f, 1.4f, 1.0f, 1.2f, 0.8f, 0.8f, 0.5f, 1.0f, 0.4f, 1.5f,
-      1.8f, 0.8f, 1.5f, 1.0f, 2.0f, 1.0f, 1.2f}},
+      1.8f, 0.8f, 1.5f, 1.0f, 2.0f, 1.0f, 1.2f,
+      1.6f, 1.1f, 1.5f, 1.0f}},
     // Aztec - Montezuma
     {{1.7f, 1.2f, 0.7f, 0.8f, 1.0f, 0.6f, 1.5f, 0.3f, 0.7f, 0.9f,
       1.8f, 0.7f, 0.8f, 0.5f, 0.5f, 1.2f, 2.0f, 1.0f, 0.8f, 0.5f, 0.5f, 1.8f, 1.0f, 0.8f, 0.5f,
-      2.2f, 0.5f, 1.0f, 0.8f, 1.2f, 1.6f, 0.6f}},
+      2.2f, 0.5f, 1.0f, 0.8f, 1.2f, 1.6f, 0.6f,
+      2.0f, 1.4f, 1.8f, 0.7f}},
     // India - Gandhi
     {{0.2f, 0.7f, 1.3f, 1.3f, 1.0f, 1.8f, 1.6f, 0.0f, 1.0f, 0.2f,
       0.3f, 1.0f, 0.8f, 0.5f, 1.5f, 0.7f, 0.2f, 0.8f, 1.5f, 1.0f, 0.3f, 2.0f, 5.0f, 0.2f, 1.8f,
-      0.4f, 2.2f, 0.6f, 2.0f, 0.5f, 1.4f, 0.3f}},
+      0.4f, 2.2f, 0.6f, 2.0f, 0.5f, 1.4f, 0.3f,
+      0.8f, 0.5f, 1.1f, 1.8f}},
     // Russia - Peter
     {{1.3f, 1.5f, 1.7f, 0.8f, 1.2f, 1.0f, 0.7f, 0.4f, 0.8f, 0.6f,
       1.2f, 1.0f, 1.5f, 0.8f, 1.8f, 1.5f, 1.2f, 1.0f, 1.5f, 0.8f, 0.8f, 0.5f, 1.5f, 0.5f, 1.0f,
-      1.1f, 0.9f, 2.0f, 1.5f, 1.6f, 1.2f, 1.0f}},
+      1.1f, 0.9f, 2.0f, 1.5f, 1.6f, 1.2f, 1.0f,
+      1.5f, 1.1f, 1.5f, 1.0f}},
     // Brazil - Pedro
     {{0.5f, 1.0f, 1.0f, 1.8f, 1.2f, 1.5f, 0.8f, 0.0f, 1.0f, 0.1f,
       0.4f, 1.0f, 0.8f, 0.7f, 1.3f, 1.0f, 0.4f, 0.8f, 1.5f, 1.8f, 0.5f, 0.8f, 3.0f, 0.2f, 1.5f,
-      0.6f, 1.8f, 1.0f, 1.8f, 0.7f, 0.9f, 1.1f}},
+      0.6f, 1.8f, 1.0f, 1.8f, 0.7f, 0.9f, 1.1f,
+      1.0f, 0.7f, 1.2f, 1.4f}},
 }};
 
 // Parameter names for output (same order as LeaderBehavior fields).
@@ -76,6 +122,7 @@ static constexpr const char* PARAM_NAMES[NUM_PARAMS] = {
     "warDeclarationThreshold", "peaceAcceptanceThreshold", "allianceDesire",
     "riskTolerance", "environmentalism", "peripheryTolerance", "greatPersonFocus",
     "espionagePriority", "ideologicalFervor", "speculationAppetite",
+    "milBaseWeight", "milThreatSensitivity", "milEmergencySlope", "milOverstockPenalty",
 };
 
 void clampGenes(std::array<float, NUM_PARAMS>& genes, const ParamBounds& bounds) {

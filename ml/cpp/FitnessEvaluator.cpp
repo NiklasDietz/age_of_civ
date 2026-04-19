@@ -7,6 +7,7 @@
  */
 
 #include "FitnessEvaluator.hpp"
+#include "ThreadPool.hpp"
 
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
@@ -51,9 +52,10 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
-#include <semaphore>
-#include <mutex>
+#include <future>
 #include <numeric>
+#include <random>
+#include <span>
 #include <thread>
 #include <vector>
 
@@ -61,26 +63,40 @@ namespace aoc::ga {
 
 SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed,
                                 const std::atomic<bool>* stopFlag,
-                                const Individual* individual) {
-    // Install Player 0's evolved personality as a thread-local override on
-    // civId 0 (Player 0's civ assignment: see gsPlayer->setCivId below).
-    // RAII guard clears the override on any return path, including early
-    // abort via stopFlag, so subsequent sims on this thread start clean.
-    struct PersonalityOverrideGuard {
-        aoc::sim::CivId civId{0};
-        bool installed = false;
-        ~PersonalityOverrideGuard() {
-            if (installed) {
-                aoc::sim::setLeaderPersonalityOverride(civId, nullptr);
+                                std::span<const Individual* const> overrides) {
+    // Per-player personality overrides: install one LeaderPersonalityDef on
+    // each player's civId (civId = p % CIV_COUNT). Storage is local to this
+    // call so the setLeaderPersonalityOverride pointer stays valid for the
+    // full sim. Reserve up-front so push_back never reallocates and
+    // invalidates pointers handed to the override table.
+    //
+    // RAII guard clears every installed override on any return path
+    // (including stopFlag abort) so a pooled worker thread starts clean
+    // for its next sim.
+    std::vector<aoc::sim::LeaderPersonalityDef> overrideDefs;
+    overrideDefs.reserve(overrides.size());
+    std::vector<aoc::sim::CivId> installedCivs;
+    installedCivs.reserve(overrides.size());
+
+    struct OverrideScope {
+        std::vector<aoc::sim::CivId>* civs;
+        ~OverrideScope() {
+            if (civs == nullptr) { return; }
+            for (aoc::sim::CivId c : *civs) {
+                aoc::sim::setLeaderPersonalityOverride(c, nullptr);
             }
         }
-    } guard;
-    aoc::sim::LeaderPersonalityDef overrideDef{};
-    if (individual != nullptr) {
-        overrideDef = aoc::sim::LEADER_PERSONALITIES[0];
-        overrideDef.behavior = individual->toBehavior();
-        aoc::sim::setLeaderPersonalityOverride(aoc::sim::CivId{0}, &overrideDef);
-        guard.installed = true;
+    } scope{&installedCivs};
+
+    const std::size_t slotCount =
+        std::min(overrides.size(), static_cast<std::size_t>(playerCount));
+    for (std::size_t i = 0; i < slotCount; ++i) {
+        if (overrides[i] == nullptr) { continue; }
+        aoc::sim::CivId civId = static_cast<aoc::sim::CivId>(i % aoc::sim::CIV_COUNT);
+        overrideDefs.push_back(aoc::sim::LEADER_PERSONALITIES[civId]);
+        overrideDefs.back().behavior = overrides[i]->toBehavior();
+        aoc::sim::setLeaderPersonalityOverride(civId, &overrideDefs.back());
+        installedCivs.push_back(civId);
     }
 
     SimulationResult result{};
@@ -447,136 +463,231 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
     return result;
 }
 
+namespace {
+
+struct GameScore {
+    float score = 0.0f;
+    bool  valid = false;
+};
+
+/// Build the per-player override span for one game task based on
+/// `config.opponentMode`. Slot 0 always points to the individual being
+/// evaluated; slots 1..N-1 are filled according to the mode.
+///
+/// `sampleSeed` seeds a local RNG so opponent selection is reproducible
+/// per (generation, individual, game) triple but still varies across
+/// those dimensions, giving individuals diverse opponent distributions.
+void buildOverrides(const Individual& subject,
+                    const std::vector<Individual>& population,
+                    std::size_t subjectIdx,
+                    const std::vector<Individual>* hallOfFame,
+                    OpponentMode mode,
+                    int32_t playerCount,
+                    uint64_t sampleSeed,
+                    std::vector<const Individual*>& outOverrides) {
+    outOverrides.assign(static_cast<std::size_t>(playerCount), nullptr);
+    outOverrides[0] = &subject;
+    if (playerCount <= 1) { return; }
+
+    std::mt19937_64 rng(sampleSeed);
+
+    auto sampleFromCoEvolve = [&]() -> const Individual* {
+        if (population.size() <= 1) { return nullptr; }
+        std::uniform_int_distribution<std::size_t> dist(0, population.size() - 1);
+        for (int32_t tries = 0; tries < 8; ++tries) {
+            std::size_t pick = dist(rng);
+            if (pick != subjectIdx) { return &population[pick]; }
+        }
+        // Fallback: return any (including subject is fine; self-play is valid).
+        return &population[(subjectIdx + 1) % population.size()];
+    };
+
+    auto sampleFromHoF = [&]() -> const Individual* {
+        if (hallOfFame != nullptr && !hallOfFame->empty()) {
+            std::uniform_int_distribution<std::size_t> dist(0, hallOfFame->size() - 1);
+            return &(*hallOfFame)[dist(rng)];
+        }
+        // No HoF yet: fall back to the current-population best by fitness.
+        if (population.empty()) { return nullptr; }
+        std::size_t best = 0;
+        for (std::size_t i = 1; i < population.size(); ++i) {
+            if (population[i].fitness > population[best].fitness) { best = i; }
+        }
+        return &population[best];
+    };
+
+    switch (mode) {
+        case OpponentMode::Fixed:
+            // All nullptr -> civ-type defaults.
+            break;
+        case OpponentMode::CoEvolve: {
+            // Fill with random distinct individuals from the population.
+            std::vector<std::size_t> idxs;
+            idxs.reserve(population.size());
+            for (std::size_t i = 0; i < population.size(); ++i) {
+                if (i != subjectIdx) { idxs.push_back(i); }
+            }
+            std::shuffle(idxs.begin(), idxs.end(), rng);
+            for (int32_t p = 1; p < playerCount; ++p) {
+                const std::size_t k = static_cast<std::size_t>(p - 1);
+                if (k < idxs.size()) {
+                    outOverrides[static_cast<std::size_t>(p)] = &population[idxs[k]];
+                } else {
+                    // More slots than pop-1: wrap around.
+                    outOverrides[static_cast<std::size_t>(p)] =
+                        &population[idxs[k % std::max<std::size_t>(1, idxs.size())]];
+                }
+            }
+            break;
+        }
+        case OpponentMode::Champion:
+            for (int32_t p = 1; p < playerCount; ++p) {
+                outOverrides[static_cast<std::size_t>(p)] = sampleFromHoF();
+            }
+            break;
+        case OpponentMode::Mixed: {
+            std::uniform_int_distribution<int32_t> modeDist(0, 2);
+            for (int32_t p = 1; p < playerCount; ++p) {
+                const int32_t pick = modeDist(rng);
+                const Individual* opp = nullptr;
+                if (pick == 0) {
+                    opp = nullptr; // Fixed: civ default
+                } else if (pick == 1) {
+                    opp = sampleFromCoEvolve();
+                } else {
+                    opp = sampleFromHoF();
+                }
+                outOverrides[static_cast<std::size_t>(p)] = opp;
+            }
+            break;
+        }
+    }
+}
+
+/// Score the full SimulationResult for Player 0 using the outcome-component
+/// formula. Extracted so rank-based future work can share the math.
+float playerOutcomeScore(const SimulationResult& simResult,
+                         std::size_t playerIdx, int32_t turns) {
+    const int32_t myVP = simResult.eraVP[playerIdx];
+    int32_t bestRivalVP = 0;
+    for (std::size_t i = 0; i < simResult.eraVP.size(); ++i) {
+        if (i == playerIdx) { continue; }
+        if (simResult.eraVP[i] > bestRivalVP) { bestRivalVP = simResult.eraVP[i]; }
+    }
+    const float denomVP = static_cast<float>(std::max(1, std::max(myVP, bestRivalVP)));
+    const float relativeWin = static_cast<float>(myVP - bestRivalVP) / denomVP;
+
+    const float treasuryF = static_cast<float>(simResult.treasury[playerIdx]);
+    const float turnsF    = static_cast<float>(std::max(1, turns));
+    float economicHealth  = treasuryF / (turnsF * 5.0f);
+    economicHealth = std::max(-1.0f, std::min(1.0f, economicHealth));
+
+    const int32_t peak = simResult.peakCityCount[playerIdx];
+    const int32_t held = simResult.cityCount[playerIdx];
+    const float survival = (peak > 0)
+        ? static_cast<float>(held) / static_cast<float>(peak)
+        : 0.0f;
+
+    const float income  = simResult.totalIncome[playerIdx];
+    const float expense = simResult.totalExpense[playerIdx];
+    float balancedFlow;
+    if (income <= 0.0f) {
+        balancedFlow = 0.0f;
+    } else {
+        const float ratio = (income - expense) / income;
+        balancedFlow = std::max(0.0f, std::min(1.0f, 0.5f + 0.5f * ratio));
+    }
+
+    const float rawHappy  = simResult.avgHappiness[playerIdx];
+    const float happiness = std::max(0.0f, std::min(1.0f, (rawHappy + 5.0f) / 10.0f));
+
+    const bool eliminated = (peak > 0 && held == 0);
+    if (eliminated) { return -1.0f; }
+
+    return 1.0f  * relativeWin
+         + 0.25f * economicHealth
+         + 0.25f * survival
+         + 0.20f * balancedFlow
+         + 0.15f * happiness;
+}
+
+/// Single-game fitness contribution. Runs one headless sim with `overrides`
+/// installed (slot 0 = individual being evaluated, slots 1..N-1 = opponents
+/// per OpponentMode) and returns Player 0's outcome-component sum.
+GameScore scoreOneGame(std::span<const Individual* const> overrides,
+                       const GAConfig& config,
+                       int32_t game, uint64_t baseSeed) {
+    GameScore out{};
+    if (config.stopFlag != nullptr
+        && config.stopFlag->load(std::memory_order_relaxed)) {
+        return out;
+    }
+
+    const uint64_t gameSeed = baseSeed + static_cast<uint64_t>(game) * 7919;
+    const int32_t turns = config.turnsList.empty()
+        ? config.turnsPerGame
+        : config.turnsList[static_cast<std::size_t>(game)
+                            % config.turnsList.size()];
+    const int32_t playerCount = config.playersList.empty()
+        ? config.playerCount
+        : config.playersList[static_cast<std::size_t>(game)
+                              % config.playersList.size()];
+
+    SimulationResult simResult = runSimulation(turns, playerCount, gameSeed,
+                                                config.stopFlag, overrides);
+    if (!simResult.valid || simResult.eraVP.empty()) { return out; }
+
+    constexpr std::size_t P0 = 0;
+    if (simResult.eraVP.size() <= P0) { return out; }
+    // Outcome-driven fitness for Player 0 (subject being evaluated).
+    //   relativeWin  : EraVP vs best rival, [-1, 1]. Dominant.
+    //   economicHealth : treasury / (turns * 5), clamped.
+    //   survival     : cities held / peak cities.
+    //   balancedFlow : 0.5 + 0.5 * (income - expense)/income.
+    //   happiness    : avg happiness shifted/clamped to [0, 1].
+    out.score = playerOutcomeScore(simResult, P0, turns);
+    out.valid = true;
+    return out;
+}
+
+} // namespace
+
 float evaluateFitness(const Individual& individual,
                        const GAConfig& config,
                        uint64_t baseSeed) {
-    // Genes are installed onto Player 0 by runSimulation; fitness here
-    // evaluates game *outcomes* only.
+    // Standalone API: always uses Fixed opponents (no co-evolve). Callers
+    // wanting co-evolution must go through evaluatePopulation.
+    std::array<const Individual*, 1> overrides{&individual};
+    std::span<const Individual* const> span(overrides.data(), overrides.size());
+
     float totalScore = 0.0f;
     int32_t validGames = 0;
-
     for (int32_t game = 0; game < config.gamesPerEval; ++game) {
-        // Per-game abort check
         if (config.stopFlag != nullptr
-            && config.stopFlag->load(std::memory_order_relaxed)) {
-            break;
-        }
-
-        uint64_t gameSeed = baseSeed + static_cast<uint64_t>(game) * 7919;
-
-        int32_t turns = config.turnsList.empty()
-            ? config.turnsPerGame
-            : config.turnsList[static_cast<std::size_t>(game)
-                                % config.turnsList.size()];
-        int32_t playerCount = config.playersList.empty()
-            ? config.playerCount
-            : config.playersList[static_cast<std::size_t>(game)
-                                  % config.playersList.size()];
-
-        SimulationResult simResult = runSimulation(turns, playerCount, gameSeed,
-                                                    config.stopFlag, &individual);
-
-        if (!simResult.valid || simResult.eraVP.empty()) {
-            continue;
-        }
-
-        // Outcome-driven fitness for Player 0 (the individual under evaluation).
-        //
-        // Five weighted components, each normalised to roughly [0, 1] before
-        // weighting so they can be compared. Rewards *actually winning* and
-        // *playing sustainably*, not designer-chosen gene values.
-        //
-        // 1. relativeWin  : Player 0's EraVP vs the best rival. Positive when
-        //                   ahead, negative when behind. Dominant signal.
-        // 2. economicHealth: treasury / (turns * 5) clamped. Rewards solvency
-        //                   without over-rewarding hoarding.
-        // 3. survival     : cities held / peak cities reached. Punishes losing
-        //                   cities you once owned (secession, conquest).
-        // 4. balancedFlow : 1 - |deficit| / income, clamped [0, 1]. Rewards
-        //                   AIs whose expenses do not runaway past income.
-        // 5. happiness    : avg city happiness, shifted + clamped to [0, 1].
-        //                   Rewards governance, not just raw score.
-        constexpr std::size_t P0 = 0;
-        if (simResult.eraVP.size() <= P0) { continue; }
-
-        const int32_t myVP = simResult.eraVP[P0];
-        int32_t bestRivalVP = 0;
-        for (std::size_t i = 1; i < simResult.eraVP.size(); ++i) {
-            if (simResult.eraVP[i] > bestRivalVP) { bestRivalVP = simResult.eraVP[i]; }
-        }
-        const float denomVP = static_cast<float>(std::max(1, std::max(myVP, bestRivalVP)));
-        const float relativeWin = static_cast<float>(myVP - bestRivalVP) / denomVP;  // [-1, 1]
-
-        const float treasuryF  = static_cast<float>(simResult.treasury[P0]);
-        const float turnsF     = static_cast<float>(std::max(1, turns));
-        float economicHealth   = treasuryF / (turnsF * 5.0f);
-        economicHealth = std::max(-1.0f, std::min(1.0f, economicHealth));
-
-        const int32_t peak = simResult.peakCityCount[P0];
-        const int32_t held = simResult.cityCount[P0];
-        const float survival = (peak > 0)
-            ? static_cast<float>(held) / static_cast<float>(peak)
-            : 0.0f;
-
-        const float income  = simResult.totalIncome[P0];
-        const float expense = simResult.totalExpense[P0];
-        float balancedFlow;
-        if (income <= 0.0f) {
-            balancedFlow = 0.0f;
-        } else {
-            const float ratio = (income - expense) / income;  // [-large, 1]
-            balancedFlow = std::max(0.0f, std::min(1.0f, 0.5f + 0.5f * ratio));
-        }
-
-        const float rawHappy = simResult.avgHappiness[P0];
-        const float happiness = std::max(0.0f, std::min(1.0f, (rawHappy + 5.0f) / 10.0f));
-
-        // Survival gate: if P0 was eliminated (cities=0, peak>0), zero out other
-        // positive signals so the GA cannot reward a dead civ for treasury
-        // residue etc.
-        const bool eliminated = (peak > 0 && held == 0);
-        if (eliminated) {
-            totalScore += -1.0f;  // strong negative signal
-        } else {
-            totalScore += 1.0f  * relativeWin
-                        + 0.25f * economicHealth
-                        + 0.25f * survival
-                        + 0.20f * balancedFlow
-                        + 0.15f * happiness;
-        }
+            && config.stopFlag->load(std::memory_order_relaxed)) { break; }
+        GameScore s = scoreOneGame(span, config, game, baseSeed);
+        if (!s.valid) { continue; }
+        totalScore += s.score;
         ++validGames;
     }
-
     return (validGames > 0) ? totalScore / static_cast<float>(validGames) : 0.0f;
 }
 
 void evaluatePopulation(std::vector<Individual>& population,
                          const GAConfig& config,
-                         uint64_t baseSeed) {
-    // Collect indices of individuals that need evaluation
+                         uint64_t baseSeed,
+                         ThreadPool* pool,
+                         const std::vector<Individual>* hallOfFame) {
     std::vector<std::size_t> toEvaluate;
     for (std::size_t i = 0; i < population.size(); ++i) {
         if (population[i].gamesPlayed == 0) {
             toEvaluate.push_back(i);
         }
     }
+    if (toEvaluate.empty()) { return; }
 
-    if (toEvaluate.empty()) {
-        return;
-    }
-
-    int32_t threadCount = config.threadCount;
-    if (threadCount <= 0) {
-        threadCount = static_cast<int32_t>(std::thread::hardware_concurrency());
-        if (threadCount <= 0) { threadCount = 4; }
-        // Leave one core free for the OS
-        threadCount = std::max(1, threadCount - 1);
-    }
-
-    // Limit threads to work items
-    threadCount = std::min(threadCount, static_cast<int32_t>(toEvaluate.size()));
-
-    const int32_t totalWork = static_cast<int32_t>(toEvaluate.size());
+    const int32_t totalGames =
+        static_cast<int32_t>(toEvaluate.size()) * config.gamesPerEval;
     std::atomic<int32_t> completed{0};
     std::chrono::steady_clock::time_point evalStart =
         std::chrono::steady_clock::now();
@@ -586,24 +697,24 @@ void evaluatePopulation(std::vector<Individual>& population,
         double elapsed = std::chrono::duration<double>(
             std::chrono::steady_clock::now() - evalStart).count();
         double rate = (elapsed > 0.0) ? static_cast<double>(done) / elapsed : 0.0;
-        double etaSec = (rate > 0.0 && done < totalWork)
-            ? static_cast<double>(totalWork - done) / rate
+        double etaSec = (rate > 0.0 && done < totalGames)
+            ? static_cast<double>(totalGames - done) / rate
             : 0.0;
         constexpr int32_t BAR_W = 24;
-        int32_t filled = (totalWork > 0)
-            ? (done * BAR_W + totalWork / 2) / totalWork
+        int32_t filled = (totalGames > 0)
+            ? (done * BAR_W + totalGames / 2) / totalGames
             : BAR_W;
         char bar[BAR_W + 1];
         for (int32_t i = 0; i < BAR_W; ++i) {
             bar[i] = (i < filled) ? '#' : '.';
         }
         bar[BAR_W] = '\0';
-        double pct = (totalWork > 0)
-            ? 100.0 * static_cast<double>(done) / static_cast<double>(totalWork)
+        double pct = (totalGames > 0)
+            ? 100.0 * static_cast<double>(done) / static_cast<double>(totalGames)
             : 100.0;
         std::fprintf(stderr,
-            "\r  [eval %s] %d/%d (%.1f%%) %.1fs  %.2f ind/s  ETA %.0fs   %s",
-            bar, done, totalWork, pct, elapsed, rate, etaSec,
+            "\r  [eval %s] %d/%d games (%.1f%%) %.1fs  %.2f games/s  ETA %.0fs   %s",
+            bar, done, totalGames, pct, elapsed, rate, etaSec,
             finalLine ? "\n" : "");
         std::fflush(stderr);
     };
@@ -613,33 +724,57 @@ void evaluatePopulation(std::vector<Individual>& population,
                && config.stopFlag->load(std::memory_order_relaxed);
     };
 
-    if (threadCount <= 1) {
-        // Sequential fallback
+    // Per-task scorer: build the opponent override slot set for (idx, g)
+    // and run one game. Inlined as a lambda so both the sequential and
+    // pooled paths share the same logic.
+    auto runTask = [&](std::size_t idx, int32_t g, uint64_t individualSeed) {
+        // sampleSeed differs per (gen, individual, game) so opponent draws
+        // are reproducible AND varied across the eval.
+        const uint64_t sampleSeed = individualSeed
+                                  + static_cast<uint64_t>(g) * 2654435761ULL
+                                  + 0x9E3779B97F4A7C15ULL;
+        std::vector<const Individual*> overrides;
+        buildOverrides(population[idx], population, idx, hallOfFame,
+                       config.opponentMode,
+                       (config.playersList.empty()
+                          ? config.playerCount
+                          : config.playersList[static_cast<std::size_t>(g)
+                                               % config.playersList.size()]),
+                       sampleSeed, overrides);
+        std::span<const Individual* const> span(overrides.data(), overrides.size());
+        return scoreOneGame(span, config, g, individualSeed);
+    };
+
+    // Sequential fallback: no pool provided.
+    if (pool == nullptr) {
         renderProgress(false);
         for (std::size_t idx : toEvaluate) {
             if (stopRequested()) { break; }
             uint64_t individualSeed = baseSeed + idx * 104729;
-            population[idx].fitness = evaluateFitness(
-                population[idx], config, individualSeed);
+            float total = 0.0f;
+            int32_t valid = 0;
+            for (int32_t g = 0; g < config.gamesPerEval; ++g) {
+                if (stopRequested()) { break; }
+                GameScore s = runTask(idx, g, individualSeed);
+                if (s.valid) { total += s.score; ++valid; }
+                completed.fetch_add(1, std::memory_order_release);
+                renderProgress(false);
+            }
+            population[idx].fitness = (valid > 0)
+                ? total / static_cast<float>(valid) : 0.0f;
             population[idx].gamesPlayed = config.gamesPerEval;
-            completed.fetch_add(1, std::memory_order_release);
-            renderProgress(false);
         }
         renderProgress(true);
         return;
     }
 
-    // Thread pool with counting semaphore
-    std::counting_semaphore<> semaphore(threadCount);
-    std::mutex resultMutex;
-    std::vector<std::jthread> threads;
-    threads.reserve(toEvaluate.size());
-
-    std::fprintf(stderr, "  [eval] %d individuals x %d games, %d workers\n",
-                 totalWork, config.gamesPerEval, threadCount);
+    std::fprintf(stderr, "  [eval] %d individuals x %d games = %d tasks, %zu workers"
+                         "  (opponents: %s)\n",
+                 static_cast<int32_t>(toEvaluate.size()),
+                 config.gamesPerEval, totalGames, pool->size(),
+                 opponentModeName(config.opponentMode));
     renderProgress(false);
 
-    // Watcher jthread: print progress every 500ms until stop_token.
     std::jthread watcher([&renderProgress](std::stop_token stop) {
         while (!stop.stop_requested()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -648,40 +783,49 @@ void evaluatePopulation(std::vector<Individual>& population,
         }
     });
 
-    for (std::size_t idx : toEvaluate) {
-        // Stop dispatching new work on SIGINT. In-flight workers exit
-        // within one turn via runSimulation's per-turn check.
-        if (stopRequested()) { break; }
+    // Flatten to game-level tasks: (pop × gamesPerEval) futures submitted
+    // up-front to the pool. Workers pull tasks as they finish, so straggler
+    // variance averages out across the larger task count.
+    //
+    // Opponent sampling happens INSIDE the worker via buildOverrides, so
+    // every task reads the current (immutable during eval) population and
+    // hallOfFame pointers. Both live on the main stack and are not mutated
+    // until evaluatePopulation returns.
+    struct IndivFutures {
+        std::vector<std::future<GameScore>> futures;
+    };
+    std::vector<IndivFutures> perIndividual(toEvaluate.size());
 
-        semaphore.acquire();  // Block if pool is full
-
-        // Re-check after acquire in case stop arrived while blocked.
-        if (stopRequested()) {
-            semaphore.release();
-            break;
+    for (std::size_t k = 0; k < toEvaluate.size(); ++k) {
+        const std::size_t idx = toEvaluate[k];
+        const uint64_t individualSeed = baseSeed + idx * 104729;
+        perIndividual[k].futures.reserve(
+            static_cast<std::size_t>(config.gamesPerEval));
+        for (int32_t g = 0; g < config.gamesPerEval; ++g) {
+            if (stopRequested()) { break; }
+            perIndividual[k].futures.push_back(
+                pool->submit([&runTask, idx, g, individualSeed, &completed] {
+                    GameScore s = runTask(idx, g, individualSeed);
+                    completed.fetch_add(1, std::memory_order_release);
+                    return s;
+                }));
         }
-
-        threads.emplace_back([&population, &config, &semaphore, &resultMutex,
-                               &completed, idx, baseSeed]() {
-            uint64_t individualSeed = baseSeed + idx * 104729;
-            float fitness = evaluateFitness(
-                population[idx], config, individualSeed);
-
-            {
-                std::lock_guard<std::mutex> lock(resultMutex);
-                population[idx].fitness = fitness;
-                population[idx].gamesPlayed = config.gamesPerEval;
-            }
-
-            completed.fetch_add(1, std::memory_order_release);
-            semaphore.release();
-        });
     }
 
-    // Wait for all workers first, then stop the watcher, then print final line.
-    for (std::jthread& t : threads) {
-        if (t.joinable()) { t.join(); }
+    // Reduce per-individual: wait on that individual's game futures, compute mean.
+    for (std::size_t k = 0; k < toEvaluate.size(); ++k) {
+        const std::size_t idx = toEvaluate[k];
+        float total = 0.0f;
+        int32_t valid = 0;
+        for (std::future<GameScore>& f : perIndividual[k].futures) {
+            GameScore s = f.get();
+            if (s.valid) { total += s.score; ++valid; }
+        }
+        population[idx].fitness = (valid > 0)
+            ? total / static_cast<float>(valid) : 0.0f;
+        population[idx].gamesPlayed = config.gamesPerEval;
     }
+
     watcher.request_stop();
     watcher.join();
     renderProgress(true);

@@ -106,8 +106,18 @@ struct LeaderBehavior {
     float ideologicalFervor   = 1.0f;  ///< Ideology grievance + switch eagerness
     float speculationAppetite = 0.5f;  ///< Stock market investment size
 
+    // Military-scoring formula coefficients (indices 32-35). These are the
+    // parametric-policy tuning knobs for scoreMilitary(): the formula shape
+    // is designer-authored, these weights are GA-tuned per leader. Defaults
+    // match the previously-hardcoded constants so legacy 32-gene dumps keep
+    // their prior behavior via zero-pad loader.
+    float milBaseWeight         = 1.5f;  ///< Overall strength of military production urge
+    float milThreatSensitivity  = 1.0f;  ///< How strongly threatLevel boosts score (was fixed 1.0)
+    float milEmergencySlope     = 1.5f;  ///< Steepness of undermanned emergency multiplier
+    float milOverstockPenalty   = 1.0f;  ///< How quickly need falls off past desired count
+
     /// Number of float parameters in LeaderBehavior (for GA serialization).
-    static constexpr int32_t PARAM_COUNT = 32;
+    static constexpr int32_t PARAM_COUNT = 36;
 
     /// Serialize all weights to a flat float array (for GA genome representation).
     void toArray(float* out) const {
@@ -130,6 +140,8 @@ struct LeaderBehavior {
         out[27] = this->peripheryTolerance;  out[28] = this->greatPersonFocus;
         out[29] = this->espionagePriority;   out[30] = this->ideologicalFervor;
         out[31] = this->speculationAppetite;
+        out[32] = this->milBaseWeight;       out[33] = this->milThreatSensitivity;
+        out[34] = this->milEmergencySlope;   out[35] = this->milOverstockPenalty;
     }
 
     /// Deserialize from a flat float array.
@@ -153,6 +165,8 @@ struct LeaderBehavior {
         this->peripheryTolerance  = in[27];  this->greatPersonFocus    = in[28];
         this->espionagePriority   = in[29];  this->ideologicalFervor   = in[30];
         this->speculationAppetite = in[31];
+        this->milBaseWeight        = in[32]; this->milThreatSensitivity = in[33];
+        this->milEmergencySlope    = in[34]; this->milOverstockPenalty  = in[35];
     }
 };
 

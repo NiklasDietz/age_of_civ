@@ -582,47 +582,30 @@ static float scoreMilitary(const LeaderBehavior& behavior,
                             bool    enemyNearby,
                             float   treasury,
                             float   threatLevel) {
-    const int32_t desiredPerCity = 2;
-    const int32_t desiredTotal   = ownedCities * desiredPerCity;
+    // Parametric-policy formula. Shape designer-authored; weights GA-tuned
+    // per leader via milBaseWeight / milThreatSensitivity / milEmergencySlope
+    // / milOverstockPenalty genes (defaults reproduce pre-formula behavior).
+    const float overstock = std::max(0.25f, behavior.milOverstockPenalty);
+    const float desiredPerCityF = std::max(1.0f, 2.0f / overstock);
+    const int32_t desiredTotal = std::max(
+        1, static_cast<int32_t>(static_cast<float>(ownedCities) * desiredPerCityF));
 
-    // military_need: inverse -- want more when below 3 per city
     const aoc::sim::ai::UtilityConsideration militaryNeed{
-        0.0f, static_cast<float>(std::max(1, desiredTotal)),
+        0.0f, static_cast<float>(desiredTotal),
         aoc::sim::ai::UtilityCurve::inverse()
     };
 
-    // threat_exists: doubled score when an enemy is nearby
     const float threatScore = enemyNearby ? 1.0f : 0.5f;
 
-    // can_afford gate removed: unit production is paid in hammers, not gold,
-    // so treasury<10 was zeroing military score even though the city could
-    // build just fine.  Gold only matters for rush-purchasing, handled
-    // elsewhere in considerPurchases.  Without this change, broke AIs never
-    // built any military, and only Modern AT (once treasury recovered) ever
-    // fired -- leaving mid-game armies empty.
-
-    // Undermanned multiplier: fires whenever military per city < 1.
-    // Previously only fired at militaryUnits==0, so after the starter warrior
-    // the boost vanished and settlers (~2.28) outscored military (~0.9) for
-    // the rest of the game.  Now scales continuously from 3.0x at 0 units
-    // down to 1.0x at one-per-city, so growing empires keep producing units.
     const float perCityRatio = static_cast<float>(militaryUnits)
                              / static_cast<float>(std::max(1, ownedCities));
-    const float emergencyMultiplier = std::max(1.0f, 2.2f - 1.5f * perCityRatio);
+    const float emergencyMultiplier = std::max(
+        1.0f, 2.2f - behavior.milEmergencySlope * perCityRatio);
 
-    // threatLevel [0,1] from the military advisor amplifies the score when the
-    // blackboard confirms nearby enemy forces; combines with the local enemyNearby
-    // flag for a layered threat response.
-    const float threatLevelBoost = 1.0f + threatLevel;
+    const float threatLevelBoost = 1.0f + behavior.milThreatSensitivity * threatLevel;
 
-    // Bumped to 3.0 so military wins against the trader spam (~1.8 with
-    // posture boost) and settler's expansion-boosted score (~2.28) when
-    // undermanned.  Prior 2.2 was still too low -- only 4-7 military
-    // produced per 600-turn game across 8 players.
-    constexpr float BASE_WEIGHT = 1.5f;
-
-    (void)treasury;  // no longer a factor — see canAfford comment above.
-    return BASE_WEIGHT
+    (void)treasury;  // production paid in hammers, not gold.
+    return behavior.milBaseWeight
            * behavior.prodMilitary
            * behavior.militaryAggression
            * militaryNeed.score(static_cast<float>(militaryUnits))

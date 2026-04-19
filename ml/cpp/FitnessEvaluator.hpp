@@ -13,9 +13,12 @@
 
 #include <atomic>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 namespace aoc::ga {
+
+class ThreadPool;
 
 /// Result of a single simulation run.
 struct SimulationResult {
@@ -48,14 +51,22 @@ struct SimulationResult {
 /// If stopFlag is non-null and becomes true, the sim exits early and
 /// returns a result with valid=false.
 ///
-/// If `individual` is non-null, its genes are installed as Player 0's AI
-/// personality for the duration of this simulation via a thread-local
-/// override. Other players use the default civ-type personalities. This is
-/// how GA fitness evaluation actually exercises evolved genes.
+/// `overrides` supplies per-player personality injections via a thread-local
+/// override table. overrides[p] != nullptr installs that individual's genes
+/// on Player p's civId for the duration of this simulation. nullptr entries
+/// fall through to the hand-crafted civ-type personality.
+///
+/// An empty span runs with default personalities for all players (useful
+/// for baseline runs). The RAII guard inside clears every installed
+/// override on return, including early abort via stopFlag, so subsequent
+/// sims on this thread start clean.
+///
+/// Assumes playerCount <= CIV_COUNT so distinct civIds are assigned to
+/// each player; colliding civIds would share the same override slot.
 [[nodiscard]] SimulationResult runSimulation(int32_t turns, int32_t playerCount,
                                               uint64_t seed,
                                               const std::atomic<bool>* stopFlag = nullptr,
-                                              const Individual* individual = nullptr);
+                                              std::span<const Individual* const> overrides = {});
 
 /// Evaluate fitness of one individual by running multiple games.
 /// The individual's genes are used as Player 0's AI personality.
@@ -67,10 +78,22 @@ struct SimulationResult {
                                      const GAConfig& config,
                                      uint64_t baseSeed);
 
-/// Evaluate fitness for an entire population using a thread pool.
-/// Updates each individual's fitness and gamesPlayed in-place.
+/// Evaluate fitness for an entire population.
+///
+/// When `pool` is non-null, work is flattened to game-level tasks
+/// (pop × gamesPerEval) and submitted to the persistent pool. This gives
+/// better core utilization than individual-level parallelism because long
+/// 500-turn games can overlap with short 200-turn games across workers.
+///
+/// When `pool` is null, falls back to a serial loop (useful for debugging).
+///
+/// `hallOfFame` (optional) is sampled for opponent slots in Champion/Mixed
+/// modes. May be nullptr or empty; in that case Champion mode falls back
+/// to the current population's best-so-far genome.
 void evaluatePopulation(std::vector<Individual>& population,
                          const GAConfig& config,
-                         uint64_t baseSeed);
+                         uint64_t baseSeed,
+                         ThreadPool* pool,
+                         const std::vector<Individual>* hallOfFame = nullptr);
 
 } // namespace aoc::ga
