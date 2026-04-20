@@ -15,6 +15,29 @@
 namespace aoc::sim {
 
 void PlayerGrievanceComponent::addGrievance(GrievanceType type, PlayerId against) {
+    // Dedup: same (type, against) pair already present = refresh duration on
+    // the existing entry instead of appending. Prevents runaway accumulation
+    // from repeat incidents (same ally dying in successive wars, repeated
+    // border settlements, per-turn ideology accrual).
+    for (Grievance& existing : this->grievances) {
+        if (existing.type != type || existing.against != against) { continue; }
+        switch (type) {
+            case GrievanceType::SettledNearBorders:        existing.turnsRemaining = 30; return;
+            case GrievanceType::BrokePromise:              existing.turnsRemaining = 50; return;
+            case GrievanceType::ConqueredCity:             existing.turnsRemaining = 40; return;
+            case GrievanceType::ViolatedEmbargo:           existing.turnsRemaining = 40; return;
+            case GrievanceType::FailedAllianceObligation:  existing.turnsRemaining = 60; return;
+            case GrievanceType::DMZViolation:              existing.turnsRemaining = 20; return;
+            case GrievanceType::IdeologicalDifference:     existing.turnsRemaining = 8;  return;
+            // Permanent types: keep single entry, do not re-add.
+            case GrievanceType::DeclaredWarOnAlly:
+            case GrievanceType::TradeEmbargo:
+            case GrievanceType::BrokeNonAggression:
+            case GrievanceType::LostCityToSecession:
+                return;
+        }
+    }
+
     Grievance g{};
     g.type    = type;
     g.against = against;

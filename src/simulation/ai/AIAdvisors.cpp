@@ -285,7 +285,10 @@ void updateExpansionAssessment(const aoc::game::GameState& gameState,
         for (const aoc::hex::AxialCoord& candidate : candidates) {
             const float siteScore =
                 scoreCandidate(candidate, grid, gameState, player.id());
-            if (siteScore > 0.0f) {
+            // -9999 sentinel = invalid (water/mountain/foreign owner).  Any
+            // finite score -- even negative -- is a legitimate candidate on a
+            // crowded map; top-N ranking picks the least-bad site.
+            if (siteScore > -9000.0f) {
                 scored.push_back(ScoredSite{candidate, siteScore});
             }
         }
@@ -300,7 +303,10 @@ void updateExpansionAssessment(const aoc::game::GameState& gameState,
         for (const aoc::hex::AxialCoord& candidate : candidates) {
             const float siteScore =
                 scoreCandidate(candidate, grid, gameState, player.id());
-            if (siteScore > 0.0f) {
+            // -9999 sentinel = invalid (water/mountain/foreign owner).  Any
+            // finite score -- even negative -- is a legitimate candidate on a
+            // crowded map; top-N ranking picks the least-bad site.
+            if (siteScore > -9000.0f) {
                 scored.push_back(ScoredSite{candidate, siteScore});
             }
         }

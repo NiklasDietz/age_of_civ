@@ -45,8 +45,11 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     const float devotionLoyaltyCoef =
         religionLoyaltyCoefficient(effectiveEraFromTech(*gsPlayer));
 
-    // Iterate all cities owned by this player
+    // Iterate all cities owned by this player. Cities captured/seceded away
+    // remain in the old owner's vector (capture mechanic never rewires lists),
+    // so filter by current owner to avoid processing stale entries twice.
     for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+        if (city->owner() != player) { continue; }
         CityLoyaltyComponent& loyalty = city->loyalty();
 
         // Reset breakdown for this turn

@@ -831,6 +831,11 @@ void processTurn(TurnContext& turnContext) {
     // via currentDecisionLog() without threading a pointer through every API.
     aoc::core::ScopedDecisionLog scopedLog(turnContext.decisionLog);
 
+    // Keep GameState's turn counter aligned with the processor's — several
+    // systems (world events, AI blackboards) stamp this value and rely on
+    // monotonic progression for cooldowns.
+    turnContext.gameState->setCurrentTurn(static_cast<int32_t>(turnContext.currentTurn));
+
     TurnEventLog* eventLog = turnContext.eventLog;
 
     // Snapshot pre-turn state for event detection

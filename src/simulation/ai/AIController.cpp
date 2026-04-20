@@ -842,7 +842,8 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 treasuryFloat,
                 bbThreatLevel
             );
-            if (militaryScore > 0.0f) {
+            const bool defenseless = (unitCounts.military == 0 && ownedCityCount >= 1);
+            if (militaryScore > 0.0f || defenseless) {
                 ProductionCandidate candidate{};
                 candidate.item.type      = ProductionItemType::Unit;
                 candidate.item.itemId    = bestMilitaryId.value;
@@ -852,6 +853,19 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 candidate.score          = militaryScore
                     * postureMultiplier(currentPosture,
                                         true, false, false, false, false, false);
+                // Emergency override: defenseless empire must rebuild. Pacifist
+                // genes + peaceful posture can drive militaryScore below settler
+                // and building scores, leaving AI civs with 0 units for hundreds
+                // of turns. Hard floor bypasses all multipliers.
+                if (defenseless) {
+                    // Floor scales with city count so larger defenseless empires
+                    // also queue military in more cities (each city picks its own
+                    // candidate, so the floor runs per-city). 50.0 base ensures
+                    // it beats settler peak (~9.5) and building peak (~5.0).
+                    candidate.score = std::max(
+                        candidate.score,
+                        50.0f + static_cast<float>(ownedCityCount) * 2.0f);
+                }
                 candidates.push_back(std::move(candidate));
             }
         }
@@ -1696,8 +1710,13 @@ void AIController::manageGovernment(aoc::game::GameState& gameState) {
     const bool comUnlocked = gov.isGovernmentUnlocked(GovernmentType::Communism);
     const bool fasUnlocked = gov.isGovernmentUnlocked(GovernmentType::Fascism);
     if ((demUnlocked || comUnlocked || fasUnlocked) && bh.ideologicalFervor > 0.8f) {
-        const float fasScore = bh.militaryAggression + bh.ideologicalFervor;
-        const float demScore = bh.economicFocus + bh.ideologicalFervor;
+        // Each ideology has one conditional bonus matched to its character so
+        // the final tally doesn't collapse onto one option. Without these,
+        // evolved populations (most trustworthiness < 0.6) all pick Communism.
+        const float fasScore = bh.militaryAggression + bh.ideologicalFervor
+                             + (bh.nukeWillingness > 0.7f ? 0.5f : 0.0f);
+        const float demScore = bh.economicFocus + bh.ideologicalFervor
+                             + (bh.trustworthiness > 0.7f ? 0.5f : 0.0f);
         const float comScore = bh.expansionism + bh.ideologicalFervor
                              + (bh.trustworthiness < 0.6f ? 0.5f : 0.0f);
         float best = -1.0f;

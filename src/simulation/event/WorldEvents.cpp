@@ -149,25 +149,38 @@ void checkWorldEvents(aoc::game::GameState& gameState, PlayerId player, int32_t 
     if (events->pendingEvent != static_cast<WorldEventId>(255)) { return; }
 
     // Check triggers (deterministic hash-based). Each event can re-fire after
-    // WORLD_EVENT_COOLDOWN_TURNS have passed since its last firing.
+    // WORLD_EVENT_COOLDOWN_TURNS have passed since its last firing. Collect all
+    // eligible events this turn, then pick one fairly via a secondary hash --
+    // otherwise low-`e` events (Plague, GoldRush) would always claim the slot
+    // and later events (Volcanic, Boom, Schism) would starve.
+    constexpr uint32_t TRIGGER_THRESHOLD = 200000000u;  // ~4.6% chance per turn per event
+
+    int32_t eligible[WORLD_EVENT_COUNT];
+    int32_t eligibleCount = 0;
     for (int32_t e = 0; e < WORLD_EVENT_COUNT; ++e) {
         if (turnNumber - events->lastFiredTurn[e] < WORLD_EVENT_COOLDOWN_TURNS) { continue; }
+        if (turnNumber <= 10 + e * 5) { continue; }
 
-        uint32_t hash = static_cast<uint32_t>(turnNumber) * 2654435761u
-                      + static_cast<uint32_t>(e) * 104729u
-                      + static_cast<uint32_t>(player) * 7919u;
-        uint32_t threshold = 200000000u;  // ~4.6% chance per turn per event
-
-        if ((hash % 4294967295u) < threshold && turnNumber > 10 + e * 5) {
-            events->pendingEvent = static_cast<WorldEventId>(e);
-            events->pendingChoice = -1;
-            LOG_INFO("World event triggered for player %u: %.*s",
-                     static_cast<unsigned>(player),
-                     static_cast<int>(EVENT_DEFS[static_cast<std::size_t>(e)].title.size()),
-                     EVENT_DEFS[static_cast<std::size_t>(e)].title.data());
-            return;
+        const uint32_t hash = static_cast<uint32_t>(turnNumber) * 2654435761u
+                            + static_cast<uint32_t>(e) * 104729u
+                            + static_cast<uint32_t>(player) * 7919u;
+        if ((hash % 4294967295u) < TRIGGER_THRESHOLD) {
+            eligible[eligibleCount++] = e;
         }
     }
+
+    if (eligibleCount == 0) { return; }
+
+    const uint32_t pickHash = static_cast<uint32_t>(turnNumber) * 2246822507u
+                            + static_cast<uint32_t>(player) * 3266489917u;
+    const int32_t chosen = eligible[pickHash % static_cast<uint32_t>(eligibleCount)];
+
+    events->pendingEvent = static_cast<WorldEventId>(chosen);
+    events->pendingChoice = -1;
+    LOG_INFO("World event triggered for player %u: %.*s",
+             static_cast<unsigned>(player),
+             static_cast<int>(EVENT_DEFS[static_cast<std::size_t>(chosen)].title.size()),
+             EVENT_DEFS[static_cast<std::size_t>(chosen)].title.data());
 }
 
 ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, int32_t choice) {

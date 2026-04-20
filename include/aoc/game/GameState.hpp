@@ -84,6 +84,7 @@ public:
     /// Current turn number.
     [[nodiscard]] int32_t currentTurn() const { return this->m_currentTurn; }
     void advanceTurn() { ++this->m_currentTurn; }
+    void setCurrentTurn(int32_t turn) { this->m_currentTurn = turn; }
 
     // ========================================================================
     // Global state (singletons)

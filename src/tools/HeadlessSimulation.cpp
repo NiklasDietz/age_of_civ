@@ -124,6 +124,10 @@ struct PlayerSnapshot {
     uint8_t crisisType = 0;
     uint8_t industrialRev = 0;
     uint8_t governmentType = 0;
+    float foodPerTurn = 0.0f;      ///< Empire-wide food surplus this turn
+    int32_t famineCities = 0;      ///< Cities currently below break-even
+    float scienceDiffusion = 0.0f; ///< Cumulative science-spread bonus from our traders
+    float cultureDiffusion = 0.0f; ///< Cumulative culture-spread bonus from our traders
 };
 
 /**
@@ -132,6 +136,7 @@ struct PlayerSnapshot {
  * All data is read from Player/City/Unit objects rather than ECS component pools.
  */
 PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
+                               const aoc::map::HexGrid& grid,
                                aoc::PlayerId playerId) {
     PlayerSnapshot snap{};
     snap.player = playerId;
@@ -198,6 +203,31 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
         snap.corruption = aoc::sim::computeCorruption(gov.government, snap.cities, 0.0f);
     }
 
+    // Food (per-turn). Mirrors processSingleCityGrowth's core calculation but
+    // without the housing / Feudalism bonus -- enough for a coarse famine signal
+    // in training data.
+    {
+        float totalSurplus = 0.0f;
+        int32_t famine = 0;
+        for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
+            if (city->owner() != playerId) { continue; }
+            float cityFood = 0.0f;
+            for (const aoc::hex::AxialCoord& t : city->workedTiles()) {
+                if (!grid.isValid(t)) { continue; }
+                aoc::map::TileYield y = grid.tileYield(grid.toIndex(t));
+                float tf = static_cast<float>(y.food);
+                if (t == city->location() && tf < 2.0f) { tf = 2.0f; }
+                cityFood += tf;
+            }
+            const float surplus = cityFood
+                - static_cast<float>(city->population()) * 2.0f;
+            totalSurplus += surplus;
+            if (surplus < 0.0f) { ++famine; }
+        }
+        snap.foodPerTurn   = totalSurplus;
+        snap.famineCities  = famine;
+    }
+
     // Trade partners: count unique partner players from the GameState trade route list
     {
         std::unordered_set<aoc::PlayerId> partners;
@@ -209,13 +239,20 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
                 partners.insert(route.sourcePlayer);
             }
         }
-        // Also count active trader units this player owns
+        // Also count active trader units this player owns, and aggregate
+        // science/culture diffusion already accrued by our traders.
+        float sciSpread = 0.0f;
+        float culSpread = 0.0f;
         for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
             const aoc::sim::TraderComponent& trader = unit->trader();
             if (trader.destOwner != playerId && trader.destOwner != aoc::INVALID_PLAYER) {
                 partners.insert(trader.destOwner);
             }
+            sciSpread += trader.scienceSpread;
+            culSpread += trader.cultureSpread;
         }
+        snap.scienceDiffusion = sciSpread;
+        snap.cultureDiffusion = culSpread;
         snap.tradePartners = static_cast<int32_t>(partners.size());
     }
 
@@ -272,7 +309,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         << "Corruption,CrisisType,IndustrialRev,GovernmentType,"
         << "IncomeTax,IncomeCommercial,IncomeIndustrial,IncomeTileGold,"
         << "IncomeGoodsEcon,TotalIncome,EffectiveIncome,"
-        << "ExpenseUnits,ExpenseBuildings,TotalExpense,NetFlow,GoodsStockpiled\n";
+        << "ExpenseUnits,ExpenseBuildings,TotalExpense,NetFlow,GoodsStockpiled,"
+        << "FoodPerTurn,FamineCities,ScienceDiffusion,CultureDiffusion\n";
 
     aoc::map::HexGrid grid;
     std::random_device rd;
@@ -789,7 +827,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
         // Write snapshot row for each player
         for (int32_t p = 0; p < playerCount; ++p) {
-            PlayerSnapshot snap = snapshotPlayer(gameState, static_cast<aoc::PlayerId>(p));
+            PlayerSnapshot snap = snapshotPlayer(gameState, grid, static_cast<aoc::PlayerId>(p));
             // Game-level context columns
             const aoc::game::Player* snapPlayer = gameState.player(static_cast<aoc::PlayerId>(p));
             const uint8_t civId = (snapPlayer != nullptr)
@@ -848,6 +886,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             } else {
                 csv << "0,0,0,0,0,0,0,0,0,0,0,0";
             }
+            csv << "," << snap.foodPerTurn << "," << snap.famineCities
+                << "," << snap.scienceDiffusion << "," << snap.cultureDiffusion;
             csv << "\n";
         }
 
@@ -866,7 +906,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         printProgressBar(turn, maxTurns);
 
         if (turn % 25 == 0) {
-            PlayerSnapshot s0 = snapshotPlayer(gameState, 0);
+            PlayerSnapshot s0 = snapshotPlayer(gameState, grid, 0);
             std::fprintf(stderr, "\n  Turn %d: P0 pop=%d cities=%d techs=%d GDP=%lld\n",
                          turn, s0.population, s0.cities, s0.techsResearched,
                          static_cast<long long>(s0.gdp));

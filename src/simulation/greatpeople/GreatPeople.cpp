@@ -170,24 +170,34 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
             continue;
         }
 
-        // Find the next available great person of this type
-        uint8_t defId       = 0;
+        // Find the next available great person of this type.
+        int32_t defId = -1;
         int32_t countForType = 0;
         for (uint8_t d = 0; d < GREAT_PERSON_COUNT; ++d) {
             if (defs[d].type == type) {
                 if (countForType == gpComp.recruited[typeIdx]) {
-                    defId = d;
+                    defId = static_cast<int32_t>(d);
                     break;
                 }
                 ++countForType;
             }
         }
 
+        // Roster exhausted: all named historical figures of this type already
+        // recruited. Stall recruitment by consuming the points without spawning
+        // so points don't accumulate infinitely while threshold stays hit.
+        if (defId < 0) {
+            gpComp.points[typeIdx] -= thresh;
+            continue;
+        }
+
+        const uint8_t defIdU = static_cast<uint8_t>(defId);
+
         // Spawn the great person as a unit owned by the player
         aoc::game::Unit& gpUnit = playerObj->addUnit(UnitTypeId{50}, spawnPos);
         GreatPersonComponent& comp = gpUnit.greatPerson();
         comp.owner       = player;
-        comp.defId       = defId;
+        comp.defId       = defIdU;
         comp.position    = spawnPos;
         comp.isActivated = false;
 
@@ -196,7 +206,7 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
             ev.type = VisibilityEventType::GreatPersonSpawned;
             ev.location = spawnPos;
             ev.actor = player;
-            ev.payload = static_cast<int32_t>(defId);
+            ev.payload = static_cast<int32_t>(defIdU);
             gameState.visibilityBus().emit(ev);
         }
 
@@ -206,8 +216,8 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
 
         LOG_INFO("Player %u recruited Great Person: %.*s",
                  static_cast<unsigned>(player),
-                 static_cast<int>(defs[defId].name.size()),
-                 defs[defId].name.data());
+                 static_cast<int>(defs[defIdU].name.size()),
+                 defs[defIdU].name.data());
     }
 }
 
