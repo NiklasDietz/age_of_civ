@@ -72,11 +72,7 @@
 #include <random>
 #include <utility>
 
-#ifdef __linux__
-#  include <sys/stat.h>
-#  include <sys/wait.h>
-#  include <unistd.h>
-#endif
+#include "aoc/app/ScreenshotEncoder.hpp"
 
 // getNextCityName is defined in TurnProcessor.cpp
 
@@ -627,41 +623,25 @@ void Application::run() {
             if (!shotPath.empty()) {
                 bool ok = false;
                 std::string message;
-#ifdef __linux__
-                // Try to raise our window so the screenshot tool captures
-                // the game. On Wayland compositors (KDE, GNOME) without an
-                // xdg-activation token this is advisory only -- the client
-                // must ensure the game window is already frontmost before
-                // calling TakeScreenshot. The URGENT hint + focus + short
-                // delay covers X11 and cooperative Wayland cases.
-                glfwShowWindow(this->m_window.handle());
-                glfwRequestWindowAttention(this->m_window.handle());
-                glfwFocusWindow(this->m_window.handle());
-                usleep(150 * 1000);
 
-                pid_t pid = fork();
-                if (pid == 0) {
-                    // Child: -a active window, -b background, -n no notify, -o output path.
-                    execlp("spectacle", "spectacle", "-a", "-b", "-n",
-                           "-o", shotPath.c_str(), nullptr);
-                    _exit(127);
-                } else if (pid > 0) {
-                    int status = 0;
-                    waitpid(pid, &status, 0);
-                    struct stat st{};
-                    if (WIFEXITED(status) && WEXITSTATUS(status) == 0
-                        && ::stat(shotPath.c_str(), &st) == 0 && st.st_size > 0) {
+                std::vector<uint8_t> pixels;
+                uint32_t shotWidth = 0;
+                uint32_t shotHeight = 0;
+                VkFormat shotFormat = VK_FORMAT_UNDEFINED;
+                if (this->m_renderPipeline && this->m_renderPipeline->readSwapchainPixels(
+                        pixels, shotWidth, shotHeight, shotFormat)) {
+                    const bool isBgra = (shotFormat == VK_FORMAT_B8G8R8A8_SRGB
+                                        || shotFormat == VK_FORMAT_B8G8R8A8_UNORM);
+                    if (writeScreenshotPng(shotPath, pixels, shotWidth, shotHeight, isBgra)) {
                         ok = true;
-                        message = "screenshot written";
+                        message = "screenshot written via swapchain readback";
                     } else {
-                        message = "spectacle failed or produced no file";
+                        message = "PNG encode failed (check parent directory + disk space)";
                     }
                 } else {
-                    message = "fork failed";
+                    message = "swapchain readback unavailable (no frame presented yet or TRANSFER_SRC not supported)";
                 }
-#else
-                message = "screenshot capture unsupported on this platform";
-#endif
+
                 this->m_dbusService.reportScreenshotResult(ok, std::move(message));
             }
         }

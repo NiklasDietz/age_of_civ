@@ -361,6 +361,7 @@ set(AOC_LIB_SOURCES
     src/app/UnitSelection.cpp
     src/app/HotkeyManager.cpp
     src/app/Application.cpp
+    src/app/ScreenshotEncoder.cpp
 
     # Scripting
     src/scripting/LuaEngine.cpp
