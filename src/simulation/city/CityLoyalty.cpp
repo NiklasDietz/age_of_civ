@@ -6,6 +6,7 @@
  */
 
 #include "aoc/simulation/city/CityLoyalty.hpp"
+#include "aoc/balance/BalanceParams.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Governor.hpp"
@@ -24,8 +25,8 @@
 
 namespace aoc::sim {
 
-/// Loyalty pressure radius (how far cities exert influence).
-constexpr int32_t LOYALTY_PRESSURE_RADIUS = 9;
+// Loyalty pressure radius now lives in BalanceParams::loyaltyPressureRadius so
+// the balance GA can retune it without a recompile.
 
 void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                         PlayerId player) {
@@ -48,6 +49,8 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     // same-turn multi-city loss was possible and bricks the affected civ.
     bool secededThisTurn = false;
 
+    const aoc::balance::BalanceParams& bal = aoc::balance::params();
+
     // Iterate all cities owned by this player. Cities captured/seceded away
     // remain in the old owner's vector (capture mechanic never rewires lists),
     // so filter by current owner to avoid processing stale entries twice.
@@ -55,8 +58,10 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         if (city->owner() != player) { continue; }
         CityLoyaltyComponent& loyalty = city->loyalty();
 
-        // Reset breakdown for this turn
-        loyalty.baseLoyalty = 8.0f;
+        // Reset breakdown for this turn. baseLoyalty is balance-tunable --
+        // at 8.0 the floor dominates and no city ever hit Unrest; default is
+        // now 4.0 but the balance GA can sweep.
+        loyalty.baseLoyalty = bal.baseLoyalty;
         loyalty.ownCityPressure = 0.0f;
         loyalty.foreignCityPressure = 0.0f;
         loyalty.governorBonus = 0.0f;
@@ -74,7 +79,7 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 if (nearCity->location() == city->location()) { continue; }  // Skip self
 
                 int32_t dist = grid.distance(city->location(), nearCity->location());
-                if (dist > LOYALTY_PRESSURE_RADIUS || dist <= 0) { continue; }
+                if (dist > bal.loyaltyPressureRadius || dist <= 0) { continue; }
 
                 float pressure = static_cast<float>(nearCity->population()) * 0.5f
                                / static_cast<float>(dist);

@@ -10,6 +10,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/victory/VictoryCondition.hpp"
 #include "aoc/simulation/victory/SpaceRace.hpp"
+#include "aoc/balance/BalanceParams.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -478,11 +479,10 @@ void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber current
 // Global Integration Project
 // ============================================================================
 
-/// All categories must be above this threshold for 10 consecutive turns.
-constexpr float INTEGRATION_THRESHOLD = 1.5f;
-constexpr int32_t INTEGRATION_TURNS_REQUIRED = 10;
-
+/// Integration project thresholds live in BalanceParams so the balance GA can
+/// sweep them.  Reads are per-turn which is fine -- not a hot path.
 void updateIntegrationProject(aoc::game::GameState& gameState) {
+    const aoc::balance::BalanceParams& bal = aoc::balance::params();
     for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
         VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
         if (tracker.isEliminated || tracker.integrationComplete) {
@@ -492,7 +492,7 @@ void updateIntegrationProject(aoc::game::GameState& gameState) {
         // Check if ALL categories are above threshold
         bool allAbove = true;
         for (int32_t c = 0; c < CSI_CATEGORY_COUNT; ++c) {
-            if (tracker.categoryScores[c] < INTEGRATION_THRESHOLD) {
+            if (tracker.categoryScores[c] < bal.integrationThreshold) {
                 allAbove = false;
                 break;
             }
@@ -500,7 +500,7 @@ void updateIntegrationProject(aoc::game::GameState& gameState) {
 
         if (allAbove) {
             ++tracker.integrationProgress;
-            if (tracker.integrationProgress >= INTEGRATION_TURNS_REQUIRED) {
+            if (tracker.integrationProgress >= bal.integrationTurnsRequired) {
                 tracker.integrationComplete = true;
                 LOG_INFO("Player %u completed the GLOBAL INTEGRATION PROJECT!",
                          static_cast<unsigned>(gsPlayer->id()));
@@ -616,7 +616,12 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                         ++followingCities;
                     }
                 }
-                if (followingCities * 2 <= static_cast<int32_t>(other->cities().size())) {
+                // Dominance fraction is balance-tunable (default 0.4).  Still
+                // requires dominance in EVERY other civ, which preserves the
+                // high bar.
+                const float needed = static_cast<float>(other->cities().size())
+                                   * aoc::balance::params().religionDominanceFrac;
+                if (static_cast<float>(followingCities) < needed) {
                     dominatesAll = false;
                     break;
                 }
@@ -637,9 +642,10 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     // The 2x gap prevents photo-finish flips near the threshold and forces
     // the winner to have meaningfully out-produced everyone on culture.
     if ((enabledTypes & VICTORY_MASK_CULTURE) != 0u) {
-        constexpr float CULTURE_VICTORY_THRESHOLD = 5000.0f;
-        constexpr int32_t CULTURE_VICTORY_MIN_WONDERS = 4;
-        constexpr float CULTURE_VICTORY_LEAD_RATIO = 1.4f;
+        const aoc::balance::BalanceParams& bal = aoc::balance::params();
+        const float CULTURE_VICTORY_THRESHOLD = bal.cultureVictoryThreshold;
+        const int32_t CULTURE_VICTORY_MIN_WONDERS = bal.cultureVictoryMinWonders;
+        const float CULTURE_VICTORY_LEAD_RATIO = bal.cultureVictoryLeadRatio;
 
         PlayerId leader = INVALID_PLAYER;
         float bestCulture = 0.0f;

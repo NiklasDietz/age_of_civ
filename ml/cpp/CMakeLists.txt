@@ -9,6 +9,7 @@ add_executable(aoc_evolve
     main.cpp
     GeneticAlgorithm.cpp
     FitnessEvaluator.cpp
+    BalanceTuner.cpp
 )
 
 target_include_directories(aoc_evolve PRIVATE

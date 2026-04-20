@@ -9,6 +9,7 @@
 #include "aoc/simulation/city/Secession.hpp"
 #include "aoc/simulation/city/CityLoyalty.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
+#include "aoc/balance/BalanceParams.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -23,22 +24,8 @@
 
 namespace aoc::sim {
 
-namespace {
-
-// Mirrors the constant in CityLoyalty.cpp -- distance at which another city
-// influences loyalty pressure (and, here, candidacy to absorb a seceding city).
-constexpr int32_t LOYALTY_PRESSURE_RADIUS = 9;
-
-// Minimum distance from capital for the "sustained unrest" secession path.
-// Local cities stay with the mother civ even under unrest because the capital
-// reinforces them; only peripheral cities drift away.
-constexpr int32_t DISTANT_CITY_THRESHOLD = 5;
-
-// Consecutive turns below the Unrest loyalty threshold that qualify as
-// "sustained unrest" for the distant-city secession path.
-constexpr int32_t SUSTAINED_UNREST_TURNS = 3;
-
-} // namespace
+// Loyalty pressure radius, distant-city threshold, and sustained-unrest turn
+// count all live in BalanceParams so the balance GA can sweep them.
 
 bool checkAndPerformSecession(aoc::game::GameState& gameState,
                               aoc::map::HexGrid& grid,
@@ -55,11 +42,13 @@ bool checkAndPerformSecession(aoc::game::GameState& gameState,
         return false;
     }
 
+    const aoc::balance::BalanceParams& bal = aoc::balance::params();
+
     // Primary trigger: loyalty floor hit zero.
     bool trigger = (loyalty.loyalty <= 0.0f);
 
     // Secondary trigger: sustained unrest in a distant periphery city.
-    if (!trigger && loyalty.unrestTurns >= SUSTAINED_UNREST_TURNS) {
+    if (!trigger && loyalty.unrestTurns >= bal.sustainedUnrestTurns) {
         int32_t distFromCapital = 0;
         for (const std::unique_ptr<aoc::game::City>& other : gsPlayer->cities()) {
             if (other->isOriginalCapital()) {
@@ -67,7 +56,7 @@ bool checkAndPerformSecession(aoc::game::GameState& gameState,
                 break;
             }
         }
-        if (distFromCapital >= DISTANT_CITY_THRESHOLD) {
+        if (distFromCapital >= bal.distantCityThreshold) {
             trigger = true;
             LOG_INFO("SECESSION: %s (player %u) unrest %d turns, %d from capital",
                      city.name().c_str(),
@@ -86,7 +75,7 @@ bool checkAndPerformSecession(aoc::game::GameState& gameState,
         if (otherPlayer->id() == player) { continue; }
         for (const std::unique_ptr<aoc::game::City>& nearCity : otherPlayer->cities()) {
             const int32_t dist = grid.distance(city.location(), nearCity->location());
-            if (dist > LOYALTY_PRESSURE_RADIUS || dist <= 0) { continue; }
+            if (dist > bal.loyaltyPressureRadius || dist <= 0) { continue; }
             const float pressure = static_cast<float>(nearCity->population()) * 0.5f
                                  / static_cast<float>(dist);
             neighborPressure[otherPlayer->id()] += pressure;

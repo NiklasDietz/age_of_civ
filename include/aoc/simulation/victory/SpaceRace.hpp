@@ -53,10 +53,10 @@ struct SpaceProjectDef {
 };
 
 inline constexpr std::array<SpaceProjectDef, SPACE_PROJECT_COUNT> SPACE_PROJECT_DEFS = {{
-    {SpaceProjectId::EarthSatellite,     "Launch Earth Satellite",  TechId{18}, 1500.0f},
-    {SpaceProjectId::MoonLanding,        "Launch Moon Landing",     TechId{20}, 2000.0f},
-    {SpaceProjectId::MarsColony,         "Mars Colony Ship",        TechId{22}, 3000.0f},
-    {SpaceProjectId::ExoplanetExpedition,"Exoplanet Expedition",    TechId{25}, 4000.0f},
+    {SpaceProjectId::EarthSatellite,     "Launch Earth Satellite",  TechId{18}, 1200.0f},
+    {SpaceProjectId::MoonLanding,        "Launch Moon Landing",     TechId{20}, 1600.0f},
+    {SpaceProjectId::MarsColony,         "Mars Colony Ship",        TechId{22}, 2400.0f},
+    {SpaceProjectId::ExoplanetExpedition,"Exoplanet Expedition",    TechId{25}, 3200.0f},
 }};
 
 /// Per-player space race progress.

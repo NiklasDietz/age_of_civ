@@ -12,6 +12,7 @@
 #include "GeneticAlgorithm.hpp"
 #include "FitnessEvaluator.hpp"
 #include "ThreadPool.hpp"
+#include "BalanceTuner.hpp"
 
 #include "aoc/core/Log.hpp"
 #include "aoc/map/MapGenerator.hpp"
@@ -67,6 +68,9 @@ struct CLIArgs {
     /// Default: warn — simulation INFO spam (per-turn maintenance/growth/
     /// supply logs) dominates wall time and adds zero value for GA search.
     aoc::log::Severity logLevel = aoc::log::Severity::Warn;
+    /// Which GA to run.  "ai" = the leader-behavior tuner (default).
+    /// "balance" = the BalanceParams tuner for game-health.
+    std::string tuneMode = "ai";
 };
 
 /// Parse a single integer argument. Returns false on failure.
@@ -219,6 +223,12 @@ struct CLIArgs {
                 "                        a final summary of convergence. Use this\n"
                 "                        on long runs to learn how many generations\n"
                 "                        you actually need.\n"
+                "  --tune-mode MODE      What to optimise:\n"
+                "                          ai       = LeaderBehavior genes (default)\n"
+                "                          balance  = BalanceParams for game-health\n"
+                "                                     (victory-type entropy + length\n"
+                "                                     target + score gini). Uses the\n"
+                "                                     shipping leaders; tunes the game.\n"
                 "  --help, -h            Show this help message\n");
             return false;
         } else if (i + 1 < argc) {
@@ -283,6 +293,14 @@ struct CLIArgs {
                     return false;
                 }
                 args.balanceBonus = static_cast<float>(parsed);
+            } else if (std::strcmp(argv[i], "--tune-mode") == 0) {
+                const char* val = argv[++i];
+                if (std::strcmp(val, "ai") != 0 && std::strcmp(val, "balance") != 0) {
+                    std::fprintf(stderr,
+                        "[Error] Invalid --tune-mode '%s' (expected: ai|balance)\n", val);
+                    return false;
+                }
+                args.tuneMode = val;
             } else if (std::strcmp(argv[i], "--log-level") == 0) {
                 const char* val = argv[++i];
                 if      (std::strcmp(val, "debug") == 0) { args.logLevel = aoc::log::Severity::Debug; }
@@ -482,6 +500,50 @@ int main(int argc, char* argv[]) {
     if (poolSize == 0) { poolSize = 4; }
     aoc::ga::ThreadPool pool(poolSize);
     std::fprintf(stderr, "[Init] ThreadPool: %zu workers\n", pool.size());
+
+    // --tune-mode balance: run the BalanceParams GA and exit.  This tuner
+    // has its own loop because its fitness is a population-wide metric
+    // (victory-type entropy etc.) rather than single-genome fitness.
+    if (args.tuneMode == "balance") {
+        aoc::ga::BalanceGAConfig bcfg{};
+        bcfg.populationSize = args.population;
+        bcfg.generations    = args.generations;
+        bcfg.gamesPerEval   = args.gamesPerEval;
+        bcfg.turnsPerGame   = args.turnsPerGame;
+        bcfg.playerCount    = args.playerCount;
+        bcfg.turnsList      = args.turnsList;
+        bcfg.playersList    = args.playersList;
+        bcfg.mapsList       = args.mapsList;
+        bcfg.threadCount    = args.workers;
+        bcfg.stopFlag       = &g_stopRequested;
+
+        std::fprintf(stderr,
+            "[Mode] BALANCE tuning (game-health).  Subject: game; AI: shipping defaults.\n");
+
+        std::vector<aoc::ga::BalanceIndividual> finalPop =
+            aoc::ga::runBalanceGA(bcfg, masterSeed, &pool);
+        aoc::ga::saveBalanceSummary(finalPop, "evolved_balance.txt", 5);
+
+        if (!finalPop.empty()) {
+            const aoc::balance::BalanceParams tp = finalPop.front().genome.toParams();
+            std::fprintf(stderr,
+                "\n[Best] fit=%.4f  paste into BalanceParams defaults:\n",
+                static_cast<double>(finalPop.front().fitness));
+            std::fprintf(stderr,
+                "  baseLoyalty=%.2f radius=%d unrest=%d distant=%d cultT=%.0f\n"
+                "  cultW=%d cultLead=%.2f integT=%.2f integN=%d relFrac=%.2f space=%.2f\n",
+                static_cast<double>(tp.baseLoyalty), tp.loyaltyPressureRadius,
+                tp.sustainedUnrestTurns, tp.distantCityThreshold,
+                static_cast<double>(tp.cultureVictoryThreshold),
+                tp.cultureVictoryMinWonders,
+                static_cast<double>(tp.cultureVictoryLeadRatio),
+                static_cast<double>(tp.integrationThreshold),
+                tp.integrationTurnsRequired,
+                static_cast<double>(tp.religionDominanceFrac),
+                static_cast<double>(tp.spaceRaceCostMult));
+        }
+        return 0;
+    }
 
     // Initialize population
     std::vector<aoc::ga::Individual> population =

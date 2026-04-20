@@ -12,6 +12,7 @@
 
 #include "aoc/simulation/victory/SpaceRace.hpp"
 
+#include "aoc/balance/BalanceParams.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -60,9 +61,14 @@ void processSpaceRace(aoc::game::GameState& gameState, const aoc::map::HexGrid& 
         const float science = computePlayerScience(player, grid);
         race.progress[idx] += science * SCIENCE_TO_PROGRESS;
 
-        if (race.progress[idx] >= def.productionCost) {
+        // Scale the nominal cost by the balance multiplier so the balance GA
+        // can tune game length without touching SPACE_PROJECT_DEFS.
+        const float effectiveCost = def.productionCost
+                                  * aoc::balance::params().spaceRaceCostMult;
+
+        if (race.progress[idx] >= effectiveCost) {
             race.completed[idx] = true;
-            race.progress[idx] = def.productionCost;
+            race.progress[idx] = effectiveCost;
             LOG_INFO("Player %u [SpaceRace.cpp:processSpaceRace] completed '%.*s' (%d/%d projects)",
                      static_cast<unsigned>(player.id()),
                      static_cast<int>(def.name.size()), def.name.data(),
