@@ -91,7 +91,7 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
 
     aoc::Random rng(config.seed);
 
-    if (config.mapType == MapType::Realistic) {
+    if (config.mapType == MapType::LandWithSeas) {
         generateRealisticTerrain(config, outGrid, rng);
         smoothCoastlines(outGrid);
         assignFeatures(config, outGrid, rng);
@@ -133,34 +133,76 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
 
     std::vector<LandCenter> landCenters;
 
+    // Per-type waterRatio override. waterRatio drives the final ocean cutoff,
+    // so LandOnly needs a tiny override and Islands a high one regardless of
+    // the caller's default.
+    float effectiveWaterRatio = config.waterRatio;
+
     switch (config.mapType) {
-        case MapType::Pangaea: {
-            // Single strong center
-            landCenters.push_back({0.5f, 0.5f, 1.4f});
-            break;
-        }
         case MapType::Continents: {
-            // 2-3 land mass centers spread across the map
-            landCenters.push_back({0.30f, 0.40f, 1.2f});
-            landCenters.push_back({0.70f, 0.55f, 1.2f});
-            landCenters.push_back({0.50f, 0.25f, 0.8f});
+            // Pick 2, 3, or 4 continents randomly. Centers pushed toward corners
+            // so clear ocean separates them. Strength >=1.8 keeps each blob
+            // compact enough that max-falloff doesn't merge them.
+            const int32_t variant = centerRng.nextInt(0, 2);
+            if (variant == 0) {
+                landCenters.push_back({0.22f, 0.50f, 1.9f});
+                landCenters.push_back({0.78f, 0.50f, 1.9f});
+            } else if (variant == 1) {
+                landCenters.push_back({0.22f, 0.30f, 2.0f});
+                landCenters.push_back({0.78f, 0.35f, 2.0f});
+                landCenters.push_back({0.50f, 0.78f, 2.0f});
+            } else {
+                landCenters.push_back({0.22f, 0.25f, 2.1f});
+                landCenters.push_back({0.78f, 0.25f, 2.1f});
+                landCenters.push_back({0.22f, 0.75f, 2.1f});
+                landCenters.push_back({0.78f, 0.75f, 2.1f});
+            }
             break;
         }
-        case MapType::Archipelago: {
-            // Many weak centers for small islands
-            constexpr int32_t ISLAND_COUNT = 8;
+        case MapType::Islands: {
+            // Many small islands. Higher strength = tighter/smaller blobs.
+            // Water ratio pushed up so only the noise peaks stay above sea.
+            effectiveWaterRatio = std::max(config.waterRatio, 0.70f);
+            constexpr int32_t ISLAND_COUNT = 14;
             for (int32_t i = 0; i < ISLAND_COUNT; ++i) {
-                float cx = centerRng.nextFloat(0.1f, 0.9f);
-                float cy = centerRng.nextFloat(0.1f, 0.9f);
-                landCenters.push_back({cx, cy, 0.5f});
+                float cx = centerRng.nextFloat(0.08f, 0.92f);
+                float cy = centerRng.nextFloat(0.08f, 0.92f);
+                landCenters.push_back({cx, cy, centerRng.nextFloat(2.8f, 4.0f)});
             }
+            break;
+        }
+        case MapType::ContinentsPlusIslands: {
+            // 2-3 strong continents + scattered weaker island chains.
+            const int32_t contVariant = centerRng.nextInt(0, 1);
+            if (contVariant == 0) {
+                landCenters.push_back({0.22f, 0.40f, 1.9f});
+                landCenters.push_back({0.78f, 0.60f, 1.9f});
+            } else {
+                landCenters.push_back({0.22f, 0.30f, 2.0f});
+                landCenters.push_back({0.78f, 0.30f, 2.0f});
+                landCenters.push_back({0.50f, 0.80f, 2.0f});
+            }
+            constexpr int32_t ISLAND_COUNT = 7;
+            for (int32_t i = 0; i < ISLAND_COUNT; ++i) {
+                float cx = centerRng.nextFloat(0.10f, 0.90f);
+                float cy = centerRng.nextFloat(0.10f, 0.90f);
+                landCenters.push_back({cx, cy, centerRng.nextFloat(3.0f, 4.5f)});
+            }
+            effectiveWaterRatio = std::clamp(config.waterRatio + 0.05f, 0.3f, 0.55f);
+            break;
+        }
+        case MapType::LandOnly: {
+            // Single broad center covering the whole map. Very low water ratio
+            // leaves only tiny lakes where noise dips deepest.
+            landCenters.push_back({0.5f, 0.5f, 0.9f});
+            effectiveWaterRatio = std::min(config.waterRatio, 0.08f);
             break;
         }
         case MapType::Fractal: {
             // No gradient centers -- pure noise
             break;
         }
-        case MapType::Realistic: {
+        case MapType::LandWithSeas: {
             // Handled by generateRealisticTerrain(); should not reach here.
             break;
         }
@@ -190,7 +232,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 }
             }
 
-            elev = elev * 0.6f + edgeFalloff * 0.4f;
+            // Continents/Pangaea/Archipelago: falloff dominates so noise
+            // doesn't fill the ocean gaps between centers. Fractal stays
+            // noise-only (falloff=0.5 neutral).
+            if (config.mapType == MapType::Fractal) {
+                elev = elev * 0.6f + edgeFalloff * 0.4f;
+            } else {
+                elev = elev * 0.35f + edgeFalloff * 0.65f;
+            }
 
             elevationMap[static_cast<std::size_t>(row * width + col)] = elev;
         }
@@ -200,7 +249,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     std::vector<float> sortedElevations(elevationMap);
     std::sort(sortedElevations.begin(), sortedElevations.end());
     std::size_t waterCutoff = static_cast<std::size_t>(
-        config.waterRatio * static_cast<float>(sortedElevations.size()));
+        effectiveWaterRatio * static_cast<float>(sortedElevations.size()));
     float waterThreshold = sortedElevations[std::min(waterCutoff, sortedElevations.size() - 1)];
 
     // Mountain threshold

@@ -255,10 +255,10 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
         this->m_turnManager.setTurnMode(aoc::sim::TurnMode::Simultaneous);
     }
     this->m_turnManager.beginNewTurn();
-    if (config.mapType != aoc::map::MapType::Realistic) {
+    if (config.mapType != aoc::map::MapType::LandWithSeas) {
         this->placeMapResources();
     } else {
-        LOG_INFO("Skipping random resource placement (Realistic map uses geology-based placement)");
+        LOG_INFO("Skipping random resource placement (LandWithSeas uses geology-based placement)");
     }
     this->m_economy.initialize();
     this->m_fogOfWar.initialize(this->m_hexGrid.tileCount(), MAX_PLAYERS);

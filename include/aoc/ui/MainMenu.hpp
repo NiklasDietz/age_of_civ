@@ -125,11 +125,12 @@ private:
     WidgetId m_btnDifficulty  = INVALID_WIDGET;
 
     // Map selection buttons
-    WidgetId m_btnContinents  = INVALID_WIDGET;
-    WidgetId m_btnPangaea     = INVALID_WIDGET;
-    WidgetId m_btnArchipelago = INVALID_WIDGET;
-    WidgetId m_btnFractal     = INVALID_WIDGET;
-    WidgetId m_btnRealistic   = INVALID_WIDGET;
+    WidgetId m_btnContinents             = INVALID_WIDGET;
+    WidgetId m_btnIslands                = INVALID_WIDGET;
+    WidgetId m_btnContinentsPlusIslands  = INVALID_WIDGET;
+    WidgetId m_btnLandOnly               = INVALID_WIDGET;
+    WidgetId m_btnLandWithSeas           = INVALID_WIDGET;
+    WidgetId m_btnFractal                = INVALID_WIDGET;
     WidgetId m_btnSmall       = INVALID_WIDGET;
     WidgetId m_btnStandard    = INVALID_WIDGET;
     WidgetId m_btnLarge       = INVALID_WIDGET;

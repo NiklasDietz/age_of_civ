@@ -73,7 +73,7 @@ struct SimulationResult {
                                               uint64_t seed,
                                               const std::atomic<bool>* stopFlag = nullptr,
                                               std::span<const Individual* const> overrides = {},
-                                              aoc::map::MapType mapType = aoc::map::MapType::Realistic);
+                                              aoc::map::MapType mapType = aoc::map::MapType::LandWithSeas);
 
 /// Evaluate fitness of one individual by running multiple games.
 /// The individual's genes are used as Player 0's AI personality.

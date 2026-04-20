@@ -265,20 +265,25 @@ namespace {
 [[nodiscard]] aoc::map::MapType parseMapTypeCli(std::string_view s) {
     std::string lower(s);
     for (char& c : lower) { c = static_cast<char>(std::tolower(c)); }
-    if (lower == "continents")  { return aoc::map::MapType::Continents; }
-    if (lower == "pangaea")     { return aoc::map::MapType::Pangaea; }
-    if (lower == "archipelago") { return aoc::map::MapType::Archipelago; }
-    if (lower == "fractal")     { return aoc::map::MapType::Fractal; }
-    if (lower == "realistic")   { return aoc::map::MapType::Realistic; }
-    return aoc::map::MapType::Realistic;
+    if (lower == "continents")              { return aoc::map::MapType::Continents; }
+    if (lower == "islands")                 { return aoc::map::MapType::Islands; }
+    if (lower == "continentsplusislands"
+        || lower == "continents+islands")   { return aoc::map::MapType::ContinentsPlusIslands; }
+    if (lower == "landonly"
+        || lower == "land_only")            { return aoc::map::MapType::LandOnly; }
+    if (lower == "landwithseas"
+        || lower == "land_with_seas")       { return aoc::map::MapType::LandWithSeas; }
+    if (lower == "fractal")                 { return aoc::map::MapType::Fractal; }
+    return aoc::map::MapType::LandWithSeas;
 }
 [[nodiscard]] const char* mapTypeLabel(aoc::map::MapType m) {
     switch (m) {
-        case aoc::map::MapType::Continents:  return "Continents";
-        case aoc::map::MapType::Pangaea:     return "Pangaea";
-        case aoc::map::MapType::Archipelago: return "Archipelago";
-        case aoc::map::MapType::Fractal:     return "Fractal";
-        case aoc::map::MapType::Realistic:   return "Realistic";
+        case aoc::map::MapType::Continents:             return "Continents";
+        case aoc::map::MapType::Islands:                return "Islands";
+        case aoc::map::MapType::ContinentsPlusIslands:  return "Continents+Islands";
+        case aoc::map::MapType::LandOnly:               return "LandOnly";
+        case aoc::map::MapType::LandWithSeas:           return "LandWithSeas";
+        case aoc::map::MapType::Fractal:                return "Fractal";
     }
     return "?";
 }
@@ -1034,7 +1039,7 @@ int main(int argc, char* argv[]) {
     int32_t players = 4;
     std::string outputPath = "simulation_log.csv";
     std::string tracePath;
-    aoc::map::MapType mapType = aoc::map::MapType::Realistic;
+    aoc::map::MapType mapType = aoc::map::MapType::LandWithSeas;
 
     // Simulations default to Score+LastStanding so tests always terminate on
     // VP.  `--victory-types` (CLI) or `victory_types:` (yaml) overrides.

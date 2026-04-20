@@ -18,11 +18,12 @@ namespace aoc::map {
 
 /// Map generation type controlling landmass shape.
 enum class MapType : uint8_t {
-    Continents,   ///< 2-3 separate land masses with distinct centers.
-    Pangaea,      ///< Single central landmass with strong center gradient.
-    Archipelago,  ///< Many small islands with weak gradient and high water.
-    Fractal,      ///< Pure noise, no gradient falloff.
-    Realistic,    ///< Tectonic plate simulation with geology-based resource placement.
+    Continents,             ///< 2-4 separate continents (randomized per seed).
+    Islands,                ///< Many small islands scattered across ocean.
+    ContinentsPlusIslands,  ///< Large continents with island chains between them.
+    LandOnly,               ///< Mostly land with tiny isolated lakes.
+    LandWithSeas,           ///< Large landmass with internal seas (tectonic generator).
+    Fractal,                ///< Pure noise, random landmass shapes.
 };
 
 /// Predefined map sizes.

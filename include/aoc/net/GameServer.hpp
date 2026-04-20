@@ -41,7 +41,7 @@ struct GameConfig {
     int32_t mapWidth = 60;
     int32_t mapHeight = 40;
     uint32_t seed = 42;
-    aoc::map::MapType mapType = aoc::map::MapType::Realistic;
+    aoc::map::MapType mapType = aoc::map::MapType::LandWithSeas;
     int32_t humanPlayerCount = 1;
     int32_t aiPlayerCount = 3;
     int32_t maxTurns = 500;

@@ -352,10 +352,10 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
     }
 
-    // Pangaea
+    // Islands
     {
         ButtonData btn;
-        btn.label        = "Pangaea";
+        btn.label        = "Islands";
         btn.fontSize     = 12.0f;
         btn.normalColor  = BTN_NORMAL;
         btn.hoverColor   = BTN_HOVER;
@@ -363,17 +363,17 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
         btn.onClick = [this, &ui]() {
-            this->m_config.mapType = aoc::map::MapType::Pangaea;
+            this->m_config.mapType = aoc::map::MapType::Islands;
             this->updateMapTypeButtons(ui);
         };
-        this->m_btnPangaea = ui.createButton(
+        this->m_btnIslands = ui.createButton(
             mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
     }
 
-    // Archipelago
+    // Continents + Islands
     {
         ButtonData btn;
-        btn.label        = "Archipelago";
+        btn.label        = "Cont+Isl";
         btn.fontSize     = 12.0f;
         btn.normalColor  = BTN_NORMAL;
         btn.hoverColor   = BTN_HOVER;
@@ -381,10 +381,46 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
         btn.onClick = [this, &ui]() {
-            this->m_config.mapType = aoc::map::MapType::Archipelago;
+            this->m_config.mapType = aoc::map::MapType::ContinentsPlusIslands;
             this->updateMapTypeButtons(ui);
         };
-        this->m_btnArchipelago = ui.createButton(
+        this->m_btnContinentsPlusIslands = ui.createButton(
+            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
+    }
+
+    // Land Only
+    {
+        ButtonData btn;
+        btn.label        = "Land Only";
+        btn.fontSize     = 12.0f;
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this, &ui]() {
+            this->m_config.mapType = aoc::map::MapType::LandOnly;
+            this->updateMapTypeButtons(ui);
+        };
+        this->m_btnLandOnly = ui.createButton(
+            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
+    }
+
+    // Land With Seas
+    {
+        ButtonData btn;
+        btn.label        = "LandWSeas";
+        btn.fontSize     = 12.0f;
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this, &ui]() {
+            this->m_config.mapType = aoc::map::MapType::LandWithSeas;
+            this->updateMapTypeButtons(ui);
+        };
+        this->m_btnLandWithSeas = ui.createButton(
             mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
     }
 
@@ -403,24 +439,6 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             this->updateMapTypeButtons(ui);
         };
         this->m_btnFractal = ui.createButton(
-            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
-    }
-
-    // Realistic
-    {
-        ButtonData btn;
-        btn.label        = "Realistic";
-        btn.fontSize     = 12.0f;
-        btn.normalColor  = BTN_NORMAL;
-        btn.hoverColor   = BTN_HOVER;
-        btn.pressedColor = BTN_PRESSED;
-        btn.labelColor   = WHITE_TEXT;
-        btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_config.mapType = aoc::map::MapType::Realistic;
-            this->updateMapTypeButtons(ui);
-        };
-        this->m_btnRealistic = ui.createButton(
             mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
     }
 
@@ -757,11 +775,12 @@ void GameSetupScreen::destroy(UIManager& ui) {
     ui.removeWidget(this->m_rootPanel);
     this->m_rootPanel        = INVALID_WIDGET;
     this->m_playerCountLabel = INVALID_WIDGET;
-    this->m_btnContinents    = INVALID_WIDGET;
-    this->m_btnPangaea       = INVALID_WIDGET;
-    this->m_btnArchipelago   = INVALID_WIDGET;
-    this->m_btnFractal       = INVALID_WIDGET;
-    this->m_btnRealistic     = INVALID_WIDGET;
+    this->m_btnContinents            = INVALID_WIDGET;
+    this->m_btnIslands               = INVALID_WIDGET;
+    this->m_btnContinentsPlusIslands = INVALID_WIDGET;
+    this->m_btnLandOnly              = INVALID_WIDGET;
+    this->m_btnLandWithSeas          = INVALID_WIDGET;
+    this->m_btnFractal               = INVALID_WIDGET;
     this->m_btnSmall         = INVALID_WIDGET;
     this->m_btnStandard      = INVALID_WIDGET;
     this->m_btnLarge         = INVALID_WIDGET;
@@ -816,14 +835,16 @@ void GameSetupScreen::refresh(UIManager& ui) {
 void GameSetupScreen::updateMapTypeButtons(UIManager& ui) {
     setButtonSelected(ui, this->m_btnContinents,
                       this->m_config.mapType == aoc::map::MapType::Continents);
-    setButtonSelected(ui, this->m_btnPangaea,
-                      this->m_config.mapType == aoc::map::MapType::Pangaea);
-    setButtonSelected(ui, this->m_btnArchipelago,
-                      this->m_config.mapType == aoc::map::MapType::Archipelago);
+    setButtonSelected(ui, this->m_btnIslands,
+                      this->m_config.mapType == aoc::map::MapType::Islands);
+    setButtonSelected(ui, this->m_btnContinentsPlusIslands,
+                      this->m_config.mapType == aoc::map::MapType::ContinentsPlusIslands);
+    setButtonSelected(ui, this->m_btnLandOnly,
+                      this->m_config.mapType == aoc::map::MapType::LandOnly);
+    setButtonSelected(ui, this->m_btnLandWithSeas,
+                      this->m_config.mapType == aoc::map::MapType::LandWithSeas);
     setButtonSelected(ui, this->m_btnFractal,
                       this->m_config.mapType == aoc::map::MapType::Fractal);
-    setButtonSelected(ui, this->m_btnRealistic,
-                      this->m_config.mapType == aoc::map::MapType::Realistic);
 }
 
 void GameSetupScreen::updateMapSizeButtons(UIManager& ui) {
