@@ -539,8 +539,9 @@ void writeVictorySection(WriteBuffer& out, const aoc::game::GameState& gameState
         section.writeF32(v.compositeCSI);
         section.writeI32(v.eraVictoryPoints);
         section.writeI32(v.erasEvaluated);
-        section.writeI32(v.integrationProgress);
-        section.writeU8(v.integrationComplete ? 1 : 0);
+        // Legacy integration-project fields removed; write zeros for back-compat.
+        section.writeI32(0);
+        section.writeU8(0);
         section.writeU8(static_cast<uint8_t>(v.activeCollapse));
         section.writeI32(v.peakGDP);
         section.writeI32(v.turnsGDPBelowHalf);
@@ -1560,8 +1561,8 @@ ErrorCode loadGame(const std::string& filepath,
                     v.compositeCSI = buf.readF32();
                     v.eraVictoryPoints = buf.readI32();
                     v.erasEvaluated = buf.readI32();
-                    v.integrationProgress = buf.readI32();
-                    v.integrationComplete = buf.readU8() != 0;
+                    (void)buf.readI32();   // legacy integrationProgress
+                    (void)buf.readU8();    // legacy integrationComplete
                     v.activeCollapse = static_cast<aoc::sim::CollapseType>(buf.readU8());
                     v.peakGDP = buf.readI32();
                     v.turnsGDPBelowHalf = buf.readI32();

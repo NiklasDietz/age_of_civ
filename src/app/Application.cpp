@@ -47,6 +47,7 @@
 #include "aoc/save/Serializer.hpp"
 #include "aoc/ui/BitmapFont.hpp"
 #include "aoc/ui/SpectatorHUD.hpp"
+#include "aoc/ui/GameNotifications.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <renderer/GraphicsDevice.hpp>
@@ -494,16 +495,8 @@ void Application::spectatorAdvanceTurn() {
             aoc::sim::executeMovement(this->m_gameState, ai.player(), this->m_hexGrid);
         }
 
-        this->m_diplomacy.tickModifiers();
-        aoc::sim::processSpyMissions(this->m_gameState, this->m_hexGrid, this->m_gameRng);
-
-        for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState.players()) {
-            playerPtr->grievances().tickGrievances();
-        }
-
-        aoc::sim::processWorldCongress(this->m_gameState,
-                                        this->m_turnManager.currentTurn(),
-                                        this->m_gameRng);
+        // Diplomacy decay, espionage, grievance tick, world congress all run
+        // inside processTurn (TurnProcessor.cpp). Do NOT call them again here.
 
         // Update fog of war: reveal all if fog is disabled, else update per-player.
         if (!this->m_spectatorFogEnabled) {
@@ -2149,21 +2142,8 @@ void Application::handleEndTurn() {
             aoc::sim::executeMovement(this->m_gameState, ai.player(), this->m_hexGrid);
         }
 
-        // Diplomacy modifier decay
-        this->m_diplomacy.tickModifiers();
-
-        // Process spy missions
-        aoc::sim::processSpyMissions(this->m_gameState, this->m_hexGrid, this->m_gameRng);
-
-        // Grievance tick
-        for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState.players()) {
-            playerPtr->grievances().tickGrievances();
-        }
-
-        // World Congress
-        aoc::sim::processWorldCongress(this->m_gameState,
-                                        this->m_turnManager.currentTurn(),
-                                        this->m_gameRng);
+        // Diplomacy decay, espionage, grievance tick, world congress all run
+        // inside processTurn (TurnProcessor.cpp). Do NOT call them again here.
 
         // Clear event log for new turn
         this->m_eventLog.clear();
@@ -2221,6 +2201,36 @@ void Application::handleEndTurn() {
             this->m_soundQueue.push(aoc::audio::SoundEffect::CivicCompleted);
         }
 
+        // Drain sim-layer notifications (war declarations, alliances, wonder
+        // completions, resource reveals, great people, etc.) and route them
+        // to both the toast system and the persistent event log.
+        {
+            const PlayerId humanId = (humanPost != nullptr)
+                ? humanPost->id() : INVALID_PLAYER;
+            std::vector<aoc::ui::GameNotification> drained =
+                aoc::ui::drainNotifications(humanId);
+            for (const aoc::ui::GameNotification& note : drained) {
+                const std::string formatted = note.title + ": " + note.body;
+                this->m_eventLog.addEvent(formatted);
+                // Colour by category: diplomacy red, economy yellow, military
+                // orange, city cyan, everything else white.
+                float cr = 1.0f, cg = 1.0f, cb = 1.0f;
+                switch (note.category) {
+                    case aoc::ui::NotificationCategory::Diplomacy:
+                        cr = 1.0f; cg = 0.4f; cb = 0.4f; break;
+                    case aoc::ui::NotificationCategory::Economy:
+                        cr = 1.0f; cg = 0.9f; cb = 0.3f; break;
+                    case aoc::ui::NotificationCategory::Military:
+                        cr = 1.0f; cg = 0.6f; cb = 0.2f; break;
+                    case aoc::ui::NotificationCategory::City:
+                        cr = 0.4f; cg = 0.9f; cb = 1.0f; break;
+                    default: break;
+                }
+                const float duration = (note.priority >= 8) ? 6.0f : 4.0f;
+                this->m_notificationManager.push(formatted, duration, cr, cg, cb);
+            }
+        }
+
         // Record replay frame
         this->m_replayRecorder.recordFrame(this->m_gameState,
                                             this->m_turnManager.currentTurn());
@@ -2273,27 +2283,8 @@ void Application::handleEndTurn() {
             this->m_scoreScreen.open(this->m_uiManager);
         }
 
-        // Government/policy unlocks from completed civics
-        for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState.players()) {
-            aoc::sim::PlayerCivicComponent& civic = playerPtr->civics();
-            aoc::sim::PlayerGovernmentComponent& gov = playerPtr->government();
-            const std::vector<aoc::sim::CivicDef>& civics = aoc::sim::allCivics();
-            for (const aoc::sim::CivicDef& cdef : civics) {
-                if (!civic.hasCompleted(cdef.id)) {
-                    continue;
-                }
-                for (uint8_t govId : cdef.unlockedGovernmentIds) {
-                    if (govId < static_cast<uint8_t>(aoc::sim::GovernmentType::Count)) {
-                        gov.unlockGovernment(static_cast<aoc::sim::GovernmentType>(govId));
-                    }
-                }
-                for (uint8_t polId : cdef.unlockedPolicyIds) {
-                    if (polId < aoc::sim::POLICY_CARD_COUNT) {
-                        gov.unlockPolicy(polId);
-                    }
-                }
-            }
-        }
+        // Government/policy unlocks from completed civics happen inside
+        // processCivicResearch (CivicTree.cpp) during processTurn.
 
         this->m_turnManager.beginNewTurn();
 

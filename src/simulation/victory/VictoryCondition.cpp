@@ -9,6 +9,7 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/victory/VictoryCondition.hpp"
+#include "aoc/simulation/victory/Prestige.hpp"
 #include "aoc/simulation/victory/SpaceRace.hpp"
 #include "aoc/balance/BalanceParams.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
@@ -487,51 +488,6 @@ void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber current
 }
 
 // ============================================================================
-// Global Integration Project
-// ============================================================================
-
-/// Integration project thresholds live in BalanceParams so the balance GA can
-/// sweep them.  Reads are per-turn which is fine -- not a hot path.
-///
-/// Originally required ALL 8 categories above the threshold, which proved
-/// virtually unreachable: even runaway leaders (compositeCSI 40-280) have
-/// 1-2 weak categories (mil spec weak in science, etc.).  Relaxed to "at
-/// least CSI_CATEGORY_COUNT - 2 (= 6 of 8) above threshold" so a broadly
-/// dominant civ can actually earn the Global Integration Project.  The
-/// integration win stays distinct from Culture/Science/Domination because
-/// it still requires breadth, not a single axis.
-void updateIntegrationProject(aoc::game::GameState& gameState) {
-    const aoc::balance::BalanceParams& bal = aoc::balance::params();
-    constexpr int32_t MAX_WEAK_CATEGORIES = 2;
-    const int32_t minAbove = CSI_CATEGORY_COUNT - MAX_WEAK_CATEGORIES;
-
-    for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
-        VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
-        if (tracker.isEliminated || tracker.integrationComplete) {
-            continue;
-        }
-
-        int32_t categoriesAbove = 0;
-        for (int32_t c = 0; c < CSI_CATEGORY_COUNT; ++c) {
-            if (tracker.categoryScores[c] >= bal.integrationThreshold) {
-                ++categoriesAbove;
-            }
-        }
-
-        if (categoriesAbove >= minAbove) {
-            ++tracker.integrationProgress;
-            if (tracker.integrationProgress >= bal.integrationTurnsRequired) {
-                tracker.integrationComplete = true;
-                LOG_INFO("Player %u completed the GLOBAL INTEGRATION PROJECT!",
-                         static_cast<unsigned>(gsPlayer->id()));
-            }
-        } else {
-            tracker.integrationProgress = 0;
-        }
-    }
-}
-
-// ============================================================================
 // Master victory check
 // ============================================================================
 
@@ -543,19 +499,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
         return {};
     }
 
-    // 1. Global Integration Project win
-    if ((enabledTypes & VICTORY_MASK_INTEGRATION) != 0u) {
-        for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
-            const VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
-            if (tracker.integrationComplete) {
-                LOG_INFO("Player %u wins by INTEGRATION (Global Integration Project)",
-                         static_cast<unsigned>(gsPlayer->id()));
-                return {VictoryType::Integration, gsPlayer->id()};
-            }
-        }
-    }
-
-    // 2. Last standing: all but one eliminated
+    // 1. Last standing: all but one eliminated
     int32_t alive = 0;
     PlayerId lastAlive = INVALID_PLAYER;
     for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
@@ -710,7 +654,32 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
         }
     }
 
-    // 4. Turn limit: highest cumulative Era VP wins
+    // 4. Turn limit: Prestige tally first (participation-based endgame).
+    // Prestige wins when all turns have elapsed -- highest accumulated total
+    // across the 7 categories (science, culture, faith, trade, diplomacy,
+    // military, governance) wins.  Max per turn is capped, so the achievable
+    // ceiling scales with maxTurns and works for any game length.
+    if ((enabledTypes & VICTORY_MASK_PRESTIGE) != 0u && currentTurn >= maxTurns) {
+        PlayerId bestPlayer = INVALID_PLAYER;
+        float bestPrestige = -1.0f;
+        for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
+            if (gsPlayer->victoryTracker().isEliminated) { continue; }
+            const float total = gsPlayer->prestige().total;
+            if (total > bestPrestige) {
+                bestPrestige = total;
+                bestPlayer = gsPlayer->id();
+            }
+        }
+        if (bestPlayer != INVALID_PLAYER) {
+            LOG_INFO("Player %u wins by PRESTIGE (score = %.1f) at turn %d",
+                     static_cast<unsigned>(bestPlayer),
+                     static_cast<double>(bestPrestige),
+                     static_cast<int>(currentTurn));
+            return {VictoryType::Prestige, bestPlayer};
+        }
+    }
+
+    // 5. Turn limit (fallback): highest cumulative Era VP wins
     if ((enabledTypes & VICTORY_MASK_SCORE) != 0u && currentTurn >= maxTurns) {
         PlayerId bestPlayer = INVALID_PLAYER;
         int32_t bestVP = -1;
@@ -742,7 +711,8 @@ uint32_t parseVictoryTypeMask(std::string_view list) {
     struct Token { std::string_view name; uint32_t bit; };
     constexpr Token kTable[] = {
         {"score",        VICTORY_MASK_SCORE},
-        {"integration",  VICTORY_MASK_INTEGRATION},
+        {"prestige",     VICTORY_MASK_PRESTIGE},
+        {"integration",  VICTORY_MASK_PRESTIGE},  // legacy alias
         {"laststanding", VICTORY_MASK_LAST_STANDING},
         {"science",      VICTORY_MASK_SCIENCE},
         {"domination",   VICTORY_MASK_DOMINATION},
@@ -794,7 +764,6 @@ void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexG
                            const EconomySimulation& economy, TurnNumber currentTurn) {
     computeCSI(gameState, grid, economy);
     checkCollapseConditions(gameState, currentTurn);
-    updateIntegrationProject(gameState);
 
     // Era evaluation every 30 turns
     if (currentTurn > 0 && (currentTurn % ERA_EVALUATION_INTERVAL) == 0) {

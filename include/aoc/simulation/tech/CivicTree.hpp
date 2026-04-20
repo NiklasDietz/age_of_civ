@@ -32,7 +32,7 @@ struct CivicDef {
 
 /// Per-player civic research state (ECS component).
 struct PlayerCivicComponent {
-    PlayerId owner;
+    PlayerId owner = INVALID_PLAYER;
     CivicId  currentResearch;
     float    researchProgress = 0.0f;
     std::vector<bool> completedCivics;

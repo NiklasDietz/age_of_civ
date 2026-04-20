@@ -40,15 +40,15 @@ inline constexpr uint8_t GREAT_PERSON_COUNT = 18;
 
 /// ECS component for a recruited Great Person (one-use, activated by player).
 struct GreatPersonComponent {
-    PlayerId owner;
-    uint8_t  defId;            ///< Index into allGreatPersonDefs()
+    PlayerId owner = INVALID_PLAYER;
+    uint8_t  defId = 0;        ///< Index into allGreatPersonDefs()
     hex::AxialCoord position;
     bool     isActivated = false;
 };
 
 /// ECS component on player entities tracking Great Person point accumulation.
 struct PlayerGreatPeopleComponent {
-    PlayerId owner;
+    PlayerId owner = INVALID_PLAYER;
     std::array<float, static_cast<std::size_t>(GreatPersonType::Count)> points = {};
     std::array<int32_t, static_cast<std::size_t>(GreatPersonType::Count)> recruited = {};
 

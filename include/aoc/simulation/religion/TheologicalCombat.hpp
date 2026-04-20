@@ -24,10 +24,11 @@ namespace aoc::sim {
 /// Religious combat strength by unit type.
 [[nodiscard]] constexpr int32_t religiousCombatStrength(UnitTypeId typeId) {
     // Missionary: weak in combat (20), Apostle: strong (40), Inquisitor: medium (30)
+    // UnitTypeId values from UnitTypes.hpp:207-209.
     switch (typeId.value) {
-        case 25: return 20;  // Missionary
-        case 26: return 40;  // Apostle
-        case 24: return 30;  // Inquisitor
+        case 19: return 20;  // Missionary
+        case 20: return 40;  // Apostle
+        case 21: return 30;  // Inquisitor
         default: return 0;
     }
 }

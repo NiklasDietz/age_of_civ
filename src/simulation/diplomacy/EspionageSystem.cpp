@@ -13,6 +13,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/diplomacy/EspionageSystem.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/Grievance.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
@@ -268,7 +269,8 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
 
 void processSpyMissions(aoc::game::GameState& gameState,
                         const aoc::map::HexGrid& grid,
-                        aoc::Random& rng) {
+                        aoc::Random& rng,
+                        DiplomacyManager* diplomacy) {
     struct SpyEntry {
         aoc::game::Player* player;
         aoc::game::Unit*   unit;
@@ -350,6 +352,22 @@ void processSpyMissions(aoc::game::GameState& gameState,
                      static_cast<int>(spyFailureOutcomeName(outcome).size()),
                      spyFailureOutcomeName(outcome).data());
 
+            // Political fallout: a caught spy always generates a grievance on
+            // the victim and a relation penalty. Escaped undetected leaves no
+            // trace (no grievance, no relation hit).
+            auto applyFallout = [&](int32_t relationDelta, int32_t decayTurns) {
+                if (targetPlayer == nullptr) { return; }
+                targetPlayer->grievances().addGrievance(
+                    GrievanceType::EspionageCaught, spy.owner);
+                if (diplomacy != nullptr) {
+                    RelationModifier mod{};
+                    mod.reason         = "Spy caught in our territory";
+                    mod.amount         = relationDelta;
+                    mod.turnsRemaining = decayTurns;
+                    diplomacy->addModifier(targetPlayer->id(), spy.owner, mod);
+                }
+            };
+
             switch (outcome) {
                 case SpyFailureOutcome::EscapedUndetected:
                     // Spy returns safely, no consequences
@@ -357,15 +375,16 @@ void processSpyMissions(aoc::game::GameState& gameState,
 
                 case SpyFailureOutcome::Identified:
                     spy.isRevealed = true;
-                    // Small diplomatic penalty (-5 relations)
+                    applyFallout(-5, 20);
                     break;
 
                 case SpyFailureOutcome::Captured:
-                    // Spy is held by the target. For now, remove the spy.
+                    applyFallout(-15, 40);
                     toRemove.push_back(unitPtr);
                     continue;
 
                 case SpyFailureOutcome::Killed:
+                    applyFallout(-20, 40);
                     toRemove.push_back(unitPtr);
                     continue;
             }

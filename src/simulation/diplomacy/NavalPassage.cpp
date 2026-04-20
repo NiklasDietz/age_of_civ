@@ -9,6 +9,7 @@
 #include "aoc/simulation/diplomacy/NavalPassage.hpp"
 
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -82,6 +83,8 @@ void updateNavalPassageViolations(aoc::game::GameState& gameState,
             PlayerId tileOwner = grid.owner(tileIdx);
             if (tileOwner == INVALID_PLAYER || tileOwner == violator) { continue; }
             if (tileOwner == BARBARIAN_PLAYER) { continue; }
+            // City-states: not in the major-player diplomacy matrix.
+            if (tileOwner >= aoc::sim::CITY_STATE_PLAYER_BASE) { continue; }
 
             // Open Borders or war: no violation
             const PairwiseRelation& rel = diplomacy.relation(violator, tileOwner);

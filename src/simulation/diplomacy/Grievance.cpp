@@ -29,6 +29,8 @@ void PlayerGrievanceComponent::addGrievance(GrievanceType type, PlayerId against
             case GrievanceType::FailedAllianceObligation:  existing.turnsRemaining = 60; return;
             case GrievanceType::DMZViolation:              existing.turnsRemaining = 20; return;
             case GrievanceType::IdeologicalDifference:     existing.turnsRemaining = 8;  return;
+            case GrievanceType::EspionageCaught:           existing.turnsRemaining = 40; return;
+            case GrievanceType::BulliedCityState:          existing.turnsRemaining = 30; return;
             // Permanent types: keep single entry, do not re-add.
             case GrievanceType::DeclaredWarOnAlly:
             case GrievanceType::TradeEmbargo:
@@ -86,6 +88,14 @@ void PlayerGrievanceComponent::addGrievance(GrievanceType type, PlayerId against
         case GrievanceType::IdeologicalDifference:
             g.severity       = -5;
             g.turnsRemaining = 8;
+            break;
+        case GrievanceType::EspionageCaught:
+            g.severity       = -20;
+            g.turnsRemaining = 40;
+            break;
+        case GrievanceType::BulliedCityState:
+            g.severity       = -10;
+            g.turnsRemaining = 30;
             break;
     }
 

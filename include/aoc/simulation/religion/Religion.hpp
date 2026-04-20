@@ -82,7 +82,7 @@ struct ReligionDef {
 // ============================================================================
 
 struct PlayerFaithComponent {
-    PlayerId   owner;
+    PlayerId   owner = INVALID_PLAYER;
     float      faith = 0.0f;           ///< Accumulated faith points
     ReligionId foundedReligion = NO_RELIGION; ///< ID of religion this player founded (NO_RELIGION if none)
     bool       hasPantheon = false;     ///< Has a pantheon belief (precursor to full religion)

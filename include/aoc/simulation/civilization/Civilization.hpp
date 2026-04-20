@@ -125,8 +125,8 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
 
 /// ECS component attached to player entities.
 struct PlayerCivilizationComponent {
-    PlayerId owner;
-    CivId    civId;
+    PlayerId owner = INVALID_PLAYER;
+    CivId    civId = 0;
 };
 
 } // namespace aoc::sim

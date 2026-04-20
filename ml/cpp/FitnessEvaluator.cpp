@@ -897,7 +897,7 @@ void evaluatePopulation(std::vector<Individual>& population,
     }
 
     static const char* VT_NAMES[VT_COUNT] = {
-        "None", "Score", "Integration", "LastStanding",
+        "None", "Score", "Prestige", "LastStanding",
         "Science", "Domination", "Culture", "Religion"
     };
     if (config.balanceWinrate && totalSubjectWins > 0) {

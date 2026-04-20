@@ -26,6 +26,7 @@
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/victory/VictoryCondition.hpp"
+#include "aoc/simulation/victory/Prestige.hpp"
 #include "aoc/simulation/victory/SpaceRace.hpp"
 #include "aoc/simulation/culture/Tourism.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
@@ -176,6 +177,9 @@ public:
 
     [[nodiscard]] aoc::sim::VictoryTrackerComponent& victoryTracker() { return this->m_victoryTracker; }
     [[nodiscard]] const aoc::sim::VictoryTrackerComponent& victoryTracker() const { return this->m_victoryTracker; }
+
+    [[nodiscard]] aoc::sim::PlayerPrestigeComponent& prestige() { return this->m_prestige; }
+    [[nodiscard]] const aoc::sim::PlayerPrestigeComponent& prestige() const { return this->m_prestige; }
 
     [[nodiscard]] aoc::sim::PlayerSpaceRaceComponent& spaceRace() { return this->m_spaceRace; }
     [[nodiscard]] const aoc::sim::PlayerSpaceRaceComponent& spaceRace() const { return this->m_spaceRace; }
@@ -408,6 +412,7 @@ private:
 
     // Victory
     aoc::sim::VictoryTrackerComponent m_victoryTracker;
+    aoc::sim::PlayerPrestigeComponent m_prestige;
     aoc::sim::PlayerSpaceRaceComponent m_spaceRace;
     aoc::sim::PlayerTourismComponent m_tourism;
 

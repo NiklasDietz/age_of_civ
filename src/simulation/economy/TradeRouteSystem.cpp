@@ -13,6 +13,7 @@
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/economy/AdvancedEconomics.hpp"
@@ -499,6 +500,10 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             int32_t idx = grid.toIndex(tile);
             PlayerId tileOwner = grid.owner(idx);
             if (tileOwner == INVALID_PLAYER || tileOwner == trader.owner) { continue; }
+            // City-states and barbarians are not in the diplomacy matrix; skip
+            // toll logic (CS passage is governed by envoy/suzerain mechanics).
+            if (tileOwner >= aoc::sim::CITY_STATE_PLAYER_BASE) { continue; }
+            if (trader.owner >= aoc::sim::CITY_STATE_PLAYER_BASE) { continue; }
 
             aoc::game::Player* ownerPlayer = gameState.player(tileOwner);
             if (ownerPlayer == nullptr) { continue; }
@@ -556,7 +561,9 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             bool isAI = (traderPlayer != nullptr && !traderPlayer->isHuman());
             bool acceptToll = true;
 
-            if (isAI && diplomacy != nullptr) {
+            if (isAI && diplomacy != nullptr
+                && trader.owner < aoc::sim::CITY_STATE_PLAYER_BASE
+                && te.owner < aoc::sim::CITY_STATE_PLAYER_BASE) {
                 const PairwiseRelation& rel = diplomacy->relation(trader.owner, te.owner);
                 int32_t score = rel.totalScore();
                 float tollFraction = (cargoValue > 0)
@@ -636,7 +643,9 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             PlayerId traderOwner = trader.owner;
             PlayerId cityOwner = targetCity->owner();
             if (diplomacy != nullptr && traderOwner != cityOwner
-                && traderOwner != INVALID_PLAYER && cityOwner != INVALID_PLAYER) {
+                && traderOwner != INVALID_PLAYER && cityOwner != INVALID_PLAYER
+                && traderOwner < aoc::sim::CITY_STATE_PLAYER_BASE
+                && cityOwner < aoc::sim::CITY_STATE_PLAYER_BASE) {
                 const PairwiseRelation& rel = diplomacy->relation(traderOwner, cityOwner);
                 for (const TradeCargo& c : trader.cargo) {
                     if (rel.isGoodEmbargoed(c.goodId)) {

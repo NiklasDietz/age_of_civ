@@ -63,6 +63,7 @@
 
 // Victory
 #include "aoc/simulation/victory/VictoryCondition.hpp"
+#include "aoc/simulation/victory/Prestige.hpp"
 #include "aoc/simulation/victory/SpaceRace.hpp"
 #include "aoc/simulation/culture/Tourism.hpp"
 
@@ -77,7 +78,6 @@
 
 // City-States
 #include "aoc/simulation/citystate/CityState.hpp"
-#include "aoc/simulation/citystate/CityStateQuest.hpp"
 #include "aoc/simulation/diplomacy/EspionageSystem.hpp"
 #include "aoc/simulation/diplomacy/WorldCongress.hpp"
 
@@ -820,6 +820,9 @@ void processGlobalSystems(TurnContext& turnContext) {
 
     // Victory tracking
     updateVictoryTrackers(gameState, grid, *turnContext.economy, turnContext.currentTurn);
+
+    // Prestige accrual (participation-based endgame tally).
+    processPrestige(gameState, grid, turnContext.diplomacy);
 }
 
 // ============================================================================
@@ -952,7 +955,8 @@ void processTurn(TurnContext& turnContext) {
 
     // Espionage: resolve spy mission outcomes for all players.
     if (turnContext.rng != nullptr && turnContext.grid != nullptr) {
-        processSpyMissions(*turnContext.gameState, *turnContext.grid, *turnContext.rng);
+        processSpyMissions(*turnContext.gameState, *turnContext.grid,
+                           *turnContext.rng, turnContext.diplomacy);
     }
 
     // Grievance decay per player. Moved here so grievances accumulated above
@@ -966,6 +970,19 @@ void processTurn(TurnContext& turnContext) {
         processWorldCongress(*turnContext.gameState,
                               static_cast<TurnNumber>(turnContext.currentTurn),
                               *turnContext.rng);
+    }
+
+    // City-state diplomacy: meet-check, passive envoy accrual, suzerain
+    // recompute, levy expiry, bully cooldown. Server-authoritative.
+    if (turnContext.grid != nullptr) {
+        processCityStateDiplomacy(*turnContext.gameState,
+                                   *turnContext.grid,
+                                   static_cast<int32_t>(turnContext.currentTurn));
+    }
+
+    // City-state AI: defend-only production (no settlers/wonders/districts).
+    if (turnContext.grid != nullptr) {
+        processCityStateAI(*turnContext.gameState, *turnContext.grid);
     }
 
     // City-state quests: issue/resolve quests and award rewards.

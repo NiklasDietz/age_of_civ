@@ -251,10 +251,10 @@ static NodePtr actionBuildReligious() {
                 if (cityPtr == nullptr) { continue; }
                 if (!cityPtr->production().isEmpty()) { continue; }
 
-                // Missionary (UnitTypeId 25)
+                // Missionary (UnitTypeId 19, see UnitTypes.hpp)
                 ProductionQueueItem item{};
                 item.type = ProductionItemType::Unit;
-                item.itemId = 25;
+                item.itemId = 19;
                 item.name = "Missionary";
                 item.totalCost = 100.0f * GamePace::instance().costMultiplier;
                 item.progress = 0.0f;

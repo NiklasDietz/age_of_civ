@@ -47,7 +47,7 @@ struct TechDef {
 // ============================================================================
 
 struct PlayerTechComponent {
-    PlayerId owner;
+    PlayerId owner = INVALID_PLAYER;
 
     TechId   currentResearch;              ///< What is being researched (INVALID = nothing)
     float    researchProgress = 0.0f;      ///< Accumulated science toward current tech

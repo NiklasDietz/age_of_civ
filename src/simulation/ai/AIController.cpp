@@ -12,6 +12,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/ai/AIController.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/ai/AIAdvisors.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/core/DecisionLog.hpp"
@@ -1291,6 +1292,43 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             }
         }
 
+        // --- Missionary / Apostle production ---
+        // UnitTypeId{19}=Missionary, {20}=Apostle, {21}=Inquisitor (see
+        // UnitTypes.hpp:207-209). Requires: player founded a religion AND city
+        // has a HolySite. Score scales with religiousZeal so zealous leaders
+        // actually convert neighbors; pragmatic leaders skip.
+        {
+            const ReligionId foundedRel = gsPlayer->faith().foundedReligion;
+            const bool hasReligion = (foundedRel != NO_RELIGION);
+            const bool hasHolySite = city.hasDistrict(DistrictType::HolySite);
+            if (hasReligion && hasHolySite) {
+                // Count own missionaries to avoid swamping the queue.
+                int32_t ownMissionaries = 0;
+                for (const std::unique_ptr<aoc::game::Unit>& u : gsPlayer->units()) {
+                    if (u == nullptr) { continue; }
+                    const uint16_t tid = u->typeId().value;
+                    if (tid == 19 || tid == 20) { ++ownMissionaries; }
+                }
+                const int32_t missionaryCap = static_cast<int32_t>(gsPlayer->cities().size());
+                if (ownMissionaries < missionaryCap) {
+                    UnitTypeId missionaryId{19};
+                    if (canBuildUnit(gameState, this->m_player, missionaryId)) {
+                        const UnitTypeDef& mdef = unitTypeDef(missionaryId);
+                        ProductionCandidate candidate{};
+                        candidate.item.type      = ProductionItemType::Unit;
+                        candidate.item.itemId    = missionaryId.value;
+                        candidate.item.name      = std::string(mdef.name);
+                        candidate.item.totalCost = static_cast<float>(mdef.productionCost);
+                        candidate.item.progress  = 0.0f;
+                        candidate.score          = 2.8f
+                            * personality.behavior.religiousZeal
+                            * personality.behavior.prodReligious;
+                        candidates.push_back(std::move(candidate));
+                    }
+                }
+            }
+        }
+
         // --- Wonders ---
         // Score each buildable wonder using cultureFocus + prodWonders genes.
         // Buildable = tech prereq met, not already built globally.
@@ -1767,6 +1805,44 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                     }
                     canalToll = std::min(canalToll, 0.50f);
                     ourPlayer->tariffs().perPlayerCanalTollRates[other] = canalToll;
+                }
+            }
+        }
+    }
+
+    // City-state interactions: bully when desperate for gold + aggressive,
+    // levy when suzerain and at war. Rate-limited by CS cooldowns.
+    {
+        const aoc::game::Player* me = gameState.player(this->m_player);
+        if (me != nullptr) {
+            const CurrencyAmount treasury = me->treasury();
+            bool atWar = false;
+            for (uint8_t other = 0; other < playerCount; ++other) {
+                if (other == this->m_player) { continue; }
+                if (diplomacy.relation(this->m_player, other).isAtWar) {
+                    atWar = true; break;
+                }
+            }
+            auto& cityStates = gameState.cityStates();
+            for (std::size_t i = 0; i < cityStates.size(); ++i) {
+                CityStateComponent& cs = cityStates[i];
+                if (!cs.hasMet(this->m_player)) { continue; }
+
+                // Bully: only if we have no envoys stake and low treasury.
+                const bool weAreSuzerain = (cs.suzerain == this->m_player);
+                const bool hasOtherSuzerain =
+                    (cs.suzerain != INVALID_PLAYER && !weAreSuzerain);
+                const bool lowTreasury = (treasury < 100);
+                const bool aggressive  = (beh.militaryAggression > 1.2f);
+                if (!weAreSuzerain && !hasOtherSuzerain &&
+                    lowTreasury && aggressive) {
+                    (void)bullyCityState(gameState, this->m_player, i);
+                }
+
+                // Levy: suzerain at war with full treasury.
+                if (weAreSuzerain && atWar && treasury > 300 &&
+                    cs.levyPlayer == INVALID_PLAYER) {
+                    (void)levyCityStateMilitary(gameState, this->m_player, i);
                 }
             }
         }

@@ -207,7 +207,7 @@ struct DebasementState {
 // ============================================================================
 
 struct MonetaryStateComponent {
-    PlayerId           owner;
+    PlayerId           owner = INVALID_PLAYER;
     MonetarySystemType system = MonetarySystemType::Barter;
 
     // -- Coin reserves (actual physical coin stockpiles, aggregated from cities) --

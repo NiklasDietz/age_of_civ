@@ -28,6 +28,7 @@
 #include "aoc/simulation/turn/TurnEventLog.hpp"
 #include "aoc/simulation/economy/Maintenance.hpp"
 #include "aoc/simulation/map/GoodyHuts.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
 
 // Simulation systems
 #include "aoc/simulation/turn/TurnManager.hpp"
@@ -534,6 +535,14 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             // Initialize victory tracker
             gsPlayer->victoryTracker().owner = player;
 
+            // Match Application.cpp init: war weariness, era score, faith,
+            // grievances. Without these the owner fields are junk and get
+            // used as PlayerId indices in diplomacy / espionage paths.
+            gsPlayer->warWeariness().owner = player;
+            gsPlayer->eraScore().owner     = player;
+            gsPlayer->faith().owner        = player;
+            gsPlayer->grievances().owner   = player;
+
             // Add scout unit to the player's unit list
             gsPlayer->addUnit(aoc::UnitTypeId{2}, startPos);
         }
@@ -553,6 +562,12 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     // Place goody huts (ancient ruins) on the map
     aoc::sim::GoodyHutState goodyHuts;
     aoc::sim::placeGoodyHuts(goodyHuts, grid, startPositions, rng);
+
+    // Spawn roughly one CS per major civ (capped at CITY_STATE_COUNT inside
+    // spawnCityStates). Prior 2x-players formula starved majors of expansion
+    // land, many matrix runs ended with no winner.
+    const int32_t cityStateCount = std::max(2, playerCount);
+    aoc::sim::spawnCityStates(gameState, grid, cityStateCount, rng);
 
     // Build TurnContext
     aoc::sim::TurnContext turnCtx{};
@@ -1041,10 +1056,15 @@ int main(int argc, char* argv[]) {
     std::string tracePath;
     aoc::map::MapType mapType = aoc::map::MapType::LandWithSeas;
 
-    // Simulations default to Score+LastStanding so tests always terminate on
-    // VP.  `--victory-types` (CLI) or `victory_types:` (yaml) overrides.
+    // Simulations default to Prestige+Score+LastStanding so tests always
+    // terminate with a meaningful outcome.  Prestige is the primary endgame
+    // tally at maxTurns; Score is the legacy fallback; LastStanding ends the
+    // game early if only one civ remains.  `--victory-types` (CLI) or
+    // `victory_types:` (yaml) overrides.
     uint32_t victoryMask =
-        aoc::sim::VICTORY_MASK_SCORE | aoc::sim::VICTORY_MASK_LAST_STANDING;
+        aoc::sim::VICTORY_MASK_PRESTIGE
+      | aoc::sim::VICTORY_MASK_SCORE
+      | aoc::sim::VICTORY_MASK_LAST_STANDING;
 
     bool loadedConfig = false;
     if (argc >= 2) {

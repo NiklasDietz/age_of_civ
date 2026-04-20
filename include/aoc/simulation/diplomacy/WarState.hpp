@@ -37,7 +37,7 @@ struct PeaceTerms {
 
 /// ECS component tracking all active wars for a player.
 struct PlayerWarComponent {
-    PlayerId owner;
+    PlayerId owner = INVALID_PLAYER;
     std::vector<ActiveWar> activeWars;
 
     void addWarScore(PlayerId enemy, int32_t score) {

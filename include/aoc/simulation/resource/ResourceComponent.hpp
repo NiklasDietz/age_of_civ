@@ -47,7 +47,7 @@ struct CityStockpileComponent {
 
 /// Attached to player entities. Tracks the player's treasury.
 struct PlayerEconomyComponent {
-    PlayerId       owner;
+    PlayerId       owner = INVALID_PLAYER;
     CurrencyAmount treasury = 100;          ///< Gold / currency on hand
     CurrencyAmount incomePerTurn = 0;       ///< Net income last turn (for display)
 

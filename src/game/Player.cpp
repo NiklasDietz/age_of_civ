@@ -17,12 +17,49 @@ namespace aoc::game {
 Player::Player(PlayerId id)
     : m_id(id)
 {
-    this->m_tech.owner = id;
-    this->m_civics.owner = id;
-    this->m_monetary.owner = id;
-    this->m_faith.owner = id;
-    this->m_bubble.owner = id;
-    this->m_tourism.owner = id;
+    // Every component tagged with a PlayerId owner must be initialised here.
+    // Leaving any of them as default (INVALID_PLAYER) was the root cause of
+    // a heap-corruption bug where junk owner values were passed into
+    // DiplomacyManager::relation() as array indices.
+    this->m_tech.owner             = id;
+    this->m_civics.owner           = id;
+    this->m_monetary.owner         = id;
+    this->m_government.owner       = id;
+    this->m_faith.owner            = id;
+    this->m_era.owner              = id;
+    this->m_eraScore.owner         = id;
+    this->m_warWeariness.owner     = id;
+    this->m_eureka.owner           = id;
+    this->m_greatPeople.owner      = id;
+    this->m_economy.owner          = id;
+    this->m_tradeAgreements.owner  = id;
+    this->m_tariffs.owner          = id;
+    this->m_victoryTracker.owner   = id;
+    this->m_prestige.owner         = id;
+    this->m_spaceRace.owner        = id;
+    this->m_tourism.owner          = id;
+    this->m_bonds.owner            = id;
+    this->m_stockPortfolio.owner   = id;
+    this->m_futures.owner          = id;
+    this->m_ious.owner             = id;
+    this->m_insurance.owner        = id;
+    this->m_bubble.owner           = id;
+    this->m_migration.owner        = id;
+    this->m_blackMarket.owner      = id;
+    this->m_energy.owner           = id;
+    this->m_humanCapital.owner     = id;
+    this->m_supplyChain.owner      = id;
+    this->m_industrial.owner       = id;
+    this->m_banking.owner          = id;
+    this->m_grievances.owner       = id;
+    this->m_currencyTrust.owner    = id;
+    this->m_currencyExchange.owner = id;
+    this->m_currencyDevaluation.owner = id;
+    this->m_currencyCrisis.owner   = id;
+    this->m_communication.owner    = id;
+    this->m_events.owner           = id;
+    this->m_researchQueue.owner    = id;
+    this->m_tradeAutoRenew.owner   = id;
 
     this->m_tech.initialize();
     this->m_civics.initialize();

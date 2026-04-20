@@ -67,7 +67,14 @@ public:
     /// Initialize game state for a new game.
     void initialize(int32_t playerCount);
 
+    /// Allocate Player objects for city-states in the 200..200+count range.
+    /// Safe to call after initialize(); player IDs above the major-player
+    /// count are routed to the city-state slots by player().
+    void initializeCityStateSlots(int32_t count);
+
     /// Get a player by ID. Returns nullptr if invalid.
+    /// IDs 0..majorCount-1 resolve into the major-players vector; IDs
+    /// CITY_STATE_PLAYER_BASE..+ resolve into the city-state slots.
     [[nodiscard]] Player* player(PlayerId id);
     [[nodiscard]] const Player* player(PlayerId id) const;
 
@@ -75,8 +82,13 @@ public:
     [[nodiscard]] Player* humanPlayer();
     [[nodiscard]] const Player* humanPlayer() const;
 
-    /// All active players.
+    /// All active *major* players. City-state players are NOT included here;
+    /// use cityStatePlayers() to iterate those.
     [[nodiscard]] const std::vector<std::unique_ptr<Player>>& players() const { return this->m_players; }
+
+    /// City-state Player slots. Index = CityStateComponent index.
+    [[nodiscard]] const std::vector<std::unique_ptr<Player>>& cityStatePlayers() const { return this->m_cityStatePlayers; }
+    [[nodiscard]] std::vector<std::unique_ptr<Player>>& cityStatePlayers() { return this->m_cityStatePlayers; }
 
     /// Number of active players.
     [[nodiscard]] int32_t playerCount() const { return static_cast<int32_t>(this->m_players.size()); }
@@ -132,6 +144,10 @@ public:
 
 private:
     std::vector<std::unique_ptr<Player>> m_players;
+    /// City-state Player slots. Sparse by design: index i corresponds to
+    /// PlayerId = CITY_STATE_PLAYER_BASE + i. Separate from m_players so
+    /// major-player iteration (victory, turn loop) does not pick them up.
+    std::vector<std::unique_ptr<Player>> m_cityStatePlayers;
     int32_t m_currentTurn = 0;
 
     // Global state (singletons)

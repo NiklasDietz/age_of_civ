@@ -246,6 +246,7 @@ set(AOC_LIB_SOURCES
     src/simulation/diplomacy/AllianceObligations.cpp
     src/simulation/climate/Climate.cpp
     src/simulation/victory/VictoryCondition.cpp
+    src/simulation/victory/Prestige.cpp
     src/simulation/victory/SpaceRace.cpp
     src/simulation/government/Government.cpp
     src/simulation/ai/AIController.cpp
@@ -314,10 +315,10 @@ set(AOC_LIB_SOURCES
     src/simulation/production/Automation.cpp
     src/simulation/city/CityLoyalty.cpp
     src/simulation/city/Secession.cpp
+    src/balance/BalanceParams.cpp
     src/simulation/city/DistrictAdjacency.cpp
     src/simulation/unit/CombatExtensions.cpp
     src/simulation/religion/TheologicalCombat.cpp
-    src/simulation/citystate/CityStateQuest.cpp
     src/simulation/diplomacy/DiplomacyExtensions.cpp
     src/simulation/greatpeople/GreatPeopleExpanded.cpp
     src/simulation/tech/CivicEffects.cpp

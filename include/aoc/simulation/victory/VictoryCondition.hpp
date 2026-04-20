@@ -76,7 +76,7 @@ inline constexpr int32_t CSI_CATEGORY_COUNT = static_cast<int32_t>(CSICategory::
 enum class VictoryType : uint8_t {
     None,
     Score,        ///< Highest cumulative Era VP at game end
-    Integration,  ///< Completed Global Integration Project
+    Prestige,     ///< Highest cumulative prestige (participation-based) at turn limit
     LastStanding, ///< All other players eliminated
     // Legacy types (can still trigger as special achievements)
     Science,
@@ -94,7 +94,7 @@ enum class VictoryType : uint8_t {
 // ============================================================================
 
 inline constexpr uint32_t VICTORY_MASK_SCORE        = 1u << 0;
-inline constexpr uint32_t VICTORY_MASK_INTEGRATION  = 1u << 1;
+inline constexpr uint32_t VICTORY_MASK_PRESTIGE     = 1u << 1;
 inline constexpr uint32_t VICTORY_MASK_LAST_STANDING = 1u << 2;
 inline constexpr uint32_t VICTORY_MASK_SCIENCE      = 1u << 3;
 inline constexpr uint32_t VICTORY_MASK_DOMINATION   = 1u << 4;
@@ -144,10 +144,6 @@ struct VictoryTrackerComponent {
     // -- Era Victory Points (accumulated across era evaluations) --
     int32_t eraVictoryPoints = 0;
     int32_t erasEvaluated = 0;
-
-    // -- Global Integration Project --
-    int32_t integrationProgress = 0;  ///< Consecutive turns with all categories above threshold
-    bool    integrationComplete = false;
 
     // -- Collapse tracking --
     CollapseType activeCollapse = CollapseType::None;
@@ -208,16 +204,6 @@ void performEraEvaluation(aoc::game::GameState& gameState);
  * @param currentTurn  Current turn number, used for the minimum-turn guard.
  */
 void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber currentTurn);
-
-/**
- * @brief Check Global Integration Project progress.
- *
- * A player must have all CSI categories above 1.5 (50% above average)
- * for 10 consecutive turns to complete the project.
- *
- * @param world  ECS world.
- */
-void updateIntegrationProject(aoc::game::GameState& gameState);
 
 /**
  * @brief Master victory check. Replaces the old checkVictoryConditions.

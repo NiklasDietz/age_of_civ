@@ -6,6 +6,7 @@
 #include "aoc/simulation/unit/ZoneOfControl.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
@@ -22,8 +23,11 @@ bool isInEnemyZoC(const aoc::game::GameState& gameState,
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
         if (player->id() == movingPlayer) { continue; }
 
-        // Open borders: this player's units don't exert ZoC against us
-        if (diplomacy.haveMet(movingPlayer, player->id())) {
+        // Open borders: this player's units don't exert ZoC against us.
+        // Guard: movingPlayer may be a city-state (CS units exist); CS are
+        // not part of the diplomacy matrix, so skip the relation lookup.
+        if (movingPlayer < aoc::sim::CITY_STATE_PLAYER_BASE
+            && diplomacy.haveMet(movingPlayer, player->id())) {
             const PairwiseRelation& rel = diplomacy.relation(movingPlayer, player->id());
             if (rel.hasOpenBorders && !rel.isAtWar) { continue; }
         }

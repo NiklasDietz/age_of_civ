@@ -5,6 +5,7 @@
 
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/AllianceObligations.hpp"
+#include "aoc/ui/GameNotifications.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -99,6 +100,18 @@ void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target,
 
     LOG_INFO("Player %u declared war on Player %u",
              static_cast<unsigned>(aggressor), static_cast<unsigned>(target));
+
+    {
+        aoc::ui::GameNotification n;
+        n.category = aoc::ui::NotificationCategory::Diplomacy;
+        n.title = "WAR DECLARED!";
+        n.body = "Player " + std::to_string(aggressor)
+               + " declared war on Player " + std::to_string(target) + ".";
+        n.relevantPlayer = aggressor;
+        n.otherPlayer    = target;
+        n.priority = 10;
+        aoc::ui::pushNotification(n);
+    }
 }
 
 void DiplomacyManager::makePeace(PlayerId a, PlayerId b) {
@@ -127,18 +140,54 @@ void DiplomacyManager::makePeace(PlayerId a, PlayerId b) {
 
     LOG_INFO("Peace between Player %u and Player %u",
              static_cast<unsigned>(a), static_cast<unsigned>(b));
+
+    {
+        aoc::ui::GameNotification n;
+        n.category = aoc::ui::NotificationCategory::Diplomacy;
+        n.title = "Peace Treaty";
+        n.body = "Player " + std::to_string(a) + " and Player "
+               + std::to_string(b) + " have made peace.";
+        n.relevantPlayer = a;
+        n.otherPlayer    = b;
+        n.priority = 6;
+        aoc::ui::pushNotification(n);
+    }
 }
+
+namespace {
+
+void pushDiplomaticNotification(PlayerId a, PlayerId b,
+                                 const std::string& title,
+                                 const std::string& body,
+                                 int32_t priority) {
+    aoc::ui::GameNotification n;
+    n.category = aoc::ui::NotificationCategory::Diplomacy;
+    n.title = title;
+    n.body = body;
+    n.relevantPlayer = a;
+    n.otherPlayer    = b;
+    n.priority = priority;
+    aoc::ui::pushNotification(n);
+}
+
+} // namespace
 
 void DiplomacyManager::grantOpenBorders(PlayerId a, PlayerId b) {
     this->relation(a, b).hasOpenBorders = true;
     this->relation(b, a).hasOpenBorders = true;
     this->addModifier(a, b, {"Open borders", 5, 0});
+    pushDiplomaticNotification(a, b, "Open Borders Granted",
+        "Player " + std::to_string(a) + " and Player " + std::to_string(b)
+        + " opened their borders.", 4);
 }
 
 void DiplomacyManager::formDefensiveAlliance(PlayerId a, PlayerId b) {
     this->relation(a, b).hasDefensiveAlliance = true;
     this->relation(b, a).hasDefensiveAlliance = true;
     this->addModifier(a, b, {"Defensive alliance", 15, 0});
+    pushDiplomaticNotification(a, b, "Defensive Alliance",
+        "Player " + std::to_string(a) + " and Player " + std::to_string(b)
+        + " formed a defensive alliance.", 7);
 }
 
 void DiplomacyManager::formMilitaryAlliance(PlayerId a, PlayerId b) {
@@ -147,6 +196,9 @@ void DiplomacyManager::formMilitaryAlliance(PlayerId a, PlayerId b) {
     this->addModifier(a, b, {"Military alliance", 10, 0});
     LOG_INFO("Military alliance formed between Player %u and Player %u",
              static_cast<unsigned>(a), static_cast<unsigned>(b));
+    pushDiplomaticNotification(a, b, "Military Alliance",
+        "Player " + std::to_string(a) + " and Player " + std::to_string(b)
+        + " formed a military alliance.", 8);
 }
 
 void DiplomacyManager::formResearchAgreement(PlayerId a, PlayerId b) {
@@ -155,6 +207,9 @@ void DiplomacyManager::formResearchAgreement(PlayerId a, PlayerId b) {
     this->addModifier(a, b, {"Research agreement", 5, 0});
     LOG_INFO("Research agreement formed between Player %u and Player %u",
              static_cast<unsigned>(a), static_cast<unsigned>(b));
+    pushDiplomaticNotification(a, b, "Research Agreement",
+        "Player " + std::to_string(a) + " and Player " + std::to_string(b)
+        + " signed a research agreement.", 5);
 }
 
 void DiplomacyManager::formEconomicAlliance(PlayerId a, PlayerId b) {
@@ -163,6 +218,9 @@ void DiplomacyManager::formEconomicAlliance(PlayerId a, PlayerId b) {
     this->addModifier(a, b, {"Economic alliance", 5, 0});
     LOG_INFO("Economic alliance formed between Player %u and Player %u",
              static_cast<unsigned>(a), static_cast<unsigned>(b));
+    pushDiplomaticNotification(a, b, "Economic Alliance",
+        "Player " + std::to_string(a) + " and Player " + std::to_string(b)
+        + " formed an economic alliance.", 5);
 }
 
 void DiplomacyManager::addReputationModifier(PlayerId a, PlayerId b,

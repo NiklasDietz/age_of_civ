@@ -33,9 +33,11 @@ struct BalanceParams {
     int32_t sustainedUnrestTurns     = 8;      ///< Turns below Unrest → secession eligible
     int32_t distantCityThreshold     = 9;      ///< Hexes from capital for periphery secession
 
-    // Victory: culture
-    float   cultureVictoryThreshold  = 4246.0f;
-    int32_t cultureVictoryMinWonders = 3;
+    // Victory: culture. GA-picked 4246/3 starved culture wins (1-of-18); manual
+    // rollback to 4000/2 to restore the 8-of-18 baseline while keeping the
+    // GA-picked leadRatio 1.48.
+    float   cultureVictoryThreshold  = 4000.0f;
+    int32_t cultureVictoryMinWonders = 2;
     float   cultureVictoryLeadRatio  = 1.48f;
 
     // Victory: integration (per-category ratio-to-avg, 6-of-8 cats, N turns)

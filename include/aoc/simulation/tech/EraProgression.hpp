@@ -28,7 +28,7 @@ inline constexpr uint8_t ERA_COUNT = 7;
 
 /// Compute a player's current era based on the most advanced tech/civic completed.
 struct PlayerEraComponent {
-    PlayerId owner;
+    PlayerId owner = INVALID_PLAYER;
     EraId    currentEra = EraId{0};
 
     /// Call after any tech/civic completes to check for era advancement.

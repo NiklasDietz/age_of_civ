@@ -23,6 +23,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace aoc::game { class GameState; }
 namespace aoc::ui { class UIManager; }
@@ -47,6 +48,9 @@ struct GameNotification {
     std::string          title;
     std::string          body;
     PlayerId             relevantPlayer = INVALID_PLAYER;
+    /// Second party for diplomacy / trade notifications (wars, alliances, deals).
+    /// Either `relevantPlayer` or `otherPlayer` matching the human triggers display.
+    PlayerId             otherPlayer = INVALID_PLAYER;
     int32_t              priority = 0;  ///< Higher = more important (shown first)
 };
 
@@ -58,6 +62,17 @@ struct GameNotification {
  * Normal notifications show as toast messages.
  */
 void pushNotification(const GameNotification& notification);
+
+/**
+ * @brief Drain the pending notification queue, filtering to those whose
+ *        relevantPlayer or otherPlayer matches `viewer`, or that are broadcast
+ *        (relevantPlayer == INVALID_PLAYER && otherPlayer == INVALID_PLAYER).
+ *
+ * The queue is cleared regardless of viewer match so each turn's events fire
+ * exactly once. Callers (Application, headless sim) route the drained entries
+ * to their preferred display sink (toast, event log, console).
+ */
+[[nodiscard]] std::vector<GameNotification> drainNotifications(PlayerId viewer);
 
 /**
  * @brief Generate notifications from the current game state.

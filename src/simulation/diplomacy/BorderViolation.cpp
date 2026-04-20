@@ -6,6 +6,7 @@
 #include "aoc/simulation/diplomacy/BorderViolation.hpp"
 
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -81,6 +82,9 @@ void updateBorderViolations(aoc::game::GameState& gameState,
             PlayerId tileOwner = grid.owner(tileIdx);
             if (tileOwner == INVALID_PLAYER || tileOwner == violator) { continue; }
             if (tileOwner == BARBARIAN_PLAYER) { continue; }
+            // City-states use a separate diplomacy channel (envoys/suzerainty);
+            // they are not in the DiplomacyManager major-player matrix.
+            if (tileOwner >= aoc::sim::CITY_STATE_PLAYER_BASE) { continue; }
 
             // Open Borders or war: no violation (war has its own mechanics)
             const PairwiseRelation& rel = diplomacy.relation(violator, tileOwner);
