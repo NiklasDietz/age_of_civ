@@ -36,6 +36,7 @@
 #include "aoc/ui/Tutorial.hpp"
 #include "aoc/ui/DebugConsole.hpp"
 #include "aoc/replay/ReplayRecorder.hpp"
+#include "aoc/net/GameDBus.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/core/ErrorCodes.hpp"
 #include "aoc/core/Types.hpp"
@@ -228,6 +229,9 @@ private:
 
     // Replay recorder
     aoc::replay::ReplayRecorder m_replayRecorder;
+
+    // Session-bus DBus service for external automation (screenshots etc.).
+    aoc::net::GameDBus m_dbusService;
 
     /// Returns true if any modal screen is currently open.
     [[nodiscard]] bool anyScreenOpen() const;

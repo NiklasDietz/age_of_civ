@@ -34,6 +34,32 @@ players who prefer the flat overview.
 
 ---
 
+## Screenshot via Vulkan Swapchain Readback
+
+The `GameDBus::TakeScreenshot` method currently forks `spectacle -a` to grab
+the active window. On Wayland compositors (KDE/GNOME) an app without an
+xdg-activation token cannot raise itself over another focused window
+(e.g., an editor), so the screenshot captures whatever is frontmost rather
+than the game. The advisory calls (`glfwRequestWindowAttention`,
+`glfwFocusWindow`) do nothing in that scenario.
+
+**Clean fix:** read the swapchain image directly inside `VulkanRenderer`
+(mirrors the existing offscreen readback at `VulkanRenderer.cpp:570`).
+Steps:
+1. Ensure the swapchain is created with `VK_IMAGE_USAGE_TRANSFER_SRC_BIT`.
+2. After `vkQueuePresentKHR` completes (wait on the present fence),
+   transition the last-presented image to `TRANSFER_SRC_OPTIMAL`.
+3. `vkCmdCopyImageToBuffer` into a host-visible staging buffer.
+4. Map, PNG-encode (stb_image_write), return bytes.
+
+This is compositor-independent, deterministic, and captures the exact game
+pixels regardless of window focus. Estimated effort: ~1 day.
+
+Until this lands, DBus callers must make the game window frontmost before
+calling `TakeScreenshot`.
+
+---
+
 ## Spectator Mode Visual Fix
 
 The spectator mode HUD overlay (`SpectatorHUD`) breaks terrain rendering when `m_spectatorMode = true`. With the flag set to false, terrain renders perfectly. The issue is in one of the `!m_spectatorMode` guards in `Application::run()` that skips something the renderer needs, or in the HUD's `resetCamera()`/`setZoom(1.0)` call interfering with the world-space camera. Needs further debugging to isolate which guard causes the problem.

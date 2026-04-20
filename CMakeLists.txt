@@ -353,6 +353,7 @@ set(AOC_LIB_SOURCES
     # Networking / Server-Client
     src/net/Transport.cpp
     src/net/GameServer.cpp
+    src/net/GameDBus.cpp
 
     # App
     src/app/Window.cpp
@@ -486,6 +487,21 @@ target_compile_definitions(aoc_lib PUBLIC AOC_HAS_LUA)
 target_include_directories(aoc_lib PUBLIC ${LUA_IMPL_DIRS})
 target_link_libraries(aoc_lib PUBLIC ${LUA_IMPL_LIBS})
 message(STATUS "Scripting: ${LUA_IMPL_NAME} (${LUA_IMPL_LIBS})")
+
+# sd-bus (libsystemd) -- optional DBus service for screenshot/remote control.
+# Only enabled on Linux where libsystemd is present. On Windows/macOS the
+# GameDBus class compiles to a no-op shim.
+if(UNIX AND NOT APPLE AND PkgConfig_FOUND)
+    pkg_check_modules(SDBUS QUIET libsystemd)
+    if(SDBUS_FOUND)
+        target_compile_definitions(aoc_lib PUBLIC AOC_HAS_SDBUS)
+        target_include_directories(aoc_lib PUBLIC ${SDBUS_INCLUDE_DIRS})
+        target_link_libraries(aoc_lib PUBLIC ${SDBUS_LIBRARIES})
+        message(STATUS "DBus service: libsystemd ${SDBUS_VERSION}")
+    else()
+        message(STATUS "DBus service: libsystemd not found, disabled")
+    endif()
+endif()
 
 # Compiler warnings
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
