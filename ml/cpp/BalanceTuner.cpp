@@ -322,6 +322,9 @@ runBalanceGA(const BalanceGAConfig& cfg, uint64_t masterSeed, ThreadPool* pool) 
                      gen + 1, cfg.generations);
 
         // Sequential over individuals (singleton clash), parallel over games.
+        // All individuals in a generation run the SAME N games so fitness
+        // differences reflect genome, not luck of different seeds/maps.
+        // Cross-generation variety comes from genSeed changing per gen.
         const uint64_t genSeed = masterSeed + static_cast<uint64_t>(gen) * 1000003ull;
         for (std::size_t i = 0; i < pop.size(); ++i) {
             if (cfg.stopFlag != nullptr
@@ -329,8 +332,7 @@ runBalanceGA(const BalanceGAConfig& cfg, uint64_t masterSeed, ThreadPool* pool) 
                 std::fprintf(stderr, "[Balance GA] stop requested mid-gen\n");
                 goto done;
             }
-            const uint64_t indSeed = genSeed + static_cast<uint64_t>(i) * 7919ull;
-            evaluateBalanceIndividual(pop[i], cfg, indSeed, pool);
+            evaluateBalanceIndividual(pop[i], cfg, genSeed, pool);
         }
 
         std::sort(pop.begin(), pop.end(),
