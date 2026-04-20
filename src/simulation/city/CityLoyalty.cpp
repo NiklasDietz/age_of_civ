@@ -45,6 +45,11 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     const float devotionLoyaltyCoef =
         religionLoyaltyCoefficient(effectiveEraFromTech(*gsPlayer));
 
+    // Cap secessions at one per civ per turn. Prevents cascade where a low-loyalty
+    // empire loses half its periphery in a single turn -- stress tests showed
+    // same-turn multi-city loss was possible and bricks the affected civ.
+    bool secededThisTurn = false;
+
     // Iterate all cities owned by this player. Cities captured/seceded away
     // remain in the old owner's vector (capture mechanic never rewires lists),
     // so filter by current owner to avoid processing stale entries twice.
@@ -161,7 +166,8 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         // Captures "periphery secession" missed by the loyalty <= 0 gate when
         // pressure keeps the city hovering in Unrest without hitting bottom.
         bool triggerSecession = (loyalty.loyalty <= 0.0f);
-        if (!triggerSecession && loyalty.unrestTurns >= 3) {
+        if (secededThisTurn) { triggerSecession = false; }
+        if (!triggerSecession && loyalty.unrestTurns >= 3 && !secededThisTurn) {
             int32_t distFromCapital = 0;
             for (const std::unique_ptr<aoc::game::City>& other : gsPlayer->cities()) {
                 if (other->isOriginalCapital()) {
@@ -179,6 +185,7 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         }
 
         if (triggerSecession) {
+            secededThisTurn = true;
             // Find the dominant neighbor (most pressure from nearby foreign cities)
             std::unordered_map<PlayerId, float> neighborPressure;
             for (const std::unique_ptr<aoc::game::Player>& otherPlayer : gameState.players()) {

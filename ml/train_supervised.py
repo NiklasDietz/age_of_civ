@@ -94,7 +94,8 @@ CSV_COLUMNS_NEW = [
     "GDP", "Treasury", "CoinTier", "MonetarySystem", "Inflation",
     "Population", "Cities", "Military", "TechsResearched", "CultureTotal",
     "TradePartners", "CompositeCSI", "EraVP", "AvgHappiness",
-    "Corruption", "CrisisType", "IndustrialRev", "GovernmentType"
+    "Corruption", "CrisisType", "IndustrialRev", "GovernmentType",
+    "FoodPerTurn", "FamineCities", "ScienceDiffusion", "CultureDiffusion"
 ]
 # Legacy format (pre-context columns) for backward compatibility
 CSV_COLUMNS_LEGACY = [
@@ -113,9 +114,10 @@ FEATURE_COLUMNS = [
     "GDP", "Treasury", "CoinTier", "MonetarySystem", "Inflation",
     "Population", "Cities", "Military", "TechsResearched", "CultureTotal",
     "TradePartners", "CompositeCSI", "EraVP", "AvgHappiness",
-    "Corruption", "CrisisType", "IndustrialRev", "GovernmentType"
+    "Corruption", "CrisisType", "IndustrialRev", "GovernmentType",
+    "FoodPerTurn", "FamineCities", "ScienceDiffusion", "CultureDiffusion"
 ]
-NUM_FEATURES = len(FEATURE_COLUMNS)  # 22
+NUM_FEATURES = len(FEATURE_COLUMNS)  # 26
 NUM_PLAYERS = 8
 
 

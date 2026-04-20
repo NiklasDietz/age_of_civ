@@ -84,9 +84,10 @@ FEATURE_COLUMNS = [
     "GDP", "Treasury", "CoinTier", "MonetarySystem", "Inflation",
     "Population", "Cities", "Military", "TechsResearched", "CultureTotal",
     "TradePartners", "CompositeCSI", "EraVP", "AvgHappiness",
-    "Corruption", "CrisisType", "IndustrialRev", "GovernmentType"
+    "Corruption", "CrisisType", "IndustrialRev", "GovernmentType",
+    "FoodPerTurn", "FamineCities", "ScienceDiffusion", "CultureDiffusion"
 ]
-NUM_FEATURES = len(FEATURE_COLUMNS)  # 22
+NUM_FEATURES = len(FEATURE_COLUMNS)  # 26
 NUM_PLAYERS = 8
 
 # The RL policy outputs 10 "personality override" values:
@@ -423,7 +424,7 @@ def train_selfplay(args):
         print("  Build the project first: cmake --build build")
         sys.exit(1)
 
-    state_dim = 10 * NUM_FEATURES  # window=10 turns * 18 features
+    state_dim = 10 * NUM_FEATURES  # window=10 turns * NUM_FEATURES features
     policy = SelfPlayPolicy(state_dim=state_dim, hidden_dim=128)
     policy.to(device)
 
