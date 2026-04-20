@@ -17,36 +17,52 @@ void GlobalClimateComponent::addCO2(float amount) {
 }
 
 void GlobalClimateComponent::processTurn(aoc::map::HexGrid& grid, aoc::Random& rng) {
-    if (this->globalTemperature < 1.0f) {
-        // No climate disasters below 1.0 degrees
+    // No climate damage until meaningful warming. Previous 1.0 degree threshold
+    // fired at co2 ~1000 which happens too early; by mid-game the entire coast
+    // is ocean and the map looks progressively drabber. Push the floor up and
+    // throttle the per-turn rate so climate change is a slow background effect
+    // rather than a per-turn coastal wipe.
+    if (this->globalTemperature < 1.5f) {
         return;
     }
+
+    // Cap total terrain conversions per turn so a big map cannot lose hundreds
+    // of coast tiles in one pass.
+    constexpr int32_t MAX_FLOODS_PER_TURN   = 4;
+    constexpr int32_t MAX_DROUGHTS_PER_TURN = 4;
+    int32_t floodsThisTurn   = 0;
+    int32_t droughtsThisTurn = 0;
 
     const int32_t tileCount = grid.tileCount();
 
     for (int32_t i = 0; i < tileCount; ++i) {
+        if (floodsThisTurn >= MAX_FLOODS_PER_TURN
+            && droughtsThisTurn >= MAX_DROUGHTS_PER_TURN) {
+            break;
+        }
         const aoc::map::TerrainType terrain = grid.terrain(i);
 
-        if (terrain == aoc::map::TerrainType::Coast) {
-            // Flood chance based on temperature
-            const float floodChance = (this->globalTemperature >= 2.0f) ? 0.10f : 0.05f;
+        if (terrain == aoc::map::TerrainType::Coast
+            && floodsThisTurn < MAX_FLOODS_PER_TURN) {
+            // Much lower baseline so flooding is rare; severe warming doubles it.
+            const float floodChance = (this->globalTemperature >= 2.5f) ? 0.004f : 0.002f;
             if (rng.chance(floodChance)) {
-                // Coast tile floods and becomes ocean
                 grid.setTerrain(i, aoc::map::TerrainType::Ocean);
                 ++this->seaLevelRise;
+                ++floodsThisTurn;
                 LOG_INFO("Climate: coastal tile %d flooded (temp=%.2f)",
                          i, static_cast<double>(this->globalTemperature));
             }
         }
 
-        // Droughts on grassland/plains at temperature >= 2.0
-        if (this->globalTemperature >= 2.0f) {
+        if (this->globalTemperature >= 2.5f
+            && droughtsThisTurn < MAX_DROUGHTS_PER_TURN) {
             if (terrain == aoc::map::TerrainType::Grassland ||
                 terrain == aoc::map::TerrainType::Plains) {
-                constexpr float DROUGHT_CHANCE = 0.05f;
+                constexpr float DROUGHT_CHANCE = 0.003f;
                 if (rng.chance(DROUGHT_CHANCE)) {
-                    // Drought: convert to desert
                     grid.setTerrain(i, aoc::map::TerrainType::Desert);
+                    ++droughtsThisTurn;
                     LOG_INFO("Climate: drought at tile %d (temp=%.2f)",
                              i, static_cast<double>(this->globalTemperature));
                 }

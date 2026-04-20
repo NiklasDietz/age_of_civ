@@ -352,6 +352,13 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
 }
 
 void Application::startSpectate(int32_t playerCount, int32_t maxTurns) {
+    // Tear down any pre-game menus before starting. The menu-button path
+    // destroys these itself; the CLI --spectate path goes through the
+    // deferred startSpectate hook which did not, leaving the main menu
+    // panel rendered on top of the game world.
+    this->m_mainMenu.destroy(this->m_uiManager);
+    this->m_settingsMenu.destroy(this->m_uiManager);
+
     // Clamp parameters to valid ranges.
     // GameSetupConfig::players array has 8 slots; cap at 8.
     if (playerCount < 2)  { playerCount = 2;  }

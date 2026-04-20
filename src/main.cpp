@@ -13,9 +13,29 @@
 #include "aoc/core/Log.hpp"
 
 #include <cstdlib>
+#include <filesystem>
 #include <string>
+#include <system_error>
+
+namespace {
+// Shader + data paths in Renderer2D / Renderer3D / SpriteRenderer are hardcoded
+// as "shaders/..." and "data/..." relative to the current working directory.
+// CMake copies those trees next to the executable at build time, so make CWD
+// match the executable location before Vulkan init runs.
+void chdirToExecutableDirectory(const char* argv0) {
+    std::error_code ec;
+    std::filesystem::path exePath = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (ec) {
+        exePath = std::filesystem::absolute(std::filesystem::path(argv0), ec);
+        if (ec) { return; }
+    }
+    std::filesystem::current_path(exePath.parent_path(), ec);
+}
+} // namespace
 
 int main(int argc, char* argv[]) {
+    chdirToExecutableDirectory(argv[0]);
+
     bool spectateMode = false;
     int32_t spectatePlayers = 8;
     int32_t spectateTurns   = 500;
