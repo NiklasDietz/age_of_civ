@@ -740,8 +740,13 @@ void MapGenerator::generateRealisticTerrain(const Config& config, HexGrid& grid,
         static_cast<std::size_t>(config.mountainRatio * static_cast<float>(sortedElevations.size()));
     const float mountainThreshold = sortedElevations[std::min(mountainCutoff, sortedElevations.size() - 1)];
 
-    // Temperature map (latitude-based + noise)
-    aoc::Random tempRng(rng.next());
+    // ---- Step 4: Water + mountain pass ----
+    // Biome classification is deferred to a second pass so the precipitation
+    // model can see the final mountain/ocean distribution (rain shadow +
+    // ocean-proximity moisture).
+
+    std::vector<bool> isLand(static_cast<std::size_t>(tileCount), false);
+    std::vector<bool> isMountain(static_cast<std::size_t>(tileCount), false);
 
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
@@ -761,33 +766,161 @@ void MapGenerator::generateRealisticTerrain(const Config& config, HexGrid& grid,
             if (elev >= mountainThreshold) {
                 grid.setTerrain(index, TerrainType::Mountain);
                 grid.setElevation(index, 3);
+                isMountain[static_cast<std::size_t>(index)] = true;
                 continue;
             }
 
-            // Temperature based on latitude + noise
-            const float latitudeT = static_cast<float>(row) / static_cast<float>(height);
-            float temperature = 1.0f - 2.0f * std::abs(latitudeT - 0.5f);
+            isLand[static_cast<std::size_t>(index)] = true;
+            grid.setElevation(index, static_cast<int8_t>(
+                std::clamp(static_cast<int>(elev * 4.0f), 0, 2)));
+        }
+    }
+
+    // ---- Step 5: Distance to ocean (BFS over land) ----
+    // Continental interior tiles sit many hexes from moisture; classic
+    // world-builder treats this as a linear dryness term.
+
+    constexpr int32_t OCEAN_DIST_CAP = 24;
+    std::vector<int32_t> distToOcean(static_cast<std::size_t>(tileCount), OCEAN_DIST_CAP);
+    std::vector<int32_t> bfsQueue;
+    bfsQueue.reserve(static_cast<std::size_t>(tileCount));
+
+    for (int32_t i = 0; i < tileCount; ++i) {
+        const TerrainType tt = grid.terrain(i);
+        if (tt == TerrainType::Ocean || tt == TerrainType::Coast) {
+            distToOcean[static_cast<std::size_t>(i)] = 0;
+            bfsQueue.push_back(i);
+        }
+    }
+
+    for (std::size_t head = 0; head < bfsQueue.size(); ++head) {
+        const int32_t cur = bfsQueue[head];
+        const int32_t curDist = distToOcean[static_cast<std::size_t>(cur)];
+        if (curDist >= OCEAN_DIST_CAP) { continue; }
+        const hex::AxialCoord axial = hex::offsetToAxial(
+            {cur % width, cur / width});
+        for (const hex::AxialCoord& n : hex::neighbors(axial)) {
+            if (!grid.isValid(n)) { continue; }
+            const int32_t nIdx = grid.toIndex(n);
+            if (distToOcean[static_cast<std::size_t>(nIdx)] > curDist + 1) {
+                distToOcean[static_cast<std::size_t>(nIdx)] = curDist + 1;
+                bfsQueue.push_back(nIdx);
+            }
+        }
+    }
+
+    // ---- Step 6: Temperature + precipitation + biome ----
+    // Whittaker-style biome classification. Temperature drops with latitude
+    // and elevation. Precipitation comes from four additive sources:
+    //  - Latitudinal bands modelling Hadley/Ferrel circulation: wet at the
+    //    equator (ITCZ), dry ~30deg (subtropical deserts), wet ~60deg
+    //    (polar front), dry at the poles (polar desert).
+    //  - Fractal rainfall noise so bands are not stripes.
+    //  - Ocean proximity (continental interiors are drier).
+    //  - Orographic rain shadow: if a mountain lies upwind within a few
+    //    hexes, subtract precipitation. Wind direction flips by latitude
+    //    (tropical easterlies vs mid-latitude westerlies).
+
+    aoc::Random tempRng(rng.next());
+    aoc::Random precipRng(rng.next());
+    constexpr float TAU = 6.28318530717958f;
+
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            const int32_t index = row * width + col;
+            if (!isLand[static_cast<std::size_t>(index)]) { continue; }
+
+            const float latitudeT = (static_cast<float>(row) + 0.5f) /
+                                    static_cast<float>(height);
+            const float d         = std::abs(latitudeT - 0.5f);
+
             const float tnx = static_cast<float>(col) / static_cast<float>(width);
             const float tny = static_cast<float>(row) / static_cast<float>(height);
-            temperature += (fractalNoise(tnx, tny, 3, 5.0f, 0.5f, tempRng) - 0.5f) * 0.3f;
+
+            // Temperature: latitude base + noise - elevation cooling.
+            float temperature = 1.0f - 2.0f * d;
+            temperature += (fractalNoise(tnx, tny, 3, 5.0f, 0.5f, tempRng) - 0.5f) * 0.30f;
+            const int8_t elevByte = grid.elevation(index);
+            if (elevByte > 0) {
+                temperature -= 0.05f * static_cast<float>(elevByte);
+            }
             temperature = std::clamp(temperature, 0.0f, 1.0f);
 
+            // Latitudinal precipitation band. cos(4*pi*d) gives peaks at
+            // d=0 (equator) and d=0.5 (pole), troughs at d=0.25 (30deg) and
+            // d=0.75 (impossible, d maxes at 0.5). Scale so subtropics are
+            // genuinely arid.
+            float precipBand = 0.50f + 0.35f * std::cos(2.0f * TAU * d);
+
+            // Cold air carries less moisture: rescale polar precip down.
+            if (temperature < 0.30f) {
+                precipBand *= (0.3f + temperature);
+            }
+
+            // Fractal rainfall noise (independent from temperature noise).
+            const float precipNoise = fractalNoise(tnx + 0.37f, tny + 0.19f,
+                                                   4, 4.0f, 0.55f, precipRng);
+
+            // Ocean proximity: 1.0 adjacent to water, 0.0 at continental
+            // interior. Linear decay over 10 hexes captures "warm wet coasts
+            // vs dry interior" without needing full climate simulation.
+            const int32_t dOcean = distToOcean[static_cast<std::size_t>(index)];
+            const float oceanBoost = std::max(0.0f, 1.0f - static_cast<float>(dOcean) / 10.0f);
+
+            // Orographic rain shadow. Wind direction is a 2D offset on the
+            // offset-grid; negative k walks upwind from this tile.
+            int32_t windDX = 0;
+            if (d < 0.33f) {
+                windDX = -1; // Tropics: trade winds blow east-to-west.
+            } else if (d < 0.66f) {
+                windDX = 1;  // Mid-latitudes: westerlies.
+            } else {
+                windDX = -1; // Polar easterlies.
+            }
+
+            float rainShadow = 0.0f;
+            for (int32_t k = 1; k <= 5; ++k) {
+                int32_t cx = col - windDX * k;
+                // Wrap horizontally (cylindrical maps); clamp on flat.
+                if (grid.topology() == MapTopology::Cylindrical) {
+                    cx = ((cx % width) + width) % width;
+                } else if (cx < 0 || cx >= width) {
+                    break;
+                }
+                const int32_t nIdx = row * width + cx;
+                if (isMountain[static_cast<std::size_t>(nIdx)]) {
+                    // Closer mountains cast stronger shadow.
+                    rainShadow -= 0.35f / static_cast<float>(k);
+                    break;
+                }
+            }
+
+            float precipitation = 0.45f * precipBand
+                                + 0.30f * precipNoise
+                                + 0.25f * oceanBoost
+                                + rainShadow;
+            precipitation = std::clamp(precipitation, 0.0f, 1.0f);
+
+            // Biome lookup (Whittaker-ish). Temperature gates first -- polar
+            // tiles are snow/tundra regardless of precipitation (ice deserts
+            // still read as "snow"). Warm tiles then branch by moisture.
             TerrainType terrain;
             if (temperature < 0.15f) {
                 terrain = TerrainType::Snow;
             } else if (temperature < 0.30f) {
                 terrain = TerrainType::Tundra;
-            } else if (temperature > 0.80f) {
+            } else if (precipitation < 0.22f && temperature > 0.40f) {
                 terrain = TerrainType::Desert;
-            } else if (temperature > 0.50f) {
+            } else if (precipitation < 0.45f) {
                 terrain = TerrainType::Plains;
+            } else if (temperature > 0.70f && precipitation > 0.65f) {
+                // Hot + wet: grassland for now; feature pass adds jungle.
+                terrain = TerrainType::Grassland;
             } else {
                 terrain = TerrainType::Grassland;
             }
 
             grid.setTerrain(index, terrain);
-            grid.setElevation(index, static_cast<int8_t>(
-                std::clamp(static_cast<int>(elev * 4.0f), 0, 2)));
         }
     }
 

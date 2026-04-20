@@ -26,6 +26,12 @@
 - Eliminates the immersion-breaking "edge of the world"
 - Visually striking for marketing/screenshots
 
+**2D toggle requirement:** when the 3D mode lands it should become the
+default, but a 2D flat-hex view must remain selectable (toggle button
+near the minimap, plus `--flat` CLI flag). 2D stays useful for
+AI/GA/headless workflows that do not need the camera cost, and for
+players who prefer the flat overview.
+
 ---
 
 ## Spectator Mode Visual Fix
