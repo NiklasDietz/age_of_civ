@@ -969,7 +969,8 @@ void processTurn(TurnContext& turnContext) {
     if (turnContext.rng != nullptr) {
         processWorldCongress(*turnContext.gameState,
                               static_cast<TurnNumber>(turnContext.currentTurn),
-                              *turnContext.rng);
+                              *turnContext.rng,
+                              turnContext.diplomacy);
     }
 
     // City-state diplomacy: meet-check, passive envoy accrual, suzerain

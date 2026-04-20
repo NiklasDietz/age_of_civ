@@ -240,6 +240,7 @@ set(AOC_LIB_SOURCES
     src/simulation/diplomacy/EspionageSystem.cpp
     src/simulation/diplomacy/WarWeariness.cpp
     src/simulation/diplomacy/Grievance.cpp
+    src/simulation/diplomacy/DiplomaticFavor.cpp
     src/simulation/diplomacy/WorldCongress.cpp
     src/simulation/diplomacy/DealTerms.cpp
     src/simulation/diplomacy/NavalPassage.cpp

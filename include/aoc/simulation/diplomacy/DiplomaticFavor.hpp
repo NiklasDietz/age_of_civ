@@ -42,6 +42,12 @@ struct PlayerDiplomaticFavorComponent {
 };
 
 /// Compute per-turn diplomatic favor for a player.
+///
+/// Contributions:
+///   - Government base: Democracy 4, Merchant Republic 3, Monarchy 2, others 1
+///   - Active alliances (any type): +2 each
+///   - City-state suzerainties: +2 each
+///   - Grievances against you: -1 each, clamped to [-10, 0]
 [[nodiscard]] int32_t computeDiplomaticFavor(const aoc::game::Player& player,
                                               int32_t allianceCount,
                                               int32_t suzeraintyCount,
