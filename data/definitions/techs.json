@@ -1,30 +1,380 @@
 [
-    {"id": 0,  "name": "Mining",                "era": 0, "researchCost": 20,   "prerequisites": [],       "unlockedGoods": [], "unlockedBuildings": [0],  "unlockedUnits": []},
-    {"id": 1,  "name": "Animal Husbandry",      "era": 0, "researchCost": 20,   "prerequisites": [],       "unlockedGoods": [], "unlockedBuildings": [],   "unlockedUnits": [4]},
-    {"id": 2,  "name": "Pottery",               "era": 0, "researchCost": 20,   "prerequisites": [],       "unlockedGoods": [], "unlockedBuildings": [1],  "unlockedUnits": []},
-    {"id": 3,  "name": "Writing",               "era": 0, "researchCost": 40,   "prerequisites": [2],      "unlockedGoods": [], "unlockedBuildings": [7],  "unlockedUnits": []},
-    {"id": 4,  "name": "Bronze Working",        "era": 1, "researchCost": 60,   "prerequisites": [0],      "unlockedGoods": [], "unlockedBuildings": [],   "unlockedUnits": [0]},
-    {"id": 5,  "name": "Currency",              "era": 1, "researchCost": 65,   "prerequisites": [3],      "unlockedGoods": [], "unlockedBuildings": [6],  "unlockedUnits": []},
-    {"id": 6,  "name": "Engineering",           "era": 1, "researchCost": 80,   "prerequisites": [0, 2],   "unlockedGoods": [], "unlockedBuildings": [],   "unlockedUnits": []},
-    {"id": 7,  "name": "Apprenticeship",        "era": 2, "researchCost": 190,  "prerequisites": [5, 6],   "unlockedGoods": [], "unlockedBuildings": [1],  "unlockedUnits": []},
-    {"id": 8,  "name": "Metallurgy",            "era": 2, "researchCost": 220,  "prerequisites": [4],      "unlockedGoods": [], "unlockedBuildings": [3],  "unlockedUnits": []},
-    {"id": 9,  "name": "Banking",               "era": 3, "researchCost": 350,  "prerequisites": [5, 7],   "unlockedGoods": [], "unlockedBuildings": [],   "unlockedUnits": []},
-    {"id": 10, "name": "Gunpowder",             "era": 3, "researchCost": 380,  "prerequisites": [8],      "unlockedGoods": [], "unlockedBuildings": [],   "unlockedUnits": []},
-    {"id": 11, "name": "Industrialization",      "era": 4, "researchCost": 580,  "prerequisites": [8, 9],   "unlockedGoods": [], "unlockedBuildings": [3],  "unlockedUnits": []},
-    {"id": 12, "name": "Refining",              "era": 4, "researchCost": 520,  "prerequisites": [11],     "unlockedGoods": [], "unlockedBuildings": [2],  "unlockedUnits": []},
-    {"id": 13, "name": "Economics",             "era": 4, "researchCost": 480,  "prerequisites": [9],      "unlockedGoods": [], "unlockedBuildings": [],   "unlockedUnits": []},
-    {"id": 14, "name": "Electricity",           "era": 5, "researchCost": 800,  "prerequisites": [11],     "unlockedGoods": [], "unlockedBuildings": [4],  "unlockedUnits": []},
-    {"id": 15, "name": "Mass Production",       "era": 5, "researchCost": 900,  "prerequisites": [19, 12], "unlockedGoods": [], "unlockedBuildings": [5],  "unlockedUnits": []},
-    {"id": 16, "name": "Computers",             "era": 6, "researchCost": 1300, "prerequisites": [14, 23], "unlockedGoods": [], "unlockedBuildings": [12], "unlockedUnits": []},
-    {"id": 17, "name": "Nuclear Fission",       "era": 6, "researchCost": 1400, "prerequisites": [14],     "unlockedGoods": [], "unlockedBuildings": [],   "unlockedUnits": []},
-    {"id": 18, "name": "Surface Plate",         "era": 4, "researchCost": 500,  "prerequisites": [8, 11],  "unlockedGoods": [], "unlockedBuildings": [10], "unlockedUnits": []},
-    {"id": 19, "name": "Interchangeable Parts", "era": 4, "researchCost": 600,  "prerequisites": [18],     "unlockedGoods": [], "unlockedBuildings": [],   "unlockedUnits": []},
-    {"id": 20, "name": "Textiles",              "era": 2, "researchCost": 200,  "prerequisites": [7],      "unlockedGoods": [], "unlockedBuildings": [8],  "unlockedUnits": []},
-    {"id": 21, "name": "Food Preservation",     "era": 4, "researchCost": 560,  "prerequisites": [11],     "unlockedGoods": [], "unlockedBuildings": [9],  "unlockedUnits": []},
-    {"id": 22, "name": "Precision Instruments", "era": 5, "researchCost": 930,  "prerequisites": [19, 14], "unlockedGoods": [], "unlockedBuildings": [],   "unlockedUnits": []},
-    {"id": 23, "name": "Semiconductors",        "era": 5, "researchCost": 1050, "prerequisites": [22],     "unlockedGoods": [], "unlockedBuildings": [11], "unlockedUnits": []},
-    {"id": 24, "name": "Advanced Chemistry",    "era": 5, "researchCost": 850,  "prerequisites": [12],     "unlockedGoods": [], "unlockedBuildings": [],   "unlockedUnits": []},
-    {"id": 25, "name": "Telecommunications",    "era": 5, "researchCost": 930,  "prerequisites": [14],     "unlockedGoods": [], "unlockedBuildings": [13], "unlockedUnits": []},
-    {"id": 26, "name": "Aviation",              "era": 5, "researchCost": 1000, "prerequisites": [11, 12], "unlockedGoods": [], "unlockedBuildings": [14], "unlockedUnits": []},
-    {"id": 27, "name": "Internet",              "era": 6, "researchCost": 1560, "prerequisites": [16, 25], "unlockedGoods": [], "unlockedBuildings": [],   "unlockedUnits": []}
+  {
+    "id": 0,
+    "name": "Mining",
+    "era": 0,
+    "researchCost": 20,
+    "prerequisites": [],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      0
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 1,
+    "name": "Animal Husbandry",
+    "era": 0,
+    "researchCost": 20,
+    "prerequisites": [],
+    "unlockedGoods": [],
+    "unlockedBuildings": [],
+    "unlockedUnits": [
+      4
+    ]
+  },
+  {
+    "id": 2,
+    "name": "Pottery",
+    "era": 0,
+    "researchCost": 20,
+    "prerequisites": [],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      1
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 3,
+    "name": "Writing",
+    "era": 0,
+    "researchCost": 40,
+    "prerequisites": [
+      2
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      7
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 4,
+    "name": "Bronze Working",
+    "era": 1,
+    "researchCost": 60,
+    "prerequisites": [
+      0
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [],
+    "unlockedUnits": [
+      0
+    ]
+  },
+  {
+    "id": 5,
+    "name": "Currency",
+    "era": 1,
+    "researchCost": 65,
+    "prerequisites": [
+      3
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      6
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 6,
+    "name": "Engineering",
+    "era": 1,
+    "researchCost": 80,
+    "prerequisites": [
+      0,
+      2
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [],
+    "unlockedUnits": []
+  },
+  {
+    "id": 7,
+    "name": "Apprenticeship",
+    "era": 2,
+    "researchCost": 190,
+    "prerequisites": [
+      5,
+      6
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      1
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 8,
+    "name": "Metallurgy",
+    "era": 2,
+    "researchCost": 220,
+    "prerequisites": [
+      4
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      3
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 9,
+    "name": "Banking",
+    "era": 3,
+    "researchCost": 350,
+    "prerequisites": [
+      5,
+      7
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [],
+    "unlockedUnits": []
+  },
+  {
+    "id": 10,
+    "name": "Gunpowder",
+    "era": 3,
+    "researchCost": 380,
+    "prerequisites": [
+      8
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [],
+    "unlockedUnits": []
+  },
+  {
+    "id": 11,
+    "name": "Industrialization",
+    "era": 4,
+    "researchCost": 435,
+    "prerequisites": [
+      8,
+      9
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      3
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 12,
+    "name": "Refining",
+    "era": 4,
+    "researchCost": 390,
+    "prerequisites": [
+      11
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      2
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 13,
+    "name": "Economics",
+    "era": 4,
+    "researchCost": 360,
+    "prerequisites": [
+      9
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [],
+    "unlockedUnits": []
+  },
+  {
+    "id": 14,
+    "name": "Electricity",
+    "era": 5,
+    "researchCost": 600,
+    "prerequisites": [
+      11
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      4
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 15,
+    "name": "Mass Production",
+    "era": 5,
+    "researchCost": 675,
+    "prerequisites": [
+      19,
+      12
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      5
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 16,
+    "name": "Computers",
+    "era": 6,
+    "researchCost": 975,
+    "prerequisites": [
+      14,
+      23
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      12
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 17,
+    "name": "Nuclear Fission",
+    "era": 6,
+    "researchCost": 1050,
+    "prerequisites": [
+      14
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [],
+    "unlockedUnits": []
+  },
+  {
+    "id": 18,
+    "name": "Surface Plate",
+    "era": 4,
+    "researchCost": 375,
+    "prerequisites": [
+      8,
+      11
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      10
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 19,
+    "name": "Interchangeable Parts",
+    "era": 4,
+    "researchCost": 450,
+    "prerequisites": [
+      18
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [],
+    "unlockedUnits": []
+  },
+  {
+    "id": 20,
+    "name": "Textiles",
+    "era": 2,
+    "researchCost": 200,
+    "prerequisites": [
+      7
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      8
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 21,
+    "name": "Food Preservation",
+    "era": 4,
+    "researchCost": 420,
+    "prerequisites": [
+      11
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      9
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 22,
+    "name": "Precision Instruments",
+    "era": 5,
+    "researchCost": 697,
+    "prerequisites": [
+      19,
+      14
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [],
+    "unlockedUnits": []
+  },
+  {
+    "id": 23,
+    "name": "Semiconductors",
+    "era": 5,
+    "researchCost": 787,
+    "prerequisites": [
+      22
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      11
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 24,
+    "name": "Advanced Chemistry",
+    "era": 5,
+    "researchCost": 637,
+    "prerequisites": [
+      12
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [],
+    "unlockedUnits": []
+  },
+  {
+    "id": 25,
+    "name": "Telecommunications",
+    "era": 5,
+    "researchCost": 697,
+    "prerequisites": [
+      14
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      13
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 26,
+    "name": "Aviation",
+    "era": 5,
+    "researchCost": 750,
+    "prerequisites": [
+      11,
+      12
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [
+      14
+    ],
+    "unlockedUnits": []
+  },
+  {
+    "id": 27,
+    "name": "Internet",
+    "era": 6,
+    "researchCost": 1170,
+    "prerequisites": [
+      16,
+      25
+    ],
+    "unlockedGoods": [],
+    "unlockedBuildings": [],
+    "unlockedUnits": []
+  }
 ]

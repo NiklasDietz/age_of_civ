@@ -192,7 +192,8 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
 
     // Compute global averages for relative scoring
     float avgGDP = 0.0f, avgMilitary = 0.0f, avgCulture = 0.0f, avgTech = 0.0f;
-    float avgCities = 0.0f, avgPop = 0.0f, avgTreasury = 0.0f;
+    float avgCities = 0.0f, avgPop = 0.0f;
+    float avgDiplomacy = 0.0f, avgFinancial = 0.0f;
 
     for (const std::pair<const PlayerId, PlayerRawStats>& entry : stats) {
         avgGDP += static_cast<float>(entry.second.gdp);
@@ -201,7 +202,13 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
         avgTech += static_cast<float>(entry.second.techsResearched);
         avgCities += static_cast<float>(entry.second.cityCount);
         avgPop += static_cast<float>(entry.second.totalPopulation);
-        avgTreasury += static_cast<float>(entry.second.treasury);
+        avgDiplomacy += 1.0f + static_cast<float>(entry.second.tradePartnerCount) * 2.0f;
+        // Clamp negative treasury (debt) to 0 for averaging so a single deeply
+        // indebted civ cannot invert the financial category for everyone else.
+        float finRaw = std::max(0.0f, static_cast<float>(entry.second.treasury))
+                     + static_cast<float>(entry.second.bondHoldings) * 0.5f;
+        if (entry.second.isReserveCurrency) { finRaw *= 1.3f; }
+        avgFinancial += finRaw;
     }
 
     float invCount = 1.0f / static_cast<float>(std::max(1, playerCount));
@@ -211,7 +218,8 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
     avgTech *= invCount;
     avgCities *= invCount;
     avgPop *= invCount;
-    avgTreasury *= invCount;
+    avgDiplomacy *= invCount;
+    avgFinancial *= invCount;
 
     // auto required: lambda type is unnameable
     auto relScore = [](float value, float avg) -> float {
@@ -244,10 +252,11 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
         // Scientific
         tracker.categoryScores[3] = relScore(static_cast<float>(s.techsResearched), avgTech);
 
-        // Diplomatic: alliances + trade partners + agreements
-        float diplomacyRaw = static_cast<float>(s.tradePartnerCount) * 2.0f
-                           + static_cast<float>(s.allianceCount) * 3.0f;
-        float avgDiplomacy = static_cast<float>(playerCount); // Rough baseline
+        // Diplomatic: trade partners (alliance tracking lives elsewhere; not
+        // plumbed through here yet, so baseline on trade partners alone).
+        // Add +1 flat so a civ with zero partners still scores against the
+        // average rather than forcing the per-player avg toward zero.
+        float diplomacyRaw = 1.0f + static_cast<float>(s.tradePartnerCount) * 2.0f;
         tracker.categoryScores[4] = relScore(diplomacyRaw, avgDiplomacy);
 
         // Quality of life: happiness + population health
@@ -261,11 +270,13 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
         float avgTerr = avgCities * 5.0f + static_cast<float>(s.improvedTiles);
         tracker.categoryScores[6] = relScore(terrRaw, std::max(1.0f, avgTerr));
 
-        // Financial: treasury + bonds + reserve currency
-        float finRaw = static_cast<float>(s.treasury)
+        // Financial: treasury (non-negative) + bonds + reserve currency.
+        // Debt (negative treasury) scores 0, not a negative number, so a
+        // bankrupt civ cannot flip the relative score into nonsense.
+        float finRaw = std::max(0.0f, static_cast<float>(s.treasury))
                      + static_cast<float>(s.bondHoldings) * 0.5f;
         if (s.isReserveCurrency) { finRaw *= 1.3f; }
-        tracker.categoryScores[7] = relScore(finRaw, std::max(1.0f, avgTreasury));
+        tracker.categoryScores[7] = relScore(finRaw, std::max(1.0f, avgFinancial));
 
         // Interdependence multipliers
         // Trade network: 0 partners=0.7, 1=0.85, 2=0.95, 3=1.0, 4=1.05, 5+=1.1, 6+=1.2
@@ -481,24 +492,33 @@ void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber current
 
 /// Integration project thresholds live in BalanceParams so the balance GA can
 /// sweep them.  Reads are per-turn which is fine -- not a hot path.
+///
+/// Originally required ALL 8 categories above the threshold, which proved
+/// virtually unreachable: even runaway leaders (compositeCSI 40-280) have
+/// 1-2 weak categories (mil spec weak in science, etc.).  Relaxed to "at
+/// least CSI_CATEGORY_COUNT - 2 (= 6 of 8) above threshold" so a broadly
+/// dominant civ can actually earn the Global Integration Project.  The
+/// integration win stays distinct from Culture/Science/Domination because
+/// it still requires breadth, not a single axis.
 void updateIntegrationProject(aoc::game::GameState& gameState) {
     const aoc::balance::BalanceParams& bal = aoc::balance::params();
+    constexpr int32_t MAX_WEAK_CATEGORIES = 2;
+    const int32_t minAbove = CSI_CATEGORY_COUNT - MAX_WEAK_CATEGORIES;
+
     for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
         VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
         if (tracker.isEliminated || tracker.integrationComplete) {
             continue;
         }
 
-        // Check if ALL categories are above threshold
-        bool allAbove = true;
+        int32_t categoriesAbove = 0;
         for (int32_t c = 0; c < CSI_CATEGORY_COUNT; ++c) {
-            if (tracker.categoryScores[c] < bal.integrationThreshold) {
-                allAbove = false;
-                break;
+            if (tracker.categoryScores[c] >= bal.integrationThreshold) {
+                ++categoriesAbove;
             }
         }
 
-        if (allAbove) {
+        if (categoriesAbove >= minAbove) {
             ++tracker.integrationProgress;
             if (tracker.integrationProgress >= bal.integrationTurnsRequired) {
                 tracker.integrationComplete = true;
@@ -506,7 +526,7 @@ void updateIntegrationProject(aoc::game::GameState& gameState) {
                          static_cast<unsigned>(gsPlayer->id()));
             }
         } else {
-            tracker.integrationProgress = 0;  // Reset if any category drops below
+            tracker.integrationProgress = 0;
         }
     }
 }
@@ -528,6 +548,8 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
         for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
             const VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
             if (tracker.integrationComplete) {
+                LOG_INFO("Player %u wins by INTEGRATION (Global Integration Project)",
+                         static_cast<unsigned>(gsPlayer->id()));
                 return {VictoryType::Integration, gsPlayer->id()};
             }
         }

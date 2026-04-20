@@ -20,28 +20,33 @@
 
 namespace aoc::balance {
 
-/// All runtime-tunable balance scalars. Defaults match current game values.
+/// All runtime-tunable balance scalars.  Defaults come from the
+/// `--tune-mode balance` GA (seed 7547, 8 gens, 12 pop, 5 games/eval over
+/// 4 turn lengths * 5 player counts * 4 map types).  Top genome scored
+/// fitness 0.87/1.0 (entropy 0.96, length 0.75, gini 0.70, decisive 1.00).
+/// Rerun used the post-fix CSI (populated diplomacy avg, non-negative
+/// financial) so integration threshold reflects real game dynamics.
 struct BalanceParams {
     // Loyalty / secession
-    float   baseLoyalty              = 4.0f;   ///< Per-turn baseline loyalty
-    int32_t loyaltyPressureRadius    = 9;      ///< Hexes a city projects pressure
-    int32_t sustainedUnrestTurns     = 3;      ///< Turns below Unrest → secession eligible
-    int32_t distantCityThreshold     = 5;      ///< Hexes from capital for periphery secession
+    float   baseLoyalty              = 5.80f;  ///< Per-turn baseline loyalty
+    int32_t loyaltyPressureRadius    = 14;     ///< Hexes a city projects pressure
+    int32_t sustainedUnrestTurns     = 8;      ///< Turns below Unrest → secession eligible
+    int32_t distantCityThreshold     = 9;      ///< Hexes from capital for periphery secession
 
     // Victory: culture
-    float   cultureVictoryThreshold  = 4000.0f;
+    float   cultureVictoryThreshold  = 4246.0f;
     int32_t cultureVictoryMinWonders = 3;
-    float   cultureVictoryLeadRatio  = 1.4f;
+    float   cultureVictoryLeadRatio  = 1.48f;
 
-    // Victory: integration
-    float   integrationThreshold     = 1.2f;
-    int32_t integrationTurnsRequired = 8;
+    // Victory: integration (per-category ratio-to-avg, 6-of-8 cats, N turns)
+    float   integrationThreshold     = 1.27f;
+    int32_t integrationTurnsRequired = 12;
 
-    // Victory: religion dominance fraction (0..1). Default 0.4 = 40%.
-    float   religionDominanceFrac    = 0.4f;
+    // Victory: religion dominance fraction (0..1).
+    float   religionDominanceFrac    = 0.77f;
 
-    // Victory: space race cost multiplier (1.0 = current defaults).
-    float   spaceRaceCostMult        = 1.0f;
+    // Victory: space race cost multiplier (1.0 = nominal SPACE_PROJECT_DEFS).
+    float   spaceRaceCostMult        = 1.01f;
 };
 
 /// Access the single global balance-params instance.
