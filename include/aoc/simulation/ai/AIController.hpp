@@ -79,6 +79,11 @@ private:
 
     void manageGovernment(aoc::game::GameState& gameState);
 
+    /// Activate recruited Great People using gene-weighted situational scoring.
+    void manageGreatPeople(aoc::game::GameState& gameState,
+                           aoc::map::HexGrid& grid,
+                           const DiplomacyManager& diplomacy);
+
     /// Consider purchasing units or buildings with gold (ROI-based).
     void considerPurchases(aoc::game::GameState& gameState);
 

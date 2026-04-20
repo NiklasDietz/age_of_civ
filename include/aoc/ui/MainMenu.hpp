@@ -19,10 +19,6 @@ class UIManager;
 
 namespace aoc::ui {
 
-/// Callback types for menu actions.
-using StartGameCallback = std::function<void()>;
-using QuitCallback = std::function<void()>;
-
 // ============================================================================
 // Game Setup types
 // ============================================================================
@@ -58,8 +54,6 @@ struct GameSetupConfig {
     VictoryMode victoryMode = VictoryMode::Default;   ///< Victory condition mode
 };
 
-using StartGameWithConfigCallback = std::function<void(const GameSetupConfig&)>;
-
 class MainMenu {
 public:
     /**
@@ -69,7 +63,8 @@ public:
      * onSpectate is invoked when the user clicks "Spectate".
      */
     void build(UIManager& ui, float screenW, float screenH,
-               StartGameCallback onStartGame, QuitCallback onQuit,
+               std::function<void()> onStartGame,
+               std::function<void()> onQuit,
                std::function<void()> onSettings  = {},
                std::function<void()> onTutorial  = {},
                std::function<void()> onSpectate  = {});
@@ -87,8 +82,8 @@ private:
     WidgetId m_rootPanel = INVALID_WIDGET;
 
     // Stored callbacks
-    StartGameCallback m_onStartGame;
-    QuitCallback m_onQuit;
+    std::function<void()> m_onStartGame;
+    std::function<void()> m_onQuit;
     std::function<void()> m_onSettings;
     std::function<void()> m_onTutorial;
     std::function<void()> m_onSpectate;
@@ -101,7 +96,7 @@ private:
 class GameSetupScreen {
 public:
     void build(UIManager& ui, float screenW, float screenH,
-               StartGameWithConfigCallback onStart,
+               std::function<void(const GameSetupConfig&)> onStart,
                std::function<void()> onBack);
     void destroy(UIManager& ui);
     void refresh(UIManager& ui);

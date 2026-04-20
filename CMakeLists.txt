@@ -313,6 +313,7 @@ set(AOC_LIB_SOURCES
     src/simulation/production/PowerGrid.cpp
     src/simulation/production/Automation.cpp
     src/simulation/city/CityLoyalty.cpp
+    src/simulation/city/Secession.cpp
     src/simulation/city/DistrictAdjacency.cpp
     src/simulation/unit/CombatExtensions.cpp
     src/simulation/religion/TheologicalCombat.cpp

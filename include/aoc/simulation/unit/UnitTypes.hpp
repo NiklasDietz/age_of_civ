@@ -103,8 +103,8 @@ struct UnitTypeDef {
 // Unit type IDs: keep stable for serialization. Gaps are fine.
 // Format: {id, name, class, era, hp, melee, ranged, range, move, cost, reqTech, upgradesTo, upgradeCost}
 
-inline constexpr int32_t UNIT_TYPE_COUNT = 65;
-inline constexpr std::array<UnitTypeDef, 65> UNIT_TYPE_DEFS = {{
+inline constexpr int32_t UNIT_TYPE_COUNT = 66;
+inline constexpr std::array<UnitTypeDef, 66> UNIT_TYPE_DEFS = {{
     // ========================================================================
     // MELEE INFANTRY: Warrior -> Swordsman -> Man-at-Arms -> Musketman -> Infantry -> Mech Infantry
     // ========================================================================
@@ -225,6 +225,14 @@ inline constexpr std::array<UnitTypeDef, 65> UNIT_TYPE_DEFS = {{
     // return the naval unit for spy lookups.  Moved to 100/101.
     {UnitTypeId{100}, "Diplomat",       UnitClass::Civilian, UnitEra::Classical,     60,  0,  0, 0, 3,  60, TechId{3},  UnitTypeId{101}, 80},
     {UnitTypeId{101}, "Spy",            UnitClass::Civilian, UnitEra::Renaissance,   60,  0,  0, 0, 4, 120, TechId{8},  UnitTypeId{},    0},
+
+    // ========================================================================
+    // GREAT PERSON (recruited, not built)
+    // Civilian-class marker unit. Earlier spawn used UnitTypeId{50} which
+    // collided with Stealth Fighter -- same bug class as the 55/56 Diplomat/Spy
+    // collision with Frigate/Ironclad.
+    // ========================================================================
+    {UnitTypeId{102}, "Great Person",   UnitClass::Civilian, UnitEra::Ancient,       50,  0,  0, 0, 3,   0, TechId{},   UnitTypeId{},    0},
 }};
 
 /// Lookup a unit type definition by ID. IDs are not contiguous so this

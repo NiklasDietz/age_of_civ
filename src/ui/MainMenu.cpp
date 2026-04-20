@@ -76,7 +76,8 @@ static void setButtonSelected(UIManager& ui, WidgetId id, bool selected) {
 // ============================================================================
 
 void MainMenu::build(UIManager& ui, float screenW, float screenH,
-                     StartGameCallback onStartGame, QuitCallback onQuit,
+                     std::function<void()> onStartGame,
+                     std::function<void()> onQuit,
                      std::function<void()> onSettings,
                      std::function<void()> onTutorial,
                      std::function<void()> onSpectate) {
@@ -269,7 +270,7 @@ static constexpr std::array<std::string_view, aoc::sim::CIV_COUNT> CIV_NAMES = {
 }};
 
 void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
-                            StartGameWithConfigCallback onStart,
+                            std::function<void(const GameSetupConfig&)> onStart,
                             std::function<void()> onBack) {
     assert(!this->m_isBuilt);
 
@@ -738,7 +739,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.pressedColor = BTN_GREEN_PRESS;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 5.0f;
-        StartGameWithConfigCallback startCb = std::move(onStart);
+        std::function<void(const GameSetupConfig&)> startCb = std::move(onStart);
         btn.onClick = [this, startCb]() {
             if (startCb) {
                 startCb(this->m_config);

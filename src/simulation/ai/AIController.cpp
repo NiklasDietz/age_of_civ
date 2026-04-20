@@ -39,6 +39,7 @@
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 #include "aoc/simulation/ai/UtilityScoring.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
+#include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/ai/UtilityAI.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -356,28 +357,51 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                 const float wealthProxy = std::min(bestEnemyWealth / 1000.0f, 3.0f);
                 const float bubble = 1.0f; // Placeholder: MarketManipulation likes bubbles
 
+                // Target-context multipliers
+                PlayerId bestTargetId = INVALID_PLAYER;
+                for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+                    if (other->id() == this->m_player) { continue; }
+                    if (other->cities().empty()) { continue; }
+                    if (!other->cities().empty()
+                        && other->cities().front()->location() == targetLoc) {
+                        bestTargetId = other->id();
+                        break;
+                    }
+                }
+                const bool atWarWithTarget = bestTargetId != INVALID_PLAYER
+                    && diplomacy.isAtWar(this->m_player, bestTargetId);
+                const float warBonus = atWarWithTarget ? 1.5f : 1.0f;
+                // Deceit gate: low trustworthiness favors high-damage covert ops.
+                const float deceit = std::max(0.1f, 2.0f - bh.trustworthiness);
+
                 struct Cand { SpyMission m; float s; };
-                const std::array<Cand, 8> cands = {{
+                const std::array<Cand, 11> cands = {{
                     {SpyMission::StealTechnology,
                         bh.scienceFocus * 100.0f * (0.5f + techGap)},
+                    {SpyMission::StealTradeSecrets,
+                        bh.scienceFocus * 70.0f * (0.5f + techGap)},
                     {SpyMission::SabotageProduction,
-                        bh.militaryAggression * 80.0f * (0.5f + threat)},
+                        bh.militaryAggression * 80.0f * (0.5f + threat) * warBonus},
+                    {SpyMission::SupplyChainDisrupt,
+                        bh.militaryAggression * 75.0f * warBonus * deceit},
                     {SpyMission::SiphonFunds,
                         bh.economicFocus * 90.0f * wealthProxy},
+                    {SpyMission::CurrencyCounterfeit,
+                        bh.economicFocus * 60.0f * deceit},
                     {SpyMission::MarketManipulation,
                         bh.speculationAppetite * 70.0f * bubble},
+                    {SpyMission::InsiderTrading,
+                        bh.speculationAppetite * 55.0f},
                     {SpyMission::CounterIntelligence,
                         (2.0f - bh.espionagePriority) * 60.0f * (0.5f + threat)},
                     {SpyMission::FomentUnrest,
-                        bh.militaryAggression * 70.0f * (0.5f + threat)},
+                        bh.militaryAggression * 70.0f * (0.5f + threat) * deceit},
                     {SpyMission::MonitorTreasury,
                         bh.economicFocus * 40.0f},
-                    {SpyMission::GatherIntelligence,
-                        50.0f},
                 }};
 
                 SpyMission mission = SpyMission::GatherIntelligence;
-                float bestScore = -1.0f;
+                float bestScore = 50.0f; // GatherIntelligence baseline
                 for (const Cand& c : cands) {
                     const float s = c.s * bh.espionagePriority;
                     if (s > bestScore) { bestScore = s; mission = c.m; }
@@ -454,7 +478,134 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
         }
     }
 
+    this->manageGreatPeople(gameState, grid, diplomacy);
+
     refreshMovement(gameState, this->m_player);
+}
+
+// ============================================================================
+// manageGreatPeople: gene-weighted activation timing
+//
+// Each recruited Great Person is a one-use unit. The AI activates it when the
+// current situation makes its ability especially valuable, weighted by the
+// leader's focus genes:
+//
+//   Scientist  → active immediately if scienceFocus>=1, else waits for a costly tech
+//   Engineer   → active when any city has a slow production item (>100 remaining)
+//   General    → active when at war AND there is a friendly unit nearby to heal
+//   Artist     → active when unowned land is reachable within 2 hexes of the GP
+//   Merchant   → active immediately if economicFocus>=1, else holds until deficit
+//
+// greatPersonFocus globally scales eagerness: >=1.4 activates on any non-zero
+// utility, <0.7 requires strong situational justification.
+// ============================================================================
+
+void AIController::manageGreatPeople(aoc::game::GameState& gameState,
+                                     aoc::map::HexGrid& grid,
+                                     const DiplomacyManager& diplomacy) {
+    aoc::game::Player* player = gameState.player(this->m_player);
+    if (player == nullptr) { return; }
+
+    const LeaderBehavior& bh = leaderPersonality(player->civId()).behavior;
+    const float focusBias    = bh.greatPersonFocus;
+    const float eagerGate    = focusBias >= 1.4f ? 0.0f
+                                                 : (focusBias < 0.7f ? 2.0f : 1.0f);
+
+    bool atWar = false;
+    for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+        if (other->id() == this->m_player) { continue; }
+        if (diplomacy.isAtWar(this->m_player, other->id())) {
+            atWar = true;
+            break;
+        }
+    }
+
+    // Snapshot GP unit pointers before activation (activateGreatPerson calls
+    // removeUnit, invalidating iterators on player->units()).
+    std::vector<aoc::game::Unit*> gpUnits;
+    gpUnits.reserve(4);
+    for (const std::unique_ptr<aoc::game::Unit>& u : player->units()) {
+        if (u->typeId() == UnitTypeId{102} && !u->greatPerson().isActivated) {
+            gpUnits.push_back(u.get());
+        }
+    }
+
+    for (aoc::game::Unit* gp : gpUnits) {
+        const GreatPersonComponent& comp = gp->greatPerson();
+        if (comp.defId >= GREAT_PERSON_COUNT) { continue; }
+        const GreatPersonType type = allGreatPersonDefs()[comp.defId].type;
+
+        float utility = 0.0f;
+        switch (type) {
+            case GreatPersonType::Scientist: {
+                const PlayerTechComponent& tech = player->tech();
+                const float progressRatio = tech.currentResearch.isValid()
+                    ? tech.researchProgress
+                      / (static_cast<float>(techDef(tech.currentResearch).researchCost) + 1.0f)
+                    : 0.0f;
+                // High score when we are deep into a long tech: a 50% jump is a big gift.
+                utility = bh.scienceFocus * (0.5f + progressRatio);
+                break;
+            }
+            case GreatPersonType::Engineer: {
+                float slowest = 0.0f;
+                for (const std::unique_ptr<aoc::game::City>& c : player->cities()) {
+                    if (c->production().isEmpty()) { continue; }
+                    const float remaining = c->production().queue.front().totalCost
+                                          - c->production().queue.front().progress;
+                    if (remaining > slowest) { slowest = remaining; }
+                }
+                utility = bh.prodBuildings * (slowest / 200.0f);
+                break;
+            }
+            case GreatPersonType::General: {
+                if (!atWar) { break; }
+                int32_t hurtNearby = 0;
+                for (const std::unique_ptr<aoc::game::Unit>& u : player->units()) {
+                    if (u.get() == gp) { continue; }
+                    if (u->isDead()) { continue; }
+                    if (u->hitPoints() >= u->typeDef().maxHitPoints) { continue; }
+                    if (grid.distance(u->position(), gp->position()) <= 2) {
+                        ++hurtNearby;
+                    }
+                }
+                utility = bh.militaryAggression * static_cast<float>(hurtNearby) * 0.5f;
+                break;
+            }
+            case GreatPersonType::Artist: {
+                std::vector<aoc::hex::AxialCoord> tiles;
+                tiles.reserve(19);
+                aoc::hex::spiral(gp->position(), 2, std::back_inserter(tiles));
+                int32_t claimable = 0;
+                for (const aoc::hex::AxialCoord& t : tiles) {
+                    if (!grid.isValid(t)) { continue; }
+                    if (grid.owner(grid.toIndex(t)) == INVALID_PLAYER) { ++claimable; }
+                }
+                utility = bh.cultureFocus * static_cast<float>(claimable) * 0.2f;
+                break;
+            }
+            case GreatPersonType::Merchant: {
+                // Stronger utility when treasury is tight.
+                const float treasury  = static_cast<float>(player->treasury());
+                const float stress    = std::max(0.0f, 1.0f - treasury / 400.0f);
+                utility = bh.economicFocus * (0.7f + stress);
+                break;
+            }
+            default:
+                break;
+        }
+
+        utility *= focusBias;
+
+        if (utility > eagerGate) {
+            LOG_INFO("AI %u Activating Great Person defId=%u type=%u utility=%.2f",
+                     static_cast<unsigned>(this->m_player),
+                     static_cast<unsigned>(comp.defId),
+                     static_cast<unsigned>(type),
+                     static_cast<double>(utility));
+            activateGreatPerson(gameState, grid, *gp);
+        }
+    }
 }
 
 // ============================================================================
@@ -1400,6 +1551,34 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             // Peace cooldown: cannot re-declare war within 15 turns of a peace treaty.
             constexpr int32_t WAR_COOLDOWN_TURNS = 15;
             if (rel.turnsSincePeace < WAR_COOLDOWN_TURNS) { continue; }
+
+            // Periphery gate: refuse wars against civs beyond our projection
+            // range. Low-peripheryTolerance leaders (isolationists) restrict
+            // themselves to wars with near neighbours; high-tolerance
+            // (colonial) leaders happily declare across oceans.
+            //
+            // Range scales 10..30 hexes by gene (baseline 20 at 1.0).
+            {
+                const int32_t maxWarRange = static_cast<int32_t>(std::clamp(
+                    20.0f * beh.peripheryTolerance, 10.0f, 30.0f));
+                const aoc::game::Player* ourPlayerPtr   = gameState.player(this->m_player);
+                const aoc::game::Player* theirPlayerPtr = gameState.player(other);
+                if (ourPlayerPtr == nullptr || theirPlayerPtr == nullptr) { continue; }
+                if (ourPlayerPtr->cities().empty() || theirPlayerPtr->cities().empty()) {
+                    continue;
+                }
+                int32_t closestCityDist = std::numeric_limits<int32_t>::max();
+                for (const std::unique_ptr<aoc::game::City>& ourCity : ourPlayerPtr->cities()) {
+                    for (const std::unique_ptr<aoc::game::City>& theirCity : theirPlayerPtr->cities()) {
+                        const int32_t d = aoc::hex::distance(
+                            ourCity->location(), theirCity->location());
+                        if (d < closestCityDist) { closestCityDist = d; }
+                    }
+                }
+                if (closestCityDist > maxWarRange) {
+                    continue;  // Too far -- would overextend supply + yield nothing.
+                }
+            }
 
             // Standard war declaration: military advantage + strained relations.
             if (!easyAI && !rel.isAtWar && ourMilitary > 0 && theirMilitary >= 0 &&

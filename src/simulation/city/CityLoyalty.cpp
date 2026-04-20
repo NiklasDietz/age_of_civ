@@ -9,7 +9,7 @@
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Governor.hpp"
-#include "aoc/simulation/unit/UnitTypes.hpp"
+#include "aoc/simulation/city/Secession.hpp"
 #include "aoc/simulation/tech/EraScore.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
@@ -19,10 +19,8 @@
 #include "aoc/game/Unit.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
-#include "aoc/core/Log.hpp"
 
 #include <algorithm>
-#include <unordered_map>
 
 namespace aoc::sim {
 
@@ -165,86 +163,9 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         // Secession path: sustained unrest in a distant city flips even above 0.
         // Captures "periphery secession" missed by the loyalty <= 0 gate when
         // pressure keeps the city hovering in Unrest without hitting bottom.
-        bool triggerSecession = (loyalty.loyalty <= 0.0f);
-        if (secededThisTurn) { triggerSecession = false; }
-        if (!triggerSecession && loyalty.unrestTurns >= 3 && !secededThisTurn) {
-            int32_t distFromCapital = 0;
-            for (const std::unique_ptr<aoc::game::City>& other : gsPlayer->cities()) {
-                if (other->isOriginalCapital()) {
-                    distFromCapital = grid.distance(city->location(), other->location());
-                    break;
-                }
-            }
-            if (distFromCapital >= 5) {
-                triggerSecession = true;
-                LOG_INFO("SECESSION: %s (player %u) unrest %d turns, %d from capital",
-                         city->name().c_str(),
-                         static_cast<unsigned>(player),
-                         loyalty.unrestTurns, distFromCapital);
-            }
-        }
-
-        if (triggerSecession) {
+        if (checkAndPerformSecession(gameState, grid, *city, loyalty, player,
+                                     secededThisTurn)) {
             secededThisTurn = true;
-            // Find the dominant neighbor (most pressure from nearby foreign cities)
-            std::unordered_map<PlayerId, float> neighborPressure;
-            for (const std::unique_ptr<aoc::game::Player>& otherPlayer : gameState.players()) {
-                if (otherPlayer->id() == player) { continue; }
-                for (const std::unique_ptr<aoc::game::City>& nearCity : otherPlayer->cities()) {
-                    int32_t dist = grid.distance(city->location(), nearCity->location());
-                    if (dist > LOYALTY_PRESSURE_RADIUS || dist <= 0) { continue; }
-                    float pressure = static_cast<float>(nearCity->population()) * 0.5f
-                                   / static_cast<float>(dist);
-                    neighborPressure[otherPlayer->id()] += pressure;
-                }
-            }
-
-            PlayerId bestNeighbor = INVALID_PLAYER;
-            float bestPressure = 0.0f;
-            for (const std::pair<const PlayerId, float>& entry : neighborPressure) {
-                if (entry.second > bestPressure) {
-                    bestPressure = entry.second;
-                    bestNeighbor = entry.first;
-                }
-            }
-
-            // Former owner remembers the loss: permanent grievance against
-            // whoever gained the city (or a generic INVALID_PLAYER anchor for
-            // Free Cities so the severity still counts toward world-stance).
-            aoc::game::Player* formerOwner = gameState.player(player);
-            const PlayerId gainer = (bestNeighbor != INVALID_PLAYER) ? bestNeighbor : INVALID_PLAYER;
-            if (formerOwner != nullptr) {
-                formerOwner->grievances().addGrievance(
-                    GrievanceType::LostCityToSecession, gainer);
-            }
-
-            loyalty.unrestTurns = 0;
-
-            if (bestNeighbor != INVALID_PLAYER) {
-                LOG_INFO("REVOLT: %s (player %u) loyalty 0 -- flips to player %u!",
-                         city->name().c_str(),
-                         static_cast<unsigned>(player),
-                         static_cast<unsigned>(bestNeighbor));
-                city->setOwner(bestNeighbor);
-                loyalty.loyalty = 50.0f;
-
-                // Update tile ownership
-                if (grid.isValid(city->location())) {
-                    grid.setOwner(grid.toIndex(city->location()), bestNeighbor);
-                }
-                std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(city->location());
-                for (const aoc::hex::AxialCoord& n : nbrs) {
-                    if (grid.isValid(n)) {
-                        grid.setOwner(grid.toIndex(n), bestNeighbor);
-                    }
-                }
-            } else {
-                LOG_INFO("REVOLT: %s (player %u) loyalty 0 -- becomes Free City!",
-                         city->name().c_str(),
-                         static_cast<unsigned>(player));
-                city->setOwner(INVALID_PLAYER);
-                loyalty.loyalty = 50.0f;
-            }
         }
     }
 }

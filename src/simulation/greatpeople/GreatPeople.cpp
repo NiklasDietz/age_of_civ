@@ -194,7 +194,10 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
         const uint8_t defIdU = static_cast<uint8_t>(defId);
 
         // Spawn the great person as a unit owned by the player
-        aoc::game::Unit& gpUnit = playerObj->addUnit(UnitTypeId{50}, spawnPos);
+        // Spawn as the dedicated Great Person marker type (UnitTypeId{102}).
+        // Earlier code used UnitTypeId{50} which collides with Stealth Fighter
+        // and caused unitTypeDef() lookups to return the Air unit for GPs.
+        aoc::game::Unit& gpUnit = playerObj->addUnit(UnitTypeId{102}, spawnPos);
         GreatPersonComponent& comp = gpUnit.greatPerson();
         comp.owner       = player;
         comp.defId       = defIdU;
