@@ -107,15 +107,19 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
 
         // Industrial -- Forge and Workshop are critical: they enable the entire
         // production chain (smelting, tools, lumber, charcoal, glass).
+        // Refinery/Electronics/Semi Fab raised above Forge-tier because their
+        // outputs (plastics, electronics, microchips) feed the goods-economy
+        // tax path. Without those, IncomeGoodsEcon stays 0 end-game even when
+        // the enabling techs are researched.
         case  0: score = 200.0f * b.techIndustrial; break;  // Forge (smelting, tools, charcoal)
         case  1: score = 180.0f * b.techIndustrial; break;  // Workshop (lumber, bricks, construction)
-        case  2: score = 170.0f * b.techIndustrial; break;  // Refinery (fuel, plastics)
-        case  3: score = 150.0f * b.techIndustrial; break;  // Factory (steel, machinery, ammunition)
-        case  4: score = 160.0f * b.techIndustrial; break;  // Electronics Plant (electronics, computers)
+        case  2: score = 190.0f * b.techIndustrial; break;  // Refinery (fuel, plastics -> consumer chain)
+        case  3: score = 160.0f * b.techIndustrial; break;  // Factory (steel, machinery, ammunition)
+        case  4: score = 180.0f * b.techIndustrial; break;  // Electronics Plant (electronics tax path)
         case  5: score = 160.0f * b.techIndustrial; break;  // Industrial Complex
-        case 10: score = 120.0f * b.techIndustrial; break;  // Precision Workshop (surface plate, instruments)
-        case 11: score = 130.0f * b.techIndustrial; break;  // Semiconductor Fab (semiconductors, microchips)
-        case 13: score = 100.0f * b.economicFocus; break;   // Telecom Hub (telecom goods)
+        case 10: score = 140.0f * b.techIndustrial; break;  // Precision Workshop (surface plate, instruments)
+        case 11: score = 150.0f * b.techIndustrial; break;  // Semiconductor Fab (semiconductors, microchips)
+        case 13: score = 120.0f * b.economicFocus; break;   // Telecom Hub (telecom goods)
         case 14: score = 110.0f * b.techIndustrial; break;  // Airport (aircraft)
 
         // Encampment
@@ -130,9 +134,11 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
         case 30: score = 110.0f; break;                     // Solar
         case 31: score = 105.0f; break;                     // Wind
 
-        // Other
-        case  8: score = 140.0f * b.economicFocus; break;   // Textile Mill (textiles, clothing)
-        case  9: score = 150.0f * b.economicFocus; break;   // Food Processing (processed food)
+        // Goods-economy chain — outputs feed incomeGoodsEcon tax so boost
+        // scoring above generic economic buildings. Previously 140/150
+        // lost to Forge (200) so AI never completed the consumer chain.
+        case  8: score = 180.0f * b.economicFocus; break;   // Textile Mill (textiles, clothing)
+        case  9: score = 180.0f * b.economicFocus; break;   // Food Processing (processed food)
         case 25: score = 50.0f; break;  // Waste Treatment
 
         // Faith buildings: base weighted by religiousZeal, then multiplied
@@ -211,7 +217,14 @@ float scoreTechForLeader(const LeaderBehavior& b, TechId techId,
     // Bonus for techs that unlock things
     if (!def.unlockedBuildings.empty()) {
         score += 200.0f * b.prodBuildings;
-        // Extra bonus for science/economic buildings
+        // Extra bonus for science/economic/industrial buildings.
+        // Industrial list spans the entire production chain (Refinery,
+        // Factory, Electronics, Precision Workshop, Semi Fab, Airport) so
+        // goods-economy-enabling techs (Refining, Electricity, Food
+        // Preservation, Textiles, Semiconductors, etc.) get scored on par
+        // with science/economic techs. Prior list was {3,5} only, which
+        // made Food Preservation / Advanced Chemistry / Semiconductors
+        // effectively never researched in 500-turn sims.
         for (BuildingId bid : def.unlockedBuildings) {
             if (bid.value == 7 || bid.value == 19 || bid.value == 12) {
                 score += 150.0f * b.scienceFocus;  // Science buildings
@@ -219,8 +232,16 @@ float scoreTechForLeader(const LeaderBehavior& b, TechId techId,
             if (bid.value == 6 || bid.value == 20 || bid.value == 24) {
                 score += 120.0f * b.economicFocus;  // Economic + Mint
             }
-            if (bid.value == 3 || bid.value == 5) {
-                score += 100.0f * b.techIndustrial;  // Industrial
+            if (bid.value == 2 || bid.value == 3 || bid.value == 4
+                || bid.value == 5 || bid.value == 10 || bid.value == 11
+                || bid.value == 14) {
+                score += 100.0f * b.techIndustrial;  // Industrial chain
+            }
+            if (bid.value == 8 || bid.value == 9) {
+                // Textile Mill / Food Processing — goods-econ chain.
+                // Score on economicFocus because their outputs (clothing,
+                // processed food) feed the goods-economy tax path.
+                score += 100.0f * b.economicFocus;
             }
         }
     }

@@ -175,7 +175,7 @@ void triggerGoldRushInflation(aoc::game::GameState& gameState, int32_t goldAmoun
         MonetaryStateComponent& state = playerPtr->monetary();
         if (state.system == MonetarySystemType::GoldStandard
             || state.system == MonetarySystemType::CommodityMoney) {
-            state.inflationRate += inflationBump;
+            state.inflationRate = std::clamp(state.inflationRate + inflationBump, -0.20f, 0.50f);
             LOG_INFO("Player %u: gold rush inflation +%.1f%%",
                      static_cast<unsigned>(playerPtr->id()),
                      static_cast<double>(inflationBump) * 100.0);

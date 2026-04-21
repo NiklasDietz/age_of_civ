@@ -43,7 +43,13 @@ void computeInflation(MonetaryStateComponent& state,
     // Fisher equation needs REAL output growth: subtract prior-turn inflation to
     // deflate. Without this the -gdpGrowth term self-cancels inflation, inverting
     // the feedback loop and letting printing run undetected.
-    const float realGDPGrowth = gdpGrowth - state.inflationRate;
+    //
+    // Clamped band prevents self-reinforcing peg: once inflationRate is at the
+    // top clamp (0.5), nominal growth that lags 0.5 would make "real growth"
+    // look like -0.5, then capacityPressure amplifies Fisher back up to the cap.
+    // Real output can't swing ±50% turn-over-turn; cap the signal before it
+    // feeds back into inflation.
+    const float realGDPGrowth = std::clamp(gdpGrowth - state.inflationRate, -0.10f, 0.20f);
 
     // Velocity changes slowly. High interest rates slow velocity (people save more).
     // Low rates increase velocity (people spend/invest more).

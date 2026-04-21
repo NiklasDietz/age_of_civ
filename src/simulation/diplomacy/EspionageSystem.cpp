@@ -21,6 +21,7 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/core/Log.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <vector>
 
@@ -186,7 +187,9 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
             if (target != nullptr) {
                 // Reduce currency trust by 5-15 based on spy level
                 const int32_t trustDamage = 5 + static_cast<int32_t>(spy.level) * 3;
-                target->monetary().inflationRate += static_cast<float>(trustDamage) * 0.01f;
+                target->monetary().inflationRate = std::clamp(
+                    target->monetary().inflationRate + static_cast<float>(trustDamage) * 0.01f,
+                    -0.20f, 0.50f);
                 LOG_INFO("Spy (P%u) counterfeited currency: P%u trust -%d",
                          static_cast<unsigned>(spy.owner),
                          static_cast<unsigned>(target->id()), trustDamage);

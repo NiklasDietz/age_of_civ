@@ -10,6 +10,7 @@
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/core/Log.hpp"
 
+#include <algorithm>
 #include <array>
 
 namespace aoc::sim {
@@ -212,8 +213,10 @@ ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, in
         playerObj->monetary().treasury += gain;
         const float gdpRef = std::max(
             1.0f, static_cast<float>(playerObj->monetary().gdp));
-        playerObj->monetary().inflationRate +=
-            static_cast<float>(gain) / gdpRef * 0.02f;
+        playerObj->monetary().inflationRate = std::clamp(
+            playerObj->monetary().inflationRate
+                + static_cast<float>(gain) / gdpRef * 0.02f,
+            -0.20f, 0.50f);
     } else if (chosen.goldChange < 0) {
         playerObj->monetary().treasury += chosen.goldChange;
     }

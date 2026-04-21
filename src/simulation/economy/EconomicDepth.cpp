@@ -12,6 +12,7 @@
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/CityLoyalty.hpp"
+#include "aoc/simulation/city/CityGrowth.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
@@ -273,13 +274,19 @@ void processMigration(aoc::game::GameState& gameState, const aoc::map::HexGrid& 
                              * 2654435761u;
             if ((migHash % 10) != 0) { continue; }
 
-            if (source->population() > 2) {
-                source->setPopulation(source->population() - 1);
-                dest->setPopulation(dest->population() + 1);
-                LOG_INFO("Migration: 1 citizen moved from %s to %s (QoL difference %.1f)",
-                         source->name().c_str(), dest->name().c_str(),
-                         static_cast<double>(std::abs(qolDiff)));
-            }
+            if (source->population() <= 2) { continue; }
+
+            // Housing gate on destination: migration can't push pop past housing.
+            // Without this, migration bypasses the CityGrowth growth gate and
+            // cities drift unboundedly above their housing cap via QoL pull.
+            const int32_t destHousing = computeCityHousing(*dest, grid);
+            if (dest->population() >= destHousing) { continue; }
+
+            source->setPopulation(source->population() - 1);
+            dest->setPopulation(dest->population() + 1);
+            LOG_INFO("Migration: 1 citizen moved from %s to %s (QoL difference %.1f)",
+                     source->name().c_str(), dest->name().c_str(),
+                     static_cast<double>(std::abs(qolDiff)));
         }
     }
     (void)grid;  // Grid reserved for future distance/road weighting

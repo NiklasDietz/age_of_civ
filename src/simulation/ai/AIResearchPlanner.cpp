@@ -134,10 +134,21 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                     bool hasEconomic   = false;
                     bool hasIndustrial = false;
                     for (const BuildingId& bid : def.unlockedBuildings) {
-                        if (bid.value == 6 || bid.value == 20 || bid.value == 21 || bid.value == 24) {
+                        // Economic/mint unlocks (includes Textile Mill + Food
+                        // Processing Plant — their outputs (clothing, processed
+                        // food) feed the goods-economy tax path, so techs that
+                        // unlock them deserve economicFocus weighting).
+                        if (bid.value == 6 || bid.value == 20 || bid.value == 21
+                            || bid.value == 24 || bid.value == 8 || bid.value == 9) {
                             hasEconomic = true;
                         }
-                        if (bid.value == 3 || bid.value == 5 || bid.value == 10 || bid.value == 11) {
+                        // Full industrial chain (was {3,5,10,11}; missing
+                        // Refinery / Electronics / Airport meant Refining,
+                        // Electricity's full value, and Aviation never got
+                        // the techIndustrial boost and sat un-researched).
+                        if (bid.value == 2 || bid.value == 3 || bid.value == 4
+                            || bid.value == 5 || bid.value == 10 || bid.value == 11
+                            || bid.value == 14) {
                             hasIndustrial = true;
                         }
                     }

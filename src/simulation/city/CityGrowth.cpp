@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <vector>
 
 namespace aoc::sim {
 
@@ -63,6 +64,27 @@ float foodForGrowth(int32_t currentPopulation) {
     float pop = static_cast<float>(currentPopulation);
     float base = 15.0f + 6.0f * pop + std::pow(pop, 1.3f);
     return base * GamePace::instance().growthMultiplier;
+}
+
+int32_t computeCityHousing(const aoc::game::City& city, const aoc::map::HexGrid& grid) {
+    int32_t housing = 4;
+    if (city.hasBuilding(BuildingId{15})) { housing += 2; }  // Granary
+    if (city.hasBuilding(BuildingId{22})) { housing += 4; }  // Hospital
+    if (city.hasBuilding(BuildingId{42})) { housing += 4; }  // Aqueduct
+    int32_t farmCount = 0;
+    std::vector<aoc::hex::AxialCoord> nearby;
+    nearby.reserve(64);
+    aoc::hex::spiral(city.location(), CITY_WORK_RADIUS, std::back_inserter(nearby));
+    for (const aoc::hex::AxialCoord& t : nearby) {
+        if (!grid.isValid(t)) { continue; }
+        const int32_t ti = grid.toIndex(t);
+        if (grid.owner(ti) != city.owner()) { continue; }
+        if (grid.improvement(ti) == aoc::map::ImprovementType::Farm) {
+            ++farmCount;
+        }
+    }
+    housing += std::min(farmCount / 2, 4);
+    return housing;
 }
 
 // ECS version removed -- all callers now use GameState-native processCityGrowth(Player&, ...).
@@ -220,27 +242,7 @@ static void processSingleCityGrowth(aoc::game::City& city,
     // Housing cap: independent of food. Above housing, growth throttles;
     // 4 past housing, growth stops. Models Civ6 housing mechanic without
     // a separate resource — reuses building presence + nearby farms.
-    // Base 4 (city center). Granary +2, Hospital +4.
-    // Farms in city radius contribute 0.5 housing each (capped at +4).
-    int32_t housing = 4;
-    if (city.hasBuilding(BuildingId{15})) { housing += 2; }  // Granary
-    if (city.hasBuilding(BuildingId{22})) { housing += 4; }  // Hospital
-    if (city.hasBuilding(BuildingId{42})) { housing += 4; }  // Aqueduct
-    {
-        int32_t farmCount = 0;
-        std::vector<aoc::hex::AxialCoord> nearby;
-        nearby.reserve(64);
-        aoc::hex::spiral(city.location(), CITY_WORK_RADIUS, std::back_inserter(nearby));
-        for (const aoc::hex::AxialCoord& t : nearby) {
-            if (!grid.isValid(t)) { continue; }
-            const int32_t ti = grid.toIndex(t);
-            if (grid.owner(ti) != city.owner()) { continue; }
-            if (grid.improvement(ti) == aoc::map::ImprovementType::Farm) {
-                ++farmCount;
-            }
-        }
-        housing += std::min(farmCount / 2, 4);  // 2 farms → +1 housing, cap +4
-    }
+    const int32_t housing = computeCityHousing(city, grid);
     {
         const int32_t excess = city.population() - housing;
         if (excess >= 4) {

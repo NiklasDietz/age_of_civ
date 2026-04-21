@@ -21,6 +21,7 @@ class HexGrid;
 }
 
 namespace aoc::game {
+class City;
 class Player;
 }
 
@@ -28,6 +29,11 @@ namespace aoc::sim {
 
 /// Food needed to grow to the next population point.
 [[nodiscard]] float foodForGrowth(int32_t currentPopulation);
+
+/// Effective housing capacity: base 4 + Granary/Hospital/Aqueduct + nearby farms.
+/// Shared by CityGrowth (growth gate) and EconomicDepth (migration gate).
+[[nodiscard]] int32_t computeCityHousing(const aoc::game::City& city,
+                                          const aoc::map::HexGrid& grid);
 
 /**
  * @brief Process city growth for all cities of a player.
