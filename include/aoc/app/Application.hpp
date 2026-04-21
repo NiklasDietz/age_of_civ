@@ -19,6 +19,7 @@
 #include "aoc/simulation/victory/VictoryCondition.hpp"
 #include "aoc/simulation/ai/AIController.hpp"
 #include "aoc/simulation/barbarian/BarbarianController.hpp"
+#include "aoc/simulation/map/GoodyHuts.hpp"
 #include "aoc/core/Random.hpp"
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ui/GameScreens.hpp"
@@ -152,6 +153,7 @@ private:
     aoc::sim::BarbarianController m_barbarianController;
     aoc::sim::GlobalDealTracker   m_dealTracker;
     aoc::sim::AllianceObligationTracker m_allianceTracker;
+    aoc::sim::GoodyHutState      m_goodyHuts;   ///< Ancient ruins placed on map.
     aoc::Random                  m_gameRng{0};  ///< Reseeded in startGame()
 
     /// Currently selected unit (nullptr if none or city selected).

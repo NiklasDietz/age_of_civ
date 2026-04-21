@@ -206,19 +206,63 @@ void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
             // coal at 1.5x consumption if coal is available. Without this,
             // the peak-oil flag was a tag with no mechanical effect — civs
             // simply stopped powering oil plants and carried on.
+            //
+            // C42: when the local stockpile lacks fuel, fall back to any
+            // sibling city in the same empire. Before this, each city's
+            // buildings stalled the moment its own stockpile ran dry even
+            // if the neighbouring city was sitting on surplus -- in effect
+            // the empire was strip-mined city-by-city without any internal
+            // logistics. The fallback models intra-empire transport.
             const bool inShock = playerPtr->energy().inOilShock;
             for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
                 for (BuildingId bid : district.buildings) {
                     const BuildingDef& bdef = buildingDef(bid);
                     if (!bdef.needsFuel()) { continue; }
-                    int32_t available = stockpile.getAmount(bdef.ongoingFuelGoodId);
-                    if (available >= bdef.ongoingFuelPerTurn) {
+
+                    const int32_t needed = bdef.ongoingFuelPerTurn;
+                    const int32_t local  = stockpile.getAmount(bdef.ongoingFuelGoodId);
+                    if (local >= needed) {
                         [[maybe_unused]] bool ok =
-                            stockpile.consumeGoods(bdef.ongoingFuelGoodId, bdef.ongoingFuelPerTurn);
+                            stockpile.consumeGoods(bdef.ongoingFuelGoodId, needed);
                         continue;
                     }
+
+                    // Check empire-wide pool across sibling cities before
+                    // consuming anything. All-or-nothing semantics keep the
+                    // existing "stalled = no fuel burned" contract intact.
+                    int32_t sibling = 0;
+                    for (const std::unique_ptr<aoc::game::City>& donorPtr : playerPtr->cities()) {
+                        if (donorPtr == nullptr || donorPtr.get() == cityPtr.get()) {
+                            continue;
+                        }
+                        sibling += donorPtr->stockpile().getAmount(bdef.ongoingFuelGoodId);
+                    }
+                    if (local + sibling >= needed) {
+                        if (local > 0) {
+                            [[maybe_unused]] bool ok =
+                                stockpile.consumeGoods(bdef.ongoingFuelGoodId, local);
+                        }
+                        int32_t remaining = needed - local;
+                        for (const std::unique_ptr<aoc::game::City>& donorPtr : playerPtr->cities()) {
+                            if (remaining <= 0) { break; }
+                            if (donorPtr == nullptr || donorPtr.get() == cityPtr.get()) {
+                                continue;
+                            }
+                            CityStockpileComponent& donorStock = donorPtr->stockpile();
+                            const int32_t donorAvail =
+                                donorStock.getAmount(bdef.ongoingFuelGoodId);
+                            if (donorAvail <= 0) { continue; }
+                            const int32_t take = std::min(donorAvail, remaining);
+                            [[maybe_unused]] bool ok =
+                                donorStock.consumeGoods(bdef.ongoingFuelGoodId, take);
+                            remaining -= take;
+                        }
+                        continue;
+                    }
+
+                    // True shortage: apply the oil-shock coal substitute.
                     if (inShock && bdef.ongoingFuelGoodId == goods::OIL) {
-                        const int32_t coalNeeded = (bdef.ongoingFuelPerTurn * 3 + 1) / 2;
+                        const int32_t coalNeeded = (needed * 3 + 1) / 2;
                         if (stockpile.getAmount(goods::COAL) >= coalNeeded) {
                             [[maybe_unused]] bool ok =
                                 stockpile.consumeGoods(goods::COAL, coalNeeded);

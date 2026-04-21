@@ -354,6 +354,20 @@ void performEraEvaluation(aoc::game::GameState& gameState) {
         if (entries.size() >= 1) { entries[0].player->victoryTracker().eraVictoryPoints += 3; }
         if (entries.size() >= 2) { entries[1].player->victoryTracker().eraVictoryPoints += 2; }
         if (entries.size() >= 3) { entries[2].player->victoryTracker().eraVictoryPoints += 1; }
+
+        // B7 catch-up: laggards beyond rank 3 whose category score is
+        // less than half the leader's receive +1 VP. Without this the
+        // 3/2/1 top-3 structure lets leaders compound their lead each
+        // era; the score-gap floor keeps trailing civs in contention
+        // for the late-game VP total without handing them a free ride.
+        if (entries.size() >= 4 && entries[0].score > 0.0f) {
+            const float catchupThreshold = entries[0].score * 0.5f;
+            for (std::size_t i = 3; i < entries.size(); ++i) {
+                if (entries[i].score > 0.0f && entries[i].score < catchupThreshold) {
+                    entries[i].player->victoryTracker().eraVictoryPoints += 1;
+                }
+            }
+        }
     }
 
     // Bonus 5 VP for highest composite CSI; increment erasEvaluated for all players.
@@ -622,32 +636,43 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
             const ReligionId myReligion = candidate->faith().foundedReligion;
             if (myReligion == NO_RELIGION) { continue; }
 
-            bool dominatesAll = true;
+            // B6 relaxation: previously required dominance in EVERY other
+            // living civ, which is impossible under the 8-religion slot cap
+            // and hostile missionary pathing. Now requires 3-of-4 (75%) of
+            // the other living civs. A single hold-out no longer vetoes a
+            // religious victory that is otherwise globally dominant.
+            int32_t dominatedCount = 0;
+            int32_t rivalCount     = 0;
             for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
                 if (other->id() == candidate->id()) { continue; }
                 if (other->victoryTracker().isEliminated) { continue; }
                 if (other->cities().empty()) { continue; }
 
+                ++rivalCount;
                 int32_t followingCities = 0;
                 for (const std::unique_ptr<aoc::game::City>& city : other->cities()) {
                     if (city->religion().dominantReligion() == myReligion) {
                         ++followingCities;
                     }
                 }
-                // Dominance fraction is balance-tunable (default 0.50 — a
-                // majority of each rival civ's cities). Still requires
-                // dominance in EVERY other civ, which preserves the high bar.
                 const float needed = static_cast<float>(other->cities().size())
                                    * aoc::balance::params().religionDominanceFrac;
-                if (static_cast<float>(followingCities) < needed) {
-                    dominatesAll = false;
-                    break;
+                if (static_cast<float>(followingCities) >= needed) {
+                    ++dominatedCount;
                 }
             }
-            if (dominatesAll) {
-                LOG_INFO("Player %u wins by RELIGION (dominant in all civs)",
-                         static_cast<unsigned>(candidate->id()));
-                return {VictoryType::Religion, candidate->id()};
+
+            if (rivalCount > 0) {
+                // Require >=75% of rivals dominated and at least one rival
+                // (otherwise a solo survivor wins trivially by default).
+                const float ratio = static_cast<float>(dominatedCount)
+                                  / static_cast<float>(rivalCount);
+                if (ratio >= 0.75f) {
+                    LOG_INFO("Player %u wins by RELIGION (%d/%d rivals dominated)",
+                             static_cast<unsigned>(candidate->id()),
+                             dominatedCount, rivalCount);
+                    return {VictoryType::Religion, candidate->id()};
+                }
             }
         }
     }

@@ -46,9 +46,11 @@ struct BalanceParams {
 
     // Victory: religion dominance fraction (0..1). Each other civ must have
     // this fraction of its cities following your religion for a religious win.
-    // 0.50 matches the Civ5/Civ6 convention (majority per civ) and is reachable
-    // with a sustained faith push; 0.77 proved unattainable in 4+ civ games.
-    float   religionDominanceFrac    = 0.50f;
+    // Lowered to 0.40 (from 0.50) because the 8-religion slot cap crowds the
+    // late-game board; combined with the "3-of-4 met civs" relaxation in
+    // VictoryCondition.cpp this makes religious victory reachable in live
+    // play without being trivially farmable.
+    float   religionDominanceFrac    = 0.40f;
 
     // Victory: space race cost multiplier (1.0 = nominal SPACE_PROJECT_DEFS).
     float   spaceRaceCostMult        = 1.01f;

@@ -333,6 +333,23 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     // -- Music: set to Ancient era --
     this->m_musicManager.setTrack(aoc::audio::MusicTrack::Ancient);
 
+    // Place goody huts (ancient ruins): ~1 per 80 land tiles, never adjacent
+    // to starting positions. Starting positions come from each player's first
+    // unit (settler) since the capital isn't founded yet.
+    {
+        std::vector<aoc::hex::AxialCoord> startPositions;
+        startPositions.reserve(config.playerCount);
+        for (uint8_t i = 0; i < config.playerCount; ++i) {
+            const aoc::game::Player* pptr =
+                this->m_gameState.player(static_cast<PlayerId>(i));
+            if (pptr == nullptr || pptr->units().empty()) { continue; }
+            startPositions.push_back(pptr->units().front()->position());
+        }
+        this->m_goodyHuts.hutLocations.clear();
+        aoc::sim::placeGoodyHuts(this->m_goodyHuts, this->m_hexGrid,
+                                  startPositions, this->m_gameRng);
+    }
+
     // Spawn city-states
     const int32_t cityStateCount = static_cast<int32_t>(config.playerCount) * 2;
     aoc::sim::spawnCityStates(this->m_gameState, this->m_hexGrid,
@@ -506,6 +523,28 @@ void Application::spectatorAdvanceTurn() {
 
         // Diplomacy decay, espionage, grievance tick, world congress all run
         // inside processTurn (TurnProcessor.cpp). Do NOT call them again here.
+
+        // Goody hut exploration: any unit now standing on a hut tile claims it.
+        // Snapshot positions first because claiming a FreeUnit hut reallocates
+        // the player's units vector.
+        if (!this->m_goodyHuts.hutLocations.empty()) {
+            const int32_t playerCount = this->m_gameState.playerCount();
+            for (int32_t p = 0; p < playerCount; ++p) {
+                aoc::game::Player* gsp =
+                    this->m_gameState.player(static_cast<aoc::PlayerId>(p));
+                if (gsp == nullptr) { continue; }
+                std::vector<aoc::hex::AxialCoord> positions;
+                positions.reserve(gsp->units().size());
+                for (const std::unique_ptr<aoc::game::Unit>& unitPtr : gsp->units()) {
+                    positions.push_back(unitPtr->position());
+                }
+                for (const aoc::hex::AxialCoord& pos : positions) {
+                    aoc::sim::checkAndClaimGoodyHut(this->m_goodyHuts,
+                                                   this->m_gameState,
+                                                   *gsp, pos, this->m_gameRng);
+                }
+            }
+        }
 
         // Update fog of war: reveal all if fog is disabled, else update per-player.
         if (!this->m_spectatorFogEnabled) {
@@ -2152,6 +2191,30 @@ void Application::handleEndTurn() {
 
         // Diplomacy decay, espionage, grievance tick, world congress all run
         // inside processTurn (TurnProcessor.cpp). Do NOT call them again here.
+
+        // Goody hut exploration: any unit standing on a hut tile claims it.
+        if (!this->m_goodyHuts.hutLocations.empty()) {
+            const int32_t playerCount = this->m_gameState.playerCount();
+            for (int32_t p = 0; p < playerCount; ++p) {
+                aoc::game::Player* gsp =
+                    this->m_gameState.player(static_cast<aoc::PlayerId>(p));
+                if (gsp == nullptr) { continue; }
+                std::vector<aoc::hex::AxialCoord> positions;
+                positions.reserve(gsp->units().size());
+                for (const std::unique_ptr<aoc::game::Unit>& unitPtr : gsp->units()) {
+                    positions.push_back(unitPtr->position());
+                }
+                for (const aoc::hex::AxialCoord& pos : positions) {
+                    aoc::sim::GoodyHutReward r = aoc::sim::checkAndClaimGoodyHut(
+                        this->m_goodyHuts, this->m_gameState, *gsp, pos,
+                        this->m_gameRng);
+                    if (r != aoc::sim::GoodyHutReward::Count && p == 0) {
+                        this->m_notificationManager.push("Ancient ruin explored!",
+                                                          4.0f, 0.8f, 0.8f, 0.3f);
+                    }
+                }
+            }
+        }
 
         // Clear event log for new turn
         this->m_eventLog.clear();

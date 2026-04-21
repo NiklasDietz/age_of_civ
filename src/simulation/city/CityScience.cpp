@@ -73,6 +73,34 @@ float computePlayerScience(const aoc::game::Player& player,
                     bestMultiplier = std::max(bestMultiplier, bdef.scienceMultiplier);
                 }
             }
+
+            // 4b. Campus adjacency science bonus (B2). Mirrors the grid-only
+            // subset of computeAdjacencyBonus so Campus districts contribute
+            // science from adjacent mountains/rainforests/natural wonders.
+            if (district.type == DistrictType::Campus && grid.isValid(district.location)) {
+                const aoc::hex::AxialCoord center = district.location;
+                const std::array<aoc::hex::AxialCoord, 6> neighbors =
+                    aoc::hex::neighbors(center);
+                int32_t adjMountains = 0;
+                int32_t adjRainforests = 0;
+                int32_t adjWonders = 0;
+                for (const aoc::hex::AxialCoord& nbr : neighbors) {
+                    if (!grid.isValid(nbr)) { continue; }
+                    const int32_t nbrIdx = grid.toIndex(nbr);
+                    if (grid.terrain(nbrIdx) == aoc::map::TerrainType::Mountain) {
+                        ++adjMountains;
+                    }
+                    if (grid.feature(nbrIdx) == aoc::map::FeatureType::Jungle) {
+                        ++adjRainforests;
+                    }
+                    if (grid.naturalWonder(nbrIdx) != aoc::map::NaturalWonderType::None) {
+                        ++adjWonders;
+                    }
+                }
+                cityScience += static_cast<float>(adjMountains) * 1.0f;
+                cityScience += static_cast<float>(adjRainforests) * 0.5f;
+                cityScience += static_cast<float>(adjWonders) * 2.0f;
+            }
         }
 
         // 5. Apply multiplier

@@ -76,13 +76,41 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
             }
         }
 
-        // Commercial district tax + building bonuses (monetary era only)
+        // Commercial district tax + building bonuses (monetary era only).
+        // Adjacency yields the grid-only subset of computeAdjacencyBonus:
+        //   Commercial: +2 gold if adjacent to a river edge.
+        //   Harbor:     +2 gold per adjacent coastal resource tile.
+        // Cross-player district adjacency is skipped here to avoid plumbing
+        // GameState through the income-breakdown signature.
         const CityDistrictsComponent& districts = city->districts();
         for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
             if (d.type == DistrictType::Commercial) { bd.incomeCommercial += 3; }
             if (d.type == DistrictType::Harbor)     { bd.incomeCommercial += 2; }
             for (BuildingId bid : d.buildings) {
                 bd.incomeCommercial += static_cast<CurrencyAmount>(buildingDef(bid).goldBonus);
+            }
+            if ((d.type == DistrictType::Commercial || d.type == DistrictType::Harbor)
+                && grid.isValid(d.location)) {
+                const int32_t tileIdx = grid.toIndex(d.location);
+                if (d.type == DistrictType::Commercial
+                    && grid.riverEdges(tileIdx) != 0) {
+                    bd.incomeCommercial += 2;
+                }
+                if (d.type == DistrictType::Harbor) {
+                    const std::array<aoc::hex::AxialCoord, 6> neighbors =
+                        aoc::hex::neighbors(d.location);
+                    int32_t adjCoastalResources = 0;
+                    for (const aoc::hex::AxialCoord& nbr : neighbors) {
+                        if (!grid.isValid(nbr)) { continue; }
+                        const int32_t nbrIdx = grid.toIndex(nbr);
+                        if (aoc::map::isWater(grid.terrain(nbrIdx))
+                            && grid.resource(nbrIdx).isValid()) {
+                            ++adjCoastalResources;
+                        }
+                    }
+                    bd.incomeCommercial +=
+                        static_cast<CurrencyAmount>(adjCoastalResources * 2);
+                }
             }
         }
 

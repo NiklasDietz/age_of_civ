@@ -81,8 +81,35 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
         }
 
         // Faith from Holy Site district (+2 base, on top of the per-city 1)
-        if (city->districts().hasDistrict(DistrictType::HolySite)) {
+        // plus grid-only adjacency bonus (B2). Mountains/forests/natural
+        // wonders adjacent to the Holy Site add faith, mirroring the Civ 6
+        // rule used in computeAdjacencyBonus.
+        for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& d
+                : city->districts().districts) {
+            if (d.type != DistrictType::HolySite) { continue; }
             faithGain += 2.0f;
+            if (!grid.isValid(d.location)) { continue; }
+            const std::array<aoc::hex::AxialCoord, 6> neighbors =
+                aoc::hex::neighbors(d.location);
+            int32_t adjMountains = 0;
+            int32_t adjForests   = 0;
+            int32_t adjWonders   = 0;
+            for (const aoc::hex::AxialCoord& nbr : neighbors) {
+                if (!grid.isValid(nbr)) { continue; }
+                const int32_t nbrIdx = grid.toIndex(nbr);
+                if (grid.terrain(nbrIdx) == aoc::map::TerrainType::Mountain) {
+                    ++adjMountains;
+                }
+                if (grid.feature(nbrIdx) == aoc::map::FeatureType::Forest) {
+                    ++adjForests;
+                }
+                if (grid.naturalWonder(nbrIdx) != aoc::map::NaturalWonderType::None) {
+                    ++adjWonders;
+                }
+            }
+            faithGain += static_cast<float>(adjMountains) * 1.0f;
+            faithGain += static_cast<float>(adjForests) * 0.5f;
+            faithGain += static_cast<float>(adjWonders) * 2.0f;
         }
 
         // Faith from buildings (Shrine/Temple/Cathedral).
