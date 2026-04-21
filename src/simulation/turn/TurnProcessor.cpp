@@ -457,8 +457,13 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         if (nearOwnCity) {
             healAmount = 20;
         } else {
-            // Check if in own territory (could expand with border check)
-            healAmount = 10;
+            // Border check via tile ownership. The doc block above promises
+            // 10 HP in own territory and 5 HP in neutral/hostile. The prior
+            // fallthrough handed out 10 HP unconditionally, so deep-strike
+            // units and ships in open ocean healed at own-territory rates.
+            const int32_t unitTile = grid.toIndex(unitPtr->position());
+            const PlayerId tileOwner = grid.owner(unitTile);
+            healAmount = (tileOwner == player) ? 10 : 5;
         }
 
         // Fortification bonus
