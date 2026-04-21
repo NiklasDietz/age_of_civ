@@ -263,6 +263,8 @@ set(AOC_LIB_SOURCES
     src/simulation/ai/AIAdvisors.cpp
     src/simulation/ai/AIEventChoice.cpp
     src/simulation/ai/AIInvestmentController.cpp
+    src/simulation/ai/AIFuturesTrading.cpp
+    src/simulation/ai/AICommodityHoarding.cpp
     src/simulation/resource/ResourceTypes.cpp
     src/simulation/resource/ProductionChain.cpp
     src/simulation/resource/EconomySimulation.cpp
@@ -290,6 +292,7 @@ set(AOC_LIB_SOURCES
     src/simulation/economy/ColonialEconomics.cpp
     src/simulation/economy/IndustrialRevolution.cpp
     src/simulation/economy/EconomicDepth.cpp
+    src/simulation/economy/CommodityExchange.cpp
     src/simulation/economy/NavalTrade.cpp
     src/simulation/economy/EnergyDependency.cpp
     src/simulation/economy/StockMarket.cpp

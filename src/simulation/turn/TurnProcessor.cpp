@@ -37,6 +37,7 @@
 #include "aoc/simulation/economy/EconomicDepth.hpp"
 #include "aoc/simulation/ai/AIFuturesTrading.hpp"
 #include "aoc/simulation/ai/AICommodityHoarding.hpp"
+#include "aoc/simulation/economy/CommodityExchange.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 
 // Tech
@@ -648,6 +649,10 @@ void processGlobalSystems(TurnContext& turnContext) {
     // AI commodity hoarding (gene-driven): opens/releases hoard positions
     // before processSpeculation re-reports hoarded demand to the market.
     processAICommodityHoarding(gameState, turnContext.economy->market());
+
+    // AI-to-AI bilateral commodity barter (non-human civs only).
+    processAICommodityExchange(gameState, turnContext.economy->market(),
+                               turnContext.diplomacy);
 
     // Futures contract settlement
     settleFutures(gameState, turnContext.economy->market());
