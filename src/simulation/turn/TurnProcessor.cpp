@@ -35,6 +35,8 @@
 #include "aoc/simulation/economy/Maintenance.hpp"
 #include "aoc/simulation/economy/AdvancedEconomics.hpp"
 #include "aoc/simulation/economy/EconomicDepth.hpp"
+#include "aoc/simulation/ai/AIFuturesTrading.hpp"
+#include "aoc/simulation/ai/AICommodityHoarding.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 
 // Tech
@@ -639,6 +641,13 @@ void processGlobalSystems(TurnContext& turnContext) {
 
     // Insurance premium payments
     processInsurancePremiums(gameState);
+
+    // AI futures trading (gene-driven) before settlement
+    processAIFuturesTrading(gameState, turnContext.economy->market());
+
+    // AI commodity hoarding (gene-driven): opens/releases hoard positions
+    // before processSpeculation re-reports hoarded demand to the market.
+    processAICommodityHoarding(gameState, turnContext.economy->market());
 
     // Futures contract settlement
     settleFutures(gameState, turnContext.economy->market());

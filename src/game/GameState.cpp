@@ -31,6 +31,16 @@ void GameState::initialize(int32_t playerCount) {
 
     // Player 0 is always the human player
     this->m_players[0]->setHuman(true);
+
+    // Allocate a commodity hoard slot per player so speculation APIs can
+    // find an owner-tagged entry without lazy-creating from the sim layer.
+    this->m_commodityHoards.clear();
+    this->m_commodityHoards.reserve(static_cast<std::size_t>(playerCount));
+    for (int32_t i = 0; i < playerCount; ++i) {
+        aoc::sim::CommodityHoardComponent h{};
+        h.owner = static_cast<PlayerId>(i);
+        this->m_commodityHoards.push_back(h);
+    }
 }
 
 void GameState::initializeCityStateSlots(int32_t count) {

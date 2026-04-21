@@ -91,6 +91,12 @@ ErrorCode sellFuture(aoc::game::GameState& gameState, const Market& market,
 }
 
 void settleFutures(aoc::game::GameState& gameState, Market& market) {
+    // Cash-settled futures. Buyer paid contractPrice*amount up front as margin;
+    // at settlement they receive currentPrice*amount back (net P/L = priceDiff
+    // * amount). Seller received contractPrice*amount up front and must now
+    // pay currentPrice*amount (net P/L = -priceDiff * amount). This keeps
+    // accounting symmetric and avoids free-gold exploits from the old path
+    // that only credited buyers.
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         if (playerPtr == nullptr) { continue; }
         std::vector<FuturesContract>& contracts = playerPtr->futures().contracts;
@@ -98,14 +104,20 @@ void settleFutures(aoc::game::GameState& gameState, Market& market) {
         while (it != contracts.end()) {
             --it->turnsToSettlement;
             if (it->turnsToSettlement <= 0) {
-                int32_t currentPrice = market.price(it->goodId);
-                int32_t priceDiff    = currentPrice - it->contractPrice;
-                CurrencyAmount settlement = static_cast<CurrencyAmount>(priceDiff * it->amount);
+                const int32_t        currentPrice = market.price(it->goodId);
+                const CurrencyAmount mtm          =
+                    static_cast<CurrencyAmount>(currentPrice) * it->amount;
 
                 if (it->buyer != INVALID_PLAYER) {
                     aoc::game::Player* buyerPlayer = gameState.player(it->buyer);
                     if (buyerPlayer != nullptr) {
-                        buyerPlayer->monetary().treasury += settlement;
+                        buyerPlayer->monetary().treasury += mtm;
+                    }
+                }
+                if (it->seller != INVALID_PLAYER) {
+                    aoc::game::Player* sellerPlayer = gameState.player(it->seller);
+                    if (sellerPlayer != nullptr) {
+                        sellerPlayer->monetary().treasury -= mtm;
                     }
                 }
 
