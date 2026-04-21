@@ -81,7 +81,8 @@ struct PlayerRawStats {
 static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
     const aoc::game::GameState& gameState,
     const aoc::map::HexGrid& grid,
-    const EconomySimulation& economy) {
+    const EconomySimulation& economy,
+    const DiplomacyManager* diplomacy) {
     std::unordered_map<PlayerId, PlayerRawStats> stats;
 
     for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
@@ -176,6 +177,23 @@ static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
         }
     }
 
+    // Alliance counts: tally any-type alliances from DiplomacyManager so the
+    // diplomaticWebMult in computeCSI actually responds to alliance formation.
+    // Prior code left allianceCount at zero, making alliances invisible to CSI.
+    if (diplomacy != nullptr) {
+        for (std::pair<const PlayerId, PlayerRawStats>& entry : stats) {
+            const PlayerId pid = entry.first;
+            int32_t count = 0;
+            for (std::pair<const PlayerId, PlayerRawStats>& other : stats) {
+                if (other.first == pid) { continue; }
+                if (diplomacy->relation(pid, other.first).hasAnyAlliance()) {
+                    ++count;
+                }
+            }
+            entry.second.allianceCount = count;
+        }
+    }
+
     return stats;
 }
 
@@ -184,8 +202,10 @@ static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
 // ============================================================================
 
 void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
-                const EconomySimulation& economy) {
-    std::unordered_map<PlayerId, PlayerRawStats> stats = gatherPlayerStats(gameState, grid, economy);
+                const EconomySimulation& economy,
+                const DiplomacyManager* diplomacy) {
+    std::unordered_map<PlayerId, PlayerRawStats> stats =
+        gatherPlayerStats(gameState, grid, economy, diplomacy);
     if (stats.empty()) {
         return;
     }
@@ -937,8 +957,9 @@ uint32_t parseVictoryTypeMask(std::string_view list) {
 // ============================================================================
 
 void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
-                           const EconomySimulation& economy, TurnNumber currentTurn) {
-    computeCSI(gameState, grid, economy);
+                           const EconomySimulation& economy, TurnNumber currentTurn,
+                           const DiplomacyManager* diplomacy) {
+    computeCSI(gameState, grid, economy, diplomacy);
     checkCollapseConditions(gameState, currentTurn);
 
     // Era evaluation every 30 turns

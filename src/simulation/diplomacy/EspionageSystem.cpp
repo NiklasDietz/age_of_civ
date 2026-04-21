@@ -158,18 +158,25 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
             // Reduce target's GDP by 10-20% for 5 turns (modeled as direct treasury hit)
             // H5.2: owner pockets 50% of the damage as front-running profit;
             // without this credit the gold disappeared from the game entirely.
+            // Damage is GDP-scaled but capped at target treasury -- otherwise
+            // a civ with modest treasury and high GDP goes deep negative in a
+            // single spy tick.
             aoc::game::Player* target = findCityOwner(gameState, spy.owner, spy.location);
             if (target != nullptr) {
-                const CurrencyAmount damage = static_cast<CurrencyAmount>(
+                const CurrencyAmount nominal = static_cast<CurrencyAmount>(
                     static_cast<float>(target->monetary().gdp) * 0.15f);
-                target->addGold(-damage);
-                const CurrencyAmount skim = damage / 2;
-                ownerPlayer.addGold(skim);
-                LOG_INFO("Spy (P%u) manipulated market: P%u lost %lld gold, owner +%lld",
-                         static_cast<unsigned>(spy.owner),
-                         static_cast<unsigned>(target->id()),
-                         static_cast<long long>(damage),
-                         static_cast<long long>(skim));
+                const CurrencyAmount damage = std::min(nominal,
+                    std::max<CurrencyAmount>(0, target->treasury()));
+                if (damage > 0) {
+                    target->addGold(-damage);
+                    const CurrencyAmount skim = damage / 2;
+                    ownerPlayer.addGold(skim);
+                    LOG_INFO("Spy (P%u) manipulated market: P%u lost %lld gold, owner +%lld",
+                             static_cast<unsigned>(spy.owner),
+                             static_cast<unsigned>(target->id()),
+                             static_cast<long long>(damage),
+                             static_cast<long long>(skim));
+                }
             }
             break;
         }
@@ -203,18 +210,22 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
             // Award gold bonus based on target's stock market activity
             // H5.2: debit target the same amount — the spy is front-running
             // target-civ investors, so every credit to the owner is a loss
-            // to the target's market participants.
+            // to the target's market participants. Cap at target treasury.
             aoc::game::Player* target = findCityOwner(gameState, spy.owner, spy.location);
             if (target != nullptr) {
-                const CurrencyAmount bonus = static_cast<CurrencyAmount>(
+                const CurrencyAmount nominal = static_cast<CurrencyAmount>(
                     static_cast<float>(target->monetary().gdp) * 0.05f);
-                ownerPlayer.addGold(bonus);
-                target->addGold(-bonus);
-                LOG_INFO("Spy (P%u) insider trading: +%lld gold, P%u -%lld",
-                         static_cast<unsigned>(spy.owner),
-                         static_cast<long long>(bonus),
-                         static_cast<unsigned>(target->id()),
-                         static_cast<long long>(bonus));
+                const CurrencyAmount bonus = std::min(nominal,
+                    std::max<CurrencyAmount>(0, target->treasury()));
+                if (bonus > 0) {
+                    ownerPlayer.addGold(bonus);
+                    target->addGold(-bonus);
+                    LOG_INFO("Spy (P%u) insider trading: +%lld gold, P%u -%lld",
+                             static_cast<unsigned>(spy.owner),
+                             static_cast<long long>(bonus),
+                             static_cast<unsigned>(target->id()),
+                             static_cast<long long>(bonus));
+                }
             }
             break;
         }
@@ -233,17 +244,22 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
         }
 
         case SpyMission::RecruitPartisans: {
-            // Spawn 2-3 hostile units near the target city
+            // Spawn 2-3 HOSTILE units near the target city. Partisans belong
+            // to the barbarian faction, not to the spy's civ -- otherwise
+            // the mission was a teleport-my-own-units-into-enemy-territory
+            // button, not a sabotage mission.
             aoc::game::City* city = findEnemyCityAt(gameState, spy.owner, spy.location);
             if (city != nullptr) {
                 const int32_t count = 2 + rng.nextInt(0, 1);
-                // Spawn warriors owned by the spy's player near the city
-                for (int32_t i = 0; i < count; ++i) {
-                    ownerPlayer.addUnit(UnitTypeId{0}, spy.location);  // Warriors
+                aoc::game::Player* barbPlayer = gameState.player(BARBARIAN_PLAYER);
+                if (barbPlayer != nullptr) {
+                    for (int32_t i = 0; i < count; ++i) {
+                        barbPlayer->addUnit(UnitTypeId{0}, spy.location);  // Warriors
+                    }
+                    LOG_INFO("Spy (P%u) recruited %d partisans (barbarian) near %s",
+                             static_cast<unsigned>(spy.owner), count,
+                             city->name().c_str());
                 }
-                LOG_INFO("Spy (P%u) recruited %d partisans near %s",
-                         static_cast<unsigned>(spy.owner), count,
-                         city->name().c_str());
             }
             break;
         }

@@ -1888,8 +1888,6 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                         const int32_t price = 200 + smallestPop * 50;
                         if (victim != nullptr && buyer->treasury() > price + 100) {
                             const aoc::hex::AxialCoord loc = victim->location();
-                            const uint32_t cityIndex = static_cast<uint32_t>(
-                                loc.q * 10000 + loc.r);
 
                             DiplomaticDeal deal{};
                             deal.playerA = this->m_player;
@@ -1900,7 +1898,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                             cede.type = DealTermType::CedeCity;
                             cede.fromPlayer = this->m_player;
                             cede.toPlayer   = other;
-                            cede.cityEntity = EntityId{cityIndex, 0};
+                            cede.tileCoord  = loc;
                             deal.terms.push_back(cede);
 
                             DealTerm payment{};

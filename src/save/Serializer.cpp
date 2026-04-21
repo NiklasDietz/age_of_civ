@@ -48,6 +48,12 @@
 #include "aoc/simulation/production/Waste.hpp"
 #include "aoc/simulation/production/Automation.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
+#include "aoc/simulation/victory/Prestige.hpp"
+#include "aoc/simulation/victory/SpaceRace.hpp"
+#include "aoc/simulation/culture/Tourism.hpp"
+#include "aoc/simulation/diplomacy/Grievance.hpp"
+#include "aoc/simulation/diplomacy/WarWeariness.hpp"
+#include "aoc/simulation/economy/StockMarket.hpp"
 
 #include <cassert>
 #include <cstring>
@@ -1089,6 +1095,123 @@ void writeIndustrialSection(WriteBuffer& out, const aoc::game::GameState& gameSt
     writeSection(out, SectionId::IndustrialState, section);
 }
 
+// ---------------------------------------------------------------------------
+// v7 sections: Prestige, Tourism, SpaceRace, Grievances, WarWeariness,
+//              StockPortfolio.  Everything here is long-accumulating state
+//              that the per-turn systems assume survives save/load.
+// ---------------------------------------------------------------------------
+
+void writePrestigeSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
+    WriteBuffer section;
+    section.writeU32(static_cast<uint32_t>(gameState.players().size()));
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        const aoc::sim::PlayerPrestigeComponent& p = player->prestige();
+        section.writeU8(static_cast<uint8_t>(player->id()));
+        section.writeF32(p.science);
+        section.writeF32(p.culture);
+        section.writeF32(p.faith);
+        section.writeF32(p.trade);
+        section.writeF32(p.diplomacy);
+        section.writeF32(p.military);
+        section.writeF32(p.governance);
+        section.writeF32(p.total);
+    }
+    writeSection(out, SectionId::PrestigeState, section);
+}
+
+void writeTourismSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
+    WriteBuffer section;
+    section.writeU32(static_cast<uint32_t>(gameState.players().size()));
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        const aoc::sim::PlayerTourismComponent& t = player->tourism();
+        section.writeU8(static_cast<uint8_t>(player->id()));
+        section.writeF32(t.tourismPerTurn);
+        section.writeF32(t.cumulativeTourism);
+        section.writeI32(t.foreignTourists);
+        section.writeI32(t.domesticTourists);
+        section.writeI32(t.greatWorkCount);
+        section.writeI32(t.wonderCount);
+        section.writeI32(t.nationalParkCount);
+    }
+    writeSection(out, SectionId::TourismState, section);
+}
+
+void writeSpaceRaceSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
+    WriteBuffer section;
+    section.writeU32(static_cast<uint32_t>(gameState.players().size()));
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        const aoc::sim::PlayerSpaceRaceComponent& sr = player->spaceRace();
+        section.writeU8(static_cast<uint8_t>(player->id()));
+        section.writeU8(static_cast<uint8_t>(aoc::sim::SPACE_PROJECT_COUNT));
+        for (int32_t i = 0; i < aoc::sim::SPACE_PROJECT_COUNT; ++i) {
+            section.writeU8(sr.completed[i] ? 1u : 0u);
+            section.writeF32(sr.progress[i]);
+        }
+    }
+    writeSection(out, SectionId::SpaceRaceState, section);
+}
+
+void writeGrievanceSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
+    WriteBuffer section;
+    section.writeU32(static_cast<uint32_t>(gameState.players().size()));
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        const aoc::sim::PlayerGrievanceComponent& g = player->grievances();
+        section.writeU8(static_cast<uint8_t>(player->id()));
+        section.writeU32(static_cast<uint32_t>(g.grievances.size()));
+        for (const aoc::sim::Grievance& gr : g.grievances) {
+            section.writeU8(static_cast<uint8_t>(gr.type));
+            section.writeU8(static_cast<uint8_t>(gr.against));
+            section.writeI32(gr.severity);
+            section.writeI32(gr.turnsRemaining);
+        }
+    }
+    writeSection(out, SectionId::GrievanceState, section);
+}
+
+void writeWarWearinessSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
+    WriteBuffer section;
+    section.writeU32(static_cast<uint32_t>(gameState.players().size()));
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        const aoc::sim::PlayerWarWearinessComponent& w = player->warWeariness();
+        section.writeU8(static_cast<uint8_t>(player->id()));
+        section.writeF32(w.weariness);
+        section.writeU32(static_cast<uint32_t>(w.turnsAtWar.size()));
+        for (const std::pair<const PlayerId, int32_t>& kv : w.turnsAtWar) {
+            section.writeU8(static_cast<uint8_t>(kv.first));
+            section.writeI32(kv.second);
+        }
+    }
+    writeSection(out, SectionId::WarWearinessState, section);
+}
+
+static void writeEquityInvestment(WriteBuffer& section,
+                                   const aoc::sim::EquityInvestment& inv) {
+    section.writeU8(static_cast<uint8_t>(inv.investor));
+    section.writeU8(static_cast<uint8_t>(inv.target));
+    section.writeI64(inv.principalInvested);
+    section.writeI64(inv.currentValue);
+    section.writeI64(inv.totalDividends);
+    section.writeI32(inv.turnsHeld);
+}
+
+void writeStockPortfolioSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
+    WriteBuffer section;
+    section.writeU32(static_cast<uint32_t>(gameState.players().size()));
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        const aoc::sim::PlayerStockPortfolioComponent& p = player->stockPortfolio();
+        section.writeU8(static_cast<uint8_t>(player->id()));
+        section.writeU32(static_cast<uint32_t>(p.investments.size()));
+        for (const aoc::sim::EquityInvestment& inv : p.investments) {
+            writeEquityInvestment(section, inv);
+        }
+        section.writeU32(static_cast<uint32_t>(p.foreignInvestments.size()));
+        for (const aoc::sim::EquityInvestment& inv : p.foreignInvestments) {
+            writeEquityInvestment(section, inv);
+        }
+    }
+    writeSection(out, SectionId::StockPortfolioState, section);
+}
+
 } // anonymous namespace
 
 // ============================================================================
@@ -1140,6 +1263,13 @@ ErrorCode saveGame(const std::string& filepath,
     writePollutionSection(buf, gameState);
     writeAutomationSection(buf, gameState);
     writeIndustrialSection(buf, gameState);
+    // v7 sections
+    writePrestigeSection(buf, gameState);
+    writeTourismSection(buf, gameState);
+    writeSpaceRaceSection(buf, gameState);
+    writeGrievanceSection(buf, gameState);
+    writeWarWearinessSection(buf, gameState);
+    writeStockPortfolioSection(buf, gameState);
 
     // Write to file
     std::ofstream file(filepath, std::ios::binary);
@@ -2077,6 +2207,141 @@ ErrorCode loadGame(const std::string& filepath,
                     if (player != nullptr) {
                         player->industrial() = std::move(ind);
                     }
+                }
+                break;
+            }
+            case SectionId::PrestigeState: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    PlayerId owner = buf.readU8();
+                    aoc::sim::PlayerPrestigeComponent p{};
+                    p.owner      = owner;
+                    p.science    = buf.readF32();
+                    p.culture    = buf.readF32();
+                    p.faith      = buf.readF32();
+                    p.trade      = buf.readF32();
+                    p.diplomacy  = buf.readF32();
+                    p.military   = buf.readF32();
+                    p.governance = buf.readF32();
+                    p.total      = buf.readF32();
+                    aoc::game::Player* player = gameState.player(owner);
+                    if (player != nullptr) { player->prestige() = p; }
+                }
+                break;
+            }
+            case SectionId::TourismState: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    PlayerId owner = buf.readU8();
+                    aoc::sim::PlayerTourismComponent t{};
+                    t.owner             = owner;
+                    t.tourismPerTurn    = buf.readF32();
+                    t.cumulativeTourism = buf.readF32();
+                    t.foreignTourists   = buf.readI32();
+                    t.domesticTourists  = buf.readI32();
+                    t.greatWorkCount    = buf.readI32();
+                    t.wonderCount       = buf.readI32();
+                    t.nationalParkCount = buf.readI32();
+                    aoc::game::Player* player = gameState.player(owner);
+                    if (player != nullptr) { player->tourism() = t; }
+                }
+                break;
+            }
+            case SectionId::SpaceRaceState: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    PlayerId owner = buf.readU8();
+                    aoc::sim::PlayerSpaceRaceComponent sr{};
+                    sr.owner = owner;
+                    uint8_t storedCount = buf.readU8();
+                    const int32_t limit = std::min<int32_t>(
+                        static_cast<int32_t>(storedCount), aoc::sim::SPACE_PROJECT_COUNT);
+                    for (int32_t j = 0; j < limit; ++j) {
+                        sr.completed[j] = (buf.readU8() != 0);
+                        sr.progress[j]  = buf.readF32();
+                    }
+                    // Older save with more projects than the current build
+                    // supports: consume and discard the extras.
+                    for (int32_t j = limit; j < static_cast<int32_t>(storedCount); ++j) {
+                        (void)buf.readU8();
+                        (void)buf.readF32();
+                    }
+                    aoc::game::Player* player = gameState.player(owner);
+                    if (player != nullptr) { player->spaceRace() = sr; }
+                }
+                break;
+            }
+            case SectionId::GrievanceState: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    PlayerId owner = buf.readU8();
+                    uint32_t n = buf.readU32();
+                    aoc::sim::PlayerGrievanceComponent g{};
+                    g.owner = owner;
+                    g.grievances.reserve(n);
+                    for (uint32_t j = 0; j < n; ++j) {
+                        aoc::sim::Grievance gr{};
+                        gr.type            = static_cast<aoc::sim::GrievanceType>(buf.readU8());
+                        gr.against         = buf.readU8();
+                        gr.severity        = buf.readI32();
+                        gr.turnsRemaining  = buf.readI32();
+                        g.grievances.push_back(gr);
+                    }
+                    aoc::game::Player* player = gameState.player(owner);
+                    if (player != nullptr) { player->grievances() = std::move(g); }
+                }
+                break;
+            }
+            case SectionId::WarWearinessState: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    PlayerId owner = buf.readU8();
+                    aoc::sim::PlayerWarWearinessComponent w{};
+                    w.owner     = owner;
+                    w.weariness = buf.readF32();
+                    uint32_t mapSize = buf.readU32();
+                    for (uint32_t j = 0; j < mapSize; ++j) {
+                        PlayerId key = buf.readU8();
+                        int32_t  val = buf.readI32();
+                        w.turnsAtWar[key] = val;
+                    }
+                    aoc::game::Player* player = gameState.player(owner);
+                    if (player != nullptr) { player->warWeariness() = std::move(w); }
+                }
+                break;
+            }
+            case SectionId::StockPortfolioState: {
+                uint32_t count = buf.readU32();
+                for (uint32_t i = 0; i < count; ++i) {
+                    PlayerId owner = buf.readU8();
+                    aoc::sim::PlayerStockPortfolioComponent p{};
+                    p.owner = owner;
+                    uint32_t invCount = buf.readU32();
+                    p.investments.reserve(invCount);
+                    for (uint32_t j = 0; j < invCount; ++j) {
+                        aoc::sim::EquityInvestment inv{};
+                        inv.investor          = buf.readU8();
+                        inv.target            = buf.readU8();
+                        inv.principalInvested = buf.readI64();
+                        inv.currentValue      = buf.readI64();
+                        inv.totalDividends    = buf.readI64();
+                        inv.turnsHeld         = buf.readI32();
+                        p.investments.push_back(inv);
+                    }
+                    uint32_t foreignCount = buf.readU32();
+                    p.foreignInvestments.reserve(foreignCount);
+                    for (uint32_t j = 0; j < foreignCount; ++j) {
+                        aoc::sim::EquityInvestment inv{};
+                        inv.investor          = buf.readU8();
+                        inv.target            = buf.readU8();
+                        inv.principalInvested = buf.readI64();
+                        inv.currentValue      = buf.readI64();
+                        inv.totalDividends    = buf.readI64();
+                        inv.turnsHeld         = buf.readI32();
+                        p.foreignInvestments.push_back(inv);
+                    }
+                    aoc::game::Player* player = gameState.player(owner);
+                    if (player != nullptr) { player->stockPortfolio() = std::move(p); }
                 }
                 break;
             }

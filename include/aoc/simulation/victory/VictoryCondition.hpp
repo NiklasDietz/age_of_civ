@@ -189,7 +189,8 @@ struct VictoryResult {
  * @param economy Economy simulation (for market/trade data).
  */
 void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
-                const EconomySimulation& economy);
+                const EconomySimulation& economy,
+                const DiplomacyManager* diplomacy = nullptr);
 
 /**
  * @brief Perform an era evaluation. Awards Victory Points to top performers.
@@ -237,7 +238,8 @@ void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber current
  * and performs era evaluation if on an era boundary.
  */
 void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
-                           const EconomySimulation& economy, TurnNumber currentTurn);
+                           const EconomySimulation& economy, TurnNumber currentTurn,
+                           const DiplomacyManager* diplomacy = nullptr);
 
 /// Backwards-compatible overload (no economy param -- uses limited scoring).
 void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid);

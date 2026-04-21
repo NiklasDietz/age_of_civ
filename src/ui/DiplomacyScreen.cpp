@@ -378,7 +378,6 @@ void DiplomacyScreen::open(UIManager& ui) {
                 const int32_t price = 200 + smallestPop * 50;
                 if (victim != nullptr && theirGold > price + 100) {
                     const aoc::hex::AxialCoord loc = victim->location();
-                    const uint32_t cityIndex = static_cast<uint32_t>(loc.q * 10000 + loc.r);
                     aoc::sim::GlobalDealTracker* tracker = this->m_dealTracker;
                     aoc::map::HexGrid* grid = this->m_grid;
                     std::string cityName = victim->name();
@@ -390,7 +389,7 @@ void DiplomacyScreen::open(UIManager& ui) {
                     scBtn.pressedColor = {0.25f, 0.12f, 0.18f, 0.9f};
                     scBtn.cornerRadius = 3.0f;
                     scBtn.onClick = [gsState, grid, tracker, humanPlayer, otherId,
-                                      cityIndex, price, cityName, &ui, this]() {
+                                      loc, price, cityName, &ui, this]() {
                         aoc::sim::DiplomaticDeal deal{};
                         deal.playerA = humanPlayer;
                         deal.playerB = otherId;
@@ -398,7 +397,7 @@ void DiplomacyScreen::open(UIManager& ui) {
                         cede.type = aoc::sim::DealTermType::CedeCity;
                         cede.fromPlayer = humanPlayer;
                         cede.toPlayer   = otherId;
-                        cede.cityEntity = EntityId{cityIndex, 0};
+                        cede.tileCoord  = loc;
                         deal.terms.push_back(cede);
                         aoc::sim::DealTerm pay{};
                         pay.type = aoc::sim::DealTermType::GoldLump;

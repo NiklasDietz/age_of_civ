@@ -48,24 +48,16 @@ ErrorCode acceptDeal(aoc::game::GameState& gameState,
     for (const DealTerm& term : deal.terms) {
         switch (term.type) {
             case DealTermType::CedeCity: {
-                // Find the city by scanning the from-player's list.
-                // DealTerm.cityEntity is a legacy identifier; we match it by
-                // searching through all of the from-player's cities until we
-                // find the one that was designated at deal creation time.
-                // The name stored in the term (from CityComponent.name) is used
-                // as the correlation key since no direct entity->City* map exists yet.
+                // Match by axial location. Prior code stored
+                // q*10000 + r in EntityId.index and decoded via the same
+                // formula, which collides for coordinates outside the
+                // default map bounds. DealTerm.tileCoord is authoritative;
+                // cityEntity is retained only for backwards compatibility
+                // with existing UI/AI call sites.
                 aoc::game::Player* fromPlayer = gameState.player(term.fromPlayer);
                 if (fromPlayer == nullptr) { break; }
-                // Transfer ownership of every city belonging to fromPlayer whose
-                // EntityId index matches the stored term.cityEntity.index.
-                // This is a bridge: once DealTerm is updated to store a location
-                // instead of an EntityId this loop can be replaced with cityAt().
                 for (const std::unique_ptr<aoc::game::City>& cityPtr : fromPlayer->cities()) {
-                    // Use entity index as a stable identifier until DealTerm is
-                    // updated to carry an AxialCoord instead.
-                    const uint32_t cityIndex = static_cast<uint32_t>(
-                        cityPtr->location().q * 10000 + cityPtr->location().r);
-                    if (cityIndex == term.cityEntity.index) {
+                    if (cityPtr->location() == term.tileCoord) {
                         LOG_INFO("City %s ceded to player %u",
                                  cityPtr->name().c_str(),
                                  static_cast<unsigned>(term.toPlayer));
@@ -81,8 +73,13 @@ ErrorCode acceptDeal(aoc::game::GameState& gameState,
                 Grievance g{};
                 g.type           = GrievanceType::BrokePromise;
                 g.against        = term.toPlayer;
-                g.severity       = 50;
-                g.turnsRemaining = 0;  // Permanent
+                // Severity convention (Grievance.cpp:49-97): all grievances
+                // are stored as NEGATIVE values and summed into a negative
+                // opinion modifier. Prior +50 actually improved the
+                // fromPlayer's opinion of toPlayer — opposite of intent.
+                g.severity       = -50;
+                g.turnsRemaining = 0;  // Permanent (tickGrievances only
+                                       // decrements when > 0)
                 fromPlayer->grievances().grievances.push_back(g);
                 break;
             }
@@ -284,11 +281,14 @@ void processDeals(aoc::game::GameState& gameState, GlobalDealTracker& tracker,
                 }
 
                 case DealTermType::DemilitarizedZone: {
-                    // Check both directions: A's units near B's border and vice versa
+                    // Reputation modifier is directional: addReputationModifier(x, y)
+                    // stores in x's view of y (DiplomacyState.cpp:362). When A
+                    // violates, the *victim* (B) should lose trust in A, not
+                    // the other way around.
                     if (hasMilitaryUnitsNearBorder(gameState, grid,
                                                    it->playerA, it->playerB,
                                                    term.zoneRadius)) {
-                        diplomacy.addReputationModifier(it->playerA, it->playerB, -5, 10);
+                        diplomacy.addReputationModifier(it->playerB, it->playerA, -5, 10);
 
                         aoc::game::Player* victimPlayer = gameState.player(it->playerB);
                         if (victimPlayer != nullptr) {
@@ -299,7 +299,7 @@ void processDeals(aoc::game::GameState& gameState, GlobalDealTracker& tracker,
                     if (hasMilitaryUnitsNearBorder(gameState, grid,
                                                    it->playerB, it->playerA,
                                                    term.zoneRadius)) {
-                        diplomacy.addReputationModifier(it->playerB, it->playerA, -5, 10);
+                        diplomacy.addReputationModifier(it->playerA, it->playerB, -5, 10);
 
                         aoc::game::Player* victimPlayer = gameState.player(it->playerA);
                         if (victimPlayer != nullptr) {

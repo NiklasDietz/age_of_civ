@@ -197,32 +197,6 @@ void processInsurancePremiums(aoc::game::GameState& gameState) {
 }
 
 // ============================================================================
-// Economic Espionage
-// ============================================================================
-
-ErrorCode executeEconSpyMission(aoc::game::GameState& /*gameState*/,
-                                 EntityId /*spyEntity*/,
-                                 EconSpyMission mission) {
-    switch (mission) {
-        case EconSpyMission::StealRecipe:
-            LOG_INFO("Economic espionage: recipe stolen!");
-            break;
-        case EconSpyMission::MarketManipulation:
-            LOG_INFO("Economic espionage: market manipulated!");
-            break;
-        case EconSpyMission::InsiderTrading:
-            LOG_INFO("Economic espionage: insider trading intelligence gathered!");
-            break;
-        case EconSpyMission::Counterfeit:
-            LOG_INFO("Economic espionage: counterfeit coins introduced!");
-            break;
-        default:
-            break;
-    }
-    return ErrorCode::Ok;
-}
-
-// ============================================================================
 // Migration
 // ============================================================================
 
@@ -289,8 +263,14 @@ void processMigration(aoc::game::GameState& gameState, const aoc::map::HexGrid& 
             ImmigrationPolicy destPolicy = destPlayer->migration().policy;
             if (destPolicy == ImmigrationPolicy::Closed) { continue; }
 
-            // Migration happens slowly: 1 citizen per 10 turns (deterministic hash)
-            uint32_t migHash = sourceHash * 2654435761u;
+            // Migration happens slowly: ~1 citizen per 10 qualifying turns.
+            // Hash must vary with turn number — prior formula was pure in the
+            // tile coordinate and either always fired or never fired for a
+            // given pair for the full game. Mixing turnNumber produces a
+            // deterministic but pair-and-time-dependent gate.
+            uint32_t migHash = (sourceHash
+                              ^ static_cast<uint32_t>(gameState.currentTurn()))
+                             * 2654435761u;
             if ((migHash % 10) != 0) { continue; }
 
             if (source->population() > 2) {

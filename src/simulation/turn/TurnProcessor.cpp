@@ -617,7 +617,7 @@ void processGlobalSystems(TurnContext& turnContext) {
     aoc::map::HexGrid& grid = *turnContext.grid;
 
     // Religious spread (global, affects all cities)
-    processReligiousSpread(gameState, grid);
+    processReligiousSpread(gameState, grid, turnContext.diplomacy);
 
     // AI religion founding: auto-found pantheons and religions for non-human players
     // once they accumulate sufficient faith. Human players use the UI screen.
@@ -853,7 +853,8 @@ void processGlobalSystems(TurnContext& turnContext) {
     processPrestige(gameState, grid, turnContext.diplomacy);
 
     // Victory tracking (CSI, collapse, era evaluation).
-    updateVictoryTrackers(gameState, grid, *turnContext.economy, turnContext.currentTurn);
+    updateVictoryTrackers(gameState, grid, *turnContext.economy, turnContext.currentTurn,
+                          turnContext.diplomacy);
 }
 
 // ============================================================================

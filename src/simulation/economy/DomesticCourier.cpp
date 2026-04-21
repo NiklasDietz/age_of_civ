@@ -144,11 +144,17 @@ void processDomesticCouriers(aoc::game::GameState& gameState,
         if (playerPtr == nullptr) { continue; }
 
         // Hamlet pooling: each Hamlet has 0 courier slots so cannot dispatch.
-        // Instead, any stockpile surplus above a small reserve is teleported
-        // to the nearest Town/City owned by the same player. No unit trip, no
-        // path check -- represents local peasant caravans that the player
-        // doesn't micromanage.
-        constexpr int32_t kHamletReserve = 10;
+        // Instead, any stockpile surplus above a small reserve flows to the
+        // nearest Town/City owned by the same player.  Represents local peasant
+        // caravans the player doesn't micromanage.  Two gates prevent the pool
+        // from acting as a free teleporter:
+        //   1. Distance cap (kHamletPoolMaxDist hexes) -- hamlets cut off from
+        //      any town are stranded, not magically linked to the capital.
+        //   2. Per-hex spoilage/tariff -- a fraction of the shipment is lost
+        //      per hex travelled, so long hauls pay a cost.
+        constexpr int32_t kHamletReserve        = 10;
+        constexpr int32_t kHamletPoolMaxDist    = 8;
+        constexpr float   kHamletPoolCostPerHex = 0.05f;
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
             if (cityPtr == nullptr) { continue; }
             if (cityPtr->stage() != aoc::game::CitySize::Hamlet) { continue; }
@@ -166,6 +172,10 @@ void processDomesticCouriers(aoc::game::GameState& gameState,
                 if (d < bestDist) { bestDist = d; pool = other.get(); }
             }
             if (pool == nullptr) { continue; }
+            if (bestDist > kHamletPoolMaxDist) { continue; }
+
+            const float keepFraction = std::max(
+                0.0f, 1.0f - (kHamletPoolCostPerHex * static_cast<float>(bestDist)));
 
             CityStockpileComponent& src = cityPtr->stockpile();
             CityStockpileComponent& dst = pool->stockpile();
@@ -173,7 +183,12 @@ void processDomesticCouriers(aoc::game::GameState& gameState,
                 const int32_t excess = kv.second - kHamletReserve;
                 if (excess <= 0) { continue; }
                 kv.second = kHamletReserve;
-                dst.addGoods(kv.first, excess);
+                const int32_t delivered = static_cast<int32_t>(
+                    static_cast<float>(excess) * keepFraction);
+                if (delivered > 0) {
+                    dst.addGoods(kv.first, delivered);
+                }
+                // Remainder (excess - delivered) is spoilage en route, lost.
             }
         }
 

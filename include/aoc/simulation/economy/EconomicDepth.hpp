@@ -129,20 +129,6 @@ void processInsurancePremiums(aoc::game::GameState& gameState);
 // Economic Espionage
 // ============================================================================
 
-enum class EconSpyMission : uint8_t {
-    StealRecipe,       ///< Copy a production recipe
-    MarketManipulation,///< Inflate/deflate prices
-    InsiderTrading,    ///< Preview future prices
-    Counterfeit,       ///< Damage target's monetary trust
-
-    Count
-};
-
-/// Execute an economic espionage mission (extends the base espionage system).
-[[nodiscard]] ErrorCode executeEconSpyMission(aoc::game::GameState& gameState,
-                                               EntityId spyEntity,
-                                               EconSpyMission mission);
-
 // ============================================================================
 // Migration
 // ============================================================================

@@ -10,6 +10,7 @@
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/game/GameState.hpp"
@@ -137,15 +138,19 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
 // ============================================================================
 
 void processReligiousSpread(aoc::game::GameState& gameState,
-                             const aoc::map::HexGrid& grid) {
+                             const aoc::map::HexGrid& grid,
+                             const DiplomacyManager* diplomacy) {
     constexpr int32_t SPREAD_RANGE = 3;
     constexpr float BASE_PASSIVE_PRESSURE = 0.5f;
 
-    // Gather city info from GameState
+    // Gather city info from GameState. Owner is tracked so cross-owner spread
+    // can be gated by diplomatic state (war blocks passive conversion) and the
+    // founder's enhancer belief can be looked up.
     struct CityInfo {
         aoc::hex::AxialCoord location;
         ReligionId dominantReligion;
         bool hasHolySite;
+        PlayerId owner;
         aoc::game::City* cityPtr;
     };
     std::vector<CityInfo> cities;
@@ -154,9 +159,12 @@ void processReligiousSpread(aoc::game::GameState& gameState,
         for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
             ReligionId dominant = city->religion().dominantReligion();
             bool hasHolySite = city->districts().hasDistrict(DistrictType::HolySite);
-            cities.push_back({city->location(), dominant, hasHolySite, city.get()});
+            cities.push_back({city->location(), dominant, hasHolySite, city->owner(), city.get()});
         }
     }
+
+    const GlobalReligionTracker& religions = gameState.religionTracker();
+    const std::array<BeliefDef, BELIEF_COUNT>& beliefs = allBeliefs();
 
     // Apply passive pressure from cities with dominant religions
     for (const CityInfo& source : cities) {
@@ -169,10 +177,30 @@ void processReligiousSpread(aoc::game::GameState& gameState,
             pressure *= 2.0f;
         }
 
+        // Enhancer belief multiplier (e.g. Missionary Zeal x1.5, Religious Texts x1.3).
+        // Looked up from the founding player's religion definition.
+        if (source.dominantReligion < MAX_RELIGIONS) {
+            const ReligionDef& rdef = religions.religions[source.dominantReligion];
+            if (rdef.enhancerBelief < BELIEF_COUNT) {
+                const float mult = beliefs[rdef.enhancerBelief].spreadStrength;
+                if (mult > 0.0f) {
+                    pressure *= mult;
+                }
+            }
+        }
+
         for (const CityInfo& target : cities) {
             if (target.cityPtr == source.cityPtr) { continue; }
             int32_t dist = grid.distance(source.location, target.location);
             if (dist > SPREAD_RANGE) { continue; }
+
+            // Cross-owner gate: hostile enemies don't passively adopt each
+            // other's religion.  Same-owner spread is always allowed.
+            if (source.owner != target.owner && diplomacy != nullptr
+                && source.owner != INVALID_PLAYER && target.owner != INVALID_PLAYER
+                && diplomacy->isAtWar(source.owner, target.owner)) {
+                continue;
+            }
 
             target.cityPtr->religion().addPressure(source.dominantReligion, pressure);
         }

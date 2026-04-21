@@ -18,6 +18,8 @@ namespace aoc::game { class GameState; }
 namespace aoc::game { class Player; class GameState; class City; }
 namespace aoc::map { class HexGrid; }
 
+namespace aoc::sim { class DiplomacyManager; }
+
 namespace aoc::sim {
 
 using ReligionId = uint8_t;
@@ -149,7 +151,13 @@ struct GlobalReligionTracker {
 void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid);
 
 /// Process religious pressure: cities with holy sites spread to neighbors.
-void processReligiousSpread(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid);
+///
+/// When `diplomacy` is supplied, cross-owner spread is blocked between players
+/// who are at war (hostile enemies don't passively convert each other).  The
+/// founder's enhancer belief (e.g. Missionary Zeal, Religious Texts) scales the
+/// outbound pressure.
+void processReligiousSpread(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
+                            const DiplomacyManager* diplomacy = nullptr);
 
 /// Apply religion bonuses (founder beliefs give gold/science, follower beliefs give amenities).
 void applyReligionBonuses(aoc::game::Player& player);

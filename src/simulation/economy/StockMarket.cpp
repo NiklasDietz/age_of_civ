@@ -162,6 +162,23 @@ void processStockMarket(aoc::game::GameState& gameState) {
                     invPlayer->monetary().treasury += actualDividend;
                 }
                 inv.totalDividends += actualDividend;
+
+                // Keep the target's foreignInvestments mirror in sync with the
+                // authoritative record held by the investor. Without this the
+                // mirror keeps its stale principalInvested values and the
+                // target's UI (and any downstream systems reading the mirror)
+                // sees frozen dividends/turnsHeld.
+                for (EquityInvestment& mirror
+                         : targetPlayer->stockPortfolio().foreignInvestments) {
+                    if (mirror.investor == playerPtr->id()
+                        && mirror.target == inv.target
+                        && mirror.principalInvested == inv.principalInvested) {
+                        mirror.currentValue   = inv.currentValue;
+                        mirror.totalDividends = inv.totalDividends;
+                        mirror.turnsHeld      = inv.turnsHeld;
+                        break;
+                    }
+                }
             }
         }
     }

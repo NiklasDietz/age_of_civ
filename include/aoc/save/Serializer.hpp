@@ -41,7 +41,7 @@ namespace aoc::save {
 
 /// File format magic bytes: "AOC\0"
 inline constexpr uint32_t SAVE_MAGIC   = 0x00434F41;
-inline constexpr uint32_t SAVE_VERSION = 6;
+inline constexpr uint32_t SAVE_VERSION = 7;
 
 /// Section IDs for each chunk of game state.
 enum class SectionId : uint16_t {
@@ -74,6 +74,13 @@ enum class SectionId : uint16_t {
     PollutionState   = 0x001C,  ///< Per-city waste/pollution
     AutomationState  = 0x001D,  ///< Per-city robot worker state
     IndustrialState  = 0x001E,  ///< Per-player industrial revolution progress
+    // v7 sections ---------------------------------------------------------
+    PrestigeState    = 0x001F,  ///< Per-player prestige axes (science/culture/etc.)
+    TourismState     = 0x0020,  ///< Per-player tourism accumulation + tourist counts
+    SpaceRaceState   = 0x0021,  ///< Per-player space project progress/completion
+    GrievanceState   = 0x0022,  ///< Per-player grievance list
+    WarWearinessState = 0x0023, ///< Per-player war weariness + turns-at-war map
+    StockPortfolioState = 0x0024, ///< Per-player equity investments (inward + outward)
 };
 
 /// Low-level binary write buffer.

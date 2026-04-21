@@ -5,6 +5,7 @@
 
 #include "aoc/simulation/city/CityBombardment.hpp"
 #include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/core/Random.hpp"
@@ -24,18 +25,25 @@ namespace aoc::sim {
 // Wall auto-detection from buildings
 // ============================================================================
 
-/// Detect wall tier from the city's built buildings.
-/// BuildingId 17 = Ancient Walls, 18 = Medieval Walls, 24 = Renaissance Walls
-static WallTier detectWallTier(const aoc::game::City& city) {
-    if (city.hasBuilding(BuildingId{24})) { return WallTier::Renaissance; }
-    if (city.hasBuilding(BuildingId{18})) { return WallTier::Medieval; }
-    if (city.hasBuilding(BuildingId{17})) { return WallTier::Ancient; }
-    return WallTier::None;
+/// Detect wall tier from the city's built buildings plus owner era.
+/// BuildingId 17 ("Walls") is the only wall building in BUILDING_DEFS;
+/// its effective tier upgrades with the owning civ's era: Medieval →
+/// Medieval-tier walls, Renaissance+ → Renaissance-tier walls. Prior
+/// code mapped to {18,24} which are Barracks/Mint, so those tiers were
+/// unreachable and building a Mint granted Renaissance-wall stats.
+static WallTier detectWallTier(const aoc::game::City& city,
+                               const aoc::game::Player& owner) {
+    if (!city.hasBuilding(BuildingId{17})) { return WallTier::None; }
+    const EraId era = effectiveEraFromTech(owner);
+    if (era.value >= 3) { return WallTier::Renaissance; }
+    if (era.value >= 2) { return WallTier::Medieval; }
+    return WallTier::Ancient;
 }
 
 /// Ensure wall state matches built buildings (called each turn).
-static void syncWallState(aoc::game::City& city) {
-    const WallTier currentTier = detectWallTier(city);
+static void syncWallState(aoc::game::City& city,
+                          const aoc::game::Player& owner) {
+    const WallTier currentTier = detectWallTier(city, owner);
     if (currentTier != city.walls().tier) {
         // Upgraded or built new walls — set new tier, heal to full
         city.walls().setTier(currentTier);
@@ -54,7 +62,7 @@ void processCityBombardment(aoc::game::GameState& gameState,
 
     for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
         // Sync wall state from buildings
-        syncWallState(*city);
+        syncWallState(*city, *gsPlayer);
 
         CityWallState& walls = city->walls();
         // H2.12: snapshot wall intactness BEFORE any repair this turn. If the
