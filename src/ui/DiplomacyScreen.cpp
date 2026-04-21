@@ -7,19 +7,32 @@
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
+#include "aoc/map/HexGrid.hpp"
+#include "aoc/map/HexCoord.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/DealTerms.hpp"
+#include "aoc/simulation/economy/TradeAgreement.hpp"
+#include "aoc/simulation/monetary/Bonds.hpp"
 #include "aoc/core/Log.hpp"
 
+#include <array>
+#include <climits>
+#include <memory>
 #include <string>
 
 namespace aoc::ui {
 
 void DiplomacyScreen::setContext(aoc::game::GameState* gameState, PlayerId humanPlayer,
-                                  aoc::sim::DiplomacyManager* diplomacy) {
-    this->m_gameState = gameState;
-    this->m_player    = humanPlayer;
-    this->m_diplomacy = diplomacy;
+                                  aoc::sim::DiplomacyManager* diplomacy,
+                                  aoc::map::HexGrid* grid,
+                                  aoc::sim::GlobalDealTracker* dealTracker) {
+    this->m_gameState   = gameState;
+    this->m_player      = humanPlayer;
+    this->m_diplomacy   = diplomacy;
+    this->m_grid        = grid;
+    this->m_dealTracker = dealTracker;
 }
 
 void DiplomacyScreen::open(UIManager& ui) {
@@ -254,6 +267,197 @@ void DiplomacyScreen::open(UIManager& ui) {
                 this->close(ui);
             };
             (void)ui.createButton(btnRow, {0.0f, 0.0f, 90.0f, 22.0f}, std::move(embargoBtn));
+        }
+
+        // --------------------------------------------------------------
+        // Trade / economic action buttons (human-side counterparts to
+        // AIController's offer paths). Gated by relation + resources.
+        // AI counterparty "auto-accepts" (direct call) since there's no
+        // pending-proposal queue yet.
+        // --------------------------------------------------------------
+        if (!rel.isAtWar && score > 10) {
+            aoc::game::GameState* gsState = this->m_gameState;
+            aoc::game::Player* selfPlayer = gsState->player(humanPlayer);
+            aoc::game::Player* otherPlayer = gsState->player(otherId);
+            const CurrencyAmount myGold = selfPlayer != nullptr ? selfPlayer->treasury() : 0;
+            const CurrencyAmount theirGold = otherPlayer != nullptr ? otherPlayer->treasury() : 0;
+
+            // Bilateral trade deal
+            bool alreadyPaired = false;
+            if (selfPlayer != nullptr) {
+                for (const aoc::sim::TradeAgreementDef& agr :
+                     selfPlayer->tradeAgreements().agreements) {
+                    if (!agr.isActive) { continue; }
+                    if (agr.type != aoc::sim::TradeAgreementType::BilateralDeal) { continue; }
+                    for (PlayerId m : agr.members) {
+                        if (m == otherId) { alreadyPaired = true; break; }
+                    }
+                    if (alreadyPaired) { break; }
+                }
+            }
+            if (!alreadyPaired && score > 15) {
+                ButtonData bdBtn;
+                bdBtn.label = "Bilateral Deal";
+                bdBtn.fontSize = 10.0f;
+                bdBtn.normalColor  = {0.20f, 0.30f, 0.35f, 0.9f};
+                bdBtn.hoverColor   = {0.28f, 0.42f, 0.48f, 0.9f};
+                bdBtn.pressedColor = {0.14f, 0.22f, 0.26f, 0.9f};
+                bdBtn.cornerRadius = 3.0f;
+                bdBtn.onClick = [gsState, humanPlayer, otherId, &ui, this]() {
+                    const ErrorCode rc = aoc::sim::proposeBilateralDeal(
+                        *gsState, humanPlayer, otherId);
+                    if (rc == ErrorCode::Ok) {
+                        LOG_INFO("Human proposed bilateral deal with player %u",
+                                 static_cast<unsigned>(otherId));
+                    }
+                    this->close(ui);
+                };
+                (void)ui.createButton(btnRow, {0.0f, 0.0f, 110.0f, 22.0f}, std::move(bdBtn));
+            }
+
+            // Offer Loan: lend up to 25% of treasury if flush and partner broke.
+            if (myGold > 400 && theirGold < 150) {
+                const CurrencyAmount principal = std::min(myGold / 4,
+                    static_cast<CurrencyAmount>(500));
+                ButtonData lnBtn;
+                lnBtn.label = "Offer Loan";
+                lnBtn.fontSize = 10.0f;
+                lnBtn.normalColor  = {0.30f, 0.25f, 0.10f, 0.9f};
+                lnBtn.hoverColor   = {0.42f, 0.35f, 0.15f, 0.9f};
+                lnBtn.pressedColor = {0.22f, 0.18f, 0.07f, 0.9f};
+                lnBtn.cornerRadius = 3.0f;
+                lnBtn.onClick = [gsState, humanPlayer, otherId, principal, &ui, this]() {
+                    const ErrorCode rc = aoc::sim::createIOU(
+                        *gsState, humanPlayer, otherId, principal, 0.08f, 15);
+                    if (rc == ErrorCode::Ok) {
+                        LOG_INFO("Human offered loan to player %u: %d gold @ 8%% for 15 turns",
+                                 static_cast<unsigned>(otherId),
+                                 static_cast<int>(principal));
+                    }
+                    this->close(ui);
+                };
+                (void)ui.createButton(btnRow, {0.0f, 0.0f, 100.0f, 22.0f}, std::move(lnBtn));
+            }
+
+            // Sell Smallest City: requires 3+ cities, buyer with enough gold.
+            if (this->m_dealTracker != nullptr && this->m_grid != nullptr
+                && selfPlayer != nullptr && otherPlayer != nullptr
+                && selfPlayer->cities().size() >= 3) {
+                aoc::game::City* victim = nullptr;
+                int32_t smallestPop = INT_MAX;
+                for (const std::unique_ptr<aoc::game::City>& c : selfPlayer->cities()) {
+                    if (c->population() < smallestPop) {
+                        smallestPop = c->population();
+                        victim = c.get();
+                    }
+                }
+                const int32_t price = 200 + smallestPop * 50;
+                if (victim != nullptr && theirGold > price + 100) {
+                    const aoc::hex::AxialCoord loc = victim->location();
+                    const uint32_t cityIndex = static_cast<uint32_t>(loc.q * 10000 + loc.r);
+                    aoc::sim::GlobalDealTracker* tracker = this->m_dealTracker;
+                    aoc::map::HexGrid* grid = this->m_grid;
+                    std::string cityName = victim->name();
+                    ButtonData scBtn;
+                    scBtn.label = "Sell City (" + cityName + ", " + std::to_string(price) + "g)";
+                    scBtn.fontSize = 10.0f;
+                    scBtn.normalColor  = {0.35f, 0.18f, 0.25f, 0.9f};
+                    scBtn.hoverColor   = {0.48f, 0.24f, 0.34f, 0.9f};
+                    scBtn.pressedColor = {0.25f, 0.12f, 0.18f, 0.9f};
+                    scBtn.cornerRadius = 3.0f;
+                    scBtn.onClick = [gsState, grid, tracker, humanPlayer, otherId,
+                                      cityIndex, price, cityName, &ui, this]() {
+                        aoc::sim::DiplomaticDeal deal{};
+                        deal.playerA = humanPlayer;
+                        deal.playerB = otherId;
+                        aoc::sim::DealTerm cede{};
+                        cede.type = aoc::sim::DealTermType::CedeCity;
+                        cede.fromPlayer = humanPlayer;
+                        cede.toPlayer   = otherId;
+                        cede.cityEntity = EntityId{cityIndex, 0};
+                        deal.terms.push_back(cede);
+                        aoc::sim::DealTerm pay{};
+                        pay.type = aoc::sim::DealTermType::GoldLump;
+                        pay.fromPlayer = otherId;
+                        pay.toPlayer   = humanPlayer;
+                        pay.goldLump   = price;
+                        deal.terms.push_back(pay);
+                        const std::size_t idx = tracker->activeDeals.size();
+                        if (aoc::sim::proposeDeal(*gsState, *tracker, deal) == ErrorCode::Ok) {
+                            if (aoc::sim::acceptDeal(*gsState, *grid, *tracker,
+                                                     static_cast<int32_t>(idx)) == ErrorCode::Ok) {
+                                LOG_INFO("Human sold city %s to player %u for %d gold",
+                                         cityName.c_str(),
+                                         static_cast<unsigned>(otherId), price);
+                            }
+                        }
+                        this->close(ui);
+                    };
+                    (void)ui.createButton(btnRow, {0.0f, 0.0f, 160.0f, 22.0f}, std::move(scBtn));
+                }
+            }
+
+            // Cede Tile: scan for border-adjacent owned hex. 100 gold.
+            if (this->m_dealTracker != nullptr && this->m_grid != nullptr
+                && theirGold > 150) {
+                aoc::map::HexGrid* grid = this->m_grid;
+                const int32_t tileCount = grid->tileCount();
+                aoc::hex::AxialCoord foundTile{0, 0};
+                bool haveTile = false;
+                for (int32_t idx = 0; idx < tileCount && !haveTile; ++idx) {
+                    if (grid->owner(idx) != humanPlayer) { continue; }
+                    const aoc::hex::AxialCoord c = grid->toAxial(idx);
+                    const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(c);
+                    for (const aoc::hex::AxialCoord& n : nbrs) {
+                        const int32_t nIdx = grid->toIndex(n);
+                        if (nIdx < 0 || nIdx >= tileCount) { continue; }
+                        if (grid->owner(nIdx) == otherId) {
+                            foundTile = c;
+                            haveTile = true;
+                            break;
+                        }
+                    }
+                }
+                if (haveTile) {
+                    aoc::sim::GlobalDealTracker* tracker = this->m_dealTracker;
+                    ButtonData ctBtn;
+                    ctBtn.label = "Cede Tile (100g)";
+                    ctBtn.fontSize = 10.0f;
+                    ctBtn.normalColor  = {0.20f, 0.30f, 0.20f, 0.9f};
+                    ctBtn.hoverColor   = {0.28f, 0.42f, 0.28f, 0.9f};
+                    ctBtn.pressedColor = {0.14f, 0.22f, 0.14f, 0.9f};
+                    ctBtn.cornerRadius = 3.0f;
+                    ctBtn.onClick = [gsState, grid, tracker, humanPlayer, otherId,
+                                      foundTile, &ui, this]() {
+                        aoc::sim::DiplomaticDeal deal{};
+                        deal.playerA = humanPlayer;
+                        deal.playerB = otherId;
+                        aoc::sim::DealTerm cede{};
+                        cede.type = aoc::sim::DealTermType::CedeTile;
+                        cede.fromPlayer = humanPlayer;
+                        cede.toPlayer   = otherId;
+                        cede.tileCoord  = foundTile;
+                        deal.terms.push_back(cede);
+                        aoc::sim::DealTerm pay{};
+                        pay.type = aoc::sim::DealTermType::GoldLump;
+                        pay.fromPlayer = otherId;
+                        pay.toPlayer   = humanPlayer;
+                        pay.goldLump   = 100;
+                        deal.terms.push_back(pay);
+                        const std::size_t idx = tracker->activeDeals.size();
+                        if (aoc::sim::proposeDeal(*gsState, *tracker, deal) == ErrorCode::Ok) {
+                            if (aoc::sim::acceptDeal(*gsState, *grid, *tracker,
+                                                     static_cast<int32_t>(idx)) == ErrorCode::Ok) {
+                                LOG_INFO("Human ceded tile (%d,%d) to player %u for 100 gold",
+                                         foundTile.q, foundTile.r,
+                                         static_cast<unsigned>(otherId));
+                            }
+                        }
+                        this->close(ui);
+                    };
+                    (void)ui.createButton(btnRow, {0.0f, 0.0f, 120.0f, 22.0f}, std::move(ctBtn));
+                }
+            }
         }
     }
 

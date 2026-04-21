@@ -2823,7 +2823,8 @@ void Application::buildHUD() {
 
     makeTopBtn(this->m_topBar, "Diplo", 50.0f, [this]() {
         if (!this->m_diplomacyScreen.isOpen()) {
-            this->m_diplomacyScreen.setContext(&this->m_gameState, 0, &this->m_diplomacy);
+            this->m_diplomacyScreen.setContext(&this->m_gameState, 0, &this->m_diplomacy,
+                                                &this->m_hexGrid, &this->m_dealTracker);
             this->m_diplomacyScreen.open(this->m_uiManager);
         } else {
             this->m_diplomacyScreen.close(this->m_uiManager);

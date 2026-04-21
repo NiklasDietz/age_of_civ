@@ -13,10 +13,15 @@
 
 namespace aoc::sim {
 class DiplomacyManager;
+struct GlobalDealTracker;
 }
 
 namespace aoc::game {
 class GameState;
+}
+
+namespace aoc::map {
+class HexGrid;
 }
 
 namespace aoc::ui {
@@ -24,17 +29,21 @@ namespace aoc::ui {
 class DiplomacyScreen final : public ScreenBase {
 public:
     void setContext(aoc::game::GameState* gameState, PlayerId humanPlayer,
-                    aoc::sim::DiplomacyManager* diplomacy);
+                    aoc::sim::DiplomacyManager* diplomacy,
+                    aoc::map::HexGrid* grid = nullptr,
+                    aoc::sim::GlobalDealTracker* dealTracker = nullptr);
 
     void open(UIManager& ui) override;
     void close(UIManager& ui) override;
     void refresh(UIManager& ui) override;
 
 private:
-    aoc::game::GameState*        m_gameState = nullptr;
-    aoc::sim::DiplomacyManager*  m_diplomacy = nullptr;
-    PlayerId                     m_player    = INVALID_PLAYER;
-    WidgetId                     m_playerList = INVALID_WIDGET;
+    aoc::game::GameState*          m_gameState   = nullptr;
+    aoc::sim::DiplomacyManager*    m_diplomacy   = nullptr;
+    aoc::map::HexGrid*             m_grid        = nullptr;
+    aoc::sim::GlobalDealTracker*   m_dealTracker = nullptr;
+    PlayerId                       m_player      = INVALID_PLAYER;
+    WidgetId                       m_playerList  = INVALID_WIDGET;
 };
 
 } // namespace aoc::ui
