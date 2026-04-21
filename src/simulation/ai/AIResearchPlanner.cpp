@@ -121,18 +121,31 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
 
                 score += ownedCityCount * 100;
 
-                // Leader personality tech bias
+                // Leader personality tech bias. Each category contributes
+                // at most ONE multiplier per tech — the previous per-building
+                // loop could multiply techEconomic two or three times when a
+                // single tech unlocked multiple economic buildings, yielding
+                // score * techEconomic^N and wildly overweighting diverse
+                // techs versus single-unlock ones.
                 if (!def.unlockedUnits.empty()) {
                     score = static_cast<int32_t>(static_cast<float>(score) * beh.techMilitary);
                 }
                 if (!def.unlockedBuildings.empty()) {
+                    bool hasEconomic   = false;
+                    bool hasIndustrial = false;
                     for (const BuildingId& bid : def.unlockedBuildings) {
                         if (bid.value == 6 || bid.value == 20 || bid.value == 21 || bid.value == 24) {
-                            score = static_cast<int32_t>(static_cast<float>(score) * beh.techEconomic);
+                            hasEconomic = true;
                         }
                         if (bid.value == 3 || bid.value == 5 || bid.value == 10 || bid.value == 11) {
-                            score = static_cast<int32_t>(static_cast<float>(score) * beh.techIndustrial);
+                            hasIndustrial = true;
                         }
+                    }
+                    if (hasEconomic) {
+                        score = static_cast<int32_t>(static_cast<float>(score) * beh.techEconomic);
+                    }
+                    if (hasIndustrial) {
+                        score = static_cast<int32_t>(static_cast<float>(score) * beh.techIndustrial);
                     }
                 }
                 if (def.era.value >= 5) {

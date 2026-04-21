@@ -8,6 +8,7 @@
 
 #include "aoc/simulation/economy/Maintenance.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/city/District.hpp"
@@ -114,14 +115,19 @@ EconomicBreakdown computeEconomicBreakdown(const aoc::game::Player& player,
             }
         }
 
-        // Goods economic activity (Phase B: increased caps/rates)
+        // Goods economic activity (Phase B: increased caps/rates).
+        // Must stay in sync with the identical block in processGoldIncome
+        // (below) — previous hardcoded ids 72/79/75 resolved to
+        // SURFACE_PLATE / CHARCOAL / SEMICONDUCTORS instead of
+        // CONSUMER_GOODS / CLOTHING / ELECTRONICS, so the diagnostic
+        // breakdown and the real income loop both taxed the wrong goods.
         {
             const CityStockpileComponent& stock = city->stockpile();
             int32_t ecoGold = 0;
-            ecoGold += stock.getAmount(72) / 4;   // Consumer Goods
-            ecoGold += stock.getAmount(70) / 4;   // Processed Food
-            ecoGold += stock.getAmount(79) / 2;   // Clothing
-            ecoGold += stock.getAmount(75) / 1;   // Electronics
+            ecoGold += stock.getAmount(goods::CONSUMER_GOODS) / 4;
+            ecoGold += stock.getAmount(goods::PROCESSED_FOOD) / 4;
+            ecoGold += stock.getAmount(goods::CLOTHING)       / 2;
+            ecoGold += stock.getAmount(goods::ELECTRONICS)    / 1;
             bd.incomeGoodsEcon += static_cast<CurrencyAmount>(std::min(ecoGold, 15));
         }
 
@@ -271,17 +277,12 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
         // Goods-rich cities pay more taxes because they have a larger real economy.
         // Max 15 gold/city so supply-side improvements are meaningful but not dominant.
         {
-            constexpr uint16_t CONSUMER_GOODS_ID = 72;
-            constexpr uint16_t PROCESSED_FOOD_ID = 70;
-            constexpr uint16_t CLOTHING_ID       = 79;
-            constexpr uint16_t ELECTRONICS_ID    = 75;
-
             const CityStockpileComponent& stock = city->stockpile();
             int32_t economicActivityGold = 0;
-            economicActivityGold += stock.getAmount(CONSUMER_GOODS_ID) / 4;   // was /5
-            economicActivityGold += stock.getAmount(PROCESSED_FOOD_ID) / 4;   // was /5
-            economicActivityGold += stock.getAmount(CLOTHING_ID)        / 2;   // was /3
-            economicActivityGold += stock.getAmount(ELECTRONICS_ID)     / 1;   // was /2
+            economicActivityGold += stock.getAmount(goods::CONSUMER_GOODS) / 4;   // was /5
+            economicActivityGold += stock.getAmount(goods::PROCESSED_FOOD) / 4;   // was /5
+            economicActivityGold += stock.getAmount(goods::CLOTHING)       / 2;   // was /3
+            economicActivityGold += stock.getAmount(goods::ELECTRONICS)    / 1;   // was /2
             cityGold += static_cast<CurrencyAmount>(std::min(economicActivityGold, 15));
         }
 

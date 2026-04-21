@@ -262,7 +262,7 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     result.defenderKilled = defender.isDead();
     result.attackerKilled = attacker.isDead();
 
-    // XP: base 5, bonus for killing
+    // XP: base 5, bonus for killing.
     result.attackerXpGained = 5;
     result.defenderXpGained = 4;
     if (result.defenderKilled) {
@@ -270,6 +270,16 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     }
     if (result.attackerKilled) {
         result.defenderXpGained += 10;
+    }
+    // Apply XP to survivors now — applying after the removeUnit() calls
+    // below would either dangle (if the side died) or require re-lookup.
+    // Dead units don't need XP; a killed side's `xpGained` still reports
+    // for UI/analytics but never touches the unit.
+    if (!result.attackerKilled) {
+        attacker.experience().addExperience(result.attackerXpGained);
+    }
+    if (!result.defenderKilled) {
+        defender.experience().addExperience(result.defenderXpGained);
     }
 
     // If defender died and attacker survived, move attacker to defender's tile
@@ -482,6 +492,14 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
     result.defenderXpGained = 2;
     if (result.defenderKilled) {
         result.attackerXpGained += 8;
+    }
+    // Apply XP to survivors before any removal. Ranged attacker can't die
+    // from counter-fire (attackerDamage = 0 above) so always gets XP;
+    // defender only gets XP if still alive.
+    attacker.experience().addExperience(result.attackerXpGained);
+    if (!result.defenderKilled) {
+        defender.experience().addExperience(result.defenderXpGained);
+    } else {
         aoc::game::Player* defPlayer = findOwningPlayer(gameState, &defender);
         if (defPlayer != nullptr) {
             defPlayer->removeUnit(&defender);

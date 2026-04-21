@@ -21,6 +21,8 @@
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/core/Log.hpp"
 
+#include <algorithm>
+
 namespace aoc::sim {
 
 ErrorCode proposeDeal(aoc::game::GameState& /*gameState*/,
@@ -271,10 +273,24 @@ void processDeals(aoc::game::GameState& gameState, GlobalDealTracker& tracker,
                         aoc::game::Player* fromPlayer = gameState.player(term.fromPlayer);
                         aoc::game::Player* toPlayer   = gameState.player(term.toPlayer);
                         if (fromPlayer != nullptr) {
-                            fromPlayer->monetary().treasury -= term.goldPerTurn;
-                        }
-                        if (toPlayer != nullptr) {
-                            toPlayer->monetary().treasury += term.goldPerTurn;
+                            // Pay what can actually be paid. Previously the
+                            // debit was unguarded and drove treasury
+                            // arbitrarily negative, corrupting downstream
+                            // loan and crisis calculations.
+                            const CurrencyAmount available = std::max<CurrencyAmount>(
+                                0, fromPlayer->monetary().treasury);
+                            const CurrencyAmount paid = std::min<CurrencyAmount>(
+                                term.goldPerTurn, available);
+                            fromPlayer->monetary().treasury -= paid;
+                            if (toPlayer != nullptr) {
+                                toPlayer->monetary().treasury += paid;
+                            }
+                            if (paid < term.goldPerTurn) {
+                                LOG_INFO("WarReparations partial: player %u owed %lld, paid %lld",
+                                         static_cast<unsigned>(term.fromPlayer),
+                                         static_cast<long long>(term.goldPerTurn),
+                                         static_cast<long long>(paid));
+                            }
                         }
                     }
                     break;
