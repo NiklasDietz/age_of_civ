@@ -712,6 +712,7 @@ void processGlobalSystems(TurnContext& turnContext) {
                         >= WORLD_EVENT_COOLDOWN_TURNS) {
                     events.pendingEvent = WorldEventId::MigrantWave;
                     events.pendingChoice = -1;
+                    events.lastFiredTurn[static_cast<uint8_t>(WorldEventId::MigrantWave)] = currentTurn;
                     continue;
                 }
                 if (droughtThreshold
@@ -719,6 +720,7 @@ void processGlobalSystems(TurnContext& turnContext) {
                         >= WORLD_EVENT_COOLDOWN_TURNS) {
                     events.pendingEvent = WorldEventId::FamineWarning;
                     events.pendingChoice = -1;
+                    events.lastFiredTurn[static_cast<uint8_t>(WorldEventId::FamineWarning)] = currentTurn;
                 }
             }
         }

@@ -109,8 +109,14 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
         // production chain (smelting, tools, lumber, charcoal, glass).
         case  0: score = 200.0f * b.techIndustrial; break;  // Forge (smelting, tools, charcoal)
         case  1: score = 180.0f * b.techIndustrial; break;  // Workshop (lumber, bricks, construction)
-        case  3: score = 150.0f * b.techIndustrial; break;  // Factory (steel, machinery)
+        case  2: score = 170.0f * b.techIndustrial; break;  // Refinery (fuel, plastics)
+        case  3: score = 150.0f * b.techIndustrial; break;  // Factory (steel, machinery, ammunition)
+        case  4: score = 160.0f * b.techIndustrial; break;  // Electronics Plant (electronics, computers)
         case  5: score = 160.0f * b.techIndustrial; break;  // Industrial Complex
+        case 10: score = 120.0f * b.techIndustrial; break;  // Precision Workshop (surface plate, instruments)
+        case 11: score = 130.0f * b.techIndustrial; break;  // Semiconductor Fab (semiconductors, microchips)
+        case 13: score = 100.0f * b.economicFocus; break;   // Telecom Hub (telecom goods)
+        case 14: score = 110.0f * b.techIndustrial; break;  // Airport (aircraft)
 
         // Encampment
         case 17: score = 60.0f * b.militaryAggression; break; // Walls
@@ -125,8 +131,8 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
         case 31: score = 105.0f; break;                     // Wind
 
         // Other
-        case  8: score = 70.0f; break;  // Textile Mill
-        case  9: score = 65.0f; break;  // Food Processing
+        case  8: score = 140.0f * b.economicFocus; break;   // Textile Mill (textiles, clothing)
+        case  9: score = 150.0f * b.economicFocus; break;   // Food Processing (processed food)
         case 25: score = 50.0f; break;  // Waste Treatment
 
         // Faith buildings: base weighted by religiousZeal, then multiplied
@@ -172,7 +178,8 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
     switch (buildingId.value) {
         case  7: case 19: case 12:
             gpBonus = 15.0f * b.scienceFocus; break;
-        case  0: case  1: case  3: case  5:
+        case  0: case  1: case  2: case  3: case  4: case  5:
+        case  8: case  9: case 10: case 11: case 14:
             gpBonus = 15.0f * b.techIndustrial; break;
         case  6: case 20: case 21: case 24:
             gpBonus = 12.0f * b.economicFocus; break;
