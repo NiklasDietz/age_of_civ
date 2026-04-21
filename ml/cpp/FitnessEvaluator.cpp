@@ -424,7 +424,8 @@ SimulationResult runSimulation(int32_t turns, int32_t playerCount, uint64_t seed
 
         // Check victory
         aoc::sim::VictoryResult vr = aoc::sim::checkVictoryConditions(
-            gameState, static_cast<aoc::TurnNumber>(turn), static_cast<aoc::TurnNumber>(turns));
+            gameState, static_cast<aoc::TurnNumber>(turn), static_cast<aoc::TurnNumber>(turns),
+            aoc::sim::VICTORY_MASK_ALL, &diplomacy);
         if (vr.type != aoc::sim::VictoryType::None) {
             result.victoryType = vr.type;
             result.winner      = vr.winner;

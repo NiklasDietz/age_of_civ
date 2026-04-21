@@ -511,7 +511,8 @@ void Application::spectatorAdvanceTurn() {
 
         // Check victory conditions.
         aoc::sim::VictoryResult vr = aoc::sim::checkVictoryConditions(
-            this->m_gameState, this->m_turnManager.currentTurn());
+            this->m_gameState, this->m_turnManager.currentTurn(),
+            500, aoc::sim::VICTORY_MASK_ALL, &this->m_diplomacy);
         if (vr.type != aoc::sim::VictoryType::None) {
             this->m_spectatorPaused = true;
             LOG_INFO("Spectator: Player %u wins by type %d at turn %u",
@@ -2264,17 +2265,19 @@ void Application::handleEndTurn() {
 
         // Check victory conditions
         aoc::sim::VictoryResult vr = aoc::sim::checkVictoryConditions(
-            this->m_gameState, this->m_turnManager.currentTurn());
+            this->m_gameState, this->m_turnManager.currentTurn(),
+            500, aoc::sim::VICTORY_MASK_ALL, &this->m_diplomacy);
         if (vr.type != aoc::sim::VictoryType::None) {
             this->m_gameOver = true;
             this->m_victoryResult = vr;
             LOG_INFO("Game over! Player %u wins by %s",
                      static_cast<unsigned>(vr.winner),
-                     vr.type == aoc::sim::VictoryType::Science    ? "Science" :
-                     vr.type == aoc::sim::VictoryType::Domination ? "Domination" :
-                     vr.type == aoc::sim::VictoryType::Culture    ? "Culture" :
-                     vr.type == aoc::sim::VictoryType::Score      ? "Score" :
-                     vr.type == aoc::sim::VictoryType::Religion   ? "Religion" : "Unknown");
+                     vr.type == aoc::sim::VictoryType::Science       ? "Science" :
+                     vr.type == aoc::sim::VictoryType::Domination    ? "Domination" :
+                     vr.type == aoc::sim::VictoryType::Culture       ? "Culture" :
+                     vr.type == aoc::sim::VictoryType::Score         ? "Score" :
+                     vr.type == aoc::sim::VictoryType::Religion      ? "Religion" :
+                     vr.type == aoc::sim::VictoryType::Confederation ? "Confederation" : "Unknown");
 
             const uint8_t totalPlayers = static_cast<uint8_t>(1 + this->m_aiControllers.size());
             this->m_scoreScreen.setContext(

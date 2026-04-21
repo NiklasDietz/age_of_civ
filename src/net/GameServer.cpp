@@ -195,7 +195,8 @@ bool GameServer::tick() {
     // 4. Check victory
     aoc::sim::VictoryResult vr = aoc::sim::checkVictoryConditions(
         this->m_gameState, this->m_turnCtx.currentTurn,
-        static_cast<TurnNumber>(this->m_maxTurns));
+        static_cast<TurnNumber>(this->m_maxTurns),
+        aoc::sim::VICTORY_MASK_ALL, &this->m_diplomacy);
     if (vr.type != aoc::sim::VictoryType::None) {
         this->m_gameOver = true;
     }

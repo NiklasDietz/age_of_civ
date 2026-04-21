@@ -914,12 +914,19 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         // Check victory
         aoc::sim::VictoryResult vr = aoc::sim::checkVictoryConditions(
             gameState, static_cast<aoc::TurnNumber>(turn),
-            static_cast<aoc::TurnNumber>(maxTurns), victoryMask);
+            static_cast<aoc::TurnNumber>(maxTurns), victoryMask, &diplomacy);
         if (vr.type != aoc::sim::VictoryType::None) {
             printProgressBar(turn, maxTurns);
-            std::fprintf(stderr, "\n\n  GAME OVER on turn %d: Player %u wins (type %d)\n",
-                         turn, static_cast<unsigned>(vr.winner),
-                         static_cast<int>(vr.type));
+            if (vr.type == aoc::sim::VictoryType::Confederation) {
+                std::fprintf(stderr,
+                    "\n\n  GAME OVER on turn %d: CONFEDERATION wins (leader P%u, bloc size %zu)\n",
+                    turn, static_cast<unsigned>(vr.winner),
+                    vr.coWinners.size() + 1);
+            } else {
+                std::fprintf(stderr, "\n\n  GAME OVER on turn %d: Player %u wins (type %d)\n",
+                             turn, static_cast<unsigned>(vr.winner),
+                             static_cast<int>(vr.type));
+            }
             break;
         }
 
