@@ -15,9 +15,49 @@
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace aoc::sim {
+
+namespace {
+
+/// Food resource IDs counted for the diet-diversity growth bonus.
+/// Interchained trade intent: stockpiled goods also count, so civs that
+/// import unfamiliar foods (via trade) benefit alongside civs that have
+/// them on native tiles.
+constexpr std::array<uint16_t, 6> kFoodGoodIds = {
+    goods::WHEAT, goods::CATTLE, goods::FISH,
+    goods::RICE,  goods::SUGAR,  goods::PROCESSED_FOOD,
+};
+
+/// Count distinct food sources available to a city.
+/// Sources:
+///   1. Food-resource tiles the city is currently working.
+///   2. Food goods with positive amount in the city stockpile.
+int32_t countDistinctFoodSources(const aoc::game::City& city,
+                                   const aoc::map::HexGrid& grid) {
+    std::array<bool, kFoodGoodIds.size()> present{};
+    auto markPresent = [&](uint16_t gid) {
+        for (std::size_t i = 0; i < kFoodGoodIds.size(); ++i) {
+            if (kFoodGoodIds[i] == gid) { present[i] = true; return; }
+        }
+    };
+    for (const aoc::hex::AxialCoord& tile : city.workedTiles()) {
+        if (!grid.isValid(tile)) { continue; }
+        const ResourceId r = grid.resource(grid.toIndex(tile));
+        if (r.isValid()) { markPresent(r.value); }
+    }
+    for (std::size_t i = 0; i < kFoodGoodIds.size(); ++i) {
+        if (present[i]) { continue; }
+        if (city.stockpile().getAmount(kFoodGoodIds[i]) > 0) { present[i] = true; }
+    }
+    int32_t count = 0;
+    for (bool p : present) { if (p) { ++count; } }
+    return count;
+}
+
+} // namespace
 
 float foodForGrowth(int32_t currentPopulation) {
     float pop = static_cast<float>(currentPopulation);
@@ -158,6 +198,19 @@ static void processSingleCityGrowth(aoc::game::City& city,
     // Food consumption: 2 per citizen
     float consumption = static_cast<float>(city.population()) * 2.0f;
     float surplus = totalFood - consumption;
+
+    // Diet diversity: cities with multiple food sources (native tiles +
+    // imported goods) grow faster. Encourages interchained trade, since
+    // importing unfamiliar foods from partners boosts your own growth.
+    // +5% surplus per extra source, cap at +20% (5 distinct sources).
+    if (surplus > 0.0f) {
+        const int32_t foodVariety = countDistinctFoodSources(city, grid);
+        if (foodVariety >= 2) {
+            const float bonus = 0.05f
+                * static_cast<float>(std::min(foodVariety - 1, 4));
+            surplus *= (1.0f + bonus);
+        }
+    }
 
     // Celebration growth (rapture): very happy cities get +50% food surplus
     if (cityHappiness >= 3.0f && surplus > 0.0f) {
