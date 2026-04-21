@@ -29,6 +29,7 @@ class FogOfWar;
 namespace aoc::sim {
 class DiplomacyManager;
 class Market;
+struct GlobalDealTracker;
 }
 
 namespace aoc::sim::ai {
@@ -52,7 +53,8 @@ public:
                      const aoc::map::FogOfWar* fogOfWar,
                      DiplomacyManager& diplomacy,
                      const Market& market,
-                     aoc::Random& rng);
+                     aoc::Random& rng,
+                     GlobalDealTracker* dealTracker = nullptr);
 
     [[nodiscard]] PlayerId player() const { return this->m_player; }
 
@@ -61,8 +63,10 @@ private:
                             aoc::map::HexGrid& grid);
 
     void executeDiplomacyActions(aoc::game::GameState& gameState,
+                                 aoc::map::HexGrid& grid,
                                  DiplomacyManager& diplomacy,
-                                 const Market& market);
+                                 const Market& market,
+                                 GlobalDealTracker* dealTracker);
 
     /// Evaluate market prices and manage surplus/deficit goods for trade.
     void manageEconomy(aoc::game::GameState& gameState,
@@ -75,6 +79,7 @@ private:
 
     /// Manage monetary system: transition when ready, prioritize minting.
     void manageMonetarySystem(aoc::game::GameState& gameState,
+                              aoc::map::HexGrid& grid,
                               const DiplomacyManager& diplomacy);
 
     void manageGovernment(aoc::game::GameState& gameState);

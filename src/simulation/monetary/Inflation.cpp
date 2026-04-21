@@ -42,10 +42,13 @@ void computeInflation(MonetaryStateComponent& state,
     // Velocity changes slowly. High interest rates slow velocity (people save more).
     // Low rates increase velocity (people spend/invest more).
     float targetVelocity = 1.0f;
-    if (state.system == MonetarySystemType::FiatMoney) {
-        // In fiat, velocity is more responsive to interest rates
+    if (state.system == MonetarySystemType::FiatMoney
+        || state.system == MonetarySystemType::Digital) {
+        // In fiat/digital, velocity is more responsive to interest rates.
+        // Digital payments settle instantly, pushing the ceiling higher.
+        const float ceiling = (state.system == MonetarySystemType::Digital) ? 1.7f : 1.5f;
         targetVelocity = 1.2f - state.interestRate * 2.0f;  // Range ~0.2 to 1.2
-        targetVelocity = std::clamp(targetVelocity, 0.3f, 1.5f);
+        targetVelocity = std::clamp(targetVelocity, 0.3f, ceiling);
     } else if (state.system == MonetarySystemType::GoldStandard) {
         targetVelocity = 1.0f - state.interestRate;
         targetVelocity = std::clamp(targetVelocity, 0.5f, 1.2f);
@@ -224,10 +227,11 @@ float bankingGDPMultiplier(const MonetaryStateComponent& state) {
             float bonus = std::clamp((multiplier - 1.0f) * 0.02f, 0.05f, 0.15f);
             return 1.0f + bonus;
         }
-        case MonetarySystemType::FiatMoney: {
+        case MonetarySystemType::FiatMoney:
+        case MonetarySystemType::Digital: {
             // Full modern banking: credit cards, commercial lending, derivatives.
-            // Maximum amplification but sensitive to stability.
-            float baseBonus = 0.20f;
+            // Digital adds instant-settlement efficiency on top.
+            float baseBonus = (state.system == MonetarySystemType::Digital) ? 0.25f : 0.20f;
             // High debt-to-GDP reduces the banking bonus (crowding out)
             if (state.gdp > 0) {
                 float debtToGDP = static_cast<float>(state.governmentDebt)
@@ -263,6 +267,8 @@ float economicStabilityMultiplier(const MonetaryStateComponent& state) {
         stability += 0.05f;  // +5%: banking funds universities
     } else if (state.system == MonetarySystemType::FiatMoney) {
         stability += 0.10f;  // +10%: government research grants
+    } else if (state.system == MonetarySystemType::Digital) {
+        stability += 0.12f;  // +12%: efficient capital allocation
     }
 
     return std::clamp(stability, 0.80f, 1.15f);
@@ -271,7 +277,9 @@ float economicStabilityMultiplier(const MonetaryStateComponent& state) {
 CurrencyAmount computeSeigniorage(const MonetaryStateComponent& state,
                                    bool isReserveCurrency,
                                    CurrencyAmount totalForeignGDP) {
-    if (!isReserveCurrency || state.system != MonetarySystemType::FiatMoney) {
+    if (!isReserveCurrency
+        || (state.system != MonetarySystemType::FiatMoney
+            && state.system != MonetarySystemType::Digital)) {
         return 0;
     }
 

@@ -23,7 +23,8 @@ void computeCurrencyTrust(const aoc::game::GameState& gameState,
                           const MonetaryStateComponent& state,
                           CurrencyTrustComponent& trust,
                           int32_t playerCount) {
-    if (state.system != MonetarySystemType::FiatMoney) {
+    if (state.system != MonetarySystemType::FiatMoney
+        && state.system != MonetarySystemType::Digital) {
         return;
     }
 
@@ -228,7 +229,8 @@ float bilateralTradeEfficiency(const aoc::game::GameState& gameState,
     if (pa != nullptr) {
         const MonetaryStateComponent& msA = pa->monetary();
         efficiencyA = msA.tradeEfficiency();
-        if (msA.system == MonetarySystemType::FiatMoney) {
+        if (msA.system == MonetarySystemType::FiatMoney
+            || msA.system == MonetarySystemType::Digital) {
             efficiencyA = fiatTradeEfficiency(pa->currencyTrust());
         }
     }
@@ -236,7 +238,8 @@ float bilateralTradeEfficiency(const aoc::game::GameState& gameState,
     if (pb != nullptr) {
         const MonetaryStateComponent& msB = pb->monetary();
         efficiencyB = msB.tradeEfficiency();
-        if (msB.system == MonetarySystemType::FiatMoney) {
+        if (msB.system == MonetarySystemType::FiatMoney
+            || msB.system == MonetarySystemType::Digital) {
             efficiencyB = fiatTradeEfficiency(pb->currencyTrust());
         }
     }

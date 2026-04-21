@@ -76,6 +76,10 @@ void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target,
     relAB.lastWarAggressor = aggressor;
     relBA.lastWarAggressor = aggressor;
 
+    // Wipe accumulated peace-time warming
+    relAB.passiveBonus = 0;
+    relBA.passiveBonus = 0;
+
     // War declaration adds a large negative modifier
     RelationModifier warMod{"Declared war", -50, 0};  // Permanent until peace
     relAB.modifiers.push_back(warMod);
@@ -233,10 +237,20 @@ void DiplomacyManager::addReputationModifier(PlayerId a, PlayerId b,
 }
 
 void DiplomacyManager::tickModifiers() {
+    constexpr int32_t PASSIVE_WARMING_CAP = 20;
+    constexpr int32_t PASSIVE_WARMING_PER_TURN = 1;
+    constexpr int32_t PASSIVE_WARMING_GRACE_TURNS = 5;  // wait a bit after peace
     for (PairwiseRelation& rel : this->m_relations) {
         // Increment peace cooldown timer
         if (!rel.isAtWar && rel.turnsSincePeace < 1000) {
             ++rel.turnsSincePeace;
+        }
+        // Passive warming: met + at peace past grace window => slow warming toward cap.
+        // Breaks the chicken-and-egg where open-borders gate (>10) can never be reached.
+        if (rel.hasMet && !rel.isAtWar && rel.turnsSincePeace > PASSIVE_WARMING_GRACE_TURNS) {
+            if (rel.passiveBonus < PASSIVE_WARMING_CAP) {
+                rel.passiveBonus += PASSIVE_WARMING_PER_TURN;
+            }
         }
         // Decay relation modifiers
         for (std::vector<RelationModifier>::iterator it = rel.modifiers.begin(); it != rel.modifiers.end(); ) {

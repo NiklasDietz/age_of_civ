@@ -18,7 +18,8 @@ void setReserveRequirement(MonetaryStateComponent& state, Percentage ratio) {
 }
 
 ErrorCode printMoney(MonetaryStateComponent& state, CurrencyAmount amount) {
-    if (state.system != MonetarySystemType::FiatMoney) {
+    if (state.system != MonetarySystemType::FiatMoney
+        && state.system != MonetarySystemType::Digital) {
         return ErrorCode::InvalidMonetaryTransition;
     }
     if (amount <= 0) {

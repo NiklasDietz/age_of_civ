@@ -371,10 +371,12 @@ float computeExchangeRate(const aoc::game::GameState& gameState,
 
     const bool aIsGold = (systemA == MonetarySystemType::GoldStandard ||
                           systemA == MonetarySystemType::CommodityMoney);
-    const bool bIsFiat = (systemB == MonetarySystemType::FiatMoney);
+    const bool bIsFiat = (systemB == MonetarySystemType::FiatMoney
+                          || systemB == MonetarySystemType::Digital);
     const bool bIsGold = (systemB == MonetarySystemType::GoldStandard ||
                           systemB == MonetarySystemType::CommodityMoney);
-    const bool aIsFiat = (systemA == MonetarySystemType::FiatMoney);
+    const bool aIsFiat = (systemA == MonetarySystemType::FiatMoney
+                          || systemA == MonetarySystemType::Digital);
 
     if (aIsGold && bIsFiat) {
         return 1.0f + inflationB * 2.0f;

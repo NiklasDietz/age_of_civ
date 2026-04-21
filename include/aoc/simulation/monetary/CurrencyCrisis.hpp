@@ -149,4 +149,25 @@ bool processCurrencyCrisis(aoc::game::GameState& gameState,
 void executeCurrencyReform(MonetaryStateComponent& state,
                            CurrencyCrisisComponent& crisis);
 
+/**
+ * @brief Track reserve-ratio stress on GoldStandard civs and force the
+ *        organic gold->fiat cascade when backing collapses.
+ *
+ * Mirrors the historical transition mechanic (UK 1931, Nixon shock 1971):
+ *
+ *   ratio = goldBarReserves * GOLD_BAR_VALUE / moneySupply
+ *
+ *   ratio >= 0.7 : healthy, counter resets.
+ *   0.5 <= ratio < 0.7 : stressed. Counter accrues, `goldBackingRatio`
+ *                        mirrors the true ratio so trade partners see the
+ *                        strain.
+ *   0.2 <= ratio < 0.5 : redemption run. 5% of gold reserves drain per turn
+ *                        (foreign holders redeeming paper for gold).
+ *   ratio < 0.2 OR stress >= 10 turns : suspension of convertibility.
+ *                        Auto-transition to FiatMoney with a trust penalty.
+ *
+ * No-op for non-GoldStandard civs. Call once per player per turn.
+ */
+void processReserveStress(MonetaryStateComponent& state);
+
 } // namespace aoc::sim

@@ -35,7 +35,9 @@ ErrorCode investInEconomy(aoc::game::GameState& gameState,
         return ErrorCode::InvalidMonetaryTransition;
     }
 
-    int32_t maxInvestments = (investorState.system == MonetarySystemType::FiatMoney) ? 5 : 2;
+    int32_t maxInvestments = 2;
+    if (investorState.system == MonetarySystemType::FiatMoney) { maxInvestments = 5; }
+    if (investorState.system == MonetarySystemType::Digital)   { maxInvestments = 8; }
     if (static_cast<int32_t>(investorPortfolio.investments.size()) >= maxInvestments) {
         return ErrorCode::InvalidArgument;
     }
@@ -143,7 +145,9 @@ void processStockMarket(aoc::game::GameState& gameState) {
                 inv.currentValue  = std::max(static_cast<CurrencyAmount>(0), inv.currentValue);
             }
 
-            float          dividendRate = (targetSystem == MonetarySystemType::FiatMoney) ? 0.05f : 0.03f;
+            float dividendRate = 0.03f;
+            if (targetSystem == MonetarySystemType::FiatMoney) { dividendRate = 0.05f; }
+            if (targetSystem == MonetarySystemType::Digital)   { dividendRate = 0.06f; }
             CurrencyAmount dividend     = static_cast<CurrencyAmount>(
                 static_cast<float>(inv.currentValue) * dividendRate);
             dividend = std::max(static_cast<CurrencyAmount>(1), dividend);

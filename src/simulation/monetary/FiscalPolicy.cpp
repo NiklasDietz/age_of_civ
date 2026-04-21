@@ -70,7 +70,8 @@ void executeFiscalPolicy(MonetaryStateComponent& state, CurrencyAmount gdp) {
 }
 
 ErrorCode monetizeDebt(MonetaryStateComponent& state, CurrencyAmount amount) {
-    if (state.system != MonetarySystemType::FiatMoney) {
+    if (state.system != MonetarySystemType::FiatMoney
+        && state.system != MonetarySystemType::Digital) {
         return ErrorCode::InvalidMonetaryTransition;
     }
     if (amount <= 0 || amount > state.governmentDebt) {

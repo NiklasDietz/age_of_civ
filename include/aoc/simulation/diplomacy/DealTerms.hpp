@@ -48,11 +48,13 @@ class DiplomacyManager;
 enum class DealTermType : uint8_t {
     // Peace terms
     CedeCity,           ///< Transfer a city to the other player
+    CedeTile,           ///< Transfer a border-adjacent tile to the other player
     WarReparations,     ///< Pay gold per turn for N turns
     DemilitarizedZone,  ///< No military units within N tiles of border
     WarGuilt,           ///< Accept blame (+50 grievance)
 
     // Trade terms
+    GoldLump,           ///< One-off gold transfer from fromPlayer to toPlayer
     GoodsExchange,      ///< Trade specific goods at fixed rate
     MostFavoredNation,  ///< Lowest tariff between parties
     ExclusiveAccess,    ///< Only buyer can purchase this resource
@@ -73,7 +75,9 @@ struct DealTerm {
 
     // Type-specific data
     EntityId     cityEntity = NULL_ENTITY;      ///< For CedeCity
+    aoc::hex::AxialCoord tileCoord{0, 0};       ///< For CedeTile
     int32_t      goldPerTurn = 0;               ///< For WarReparations
+    int32_t      goldLump    = 0;               ///< For GoldLump
     int32_t      duration = 30;                 ///< Turns the term lasts
     uint16_t     goodId = 0;                    ///< For GoodsExchange
     int32_t      goodAmount = 0;                ///< For GoodsExchange
@@ -157,6 +161,7 @@ struct GlobalDealTracker {
  * @brief Accept a proposed deal. Applies immediate terms (city cession, etc.).
  */
 [[nodiscard]] ErrorCode acceptDeal(aoc::game::GameState& gameState,
+                                   aoc::map::HexGrid& grid,
                                    GlobalDealTracker& tracker,
                                    int32_t dealIndex);
 

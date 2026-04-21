@@ -23,7 +23,8 @@ ErrorCode devalueCurrency(aoc::game::GameState& /*gameState*/,
                           MonetaryStateComponent& state,
                           CurrencyDevaluationComponent& deval,
                           const GlobalCurrencyWarState& global) {
-    if (state.system != MonetarySystemType::FiatMoney) {
+    if (state.system != MonetarySystemType::FiatMoney
+        && state.system != MonetarySystemType::Digital) {
         return ErrorCode::InvalidMonetaryTransition;
     }
     if (deval.isDevalued) {

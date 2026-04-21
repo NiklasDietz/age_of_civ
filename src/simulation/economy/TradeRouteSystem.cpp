@@ -426,10 +426,17 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
              static_cast<unsigned>(traderUnit->owner()),
              static_cast<unsigned>(destCity->owner()));
 
-    // Load goods prioritized by what destination needs (demand-driven)
+    // Load goods prioritized by what destination needs (demand-driven).
+    // Effective cargo = raw - moneyWeight (metal coins hog bay space under
+    // CommodityMoney; paper/digital cost nothing).
     CityStockpileComponent& originStock = originCity->stockpile();
     const CityStockpileComponent& destStock = destCity->stockpile();
-    selectTradeGoods(originStock, &destStock, market, trader.cargo, trader.maxCargoSlots());
+    aoc::game::Player* ownerPtrForCargo = gameState.player(trader.owner);
+    const MonetarySystemType ownerSys = (ownerPtrForCargo != nullptr)
+        ? ownerPtrForCargo->monetary().system
+        : MonetarySystemType::Barter;
+    const int32_t cargoSlots = trader.effectiveCargoSlots(ownerSys);
+    selectTradeGoods(originStock, &destStock, market, trader.cargo, cargoSlots);
     for (const TradeCargo& c : trader.cargo) {
         [[maybe_unused]] bool ok = originStock.consumeGoods(c.goodId, c.amount);
     }
@@ -685,14 +692,43 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
 
             trader.goldEarnedThisTurn = goldEarned;
 
-            // Load return cargo: demand-driven, capacity varies by route type
+            // Settle the sale against the owner's monetary system.
+            //   CommodityMoney: coins earned at FOREIGN leg ride home in
+            //                    `carriedGold` (at risk from pillage). Arrival
+            //                    at HOME flushes carried coins to treasury and
+            //                    home-leg revenue credits directly.
+            //   GoldStandard / Fiat / Digital: paper or electronic settlement.
+            //                    Treasury is credited immediately, nothing carried.
+            //   Barter: no money -- only the goods swap counts; no gold credit.
+            aoc::game::Player* sellerPlayer = gameState.player(trader.owner);
+            if (sellerPlayer != nullptr) {
+                MonetaryStateComponent& sellerMon = sellerPlayer->monetary();
+                const bool atHome = trader.isReturning;
+                if (atHome && trader.carriedGold > 0) {
+                    sellerMon.treasury += trader.carriedGold;
+                    trader.carriedGold = 0;
+                }
+                if (goldEarned > 0) {
+                    if (traderCarriesGoldOnReturn(sellerMon.system) && !atHome) {
+                        trader.carriedGold += goldEarned;
+                    } else if (sellerMon.system != MonetarySystemType::Barter) {
+                        sellerMon.treasury += goldEarned;
+                    }
+                }
+            }
+
+            // Load return cargo: demand-driven, capacity shrunk by money weight.
             aoc::hex::AxialCoord returnDestLoc = trader.isReturning ? trader.destCityLocation : trader.originCityLocation;
             const aoc::game::City* returnDestCity = findCityByLocation(gameState, returnDestLoc);
             const CityStockpileComponent* returnDestStock =
                 (returnDestCity != nullptr) ? &returnDestCity->stockpile() : nullptr;
 
+            const MonetarySystemType sellerSys = (sellerPlayer != nullptr)
+                ? sellerPlayer->monetary().system
+                : MonetarySystemType::Barter;
+            const int32_t returnSlots = trader.effectiveCargoSlots(sellerSys);
             selectTradeGoods(targetStock, returnDestStock, market, trader.cargo,
-                             trader.maxCargoSlots());
+                             returnSlots);
             for (const TradeCargo& c : trader.cargo) {
                 [[maybe_unused]] bool ok = targetStock.consumeGoods(c.goodId, c.amount);
             }
@@ -832,18 +868,26 @@ CurrencyAmount pillageTrader(aoc::game::GameState& gameState,
         totalValue += static_cast<CurrencyAmount>(c.amount) * 3;  // Loot value
     }
 
-    // Transfer loot to pillager's first city
+    // Transfer loot to pillager's first city + any metal coin on board to
+    // pillager's treasury. Under paper/fiat/digital this is always zero, so
+    // pillaging a digital-tier trader yields goods only.
     aoc::game::Player* pillagerPlayer = gameState.player(pillager);
+    const CurrencyAmount stolenGold = trader.carriedGold;
     if (pillagerPlayer != nullptr && !pillagerPlayer->cities().empty()) {
         CityStockpileComponent& stock = pillagerPlayer->cities().front()->stockpile();
         for (const TradeCargo& c : trader.cargo) {
             stock.addGoods(c.goodId, c.amount);
         }
+        if (stolenGold > 0) {
+            pillagerPlayer->monetary().treasury += stolenGold;
+        }
     }
+    totalValue += stolenGold;
 
-    LOG_INFO("Trader pillaged! Player %u captured %lld gold worth of goods from player %u",
+    LOG_INFO("Trader pillaged! Player %u captured %lld gold worth (coins: %lld) from player %u",
              static_cast<unsigned>(pillager),
              static_cast<long long>(totalValue),
+             static_cast<long long>(stolenGold),
              static_cast<unsigned>(trader.owner));
 
     if (traderUnit->autoRenewRoute) {
@@ -991,7 +1035,8 @@ TradeRouteEstimate estimateTradeRouteIncome(
                   return a.value > b.value;
               });
 
-    int32_t maxSlots = tempTrader.maxCargoSlots();
+    const MonetarySystemType estSys = ownerPlayer->monetary().system;
+    int32_t maxSlots = tempTrader.effectiveCargoSlots(estSys);
     int32_t totalValue = 0;
     int32_t slotCount = 0;
     for (const ScoredGood& sg : scoredGoods) {

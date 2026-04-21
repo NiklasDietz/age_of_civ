@@ -93,6 +93,13 @@ struct PairwiseRelation {
     // -- Treaty tracking --
     PlayerId lastWarAggressor = INVALID_PLAYER; ///< Who started the last war (for NonAggression enforcement)
 
+    // -- Passive warming --
+    /// Accumulated peace-time warming (capped). Sustained peace slowly grows the
+    /// relation so civs can reach thresholds for open borders, bilateral deals,
+    /// alliances. Increments each turn while hasMet && !isAtWar. Resets to 0 on
+    /// war declaration. Included in totalScore().
+    int32_t passiveBonus = 0;
+
     // -- Political reputation (separate from relation score) --
     // Reputation tracks behavioral trustworthiness: paying tolls, respecting
     // borders, honoring agreements. AI reads this when setting toll rates and
@@ -100,9 +107,9 @@ struct PairwiseRelation {
     // effects (e.g., higher tolls) but make their own choices.
     std::vector<ReputationModifier> reputationModifiers;
 
-    /// Compute the total score = baseScore + sum of active modifiers.
+    /// Compute the total score = baseScore + passiveBonus + sum of active modifiers.
     [[nodiscard]] int32_t totalScore() const {
-        int32_t total = this->baseScore;
+        int32_t total = this->baseScore + this->passiveBonus;
         for (const RelationModifier& mod : this->modifiers) {
             total += mod.amount;
         }

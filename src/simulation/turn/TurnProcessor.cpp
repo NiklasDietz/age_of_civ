@@ -756,6 +756,11 @@ void processGlobalSystems(TurnContext& turnContext) {
     // Trade agreements: tick durations
     processTradeAgreements(gameState);
 
+    // Standing routes: auto-spawn Trader units along active agreements.
+    // Depends on processTradeAgreements bumping turnsActive first.
+    processStandingRoutes(gameState, grid, turnContext.economy->market(),
+                          turnContext.diplomacy);
+
     // Diplomatic deals: enforce terms (reparations, DMZ, arms limits, non-aggression)
     if (turnContext.dealTracker != nullptr && turnContext.diplomacy != nullptr) {
         processDeals(gameState, *turnContext.dealTracker, *turnContext.diplomacy, grid);
@@ -886,7 +891,8 @@ void processTurn(TurnContext& turnContext) {
     for (ai::AIController* ai : turnContext.aiControllers) {
         if (ai != nullptr) {
             ai->executeTurn(*turnContext.gameState, *turnContext.grid, turnContext.fogOfWar,
-                           *turnContext.diplomacy, turnContext.economy->market(), *turnContext.rng);
+                           *turnContext.diplomacy, turnContext.economy->market(), *turnContext.rng,
+                           turnContext.dealTracker);
         }
     }
 

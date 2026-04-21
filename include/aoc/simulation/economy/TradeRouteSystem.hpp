@@ -36,7 +36,9 @@
 #include "aoc/core/Types.hpp"
 #include "aoc/core/ErrorCodes.hpp"
 #include "aoc/map/HexCoord.hpp"
+#include "aoc/simulation/monetary/MonetarySystem.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -91,6 +93,12 @@ struct TraderComponent {
     /// Gold earned this turn from trade.
     CurrencyAmount goldEarnedThisTurn = 0;
 
+    /// Physical gold/coin riding with the trader between sell at destination
+    /// and return home. Only populated under CommodityMoney (metal coins).
+    /// Paper/fiat/digital settle electronically -- this field stays zero.
+    /// Stolen in full on pillage; credited to the owner's treasury on arrival.
+    CurrencyAmount carriedGold = 0;
+
     /// Toll paid this turn to territory owners along the route.
     CurrencyAmount tollPaidThisTurn = 0;
 
@@ -105,6 +113,15 @@ struct TraderComponent {
             case TradeRouteType::Sea: return 6;
             default: return 4;
         }
+    }
+
+    /// Cargo slots actually available for goods after the currency medium
+    /// takes its cut. Metal coins (CommodityMoney) chew into the bay; paper
+    /// and electronic money are effectively free. Always leaves >= 1 slot.
+    [[nodiscard]] int32_t effectiveCargoSlots(MonetarySystemType system) const {
+        const int32_t raw    = this->maxCargoSlots();
+        const int32_t weight = moneyWeightSlots(system);
+        return std::max(1, raw - weight);
     }
 
     /// Movement speed (tiles per turn). Air is fastest, sea is medium, land depends on roads.

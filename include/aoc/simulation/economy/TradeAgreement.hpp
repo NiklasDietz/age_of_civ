@@ -23,8 +23,12 @@
 #include <vector>
 
 namespace aoc::game { class GameState; }
+namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
+
+class Market;
+class DiplomacyManager;
 
 enum class TradeAgreementType : uint8_t {
     BilateralDeal,   ///< Two-player: -20% tariff
@@ -40,6 +44,13 @@ struct TradeAgreementDef {
     int32_t turnsActive = 0;
     float externalTariff = 0.0f;   ///< Customs Union: tariff applied to non-members
     bool isActive = true;
+
+    /// Turns between auto-spawned Trader units along this agreement's
+    /// bilateral standing route. 0 disables the auto-spawn.
+    int32_t standingRouteInterval = 0;
+    /// Internal counter ticked by `processStandingRoutes`. When it reaches
+    /// `standingRouteInterval`, a Trader is spawned and the counter resets.
+    int32_t standingRouteCountdown = 0;
 };
 
 /// Per-player trade agreement tracking.
@@ -106,5 +117,20 @@ struct PlayerTradeAgreementsComponent {
  * @brief Process trade agreement effects each turn (tick duration, check validity).
  */
 void processTradeAgreements(aoc::game::GameState& gameState);
+
+/**
+ * @brief Spawn standing-route Trader units for agreements with an active
+ *        interval. Ticks each agreement's countdown and, on expiry, spawns a
+ *        Trader at the initiating member's capital bound for the partner's
+ *        capital. Spawned traders are normal units -- still pillage-able, but
+ *        the player did not click to create them.
+ *
+ * Bilateral deals spawn one trader per turn cycle (one direction). FreeTradeZone
+ * and CustomsUnion spawn round-robin across member pairs.
+ */
+void processStandingRoutes(aoc::game::GameState& gameState,
+                           aoc::map::HexGrid& grid,
+                           const Market& market,
+                           DiplomacyManager* diplomacy);
 
 } // namespace aoc::sim

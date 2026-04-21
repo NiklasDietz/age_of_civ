@@ -52,9 +52,30 @@ enum class MonetarySystemType : uint8_t {
     CommodityMoney,  ///< Metal coins ARE money. Value = metal's intrinsic value.
     GoldStandard,    ///< Paper currency backed by gold bar reserves at fixed rate.
     FiatMoney,       ///< Unbacked government currency. Full monetary control.
+    Digital,         ///< Electronic settlement. Requires compute + power. No physical carry.
 
     Count
 };
+
+/// Cargo slots consumed by the currency medium when a trader carries money on route.
+/// Only CommodityMoney is heavy (metal coins). All paper/electronic tiers are 0.
+/// Used by `TraderComponent::effectiveCargoSlots()` to shrink goods capacity.
+[[nodiscard]] constexpr int32_t moneyWeightSlots(MonetarySystemType type) {
+    switch (type) {
+        case MonetarySystemType::Barter:         return 0;  // no money; swap goods only
+        case MonetarySystemType::CommodityMoney: return 2;  // metal coin chests
+        case MonetarySystemType::GoldStandard:   return 0;  // paper notes; bullion stays in vault
+        case MonetarySystemType::FiatMoney:      return 0;  // paper, negligible
+        case MonetarySystemType::Digital:        return 0;  // nothing carried
+        default:                                 return 0;
+    }
+}
+
+/// Whether gold physically rides with traders (vulnerable to pillage) on this tier.
+/// CommodityMoney: metal coins are the money. GoldStandard+ pays via paper/ledger.
+[[nodiscard]] constexpr bool traderCarriesGoldOnReturn(MonetarySystemType type) {
+    return type == MonetarySystemType::CommodityMoney;
+}
 
 [[nodiscard]] constexpr std::string_view monetarySystemName(MonetarySystemType type) {
     switch (type) {
@@ -62,6 +83,7 @@ enum class MonetarySystemType : uint8_t {
         case MonetarySystemType::CommodityMoney: return "Commodity Money";
         case MonetarySystemType::GoldStandard:   return "Gold Standard";
         case MonetarySystemType::FiatMoney:      return "Fiat Money";
+        case MonetarySystemType::Digital:        return "Digital";
         default:                                 return "Unknown";
     }
 }
@@ -178,7 +200,7 @@ struct MonetaryTransitionReq {
 ///   Path A (modern): Economics tech + high currency strength + stability
 ///   Path B (early/Song): Printing tech + 3 trade partners + low inflation
 /// Both require 5+ turns in Gold Standard for stability track record.
-inline constexpr std::array<MonetaryTransitionReq, 3> MONETARY_TRANSITIONS = {{
+inline constexpr std::array<MonetaryTransitionReq, 4> MONETARY_TRANSITIONS = {{
     // Barter -> Commodity Money: need any coins worth >= 3 currency units
     {MonetarySystemType::CommodityMoney, TechId{},  3,    1, 0, 0, 1.0f},
     // Commodity -> Gold Standard: need banking tech, moderate reserves, 2 cities.
@@ -190,6 +212,11 @@ inline constexpr std::array<MonetaryTransitionReq, 3> MONETARY_TRANSITIONS = {{
     // volume that makes metal coins impractical, like Song Dynasty Sichuan).
     // Max inflation 15%: must demonstrate monetary discipline first.
     {MonetarySystemType::FiatMoney,      TechId{9}, 75,   2, 5, 3, 0.15f},
+    // Fiat -> Digital: late-game electronic settlement. Needs sustained
+    // stability. "Computers" (TechId{16}) gates access; low inflation and a
+    // mature economy are required. An additional powered-grid check is
+    // enforced externally by `playerMeetsDigitalPowerRequirement()`.
+    {MonetarySystemType::Digital,        TechId{16}, 200,  3, 10, 4, 0.10f},
 }};
 
 // ============================================================================
@@ -282,6 +309,17 @@ struct MonetaryStateComponent {
     /// Resets to zero whenever treasury >= 0.
     int32_t consecutiveNegativeTurns = 0;
 
+    // -- Reserve-ratio stress tracking (GoldStandard -> Fiat cascade) --
+    /// Consecutive turns actual backing ratio < 0.7 while on GoldStandard.
+    /// Drives the organic Gold->Fiat suspension: once the ratio stays low for
+    /// long enough or collapses below 0.2, convertibility is suspended and
+    /// the civ is forced onto Fiat (rep + trust penalty applied on transition).
+    int32_t reserveStressTurns = 0;
+    /// True once a redemption-run drain started (< 0.5 ratio). Lets UI notify.
+    bool    redemptionRunActive = false;
+    /// Pending suspension decision waiting on player input. AI resolves instantly.
+    bool    suspensionPending = false;
+
     // ========================================================================
     // Coin tier computation
     // ========================================================================
@@ -340,6 +378,12 @@ struct MonetaryStateComponent {
                 // Fiat strength is based on money supply, not metals
                 return static_cast<int32_t>(this->moneySupply);
 
+            case MonetarySystemType::Digital:
+                // Digital carries over the fiat money supply concept; the
+                // distinguishing mechanics (electronic settlement, no physical
+                // carry) live on the trader side.
+                return static_cast<int32_t>(this->moneySupply);
+
             default:
                 return 0;
         }
@@ -371,8 +415,9 @@ struct MonetaryStateComponent {
      * @return Actual amount printed (may be capped).
      */
     CurrencyAmount printMoney(CurrencyAmount amount) {
-        if (this->system != MonetarySystemType::FiatMoney) {
-            return 0;  // Can only print in fiat stage
+        if (this->system != MonetarySystemType::FiatMoney
+            && this->system != MonetarySystemType::Digital) {
+            return 0;  // Only fiat-class systems can issue money
         }
         // Cap at 10% of GDP per turn to prevent instant hyperinflation
         const CurrencyAmount maxPrint = std::max(
@@ -439,8 +484,9 @@ struct MonetaryStateComponent {
                 if (this->inflationRate > req.maxInflation) {
                     return ErrorCode::InvalidMonetaryTransition;
                 }
-                // Fiat requires GDP rank in top half of players
-                if (target == MonetarySystemType::FiatMoney) {
+                // Fiat/Digital require GDP rank in top half of players.
+                if (target == MonetarySystemType::FiatMoney
+                    || target == MonetarySystemType::Digital) {
                     int32_t topHalf = std::max(1, playerCount / 2);
                     if (gdpRank > topHalf) {
                         return ErrorCode::InvalidMonetaryTransition;
@@ -472,6 +518,10 @@ struct MonetaryStateComponent {
             case MonetarySystemType::GoldStandard:
                 // Paper notes backed by silver coins + gold bars at 2:1 ratio.
                 // Copper coins (if any remain) are demonetized commodities.
+                // Reserves are re-synced from city stockpiles every turn, so
+                // seeding goldBarReserves here is pointless -- the reserve
+                // stress check treats silver + gold as backing, and the
+                // designed 0.5 entry ratio is below the stress threshold.
                 this->moneySupply = static_cast<CurrencyAmount>(this->currencyStrength()) * 2;
                 this->goldBackingRatio = 0.5f;
                 this->debasement = {};  // Paper money, debasement no longer applies
@@ -480,6 +530,11 @@ struct MonetaryStateComponent {
             case MonetarySystemType::FiatMoney:
                 // Money is no longer backed by gold. Keep current supply.
                 // Gold bars become a commodity (raw material for gold contacts).
+                this->goldBackingRatio = 0.0f;
+                break;
+
+            case MonetarySystemType::Digital:
+                // Same ledger semantics as fiat; all settlement is electronic.
                 this->goldBackingRatio = 0.0f;
                 break;
 
@@ -516,6 +571,11 @@ struct MonetaryStateComponent {
                 // Fiat efficiency depends on trust (applied externally via CurrencyTrust)
                 baseEfficiency = 1.0f;
                 break;
+            case MonetarySystemType::Digital:
+                // Instant electronic settlement clears small frictions that
+                // remained under fiat paper handling.
+                baseEfficiency = 1.05f;
+                break;
             default:
                 break;
         }
@@ -538,6 +598,7 @@ struct MonetaryStateComponent {
             }
             case MonetarySystemType::GoldStandard:   return 6;
             case MonetarySystemType::FiatMoney:      return 10;
+            case MonetarySystemType::Digital:        return 14;
             default:                                 return 1;
         }
     }

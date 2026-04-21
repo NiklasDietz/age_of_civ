@@ -35,6 +35,7 @@ ErrorCode proposeDeal(aoc::game::GameState& /*gameState*/,
 }
 
 ErrorCode acceptDeal(aoc::game::GameState& gameState,
+                     aoc::map::HexGrid& grid,
                      GlobalDealTracker& tracker,
                      int32_t dealIndex) {
     if (dealIndex < 0 || dealIndex >= static_cast<int32_t>(tracker.activeDeals.size())) {
@@ -83,6 +84,62 @@ ErrorCode acceptDeal(aoc::game::GameState& gameState,
                 g.severity       = 50;
                 g.turnsRemaining = 0;  // Permanent
                 fromPlayer->grievances().grievances.push_back(g);
+                break;
+            }
+            case DealTermType::CedeTile: {
+                // Transfer ownership of a single border-adjacent hex. Validates
+                // that the tile currently belongs to fromPlayer AND that at
+                // least one neighbour hex belongs to toPlayer (no teleporting
+                // tiles across the map).
+                const int32_t idx = grid.toIndex(term.tileCoord);
+                if (idx < 0) { break; }
+                if (grid.owner(idx) != term.fromPlayer) {
+                    LOG_INFO("CedeTile aborted: tile (%d,%d) not owned by player %u",
+                             term.tileCoord.q, term.tileCoord.r,
+                             static_cast<unsigned>(term.fromPlayer));
+                    break;
+                }
+                bool touchesReceiver = false;
+                for (const hex::AxialCoord& n : hex::neighbors(term.tileCoord)) {
+                    const int32_t nIdx = grid.toIndex(n);
+                    if (nIdx < 0) { continue; }
+                    if (grid.owner(nIdx) == term.toPlayer) {
+                        touchesReceiver = true;
+                        break;
+                    }
+                }
+                if (!touchesReceiver) {
+                    LOG_INFO("CedeTile aborted: tile (%d,%d) does not border player %u",
+                             term.tileCoord.q, term.tileCoord.r,
+                             static_cast<unsigned>(term.toPlayer));
+                    break;
+                }
+                grid.setOwner(idx, term.toPlayer);
+                LOG_INFO("Tile (%d,%d) ceded from player %u to player %u",
+                         term.tileCoord.q, term.tileCoord.r,
+                         static_cast<unsigned>(term.fromPlayer),
+                         static_cast<unsigned>(term.toPlayer));
+                break;
+            }
+            case DealTermType::GoldLump: {
+                aoc::game::Player* payer = gameState.player(term.fromPlayer);
+                aoc::game::Player* receiver = gameState.player(term.toPlayer);
+                if (payer == nullptr || receiver == nullptr) { break; }
+                const CurrencyAmount amt = static_cast<CurrencyAmount>(term.goldLump);
+                if (amt <= 0) { break; }
+                if (payer->treasury() < amt) {
+                    LOG_INFO("GoldLump aborted: player %u has insufficient gold (%lld < %lld)",
+                             static_cast<unsigned>(term.fromPlayer),
+                             static_cast<long long>(payer->treasury()),
+                             static_cast<long long>(amt));
+                    break;
+                }
+                payer->setTreasury(payer->treasury() - amt);
+                receiver->setTreasury(receiver->treasury() + amt);
+                LOG_INFO("GoldLump: player %u paid %lld to player %u",
+                         static_cast<unsigned>(term.fromPlayer),
+                         static_cast<long long>(amt),
+                         static_cast<unsigned>(term.toPlayer));
                 break;
             }
             default:

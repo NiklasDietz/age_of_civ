@@ -122,8 +122,9 @@ bool processCurrencyCrisis(aoc::game::GameState& /*gameState*/,
     // Check for new crisis triggers (highest severity first)
     // ================================================================
 
-    // 1. Hyperinflation (Fiat only)
-    if (state.system == MonetarySystemType::FiatMoney
+    // 1. Hyperinflation (Fiat/Digital only)
+    if ((state.system == MonetarySystemType::FiatMoney
+         || state.system == MonetarySystemType::Digital)
         && crisis.turnsHighInflation >= HYPERINFLATION_CONSEC_TURNS) {
         crisis.activeCrisis = CrisisType::Hyperinflation;
         crisis.turnsRemaining = HYPERINFLATION_DURATION;
@@ -190,6 +191,95 @@ void executeCurrencyReform(MonetaryStateComponent& state,
 
     LOG_INFO("Player %u: currency reform executed. Money supply halved, prices reset.",
              static_cast<unsigned>(state.owner));
+}
+
+// ============================================================================
+// Reserve-ratio stress on GoldStandard civs
+// ============================================================================
+
+// The gold standard enters with `moneySupply = 2 * strength`, so designed
+// backing ratio at entry is 0.5. Stress kicks in only once printing drives the
+// ratio meaningfully below that equilibrium. Collapse is reserved for genuine
+// reserve exhaustion.
+constexpr float RESERVE_STRESS_THRESHOLD   = 0.40f;  // below: stress starts
+constexpr float RESERVE_RUN_THRESHOLD      = 0.25f;  // below: redemption drain
+constexpr float RESERVE_COLLAPSE_THRESHOLD = 0.10f;  // below: forced suspension
+constexpr float REDEMPTION_RUN_DRAIN       = 0.05f;  // 5%/turn foreign redemption
+constexpr int32_t RESERVE_STRESS_SUSPEND_TURNS = 10; // long-stress suspends
+
+void processReserveStress(MonetaryStateComponent& state) {
+    if (state.system != MonetarySystemType::GoldStandard) {
+        state.reserveStressTurns   = 0;
+        state.redemptionRunActive  = false;
+        state.suspensionPending    = false;
+        return;
+    }
+
+    if (state.moneySupply <= 0) {
+        return;
+    }
+
+    // Grace window after entering GoldStandard. Reserves take a few turns to
+    // settle (trade, minting, war reparations) before redemption dynamics kick
+    // in. Without this, the very first stress check can trigger a spurious
+    // suspension.
+    constexpr int32_t GRACE_TURNS = 5;
+    if (state.turnsInCurrentSystem < GRACE_TURNS) {
+        state.reserveStressTurns  = 0;
+        state.redemptionRunActive = false;
+        return;
+    }
+
+    // Historic gold-standard era was bimetallic: silver coins in circulation
+    // counted toward backing alongside gold bars held at the central bank.
+    const int32_t metalBacking = state.silverCoinReserves * SILVER_COIN_VALUE
+                               + state.goldBarReserves   * GOLD_BAR_VALUE;
+    const float ratio = static_cast<float>(metalBacking)
+                      / static_cast<float>(state.moneySupply);
+
+    // Mirror the true ratio so trade partners see current backing.
+    state.goldBackingRatio = std::clamp(ratio, 0.0f, 1.0f);
+
+    if (ratio >= RESERVE_STRESS_THRESHOLD) {
+        state.reserveStressTurns  = 0;
+        state.redemptionRunActive = false;
+        return;
+    }
+
+    ++state.reserveStressTurns;
+
+    if (ratio < RESERVE_RUN_THRESHOLD && state.goldBarReserves > 0) {
+        // Redemption run: foreign holders redeem paper for gold.
+        const int32_t drain = std::max(
+            1, static_cast<int32_t>(
+                   static_cast<float>(state.goldBarReserves) * REDEMPTION_RUN_DRAIN));
+        state.goldBarReserves = std::max(0, state.goldBarReserves - drain);
+        state.updateCoinTier();
+        if (!state.redemptionRunActive) {
+            state.redemptionRunActive = true;
+            LOG_INFO("Player %u: REDEMPTION RUN! Reserve ratio %.2f, %d bars drained",
+                     static_cast<unsigned>(state.owner),
+                     static_cast<double>(ratio), drain);
+        }
+    }
+
+    const bool collapsed   = ratio < RESERVE_COLLAPSE_THRESHOLD;
+    const bool exhausted   = state.reserveStressTurns >= RESERVE_STRESS_SUSPEND_TURNS;
+    if (collapsed || exhausted) {
+        // Suspension of convertibility: forced transition to Fiat with a
+        // trust penalty. Matches the historical Nixon-shock dynamic.
+        LOG_INFO("Player %u: SUSPENSION OF CONVERTIBILITY. Ratio %.2f, stress %d turns. "
+                 "Forced onto FiatMoney.",
+                 static_cast<unsigned>(state.owner),
+                 static_cast<double>(ratio), state.reserveStressTurns);
+        state.transitionTo(MonetarySystemType::FiatMoney);
+        state.reserveStressTurns  = 0;
+        state.redemptionRunActive = false;
+        state.suspensionPending   = false;
+        // Start at below-baseline fiat trust: world just watched us default
+        // on a gold pledge.
+        state.fiatTrust = std::max(0.15f, state.fiatTrust - 0.20f);
+    }
 }
 
 } // namespace aoc::sim

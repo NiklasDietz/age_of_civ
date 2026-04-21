@@ -176,6 +176,7 @@ void DebugConsole::execute(aoc::game::GameState& gameState, aoc::map::HexGrid& g
             if (system == "commodity") { ms.system = aoc::sim::MonetarySystemType::CommodityMoney; }
             if (system == "gold")      { ms.system = aoc::sim::MonetarySystemType::GoldStandard; }
             if (system == "fiat")      { ms.system = aoc::sim::MonetarySystemType::FiatMoney; }
+            if (system == "digital")   { ms.system = aoc::sim::MonetarySystemType::Digital; }
             this->log("Set monetary system to " + system);
         }
     }

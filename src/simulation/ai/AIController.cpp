@@ -26,7 +26,11 @@
 #include "aoc/simulation/city/ProductionSystem.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/DealTerms.hpp"
+#include "aoc/simulation/production/PowerGrid.hpp"
 #include "aoc/simulation/economy/Market.hpp"
+#include "aoc/simulation/economy/TradeAgreement.hpp"
+#include "aoc/simulation/monetary/Bonds.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/tech/TechGating.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
@@ -52,6 +56,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <array>
 #include <span>
 #include <unordered_set>
 
@@ -255,7 +260,8 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                                 const aoc::map::FogOfWar* fogOfWar,
                                 DiplomacyManager& diplomacy,
                                 const Market& market,
-                                aoc::Random& rng) {
+                                aoc::Random& rng,
+                                GlobalDealTracker* dealTracker) {
     // -----------------------------------------------------------------------
     // Advisor updates: run at varying frequencies to maintain a fresh view of
     // the game situation.  All results are posted to the player's AIBlackboard
@@ -308,10 +314,10 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
     this->m_settlerController.executeSettlerActions(gameState, grid);
     this->m_militaryController.executeMilitaryActions(gameState, grid, rng);
     this->manageEconomy(gameState, diplomacy, market);
-    this->manageMonetarySystem(gameState, diplomacy);
+    this->manageMonetarySystem(gameState, grid, diplomacy);
     aoc::sim::aiEconomicStrategy(gameState, grid, market, diplomacy, this->m_player,
                                   static_cast<int32_t>(this->m_difficulty));
-    this->executeDiplomacyActions(gameState, diplomacy, market);
+    this->executeDiplomacyActions(gameState, grid, diplomacy, market, dealTracker);
     this->manageTradeRoutes(gameState, grid, market, diplomacy);
     this->considerPurchases(gameState);
     this->considerCanalBuilding(gameState, grid, fogOfWar);
@@ -1488,8 +1494,10 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
 // ============================================================================
 
 void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
+                                            aoc::map::HexGrid& grid,
                                             DiplomacyManager& diplomacy,
-                                            const Market& market) {
+                                            const Market& market,
+                                            GlobalDealTracker* dealTracker) {
     constexpr uint8_t MAX_PLAYER_COUNT = 16;
     std::array<int32_t, MAX_PLAYER_COUNT> militaryCounts{};
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
@@ -1696,6 +1704,227 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                              static_cast<unsigned>(this->m_player),
                              static_cast<unsigned>(other),
                              relationScore, complementaryGoods);
+                }
+            }
+
+            // ----------------------------------------------------------------
+            // Bilateral trade deal proposal (AI-only path).
+            // ----------------------------------------------------------------
+            // Lighter commitment than an alliance: -20% tariffs and an auto
+            // spawned Trader every 5 turns along the pair. Fire when relations
+            // are warm and we do not already share one. Uses the same partner
+            // loop, so every AI reconsiders each turn.
+            if (relationScore > 15) {
+                aoc::game::Player* selfPlayer = gameState.player(this->m_player);
+                bool alreadyPaired = false;
+                if (selfPlayer != nullptr) {
+                    for (const aoc::sim::TradeAgreementDef& agr :
+                         selfPlayer->tradeAgreements().agreements) {
+                        if (!agr.isActive) { continue; }
+                        if (agr.type != aoc::sim::TradeAgreementType::BilateralDeal) { continue; }
+                        for (PlayerId m : agr.members) {
+                            if (m == other) { alreadyPaired = true; break; }
+                        }
+                        if (alreadyPaired) { break; }
+                    }
+                }
+                if (!alreadyPaired) {
+                    const ErrorCode rc = aoc::sim::proposeBilateralDeal(
+                        gameState, this->m_player, other);
+                    if (rc == ErrorCode::Ok) {
+                        LOG_INFO("AI %u proposed bilateral trade deal with player %u "
+                                 "(relations %d)",
+                                 static_cast<unsigned>(this->m_player),
+                                 static_cast<unsigned>(other), relationScore);
+                    }
+                }
+            }
+
+            // ----------------------------------------------------------------
+            // Loan offers / requests (IOUContract path).
+            // ----------------------------------------------------------------
+            // Flush AIs lend to friendly partners who are short on cash. The
+            // processIOUPayments turn tick amortises the loan with interest,
+            // which is Civ 6's "gold per turn" mechanic.
+            {
+                aoc::game::Player* selfPlayer = gameState.player(this->m_player);
+                aoc::game::Player* partnerPlayer = gameState.player(other);
+                if (selfPlayer != nullptr && partnerPlayer != nullptr
+                    && relationScore > 10) {
+                    const CurrencyAmount myTreas = selfPlayer->treasury();
+                    const CurrencyAmount theirTreas = partnerPlayer->treasury();
+                    // Do not stack too many loans with the same partner.
+                    int32_t existingWithPartner = 0;
+                    for (const aoc::sim::IOUContract& c : selfPlayer->ious().loansGiven) {
+                        if (c.debtor == other && c.remaining > 0) { ++existingWithPartner; }
+                    }
+                    // Treasury scale in-sim is ~0-2000 most of the game.
+                    // Flush: at least 4x the partner's shortfall and > 300 floor.
+                    const bool flush = myTreas > 300 && myTreas > theirTreas * 4;
+                    const bool partnerBroke = theirTreas < 50;
+                    if (flush && partnerBroke && existingWithPartner < 2) {
+                        // Lend up to 25% of our treasury, capped at 500.
+                        // 8% per-turn interest, 15-turn term.
+                        const CurrencyAmount principal = std::min(
+                            myTreas / 4,
+                            static_cast<CurrencyAmount>(500));
+                        if (principal > 50) {
+                            ErrorCode rc = aoc::sim::createIOU(
+                                gameState, this->m_player, other,
+                                principal, 0.08f, 15);
+                            if (rc == ErrorCode::Ok) {
+                                LOG_INFO("AI %u offered loan to player %u: %d gold @ 8%% for 15 turns (relation %d)",
+                                         static_cast<unsigned>(this->m_player),
+                                         static_cast<unsigned>(other),
+                                         static_cast<int>(principal),
+                                         relationScore);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ----------------------------------------------------------------
+            // City sale (CedeCity for GoldLump).
+            // ----------------------------------------------------------------
+            // A civ deep in debt with a spare city proposes: "Take this city,
+            // here's the transfer; pay me X gold." Fires every ~30 turns per
+            // pair. Requires warm relations and a willing buyer.
+            if (dealTracker != nullptr && relationScore > 15) {
+                const int32_t curTurn = gameState.currentTurn();
+                const int32_t saleTick = curTurn + this->m_player * 7 + other * 11;
+                if (saleTick % 25 == 0) {
+                    aoc::game::Player* seller = gameState.player(this->m_player);
+                    aoc::game::Player* buyer  = gameState.player(other);
+                    // Empire trimming: 5+ cities OR broke with 3+ cities.
+                    const std::size_t numCities = seller != nullptr ? seller->cities().size() : 0;
+                    const CurrencyAmount sellerGold = seller != nullptr ? seller->treasury() : 0;
+                    const bool surplus = numCities >= 5;
+                    const bool broke   = numCities >= 3 && sellerGold < 100;
+                    if (seller != nullptr && buyer != nullptr && (surplus || broke)) {
+                        // Pick the smallest city (cheapest to part with).
+                        aoc::game::City* victim = nullptr;
+                        int32_t smallestPop = INT32_MAX;
+                        for (const std::unique_ptr<aoc::game::City>& c : seller->cities()) {
+                            if (c->population() < smallestPop) {
+                                smallestPop = c->population();
+                                victim = c.get();
+                            }
+                        }
+                        const int32_t price = 200 + smallestPop * 50;
+                        if (victim != nullptr && buyer->treasury() > price + 100) {
+                            const aoc::hex::AxialCoord loc = victim->location();
+                            const uint32_t cityIndex = static_cast<uint32_t>(
+                                loc.q * 10000 + loc.r);
+
+                            DiplomaticDeal deal{};
+                            deal.playerA = this->m_player;
+                            deal.playerB = other;
+                            deal.turnsRemaining = 0;
+
+                            DealTerm cede{};
+                            cede.type = DealTermType::CedeCity;
+                            cede.fromPlayer = this->m_player;
+                            cede.toPlayer   = other;
+                            cede.cityEntity = EntityId{cityIndex, 0};
+                            deal.terms.push_back(cede);
+
+                            DealTerm payment{};
+                            payment.type = DealTermType::GoldLump;
+                            payment.fromPlayer = other;
+                            payment.toPlayer   = this->m_player;
+                            payment.goldLump   = price;
+                            deal.terms.push_back(payment);
+
+                            const std::size_t dealIdx = dealTracker->activeDeals.size();
+                            ErrorCode rcP = aoc::sim::proposeDeal(gameState, *dealTracker, deal);
+                            if (rcP == ErrorCode::Ok) {
+                                ErrorCode rcA = aoc::sim::acceptDeal(
+                                    gameState, grid, *dealTracker,
+                                    static_cast<int32_t>(dealIdx));
+                                if (rcA == ErrorCode::Ok) {
+                                    LOG_INFO("AI %u sold city %s to player %u for %d gold (relation %d)",
+                                             static_cast<unsigned>(this->m_player),
+                                             victim->name().c_str(),
+                                             static_cast<unsigned>(other),
+                                             price, relationScore);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ----------------------------------------------------------------
+            // Border tile sale (CedeTile for GoldLump).
+            // ----------------------------------------------------------------
+            // Transfer one of our hexes that is adjacent to a neighbour's
+            // territory. Small price, ~every 20 turns per pair.
+            if (dealTracker != nullptr && relationScore > 15) {
+                const int32_t curTurn = gameState.currentTurn();
+                const int32_t tileTick = curTurn + this->m_player * 3 + other * 5;
+                if (tileTick % 60 == 0) {
+                    aoc::game::Player* seller = gameState.player(this->m_player);
+                    aoc::game::Player* buyer  = gameState.player(other);
+                    // Only sell if seller is short on gold: avoids border thrash
+                    // where both sides keep re-buying from each other.
+                    if (seller != nullptr && buyer != nullptr
+                        && seller->treasury() < 300
+                        && buyer->treasury() > 150) {
+                        // Scan grid for a self-owned tile adjacent to `other`.
+                        const int32_t tileCount = grid.tileCount();
+                        aoc::hex::AxialCoord foundTile{0, 0};
+                        bool have = false;
+                        for (int32_t idx = 0; idx < tileCount && !have; ++idx) {
+                            if (grid.owner(idx) != this->m_player) { continue; }
+                            const aoc::hex::AxialCoord c = grid.toAxial(idx);
+                            const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(c);
+                            for (const aoc::hex::AxialCoord& n : nbrs) {
+                                const int32_t nIdx = grid.toIndex(n);
+                                if (nIdx < 0 || nIdx >= tileCount) { continue; }
+                                if (grid.owner(nIdx) == other) {
+                                    foundTile = c;
+                                    have = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (have) {
+                            DiplomaticDeal deal{};
+                            deal.playerA = this->m_player;
+                            deal.playerB = other;
+                            deal.turnsRemaining = 0;
+
+                            DealTerm cede{};
+                            cede.type = DealTermType::CedeTile;
+                            cede.fromPlayer = this->m_player;
+                            cede.toPlayer   = other;
+                            cede.tileCoord  = foundTile;
+                            deal.terms.push_back(cede);
+
+                            DealTerm payment{};
+                            payment.type = DealTermType::GoldLump;
+                            payment.fromPlayer = other;
+                            payment.toPlayer   = this->m_player;
+                            payment.goldLump   = 100;
+                            deal.terms.push_back(payment);
+
+                            const std::size_t dealIdx = dealTracker->activeDeals.size();
+                            ErrorCode rcP = aoc::sim::proposeDeal(gameState, *dealTracker, deal);
+                            if (rcP == ErrorCode::Ok) {
+                                ErrorCode rcA = aoc::sim::acceptDeal(
+                                    gameState, grid, *dealTracker,
+                                    static_cast<int32_t>(dealIdx));
+                                if (rcA == ErrorCode::Ok) {
+                                    LOG_INFO("AI %u ceded tile (%d,%d) to player %u for 100 gold (relation %d)",
+                                             static_cast<unsigned>(this->m_player),
+                                             foundTile.q, foundTile.r,
+                                             static_cast<unsigned>(other),
+                                             relationScore);
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -2145,6 +2374,7 @@ void AIController::manageTradeRoutes(aoc::game::GameState& gameState, aoc::map::
 // ============================================================================
 
 void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
+                                         aoc::map::HexGrid& grid,
                                          const DiplomacyManager& /*diplomacy*/) {
     aoc::game::Player* gsPlayer = gameState.player(this->m_player);
     if (gsPlayer == nullptr) { return; }
@@ -2209,7 +2439,8 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
     // shortfall. But only if inflation is below 10% — don't hyperinflate.
     // This represents governments deficit-spending by printing money, which is
     // the key behavior of fiat economies (for better or worse).
-    if (myState.system == MonetarySystemType::FiatMoney
+    if ((myState.system == MonetarySystemType::FiatMoney
+         || myState.system == MonetarySystemType::Digital)
         && gsPlayer->treasury() < 0
         && myState.inflationRate < 0.10f) {
         const CurrencyAmount shortfall = -gsPlayer->treasury();
@@ -2236,12 +2467,38 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
         case MonetarySystemType::GoldStandard:
             nextTarget = MonetarySystemType::FiatMoney;
             break;
+        case MonetarySystemType::FiatMoney:
+            nextTarget = MonetarySystemType::Digital;
+            break;
         default:
             return;
     }
 
-    if (nextTarget == MonetarySystemType::FiatMoney && gdpRank > 2) {
+    if ((nextTarget == MonetarySystemType::FiatMoney
+         || nextTarget == MonetarySystemType::Digital)
+        && gdpRank > 2) {
         return;
+    }
+
+    // Digital requires a working electric grid: at least one city with
+    // energySupply >= energyDemand (i.e. actually powered, not just built).
+    if (nextTarget == MonetarySystemType::Digital) {
+        bool hasPower = false;
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : gsPlayer->cities()) {
+            if (cityPtr == nullptr) { continue; }
+            const CityPowerComponent pw = computeCityPower(gameState, grid, *cityPtr);
+            if (pw.energySupply > 0 && pw.energySupply >= pw.energyDemand) {
+                hasPower = true;
+                break;
+            }
+        }
+        if (!hasPower) {
+            if (myState.turnsInCurrentSystem % 50 == 0 && myState.turnsInCurrentSystem > 0) {
+                LOG_INFO("AI player %u cannot transition to Digital: no power plants built",
+                         static_cast<unsigned>(this->m_player));
+            }
+            return;
+        }
     }
 
     const ErrorCode result = myState.canTransition(

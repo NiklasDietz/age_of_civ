@@ -182,7 +182,8 @@ void updateExchangeRates(aoc::game::GameState& gameState) {
             continue;
         }
         const MonetaryStateComponent& state = playerPtr->monetary();
-        if (state.system == MonetarySystemType::FiatMoney) {
+        if (state.system == MonetarySystemType::FiatMoney
+            || state.system == MonetarySystemType::Digital) {
             totalGDP += state.gdp;
             ++fiatCount;
         }
@@ -197,7 +198,8 @@ void updateExchangeRates(aoc::game::GameState& gameState) {
         CurrencyExchangeComponent& forex = playerPtr->currencyExchange();
         const MonetaryStateComponent& state = playerPtr->monetary();
 
-        if (state.system != MonetarySystemType::FiatMoney) {
+        if (state.system != MonetarySystemType::FiatMoney
+            && state.system != MonetarySystemType::Digital) {
             continue;
         }
 

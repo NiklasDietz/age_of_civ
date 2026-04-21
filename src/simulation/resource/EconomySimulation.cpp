@@ -952,14 +952,25 @@ void EconomySimulation::tickMonetaryMechanics(aoc::game::GameState& gameState) {
             }
         }
 
-        if (state.system == MonetarySystemType::FiatMoney) {
+        if (state.system == MonetarySystemType::FiatMoney
+            || state.system == MonetarySystemType::Digital) {
             CurrencyTrustComponent& trust = playerPtr->currencyTrust();
             if (trust.trustScore == 0.0f) {
-                // First fiat turn: initialise trust
+                // First fiat/digital turn: initialise trust
                 trust.owner      = playerPtr->id();
                 trust.trustScore = 0.30f;
             }
             computeCurrencyTrust(gameState, state, trust, playerCount);
+            // Floor Fiat money supply at the physical coin base. Tax > spending
+            // drift otherwise drains moneySupply toward zero across long games,
+            // which breaks currencyStrength() and the Digital transition gate.
+            // Physical coins still circulate under fiat -- they're just no longer
+            // redeemable for gold.
+            const CurrencyAmount coinFloor =
+                static_cast<CurrencyAmount>(state.totalCoinValue());
+            if (state.moneySupply < coinFloor) {
+                state.moneySupply = coinFloor;
+            }
         }
     }
 
@@ -980,6 +991,10 @@ void EconomySimulation::processCrisisAndBonds(aoc::game::GameState& gameState) {
         if (crisis.owner == INVALID_PLAYER) {
             crisis.owner = playerPtr->id();
         }
+        // Reserve-ratio stress must run BEFORE processCurrencyCrisis so the
+        // forced GoldStandard -> Fiat suspension lands before hyperinflation
+        // checks see the new fiat state.
+        processReserveStress(state);
         processCurrencyCrisis(gameState, state, crisis);
     }
 

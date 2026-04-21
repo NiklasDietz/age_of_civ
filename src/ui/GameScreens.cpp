@@ -1035,8 +1035,9 @@ void EconomyScreen::refresh(UIManager& ui) {
             infoText += "  DEBASED:" + std::to_string(debPct) + "%";
         }
 
-        // Fiat trust info
-        if (monetary->system == aoc::sim::MonetarySystemType::FiatMoney) {
+        // Fiat/Digital trust info
+        if (monetary->system == aoc::sim::MonetarySystemType::FiatMoney
+            || monetary->system == aoc::sim::MonetarySystemType::Digital) {
             const aoc::sim::CurrencyTrustComponent& trust = owningPlayer->currencyTrust();
             int trustPct = static_cast<int>(trust.trustScore * 100.0f);
             infoText += "  Trust:" + std::to_string(trustPct) + "%";
