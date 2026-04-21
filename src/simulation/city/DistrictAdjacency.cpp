@@ -46,7 +46,7 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
     int32_t adjHarborDistricts = 0;
     int32_t adjIndustrialDistricts = 0;
     int32_t adjCityCenters = 0;
-    [[maybe_unused]] int32_t adjCampusDistricts = 0;
+    int32_t adjCampusDistricts = 0;
 
     (void)adjHills;
 
@@ -99,6 +99,9 @@ AdjacencyBonus computeAdjacencyBonus(const aoc::map::HexGrid& grid,
             bonus.science += static_cast<float>(adjMountains) * 1.0f;
             bonus.science += static_cast<float>(adjRainforests) * 0.5f;
             bonus.science += static_cast<float>(adjWonders) * 2.0f;
+            // Adjacent Campus districts cluster research (research-park effect).
+            // Previously counted but never applied — the bonus was dead code.
+            bonus.science += static_cast<float>(adjCampusDistricts) * 1.0f;
             break;
 
         case DistrictType::Commercial:

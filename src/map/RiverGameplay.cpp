@@ -102,9 +102,12 @@ void processFlooding(aoc::game::GameState& /*gameState*/, HexGrid& grid, int32_t
         // Deterministic flood check: hash of turn + tile index
         uint32_t hash = static_cast<uint32_t>(i) * 2654435761u
                       + static_cast<uint32_t>(turnNumber) * 2246822519u;
-        // 30% chance of beneficial flood during flood season
-        constexpr uint32_t FLOOD_THRESHOLD = 3000000000u;  // ~70% of UINT32_MAX = 30% flood
-        if (hash > FLOOD_THRESHOLD) {
+        // 30% chance of beneficial flood during flood season.
+        // Previous code used `hash > FLOOD_THRESHOLD` with a threshold at 70%
+        // of UINT32_MAX, which actually delivered ~70% floods — the inverse
+        // of the intent. Flood when hash falls in the bottom 30% of range.
+        constexpr uint32_t FLOOD_THRESHOLD = 1288490188u;  // ~30% of UINT32_MAX
+        if (hash >= FLOOD_THRESHOLD) {
             continue;
         }
 
