@@ -573,6 +573,10 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         // civs at 1.5x. Closes the loop between schools and tech speed.
         science *= gsPlayer->humanCapital().scienceMultiplier();
 
+        // Fold any banked eureka/inspiration into the current research
+        // before progress ticks, so boosts never go to waste.
+        consumePendingEurekaBoosts(*gsPlayer);
+
         advanceResearch(gsPlayer->tech(), science);
         advanceCivicResearch(gsPlayer->civics(), culture, &gsPlayer->government());
     }

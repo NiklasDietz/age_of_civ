@@ -64,8 +64,15 @@ static constexpr uint16_t MAX_EUREKA_BOOSTS = 64;
 struct PlayerEurekaComponent {
     PlayerId owner = INVALID_PLAYER;
 
-    /// Bitfield of triggered boosts, indexed by boostIndex.
+    /// Bitfield of triggered boosts, indexed by boostIndex. A set bit means
+    /// the condition has fired once and will not fire again.
     std::bitset<MAX_EUREKA_BOOSTS> triggeredBoosts{};
+
+    /// Bitfield of banked boosts that fired while the player was NOT
+    /// researching the corresponding tech/civic. These are consumed when
+    /// the player starts researching the matching tech/civic; until then
+    /// they persist across turns so the boost is never wasted.
+    std::bitset<MAX_EUREKA_BOOSTS> pendingBoosts{};
 
     [[nodiscard]] bool hasTriggered(uint16_t boostIndex) const {
         if (boostIndex >= MAX_EUREKA_BOOSTS) {
@@ -77,6 +84,23 @@ struct PlayerEurekaComponent {
     void markTriggered(uint16_t boostIndex) {
         if (boostIndex < MAX_EUREKA_BOOSTS) {
             this->triggeredBoosts.set(boostIndex);
+        }
+    }
+
+    [[nodiscard]] bool isPending(uint16_t boostIndex) const {
+        if (boostIndex >= MAX_EUREKA_BOOSTS) { return false; }
+        return this->pendingBoosts.test(boostIndex);
+    }
+
+    void markPending(uint16_t boostIndex) {
+        if (boostIndex < MAX_EUREKA_BOOSTS) {
+            this->pendingBoosts.set(boostIndex);
+        }
+    }
+
+    void clearPending(uint16_t boostIndex) {
+        if (boostIndex < MAX_EUREKA_BOOSTS) {
+            this->pendingBoosts.reset(boostIndex);
         }
     }
 };
@@ -101,5 +125,14 @@ struct PlayerEurekaComponent {
  */
 void checkEurekaConditions(aoc::game::Player& player,
                            EurekaCondition triggered);
+
+/**
+ * @brief Apply any banked (pending) eureka boosts whose tech/civic matches
+ *        the player's currently selected research. Called each turn before
+ *        research progress is advanced so that a banked boost from an
+ *        earlier trigger is folded in as soon as the player picks the
+ *        matching research.
+ */
+void consumePendingEurekaBoosts(aoc::game::Player& player);
 
 } // namespace aoc::sim

@@ -839,8 +839,12 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             // Completed a full round trip
             ++trader.completedTrips;
 
-            // Auto-build road along the trade route after 3 trips
-            if (trader.completedTrips == 3) {
+            // Auto-build road along the trade route after 2 trips.
+            // Previously gated at exactly 3, which never triggered on
+            // routes with maxTrips < 3 (short caravan contracts never
+            // left roads behind). Two completed round-trips is a strong
+            // enough traffic signal and covers shorter contracts.
+            if (trader.completedTrips == 2) {
                 for (const aoc::hex::AxialCoord& tile : trader.path) {
                     if (grid.isValid(tile)) {
                         int32_t idx = grid.toIndex(tile);

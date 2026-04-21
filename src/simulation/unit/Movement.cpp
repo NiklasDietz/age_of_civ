@@ -5,6 +5,7 @@
 
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/event/VisibilityEvents.hpp"
+#include "aoc/simulation/city/CityBombardment.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
@@ -172,11 +173,15 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
             gameState.visibilityBus().emit(ev);
         }
 
-        // City capture: a military unit stepping onto an enemy city captures it.
+        // City capture: a military unit stepping onto an enemy city captures it
+        // ONLY if its walls are breached (or it has no walls). Cities with
+        // intact walls cannot be walked over — the unit stops on the
+        // approach tile and must continue to siege the walls first.
         // A previously captured city is not removed from the original owner's
         // `m_cities` list, so `cityAt` can still find it there.  We must check
         // the city's current owner before re-capturing to avoid logging (and
         // re-firing setOwner on) a city that is already ours.
+        bool wallsBlockedStep = false;
         if (unitIsMilitary) {
             for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
                 if (player->id() == unit.owner()) {
@@ -188,6 +193,15 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
                 }
                 if (city->owner() == unit.owner()) {
                     continue;  // Already captured — stale entry in old owner's list.
+                }
+                if (!canCaptureCity(*city)) {
+                    LOG_INFO("Unit blocked by intact walls of %s (%d/%d HP)",
+                             city->name().c_str(),
+                             city->walls().currentHP, city->walls().maxHP);
+                    unit.clearPath();
+                    unit.setMovementRemaining(0);
+                    wallsBlockedStep = true;
+                    break;
                 }
 
                 const PlayerId previousOwner = city->owner();
@@ -217,6 +231,7 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
                 break;
             }
         }
+        if (wallsBlockedStep) { break; }
 
         // Zone of control: stop as soon as the unit enters an enemy ZoC tile.
         // Previously only blocked ZoC->ZoC transitions, which let units pass

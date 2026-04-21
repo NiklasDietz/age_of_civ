@@ -39,6 +39,7 @@ struct MonetaryStateComponent;
 // ============================================================================
 
 struct BondIssue {
+    uint64_t  id = 0;                         ///< Unique bond identity (matches issued <-> held)
     PlayerId  issuer = INVALID_PLAYER;        ///< Who issued the bond
     PlayerId  holder = INVALID_PLAYER;        ///< Who currently holds it
     CurrencyAmount principal = 0;             ///< Face value
@@ -46,6 +47,16 @@ struct BondIssue {
     int32_t  turnsToMaturity = 10;            ///< Turns until principal repayment
     CurrencyAmount accruedInterest = 0;       ///< Interest accumulated so far
 };
+
+/// Issue the next globally-unique bond id. Monotonic counter; saved so
+/// ids remain distinct across load cycles.
+[[nodiscard]] uint64_t nextBondId();
+
+/// Peek the next id that would be issued (for serialization).
+[[nodiscard]] uint64_t peekNextBondId();
+
+/// Restore the id counter after loading a save.
+void setNextBondId(uint64_t value);
 
 // ============================================================================
 // Per-player bond portfolio (ECS component)

@@ -162,9 +162,6 @@ void processReligiousSpread(aoc::game::GameState& gameState, const aoc::map::Hex
 /// Apply religion bonuses (founder beliefs give gold/science, follower beliefs give amenities).
 void applyReligionBonuses(aoc::game::Player& player);
 
-/// Check religious victory: one religion is dominant in all civilizations' cities.
-[[nodiscard]] bool checkReligiousVictory(const aoc::game::GameState& gameState, PlayerId& outWinner);
-
 /**
  * @brief Automatically found pantheons and religions for AI players who have
  *        accumulated enough faith but are not human-controlled.

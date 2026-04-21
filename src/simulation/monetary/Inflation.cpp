@@ -81,9 +81,14 @@ void computeInflation(MonetaryStateComponent& state,
     // MMT correction: inflation depends on spending vs productive CAPACITY,
     // not just money supply. If real output is growing (spare capacity),
     // printing is less inflationary. If shrinking, fully inflationary.
+    // Capacity slope: 3.5 means ~3% real growth trims ~10% off inflation
+    // (capacityPressure ~ 0.9), hitting the 0.3 floor at ~20% growth.
+    // Previous 14.0 was hair-trigger — a routine 5% expansion maxed out
+    // the damping and erased most Fisher inflation, masking genuine
+    // money-printing pressure.
     float capacityPressure = 1.0f;
     if (realGDPGrowth > 0.0f) {
-        capacityPressure = std::max(0.3f, 1.0f - realGDPGrowth * 14.0f);
+        capacityPressure = std::max(0.3f, 1.0f - realGDPGrowth * 3.5f);
     } else if (realGDPGrowth < -0.02f) {
         capacityPressure = std::min(1.5f, 1.0f + std::abs(realGDPGrowth) * 10.0f);
     }

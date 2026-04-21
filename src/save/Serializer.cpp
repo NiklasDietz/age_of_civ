@@ -648,6 +648,7 @@ void writePlayerStateSection(WriteBuffer& out, const aoc::game::GameState& gameS
     }
 
     // --- PlayerEurekaComponent ---
+    // v8+: pending-boost bitfield follows the triggered bitfield per player.
     section.writeU32(playerCount);
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
         const aoc::sim::PlayerEurekaComponent& eureka = player->eureka();
@@ -660,6 +661,16 @@ void writePlayerStateSection(WriteBuffer& out, const aoc::game::GameState& gameS
             for (uint8_t bit = 0; bit < 8; ++bit) {
                 uint16_t idx = static_cast<uint16_t>(b * 8 + bit);
                 if (idx < bitCount && eureka.triggeredBoosts.test(idx)) {
+                    byte |= static_cast<uint8_t>(1u << bit);
+                }
+            }
+            section.writeU8(byte);
+        }
+        for (uint16_t b = 0; b < byteCount; ++b) {
+            uint8_t byte = 0;
+            for (uint8_t bit = 0; bit < 8; ++bit) {
+                uint16_t idx = static_cast<uint16_t>(b * 8 + bit);
+                if (idx < bitCount && eureka.pendingBoosts.test(idx)) {
                     byte |= static_cast<uint8_t>(1u << bit);
                 }
             }
@@ -886,6 +897,7 @@ void writeBondSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
         section.writeU8(static_cast<uint8_t>(player->id()));
         section.writeU32(static_cast<uint32_t>(pb.issuedBonds.size()));
         for (const aoc::sim::BondIssue& b : pb.issuedBonds) {
+            section.writeU64(b.id);
             section.writeU8(b.issuer);
             section.writeU8(b.holder);
             section.writeI64(b.principal);
@@ -895,6 +907,7 @@ void writeBondSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
         }
         section.writeU32(static_cast<uint32_t>(pb.heldBonds.size()));
         for (const aoc::sim::BondIssue& b : pb.heldBonds) {
+            section.writeU64(b.id);
             section.writeU8(b.issuer);
             section.writeU8(b.holder);
             section.writeI64(b.principal);
@@ -903,6 +916,8 @@ void writeBondSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
             section.writeI64(b.accruedInterest);
         }
     }
+    // Persist bond id counter so ids stay unique across load cycles.
+    section.writeU64(aoc::sim::peekNextBondId());
 
     writeSection(out, SectionId::BondState, section);
 }
@@ -1816,6 +1831,7 @@ ErrorCode loadGame(const std::string& filepath,
                 }
 
                 // --- PlayerEurekaComponent ---
+                // v8+: pending-boost bitfield follows the triggered bitfield.
                 uint32_t eurekaCount = buf.readU32();
                 for (uint32_t i = 0; i < eurekaCount; ++i) {
                     PlayerId owner = buf.readU8();
@@ -1829,6 +1845,16 @@ ErrorCode loadGame(const std::string& filepath,
                             if (idx < bitCount && idx < aoc::sim::MAX_EUREKA_BOOSTS
                                 && ((byte >> bit) & 1u) != 0 && player != nullptr) {
                                 player->eureka().triggeredBoosts.set(idx);
+                            }
+                        }
+                    }
+                    for (uint16_t b = 0; b < byteCount; ++b) {
+                        uint8_t byte = buf.readU8();
+                        for (uint8_t bit = 0; bit < 8; ++bit) {
+                            uint16_t idx = static_cast<uint16_t>(b * 8 + bit);
+                            if (idx < bitCount && idx < aoc::sim::MAX_EUREKA_BOOSTS
+                                && ((byte >> bit) & 1u) != 0 && player != nullptr) {
+                                player->eureka().pendingBoosts.set(idx);
                             }
                         }
                     }
@@ -2070,6 +2096,7 @@ ErrorCode loadGame(const std::string& filepath,
                     pb.issuedBonds.reserve(issuedCount);
                     for (uint32_t j = 0; j < issuedCount; ++j) {
                         aoc::sim::BondIssue b{};
+                        b.id = buf.readU64();
                         b.issuer = buf.readU8();
                         b.holder = buf.readU8();
                         b.principal = buf.readI64();
@@ -2082,6 +2109,7 @@ ErrorCode loadGame(const std::string& filepath,
                     pb.heldBonds.reserve(heldCount);
                     for (uint32_t j = 0; j < heldCount; ++j) {
                         aoc::sim::BondIssue b{};
+                        b.id = buf.readU64();
                         b.issuer = buf.readU8();
                         b.holder = buf.readU8();
                         b.principal = buf.readI64();
@@ -2094,6 +2122,8 @@ ErrorCode loadGame(const std::string& filepath,
                         player->bonds() = std::move(pb);
                     }
                 }
+                // Restore bond id counter so new bonds keep unique ids.
+                aoc::sim::setNextBondId(buf.readU64());
                 break;
             }
             case SectionId::DevaluationState: {

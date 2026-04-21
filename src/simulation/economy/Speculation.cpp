@@ -13,6 +13,8 @@
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 
 namespace aoc::sim {
 
@@ -59,10 +61,18 @@ ErrorCode hoardCommodity(aoc::game::GameState& gameState,
     for (CommodityHoardComponent::HoardPosition& pos : hoardPtr->positions) {
         if (pos.goodId == goodId) {
             int32_t currentPrice = market.price(goodId);
-            int32_t totalCost    = pos.purchasePrice * pos.amount
-                                 + currentPrice * actuallyHoarded;
+            // Cost-basis weighted average. Use float division so the
+            // average doesn't truncate toward zero and drift low across
+            // repeated hoards (which would understate hoard value and
+            // inflate apparent profit on release).
+            int64_t totalCost = static_cast<int64_t>(pos.purchasePrice) * pos.amount
+                              + static_cast<int64_t>(currentPrice) * actuallyHoarded;
             pos.amount       += actuallyHoarded;
-            pos.purchasePrice = (pos.amount > 0) ? totalCost / pos.amount : 0;
+            pos.purchasePrice = (pos.amount > 0)
+                ? static_cast<int32_t>(std::llround(
+                      static_cast<double>(totalCost)
+                      / static_cast<double>(pos.amount)))
+                : 0;
             found = true;
             break;
         }

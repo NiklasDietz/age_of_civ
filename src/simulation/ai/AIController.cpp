@@ -1751,6 +1751,29 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                 }
             }
 
+            // Defensive alliance — low-aggression / diplomatic profiles that
+            // want the war-deterrent of mutual defense without the force
+            // projection of a full military alliance. A lower aggression
+            // gate (< 0.4) complements the militaryAggression > 0.8 path
+            // above, so warmongers and peaceniks pick different alliance
+            // types instead of competing for the same slot.
+            if (openToAlliance && !rel.hasDefensiveAlliance
+                && !rel.hasMilitaryAlliance && relationScore > 30
+                && beh.militaryAggression < 0.4f
+                && beh.diplomaticOpenness > 0.7f) {
+                const aoc::ErrorCode ec = diplomacy.formDefensiveAlliance(
+                    this->m_player, other, gameState.currentTurn());
+                if (ec == aoc::ErrorCode::Ok) {
+                    LOG_INFO("AI %u Formed defensive alliance with player %u "
+                             "(relations %d, aggression %.2f, openness %.2f)",
+                             static_cast<unsigned>(this->m_player),
+                             static_cast<unsigned>(other),
+                             relationScore,
+                             static_cast<double>(beh.militaryAggression),
+                             static_cast<double>(beh.diplomaticOpenness));
+                }
+            }
+
             // H6.4: cultural alliance — culture-focused leaders.
             if (openToAlliance && !rel.hasCulturalAlliance && relationScore > 25
                 && beh.cultureFocus > 0.8f) {

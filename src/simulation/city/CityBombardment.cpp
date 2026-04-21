@@ -27,14 +27,15 @@ namespace aoc::sim {
 
 /// Detect wall tier from the city's built buildings plus owner era.
 /// BuildingId 17 ("Walls") is the only wall building in BUILDING_DEFS;
-/// its effective tier upgrades with the owning civ's era: Medieval →
-/// Medieval-tier walls, Renaissance+ → Renaissance-tier walls. Prior
-/// code mapped to {18,24} which are Barracks/Mint, so those tiers were
-/// unreachable and building a Mint granted Renaissance-wall stats.
+/// its effective tier upgrades with the owning civ's era. Era values come
+/// from UnitEra: Ancient=0, Classical=1, Medieval=2, Renaissance=3,
+/// Industrial=4, Modern=5, Atomic=6, Information=7. Industrial+ gets the
+/// Steel Fortress tier so late-game cities aren't stuck on Renaissance.
 static WallTier detectWallTier(const aoc::game::City& city,
                                const aoc::game::Player& owner) {
     if (!city.hasBuilding(BuildingId{17})) { return WallTier::None; }
     const EraId era = effectiveEraFromTech(owner);
+    if (era.value >= 4) { return WallTier::Steel; }
     if (era.value >= 3) { return WallTier::Renaissance; }
     if (era.value >= 2) { return WallTier::Medieval; }
     return WallTier::Ancient;

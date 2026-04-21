@@ -228,46 +228,6 @@ void applyReligionBonuses(aoc::game::Player& player) {
 }
 
 // ============================================================================
-// checkReligiousVictory
-// ============================================================================
-
-bool checkReligiousVictory(const aoc::game::GameState& gameState, PlayerId& outWinner) {
-    int32_t totalCities = 0;
-
-    // Count all cities once
-    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
-        totalCities += static_cast<int32_t>(p->cities().size());
-    }
-    if (totalCities == 0) {
-        return false;
-    }
-
-    // For each player who founded a religion, check if it dominates > 50% of all cities
-    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
-        const ReligionId religion = p->faith().foundedReligion;
-        if (religion == NO_RELIGION) {
-            continue;
-        }
-
-        int32_t followerCities = 0;
-        for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
-            for (const std::unique_ptr<aoc::game::City>& city : other->cities()) {
-                if (city->religion().dominantReligion() == religion) {
-                    ++followerCities;
-                }
-            }
-        }
-
-        if (followerCities * 2 > totalCities) {
-            outWinner = p->id();
-            return true;
-        }
-    }
-
-    return false;
-}
-
-// ============================================================================
 // processAIReligionFounding
 // ============================================================================
 

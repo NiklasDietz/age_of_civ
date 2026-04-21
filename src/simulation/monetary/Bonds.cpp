@@ -15,6 +15,17 @@
 
 namespace aoc::sim {
 
+namespace {
+// Starts at 1 so id 0 remains an "uninitialized" sentinel.
+uint64_t g_nextBondId = 1;
+}
+
+uint64_t nextBondId()    { return g_nextBondId++; }
+uint64_t peekNextBondId(){ return g_nextBondId; }
+void     setNextBondId(uint64_t value) {
+    g_nextBondId = std::max<uint64_t>(g_nextBondId, value);
+}
+
 float computeBondYield(const MonetaryStateComponent& state, bool hasRecentDefault) {
     float baseRate = state.interestRate;
 
@@ -70,15 +81,19 @@ ErrorCode issueBond(aoc::game::GameState& gameState,
     }
     const CurrencyAmount MAX_DEBT_LOAD = issuerState.treasury + principal
                                        + std::max<CurrencyAmount>(500, issuerState.gdp / 4);
-    if (outstandingPrincipal + principal * 2 > MAX_DEBT_LOAD) {
+    const bool hasDefaulted = issuerCrisis.hasDefaulted;
+    const float yield = computeBondYield(issuerState, hasDefaulted);
+    // Expected payout at maturity is principal * (1 + yield); gate capacity
+    // on that instead of a blunt principal*2 which rejected solvent loans.
+    const CurrencyAmount expectedPayout = static_cast<CurrencyAmount>(
+        static_cast<float>(principal) * (1.0f + yield));
+    if (outstandingPrincipal + expectedPayout > MAX_DEBT_LOAD) {
         return ErrorCode::InsufficientResources;
     }
 
-    const bool hasDefaulted = issuerCrisis.hasDefaulted;
-    float yield = computeBondYield(issuerState, hasDefaulted);
-
     // Create the bond
     BondIssue bond;
+    bond.id              = nextBondId();
     bond.issuer          = issuer;
     bond.holder          = buyer;
     bond.principal       = principal;
@@ -185,12 +200,11 @@ void processBondPayments(aoc::game::GameState& gameState) {
                     if (holderPlayer != nullptr) {
                         holderPlayer->monetary().treasury += totalPayment;
 
-                        // Remove from holder's portfolio
+                        // Remove from holder's portfolio by unique bond id.
                         PlayerBondComponent& holderBonds = holderPlayer->bonds();
                         for (std::vector<BondIssue>::iterator hIt = holderBonds.heldBonds.begin();
                              hIt != holderBonds.heldBonds.end(); ++hIt) {
-                            if (hIt->issuer == issuerPtr->id()
-                                && hIt->principal == it->principal) {
+                            if (hIt->id == it->id) {
                                 holderBonds.heldBonds.erase(hIt);
                                 break;
                             }
@@ -211,13 +225,11 @@ void processBondPayments(aoc::game::GameState& gameState) {
 
                 it = portfolio.issuedBonds.erase(it);
             } else {
-                // Sync the matching bond in the holder's portfolio
+                // Sync the matching bond in the holder's portfolio by id.
                 aoc::game::Player* holderPlayer = gameState.player(it->holder);
                 if (holderPlayer != nullptr) {
                     for (BondIssue& held : holderPlayer->bonds().heldBonds) {
-                        if (held.issuer == issuerPtr->id()
-                            && held.principal == it->principal
-                            && held.turnsToMaturity == it->turnsToMaturity + 1) {
+                        if (held.id == it->id) {
                             held.accruedInterest = it->accruedInterest;
                             held.turnsToMaturity = it->turnsToMaturity;
                             break;

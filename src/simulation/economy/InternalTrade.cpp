@@ -13,6 +13,7 @@
 #include "aoc/simulation/economy/InternalTrade.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/city/CityConnection.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/map/HexGrid.hpp"
@@ -41,18 +42,19 @@ constexpr float LOSS_PER_STEP = 0.10f;
 constexpr float ROAD_DISTANCE_FACTOR = 0.5f;
 
 /// Compute effective distance between two cities, accounting for roads.
+/// Road discount applies only when a continuous road path actually exists
+/// between the endpoints. Previous check only tested hasRoad() at the two
+/// city tiles themselves -- since cities sit on road tiles by construction
+/// that check was always true, granting the discount universally even
+/// between cities separated by roadless wilderness.
 float effectiveDistance(const aoc::map::HexGrid& grid,
                        hex::AxialCoord from,
                        hex::AxialCoord to) {
     const int32_t rawDist = grid.distance(from, to);
     const float   baseDist = static_cast<float>(rawDist);
 
-    if (grid.isValid(from) && grid.isValid(to)) {
-        const int32_t fromIdx = grid.toIndex(from);
-        const int32_t toIdx   = grid.toIndex(to);
-        if (grid.hasRoad(fromIdx) && grid.hasRoad(toIdx)) {
-            return baseDist * ROAD_DISTANCE_FACTOR;
-        }
+    if (isCityConnected(grid, from, to)) {
+        return baseDist * ROAD_DISTANCE_FACTOR;
     }
 
     return baseDist;

@@ -39,11 +39,13 @@ void updateSupplyChainHealth(aoc::game::GameState& gameState, PlayerId player) {
         constexpr int32_t HEALTHY_THRESHOLD = 3;
 
         if (stock >= HEALTHY_THRESHOLD) {
-            // Healthy supply: push health toward 1.0 with a strong pull.
-            // Base bonus of 0.10f added each tick ensures new civs start healthy
-            // even before they've accumulated any strategic resource stockpile.
+            // Healthy supply: EMA pull toward 1.0 at 30% per tick. The former
+            // extra +0.10 flat bonus pushed the fixed point to 1.33 (clamped
+            // to 1.0), making the healthy state stick at saturation and
+            // ignoring the EMA dynamics entirely. Removing it lets the
+            // signal actually vary with stock.
             chain.supplyHealth[idx] = std::min(1.0f,
-                chain.supplyHealth[idx] * 0.70f + 1.0f * 0.30f + 0.10f);
+                chain.supplyHealth[idx] * 0.70f + 1.0f * 0.30f);
             chain.stockpileBuffer[idx] = std::min(10, stock / 2);
         } else if (stock > 0) {
             chain.supplyHealth[idx]    = chain.supplyHealth[idx] * 0.90f + 0.50f * 0.10f;

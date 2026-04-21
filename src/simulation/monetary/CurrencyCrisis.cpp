@@ -5,6 +5,9 @@
 
 #include "aoc/simulation/monetary/CurrencyCrisis.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
+#include "aoc/simulation/monetary/Bonds.hpp"
+#include "aoc/game/GameState.hpp"
+#include "aoc/game/Player.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -40,7 +43,7 @@ constexpr int32_t DEFAULT_DURATION = 5;
 // Processing
 // ============================================================================
 
-bool processCurrencyCrisis(aoc::game::GameState& /*gameState*/,
+bool processCurrencyCrisis(aoc::game::GameState& gameState,
                            MonetaryStateComponent& state,
                            CurrencyCrisisComponent& crisis) {
     bool newCrisis = false;
@@ -106,6 +109,23 @@ bool processCurrencyCrisis(aoc::game::GameState& /*gameState*/,
             crisis.activeCrisis = CrisisType::None;
 
             if (resolved == CrisisType::Hyperinflation) {
+                // Redenominate bonds in lockstep with fiat so the real debt
+                // burden halves uniformly. Without this, bond principal
+                // remains at full nominal value while state.governmentDebt
+                // halves — players could deliberately hyperinflate to
+                // redenominate one debt bucket while leaving bonds intact.
+                aoc::game::Player* player = gameState.player(state.owner);
+                if (player != nullptr) {
+                    aoc::sim::PlayerBondComponent& pb = player->bonds();
+                    for (aoc::sim::BondIssue& b : pb.issuedBonds) {
+                        b.principal /= 2;
+                        b.accruedInterest /= 2;
+                    }
+                    for (aoc::sim::BondIssue& b : pb.heldBonds) {
+                        b.principal /= 2;
+                        b.accruedInterest /= 2;
+                    }
+                }
                 // Auto-execute currency reform at end of hyperinflation
                 executeCurrencyReform(state, crisis);
             }

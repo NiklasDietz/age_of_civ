@@ -129,44 +129,103 @@ void checkEurekaConditions(aoc::game::Player& player,
             continue;
         }
 
-        // Apply boost to relevant tech or civic
+        // Apply boost to relevant tech or civic. If the player is not
+        // currently researching the matching tech/civic, bank the boost
+        // via pendingBoosts so it gets applied on research start.
         if (boost.techId.isValid()) {
             if (techComp.hasResearched(boost.techId)) {
+                eurekaComp.markTriggered(boost.boostIndex);
                 continue;
             }
 
             const TechDef& def = techDef(boost.techId);
-            float boostAmount = boost.boostFraction * static_cast<float>(def.researchCost);
+            const float boostAmount = boost.boostFraction * static_cast<float>(def.researchCost);
 
             if (techComp.currentResearch == boost.techId) {
                 techComp.researchProgress += boostAmount;
+                LOG_INFO("Eureka! Player %u: %.*s (+%.0f%% toward %.*s)",
+                         static_cast<unsigned>(player.id()),
+                         static_cast<int>(boost.description.size()),
+                         boost.description.data(),
+                         static_cast<double>(boost.boostFraction * 100.0f),
+                         static_cast<int>(def.name.size()),
+                         def.name.data());
+            } else {
+                eurekaComp.markPending(boost.boostIndex);
+                LOG_INFO("Eureka banked! Player %u: %.*s (pending for %.*s)",
+                         static_cast<unsigned>(player.id()),
+                         static_cast<int>(boost.description.size()),
+                         boost.description.data(),
+                         static_cast<int>(def.name.size()),
+                         def.name.data());
             }
 
             eurekaComp.markTriggered(boost.boostIndex);
-            LOG_INFO("Eureka! Player %u: %.*s (+%.0f%% toward %.*s)",
-                     static_cast<unsigned>(player.id()),
-                     static_cast<int>(boost.description.size()),
-                     boost.description.data(),
-                     static_cast<double>(boost.boostFraction * 100.0f),
-                     static_cast<int>(def.name.size()),
-                     def.name.data());
         } else if (boost.civicId.isValid()) {
             if (civicComp.hasCompleted(boost.civicId)) {
+                eurekaComp.markTriggered(boost.boostIndex);
                 continue;
             }
 
             const CivicDef& def = civicDef(boost.civicId);
-            float boostAmount = boost.boostFraction * static_cast<float>(def.cultureCost);
+            const float boostAmount = boost.boostFraction * static_cast<float>(def.cultureCost);
 
             if (civicComp.currentResearch == boost.civicId) {
                 civicComp.researchProgress += boostAmount;
+                LOG_INFO("Inspiration! Player %u: %.*s (+%.0f%% toward %.*s)",
+                         static_cast<unsigned>(player.id()),
+                         static_cast<int>(boost.description.size()),
+                         boost.description.data(),
+                         static_cast<double>(boost.boostFraction * 100.0f),
+                         static_cast<int>(def.name.size()),
+                         def.name.data());
+            } else {
+                eurekaComp.markPending(boost.boostIndex);
+                LOG_INFO("Inspiration banked! Player %u: %.*s (pending for %.*s)",
+                         static_cast<unsigned>(player.id()),
+                         static_cast<int>(boost.description.size()),
+                         boost.description.data(),
+                         static_cast<int>(def.name.size()),
+                         def.name.data());
             }
 
             eurekaComp.markTriggered(boost.boostIndex);
-            LOG_INFO("Inspiration! Player %u: %.*s (+%.0f%% toward %.*s)",
+        }
+    }
+}
+
+void consumePendingEurekaBoosts(aoc::game::Player& player) {
+    PlayerEurekaComponent& eurekaComp = player.eureka();
+    if (eurekaComp.pendingBoosts.none()) { return; }
+
+    PlayerTechComponent& techComp   = player.tech();
+    PlayerCivicComponent& civicComp = player.civics();
+
+    const std::vector<EurekaBoostDef>& boosts = getBoostTable();
+    for (const EurekaBoostDef& boost : boosts) {
+        if (!eurekaComp.isPending(boost.boostIndex)) { continue; }
+
+        if (boost.techId.isValid()
+            && techComp.currentResearch == boost.techId
+            && !techComp.hasResearched(boost.techId)) {
+            const TechDef& def = techDef(boost.techId);
+            const float boostAmount = boost.boostFraction * static_cast<float>(def.researchCost);
+            techComp.researchProgress += boostAmount;
+            eurekaComp.clearPending(boost.boostIndex);
+            LOG_INFO("Pending eureka consumed! Player %u: +%.0f%% toward %.*s",
                      static_cast<unsigned>(player.id()),
-                     static_cast<int>(boost.description.size()),
-                     boost.description.data(),
+                     static_cast<double>(boost.boostFraction * 100.0f),
+                     static_cast<int>(def.name.size()),
+                     def.name.data());
+        } else if (boost.civicId.isValid()
+                   && civicComp.currentResearch == boost.civicId
+                   && !civicComp.hasCompleted(boost.civicId)) {
+            const CivicDef& def = civicDef(boost.civicId);
+            const float boostAmount = boost.boostFraction * static_cast<float>(def.cultureCost);
+            civicComp.researchProgress += boostAmount;
+            eurekaComp.clearPending(boost.boostIndex);
+            LOG_INFO("Pending inspiration consumed! Player %u: +%.0f%% toward %.*s",
+                     static_cast<unsigned>(player.id()),
                      static_cast<double>(boost.boostFraction * 100.0f),
                      static_cast<int>(def.name.size()),
                      def.name.data());

@@ -28,7 +28,7 @@
 namespace aoc::save {
 
 /// Current save format version.
-inline constexpr uint32_t CURRENT_SAVE_VERSION = 7;
+inline constexpr uint32_t CURRENT_SAVE_VERSION = 8;
 
 /// Minimum supported save version (older saves cannot be loaded).
 inline constexpr uint32_t MIN_SUPPORTED_VERSION = 1;

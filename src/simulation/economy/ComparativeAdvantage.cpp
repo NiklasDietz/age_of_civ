@@ -85,6 +85,14 @@ std::vector<TradeRecommendation> computeComparativeAdvantage(
     for (uint16_t g = 0; g < count; ++g) {
         if (ratesA[g] < 0.01f && ratesB[g] < 0.01f) { continue; }
 
+        // Opportunity cost of producing one unit of good g, expressed as
+        // the market-value of all OTHER production per unit of g:
+        //     oc = (totalValue - valueOfG) / unitsOfG
+        //        = ($ of other goods) / (units of g)
+        // Lower opportunity cost means the civ gives up less value per
+        // unit of g, i.e. it has comparative advantage in g and should
+        // export it. A rate below the epsilon floor is treated as
+        // prohibitively expensive (9999).
         float ocA = (ratesA[g] > 0.01f)
             ? (totalA - ratesA[g] * static_cast<float>(market.price(g))) / ratesA[g]
             : 9999.0f;

@@ -216,6 +216,7 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
     float avgGDP = 0.0f, avgMilitary = 0.0f, avgCulture = 0.0f, avgTech = 0.0f;
     float avgCities = 0.0f, avgPop = 0.0f;
     float avgDiplomacy = 0.0f, avgFinancial = 0.0f;
+    float avgImprovedTiles = 0.0f;
 
     for (const std::pair<const PlayerId, PlayerRawStats>& entry : stats) {
         avgGDP += static_cast<float>(entry.second.gdp);
@@ -225,6 +226,7 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
         avgCities += static_cast<float>(entry.second.cityCount);
         avgPop += static_cast<float>(entry.second.totalPopulation);
         avgDiplomacy += 1.0f + static_cast<float>(entry.second.tradePartnerCount) * 2.0f;
+        avgImprovedTiles += static_cast<float>(entry.second.improvedTiles);
         // Clamp negative treasury (debt) to 0 for averaging so a single deeply
         // indebted civ cannot invert the financial category for everyone else.
         float finRaw = std::max(0.0f, static_cast<float>(entry.second.treasury))
@@ -242,6 +244,7 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
     avgPop *= invCount;
     avgDiplomacy *= invCount;
     avgFinancial *= invCount;
+    avgImprovedTiles *= invCount;
 
     // auto required: lambda type is unnameable
     auto relScore = [](float value, float avg) -> float {
@@ -286,10 +289,10 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
         float avgQol = avgPop * 0.1f + 2.0f;
         tracker.categoryScores[5] = relScore(qolRaw, avgQol);
 
-        // Territorial: cities + improved tiles
+        // Territorial: cities + improved tiles, scored vs global mean of both.
         float terrRaw = static_cast<float>(s.cityCount) * 5.0f
                       + static_cast<float>(s.improvedTiles);
-        float avgTerr = avgCities * 5.0f + static_cast<float>(s.improvedTiles);
+        float avgTerr = avgCities * 5.0f + avgImprovedTiles;
         tracker.categoryScores[6] = relScore(terrRaw, std::max(1.0f, avgTerr));
 
         // Financial: treasury (non-negative) + bonds + reserve currency.
