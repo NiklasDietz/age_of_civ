@@ -92,7 +92,17 @@ void processEconomicZones(aoc::game::GameState& gameState,
         if (hostPlayerObj == nullptr) { it = tracker.zones.erase(it); continue; }
 
         aoc::game::City* hostCityObj = hostPlayerObj->cityAt(zone.hostCityLocation);
-        if (hostCityObj == nullptr) { ++it; continue; }
+        if (hostCityObj == nullptr) {
+            // Host city was captured or destroyed. The zone's invariant
+            // (zone exists iff host city exists under host player) is
+            // broken; erase rather than leaving an orphan that accumulates
+            // turnsActive and blocks future establishEconomicZone() calls
+            // on the same tile via tracker.hasZone().
+            LOG_INFO("Economic zone dissolved: host city lost by player %u",
+                     static_cast<unsigned>(zone.host));
+            it = tracker.zones.erase(it);
+            continue;
+        }
 
         CityStockpileComponent& hostStockpile = hostCityObj->stockpile();
 

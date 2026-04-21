@@ -240,11 +240,15 @@ public:
     void setImprovement(int32_t index, ImprovementType type) {
         this->assertIndex(index);
         this->m_improvement[static_cast<std::size_t>(index)] = type;
-        if (type == ImprovementType::Road
-            || type == ImprovementType::Railway
-            || type == ImprovementType::Highway) {
-            this->m_road[static_cast<std::size_t>(index)] = 1;
-        }
+        // Keep the road flag coherent with the current improvement. Previously
+        // the setter only raised the flag for road-class improvements and
+        // never lowered it, so clearing an improvement (nuke blast, flood
+        // destruction, bombing run) left hasRoad() and infrastructureTier()
+        // reporting stale road infrastructure on a tile that no longer has any.
+        const bool isRoadClass = type == ImprovementType::Road
+                              || type == ImprovementType::Railway
+                              || type == ImprovementType::Highway;
+        this->m_road[static_cast<std::size_t>(index)] = isRoadClass ? 1 : 0;
     }
     /// True if the tile has any road-type infrastructure (road, railway, highway).
     [[nodiscard]] bool hasRoad(int32_t index) const { this->assertIndex(index); return this->m_road[static_cast<std::size_t>(index)] != 0; }

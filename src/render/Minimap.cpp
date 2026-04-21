@@ -18,15 +18,24 @@
 
 namespace aoc::render {
 
-/// Player colors for ownership tinting on the minimap.
+/// Player colors for ownership tinting on the minimap. Mirrors the 8-slot
+/// palette in UnitRenderer.cpp so minimap and unit colors stay consistent.
+/// The game supports up to 16 players (Types.hpp MAX_PLAYERS); PlayerIds
+/// beyond slot 7 wrap via modulo rather than being skipped, which matches
+/// UnitRenderer's `% PLAYER_COLORS.size()` fallback and avoids leaving
+/// territory for players 4-15 untinted on the minimap.
 static constexpr float PLAYER_COLORS[][3] = {
-    {0.2f, 0.4f, 1.0f},  // Player 0: blue
-    {1.0f, 0.2f, 0.2f},  // Player 1: red
-    {0.2f, 0.8f, 0.2f},  // Player 2: green
-    {0.8f, 0.8f, 0.2f},  // Player 3: yellow
+    {0.20f, 0.40f, 0.90f},  // Player 0: blue
+    {0.90f, 0.20f, 0.20f},  // Player 1: red
+    {0.20f, 0.80f, 0.20f},  // Player 2: green
+    {0.90f, 0.80f, 0.10f},  // Player 3: yellow
+    {0.70f, 0.30f, 0.80f},  // Player 4: purple
+    {0.90f, 0.50f, 0.10f},  // Player 5: orange
+    {0.10f, 0.80f, 0.80f},  // Player 6: cyan
+    {0.80f, 0.40f, 0.60f},  // Player 7: pink
 };
 
-static constexpr uint8_t PLAYER_COLOR_COUNT = 4;
+static constexpr uint8_t PLAYER_COLOR_COUNT = 8;
 
 void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d,
                    const aoc::map::HexGrid& grid,
@@ -75,13 +84,16 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d,
                 tc.b *= 0.5f;
             }
 
-            // Tint with player ownership color
+            // Tint with player ownership color. Wrap via modulo so owners
+            // beyond slot 7 still receive a visible tint (shared palette
+            // slot) instead of being rendered as unowned territory.
             const PlayerId tileOwner = grid.owner(index);
-            if (tileOwner != INVALID_PLAYER && tileOwner < PLAYER_COLOR_COUNT) {
+            if (tileOwner != INVALID_PLAYER) {
+                const std::size_t ci = static_cast<std::size_t>(tileOwner) % PLAYER_COLOR_COUNT;
                 const float blend = 0.4f;
-                tc.r = tc.r * (1.0f - blend) + PLAYER_COLORS[tileOwner][0] * blend;
-                tc.g = tc.g * (1.0f - blend) + PLAYER_COLORS[tileOwner][1] * blend;
-                tc.b = tc.b * (1.0f - blend) + PLAYER_COLORS[tileOwner][2] * blend;
+                tc.r = tc.r * (1.0f - blend) + PLAYER_COLORS[ci][0] * blend;
+                tc.g = tc.g * (1.0f - blend) + PLAYER_COLORS[ci][1] * blend;
+                tc.b = tc.b * (1.0f - blend) + PLAYER_COLORS[ci][2] * blend;
             }
 
             const float px = mapX + static_cast<float>(col) * tileW;
