@@ -220,22 +220,13 @@ ErrorCode executeBombingRun(aoc::game::GameState& gameState,
         return ErrorCode::InvalidArgument;
     }
 
-    // Range check: find base city location
-    hex::AxialCoord basePos{0, 0};
-    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
-        for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
-            const int32_t cityIdx = grid.toIndex(city->location());
-            if (grid.toIndex(city->location()) == cityIdx) {
-                // Identify base by searching for a city that matches the stored base
-                // (air.baseCity is legacy EntityId -- use proximity heuristic for now:
-                //  the city at the bomber's home position)
-                if (city->location() == bomber.position()) {
-                    basePos = city->location();
-                    break;
-                }
-            }
-        }
-    }
+    // Range check: bombers operate from their home city, where they also
+    // rest between sorties. The in-game model parks air units on that tile,
+    // so the bomber's current position IS the base tile. The previous loop
+    // walked every city with a tautological index compare and left basePos
+    // at (0,0) whenever it fell through — the range gate then reduced to
+    // "distance from map origin to target", which is meaningless.
+    const hex::AxialCoord basePos = bomber.position();
     if (grid.distance(basePos, targetTile) > air.operationalRange) {
         return ErrorCode::InvalidArgument;
     }

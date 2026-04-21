@@ -238,7 +238,15 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
         // through an enemy screening line in a single step if they approached
         // from open terrain. Blocking entry outright restores the screening
         // guarantee defensive ZoC is meant to provide.
-        if (isInEnemyZoneOfControl(gameState, nextTile, unit.owner())) {
+        //
+        // Civilians (settlers, builders, traders) and embarked land units
+        // bypass ZoC — otherwise a non-hostile neighbour's patrol would
+        // freeze civilian travel across open terrain, which the dedicated
+        // shouldConsumeMovementByZoC() helper in ZoneOfControl.cpp already
+        // documents as the intended rule.
+        if (unitIsMilitary
+            && unit.state() != aoc::sim::UnitState::Embarked
+            && isInEnemyZoneOfControl(gameState, nextTile, unit.owner())) {
             unit.setMovementRemaining(0);
             break;
         }

@@ -106,8 +106,11 @@ bool upgradeUnit(aoc::game::GameState& gameState, aoc::game::Unit& unit,
     const int32_t newHp = std::max(1,
         static_cast<int32_t>(hpRatio * static_cast<float>(newDef.maxHitPoints)));
 
-    // Note: Unit does not have a setTypeId() yet; use the upgrade mechanism
-    // through the type system. For now we set HP and movement on the new type.
+    // Switch the unit's type BEFORE adjusting HP/movement so that subsequent
+    // typeDef() lookups (combat strength, unit class, movement refresh) see
+    // the upgraded definition. Previously the type was never updated, leaving
+    // the unit permanently bound to its old class.
+    unit.setTypeId(newType);
     unit.setHitPoints(newHp);
     unit.setMovementRemaining(newDef.movementPoints);
 

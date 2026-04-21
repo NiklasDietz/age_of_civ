@@ -46,6 +46,7 @@ public:
 
     [[nodiscard]] PlayerId owner() const { return this->m_owner; }
     [[nodiscard]] UnitTypeId typeId() const { return this->m_typeId; }
+    void setTypeId(UnitTypeId tid) { this->m_typeId = tid; }
     [[nodiscard]] const aoc::sim::UnitTypeDef& typeDef() const {
         return aoc::sim::unitTypeDef(this->m_typeId);
     }
