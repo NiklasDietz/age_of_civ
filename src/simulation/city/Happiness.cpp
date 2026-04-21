@@ -179,6 +179,14 @@ void computeCityHappiness(aoc::game::Player& player) {
         // Pollution amenity penalty
         happiness.amenities -= static_cast<float>(city->pollution().amenityPenalty());
 
+        // Amenity pool floors at 0. Empire/military/pollution penalties should
+        // not flip the pool negative; that role belongs to the modifiers channel
+        // which feeds directly into happiness below.
+        if (happiness.amenities < 0.0f) {
+            happiness.modifiers += happiness.amenities;
+            happiness.amenities = 0.0f;
+        }
+
         // Net happiness
         happiness.happiness = happiness.amenities - happiness.demand + happiness.modifiers;
     }

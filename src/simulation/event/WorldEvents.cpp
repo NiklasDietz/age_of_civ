@@ -177,6 +177,10 @@ void checkWorldEvents(aoc::game::GameState& gameState, PlayerId player, int32_t 
 
     events->pendingEvent = static_cast<WorldEventId>(chosen);
     events->pendingChoice = -1;
+    // H5.9: stamp the cooldown on trigger, not on resolution. Save/load round
+    // trips and rewinds previously bypassed the cooldown because the stamp only
+    // landed after the player resolved the event.
+    events->lastFiredTurn[chosen] = turnNumber;
     LOG_INFO("World event triggered for player %u: %.*s",
              static_cast<unsigned>(player),
              static_cast<int>(EVENT_DEFS[static_cast<std::size_t>(chosen)].title.size()),
@@ -199,8 +203,18 @@ ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, in
 
     const EventChoice& chosen = eventDef.choices[choice];
 
-    // Apply gold change
-    if (chosen.goldChange != 0) {
+    // Apply gold change. H5.8: positive rewards are scaled down (50%) and
+    // bump inflationRate so "free gold" events don't print currency into the
+    // game without a counterparty. Negative gold passes through unchanged
+    // because wealth destruction is a valid one-sided event outcome.
+    if (chosen.goldChange > 0) {
+        const int64_t gain = static_cast<int64_t>(chosen.goldChange) / 2;
+        playerObj->monetary().treasury += gain;
+        const float gdpRef = std::max(
+            1.0f, static_cast<float>(playerObj->monetary().gdp));
+        playerObj->monetary().inflationRate +=
+            static_cast<float>(gain) / gdpRef * 0.02f;
+    } else if (chosen.goldChange < 0) {
         playerObj->monetary().treasury += chosen.goldChange;
     }
 
@@ -222,9 +236,7 @@ ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, in
         events->activeEffectTurns = chosen.effectDuration;
     }
 
-    // Stamp firing turn for cooldown bookkeeping
-    events->lastFiredTurn[static_cast<uint8_t>(events->pendingEvent)] =
-        gameState.currentTurn();
+    // Cooldown stamp already applied in checkWorldEvents on trigger (H5.9).
     events->pendingEvent = static_cast<WorldEventId>(255);
     events->pendingChoice = choice;
 

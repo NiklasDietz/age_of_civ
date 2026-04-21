@@ -39,6 +39,7 @@
 #include "aoc/simulation/ai/AICommodityHoarding.hpp"
 #include "aoc/simulation/economy/CommodityExchange.hpp"
 #include "aoc/simulation/economy/Market.hpp"
+#include "aoc/simulation/economy/NavalTrade.hpp"
 
 // Tech
 #include "aoc/simulation/tech/TechTree.hpp"
@@ -98,6 +99,7 @@
 
 // Production
 #include "aoc/simulation/production/Waste.hpp"
+#include "aoc/simulation/production/Automation.hpp"
 
 // Unit supply
 #include "aoc/simulation/unit/SupplyLines.hpp"
@@ -566,6 +568,11 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
             }
         }
 
+        // C38: literacy multiplies science output. Education buildings
+        // now pay off — unschooled civs research at 0.5x, fully literate
+        // civs at 1.5x. Closes the loop between schools and tech speed.
+        science *= gsPlayer->humanCapital().scienceMultiplier();
+
         advanceResearch(gsPlayer->tech(), science);
         advanceCivicResearch(gsPlayer->civics(), culture, &gsPlayer->government());
     }
@@ -642,6 +649,9 @@ void processGlobalSystems(TurnContext& turnContext) {
 
     // Insurance premium payments
     processInsurancePremiums(gameState);
+
+    // Merchant ship fuel consumption (stalls ships lacking fuel).
+    processMerchantShipFuel(gameState);
 
     // AI futures trading (gene-driven) before settlement
     processAIFuturesTrading(gameState, turnContext.economy->market());
@@ -837,11 +847,13 @@ void processGlobalSystems(TurnContext& turnContext) {
     ai::resolvePendingAIEvents(gameState);
     tickWorldEvents(gameState);
 
-    // Victory tracking
-    updateVictoryTrackers(gameState, grid, *turnContext.economy, turnContext.currentTurn);
-
-    // Prestige accrual (participation-based endgame tally).
+    // Prestige accrual first — victory tracker's Confederation clique scoring
+    // and CSI diplomacy weighting read prestige, so accrue for this turn
+    // before the tracker snapshots it.
     processPrestige(gameState, grid, turnContext.diplomacy);
+
+    // Victory tracking (CSI, collapse, era evaluation).
+    updateVictoryTrackers(gameState, grid, *turnContext.economy, turnContext.currentTurn);
 }
 
 // ============================================================================
@@ -893,6 +905,16 @@ void processTurn(TurnContext& turnContext) {
             ai->executeTurn(*turnContext.gameState, *turnContext.grid, turnContext.fogOfWar,
                            *turnContext.diplomacy, turnContext.economy->market(), *turnContext.rng,
                            turnContext.dealTracker);
+        }
+    }
+
+    // Robot-worker slot assignment runs before production so bonus recipe
+    // slots take effect on the same turn they are stockpiled.
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : turnContext.gameState->players()) {
+        if (playerPtr == nullptr) { continue; }
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+            if (cityPtr == nullptr) { continue; }
+            updateCityAutomation(*cityPtr);
         }
     }
 
@@ -1064,6 +1086,17 @@ void processTurn(TurnContext& turnContext) {
                 s);
         }
     }
+
+    // Final phase: victory check. Run with fully-updated CSI/prestige/tourism
+    // from this turn so callers (Application, HeadlessSimulation, GameServer,
+    // FitnessEvaluator) observe the same post-turn state instead of racing
+    // against inter-turn state mutations.
+    turnContext.lastVictoryResult = checkVictoryConditions(
+        *turnContext.gameState,
+        turnContext.currentTurn,
+        turnContext.maxTurns,
+        turnContext.victoryTypeMask,
+        turnContext.diplomacy);
 
     ++turnContext.currentTurn;
 }

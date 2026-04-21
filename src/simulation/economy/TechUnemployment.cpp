@@ -8,6 +8,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/economy/TechUnemployment.hpp"
 #include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
 
 #include <algorithm>
@@ -90,6 +91,23 @@ void processUnemployment(aoc::game::GameState& gameState, PlayerId player) {
         updateUnemployment(unemployment, automationCount,
                            cityPtr->population(),
                            educationLevel, industrialLevel);
+
+        // C39: unemployment now actually hurts cities. Thresholds:
+        //   >15%: -1 amenity (unrest signal)
+        //   >30%: -3 amenities + growth halted via foodSurplus clamp.
+        // Without teeth the whole system was decorative; with it the
+        // player has a reason to invest in education or slow automation.
+        const float rate = unemployment.unemploymentRate;
+        CityHappinessComponent& h = cityPtr->happiness();
+        if (rate > 0.30f) {
+            h.amenities = std::max(0.0f, h.amenities - 3.0f);
+            if (cityPtr->foodSurplus() > 0.0f) {
+                cityPtr->setFoodSurplus(0.0f);
+            }
+        } else if (rate > 0.15f) {
+            h.amenities = std::max(0.0f, h.amenities - 1.0f);
+        }
+        h.happiness = h.amenities - h.demand + h.modifiers;
     }
 }
 

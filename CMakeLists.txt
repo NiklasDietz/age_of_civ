@@ -296,8 +296,6 @@ set(AOC_LIB_SOURCES
     src/simulation/economy/NavalTrade.cpp
     src/simulation/economy/EnergyDependency.cpp
     src/simulation/economy/StockMarket.cpp
-    src/simulation/economy/WageDemands.cpp
-    src/simulation/economy/EconomicEspionage.cpp
     src/simulation/economy/TradeAgreement.cpp
     src/simulation/economy/SupplyChain.cpp
     src/simulation/economy/TradeRouteSystem.cpp
@@ -663,5 +661,23 @@ add_subdirectory(ml/cpp)
 option(AOC_BUILD_TESTS "Build unit tests" ON)
 if(AOC_BUILD_TESTS)
     enable_testing()
-    # Tests will be added here as modules are implemented
+
+    set(AOC_SMOKE_TESTS
+        test_unemployment
+        test_building_capacity
+        test_production_efficiency
+    )
+
+    foreach(aoc_test ${AOC_SMOKE_TESTS})
+        add_executable(${aoc_test} tests/${aoc_test}.cpp)
+        target_link_libraries(${aoc_test} PRIVATE aoc_lib)
+        add_test(NAME ${aoc_test} COMMAND ${aoc_test})
+    endforeach()
+
+    # Turn-loop smoke: drive aoc_simulate for a handful of turns. Non-zero
+    # exit means the headless loop crashed or asserted.
+    if(TARGET aoc_simulate)
+        add_test(NAME test_turn_loop_smoke
+                 COMMAND aoc_simulate --turns 5 --players 2 --output ${CMAKE_BINARY_DIR}/smoke.csv)
+    endif()
 endif()

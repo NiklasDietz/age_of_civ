@@ -99,6 +99,17 @@ void executeAssetFreeze(aoc::game::GameState& gameState,
     sanctionerState.goldBarReserves   += goldSeized;
     sanctionerState.updateCoinTier();
 
+    // C28: fiat/digital civs hold wealth in treasury, not physical coin
+    // reserves, so coin-only seizure leaves them untouched. Seize the same
+    // fraction of treasury across all tiers so upgrading to Fiat doesn't
+    // grant sanctions immunity.
+    const CurrencyAmount treasurySeized = static_cast<CurrencyAmount>(
+        static_cast<float>(targetPlayer->treasury()) * SEIZURE_FRACTION);
+    if (treasurySeized > 0) {
+        targetPlayer->setTreasury(targetPlayer->treasury() - treasurySeized);
+        sanctionerPlayer->addGold(treasurySeized);
+    }
+
     // Cancel bonds held by target that were issued by sanctioner
     PlayerBondComponent& bonds = targetPlayer->bonds();
     bonds.heldBonds.erase(

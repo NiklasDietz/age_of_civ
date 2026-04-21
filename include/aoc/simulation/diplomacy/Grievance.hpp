@@ -20,14 +20,14 @@ namespace aoc::sim {
 enum class GrievanceType : uint8_t {
     SettledNearBorders,        ///< -10, decays over 30 turns
     BrokePromise,              ///< -20, decays over 50 turns
-    DeclaredWarOnAlly,         ///< -30, permanent
+    DeclaredWarOnAlly,         ///< -30, decays over 100 turns (H1.10 cap)
     ConqueredCity,             ///< -15 per city, decays over 40 turns
-    TradeEmbargo,              ///< -10, while active
+    TradeEmbargo,              ///< -10, decays over 100 turns; refreshed while active
     ViolatedEmbargo,           ///< -15, decays over 40 turns
     FailedAllianceObligation,  ///< -25, decays over 60 turns
-    BrokeNonAggression,        ///< -30, permanent
+    BrokeNonAggression,        ///< -30, decays over 100 turns (H1.10 cap)
     DMZViolation,              ///< -10, decays over 20 turns
-    LostCityToSecession,       ///< -15 per city, permanent (bitter memory)
+    LostCityToSecession,       ///< -15 per city, decays over 100 turns (H1.10 cap)
     IdeologicalDifference,     ///< -5/turn, capped at -50 per pair
     EspionageCaught,           ///< -20 per caught spy, decays over 40 turns
     BulliedCityState,          ///< -10 per bully, decays over 30 turns
@@ -37,7 +37,7 @@ struct Grievance {
     GrievanceType type;
     PlayerId      against;
     int32_t       severity;
-    int32_t       turnsRemaining; ///< 0 = permanent
+    int32_t       turnsRemaining; ///< Always > 0 after H1.10; zero-sentinel retired.
 };
 
 /// Generate IdeologicalDifference grievances for every pair of players whose

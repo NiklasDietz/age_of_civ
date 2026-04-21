@@ -11,6 +11,7 @@
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
+#include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -90,6 +91,11 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
             for (const BuildingId& bid : d.buildings) {
                 faithGain += static_cast<float>(buildingDef(bid).faithBonus);
             }
+        }
+
+        // Wonder faith bonus (H4.9): Stonehenge etc.
+        for (const WonderId wid : city->wonders().wonders) {
+            faithGain += wonderDef(wid).effect.faithBonus;
         }
     }
 

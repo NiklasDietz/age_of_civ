@@ -1683,7 +1683,17 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                          static_cast<unsigned>(other), relationScore);
             }
 
-            if (!rel.hasEconomicAlliance && relationScore > 20) {
+            // H6.4: alliance formation is now personality-gated. Without this,
+            // every AI with relations > 20 plus 3 complementary goods formed an
+            // economic alliance on turn 1, flattening behavioral distinction.
+            // Common gate: alliance desire / diplomatic openness above 0.5.
+            // Per-type gate: matching focus > 0.5 so a warmonger doesn't chase
+            // a cultural alliance and a zealot doesn't chase a research one.
+            const bool openToAlliance =
+                beh.allianceDesire > 0.5f && beh.diplomaticOpenness > 0.5f;
+
+            if (openToAlliance && !rel.hasEconomicAlliance && relationScore > 20
+                && beh.economicFocus > 0.5f) {
                 int32_t complementaryGoods = 0;
                 const uint16_t totalGoods = market.goodsCount();
                 for (uint16_t g = 0; g < totalGoods; ++g) {
@@ -1698,12 +1708,76 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                     }
                 }
                 if (complementaryGoods >= 3) {
-                    diplomacy.formEconomicAlliance(this->m_player, other);
-                    LOG_INFO("AI %u Formed economic alliance with player %u "
-                             "(relations %d, %d complementary goods)",
+                    const aoc::ErrorCode ec = diplomacy.formEconomicAlliance(
+                        this->m_player, other, gameState.currentTurn());
+                    if (ec == aoc::ErrorCode::Ok) {
+                        LOG_INFO("AI %u Formed economic alliance with player %u "
+                                 "(relations %d, %d complementary goods)",
+                                 static_cast<unsigned>(this->m_player),
+                                 static_cast<unsigned>(other),
+                                 relationScore, complementaryGoods);
+                    }
+                }
+            }
+
+            // H6.4: research agreement — science-focused leaders at warm relations.
+            if (openToAlliance && !rel.hasResearchAgreement && relationScore > 25
+                && beh.scienceFocus > 0.8f) {
+                const aoc::ErrorCode ec = diplomacy.formResearchAgreement(
+                    this->m_player, other, gameState.currentTurn());
+                if (ec == aoc::ErrorCode::Ok) {
+                    LOG_INFO("AI %u Formed research agreement with player %u "
+                             "(relations %d, scienceFocus %.2f)",
                              static_cast<unsigned>(this->m_player),
                              static_cast<unsigned>(other),
-                             relationScore, complementaryGoods);
+                             relationScore,
+                             static_cast<double>(beh.scienceFocus));
+                }
+            }
+
+            // H6.4: military alliance — requires aggressive or defensive profile
+            // AND strong trust. Warmongers seek allies; peaceniks don't.
+            if (openToAlliance && !rel.hasMilitaryAlliance && relationScore > 35
+                && beh.militaryAggression > 0.8f) {
+                const aoc::ErrorCode ec = diplomacy.formMilitaryAlliance(
+                    this->m_player, other, gameState.currentTurn());
+                if (ec == aoc::ErrorCode::Ok) {
+                    LOG_INFO("AI %u Formed military alliance with player %u "
+                             "(relations %d, aggression %.2f)",
+                             static_cast<unsigned>(this->m_player),
+                             static_cast<unsigned>(other),
+                             relationScore,
+                             static_cast<double>(beh.militaryAggression));
+                }
+            }
+
+            // H6.4: cultural alliance — culture-focused leaders.
+            if (openToAlliance && !rel.hasCulturalAlliance && relationScore > 25
+                && beh.cultureFocus > 0.8f) {
+                const aoc::ErrorCode ec = diplomacy.formCulturalAlliance(
+                    this->m_player, other, gameState.currentTurn());
+                if (ec == aoc::ErrorCode::Ok) {
+                    LOG_INFO("AI %u Formed cultural alliance with player %u "
+                             "(relations %d, cultureFocus %.2f)",
+                             static_cast<unsigned>(this->m_player),
+                             static_cast<unsigned>(other),
+                             relationScore,
+                             static_cast<double>(beh.cultureFocus));
+                }
+            }
+
+            // H6.4: religious alliance — religious-zealot leaders only.
+            if (openToAlliance && !rel.hasReligiousAlliance && relationScore > 25
+                && beh.religiousZeal > 0.8f) {
+                const aoc::ErrorCode ec = diplomacy.formReligiousAlliance(
+                    this->m_player, other, gameState.currentTurn());
+                if (ec == aoc::ErrorCode::Ok) {
+                    LOG_INFO("AI %u Formed religious alliance with player %u "
+                             "(relations %d, religiousZeal %.2f)",
+                             static_cast<unsigned>(this->m_player),
+                             static_cast<unsigned>(other),
+                             relationScore,
+                             static_cast<double>(beh.religiousZeal));
                 }
             }
 
@@ -1961,11 +2035,12 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
 
                 const int32_t violationTurns = violatorRel.turnsWithViolation;
 
-                if (violationTurns > baseTolerance && violatorRel.casusBelliGranted) {
+                if (violationTurns > baseTolerance && violatorRel.casusBelliGranted()) {
                     // Beyond tolerance and casus belli granted: declare war
                     // (if not already at war and we have military capability)
                     if (ourMilitary > 0 && beh.militaryAggression > 0.3f) {
-                        diplomacy.declareWar(this->m_player, other);
+                        diplomacy.declareWar(this->m_player, other,
+                                             aoc::sim::CasusBelliType::FormalWar);
                         LOG_INFO("AI %u Declared war on Player %u for border violation "
                                  "(%d turns, tolerance %d, aggression %.2f)",
                                  static_cast<unsigned>(this->m_player),
@@ -2013,6 +2088,20 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                     if (repScore < -20) {
                         tollRate += 0.05f;
                         tollRate = std::min(tollRate, 0.50f);
+                    }
+                    // C25: reciprocal tariff — mirror partner's rate if they
+                    // chose a higher one. Without this, trade wars are
+                    // one-sided: AI A hikes tolls, AI B keeps being nice.
+                    // Add a small premium above their rate so retaliation is
+                    // visible and converges to escalation signal.
+                    const aoc::game::Player* theirPlayer = gameState.player(other);
+                    if (theirPlayer != nullptr) {
+                        std::unordered_map<PlayerId, float>::const_iterator mirrorIt =
+                            theirPlayer->tariffs().perPlayerTollRates.find(this->m_player);
+                        if (mirrorIt != theirPlayer->tariffs().perPlayerTollRates.end()
+                            && mirrorIt->second > tollRate + 0.05f) {
+                            tollRate = std::min(0.50f, mirrorIt->second + 0.02f);
+                        }
                     }
                     ourPlayer->tariffs().perPlayerTollRates[other] = tollRate;
 

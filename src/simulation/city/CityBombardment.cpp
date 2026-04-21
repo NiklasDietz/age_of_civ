@@ -57,6 +57,10 @@ void processCityBombardment(aoc::game::GameState& gameState,
         syncWallState(*city);
 
         CityWallState& walls = city->walls();
+        // H2.12: snapshot wall intactness BEFORE any repair this turn. If the
+        // wall was breached coming in, it cannot fire this turn even if we
+        // auto-repair a tick back. Repair XOR attack per turn.
+        const bool wallsIntactAtStart = walls.hasWalls() && walls.isIntact();
         // Encampment district adds a ranged-attack source independent of walls.
         // Strength scales with Barracks presence. Range 2 base, +1 with Barracks.
         const bool hasEncampment = city->districts().hasDistrict(DistrictType::Encampment);
@@ -88,11 +92,12 @@ void processCityBombardment(aoc::game::GameState& gameState,
             if (!hasEncampment) { continue; }
         }
 
-        // Base ranged attack: walls (if intact) OR encampment. Take the stronger
-        // of the two so an Encampment in a walled city still hits hard.
+        // Base ranged attack: walls (if intact AT START of turn) OR encampment.
+        // H2.12: use wallsIntactAtStart so a wall auto-repaired from 0 this
+        // turn cannot also fire — repair XOR attack.
         float bombardStrength = 0.0f;
         int32_t attackRange = 0;
-        if (walls.hasWalls() && walls.isIntact()) {
+        if (wallsIntactAtStart) {
             bombardStrength = static_cast<float>(walls.rangedStrength);
             attackRange     = walls.range;
         }
@@ -172,12 +177,15 @@ int32_t dealSiegeDamage(aoc::game::City& city, const aoc::game::Unit& attacker) 
     int32_t siegeDamage = 0;
 
     if (def.unitClass == UnitClass::Artillery) {
-        // Full siege: ranged strength + combat strength
-        siegeDamage = def.rangedStrength + def.combatStrength / 2;
+        // H2.13: full siege (ranged + combat/2) capped at 60 so Artillery
+        // (80+9=89) cannot solo-break a wall per turn. Melee now keeps up.
+        siegeDamage = std::min(60, def.rangedStrength + def.combatStrength / 2);
     } else if (def.unitClass == UnitClass::Melee || def.unitClass == UnitClass::Cavalry
                || def.unitClass == UnitClass::Armor) {
-        // Melee against walls: 15% effectiveness
-        siegeDamage = std::max(1, def.combatStrength * 15 / 100);
+        // H2.13: melee against walls bumped 15% -> 25% + a flat +10 adjacent
+        // bonus (always adjacent when attacking a city). Closes the 8x gap
+        // vs. Artillery.
+        siegeDamage = std::max(1, def.combatStrength * 25 / 100 + 10);
     } else {
         // Other classes: 10%
         siegeDamage = std::max(1, def.combatStrength * 10 / 100);

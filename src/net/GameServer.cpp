@@ -152,6 +152,8 @@ void GameServer::initialize(const GameConfig& config) {
         this->m_turnCtx.aiControllers.push_back(&ai);
     }
     this->m_turnCtx.allPlayers = this->m_allPlayers;
+    this->m_turnCtx.maxTurns = static_cast<TurnNumber>(this->m_maxTurns);
+    this->m_turnCtx.victoryTypeMask = aoc::sim::VICTORY_MASK_ALL;
     this->m_turnCtx.humanPlayer = this->m_humanPlayers.empty()
         ? INVALID_PLAYER : this->m_humanPlayers[0];
 
@@ -192,12 +194,8 @@ bool GameServer::tick() {
     // 3. Process turn
     aoc::sim::processTurn(this->m_turnCtx);
 
-    // 4. Check victory
-    aoc::sim::VictoryResult vr = aoc::sim::checkVictoryConditions(
-        this->m_gameState, this->m_turnCtx.currentTurn,
-        static_cast<TurnNumber>(this->m_maxTurns),
-        aoc::sim::VICTORY_MASK_ALL, &this->m_diplomacy);
-    if (vr.type != aoc::sim::VictoryType::None) {
+    // 4. Check victory: read cached result from processTurn.
+    if (this->m_turnCtx.lastVictoryResult.type != aoc::sim::VictoryType::None) {
         this->m_gameOver = true;
     }
 

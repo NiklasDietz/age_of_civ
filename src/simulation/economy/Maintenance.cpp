@@ -11,6 +11,7 @@
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/monetary/Inflation.hpp"
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
@@ -229,6 +230,11 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
             for (BuildingId bid : d.buildings) {
                 cityGold += static_cast<CurrencyAmount>(buildingDef(bid).goldBonus);
             }
+        }
+
+        // Wonder gold bonus (H4.9): Big Ben, Colossus, Machu Picchu, etc.
+        for (const WonderId wid : city->wonders().wonders) {
+            cityGold += static_cast<CurrencyAmount>(wonderDef(wid).effect.goldBonus);
         }
 
         // Goods-based commerce tax: goods circulating in the city represent

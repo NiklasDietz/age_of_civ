@@ -152,9 +152,9 @@ void updateNavalPassageViolations(aoc::game::GameState& gameState,
                     diplomacy.addReputationModifier(a, b, -3, 10);
                 }
 
-                // Stage 3: Casus belli (reuses land casus belli flag since it's per-pair)
-                if (effectiveTurns >= CASUS_BELLI_TURN && !rel.casusBelliGranted) {
-                    rel.casusBelliGranted = true;
+                // Stage 3: Casus belli — naval-specific flag (distinct from land CB).
+                if (effectiveTurns >= CASUS_BELLI_TURN && !rel.casusBelliNaval) {
+                    rel.casusBelliNaval = true;
                     LOG_INFO("Casus belli granted: Player %u can declare war on Player %u "
                              "without diplomatic penalty (naval passage violation)",
                              static_cast<unsigned>(b), static_cast<unsigned>(a));

@@ -129,4 +129,27 @@ void applyInflationEffects(MonetaryStateComponent& state);
                                                  bool isReserveCurrency,
                                                  CurrencyAmount totalForeignGDP);
 
+/**
+ * @brief Real interest rate = nominal policy rate minus current inflation.
+ *
+ * Drives the tightening/loosening feedback that makes the central bank tool
+ * actually bind. Positive real rates suppress discretionary consumption and
+ * pull money into bond-like savings; negative real rates encourage spending.
+ */
+[[nodiscard]] inline float realInterestRate(const MonetaryStateComponent& state) {
+    return state.interestRate - state.inflationRate;
+}
+
+/**
+ * @brief Demand multiplier for discretionary goods from real interest rates.
+ *
+ * Applied to elastic categories (consumer goods, advanced consumer goods)
+ * during `computePlayerNeeds`. Necessities (wheat, clothing) remain inelastic.
+ *
+ * High real rates (tight money): multiplier drops toward 0.7 as consumers
+ * delay purchases and lenders pull back. Negative real rates (easy money):
+ * multiplier rises toward 1.25 as borrowing is cheap and saving is penalized.
+ */
+[[nodiscard]] float realRateConsumptionMultiplier(float realRate);
+
 } // namespace aoc::sim

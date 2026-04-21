@@ -8,15 +8,20 @@
 #include "aoc/map/Terrain.hpp"
 #include "aoc/core/Log.hpp"
 
+#include <algorithm>
+
 namespace aoc::sim {
 
 void GlobalClimateComponent::addCO2(float amount) {
-    this->co2Level += amount;
+    this->co2Level = std::min(CO2_MAX, this->co2Level + amount);
     // Temperature rises 0.01 degrees per 10 CO2
     this->globalTemperature = this->co2Level * 0.001f;
 }
 
 void GlobalClimateComponent::processTurn(aoc::map::HexGrid& grid, aoc::Random& rng) {
+    // H6.6: natural decay each turn. Net CO2 flat when emissions ~= 0.5/turn.
+    this->co2Level = std::max(0.0f, this->co2Level - CO2_DECAY_PER_TURN);
+    this->globalTemperature = this->co2Level * 0.001f;
     // No climate damage until meaningful warming. Previous 1.0 degree threshold
     // fired at co2 ~1000 which happens too early; by mid-game the entire coast
     // is ocean and the map looks progressively drabber. Push the floor up and

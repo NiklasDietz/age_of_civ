@@ -105,4 +105,22 @@ void setReserveRequirement(MonetaryStateComponent& state, Percentage ratio);
  */
 bool tickDebasementDiscovery(MonetaryStateComponent& state);
 
+/**
+ * @brief Remint currency -- partial escape from a stacked debasement penalty.
+ *
+ * Before this existed, hitting the 50% debasement cap was a one-way trip:
+ * the civ was locked into a permanent trust penalty until it could transition
+ * out of CommodityMoney (and many civs never get there). Remint burns 20%
+ * of the treasury to melt bad coinage and re-strike at a lower mix ratio.
+ *
+ * Each call decreases debasementRatio by 0.10 (floor 0.0) and also clears
+ * the `discoveredByPartners` flag so partners re-audit from scratch.
+ *
+ * @param state Player's monetary state.
+ * @return Ok if successful, InvalidMonetaryTransition if not in CommodityMoney,
+ *         InsufficientResources if treasury can't pay the 20% cost, or
+ *         InvalidArgument if already at 0% debasement.
+ */
+[[nodiscard]] ErrorCode remintCurrency(MonetaryStateComponent& state);
+
 } // namespace aoc::sim

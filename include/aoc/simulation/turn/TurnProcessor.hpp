@@ -46,6 +46,7 @@
 #include "aoc/core/Types.hpp"
 #include "aoc/core/Random.hpp"
 #include "aoc/map/HexCoord.hpp"
+#include "aoc/simulation/victory/VictoryCondition.hpp"
 
 #include <cstdint>
 #include <string>
@@ -107,6 +108,18 @@ struct TurnContext {
     /// default for GA runs; wired on for diagnostic single-sim invocations
     /// via aoc_simulate --trace-file PATH.
     aoc::core::DecisionLog* decisionLog = nullptr;
+
+    /// Turn limit for turn-limit victories (Prestige, Score). Default 500.
+    TurnNumber maxTurns = 500;
+
+    /// Bitmask of enabled victory types. Default: all types enabled.
+    uint32_t victoryTypeMask = VICTORY_MASK_ALL;
+
+    /// Result of the victory check performed at the end of processTurn.
+    /// Callers should read this instead of calling checkVictoryConditions()
+    /// directly, so all victory logic observes the same post-turn state.
+    /// `type == VictoryType::None` when no condition fired on the last turn.
+    VictoryResult lastVictoryResult;
 };
 
 /**

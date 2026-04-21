@@ -8,6 +8,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <string_view>
 
 namespace aoc::game { class GameState; }
@@ -46,15 +47,29 @@ struct GreatPersonComponent {
     bool     isActivated = false;
 };
 
+/// Hard cap on Great Persons recruited per type. H3.9: without a cap, the
+/// `60 + 40 * recruited` threshold grows linearly and a tall empire can still
+/// hit it forever, producing unbounded memory use at turn 300+.
+inline constexpr int32_t MAX_GP_PER_TYPE = 12;
+
 /// ECS component on player entities tracking Great Person point accumulation.
 struct PlayerGreatPeopleComponent {
     PlayerId owner = INVALID_PLAYER;
     std::array<float, static_cast<std::size_t>(GreatPersonType::Count)> points = {};
     std::array<int32_t, static_cast<std::size_t>(GreatPersonType::Count)> recruited = {};
+    /// Set once the type's roster is exhausted (all historical figures recruited,
+    /// or MAX_GP_PER_TYPE reached). Accumulation and recruitment short-circuit
+    /// for exhausted types so points cannot silently drain forever (H3.8).
+    std::array<bool, static_cast<std::size_t>(GreatPersonType::Count)> exhausted = {};
 
-    /// Threshold for next GP of this type: 60 + 40 * already_recruited
+    /// Threshold for next GP of this type: 60 + 40 * already_recruited.
+    /// Returns +inf once the type is exhausted, so the recruitment check
+    /// never fires for that slot again.
     [[nodiscard]] float threshold(GreatPersonType type) const {
         const std::size_t idx = static_cast<std::size_t>(type);
+        if (this->exhausted[idx]) {
+            return std::numeric_limits<float>::infinity();
+        }
         return 60.0f + 40.0f * static_cast<float>(this->recruited[idx]);
     }
 };

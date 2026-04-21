@@ -349,6 +349,12 @@ void saveSummary(const aoc::ga::DifficultyTiers& tiers, const char* path) {
     };
 
     file << "Evolved Utility AI Weights (C++ GA)\n";
+    // H6.5: tag output with genome version so any future binary loader can
+    // detect stale dumps and zero-pad via fromArrayPadded.
+    file << "GenomeVersion = "
+         << aoc::sim::LeaderBehavior::GENOME_VERSION
+         << "  ParamCount = "
+         << aoc::sim::LeaderBehavior::PARAM_COUNT << "\n";
     file << "==================================================\n\n";
 
     struct TierEntry {

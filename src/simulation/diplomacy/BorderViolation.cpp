@@ -152,8 +152,8 @@ void updateBorderViolations(aoc::game::GameState& gameState,
                 }
 
                 // Stage 3: Casus belli after sustained violation
-                if (effectiveTurns >= CASUS_BELLI_TURN && !rel.casusBelliGranted) {
-                    rel.casusBelliGranted = true;
+                if (effectiveTurns >= CASUS_BELLI_TURN && !rel.casusBelliLand) {
+                    rel.casusBelliLand = true;
                     LOG_INFO("Casus belli granted: Player %u can declare war on Player %u "
                              "without diplomatic penalty (border violation)",
                              static_cast<unsigned>(b), static_cast<unsigned>(a));

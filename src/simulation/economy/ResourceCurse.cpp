@@ -5,9 +5,11 @@
 
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/simulation/economy/ResourceCurse.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
+#include "aoc/simulation/city/Happiness.hpp"
 
 #include <algorithm>
 
@@ -60,15 +62,26 @@ ResourceCurseModifiers computeResourceCurse(const aoc::game::GameState& gameStat
     return result;
 }
 
-void applyResourceCurseEffects(aoc::game::GameState& /*gameState*/,
-                                PlayerId /*player*/,
-                                const ResourceCurseModifiers& /*modifiers*/) {
-    // Applied during ResourceProduction phase:
-    // - Multiply processed/advanced good output by manufacturingPenalty
-    // - Store currencyAppreciation for trade price calculations
-    // - Subtract happinessPenalty from city amenities
-    //
-    // Full implementation wired when city production executes recipes.
+void applyResourceCurseEffects(aoc::game::GameState& gameState,
+                                PlayerId player,
+                                const ResourceCurseModifiers& modifiers) {
+    // C40: stamp modifiers onto the player so downstream systems read them:
+    //   - EconomySimulation::executeProduction multiplies processed-good
+    //     output by manufacturingPenalty.
+    //   - ForexMarket reads currencyAppreciation to lift the fundamental rate.
+    //   - Happiness pass subtracts happinessPenalty from city amenities below.
+    aoc::game::Player* playerObj = gameState.player(player);
+    if (playerObj == nullptr) { return; }
+    playerObj->resourceCurse() = modifiers;
+
+    if (modifiers.happinessPenalty > 0.0f) {
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+            if (cityPtr == nullptr) { continue; }
+            CityHappinessComponent& h = cityPtr->happiness();
+            h.amenities = std::max(0.0f, h.amenities - modifiers.happinessPenalty);
+            h.happiness = h.amenities - h.demand + h.modifiers;
+        }
+    }
 }
 
 } // namespace aoc::sim

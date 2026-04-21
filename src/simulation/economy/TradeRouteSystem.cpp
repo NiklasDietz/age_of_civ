@@ -257,6 +257,26 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     if (originCity == nullptr) {
         return ErrorCode::InvalidArgument;
     }
+
+    // C23: enforce per-civ route cap scaling with monetary tier. Without this,
+    // a civ can spam unlimited permanent routes (trader.maxTrips = -1). Cap
+    // comes from MonetarySystem::maxTradeRoutes() — 1 at Barter, 14 at Digital.
+    {
+        const int32_t cap = ownerPlayer->monetary().maxTradeRoutes();
+        int32_t activeRoutes = 0;
+        for (const std::unique_ptr<aoc::game::Unit>& u : ownerPlayer->units()) {
+            if (u == nullptr) { continue; }
+            if (u.get() == traderUnit) { continue; }
+            if (u->typeDef().unitClass == UnitClass::Trader) {
+                ++activeRoutes;
+            }
+        }
+        if (activeRoutes >= cap) {
+            LOG_INFO("Trade route rejected: player %u at cap %d (active %d)",
+                     static_cast<unsigned>(traderUnit->owner()), cap, activeRoutes);
+            return ErrorCode::InvalidArgument;
+        }
+    }
     
 
     // Create TraderComponent
@@ -302,9 +322,16 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     bool originIsCoastal = isCityCoastal(originCity);
     bool destIsCoastal   = isCityCoastal(destCity);
 
+    // C24: restore Harbor prereq for Sea routes. Coastal alone isn't enough —
+    // without a Harbor district, Sea routes are identical to Land but faster
+    // and more profitable, so coastal civs win by geography alone. AI gets a
+    // utility bump for Harbor when coastal (wired in AIBuilderController).
+    const bool originHasHarbor = originDistricts.hasDistrict(DistrictType::Harbor);
+    const bool destHasHarbor   = destDistricts.hasDistrict(DistrictType::Harbor);
+
     if (ownerHasAviation && originHasAirport && destHasAirport) {
         trader.routeType = TradeRouteType::Air;
-    } else if (originIsCoastal && destIsCoastal) {
+    } else if (originIsCoastal && destIsCoastal && originHasHarbor && destHasHarbor) {
         trader.routeType = TradeRouteType::Sea;
     } else {
         trader.routeType = TradeRouteType::Land;
@@ -654,9 +681,13 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 && traderOwner < aoc::sim::CITY_STATE_PLAYER_BASE
                 && cityOwner < aoc::sim::CITY_STATE_PLAYER_BASE) {
                 const PairwiseRelation& rel = diplomacy->relation(traderOwner, cityOwner);
-                for (const TradeCargo& c : trader.cargo) {
-                    if (rel.isGoodEmbargoed(c.goodId)) {
-                        // -5 reputation per violation, 30-turn decay
+                // C29: embargo was toothless — grievance + rep hit but cargo
+                // still delivered. Seize embargoed cargo so violation costs
+                // the trip's goods, not just reputation. Keeps physical
+                // interdiction teeth without needing a separate customs pass.
+                bool violated = false;
+                for (auto cargoIt = trader.cargo.begin(); cargoIt != trader.cargo.end();) {
+                    if (rel.isGoodEmbargoed(cargoIt->goodId)) {
                         diplomacy->addReputationModifier(traderOwner, cityOwner, -5, 30);
 
                         aoc::game::Player* embargoPartner = gameState.player(cityOwner);
@@ -665,14 +696,18 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                                 GrievanceType::ViolatedEmbargo, traderOwner);
                         }
 
-                        LOG_INFO("Embargo violation: Player %u traded embargoed good %u "
-                                 "to Player %u's city",
+                        LOG_INFO("Embargo violation: Player %u cargo good %u seized "
+                                 "entering Player %u city",
                                  static_cast<unsigned>(traderOwner),
-                                 static_cast<unsigned>(c.goodId),
+                                 static_cast<unsigned>(cargoIt->goodId),
                                  static_cast<unsigned>(cityOwner));
-                        break;  // One grievance per delivery, not per good
+                        violated = true;
+                        cargoIt = trader.cargo.erase(cargoIt);
+                    } else {
+                        ++cargoIt;
                     }
                 }
+                (void)violated;
             }
 
             // Unload cargo and earn gold based on market prices
@@ -976,9 +1011,13 @@ TradeRouteEstimate estimateTradeRouteIncome(
         }
     }
 
+    // C24: mirror Harbor prereq so AI income estimate matches actual route.
+    const bool originHasHarborE = originCity->districts().hasDistrict(DistrictType::Harbor);
+    const bool destHasHarborE   = destCity.districts().hasDistrict(DistrictType::Harbor);
+
     if (ownerHasAviation && originHasAirport && destHasAirport) {
         estimate.routeType = TradeRouteType::Air;
-    } else if (originIsCoastal && destIsCoastal) {
+    } else if (originIsCoastal && destIsCoastal && originHasHarborE && destHasHarborE) {
         estimate.routeType = TradeRouteType::Sea;
     } else {
         estimate.routeType = TradeRouteType::Land;
@@ -1045,8 +1084,24 @@ TradeRouteEstimate estimateTradeRouteIncome(
         ++slotCount;
     }
 
-    estimate.estimatedGoldPerTrip = static_cast<CurrencyAmount>(
+    // C31: AI was booking routes at gross value. Subtract expected tolls so
+    // the utility score matches realized profit — keeps AI from signing
+    // negative-EV routes when partner raised their rate.
+    const CurrencyAmount grossGold = static_cast<CurrencyAmount>(
         static_cast<float>(totalValue) * tempTrader.goldMultiplier());
+    CurrencyAmount expectedTolls = 0;
+    if (destCity.owner() != traderUnit.owner()) {
+        const aoc::game::Player* destPlayer = gameState.player(destCity.owner());
+        if (destPlayer != nullptr) {
+            std::unordered_map<PlayerId, float>::const_iterator tollIt =
+                destPlayer->tariffs().perPlayerTollRates.find(traderUnit.owner());
+            if (tollIt != destPlayer->tariffs().perPlayerTollRates.end()) {
+                expectedTolls = static_cast<CurrencyAmount>(
+                    static_cast<float>(grossGold) * tollIt->second);
+            }
+        }
+    }
+    estimate.estimatedGoldPerTrip = grossGold - expectedTolls;
 
     return estimate;
 }

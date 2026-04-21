@@ -9,7 +9,11 @@
  */
 
 #include "aoc/core/Types.hpp"
+#include "aoc/core/ErrorCodes.hpp"
+#include "aoc/simulation/diplomacy/AllianceTypes.hpp"
+#include "aoc/simulation/diplomacy/CasusBelli.hpp"
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -73,7 +77,26 @@ struct PairwiseRelation {
     bool    hasMilitaryAlliance  = false;   ///< Share visibility, join wars
     bool    hasResearchAgreement = false;   ///< +10% science for both
     bool    hasEconomicAlliance  = false;   ///< Shared market prices, reduced tariffs
+    bool    hasCulturalAlliance  = false;   ///< +25% tourism between allies (L1)
+    bool    hasReligiousAlliance = false;   ///< +25% faith on shared holy sites (L1)
     bool    hasEmbargo         = false;
+
+    // -- Alliance level tracking (H1.1) --
+    /// Per-type level/turnsActive. Index by AllianceType value. Entry 0 is
+    /// reserved for AllianceType::None and unused. The matching boolean
+    /// above gates `isActive`; this state only tracks level progression.
+    std::array<AllianceState, ALLIANCE_TYPE_COUNT + 1> alliances{};
+
+    /// Turn number on which the most recent alliance of any type was formed.
+    /// Used by the 20-turn cooldown (H1.6) to prevent alliance spam.
+    /// -1 means no alliance has ever been formed on this pair.
+    int32_t lastAllianceFormTurn = -1;
+
+    /// Countdown for auto-break when relations sour (H1.4). Incremented each
+    /// turn `totalScore() < -30` while an alliance is active; when it reaches
+    /// the auto-break threshold, all alliances are cleared and both sides
+    /// take a reputation hit. Reset to 0 as soon as score recovers.
+    int32_t allianceBreakWarningTurns = 0;
     std::vector<uint16_t> embargoedGoods; ///< Per-resource embargo list (good IDs)
     std::vector<RelationModifier> modifiers;
 
@@ -82,16 +105,27 @@ struct PairwiseRelation {
     // are diplomatic (reputation penalty, casus belli), not mechanical barriers.
     int32_t unitsInTerritory    = 0;   ///< Military units currently in territory (updated per turn)
     int32_t turnsWithViolation  = 0;   ///< Consecutive turns with units present
-    bool    casusBelliGranted   = false; ///< Territory owner can declare war without third-party penalty
+    bool    casusBelliLand      = false; ///< CB from land border violation
     bool    warningIssued       = false; ///< First warning notification sent
 
     // -- Naval passage violation tracking (mirrors land border violations) --
     int32_t navalUnitsInWaters    = 0;   ///< Naval military units in owned waters (updated per turn)
     int32_t turnsWithNavalViolation = 0; ///< Consecutive turns with naval units present
+    bool    casusBelliNaval       = false; ///< CB from naval passage violation
     bool    navalWarningIssued    = false; ///< First naval warning notification sent
+
+    /// True if any CB source grants war-without-penalty.
+    [[nodiscard]] bool casusBelliGranted() const {
+        return this->casusBelliLand || this->casusBelliNaval;
+    }
 
     // -- Treaty tracking --
     PlayerId lastWarAggressor = INVALID_PLAYER; ///< Who started the last war (for NonAggression enforcement)
+
+    /// Casus belli claimed for the most recent `declareWar` on this pair (H1.5).
+    /// Grievance penalty applied to the war modifier scales with
+    /// `casusBelliDef(lastCasusBelli).grievanceMultiplier`.
+    CasusBelliType lastCasusBelli = CasusBelliType::SurpriseWar;
 
     // -- Passive warming --
     /// Accumulated peace-time warming (capped). Sustained peace slowly grows the
@@ -120,6 +154,18 @@ struct PairwiseRelation {
 
     [[nodiscard]] DiplomaticStance stance() const {
         return stanceFromScore(this->totalScore());
+    }
+
+    /// True if any alliance type (Defensive, Military, Research, Economic,
+    /// Cultural, Religious) is currently active between the pair. Used by
+    /// form*Alliance to reject overlapping alliances (H1.3).
+    [[nodiscard]] bool hasAnyAlliance() const {
+        return this->hasDefensiveAlliance
+            || this->hasMilitaryAlliance
+            || this->hasResearchAgreement
+            || this->hasEconomicAlliance
+            || this->hasCulturalAlliance
+            || this->hasReligiousAlliance;
     }
 
     /// Check if a specific good is embargoed (blanket embargo or per-resource).
@@ -170,10 +216,14 @@ public:
     /// respect, agreement honoring). AI reads it for toll rates and diplomacy.
     void addReputationModifier(PlayerId a, PlayerId b, int32_t amount, int32_t decayTurns);
 
-    /// Declare war between two players.
+    /// Declare war between two players, optionally with a Casus Belli
+    /// justification. The war modifier penalty is scaled by
+    /// `casusBelliDef(cb).grievanceMultiplier` (0.0 = no grievance, 1.0 = full
+    /// -50). Default Surprise War applies the full penalty.
     /// If an AllianceObligationTracker is provided, alliance obligations are
     /// generated for the target's allies automatically.
     void declareWar(PlayerId aggressor, PlayerId target,
+                    CasusBelliType cb = CasusBelliType::SurpriseWar,
                     struct AllianceObligationTracker* allianceTracker = nullptr);
 
     /// Make peace between two players.
@@ -182,20 +232,30 @@ public:
     /// Grant open borders between two players.
     void grantOpenBorders(PlayerId a, PlayerId b);
 
-    /// Form a defensive alliance.
-    void formDefensiveAlliance(PlayerId a, PlayerId b);
+    /// Form a defensive alliance. Returns ErrorCode::AllianceExists if the
+    /// pair already has any alliance active or is within the 20-turn post-
+    /// formation cooldown (H1.3 / H1.6).
+    [[nodiscard]] ErrorCode formDefensiveAlliance(PlayerId a, PlayerId b, int32_t currentTurn);
 
     /// Form a military alliance (shared visibility, join wars).
-    void formMilitaryAlliance(PlayerId a, PlayerId b);
+    [[nodiscard]] ErrorCode formMilitaryAlliance(PlayerId a, PlayerId b, int32_t currentTurn);
 
     /// Form a research agreement (+10% science for both).
-    void formResearchAgreement(PlayerId a, PlayerId b);
+    [[nodiscard]] ErrorCode formResearchAgreement(PlayerId a, PlayerId b, int32_t currentTurn);
 
     /// Form an economic alliance (shared market prices, reduced tariffs).
-    void formEconomicAlliance(PlayerId a, PlayerId b);
+    [[nodiscard]] ErrorCode formEconomicAlliance(PlayerId a, PlayerId b, int32_t currentTurn);
+
+    /// Form a cultural alliance (+25% tourism; L3 shares Great Works slots).
+    [[nodiscard]] ErrorCode formCulturalAlliance(PlayerId a, PlayerId b, int32_t currentTurn);
+
+    /// Form a religious alliance (+25% faith on shared holy sites).
+    [[nodiscard]] ErrorCode formReligiousAlliance(PlayerId a, PlayerId b, int32_t currentTurn);
 
     /**
      * @brief Tick all modifiers: decrement turnsRemaining, remove expired ones.
+     * Also ticks alliance levels (H1.1) and runs auto-break (H1.4) when
+     * relation score stays below -30 for two consecutive turns.
      * Called once per turn during the DiplomacyDecay phase.
      */
     void tickModifiers();

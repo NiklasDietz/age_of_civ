@@ -222,12 +222,11 @@ static void processSingleCityGrowth(aoc::game::City& city,
     // a separate resource — reuses building presence + nearby farms.
     // Base 4 (city center). Granary +2, Hospital +4.
     // Farms in city radius contribute 0.5 housing each (capped at +4).
+    int32_t housing = 4;
+    if (city.hasBuilding(BuildingId{15})) { housing += 2; }  // Granary
+    if (city.hasBuilding(BuildingId{22})) { housing += 4; }  // Hospital
+    if (city.hasBuilding(BuildingId{42})) { housing += 4; }  // Aqueduct
     {
-        int32_t housing = 4;
-        if (city.hasBuilding(BuildingId{15})) { housing += 2; }  // Granary
-        if (city.hasBuilding(BuildingId{22})) { housing += 4; }  // Hospital
-        if (city.hasBuilding(BuildingId{42})) { housing += 4; }  // Aqueduct
-        // Count farm improvements inside the city's workable radius.
         int32_t farmCount = 0;
         std::vector<aoc::hex::AxialCoord> nearby;
         nearby.reserve(64);
@@ -240,14 +239,31 @@ static void processSingleCityGrowth(aoc::game::City& city,
                 ++farmCount;
             }
         }
-        const int32_t farmHousing = std::min(farmCount / 2, 4);  // 2 farms → +1 housing, cap +4
-        housing += farmHousing;
+        housing += std::min(farmCount / 2, 4);  // 2 farms → +1 housing, cap +4
+    }
+    {
         const int32_t excess = city.population() - housing;
         if (excess >= 4) {
             surplus = 0.0f;
         } else if (excess >= 1) {
             // 1 → *0.75, 2 → *0.50, 3 → *0.25
             surplus *= (1.0f - 0.25f * static_cast<float>(excess));
+        }
+    }
+
+    // C33: consumer-goods/wheat shortfall penalty. EconomySimulation set
+    // foodShortfallRatio from unmet WHEAT demand this turn. Scales surplus
+    // down (ratio 1.0 = full starvation, no growth). Force small deficit at
+    // full shortfall so repeated starvation eventually shrinks the city.
+    {
+        const float shortfall = city.foodShortfallRatio();
+        if (shortfall > 0.0f) {
+            if (surplus > 0.0f) {
+                surplus *= std::max(0.0f, 1.0f - shortfall);
+            }
+            if (shortfall >= 0.8f) {
+                surplus -= 4.0f;  // fast decay into starvation clamp
+            }
         }
     }
 
@@ -301,7 +317,10 @@ static void processSingleCityGrowth(aoc::game::City& city,
     }
 
     city.setFoodSurplus(city.foodSurplus() + surplus);
-    if (city.foodSurplus() >= needed) {
+    if (city.foodSurplus() >= needed && city.population() < housing) {
+        // H4.1: housing cap binds population (not just throttles surplus).
+        // Growth blocked when already at or above cap so the prior turn's
+        // excess surplus can't push pop past housing by 1 on the next tick.
         // Granary (BuildingId{15}): preserves 50% of food stock after growth
         bool hasGranary = city.hasBuilding(BuildingId{15});
         if (hasGranary) {

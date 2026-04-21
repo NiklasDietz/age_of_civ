@@ -124,8 +124,12 @@ struct BarbarianClanComponent {
 /**
  * @brief Determine what unit type a barbarian encampment should spawn
  * based on the current turn number (difficulty scaling).
+ *
+ * H5.7: leadingEra floors the unit choice. Pass -1 to disable era scaling.
+ * When leadingEra >= given threshold, barbs spawn Tanks/Infantry/etc. even
+ * if turn count alone would keep them at Musketmen.
  */
-[[nodiscard]] UnitTypeId barbarianSpawnUnit(int32_t turnNumber);
+[[nodiscard]] UnitTypeId barbarianSpawnUnit(int32_t turnNumber, int32_t leadingEra = -1);
 
 /**
  * @brief Gold and XP reward for destroying a barbarian encampment.

@@ -60,13 +60,14 @@ void executeFiscalPolicy(MonetaryStateComponent& state, CurrencyAmount gdp) {
         state.governmentDebt += interest;
     }
 
-    // In non-barter systems, government spending enters the money supply
-    if (state.system != MonetarySystemType::Barter) {
-        state.moneySupply += state.governmentSpending;
-        // Tax revenue removes money from circulation
-        state.moneySupply -= state.taxRevenue;
-        state.moneySupply = std::max(static_cast<CurrencyAmount>(0), state.moneySupply);
-    }
+    // Fiscal flows redistribute money between government and private sector;
+    // they do NOT create or destroy money. Money creation is reserved for
+    // printMoney / sellGold / monetizeDebt (all routed through
+    // adjustMoneySupply). Previously this path added spending to moneySupply
+    // uncapped, bypassing the 10%-of-GDP cap in printMoney and allowing
+    // unlimited issuance via a sustained deficit. Treasury is managed by
+    // processGoldIncome / Maintenance on the Player object, so no change is
+    // needed here either.
 }
 
 ErrorCode monetizeDebt(MonetaryStateComponent& state, CurrencyAmount amount) {
@@ -80,7 +81,7 @@ ErrorCode monetizeDebt(MonetaryStateComponent& state, CurrencyAmount amount) {
 
     // Print money to pay debt
     state.governmentDebt -= amount;
-    state.moneySupply += amount;  // New money enters circulation
+    adjustMoneySupply(state, amount, "monetizeDebt");  // New money enters circulation
 
     return ErrorCode::Ok;
 }

@@ -58,6 +58,11 @@ public:
         return this->m_encampments;
     }
 
+    /// H5.6: remove an encampment slot. Swap-and-pop so MAX_ENCAMPMENTS
+    /// actually caps live camps (prior code only ever push_back'd, so
+    /// destroyed camps stayed and starved the spawn budget).
+    void removeEncampment(std::size_t index);
+
 private:
     /// Attempt to place new encampments on unowned land far from cities.
     void spawnEncampments(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid, aoc::Random& rng);

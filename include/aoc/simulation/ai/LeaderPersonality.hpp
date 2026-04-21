@@ -119,6 +119,13 @@ struct LeaderBehavior {
     /// Number of float parameters in LeaderBehavior (for GA serialization).
     static constexpr int32_t PARAM_COUNT = 36;
 
+    /// H6.5: GA checkpoint version. Bump when PARAM_COUNT grows or slot
+    /// semantics change so old dumps can be detected, zero-padded, and
+    /// migrated without reading uninitialized neighbor indices.
+    ///   v1: 32 params
+    ///   v2: 36 params (added mil* tuning knobs 32-35)
+    static constexpr int32_t GENOME_VERSION = 2;
+
     /// Serialize all weights to a flat float array (for GA genome representation).
     void toArray(float* out) const {
         out[0]  = this->militaryAggression;  out[1]  = this->expansionism;
@@ -142,6 +149,20 @@ struct LeaderBehavior {
         out[31] = this->speculationAppetite;
         out[32] = this->milBaseWeight;       out[33] = this->milThreatSensitivity;
         out[34] = this->milEmergencySlope;   out[35] = this->milOverstockPenalty;
+    }
+
+    /// H6.5: safe deserialize from a genome array of possibly-stale length.
+    /// Missing slots (srcCount < PARAM_COUNT) keep default LeaderBehavior
+    /// values; extra slots (srcCount > PARAM_COUNT) are ignored. Prevents
+    /// uninitialized-read UB when loading older / newer checkpoints.
+    void fromArrayPadded(const float* in, int32_t srcCount) {
+        *this = LeaderBehavior{};
+        if (in == nullptr || srcCount <= 0) { return; }
+        const int32_t copyCount = (srcCount < PARAM_COUNT) ? srcCount : PARAM_COUNT;
+        float buf[PARAM_COUNT];
+        this->toArray(buf);
+        for (int32_t i = 0; i < copyCount; ++i) { buf[i] = in[i]; }
+        this->fromArray(buf);
     }
 
     /// Deserialize from a flat float array.

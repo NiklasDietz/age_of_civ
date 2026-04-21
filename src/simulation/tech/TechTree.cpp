@@ -9,6 +9,7 @@
 #include "aoc/core/Log.hpp"
 
 #include <cassert>
+#include <unordered_map>
 
 namespace aoc::sim {
 
@@ -117,29 +118,56 @@ std::vector<TechDef> buildTechDefs() {
         {{TechId{24}}},  // Advanced Chemistry
         {}, {BuildingId{33}}, {}});  // Unlocks Biofuel Plant
 
-    // Append expanded techs (only IDs > max base ID to avoid overlap)
+    // Append expanded techs (only IDs > max base ID to avoid overlap).
+    // H3.1: expanded techs reference prereqs by their *original* expanded IDs,
+    // but the appended TechDef gets a fresh `techs.size()` index. Without a
+    // remap, expanded-to-expanded prereq edges silently point at the wrong
+    // vector slots and parts of the tech DAG become unreachable. Build a
+    // two-pass {originalExpandedId -> newIndex} map, then rewrite prereqs.
     uint16_t maxBaseId = 0;
     for (const TechDef& t : techs) {
         if (t.id.value > maxBaseId) { maxBaseId = t.id.value; }
     }
+
+    std::unordered_map<uint16_t, uint16_t> expandedRemap;
+    expandedRemap.reserve(EXPANDED_TECH_COUNT);
     for (int32_t i = 0; i < EXPANDED_TECH_COUNT; ++i) {
         const ExpandedTechDef& et = EXPANDED_TECHS[i];
         if (et.id <= maxBaseId) {
             continue;  // Skip IDs that overlap with base techs
         }
+        const uint16_t newIndex = static_cast<uint16_t>(techs.size());
+        expandedRemap.emplace(et.id, newIndex);
         TechDef def{};
-        def.id = TechId{static_cast<uint16_t>(techs.size())};  // Use vector index as ID
+        def.id = TechId{newIndex};
         def.name = et.name;
         def.era = EraId{et.era};
         def.researchCost = et.cost;
+        techs.push_back(std::move(def));
+    }
+
+    // Second pass: fill in prerequisites using the remap. Base-tech prereq IDs
+    // (<= maxBaseId) pass through unchanged because base IDs equal their vector
+    // slots. Expanded-to-expanded edges look up the remapped index.
+    for (int32_t i = 0; i < EXPANDED_TECH_COUNT; ++i) {
+        const ExpandedTechDef& et = EXPANDED_TECHS[i];
+        auto it = expandedRemap.find(et.id);
+        if (it == expandedRemap.end()) { continue; }
+        TechDef& def = techs[it->second];
         for (int32_t p = 0; p < 3; ++p) {
-            if (et.prereqs[p] != 0xFFFF) {
-                // Map expanded prereq IDs: if <= maxBaseId, use as-is (base tech).
-                // If > maxBaseId, need to find the remapped index.
-                def.prerequisites.push_back(TechId{et.prereqs[p]});
+            const uint16_t raw = et.prereqs[p];
+            if (raw == 0xFFFF) { continue; }
+            if (raw <= maxBaseId) {
+                def.prerequisites.push_back(TechId{raw});
+            } else {
+                auto rit = expandedRemap.find(raw);
+                if (rit != expandedRemap.end()) {
+                    def.prerequisites.push_back(TechId{rit->second});
+                }
+                // Else: dangling reference — silently drop so the tech can
+                // still be researched rather than trapping it permanently.
             }
         }
-        techs.push_back(std::move(def));
     }
 
     return techs;
@@ -183,16 +211,15 @@ bool advanceResearch(PlayerTechComponent& tech, float sciencePoints) {
     }
     float depthMultiplier = 1.0f + static_cast<float>(numPrereqs) * 0.05f;
 
-    // Early-era techs (Ancient through Medieval, eras 0-2) cost 30% less to
-    // ensure a reasonable research pace when science output is 2-5 per turn.
-    // Without this reduction, reaching Textiles from scratch takes 40+ turns
-    // instead of the intended ~15.
-    float eraDiscountMultiplier = (def.era.value <= 2) ? 0.70f : 1.0f;
-
+    // H3.2: early-era tech discount removed. The depthMultiplier above already
+    // makes early techs cheap relative to late techs (low prereq count ->
+    // multiplier ~1.0, vs 3.5+ for late techs). Stacking a flat 30% era
+    // discount on top produced a sub-50% early price and an overpowered early
+    // spiral. Research pace is now handled by the bumped per-citizen science
+    // output in CityScience.cpp instead.
     float scaledCost = static_cast<float>(def.researchCost)
                      * GamePace::instance().costMultiplier
-                     * depthMultiplier
-                     * eraDiscountMultiplier;
+                     * depthMultiplier;
     if (tech.researchProgress >= scaledCost) {
         LOG_INFO("Player %u researched: %.*s",
                  static_cast<unsigned>(tech.owner),

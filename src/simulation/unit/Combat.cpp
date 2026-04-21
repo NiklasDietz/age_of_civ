@@ -110,16 +110,17 @@ float classMatchupModifier(UnitClass attackerClass, UnitClass defenderClass) {
 namespace {
 
 /// Core damage formula: modified Lanchester-style.
-/// damage = 30 * (attackStrength / defenseStrength) * randomFactor
+/// damage = 30 * (attackStrength / defenseStrength) * randomFactor.
+/// Both operands are symmetrically floored to 0.01 to avoid insta-kill exploits
+/// when a unit's effective strength collapses (embark + damaged + zero-terrain).
+/// Upper bound prevents exotic stacking from overflowing the ratio.
 int32_t computeDamage(float attackStrength, float defenseStrength, aoc::Random& rng) {
-    if (defenseStrength < 0.01f) {
-        return 100;  // Instant kill if no defense
-    }
+    const float atk = std::clamp(attackStrength, 0.01f, 1000.0f);
+    const float def = std::clamp(defenseStrength, 0.01f, 1000.0f);
 
-    float ratio = attackStrength / defenseStrength;
-    // Random factor: 0.8 to 1.2
-    float randomFactor = 0.8f + rng.nextFloat() * 0.4f;
-    float baseDamage = 30.0f * ratio * randomFactor;
+    const float ratio = atk / def;
+    const float randomFactor = 0.8f + rng.nextFloat() * 0.4f;
+    const float baseDamage = 30.0f * ratio * randomFactor;
 
     return std::clamp(static_cast<int32_t>(baseDamage), 0, 100);
 }
@@ -149,6 +150,14 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
                                  const aoc::map::HexGrid& grid,
                                  aoc::game::Unit& attacker,
                                  aoc::game::Unit& defender) {
+    // Embarked defenders: melee attacks are rejected outright. Embarkation
+    // cuts strength 50% and stacks with health + terrain penalties, letting
+    // the defense strength collapse toward the insta-kill shortcut. Embarked
+    // units remain engageable by ranged attacks (naval / archer).
+    if (defender.state() == aoc::sim::UnitState::Embarked) {
+        return CombatResult{0, 0, false, false, 0, 0};
+    }
+
     const aoc::sim::UnitTypeDef& atkDef = attacker.typeDef();
     const aoc::sim::UnitTypeDef& defDef = defender.typeDef();
 
@@ -156,8 +165,12 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     float atkStrength = static_cast<float>(atkDef.combatStrength);
     float defStrength = static_cast<float>(defDef.combatStrength);
 
-    atkStrength += static_cast<float>(formationStrengthBonus(attacker.formationLevel()));
-    defStrength += static_cast<float>(formationStrengthBonus(defender.formationLevel()));
+    atkStrength *= formationStrengthMultiplier(attacker.formationLevel());
+    defStrength *= formationStrengthMultiplier(defender.formationLevel());
+
+    // Promotion combat bonuses (Battlecry, Tortoise, Elite, etc.).
+    atkStrength += static_cast<float>(attacker.experience().totalCombatBonus());
+    defStrength += static_cast<float>(defender.experience().totalCombatBonus());
 
     // Civ ability: flat combat strength bonus for land units.
     {
@@ -201,8 +214,12 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
         atkStrength *= elevMod;
     }
 
-    // Flanking bonus: +10% per adjacent friendly for attacker
-    int32_t flanking = countAdjacentFriendlies(gameState, defender.position(), attacker.owner());
+    // Flanking bonus: +10% per adjacent friendly for attacker, capped at 3
+    // adjacent (max +30%). Without the cap, a 3-unit Army surrounding a
+    // single defender produces 1.6x strength plus reduced counter-damage,
+    // snowballing into near-zero-loss kills every turn.
+    int32_t flanking = std::min(3,
+        countAdjacentFriendlies(gameState, defender.position(), attacker.owner()));
     atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
 
     // Class matchup bonus (rock-paper-scissors)
@@ -230,8 +247,13 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     result.defenderDamage = computeDamage(atkStrength, defStrength, rng);
     result.attackerDamage = computeDamage(defStrength, atkStrength, rng);
 
-    // Attacker takes slightly less damage (aggressor advantage)
+    // Counter-damage discount applies symmetrically: both sides take 80% of
+    // the rolled damage. Previously only the attacker received this, which
+    // combined with flanking (caught a 1.6x strength + 0.8x damage-taken)
+    // to produce near-zero-loss kills. Keeping the reduction mutual tunes
+    // combat to a less lethal tempo without favoring the aggressor.
     result.attackerDamage = result.attackerDamage * 8 / 10;
+    result.defenderDamage = result.defenderDamage * 8 / 10;
 
     // Apply damage
     attacker.setHitPoints(attacker.hitPoints() - result.attackerDamage);
@@ -287,12 +309,17 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
 
             if (!tileHasCity && !tileHasFort) {
                 // Collect pointers to stack units before any removal to avoid
-                // invalidating the vector while iterating.
+                // invalidating the vector while iterating. Units in a Corps or
+                // Army formation are excluded — a formation represents a
+                // single logical force whose HP is what the defender already
+                // rolled, so removing its component units on an open-terrain
+                // stack-kill would double-punish the defender.
                 std::vector<aoc::game::Unit*> stackKill;
                 for (const std::unique_ptr<aoc::game::Unit>& u : defPlayer->units()) {
-                    if (u.get() != &defender && u->position() == defenderTile) {
-                        stackKill.push_back(u.get());
-                    }
+                    if (u.get() == &defender) { continue; }
+                    if (u->position() != defenderTile) { continue; }
+                    if (u->formationLevel() != aoc::sim::FormationLevel::Single) { continue; }
+                    stackKill.push_back(u.get());
                 }
                 for (aoc::game::Unit* killed : stackKill) {
                     defPlayer->removeUnit(killed);
@@ -391,6 +418,14 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
     float atkStrength = static_cast<float>(atkDef.rangedStrength);
     float defStrength = static_cast<float>(defDef.combatStrength);
 
+    // Formation multiplier (symmetric with melee).
+    atkStrength *= formationStrengthMultiplier(attacker.formationLevel());
+    defStrength *= formationStrengthMultiplier(defender.formationLevel());
+
+    // Promotion combat bonuses (symmetric with melee).
+    atkStrength += static_cast<float>(attacker.experience().totalCombatBonus());
+    defStrength += static_cast<float>(defender.experience().totalCombatBonus());
+
     float atkHealthMod = static_cast<float>(attacker.hitPoints()) / static_cast<float>(atkDef.maxHitPoints);
     float defHealthMod = static_cast<float>(defender.hitPoints()) / static_cast<float>(defDef.maxHitPoints);
     atkStrength *= atkHealthMod;
@@ -410,8 +445,19 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
         atkStrength *= elevMod;
     }
 
-    // Class matchup bonus (ranged)
+    // Flanking bonus: matches melee rules (capped at 3 adjacent).
+    int32_t flanking = std::min(3,
+        countAdjacentFriendlies(gameState, defender.position(), attacker.owner()));
+    atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
+
+    // Class matchup bonus applied symmetrically to both sides.
     atkStrength *= classMatchupModifier(atkDef.unitClass, defDef.unitClass);
+    defStrength *= classMatchupModifier(defDef.unitClass, atkDef.unitClass);
+
+    // Fortification bonus for defender (same as melee).
+    if (defender.state() == aoc::sim::UnitState::Fortified) {
+        defStrength *= 1.25f;
+    }
 
     // War weariness combat penalty (ranged)
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {

@@ -39,6 +39,12 @@ void computeInflation(MonetaryStateComponent& state,
                   / static_cast<float>(previousGDP);
     }
 
+    // currentGDP / previousGDP are nominal (coin-denominated, include price level).
+    // Fisher equation needs REAL output growth: subtract prior-turn inflation to
+    // deflate. Without this the -gdpGrowth term self-cancels inflation, inverting
+    // the feedback loop and letting printing run undetected.
+    const float realGDPGrowth = gdpGrowth - state.inflationRate;
+
     // Velocity changes slowly. High interest rates slow velocity (people save more).
     // Low rates increase velocity (people spend/invest more).
     float targetVelocity = 1.0f;
@@ -66,29 +72,20 @@ void computeInflation(MonetaryStateComponent& state,
         velocityChange = (state.velocityOfMoney - previousVelocity) / previousVelocity;
     }
 
-    // Core inflation calculation (Fisher equation baseline)
-    float fisherInflation = moneyGrowth + velocityChange - gdpGrowth;
+    // Core inflation calculation (Fisher equation baseline).
+    // Use REAL growth, not nominal: nominal GDP includes inflation by construction,
+    // so subtracting it would self-cancel the money-growth term and invert the
+    // feedback sign at high inflation.
+    float fisherInflation = moneyGrowth + velocityChange - realGDPGrowth;
 
     // MMT correction: inflation depends on spending vs productive CAPACITY,
-    // not just money supply. If GDP is growing (economy has spare capacity),
-    // printing money is less inflationary. If GDP is stagnant/shrinking
-    // (capacity constraint), printing is fully inflationary.
-    //
-    // The formula: actual inflation = fisher_inflation * capacity_pressure
-    //   capacity_pressure = 1.0 when fully utilized (gdpGrowth <= 0)
-    //   capacity_pressure = 0.3 when economy is growing fast (gdpGrowth > 5%)
-    //
-    // This means: a government that prints money to build roads/factories
-    // during a recession causes little inflation (spare workers absorb it).
-    // A government that prints during a boom causes severe inflation.
+    // not just money supply. If real output is growing (spare capacity),
+    // printing is less inflationary. If shrinking, fully inflationary.
     float capacityPressure = 1.0f;
-    if (gdpGrowth > 0.0f) {
-        // Growing economy has spare capacity → printing is less inflationary
-        // Fast growth (>5%/turn) reduces inflation impact to 30%
-        capacityPressure = std::max(0.3f, 1.0f - gdpGrowth * 14.0f);
-    } else if (gdpGrowth < -0.02f) {
-        // Shrinking economy → money chases fewer goods → more inflationary
-        capacityPressure = std::min(1.5f, 1.0f + std::abs(gdpGrowth) * 10.0f);
+    if (realGDPGrowth > 0.0f) {
+        capacityPressure = std::max(0.3f, 1.0f - realGDPGrowth * 14.0f);
+    } else if (realGDPGrowth < -0.02f) {
+        capacityPressure = std::min(1.5f, 1.0f + std::abs(realGDPGrowth) * 10.0f);
     }
 
     state.inflationRate = fisherInflation * capacityPressure;
@@ -103,12 +100,24 @@ void computeInflation(MonetaryStateComponent& state,
         state.printAmountThisTurn = 0;  // Reset for next turn
     }
 
-    // Treasury hoarding pressure: excess gold causes inflation
+    // Treasury hoarding: sign depends on monetary regime.
+    //   GoldStandard/Commodity: hoarded coin is out of circulation. Effective
+    //       M shrinks -> deflationary pressure.
+    //   Fiat/Digital: hoarding signals precautionary demand. Treasury can
+    //       monetize debt or spend; markets price in the future injection
+    //       -> inflationary pressure.
+    //   Barter: handled at top of function (returns early).
     if (currentGDP > 0 && state.treasury > 0) {
         float treasuryToGDP = static_cast<float>(state.treasury) / static_cast<float>(currentGDP);
         if (treasuryToGDP > 2.0f) {
             float excessPressure = (treasuryToGDP - 2.0f) * 0.01f;
-            state.inflationRate += excessPressure;
+            if (state.system == MonetarySystemType::FiatMoney
+                || state.system == MonetarySystemType::Digital) {
+                state.inflationRate += excessPressure;
+            } else {
+                // CommodityMoney / GoldStandard: hoarding is dis-inflationary.
+                state.inflationRate -= excessPressure;
+            }
         }
     }
 
@@ -294,6 +303,16 @@ CurrencyAmount computeSeigniorage(const MonetaryStateComponent& state,
         static_cast<float>(totalForeignGDP) * seigniorageRate);
 
     return std::max(static_cast<CurrencyAmount>(0), income);
+}
+
+float realRateConsumptionMultiplier(float realRate) {
+    // Clamp the input so stray hyperinflation/deflation spikes can't invert
+    // the curve. [-15%, +15%] real-rate band covers every historical regime
+    // the simulation produces.
+    const float r = std::clamp(realRate, -0.15f, 0.15f);
+    // Linear response: each 1pp of real rate shifts demand by ~2pp.
+    // r = +10% -> 0.80x; r = 0 -> 1.00x; r = -10% -> 1.20x.
+    return std::clamp(1.0f - r * 2.0f, 0.70f, 1.25f);
 }
 
 } // namespace aoc::sim

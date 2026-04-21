@@ -81,6 +81,17 @@ static aoc::game::Unit* findNearestTarget(const aoc::game::GameState& gameState,
     return closest;
 }
 
+/// H5.7: highest era reached by any non-barbarian player.
+static int32_t leadingPlayerEra(const aoc::game::GameState& gameState) {
+    int32_t best = -1;
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        if (player->id() == BARBARIAN_PLAYER) { continue; }
+        const int32_t era = static_cast<int32_t>(player->era().currentEra.value);
+        if (era > best) { best = era; }
+    }
+    return best;
+}
+
 /// Check if any city from any player is within the given distance of a tile.
 static bool isTooCloseToCity(const aoc::game::GameState& gameState,
                               const aoc::map::HexGrid& grid,
@@ -100,6 +111,26 @@ static bool isTooCloseToCity(const aoc::game::GameState& gameState,
 // BarbarianController
 // ============================================================================
 
+void BarbarianController::removeEncampment(std::size_t index) {
+    if (index >= this->m_encampments.size()) { return; }
+    if (index + 1 != this->m_encampments.size()) {
+        this->m_encampments[index] = this->m_encampments.back();
+    }
+    this->m_encampments.pop_back();
+}
+
+/// H5.6: a camp is "destroyed" when a non-barbarian unit stands on its tile.
+/// Mirrors Civ-style clearance (step onto camp after killing defender).
+static bool isCampOverrun(const aoc::game::GameState& gameState, hex::AxialCoord tile) {
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        if (player->id() == BARBARIAN_PLAYER) { continue; }
+        for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
+            if (unit->position() == tile) { return true; }
+        }
+    }
+    return false;
+}
+
 void BarbarianController::executeTurn(aoc::game::GameState& gameState,
                                        const aoc::map::HexGrid& grid,
                                        aoc::Random& rng) {
@@ -107,6 +138,18 @@ void BarbarianController::executeTurn(aoc::game::GameState& gameState,
 
     // Restore movement points for all barbarian-owned units.
     refreshMovement(gameState, BARBARIAN_PLAYER);
+
+    // H5.6: purge destroyed encampments before spawning so MAX_ENCAMPMENTS
+    // reflects live camps only. Iterate backwards because removeEncampment
+    // swap-pops.
+    for (std::size_t i = this->m_encampments.size(); i-- > 0; ) {
+        if (isCampOverrun(gameState, this->m_encampments[i].location)) {
+            LOG_INFO("Barbarian encampment destroyed at (%d,%d)",
+                     this->m_encampments[i].location.q,
+                     this->m_encampments[i].location.r);
+            this->removeEncampment(i);
+        }
+    }
 
     this->spawnEncampments(gameState, grid, rng);
     this->spawnUnitsFromEncampments(gameState, grid, rng);
@@ -161,7 +204,9 @@ void BarbarianController::spawnEncampments(aoc::game::GameState& gameState,
         this->m_encampments.push_back(camp);
 
         // Also spawn an initial warrior at the encampment.
-        barbPlayer->addUnit(barbarianSpawnUnit(this->m_turnCounter), candidate);
+        barbPlayer->addUnit(
+            barbarianSpawnUnit(this->m_turnCounter, leadingPlayerEra(gameState)),
+            candidate);
 
         {
             VisibilityEvent ev{};
@@ -199,7 +244,9 @@ void BarbarianController::spawnUnitsFromEncampments(aoc::game::GameState& gameSt
         }
 
         // Spawn a warrior at the encampment location.
-        barbPlayer->addUnit(barbarianSpawnUnit(this->m_turnCounter), camp.location);
+        barbPlayer->addUnit(
+            barbarianSpawnUnit(this->m_turnCounter, leadingPlayerEra(gameState)),
+            camp.location);
 
         camp.spawnCooldown = SPAWN_COOLDOWN_TURNS;
         ++camp.unitsSpawned;

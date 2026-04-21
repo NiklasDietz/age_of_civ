@@ -105,15 +105,22 @@ void computeTourism(aoc::game::GameState& gameState, PlayerId playerId,
 
 PlayerId checkCulturalVictory(const aoc::game::GameState& gameState) {
     // Cultural victory: a player's foreign-tourist count (as seen by all
-    // rivals) exceeds every other civ's domestic-tourist count.
-    // Our single tourism pool is used: foreignTourists vs others' domesticTourists.
+    // rivals) exceeds every other civ's domestic-tourist count, AND the
+    // foreign-tourist count clears a minimum absolute floor.
+    //
+    // The floor prevents an early-game accidental win where every civ has
+    // near-zero tourism: the first civ to reach 1 foreign tourist would
+    // otherwise "beat" everyone at 0 domestic tourists. Requiring >= 500
+    // ensures the winner has actually generated a sustained cultural draw.
+    constexpr int32_t CULTURAL_VICTORY_FOREIGN_FLOOR = 500;
+
     PlayerId winner = INVALID_PLAYER;
     int32_t  maxForeign = 0;
 
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
         if (p == nullptr) { continue; }
         const PlayerTourismComponent& tp = p->tourism();
-        if (tp.foreignTourists <= 0) { continue; }
+        if (tp.foreignTourists < CULTURAL_VICTORY_FOREIGN_FLOOR) { continue; }
 
         // Check against every other civ's domestic tourists.
         bool beatsAll = true;

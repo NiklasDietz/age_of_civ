@@ -80,13 +80,30 @@ ErrorCode hireClan(aoc::game::GameState& gameState,
     return ErrorCode::Ok;
 }
 
-UnitTypeId barbarianSpawnUnit(int32_t turnNumber) {
-    if (turnNumber < 30)  { return UnitTypeId{0}; }  // Warrior
-    if (turnNumber < 60)  { return UnitTypeId{9}; }  // Spearman
-    if (turnNumber < 100) { return UnitTypeId{10}; } // Swordsman
-    if (turnNumber < 150) { return UnitTypeId{13}; } // Musketman
-    if (turnNumber < 200) { return UnitTypeId{15}; } // Infantry
-    return UnitTypeId{17};                            // Tank
+UnitTypeId barbarianSpawnUnit(int32_t turnNumber, int32_t leadingEra) {
+    // H5.7: era floor. Without it, a sprinting player can reach Tanks by turn
+    // 130 while barbs are still frozen on Musketmen until turn 200.
+    UnitTypeId turnUnit = UnitTypeId{0};
+    if      (turnNumber < 30)  { turnUnit = UnitTypeId{0}; }  // Warrior
+    else if (turnNumber < 60)  { turnUnit = UnitTypeId{9}; }  // Spearman
+    else if (turnNumber < 100) { turnUnit = UnitTypeId{10}; } // Swordsman
+    else if (turnNumber < 150) { turnUnit = UnitTypeId{13}; } // Musketman
+    else if (turnNumber < 200) { turnUnit = UnitTypeId{15}; } // Infantry
+    else                       { turnUnit = UnitTypeId{17}; } // Tank
+
+    if (leadingEra < 0) { return turnUnit; }
+
+    UnitTypeId eraUnit = UnitTypeId{0};
+    switch (leadingEra) {
+        case 0: eraUnit = UnitTypeId{0};  break; // Ancient     : Warrior
+        case 1: eraUnit = UnitTypeId{10}; break; // Classical   : Swordsman
+        case 2: eraUnit = UnitTypeId{11}; break; // Medieval    : Knight-class (Horsemen id 11)
+        case 3: eraUnit = UnitTypeId{13}; break; // Renaissance : Musketman
+        case 4: eraUnit = UnitTypeId{15}; break; // Industrial  : Infantry
+        case 5: eraUnit = UnitTypeId{17}; break; // Modern      : Tank
+        default: eraUnit = UnitTypeId{17}; break; // Information+: Tank
+    }
+    return (eraUnit.value > turnUnit.value) ? eraUnit : turnUnit;
 }
 
 int32_t encampmentDestroyReward(int32_t clanStrength) {

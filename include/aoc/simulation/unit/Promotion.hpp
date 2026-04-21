@@ -54,8 +54,14 @@ struct UnitExperienceComponent {
         return this->experience >= XP_THRESHOLDS[static_cast<std::size_t>(this->level)];
     }
 
-    /// Apply a promotion. Consumes the XP threshold.
+    /// Apply a promotion. Consumes the XP threshold so subsequent levels require
+    /// fresh XP instead of cascading from a pre-accumulated pool.
     void applyPromotion(PromotionId promo) {
+        const auto thresholdIdx = static_cast<std::size_t>(this->level);
+        if (thresholdIdx < XP_THRESHOLDS.size()) {
+            this->experience -= XP_THRESHOLDS[thresholdIdx];
+            if (this->experience < 0) { this->experience = 0; }
+        }
         this->promotions.push_back(promo);
         ++this->level;
     }

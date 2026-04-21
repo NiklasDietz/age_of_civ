@@ -57,6 +57,7 @@ void DiplomacyManager::addModifier(PlayerId a, PlayerId b, RelationModifier modi
 }
 
 void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target,
+                                   CasusBelliType cb,
                                    AllianceObligationTracker* allianceTracker) {
     PairwiseRelation& relAB = this->relation(aggressor, target);
     PairwiseRelation& relBA = this->relation(target, aggressor);
@@ -75,13 +76,19 @@ void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target,
     // Track aggressor for treaty compliance (NonAggression enforcement)
     relAB.lastWarAggressor = aggressor;
     relBA.lastWarAggressor = aggressor;
+    relAB.lastCasusBelli   = cb;
+    relBA.lastCasusBelli   = cb;
 
     // Wipe accumulated peace-time warming
     relAB.passiveBonus = 0;
     relBA.passiveBonus = 0;
 
-    // War declaration adds a large negative modifier
-    RelationModifier warMod{"Declared war", -50, 0};  // Permanent until peace
+    // War modifier scaled by CB multiplier (H1.5). Liberation/Reconquest/
+    // Protectorate CBs (multiplier 0) produce no relation penalty; Surprise War
+    // retains the full -50.
+    const int32_t warPenalty = -static_cast<int32_t>(
+        casusBelliDef(cb).grievanceMultiplier * 50.0f);
+    RelationModifier warMod{"Declared war", warPenalty, 0};  // Permanent until peace
     relAB.modifiers.push_back(warMod);
     relBA.modifiers.push_back(warMod);
 
@@ -96,6 +103,16 @@ void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target,
     relBA.hasResearchAgreement = false;
     relAB.hasEconomicAlliance = false;
     relBA.hasEconomicAlliance = false;
+    relAB.hasCulturalAlliance = false;
+    relBA.hasCulturalAlliance = false;
+    relAB.hasReligiousAlliance = false;
+    relBA.hasReligiousAlliance = false;
+    for (std::size_t i = 0; i < relAB.alliances.size(); ++i) {
+        relAB.alliances[i] = AllianceState{};
+        relBA.alliances[i] = AllianceState{};
+    }
+    relAB.allianceBreakWarningTurns = 0;
+    relBA.allianceBreakWarningTurns = 0;
 
     // Generate alliance obligations for the target's allies
     if (allianceTracker != nullptr) {
@@ -185,46 +202,157 @@ void DiplomacyManager::grantOpenBorders(PlayerId a, PlayerId b) {
         + " opened their borders.", 4);
 }
 
-void DiplomacyManager::formDefensiveAlliance(PlayerId a, PlayerId b) {
-    this->relation(a, b).hasDefensiveAlliance = true;
-    this->relation(b, a).hasDefensiveAlliance = true;
+namespace {
+
+/// 20-turn lockout after the most recent alliance formation on a pair.
+/// Prevents rapid cycling through alliance types.
+constexpr int32_t ALLIANCE_FORM_COOLDOWN_TURNS = 20;
+
+/// Common preconditions for every form*Alliance function (H1.3 + H1.6).
+/// Returns Ok if the alliance may be formed, or AllianceExists otherwise.
+[[nodiscard]] ErrorCode checkAllianceFormable(const PairwiseRelation& rel,
+                                               int32_t currentTurn) {
+    if (rel.hasAnyAlliance()) {
+        return ErrorCode::AllianceExists;
+    }
+    if (rel.lastAllianceFormTurn >= 0
+        && (currentTurn - rel.lastAllianceFormTurn) < ALLIANCE_FORM_COOLDOWN_TURNS) {
+        return ErrorCode::AllianceExists;
+    }
+    return ErrorCode::Ok;
+}
+
+/// Seed AllianceState for both directions after a successful form call.
+void seedAllianceState(PairwiseRelation& relAB, PairwiseRelation& relBA,
+                       AllianceType type, int32_t currentTurn) {
+    const std::size_t slot = static_cast<std::size_t>(type);
+    relAB.alliances[slot].type        = type;
+    relAB.alliances[slot].level       = AllianceLevel::Level1;
+    relAB.alliances[slot].turnsActive = 0;
+    relBA.alliances[slot]             = relAB.alliances[slot];
+    relAB.lastAllianceFormTurn = currentTurn;
+    relBA.lastAllianceFormTurn = currentTurn;
+    relAB.allianceBreakWarningTurns = 0;
+    relBA.allianceBreakWarningTurns = 0;
+}
+
+} // namespace
+
+ErrorCode DiplomacyManager::formDefensiveAlliance(PlayerId a, PlayerId b, int32_t currentTurn) {
+    PairwiseRelation& relAB = this->relation(a, b);
+    PairwiseRelation& relBA = this->relation(b, a);
+    const ErrorCode ec = checkAllianceFormable(relAB, currentTurn);
+    if (ec != ErrorCode::Ok) { return ec; }
+
+    relAB.hasDefensiveAlliance = true;
+    relBA.hasDefensiveAlliance = true;
+    // Defensive alliance has no entry in ALLIANCE_TYPE_DEFS; level tracking is
+    // skipped. The boolean alone drives AllianceObligations.
+    relAB.lastAllianceFormTurn = currentTurn;
+    relBA.lastAllianceFormTurn = currentTurn;
+    relAB.allianceBreakWarningTurns = 0;
+    relBA.allianceBreakWarningTurns = 0;
+
     this->addModifier(a, b, {"Defensive alliance", 15, 0});
     pushDiplomaticNotification(a, b, "Defensive Alliance",
         "Player " + std::to_string(a) + " and Player " + std::to_string(b)
         + " formed a defensive alliance.", 7);
+    return ErrorCode::Ok;
 }
 
-void DiplomacyManager::formMilitaryAlliance(PlayerId a, PlayerId b) {
-    this->relation(a, b).hasMilitaryAlliance = true;
-    this->relation(b, a).hasMilitaryAlliance = true;
+ErrorCode DiplomacyManager::formMilitaryAlliance(PlayerId a, PlayerId b, int32_t currentTurn) {
+    PairwiseRelation& relAB = this->relation(a, b);
+    PairwiseRelation& relBA = this->relation(b, a);
+    const ErrorCode ec = checkAllianceFormable(relAB, currentTurn);
+    if (ec != ErrorCode::Ok) { return ec; }
+
+    relAB.hasMilitaryAlliance = true;
+    relBA.hasMilitaryAlliance = true;
+    seedAllianceState(relAB, relBA, AllianceType::Military, currentTurn);
+
     this->addModifier(a, b, {"Military alliance", 10, 0});
     LOG_INFO("Military alliance formed between Player %u and Player %u",
              static_cast<unsigned>(a), static_cast<unsigned>(b));
     pushDiplomaticNotification(a, b, "Military Alliance",
         "Player " + std::to_string(a) + " and Player " + std::to_string(b)
         + " formed a military alliance.", 8);
+    return ErrorCode::Ok;
 }
 
-void DiplomacyManager::formResearchAgreement(PlayerId a, PlayerId b) {
-    this->relation(a, b).hasResearchAgreement = true;
-    this->relation(b, a).hasResearchAgreement = true;
+ErrorCode DiplomacyManager::formResearchAgreement(PlayerId a, PlayerId b, int32_t currentTurn) {
+    PairwiseRelation& relAB = this->relation(a, b);
+    PairwiseRelation& relBA = this->relation(b, a);
+    const ErrorCode ec = checkAllianceFormable(relAB, currentTurn);
+    if (ec != ErrorCode::Ok) { return ec; }
+
+    relAB.hasResearchAgreement = true;
+    relBA.hasResearchAgreement = true;
+    seedAllianceState(relAB, relBA, AllianceType::Research, currentTurn);
+
     this->addModifier(a, b, {"Research agreement", 5, 0});
     LOG_INFO("Research agreement formed between Player %u and Player %u",
              static_cast<unsigned>(a), static_cast<unsigned>(b));
     pushDiplomaticNotification(a, b, "Research Agreement",
         "Player " + std::to_string(a) + " and Player " + std::to_string(b)
         + " signed a research agreement.", 5);
+    return ErrorCode::Ok;
 }
 
-void DiplomacyManager::formEconomicAlliance(PlayerId a, PlayerId b) {
-    this->relation(a, b).hasEconomicAlliance = true;
-    this->relation(b, a).hasEconomicAlliance = true;
+ErrorCode DiplomacyManager::formEconomicAlliance(PlayerId a, PlayerId b, int32_t currentTurn) {
+    PairwiseRelation& relAB = this->relation(a, b);
+    PairwiseRelation& relBA = this->relation(b, a);
+    const ErrorCode ec = checkAllianceFormable(relAB, currentTurn);
+    if (ec != ErrorCode::Ok) { return ec; }
+
+    relAB.hasEconomicAlliance = true;
+    relBA.hasEconomicAlliance = true;
+    seedAllianceState(relAB, relBA, AllianceType::Economic, currentTurn);
+
     this->addModifier(a, b, {"Economic alliance", 5, 0});
     LOG_INFO("Economic alliance formed between Player %u and Player %u",
              static_cast<unsigned>(a), static_cast<unsigned>(b));
     pushDiplomaticNotification(a, b, "Economic Alliance",
         "Player " + std::to_string(a) + " and Player " + std::to_string(b)
         + " formed an economic alliance.", 5);
+    return ErrorCode::Ok;
+}
+
+ErrorCode DiplomacyManager::formCulturalAlliance(PlayerId a, PlayerId b, int32_t currentTurn) {
+    PairwiseRelation& relAB = this->relation(a, b);
+    PairwiseRelation& relBA = this->relation(b, a);
+    const ErrorCode ec = checkAllianceFormable(relAB, currentTurn);
+    if (ec != ErrorCode::Ok) { return ec; }
+
+    relAB.hasCulturalAlliance = true;
+    relBA.hasCulturalAlliance = true;
+    seedAllianceState(relAB, relBA, AllianceType::Cultural, currentTurn);
+
+    this->addModifier(a, b, {"Cultural alliance", 5, 0});
+    LOG_INFO("Cultural alliance formed between Player %u and Player %u",
+             static_cast<unsigned>(a), static_cast<unsigned>(b));
+    pushDiplomaticNotification(a, b, "Cultural Alliance",
+        "Player " + std::to_string(a) + " and Player " + std::to_string(b)
+        + " formed a cultural alliance.", 5);
+    return ErrorCode::Ok;
+}
+
+ErrorCode DiplomacyManager::formReligiousAlliance(PlayerId a, PlayerId b, int32_t currentTurn) {
+    PairwiseRelation& relAB = this->relation(a, b);
+    PairwiseRelation& relBA = this->relation(b, a);
+    const ErrorCode ec = checkAllianceFormable(relAB, currentTurn);
+    if (ec != ErrorCode::Ok) { return ec; }
+
+    relAB.hasReligiousAlliance = true;
+    relBA.hasReligiousAlliance = true;
+    seedAllianceState(relAB, relBA, AllianceType::Religious, currentTurn);
+
+    this->addModifier(a, b, {"Religious alliance", 5, 0});
+    LOG_INFO("Religious alliance formed between Player %u and Player %u",
+             static_cast<unsigned>(a), static_cast<unsigned>(b));
+    pushDiplomaticNotification(a, b, "Religious Alliance",
+        "Player " + std::to_string(a) + " and Player " + std::to_string(b)
+        + " formed a religious alliance.", 5);
+    return ErrorCode::Ok;
 }
 
 void DiplomacyManager::addReputationModifier(PlayerId a, PlayerId b,
@@ -274,6 +402,79 @@ void DiplomacyManager::tickModifiers() {
                 }
             }
             ++it;
+        }
+    }
+
+    // Pair-level pass: alliance level progression (H1.1) + auto-break (H1.4).
+    // Iterate only a<b to avoid double-ticking the mirrored directions.
+    constexpr int32_t AUTO_BREAK_SCORE_THRESHOLD = -30;
+    constexpr int32_t AUTO_BREAK_WARNING_TURNS   = 2;
+    constexpr int32_t AUTO_BREAK_REP_PENALTY     = -20;
+    constexpr int32_t AUTO_BREAK_REP_DECAY_TURNS = 40;
+    for (uint8_t a = 0; a < this->m_playerCount; ++a) {
+        for (uint8_t b = static_cast<uint8_t>(a + 1); b < this->m_playerCount; ++b) {
+            PairwiseRelation& relAB = this->relation(
+                static_cast<PlayerId>(a), static_cast<PlayerId>(b));
+            PairwiseRelation& relBA = this->relation(
+                static_cast<PlayerId>(b), static_cast<PlayerId>(a));
+
+            if (!relAB.hasAnyAlliance()) {
+                relAB.allianceBreakWarningTurns = 0;
+                relBA.allianceBreakWarningTurns = 0;
+                continue;
+            }
+
+            for (std::size_t i = 1; i < relAB.alliances.size(); ++i) {
+                if (relAB.alliances[i].isActive()) {
+                    relAB.alliances[i].tick();
+                    relBA.alliances[i] = relAB.alliances[i];
+                }
+            }
+
+            if (relAB.totalScore() < AUTO_BREAK_SCORE_THRESHOLD) {
+                ++relAB.allianceBreakWarningTurns;
+                relBA.allianceBreakWarningTurns = relAB.allianceBreakWarningTurns;
+                if (relAB.allianceBreakWarningTurns >= AUTO_BREAK_WARNING_TURNS) {
+                    relAB.hasDefensiveAlliance = false;
+                    relBA.hasDefensiveAlliance = false;
+                    relAB.hasMilitaryAlliance  = false;
+                    relBA.hasMilitaryAlliance  = false;
+                    relAB.hasResearchAgreement = false;
+                    relBA.hasResearchAgreement = false;
+                    relAB.hasEconomicAlliance  = false;
+                    relBA.hasEconomicAlliance  = false;
+                    relAB.hasCulturalAlliance  = false;
+                    relBA.hasCulturalAlliance  = false;
+                    relAB.hasReligiousAlliance = false;
+                    relBA.hasReligiousAlliance = false;
+                    for (std::size_t i = 0; i < relAB.alliances.size(); ++i) {
+                        relAB.alliances[i] = AllianceState{};
+                        relBA.alliances[i] = AllianceState{};
+                    }
+                    relAB.allianceBreakWarningTurns = 0;
+                    relBA.allianceBreakWarningTurns = 0;
+
+                    this->addReputationModifier(
+                        static_cast<PlayerId>(a), static_cast<PlayerId>(b),
+                        AUTO_BREAK_REP_PENALTY, AUTO_BREAK_REP_DECAY_TURNS);
+                    this->addReputationModifier(
+                        static_cast<PlayerId>(b), static_cast<PlayerId>(a),
+                        AUTO_BREAK_REP_PENALTY, AUTO_BREAK_REP_DECAY_TURNS);
+
+                    LOG_INFO("Alliance auto-broken between Player %u and Player %u (score %d)",
+                             static_cast<unsigned>(a), static_cast<unsigned>(b),
+                             relAB.totalScore());
+                    pushDiplomaticNotification(
+                        static_cast<PlayerId>(a), static_cast<PlayerId>(b),
+                        "Alliance Broken",
+                        "Relations between Player " + std::to_string(a)
+                            + " and Player " + std::to_string(b)
+                            + " collapsed; all alliances dissolved.", 8);
+                }
+            } else {
+                relAB.allianceBreakWarningTurns = 0;
+                relBA.allianceBreakWarningTurns = 0;
+            }
         }
     }
 }

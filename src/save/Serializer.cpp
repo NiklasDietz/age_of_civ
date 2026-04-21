@@ -633,6 +633,12 @@ void writePlayerStateSection(WriteBuffer& out, const aoc::game::GameState& gameS
         for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
             section.writeI32(gp.recruited[t]);
         }
+        // H3.8: exhausted flags (SAVE_VERSION 6+). Preserves "this roster is
+        // done, stop accumulating" across save/load; otherwise points would
+        // silently start draining again on the reloaded save.
+        for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
+            section.writeU8(gp.exhausted[t] ? 1 : 0);
+        }
     }
 
     // --- PlayerEurekaComponent ---
@@ -674,6 +680,22 @@ void writeDiplomacySection(WriteBuffer& out, const aoc::sim::DiplomacyManager& d
             section.writeU8(rel.isAtWar ? uint8_t{1} : uint8_t{0});
             section.writeU8(rel.hasOpenBorders ? uint8_t{1} : uint8_t{0});
             section.writeU8(rel.hasDefensiveAlliance ? uint8_t{1} : uint8_t{0});
+            // v5: remaining 5 alliance bools packed + per-type level state + cooldowns
+            const uint8_t allianceBits = static_cast<uint8_t>(
+                  (rel.hasMilitaryAlliance  ? 0x01 : 0)
+                | (rel.hasResearchAgreement ? 0x02 : 0)
+                | (rel.hasEconomicAlliance  ? 0x04 : 0)
+                | (rel.hasCulturalAlliance  ? 0x08 : 0)
+                | (rel.hasReligiousAlliance ? 0x10 : 0));
+            section.writeU8(allianceBits);
+            for (const aoc::sim::AllianceState& st : rel.alliances) {
+                section.writeU8(static_cast<uint8_t>(st.type));
+                section.writeU8(static_cast<uint8_t>(st.level));
+                section.writeI32(st.turnsActive);
+            }
+            section.writeI32(rel.lastAllianceFormTurn);
+            section.writeI32(rel.allianceBreakWarningTurns);
+            section.writeU8(static_cast<uint8_t>(rel.lastCasusBelli));
             section.writeU32(static_cast<uint32_t>(rel.modifiers.size()));
             for (const aoc::sim::RelationModifier& mod : rel.modifiers) {
                 section.writeString(mod.reason);
@@ -689,7 +711,11 @@ void writeDiplomacySection(WriteBuffer& out, const aoc::sim::DiplomacyManager& d
             // Border violation state
             section.writeI32(rel.unitsInTerritory);
             section.writeI32(rel.turnsWithViolation);
-            section.writeU8(rel.casusBelliGranted ? uint8_t{1} : uint8_t{0});
+            // Single byte encodes land CB (bit 0) and naval CB (bit 1).
+            // Legacy saves used only bit 0; bit 1 defaults to 0 on load.
+            const uint8_t cbBits = static_cast<uint8_t>(
+                (rel.casusBelliLand ? 0x1 : 0x0) | (rel.casusBelliNaval ? 0x2 : 0x0));
+            section.writeU8(cbBits);
             section.writeU8(rel.warningIssued ? uint8_t{1} : uint8_t{0});
         }
     }
@@ -835,6 +861,9 @@ void writeCrisisSection(WriteBuffer& out, const aoc::game::GameState& gameState)
         section.writeI32(c.turnsHighInflation);
         section.writeU8(c.hasDefaulted ? 1 : 0);
         section.writeI32(c.defaultCooldown);
+        // G4 post-reform penalties (introduced in SAVE_VERSION 6).
+        section.writeI32(c.reformLockoutTurns);
+        section.writeI32(c.reformTrustCapTurns);
     }
 
     writeSection(out, SectionId::CrisisState, section);
@@ -1647,6 +1676,13 @@ ErrorCode loadGame(const std::string& filepath,
                         int32_t recruited = buf.readI32();
                         if (player != nullptr) { player->greatPeople().recruited[t] = recruited; }
                     }
+                    // H3.8 exhausted flags (introduced in SAVE_VERSION 6).
+                    for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
+                        uint8_t flag = buf.readU8();
+                        if (player != nullptr) {
+                            player->greatPeople().exhausted[t] = (flag != 0);
+                        }
+                    }
                 }
 
                 // --- PlayerEurekaComponent ---
@@ -1695,6 +1731,36 @@ ErrorCode loadGame(const std::string& filepath,
                         rel.isAtWar = buf.readU8() != 0;
                         rel.hasOpenBorders = buf.readU8() != 0;
                         rel.hasDefensiveAlliance = buf.readU8() != 0;
+                        // v5: alliance bitmask + per-type state + cooldowns
+                        const uint8_t allianceBits = buf.readU8();
+                        rel.hasMilitaryAlliance  = (allianceBits & 0x01) != 0;
+                        rel.hasResearchAgreement = (allianceBits & 0x02) != 0;
+                        rel.hasEconomicAlliance  = (allianceBits & 0x04) != 0;
+                        rel.hasCulturalAlliance  = (allianceBits & 0x08) != 0;
+                        rel.hasReligiousAlliance = (allianceBits & 0x10) != 0;
+                        for (aoc::sim::AllianceState& st : rel.alliances) {
+                            st.type        = static_cast<aoc::sim::AllianceType>(buf.readU8());
+                            st.level       = static_cast<aoc::sim::AllianceLevel>(buf.readU8());
+                            st.turnsActive = buf.readI32();
+                        }
+                        rel.lastAllianceFormTurn      = buf.readI32();
+                        rel.allianceBreakWarningTurns = buf.readI32();
+                        rel.lastCasusBelli            =
+                            static_cast<aoc::sim::CasusBelliType>(buf.readU8());
+                        // Mirror new fields to (b,a) direction so the matrix is
+                        // fully symmetric right after load. Runtime code relies on
+                        // both directions holding the same alliance state.
+                        aoc::sim::PairwiseRelation& mirror = diplomacy.relation(b, a);
+                        mirror.hasDefensiveAlliance    = rel.hasDefensiveAlliance;
+                        mirror.hasMilitaryAlliance     = rel.hasMilitaryAlliance;
+                        mirror.hasResearchAgreement    = rel.hasResearchAgreement;
+                        mirror.hasEconomicAlliance     = rel.hasEconomicAlliance;
+                        mirror.hasCulturalAlliance     = rel.hasCulturalAlliance;
+                        mirror.hasReligiousAlliance    = rel.hasReligiousAlliance;
+                        mirror.alliances               = rel.alliances;
+                        mirror.lastAllianceFormTurn    = rel.lastAllianceFormTurn;
+                        mirror.allianceBreakWarningTurns = rel.allianceBreakWarningTurns;
+                        mirror.lastCasusBelli          = rel.lastCasusBelli;
                         uint32_t modCount = buf.readU32();
                         rel.modifiers.reserve(modCount);
                         for (uint32_t m = 0; m < modCount; ++m) {
@@ -1716,7 +1782,9 @@ ErrorCode loadGame(const std::string& filepath,
                         // Border violation state
                         rel.unitsInTerritory = buf.readI32();
                         rel.turnsWithViolation = buf.readI32();
-                        rel.casusBelliGranted = buf.readU8() != 0;
+                        const uint8_t cbBits = buf.readU8();
+                        rel.casusBelliLand = (cbBits & 0x1) != 0;
+                        rel.casusBelliNaval = (cbBits & 0x2) != 0;
                         rel.warningIssued = buf.readU8() != 0;
                     }
                 }
@@ -1853,6 +1921,8 @@ ErrorCode loadGame(const std::string& filepath,
                     c.turnsHighInflation = buf.readI32();
                     c.hasDefaulted = buf.readU8() != 0;
                     c.defaultCooldown = buf.readI32();
+                    c.reformLockoutTurns  = buf.readI32();
+                    c.reformTrustCapTurns = buf.readI32();
                     if (player != nullptr) {
                         player->currencyCrisis() = std::move(c);
                     }

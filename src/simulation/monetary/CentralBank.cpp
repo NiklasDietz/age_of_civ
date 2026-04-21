@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/monetary/CentralBank.hpp"
+#include "aoc/core/Log.hpp"
 
 #include <algorithm>
 
@@ -26,7 +27,7 @@ ErrorCode printMoney(MonetaryStateComponent& state, CurrencyAmount amount) {
         return ErrorCode::InvalidArgument;
     }
 
-    state.moneySupply += amount;
+    adjustMoneySupply(state, amount, "printMoney");
     // Printed money goes to the government treasury
     state.treasury += amount;
     return ErrorCode::Ok;
@@ -42,7 +43,7 @@ ErrorCode buyGold(MonetaryStateComponent& state,
 
     state.goldBarReserves += static_cast<int32_t>(goldAmount);
     state.treasury     -= totalCost;
-    state.moneySupply  -= totalCost;  // Currency removed from circulation
+    adjustMoneySupply(state, -totalCost, "buyGold");  // Currency removed from circulation
 
     // Recalculate backing ratio if on gold standard
     if (state.system == MonetarySystemType::GoldStandard && state.moneySupply > 0) {
@@ -64,7 +65,7 @@ ErrorCode sellGold(MonetaryStateComponent& state,
     CurrencyAmount currencyGained = goldAmount * goldPrice;
     state.goldBarReserves -= static_cast<int32_t>(goldAmount);
     state.treasury     += currencyGained;
-    state.moneySupply  += currencyGained;  // Currency enters circulation
+    adjustMoneySupply(state, currencyGained, "sellGold");  // Currency enters circulation
 
     // Recalculate backing ratio
     if (state.system == MonetarySystemType::GoldStandard && state.moneySupply > 0) {
@@ -101,20 +102,36 @@ ErrorCode debaseCurrency(MonetaryStateComponent& state, float ratio) {
     state.debasement.debasementRatio = newRatio;
     state.debasement.turnsDebased = 0;  // Reset discovery timer
 
-    // Produce extra coins from the debasement (stretch the metal).
-    // Bonus coins = ratio * current reserves for the highest tier held.
-    if (state.goldBarReserves > 0) {
-        int32_t bonus = std::max(1, static_cast<int32_t>(
-            static_cast<float>(state.goldBarReserves) * ratio));
-        state.goldBarReserves += bonus;
-    } else if (state.silverCoinReserves > 0) {
-        int32_t bonus = std::max(1, static_cast<int32_t>(
-            static_cast<float>(state.silverCoinReserves) * ratio));
-        state.silverCoinReserves += bonus;
-    } else if (state.copperCoinReserves > 0) {
-        int32_t bonus = std::max(1, static_cast<int32_t>(
-            static_cast<float>(state.copperCoinReserves) * ratio));
-        state.copperCoinReserves += bonus;
+    // G7: debasement produces extra coins in the *active legal tender* tier,
+    // not whichever metal happens to be the highest-denomination reserve held.
+    // Per Gresham's law, the bad money circulates; a civ on Copper tier
+    // holding 3 gold bars shouldn't see its gold reserves grow from debasing
+    // its copper coinage. Route the bonus through effectiveCoinTier.
+    switch (state.effectiveCoinTier) {
+        case CoinTier::Gold:
+            if (state.goldBarReserves > 0) {
+                const int32_t bonus = std::max(1, static_cast<int32_t>(
+                    static_cast<float>(state.goldBarReserves) * ratio));
+                state.goldBarReserves += bonus;
+            }
+            break;
+        case CoinTier::Silver:
+            if (state.silverCoinReserves > 0) {
+                const int32_t bonus = std::max(1, static_cast<int32_t>(
+                    static_cast<float>(state.silverCoinReserves) * ratio));
+                state.silverCoinReserves += bonus;
+            }
+            break;
+        case CoinTier::Copper:
+            if (state.copperCoinReserves > 0) {
+                const int32_t bonus = std::max(1, static_cast<int32_t>(
+                    static_cast<float>(state.copperCoinReserves) * ratio));
+                state.copperCoinReserves += bonus;
+            }
+            break;
+        case CoinTier::None:
+        case CoinTier::Count:
+            break;
     }
 
     // Update money supply to reflect the new coins
@@ -154,6 +171,34 @@ bool tickDebasementDiscovery(MonetaryStateComponent& state) {
     }
 
     return false;
+}
+
+ErrorCode remintCurrency(MonetaryStateComponent& state) {
+    // G15: escape valve from the permanent-debasement trap. Costs 20% of the
+    // current treasury and shaves 0.10 off the debasementRatio. Clears the
+    // discovery flag so partners have to catch the civ again on the next round.
+    if (state.system != MonetarySystemType::CommodityMoney) {
+        return ErrorCode::InvalidMonetaryTransition;
+    }
+    if (state.debasement.debasementRatio <= 0.001f) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    const CurrencyAmount cost = state.treasury / 5;  // 20% of treasury
+    if (cost <= 0 || state.treasury < cost) {
+        return ErrorCode::InsufficientResources;
+    }
+
+    state.treasury -= cost;
+    state.debasement.debasementRatio =
+        std::max(0.0f, state.debasement.debasementRatio - 0.10f);
+    state.debasement.discoveredByPartners = false;
+    state.debasement.turnsDebased = 0;
+
+    LOG_INFO("Player %u: reminted currency (-0.10 debasement, -%lld treasury)",
+             static_cast<unsigned>(state.owner),
+             static_cast<long long>(cost));
+    return ErrorCode::Ok;
 }
 
 } // namespace aoc::sim

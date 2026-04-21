@@ -41,7 +41,7 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
         // Volcanic eruption: high-elevation mountain tiles.
         if (terrain == aoc::map::TerrainType::Mountain && elevation >= 2) {
             const uint32_t threshold = static_cast<uint32_t>(5000000.0f * tempMultiplier);
-            if ((hash % 4294967295u) < threshold) {
+            if (hash < threshold) {
                 const hex::AxialCoord center = grid.toAxial(i);
                 const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(center);
                 for (const hex::AxialCoord& n : nbrs) {
@@ -61,7 +61,7 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
         if (feature == aoc::map::FeatureType::Hills && elevation >= 1) {
             const uint32_t eqHash = hash * 104729u;
             const uint32_t threshold = static_cast<uint32_t>(3000000.0f * tempMultiplier);
-            if ((eqHash % 4294967295u) < threshold) {
+            if (eqHash < threshold) {
                 const hex::AxialCoord center = grid.toAxial(i);
                 bool damaged = false;
                 for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
@@ -86,14 +86,23 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
         }
 
         // Drought: plains/grassland tiles at high temperature.
+        // H6.8: previously counter-only. Now grassland → plains (mild) and
+        // plains → desert (severe) so drought has a lasting food effect.
         if ((terrain == aoc::map::TerrainType::Plains
              || terrain == aoc::map::TerrainType::Grassland)
             && globalTemp > 15.0f) {
             const uint32_t drHash = hash * 7919u;
             const uint32_t threshold = static_cast<uint32_t>(
                 2000000.0f * (globalTemp - 14.0f));
-            if ((drHash % 4294967295u) < threshold) {
+            if (drHash < threshold) {
+                if (terrain == aoc::map::TerrainType::Grassland) {
+                    grid.setTerrain(i, aoc::map::TerrainType::Plains);
+                } else {
+                    grid.setTerrain(i, aoc::map::TerrainType::Desert);
+                }
                 ++disasterCount;
+                LOG_INFO("DROUGHT at tile %d (temp=%.2f)",
+                         i, static_cast<double>(globalTemp));
             }
         }
 
@@ -102,7 +111,7 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
             const uint32_t fireHash = hash * 15485863u;
             const uint32_t threshold = static_cast<uint32_t>(
                 15000000.0f * (globalTemp - 15.0f));
-            if ((fireHash % 4294967295u) < threshold) {
+            if (fireHash < threshold) {
                 grid.setFeature(i, aoc::map::FeatureType::None);
                 ++disasterCount;
                 LOG_INFO("WILDFIRE destroyed forest at tile %d", i);
@@ -114,7 +123,7 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
             const uint32_t hurHash = hash * 999983u;
             const uint32_t threshold = static_cast<uint32_t>(
                 10000000.0f * (globalTemp - 14.5f));
-            if ((hurHash % 4294967295u) < threshold) {
+            if (hurHash < threshold) {
                 if (grid.improvement(i) != aoc::map::ImprovementType::None) {
                     grid.setImprovement(i, aoc::map::ImprovementType::None);
                 }

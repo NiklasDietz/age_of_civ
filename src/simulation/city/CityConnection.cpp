@@ -11,6 +11,8 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <queue>
 #include <unordered_set>
 
@@ -78,13 +80,22 @@ int32_t processCityConnections(aoc::game::Player& player,
         return 0;
     }
 
-    // Check each non-capital city for road connection to capital
-    int32_t totalBonus = 0;
+    // C27: per-turn bonus decays with number of connected cities so a 10-city
+    // empire can't snowball +30 gold passive. Each additional connected city
+    // contributes BONUS / log2(n+1) instead of a flat +3. Keeps early
+    // connections valuable, flattens late-game.
+    int32_t connectedCount = 0;
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         if (city->location() == capitalPos) { continue; }
         if (isCityConnected(grid, city->location(), capitalPos)) {
-            totalBonus += CONNECTION_BONUS;
+            ++connectedCount;
         }
+    }
+    int32_t totalBonus = 0;
+    if (connectedCount > 0) {
+        const float divisor = std::log2(static_cast<float>(connectedCount) + 1.0f);
+        const float perCity = static_cast<float>(CONNECTION_BONUS) / std::max(1.0f, divisor);
+        totalBonus = static_cast<int32_t>(perCity * static_cast<float>(connectedCount));
     }
 
     if (totalBonus > 0) {

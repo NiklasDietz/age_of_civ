@@ -92,6 +92,13 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             }
         }
 
+        // H4.3: cap own and foreign pressure independently so an overwhelming
+        // city count on one side can't crowd out the other. Without caps the
+        // civ with more cities in the region always wins loyalty, making
+        // asymmetric borders unrecoverable regardless of governance.
+        loyalty.ownCityPressure = std::clamp(loyalty.ownCityPressure, 0.0f, 50.0f);
+        loyalty.foreignCityPressure = std::clamp(loyalty.foreignCityPressure, -50.0f, 0.0f);
+
         // Governor bonus (+4 loyalty if governor is active)
         if (city->governor().isActive) {
             loyalty.governorBonus = 4.0f;

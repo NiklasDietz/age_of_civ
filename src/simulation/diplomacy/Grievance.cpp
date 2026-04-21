@@ -31,12 +31,12 @@ void PlayerGrievanceComponent::addGrievance(GrievanceType type, PlayerId against
             case GrievanceType::IdeologicalDifference:     existing.turnsRemaining = 8;  return;
             case GrievanceType::EspionageCaught:           existing.turnsRemaining = 40; return;
             case GrievanceType::BulliedCityState:          existing.turnsRemaining = 30; return;
-            // Permanent types: keep single entry, do not re-add.
-            case GrievanceType::DeclaredWarOnAlly:
-            case GrievanceType::TradeEmbargo:
-            case GrievanceType::BrokeNonAggression:
-            case GrievanceType::LostCityToSecession:
-                return;
+            // Historically permanent (H1.10 capped at 100 turns). Re-incident
+            // refreshes the countdown so repeated offenses stay fresh.
+            case GrievanceType::DeclaredWarOnAlly:         existing.turnsRemaining = 100; return;
+            case GrievanceType::TradeEmbargo:              existing.turnsRemaining = 100; return;
+            case GrievanceType::BrokeNonAggression:        existing.turnsRemaining = 100; return;
+            case GrievanceType::LostCityToSecession:       existing.turnsRemaining = 100; return;
         }
     }
 
@@ -55,7 +55,7 @@ void PlayerGrievanceComponent::addGrievance(GrievanceType type, PlayerId against
             break;
         case GrievanceType::DeclaredWarOnAlly:
             g.severity       = -30;
-            g.turnsRemaining = 0; // permanent
+            g.turnsRemaining = 100; // H1.10: capped, was previously permanent
             break;
         case GrievanceType::ConqueredCity:
             g.severity       = -15;
@@ -63,7 +63,7 @@ void PlayerGrievanceComponent::addGrievance(GrievanceType type, PlayerId against
             break;
         case GrievanceType::TradeEmbargo:
             g.severity       = -10;
-            g.turnsRemaining = 0; // lasts while active
+            g.turnsRemaining = 100; // H1.10: capped; embargo lifecycle refreshes while active
             break;
         case GrievanceType::ViolatedEmbargo:
             g.severity       = -15;
@@ -75,7 +75,7 @@ void PlayerGrievanceComponent::addGrievance(GrievanceType type, PlayerId against
             break;
         case GrievanceType::BrokeNonAggression:
             g.severity       = -30;
-            g.turnsRemaining = 0; // permanent
+            g.turnsRemaining = 100; // H1.10: capped, was previously permanent
             break;
         case GrievanceType::DMZViolation:
             g.severity       = -10;
@@ -83,7 +83,7 @@ void PlayerGrievanceComponent::addGrievance(GrievanceType type, PlayerId against
             break;
         case GrievanceType::LostCityToSecession:
             g.severity       = -15;
-            g.turnsRemaining = 0; // permanent
+            g.turnsRemaining = 100; // H1.10: capped, was previously permanent
             break;
         case GrievanceType::IdeologicalDifference:
             g.severity       = -5;

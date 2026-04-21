@@ -496,10 +496,7 @@ namespace {
 
 /// Pairwise: do these two players share ANY active alliance type?
 [[nodiscard]] bool isAllied(const PairwiseRelation& rel) {
-    return rel.hasDefensiveAlliance
-        || rel.hasMilitaryAlliance
-        || rel.hasResearchAgreement
-        || rel.hasEconomicAlliance;
+    return rel.hasAnyAlliance();
 }
 
 /// Enumerate all maximal cliques of size >= 3 in a small alliance graph using
@@ -637,9 +634,9 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                         ++followingCities;
                     }
                 }
-                // Dominance fraction is balance-tunable (default 0.4).  Still
-                // requires dominance in EVERY other civ, which preserves the
-                // high bar.
+                // Dominance fraction is balance-tunable (default 0.50 — a
+                // majority of each rival civ's cities). Still requires
+                // dominance in EVERY other civ, which preserves the high bar.
                 const float needed = static_cast<float>(other->cities().size())
                                    * aoc::balance::params().religionDominanceFrac;
                 if (static_cast<float>(followingCities) < needed) {
@@ -788,39 +785,64 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     // military, governance) wins.  Max per turn is capped, so the achievable
     // ceiling scales with maxTurns and works for any game length.
     if ((enabledTypes & VICTORY_MASK_PRESTIGE) != 0u && currentTurn >= maxTurns) {
+        // Tiebreaker: primary = prestige total, secondary = compositeCSI,
+        // tertiary = lowest playerId. Without this, iteration order decided
+        // ties between players with equal prestige.
         PlayerId bestPlayer = INVALID_PLAYER;
         float bestPrestige = -1.0f;
+        float bestCSI = -1.0f;
         for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
             if (gsPlayer->victoryTracker().isEliminated) { continue; }
             const float total = gsPlayer->prestige().total;
-            if (total > bestPrestige) {
+            const float csi   = gsPlayer->victoryTracker().compositeCSI;
+            const PlayerId id = gsPlayer->id();
+            const bool better =
+                (total >  bestPrestige) ||
+                (total == bestPrestige && csi >  bestCSI) ||
+                (total == bestPrestige && csi == bestCSI && id < bestPlayer);
+            if (better) {
                 bestPrestige = total;
-                bestPlayer = gsPlayer->id();
+                bestCSI      = csi;
+                bestPlayer   = id;
             }
         }
         if (bestPlayer != INVALID_PLAYER) {
-            LOG_INFO("Player %u wins by PRESTIGE (score = %.1f) at turn %d",
+            LOG_INFO("Player %u wins by PRESTIGE (score = %.1f, CSI = %.2f) at turn %d",
                      static_cast<unsigned>(bestPlayer),
                      static_cast<double>(bestPrestige),
+                     static_cast<double>(bestCSI),
                      static_cast<int>(currentTurn));
             return {VictoryType::Prestige, bestPlayer};
         }
     }
 
-    // 5. Turn limit (fallback): highest cumulative Era VP wins
+    // 5. Turn limit (fallback): highest cumulative Era VP wins.
+    // Tiebreaker: primary = eraVictoryPoints, secondary = compositeCSI,
+    // tertiary = lowest playerId.
     if ((enabledTypes & VICTORY_MASK_SCORE) != 0u && currentTurn >= maxTurns) {
         PlayerId bestPlayer = INVALID_PLAYER;
         int32_t bestVP = -1;
+        float   bestCSI = -1.0f;
         for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
             const VictoryTrackerComponent& tracker = gsPlayer->victoryTracker();
-            if (!tracker.isEliminated && tracker.eraVictoryPoints > bestVP) {
-                bestVP = tracker.eraVictoryPoints;
-                bestPlayer = gsPlayer->id();
+            if (tracker.isEliminated) { continue; }
+            const int32_t vp  = tracker.eraVictoryPoints;
+            const float   csi = tracker.compositeCSI;
+            const PlayerId id = gsPlayer->id();
+            const bool better =
+                (vp >  bestVP) ||
+                (vp == bestVP && csi >  bestCSI) ||
+                (vp == bestVP && csi == bestCSI && id < bestPlayer);
+            if (better) {
+                bestVP     = vp;
+                bestCSI    = csi;
+                bestPlayer = id;
             }
         }
         if (bestPlayer != INVALID_PLAYER) {
-            LOG_INFO("Player %u wins by SCORE (Era VP = %d) at turn %d",
+            LOG_INFO("Player %u wins by SCORE (Era VP = %d, CSI = %.2f) at turn %d",
                      static_cast<unsigned>(bestPlayer), bestVP,
+                     static_cast<double>(bestCSI),
                      static_cast<int>(currentTurn));
             return {VictoryType::Score, bestPlayer};
         }

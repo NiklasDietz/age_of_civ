@@ -103,6 +103,12 @@ public:
 
     [[nodiscard]] float foodSurplus() const { return this->m_foodSurplus; }
 
+    /// C33: last-turn wheat/consumer-goods shortfall ratio (0.0 = fully fed,
+    /// 1.0 = starved). Consumed by CityGrowth as growth penalty and Happiness
+    /// as amenity hit. Set by EconomySimulation consumption loop.
+    [[nodiscard]] float foodShortfallRatio() const { return this->m_foodShortfallRatio; }
+    void setFoodShortfallRatio(float r) { this->m_foodShortfallRatio = r; }
+
     [[nodiscard]] float cultureBorderProgress() const { return this->m_cultureBorderProgress; }
     void setCultureBorderProgress(float prog) { this->m_cultureBorderProgress = prog; }
     void addCultureBorderProgress(float amount) { this->m_cultureBorderProgress += amount; }
@@ -284,6 +290,7 @@ private:
     // Population
     int32_t m_population = 1;
     float m_foodSurplus = 0.0f;
+    float m_foodShortfallRatio = 0.0f;
     float m_cultureBorderProgress = 0.0f;
     float m_productionProgress = 0.0f;
 

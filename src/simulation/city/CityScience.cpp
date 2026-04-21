@@ -13,6 +13,7 @@
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/tech/EraProgression.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
+#include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
@@ -77,7 +78,14 @@ float computePlayerScience(const aoc::game::Player& player,
         // 5. Apply multiplier
         cityScience *= bestMultiplier;
 
-        // 6. Religion-vs-education curve: net Devotion * era coefficient.
+        // 6. Wonder science bonus (H4.9). Flat bonus per wonder applied
+        // before the religion curve so Great Library etc. count as building
+        // science, not a religion modifier.
+        for (const WonderId wid : city->wonders().wonders) {
+            cityScience += wonderDef(wid).effect.scienceBonus;
+        }
+
+        // 7. Religion-vs-education curve: net Devotion * era coefficient.
         // Coefficient is positive in Ancient/Classical (monastic literacy
         // bonus), zero in Medieval, and negative from Renaissance onward.
         // City can offset the drain by building Library/University/Research
@@ -137,6 +145,11 @@ float computePlayerCulture(const aoc::game::Player& player,
                     totalCulture += static_cast<float>(buildingDef(bid).cultureBonus);
                 }
             }
+        }
+
+        // Wonder culture bonus (H4.9): Eiffel Tower, Forbidden City, etc.
+        for (const WonderId wid : city->wonders().wonders) {
+            totalCulture += wonderDef(wid).effect.cultureBonus;
         }
     }
 

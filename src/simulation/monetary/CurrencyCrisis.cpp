@@ -49,6 +49,16 @@ bool processCurrencyCrisis(aoc::game::GameState& /*gameState*/,
     if (crisis.defaultCooldown > 0) {
         --crisis.defaultCooldown;
     }
+    // G4: tick post-reform penalties. Lockout blocks new borrowing; trust cap
+    // holds fiatTrust at 0.3 so the civ cannot immediately rebuild reserve
+    // currency status after hyperinflating its debt away.
+    if (crisis.reformLockoutTurns > 0) {
+        --crisis.reformLockoutTurns;
+    }
+    if (crisis.reformTrustCapTurns > 0) {
+        --crisis.reformTrustCapTurns;
+        state.fiatTrust = std::min(state.fiatTrust, 0.3f);
+    }
 
     // ================================================================
     // Process active crisis effects
@@ -68,7 +78,8 @@ bool processCurrencyCrisis(aoc::game::GameState& /*gameState*/,
                 if (state.goldBarReserves <= 0
                     && state.system == MonetarySystemType::GoldStandard) {
                     // Paper currency loses 50% of value
-                    state.moneySupply /= 2;
+                    adjustMoneySupply(state, -state.moneySupply / 2,
+                                      "bankRunDevaluation");
                     state.goldBackingRatio = 0.0f;
                     state.priceLevel *= 2.0f;  // Prices double
                     LOG_INFO("Player %u: bank run depleted gold reserves, forced devaluation!",
@@ -183,13 +194,23 @@ void executeCurrencyReform(MonetaryStateComponent& state,
     // Reset price level to baseline
     state.priceLevel = 1.0f;
     // Wipe 50% of money supply (the "new currency" is worth 2x the old)
-    state.moneySupply /= 2;
+    adjustMoneySupply(state, -state.moneySupply / 2, "currencyReform");
+    // G4: halve governmentDebt too so the real debt burden is preserved across
+    // redenomination. Without this pairing, deliberate hyperinflation is a
+    // free 50% debt wipe and +EV whenever debt exceeds ~20% of GDP.
+    state.governmentDebt /= 2;
     // Reset inflation
     state.inflationRate = 0.0f;
     // Reset consecutive inflation counter
     crisis.turnsHighInflation = 0;
+    // G4: post-reform penalties. Borrow lockout matches default cooldown
+    // convention (turns-remaining counter). Trust cap locks fiatTrust at 0.3
+    // for the full duration.
+    crisis.reformLockoutTurns  = 30;
+    crisis.reformTrustCapTurns = 50;
+    state.fiatTrust = std::min(state.fiatTrust, 0.3f);
 
-    LOG_INFO("Player %u: currency reform executed. Money supply halved, prices reset.",
+    LOG_INFO("Player %u: currency reform executed. Money supply halved, debt halved, borrow lockout 30t, trust cap 50t.",
              static_cast<unsigned>(state.owner));
 }
 

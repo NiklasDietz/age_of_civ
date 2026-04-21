@@ -61,6 +61,7 @@ enum class ErrorCode : uint16_t {
     InvalidCityAction          = 701,
     TechPrerequisiteNotMet     = 702,
     InvalidMonetaryTransition  = 703,
+    AllianceExists             = 704,  ///< Pair already has an alliance, or is within the 20-turn post-formation cooldown
 };
 
 /**
@@ -110,6 +111,7 @@ enum class ErrorCode : uint16_t {
         case ErrorCode::InvalidCityAction:           return "City cannot perform this action";
         case ErrorCode::TechPrerequisiteNotMet:      return "Technology prerequisites not researched";
         case ErrorCode::InvalidMonetaryTransition:   return "Cannot transition to this monetary system";
+        case ErrorCode::AllianceExists:              return "Alliance already active or within post-formation cooldown";
     }
     return "Unrecognized error code";
 }

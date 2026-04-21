@@ -52,13 +52,17 @@ enum class FormationLevel : uint8_t {
     Armada = 2,  ///< Naval army equivalent
 };
 
-/// Combat strength bonus per formation level.
-[[nodiscard]] constexpr int32_t formationStrengthBonus(FormationLevel level) {
+/// Combat strength multiplier per formation level. Sub-linear to prevent a
+/// 3-unit Army from cascading over a lone defender:
+///   Corps/Fleet: +15%    (previously +10 flat)
+///   Army/Armada: +25%    (previously +17 flat, additive with base)
+/// Additional flat stacking on top is capped externally at +2.
+[[nodiscard]] constexpr float formationStrengthMultiplier(FormationLevel level) {
     switch (level) {
-        case FormationLevel::Single: return 0;
-        case FormationLevel::Corps:  return 10;  // Also Fleet
-        case FormationLevel::Army:   return 17;  // Also Armada
-        default:                     return 0;
+        case FormationLevel::Single: return 1.00f;
+        case FormationLevel::Corps:  return 1.15f;  // Also Fleet
+        case FormationLevel::Army:   return 1.25f;  // Also Armada
+        default:                     return 1.00f;
     }
 }
 

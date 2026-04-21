@@ -233,6 +233,11 @@ struct DebasementState {
 // Per-player monetary state (ECS component)
 // ============================================================================
 
+/// Minimum money supply in any monetized system. Fisher / velocity / backing
+/// math divide by `moneySupply`; a zero or negative value produces undefined
+/// state that never recovers. Barter keeps M == 0 (no currency exists).
+inline constexpr CurrencyAmount MONEY_SUPPLY_FLOOR = 1;
+
 struct MonetaryStateComponent {
     PlayerId           owner = INVALID_PLAYER;
     MonetarySystemType system = MonetarySystemType::Barter;
@@ -469,7 +474,15 @@ struct MonetaryStateComponent {
 
         for (const MonetaryTransitionReq& req : MONETARY_TRANSITIONS) {
             if (req.target == target) {
-                if (this->currencyStrength() < req.minCurrencyStrength) {
+                // G8: read raw (pre-debasement) strength. Debasement inflates
+                // coin counts without adding real silver/gold, so allowing the
+                // gate to read post-debasement totals lets a civ clear the
+                // threshold by mixing base metal into its coinage rather than
+                // actually accumulating reserves.
+                const int32_t rawStrength = static_cast<int32_t>(
+                    static_cast<float>(this->currencyStrength())
+                    * (1.0f - this->debasement.debasementRatio));
+                if (rawStrength < req.minCurrencyStrength) {
                     return ErrorCode::InvalidMonetaryTransition;
                 }
                 if (cityCount < req.minCityCount) {
@@ -531,11 +544,24 @@ struct MonetaryStateComponent {
                 // Money is no longer backed by gold. Keep current supply.
                 // Gold bars become a commodity (raw material for gold contacts).
                 this->goldBackingRatio = 0.0f;
+                // Seed money supply if the civ arrives with M == 0 (e.g. after
+                // sovereign default, crisis reform, or aggressive gold-buy).
+                // Fisher / trust / maxTradeRoutes all assume M > 0.
+                if (this->moneySupply < MONEY_SUPPLY_FLOOR) {
+                    this->moneySupply = std::max<CurrencyAmount>(
+                        static_cast<CurrencyAmount>(this->currencyStrength()) * 2,
+                        MONEY_SUPPLY_FLOOR);
+                }
                 break;
 
             case MonetarySystemType::Digital:
                 // Same ledger semantics as fiat; all settlement is electronic.
                 this->goldBackingRatio = 0.0f;
+                if (this->moneySupply < MONEY_SUPPLY_FLOOR) {
+                    this->moneySupply = std::max<CurrencyAmount>(
+                        static_cast<CurrencyAmount>(this->currencyStrength()) * 2,
+                        MONEY_SUPPLY_FLOOR);
+                }
                 break;
 
             default:
@@ -596,9 +622,18 @@ struct MonetaryStateComponent {
                 if (strength < STRENGTH_INTERNATIONAL)  { return 3; }
                 return 4;  // Full commodity money trade capacity
             }
-            case MonetarySystemType::GoldStandard:   return 6;
-            case MonetarySystemType::FiatMoney:      return 10;
-            case MonetarySystemType::Digital:        return 14;
+            case MonetarySystemType::GoldStandard:
+                // G11: broken currency (M below the floor) degrades capacity
+                // so the fiat/gold tier can't silently keep full trade capacity
+                // while strength math reports 0.
+                if (this->moneySupply < MONEY_SUPPLY_FLOOR) { return 1; }
+                return 6;
+            case MonetarySystemType::FiatMoney:
+                if (this->moneySupply < MONEY_SUPPLY_FLOOR) { return 1; }
+                return 10;
+            case MonetarySystemType::Digital:
+                if (this->moneySupply < MONEY_SUPPLY_FLOOR) { return 1; }
+                return 14;
             default:                                 return 1;
         }
     }
@@ -615,5 +650,32 @@ struct MonetaryStateComponent {
         return static_cast<CurrencyAmount>(this->goldBarReserves);
     }
 };
+
+/**
+ * @brief Single chokepoint for all money supply changes. Applies the delta
+ *        and enforces the MONEY_SUPPLY_FLOOR for monetized systems.
+ *
+ * Every path that creates or destroys money (printMoney, sellGold, buyGold,
+ * monetizeDebt, counterfeit, currency war, crisis devaluation) must route
+ * through this function. Direct `state.moneySupply +=` writes bypass the
+ * floor and can leave the supply at 0 or negative, breaking inflation and
+ * backing-ratio math irrecoverably.
+ *
+ * @param state   Player's monetary state.
+ * @param delta   Signed change to apply (can be negative).
+ * @param reason  Short label for tracing; currently unused at runtime.
+ */
+inline void adjustMoneySupply(MonetaryStateComponent& state,
+                              CurrencyAmount delta,
+                              std::string_view /*reason*/) {
+    state.moneySupply += delta;
+    const CurrencyAmount floor =
+        (state.system == MonetarySystemType::Barter)
+            ? CurrencyAmount{0}
+            : MONEY_SUPPLY_FLOOR;
+    if (state.moneySupply < floor) {
+        state.moneySupply = floor;
+    }
+}
 
 } // namespace aoc::sim

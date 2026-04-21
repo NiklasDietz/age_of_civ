@@ -105,7 +105,6 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
     const bool unitIsMilitary = unit.isMilitary();
 
     bool moved = false;
-    bool prevInZoC = isInEnemyZoneOfControl(gameState, unit.position(), unit.owner());
 
     while (!unit.pendingPath().empty() && unit.movementRemaining() > 0) {
         const aoc::hex::AxialCoord nextTile = unit.pendingPath().front();
@@ -121,10 +120,15 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
         if (unit.isNaval()) {
             cost = grid.navalMovementCost(tileIndex);
         } else if (unit.state() == aoc::sim::UnitState::Embarked) {
-            // Embarked land units may only traverse coast tiles at a fixed cost
+            // Embarked land units may only traverse coast tiles. Any other
+            // water class (Ocean, Shallow, Lake) is impassable for embarked
+            // movement — the unit must wait for the carrying naval unit to
+            // ferry it. Explicit reject makes the guard unambiguous.
             const aoc::map::TerrainType terrain = grid.terrain(tileIndex);
             if (terrain == aoc::map::TerrainType::Coast) {
                 cost = 2;
+            } else {
+                cost = 0;  // explicit: anything else blocks the step
             }
         } else {
             cost = grid.movementCost(tileIndex);
@@ -214,13 +218,15 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
             }
         }
 
-        // Zone of control: a unit moving from one ZoC tile into another must stop
-        const bool currentInZoC = isInEnemyZoneOfControl(gameState, nextTile, unit.owner());
-        if (prevInZoC && currentInZoC) {
+        // Zone of control: stop as soon as the unit enters an enemy ZoC tile.
+        // Previously only blocked ZoC->ZoC transitions, which let units pass
+        // through an enemy screening line in a single step if they approached
+        // from open terrain. Blocking entry outright restores the screening
+        // guarantee defensive ZoC is meant to provide.
+        if (isInEnemyZoneOfControl(gameState, nextTile, unit.owner())) {
             unit.setMovementRemaining(0);
             break;
         }
-        prevInZoC = currentInZoC;
     }
 
     unit.setState(unit.pendingPath().empty() ? aoc::sim::UnitState::Idle

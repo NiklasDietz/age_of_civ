@@ -156,15 +156,20 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
 
         case SpyMission::MarketManipulation: {
             // Reduce target's GDP by 10-20% for 5 turns (modeled as direct treasury hit)
+            // H5.2: owner pockets 50% of the damage as front-running profit;
+            // without this credit the gold disappeared from the game entirely.
             aoc::game::Player* target = findCityOwner(gameState, spy.owner, spy.location);
             if (target != nullptr) {
                 const CurrencyAmount damage = static_cast<CurrencyAmount>(
                     static_cast<float>(target->monetary().gdp) * 0.15f);
                 target->addGold(-damage);
-                LOG_INFO("Spy (P%u) manipulated market: P%u lost %lld gold",
+                const CurrencyAmount skim = damage / 2;
+                ownerPlayer.addGold(skim);
+                LOG_INFO("Spy (P%u) manipulated market: P%u lost %lld gold, owner +%lld",
                          static_cast<unsigned>(spy.owner),
                          static_cast<unsigned>(target->id()),
-                         static_cast<long long>(damage));
+                         static_cast<long long>(damage),
+                         static_cast<long long>(skim));
             }
             break;
         }
@@ -196,15 +201,20 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
 
         case SpyMission::InsiderTrading: {
             // Award gold bonus based on target's stock market activity
+            // H5.2: debit target the same amount — the spy is front-running
+            // target-civ investors, so every credit to the owner is a loss
+            // to the target's market participants.
             aoc::game::Player* target = findCityOwner(gameState, spy.owner, spy.location);
             if (target != nullptr) {
                 const CurrencyAmount bonus = static_cast<CurrencyAmount>(
                     static_cast<float>(target->monetary().gdp) * 0.05f);
                 ownerPlayer.addGold(bonus);
-                LOG_INFO("Spy (P%u) insider trading: +%lld gold from P%u intel",
+                target->addGold(-bonus);
+                LOG_INFO("Spy (P%u) insider trading: +%lld gold, P%u -%lld",
                          static_cast<unsigned>(spy.owner),
                          static_cast<long long>(bonus),
-                         static_cast<unsigned>(target->id()));
+                         static_cast<unsigned>(target->id()),
+                         static_cast<long long>(bonus));
             }
             break;
         }
@@ -301,6 +311,46 @@ void processSpyMissions(aoc::game::GameState& gameState,
                 // Passive intel missions: gain small XP over time
                 if (rng.chance(0.1f)) {
                     spy.addExperience(1);
+                }
+
+                // H5.3: passive intel is no longer an undetectable permanent
+                // feed. Each turn, roll the mission success rate against the
+                // defender's counter-spy level. First failure marks the spy
+                // revealed; a second failure while revealed captures the spy.
+                aoc::game::Player* defender =
+                    findCityOwner(gameState, spy.owner, spy.location);
+                if (defender != nullptr) {
+                    const int32_t counterLvl = counterSpyLevel(
+                        gameState, grid, defender->id(), spy.location);
+                    if (counterLvl > 0) {
+                        const float passiveChance = missionSuccessRate(
+                            spy, spy.currentMission, counterLvl);
+                        // Only probe occasionally so passive intel isn't
+                        // burned on turn 1 when counter-spy is weak.
+                        if (rng.chance(0.25f) && !rng.chance(passiveChance)) {
+                            if (spy.isRevealed) {
+                                LOG_WARN("Passive spy (P%u) captured in P%u territory",
+                                         static_cast<unsigned>(spy.owner),
+                                         static_cast<unsigned>(defender->id()));
+                                defender->grievances().addGrievance(
+                                    GrievanceType::EspionageCaught, spy.owner);
+                                if (diplomacy != nullptr) {
+                                    RelationModifier mod{};
+                                    mod.reason         = "Spy caught in our territory";
+                                    mod.amount         = -15;
+                                    mod.turnsRemaining = 40;
+                                    diplomacy->addModifier(
+                                        defender->id(), spy.owner, mod);
+                                }
+                                toRemove.push_back(unitPtr);
+                            } else {
+                                spy.isRevealed = true;
+                                LOG_INFO("Passive spy (P%u) exposed by P%u counter-intel",
+                                         static_cast<unsigned>(spy.owner),
+                                         static_cast<unsigned>(defender->id()));
+                            }
+                        }
+                    }
                 }
             }
             continue;

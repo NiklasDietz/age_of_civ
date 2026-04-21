@@ -161,13 +161,30 @@ bool canBuildWonder(const aoc::game::GameState& gameState, PlayerId player, uint
         return false;
     }
 
+    const aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer == nullptr) { return false; }
+
     // Check tech prerequisite
     const WonderDef& wdef = wonderDef(wonderId);
     if (wdef.prerequisiteTech.isValid()) {
-        const aoc::game::Player* gsPlayer = gameState.player(player);
-        if (gsPlayer == nullptr) { return false; }
         if (!gsPlayer->tech().hasResearched(wdef.prerequisiteTech)) {
             return false;
+        }
+    }
+
+    // H4.10: prevent the same civ from owning the wonder or queueing it in
+    // multiple cities at once. Without this, a rush-happy player could queue
+    // Pyramids in 5 cities and waste the losing four's production.
+    for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+        if (city == nullptr) { continue; }
+        if (city->wonders().hasWonder(wonderId)) {
+            return false;
+        }
+        for (const ProductionQueueItem& it : city->production().queue) {
+            if (it.type == ProductionItemType::Wonder
+                && it.itemId == wonderId) {
+                return false;
+            }
         }
     }
 

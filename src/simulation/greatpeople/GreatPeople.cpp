@@ -135,6 +135,16 @@ void accumulateGreatPeoplePoints(aoc::game::GameState& gameState, PlayerId playe
             }
         }
     }
+
+    // H3.8: zero out any type whose roster was exhausted on a prior turn, so
+    // district/building contributions don't keep sliding into a dead bucket.
+    for (std::size_t i = 0;
+         i < static_cast<std::size_t>(GreatPersonType::Count);
+         ++i) {
+        if (gpComp.exhausted[i]) {
+            gpComp.points[i] = 0.0f;
+        }
+    }
 }
 
 // ============================================================================
@@ -183,11 +193,13 @@ void checkGreatPeopleRecruitment(aoc::game::GameState& gameState, PlayerId playe
             }
         }
 
-        // Roster exhausted: all named historical figures of this type already
-        // recruited. Stall recruitment by consuming the points without spawning
-        // so points don't accumulate infinitely while threshold stays hit.
-        if (defId < 0) {
-            gpComp.points[typeIdx] -= thresh;
+        // H3.8: roster exhausted or cap reached. Mark the type exhausted and
+        // zero its point bucket so accumulation on later turns doesn't silently
+        // drain into the void forever. threshold() now returns +inf for this
+        // type so the recruitment branch never fires for it again.
+        if (defId < 0 || gpComp.recruited[typeIdx] >= MAX_GP_PER_TYPE) {
+            gpComp.exhausted[typeIdx] = true;
+            gpComp.points[typeIdx] = 0.0f;
             continue;
         }
 

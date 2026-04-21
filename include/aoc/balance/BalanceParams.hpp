@@ -44,8 +44,11 @@ struct BalanceParams {
     float   integrationThreshold     = 1.27f;
     int32_t integrationTurnsRequired = 12;
 
-    // Victory: religion dominance fraction (0..1).
-    float   religionDominanceFrac    = 0.77f;
+    // Victory: religion dominance fraction (0..1). Each other civ must have
+    // this fraction of its cities following your religion for a religious win.
+    // 0.50 matches the Civ5/Civ6 convention (majority per civ) and is reachable
+    // with a sustained faith push; 0.77 proved unattainable in 4+ civ games.
+    float   religionDominanceFrac    = 0.50f;
 
     // Victory: space race cost multiplier (1.0 = nominal SPACE_PROJECT_DEFS).
     float   spaceRaceCostMult        = 1.01f;

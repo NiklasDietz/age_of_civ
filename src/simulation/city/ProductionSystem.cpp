@@ -75,6 +75,15 @@ static float computeCityProductionGS(const aoc::game::Player& player,
     // Civilization production multiplier
     totalProduction *= civDef(player.civId()).modifiers.productionMultiplier;
 
+    // Wonder productionMultiplier (H4.9): Pyramids, Ruhr Valley. Applied before
+    // stability modifiers so corruption/inflation still erode a fortified pipe.
+    for (const WonderId wid : city.wonders().wonders) {
+        const float mult = wonderDef(wid).effect.productionMultiplier;
+        if (mult > 0.0f) {
+            totalProduction *= mult;
+        }
+    }
+
     // War weariness production modifier
     totalProduction *= warWearinessProductionModifier(player.warWeariness().weariness);
 
@@ -226,6 +235,36 @@ void processProductionQueues(aoc::game::GameState& gameState,
                         ev.actor = city->owner();
                         ev.payload = static_cast<int32_t>(wonderId);
                         gameState.visibilityBus().emit(ev);
+                    }
+                    // H4.8: refund 50% of invested production (as gold, 1:1) to
+                    // every other civ that had the same wonder queued, and drop
+                    // the queue entry so they don't waste another turn on it.
+                    for (const std::unique_ptr<aoc::game::Player>& otherPtr : gameState.players()) {
+                        if (otherPtr == nullptr) { continue; }
+                        if (otherPtr->id() == city->owner()) { continue; }
+                        for (const std::unique_ptr<aoc::game::City>& otherCity : otherPtr->cities()) {
+                            if (otherCity == nullptr) { continue; }
+                            ProductionQueueComponent& otherQueue = otherCity->production();
+                            for (auto qit = otherQueue.queue.begin(); qit != otherQueue.queue.end(); ) {
+                                if (qit->type == ProductionItemType::Wonder
+                                    && static_cast<WonderId>(qit->itemId) == wonderId) {
+                                    const int32_t refund = static_cast<int32_t>(qit->progress * 0.5f);
+                                    if (refund > 0) {
+                                        otherPtr->setTreasury(otherPtr->treasury()
+                                            + static_cast<CurrencyAmount>(refund));
+                                    }
+                                    LOG_INFO("Wonder race loss: Player %u refunded %d gold from %.*s in %s",
+                                             static_cast<unsigned>(otherPtr->id()),
+                                             refund,
+                                             static_cast<int>(qit->name.size()),
+                                             qit->name.c_str(),
+                                             otherCity->name().c_str());
+                                    qit = otherQueue.queue.erase(qit);
+                                } else {
+                                    ++qit;
+                                }
+                            }
+                        }
                     }
                     break;
                 }

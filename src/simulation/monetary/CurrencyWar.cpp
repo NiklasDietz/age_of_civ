@@ -37,7 +37,7 @@ ErrorCode devalueCurrency(aoc::game::GameState& /*gameState*/,
     // Increase money supply by 20%
     CurrencyAmount increase = static_cast<CurrencyAmount>(
         static_cast<float>(state.moneySupply) * DEVALUATION_MONEY_INCREASE);
-    state.moneySupply += increase;
+    adjustMoneySupply(state, increase, "devaluation");
     state.treasury    += increase;
 
     // Activate devaluation effects

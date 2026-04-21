@@ -178,6 +178,23 @@ void processAutoRenewTradeRoutes(aoc::game::GameState& gameState,
             continue;
         }
 
+        // C26: validate state changed since expiry before spending the slot.
+        // evaluateTradeConsent (inside establishTradeRoute) already blocks
+        // new wars/embargoes, but we must also drop the renewal when the
+        // destination raised tolls above profitability floor — otherwise
+        // we keep re-establishing losing routes.
+        if (destPlayer != nullptr) {
+            std::unordered_map<PlayerId, float>::const_iterator tollIt =
+                destPlayer->tariffs().perPlayerTollRates.find(player);
+            if (tollIt != destPlayer->tariffs().perPlayerTollRates.end()
+                && tollIt->second >= 0.40f) {
+                LOG_INFO("Auto-renew drop: player %u partner tolls at %.0f%% (unprofitable)",
+                         static_cast<unsigned>(player),
+                         static_cast<double>(tollIt->second * 100.0f));
+                continue;
+            }
+        }
+
         aoc::game::Unit& traderUnit =
             gsPlayer->addUnit(UnitTypeId{30}, originCity->location());
         traderUnit.autoRenewRoute = true;

@@ -59,6 +59,12 @@ struct CurrencyCrisisComponent {
     bool      hasDefaulted = false;      ///< True if currently in default
     int32_t   defaultCooldown = 0;       ///< Turns remaining where no loans are available
 
+    // Post-reform penalties (G4). A currency reform (hyperinflation exit) used
+    // to be a free debt wipe; now the civ eats a 30-turn borrow lockout plus
+    // 50 turns of capped fiat trust. Counters decrement in processCurrencyCrisis.
+    int32_t   reformLockoutTurns = 0;    ///< Turns left where new borrowing is blocked
+    int32_t   reformTrustCapTurns = 0;   ///< Turns left where fiatTrust is held at / below 0.3
+
     // -- Modifiers applied during active crisis --
 
     /// Production multiplier (1.0 = normal, applied to all cities).
@@ -110,9 +116,10 @@ struct CurrencyCrisisComponent {
         return 1.0f;
     }
 
-    /// Whether loans are currently blocked.
+    /// Whether loans are currently blocked. Default cooldown AND the
+    /// post-reform lockout both gate lending.
     [[nodiscard]] bool areLoansBlocked() const {
-        return this->defaultCooldown > 0;
+        return this->defaultCooldown > 0 || this->reformLockoutTurns > 0;
     }
 };
 

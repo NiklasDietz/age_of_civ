@@ -211,9 +211,17 @@ void DiplomacyScreen::open(UIManager& ui) {
                 milBtn.hoverColor   = {0.20f, 0.35f, 0.55f, 0.9f};
                 milBtn.pressedColor = {0.10f, 0.18f, 0.30f, 0.9f};
                 milBtn.cornerRadius = 3.0f;
-                milBtn.onClick = [diplomacy, humanPlayer, otherId, &ui, this]() {
-                    diplomacy->formMilitaryAlliance(humanPlayer, otherId);
-                    LOG_INFO("Military alliance with player %u", static_cast<unsigned>(otherId));
+                const int32_t turn = this->m_gameState->currentTurn();
+                milBtn.onClick = [diplomacy, humanPlayer, otherId, turn, &ui, this]() {
+                    const aoc::ErrorCode ec =
+                        diplomacy->formMilitaryAlliance(humanPlayer, otherId, turn);
+                    if (ec == aoc::ErrorCode::Ok) {
+                        LOG_INFO("Military alliance with player %u", static_cast<unsigned>(otherId));
+                    } else {
+                        LOG_INFO("Military alliance rejected (player %u): %s",
+                                 static_cast<unsigned>(otherId),
+                                 std::string(aoc::describeError(ec)).c_str());
+                    }
                     this->close(ui);
                 };
                 (void)ui.createButton(btnRow, {0.0f, 0.0f, 120.0f, 22.0f}, std::move(milBtn));
@@ -227,9 +235,17 @@ void DiplomacyScreen::open(UIManager& ui) {
                 resBtn.hoverColor   = {0.20f, 0.40f, 0.20f, 0.9f};
                 resBtn.pressedColor = {0.10f, 0.22f, 0.10f, 0.9f};
                 resBtn.cornerRadius = 3.0f;
-                resBtn.onClick = [diplomacy, humanPlayer, otherId, &ui, this]() {
-                    diplomacy->formResearchAgreement(humanPlayer, otherId);
-                    LOG_INFO("Research agreement with player %u", static_cast<unsigned>(otherId));
+                const int32_t turn = this->m_gameState->currentTurn();
+                resBtn.onClick = [diplomacy, humanPlayer, otherId, turn, &ui, this]() {
+                    const aoc::ErrorCode ec =
+                        diplomacy->formResearchAgreement(humanPlayer, otherId, turn);
+                    if (ec == aoc::ErrorCode::Ok) {
+                        LOG_INFO("Research agreement with player %u", static_cast<unsigned>(otherId));
+                    } else {
+                        LOG_INFO("Research agreement rejected (player %u): %s",
+                                 static_cast<unsigned>(otherId),
+                                 std::string(aoc::describeError(ec)).c_str());
+                    }
                     this->close(ui);
                 };
                 (void)ui.createButton(btnRow, {0.0f, 0.0f, 110.0f, 22.0f}, std::move(resBtn));
@@ -243,9 +259,17 @@ void DiplomacyScreen::open(UIManager& ui) {
                 econBtn.hoverColor   = {0.40f, 0.35f, 0.15f, 0.9f};
                 econBtn.pressedColor = {0.22f, 0.18f, 0.08f, 0.9f};
                 econBtn.cornerRadius = 3.0f;
-                econBtn.onClick = [diplomacy, humanPlayer, otherId, &ui, this]() {
-                    diplomacy->formEconomicAlliance(humanPlayer, otherId);
-                    LOG_INFO("Economic alliance with player %u", static_cast<unsigned>(otherId));
+                const int32_t turn = this->m_gameState->currentTurn();
+                econBtn.onClick = [diplomacy, humanPlayer, otherId, turn, &ui, this]() {
+                    const aoc::ErrorCode ec =
+                        diplomacy->formEconomicAlliance(humanPlayer, otherId, turn);
+                    if (ec == aoc::ErrorCode::Ok) {
+                        LOG_INFO("Economic alliance with player %u", static_cast<unsigned>(otherId));
+                    } else {
+                        LOG_INFO("Economic alliance rejected (player %u): %s",
+                                 static_cast<unsigned>(otherId),
+                                 std::string(aoc::describeError(ec)).c_str());
+                    }
                     this->close(ui);
                 };
                 (void)ui.createButton(btnRow, {0.0f, 0.0f, 110.0f, 22.0f}, std::move(econBtn));

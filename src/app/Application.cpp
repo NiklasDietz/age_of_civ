@@ -4,6 +4,7 @@
  */
 
 #include "aoc/app/Application.hpp"
+#include "aoc/data/DataLoader.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/game/Unit.hpp"
@@ -120,6 +121,14 @@ Application::~Application() {
 }
 
 ErrorCode Application::initialize(const Config& config) {
+    // -- Game definitions (JSON data files with constexpr fallbacks) --
+    // Must run before any subsystem reads building / unit / tech / recipe
+    // tables. Falls back silently to hardcoded defaults per file if any JSON
+    // is missing or unparseable.
+    if (!aoc::data::DataLoader::instance().initialize("data")) {
+        LOG_WARN("DataLoader fell back to constexpr defaults for one or more definition files");
+    }
+
     // -- Window --
     ErrorCode result = this->m_window.create(config.window);
     if (result != ErrorCode::Ok) {
@@ -509,10 +518,8 @@ void Application::spectatorAdvanceTurn() {
             }
         }
 
-        // Check victory conditions.
-        aoc::sim::VictoryResult vr = aoc::sim::checkVictoryConditions(
-            this->m_gameState, this->m_turnManager.currentTurn(),
-            500, aoc::sim::VICTORY_MASK_ALL, &this->m_diplomacy);
+        // Check victory conditions: read cached result from processTurn.
+        const aoc::sim::VictoryResult& vr = turnCtx.lastVictoryResult;
         if (vr.type != aoc::sim::VictoryType::None) {
             this->m_spectatorPaused = true;
             LOG_INFO("Spectator: Player %u wins by type %d at turn %u",
@@ -2263,10 +2270,8 @@ void Application::handleEndTurn() {
             this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, ai.player());
         }
 
-        // Check victory conditions
-        aoc::sim::VictoryResult vr = aoc::sim::checkVictoryConditions(
-            this->m_gameState, this->m_turnManager.currentTurn(),
-            500, aoc::sim::VICTORY_MASK_ALL, &this->m_diplomacy);
+        // Check victory conditions: read cached result from processTurn.
+        const aoc::sim::VictoryResult& vr = turnCtx.lastVictoryResult;
         if (vr.type != aoc::sim::VictoryType::None) {
             this->m_gameOver = true;
             this->m_victoryResult = vr;
