@@ -112,9 +112,16 @@ int32_t scoreResolution(const aoc::game::Player& voter,
 
         case Resolution::WorldsFair:
         case Resolution::InternationalGames:
-        case Resolution::ClimateAccord:
+        case Resolution::ClimateAccord: {
             if (voter.id() == proposer) { return 30; }
-            return -3;                         // Small resentment, most abstain
+            if (diplomacy == nullptr)    { return 0; }
+            const int32_t rel = diplomacy->relation(voter.id(), proposer).totalScore();
+            if (rel >= 40)  { return  8;  }    // Ally — happy to grant prestige
+            if (rel >= 10)  { return  3;  }    // Friend — mild support
+            if (rel <= -40) { return -12; }    // Hostile — block hard
+            if (rel <= -10) { return -5;  }
+            return 0;                          // Neutral abstain
+        }
 
         case Resolution::ArmsReduction: {
             // Compare military count to global average. Above avg → hates; below → likes.
@@ -183,8 +190,17 @@ Resolution selectResolutionForProposer(const aoc::game::Player& proposer,
     int32_t    bestScore = -999;
     PlayerId   bestTarget = INVALID_PLAYER;
 
-    for (uint8_t i = 0; i < static_cast<uint8_t>(Resolution::Count); ++i) {
-        const Resolution res = static_cast<Resolution>(i);
+    // Shuffle order for tie-breaking variety so ties (e.g. boost resolutions
+    // all scoring 30 for proposer) don't always collapse to the first enum.
+    std::array<uint8_t, static_cast<std::size_t>(Resolution::Count)> order{};
+    for (uint8_t i = 0; i < order.size(); ++i) { order[i] = i; }
+    for (int32_t i = static_cast<int32_t>(order.size()) - 1; i > 0; --i) {
+        const int32_t j = rng.nextInt(0, i);
+        std::swap(order[i], order[j]);
+    }
+
+    for (uint8_t idx : order) {
+        const Resolution res = static_cast<Resolution>(idx);
         PlayerId tgt = INVALID_PLAYER;
         if (res == Resolution::GlobalSanctions) {
             tgt = selectSanctionsTarget(gs, diplomacy, proposer.id());
