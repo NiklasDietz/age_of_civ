@@ -8,6 +8,7 @@
 #include "aoc/simulation/diplomacy/AllianceObligations.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
+#include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/core/Log.hpp"
@@ -26,10 +27,25 @@ uint32_t nextConfederationId(const aoc::game::GameState& gameState) {
 
 bool pairHasTradeRoute(const aoc::game::GameState& gameState,
                        PlayerId a, PlayerId b) {
+    // Physical route: Trader in transit. Ephemeral — present only while
+    // a cargo trip is live.
     for (const TradeRouteComponent& route : gameState.tradeRoutes()) {
         const bool ab = (route.sourcePlayer == a && route.destPlayer   == b);
         const bool ba = (route.sourcePlayer == b && route.destPlayer   == a);
         if (ab || ba) { return true; }
+    }
+    // Standing agreement: bilateral deal, FTZ, or customs union that
+    // includes both players. A persistent interdependence marker; the
+    // physical route check above is too narrow in AI-only sims where
+    // TradeRoute objects only exist during active Trader transit.
+    const aoc::game::Player* ap = gameState.player(a);
+    if (ap != nullptr) {
+        for (const TradeAgreementDef& agr : ap->tradeAgreements().agreements) {
+            if (!agr.isActive) { continue; }
+            for (PlayerId m : agr.members) {
+                if (m == b) { return true; }
+            }
+        }
     }
     return false;
 }

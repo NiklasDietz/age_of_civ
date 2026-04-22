@@ -27,6 +27,8 @@
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
+#include "aoc/simulation/diplomacy/Confederation.hpp"
+#include "aoc/simulation/economy/EnergyDependency.hpp"
 #include "aoc/simulation/production/PowerGrid.hpp"
 #include "aoc/simulation/economy/Market.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
@@ -2098,6 +2100,71 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             }
 
             // ----------------------------------------------------------------
+            // Hostile economic actions: resource embargo + bond dump.
+            // ----------------------------------------------------------------
+            // Fire when war is declared OR relations are deeply negative.
+            // These are one-shots (per turn per pair), not continuous, and
+            // gated on the reputation/aggression personality to keep
+            // peaceful AIs from torching economic ties.
+            if ((rel.isAtWar || relationScore < -40) && beh.militaryAggression > 0.5f) {
+                // Resource embargo: blanket the largest export flow to
+                // this rival. MVP picks the first good we produce that
+                // they are price-dependent on (market price > 1.2x base).
+                aoc::game::Player* selfP = gameState.player(this->m_player);
+                if (selfP != nullptr) {
+                    const uint16_t totalGoods = market.goodsCount();
+                    uint16_t targetGood = 0xFFFF;
+                    for (uint16_t g = 0; g < totalGoods; ++g) {
+                        if (diplomacy.hasResourceEmbargo(this->m_player, other, g)) { continue; }
+                        // We-hold check: at least one of our cities has
+                        // a non-trivial stockpile of this good (proxy
+                        // for "we could deny it to them").
+                        bool weHold = false;
+                        for (const std::unique_ptr<aoc::game::City>& c : selfP->cities()) {
+                            if (c != nullptr && c->stockpile().getAmount(g) >= 10) {
+                                weHold = true; break;
+                            }
+                        }
+                        if (!weHold) { continue; }
+                        const int32_t currentPrice = market.price(g);
+                        const int32_t basePrice    = goodDef(g).basePrice;
+                        if (basePrice <= 0) { continue; }
+                        const float ratio =
+                            static_cast<float>(currentPrice) / static_cast<float>(basePrice);
+                        if (ratio > 1.2f) {
+                            targetGood = g;
+                            break;
+                        }
+                    }
+                    if (targetGood != 0xFFFF) {
+                        diplomacy.setResourceEmbargo(this->m_player, other, targetGood, true);
+                        LOG_INFO("AI %u imposed resource embargo on player %u (good %u, relation %d)",
+                                 static_cast<unsigned>(this->m_player),
+                                 static_cast<unsigned>(other),
+                                 static_cast<unsigned>(targetGood), relationScore);
+                    }
+                }
+
+                // Bond dump: if we hold bonds issued by the rival, sell
+                // them all to spike their yields. Fires on the turn war
+                // is declared / relations cross the threshold; the
+                // dumpBonds implementation itself handles single-shot
+                // semantics when no bonds are held.
+                if (selfP != nullptr) {
+                    CurrencyAmount held = selfP->bonds().bondsHeldFrom(other);
+                    if (held > 0) {
+                        ErrorCode bc = aoc::sim::dumpBonds(gameState, this->m_player, other);
+                        if (bc == ErrorCode::Ok) {
+                            LOG_INFO("AI %u dumped %lld bond debt of player %u (relation %d)",
+                                     static_cast<unsigned>(this->m_player),
+                                     static_cast<long long>(held),
+                                     static_cast<unsigned>(other), relationScore);
+                        }
+                    }
+                }
+            }
+
+            // ----------------------------------------------------------------
             // AI toll rate management (based on relation + reputation)
             // ----------------------------------------------------------------
             {
@@ -2157,6 +2224,236 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                     }
                     canalToll = std::min(canalToll, 0.50f);
                     ourPlayer->tariffs().perPlayerCanalTollRates[other] = canalToll;
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Confederation formation (Staatenbund / EU-like bloc).
+    // ------------------------------------------------------------------
+    // Late-industrial AIs with diplomatic personality look for 1..4 warm
+    // partners of similar era with whom they share trade and Friendly+
+    // stance. Firing is rate-limited to one attempt every ~40 turns per
+    // AI — forming too eagerly would flatten late-game diplomacy and
+    // lock the front-runner out too cheaply.
+    {
+        const aoc::game::Player* me = gameState.player(this->m_player);
+        const bool industrial = (me != nullptr && aoc::sim::effectiveEraFromTech(*me).value >= 4);
+        const bool openPersonality =
+            beh.allianceDesire > 0.5f && beh.diplomaticOpenness > 0.6f;
+        const int32_t confedTick =
+            gameState.currentTurn() + static_cast<int32_t>(this->m_player) * 7;
+        if (industrial && openPersonality && (confedTick % 40 == 0)
+            && aoc::sim::confederationForPlayer(gameState, this->m_player) == nullptr) {
+
+            std::vector<PlayerId> candidates;
+            candidates.push_back(this->m_player);
+
+            for (uint8_t other = 0; other < playerCount; ++other) {
+                if (other == this->m_player) { continue; }
+                const aoc::game::Player* o = gameState.player(other);
+                if (o == nullptr) { continue; }
+                if (o->victoryTracker().isEliminated) { continue; }
+                if (aoc::sim::effectiveEraFromTech(*o).value < 4) { continue; }
+                if (aoc::sim::confederationForPlayer(gameState, other) != nullptr) { continue; }
+                const PairwiseRelation& r = diplomacy.relation(this->m_player, other);
+                if (!r.hasMet || r.isAtWar) { continue; }
+                if (r.totalScore() < 10) { continue; }  // Friendly+ gate
+
+                // Trade-interdependence sanity: Confederation accepts
+                // either an in-flight physical route or a standing
+                // agreement (bilateral/FTZ/customs union). Mirror that
+                // here so the AI doesn't self-reject.
+                bool interdependent = false;
+                for (const aoc::sim::TradeRouteComponent& tr : gameState.tradeRoutes()) {
+                    if ((tr.sourcePlayer == this->m_player && tr.destPlayer == other)
+                        || (tr.sourcePlayer == other && tr.destPlayer == this->m_player)) {
+                        interdependent = true;
+                        break;
+                    }
+                }
+                if (!interdependent && me != nullptr) {
+                    for (const aoc::sim::TradeAgreementDef& agr
+                             : me->tradeAgreements().agreements) {
+                        if (!agr.isActive) { continue; }
+                        for (PlayerId mem : agr.members) {
+                            if (mem == other) { interdependent = true; break; }
+                        }
+                        if (interdependent) { break; }
+                    }
+                }
+                if (!interdependent) { continue; }
+
+                candidates.push_back(other);
+                if (candidates.size() >= aoc::sim::CONFEDERATION_MAX_MEMBERS) { break; }
+            }
+
+            if (candidates.size() >= 2) {
+                const aoc::ErrorCode ec = aoc::sim::formConfederation(
+                    gameState, diplomacy, candidates, gameState.currentTurn());
+                if (ec == aoc::ErrorCode::Ok) {
+                    LOG_INFO("AI %u formed confederation with %zu members "
+                             "(openness %.2f, allianceDesire %.2f)",
+                             static_cast<unsigned>(this->m_player),
+                             candidates.size(),
+                             static_cast<double>(beh.diplomaticOpenness),
+                             static_cast<double>(beh.allianceDesire));
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Free-trade-zone / customs-union formation.
+    // ------------------------------------------------------------------
+    // Warm, open-trading AIs gather 2+ economic partners into a free
+    // trade zone (-50% tariff) or customs union (common external
+    // tariff). Gate on economicFocus and diplomaticOpenness; rate-limit
+    // to one attempt every ~50 turns per AI.
+    {
+        const aoc::game::Player* me = gameState.player(this->m_player);
+        const bool openTrader =
+            beh.economicFocus > 0.6f && beh.diplomaticOpenness > 0.5f;
+        const int32_t ftzTick =
+            gameState.currentTurn() + static_cast<int32_t>(this->m_player) * 11;
+        if (me != nullptr && openTrader && (ftzTick % 50 == 0)) {
+            std::vector<PlayerId> members;
+            members.push_back(this->m_player);
+            for (uint8_t other = 0; other < playerCount; ++other) {
+                if (other == this->m_player) { continue; }
+                const aoc::game::Player* o = gameState.player(other);
+                if (o == nullptr) { continue; }
+                if (o->victoryTracker().isEliminated) { continue; }
+                const PairwiseRelation& r = diplomacy.relation(this->m_player, other);
+                if (!r.hasMet || r.isAtWar) { continue; }
+                if (r.totalScore() < 15) { continue; }
+                // Skip if already in any FTZ/customs with us.
+                bool alreadyInBloc = false;
+                for (const aoc::sim::TradeAgreementDef& agr : me->tradeAgreements().agreements) {
+                    if (!agr.isActive) { continue; }
+                    if (agr.type == aoc::sim::TradeAgreementType::BilateralDeal) { continue; }
+                    for (PlayerId mem : agr.members) {
+                        if (mem == other) { alreadyInBloc = true; break; }
+                    }
+                    if (alreadyInBloc) { break; }
+                }
+                if (alreadyInBloc) { continue; }
+                members.push_back(other);
+                if (members.size() >= 4) { break; }  // Keep blocs tractable.
+            }
+            if (members.size() >= 3) {
+                ErrorCode ec = ErrorCode::InvalidArgument;
+                const char* kind = "FTZ";
+                // Protectionist + high-aggression personalities prefer a
+                // customs union (projects power via common tariff).
+                // Everyone else forms a softer FTZ.
+                if (beh.militaryAggression > 0.8f) {
+                    ec = aoc::sim::formCustomsUnion(gameState, members, 0.15f);
+                    kind = "Customs Union";
+                } else {
+                    ec = aoc::sim::createFreeTradeZone(gameState, members);
+                }
+                if (ec == ErrorCode::Ok) {
+                    LOG_INFO("AI %u formed %s with %zu members (economicFocus %.2f)",
+                             static_cast<unsigned>(this->m_player), kind,
+                             members.size(),
+                             static_cast<double>(beh.economicFocus));
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Electricity import proposals.
+    // ------------------------------------------------------------------
+    // If our total district power demand exceeds domestic supply, try to
+    // buy the deficit from a neighbour whose supply comfortably exceeds
+    // their own demand. Per-city 40% import cap in computeCityPower
+    // keeps this a complement, not a crutch. Firing limited to once per
+    // ~25 turns per AI to avoid hammering the agreement list.
+    {
+        const aoc::game::Player* me = gameState.player(this->m_player);
+        const int32_t elecTick =
+            gameState.currentTurn() + static_cast<int32_t>(this->m_player) * 3;
+        const bool industrial = (me != nullptr && aoc::sim::effectiveEraFromTech(*me).value >= 4);
+        if (industrial && (elecTick % 25 == 0)) {
+            // Crude per-player energy balance — supply = sum of
+            // power-plant building outputs regardless of fuel gating (the
+            // tick on processElectricityAgreements uses lastDelivered so
+            // this over-estimates at worst, which is fine for gating).
+            auto energyBalance = [&](const aoc::game::Player* p) -> std::pair<int32_t,int32_t> {
+                int32_t sup = 0;
+                int32_t dem = 0;
+                if (p == nullptr) { return {0, 0}; }
+                for (const std::unique_ptr<aoc::game::City>& c : p->cities()) {
+                    if (c == nullptr) { continue; }
+                    for (const CityDistrictsComponent::PlacedDistrict& d
+                             : c->districts().districts) {
+                        for (BuildingId bid : d.buildings) {
+                            dem += buildingEnergyDemand(bid);
+                            for (const PowerPlantDef& pd : POWER_PLANT_DEFS) {
+                                if (pd.buildingId == bid) {
+                                    sup += pd.energyOutput;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                return {sup, dem};
+            };
+
+            auto [mySup, myDem] = energyBalance(me);
+            const int32_t myDeficit = myDem - mySup;
+            if (myDeficit > 0) {
+                // Find best seller candidate: largest positive surplus,
+                // met, not at war, no existing agreement in this direction.
+                PlayerId bestSeller = INVALID_PLAYER;
+                int32_t  bestSurplus = 0;
+                for (uint8_t other = 0; other < playerCount; ++other) {
+                    if (other == this->m_player) { continue; }
+                    const aoc::game::Player* o = gameState.player(other);
+                    if (o == nullptr) { continue; }
+                    if (o->victoryTracker().isEliminated) { continue; }
+                    const PairwiseRelation& r = diplomacy.relation(this->m_player, other);
+                    if (!r.hasMet || r.isAtWar) { continue; }
+                    if (r.totalScore() < 0) { continue; }  // Hostile sellers refuse
+
+                    bool duplicateDir = false;
+                    for (const aoc::sim::ElectricityAgreementComponent& a
+                             : gameState.electricityAgreements()) {
+                        if (a.isActive && a.buyer == this->m_player && a.seller == other) {
+                            duplicateDir = true; break;
+                        }
+                    }
+                    if (duplicateDir) { continue; }
+
+                    auto [oSup, oDem] = energyBalance(o);
+                    const int32_t surplus = oSup - oDem;
+                    if (surplus > bestSurplus) {
+                        bestSurplus = surplus;
+                        bestSeller  = other;
+                    }
+                }
+
+                if (bestSeller != INVALID_PLAYER && bestSurplus > 0) {
+                    // Cover the deficit but no more than the seller's
+                    // surplus. Gold: 2 gold per MW per turn — MVP price
+                    // anchor; market tuning can come later.
+                    const int32_t mw = std::min(myDeficit, bestSurplus);
+                    const int32_t goldPerTurn = std::max(1, mw * 2);
+                    const int32_t duration    = 30;
+                    const aoc::ErrorCode ec = aoc::sim::proposeElectricityImport(
+                        gameState, this->m_player, bestSeller,
+                        mw, goldPerTurn, gameState.currentTurn(), duration);
+                    if (ec == aoc::ErrorCode::Ok) {
+                        LOG_INFO("AI %u bought %d MW electricity from player %u "
+                                 "(deficit %d, surplus %d, %d gold/turn, %d turns)",
+                                 static_cast<unsigned>(this->m_player),
+                                 mw, static_cast<unsigned>(bestSeller),
+                                 myDeficit, bestSurplus, goldPerTurn, duration);
+                    }
                 }
             }
         }
