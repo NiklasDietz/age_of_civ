@@ -192,30 +192,47 @@ void autoAssignWorkers(CityComponent& city, const aoc::map::HexGrid& grid,
 // GameState-native city growth (Phase 3 migration)
 // ============================================================================
 
+static float computeWorkedFood(const aoc::game::City& city,
+                               const aoc::map::HexGrid& grid,
+                               bool hasFeudalismCivic) {
+    float total = 0.0f;
+    for (const aoc::hex::AxialCoord& tileCoord : city.workedTiles()) {
+        if (!grid.isValid(tileCoord)) { continue; }
+        int32_t tileIndex = grid.toIndex(tileCoord);
+        aoc::map::TileYield yield = grid.tileYield(tileIndex);
+        float tileFood = static_cast<float>(yield.food);
+        if (tileCoord == city.location() && tileFood < 2.0f) {
+            tileFood = 2.0f;
+        }
+        if (hasFeudalismCivic) {
+            tileFood += static_cast<float>(computeFarmAdjacencyBonus(grid, tileIndex));
+        }
+        total += tileFood;
+    }
+    return total;
+}
+
 static void processSingleCityGrowth(aoc::game::City& city,
                                      const aoc::game::Player& player,
                                      const aoc::map::HexGrid& grid,
                                      bool hasFeudalismCivic,
                                      float cityHappiness) {
-    // Calculate food from worked tiles
-    float totalFood = 0.0f;
-    for (const aoc::hex::AxialCoord& tileCoord : city.workedTiles()) {
-        if (!grid.isValid(tileCoord)) {
-            continue;
+    // Deficit-triggered reassignment. Workers locked on resource tiles at
+    // founding (silver/copper/mountain metal bonuses) stay there even after
+    // pop growth outstrips food supply, producing chronic starvation yo-yos
+    // (2835 starvation events / 5 sims before this gate). When worked food
+    // falls below 85% of consumption, rebalance in Food focus so existing
+    // citizens can migrate off resources onto farms.
+    {
+        float totalFoodPre = computeWorkedFood(city, grid, hasFeudalismCivic);
+        float consumption  = static_cast<float>(city.population()) * 2.0f;
+        if (consumption > 0.0f && totalFoodPre < consumption * 0.85f) {
+            city.autoAssignWorkers(grid, aoc::sim::WorkerFocus::Food, &player);
         }
-        int32_t tileIndex = grid.toIndex(tileCoord);
-        aoc::map::TileYield yield = grid.tileYield(tileIndex);
-        float tileFood = static_cast<float>(yield.food);
-        // City center always yields at least 2 food (Civ 6 guarantee)
-        if (tileCoord == city.location() && tileFood < 2.0f) {
-            tileFood = 2.0f;
-        }
-        // Farm triangle adjacency bonus: +1 food if 2+ adjacent farms (Feudalism civic)
-        if (hasFeudalismCivic) {
-            tileFood += static_cast<float>(computeFarmAdjacencyBonus(grid, tileIndex));
-        }
-        totalFood += tileFood;
     }
+
+    // Calculate food from worked tiles (post-reassignment)
+    float totalFood = computeWorkedFood(city, grid, hasFeudalismCivic);
 
     // Food consumption: 2 per citizen
     float consumption = static_cast<float>(city.population()) * 2.0f;
@@ -416,7 +433,16 @@ static void processSingleCityGrowth(aoc::game::City& city,
             }
 
             aoc::map::TileYield yield = grid.tileYield(idx);
-            float value = static_cast<float>(yield.food) * 2.0f
+            // Deficit-aware food weighting: when worked tiles can't feed the
+            // post-growth pop, crank up food weight so the new citizen is
+            // placed on a food tile. Cities repeatedly starved into pop=2
+            // yo-yos (2835 starvation events / 5 sims) because resource tiles
+            // outscored pure food even under deficit.
+            const float consumptionNow =
+                static_cast<float>(city.population()) * 2.0f;
+            const bool foodDeficit = (totalFood < consumptionNow);
+            const float foodWeight = foodDeficit ? 6.0f : 2.0f;
+            float value = static_cast<float>(yield.food) * foodWeight
                         + static_cast<float>(yield.production)
                         + static_cast<float>(yield.gold) * 0.5f
                         + static_cast<float>(yield.science) * 0.5f;
@@ -424,20 +450,23 @@ static void processSingleCityGrowth(aoc::game::City& city,
             // (copper ore → coins, iron ore → ingots, etc.) and without this bonus
             // cities deprioritise them in favour of pure food tiles, starving the
             // economy of raw materials.  Matches the +5 bonus applied at founding.
+            // Under food deficit we damp the resource bonus so starving cities
+            // don't chase ore/metal tiles and collapse their own pop.
             if (grid.resource(idx).isValid()) {
-                value += 3.0f;
+                const float resScale = foodDeficit ? 0.25f : 1.0f;
+                value += 3.0f * resScale;
                 // Minting ores get an extra +8 so they are worked before high-food
                 // tiles like cattle (food=4, base=12) and are assigned by pop=2.
                 const uint16_t resId = grid.resource(idx).value;
                 if (resId == aoc::sim::goods::COPPER_ORE
                     || resId == aoc::sim::goods::SILVER_ORE) {
-                    value += 8.0f;
+                    value += 8.0f * resScale;
                 }
                 // Mountain metal tiles have zero terrain yield, so without a boost
                 // they would never beat food tiles. Keep them competitive.
                 if (grid.terrain(idx) == aoc::map::TerrainType::Mountain
                     && aoc::sim::isMountainMetal(resId)) {
-                    value += 6.0f;
+                    value += 6.0f * resScale;
                 }
             }
             if (value > bestYieldValue) {

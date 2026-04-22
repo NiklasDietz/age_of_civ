@@ -422,10 +422,15 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
     }
 
     // --- AI Nuclear Strike Decision ---
-    // Gated on: (a) Nuclear Fission researched (TechId 17), (b) currently at war
-    // with someone, (c) nukeWillingness * riskTolerance passes roll. One strike
-    // attempt per player per turn. Arms the nearest military unit with a warhead
-    // and targets the weakest enemy city.
+    // Gated on: (a) Nuclear Fission researched (TechId 17), (b) currently at
+    // war with someone, (c) nukeWillingness * riskTolerance passes roll.
+    // One strike attempt per player per turn. Arms the nearest military
+    // unit with a warhead and targets the weakest enemy city.
+    //
+    // Launch multiplier cut 0.20 → 0.04 because once Nuclear Fission
+    // diffused across players, strikes rose 2 → 16 per 30 player-games
+    // purely from availability. The tech-gate alone wasn't enough restraint
+    // once AIResearchPlanner started delivering Nuclear Fission reliably.
     {
         aoc::game::Player* nukePlayer = gameState.player(this->m_player);
         if (nukePlayer != nullptr && nukePlayer->tech().hasResearched(TechId{17})) {
@@ -445,7 +450,7 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                 const float launchScore = bh.nukeWillingness * bh.riskTolerance;
                 const float roll = rng.nextFloat(0.0f, 1.0f);
 
-                if (roll < launchScore * 0.20f) {
+                if (roll < launchScore * 0.04f) {
                     aoc::game::Player* enemy = gameState.player(enemyId);
                     aoc::hex::AxialCoord targetLoc{};
                     int32_t weakestPop = std::numeric_limits<int32_t>::max();
