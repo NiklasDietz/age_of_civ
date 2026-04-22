@@ -7,6 +7,7 @@
 #include "aoc/simulation/production/Waste.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/economy/EnergyDependency.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -39,7 +40,7 @@ void applyFalloutRadius(aoc::map::HexGrid& grid, aoc::hex::AxialCoord center,
 
 } // anonymous namespace
 
-CityPowerComponent computeCityPower(aoc::game::GameState& /*gameState*/,
+CityPowerComponent computeCityPower(aoc::game::GameState& gameState,
                                      const aoc::map::HexGrid& grid,
                                      aoc::game::City& city) {
     CityPowerComponent result{};
@@ -89,6 +90,24 @@ CityPowerComponent computeCityPower(aoc::game::GameState& /*gameState*/,
         for (BuildingId bid : district.buildings) {
             result.energyDemand += buildingEnergyDemand(bid);
         }
+    }
+
+    // Imports: sum of active agreements where this city's owner is the buyer.
+    // Capped at ELECTRICITY_IMPORT_CAP_FRACTION of demand per city, so imports
+    // complement rather than replace domestic generation. Agreement-wide
+    // `lastDeliveredEnergy` is set by `processElectricityAgreements` and
+    // already reflects war-break / insufficient-funds skip.
+    int32_t rawImport = 0;
+    for (const ElectricityAgreementComponent& a : gameState.electricityAgreements()) {
+        if (!a.isActive) { continue; }
+        if (a.buyer != city.owner()) { continue; }
+        rawImport += a.lastDeliveredEnergy;
+    }
+    if (rawImport > 0 && result.energyDemand > 0) {
+        const int32_t cap = static_cast<int32_t>(
+            static_cast<float>(result.energyDemand) * ELECTRICITY_IMPORT_CAP_FRACTION);
+        const int32_t allowed = (rawImport < cap) ? rawImport : cap;
+        result.energySupply += allowed;
     }
 
     return result;

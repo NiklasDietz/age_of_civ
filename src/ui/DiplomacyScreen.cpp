@@ -162,7 +162,12 @@ void DiplomacyScreen::open(UIManager& ui) {
             warBtn.pressedColor = {0.3f, 0.1f, 0.1f, 0.9f};
             warBtn.cornerRadius = 3.0f;
             warBtn.onClick = [diplomacy, humanPlayer, otherId, &ui, this]() {
-                diplomacy->declareWar(humanPlayer, otherId);
+                diplomacy->declareWar(humanPlayer, otherId,
+                                       aoc::sim::CasusBelliType::SurpriseWar,
+                                       nullptr, this->m_gameState,
+                                       this->m_gameState != nullptr
+                                           ? this->m_gameState->currentTurn()
+                                           : 0);
                 LOG_INFO("Declared war on player %u", static_cast<unsigned>(otherId));
                 this->close(ui);
             };

@@ -81,6 +81,9 @@ enum class SectionId : uint16_t {
     GrievanceState   = 0x0022,  ///< Per-player grievance list
     WarWearinessState = 0x0023, ///< Per-player war weariness + turns-at-war map
     StockPortfolioState = 0x0024, ///< Per-player equity investments (inward + outward)
+    // v8 sections ---------------------------------------------------------
+    ConfederationState  = 0x0025, ///< Active multi-player confederations
+    ElectricityAgreementState = 0x0026, ///< Bilateral electricity import contracts
 };
 
 /// Low-level binary write buffer.

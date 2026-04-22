@@ -25,6 +25,7 @@
 #include "aoc/simulation/monetary/Bonds.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/Confederation.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
@@ -529,56 +530,6 @@ void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber current
 // Master victory check
 // ============================================================================
 
-namespace {
-
-/// Pairwise: do these two players share ANY active alliance type?
-[[nodiscard]] bool isAllied(const PairwiseRelation& rel) {
-    return rel.hasAnyAlliance();
-}
-
-/// Enumerate all maximal cliques of size >= 3 in a small alliance graph using
-/// Bron-Kerbosch without pivot (player count <= ~16 makes this trivial).
-/// Returns the clique with the highest combined prestige, or empty if no
-/// 3+ clique exists.
-struct BronKerboschCtx {
-    const std::vector<std::vector<bool>>& adj;
-    const std::vector<float>&              prestige;
-    std::vector<PlayerId>                  current;
-    std::vector<PlayerId>                  bestClique;
-    float                                  bestPrestigeSum = 0.0f;
-};
-
-void bronKerbosch(BronKerboschCtx& ctx,
-                  std::vector<PlayerId> R,
-                  std::vector<PlayerId> P,
-                  std::vector<PlayerId> X) {
-    if (P.empty() && X.empty()) {
-        if (R.size() >= 3) {
-            float sum = 0.0f;
-            for (PlayerId p : R) { sum += ctx.prestige[p]; }
-            if (sum > ctx.bestPrestigeSum) {
-                ctx.bestPrestigeSum = sum;
-                ctx.bestClique      = R;
-            }
-        }
-        return;
-    }
-    std::vector<PlayerId> Pcopy = P;
-    for (PlayerId v : Pcopy) {
-        std::vector<PlayerId> newR = R;
-        newR.push_back(v);
-        std::vector<PlayerId> newP;
-        std::vector<PlayerId> newX;
-        for (PlayerId u : P) { if (u != v && ctx.adj[v][u]) { newP.push_back(u); } }
-        for (PlayerId u : X) { if (ctx.adj[v][u]) { newX.push_back(u); } }
-        bronKerbosch(ctx, std::move(newR), std::move(newP), std::move(newX));
-        P.erase(std::remove(P.begin(), P.end(), v), P.end());
-        X.push_back(v);
-    }
-}
-
-} // namespace
-
 VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                                       TurnNumber currentTurn,
                                       TurnNumber maxTurns,
@@ -754,78 +705,82 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
         }
     }
 
-    // 3e. Confederation co-win: at turn limit, if a mutually-allied bloc of
-    // 3+ non-eliminated civs has combined prestige >= 1.2x the best single
-    // civ's prestige, all bloc members co-win. Rewards long-lasting diplomatic
-    // blocs and gives a strategic counter to runaway single-civ winners.
+    // 3e. Confederation co-win. Uses explicit ConfederationComponent records
+    // (formed via formConfederation with era + trade-route + stance gates).
+    // Effective bloc prestige = sum / sqrt(N) — diminishing-share factor stops
+    // a 5-member bloc from trivially outscoring a lone front-runner. Still
+    // needs CONFEDERATION_COWIN_MIN (3+) live members and combined effective
+    // prestige >= 1.2x the best single civ.
     if ((enabledTypes & VICTORY_MASK_CONFEDERATION) != 0u
-        && diplomacy != nullptr
         && currentTurn >= maxTurns
         && gameState.playerCount() >= 3) {
-        const int32_t pc = gameState.playerCount();
-        std::vector<float> prestige(static_cast<std::size_t>(pc), 0.0f);
-        std::vector<bool>  aliveMask(static_cast<std::size_t>(pc), false);
+        float bestSinglePrestige = 0.0f;
         for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
-            const auto idx = static_cast<std::size_t>(p->id());
-            if (idx >= prestige.size()) { continue; }
             if (p->victoryTracker().isEliminated) { continue; }
-            prestige[idx]  = p->prestige().total;
-            aliveMask[idx] = true;
-        }
-
-        std::vector<std::vector<bool>> adj(
-            static_cast<std::size_t>(pc), std::vector<bool>(static_cast<std::size_t>(pc), false));
-        std::vector<PlayerId> candidates;
-        for (int32_t i = 0; i < pc; ++i) {
-            if (!aliveMask[static_cast<std::size_t>(i)]) { continue; }
-            candidates.push_back(static_cast<PlayerId>(i));
-            for (int32_t j = i + 1; j < pc; ++j) {
-                if (!aliveMask[static_cast<std::size_t>(j)]) { continue; }
-                const PairwiseRelation& rel = diplomacy->relation(
-                    static_cast<PlayerId>(i), static_cast<PlayerId>(j));
-                if (isAllied(rel)) {
-                    adj[static_cast<std::size_t>(i)][static_cast<std::size_t>(j)] = true;
-                    adj[static_cast<std::size_t>(j)][static_cast<std::size_t>(i)] = true;
-                }
+            if (p->prestige().total > bestSinglePrestige) {
+                bestSinglePrestige = p->prestige().total;
             }
         }
 
-        BronKerboschCtx ctx{adj, prestige, {}, {}, 0.0f};
-        bronKerbosch(ctx, {}, candidates, {});
+        const ConfederationComponent* winningConf = nullptr;
+        float bestEffective = 0.0f;
+        float bestSum = 0.0f;
+        std::vector<PlayerId> bestMembers;
 
-        if (ctx.bestClique.size() >= 3) {
-            float bestSinglePrestige = 0.0f;
-            for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
-                if (p->victoryTracker().isEliminated) { continue; }
-                if (p->prestige().total > bestSinglePrestige) {
-                    bestSinglePrestige = p->prestige().total;
-                }
+        for (const ConfederationComponent& conf : gameState.confederations()) {
+            if (!conf.isActive) { continue; }
+            std::vector<PlayerId> live;
+            live.reserve(conf.members.size());
+            float sum = 0.0f;
+            for (PlayerId m : conf.members) {
+                const aoc::game::Player* p = gameState.player(m);
+                if (p == nullptr || p->victoryTracker().isEliminated) { continue; }
+                live.push_back(m);
+                sum += p->prestige().total;
             }
-            if (ctx.bestPrestigeSum >= 1.2f * bestSinglePrestige
-                && bestSinglePrestige > 0.0f) {
-                PlayerId leader      = INVALID_PLAYER;
-                float    leaderScore = -1.0f;
-                for (PlayerId m : ctx.bestClique) {
-                    const float s = prestige[static_cast<std::size_t>(m)];
-                    if (s > leaderScore) { leaderScore = s; leader = m; }
-                }
-                VictoryResult result;
-                result.type   = VictoryType::Confederation;
-                result.winner = leader;
-                for (PlayerId m : ctx.bestClique) {
-                    if (m != leader) { result.coWinners.push_back(m); }
-                }
-                LOG_INFO("CONFEDERATION wins at turn %d: bloc size %zu, combined prestige %.1f "
-                         "(vs best single %.1f). Leader = Player %u",
-                         static_cast<int>(currentTurn),
-                         ctx.bestClique.size(),
-                         static_cast<double>(ctx.bestPrestigeSum),
-                         static_cast<double>(bestSinglePrestige),
-                         static_cast<unsigned>(leader));
-                return result;
+            if (live.size() < CONFEDERATION_COWIN_MIN) { continue; }
+
+            const float denom   = std::pow(static_cast<float>(live.size()),
+                                            CONFEDERATION_PRESTIGE_SQRT_EXP);
+            const float effective = (denom > 0.0f) ? (sum / denom) : sum;
+            if (effective > bestEffective) {
+                bestEffective = effective;
+                bestSum       = sum;
+                bestMembers   = std::move(live);
+                winningConf   = &conf;
             }
+        }
+
+        if (winningConf != nullptr
+            && bestSinglePrestige > 0.0f
+            && bestEffective >= 1.2f * bestSinglePrestige) {
+            PlayerId leader      = INVALID_PLAYER;
+            float    leaderScore = -1.0f;
+            for (PlayerId m : bestMembers) {
+                const aoc::game::Player* p = gameState.player(m);
+                if (p == nullptr) { continue; }
+                const float s = p->prestige().total;
+                if (s > leaderScore) { leaderScore = s; leader = m; }
+            }
+            VictoryResult result;
+            result.type   = VictoryType::Confederation;
+            result.winner = leader;
+            for (PlayerId m : bestMembers) {
+                if (m != leader) { result.coWinners.push_back(m); }
+            }
+            LOG_INFO("CONFEDERATION wins at turn %d: conf %u size %zu, combined %.1f "
+                     "(effective %.1f vs best single %.1f). Leader = Player %u",
+                     static_cast<int>(currentTurn),
+                     static_cast<unsigned>(winningConf->id),
+                     bestMembers.size(),
+                     static_cast<double>(bestSum),
+                     static_cast<double>(bestEffective),
+                     static_cast<double>(bestSinglePrestige),
+                     static_cast<unsigned>(leader));
+            return result;
         }
     }
+    (void)diplomacy;  // Confederation path no longer needs the pairwise matrix.
 
     // 4. Turn limit: Prestige tally first (participation-based endgame).
     // Prestige wins when all turns have elapsed -- highest accumulated total

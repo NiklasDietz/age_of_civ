@@ -22,6 +22,7 @@
  */
 
 #include "aoc/core/Types.hpp"
+#include "aoc/core/ErrorCodes.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 
 #include <cstdint>
@@ -30,6 +31,8 @@ namespace aoc::game { class GameState; }
 namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
+
+class DiplomacyManager;
 
 // ============================================================================
 // Energy dependency per player (ECS component)
@@ -160,5 +163,67 @@ void processOilShock(PlayerEnergyComponent& energy);
  */
 [[nodiscard]] int32_t countRenewableBuildings(const aoc::game::GameState& gameState,
                                                PlayerId player);
+
+// ============================================================================
+// Bilateral electricity import agreements
+// ============================================================================
+//
+// A directional contract: seller commits `energyPerTurn` units of grid power
+// to the buyer each turn, in exchange for `goldPerTurn` paid up front. The
+// transferred energy is added to every buyer city's `CityPowerComponent.
+// energySupply`, then clamped to the per-city import cap (40% of demand) so
+// imports complement rather than replace domestic generation.
+//
+// Agreement invalidation is reactive, not predictive: the seller's own grid
+// state determines whether the transfer fires this turn. If seller demand
+// outruns supply the transfer is skipped (no negative obligation), so the
+// buyer sees variable delivery — exactly the blackmail surface the mechanic
+// is meant to create. A declared war between the two players also breaks
+// the agreement immediately.
+//
+// Not tradeable as a stockpile good — electricity isn't storable. Contracts
+// expire at `endTurn` (0 = indefinite).
+
+struct ElectricityAgreementComponent {
+    uint32_t id = 0;
+    PlayerId seller = INVALID_PLAYER;
+    PlayerId buyer  = INVALID_PLAYER;
+    int32_t  energyPerTurn = 0;   ///< MW/turn transferred while active.
+    int32_t  goldPerTurn   = 0;   ///< Price paid by buyer to seller each turn.
+    int32_t  formedTurn    = 0;
+    int32_t  endTurn       = 0;   ///< 0 = indefinite; otherwise last active turn.
+    bool     isActive      = true;
+    int32_t  lastDeliveredEnergy = 0;  ///< Actual delivery last turn (may be < energyPerTurn).
+};
+
+/// Per-city fraction of total power demand that may be satisfied via imports.
+/// Hard cap, enforced at city power calc time. 0.40 leaves 60% minimum
+/// domestic generation required — imports stay a complement, not a crutch.
+inline constexpr float ELECTRICITY_IMPORT_CAP_FRACTION = 0.40f;
+
+/// Propose an electricity import. Validates both players exist, seller has
+/// (at least once) generated enough net surplus to cover `energyPerTurn`,
+/// they're not at war, and neither has already entered into an opposing
+/// contract with the same counterpart. Returns InvalidArgument on bad
+/// inputs, InsufficientResources if the seller cannot cover the amount.
+[[nodiscard]] ErrorCode proposeElectricityImport(aoc::game::GameState& gameState,
+                                                  PlayerId buyer,
+                                                  PlayerId seller,
+                                                  int32_t energyPerTurn,
+                                                  int32_t goldPerTurn,
+                                                  int32_t currentTurn,
+                                                  int32_t durationTurns);
+
+/// Tick all active agreements: enforce war-break, contract expiry, and
+/// settle the per-turn gold transfer. Energy delivery itself happens in
+/// `computeCityPower` — this hook only keeps bookkeeping honest.
+void processElectricityAgreements(aoc::game::GameState& gameState,
+                                   const DiplomacyManager& diplomacy,
+                                   int32_t currentTurn);
+
+/// Break all electricity agreements involving `player`. Used by the
+/// elimination / confederation-dissolve paths where the contract state
+/// would otherwise outlive the counterparty.
+void breakElectricityAgreementsFor(aoc::game::GameState& gameState, PlayerId player);
 
 } // namespace aoc::sim

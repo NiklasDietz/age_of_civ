@@ -1640,7 +1640,10 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                     ((ourMilitary * 7 + theirMilitary * 13 +
                       static_cast<int32_t>(this->m_player) * 31) % 10);
                 if (warChance < warChanceThreshold) {
-                    diplomacy.declareWar(this->m_player, other);
+                    diplomacy.declareWar(this->m_player, other,
+                                         aoc::sim::CasusBelliType::SurpriseWar,
+                                         nullptr, &gameState,
+                                         gameState.currentTurn());
                     LOG_INFO("AI %u Declared war on player %u (military %d vs %d, "
                              "relations %d, aggression %.2f)",
                              static_cast<unsigned>(this->m_player),
@@ -1667,7 +1670,10 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                           static_cast<int32_t>(this->m_player) * 37) % 10);
                     const int32_t threshold = hardAI ? 4 : 3;
                     if (warChance < threshold) {
-                        diplomacy.declareWar(this->m_player, other);
+                        diplomacy.declareWar(this->m_player, other,
+                                             aoc::sim::CasusBelliType::SurpriseWar,
+                                             nullptr, &gameState,
+                                             gameState.currentTurn());
                         LOG_INFO("AI %u Declared opportunistic war on player %u "
                                  "(%.1f:1 advantage: %d vs %d, aggression %.2f)",
                                  static_cast<unsigned>(this->m_player),
@@ -2066,7 +2072,9 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                     // (if not already at war and we have military capability)
                     if (ourMilitary > 0 && beh.militaryAggression > 0.3f) {
                         diplomacy.declareWar(this->m_player, other,
-                                             aoc::sim::CasusBelliType::FormalWar);
+                                             aoc::sim::CasusBelliType::FormalWar,
+                                             nullptr, &gameState,
+                                             gameState.currentTurn());
                         LOG_INFO("AI %u Declared war on Player %u for border violation "
                                  "(%d turns, tolerance %d, aggression %.2f)",
                                  static_cast<unsigned>(this->m_player),

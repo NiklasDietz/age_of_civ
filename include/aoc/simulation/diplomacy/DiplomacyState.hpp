@@ -19,6 +19,8 @@
 #include <string_view>
 #include <vector>
 
+namespace aoc::game { class GameState; }
+
 namespace aoc::sim {
 
 /// A time-decaying relation modifier (e.g., "settled near our borders" -5, decays over 20 turns).
@@ -221,10 +223,15 @@ public:
     /// `casusBelliDef(cb).grievanceMultiplier` (0.0 = no grievance, 1.0 = full
     /// -50). Default Surprise War applies the full penalty.
     /// If an AllianceObligationTracker is provided, alliance obligations are
-    /// generated for the target's allies automatically.
+    /// generated for the target's allies automatically. If a `gameState` is
+    /// also provided AND the target belongs to an active confederation, war
+    /// obligations are fanned out to every non-attacker member of that bloc,
+    /// and the bloc is dissolved (war breaks the Staatenbund).
     void declareWar(PlayerId aggressor, PlayerId target,
                     CasusBelliType cb = CasusBelliType::SurpriseWar,
-                    struct AllianceObligationTracker* allianceTracker = nullptr);
+                    struct AllianceObligationTracker* allianceTracker = nullptr,
+                    aoc::game::GameState* gameState = nullptr,
+                    int32_t currentTurn = 0);
 
     /// Make peace between two players.
     void makePeace(PlayerId a, PlayerId b);

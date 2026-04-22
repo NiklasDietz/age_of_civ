@@ -5,6 +5,7 @@
 
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/AllianceObligations.hpp"
+#include "aoc/simulation/diplomacy/Confederation.hpp"
 #include "aoc/ui/GameNotifications.hpp"
 #include "aoc/core/Log.hpp"
 
@@ -58,7 +59,9 @@ void DiplomacyManager::addModifier(PlayerId a, PlayerId b, RelationModifier modi
 
 void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target,
                                    CasusBelliType cb,
-                                   AllianceObligationTracker* allianceTracker) {
+                                   AllianceObligationTracker* allianceTracker,
+                                   aoc::game::GameState* gameState,
+                                   int32_t currentTurn) {
     PairwiseRelation& relAB = this->relation(aggressor, target);
     PairwiseRelation& relBA = this->relation(target, aggressor);
 
@@ -117,6 +120,26 @@ void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target,
     // Generate alliance obligations for the target's allies
     if (allianceTracker != nullptr) {
         allianceTracker->onWarDeclared(aggressor, target, *this);
+    }
+
+    // Confederation fan-out: attacking any bloc member pulls the whole bloc
+    // into war obligations. The bloc is then dissolved — the shared-defense
+    // bond survives until war, not through it.
+    if (gameState != nullptr) {
+        const ConfederationComponent* targetBloc =
+            confederationForPlayer(*gameState, target);
+        if (targetBloc != nullptr && targetBloc->isActive) {
+            onConfederationMemberAttacked(*gameState, allianceTracker,
+                                          aggressor, target, currentTurn);
+            dissolveConfederationFor(*gameState, target);
+        }
+        // Aggressor leaves its own bloc too — can't belong to a peace pact
+        // while starting wars.
+        const ConfederationComponent* aggBloc =
+            confederationForPlayer(*gameState, aggressor);
+        if (aggBloc != nullptr && aggBloc->isActive) {
+            dissolveConfederationFor(*gameState, aggressor);
+        }
     }
 
     LOG_INFO("Player %u declared war on Player %u",

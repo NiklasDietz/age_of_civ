@@ -1227,6 +1227,44 @@ void writeStockPortfolioSection(WriteBuffer& out, const aoc::game::GameState& ga
     writeSection(out, SectionId::StockPortfolioState, section);
 }
 
+/// Serialize active confederations (Staatenbund blocs).
+void writeConfederationSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
+    WriteBuffer section;
+    const std::vector<aoc::sim::ConfederationComponent>& bands = gameState.confederations();
+    section.writeU32(static_cast<uint32_t>(bands.size()));
+    for (const aoc::sim::ConfederationComponent& c : bands) {
+        section.writeU32(c.id);
+        section.writeI32(c.formedTurn);
+        section.writeU8(c.isActive ? 1u : 0u);
+        section.writeU32(static_cast<uint32_t>(c.members.size()));
+        for (PlayerId m : c.members) {
+            section.writeU8(static_cast<uint8_t>(m));
+        }
+    }
+    writeSection(out, SectionId::ConfederationState, section);
+}
+
+/// Serialize bilateral electricity import agreements.
+void writeElectricityAgreementSection(WriteBuffer& out,
+                                       const aoc::game::GameState& gameState) {
+    WriteBuffer section;
+    const std::vector<aoc::sim::ElectricityAgreementComponent>& agrs =
+        gameState.electricityAgreements();
+    section.writeU32(static_cast<uint32_t>(agrs.size()));
+    for (const aoc::sim::ElectricityAgreementComponent& a : agrs) {
+        section.writeU32(a.id);
+        section.writeU8(static_cast<uint8_t>(a.seller));
+        section.writeU8(static_cast<uint8_t>(a.buyer));
+        section.writeI32(a.energyPerTurn);
+        section.writeI32(a.goldPerTurn);
+        section.writeI32(a.formedTurn);
+        section.writeI32(a.endTurn);
+        section.writeU8(a.isActive ? 1u : 0u);
+        section.writeI32(a.lastDeliveredEnergy);
+    }
+    writeSection(out, SectionId::ElectricityAgreementState, section);
+}
+
 } // anonymous namespace
 
 // ============================================================================
@@ -1285,6 +1323,8 @@ ErrorCode saveGame(const std::string& filepath,
     writeGrievanceSection(buf, gameState);
     writeWarWearinessSection(buf, gameState);
     writeStockPortfolioSection(buf, gameState);
+    writeConfederationSection(buf, gameState);
+    writeElectricityAgreementSection(buf, gameState);
 
     // Write to file
     std::ofstream file(filepath, std::ios::binary);
@@ -2372,6 +2412,47 @@ ErrorCode loadGame(const std::string& filepath,
                     }
                     aoc::game::Player* player = gameState.player(owner);
                     if (player != nullptr) { player->stockPortfolio() = std::move(p); }
+                }
+                break;
+            }
+            case SectionId::ConfederationState: {
+                uint32_t count = buf.readU32();
+                std::vector<aoc::sim::ConfederationComponent>& bands =
+                    gameState.confederations();
+                bands.clear();
+                bands.reserve(count);
+                for (uint32_t i = 0; i < count; ++i) {
+                    aoc::sim::ConfederationComponent c{};
+                    c.id         = buf.readU32();
+                    c.formedTurn = buf.readI32();
+                    c.isActive   = (buf.readU8() != 0u);
+                    uint32_t memberCount = buf.readU32();
+                    c.members.reserve(memberCount);
+                    for (uint32_t m = 0; m < memberCount; ++m) {
+                        c.members.push_back(buf.readU8());
+                    }
+                    bands.push_back(std::move(c));
+                }
+                break;
+            }
+            case SectionId::ElectricityAgreementState: {
+                uint32_t count = buf.readU32();
+                std::vector<aoc::sim::ElectricityAgreementComponent>& agrs =
+                    gameState.electricityAgreements();
+                agrs.clear();
+                agrs.reserve(count);
+                for (uint32_t i = 0; i < count; ++i) {
+                    aoc::sim::ElectricityAgreementComponent a{};
+                    a.id                  = buf.readU32();
+                    a.seller              = buf.readU8();
+                    a.buyer               = buf.readU8();
+                    a.energyPerTurn       = buf.readI32();
+                    a.goldPerTurn         = buf.readI32();
+                    a.formedTurn          = buf.readI32();
+                    a.endTurn             = buf.readI32();
+                    a.isActive            = (buf.readU8() != 0u);
+                    a.lastDeliveredEnergy = buf.readI32();
+                    agrs.push_back(a);
                 }
                 break;
             }

@@ -8,6 +8,8 @@
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/economy/EnergyDependency.hpp"
 #include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/core/Log.hpp"
 
@@ -101,6 +103,129 @@ int32_t countRenewableBuildings(const aoc::game::GameState& gameState, PlayerId 
     }
 
     return count;
+}
+
+// ============================================================================
+// Bilateral electricity agreements
+// ============================================================================
+
+namespace {
+
+uint32_t nextElectricityAgreementId(const aoc::game::GameState& gameState) {
+    uint32_t maxId = 0;
+    for (const ElectricityAgreementComponent& a : gameState.electricityAgreements()) {
+        if (a.id > maxId) { maxId = a.id; }
+    }
+    return maxId + 1;
+}
+
+} // namespace
+
+ErrorCode proposeElectricityImport(aoc::game::GameState& gameState,
+                                     PlayerId buyer,
+                                     PlayerId seller,
+                                     int32_t energyPerTurn,
+                                     int32_t goldPerTurn,
+                                     int32_t currentTurn,
+                                     int32_t durationTurns) {
+    if (buyer == seller || buyer == INVALID_PLAYER || seller == INVALID_PLAYER) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (energyPerTurn <= 0 || goldPerTurn < 0) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    aoc::game::Player* buyerPlayer  = gameState.player(buyer);
+    aoc::game::Player* sellerPlayer = gameState.player(seller);
+    if (buyerPlayer == nullptr || sellerPlayer == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (buyerPlayer->victoryTracker().isEliminated
+        || sellerPlayer->victoryTracker().isEliminated) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    // Reject duplicate buyer/seller direction (seller→buyer already exists).
+    for (const ElectricityAgreementComponent& a : gameState.electricityAgreements()) {
+        if (!a.isActive) { continue; }
+        if (a.seller == seller && a.buyer == buyer) {
+            return ErrorCode::AllianceExists;
+        }
+    }
+
+    ElectricityAgreementComponent agr;
+    agr.id             = nextElectricityAgreementId(gameState);
+    agr.seller         = seller;
+    agr.buyer          = buyer;
+    agr.energyPerTurn  = energyPerTurn;
+    agr.goldPerTurn    = goldPerTurn;
+    agr.formedTurn     = currentTurn;
+    agr.endTurn        = (durationTurns > 0) ? (currentTurn + durationTurns) : 0;
+    agr.isActive       = true;
+    gameState.electricityAgreements().push_back(agr);
+
+    LOG_INFO("Electricity agreement %u: p%u → p%u (%d MW/turn for %dg/turn)",
+             static_cast<unsigned>(agr.id),
+             static_cast<unsigned>(seller),
+             static_cast<unsigned>(buyer),
+             energyPerTurn, goldPerTurn);
+    return ErrorCode::Ok;
+}
+
+void processElectricityAgreements(aoc::game::GameState& gameState,
+                                   const DiplomacyManager& diplomacy,
+                                   int32_t currentTurn) {
+    for (ElectricityAgreementComponent& a : gameState.electricityAgreements()) {
+        if (!a.isActive) { continue; }
+
+        // War-break: active war between counterparts kills the contract.
+        if (diplomacy.isAtWar(a.buyer, a.seller)) {
+            a.isActive = false;
+            LOG_INFO("Electricity agreement %u broken by war (p%u ⇄ p%u)",
+                     static_cast<unsigned>(a.id),
+                     static_cast<unsigned>(a.buyer),
+                     static_cast<unsigned>(a.seller));
+            continue;
+        }
+
+        // Expiry.
+        if (a.endTurn > 0 && currentTurn >= a.endTurn) {
+            a.isActive = false;
+            continue;
+        }
+
+        // Gold settlement. Buyer pays seller. If buyer can't afford, contract
+        // is suspended for the turn — but stays active so one bad turn
+        // doesn't tear up a long-term deal. Seller sees no revenue and no
+        // delivery (lastDeliveredEnergy set to 0 below).
+        aoc::game::Player* buyerPlayer  = gameState.player(a.buyer);
+        aoc::game::Player* sellerPlayer = gameState.player(a.seller);
+        if (buyerPlayer == nullptr || sellerPlayer == nullptr) {
+            a.isActive = false;
+            continue;
+        }
+
+        if (buyerPlayer->monetary().treasury
+            < static_cast<CurrencyAmount>(a.goldPerTurn)) {
+            a.lastDeliveredEnergy = 0;
+            continue;
+        }
+        buyerPlayer->monetary().treasury  -= static_cast<CurrencyAmount>(a.goldPerTurn);
+        sellerPlayer->monetary().treasury += static_cast<CurrencyAmount>(a.goldPerTurn);
+
+        // Delivery is recorded here; consumption side is applied inside
+        // computeCityPower so the per-city import cap can gate it.
+        a.lastDeliveredEnergy = a.energyPerTurn;
+    }
+}
+
+void breakElectricityAgreementsFor(aoc::game::GameState& gameState, PlayerId player) {
+    for (ElectricityAgreementComponent& a : gameState.electricityAgreements()) {
+        if (!a.isActive) { continue; }
+        if (a.buyer == player || a.seller == player) {
+            a.isActive = false;
+        }
+    }
 }
 
 } // namespace aoc::sim
