@@ -72,6 +72,17 @@ public:
     /// Whether to show yield labels on all visible tiles.
     bool showTileYields = true;
 
+    /// Selection highlight: axial coord of the currently-selected unit or
+    /// city.  Set by Application each frame.  Draws a glowing hex outline at
+    /// this location so the player sees which entity they're controlling.
+    /// Cleared by setting to INVALID_SELECTION.
+    hex::AxialCoord selectionHighlight = {0x7FFFFFFF, 0x7FFFFFFF};
+    static inline constexpr hex::AxialCoord INVALID_SELECTION = {0x7FFFFFFF, 0x7FFFFFFF};
+    [[nodiscard]] bool hasSelection() const {
+        return this->selectionHighlight.q != INVALID_SELECTION.q
+            || this->selectionHighlight.r != INVALID_SELECTION.r;
+    }
+
 private:
     MapRenderer              m_mapRenderer;
     UnitRenderer             m_unitRenderer;

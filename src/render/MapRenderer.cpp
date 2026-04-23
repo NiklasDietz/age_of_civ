@@ -510,23 +510,16 @@ void MapRenderer::drawTerritoryBorders(vulkan_app::renderer::Renderer2D& rendere
 
 void MapRenderer::drawRiverEdges(vulkan_app::renderer::Renderer2D& renderer2d,
                                   uint8_t riverMask, float cx, float cy) const {
-    // Rivers flow ALONG hex edges (shared boundary between two tiles), not as
-    // spokes pointing at the tile centre.  Previous code drew edge-mid→centre
-    // which only "looked right" while the shader's rotation was broken and
-    // every line rendered axis-aligned; now that rotation is fixed the spoke
-    // form was pointing at the wrong orientation so we switch to the correct
-    // edge-span form.
+    // Rivers run along shared tile boundaries.  Each set bit of riverMask is
+    // drawn as a capsule along the corresponding edge (dir → edge mapping
+    // via (5 - dir + 6) % 6 in the hexVertices layout).  Generator enforces
+    // adjacent-edge transitions so consecutive river segments share a vertex
+    // — rounded capsule caps then overlap cleanly at each junction.
     float vertices[12];
     hex::hexVertices(cx, cy, this->m_hexSize, vertices);
 
-    // Same edge→direction convention as the territory border (see
-    // drawTerritoryBorders): dir = (5 - edge + 6) % 6.  The riverMask bit
-    // however is indexed by direction, so we loop by direction and draw the
-    // matching edge.
     for (int dir = 0; dir < 6; ++dir) {
-        if ((riverMask & (1u << dir)) == 0) {
-            continue;
-        }
+        if ((riverMask & (1u << dir)) == 0) { continue; }
         const int edge = (5 - dir + 6) % 6;
         const int v0 = edge;
         const int v1 = (edge + 1) % 6;
@@ -534,10 +527,6 @@ void MapRenderer::drawRiverEdges(vulkan_app::renderer::Renderer2D& renderer2d,
         const float y1 = vertices[v0 * 2 + 1];
         const float x2 = vertices[v1 * 2];
         const float y2 = vertices[v1 * 2 + 1];
-        // Capsule with hemispherical caps: neighbouring river segments share
-        // a vertex, and the rounded caps overlap cleanly at the junction so
-        // the river reads as a continuous curve rather than detached bars.
-        // Radius is half the stroke width (≈ Civ 6 river weight at 1x zoom).
         renderer2d.drawCapsule(x1, y1, x2, y2,
                                2.5f, 0.10f, 0.35f, 0.80f, 1.0f, 0.0f);
     }

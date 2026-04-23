@@ -234,6 +234,25 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     this->m_unitRenderer.drawUnits(renderer2d, gameState, fog, grid, viewingPlayer,
                                     camera, hexSize, screenWidth, screenHeight);
 
+    // Layer 3.2: Selection highlight for the active unit or city.  Drawn as
+    // a bright ring around the tile so the player always knows which entity
+    // responds to the action panel hotkeys.
+    if (this->hasSelection() && grid.isValid(this->selectionHighlight)) {
+        float selCx = 0.0f, selCy = 0.0f;
+        hex::axialToPixel(this->selectionHighlight, hexSize, selCx, selCy);
+        float verts[12];
+        hex::hexVertices(selCx, selCy, hexSize, verts);
+        const float pulse = 0.70f + 0.30f * 0.5f;  // static glow; could oscillate if animated
+        for (int e = 0; e < 6; ++e) {
+            const float x1 = verts[e * 2];
+            const float y1 = verts[e * 2 + 1];
+            const float x2 = verts[((e + 1) % 6) * 2];
+            const float y2 = verts[((e + 1) % 6) * 2 + 1];
+            renderer2d.drawCapsule(x1, y1, x2, y2, 3.0f,
+                                   1.0f, 0.92f, 0.35f, pulse, 0.0f);
+        }
+    }
+
     // Layer 3.5: City name labels (world-space text above each city hex)
     {
         const float invZoomLabel = 1.0f / camera.zoom();

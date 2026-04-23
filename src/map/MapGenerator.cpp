@@ -245,10 +245,21 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // No gradient -- use raw noise directly
                 edgeFalloff = 0.5f;  // Neutral contribution
             } else {
-                // Compute falloff as max contribution from any land center
+                // Domain-warp the sample position with low-frequency noise so
+                // the radial falloff becomes irregular (bays, peninsulas,
+                // inland seas) instead of perfect discs.  Previous version
+                // produced circular continents with mountains piled at the
+                // geometric centre — no trace of actual continental drift.
+                aoc::Random warpRng(noiseRng);
+                const float warpX =
+                    (fractalNoise(nx * 2.0f, ny * 2.0f, 3, 2.0f, 0.5f, warpRng) - 0.5f) * 0.55f;
+                const float warpY =
+                    (fractalNoise(nx * 2.0f + 17.0f, ny * 2.0f + 31.0f, 3, 2.0f, 0.5f, warpRng) - 0.5f) * 0.55f;
+                const float wx = nx + warpX;
+                const float wy = ny + warpY;
                 for (const LandCenter& center : landCenters) {
-                    float dx = (nx - center.cx) * 2.0f;
-                    float dy = (ny - center.cy) * 2.0f;
+                    float dx = (wx - center.cx) * 2.0f;
+                    float dy = (wy - center.cy) * 2.0f;
                     float distFromCenter = std::sqrt(dx * dx + dy * dy);
                     float falloff = 1.0f - std::clamp(distFromCenter * center.strength, 0.0f, 1.0f);
                     falloff = smoothstep(falloff);
@@ -256,13 +267,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 }
             }
 
-            // Continents/Pangaea/Archipelago: falloff dominates so noise
-            // doesn't fill the ocean gaps between centers. Fractal stays
-            // noise-only (falloff=0.5 neutral).
+            // Continents/Pangaea/Archipelago: balance noise + falloff so the
+            // shape is irregular but continents don't dissolve into islands.
+            // Noise now dominates (0.55 vs 0.45) for earthlike coastlines;
+            // domain-warp above already breaks the radial symmetry.
             if (config.mapType == MapType::Fractal) {
                 elev = elev * 0.6f + edgeFalloff * 0.4f;
             } else {
-                elev = elev * 0.35f + edgeFalloff * 0.65f;
+                elev = elev * 0.55f + edgeFalloff * 0.45f;
             }
 
             elevationMap[static_cast<std::size_t>(row * width + col)] = elev;
@@ -518,7 +530,10 @@ void MapGenerator::generateRivers(HexGrid& grid, aoc::Random& rng) {
             if (!grid.isValid(n)) { continue; }
             const int32_t ni = grid.toIndex(n);
             if (distToWater[static_cast<size_t>(ni)] >= 0) { continue; }
-            if (isImpassable(grid.terrain(ni))) { continue; }
+            // BFS expands through land INCLUDING mountains.  Rivers originate
+            // at mountain/hill and flow to water, so mountain tiles must
+            // receive a finite distance or the source filter rejects them all
+            // (Mountain is unit-impassable but rivers ignore that).
             distToWater[static_cast<size_t>(ni)] = d + 1;
             bfsQueue.push_back(ni);
         }
@@ -553,81 +568,103 @@ void MapGenerator::generateRivers(HexGrid& grid, aoc::Random& rng) {
         std::swap(sources[i - 1], sources[j]);
     }
 
-    for (int32_t r = 0; r < riverCount; ++r) {
-        const int32_t startIndex = sources[static_cast<size_t>(r)];
+    struct Step { int32_t tileIndex; int32_t direction; };
 
-        struct Step { int32_t tileIndex; int32_t direction; };
-        std::vector<Step> path;
-        std::vector<uint8_t> visited(static_cast<size_t>(grid.tileCount()), 0);
+    // BFS over (tile, prevDir) state-space with strict ±2 transitions.  Each
+    // state represents "we are standing on `tile`, and the last step into
+    // this tile used direction `prevDir` (from the previous tile to this
+    // tile)".  A step is legal iff its direction satisfies (dir - prevDir)
+    // mod 6 ∈ {2, 4} — that constraint guarantees the two river-edges on
+    // any intermediate tile share a vertex, producing a Civ 6-style
+    // continuous curve instead of opposite-side bars.
+    //
+    // Starting state has prevDir = -1 (no constraint on first step).  Path
+    // must arrive at a water tile.  Elevation is used only as a cost term
+    // (monotone descent is softly preferred via non-decreasing distance-
+    // to-water), so any geometrically valid ±2 path to water is accepted.
+    auto findPath = [&](int32_t startIdx, std::vector<Step>& outPath) -> bool {
+        outPath.clear();
+        const int32_t tc = grid.tileCount();
+        // parent[tile * 7 + (prevDir+1)] = encoded prev state + incoming dir.
+        // We allocate 7 slots per tile (prevDir ∈ {-1, 0..5}).
+        constexpr int32_t DIR_SLOTS = 7;
+        const size_t stateCount = static_cast<size_t>(tc) * DIR_SLOTS;
+        std::vector<int32_t> parentTile(stateCount, -1);
+        std::vector<int8_t>  parentSlot(stateCount, -1);
+        std::vector<int8_t>  incomingDir(stateCount, -1);
+        std::vector<uint8_t> visited(stateCount, 0);
 
-        int32_t currentIndex = startIndex;
-        visited[static_cast<size_t>(currentIndex)] = 1;
-        bool reachedWater = false;
-        const int32_t maxSteps = 40;
-        int32_t prevDir = -1;  // previous step direction; -1 on first step.
+        auto slot = [](int32_t prevDir) -> int32_t {
+            return prevDir + 1;  // -1 → 0, 0..5 → 1..6
+        };
 
-        for (int32_t step = 0; step < maxSteps; ++step) {
-            const hex::AxialCoord current = grid.toAxial(currentIndex);
-            const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(current);
-            const int8_t curElev = grid.elevation(currentIndex);
-            const int32_t curDist = distToWater[static_cast<size_t>(currentIndex)];
+        std::vector<std::pair<int32_t, int32_t>> queue;  // (tileIdx, prevDir)
+        queue.reserve(static_cast<size_t>(tc));
+        const size_t startState = static_cast<size_t>(startIdx) * DIR_SLOTS + static_cast<size_t>(slot(-1));
+        visited[startState] = 1;
+        queue.emplace_back(startIdx, -1);
 
-            // Score candidates: strict descent preferred; among equal-elevation
-            // tiles prefer ones closer to water.  Revisits not allowed.
-            //
-            // Civ 6-style adjacency constraint: if there was a previous step,
-            // the next direction must be prevDir ± 2 (mod 6).  That forces the
-            // two river edges on this tile to share a vertex (be adjacent
-            // edges), instead of landing on opposite sides of the hex.  A
-            // straight-through river (prevDir == nextDir) puts the entry and
-            // exit edges on opposite edges of the tile, and they never connect
-            // — which is the "uses opposite edges of a tile" symptom.
-            int32_t bestIdx = -1;
-            int32_t bestDir = -1;
-            int8_t  bestElev = curElev;
-            int32_t bestDist = curDist;
+        int32_t foundTile = -1;
+        int32_t foundPrev = -1;
+
+        for (size_t head = 0; head < queue.size(); ++head) {
+            const int32_t curTile = queue[head].first;
+            const int32_t curPrev = queue[head].second;
+            const hex::AxialCoord c = grid.toAxial(curTile);
+            const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(c);
 
             for (int dir = 0; dir < 6; ++dir) {
-                if (prevDir >= 0) {
-                    const int32_t diff = ((dir - prevDir) % 6 + 6) % 6;
+                if (curPrev >= 0) {
+                    const int32_t diff = ((dir - curPrev) % 6 + 6) % 6;
                     if (diff != 2 && diff != 4) { continue; }
                 }
                 const hex::AxialCoord& n = nbrs[static_cast<size_t>(dir)];
                 if (!grid.isValid(n)) { continue; }
                 const int32_t nIdx = grid.toIndex(n);
-                if (visited[static_cast<size_t>(nIdx)]) { continue; }
-                if (isImpassable(grid.terrain(nIdx))) { continue; }
-                const int8_t nElev = grid.elevation(nIdx);
-                const int32_t nDist = distToWater[static_cast<size_t>(nIdx)];
-                if (nDist < 0) { continue; }  // unreachable to any ocean
+                const TerrainType nt = grid.terrain(nIdx);
+                if (isImpassable(nt) && !isWater(nt)) { continue; }
 
-                const bool strictlyLower = nElev < bestElev;
-                const bool equalButCloser = (nElev == bestElev) && (nDist < bestDist);
-                const bool equalEqualJitter = (nElev == bestElev) && (nDist == bestDist) && rng.chance(0.3f);
-                if (strictlyLower || equalButCloser || equalEqualJitter) {
-                    bestElev = nElev;
-                    bestDist = nDist;
-                    bestIdx = nIdx;
-                    bestDir = dir;
+                const size_t nState = static_cast<size_t>(nIdx) * DIR_SLOTS + static_cast<size_t>(slot(dir));
+                if (visited[nState]) { continue; }
+                visited[nState] = 1;
+                parentTile[nState]  = curTile;
+                parentSlot[nState]  = static_cast<int8_t>(slot(curPrev));
+                incomingDir[nState] = static_cast<int8_t>(dir);
+
+                if (isWater(nt)) {
+                    foundTile = nIdx;
+                    foundPrev = dir;
+                    break;
                 }
+                queue.emplace_back(nIdx, dir);
             }
-
-            if (bestDir < 0) { break; }  // dead end — path discarded below
-
-            path.push_back({currentIndex, bestDir});
-            visited[static_cast<size_t>(bestIdx)] = 1;
-            prevDir = bestDir;
-
-            if (isWater(grid.terrain(bestIdx))) {
-                reachedWater = true;
-                break;
-            }
-            currentIndex = bestIdx;
+            if (foundTile >= 0) { break; }
         }
 
-        if (!reachedWater) { continue; }
+        if (foundTile < 0) { return false; }
 
-        // Commit edges only after confirming the river actually reaches water.
+        // Reconstruct path by walking parent pointers backwards.
+        std::vector<Step> reversePath;
+        int32_t curT = foundTile;
+        int32_t curS = slot(foundPrev);
+        while (true) {
+            const size_t s = static_cast<size_t>(curT) * DIR_SLOTS + static_cast<size_t>(curS);
+            const int32_t pT = parentTile[s];
+            if (pT < 0) { break; }
+            const int8_t  inDir = incomingDir[s];
+            reversePath.push_back({pT, inDir});
+            curT = pT;
+            curS = parentSlot[s];
+        }
+        outPath.assign(reversePath.rbegin(), reversePath.rend());
+        return true;
+    };
+
+    for (int32_t r = 0; r < riverCount; ++r) {
+        const int32_t startIndex = sources[static_cast<size_t>(r)];
+        std::vector<Step> path;
+        if (!findPath(startIndex, path)) { continue; }
+
         for (const Step& s : path) {
             const hex::AxialCoord c = grid.toAxial(s.tileIndex);
             const hex::AxialCoord n = hex::neighbors(c)[static_cast<size_t>(s.direction)];

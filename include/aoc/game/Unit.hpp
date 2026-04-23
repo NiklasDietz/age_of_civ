@@ -75,6 +75,15 @@ public:
     std::vector<aoc::hex::AxialCoord>& pendingPath() { return this->m_pendingPath; }
     void clearPath() { this->m_pendingPath.clear(); }
 
+    /// Tiles the unit stepped through during the current turn.  Populated by
+    /// moveUnitAlongPath, read + cleared by Application once per turn to feed
+    /// fog-of-war reveal so intermediate tiles along an auto-move path stay
+    /// Revealed after the unit moves on — instead of only the final position
+    /// becoming Visible while the traversed tiles stay Unseen.
+    [[nodiscard]] const std::vector<aoc::hex::AxialCoord>& movementTrace() const { return this->m_movementTrace; }
+    std::vector<aoc::hex::AxialCoord>& movementTrace() { return this->m_movementTrace; }
+    void clearMovementTrace() { this->m_movementTrace.clear(); }
+
     // ========================================================================
     // Health & Combat
     // ========================================================================
@@ -200,6 +209,7 @@ private:
     int32_t m_chargesRemaining = 0;
 
     std::vector<aoc::hex::AxialCoord> m_pendingPath;
+    std::vector<aoc::hex::AxialCoord> m_movementTrace;  ///< Tiles stepped through this turn; cleared after fog update.
 
     // Extended subsystems (formerly ECS-only)
     aoc::sim::UnitSupplyComponent m_supply;

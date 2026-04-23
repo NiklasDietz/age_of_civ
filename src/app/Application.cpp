@@ -1425,6 +1425,17 @@ void Application::run() {
 
         this->m_renderPipeline->beginRenderPass(frame);
 
+        // Push current selection (unit > city) into the renderer so it paints
+        // a highlight ring around the controlled entity.
+        if (this->m_selectedUnit != nullptr) {
+            this->m_gameRenderer.selectionHighlight = this->m_selectedUnit->position();
+        } else if (this->m_selectedCity != nullptr) {
+            this->m_gameRenderer.selectionHighlight = this->m_selectedCity->location();
+        } else {
+            this->m_gameRenderer.selectionHighlight =
+                aoc::render::GameRenderer::INVALID_SELECTION;
+        }
+
         this->m_gameRenderer.render(
             *this->m_renderer2d,
             frame.commandBuffer,
@@ -1711,12 +1722,49 @@ void Application::buildMainMenu(float screenW, float screenH) {
             this->startGame(tutorialConfig);
             this->m_tutorialManager.start();
         },
-        [this]() {
-            // Spectate: start an all-AI game with default parameters.
+        [this, screenW, screenH]() {
+            // Spectate: reuse the GameSetup screen so the user can configure
+            // map type/size, placement, player count, civs, difficulty — same
+            // as a regular game — then start in spectator mode (all slots AI).
             this->m_mainMenu.destroy(this->m_uiManager);
             this->m_settingsMenu.destroy(this->m_uiManager);
-            // 8 AI civilizations for a rich mid-size game; 500-turn limit.
-            this->startSpectate(8, 500);
+            this->m_gameSetupScreen.build(
+                this->m_uiManager, screenW, screenH,
+                [this](const aoc::ui::GameSetupConfig& config) {
+                    this->m_gameSetupScreen.destroy(this->m_uiManager);
+                    // Force all slots to AI — spectator has no human.
+                    aoc::ui::GameSetupConfig specConfig = config;
+                    for (size_t i = 0; i < specConfig.players.size(); ++i) {
+                        if (specConfig.players[i].isActive) {
+                            specConfig.players[i].isHuman = false;
+                        }
+                    }
+                    // Slot 0 temporarily marked human so startGame() runs its
+                    // spawn path for it; we un-mark immediately and attach an
+                    // AI controller for player 0 below.
+                    specConfig.players[0].isHuman = true;
+                    this->startGame(specConfig);
+                    aoc::game::Player* slot0 = this->m_gameState.player(0);
+                    if (slot0 != nullptr) { slot0->setHuman(false); }
+                    this->m_aiControllers.emplace(this->m_aiControllers.begin(),
+                                                   aoc::PlayerId{0},
+                                                   specConfig.aiDifficulty);
+                    this->spectatorRevealAll();
+                    this->m_spectatorMode            = true;
+                    this->m_spectatorMaxTurns        = 500;
+                    this->m_spectatorPaused          = false;
+                    this->m_spectatorSpeed           = 1.0f;
+                    this->m_spectatorTurnAccumulator = 0.0f;
+                    this->m_spectatorFollowPlayer    = -1;
+                    this->m_spectatorFogEnabled      = false;
+                    if (this->m_endTurnButton != aoc::ui::INVALID_WIDGET) {
+                        this->m_uiManager.setVisible(this->m_endTurnButton, false);
+                    }
+                },
+                [this, screenW, screenH]() {
+                    this->m_gameSetupScreen.destroy(this->m_uiManager);
+                    this->buildMainMenu(screenW, screenH);
+                });
         });
 }
 
@@ -2445,6 +2493,39 @@ void Application::handleEndTurn() {
                         LOG_INFO("Music track changed to era %u", eraVal);
                     }
                 }
+            }
+        }
+
+        // Mark intermediate path tiles AND their sight radius as Revealed for
+        // the owner so an auto-moving unit uncovers fog along the whole route,
+        // not just the final tile.  updateVisibility below only reveals around
+        // the unit's current position; without this pass everything behind a
+        // multi-step move this turn would stay Unseen even though the unit
+        // physically walked past it.
+        constexpr int32_t SCOUT_SIGHT = 2;
+        constexpr int32_t UNIT_SIGHT  = 1;
+        for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState.players()) {
+            if (playerPtr == nullptr) { continue; }
+            const PlayerId owner = playerPtr->id();
+            for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerPtr->units()) {
+                if (unitPtr == nullptr) { continue; }
+                const int32_t sight = (unitPtr->typeDef().unitClass == aoc::sim::UnitClass::Scout)
+                    ? SCOUT_SIGHT : UNIT_SIGHT;
+                for (const aoc::hex::AxialCoord& tile : unitPtr->movementTrace()) {
+                    for (int32_t q = -sight; q <= sight; ++q) {
+                        const int32_t rLo = std::max(-sight, -q - sight);
+                        const int32_t rHi = std::min( sight, -q + sight);
+                        for (int32_t r = rLo; r <= rHi; ++r) {
+                            const aoc::hex::AxialCoord t{tile.q + q, tile.r + r};
+                            if (!this->m_hexGrid.isValid(t)) { continue; }
+                            const int32_t idx = this->m_hexGrid.toIndex(t);
+                            if (this->m_fogOfWar.visibility(owner, idx) == aoc::map::TileVisibility::Unseen) {
+                                this->m_fogOfWar.setVisibility(owner, idx, aoc::map::TileVisibility::Revealed);
+                            }
+                        }
+                    }
+                }
+                unitPtr->clearMovementTrace();
             }
         }
 

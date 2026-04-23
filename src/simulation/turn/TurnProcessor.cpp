@@ -221,15 +221,22 @@ aoc::game::City& foundCity(aoc::game::GameState& gameState,
         }
     }
 
+    // First city founded by a player is always their original capital, even
+    // when the caller forgot the flag (AISettlerController::foundCity calls
+    // omit it).  Without this the conquest-elimination check fires on turn 2
+    // for every AI because cityCount == 1 && isOriginalCapital == false.
+    const bool isFirstCity = (gsPlayer->cityCount() == 0);
+    const bool markCapital = isOriginalCapital || isFirstCity;
+
     aoc::game::City& city = gsPlayer->addCity(location, name);
-    city.setOriginalCapital(isOriginalCapital);
+    city.setOriginalCapital(markCapital);
     city.setOriginalOwner(owner);
     city.setPopulation(startingPop);
 
     // Settlement stage: every founding starts as a Hamlet. The original capital
     // at game start begins further along the ladder so the opening turns still
     // feel like a proper city game rather than a frontier-building sim.
-    if (isOriginalCapital) {
+    if (markCapital) {
         city.setStage(aoc::game::CitySize::Town);
     } else {
         city.setStage(aoc::game::CitySize::Hamlet);

@@ -157,6 +157,7 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
         unit.setPosition(nextTile);
         unit.setMovementRemaining(unit.movementRemaining() - cost);
         unit.pendingPath().erase(unit.pendingPath().begin());
+        unit.movementTrace().push_back(nextTile);
         moved = true;
 
         unit.isAnimating  = true;
