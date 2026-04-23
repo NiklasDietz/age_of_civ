@@ -277,6 +277,12 @@ public:
                      float scrollDelta = 0.0f,
                      bool rightPressed = false, bool rightReleased = false);
 
+    /// Optional command-buffer handle for scissor clip pushes during
+    /// render. Set by the caller each frame before `render`. nullptr =
+    /// no clipping (scissor silently skipped). Opaque `void*` so GLFW
+    /// / Vulkan headers stay out of the public API surface.
+    void setRenderCommandBuffer(void* cmdBuffer) { this->m_cmdBuffer = cmdBuffer; }
+
     // ========================================================================
     // Layout
     // ========================================================================
@@ -376,6 +382,11 @@ private:
 
     /// Strict layout mode — dev-only runtime overflow warnings.
     bool m_strictLayout = false;
+
+    /// Command buffer for scissor push/pop. void* keeps Vulkan out
+    /// of the public header. Owner (Application / GameRenderer) sets
+    /// this each frame via `setRenderCommandBuffer` before `render`.
+    void* m_cmdBuffer = nullptr;
 
     /// Binding maps. Keyed by WidgetId; suppliers run in
     /// `updateBindings`. Stored in three parallel maps rather than a

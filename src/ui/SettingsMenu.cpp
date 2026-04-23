@@ -250,6 +250,44 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
                                std::move(s));
     }
 
+    // Skin cycler: Classic → Dark → Parchment. Swaps theme chrome.
+    {
+        WidgetId row = ui.createPanel(
+            contentPanel, {0.0f, 0.0f, innerW, 28.0f},
+            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        Widget* r = ui.getWidget(row);
+        if (r != nullptr) {
+            r->layoutDirection = LayoutDirection::Horizontal;
+            r->childSpacing = 6.0f;
+        }
+        (void)ui.createLabel(row, {0.0f, 0.0f, 160.0f, 24.0f},
+                             LabelData{"Theme Skin", GREY_TEXT, 13.0f});
+        const auto skinName = []() {
+            switch (theme().skin) {
+                case ThemeSkin::Classic:   return "Classic";
+                case ThemeSkin::Dark:      return "Dark";
+                case ThemeSkin::Parchment: return "Parchment";
+            }
+            return "Classic";
+        };
+        ButtonData btn;
+        btn.label = skinName();
+        btn.fontSize = 13.0f;
+        btn.normalColor  = BTN_GREY;
+        btn.hoverColor   = BTN_GREY_HOVER;
+        btn.pressedColor = BTN_GREY_PRESS;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 3.0f;
+        btn.onClick = []() {
+            Theme& t = theme();
+            ThemeSkin next = static_cast<ThemeSkin>(
+                (static_cast<uint8_t>(t.skin) + 1) % 3);
+            t.setSkin(next);
+        };
+        (void)ui.createButton(row, {0.0f, 0.0f, innerW - 180.0f, 22.0f},
+                               std::move(btn));
+    }
+
     // Colour scheme cycler: Default → Deuteranopia → HighContrast → …
     {
         WidgetId row = ui.createPanel(

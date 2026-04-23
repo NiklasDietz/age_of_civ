@@ -1295,15 +1295,29 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d,
                                            1.0f, 0.9f, 0.3f, 0.9f);
             }
 
-            // Center the label text. Pass pixelScale so each rasterized pixel
+            // Optional leading icon — from IconAtlas by spriteId.
+            // Rendered at left edge; label offset accounts for it.
+            float labelOffset = 0.0f;
+            if (data.iconSpriteId != 0) {
+                Color ic{0.6f, 0.6f, 0.6f, 1.0f};
+                const IconRegion* reg =
+                    IconAtlas::instance().region(data.iconSpriteId);
+                if (reg != nullptr) { ic = reg->fallback; }
+                const float iz = data.iconSize * scale;
+                renderer2d.drawFilledRect(b.x + 4.0f * scale,
+                                           b.y + (b.h - iz) * 0.5f,
+                                           iz, iz, ic.r, ic.g, ic.b, ic.a);
+                labelOffset = iz + 6.0f * scale;
+            }
+            // Center the label text in the remaining area. Pass pixelScale so each rasterized pixel
             // is scale x scale world units, which the shader zooms back to 1x1 screen pixels.
             if (!data.label.empty()) {
                 float worldFontSize = data.fontSize * scale;
                 Rect textBounds = BitmapFont::measureText(data.label, data.fontSize);
-                // Scale the measured text bounds to world space for centering
                 float textW = textBounds.w * scale;
                 float textH = textBounds.h * scale;
-                float textX = b.x + (b.w - textW) * 0.5f;
+                float textX = b.x + labelOffset
+                            + (b.w - labelOffset - textW) * 0.5f;
                 float textY = b.y + (b.h - textH) * 0.5f;
                 BitmapFont::drawText(renderer2d, data.label, textX, textY,
                                       worldFontSize, data.labelColor, scale);
@@ -1581,6 +1595,14 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d,
 
     // Render children -- for ScrollList, clip to visible window
     const bool isScrollList = std::holds_alternative<ScrollListData>(w->data);
+    // Push a Vulkan scissor before descending into children when
+    // `clipChildren` is set and the caller provided a command buffer.
+    // Guarantees geometry outside the panel never hits the swapchain.
+    const bool pushedScissor = w->clipChildren && this->m_cmdBuffer != nullptr;
+    if (pushedScissor) {
+        renderer2d.pushScissor(b.x, b.y, b.w, b.h,
+                                static_cast<VkCommandBuffer>(this->m_cmdBuffer));
+    }
     for (WidgetId childId : w->children) {
         if (isScrollList) {
             const Widget* child = this->getWidget(childId);
@@ -1594,6 +1616,9 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d,
             }
         }
         this->renderWidget(renderer2d, childId);
+    }
+    if (pushedScissor) {
+        renderer2d.popScissor(static_cast<VkCommandBuffer>(this->m_cmdBuffer));
     }
 }
 

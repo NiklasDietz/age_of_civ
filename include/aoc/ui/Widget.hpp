@@ -112,6 +112,12 @@ struct ButtonData {
     /// enum values via the SoundEventQueue.
     uint32_t clickSound = 0;
 
+    /// Optional leading icon (IconAtlas sprite id). 0 = none. Rendered
+    /// at the left edge before the label; label still centres in the
+    /// remaining space. Used for tab buttons with category icons.
+    uint32_t iconSpriteId = 0;
+    float    iconSize     = 16.0f;
+
     /// Persistent "this is the active choice" flag. Renderer uses
     /// `selectedColor` (falls back to hoverColor shifted brighter) so
     /// screens like tech/gov/tabs can indicate the current selection
@@ -491,6 +497,12 @@ struct Widget {
     /// leave this 0; networked panels fill it with the originating
     /// player id so the dispatcher can validate the source.
     uint8_t   eventOriginPlayer = 0;
+
+    /// Scissor clip: when true, children render clipped to this
+    /// widget's bounds via a Vulkan scissor rect. Hard guarantee over
+    /// the layout-level clamp — geometry that still spills gets
+    /// cropped at the panel edge. Opt-in per panel (off by default).
+    bool clipChildren = false;
 
     /// Dirty-rect render hint (#16). When false the renderer may skip
     /// re-issuing draw calls if the swapchain still has the previous

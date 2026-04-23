@@ -314,7 +314,11 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     float invZoom = 1.0f / camera.zoom();
     uiManager.layout();
     uiManager.transformBounds(topLeftX, topLeftY, invZoom);
+    // Plumb the command buffer so `clipChildren` panels can push/pop
+    // scissor rects during this render pass.
+    uiManager.setRenderCommandBuffer(static_cast<void*>(commandBuffer));
     uiManager.render(renderer2d);
+    uiManager.setRenderCommandBuffer(nullptr);
     uiManager.untransformBounds(topLeftX, topLeftY, invZoom);
 
     // Tooltip (transform screen-space mouse position to world-space for rendering)

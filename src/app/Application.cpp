@@ -772,7 +772,10 @@ void Application::run() {
                 static_cast<float>(frame.extent.width),
                 static_cast<float>(frame.extent.height));
             this->m_uiManager.layout();
+            this->m_uiManager.setRenderCommandBuffer(
+                static_cast<void*>(frame.commandBuffer));
             this->m_uiManager.render(*this->m_renderer2d);
+            this->m_uiManager.setRenderCommandBuffer(nullptr);
             this->m_widgetInspector.render(
                 *this->m_renderer2d, this->m_uiManager,
                 static_cast<float>(this->m_inputManager.mouseX()),

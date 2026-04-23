@@ -69,10 +69,16 @@ void ScreenBase::onResize(UIManager& ui, float width, float height) {
 WidgetId ScreenBase::createScreenFrame(UIManager& ui, const std::string& title,
                                         float width, float height,
                                         float screenW, float screenH) {
-    // Dark semi-transparent full-screen overlay as root
+    // Dark semi-transparent full-screen overlay as root. Scissor-clip
+    // children so any overflow in the inner panel never bleeds past
+    // the viewport even if layout clamp misses an edge case.
     this->m_rootPanel = ui.createPanel(
         {0.0f, 0.0f, screenW, screenH},
         PanelData{{0.0f, 0.0f, 0.0f, 0.5f}, 0.0f});
+    {
+        Widget* rw = ui.getWidget(this->m_rootPanel);
+        if (rw != nullptr) { rw->clipChildren = true; }
+    }
 
     // Open-animation: start transparent and fade in over 150ms so
     // modal-screen appearance feels less abrupt. `UIManager::
@@ -338,7 +344,9 @@ void TechScreen::open(UIManager& ui) {
     (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 14.0f},
                    LabelData{"-- All Technologies --", {0.6f, 0.6f, 0.7f, 1.0f}, 12.0f});
 
-    // Tech list
+    // Tech list rendered as 2-column grid. True tech-tree graph
+    // (prereq lines) pending — grid approximates the visual density
+    // of a node graph without the arrow primitives.
     this->m_techList = ui.createScrollList(
         innerPanel, {0.0f, 0.0f, 470.0f, 400.0f});
 
@@ -346,6 +354,7 @@ void TechScreen::open(UIManager& ui) {
     if (listWidget != nullptr) {
         listWidget->padding = {4.0f, 4.0f, 4.0f, 4.0f};
         listWidget->childSpacing = 3.0f;
+        listWidget->gridColumns = 2;
     }
 
     const std::vector<aoc::sim::TechDef>& techs = aoc::sim::allTechs();
@@ -498,10 +507,12 @@ void GovernmentScreen::open(UIManager& ui) {
                          static_cast<int>(def.name.size()), def.name.data());
             };
 
-            (void)ui.createButton(this->m_govList, {0.0f, 0.0f, 410.0f, 24.0f}, std::move(btn));
+            // w=0 → auto-fill parent content width; layout clamp
+            // keeps rows inside the govList regardless of re-layout.
+            (void)ui.createButton(this->m_govList, {0.0f, 0.0f, 0.0f, 24.0f}, std::move(btn));
         } else {
             std::string label = std::string(govDef.name) + " (locked)";
-            (void)ui.createLabel(this->m_govList, {0.0f, 0.0f, 410.0f, 18.0f},
+            (void)ui.createLabel(this->m_govList, {0.0f, 0.0f, 0.0f, 18.0f},
                            LabelData{std::move(label), {0.5f, 0.5f, 0.5f, 0.7f}, 12.0f});
         }
     }
@@ -1243,19 +1254,32 @@ void CityDetailScreen::open(UIManager& ui) {
         constexpr Color kActiveTabColor   = {0.25f, 0.35f, 0.55f, 1.0f};
         constexpr Color kInactiveTabColor = {0.15f, 0.17f, 0.22f, 0.9f};
 
+        // Icon sprite-id per tab. Uses IconAtlas placeholders until
+        // real art lands. Names mirror the built-in seeds.
+        constexpr std::array<const char*, TAB_COUNT> kTabIconKeys = {
+            "techs.mining",        // Overview
+            "resources.wood",      // Production
+            "techs.electricity",   // Buildings
+            "units.settler",       // Citizens
+            "units.trader",        // Couriers
+        };
+
         for (int32_t tabIdx = 0; tabIdx < TAB_COUNT; ++tabIdx) {
             const bool isActive = (tabIdx == this->m_activeTab);
             const Color baseColor = isActive ? kActiveTabColor : kInactiveTabColor;
 
             ButtonData tabBtn;
             tabBtn.label = kTabNames[static_cast<std::size_t>(tabIdx)];
-            tabBtn.fontSize = 11.0f;
+            tabBtn.fontSize = 10.0f;
             tabBtn.normalColor = baseColor;
             tabBtn.hoverColor = {baseColor.r + 0.08f, baseColor.g + 0.08f,
                                  baseColor.b + 0.08f, 1.0f};
             tabBtn.pressedColor = {baseColor.r - 0.04f, baseColor.g - 0.04f,
                                    baseColor.b - 0.04f, 1.0f};
             tabBtn.cornerRadius = 3.0f;
+            tabBtn.iconSpriteId = aoc::ui::IconAtlas::instance().id(
+                kTabIconKeys[static_cast<std::size_t>(tabIdx)]);
+            tabBtn.iconSize = 10.0f;
 
             CityDetailScreen* self = this;
             UIManager* uiPtr = &ui;

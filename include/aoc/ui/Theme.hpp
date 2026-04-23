@@ -43,6 +43,14 @@ enum class ColorScheme : uint8_t {
     HighContrast  = 4,
 };
 
+/// Pre-baked skin variant. Affects panel/button colours — orthogonal
+/// to ColorScheme (which affects player-colours only).
+enum class ThemeSkin : uint8_t {
+    Classic    = 0,  ///< Current default: dark slate blue
+    Dark       = 1,  ///< Flatter, matte blacks
+    Parchment  = 2,  ///< Warm beige with ink-brown accents
+};
+
 struct Theme {
     /// Current framebuffer-space viewport. Updated from Window size.
     float viewportW = 1280.0f;
@@ -73,6 +81,43 @@ struct Theme {
     /// Convenience: bump revision and recompute derived flags. Use
     /// after toggling colorScheme or dpiScale.
     void bumpRevision() { ++this->revision; }
+
+    /// Active skin preset. Setter updates `panelBg` / `buttonBase` /
+    /// `accentHighlight` colours to match, so screens that read the
+    /// theme for chrome pick up the new look without per-screen code.
+    ThemeSkin skin = ThemeSkin::Classic;
+
+    /// Skin-driven chrome colours. Default values match `Classic`.
+    Color panelBg        = {0.10f, 0.10f, 0.15f, 0.92f};
+    Color buttonBase     = {0.25f, 0.25f, 0.30f, 0.9f};
+    Color accentHighlight = {0.35f, 0.55f, 0.75f, 0.95f};
+    Color titleText      = {1.0f,  0.85f, 0.3f,  1.0f};
+
+    /// Swap to a preset. Bumps revision so observers refresh.
+    void setSkin(ThemeSkin s) {
+        this->skin = s;
+        switch (s) {
+            case ThemeSkin::Classic:
+                this->panelBg         = {0.10f, 0.10f, 0.15f, 0.92f};
+                this->buttonBase      = {0.25f, 0.25f, 0.30f, 0.9f};
+                this->accentHighlight = {0.35f, 0.55f, 0.75f, 0.95f};
+                this->titleText       = {1.0f,  0.85f, 0.3f,  1.0f};
+                break;
+            case ThemeSkin::Dark:
+                this->panelBg         = {0.05f, 0.05f, 0.07f, 0.95f};
+                this->buttonBase      = {0.15f, 0.15f, 0.18f, 0.95f};
+                this->accentHighlight = {0.25f, 0.45f, 0.70f, 1.0f};
+                this->titleText       = {0.95f, 0.95f, 0.95f, 1.0f};
+                break;
+            case ThemeSkin::Parchment:
+                this->panelBg         = {0.90f, 0.85f, 0.70f, 0.95f};
+                this->buttonBase      = {0.75f, 0.65f, 0.50f, 0.95f};
+                this->accentHighlight = {0.55f, 0.35f, 0.15f, 1.0f};
+                this->titleText       = {0.30f, 0.18f, 0.10f, 1.0f};
+                break;
+        }
+        this->bumpRevision();
+    }
 
     // ------------------------------------------------------------------
     // Presets. Use `scaled(x)` everywhere a literal pixel is needed so
