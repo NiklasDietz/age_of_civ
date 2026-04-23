@@ -1,57 +1,395 @@
 ======================================================================
 ECONOMIC HEALTH DIAGNOSTIC REPORT
-Based on 10 simulations
+Based on 3 simulations
 ======================================================================
 
 --- 1. WHERE DOES MONEY COME FROM? ---
-  Commercial          :   62.6 gold/turn avg (72.1%)
-  Tax                 :   15.5 gold/turn avg (17.8%)
-  Industrial Rev      :    5.5 gold/turn avg ( 6.3%)
-  Goods Econ          :    3.0 gold/turn avg ( 3.5%)
-  Tile Gold           :    0.2 gold/turn avg ( 0.3%)
-  TOTAL               :   86.9 gold/turn
+  Tax                 :   21.4 gold/turn avg (48.8%)
+  Commercial          :   17.5 gold/turn avg (39.9%)
+  Tile Gold           :    3.1 gold/turn avg ( 7.0%)
+  Industrial Rev      :    1.8 gold/turn avg ( 4.1%)
+  Goods Econ          :    0.1 gold/turn avg ( 0.2%)
+  TOTAL               :   43.9 gold/turn
 
 --- 2. WHERE DOES MONEY GO? ---
-  Units               :   93.1 gold/turn avg (64.1%)
-  Buildings           :   52.1 gold/turn avg (35.9%)
-  TOTAL               :  145.2 gold/turn
-  NET (income-expense): -58.3 gold/turn
+  Buildings           :   14.0 gold/turn avg (73.6%)
+  Units               :    5.0 gold/turn avg (26.4%)
+  TOTAL               :   19.0 gold/turn
+  NET (income-expense): +25.0 gold/turn
 
 --- 3. GOODS ECONOMY ---
-  Avg goods stockpiled per player: 3754
-  Median: 3505, Max: 11489, Min: 1192
-  Players with 0 goods: 0/80
+  Avg goods stockpiled per player: 1788
+  Median: 1550, Max: 4368, Min: 404
+  Players with 0 goods: 0/24
 
 --- 4. MONETARY SYSTEM DISTRIBUTION ---
-  Barter              :  47 players (59%)
-  CommodityMoney      :   4 players (5%)
-  GoldStandard        :  29 players (36%)
+  Barter              :   1 players (4%)
+  CommodityMoney      :   3 players (12%)
+  GoldStandard        :  10 players (42%)
+  FiatMoney           :  10 players (42%)
 
 --- 5. SMALL NATION VIABILITY (≤3 cities) ---
-  Count: 24 players
-  Profitable (treasury ≥ 0): 24/24 (100%)
-  Avg treasury: +42418
-  Range: [+18287, +50313]
+  Count: 4 players
+  Profitable (treasury ≥ 0): 4/4 (100%)
+  Avg treasury: +184
+  Range: [+0, +300]
 
 --- 6. LARGE NATION SUSTAINABILITY (≥8 cities) ---
-  Count: 33 players
-  Profitable (treasury ≥ 0): 33/33 (100%)
-  Avg treasury: +50444
-  Range: [+50164, +50931]
+  Count: 1 players
+  Profitable (treasury ≥ 0): 1/1 (100%)
+  Avg treasury: +193
+  Range: [+193, +193]
 
 --- 7. WINNER vs LOSER PROFILE ---
   Metric                   Winner      Loser      Delta
   -------------------- ---------- ---------- ----------
-  Cities                      9.9        5.7       +4.2
-  Population                 25.2       14.1      +11.1
-  Treasury                50536.0    47512.6    +3023.4
-  Income/turn               207.9       75.3     +132.6
-  Expense/turn              303.1      120.5     +182.6
-  Net flow                 -116.4      -53.6      -62.8
-  Goods stock              6173.2     3408.3    +2764.9
-  Era VP                    287.2       80.1     +207.1
+  Cities                      7.3        5.1       +2.2
+  Population                 24.7       21.0       +3.7
+  Treasury                   67.0      105.8      -38.8
+  Income/turn                72.0       45.6      +26.4
+  Expense/turn               35.3       16.6      +18.7
+  Net flow                   18.7       16.9       +1.8
+  Goods stock              3086.7     1602.6    +1484.0
+  Era VP                    252.7      126.1     +126.5
 
---- 8. ISSUES DETECTED ---
-  CRITICAL: Average income (87) is less than 80% of expenses (145). Players will chronically go bankrupt.
-  WARNING: 59% of players still in Barter at game end. AI may not be building Mints or minting coins.
+--- 8. INCOME COMPOSITION OVER TIME ---
+    Turn      Tax     Comm   Indust     Tile    Goods
+       0      0.0      0.0      0.0      0.0      0.0
+      25      0.0      0.0      0.0      0.0      0.0
+      50      0.3      0.2      0.0      0.0      0.0
+      75      1.7      0.7      0.0      0.0      0.0
+     100      3.4      1.4      0.0      0.1      0.0
+     125      5.4      1.9      0.0      0.2      0.0
+     150      7.9      2.8      0.0      0.3      0.1
+     175      9.2      3.3      0.0      0.4      0.1
+     200     10.4      3.8      0.0      0.5      0.2
+     225     12.2      4.5      0.0      0.5      0.2
+     250     14.2      5.1      0.0      0.6      0.2
+     275     15.5      6.5      0.0      0.8      0.0
+     300     16.6      7.7      0.0      1.1      0.2
+     325     17.8      9.9      0.0      1.3      0.1
+     350     18.8     12.2      0.0      1.7      0.1
+     375     19.5     14.2      0.0      1.8      0.0
+     400     19.7     15.0      0.0      2.0      0.0
+     425     19.8     15.7      0.3      2.4      0.1
+     450     20.8     16.7      0.8      2.6      0.0
+     475     21.7     17.1      1.5      3.0      0.1
+     500     21.4     17.5      1.8      3.1      0.1
+
+--- 9. MONETARY STAGE DISTRIBUTION OVER TIME ---
+    Turn   Barter   Commod     Gold     Fiat  Digital
+       0   100.0%     0.0%     0.0%     0.0%     0.0%
+      25   100.0%     0.0%     0.0%     0.0%     0.0%
+      50    97.5%     2.5%     0.0%     0.0%     0.0%
+      75    84.5%    12.0%     1.8%     1.7%     0.0%
+     100    66.2%    11.8%    14.2%     7.8%     0.0%
+     125    49.5%    12.7%    25.3%    12.5%     0.0%
+     150    30.2%    24.3%    33.0%    12.5%     0.0%
+     175    22.3%    28.8%    33.0%    15.8%     0.0%
+     200    17.7%    28.2%    33.3%    20.8%     0.0%
+     225     9.0%    32.2%    38.0%    20.8%     0.0%
+     250     4.2%    29.2%    45.8%    20.8%     0.0%
+     275     4.2%    28.2%    46.8%    20.8%     0.0%
+     300     4.2%    24.2%    49.3%    22.3%     0.0%
+     325     4.2%    17.0%    53.7%    25.2%     0.0%
+     350     4.2%    12.7%    51.0%    32.2%     0.0%
+     375     4.2%    12.5%    47.3%    36.0%     0.0%
+     400     4.2%    12.5%    43.5%    39.8%     0.0%
+     425     4.2%    12.5%    41.7%    41.7%     0.0%
+     450     4.2%    12.5%    41.7%    41.7%     0.0%
+     475     4.2%    12.5%    41.7%    41.7%     0.0%
+     500     4.2%    12.5%    41.7%    41.7%     0.0%
+
+--- 10. INFLATION + POPULATION OVER TIME ---
+    Turn  InflAvg  InflMax   PopAvg   PopMax
+       0    0.000    0.000      2.5        4
+      25    0.000    0.017      3.6        8
+      50    0.001    0.123      4.6       10
+      75    0.009    0.500      5.9       16
+     100    0.024    0.500      7.2       21
+     125    0.035    0.500      9.1       22
+     150    0.031    0.500     10.4       25
+     175    0.038    0.500     11.1       25
+     200    0.042    0.500     11.9       25
+     225    0.041    0.500     13.0       26
+     250    0.044    0.500     14.7       27
+     275    0.055    0.500     16.0       28
+     300    0.050    0.358     17.2       29
+     325    0.059    0.500     18.4       31
+     350    0.074    0.500     19.6       32
+     375    0.059    0.286     20.4       34
+     400    0.064    0.496     20.6       34
+     425    0.080    0.290     20.7       37
+     450    0.081    0.368     21.5       37
+     475    0.088    0.365     21.7       38
+     500    0.092    0.180     21.4       37
+
+--- 11. MILITARY ---
+  Units produced (events)   : 1436
+  Units killed   (events)   : 193
+  Kill / produce ratio      : 0.13
+  Final military size avg   : 2.2 (max=8, min=0)
+  Top produced unit types (by unitTypeId):
+    type   1: produced=1316 killed=190
+    type   2: produced= 115 killed=  3
+    type   3: produced=   5 killed=  0
+
+--- 12. DIPLOMACY ---
+  First contacts (PlayersMet): 36
+  Wars declared              : 68
+  Peace treaties signed      : 68
+  Cities founded             : 131
+  Avg trade partners (final) : 1.0 (max=3)
+
+--- 13. TECH & CULTURE ---
+  Techs researched (final avg): 16.8 (max=21)
+  Total tech events           : 379
+  First tech researched turn  : 6
+  Median tech research turn   : 171
+  Final culture avg           : 9057.0 (max=15170, min=4376)
+  Final CompositeCSI avg      : 1.03 (max=1.76, min=0.70)
+
+--- 14. POPULATION & FOOD ---
+    Turn   PopAvg   FoodPT   Famine
+       0      2.5      5.2      0.0
+      25      3.6      5.6      0.0
+      50      4.6      7.2      0.0
+      75      5.9      9.5      0.0
+     100      7.2     12.1      0.0
+     125      9.1     16.6      0.0
+     150     10.4     19.8      0.1
+     175     11.1     21.9      0.0
+     200     11.9     23.6      0.0
+     225     13.0     25.6      0.1
+     250     14.7     28.4      0.1
+     275     16.0     30.9      0.1
+     300     17.2     32.0      0.2
+     325     18.4     33.3      0.1
+     350     19.6     32.4      0.2
+     375     20.4     30.6      0.3
+     400     20.6     29.2      0.3
+     425     20.7     27.8      0.4
+     450     21.5     25.0      0.4
+     475     21.7     22.4      0.5
+     500     21.4     20.6      0.6
+  Players with famine at game end: 11/24
+
+--- 15. HAPPINESS & CORRUPTION ---
+  Final happiness avg  : 13.65 (max=21.4, min=8.3)
+  Unhappy players (<5) : 0/24
+  Final corruption avg : 0.052 (max=0.14, min=0.00)
+
+--- 16. GOVERNMENT & CRISIS (final turn) ---
+  Government type distribution:
+    govId 4: 15 players
+    govId 5: 6 players
+    govId 6: 3 players
+  Players in crisis (final)  : 0/24
+
+--- 17. INDUSTRIAL REV + DIFFUSION ---
+  Final IndustrialRev avg: 0.17 (max=1.00, min=0.00)
+  Players w/ IR > 0      : 4/24
+    Turn       IR  SciDiff CultDiff
+       0     0.00     0.00     0.00
+      25     0.00     0.01     0.03
+      50     0.00     0.04     0.13
+      75     0.00     0.08     0.27
+     100     0.00     0.12     0.40
+     125     0.00     0.23     0.66
+     150     0.00     0.32     0.86
+     175     0.00     0.55     0.63
+     200     0.00     0.39     0.78
+     225     0.00     0.30     0.62
+     250     0.00     0.25     0.57
+     275     0.00     0.22     0.93
+     300     0.00     0.32     2.05
+     325     0.00     0.28     2.93
+     350     0.00     0.42     4.86
+     375     0.00     0.46     7.34
+     400     0.00     0.49     9.38
+     425     0.04     0.42    10.73
+     450     0.09     0.52    12.48
+     475     0.15     0.56    15.49
+     500     0.17     0.56    17.28
+
+--- 18. EVENT TRAJECTORY ---
+    Turn  Prod  Kill  Tech  City   War Peace   Met
+       0    14     0    54     6     0     0     6
+      25    38     9    29     6     0     0    13
+      50    40     8    17    10     0     0     2
+      75    42     6    23    14     0     0     3
+     100    63     5    22    14     0     0     2
+     125    51    10    27    16     4     4     2
+     150    63     5    19     6     0     0     0
+     175    85    17    30     7     6     6     3
+     200    68     9    24     5     6     6     0
+     225    93    14    19    10    18    14     2
+     250    91    18    18     8     8    10     0
+     275    87    12    13     6     2     4     0
+     300    94     7    10     7     0     0     0
+     325    87    10     9     6     0     0     0
+     350    90    13    10     5     6     6     0
+     375    81    15    11     3     4     4     0
+     400    94     7     9     1     4     4     3
+     425    91    12     7     1     4     4     0
+     450    86    10    14     0     0     0     0
+     475    74     6    14     0     6     6     0
+     500     4     0     0     0     0     0     0
+
+--- 19. RELIGION ---
+  Pantheons founded       : 24
+  Religions founded       : 24
+  Religions seen:
+    Christianity        : 3
+    Islam               : 3
+    Hinduism            : 3
+    Buddhism            : 3
+    Judaism             : 3
+    Sikhism             : 3
+    Confucianism        : 3
+    Taoism              : 3
+  Spread events           : 0
+
+--- 20. ESPIONAGE ---
+  Spy missions assigned   : 231
+  Successful missions     : 175
+  Failed missions         : 206
+  Top mission types:
+    Currency Counterfeiting       : 170
+    Foment Unrest                 : 35
+    Sabotage Production           : 13
+    Steal Technology              : 13
+
+--- 21. DISASTERS & CLIMATE ---
+  Total natural disasters : 380
+    volcano        : 314
+    quake          : 66
+  Climate flood events    : 2539
+
+--- 22. CIVICS & GREAT PEOPLE ---
+  Civics completed        : 336
+  Top civics:
+    Code of Laws             : 24
+    Foreign Trade            : 24
+    Political Philosophy     : 24
+    Feudalism                : 24
+    Nationalism              : 24
+  Great People recruited  : 159
+  Great People used       : 132
+  Eurekas banked          : 50
+  Inspirations banked     : 30
+
+--- 23. CURRENCY CRISIS / BONDS / STOCK / SPECULATION ---
+  Convertibility suspended: 10
+  Hyperinflation crises   : 0
+  Currency reforms        : 0
+  IOUs issued             : 92 (total 7336g lent)
+  Bond defaults           : 0
+  Speculation bubbles form: 26
+  Speculation bubbles pop : 26
+  Hoarded units (sum)     : 190122
+  Released units (sum)    : 189464
+  Stock investments (sum) : 0g
+
+--- 24. SECESSION / GRIEVANCES / WORLD CONGRESS ---
+  Secession warnings      : 0
+  Cities flipped          : 0
+  Cities freed            : 0
+  Grievances added        : 242
+  WC proposals            : 42
+  WC passed               : 23
+  WC failed               : 0
+  Resolution outcomes:
+    Climate Accord           : pass=13 fail=0
+    International Games      : pass=10 fail=0
+
+--- 25. WORLD EVENTS / GOODY HUTS / CITY-STATES ---
+  World events triggered  : 536
+  Top world event types:
+    Industrial Accident!          : 65
+    Trade Disruption              : 58
+    Artistic Renaissance          : 50
+    Scientific Breakthrough!      : 50
+    Religious Schism              : 46
+  Goody huts (gold)       : 9
+  Goody huts (tech)       : 8
+  Goody huts (map)        : 1
+  City-states spawned     : 24
+  Canals built            : 31
+
+--- 26. PROMOTIONS / SUPPLY / COMBAT EXTRAS ---
+  Promotions chosen       : 138
+  Top promotions:
+    Tortoise            : 44
+    Elite               : 32
+    Battlecry           : 31
+    Blitz               : 20
+    Medic               : 11
+  Supply attrition ticks  : 1880
+  Pillage events (unit)   : 650
+  Pillage events (tile)   : 552
+  Pillage gold (total)    : 17775
+  Defender kills          : 657
+  Attacker kills          : 33
+  Nuclear strikes         : 0
+
+--- 27. TRADE / MONOPOLY / COMMODITY / STOCK ---
+  Bilateral trade deals   : 36
+  Standing routes spawned : 1236
+  Monopolies formed       : 39
+  Monopolies broken       : 31
+  Top monopolized goods:
+    Silver Ore          : 15
+    Copper Ore          : 9
+    Rubber              : 8
+    Gold Ore            : 4
+    Coal                : 2
+  Commodity swaps         : 310
+  Stock investments (evt) : 0
+
+--- 28. CITY LIFECYCLE ---
+  City foundings (log)    : 130
+  City growth events      : 2319
+  Border expansions       : 1086
+  Wonders built           : 40
+
+--- 29. VICTORY PROGRESS ---
+  Era CSI evaluations     : 48
+  Last 10 era winners:
+    player 0: CSI=1.51
+    player 6: CSI=1.54
+    player 0: CSI=1.31
+    player 6: CSI=1.31
+    player 0: CSI=1.18
+    player 6: CSI=1.24
+    player 1: CSI=1.29
+    player 6: CSI=1.18
+    player 6: CSI=1.24
+    player 6: CSI=1.18
+  Industrial Rev achieved : 4
+    Earliest IR turn      : 428
+    Latest IR turn        : 483
+  Space race projects     : 5
+
+--- 30. LOG COVERAGE (source files emitting log lines) ---
+  Total distinct sources  : 55
+  Total log lines         : 130471
+  Top 10:
+    AIEconomicStrategy.cpp             : 29115
+    AIMilitaryController.cpp           : 21954
+    Speculation.cpp                    : 14855
+    Maintenance.cpp                    : 14336
+    AISettlerController.cpp            : 13374
+    TradeRouteSystem.cpp               : 4760
+    CityGrowth.cpp                     : 4419
+    Climate.cpp                        : 3840
+    AIController.cpp                   : 2904
+    HeadlessSimulation.cpp             : 2279
+
+--- 31. ISSUES DETECTED ---
   WARNING: Goods stockpiles averaging >500. Demand may be too low — goods are piling up without being consumed.
+  CRITICAL: IncomeGoodsEcon > 0 in only 1/24 final-turn samples. Consumer goods / clothing / electronics / processed food chains may never fire — AI may not build the required buildings.
+  WARNING: Inflation hits 0.500 in 11 turn buckets — looks like a hard cap. Verify this is intentional or inflation math is saturating.
+  WARNING: >30% of players famine at game end. Food balance or granary building may be broken.
+  INFO: 875 (player,turn) samples with CoinTier=None after turn 300. Expected 0 once coinage transitions fire.
+  INFO: Zero stock-market investments. StockMarket AI never invests — check AIInvestmentController gating.

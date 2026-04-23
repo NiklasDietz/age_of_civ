@@ -263,6 +263,7 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     this->m_gameRng = aoc::Random(timeSeed + 1);
     mapConfig.mapType = config.mapType;
     mapConfig.mapSize = config.mapSize;
+    mapConfig.placement = config.placement;
     aoc::map::MapGenerator::generate(mapConfig, this->m_hexGrid);
     LOG_INFO("Map generated (%dx%d)", this->m_hexGrid.width(), this->m_hexGrid.height());
 

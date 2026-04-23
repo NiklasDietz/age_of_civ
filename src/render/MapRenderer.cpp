@@ -1,9 +1,9 @@
 /**
-#include "aoc/core/Log.hpp"
  * @file MapRenderer.cpp
  * @brief Hex map rendering with terrain colors, features, and rivers.
  */
 
+#include "aoc/core/Log.hpp"
 #include "aoc/render/MapRenderer.hpp"
 #include "aoc/render/DrawCommandBuffer.hpp"
 #include "aoc/render/CameraController.hpp"
@@ -462,28 +462,47 @@ void MapRenderer::drawTerritoryBorders(vulkan_app::renderer::Renderer2D& rendere
             const float cg = TERRITORY_COLORS[ci][1];
             const float cb = TERRITORY_COLORS[ci][2];
 
-            // Check if this is a border tile (at least one neighbor differs).
+            // Civ 6-style single outline per territory: draw each of the 6
+            // hex edges only when the neighbor across that edge belongs to a
+            // different owner.  Interior edges (same-owner neighbours) stay
+            // invisible, so the rendered border traces the perimeter of the
+            // territory instead of framing every tile individually.
+            //
+            // Screen Y is inverted (down-positive), so hexVertices() with
+            // angles {30°,90°,150°,210°,270°,330°} places:
+            //   v0 lower-right, v1 bottom,      v2 lower-left
+            //   v3 upper-left,  v4 top,         v5 upper-right
+            // Edge e connects v[e]→v[(e+1)%6], giving:
+            //   e0 lower-right edge  ↔ dir 5 (lower-right neighbour: (0,+1))
+            //   e1 lower-left edge   ↔ dir 4 (lower-left:  (-1,+1))
+            //   e2 left edge         ↔ dir 3 (left:        (-1, 0))
+            //   e3 upper-left edge   ↔ dir 2 (upper-left:  ( 0,-1))
+            //   e4 upper-right edge  ↔ dir 1 (upper-right: (+1,-1))
+            //   e5 right edge        ↔ dir 0 (right:       (+1, 0))
+            // => dir = (5 - edge + 6) % 6.
             const std::array<hex::AxialCoord, 6> neighCoords = hex::neighbors(axial);
-            bool isBorderTile = false;
-            for (int dir = 0; dir < 6; ++dir) {
+            float edgeVerts[12];
+            hex::hexVertices(cx, cy, this->m_hexSize, edgeVerts);
+
+            for (int edge = 0; edge < 6; ++edge) {
+                const int dir = (5 - edge + 6) % 6;
                 const hex::AxialCoord& neighbor = neighCoords[static_cast<std::size_t>(dir)];
                 PlayerId neighborOwner = INVALID_PLAYER;
                 if (grid.isValid(neighbor)) {
                     neighborOwner = grid.owner(grid.toIndex(neighbor));
                 }
-                if (neighborOwner != tileOwner) {
-                    isBorderTile = true;
-                    break;
-                }
-            }
+                // Off-map neighbours stay INVALID_PLAYER, which != tileOwner,
+                // so border closes at the map edge. HexGrid::isValid handles
+                // cylindrical wrap internally.
+                if (neighborOwner == tileOwner) { continue; }
 
-            // Draw hex outline ONLY on border tiles, ON TOP of terrain.
-            // The SDF hex outline renders as a ring (outer - inner shape).
-            if (isBorderTile) {
-                const float borderHexW = this->m_hexSize * 0.866f;
-                const float borderHexH = this->m_hexSize;
-                renderer2d.drawHexagonOutline(cx, cy, borderHexW, borderHexH,
-                                               cr, cg, cb, 0.90f, 2.5f);
+                const int v0 = edge;
+                const int v1 = (edge + 1) % 6;
+                const float x1 = edgeVerts[v0 * 2];
+                const float y1 = edgeVerts[v0 * 2 + 1];
+                const float x2 = edgeVerts[v1 * 2];
+                const float y2 = edgeVerts[v1 * 2 + 1];
+                renderer2d.drawLine(x1, y1, x2, y2, 3.0f, cr, cg, cb, 0.95f);
             }
         }
     }
@@ -491,28 +510,32 @@ void MapRenderer::drawTerritoryBorders(vulkan_app::renderer::Renderer2D& rendere
 
 void MapRenderer::drawRiverEdges(vulkan_app::renderer::Renderer2D& renderer2d,
                                   uint8_t riverMask, float cx, float cy) const {
-    // Rivers are drawn as blue lines along hex edges.
-    // For each edge with a river, draw a line from the midpoint of that edge
-    // toward the hex center (shortened to look like a river segment).
+    // Rivers flow ALONG hex edges (shared boundary between two tiles), not as
+    // spokes pointing at the tile centre.  Previous code drew edge-mid→centre
+    // which only "looked right" while the shader's rotation was broken and
+    // every line rendered axis-aligned; now that rotation is fixed the spoke
+    // form was pointing at the wrong orientation so we switch to the correct
+    // edge-span form.
     float vertices[12];
     hex::hexVertices(cx, cy, this->m_hexSize, vertices);
 
+    // Same edge→direction convention as the territory border (see
+    // drawTerritoryBorders): dir = (5 - edge + 6) % 6.  The riverMask bit
+    // however is indexed by direction, so we loop by direction and draw the
+    // matching edge.
     for (int dir = 0; dir < 6; ++dir) {
         if ((riverMask & (1u << dir)) == 0) {
             continue;
         }
-
-        // Edge midpoint between vertex[dir] and vertex[(dir+1)%6]
-        int next = (dir + 1) % 6;
-        float mx = (vertices[dir * 2] + vertices[next * 2]) * 0.5f;
-        float my = (vertices[dir * 2 + 1] + vertices[next * 2 + 1]) * 0.5f;
-
-        // Draw from edge midpoint toward center (but stop partway)
-        float riverEndX = cx + (mx - cx) * 0.3f;
-        float riverEndY = cy + (my - cy) * 0.3f;
-
-        renderer2d.drawLine(mx, my, riverEndX, riverEndY,
-                            2.0f, 0.15f, 0.35f, 0.75f, 0.9f);
+        const int edge = (5 - dir + 6) % 6;
+        const int v0 = edge;
+        const int v1 = (edge + 1) % 6;
+        const float x1 = vertices[v0 * 2];
+        const float y1 = vertices[v0 * 2 + 1];
+        const float x2 = vertices[v1 * 2];
+        const float y2 = vertices[v1 * 2 + 1];
+        renderer2d.drawLine(x1, y1, x2, y2,
+                            3.0f, 0.15f, 0.35f, 0.75f, 0.9f);
     }
 }
 

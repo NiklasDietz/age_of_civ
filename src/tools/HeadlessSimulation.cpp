@@ -278,6 +278,21 @@ namespace {
     if (lower == "fractal")                 { return aoc::map::MapType::Fractal; }
     return aoc::map::MapType::LandWithSeas;
 }
+[[nodiscard]] aoc::map::ResourcePlacementMode parsePlacementCli(std::string_view s) {
+    std::string lower(s);
+    for (char& c : lower) { c = static_cast<char>(std::tolower(c)); }
+    if (lower == "fair")      { return aoc::map::ResourcePlacementMode::Fair; }
+    if (lower == "random")    { return aoc::map::ResourcePlacementMode::Random; }
+    return aoc::map::ResourcePlacementMode::Realistic;
+}
+[[nodiscard]] const char* placementLabel(aoc::map::ResourcePlacementMode p) {
+    switch (p) {
+        case aoc::map::ResourcePlacementMode::Realistic: return "Realistic";
+        case aoc::map::ResourcePlacementMode::Fair:      return "Fair";
+        case aoc::map::ResourcePlacementMode::Random:    return "Random";
+    }
+    return "?";
+}
 [[nodiscard]] const char* mapTypeLabel(aoc::map::MapType m) {
     switch (m) {
         case aoc::map::MapType::Continents:             return "Continents";
@@ -295,7 +310,9 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                           const std::string& outputPath,
                           uint32_t victoryMask,
                           const std::string& tracePath,
-                          aoc::map::MapType mapType) {
+                          aoc::map::MapType mapType,
+                          aoc::map::ResourcePlacementMode placement
+                              = aoc::map::ResourcePlacementMode::Realistic) {
     LOG_INFO("=== HEADLESS SIMULATION: %d turns, %d AI players, victoryMask=0x%x ===",
              maxTurns, playerCount, victoryMask);
 
@@ -329,6 +346,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     mapConfig.height = 52;
     mapConfig.seed = rng.next();
     mapConfig.mapType = mapType;
+    mapConfig.placement = placement;
     aoc::map::MapGenerator generator;
     generator.generate(mapConfig, grid);
 
@@ -1069,6 +1087,7 @@ int main(int argc, char* argv[]) {
     std::string outputPath = "simulation_log.csv";
     std::string tracePath;
     aoc::map::MapType mapType = aoc::map::MapType::LandWithSeas;
+    aoc::map::ResourcePlacementMode placement = aoc::map::ResourcePlacementMode::Realistic;
 
     // Simulations default to Prestige+Score+LastStanding so tests always
     // terminate with a meaningful outcome.  Prestige is the primary endgame
@@ -1093,6 +1112,8 @@ int main(int argc, char* argv[]) {
                 tracePath  = config.getString("trace_file", "");
                 const std::string mapTypeYaml = config.getString("map_type", "");
                 if (!mapTypeYaml.empty()) { mapType = parseMapTypeCli(mapTypeYaml); }
+                const std::string placementYaml = config.getString("placement", "");
+                if (!placementYaml.empty()) { placement = parsePlacementCli(placementYaml); }
 
                 std::string gameLengthStr = config.getString("game_length", "");
                 if (!gameLengthStr.empty()) {
@@ -1144,6 +1165,8 @@ int main(int argc, char* argv[]) {
                 tracePath = argv[++i];
             } else if (arg == "--map-type" && i + 1 < argc) {
                 mapType = parseMapTypeCli(argv[++i]);
+            } else if (arg == "--placement" && i + 1 < argc) {
+                placement = parsePlacementCli(argv[++i]);
             } else if (arg == "--tuned-dir" && i + 1 < argc) {
                 tunedDir = argv[++i];
             } else if (arg == "--victory-types" && i + 1 < argc) {
@@ -1183,7 +1206,8 @@ int main(int argc, char* argv[]) {
     }
 
     std::fprintf(stderr, "  Map:     %s\n", mapTypeLabel(mapType));
-    int result = runHeadlessSimulation(turns, players, outputPath, victoryMask, tracePath, mapType);
+    std::fprintf(stderr, "  Placement: %s\n", placementLabel(placement));
+    int result = runHeadlessSimulation(turns, players, outputPath, victoryMask, tracePath, mapType, placement);
 
     std::fprintf(stderr, "\n\n");
     return result;

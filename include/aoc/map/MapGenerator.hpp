@@ -33,6 +33,19 @@ enum class MapSize : uint8_t {
     Large,     ///< 100x66
 };
 
+/// Resource placement policy.
+///   Realistic: geology-driven — coal in sedimentary basins, copper/iron on
+///              continental shield, oil near subduction boundaries, uranium
+///              near fault lines.  (Current default.)
+///   Fair:      stratified per player spawn — every civ gets roughly equal
+///              strategic-resource access within their starting area.
+///   Random:    uniform per-tile chance; ignore geology layer entirely.
+enum class ResourcePlacementMode : uint8_t {
+    Realistic = 0,
+    Fair      = 1,
+    Random    = 2,
+};
+
 /// Get dimensions for a given MapSize preset.
 [[nodiscard]] constexpr std::pair<int32_t, int32_t> mapSizeDimensions(MapSize size) {
     switch (size) {
@@ -56,6 +69,7 @@ public:
         MapType     mapType   = MapType::Continents;  ///< Landmass generation style
         MapSize     mapSize   = MapSize::Standard;     ///< Preset size (overrides width/height when applied)
         MapTopology topology  = MapTopology::Flat;     ///< Grid topology (Flat or Cylindrical)
+        ResourcePlacementMode placement = ResourcePlacementMode::Realistic;
     };
 
     /**
@@ -87,6 +101,16 @@ private:
 
     /// Place resources using simple terrain-based rules (non-Realistic map types).
     static void placeBasicResources(const Config& config, HexGrid& grid, aoc::Random& rng);
+
+    /// Uniform per-tile probability, geology-blind.  For Random placement mode.
+    static void placeRandomResources(const Config& config, HexGrid& grid, aoc::Random& rng);
+
+    /// Re-distribute strategic resources so each large landmass quadrant gets
+    /// comparable coverage.  For Fair placement mode.  Applied on top of
+    /// geology placement: we keep the geology-selected positions but remove
+    /// surplus from over-served quadrants and add deficits to under-served
+    /// ones.
+    static void balanceResourcesFair(const Config& config, HexGrid& grid, aoc::Random& rng);
 };
 
 } // namespace aoc::map

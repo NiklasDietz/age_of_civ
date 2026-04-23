@@ -97,14 +97,38 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
         assignFeatures(config, outGrid, rng);
         generateRivers(outGrid, rng);
         placeNaturalWonders(outGrid, rng);
-        placeGeologyResources(config, outGrid, rng);
     } else {
         assignTerrain(config, outGrid, rng);
         smoothCoastlines(outGrid);
         assignFeatures(config, outGrid, rng);
         generateRivers(outGrid, rng);
         placeNaturalWonders(outGrid, rng);
-        placeBasicResources(config, outGrid, rng);
+    }
+
+    // Resource placement policy is orthogonal to terrain style.  Realistic
+    // uses geology/basic rules keyed off mapType.  Random overrides with a
+    // uniform per-tile chance.  Fair runs the realistic pass then redistributes
+    // surplus to quadrants that ended up resource-starved.
+    switch (config.placement) {
+        case ResourcePlacementMode::Random:
+            placeRandomResources(config, outGrid, rng);
+            break;
+        case ResourcePlacementMode::Fair:
+            if (config.mapType == MapType::LandWithSeas) {
+                placeGeologyResources(config, outGrid, rng);
+            } else {
+                placeBasicResources(config, outGrid, rng);
+            }
+            balanceResourcesFair(config, outGrid, rng);
+            break;
+        case ResourcePlacementMode::Realistic:
+        default:
+            if (config.mapType == MapType::LandWithSeas) {
+                placeGeologyResources(config, outGrid, rng);
+            } else {
+                placeBasicResources(config, outGrid, rng);
+            }
+            break;
     }
 
     // Detect strategic chokepoints after all terrain is finalized
@@ -1472,6 +1496,214 @@ void MapGenerator::placeBasicResources(const Config& config, HexGrid& grid,
     (void)config;
     LOG_INFO("Basic resource placement: %d resources placed (%d on mountains)",
              totalPlaced, mountainMetalsPlaced);
+}
+
+// ============================================================================
+// Random placement — uniform per-tile chance, geology-blind
+// ============================================================================
+
+void MapGenerator::placeRandomResources(const Config& config, HexGrid& grid,
+                                         aoc::Random& rng) {
+    const int32_t width  = grid.width();
+    const int32_t height = grid.height();
+
+    // Flat per-tile probabilities chosen so total counts land in the same
+    // ballpark as placeBasicResources.  Mountain/water/impassable tiles opt
+    // out of land resources; mountains get a separate metals pass below.
+    struct GoodChance { uint16_t id; float chance; };
+    const std::array<GoodChance, 20> pool = {{
+        {aoc::sim::goods::IRON_ORE,   0.030f},
+        {aoc::sim::goods::COPPER_ORE, 0.030f},
+        {aoc::sim::goods::COAL,       0.030f},
+        {aoc::sim::goods::OIL,        0.020f},
+        {aoc::sim::goods::NITER,      0.010f},
+        {aoc::sim::goods::HORSES,     0.020f},
+        {aoc::sim::goods::STONE,      0.035f},
+        {aoc::sim::goods::WOOD,       0.030f},
+        {aoc::sim::goods::WHEAT,      0.030f},
+        {aoc::sim::goods::CATTLE,     0.020f},
+        {aoc::sim::goods::COTTON,     0.015f},
+        {aoc::sim::goods::SILK,       0.010f},
+        {aoc::sim::goods::SPICES,     0.012f},
+        {aoc::sim::goods::DYES,       0.010f},
+        {aoc::sim::goods::FURS,       0.012f},
+        {aoc::sim::goods::GEMS,       0.008f},
+        {aoc::sim::goods::GOLD_ORE,   0.008f},
+        {aoc::sim::goods::SILVER_ORE, 0.010f},
+        {aoc::sim::goods::INCENSE,    0.010f},
+        {aoc::sim::goods::TIN,        0.010f},
+    }};
+
+    int32_t totalPlaced = 0;
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            const int32_t index = row * width + col;
+            const TerrainType terrain = grid.terrain(index);
+            if (isWater(terrain) || isImpassable(terrain)) { continue; }
+            if (terrain == TerrainType::Mountain)          { continue; }
+            if (grid.resource(index).isValid())            { continue; }
+
+            for (const GoodChance& gc : pool) {
+                if (rng.chance(gc.chance)) {
+                    grid.setResource(index, ResourceId{gc.id});
+                    grid.setReserves(index, aoc::sim::defaultReserves(gc.id));
+                    ++totalPlaced;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Mountain metals: uniform chance, no geology check.
+    int32_t mountainMetalsPlaced = 0;
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            const int32_t index = row * width + col;
+            if (grid.terrain(index) != TerrainType::Mountain) { continue; }
+            if (grid.resource(index).isValid())               { continue; }
+            if (grid.naturalWonder(index) != NaturalWonderType::None) { continue; }
+
+            const hex::AxialCoord axial = hex::offsetToAxial({col, row});
+            const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(axial);
+            bool accessible = false;
+            for (const hex::AxialCoord& n : nbrs) {
+                if (!grid.isValid(n)) { continue; }
+                const TerrainType nt = grid.terrain(grid.toIndex(n));
+                if (nt != TerrainType::Mountain && !isWater(nt)) {
+                    accessible = true;
+                    break;
+                }
+            }
+            if (!accessible) { continue; }
+
+            ResourceId placed{};
+            if      (rng.chance(0.05f)) { placed = ResourceId{aoc::sim::goods::IRON_ORE}; }
+            else if (rng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::COPPER_ORE}; }
+            else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::SILVER_ORE}; }
+            else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::GOLD_ORE}; }
+
+            if (placed.isValid()) {
+                grid.setResource(index, placed);
+                grid.setReserves(index, aoc::sim::defaultReserves(placed.value));
+                ++mountainMetalsPlaced;
+            }
+        }
+    }
+    totalPlaced += mountainMetalsPlaced;
+
+    (void)config;
+    LOG_INFO("Random resource placement: %d resources placed (%d on mountains)",
+             totalPlaced, mountainMetalsPlaced);
+}
+
+// ============================================================================
+// Fair placement — redistribute strategic resources across quadrants
+// ============================================================================
+
+void MapGenerator::balanceResourcesFair(const Config& config, HexGrid& grid,
+                                         aoc::Random& rng) {
+    const int32_t width  = grid.width();
+    const int32_t height = grid.height();
+    const int32_t midCol = width / 2;
+    const int32_t midRow = height / 2;
+
+    auto quadrantOf = [&](int32_t col, int32_t row) -> int32_t {
+        const int32_t qx = (col < midCol) ? 0 : 1;
+        const int32_t qy = (row < midRow) ? 0 : 1;
+        return qy * 2 + qx;  // 0..3
+    };
+
+    // Strategic goods that actually matter for industrial/military gates.
+    const std::array<uint16_t, 6> balanced = {
+        aoc::sim::goods::IRON_ORE,
+        aoc::sim::goods::COPPER_ORE,
+        aoc::sim::goods::COAL,
+        aoc::sim::goods::OIL,
+        aoc::sim::goods::HORSES,
+        aoc::sim::goods::WHEAT,
+    };
+
+    int32_t totalMoved = 0;
+    for (const uint16_t goodId : balanced) {
+        // Count + gather tile indices per quadrant.
+        std::array<std::vector<int32_t>, 4> tiles;
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t index = row * width + col;
+                const ResourceId r = grid.resource(index);
+                if (r.isValid() && r.value == goodId) {
+                    tiles[static_cast<size_t>(quadrantOf(col, row))].push_back(index);
+                }
+            }
+        }
+        const int32_t total = static_cast<int32_t>(
+            tiles[0].size() + tiles[1].size() + tiles[2].size() + tiles[3].size());
+        if (total == 0) { continue; }
+        const int32_t target = total / 4;
+
+        // Pass 1: strip surplus from over-served quadrants.
+        std::vector<int32_t> surplus;
+        for (int32_t q = 0; q < 4; ++q) {
+            while (static_cast<int32_t>(tiles[static_cast<size_t>(q)].size()) > target + 1) {
+                const size_t n = tiles[static_cast<size_t>(q)].size();
+                const size_t pick = static_cast<size_t>(rng.nextInt(0, static_cast<int32_t>(n) - 1));
+                const int32_t idx = tiles[static_cast<size_t>(q)][pick];
+                tiles[static_cast<size_t>(q)][pick] = tiles[static_cast<size_t>(q)].back();
+                tiles[static_cast<size_t>(q)].pop_back();
+                grid.setResource(idx, ResourceId{});
+                grid.setReserves(idx, 0);
+                surplus.push_back(idx);
+            }
+        }
+
+        // Pass 2: place surplus on any suitable empty land tile in under-served
+        // quadrants.  "Suitable" = not water, not impassable, no existing
+        // resource, not a natural wonder.  Geology constraints are waived; Fair
+        // mode intentionally bulldozes realism to guarantee parity.
+        std::vector<int32_t> deficitQuadrants;
+        for (int32_t q = 0; q < 4; ++q) {
+            const int32_t have = static_cast<int32_t>(tiles[static_cast<size_t>(q)].size());
+            for (int32_t need = have; need < target; ++need) {
+                deficitQuadrants.push_back(q);
+            }
+        }
+
+        for (int32_t q : deficitQuadrants) {
+            if (surplus.empty()) { break; }
+
+            const int32_t colLo = (q % 2 == 0) ? 0 : midCol;
+            const int32_t colHi = (q % 2 == 0) ? midCol : width;
+            const int32_t rowLo = (q / 2 == 0) ? 0 : midRow;
+            const int32_t rowHi = (q / 2 == 0) ? midRow : height;
+
+            // Collect candidate empty land tiles within the quadrant.
+            std::vector<int32_t> candidates;
+            candidates.reserve(static_cast<size_t>((colHi - colLo) * (rowHi - rowLo)));
+            for (int32_t row = rowLo; row < rowHi; ++row) {
+                for (int32_t col = colLo; col < colHi; ++col) {
+                    const int32_t index = row * width + col;
+                    const TerrainType t = grid.terrain(index);
+                    if (isWater(t) || isImpassable(t))       { continue; }
+                    if (t == TerrainType::Mountain)          { continue; }
+                    if (grid.resource(index).isValid())      { continue; }
+                    if (grid.naturalWonder(index) != NaturalWonderType::None) { continue; }
+                    candidates.push_back(index);
+                }
+            }
+            if (candidates.empty()) { continue; }
+
+            const size_t pick = static_cast<size_t>(rng.nextInt(0, static_cast<int32_t>(candidates.size()) - 1));
+            const int32_t idx = candidates[pick];
+            grid.setResource(idx, ResourceId{goodId});
+            grid.setReserves(idx, aoc::sim::defaultReserves(goodId));
+            surplus.pop_back();
+            ++totalMoved;
+        }
+    }
+
+    (void)config;
+    LOG_INFO("Fair-placement rebalance: %d strategic resources relocated across quadrants",
+             totalMoved);
 }
 
 } // namespace aoc::map

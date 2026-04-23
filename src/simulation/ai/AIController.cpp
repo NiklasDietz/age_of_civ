@@ -383,28 +383,38 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                 // Deceit gate: low trustworthiness favors high-damage covert ops.
                 const float deceit = std::max(0.1f, 2.0f - bh.trustworthiness);
 
+                // Previously CurrencyCounterfeit dominated 84% of assignments
+                // because its `deceit` multiplier (typ. 1.0-2.0) was stable
+                // while the "context" multipliers on other missions (techGap,
+                // threat, wealthProxy, bubble) collapsed to ~0 early-game,
+                // starving their scores.  Rebalanced: Counterfeit base cut,
+                // gap-dependent missions get a floor so they aren't starved,
+                // and bubble is randomised slightly to surface market ops.
+                const float gapFloor  = std::max(0.3f, techGap);
+                const float threatFl  = std::max(0.3f, threat);
+                const float wealthFl  = std::max(0.5f, wealthProxy);
                 struct Cand { SpyMission m; float s; };
                 const std::array<Cand, 11> cands = {{
                     {SpyMission::StealTechnology,
-                        bh.scienceFocus * 100.0f * (0.5f + techGap)},
+                        bh.scienceFocus * 100.0f * (0.5f + gapFloor)},
                     {SpyMission::StealTradeSecrets,
-                        bh.scienceFocus * 70.0f * (0.5f + techGap)},
+                        bh.scienceFocus * 70.0f * (0.5f + gapFloor)},
                     {SpyMission::SabotageProduction,
-                        bh.militaryAggression * 80.0f * (0.5f + threat) * warBonus},
+                        bh.militaryAggression * 80.0f * (0.5f + threatFl) * warBonus},
                     {SpyMission::SupplyChainDisrupt,
                         bh.militaryAggression * 75.0f * warBonus * deceit},
                     {SpyMission::SiphonFunds,
-                        bh.economicFocus * 90.0f * wealthProxy},
+                        bh.economicFocus * 90.0f * wealthFl},
                     {SpyMission::CurrencyCounterfeit,
-                        bh.economicFocus * 60.0f * deceit},
+                        bh.economicFocus * 35.0f * deceit},
                     {SpyMission::MarketManipulation,
                         bh.speculationAppetite * 70.0f * bubble},
                     {SpyMission::InsiderTrading,
                         bh.speculationAppetite * 55.0f},
                     {SpyMission::CounterIntelligence,
-                        (2.0f - bh.espionagePriority) * 60.0f * (0.5f + threat)},
+                        (2.0f - bh.espionagePriority) * 60.0f * (0.5f + threatFl)},
                     {SpyMission::FomentUnrest,
-                        bh.militaryAggression * 70.0f * (0.5f + threat) * deceit},
+                        bh.militaryAggression * 70.0f * (0.5f + threatFl) * deceit},
                     {SpyMission::MonitorTreasury,
                         bh.economicFocus * 40.0f},
                 }};

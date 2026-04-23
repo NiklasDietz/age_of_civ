@@ -498,6 +498,67 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
     }
 
+    // ---- Resource placement section ----
+    [[maybe_unused]] WidgetId placementLabel = ui.createLabel(
+        contentPanel,
+        {0.0f, 0.0f, innerW, 18.0f},
+        LabelData{"Resource Placement:", SECTION_TEXT, 14.0f});
+
+    WidgetId placementRow = ui.createPanel(
+        contentPanel,
+        {0.0f, 0.0f, innerW, 32.0f},
+        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    {
+        Widget* row = ui.getWidget(placementRow);
+        assert(row != nullptr);
+        row->layoutDirection = LayoutDirection::Horizontal;
+        row->childSpacing = 6.0f;
+    }
+
+    constexpr float PLACE_BTN_W = 110.0f;
+    constexpr float PLACE_BTN_H = 28.0f;
+
+    auto buildPlaceBtn = [&](const std::string& label,
+                             aoc::map::ResourcePlacementMode mode,
+                             const std::string& tip,
+                             bool selected) -> WidgetId {
+        ButtonData btn;
+        btn.label        = label;
+        btn.fontSize     = 12.0f;
+        btn.normalColor  = selected ? BTN_SELECTED : BTN_NORMAL;
+        btn.hoverColor   = selected ? BTN_SEL_HOVER : BTN_HOVER;
+        btn.pressedColor = selected ? BTN_SEL_PRESSED : BTN_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this, &ui, mode]() {
+            this->m_config.placement = mode;
+            this->updatePlacementButtons(ui);
+        };
+        const WidgetId id = ui.createButton(
+            placementRow, {0.0f, 0.0f, PLACE_BTN_W, PLACE_BTN_H}, std::move(btn));
+        ui.setWidgetTooltip(id, tip);
+        return id;
+    };
+
+    this->m_btnPlaceRealistic = buildPlaceBtn(
+        "Realistic",
+        aoc::map::ResourcePlacementMode::Realistic,
+        "Geology-driven: coal in sedimentary basins, iron on continental shield, "
+        "oil near subduction boundaries.",
+        this->m_config.placement == aoc::map::ResourcePlacementMode::Realistic);
+    this->m_btnPlaceFair = buildPlaceBtn(
+        "Fair",
+        aoc::map::ResourcePlacementMode::Fair,
+        "Guarantees each quadrant gets comparable strategic-resource access. "
+        "Starts realistic then rebalances surplus.",
+        this->m_config.placement == aoc::map::ResourcePlacementMode::Fair);
+    this->m_btnPlaceRandom = buildPlaceBtn(
+        "Random",
+        aoc::map::ResourcePlacementMode::Random,
+        "Uniform per-tile chance, ignores geology. Wider swings between "
+        "resource-rich and resource-starved starts.",
+        this->m_config.placement == aoc::map::ResourcePlacementMode::Random);
+
     // ---- Players section ----
     [[maybe_unused]] WidgetId playersSectionLabel = ui.createLabel(
         contentPanel,
@@ -774,6 +835,9 @@ void GameSetupScreen::destroy(UIManager& ui) {
     this->m_btnSmall         = INVALID_WIDGET;
     this->m_btnStandard      = INVALID_WIDGET;
     this->m_btnLarge         = INVALID_WIDGET;
+    this->m_btnPlaceRealistic= INVALID_WIDGET;
+    this->m_btnPlaceFair     = INVALID_WIDGET;
+    this->m_btnPlaceRandom   = INVALID_WIDGET;
     this->m_btnSequential    = INVALID_WIDGET;
     this->m_btnDifficulty    = INVALID_WIDGET;
     for (uint8_t i = 0; i < 8; ++i) {
@@ -844,6 +908,15 @@ void GameSetupScreen::updateMapSizeButtons(UIManager& ui) {
                       this->m_config.mapSize == aoc::map::MapSize::Standard);
     setButtonSelected(ui, this->m_btnLarge,
                       this->m_config.mapSize == aoc::map::MapSize::Large);
+}
+
+void GameSetupScreen::updatePlacementButtons(UIManager& ui) {
+    setButtonSelected(ui, this->m_btnPlaceRealistic,
+                      this->m_config.placement == aoc::map::ResourcePlacementMode::Realistic);
+    setButtonSelected(ui, this->m_btnPlaceFair,
+                      this->m_config.placement == aoc::map::ResourcePlacementMode::Fair);
+    setButtonSelected(ui, this->m_btnPlaceRandom,
+                      this->m_config.placement == aoc::map::ResourcePlacementMode::Random);
 }
 
 

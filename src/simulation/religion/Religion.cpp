@@ -202,7 +202,19 @@ void processReligiousSpread(aoc::game::GameState& gameState,
                 continue;
             }
 
+            const ReligionId beforeDominant = target.cityPtr->religion().dominantReligion();
             target.cityPtr->religion().addPressure(source.dominantReligion, pressure);
+            const ReligionId afterDominant = target.cityPtr->religion().dominantReligion();
+            if (afterDominant != beforeDominant && afterDominant != NO_RELIGION) {
+                const std::string_view afterName =
+                    (afterDominant < MAX_RELIGIONS)
+                        ? std::string_view(religions.religions[afterDominant].name)
+                        : std::string_view("?");
+                LOG_INFO("religion spread: city at (%d,%d) converted to '%.*s' (pressure from owner P%u)",
+                         target.location.q, target.location.r,
+                         static_cast<int>(afterName.size()), afterName.data(),
+                         static_cast<unsigned>(source.owner));
+            }
         }
     }
 }

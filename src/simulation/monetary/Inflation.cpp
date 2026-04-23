@@ -32,6 +32,13 @@ void computeInflation(MonetaryStateComponent& state,
         moneyGrowth = static_cast<float>(state.moneySupply - previousMoneySupply)
                     / static_cast<float>(previousMoneySupply);
     }
+    // Early-game M1 is tiny (a few coins), so absolute additions yield
+    // moneyGrowth >> 1.  Uncapped these saturated the final clamp to +50%
+    // inflation in 14/21 turn buckets across the 5-seed batch, masking all
+    // real monetary dynamics.  Clamp the Fisher input to a realistic single-
+    // turn range; printing detection below still catches runaway issuance via
+    // the printAmountThisTurn / GDP path.
+    moneyGrowth = std::clamp(moneyGrowth, -0.15f, 0.25f);
 
     float gdpGrowth = 0.0f;
     if (previousGDP > 0) {
@@ -107,6 +114,11 @@ void computeInflation(MonetaryStateComponent& state,
     if (state.printAmountThisTurn > 0 && currentGDP > 0) {
         float printingInflation = static_cast<float>(state.printAmountThisTurn)
                                 / static_cast<float>(currentGDP);
+        // Match moneyGrowth clamp: early-game GDP is small, so a single
+        // print event used to shove inflation straight to the cap.  Let real
+        // hyperinflation still trigger elsewhere (HYPERINFLATION CRISIS flag)
+        // rather than masking everything else under a permanent +50%.
+        printingInflation = std::min(printingInflation, 0.30f);
         state.inflationRate += printingInflation * capacityPressure;
         state.printAmountThisTurn = 0;  // Reset for next turn
     }

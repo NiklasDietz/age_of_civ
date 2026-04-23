@@ -158,6 +158,11 @@ struct VictoryTrackerComponent {
     int32_t turnsGDPBelowHalf = 0;
     int32_t turnsLowLoyalty = 0;
     bool    isEliminated = false;
+    bool    hasEverFoundedCity = false;  ///< Gate for conquest elimination:
+                                         ///< a civ that has not yet settled
+                                         ///< (turn-1 Settler still walking) is
+                                         ///< not "conquered" — otherwise
+                                         ///< LastStanding fires immediately.
 
     // -- Legacy compatibility --
     int32_t scienceProgress = 0;

@@ -145,6 +145,27 @@ void EconomySimulation::harvestResources(aoc::game::GameState& gameState,
                     yield = 2;
                 }
 
+                // Per-good yield bumps so tile extraction reflects real-world
+                // density asymmetry.  A seam of coal yields more per worked
+                // tile than wood for charcoal production; gold/silver yield
+                // little because ore veins are thin.  Charcoal is not a tile
+                // resource — it's a processed good from recipe 38 — so its
+                // effective per-turn rate is already bounded by 3 Wood tiles.
+                if (imp == aoc::map::ImprovementType::Mine
+                    || imp == aoc::map::ImprovementType::MountainMine) {
+                    switch (goodId) {
+                        case goods::COAL:       yield = 3; break;  // thick seams
+                        case goods::IRON_ORE:   yield = 2; break;
+                        case goods::COPPER_ORE: yield = 2; break;
+                        case goods::STONE:      yield = 3; break;  // quarry
+                        case goods::GOLD_ORE:   yield = 1; break;  // veins thin
+                        case goods::SILVER_ORE: yield = 1; break;
+                        case goods::NITER:      yield = 1; break;
+                        case goods::URANIUM:    yield = 1; break;  // trace
+                        default: break;
+                    }
+                }
+
                 int16_t currentReserves = grid.reserves(tileIndex);
                 if (currentReserves >= 0) {
                     int32_t actualYield = std::min(yield, static_cast<int32_t>(currentReserves));

@@ -48,6 +48,7 @@ enum class VictoryMode : uint8_t {
 struct GameSetupConfig {
     aoc::map::MapType mapType = aoc::map::MapType::Continents;
     aoc::map::MapSize mapSize = aoc::map::MapSize::Standard;
+    aoc::map::ResourcePlacementMode placement = aoc::map::ResourcePlacementMode::Realistic;
     uint8_t           playerCount = 2;
     std::array<PlayerSlotConfig, 8> players;  ///< max 8 players
     bool sequentialTurnsInWar = false;        ///< Use sequential turns when at war
@@ -131,11 +132,19 @@ private:
     WidgetId m_btnStandard    = INVALID_WIDGET;
     WidgetId m_btnLarge       = INVALID_WIDGET;
 
+    // Resource placement mode buttons
+    WidgetId m_btnPlaceRealistic = INVALID_WIDGET;
+    WidgetId m_btnPlaceFair      = INVALID_WIDGET;
+    WidgetId m_btnPlaceRandom    = INVALID_WIDGET;
+
     /// Re-color map type selection buttons to reflect current selection.
     void updateMapTypeButtons(UIManager& ui);
 
     /// Re-color map size selection buttons to reflect current selection.
     void updateMapSizeButtons(UIManager& ui);
+
+    /// Re-color placement-mode buttons to reflect current selection.
+    void updatePlacementButtons(UIManager& ui);
 };
 
 } // namespace aoc::ui

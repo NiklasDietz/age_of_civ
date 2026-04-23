@@ -986,9 +986,24 @@ void processTurn(TurnContext& turnContext) {
 
             const int32_t newUnits = static_cast<int32_t>(p->units().size());
             if (newUnits > preState[i].units) {
-                eventLog->record(TurnEventType::UnitProduced, pid,
-                                 INVALID_PLAYER, newUnits - preState[i].units, 0,
-                                 "Unit produced");
+                // Emit one event per freshly-spawned unit with the actual
+                // UnitTypeId in Value1.  Previously we recorded the delta count
+                // (1,2,3...) which diagnose_economy.py read as the unit type,
+                // so "unit type diversity" reports were garbage.  addUnit()
+                // appends to the tail, so the last `spawned` entries are the
+                // new ones (assuming mid-turn removals have already settled).
+                const int32_t spawned = newUnits - preState[i].units;
+                const size_t total = p->units().size();
+                for (int32_t u = 0; u < spawned; ++u) {
+                    const size_t idx = total - static_cast<size_t>(spawned - u);
+                    if (idx >= total) { continue; }
+                    const aoc::game::Unit* unit = p->units()[idx].get();
+                    const int32_t typeVal = (unit != nullptr)
+                        ? static_cast<int32_t>(unit->typeId().value) : 0;
+                    eventLog->record(TurnEventType::UnitProduced, pid,
+                                     INVALID_PLAYER, typeVal, 0,
+                                     "Unit produced");
+                }
             }
 
             const int32_t newMil = p->militaryUnitCount();

@@ -16,6 +16,7 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/economy/IndustrialRevolution.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
@@ -75,6 +76,21 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
             const bool hardAI = (this->m_difficulty == aoc::ui::AIDifficulty::Hard);
             const CivId myCiv = myPlayer->civId();
             const LeaderBehavior& beh = leaderPersonality(myCiv).behavior;
+
+            // Gather IR-gating techs so the scorer can prefer them.  Previously
+            // aiPrepareIndustrialRevolution only LOGged a hint and the planner
+            // ignored it, so 9% of players reached Steam Age by turn 500.
+            std::array<uint32_t, 3> nextRevTechs = {0xFFFFu, 0xFFFFu, 0xFFFFu};
+            const uint8_t nextRev = static_cast<uint8_t>(myPlayer->industrial().currentRevolution) + 1;
+            if (nextRev <= 5) {
+                const RevolutionDef& rev = REVOLUTION_DEFS[static_cast<size_t>(nextRev) - 1];
+                for (size_t r = 0; r < 3; ++r) {
+                    const TechId reqTech = rev.requirements.requiredTechs[r];
+                    if (reqTech.isValid()) {
+                        nextRevTechs[r] = reqTech.value;
+                    }
+                }
+            }
 
             aoc::core::DecisionLog* log = aoc::core::currentDecisionLog();
             const bool logActive = log != nullptr && log->active();
@@ -180,6 +196,17 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                 // Prefer cheaper techs as tiebreaker (scaled to 10% of cost so
                 // high-cost techs aren't disproportionately penalized)
                 score -= def.researchCost / 10;
+
+                // IR gating bonus: the next Industrial Revolution requires up
+                // to three specific techs.  Flat +15000 per match overrides
+                // generic unlock scores so the AI actually chases these rather
+                // than whatever the current leader-bias model prefers.
+                for (const uint32_t reqTechId : nextRevTechs) {
+                    if (reqTechId != 0xFFFFu && reqTechId == tid.value) {
+                        score += 15000;
+                        break;
+                    }
+                }
 
                 if (score > bestScore) {
                     bestScore = score;

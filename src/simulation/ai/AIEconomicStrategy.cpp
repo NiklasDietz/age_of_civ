@@ -253,30 +253,14 @@ void aiCrisisResponse(aoc::game::GameState& gameState, PlayerId player) {
 // Industrial revolution preparation
 // ============================================================================
 
-void aiPrepareIndustrialRevolution(aoc::game::GameState& gameState,
+void aiPrepareIndustrialRevolution(aoc::game::GameState& /*gameState*/,
                                     const Market& /*market*/,
-                                    PlayerId player) {
-    aoc::game::Player* myPlayer = gameState.player(player);
-    if (myPlayer == nullptr) { return; }
-
-    PlayerIndustrialComponent& ind = myPlayer->industrial();
-    PlayerTechComponent& techComp = myPlayer->tech();
-
-    uint8_t nextRev = static_cast<uint8_t>(ind.currentRevolution) + 1;
-    if (nextRev > 5) { return; }
-
-    const RevolutionDef& rev = REVOLUTION_DEFS[nextRev - 1];
-
-    // If we're not researching a required tech, suggest it
-    for (int32_t r = 0; r < 3; ++r) {
-        TechId reqTech = rev.requirements.requiredTechs[r];
-        if (reqTech.isValid() && !techComp.hasResearched(reqTech)) {
-            LOG_INFO("AI player %u: should prioritize tech %u for %.*s",
-                     static_cast<unsigned>(player),
-                     static_cast<unsigned>(reqTech.value),
-                     static_cast<int>(rev.name.size()), rev.name.data());
-        }
-    }
+                                    PlayerId /*player*/) {
+    // Intentionally empty.  IR-gating tech preference now lives in
+    // AIResearchPlanner::selectResearch (flat +15000 score per required
+    // tech).  Previously this function only emitted LOG_INFO hints that
+    // no other system read, which produced ~35k log lines per sim and
+    // zero effect on research selection.
 }
 
 // ============================================================================
