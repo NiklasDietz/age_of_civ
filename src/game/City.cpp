@@ -7,6 +7,7 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -211,9 +212,21 @@ void City::autoAssignWorkers(const aoc::map::HexGrid& grid,
                       + static_cast<float>(yields.science) * 1.0f;
                 break;
         }
-        // Bonus for tiles with resources
-        if (grid.resource(idx).isValid()) {
-            score += 2.0f;
+        // Bonus for tiles with resources.  Strategic resources (Oil, Coal,
+        // Iron, etc.) get a much larger kicker than generic luxury/bonus
+        // resources because their downstream production chain is worth far
+        // more than their raw yield suggests.  Previously a flat +2.0 meant
+        // a Grassland tile with 2 food beat an Oil tile with 0 food + 2
+        // resource bonus, so cities never worked strategic tiles and the
+        // production chain starved even after tech reveals.
+        const aoc::ResourceId resId = grid.resource(idx);
+        if (resId.isValid() && resId.value < aoc::sim::goodCount()) {
+            const aoc::sim::GoodDef& gd = aoc::sim::goodDef(resId.value);
+            if (gd.category == aoc::sim::GoodCategory::RawStrategic) {
+                score += 8.0f;  // Strategic: oil/coal/iron/etc — chain-feeding
+            } else {
+                score += 2.0f;  // Generic resource bonus
+            }
         }
 
         candidates.push_back({tile, score});

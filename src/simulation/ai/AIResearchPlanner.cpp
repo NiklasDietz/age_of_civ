@@ -208,6 +208,27 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                     }
                 }
 
+                // Production-chain gateway bonus: techs that unlock whole
+                // downstream chains get a large flat bonus so they're not
+                // out-scored by era-5+ techs whose `techInformation` leader
+                // multiplier balloons their value.  Audit showed Refining
+                // (13) was being bypassed for Electricity (14), leaving
+                // the OIL chain dry despite oil tiles being on the map.
+                //   13 Refining:     OIL → PLASTICS → ELECTRONICS → CONSUMER
+                //   14 Electricity:  Electric Age IR + telecom chain
+                //   22 Precision Instruments: Semiconductor chain
+                //   16 Computers:    Microchip / Software chain
+                //   27 Internet:     Information Age chain
+                // Refining gets an extra-large bump because its chain is the
+                // most often-starved (no alternative feeds PLASTICS).
+                static constexpr std::array<uint32_t, 5> kChainGatewayTechs = {13u, 14u, 22u, 16u, 27u};
+                for (const uint32_t chainTech : kChainGatewayTechs) {
+                    if (chainTech == tid.value) {
+                        score += (tid.value == 13u) ? 20000 : 12000;
+                        break;
+                    }
+                }
+
                 if (score > bestScore) {
                     bestScore = score;
                     best = tid;

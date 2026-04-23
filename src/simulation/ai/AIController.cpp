@@ -393,30 +393,37 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                 const float gapFloor  = std::max(0.3f, techGap);
                 const float threatFl  = std::max(0.3f, threat);
                 const float wealthFl  = std::max(0.5f, wealthProxy);
+                // Previously StealTechnology dominated 90% of assignments
+                // because its base (100 * scienceFocus * gap) outsized every
+                // other candidate.  Flattened the base weights + each slot
+                // gets a small random perturbation so repeat picks don't
+                // cluster.  Missions that actually benefit from context
+                // (war, wealth, threat, deceit) still respond to it.
                 struct Cand { SpyMission m; float s; };
+                auto jitter = [&]() { return 1.0f + (rng.nextFloat() - 0.5f) * 0.30f; };
                 const std::array<Cand, 11> cands = {{
                     {SpyMission::StealTechnology,
-                        bh.scienceFocus * 100.0f * (0.5f + gapFloor)},
+                        bh.scienceFocus * 70.0f * (0.5f + gapFloor) * jitter()},
                     {SpyMission::StealTradeSecrets,
-                        bh.scienceFocus * 70.0f * (0.5f + gapFloor)},
+                        bh.scienceFocus * 55.0f * (0.5f + gapFloor) * jitter()},
                     {SpyMission::SabotageProduction,
-                        bh.militaryAggression * 80.0f * (0.5f + threatFl) * warBonus},
+                        bh.militaryAggression * 80.0f * (0.5f + threatFl) * warBonus * jitter()},
                     {SpyMission::SupplyChainDisrupt,
-                        bh.militaryAggression * 75.0f * warBonus * deceit},
+                        bh.militaryAggression * 75.0f * warBonus * deceit * jitter()},
                     {SpyMission::SiphonFunds,
-                        bh.economicFocus * 90.0f * wealthFl},
+                        bh.economicFocus * 80.0f * wealthFl * jitter()},
                     {SpyMission::CurrencyCounterfeit,
-                        bh.economicFocus * 35.0f * deceit},
+                        bh.economicFocus * 45.0f * deceit * jitter()},
                     {SpyMission::MarketManipulation,
-                        bh.speculationAppetite * 70.0f * bubble},
+                        bh.speculationAppetite * 70.0f * bubble * jitter()},
                     {SpyMission::InsiderTrading,
-                        bh.speculationAppetite * 55.0f},
+                        bh.speculationAppetite * 55.0f * jitter()},
                     {SpyMission::CounterIntelligence,
-                        (2.0f - bh.espionagePriority) * 60.0f * (0.5f + threatFl)},
+                        (2.0f - bh.espionagePriority) * 65.0f * (0.5f + threatFl) * jitter()},
                     {SpyMission::FomentUnrest,
-                        bh.militaryAggression * 70.0f * (0.5f + threatFl) * deceit},
+                        bh.militaryAggression * 70.0f * (0.5f + threatFl) * deceit * jitter()},
                     {SpyMission::MonitorTreasury,
-                        bh.economicFocus * 40.0f},
+                        bh.economicFocus * 45.0f * jitter()},
                 }};
 
                 SpyMission mission = SpyMission::GatherIntelligence;
@@ -1263,6 +1270,47 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             candidate.item.progress  = 0.0f;
             candidate.score          = 4.0f;  // Must beat settlers (~2.14) and military
             candidates.push_back(std::move(candidate));
+        }
+
+        // --- Chain-enabler priority (Refinery, Electronics Plant, Food
+        // Processing Plant) ---
+        // These buildings unlock major production chains (OIL→PLASTICS→
+        // ELECTRONICS→CONSUMER_GOODS, WHEAT+CATTLE→PROCESSED_FOOD).  The
+        // generic scorer consistently picked Electronics Plant over Refinery
+        // because of tech-era score multipliers, leaving PLASTICS starved.
+        // Force-enqueue these with a guaranteed-top-tier score whenever they
+        // become available and the city has the Industrial district.  The
+        // player's first city to hit each condition builds the chain enabler
+        // immediately instead of queueing Forge-tier buildings repeatedly.
+        {
+            struct ChainPriority {
+                uint16_t buildingId;
+                const char* name;
+                float totalCost;
+            };
+            const std::array<ChainPriority, 7> chain = {{
+                {2u,  "Refinery",           100.0f},
+                {4u,  "Electronics Plant",  180.0f},
+                {9u,  "Food Proc. Plant",    90.0f},
+                {5u,  "Industrial Complex", 250.0f},
+                {10u, "Precision Workshop", 140.0f},
+                {11u, "Semiconductor Fab",  220.0f},
+                {33u, "Biofuel Plant",      120.0f},
+            }};
+            for (const ChainPriority& cp : chain) {
+                if (city.hasBuilding(BuildingId{cp.buildingId})) { continue; }
+                if (!canBuildBuilding(gameState, this->m_player, city,
+                                       BuildingId{cp.buildingId}, &grid)) { continue; }
+                ProductionCandidate candidate{};
+                candidate.item.type      = ProductionItemType::Building;
+                candidate.item.itemId    = cp.buildingId;
+                candidate.item.name      = cp.name;
+                candidate.item.totalCost = cp.totalCost;
+                candidate.item.progress  = 0.0f;
+                candidate.score          = 5.0f;  // beat all production scorers
+                candidates.push_back(std::move(candidate));
+                break;  // only one chain-enabler forced per city per turn
+            }
         }
 
         // --- Walls priority ---

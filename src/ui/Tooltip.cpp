@@ -95,6 +95,15 @@ void TooltipManager::update(float mouseX, float mouseY,
         }
     }
 
+    // River + Road indicators — gameplay-relevant (river: fresh water +
+    // trade-route eligibility; road: movement cost reduction).
+    if (grid.riverEdges(tileIndex) != 0) {
+        text += "\nRiver: yes (fresh water, -1 movement for crossings)";
+    }
+    if (grid.hasRoad(tileIndex)) {
+        text += "\nRoad: yes (+infra bonus)";
+    }
+
     // Yields
     const aoc::map::TileYield yields = grid.tileYield(tileIndex);
     text += "\nYields: F:";

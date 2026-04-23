@@ -111,16 +111,26 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
         // outputs (plastics, electronics, microchips) feed the goods-economy
         // tax path. Without those, IncomeGoodsEcon stays 0 end-game even when
         // the enabling techs are researched.
+        // Production-chain tier ordering: early basics (Forge/Workshop)
+        // score highest when techIndustrial is low and the civ is still
+        // Bronze/Iron age.  Once Refining tech is reached the chain-enabler
+        // buildings (Refinery, Electronics Plant, Food Processing) MUST
+        // out-score earlier-tier buildings or the civ sits in a tier-1 loop
+        // and the rest of the production tree stays dormant.  Bias the
+        // gateway buildings above the tier-1 default when the owning civ
+        // has already unlocked their technology window (handled by the
+        // tech-gate already — if tech isn't researched, building can't be
+        // queued).
         case  0: score = 200.0f * b.techIndustrial; break;  // Forge (smelting, tools, charcoal)
         case  1: score = 180.0f * b.techIndustrial; break;  // Workshop (lumber, bricks, construction)
-        case  2: score = 190.0f * b.techIndustrial; break;  // Refinery (fuel, plastics -> consumer chain)
-        case  3: score = 160.0f * b.techIndustrial; break;  // Factory (steel, machinery, ammunition)
-        case  4: score = 180.0f * b.techIndustrial; break;  // Electronics Plant (electronics tax path)
-        case  5: score = 160.0f * b.techIndustrial; break;  // Industrial Complex
-        case 10: score = 140.0f * b.techIndustrial; break;  // Precision Workshop (surface plate, instruments)
-        case 11: score = 150.0f * b.techIndustrial; break;  // Semiconductor Fab (semiconductors, microchips)
-        case 13: score = 120.0f * b.economicFocus; break;   // Telecom Hub (telecom goods)
-        case 14: score = 110.0f * b.techIndustrial; break;  // Airport (aircraft)
+        case  2: score = 240.0f * b.techIndustrial; break;  // Refinery (fuel, plastics -> consumer chain)
+        case  3: score = 200.0f * b.techIndustrial; break;  // Factory (steel, machinery, ammunition)
+        case  4: score = 230.0f * b.techIndustrial; break;  // Electronics Plant (electronics tax path)
+        case  5: score = 210.0f * b.techIndustrial; break;  // Industrial Complex
+        case 10: score = 170.0f * b.techIndustrial; break;  // Precision Workshop (surface plate, instruments)
+        case 11: score = 200.0f * b.techIndustrial; break;  // Semiconductor Fab (semiconductors, microchips)
+        case 13: score = 140.0f * b.economicFocus; break;   // Telecom Hub (telecom goods)
+        case 14: score = 130.0f * b.techIndustrial; break;  // Airport (aircraft)
 
         // Encampment
         case 17: score = 60.0f * b.militaryAggression; break; // Walls
@@ -133,6 +143,11 @@ float scoreBuildingForLeader(const LeaderBehavior& b, BuildingId buildingId,
         case 29: score = 80.0f * b.techIndustrial; break;  // Nuclear (risky)
         case 30: score = 110.0f; break;                     // Solar
         case 31: score = 105.0f; break;                     // Wind
+
+        // Biofuel Plant — renewable gas/biofuel from crops.  Was scored as
+        // 40 (default), meaning AI never built it even though it enables
+        // biogas (Natural_Gas substitute) and wheat/sugar→biofuel chains.
+        case 33: score = 150.0f * b.techIndustrial; break;  // Biofuel Plant
 
         // Goods-economy chain — outputs feed incomeGoodsEcon tax so boost
         // scoring above generic economic buildings. Previously 140/150

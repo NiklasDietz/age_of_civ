@@ -54,6 +54,19 @@ struct BalanceParams {
 
     // Victory: space race cost multiplier (1.0 = nominal SPACE_PROJECT_DEFS).
     float   spaceRaceCostMult        = 1.01f;
+
+    // Production-chain tuning (added for the chain-health audit).  GA-tunable
+    // scalars that shift recipe output and consumer drain so the balance
+    // tuner can search over them instead of relying on hard-coded numbers.
+    //
+    // chainOutputMult: multiplier applied to output amount for gateway-chain
+    //   recipes (OIL→FUEL, OIL→PLASTICS, Electronics, Consumer Goods).
+    //   1.0 = no change; higher = more profitable chain → more likely to
+    //   be picked by the ranked recipe loop.
+    // consumerDemandScale: scales per-population CONSUMER_GOODS /
+    //   ADV_CONSUMER_GOODS drain.  1.0 = baseline (pop/3 + 1 per turn).
+    float   chainOutputMult          = 1.00f;
+    float   consumerDemandScale      = 1.00f;
 };
 
 /// Access the single global balance-params instance.
@@ -61,9 +74,13 @@ struct BalanceParams {
 
 /// Gene layout for the balance GA. Order fixed — used by toArray/fromArray.
 ///
-/// Intentionally small (11 knobs). Larger balance genomes become
-/// unproductive without much larger populations.
-constexpr int32_t BALANCE_PARAM_COUNT = 11;
+/// Slot layout (indices 0-12):
+///   0 baseLoyalty, 1 loyaltyPressureRadius, 2 sustainedUnrestTurns,
+///   3 distantCityThreshold, 4 cultureVictoryThreshold, 5 cultureVictoryMinWonders,
+///   6 cultureVictoryLeadRatio, 7 integrationThreshold, 8 integrationTurnsRequired,
+///   9 religionDominanceFrac, 10 spaceRaceCostMult,
+///   11 chainOutputMult, 12 consumerDemandScale
+constexpr int32_t BALANCE_PARAM_COUNT = 13;
 
 struct BalanceGenome {
     std::array<float, BALANCE_PARAM_COUNT> g{};

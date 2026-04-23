@@ -7,6 +7,7 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
+#include "aoc/balance/BalanceParams.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
@@ -46,6 +47,29 @@
 namespace aoc::sim {
 
 EconomySimulation::EconomySimulation() = default;
+
+static inline uint64_t makePreferenceKey(PlayerId owner, uint32_t cityLocHash, uint16_t buildingId) {
+    return (static_cast<uint64_t>(owner) << 48)
+         | (static_cast<uint64_t>(cityLocHash) << 16)
+         | static_cast<uint64_t>(buildingId);
+}
+
+void EconomySimulation::setRecipePreference(PlayerId owner, uint32_t cityLocHash,
+                                             uint16_t buildingId, uint16_t recipeId) {
+    const uint64_t key = makePreferenceKey(owner, cityLocHash, buildingId);
+    if (recipeId == 0xFFFFu) {
+        this->m_recipePreference.erase(key);
+    } else {
+        this->m_recipePreference[key] = recipeId;
+    }
+}
+
+uint16_t EconomySimulation::recipePreference(PlayerId owner, uint32_t cityLocHash,
+                                              uint16_t buildingId) const {
+    const uint64_t key = makePreferenceKey(owner, cityLocHash, buildingId);
+    const auto it = this->m_recipePreference.find(key);
+    return (it == this->m_recipePreference.end()) ? 0xFFFFu : it->second;
+}
 
 void EconomySimulation::initialize() {
     this->m_productionChain.build();
@@ -578,6 +602,22 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                     continue;
                 }
 
+                // Per-building recipe preference override: if the player
+                // has locked this building to a specific recipe, skip any
+                // candidate recipe whose id does not match.  Default (no
+                // entry) falls through to the profit-ranked auto loop.
+                {
+                    const aoc::hex::AxialCoord loc = city->location();
+                    const uint32_t locHash =
+                        (static_cast<uint32_t>(static_cast<uint16_t>(loc.q)) << 16)
+                      | static_cast<uint32_t>(static_cast<uint16_t>(loc.r));
+                    const uint16_t pref = this->recipePreference(
+                        city->owner(), locHash, recipe->requiredBuilding.value);
+                    if (pref != 0xFFFFu && pref != recipe->recipeId) {
+                        continue;
+                    }
+                }
+
                 const CityBuildingLevelsComponent& levels = city->buildingLevels();
                 int32_t buildingCap   = levels.capacity(recipe->requiredBuilding);
                 int32_t buildingLevel = levels.getLevel(recipe->requiredBuilding);
@@ -684,11 +724,43 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                     }
                 }
 
+                // Chain output multiplier from BalanceParams: applied only to
+                // gateway-chain recipes (OIL→FUEL/PLASTICS, ELECTRONICS,
+                // CONSUMER_GOODS, ADV_CONSUMER_GOODS) so the GA can widen or
+                // narrow the economic value of the manufacturing tree.
+                float chainMult = 1.0f;
+                switch (recipe->recipeId) {
+                    case 4: case 5: case 10: case 11: case 12: case 13:
+                    case 29:
+                        chainMult = aoc::balance::params().chainOutputMult;
+                        break;
+                    default: break;
+                }
                 const int32_t boostedOutput = std::max(1, static_cast<int32_t>(
                     static_cast<float>(recipe->outputAmount)
                     * infraBonus * envModifier * powerEff * expMultiplier
-                    * revMultiplier * toolEff * supplyMultiplier * curseMultiplier));
+                    * revMultiplier * toolEff * supplyMultiplier * curseMultiplier
+                    * chainMult));
                 stockpile.addGoods(recipe->outputGoodId, boostedOutput);
+
+                // Recipe-fire audit: in-memory counter + milestone log
+                // (first-fire per recipe per game).  Used by the production
+                // chain audit to identify recipes that never execute because
+                // their inputs/buildings never become available.
+                {
+                    static std::array<int32_t, 64> s_recipeFireCount{};
+                    const uint16_t rid = recipe->recipeId;
+                    if (rid < s_recipeFireCount.size()) {
+                        if (s_recipeFireCount[rid] == 0) {
+                            LOG_INFO("recipe_first_fire: id=%u output=%u city=%u turn=%d",
+                                     static_cast<unsigned>(rid),
+                                     static_cast<unsigned>(recipe->outputGoodId),
+                                     static_cast<unsigned>(city->owner()),
+                                     static_cast<int>(gameState.currentTurn()));
+                        }
+                        ++s_recipeFireCount[rid];
+                    }
+                }
 
                 bool hasPrecisionInstr = stockpile.getAmount(goods::PRECISION_INSTRUMENTS) > 0;
                 uint32_t qualityHash   = this->m_depletionTurnCounter * 2654435761u
@@ -823,7 +895,7 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
                 }
             }
 
-            // Food and consumer goods demand based on population
+            // Food and consumer goods demand based on population.
             this->m_market.reportDemand(goods::WHEAT, cityPtr->population());
             this->m_market.reportDemand(goods::CONSUMER_GOODS, cityPtr->population() / 3 + 1);
             if (cityPtr->population() > 5) {
@@ -833,6 +905,33 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
             if (cityPtr->population() > 10) {
                 this->m_market.reportDemand(goods::ADV_CONSUMER_GOODS,
                     (cityPtr->population() - 10) / 3 + 1);
+            }
+
+            // Actual consumption drain: convert population demand into real
+            // stockpile depletion so there is pull on the production chain.
+            // Without this, reporting demand to the market did nothing —
+            // consumer goods piled up uncapped and downstream recipes had
+            // no reason to fire.  Each citizen consumes a small fraction
+            // per turn; missing goods just don't drain (no negative).
+            CityStockpileComponent& stockpileMut = cityPtr->stockpile();
+            const int32_t pop = cityPtr->population();
+            const float demandScale = aoc::balance::params().consumerDemandScale;
+            const int32_t consumerDrain = static_cast<int32_t>(
+                static_cast<float>(pop / 3 + 1) * demandScale);
+            const int32_t avail = stockpileMut.getAmount(goods::CONSUMER_GOODS);
+            const int32_t consumerTake = std::min(consumerDrain, avail);
+            if (consumerTake > 0) {
+                [[maybe_unused]] const bool ok =
+                    stockpileMut.consumeGoods(goods::CONSUMER_GOODS, consumerTake);
+            }
+            if (pop > 10) {
+                const int32_t advDrain = (pop - 10) / 3 + 1;
+                const int32_t advAvail = stockpileMut.getAmount(goods::ADV_CONSUMER_GOODS);
+                const int32_t advTake = std::min(advDrain, advAvail);
+                if (advTake > 0) {
+                    [[maybe_unused]] const bool ok =
+                        stockpileMut.consumeGoods(goods::ADV_CONSUMER_GOODS, advTake);
+                }
             }
         }
     }

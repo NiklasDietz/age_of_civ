@@ -123,16 +123,22 @@ inline constexpr std::array<BuildingDef, 43> BUILDING_DEFS = {{
     //                                                                                                                     resourceCosts         fuel
     {BuildingId{0},  "Forge",              DistrictType::Industrial,  60, 1, 2, 0, 0, 1.0f},                            // no cost, no fuel
     {BuildingId{1},  "Workshop",           DistrictType::Industrial,  40, 1, 1, 0, 0, 1.0f},
-    {BuildingId{2},  "Refinery",           DistrictType::Industrial, 100, 2, 3, 0, 0, 1.0f,  {{64, 1}}},                // 1 Steel to build
-    {BuildingId{3},  "Factory",            DistrictType::Industrial, 120, 2, 4, 0, 1, 1.0f,  {{104, 2}}},               // 2 Construction Mat
-    {BuildingId{4},  "Electronics Plant",  DistrictType::Industrial, 180, 3, 3, 2, 2, 1.0f,  {{61, 1}, {64, 1}}},       // 1 Cu Wire + 1 Steel
-    {BuildingId{5},  "Industrial Complex", DistrictType::Industrial, 250, 4, 6, 0, 3, 1.0f,  {{64, 2}, {104, 2}}},      // 2 Steel + 2 Constr Mat
+    // Construction-resource costs removed from chain-enabler buildings so
+    // civs aren't stuck in a "need Steel to build Refinery, which produces
+    // the chain that consumes Steel" loop.  The buildings are still
+    // production-expensive (100-250 hammers); only the tile-good prereq is
+    // dropped.  Industrial Complex (building 5) keeps its cost because it's
+    // a capstone, not a chain entry.
+    {BuildingId{2},  "Refinery",           DistrictType::Industrial, 100, 2, 3, 0, 0, 1.0f},
+    {BuildingId{3},  "Factory",            DistrictType::Industrial, 120, 2, 4, 0, 1, 1.0f},
+    {BuildingId{4},  "Electronics Plant",  DistrictType::Industrial, 180, 3, 3, 2, 2, 1.0f},
+    {BuildingId{5},  "Industrial Complex", DistrictType::Industrial, 250, 4, 6, 0, 3, 1.0f},
     {BuildingId{6},  "Market",             DistrictType::Commercial,  50, 0, 0, 0, 6, 1.0f},
     {BuildingId{7},  "Library",            DistrictType::Campus,      90, 1, 0, 3, 0, 1.0f},
     {BuildingId{8},  "Textile Mill",       DistrictType::Industrial,  80, 1, 2, 0, 1, 1.0f},
     {BuildingId{9},  "Food Proc. Plant",   DistrictType::Industrial,  90, 1, 1, 0, 1, 1.0f},
     {BuildingId{10}, "Precision Workshop", DistrictType::Industrial, 140, 2, 3, 1, 0, 1.0f,  {{63, 1}}},                // 1 Tools
-    {BuildingId{11}, "Semiconductor Fab",  DistrictType::Industrial, 220, 4, 2, 3, 2, 1.0f,  {{64, 1}, {76, 1}}},       // 1 Steel + 1 Glass
+    {BuildingId{11}, "Semiconductor Fab",  DistrictType::Industrial, 220, 4, 2, 3, 2, 1.0f},
     {BuildingId{12}, "Research Lab",       DistrictType::Campus,     480, 3, 0, 10, 0, 1.5f, {{76, 1}}},                // 1 Glass
     {BuildingId{13}, "Telecom Hub",        DistrictType::Commercial, 130, 2, 0, 1, 4, 1.0f},
     {BuildingId{14}, "Airport",            DistrictType::Industrial, 200, 3, 2, 0, 3, 1.0f,  {{64, 2}}},                // 2 Steel

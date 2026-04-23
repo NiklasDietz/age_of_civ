@@ -724,12 +724,16 @@ void Application::spectatorMaybeSnapshot() {
 }
 
 bool Application::spectatorRestoreSnapshot(int32_t turn) {
-    // Find the newest snapshot at or before `turn`.  lower_bound finds the
-    // first key > turn; step back one to get ≤ turn.
+    // Find the newest snapshot at or before `turn`.
     auto it = this->m_spectatorSnapshots.upper_bound(turn);
     if (it == this->m_spectatorSnapshots.begin()) { return false; }
     --it;
     const int32_t snapTurn = it->first;
+
+    // Pause the sim advance while we mutate GameState + derived containers
+    // to avoid any mid-frame turn tick seeing half-loaded state.
+    const bool wasPaused = this->m_spectatorPaused;
+    this->m_spectatorPaused = true;
 
     const std::string path = "/tmp/aoc_spec_snap_" + std::to_string(snapTurn) + ".sav";
     const aoc::ErrorCode result = aoc::save::loadGame(
@@ -737,9 +741,45 @@ bool Application::spectatorRestoreSnapshot(int32_t turn) {
         this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
     if (result != aoc::ErrorCode::Ok) {
         LOG_WARN("spectatorRestoreSnapshot turn %d: loadGame failed", snapTurn);
+        this->m_spectatorPaused = wasPaused;
         return false;
     }
-    LOG_INFO("Spectator: restored snapshot from turn %d", snapTurn);
+
+    // Full post-load reinit: loadGame restores the GameState but Application
+    // keeps several derived containers (AIControllers, BarbarianController,
+    // GoodyHuts, TurnManager readiness) that the serializer leaves untouched.
+    // Rebuild them from the freshly-loaded player roster so stale pointers
+    // from the pre-restore session cannot produce the dist=999 supply loops
+    // and segfault we hit on the first backward-seek attempt.
+    this->m_aiControllers.clear();
+    const int32_t pc = this->m_gameState.playerCount();
+    for (int32_t p = 0; p < pc; ++p) {
+        this->m_aiControllers.emplace_back(
+            static_cast<aoc::PlayerId>(p), aoc::ui::AIDifficulty::Normal);
+    }
+    // In spectator mode no slot is human; controllers cover all players.
+    // Reset turn-manager readiness so the next advance cycles cleanly.
+    this->m_turnManager.setPlayerCount(0, static_cast<uint8_t>(pc));
+    this->m_turnManager.beginNewTurn();
+
+    // Barbarian + goody huts: clear and let the sim reseed / rediscover via
+    // tile scan next turn.  Cheaper than trying to serialize their state.
+    this->m_barbarianController = aoc::sim::BarbarianController{};
+    this->m_goodyHuts.hutLocations.clear();
+
+    // Fog: spectator mode reveals all.
+    if (!this->m_spectatorFogEnabled) {
+        this->spectatorRevealAll();
+    } else {
+        for (int32_t p = 0; p < pc; ++p) {
+            this->m_fogOfWar.updateVisibility(
+                this->m_gameState, this->m_hexGrid, static_cast<aoc::PlayerId>(p));
+        }
+    }
+
+    LOG_INFO("Spectator: restored snapshot from turn %d (reinitialized %d AI controllers)",
+             snapTurn, pc);
+    this->m_spectatorPaused = wasPaused;
     return true;
 }
 
@@ -1030,17 +1070,24 @@ void Application::run() {
                          this->m_spectatorFogEnabled ? "enabled (follow player)" : "disabled (reveal all)");
             }
 
-            // Seek: if the slider moved forward of the current turn, fast-
-            // forward via the main advancement loop below.  Backward seek is
-            // currently disabled — loading a mid-game snapshot left enough
-            // stale pointers across the sim (supply lines reported dist=999,
-            // then segfault) to be unsafe.  Clamp to current turn instead.
+            // Seek: if slider moved backward, restore the newest snapshot
+            // at or before the target turn (spectatorRestoreSnapshot does a
+            // full post-load reinit of AI controllers + barbarians + fog
+            // to avoid stale-pointer crashes).  The main advance loop below
+            // then fast-forwards any remaining delta.  If there's no earlier
+            // snapshot (target below oldest ring entry), clamp to current.
             if (this->m_spectatorTargetTurn >= 0) {
                 const int32_t curTurn = static_cast<int32_t>(this->m_turnManager.currentTurn());
                 if (this->m_spectatorTargetTurn < curTurn) {
-                    this->m_spectatorTargetTurn = curTurn;
+                    if (!this->spectatorRestoreSnapshot(this->m_spectatorTargetTurn)) {
+                        this->m_spectatorTargetTurn = curTurn;
+                    }
                 }
             }
+
+            // Snapshot ring tick — capture state every SNAPSHOT_INTERVAL
+            // turns so backward seek has restore points.
+            this->spectatorMaybeSnapshot();
 
             // Turn advancement: accumulate deltaTime and fire when threshold reached.
             // At speed 1.0 this fires once per second; at speed 1000.0 it fires

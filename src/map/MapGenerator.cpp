@@ -288,10 +288,64 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         effectiveWaterRatio * static_cast<float>(sortedElevations.size()));
     float waterThreshold = sortedElevations[std::min(waterCutoff, sortedElevations.size() - 1)];
 
-    // Mountain threshold
-    std::size_t mountainCutoff = sortedElevations.size() -
-        static_cast<std::size_t>(config.mountainRatio * static_cast<float>(sortedElevations.size()));
-    float mountainThreshold = sortedElevations[std::min(mountainCutoff, sortedElevations.size() - 1)];
+    // Coastal ridge bias: in real tectonics the highest peaks cluster near
+    // plate margins, which on a continent maps to ~3-6 hexes inland from
+    // the coast.  Previous impl selected mountains purely by absolute
+    // elevation → "always a blob of mountains in the middle".  We compute
+    // BFS distance to coast for every land tile and boost elevations that
+    // sit in the young-margin band before recalculating the mountain cutoff.
+    const int32_t totalTiles = width * height;
+    std::vector<int32_t> distFromCoast(static_cast<size_t>(totalTiles), -1);
+    std::vector<int32_t> coastQ;
+    coastQ.reserve(static_cast<size_t>(totalTiles));
+    for (int32_t i = 0; i < totalTiles; ++i) {
+        if (elevationMap[static_cast<size_t>(i)] < waterThreshold) {
+            distFromCoast[static_cast<size_t>(i)] = 0;
+            coastQ.push_back(i);
+        }
+    }
+    for (size_t h = 0; h < coastQ.size(); ++h) {
+        const int32_t idx = coastQ[h];
+        const int32_t d = distFromCoast[static_cast<size_t>(idx)];
+        const int32_t col = idx % width;
+        const int32_t row = idx / width;
+        const hex::AxialCoord axial = hex::offsetToAxial({col, row});
+        for (const hex::AxialCoord& n : hex::neighbors(axial)) {
+            if (!grid.isValid(n)) { continue; }
+            const int32_t ni = grid.toIndex(n);
+            if (distFromCoast[static_cast<size_t>(ni)] >= 0) { continue; }
+            distFromCoast[static_cast<size_t>(ni)] = d + 1;
+            coastQ.push_back(ni);
+        }
+    }
+
+    // Apply coastal-ridge bonus to elevation before mountain selection.
+    // Peak bonus at dist 3, falls off by dist 8.  Beyond that, slight
+    // penalty so the interior is less mountain-dominated.  Water tiles
+    // unchanged (they'll be reclassified below).
+    std::vector<float> mountainElev = elevationMap;
+    for (int32_t i = 0; i < totalTiles; ++i) {
+        if (distFromCoast[static_cast<size_t>(i)] <= 0) { continue; }  // water
+        const int32_t d = distFromCoast[static_cast<size_t>(i)];
+        float bonus = 0.0f;
+        if (d >= 2 && d <= 6) {
+            // Gaussian-ish hump peaked at 3-4 hexes inland.
+            const float peak = 4.0f;
+            const float sigma = 2.5f;
+            const float x = (static_cast<float>(d) - peak) / sigma;
+            bonus = 0.18f * std::exp(-x * x);
+        } else if (d > 8) {
+            bonus = -0.05f;
+        }
+        mountainElev[static_cast<size_t>(i)] += bonus;
+    }
+
+    // Mountain threshold computed from the coastal-bias-adjusted elevation.
+    std::vector<float> sortedMountainElev(mountainElev);
+    std::sort(sortedMountainElev.begin(), sortedMountainElev.end());
+    std::size_t mountainCutoff = sortedMountainElev.size() -
+        static_cast<std::size_t>(config.mountainRatio * static_cast<float>(sortedMountainElev.size()));
+    float mountainThreshold = sortedMountainElev[std::min(mountainCutoff, sortedMountainElev.size() - 1)];
 
     // Temperature map (latitude-based + noise)
     aoc::Random tempRng(rng.next());
@@ -312,7 +366,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 continue;
             }
 
-            if (elev >= mountainThreshold) {
+            // Use the coastal-bias-adjusted elevation for mountain test so
+            // ridges form preferentially in young-margin bands, not center.
+            if (mountainElev[static_cast<std::size_t>(index)] >= mountainThreshold) {
                 grid.setTerrain(index, TerrainType::Mountain);
                 grid.setElevation(index, 3);
                 continue;
@@ -1319,14 +1375,17 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
             }
             // Continental interior (no boundary)
             else if (bType == BoundaryType::None) {
-                // Sedimentary basin: low elevation interior
-                if (elev <= 0) {
-                    if (resRng.chance(0.06f)) {
+                // Sedimentary basin: low elevation interior (oil + gas +
+                // coal + niter).  Oil + gas rates bumped so strategic energy
+                // resources actually appear on typical continents instead of
+                // depending on the rare elev==0 interior subset alone.
+                if (elev <= 1) {
+                    if (resRng.chance(0.10f)) {
                         placed = ResourceId{aoc::sim::goods::OIL};
+                    } else if (resRng.chance(0.06f)) {
+                        placed = ResourceId{aoc::sim::goods::NATURAL_GAS};
                     } else if (resRng.chance(0.05f)) {
                         placed = ResourceId{aoc::sim::goods::COAL};
-                    } else if (resRng.chance(0.04f)) {
-                        placed = ResourceId{aoc::sim::goods::NATURAL_GAS};
                     } else if (resRng.chance(0.03f)) {
                         placed = ResourceId{aoc::sim::goods::NITER};
                     }
@@ -1388,6 +1447,10 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
                         placed = ResourceId{aoc::sim::goods::DYES};
                     } else if (grid.feature(index) == FeatureType::Hills && resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::MARBLE};
+                    } else if (resRng.chance(0.04f) && grid.riverEdges(index) != 0) {
+                        placed = ResourceId{aoc::sim::goods::RICE};
+                    } else if (resRng.chance(0.03f)) {
+                        placed = ResourceId{aoc::sim::goods::CLAY};
                     }
                 } else if (temperature < 0.30f) {
                     // Cold: furs and gems are more common
@@ -1423,6 +1486,16 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
                 grid.setResource(index, placed);
                 grid.setReserves(index, aoc::sim::defaultReserves(placed.value));
                 ++totalPlaced;
+                if (placed.value == aoc::sim::goods::OIL
+                    || placed.value == aoc::sim::goods::NATURAL_GAS) {
+                    LOG_INFO("Strategic resource placed: %.*s at (%d,%d) terrain=%.*s elev=%d",
+                             static_cast<int>(aoc::sim::goodDef(placed.value).name.size()),
+                             aoc::sim::goodDef(placed.value).name.data(),
+                             col, row,
+                             static_cast<int>(terrainName(terrain).size()),
+                             terrainName(terrain).data(),
+                             static_cast<int>(grid.elevation(index)));
+                }
             }
         }
     }
@@ -1495,6 +1568,54 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
     }
     totalPlaced += mountainMetalsPlaced;
 
+    // Guaranteed strategic-energy pass: every map must seed at least a few
+    // Oil + Natural Gas + Niter tiles on accessible land.  Without this,
+    // probabilistic placement can leave a whole continent dry — which is
+    // what killed the OIL chain (no oil) AND the Ammunition chain (no
+    // niter) in 5-seed batches.  Tin added too so Bronze recipe has raw.
+    {
+        const int32_t minOilTiles = std::max(6, (width * height) / 400);
+        const int32_t minGasTiles = std::max(3, (width * height) / 800);
+        const int32_t minNiterTiles = std::max(4, (width * height) / 600);
+        const int32_t minTinTiles   = std::max(3, (width * height) / 800);
+
+        std::vector<int32_t> oilCandidates;
+        oilCandidates.reserve(static_cast<size_t>(width * height));
+        for (int32_t r = 0; r < height; ++r) {
+            for (int32_t c = 0; c < width; ++c) {
+                const int32_t idx = r * width + c;
+                const TerrainType tt = grid.terrain(idx);
+                if (isWater(tt) || tt == TerrainType::Mountain) { continue; }
+                if (grid.resource(idx).isValid())               { continue; }
+                if (grid.naturalWonder(idx) != NaturalWonderType::None) { continue; }
+                oilCandidates.push_back(idx);
+            }
+        }
+
+        aoc::Random fillRng(resRng);
+        for (size_t i = oilCandidates.size(); i > 1; --i) {
+            const size_t j = static_cast<size_t>(fillRng.nextInt(0, static_cast<int32_t>(i) - 1));
+            std::swap(oilCandidates[i - 1], oilCandidates[j]);
+        }
+
+        int32_t oilPlaced = 0, gasPlaced = 0, niterPlaced = 0, tinPlaced = 0;
+        for (const int32_t idx : oilCandidates) {
+            if (oilPlaced >= minOilTiles && gasPlaced >= minGasTiles
+                && niterPlaced >= minNiterTiles && tinPlaced >= minTinTiles) { break; }
+            uint16_t res = 0xFFFFu;
+            if      (oilPlaced   < minOilTiles)   { res = aoc::sim::goods::OIL;         ++oilPlaced; }
+            else if (gasPlaced   < minGasTiles)   { res = aoc::sim::goods::NATURAL_GAS; ++gasPlaced; }
+            else if (niterPlaced < minNiterTiles) { res = aoc::sim::goods::NITER;       ++niterPlaced; }
+            else                                  { res = aoc::sim::goods::TIN;         ++tinPlaced; }
+            grid.setResource(idx, ResourceId{res});
+            grid.setReserves(idx, aoc::sim::defaultReserves(res));
+            ++totalPlaced;
+        }
+        LOG_INFO("Strategic fill: oil=%d gas=%d niter=%d tin=%d (targets %d/%d/%d/%d)",
+                 oilPlaced, gasPlaced, niterPlaced, tinPlaced,
+                 minOilTiles, minGasTiles, minNiterTiles, minTinTiles);
+    }
+
     (void)config;  // mapSize/type already used indirectly
     LOG_INFO("Geology-based resource placement: %d resources placed (%d on mountains)",
              totalPlaced, mountainMetalsPlaced);
@@ -1532,10 +1653,11 @@ void MapGenerator::placeBasicResources(const Config& config, HexGrid& grid,
                 else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::TIN}; }
                 else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::STONE}; }
             }
-            // Desert: oil, incense
+            // Desert: oil (high density), natural gas, incense
             else if (terrain == TerrainType::Desert) {
-                if (rng.chance(0.04f))      { placed = ResourceId{aoc::sim::goods::OIL}; }
-                else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::INCENSE}; }
+                if (rng.chance(0.10f))      { placed = ResourceId{aoc::sim::goods::OIL}; }
+                else if (rng.chance(0.05f)) { placed = ResourceId{aoc::sim::goods::NATURAL_GAS}; }
+                else if (rng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::INCENSE}; }
             }
             // Forest/jungle: wood, rubber, spices, dyes
             else if (feature == FeatureType::Forest) {
@@ -1548,26 +1670,34 @@ void MapGenerator::placeBasicResources(const Config& config, HexGrid& grid,
                 else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::DYES}; }
                 else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::SUGAR}; }
             }
-            // Grassland: food, cotton, horses
+            // Grassland: food, cotton, horses, rice (river-adjacent), clay
             else if (terrain == TerrainType::Grassland) {
                 if (rng.chance(0.06f))      { placed = ResourceId{aoc::sim::goods::WHEAT}; }
                 else if (rng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::CATTLE}; }
                 else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::COTTON}; }
                 else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::HORSES}; }
+                else if (rng.chance(0.04f) && grid.riverEdges(index) != 0) {
+                    placed = ResourceId{aoc::sim::goods::RICE};
+                }
+                else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::CLAY}; }
             }
-            // Plains: food, stone, horses, niter
+            // Plains: food, stone, horses, niter, oil (inland basins)
             else if (terrain == TerrainType::Plains) {
                 if (rng.chance(0.05f))      { placed = ResourceId{aoc::sim::goods::WHEAT}; }
                 else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::HORSES}; }
                 else if (rng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::STONE}; }
                 else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::NITER}; }
                 else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::WOOD}; }
+                else if (rng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::OIL}; }
+                else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::NATURAL_GAS}; }
             }
-            // Tundra: furs, gems
+            // Tundra: furs, gems, oil (arctic basins), coal
             else if (terrain == TerrainType::Tundra) {
                 if (rng.chance(0.04f))      { placed = ResourceId{aoc::sim::goods::FURS}; }
                 else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::GEMS}; }
                 else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::COAL}; }
+                else if (rng.chance(0.05f)) { placed = ResourceId{aoc::sim::goods::OIL}; }
+                else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::NATURAL_GAS}; }
             }
 
             // Coastal tiles: fish
@@ -1589,6 +1719,16 @@ void MapGenerator::placeBasicResources(const Config& config, HexGrid& grid,
                 int16_t reserves = aoc::sim::defaultReserves(placed.value);
                 grid.setReserves(index, reserves);
                 ++totalPlaced;
+                if (placed.value == aoc::sim::goods::OIL
+                    || placed.value == aoc::sim::goods::NATURAL_GAS) {
+                    LOG_INFO("Strategic resource placed: %.*s at (%d,%d) terrain=%.*s elev=%d",
+                             static_cast<int>(aoc::sim::goodDef(placed.value).name.size()),
+                             aoc::sim::goodDef(placed.value).name.data(),
+                             col, row,
+                             static_cast<int>(terrainName(terrain).size()),
+                             terrainName(terrain).data(),
+                             static_cast<int>(grid.elevation(index)));
+                }
             }
         }
     }
@@ -1644,6 +1784,48 @@ void MapGenerator::placeBasicResources(const Config& config, HexGrid& grid,
         }
     }
     totalPlaced += mountainMetalsPlaced;
+
+    // Guaranteed strategic pass (mirrors placeGeologyResources): seed
+    // oil + gas + niter + tin on empty land so every production chain has
+    // at least minimal raw supply.
+    {
+        const int32_t minOilTiles   = std::max(6, (width * height) / 400);
+        const int32_t minGasTiles   = std::max(3, (width * height) / 800);
+        const int32_t minNiterTiles = std::max(4, (width * height) / 600);
+        const int32_t minTinTiles   = std::max(3, (width * height) / 800);
+        std::vector<int32_t> oilCandidates;
+        oilCandidates.reserve(static_cast<size_t>(width * height));
+        for (int32_t r = 0; r < height; ++r) {
+            for (int32_t c = 0; c < width; ++c) {
+                const int32_t idx = r * width + c;
+                const TerrainType tt = grid.terrain(idx);
+                if (isWater(tt) || tt == TerrainType::Mountain) { continue; }
+                if (grid.resource(idx).isValid())               { continue; }
+                if (grid.naturalWonder(idx) != NaturalWonderType::None) { continue; }
+                oilCandidates.push_back(idx);
+            }
+        }
+        aoc::Random fillRng(rng);
+        for (size_t i = oilCandidates.size(); i > 1; --i) {
+            const size_t j = static_cast<size_t>(fillRng.nextInt(0, static_cast<int32_t>(i) - 1));
+            std::swap(oilCandidates[i - 1], oilCandidates[j]);
+        }
+        int32_t oilPlaced = 0, gasPlaced = 0, niterPlaced = 0, tinPlaced = 0;
+        for (const int32_t idx : oilCandidates) {
+            if (oilPlaced >= minOilTiles && gasPlaced >= minGasTiles
+                && niterPlaced >= minNiterTiles && tinPlaced >= minTinTiles) { break; }
+            uint16_t res = 0xFFFFu;
+            if      (oilPlaced   < minOilTiles)   { res = aoc::sim::goods::OIL;         ++oilPlaced; }
+            else if (gasPlaced   < minGasTiles)   { res = aoc::sim::goods::NATURAL_GAS; ++gasPlaced; }
+            else if (niterPlaced < minNiterTiles) { res = aoc::sim::goods::NITER;       ++niterPlaced; }
+            else                                  { res = aoc::sim::goods::TIN;         ++tinPlaced; }
+            grid.setResource(idx, ResourceId{res});
+            grid.setReserves(idx, aoc::sim::defaultReserves(res));
+            ++totalPlaced;
+        }
+        LOG_INFO("Strategic fill (basic): oil=%d gas=%d niter=%d tin=%d",
+                 oilPlaced, gasPlaced, niterPlaced, tinPlaced);
+    }
 
     (void)config;
     LOG_INFO("Basic resource placement: %d resources placed (%d on mountains)",

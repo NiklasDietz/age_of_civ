@@ -500,6 +500,19 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     // City growth
     processCityGrowth(*gsPlayer, grid);
 
+    // Periodic worker re-assignment so cities pick up newly-revealed
+    // strategic resources (Oil after Refining, Aluminium after Electricity,
+    // etc.).  autoAssignWorkers is expensive-ish (scans all owned tiles) so
+    // we run it every 10 turns per city.  Without this the workedTiles set
+    // locked in at founding never updates and Oil tiles stay idle even when
+    // the reveal tech is long past.
+    if ((turnContext.currentTurn % 10) == 0) {
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : gsPlayer->cities()) {
+            if (cityPtr == nullptr) { continue; }
+            cityPtr->autoAssignWorkers(grid, aoc::sim::WorkerFocus::Balanced, gsPlayer);
+        }
+    }
+
     // City happiness
     computeCityHappiness(*gsPlayer);
 

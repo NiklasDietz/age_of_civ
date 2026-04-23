@@ -144,13 +144,17 @@ std::vector<ProductionRecipe> buildRecipes() {
         {{goods::STONE, 2}},
         goods::BRICKS, 2, BuildingId{1}, 1});
 
+    // Output amounts tuned up to raise market profitability so the ranked
+    // recipe loop prioritises them once the Refinery is built.  Prior 1:1
+    // ratios made these recipes a net wash against raw-oil sale price and
+    // they sat at the bottom of the profitability ranking every turn.
     recipes.push_back({4, "Refine Fuel",
         {{goods::OIL, 2}},
-        goods::FUEL, 1, BuildingId{2}, 1});
+        goods::FUEL, 2, BuildingId{2}, 1});
 
     recipes.push_back({5, "Produce Plastics",
         {{goods::OIL, 1}},
-        goods::PLASTICS, 1, BuildingId{2}, 1});
+        goods::PLASTICS, 2, BuildingId{2}, 1});
 
     // ================================================================
     // Tier 2: Basic processed -> Tools / Steel / Construction
@@ -176,22 +180,25 @@ std::vector<ProductionRecipe> buildRecipes() {
 
     recipes.push_back({10, "Produce Electronics",
         {{goods::COPPER_WIRE, 2}, {goods::PLASTICS, 1}},
-        goods::ELECTRONICS, 1, BuildingId{4}, 2});
+        goods::ELECTRONICS, 2, BuildingId{4}, 2});
 
     recipes.push_back({11, "Consumer Goods",
         {{goods::PLASTICS, 1}, {goods::LUMBER, 1}},
-        goods::CONSUMER_GOODS, 2, BuildingId{1}, 1});
+        goods::CONSUMER_GOODS, 3, BuildingId{1}, 1});
 
     // ================================================================
     // Tier 4: Advanced goods (original)
     // ================================================================
+    // Raised outputs on these downstream chain recipes so the profitability
+    // ranker prefers them; previously Adv Machinery's 1:1:1 ratio against
+    // two scarce inputs made it consistently lose to simpler recipes.
     recipes.push_back({12, "Advanced Machinery",
         {{goods::MACHINERY, 1}, {goods::ELECTRONICS, 1}},
-        goods::ADVANCED_MACHINERY, 1, BuildingId{4}, 3});
+        goods::ADVANCED_MACHINERY, 2, BuildingId{4}, 3});
 
     recipes.push_back({13, "Industrial Equipment",
         {{goods::ADVANCED_MACHINERY, 1}, {goods::STEEL, 2}},
-        goods::INDUSTRIAL_EQUIP, 1, BuildingId{5}, 3});
+        goods::INDUSTRIAL_EQUIP, 2, BuildingId{5}, 3});
 
     // ================================================================
     // NEW: Textiles & clothing chain (keeps Silk, Cotton, Dyes relevant)
@@ -375,6 +382,87 @@ std::vector<ProductionRecipe> buildRecipes() {
     recipes.push_back({45, "Distill Biofuel (Sugar)",
         {{goods::SUGAR, 3}},
         goods::BIOFUEL, 1, BuildingId{33}, 1});
+
+    // ================================================================
+    // Natural Gas processing — the map seeds NATURAL_GAS tiles but no
+    // recipe consumed them, so gas sat unused.  Gas runs through the same
+    // Refinery as oil (BuildingId{2}) but yields slightly less: 2 gas →
+    // 1 fuel + 1 plastics.  This gives civs an OIL-chain alternative when
+    // their territory has gas but no oil.  Gated by the same Refining
+    // tech so the processing chain stays era-consistent.
+    recipes.push_back({50, "Refine Natural Gas (Fuel)",
+        {{goods::NATURAL_GAS, 2}},
+        goods::FUEL, 2, BuildingId{2}, 1,
+        1, TechId{13}});
+
+    recipes.push_back({51, "Crack Natural Gas (Plastics)",
+        {{goods::NATURAL_GAS, 1}},
+        goods::PLASTICS, 1, BuildingId{2}, 1,
+        1, TechId{13}});
+
+    // ================================================================
+    // Biogas — renewable gas substitute from livestock/food waste.
+    // Available once Biofuel Plant is built; yields less than refined
+    // natural gas but needs no gas tile.
+    // ================================================================
+    recipes.push_back({52, "Brew Biogas",
+        {{goods::CATTLE, 2}, {goods::WOOD, 1}},
+        goods::NATURAL_GAS, 1, BuildingId{33}, 1});
+
+    // ================================================================
+    // Orphan-good activation: recipes that connect previously-idle raw
+    // resources (Clay, Rice) into the mainstream chain, and recipes that
+    // give dead-end processed goods (Rubber Goods, Industrial Equipment,
+    // Aluminium, Bronze) a downstream consumer so they are worth making.
+    // ================================================================
+
+    // Clay-fired bricks — alternative to Stone bricks, available from the
+    // Workshop without needing a Quarry or Mountain Mine.  Keeps CLAY tiles
+    // useful before Masonry unlocks.
+    recipes.push_back({53, "Fire Clay Bricks",
+        {{goods::CLAY, 2}},
+        goods::BRICKS, 2, BuildingId{1}, 1});
+
+    // Rice → Processed Food: tropical/subtropical food chain entry.  Was
+    // the only raw food (WHEAT, CATTLE, FISH covered) without a processing
+    // recipe, so RICE tiles were pure market goods.
+    recipes.push_back({54, "Process Rice",
+        {{goods::RICE, 2}},
+        goods::PROCESSED_FOOD, 2, BuildingId{9}, 1});
+
+    // (Aluminium already flows directly into Aircraft Components recipe 25
+    //  — no separate smelting step.  Attempted a self-loop refining recipe
+    //  but that blew out the profitability ranker because the 3:2 ratio
+    //  compounded infinitely.  Leaving raw → aircraft as the single step.)
+
+    // Bronze tools — dead-end good gets a simple downstream use as a Tools
+    // input branch.  3 Bronze + 1 Wood → 2 Tools, alternative to the iron
+    // path (recipe 6).  Lets early bronze age civs produce tools before
+    // Iron Working.
+    recipes.push_back({56, "Forge Bronze Tools",
+        {{goods::BRONZE, 3}, {goods::WOOD, 1}},
+        goods::TOOLS, 2, BuildingId{0}, 1});
+
+    // Rubber Goods consumer: turn the previously-dead RUBBER_GOODS output
+    // into a Machinery input variant.  Rubber + Tools + Steel → Machinery
+    // runs alongside the standard Tools+Steel recipe (9) but uses the
+    // rubber branch so Rubber tiles have downstream value.
+    recipes.push_back({57, "Rubber-Sealed Machinery",
+        {{goods::RUBBER_GOODS, 1}, {goods::TOOLS, 1}, {goods::STEEL, 1}},
+        goods::MACHINERY, 2, BuildingId{3}, 2});
+
+    // Industrial Equipment → Armored Vehicles input.  Was a capstone dead
+    // end (nothing consumed it).  Now acts as a "heavy machinery" input
+    // that gives Armored Vehicles a 50% output bump when present.  Simpler
+    // than restructuring the armored-vehicles recipe — this is an
+    // independent premium variant.
+    recipes.push_back({58, "Heavy-Plated Armored Vehicles",
+        {{goods::INDUSTRIAL_EQUIP, 1}, {goods::STEEL, 2}, {goods::FUEL, 1}},
+        goods::ARMORED_VEHICLES, 2, BuildingId{3}, 3});
+
+    // (Uranium intentionally has no refining recipe in this game — Nuclear
+    //  Plant consumes it raw.  A self-loop refiner would break the ranker
+    //  the same way Aluminium did.)
 
     // ================================================================
     // Demonetization: melt old coins back into raw ore.

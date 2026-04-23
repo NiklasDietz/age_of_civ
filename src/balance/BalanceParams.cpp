@@ -20,6 +20,8 @@ BalanceParams BalanceGenome::toParams() const {
     p.integrationTurnsRequired = static_cast<int32_t>(this->g[8]);
     p.religionDominanceFrac    = this->g[9];
     p.spaceRaceCostMult        = this->g[10];
+    p.chainOutputMult          = this->g[11];
+    p.consumerDemandScale      = this->g[12];
     return p;
 }
 
@@ -35,6 +37,8 @@ void BalanceGenome::fromParams(const BalanceParams& p) {
     this->g[8]  = static_cast<float>(p.integrationTurnsRequired);
     this->g[9]  = p.religionDominanceFrac;
     this->g[10] = p.spaceRaceCostMult;
+    this->g[11] = p.chainOutputMult;
+    this->g[12] = p.consumerDemandScale;
 }
 
 BalanceBounds defaultBalanceBounds() {
@@ -61,6 +65,10 @@ BalanceBounds defaultBalanceBounds() {
     b.min[9]  = 0.3f;    b.max[9]  = 0.8f;
     // spaceRaceCostMult: [0.5, 1.5]
     b.min[10] = 0.5f;    b.max[10] = 1.5f;
+    // chainOutputMult: [0.75, 2.0]  — production-chain yield multiplier
+    b.min[11] = 0.75f;   b.max[11] = 2.0f;
+    // consumerDemandScale: [0.5, 2.5]  — pop-driven consumer drain scalar
+    b.min[12] = 0.5f;    b.max[12] = 2.5f;
     return b;
 }
 

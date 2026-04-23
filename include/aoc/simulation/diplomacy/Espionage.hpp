@@ -82,8 +82,12 @@ enum class SpyLevel : uint8_t {
 };
 
 /// Success probability scale. Each spy level shifts one step up.
+/// Previous distribution (0.16..0.90) left level-0 Recruits at 16% success
+/// for the cheapest missions, producing ~85% batch failure.  Shifted the
+/// low end up so entry-level spies have an honest shot (≈ 35%) while the
+/// top still caps near 0.92 — stronger mission flavour per promotion.
 inline constexpr std::array<float, 8> SPY_PROBABILITY_SCALE = {
-    0.16f, 0.25f, 0.37f, 0.50f, 0.63f, 0.74f, 0.84f, 0.90f
+    0.35f, 0.44f, 0.52f, 0.60f, 0.68f, 0.76f, 0.85f, 0.92f
 };
 
 enum class SpyPromotion : uint8_t {
