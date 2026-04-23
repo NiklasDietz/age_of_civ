@@ -24,6 +24,7 @@
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ui/ScreenRegistry.hpp"
 #include "aoc/ui/WidgetInspector.hpp"
+#include "aoc/ui/LoadingScreen.hpp"
 #include "aoc/ui/GameScreens.hpp"
 #include "aoc/ui/TradeScreen.hpp"
 #include "aoc/ui/TradeRouteSetupScreen.hpp"
@@ -189,6 +190,11 @@ private:
     /// Dev-time widget inspector. F11 toggles. Renders hover-highlight
     /// + hovered/focused ids over the UI.
     aoc::ui::WidgetInspector m_widgetInspector;
+
+    /// Full-screen loading overlay shown during `startGame` while map
+    /// generation + placement + initial player spawn run. Registered
+    /// in the ScreenRegistry so resize re-layouts it.
+    aoc::ui::LoadingScreen   m_loadingScreen;
     aoc::ui::WidgetId  m_menuDropdown   = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId  m_confirmDialog  = aoc::ui::INVALID_WIDGET;
 

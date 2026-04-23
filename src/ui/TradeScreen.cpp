@@ -74,19 +74,22 @@ void TradeScreen::open(UIManager& ui) {
             }
 
             const aoc::sim::CivilizationDef& civDefRef = aoc::sim::civDef(playerPtr->civId());
-            std::string label = std::string(civDefRef.name) + " (" +
-                                std::string(civDefRef.leaderName) + ")";
-
-            ButtonData btn;
-            btn.label = std::move(label);
-            btn.fontSize = 12.0f;
-            btn.normalColor  = {0.2f, 0.2f, 0.28f, 0.9f};
-            btn.hoverColor   = {0.3f, 0.3f, 0.38f, 0.9f};
-            btn.pressedColor = {0.15f, 0.15f, 0.2f, 0.9f};
-            btn.cornerRadius = 3.0f;
+            // Rich row: civ/leader title + relation stance subtitle +
+            // at-war indicator right value when applicable. Icon
+            // colour keyed to player colour.
+            ListRowData row;
+            row.title    = std::string(civDefRef.name) + " ("
+                         + std::string(civDefRef.leaderName) + ")";
+            const aoc::sim::PairwiseRelation& rel =
+                this->m_diplomacy->relation(this->m_player, otherId);
+            row.subtitle = std::string(aoc::sim::stanceName(rel.stance()));
+            if (rel.isAtWar) {
+                row.rightValue = "AT WAR";
+                row.valueColor = {0.95f, 0.35f, 0.35f, 1.0f};
+            }
 
             const PlayerId partnerId = otherId;
-            btn.onClick = [this, &ui, innerPanel, partnerId]() {
+            row.onClick = [this, &ui, innerPanel, partnerId]() {
                 this->m_partner = partnerId;
                 // Remove old partner list and build trade columns
                 if (this->m_partnerList != INVALID_WIDGET) {
@@ -96,8 +99,9 @@ void TradeScreen::open(UIManager& ui) {
                 this->buildTradeColumns(ui, innerPanel, partnerId);
             };
 
-            (void)ui.createButton(this->m_partnerList, {0.0f, 0.0f, 510.0f, 24.0f},
-                                   std::move(btn));
+            (void)ui.createListRow(this->m_partnerList,
+                                    {0.0f, 0.0f, 0.0f, 32.0f},
+                                    std::move(row));
         }
     }
 

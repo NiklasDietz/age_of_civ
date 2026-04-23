@@ -190,6 +190,7 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_screenRegistry.add(&this->m_religionScreen);
     this->m_screenRegistry.add(&this->m_scoreScreen);
     this->m_screenRegistry.add(&this->m_settingsMenu);
+    this->m_screenRegistry.add(&this->m_loadingScreen);
 
     // Seed the icon atlas with built-in placeholders so any widget
     // that references `resources.*` / `civs.*` / etc. renders a
@@ -238,6 +239,14 @@ ErrorCode Application::initialize(const Config& config) {
 }
 
 void Application::startGame(const aoc::ui::GameSetupConfig& config) {
+    // Loading overlay. Rendered on next frame — we synchronously
+    // block through map-gen / spawn below so the screen only appears
+    // if something errors out, but it sets expectation for async work
+    // when that arrives. Progress is coarse (phase-labelled).
+    this->m_loadingScreen.open(this->m_uiManager, "Generating World");
+    this->m_loadingScreen.setStatus("Generating terrain...");
+    this->m_loadingScreen.setProgress(0.1f);
+
     // -- Map generation --
     const std::pair<int32_t, int32_t> dims = aoc::map::mapSizeDimensions(config.mapSize);
     aoc::map::MapGenerator::Config mapConfig{};
@@ -402,6 +411,12 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
 
     // Camera was already centered on the settler by spawnStartingEntities().
     this->m_appState = AppState::InGame;
+
+    // Tear down the loading overlay now that everything's set up.
+    this->m_loadingScreen.setProgress(1.0f);
+    this->m_loadingScreen.setStatus("Done");
+    this->m_loadingScreen.close(this->m_uiManager);
+
     LOG_INFO("Game started (map type=%d, size=%d, players=%u)",
              static_cast<int>(config.mapType), static_cast<int>(config.mapSize),
              static_cast<unsigned>(config.playerCount));

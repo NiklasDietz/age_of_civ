@@ -17,6 +17,7 @@
 namespace aoc::ui {
 
 class UIManager;
+struct Theme;
 
 class IScreen {
 public:
@@ -33,6 +34,12 @@ public:
     /// rebuild with the new dimensions. Individual screens may override
     /// for cheaper reflow.
     virtual void onResize(UIManager& ui, float width, float height) = 0;
+
+    /// Optional per-screen theme override. Returns nullptr (default)
+    /// means "use the global theme". Screens that need a specialised
+    /// palette (e.g., encyclopedia parchment look) return a pointer to
+    /// their cached Theme instance. Non-owning.
+    [[nodiscard]] virtual const Theme* themeOverride() const { return nullptr; }
 };
 
 } // namespace aoc::ui

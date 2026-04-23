@@ -181,6 +181,42 @@ void ProductionScreen::open(UIManager& ui) {
         innerPanel, {0.0f, 0.0f, 420.0f, 16.0f},
         LabelData{std::move(queueText), {0.8f, 0.9f, 0.8f, 1.0f}, 13.0f});
 
+    // Pending-queue reorder rows: drag an item over another to swap
+    // positions. Renders the queue.tail (skipping index 0 which is
+    // the current-building displayed above). onDrop fires the swap
+    // via UIManager's drop-handler map.
+    if (city != nullptr) {
+        std::vector<aoc::sim::ProductionQueueItem>& queue = city->production().queue;
+        if (queue.size() > 1) {
+            (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 420.0f, 14.0f},
+                LabelData{"-- Queued (drag to reorder) --",
+                          {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
+            for (std::size_t qi = 1; qi < queue.size(); ++qi) {
+                ListRowData qrow;
+                qrow.title      = queue[qi].name;
+                qrow.subtitle   = std::to_string(static_cast<int>(queue[qi].totalCost))
+                                 + " prod";
+                qrow.rightValue = "#" + std::to_string(qi);
+
+                WidgetId rid = ui.createListRow(
+                    innerPanel, {0.0f, 0.0f, 0.0f, 26.0f}, std::move(qrow));
+                Widget* rw = ui.getWidget(rid);
+                if (rw != nullptr) {
+                    rw->canDrag     = true;
+                    rw->dragPayload = static_cast<uint32_t>(qi);
+                    rw->acceptsDrop = true;
+                }
+                std::vector<aoc::sim::ProductionQueueItem>* qPtr = &queue;
+                const std::size_t targetIdx = qi;
+                ui.onDrop(rid, [qPtr, targetIdx](uint32_t fromIdx) {
+                    if (fromIdx == 0 || fromIdx >= qPtr->size()) { return; }
+                    if (targetIdx == fromIdx) { return; }
+                    std::swap((*qPtr)[fromIdx], (*qPtr)[targetIdx]);
+                });
+            }
+        }
+    }
+
     // Separator label
     (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 420.0f, 14.0f},
                    LabelData{"-- Available Items --", {0.6f, 0.6f, 0.7f, 1.0f}, 12.0f});

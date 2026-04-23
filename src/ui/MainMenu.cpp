@@ -5,6 +5,7 @@
 
 #include "aoc/ui/MainMenu.hpp"
 #include "aoc/ui/MainMenuTheme.hpp"
+#include "aoc/ui/Theme.hpp"
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/core/Log.hpp"
 
@@ -577,14 +578,22 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         WidgetId slotRow = ui.createPanel(
             contentPanel,
             {0.0f, 0.0f, innerW, SLOT_ROW_H},
-            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+            PanelData{{0.08f, 0.08f, 0.12f, 0.75f}, 4.0f});
         {
             Widget* row = ui.getWidget(slotRow);
             assert(row != nullptr);
             row->layoutDirection = LayoutDirection::Horizontal;
             row->childSpacing = 6.0f;
+            row->padding = {4.0f, 2.0f, 4.0f, 2.0f};
         }
         this->m_playerRows[slot] = slotRow;
+
+        // Player colour swatch — 6px accent on the leading edge.
+        IconData swatch;
+        swatch.tint          = theme().playerColor(slot);
+        swatch.fallbackColor = swatch.tint;
+        (void)ui.createIcon(slotRow, {0.0f, 0.0f, 6.0f, SLOT_ROW_H - 4.0f},
+                             std::move(swatch));
 
         // "Player N:" label
         const std::string slotLabel = "Player " + std::to_string(slot + 1) + ":";
