@@ -19,6 +19,7 @@
  */
 
 #include "aoc/simulation/ai/AISettlerController.hpp"
+#include "aoc/balance/BalanceParams.hpp"
 
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -175,10 +176,52 @@ static constexpr uint16_t STRATEGIC_RESOURCE_ID_MAX = 12;
                 if (dist < 3) {
                     return -9999.0f;
                 } else {
-                    // Periphery tolerance shifts where "too far" starts and how
-                    // harshly it's penalised. Low-tol leaders (isolationist) feel
-                    // the penalty sooner and harder; high-tol leaders (colonial)
-                    // stretch further before it bites.
+                    // Scoring band derived from the game's own loyalty radius
+                    // (balance.loyaltyPressureRadius, default 14): every
+                    // neighbouring own city projects loyalty pressure up to
+                    // that range.  For a candidate spot, we reward distances
+                    // that place it inside the support band of at least one
+                    // neighbour (dist <= radius/2) and penalise either
+                    // cramped overlap (dist 3-4 — shared worked tiles) or
+                    // sprawl past the pressure edge (dist > radius) where
+                    // the new city cannot be reinforced.
+                    //
+                    // Deliberately not per-leader tuned yet.  These numbers
+                    // are the "sensible default" band; the GA balance tuner
+                    // (ml/cpp/BalanceTuner) can search over them later once
+                    // they're migrated into BalanceGenome.
+                    const float loyRadius =
+                        static_cast<float>(aoc::balance::params().loyaltyPressureRadius);
+                    const float halfRadius = loyRadius * 0.5f;
+                    const float df = static_cast<float>(dist);
+
+                    if (dist == 3) {
+                        score -= 12.0f;  // barely-legal stacking — loses work tiles
+                    } else if (dist == 4) {
+                        score -= 5.0f;   // still cramped
+                    } else if (df <= halfRadius) {
+                        // Within loyalty support: each other own city within
+                        // range gives mutual reinforcement.  Reward gently
+                        // and scale so 5-7 lands near peak.
+                        score += 8.0f - std::abs(df - 6.0f);
+                    } else if (df <= loyRadius) {
+                        // Past half-radius but still inside pressure range:
+                        // neutral-ish, very small penalty for being out on a
+                        // limb.
+                        score -= (df - halfRadius) * 0.5f;
+                    } else {
+                        // Outside loyalty range of this neighbour entirely.
+                        // Per-tile penalty stacks for every distant city we
+                        // check; colonial leaders (peripheryTolerance high)
+                        // feel it softer.
+                        const float penaltyPerTile = 2.5f * (2.0f - peripheryTolerance);
+                        score -= (df - loyRadius) * penaltyPerTile;
+                    }
+
+                    // Periphery tolerance still controls the soft upper
+                    // limit when the AI is forced to spread onto a second
+                    // continent — overrides the per-city band when dist
+                    // dwarfs the sweet spot.
                     const int32_t sweetSpot = static_cast<int32_t>(
                         8.0f + 4.0f * peripheryTolerance);
                     if (dist > sweetSpot) {
