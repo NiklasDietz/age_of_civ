@@ -49,6 +49,7 @@
 #include "aoc/ui/SpectatorHUD.hpp"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 
 namespace vulkan_app {
@@ -368,6 +369,37 @@ private:
 
     /// Renderer for the spectator HUD overlay (status bar + scoreboard).
     aoc::ui::SpectatorHUD m_spectatorHUD;
+
+    /// Target turn set by the seek slider.  When != current, Application
+    /// fast-forwards (target > current) or loads a snapshot + replays
+    /// (target < current) until reached.  -1 = no active seek.
+    int32_t m_spectatorTargetTurn = -1;
+
+    /// Widget IDs for the seek slider built during startSpectate.
+    aoc::ui::WidgetId m_spectatorSeekSliderId = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_spectatorSeekPanelId  = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_spectatorSeekLabelId  = aoc::ui::INVALID_WIDGET;
+
+    /// Snapshot ring: serialized game states captured every N turns so the
+    /// seek slider can step backwards.  Key = turn number, value = binary
+    /// blob produced by saveGame.  Kept in memory (tmpfs), capped to the
+    /// last ~12 snapshots.
+    std::map<int32_t, std::vector<uint8_t>> m_spectatorSnapshots;
+    static constexpr int32_t SPECTATOR_SNAPSHOT_INTERVAL = 20;
+    static constexpr size_t  SPECTATOR_SNAPSHOT_MAX      = 12;
+
+    /// Build the seek slider + label at the bottom of the screen.  Called
+    /// once from the spectate-start path.
+    void buildSpectatorSeekControls(float screenW, float screenH);
+
+    /// Persist current game state to a /tmp file keyed by turn so the seek
+    /// slider can reload older turns on backwards scrub.
+    void spectatorMaybeSnapshot();
+
+    /// Restore the game state from the newest snapshot at or before the
+    /// requested turn.  Returns true on success.  Caller is responsible for
+    /// replaying turns from there to the exact requested turn.
+    [[nodiscard]] bool spectatorRestoreSnapshot(int32_t turn);
 
     /**
      * @brief Advance one spectator turn: run processTurn, update fog, check victory.

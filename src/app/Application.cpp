@@ -488,6 +488,13 @@ void Application::startSpectate(int32_t playerCount, int32_t maxTurns) {
         this->m_uiManager.setVisible(this->m_endTurnButton, false);
     }
 
+    // Seek slider along the bottom of the screen.
+    int32_t w, h;
+    glfwGetFramebufferSize(this->m_window.handle(), &w, &h);
+    this->buildSpectatorSeekControls(static_cast<float>(w), static_cast<float>(h));
+    this->m_spectatorTargetTurn = -1;
+    this->m_spectatorSnapshots.clear();
+
     // Center camera on the actual pixel-space center of the map.
     // The map uses offset coordinates (col, row) internally.
     // Tile (0,0) is at pixel ~(0,0). Tile (width-1, height-1) is at the bottom-right.
@@ -648,6 +655,92 @@ void Application::spectatorDrawHUD(void* cmdBufferPtr, uint32_t frameWidth, uint
         screenW, screenH);
 
     this->m_renderer2d->end(cmdBuffer);
+}
+
+void Application::buildSpectatorSeekControls(float screenW, float screenH) {
+    // Destroy any prior widgets from a previous spectate session.
+    if (this->m_spectatorSeekPanelId != aoc::ui::INVALID_WIDGET) {
+        this->m_uiManager.removeWidget(this->m_spectatorSeekPanelId);
+        this->m_spectatorSeekPanelId  = aoc::ui::INVALID_WIDGET;
+        this->m_spectatorSeekSliderId = aoc::ui::INVALID_WIDGET;
+        this->m_spectatorSeekLabelId  = aoc::ui::INVALID_WIDGET;
+    }
+
+    constexpr float PANEL_W = 560.0f;
+    constexpr float PANEL_H = 42.0f;
+    const float panelX = (screenW - PANEL_W) * 0.5f;
+    const float panelY = screenH - PANEL_H - 10.0f;
+
+    this->m_spectatorSeekPanelId = this->m_uiManager.createPanel(
+        {panelX, panelY, PANEL_W, PANEL_H},
+        aoc::ui::PanelData{{0.05f, 0.05f, 0.10f, 0.85f}, 4.0f});
+
+    this->m_spectatorSeekLabelId = this->m_uiManager.createLabel(
+        this->m_spectatorSeekPanelId,
+        {10.0f, 6.0f, 150.0f, 16.0f},
+        aoc::ui::LabelData{"Seek: Turn 0", {0.9f, 0.9f, 0.9f, 1.0f}, 12.0f});
+
+    aoc::ui::SliderData slider{};
+    slider.minValue = 0.0f;
+    slider.maxValue = static_cast<float>(this->m_spectatorMaxTurns);
+    slider.value    = 0.0f;
+    slider.step     = 1.0f;
+    slider.onValueChanged = [this](float v) {
+        this->m_spectatorTargetTurn = static_cast<int32_t>(v + 0.5f);
+    };
+    this->m_spectatorSeekSliderId = this->m_uiManager.createSlider(
+        this->m_spectatorSeekPanelId,
+        {170.0f, 12.0f, PANEL_W - 180.0f, 20.0f},
+        std::move(slider));
+}
+
+void Application::spectatorMaybeSnapshot() {
+    const int32_t turn = static_cast<int32_t>(this->m_turnManager.currentTurn());
+    if (turn % SPECTATOR_SNAPSHOT_INTERVAL != 0) { return; }
+    if (this->m_spectatorSnapshots.count(turn) != 0) { return; }
+
+    // Write snapshot to /tmp so we can reuse the on-disk loadGame path
+    // without refactoring Serializer for in-memory mode.  Store filepath
+    // marker in the map so we can rediscover and delete later.
+    const std::string path = "/tmp/aoc_spec_snap_" + std::to_string(turn) + ".sav";
+    const aoc::ErrorCode result = aoc::save::saveGame(
+        path, this->m_gameState, this->m_hexGrid, this->m_turnManager,
+        this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
+    if (result != aoc::ErrorCode::Ok) {
+        LOG_WARN("spectatorSnapshot turn %d: saveGame failed", turn);
+        return;
+    }
+    // Store a sentinel (empty vector) — the file on disk is the real snapshot.
+    this->m_spectatorSnapshots[turn] = std::vector<uint8_t>{};
+
+    // Cap the ring: drop the oldest snapshots when the history grows beyond
+    // SPECTATOR_SNAPSHOT_MAX so /tmp doesn't fill up.
+    while (this->m_spectatorSnapshots.size() > SPECTATOR_SNAPSHOT_MAX) {
+        auto oldest = this->m_spectatorSnapshots.begin();
+        std::remove((std::string("/tmp/aoc_spec_snap_") +
+                     std::to_string(oldest->first) + ".sav").c_str());
+        this->m_spectatorSnapshots.erase(oldest);
+    }
+}
+
+bool Application::spectatorRestoreSnapshot(int32_t turn) {
+    // Find the newest snapshot at or before `turn`.  lower_bound finds the
+    // first key > turn; step back one to get ≤ turn.
+    auto it = this->m_spectatorSnapshots.upper_bound(turn);
+    if (it == this->m_spectatorSnapshots.begin()) { return false; }
+    --it;
+    const int32_t snapTurn = it->first;
+
+    const std::string path = "/tmp/aoc_spec_snap_" + std::to_string(snapTurn) + ".sav";
+    const aoc::ErrorCode result = aoc::save::loadGame(
+        path, this->m_gameState, this->m_hexGrid, this->m_turnManager,
+        this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
+    if (result != aoc::ErrorCode::Ok) {
+        LOG_WARN("spectatorRestoreSnapshot turn %d: loadGame failed", snapTurn);
+        return false;
+    }
+    LOG_INFO("Spectator: restored snapshot from turn %d", snapTurn);
+    return true;
 }
 
 void Application::run() {
@@ -937,19 +1030,36 @@ void Application::run() {
                          this->m_spectatorFogEnabled ? "enabled (follow player)" : "disabled (reveal all)");
             }
 
+            // Seek: if the slider moved forward of the current turn, fast-
+            // forward via the main advancement loop below.  Backward seek is
+            // currently disabled — loading a mid-game snapshot left enough
+            // stale pointers across the sim (supply lines reported dist=999,
+            // then segfault) to be unsafe.  Clamp to current turn instead.
+            if (this->m_spectatorTargetTurn >= 0) {
+                const int32_t curTurn = static_cast<int32_t>(this->m_turnManager.currentTurn());
+                if (this->m_spectatorTargetTurn < curTurn) {
+                    this->m_spectatorTargetTurn = curTurn;
+                }
+            }
+
             // Turn advancement: accumulate deltaTime and fire when threshold reached.
             // At speed 1.0 this fires once per second; at speed 1000.0 it fires
             // many turns per frame to keep the simulation from stalling.
+            // When a seek target is set, run at burst speed until hit.
             if (!this->m_spectatorPaused) {
                 this->m_spectatorTurnAccumulator += deltaTime * this->m_spectatorSpeed;
 
                 // Cap the number of turns processed per frame to avoid hitching.
                 constexpr int32_t MAX_TURNS_PER_FRAME = 50;
                 int32_t turnsThisFrame = 0;
-                while (this->m_spectatorTurnAccumulator >= 1.0f
+                const bool seeking = (this->m_spectatorTargetTurn >= 0
+                    && static_cast<int32_t>(this->m_turnManager.currentTurn())
+                           < this->m_spectatorTargetTurn);
+                while ((seeking
+                        || this->m_spectatorTurnAccumulator >= 1.0f)
                        && turnsThisFrame < MAX_TURNS_PER_FRAME
                        && !this->m_spectatorPaused) {
-                    this->m_spectatorTurnAccumulator -= 1.0f;
+                    if (!seeking) { this->m_spectatorTurnAccumulator -= 1.0f; }
                     this->spectatorAdvanceTurn();
                     ++turnsThisFrame;
 
@@ -958,6 +1068,12 @@ void Application::run() {
                         this->m_spectatorPaused = true;
                         LOG_INFO("Spectator: reached maximum turn limit (%d)",
                                  this->m_spectatorMaxTurns);
+                    }
+                    if (seeking
+                        && static_cast<int32_t>(this->m_turnManager.currentTurn())
+                               >= this->m_spectatorTargetTurn) {
+                        this->m_spectatorTargetTurn = -1;
+                        break;
                     }
                 }
                 // Discard any leftover accumulation so we don't catch up with a burst
@@ -969,6 +1085,26 @@ void Application::run() {
 
             // Update camera follow target each frame so the camera smoothly tracks.
             this->spectatorUpdateFollowCamera();
+
+            // Keep the seek slider's visible value + label in sync with the
+            // simulation state whenever the user is NOT actively dragging
+            // the slider (which would snap it back on every frame).
+            if (this->m_spectatorSeekSliderId != aoc::ui::INVALID_WIDGET) {
+                aoc::ui::Widget* sliderWidget = this->m_uiManager.getWidget(
+                    this->m_spectatorSeekSliderId);
+                if (sliderWidget != nullptr) {
+                    if (auto* sd = std::get_if<aoc::ui::SliderData>(&sliderWidget->data)) {
+                        if (!sd->dragging && this->m_spectatorTargetTurn < 0) {
+                            sd->value = static_cast<float>(this->m_turnManager.currentTurn());
+                        }
+                    }
+                }
+                if (this->m_spectatorSeekLabelId != aoc::ui::INVALID_WIDGET) {
+                    std::string txt = "Seek: Turn "
+                        + std::to_string(static_cast<int32_t>(this->m_turnManager.currentTurn()));
+                    this->m_uiManager.setLabelText(this->m_spectatorSeekLabelId, std::move(txt));
+                }
+            }
         }
 
         // Camera update is deferred until after UI input to prevent scroll conflicts
@@ -1760,6 +1896,12 @@ void Application::buildMainMenu(float screenW, float screenH) {
                     if (this->m_endTurnButton != aoc::ui::INVALID_WIDGET) {
                         this->m_uiManager.setVisible(this->m_endTurnButton, false);
                     }
+                    this->m_spectatorTargetTurn = -1;
+                    this->m_spectatorSnapshots.clear();
+                    int32_t fbw = 0, fbh = 0;
+                    glfwGetFramebufferSize(this->m_window.handle(), &fbw, &fbh);
+                    this->buildSpectatorSeekControls(
+                        static_cast<float>(fbw), static_cast<float>(fbh));
                 },
                 [this, screenW, screenH]() {
                     this->m_gameSetupScreen.destroy(this->m_uiManager);
