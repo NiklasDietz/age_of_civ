@@ -298,14 +298,18 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         {0.0f, 0.0f, innerW, 18.0f},
         LabelData{"Map Type:", SECTION_TEXT, 14.0f});
 
+    // HorizontalWrap container — 6 map-type buttons flow onto a
+    // second row when the panel is narrower than 6 × button width.
+    // Height is 68 (two 32px rows + spacing) so both rows fit inside
+    // the clamp even on the tightest panel size.
     WidgetId mapTypeRow = ui.createPanel(
         contentPanel,
-        {0.0f, 0.0f, innerW, 32.0f},
+        {0.0f, 0.0f, innerW, 72.0f},
         PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
     {
         Widget* row = ui.getWidget(mapTypeRow);
         assert(row != nullptr);
-        row->layoutDirection = LayoutDirection::Horizontal;
+        row->layoutDirection = LayoutDirection::HorizontalWrap;
         row->childSpacing = 6.0f;
     }
 
