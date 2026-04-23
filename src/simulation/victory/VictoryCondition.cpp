@@ -491,7 +491,11 @@ void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber current
             continue;
         }
 
-        // 3. Conquest: lost capital + only one city remaining
+        // 3. Conquest: lost capital + only one city remaining.
+        // Gate on hasEverFoundedCity: pre-settlement civs (turn-1 Settler still
+        // walking) have cityCount == 0 and would otherwise trip this branch,
+        // marking them eliminated before they even play their first move.
+        // That fired LastStanding on turn 1 against a 2-player setup.
         {
             bool hasCapital = false;
             const int32_t cities = gsPlayer->cityCount();
@@ -501,7 +505,10 @@ void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber current
                     break;
                 }
             }
-            if (!hasCapital && cities <= 1) {
+            if (cities > 0) {
+                tracker.hasEverFoundedCity = true;
+            }
+            if (tracker.hasEverFoundedCity && !hasCapital && cities <= 1) {
                 tracker.activeCollapse = CollapseType::Conquest;
                 tracker.isEliminated = true;
                 LOG_INFO("Player %u ELIMINATED: conquest (capital lost, %d cities remaining)",

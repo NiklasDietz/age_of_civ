@@ -534,8 +534,12 @@ void MapRenderer::drawRiverEdges(vulkan_app::renderer::Renderer2D& renderer2d,
         const float y1 = vertices[v0 * 2 + 1];
         const float x2 = vertices[v1 * 2];
         const float y2 = vertices[v1 * 2 + 1];
-        renderer2d.drawLine(x1, y1, x2, y2,
-                            3.0f, 0.15f, 0.35f, 0.75f, 0.9f);
+        // Capsule with hemispherical caps: neighbouring river segments share
+        // a vertex, and the rounded caps overlap cleanly at the junction so
+        // the river reads as a continuous curve rather than detached bars.
+        // Radius is half the stroke width (≈ Civ 6 river weight at 1x zoom).
+        renderer2d.drawCapsule(x1, y1, x2, y2,
+                               2.5f, 0.10f, 0.35f, 0.80f, 1.0f, 0.0f);
     }
 }
 

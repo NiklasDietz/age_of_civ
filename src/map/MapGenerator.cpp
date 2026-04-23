@@ -486,74 +486,161 @@ void MapGenerator::generateRivers(HexGrid& grid, aoc::Random& rng) {
     const int32_t width  = grid.width();
     const int32_t height = grid.height();
 
-    // Simple river generation: start from random high-elevation tiles,
-    // flow toward lowest neighbor until reaching water.
-    int32_t riverCount = std::max(1, grid.tileCount() / 200);
+    // Rivers must originate at a mountain or hill and flow monotonically to
+    // a water tile.  Previous impl accepted any land with elevation >= 1 and
+    // committed edges even when the descent dead-ended inland, producing
+    // floating midland river stubs that the rotation-fixed edge renderer now
+    // exposed clearly.
+    //
+    // Algorithm:
+    //   1. Collect candidate source tiles (Mountain terrain OR Hills feature).
+    //   2. For each source: build a path following strict descent + tie-break
+    //      by highest distance-to-water heuristic.
+    //   3. Only commit the path's river edges if the path terminates at water.
+    //      A failed path contributes zero river edges.
+
+    // Pre-pass: distance-to-water BFS so we can tie-break toward outlets.
+    std::vector<int32_t> distToWater(static_cast<size_t>(grid.tileCount()), -1);
+    std::vector<int32_t> bfsQueue;
+    bfsQueue.reserve(static_cast<size_t>(grid.tileCount()));
+    for (int32_t i = 0; i < grid.tileCount(); ++i) {
+        if (isWater(grid.terrain(i))) {
+            distToWater[static_cast<size_t>(i)] = 0;
+            bfsQueue.push_back(i);
+        }
+    }
+    for (size_t qh = 0; qh < bfsQueue.size(); ++qh) {
+        const int32_t idx = bfsQueue[qh];
+        const int32_t d = distToWater[static_cast<size_t>(idx)];
+        const hex::AxialCoord c = grid.toAxial(idx);
+        const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(c);
+        for (const hex::AxialCoord& n : nbrs) {
+            if (!grid.isValid(n)) { continue; }
+            const int32_t ni = grid.toIndex(n);
+            if (distToWater[static_cast<size_t>(ni)] >= 0) { continue; }
+            if (isImpassable(grid.terrain(ni))) { continue; }
+            distToWater[static_cast<size_t>(ni)] = d + 1;
+            bfsQueue.push_back(ni);
+        }
+    }
+
+    // Gather river sources.
+    std::vector<int32_t> sources;
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            const int32_t idx = row * width + col;
+            const TerrainType t = grid.terrain(idx);
+            if (isWater(t) || isImpassable(t)) { continue; }
+            const FeatureType f = grid.feature(idx);
+            const bool isMountain = (t == TerrainType::Mountain);
+            const bool isHill     = (f == FeatureType::Hills);
+            if (!isMountain && !isHill) { continue; }
+            // Needs a reachable outlet.  Islands of hills with no BFS path to
+            // water are disqualified.
+            if (distToWater[static_cast<size_t>(idx)] < 1) { continue; }
+            sources.push_back(idx);
+        }
+    }
+    if (sources.empty()) { return; }
+
+    // Target density: ~1 river per 200 tiles, capped to source count.
+    const int32_t desiredRivers = std::max(1, grid.tileCount() / 200);
+    const int32_t riverCount = std::min(desiredRivers, static_cast<int32_t>(sources.size()));
+
+    // Shuffle sources so the first N picks are random.
+    for (size_t i = sources.size(); i > 1; --i) {
+        const size_t j = static_cast<size_t>(rng.nextInt(0, static_cast<int32_t>(i) - 1));
+        std::swap(sources[i - 1], sources[j]);
+    }
 
     for (int32_t r = 0; r < riverCount; ++r) {
-        // Find a random land tile with decent elevation
-        int32_t attempts = 50;
-        int32_t startIndex = -1;
-        while (attempts-- > 0) {
-            int32_t col = rng.nextInt(0, width - 1);
-            int32_t row = rng.nextInt(0, height - 1);
-            int32_t index = row * width + col;
-            if (!isWater(grid.terrain(index)) && grid.elevation(index) >= 1) {
-                startIndex = index;
-                break;
-            }
-        }
-        if (startIndex < 0) {
-            continue;
-        }
+        const int32_t startIndex = sources[static_cast<size_t>(r)];
 
-        // Flow downhill
+        struct Step { int32_t tileIndex; int32_t direction; };
+        std::vector<Step> path;
+        std::vector<uint8_t> visited(static_cast<size_t>(grid.tileCount()), 0);
+
         int32_t currentIndex = startIndex;
-        int32_t maxSteps = 30;
-        while (maxSteps-- > 0) {
-            hex::AxialCoord current = grid.toAxial(currentIndex);
-            std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(current);
+        visited[static_cast<size_t>(currentIndex)] = 1;
+        bool reachedWater = false;
+        const int32_t maxSteps = 40;
+        int32_t prevDir = -1;  // previous step direction; -1 on first step.
 
-            int32_t bestNeighborIndex = -1;
-            int8_t  bestElevation = grid.elevation(currentIndex);
-            int     bestDirection = -1;
+        for (int32_t step = 0; step < maxSteps; ++step) {
+            const hex::AxialCoord current = grid.toAxial(currentIndex);
+            const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(current);
+            const int8_t curElev = grid.elevation(currentIndex);
+            const int32_t curDist = distToWater[static_cast<size_t>(currentIndex)];
+
+            // Score candidates: strict descent preferred; among equal-elevation
+            // tiles prefer ones closer to water.  Revisits not allowed.
+            //
+            // Civ 6-style adjacency constraint: if there was a previous step,
+            // the next direction must be prevDir ± 2 (mod 6).  That forces the
+            // two river edges on this tile to share a vertex (be adjacent
+            // edges), instead of landing on opposite sides of the hex.  A
+            // straight-through river (prevDir == nextDir) puts the entry and
+            // exit edges on opposite edges of the tile, and they never connect
+            // — which is the "uses opposite edges of a tile" symptom.
+            int32_t bestIdx = -1;
+            int32_t bestDir = -1;
+            int8_t  bestElev = curElev;
+            int32_t bestDist = curDist;
 
             for (int dir = 0; dir < 6; ++dir) {
-                if (!grid.isValid(nbrs[static_cast<std::size_t>(dir)])) {
-                    continue;
+                if (prevDir >= 0) {
+                    const int32_t diff = ((dir - prevDir) % 6 + 6) % 6;
+                    if (diff != 2 && diff != 4) { continue; }
                 }
-                int32_t nIndex = grid.toIndex(nbrs[static_cast<std::size_t>(dir)]);
-                int8_t nElev = grid.elevation(nIndex);
+                const hex::AxialCoord& n = nbrs[static_cast<size_t>(dir)];
+                if (!grid.isValid(n)) { continue; }
+                const int32_t nIdx = grid.toIndex(n);
+                if (visited[static_cast<size_t>(nIdx)]) { continue; }
+                if (isImpassable(grid.terrain(nIdx))) { continue; }
+                const int8_t nElev = grid.elevation(nIdx);
+                const int32_t nDist = distToWater[static_cast<size_t>(nIdx)];
+                if (nDist < 0) { continue; }  // unreachable to any ocean
 
-                // Prefer lower elevation, with slight randomness for variety
-                if (nElev < bestElevation || (nElev == bestElevation && rng.chance(0.3f))) {
-                    bestElevation = nElev;
-                    bestNeighborIndex = nIndex;
-                    bestDirection = dir;
+                const bool strictlyLower = nElev < bestElev;
+                const bool equalButCloser = (nElev == bestElev) && (nDist < bestDist);
+                const bool equalEqualJitter = (nElev == bestElev) && (nDist == bestDist) && rng.chance(0.3f);
+                if (strictlyLower || equalButCloser || equalEqualJitter) {
+                    bestElev = nElev;
+                    bestDist = nDist;
+                    bestIdx = nIdx;
+                    bestDir = dir;
                 }
             }
 
-            if (bestDirection < 0) {
+            if (bestDir < 0) { break; }  // dead end — path discarded below
+
+            path.push_back({currentIndex, bestDir});
+            visited[static_cast<size_t>(bestIdx)] = 1;
+            prevDir = bestDir;
+
+            if (isWater(grid.terrain(bestIdx))) {
+                reachedWater = true;
                 break;
             }
+            currentIndex = bestIdx;
+        }
 
-            // Mark river edge on current tile
-            uint8_t edges = grid.riverEdges(currentIndex);
-            edges |= static_cast<uint8_t>(1u << bestDirection);
-            grid.setRiverEdges(currentIndex, edges);
+        if (!reachedWater) { continue; }
 
-            // Mark reverse edge on neighbor
-            int reverseDir = (bestDirection + 3) % 6;
-            uint8_t neighborEdges = grid.riverEdges(bestNeighborIndex);
+        // Commit edges only after confirming the river actually reaches water.
+        for (const Step& s : path) {
+            const hex::AxialCoord c = grid.toAxial(s.tileIndex);
+            const hex::AxialCoord n = hex::neighbors(c)[static_cast<size_t>(s.direction)];
+            const int32_t nIdx = grid.toIndex(n);
+
+            uint8_t edges = grid.riverEdges(s.tileIndex);
+            edges |= static_cast<uint8_t>(1u << s.direction);
+            grid.setRiverEdges(s.tileIndex, edges);
+
+            const int reverseDir = (s.direction + 3) % 6;
+            uint8_t neighborEdges = grid.riverEdges(nIdx);
             neighborEdges |= static_cast<uint8_t>(1u << reverseDir);
-            grid.setRiverEdges(bestNeighborIndex, neighborEdges);
-
-            // Stop if we reached water
-            if (isWater(grid.terrain(bestNeighborIndex))) {
-                break;
-            }
-
-            currentIndex = bestNeighborIndex;
+            grid.setRiverEdges(nIdx, neighborEdges);
         }
     }
 }
