@@ -134,7 +134,7 @@ struct GoodDef {
         case 0:  return TechId{4};   // Iron ore → Bronze Working
         case 1:  return TechId{0};   // Copper ore → Mining
         case 2:  return TechId{11};  // Coal → Industrialization
-        case 3:  return TechId{13};  // Oil → Refining
+        case 3:  return TechId{12};  // Oil → Refining  (was 13 = Economics, wrong)
         case 4:  return TechId{1};   // Horses → Animal Husbandry
         case 5:  return TechId{7};   // Niter → Apprenticeship
         case 6:  return TechId{18};  // Uranium → Nuclear Fission

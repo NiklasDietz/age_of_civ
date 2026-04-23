@@ -209,22 +209,25 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                 }
 
                 // Production-chain gateway bonus: techs that unlock whole
-                // downstream chains get a large flat bonus so they're not
-                // out-scored by era-5+ techs whose `techInformation` leader
-                // multiplier balloons their value.  Audit showed Refining
-                // (13) was being bypassed for Electricity (14), leaving
-                // the OIL chain dry despite oil tiles being on the map.
-                //   13 Refining:     OIL → PLASTICS → ELECTRONICS → CONSUMER
-                //   14 Electricity:  Electric Age IR + telecom chain
-                //   22 Precision Instruments: Semiconductor chain
-                //   16 Computers:    Microchip / Software chain
+                // downstream chains get a large flat bonus.  Tech IDs from
+                // TechTree.cpp — double-checked after discovering an earlier
+                // off-by-one had us boosting Economics (13) instead of
+                // Refining (12).
+                //   12 Refining:     OIL → PLASTICS → ELECTRONICS → CONSUMER
+                //   14 Electricity:  Electric Age IR + Electronics Plant
+                //   15 Mass Production: Industrial Complex
+                //   22 Precision Instruments: Semiconductor chain enabler
+                //   23 Semiconductors: Semi Fab building
+                //   16 Computers:    Microchip / Software chain + Research Lab
                 //   27 Internet:     Information Age chain
-                // Refining gets an extra-large bump because its chain is the
-                // most often-starved (no alternative feeds PLASTICS).
-                static constexpr std::array<uint32_t, 5> kChainGatewayTechs = {13u, 14u, 22u, 16u, 27u};
+                // Refining + Semiconductors get an extra-large bump because
+                // their chains are the most often-starved.
+                static constexpr std::array<uint32_t, 7> kChainGatewayTechs =
+                    {12u, 14u, 15u, 22u, 23u, 16u, 27u};
                 for (const uint32_t chainTech : kChainGatewayTechs) {
                     if (chainTech == tid.value) {
-                        score += (tid.value == 13u) ? 20000 : 12000;
+                        const bool primary = (tid.value == 12u) || (tid.value == 23u);
+                        score += primary ? 20000 : 12000;
                         break;
                     }
                 }

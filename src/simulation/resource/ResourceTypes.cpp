@@ -393,12 +393,12 @@ std::vector<ProductionRecipe> buildRecipes() {
     recipes.push_back({50, "Refine Natural Gas (Fuel)",
         {{goods::NATURAL_GAS, 2}},
         goods::FUEL, 2, BuildingId{2}, 1,
-        1, TechId{13}});
+        1, TechId{12}});  // Refining
 
     recipes.push_back({51, "Crack Natural Gas (Plastics)",
         {{goods::NATURAL_GAS, 1}},
         goods::PLASTICS, 1, BuildingId{2}, 1,
-        1, TechId{13}});
+        1, TechId{12}});  // Refining
 
     // ================================================================
     // Biogas — renewable gas substitute from livestock/food waste.
