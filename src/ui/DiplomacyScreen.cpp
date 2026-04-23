@@ -5,6 +5,7 @@
 
 #include "aoc/ui/DiplomacyScreen.hpp"
 #include "aoc/ui/UIManager.hpp"
+#include "aoc/ui/Theme.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -60,10 +61,16 @@ void DiplomacyScreen::open(UIManager& ui) {
         return;
     }
 
-    // Iterate over known players
+    // Iterate over MET players only. Unmet civs don't surface here —
+    // meeting someone via unit contact populates `hasMet`, then they
+    // appear in diplomacy. Prevents the earlier exploit where every
+    // player was visible from turn 0.
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState->players()) {
         const PlayerId otherId = playerPtr->id();
         if (otherId == this->m_player || otherId == BARBARIAN_PLAYER) {
+            continue;
+        }
+        if (!this->m_diplomacy->haveMet(this->m_player, otherId)) {
             continue;
         }
 
@@ -82,15 +89,20 @@ void DiplomacyScreen::open(UIManager& ui) {
             ppWidget->childSpacing = 4.0f;
         }
 
-        // Civ name and leader name
-        std::string nameText = std::string(civDefRef.name) + " - " + std::string(civDefRef.leaderName);
-        (void)ui.createLabel(playerPanel, {0.0f, 0.0f, 490.0f, 16.0f},
-                              LabelData{std::move(nameText), {1.0f, 0.9f, 0.5f, 1.0f}, 13.0f});
-
-        // Leader ability
-        std::string abilityText = "Ability: " + std::string(civDefRef.abilityName);
-        (void)ui.createLabel(playerPanel, {0.0f, 0.0f, 490.0f, 12.0f},
-                              LabelData{std::move(abilityText), {0.7f, 0.8f, 0.9f, 1.0f}, 10.0f});
+        // Portrait card: player-colour sprite + civ/leader heading +
+        // inline stats (ability, score, stance). Replaces two plain
+        // label rows with a richer header that matches the Civ-6-style
+        // diplomacy strip up top.
+        PortraitData portrait;
+        portrait.title = std::string(civDefRef.name) + " - "
+                        + std::string(civDefRef.leaderName);
+        portrait.tint = aoc::ui::theme().playerColor(static_cast<uint8_t>(otherId));
+        portrait.fallbackColor = portrait.tint;
+        portrait.stats.emplace_back("Ability", std::string(civDefRef.abilityName));
+        portrait.stats.emplace_back("Score", std::to_string(score));
+        portrait.stats.emplace_back("Stance", std::string(aoc::sim::stanceName(stance)));
+        (void)ui.createPortrait(
+            playerPanel, {0.0f, 0.0f, 490.0f, 56.0f}, std::move(portrait));
 
         // Relation and stance info
         std::string relationText = "Score: " + std::to_string(score)

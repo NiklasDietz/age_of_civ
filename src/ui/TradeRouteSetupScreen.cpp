@@ -208,6 +208,12 @@ void TradeRouteSetupScreen::buildDestinationPanel(UIManager& ui, WidgetId innerP
         if (otherPlayer->id() == this->m_player || otherPlayer->id() == BARBARIAN_PLAYER) {
             continue;
         }
+        // Must have met the rival before we can route traders to their
+        // cities. Without this the setup screen exposed unmet civs.
+        if (this->m_diplomacy == nullptr
+            || !this->m_diplomacy->haveMet(this->m_player, otherPlayer->id())) {
+            continue;
+        }
 
         // Check diplomatic status
         bool isAtWar = false;

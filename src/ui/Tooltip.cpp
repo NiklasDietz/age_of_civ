@@ -5,6 +5,7 @@
 
 #include "aoc/ui/Tooltip.hpp"
 #include "aoc/ui/BitmapFont.hpp"
+#include "aoc/ui/Theme.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -52,7 +53,7 @@ void TooltipManager::update(float mouseX, float mouseY,
 
     // Accumulate delay before showing
     this->m_showDelay += 1.0f;
-    if (this->m_showDelay < SHOW_DELAY_FRAMES) {
+    if (this->m_showDelay < theme().tooltipDelayFrames) {
         this->m_visible = false;
         return;
     }
@@ -251,6 +252,49 @@ void TooltipManager::update(float mouseX, float mouseY,
         this->m_y = mouseY - tooltipH - 5.0f;
     }
 
+    this->m_visible = true;
+}
+
+void TooltipManager::showText(std::string text, float mouseX, float mouseY,
+                              uint32_t screenW, uint32_t screenH) {
+    // Reset delay when text identity changes — widgets tend to have
+    // stable tooltip strings, so a same-text call lets the delay keep
+    // accumulating and avoids flicker while the cursor drifts inside
+    // the widget bounds.
+    if (text != this->m_text) {
+        this->m_text = std::move(text);
+        this->m_showDelay = 0.0f;
+    }
+    this->m_showDelay += 1.0f;
+    if (this->m_showDelay < theme().tooltipDelayFrames) {
+        this->m_visible = false;
+        return;
+    }
+    this->m_x = mouseX + TOOLTIP_OFFSET_X;
+    this->m_y = mouseY + TOOLTIP_OFFSET_Y;
+    // Clamp to screen so the tooltip stays visible at edges. Width/
+    // height estimate matches the `update()` path.
+    std::size_t lineCount = 1;
+    std::size_t maxLineLen = 0;
+    std::size_t currentLineLen = 0;
+    for (char ch : this->m_text) {
+        if (ch == '\n') {
+            ++lineCount;
+            if (currentLineLen > maxLineLen) { maxLineLen = currentLineLen; }
+            currentLineLen = 0;
+        } else {
+            ++currentLineLen;
+        }
+    }
+    if (currentLineLen > maxLineLen) { maxLineLen = currentLineLen; }
+    const float tooltipW = static_cast<float>(maxLineLen) * FONT_SIZE * 0.7f + PADDING * 2.0f;
+    const float tooltipH = static_cast<float>(lineCount) * LINE_HEIGHT + PADDING * 2.0f;
+    if (this->m_x + tooltipW > static_cast<float>(screenW)) {
+        this->m_x = mouseX - tooltipW - 5.0f;
+    }
+    if (this->m_y + tooltipH > static_cast<float>(screenH)) {
+        this->m_y = mouseY - tooltipH - 5.0f;
+    }
     this->m_visible = true;
 }
 

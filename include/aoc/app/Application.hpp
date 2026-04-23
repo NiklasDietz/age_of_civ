@@ -22,6 +22,8 @@
 #include "aoc/simulation/map/GoodyHuts.hpp"
 #include "aoc/core/Random.hpp"
 #include "aoc/ui/UIManager.hpp"
+#include "aoc/ui/ScreenRegistry.hpp"
+#include "aoc/ui/WidgetInspector.hpp"
 #include "aoc/ui/GameScreens.hpp"
 #include "aoc/ui/TradeScreen.hpp"
 #include "aoc/ui/TradeRouteSetupScreen.hpp"
@@ -29,6 +31,7 @@
 #include "aoc/ui/ReligionScreen.hpp"
 #include "aoc/ui/EventLog.hpp"
 #include "aoc/ui/MainMenu.hpp"
+#include "aoc/ui/SettingsMenu.hpp"
 #include "aoc/ui/ScoreScreen.hpp"
 #include "aoc/simulation/tech/EurekaBoost.hpp"
 #include "aoc/audio/SoundEvent.hpp"
@@ -162,6 +165,13 @@ private:
     /// Currently selected city (nullptr if none or unit selected).
     aoc::game::City* m_selectedCity = nullptr;
 
+    /// Previous-frame selection pointers. `updateHUD` diffs against these
+    /// and calls `rebuildUnitActionPanel` whenever the selection changes,
+    /// so the action panel stays in sync with click/cycle/end-turn paths
+    /// without each site needing to remember to rebuild.
+    aoc::game::Unit* m_prevSelectedUnit = nullptr;
+    aoc::game::City* m_prevSelectedCity = nullptr;
+
     // UI
     aoc::ui::UIManager m_uiManager;
     aoc::ui::WidgetId  m_turnLabel      = aoc::ui::INVALID_WIDGET;
@@ -171,6 +181,14 @@ private:
     aoc::ui::WidgetId  m_lastPlayerBanner = aoc::ui::INVALID_WIDGET; ///< "Waiting for you" glow
     aoc::ui::WidgetId  m_topBar         = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId  m_resourceLabel  = aoc::ui::INVALID_WIDGET;
+    /// Civ-6 style strip of player icons in the top bar. Children
+    /// rebuilt each frame from `updateDiploStrip` to reflect met /
+    /// at-war / allied state. One icon per known civ.
+    aoc::ui::WidgetId  m_diploStrip     = aoc::ui::INVALID_WIDGET;
+
+    /// Dev-time widget inspector. F11 toggles. Renders hover-highlight
+    /// + hovered/focused ids over the UI.
+    aoc::ui::WidgetInspector m_widgetInspector;
     aoc::ui::WidgetId  m_menuDropdown   = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId  m_confirmDialog  = aoc::ui::INVALID_WIDGET;
 
@@ -193,6 +211,23 @@ private:
 
     /// The unit selected when the action panel was last built (nullptr = no unit / city selected).
     aoc::game::Unit* m_actionPanelUnit = nullptr;
+    /// City-detail-open state at last rebuild. Used by
+    /// `rebuildUnitActionPanel` to detect when the bottom-right margin
+    /// needs to shift (past the city-detail panel).
+    bool m_actionPanelCityOpen = false;
+
+    /// Cached GLFW standard cursors. Created once at init; switched
+    /// per frame based on the hovered widget's `hoverCursor` field.
+    /// Enum: 0=default, 1=hand, 2=ibeam, 3=crosshair. Void* keeps
+    /// GLFW out of the header.
+    struct CursorHandles {
+        void* arrow     = nullptr;
+        void* hand      = nullptr;
+        void* ibeam     = nullptr;
+        void* crossHair = nullptr;
+        int32_t lastApplied = 0;
+    };
+    CursorHandles m_cursors;
 
     /// Show "Save before returning to main menu?" dialog.
     void showReturnToMenuConfirm();
@@ -212,6 +247,13 @@ private:
     aoc::ui::DiplomacyScreen    m_diplomacyScreen;
     aoc::ui::ReligionScreen     m_religionScreen;
     aoc::ui::ScoreScreen        m_scoreScreen;
+
+    /// Central registry for all modal screens + menus. Populated once in
+    /// `initialize()`; replaces the hand-maintained `anyScreenOpen` /
+    /// `closeAllScreens` enumerations. SettingsMenu registers here too,
+    /// closing the input-gate leak that let it swallow clicks in-game
+    /// without the input dispatcher knowing a screen was open.
+    aoc::ui::ScreenRegistry m_screenRegistry;
 
     // Turn event log
     aoc::ui::EventLog m_eventLog;
@@ -247,6 +289,10 @@ private:
 
     void buildHUD();
     void updateHUD();
+    /// Rebuild the diplo strip children from the current met/at-war
+    /// state. Cheap — drops existing children + adds one icon per
+    /// major player. Called each frame.
+    void updateDiploStrip();
 
     bool m_initialized = false;
 

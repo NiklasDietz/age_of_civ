@@ -9,6 +9,7 @@
  */
 
 #include "aoc/ui/Widget.hpp"
+#include "aoc/ui/IScreen.hpp"
 #include "aoc/core/Types.hpp"
 #include "aoc/map/HexCoord.hpp"
 
@@ -23,11 +24,11 @@ namespace aoc::game { class GameState; }
 namespace aoc::ui {
 
 /// Manages a single modal screen overlay.
-class ScreenBase {
+class ScreenBase : public IScreen {
 public:
-    virtual ~ScreenBase() = default;
+    ~ScreenBase() override = default;
 
-    [[nodiscard]] bool isOpen() const { return this->m_isOpen; }
+    [[nodiscard]] bool isOpen() const override { return this->m_isOpen; }
 
     /// Toggle the screen open/closed.
     void toggle(UIManager& ui);
@@ -42,16 +43,42 @@ public:
     virtual void open(UIManager& ui) = 0;
 
     /// Tear down the screen UI.
-    virtual void close(UIManager& ui) = 0;
+    void close(UIManager& ui) override = 0;
 
     /// Refresh dynamic content (labels, lists) while the screen is open.
     virtual void refresh(UIManager& ui) = 0;
+
+    /// Default resize: record new dimensions, tear down, and rebuild.
+    /// Screens may override for cheaper partial reflow (e.g., only
+    /// recompute the root overlay bounds instead of the whole tree).
+    void onResize(UIManager& ui, float width, float height) override;
 
 protected:
     WidgetId m_rootPanel = INVALID_WIDGET;
     bool m_isOpen = false;
     float m_screenW = 1280.0f;
     float m_screenH = 720.0f;
+
+    // Shared context every concrete screen needs. Previously repeated
+    // as per-screen members. Concrete screens can set these via
+    // `setBaseContext` and continue to use their own type-specific
+    // pointers where the lifetime differs.
+    aoc::game::GameState* m_baseGameState = nullptr;
+    const aoc::map::HexGrid* m_baseGrid = nullptr;
+    PlayerId m_basePlayer = INVALID_PLAYER;
+
+public:
+    /// Convenience setter that concrete screens can call from their
+    /// own `setContext` so the shared fields stay in sync.
+    void setBaseContext(aoc::game::GameState* gs,
+                         const aoc::map::HexGrid* grid,
+                         PlayerId player) {
+        this->m_baseGameState = gs;
+        this->m_baseGrid      = grid;
+        this->m_basePlayer    = player;
+    }
+
+protected:
 
     /// Helper to create the standard screen frame (dark overlay + centered panel).
     /// Returns the inner panel WidgetId to which screens add their content.

@@ -4,6 +4,8 @@
  */
 
 #include "aoc/app/Application.hpp"
+#include "aoc/ui/Theme.hpp"
+#include "aoc/ui/IconAtlas.hpp"
 #include "aoc/data/DataLoader.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -78,41 +80,13 @@
 
 // getNextCityName is defined in TurnProcessor.cpp
 
+#include "ApplicationHelpers.hpp"
+
 namespace aoc::app {
 
-namespace {
-
-/**
- * @brief Convert a turn number to a year string for display (e.g., "1600 BC").
- *
- * Eras:
- *   Turn   0-50:  start 4000 BC, 80 years per turn
- *   Turn  51-100: start   0 AD,  20 years per turn
- *   Turn 101-200: start 1000 AD,  5 years per turn
- *   Turn 201-350: start 1500 AD, ~2.7 years per turn (3 years used)
- *   Turn 351+:    start 1900 AD,  1 year per turn
- */
-std::string turnToYear(TurnNumber turn) {
-    int32_t year = 0;
-    if (turn <= 50) {
-        year = -4000 + static_cast<int32_t>(turn) * 80;
-    } else if (turn <= 100) {
-        year = 0 + static_cast<int32_t>(turn - 51) * 20;
-    } else if (turn <= 200) {
-        year = 1000 + static_cast<int32_t>(turn - 101) * 5;
-    } else if (turn <= 350) {
-        year = 1500 + static_cast<int32_t>(turn - 201) * 3;
-    } else {
-        year = 1900 + static_cast<int32_t>(turn - 351);
-    }
-
-    if (year < 0) {
-        return std::to_string(-year) + " BC";
-    }
-    return std::to_string(year) + " AD";
-}
-
-} // anonymous namespace
+// `turnToYear` now lives in ApplicationHelpers.hpp so the HUD
+// translation unit (Application_HUD.cpp) shares the same implementation.
+using aoc::app::detail::turnToYear;
 
 Application::Application() = default;
 
@@ -200,9 +174,54 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_settingsMenu.settings() = aoc::ui::loadSettings("settings.cfg");
     this->applySettings();
 
+    // Register every modal screen with the central registry. Any future
+    // screen just needs one `add()` call — the `anyScreenOpen`,
+    // `closeAllScreens`, and `onResize` helpers all pick it up
+    // automatically. SettingsMenu is included so it no longer slips past
+    // the input-gate while open.
+    this->m_screenRegistry.add(&this->m_productionScreen);
+    this->m_screenRegistry.add(&this->m_techScreen);
+    this->m_screenRegistry.add(&this->m_governmentScreen);
+    this->m_screenRegistry.add(&this->m_economyScreen);
+    this->m_screenRegistry.add(&this->m_cityDetailScreen);
+    this->m_screenRegistry.add(&this->m_tradeScreen);
+    this->m_screenRegistry.add(&this->m_tradeRouteSetupScreen);
+    this->m_screenRegistry.add(&this->m_diplomacyScreen);
+    this->m_screenRegistry.add(&this->m_religionScreen);
+    this->m_screenRegistry.add(&this->m_scoreScreen);
+    this->m_screenRegistry.add(&this->m_settingsMenu);
+
+    // Seed the icon atlas with built-in placeholders so any widget
+    // that references `resources.*` / `civs.*` / etc. renders a
+    // distinct colour. Optional overrides from `data/icons.txt`.
+    aoc::ui::IconAtlas::instance().seedBuiltIns();
+    (void)aoc::ui::IconAtlas::instance().loadPlaceholders("data/icons.txt");
+
+    // Standard GLFW cursors created once — swapped per-frame based on
+    // the hovered widget's `hoverCursor` hint. Saves repeated alloc.
+    // Stored as void* in the header so GLFW stays out of public API.
+    this->m_cursors.arrow     = glfwCreateStandardCursor(GLFW_ARROW_CURSOR);
+    this->m_cursors.hand      = glfwCreateStandardCursor(GLFW_HAND_CURSOR);
+    this->m_cursors.ibeam     = glfwCreateStandardCursor(GLFW_IBEAM_CURSOR);
+    this->m_cursors.crossHair = glfwCreateStandardCursor(GLFW_CROSSHAIR_CURSOR);
+
     this->m_appState = AppState::MainMenu;
     const float screenW = static_cast<float>(fbWidth);
     const float screenH = static_cast<float>(fbHeight);
+
+    // Seed the global Theme with the initial viewport + DPI. The resize
+    // handler keeps these in sync for window moves across monitors.
+    {
+        aoc::ui::Theme& t = aoc::ui::theme();
+        t.viewportW = screenW;
+        t.viewportH = screenH;
+        float xscale = 1.0f;
+        float yscale = 1.0f;
+        glfwGetWindowContentScale(this->m_window.handle(), &xscale, &yscale);
+        t.dpiScale = std::max(xscale, yscale);
+        if (t.dpiScale <= 0.0f) { t.dpiScale = 1.0f; }
+    }
+
     this->buildMainMenu(screenW, screenH);
 
     // Publish DBus service on the session bus so external tooling (MCP shim,
@@ -754,6 +773,10 @@ void Application::run() {
                 static_cast<float>(frame.extent.height));
             this->m_uiManager.layout();
             this->m_uiManager.render(*this->m_renderer2d);
+            this->m_widgetInspector.render(
+                *this->m_renderer2d, this->m_uiManager,
+                static_cast<float>(this->m_inputManager.mouseX()),
+                static_cast<float>(this->m_inputManager.mouseY()));
 
             this->m_renderer2d->end(frame.commandBuffer);
 
@@ -769,6 +792,11 @@ void Application::run() {
         // -- Debug Console (backtick key toggles, intercepts input when open) --
         if (this->m_inputManager.isKeyPressed(GLFW_KEY_GRAVE_ACCENT)) {
             this->m_debugConsole.toggle();
+        }
+        // F11 toggles the dev widget inspector overlay. Visible both
+        // in-game and on menus so layout bugs surface anywhere.
+        if (this->m_inputManager.isKeyPressed(GLFW_KEY_F11)) {
+            this->m_widgetInspector.toggle();
         }
         if (this->m_debugConsole.isOpen()) {
             // Route character input to console
@@ -1296,25 +1324,69 @@ void Application::run() {
         this->m_religionScreen.refresh(this->m_uiManager);
         this->m_scoreScreen.refresh(this->m_uiManager);
 
-        // Update tooltip when mouse is not over UI and no blocking screen is open
-        if ((!this->anyScreenOpen() || this->onlyCityDetailScreenOpen())
-            && !this->m_uiConsumedInput
-            && this->m_uiManager.hoveredWidget() == aoc::ui::INVALID_WIDGET) {
-            this->m_gameRenderer.tooltipManager().update(
-                static_cast<float>(this->m_inputManager.mouseX()),
-                static_cast<float>(this->m_inputManager.mouseY()),
-                this->m_gameState, this->m_hexGrid,
-                this->m_cameraController, this->m_fogOfWar,
-                PlayerId{0}, fbWidth, fbHeight,
-                NULL_ENTITY);
-        } else {
-            // Mouse is over UI - hide the map tooltip
-            this->m_gameRenderer.tooltipManager().hide();
+        // Tooltip dispatch. Three cases:
+        //   (a) hovered widget has its own tooltip text → show that
+        //       (widgets opt in via `setWidgetTooltip`);
+        //   (b) mouse is over the map with no blocking screen → show
+        //       the tile/unit/city tooltip via `tooltipManager.update`;
+        //   (c) everything else → hide.
+        {
+            const aoc::ui::WidgetId hovered = this->m_uiManager.hoveredWidget();
+            const bool mapClickable = (!this->anyScreenOpen()
+                                       || this->onlyCityDetailScreenOpen())
+                                      && !this->m_uiConsumedInput;
+
+            if (hovered != aoc::ui::INVALID_WIDGET) {
+                std::string_view widgetTip = this->m_uiManager.widgetTooltip(hovered);
+                if (!widgetTip.empty()) {
+                    this->m_gameRenderer.tooltipManager().showText(
+                        std::string(widgetTip),
+                        static_cast<float>(this->m_inputManager.mouseX()),
+                        static_cast<float>(this->m_inputManager.mouseY()),
+                        fbWidth, fbHeight);
+                } else {
+                    this->m_gameRenderer.tooltipManager().hide();
+                }
+            } else if (mapClickable) {
+                this->m_gameRenderer.tooltipManager().update(
+                    static_cast<float>(this->m_inputManager.mouseX()),
+                    static_cast<float>(this->m_inputManager.mouseY()),
+                    this->m_gameState, this->m_hexGrid,
+                    this->m_cameraController, this->m_fogOfWar,
+                    PlayerId{0}, fbWidth, fbHeight,
+                    NULL_ENTITY);
+            } else {
+                this->m_gameRenderer.tooltipManager().hide();
+            }
         }
 
         // Sync selection to renderer and update HUD text
         // Selection highlight deferred: renderer needs Unit* or position-based highlight
         this->updateHUD();
+
+        // Drive UI animations (alpha tweens, hover scale, tab-underline
+        // slide, button hold-to-repeat, flash decay). Passes deltaTime
+        // accumulated since the last frame.
+        this->m_uiManager.tickAnimations(deltaTime);
+
+        // Cursor shape from hovered widget's `hoverCursor` hint.
+        // Enum mapping: 0=default, 1=hand, 2=ibeam, 3=crosshair.
+        {
+            const aoc::ui::WidgetId h = this->m_uiManager.hoveredWidget();
+            int32_t want = 0;
+            if (h != aoc::ui::INVALID_WIDGET) {
+                const aoc::ui::Widget* hw = this->m_uiManager.getWidget(h);
+                if (hw != nullptr) { want = hw->hoverCursor; }
+            }
+            if (want != this->m_cursors.lastApplied) {
+                void* picked = this->m_cursors.arrow;
+                if (want == 1)      { picked = this->m_cursors.hand; }
+                else if (want == 2) { picked = this->m_cursors.ibeam; }
+                else if (want == 3) { picked = this->m_cursors.crossHair; }
+                glfwSetCursor(this->m_window.handle(), static_cast<GLFWcursor*>(picked));
+                this->m_cursors.lastApplied = want;
+            }
+        }
 
         // -- Render --
         if (fbWidth == 0 || fbHeight == 0) {
@@ -1348,6 +1420,17 @@ void Application::run() {
             &this->m_eventLog,
             &this->m_notificationManager,
             &this->m_tutorialManager);
+
+        // Dev-only widget inspector overlay — toggled via F11.
+        // Drawn last so it sits on top of HUD + screens.
+        if (this->m_widgetInspector.isEnabled()) {
+            this->m_renderer2d->resetCamera();
+            this->m_renderer2d->setZoom(1.0f);
+            this->m_widgetInspector.render(
+                *this->m_renderer2d, this->m_uiManager,
+                static_cast<float>(this->m_inputManager.mouseX()),
+                static_cast<float>(this->m_inputManager.mouseY()));
+        }
 
         // Spectator HUD overlay (own begin/end batch, screen-space)
         if (false && this->m_spectatorMode) { // DEBUG: disabled HUD
@@ -1551,6 +1634,15 @@ void Application::returnToMainMenu() {
 }
 
 void Application::buildMainMenu(float screenW, float screenH) {
+    // Tear down any previous instance so resize-triggered rebuilds
+    // don't leave a ghost menu behind the new one. Cheap no-op if not
+    // built. Same goes for the settings overlay that can sit on top.
+    if (this->m_mainMenu.isBuilt()) {
+        this->m_mainMenu.destroy(this->m_uiManager);
+    }
+    if (this->m_settingsMenu.isBuilt()) {
+        this->m_settingsMenu.destroy(this->m_uiManager);
+    }
     this->m_mainMenu.build(
         this->m_uiManager, screenW, screenH,
         [this, screenW, screenH]() {
@@ -1632,6 +1724,16 @@ void Application::shutdown() {
         return;
     }
 
+    // Tear down cached GLFW cursors. Safe to pass nullptr to destroy.
+    glfwDestroyCursor(static_cast<GLFWcursor*>(this->m_cursors.arrow));
+    glfwDestroyCursor(static_cast<GLFWcursor*>(this->m_cursors.hand));
+    glfwDestroyCursor(static_cast<GLFWcursor*>(this->m_cursors.ibeam));
+    glfwDestroyCursor(static_cast<GLFWcursor*>(this->m_cursors.crossHair));
+    this->m_cursors.arrow = nullptr;
+    this->m_cursors.hand  = nullptr;
+    this->m_cursors.ibeam = nullptr;
+    this->m_cursors.crossHair = nullptr;
+
     this->m_dbusService.stop();
 
     if (this->m_graphicsDevice) {
@@ -1660,72 +1762,72 @@ void Application::onResize(uint32_t width, uint32_t height) {
     this->m_uiManager.setScreenSize(static_cast<float>(width),
                                      static_cast<float>(height));
 
-    // Close and reopen any open game screens so they rebuild with new dimensions.
-    // Modal screens use absolute pixel positions based on screen size at open() time.
+    // Refresh the global Theme. DPI can change too (monitor swap), so
+    // re-query GLFW rather than assume a one-time startup value.
+    {
+        aoc::ui::Theme& t = aoc::ui::theme();
+        t.viewportW = static_cast<float>(width);
+        t.viewportH = static_cast<float>(height);
+        float xscale = 1.0f;
+        float yscale = 1.0f;
+        glfwGetWindowContentScale(this->m_window.handle(), &xscale, &yscale);
+        // Use the larger of the two so UI stays legible on non-square
+        // DPI (rare but seen on some multi-monitor setups).
+        t.dpiScale = std::max(xscale, yscale);
+        if (t.dpiScale <= 0.0f) { t.dpiScale = 1.0f; }
+    }
+
+    // Broadcast resize to every registered screen. Each screen stores
+    // its new dimensions and, if open, tears down + rebuilds so absolute
+    // pixel layouts refresh. Future screens added to the registry pick
+    // this up automatically.
     const float newW = static_cast<float>(width);
     const float newH = static_cast<float>(height);
+    this->m_screenRegistry.onResize(this->m_uiManager, newW, newH);
 
+    // Main-menu-state screens aren't in the registry (they predate
+    // IScreen) so rebuild them by hand. Cheap: open/close pattern.
+    if (this->m_appState == AppState::MainMenu) {
+        if (this->m_mainMenu.isBuilt()) {
+            this->buildMainMenu(newW, newH);
+        }
+        if (this->m_gameSetupScreen.isBuilt()) {
+            this->m_gameSetupScreen.destroy(this->m_uiManager);
+            // Re-open via the setup path so the callbacks stay wired.
+            this->m_gameSetupScreen.build(
+                this->m_uiManager, newW, newH,
+                [this](const aoc::ui::GameSetupConfig& config) {
+                    this->m_gameSetupScreen.destroy(this->m_uiManager);
+                    this->startGame(config);
+                },
+                [this, newW, newH]() {
+                    this->m_gameSetupScreen.destroy(this->m_uiManager);
+                    this->buildMainMenu(newW, newH);
+                });
+        }
+    }
+
+    // Rebuild the unit action panel so the bottom-right anchored widget
+    // picks up the new window corner. Drop the menu dropdown — it uses
+    // absolute positioning anchored on a one-off click.
     if (this->m_appState == AppState::InGame) {
-        // Propagate new screen size to all screens before reopening
-        this->m_productionScreen.setScreenSize(newW, newH);
-        this->m_techScreen.setScreenSize(newW, newH);
-        this->m_governmentScreen.setScreenSize(newW, newH);
-        this->m_economyScreen.setScreenSize(newW, newH);
-        this->m_tradeScreen.setScreenSize(newW, newH);
-        this->m_tradeRouteSetupScreen.setScreenSize(newW, newH);
-        this->m_diplomacyScreen.setScreenSize(newW, newH);
-        this->m_religionScreen.setScreenSize(newW, newH);
-        this->m_scoreScreen.setScreenSize(newW, newH);
-        this->m_cityDetailScreen.setScreenSize(newW, newH);
-
-        if (this->m_productionScreen.isOpen()) {
-            this->m_productionScreen.close(this->m_uiManager);
-            this->m_productionScreen.open(this->m_uiManager);
-        }
-        if (this->m_techScreen.isOpen()) {
-            this->m_techScreen.close(this->m_uiManager);
-            this->m_techScreen.open(this->m_uiManager);
-        }
-        if (this->m_governmentScreen.isOpen()) {
-            this->m_governmentScreen.close(this->m_uiManager);
-            this->m_governmentScreen.open(this->m_uiManager);
-        }
-        if (this->m_economyScreen.isOpen()) {
-            this->m_economyScreen.close(this->m_uiManager);
-            this->m_economyScreen.open(this->m_uiManager);
-        }
-        if (this->m_tradeScreen.isOpen()) {
-            this->m_tradeScreen.close(this->m_uiManager);
-            this->m_tradeScreen.open(this->m_uiManager);
-        }
-        if (this->m_tradeRouteSetupScreen.isOpen()) {
-            this->m_tradeRouteSetupScreen.close(this->m_uiManager);
-            this->m_tradeRouteSetupScreen.open(this->m_uiManager);
-        }
-        if (this->m_diplomacyScreen.isOpen()) {
-            this->m_diplomacyScreen.close(this->m_uiManager);
-            this->m_diplomacyScreen.open(this->m_uiManager);
-        }
-        if (this->m_religionScreen.isOpen()) {
-            this->m_religionScreen.close(this->m_uiManager);
-            this->m_religionScreen.open(this->m_uiManager);
-        }
-        if (this->m_scoreScreen.isOpen()) {
-            this->m_scoreScreen.close(this->m_uiManager);
-            this->m_scoreScreen.open(this->m_uiManager);
-        }
-        if (this->m_cityDetailScreen.isOpen()) {
-            this->m_cityDetailScreen.close(this->m_uiManager);
-            this->m_cityDetailScreen.open(this->m_uiManager);
-        }
-
-        // Rebuild the unit action panel to pick up the new screen size
         this->rebuildUnitActionPanel();
 
-        // Close menu dropdown if open (it uses absolute positioning)
         if (this->m_menuDropdown != aoc::ui::INVALID_WIDGET) {
             this->m_uiManager.removeWidget(this->m_menuDropdown);
             this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
+        }
+
+        // Help overlay + confirm dialog are full-screen panels created
+        // with a snapshot of the viewport at open time. Tear them down
+        // so they re-open at current dimensions on the next trigger.
+        if (this->m_helpOverlay != aoc::ui::INVALID_WIDGET) {
+            this->m_uiManager.removeWidget(this->m_helpOverlay);
+            this->m_helpOverlay = aoc::ui::INVALID_WIDGET;
+        }
+        if (this->m_confirmDialog != aoc::ui::INVALID_WIDGET) {
+            this->m_uiManager.removeWidget(this->m_confirmDialog);
+            this->m_confirmDialog = aoc::ui::INVALID_WIDGET;
         }
     }
 }
@@ -2565,8 +2667,21 @@ void Application::spawnStartingEntities(aoc::sim::CivId civId) {
         humanPlayer->eureka().owner = 0;
         humanPlayer->banking().owner = 0;
 
-        // Spawn starting units
-        hex::AxialCoord warriorPos = this->findNearbyLandTile({capitalPos.q + 1, capitalPos.r});
+        // Spawn starting units. Try each adjacent neighbour in turn so
+        // the warrior never overlaps the settler tile. Fall back to the
+        // spiral search (which may still collide on coastal starts).
+        hex::AxialCoord warriorPos = capitalPos;
+        const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(capitalPos);
+        for (const aoc::hex::AxialCoord& n : nbrs) {
+            if (!this->m_hexGrid.isValid(n)) { continue; }
+            const int32_t idx = this->m_hexGrid.toIndex(n);
+            if (this->m_hexGrid.movementCost(idx) <= 0) { continue; }
+            warriorPos = n;
+            break;
+        }
+        if (warriorPos == capitalPos) {
+            warriorPos = this->findNearbyLandTile({capitalPos.q + 1, capitalPos.r});
+        }
         humanPlayer->addUnit(UnitTypeId{3}, capitalPos);
         humanPlayer->addUnit(UnitTypeId{0}, warriorPos);
     }
@@ -2790,987 +2905,37 @@ void Application::placeMapResources() {
     LOG_INFO("Placed %d resources on map", totalPlaced);
 }
 
-// ============================================================================
-// HUD
-// ============================================================================
-
-void Application::buildHUD() {
-    const std::pair<uint32_t, uint32_t> hudFbSize = this->m_window.framebufferSize();
-    float screenW = static_cast<float>(hudFbSize.first);
-
-    // ================================================================
-    // Top bar: full width. Resources on left, buttons on right.
-    // ================================================================
-    this->m_topBar = this->m_uiManager.createPanel(
-        {0.0f, 0.0f, screenW, 32.0f},
-        aoc::ui::PanelData{{0.06f, 0.06f, 0.10f, 0.90f}, 0.0f});
-    {
-        aoc::ui::Widget* bar = this->m_uiManager.getWidget(this->m_topBar);
-        bar->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
-        bar->padding = {4.0f, 6.0f, 4.0f, 6.0f};
-        bar->childSpacing = 6.0f;
-        bar->anchor = aoc::ui::Anchor::TopLeft;
-    }
-
-    // Helper for top bar buttons
-    // auto required: lambda type is unnameable
-    auto makeTopBtn = [this](aoc::ui::WidgetId parent, const std::string& label,
-                              float width, std::function<void()> onClick) {
-        aoc::ui::ButtonData btn;
-        btn.label = label;
-        btn.fontSize = 11.0f;
-        btn.normalColor  = {0.18f, 0.18f, 0.22f, 0.9f};
-        btn.hoverColor   = {0.28f, 0.28f, 0.35f, 0.9f};
-        btn.pressedColor = {0.12f, 0.12f, 0.16f, 0.9f};
-        btn.labelColor   = {0.9f, 0.9f, 0.9f, 1.0f};
-        btn.cornerRadius = 3.0f;
-        btn.onClick = std::move(onClick);
-        return this->m_uiManager.createButton(
-            parent, {0.0f, 0.0f, width, 22.0f}, std::move(btn));
-    };
-
-    // LEFT SIDE: Resource display
-    this->m_resourceLabel = this->m_uiManager.createLabel(
-        this->m_topBar, {0.0f, 0.0f, 700.0f, 22.0f},
-        aoc::ui::LabelData{"Resources: ...", {0.75f, 0.80f, 0.65f, 1.0f}, 10.0f});
-
-    // Spacer to push buttons to the right
-    [[maybe_unused]] aoc::ui::WidgetId spacer = this->m_uiManager.createPanel(
-        this->m_topBar, {0.0f, 0.0f, 1.0f, 22.0f},
-        aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
-
-    // RIGHT SIDE: Game screen buttons
-    makeTopBtn(this->m_topBar, "Tech", 50.0f, [this]() {
-        if (!this->m_techScreen.isOpen()) {
-            this->m_techScreen.setContext(&this->m_gameState, 0);
-            this->m_techScreen.open(this->m_uiManager);
-        } else {
-            this->m_techScreen.close(this->m_uiManager);
-        }
-    });
-
-    makeTopBtn(this->m_topBar, "Gov", 44.0f, [this]() {
-        if (!this->m_governmentScreen.isOpen()) {
-            this->m_governmentScreen.setContext(&this->m_gameState, 0);
-            this->m_governmentScreen.open(this->m_uiManager);
-        } else {
-            this->m_governmentScreen.close(this->m_uiManager);
-        }
-    });
-
-    makeTopBtn(this->m_topBar, "Econ", 50.0f, [this]() {
-        if (!this->m_economyScreen.isOpen()) {
-            this->m_economyScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0, &this->m_economy.market());
-            this->m_economyScreen.open(this->m_uiManager);
-        } else {
-            this->m_economyScreen.close(this->m_uiManager);
-        }
-    });
-
-    makeTopBtn(this->m_topBar, "Trade", 50.0f, [this]() {
-        if (!this->m_tradeScreen.isOpen()) {
-            this->m_tradeScreen.setContext(&this->m_gameState, 0,
-                                            &this->m_economy.market(),
-                                            &this->m_diplomacy);
-            this->m_tradeScreen.open(this->m_uiManager);
-        } else {
-            this->m_tradeScreen.close(this->m_uiManager);
-        }
-    });
-
-    makeTopBtn(this->m_topBar, "Routes", 60.0f, [this]() {
-        if (!this->m_tradeRouteSetupScreen.isOpen()) {
-            this->m_tradeRouteSetupScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0,
-                                                      &this->m_economy.market(),
-                                                      &this->m_diplomacy);
-            this->m_tradeRouteSetupScreen.open(this->m_uiManager);
-        } else {
-            this->m_tradeRouteSetupScreen.close(this->m_uiManager);
-        }
-    });
-
-    makeTopBtn(this->m_topBar, "Diplo", 50.0f, [this]() {
-        if (!this->m_diplomacyScreen.isOpen()) {
-            this->m_diplomacyScreen.setContext(&this->m_gameState, 0, &this->m_diplomacy,
-                                                &this->m_hexGrid, &this->m_dealTracker);
-            this->m_diplomacyScreen.open(this->m_uiManager);
-        } else {
-            this->m_diplomacyScreen.close(this->m_uiManager);
-        }
-    });
-
-    // Separator
-    [[maybe_unused]] aoc::ui::WidgetId sep = this->m_uiManager.createPanel(
-        this->m_topBar, {0.0f, 0.0f, 2.0f, 22.0f},
-        aoc::ui::PanelData{{0.3f, 0.3f, 0.35f, 0.5f}, 0.0f});
-
-    // MENU button -- toggles a dropdown with Save/Load/Settings
-    makeTopBtn(this->m_topBar, "Menu", 55.0f, [this]() {
-        if (this->m_menuDropdown != aoc::ui::INVALID_WIDGET) {
-            // Close dropdown
-            this->m_uiManager.removeWidget(this->m_menuDropdown);
-            this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
-        } else {
-            // Open dropdown at top-right
-            const std::pair<uint32_t, uint32_t> dropFbSize = this->m_window.framebufferSize();
-            float dropX = static_cast<float>(dropFbSize.first) - 120.0f;
-            float dropY = 34.0f;
-
-            this->m_menuDropdown = this->m_uiManager.createPanel(
-                {dropX, dropY, 110.0f, 150.0f},
-                aoc::ui::PanelData{{0.10f, 0.10f, 0.14f, 0.95f}, 4.0f});
-            {
-                aoc::ui::Widget* dp = this->m_uiManager.getWidget(this->m_menuDropdown);
-                dp->padding = {6.0f, 6.0f, 6.0f, 6.0f};
-                dp->childSpacing = 4.0f;
-            }
-
-            // auto required: lambda type is unnameable
-            auto makeDropBtn = [this](aoc::ui::WidgetId parent, const std::string& label,
-                                       std::function<void()> onClick) {
-                aoc::ui::ButtonData btn;
-                btn.label = label;
-                btn.fontSize = 12.0f;
-                btn.normalColor  = {0.15f, 0.15f, 0.20f, 0.9f};
-                btn.hoverColor   = {0.25f, 0.25f, 0.32f, 0.9f};
-                btn.pressedColor = {0.10f, 0.10f, 0.14f, 0.9f};
-                btn.labelColor   = {0.9f, 0.9f, 0.9f, 1.0f};
-                btn.cornerRadius = 3.0f;
-                btn.onClick = std::move(onClick);
-                [[maybe_unused]] aoc::ui::WidgetId id = this->m_uiManager.createButton(
-                    parent, {0.0f, 0.0f, 98.0f, 28.0f}, std::move(btn));
-            };
-
-            makeDropBtn(this->m_menuDropdown, "Save Game", [this]() {
-                ErrorCode result = aoc::save::saveGame(
-                    "quicksave.aoc", this->m_gameState, this->m_hexGrid,
-                    this->m_turnManager, this->m_economy, this->m_diplomacy,
-                    this->m_fogOfWar, this->m_gameRng);
-                if (result == ErrorCode::Ok) { LOG_INFO("Game saved"); }
-                else { LOG_ERROR("Save failed"); }
-                this->m_uiManager.removeWidget(this->m_menuDropdown);
-                this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
-            });
-
-            makeDropBtn(this->m_menuDropdown, "Load Game", [this]() {
-                ErrorCode result = aoc::save::loadGame(
-                    "quicksave.aoc", this->m_gameState, this->m_hexGrid,
-                    this->m_turnManager, this->m_economy, this->m_diplomacy,
-                    this->m_fogOfWar, this->m_gameRng);
-                if (result == ErrorCode::Ok) {
-                    LOG_INFO("Game loaded");
-                    this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, 0);
-                } else { LOG_ERROR("Load failed"); }
-                this->m_uiManager.removeWidget(this->m_menuDropdown);
-                this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
-            });
-
-            makeDropBtn(this->m_menuDropdown, "Settings", [this]() {
-                this->m_uiManager.removeWidget(this->m_menuDropdown);
-                this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
-                const std::pair<uint32_t, uint32_t> settingsFbSize = this->m_window.framebufferSize();
-                if (!this->m_settingsMenu.isBuilt()) {
-                    this->m_settingsMenu.build(
-                        this->m_uiManager,
-                        static_cast<float>(settingsFbSize.first), static_cast<float>(settingsFbSize.second),
-                        [this]() {
-                            aoc::ui::saveSettings(this->m_settingsMenu.settings(), "settings.cfg");
-                            this->m_settingsMenu.destroy(this->m_uiManager);
-                            this->applySettings();
-                        });
-                }
-            });
-
-            makeDropBtn(this->m_menuDropdown, "Main Menu", [this]() {
-                this->m_uiManager.removeWidget(this->m_menuDropdown);
-                this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
-                this->showReturnToMenuConfirm();
-            });
-
-            makeDropBtn(this->m_menuDropdown, "Quit", [this]() {
-                glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
-            });
-        }
-    });
-
-    // ================================================================
-    // Info panel (below top bar)
-    // ================================================================
-    aoc::ui::WidgetId infoPanel = this->m_uiManager.createPanel(
-        {10.0f, 42.0f, 250.0f, 170.0f},
-        aoc::ui::PanelData{{0.08f, 0.08f, 0.12f, 0.85f}, 6.0f});
-    {
-        aoc::ui::Widget* panel = this->m_uiManager.getWidget(infoPanel);
-        panel->padding = {8.0f, 10.0f, 8.0f, 10.0f};
-        panel->childSpacing = 5.0f;
-        panel->anchor = aoc::ui::Anchor::TopLeft;
-    }
-
-    this->m_turnLabel = this->m_uiManager.createLabel(
-        infoPanel, {0.0f, 0.0f, 230.0f, 14.0f},
-        aoc::ui::LabelData{"Turn 0", {1.0f, 0.9f, 0.6f, 1.0f}, 14.0f});
-
-    this->m_economyLabel = this->m_uiManager.createLabel(
-        infoPanel, {0.0f, 0.0f, 230.0f, 12.0f},
-        aoc::ui::LabelData{"Barter  Gold:100", {0.6f, 0.85f, 0.6f, 1.0f}, 11.0f});
-
-    this->m_selectionLabel = this->m_uiManager.createLabel(
-        infoPanel, {0.0f, 0.0f, 230.0f, 12.0f},
-        aoc::ui::LabelData{"No selection", {0.8f, 0.8f, 0.8f, 1.0f}, 11.0f});
-
-    // Research progress label + bar
-    this->m_researchLabel = this->m_uiManager.createLabel(
-        infoPanel, {0.0f, 0.0f, 230.0f, 12.0f},
-        aoc::ui::LabelData{"No research", {0.7f, 0.85f, 1.0f, 1.0f}, 10.0f});
-
-    constexpr float PROGRESS_BAR_W = 220.0f;
-    constexpr float PROGRESS_BAR_H = 6.0f;
-
-    this->m_researchBar = this->m_uiManager.createPanel(
-        infoPanel, {0.0f, 0.0f, PROGRESS_BAR_W, PROGRESS_BAR_H},
-        aoc::ui::PanelData{{0.15f, 0.15f, 0.20f, 0.8f}, 2.0f});
-    this->m_researchBarFill = this->m_uiManager.createPanel(
-        this->m_researchBar, {0.0f, 0.0f, 0.0f, PROGRESS_BAR_H},
-        aoc::ui::PanelData{{0.2f, 0.7f, 0.3f, 0.9f}, 2.0f});
-
-    // Production progress label + bar (visible when city selected)
-    this->m_productionLabel = this->m_uiManager.createLabel(
-        infoPanel, {0.0f, 0.0f, 230.0f, 12.0f},
-        aoc::ui::LabelData{"", {0.9f, 0.75f, 0.4f, 1.0f}, 10.0f});
-
-    this->m_productionBar = this->m_uiManager.createPanel(
-        infoPanel, {0.0f, 0.0f, PROGRESS_BAR_W, PROGRESS_BAR_H},
-        aoc::ui::PanelData{{0.15f, 0.15f, 0.20f, 0.8f}, 2.0f});
-    this->m_productionBarFill = this->m_uiManager.createPanel(
-        this->m_productionBar, {0.0f, 0.0f, 0.0f, PROGRESS_BAR_H},
-        aoc::ui::PanelData{{0.85f, 0.6f, 0.15f, 0.9f}, 2.0f});
-
-    // Hide production bar initially
-    this->m_uiManager.setVisible(this->m_productionLabel, false);
-    this->m_uiManager.setVisible(this->m_productionBar, false);
-
-    // Bottom-right end turn button (anchored to bottom-right, repositions on resize)
-    this->m_endTurnButton = this->m_uiManager.createPanel(
-        {0.0f, 0.0f, 130.0f, 40.0f});
-    {
-        aoc::ui::Widget* endPanel = this->m_uiManager.getWidget(this->m_endTurnButton);
-        if (endPanel != nullptr) {
-            endPanel->anchor = aoc::ui::Anchor::BottomRight;
-            endPanel->marginRight  = 20.0f;
-            endPanel->marginBottom = 20.0f;
-        }
-    }
-
-    aoc::ui::ButtonData endTurnBtn;
-    endTurnBtn.label       = "End Turn";
-    endTurnBtn.fontSize    = 15.0f;
-    endTurnBtn.normalColor = {0.15f, 0.35f, 0.15f, 0.9f};
-    endTurnBtn.hoverColor  = {0.20f, 0.50f, 0.20f, 0.9f};
-    endTurnBtn.pressedColor = {0.10f, 0.25f, 0.10f, 0.9f};
-    endTurnBtn.cornerRadius = 5.0f;
-    endTurnBtn.onClick = [this]() {
-        this->handleEndTurn();
-    };
-
-    // The button is inside the panel container so it gets the panel background
-    [[maybe_unused]] aoc::ui::WidgetId btnId = this->m_uiManager.createButton(
-        this->m_endTurnButton,
-        {0.0f, 0.0f, 130.0f, 40.0f},
-        std::move(endTurnBtn));
-
-    // "Waiting for you" banner above the end-turn button — visible when
-    // the human player is the last one still acting this turn.
-    this->m_lastPlayerBanner = this->m_uiManager.createPanel(
-        {0.0f, 0.0f, 150.0f, 24.0f},
-        aoc::ui::PanelData{{0.8f, 0.6f, 0.1f, 0.9f}, 4.0f});
-    {
-        aoc::ui::Widget* bannerPanel = this->m_uiManager.getWidget(this->m_lastPlayerBanner);
-        if (bannerPanel != nullptr) {
-            bannerPanel->anchor = aoc::ui::Anchor::BottomRight;
-            bannerPanel->marginRight  = 10.0f;
-            bannerPanel->marginBottom = 65.0f;
-            bannerPanel->isVisible = false;  // Hidden by default
-        }
-    }
-    this->m_uiManager.createLabel(
-        this->m_lastPlayerBanner,
-        {4.0f, 2.0f, 142.0f, 20.0f},
-        aoc::ui::LabelData{"Waiting for you!", {1.0f, 1.0f, 1.0f, 1.0f}, 12.0f});
-
-    // Victory announcement panel (hidden until game over, centered on screen)
-    aoc::ui::WidgetId victoryPanel = this->m_uiManager.createPanel(
-        {0.0f, 0.0f, 500.0f, 50.0f},
-        aoc::ui::PanelData{{0.1f, 0.1f, 0.15f, 0.9f}, 6.0f});
-    this->m_victoryLabel = this->m_uiManager.createLabel(
-        victoryPanel,
-        {10.0f, 10.0f, 480.0f, 30.0f},
-        aoc::ui::LabelData{"", {1.0f, 0.85f, 0.2f, 1.0f}, 24.0f});
-    {
-        aoc::ui::Widget* vPanel = this->m_uiManager.getWidget(victoryPanel);
-        if (vPanel != nullptr) {
-            vPanel->isVisible = false;
-            vPanel->anchor = aoc::ui::Anchor::Center;
-        }
-    }
-}
-
-void Application::updateHUD() {
-    // Update resource reveal state for map rendering (tech-gated resources)
-    {
-        std::vector<bool> revealed(aoc::sim::goodCount(), true);  // Default: all visible
-        const aoc::sim::PlayerTechComponent* playerTech = (this->m_gameState.player(0) != nullptr) ? &this->m_gameState.player(0)->tech() : nullptr;
-        for (uint16_t gid = 0; gid < aoc::sim::goodCount(); ++gid) {
-            TechId revealTech = aoc::sim::resourceRevealTech(gid);
-            if (revealTech.isValid()) {
-                revealed[gid] = (playerTech != nullptr && playerTech->hasResearched(revealTech));
-            }
-        }
-        this->m_gameRenderer.mapRenderer().setRevealedResources(revealed);
-    }
-
-    // Update turn label with year display
-    const TurnNumber currentTurn = this->m_turnManager.currentTurn();
-    std::string turnText = "Turn " + std::to_string(currentTurn)
-                         + " (" + turnToYear(currentTurn) + ")";
-    this->m_uiManager.setLabelText(this->m_turnLabel, std::move(turnText));
-
-    // Update economy label
-    std::string econText;
-    {
-        const aoc::game::Player* econPlayer = this->m_gameState.player(0);
-        if (econPlayer != nullptr) {
-            const aoc::sim::MonetaryStateComponent& ms = econPlayer->monetary();
-            econText = std::string(aoc::sim::monetarySystemName(ms.system));
-            econText += "  T:" + std::to_string(ms.treasury);
-            econText += "  " + std::string(aoc::sim::coinTierName(ms.effectiveCoinTier));
-            if (ms.system != aoc::sim::MonetarySystemType::Barter) {
-                econText += "  M:" + std::to_string(ms.moneySupply);
-                int inflPct = static_cast<int>(ms.inflationRate * 100.0f);
-                econText += "  Infl:" + std::to_string(inflPct) + "%";
-            }
-        } else {
-            econText = "No economy";
-        }
-    }
-    this->m_uiManager.setLabelText(this->m_economyLabel, std::move(econText));
-
-    // Update selection label
-    std::string selText;
-    if (this->m_selectedUnit != nullptr) {
-        const aoc::sim::UnitTypeDef& def = this->m_selectedUnit->typeDef();
-        selText = std::string(def.name)
-                + " HP:" + std::to_string(this->m_selectedUnit->hitPoints())
-                + " MP:" + std::to_string(this->m_selectedUnit->movementRemaining());
-    } else if (this->m_selectedCity != nullptr) {
-        selText = this->m_selectedCity->name()
-                + " Pop:" + std::to_string(this->m_selectedCity->population());
-    } else {
-        selText = "No selection";
-    }
-    this->m_uiManager.setLabelText(this->m_selectionLabel, std::move(selText));
-
-    // Update screen size for anchor-based repositioning
-    const std::pair<uint32_t, uint32_t> hudUpdateFbSize = this->m_window.framebufferSize();
-    const uint32_t fbWidth = hudUpdateFbSize.first;
-    const uint32_t fbHeight = hudUpdateFbSize.second;
-    this->m_uiManager.setScreenSize(static_cast<float>(fbWidth),
-                                     static_cast<float>(fbHeight));
-
-    // Keep game screen dimensions in sync so open() uses correct values
-    const float hudScreenW = static_cast<float>(fbWidth);
-    const float hudScreenH = static_cast<float>(fbHeight);
-    this->m_productionScreen.setScreenSize(hudScreenW, hudScreenH);
-    this->m_techScreen.setScreenSize(hudScreenW, hudScreenH);
-    this->m_governmentScreen.setScreenSize(hudScreenW, hudScreenH);
-    this->m_economyScreen.setScreenSize(hudScreenW, hudScreenH);
-    this->m_tradeScreen.setScreenSize(hudScreenW, hudScreenH);
-    this->m_diplomacyScreen.setScreenSize(hudScreenW, hudScreenH);
-    this->m_religionScreen.setScreenSize(hudScreenW, hudScreenH);
-    this->m_scoreScreen.setScreenSize(hudScreenW, hudScreenH);
-    this->m_cityDetailScreen.setScreenSize(hudScreenW, hudScreenH);
-
-    // Update top bar width to match screen (stretches across full width)
-    aoc::ui::Widget* topBar = this->m_uiManager.getWidget(this->m_topBar);
-    if (topBar != nullptr) {
-        topBar->requestedBounds.w = static_cast<float>(fbWidth);
-    }
-
-    // Update resource display in top bar
-    if (this->m_resourceLabel != aoc::ui::INVALID_WIDGET) {
-        std::string resText;
-
-        // Gold, science, culture, faith -- sourced from GameState object model.
-        // The ECS still has the canonical values (economy simulation writes there),
-        // but we read from GameState to exercise the new path during migration.
-        const aoc::game::Player* humanHud = this->m_gameState.humanPlayer();
-        if (humanHud != nullptr) {
-            // Gold (total + per turn income/loss)
-            CurrencyAmount goldTreasury = humanHud->treasury();
-            CurrencyAmount goldIncome   = humanHud->incomePerTurn();
-            resText = "Gold:" + std::to_string(goldTreasury);
-            if (goldIncome >= 0) {
-                resText += "(+" + std::to_string(goldIncome) + "/turn)";
-            } else {
-                resText += "(" + std::to_string(goldIncome) + "/turn)";
-            }
-
-            // Science (+X/turn)
-            float totalScience = humanHud->sciencePerTurn(this->m_hexGrid);
-            int32_t sciInt = static_cast<int32_t>(totalScience);
-            resText += "  Sci:(+" + std::to_string(sciInt) + "/turn)";
-
-            // Culture (+X/turn)
-            float totalCulture = humanHud->culturePerTurn(this->m_hexGrid);
-            int32_t culInt = static_cast<int32_t>(totalCulture);
-            resText += "  Cul:(+" + std::to_string(culInt) + "/turn)";
-
-            // Faith (total)
-            int32_t faithTotal = static_cast<int32_t>(humanHud->faith().faith);
-            resText += "  Faith:" + std::to_string(faithTotal);
-        } else {
-            // GameState not yet populated — show zeroed values
-            resText = "Gold:0(+0/turn)";
-
-            float totalScience = aoc::sim::computePlayerScience(this->m_gameState, this->m_hexGrid, 0);
-            int32_t sciInt = static_cast<int32_t>(totalScience);
-            resText += "  Sci:(+" + std::to_string(sciInt) + "/turn)";
-
-            float totalCulture = aoc::sim::computePlayerCulture(this->m_gameState, this->m_hexGrid, 0);
-            int32_t culInt = static_cast<int32_t>(totalCulture);
-            resText += "  Cul:(+" + std::to_string(culInt) + "/turn)";
-            resText += "  Faith:0";
-        }
-
-        // Aggregate stockpile goods across all player 0 cities via GameState
-        {
-            const aoc::game::Player* stockPlayer = this->m_gameState.player(0);
-            if (stockPlayer != nullptr) {
-                std::unordered_map<uint16_t, int32_t> totals;
-                for (const std::unique_ptr<aoc::game::City>& city : stockPlayer->cities()) {
-                    for (const std::pair<const uint16_t, int32_t>& entry : city->stockpile().goods) {
-                        totals[entry.first] += entry.second;
-                    }
-                }
-                for (const std::pair<const uint16_t, int32_t>& entry : totals) {
-                    if (entry.second > 0 && entry.first < aoc::sim::goodCount()) {
-                        const aoc::sim::GoodDef& def = aoc::sim::goodDef(entry.first);
-                        if (!resText.empty()) {
-                            resText += "  ";
-                        }
-                        resText += std::string(def.name) + ":" + std::to_string(entry.second);
-                    }
-                }
-            }
-        }
-        if (resText.empty()) {
-            resText = "No resources";
-        }
-        this->m_uiManager.setLabelText(this->m_resourceLabel, std::move(resText));
-    }
-
-    // Update research progress bar
-    {
-        constexpr float RESEARCH_BAR_MAX_W = 220.0f;
-        std::string researchText = "No research";
-        float researchFraction = 0.0f;
-
-        const aoc::game::Player* techPlayer = this->m_gameState.player(0);
-        if (techPlayer != nullptr) {
-            const aoc::sim::PlayerTechComponent& tech = techPlayer->tech();
-            if (tech.currentResearch.isValid()) {
-                const aoc::sim::TechDef& tdef = aoc::sim::techDef(tech.currentResearch);
-                researchText = "Research: " + std::string(tdef.name) + " "
-                             + std::to_string(static_cast<int>(tech.researchProgress))
-                             + "/" + std::to_string(tdef.researchCost);
-                if (tdef.researchCost > 0) {
-                    researchFraction = tech.researchProgress / static_cast<float>(tdef.researchCost);
-                    if (researchFraction > 1.0f) { researchFraction = 1.0f; }
-                }
-            }
-        }
-        this->m_uiManager.setLabelText(this->m_researchLabel, std::move(researchText));
-
-        aoc::ui::Widget* fillWidget = this->m_uiManager.getWidget(this->m_researchBarFill);
-        if (fillWidget != nullptr) {
-            fillWidget->requestedBounds.w = researchFraction * RESEARCH_BAR_MAX_W;
-        }
-    }
-
-    // Update production progress bar (visible when city selected)
-    {
-        constexpr float PROD_BAR_MAX_W = 220.0f;
-        bool showProd = false;
-        std::string prodText;
-        float prodFraction = 0.0f;
-
-        if (this->m_selectedCity != nullptr) {
-            const aoc::sim::ProductionQueueComponent* queue =
-                &this->m_selectedCity->production();
-            if (queue != nullptr) {
-                const aoc::sim::ProductionQueueItem* current = queue->currentItem();
-                if (current != nullptr) {
-                    showProd = true;
-                    prodText = "Production: " + current->name + " "
-                             + std::to_string(static_cast<int>(current->progress))
-                             + "/" + std::to_string(static_cast<int>(current->totalCost));
-                    if (current->totalCost > 0.0f) {
-                        prodFraction = current->progress / current->totalCost;
-                        if (prodFraction > 1.0f) { prodFraction = 1.0f; }
-                    }
-                }
-            }
-        }
-
-        this->m_uiManager.setVisible(this->m_productionLabel, showProd);
-        this->m_uiManager.setVisible(this->m_productionBar, showProd);
-        if (showProd) {
-            this->m_uiManager.setLabelText(this->m_productionLabel, std::move(prodText));
-            aoc::ui::Widget* fillWidget = this->m_uiManager.getWidget(this->m_productionBarFill);
-            if (fillWidget != nullptr) {
-                fillWidget->requestedBounds.w = prodFraction * PROD_BAR_MAX_W;
-            }
-        }
-    }
-
-    // Rebuild unit action panel when selection changes
-    this->rebuildUnitActionPanel();
-
-    // Victory announcement
-    if (this->m_gameOver && this->m_victoryLabel != aoc::ui::INVALID_WIDGET) {
-        // Show the parent panel (which contains the label)
-        aoc::ui::Widget* vLabel = this->m_uiManager.getWidget(this->m_victoryLabel);
-        if (vLabel != nullptr && vLabel->parent != aoc::ui::INVALID_WIDGET) {
-            aoc::ui::Widget* vPanel = this->m_uiManager.getWidget(vLabel->parent);
-            if (vPanel != nullptr) {
-                vPanel->isVisible = true;
-                vPanel->requestedBounds.x = static_cast<float>(fbWidth) * 0.5f - 250.0f;
-                vPanel->requestedBounds.y = static_cast<float>(fbHeight) * 0.5f - 25.0f;
-            }
-        }
-
-        const char* victoryName =
-            this->m_victoryResult.type == aoc::sim::VictoryType::Science    ? "Science" :
-            this->m_victoryResult.type == aoc::sim::VictoryType::Domination ? "Domination" :
-            this->m_victoryResult.type == aoc::sim::VictoryType::Culture    ? "Culture" :
-            this->m_victoryResult.type == aoc::sim::VictoryType::Score      ? "Score" : "Unknown";
-
-        std::string victoryText = "Player " +
-            std::to_string(static_cast<unsigned>(this->m_victoryResult.winner)) +
-            " wins by " + victoryName + " Victory!";
-        this->m_uiManager.setLabelText(this->m_victoryLabel, std::move(victoryText));
-    }
-}
-
-// ============================================================================
-// Unit action panel
-// ============================================================================
-
-void Application::rebuildUnitActionPanel() {
-    // Check if selection changed
-    if (this->m_actionPanelUnit == nullptr) {
-        return;
-    }
-
-    // Destroy old panel
-    if (this->m_unitActionPanel != aoc::ui::INVALID_WIDGET) {
-        this->m_uiManager.removeWidget(this->m_unitActionPanel);
-        this->m_unitActionPanel = aoc::ui::INVALID_WIDGET;
-    }
-    this->m_actionPanelUnit = this->m_selectedUnit;
-
-    // If no unit selected, show minimal End Turn panel
-    if (this->m_selectedUnit == nullptr) {
-        constexpr float MIN_W = 150.0f;
-        constexpr float MIN_H = 50.0f;
-        this->m_unitActionPanel = this->m_uiManager.createPanel(
-            {0.0f, 0.0f, MIN_W, MIN_H},
-            aoc::ui::PanelData{{0.08f, 0.08f, 0.12f, 0.90f}, 6.0f});
-        {
-            aoc::ui::Widget* p = this->m_uiManager.getWidget(this->m_unitActionPanel);
-            if (p != nullptr) {
-                p->padding = {8.0f, 8.0f, 8.0f, 8.0f};
-                p->anchor = aoc::ui::Anchor::BottomRight;
-                p->marginRight  = 10.0f;
-                p->marginBottom = 10.0f;
-            }
-        }
-        aoc::ui::ButtonData endBtn;
-        endBtn.label = "End Turn";
-        endBtn.fontSize = 13.0f;
-        endBtn.normalColor = {0.15f, 0.35f, 0.15f, 0.9f};
-        endBtn.hoverColor = {0.20f, 0.50f, 0.20f, 0.9f};
-        endBtn.pressedColor = {0.10f, 0.25f, 0.10f, 0.9f};
-        endBtn.labelColor = {1.0f, 1.0f, 1.0f, 1.0f};
-        endBtn.cornerRadius = 4.0f;
-        endBtn.onClick = [this]() { this->handleEndTurn(); };
-        (void)this->m_uiManager.createButton(
-            this->m_unitActionPanel,
-            {0.0f, 0.0f, MIN_W - 16.0f, 34.0f}, std::move(endBtn));
-        this->m_uiManager.layout();
-        return;
-    }
-
-    const aoc::game::Unit& unit = *this->m_selectedUnit;
-    const aoc::sim::UnitTypeDef& def = unit.typeDef();
-
-    // Count buttons to size the panel
-    int32_t buttonCount = 2;  // Skip + Sleep always
-    if (aoc::sim::isMilitary(def.unitClass)) {
-        ++buttonCount;  // Fortify
-    }
-    if (def.unitClass == aoc::sim::UnitClass::Scout) {
-        ++buttonCount;  // Auto-Explore
-    }
-    if (def.unitClass == aoc::sim::UnitClass::Settler) {
-        ++buttonCount;  // Found City
-    }
-    if (def.unitClass == aoc::sim::UnitClass::Civilian) {
-        buttonCount += 2;  // Improve + Auto-Improve
-    }
-
-    const std::vector<aoc::sim::UnitUpgradeDef> upgrades =
-        aoc::sim::getAvailableUpgrades(unit.typeId());
-    if (!upgrades.empty()) {
-        ++buttonCount;  // Upgrade
-    }
-
-    constexpr float BTN_W = 90.0f;
-    constexpr float BTN_H = 24.0f;
-    constexpr float BTN_SPACING = 3.0f;
-    constexpr float PAD = 8.0f;
-    // Bottom-right panel with unit info + action buttons + End Turn
-    constexpr float PANEL_W = 280.0f;
-    // Height: info header (50) + buttons rows + end turn button (40) + padding
-    int32_t buttonRows = (buttonCount + 2) / 3;  // 3 buttons per row
-    const float PANEL_H = 55.0f + static_cast<float>(buttonRows) * (BTN_H + BTN_SPACING) + 45.0f + PAD * 2.0f;
-
-    this->m_unitActionPanel = this->m_uiManager.createPanel(
-        {0.0f, 0.0f, PANEL_W, PANEL_H},
-        aoc::ui::PanelData{{0.08f, 0.08f, 0.12f, 0.90f}, 6.0f});
-    {
-        aoc::ui::Widget* panel = this->m_uiManager.getWidget(this->m_unitActionPanel);
-        if (panel != nullptr) {
-            panel->padding = {PAD, PAD, PAD, PAD};
-            panel->childSpacing = 3.0f;
-            panel->anchor = aoc::ui::Anchor::BottomRight;
-            panel->marginRight  = 10.0f;
-            panel->marginBottom = 10.0f;
-        }
-    }
-
-    // -- Unit info header --
-    {
-        char infoBuf[128];
-        std::snprintf(infoBuf, sizeof(infoBuf), "%.*s   HP: %d/%d   MP: %d/%d",
-                      static_cast<int>(def.name.size()), def.name.data(),
-                      unit.hitPoints(), def.maxHitPoints,
-                      unit.movementRemaining(), def.movementPoints);
-        (void)this->m_uiManager.createLabel(
-            this->m_unitActionPanel,
-            {0.0f, 0.0f, PANEL_W - PAD * 2.0f, 16.0f},
-            aoc::ui::LabelData{std::string(infoBuf),
-                               {0.9f, 0.85f, 0.6f, 1.0f}, 11.0f});
-
-        // Combat strength info for military units
-        if (aoc::sim::isMilitary(def.unitClass)) {
-            char combatBuf[96];
-            if (def.rangedStrength > 0) {
-                std::snprintf(combatBuf, sizeof(combatBuf),
-                              "Melee: %d  Ranged: %d (range %d)",
-                              def.combatStrength, def.rangedStrength, def.range);
-            } else {
-                std::snprintf(combatBuf, sizeof(combatBuf),
-                              "Combat Strength: %d", def.combatStrength);
-            }
-            (void)this->m_uiManager.createLabel(
-                this->m_unitActionPanel,
-                {0.0f, 0.0f, PANEL_W - PAD * 2.0f, 14.0f},
-                aoc::ui::LabelData{std::string(combatBuf),
-                                   {0.75f, 0.75f, 0.80f, 0.9f}, 10.0f});
-        }
-
-        // Separator
-        (void)this->m_uiManager.createPanel(
-            this->m_unitActionPanel,
-            {0.0f, 0.0f, PANEL_W - PAD * 2.0f, 1.0f},
-            aoc::ui::PanelData{{0.3f, 0.3f, 0.4f, 0.4f}, 0.0f});
-    }
-
-    // Helper to create action buttons
-    aoc::game::Unit* selectedUnitPtr = this->m_selectedUnit;
-    aoc::game::GameState* gsPtr = &this->m_gameState;
-
-    // auto required: lambda type is unnameable
-    auto makeActionBtn = [this](const std::string& label,
-                                 aoc::ui::Color normalColor,
-                                 std::function<void()> onClick) {
-        constexpr float ACTION_BTN_W2 = 125.0f;
-        constexpr float ACTION_BTN_H2 = 24.0f;
-        aoc::ui::ButtonData btn;
-        btn.label = label;
-        btn.fontSize = 10.0f;
-        btn.normalColor = normalColor;
-        btn.hoverColor = {normalColor.r + 0.10f, normalColor.g + 0.10f,
-                          normalColor.b + 0.10f, 0.9f};
-        btn.pressedColor = {normalColor.r - 0.05f, normalColor.g - 0.05f,
-                            normalColor.b - 0.05f, 0.9f};
-        btn.labelColor = {1.0f, 1.0f, 1.0f, 1.0f};
-        btn.cornerRadius = 3.0f;
-        btn.onClick = std::move(onClick);
-        (void)this->m_uiManager.createButton(
-            this->m_unitActionPanel,
-            {0.0f, 0.0f, ACTION_BTN_W2, ACTION_BTN_H2}, std::move(btn));
-    };
-
-    // -- Skip button (all units) --
-    makeActionBtn("Skip", {0.25f, 0.25f, 0.30f, 0.9f},
-        [this, selectedUnitPtr]() {
-            if (selectedUnitPtr == nullptr) { return; }
-            selectedUnitPtr->setMovementRemaining(0);
-            LOG_INFO("Unit skipped turn");
-        });
-
-    // -- Sleep button (all units) --
-    makeActionBtn("Sleep", {0.25f, 0.25f, 0.30f, 0.9f},
-        [this, selectedUnitPtr]() {
-            if (selectedUnitPtr == nullptr) { return; }
-            selectedUnitPtr->setState(aoc::sim::UnitState::Sleeping);
-            LOG_INFO("Unit sleeping");
-        });
-
-    // -- Auto-Explore button (Scout units) --
-    if (def.unitClass == aoc::sim::UnitClass::Scout) {
-        makeActionBtn("Auto-Explore", {0.20f, 0.25f, 0.35f, 0.9f},
-            [this, selectedUnitPtr]() {
-                if (selectedUnitPtr == nullptr) { return; }
-                selectedUnitPtr->autoExplore = !selectedUnitPtr->autoExplore;
-                if (selectedUnitPtr->autoExplore) {
-                    LOG_INFO("Auto-explore enabled for scout");
-                } else {
-                    LOG_INFO("Auto-explore disabled for scout");
-                }
-            });
-    }
-
-    // -- Fortify button (military units) --
-    if (aoc::sim::isMilitary(def.unitClass)) {
-        makeActionBtn("Fortify", {0.20f, 0.30f, 0.20f, 0.9f},
-            [this, selectedUnitPtr]() {
-                if (selectedUnitPtr == nullptr) { return; }
-                selectedUnitPtr->setState(aoc::sim::UnitState::Fortified);
-                LOG_INFO("Unit fortified (+25%% defense)");
-            });
-    }
-
-    // -- Found City button (Settler) --
-    if (def.unitClass == aoc::sim::UnitClass::Settler) {
-        makeActionBtn("Found City", {0.30f, 0.25f, 0.15f, 0.9f},
-            [this, selectedUnitPtr]() {
-                if (selectedUnitPtr == nullptr) { return; }
-
-                const PlayerId cityOwner = selectedUnitPtr->owner();
-                const aoc::hex::AxialCoord cityPos = selectedUnitPtr->position();
-
-                aoc::game::Player* gsFounder = this->m_gameState.player(cityOwner);
-                if (gsFounder == nullptr) { return; }
-
-                const std::string cityName = aoc::sim::getNextCityName(this->m_gameState, cityOwner);
-                const bool isFirstCity = (gsFounder->cityCount() == 0);
-
-                aoc::sim::claimInitialTerritory(this->m_hexGrid, cityPos, cityOwner);
-
-                aoc::game::City& newGsCity = gsFounder->addCity(cityPos, cityName);
-                if (isFirstCity) {
-                    newGsCity.setOriginalCapital(true);
-                    newGsCity.setOriginalOwner(cityOwner);
-                }
-                newGsCity.autoAssignWorkers(this->m_hexGrid, aoc::sim::WorkerFocus::Balanced, gsFounder);
-
-                // Remove the settler from the owning player and clear selection
-                gsFounder->removeUnit(selectedUnitPtr);
-                this->m_selectedUnit = nullptr;
-                this->m_actionPanelUnit = nullptr;
-                LOG_INFO("City founded via action panel!");
-
-                {
-                    aoc::game::Player* eurekaP = this->m_gameState.player(cityOwner);
-                    if (eurekaP != nullptr) {
-                        aoc::sim::checkEurekaConditions(*eurekaP,
-                                                        aoc::sim::EurekaCondition::FoundCity);
-                    }
-                }
-            });
-    }
-
-    // -- Improve button (Builder / Civilian) --
-    if (def.unitClass == aoc::sim::UnitClass::Civilian) {
-        makeActionBtn("Improve", {0.20f, 0.28f, 0.20f, 0.9f},
-            [this, selectedUnitPtr]() {
-                if (selectedUnitPtr == nullptr) { return; }
-
-                const int32_t tileIndex = this->m_hexGrid.toIndex(selectedUnitPtr->position());
-                const aoc::map::ImprovementType bestImpr =
-                    aoc::sim::bestImprovementForTile(this->m_hexGrid, tileIndex);
-
-                if (bestImpr != aoc::map::ImprovementType::None &&
-                    this->m_hexGrid.improvement(tileIndex) == aoc::map::ImprovementType::None) {
-                    this->m_hexGrid.setImprovement(tileIndex, bestImpr);
-                    selectedUnitPtr->useCharge();
-                    LOG_INFO("Builder placed improvement via action panel");
-                    if (!selectedUnitPtr->hasCharges()) {
-                        const PlayerId ownerId = selectedUnitPtr->owner();
-                        aoc::game::Player* owner = this->m_gameState.player(ownerId);
-                        if (owner != nullptr) {
-                            owner->removeUnit(selectedUnitPtr);
-                        }
-                        this->m_selectedUnit = nullptr;
-                        this->m_actionPanelUnit = nullptr;
-                        LOG_INFO("Builder exhausted all charges");
-                    }
-                }
-            });
-
-        // -- Mine Mountain button: build MountainMine on an adjacent metal-bearing
-        // mountain tile. The builder stays on its current passable tile; the
-        // improvement is applied to the neighbor.
-        makeActionBtn("Mine Mountain", {0.28f, 0.20f, 0.30f, 0.9f},
-            [this, selectedUnitPtr]() {
-                if (selectedUnitPtr == nullptr) { return; }
-                const PlayerId ownerId = selectedUnitPtr->owner();
-                const int32_t currentIdx = this->m_hexGrid.toIndex(selectedUnitPtr->position());
-                if (this->m_hexGrid.owner(currentIdx) != ownerId) { return; }
-                if (this->m_hexGrid.movementCost(currentIdx) <= 0) { return; }
-
-                const std::array<aoc::hex::AxialCoord, 6> nbrs =
-                    aoc::hex::neighbors(selectedUnitPtr->position());
-                for (const aoc::hex::AxialCoord& nbr : nbrs) {
-                    if (!this->m_hexGrid.isValid(nbr)) { continue; }
-                    const int32_t nbrIdx = this->m_hexGrid.toIndex(nbr);
-                    if (this->m_hexGrid.terrain(nbrIdx) != aoc::map::TerrainType::Mountain) { continue; }
-                    if (this->m_hexGrid.improvement(nbrIdx) != aoc::map::ImprovementType::None) { continue; }
-                    if (!aoc::sim::canPlaceImprovement(this->m_hexGrid, nbrIdx,
-                            aoc::map::ImprovementType::MountainMine)) {
-                        continue;
-                    }
-                    this->m_hexGrid.setImprovement(nbrIdx, aoc::map::ImprovementType::MountainMine);
-                    if (this->m_hexGrid.owner(nbrIdx) == INVALID_PLAYER) {
-                        this->m_hexGrid.setOwner(nbrIdx, ownerId);
-                    }
-                    selectedUnitPtr->useCharge();
-                    LOG_INFO("Builder placed MountainMine on adjacent mountain via action panel");
-                    if (!selectedUnitPtr->hasCharges()) {
-                        aoc::game::Player* owner = this->m_gameState.player(ownerId);
-                        if (owner != nullptr) {
-                            owner->removeUnit(selectedUnitPtr);
-                        }
-                        this->m_selectedUnit = nullptr;
-                        this->m_actionPanelUnit = nullptr;
-                    }
-                    break;
-                }
-            });
-
-        // -- Auto-Improve toggle (Civilian units) --
-        makeActionBtn("Auto-Improve", {0.20f, 0.28f, 0.30f, 0.9f},
-            [this, selectedUnitPtr]() {
-                if (selectedUnitPtr == nullptr) { return; }
-                selectedUnitPtr->autoImprove = !selectedUnitPtr->autoImprove;
-                if (selectedUnitPtr->autoImprove) {
-                    LOG_INFO("Auto-improve enabled for builder");
-                } else {
-                    LOG_INFO("Auto-improve disabled for builder");
-                }
-            });
-    }
-
-    // -- Upgrade button (if upgrade available) --
-    if (!upgrades.empty()) {
-        const aoc::sim::UnitUpgradeDef& upg = upgrades[0];
-        const int32_t cost = aoc::sim::upgradeCost(unit.typeId(), upg.to);
-        const std::string upgLabel = "Upgrade (" + std::to_string(cost) + "g)";
-        const UnitTypeId upgTo = upg.to;
-        const PlayerId owner = unit.owner();
-        const aoc::hex::AxialCoord unitPos = unit.position();
-        makeActionBtn(upgLabel, {0.30f, 0.20f, 0.30f, 0.9f},
-            [this, gsPtr, selectedUnitPtr, upgTo, owner, unitPos]() {
-                if (selectedUnitPtr == nullptr) { return; }
-                aoc::game::Player* upgradePlayer = gsPtr->player(owner);
-                aoc::game::Unit* gsUnit = (upgradePlayer != nullptr)
-                    ? upgradePlayer->unitAt(unitPos) : nullptr;
-                if (gsUnit == nullptr) { return; }
-                bool success = aoc::sim::upgradeUnit(*gsPtr, *gsUnit, upgTo, owner);
-                if (success) {
-                    LOG_INFO("Unit upgraded via action panel!");
-                }
-            });
-    }
-
-    // Separator before End Turn
-    (void)this->m_uiManager.createPanel(
-        this->m_unitActionPanel,
-        {0.0f, 0.0f, PANEL_W - PAD * 2.0f, 1.0f},
-        aoc::ui::PanelData{{0.3f, 0.3f, 0.4f, 0.4f}, 0.0f});
-
-    // End Turn button integrated into the unit panel
-    {
-        aoc::ui::ButtonData endBtn;
-        endBtn.label = "End Turn";
-        endBtn.fontSize = 13.0f;
-        endBtn.normalColor = {0.15f, 0.35f, 0.15f, 0.9f};
-        endBtn.hoverColor = {0.20f, 0.50f, 0.20f, 0.9f};
-        endBtn.pressedColor = {0.10f, 0.25f, 0.10f, 0.9f};
-        endBtn.labelColor = {1.0f, 1.0f, 1.0f, 1.0f};
-        endBtn.cornerRadius = 4.0f;
-        endBtn.onClick = [this]() { this->handleEndTurn(); };
-        (void)this->m_uiManager.createButton(
-            this->m_unitActionPanel,
-            {0.0f, 0.0f, PANEL_W - PAD * 2.0f, 34.0f}, std::move(endBtn));
-    }
-
-    this->m_uiManager.layout();
-}
 
 // ============================================================================
 // Screen helpers
 // ============================================================================
 
 bool Application::anyScreenOpen() const {
-    return this->m_productionScreen.isOpen()
+    return this->m_screenRegistry.anyOpen();
+}
+
+bool Application::onlyCityDetailScreenOpen() const {
+    // The city-detail screen is a right-side panel that leaves the map
+    // clickable; callers special-case it so HUD input still works.
+    if (!this->m_cityDetailScreen.isOpen()) { return false; }
+    // Any OTHER registered screen being open disqualifies the state.
+    if (this->m_productionScreen.isOpen()
         || this->m_techScreen.isOpen()
         || this->m_governmentScreen.isOpen()
         || this->m_economyScreen.isOpen()
-        || this->m_cityDetailScreen.isOpen()
         || this->m_tradeScreen.isOpen()
         || this->m_tradeRouteSetupScreen.isOpen()
         || this->m_diplomacyScreen.isOpen()
         || this->m_religionScreen.isOpen()
-        || this->m_scoreScreen.isOpen();
-}
-
-bool Application::onlyCityDetailScreenOpen() const {
-    return this->m_cityDetailScreen.isOpen()
-        && !this->m_productionScreen.isOpen()
-        && !this->m_techScreen.isOpen()
-        && !this->m_governmentScreen.isOpen()
-        && !this->m_economyScreen.isOpen()
-        && !this->m_tradeScreen.isOpen()
-        && !this->m_tradeRouteSetupScreen.isOpen()
-        && !this->m_diplomacyScreen.isOpen()
-        && !this->m_religionScreen.isOpen()
-        && !this->m_scoreScreen.isOpen();
+        || this->m_scoreScreen.isOpen()
+        || this->m_settingsMenu.isOpen()) {
+        return false;
+    }
+    return true;
 }
 
 void Application::closeAllScreens() {
-    this->m_productionScreen.close(this->m_uiManager);
-    this->m_techScreen.close(this->m_uiManager);
-    this->m_governmentScreen.close(this->m_uiManager);
-    this->m_economyScreen.close(this->m_uiManager);
-    this->m_cityDetailScreen.close(this->m_uiManager);
-    this->m_tradeScreen.close(this->m_uiManager);
-    this->m_tradeRouteSetupScreen.close(this->m_uiManager);
-    this->m_diplomacyScreen.close(this->m_uiManager);
-    this->m_religionScreen.close(this->m_uiManager);
-    this->m_scoreScreen.close(this->m_uiManager);
+    this->m_screenRegistry.closeAll(this->m_uiManager);
 }
 
 } // namespace aoc::app

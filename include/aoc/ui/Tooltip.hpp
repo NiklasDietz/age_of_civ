@@ -74,6 +74,13 @@ public:
     void setPosition(float x, float y) { this->m_x = x; this->m_y = y; }
     void setRenderScale(float scale) { this->m_renderScale = scale; }
 
+    /// Show pre-rendered text (no map lookup). Used for widget hover
+    /// tooltips attached via `UIManager::setWidgetTooltip`. Applies the
+    /// same hover-delay gating as `update()` so widget tooltips don't
+    /// pop instantly.
+    void showText(std::string text, float mouseX, float mouseY,
+                  uint32_t screenW, uint32_t screenH);
+
 private:
     bool        m_visible = false;
     float       m_x = 0.0f;

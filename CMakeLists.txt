@@ -153,23 +153,35 @@ set(AOC_GFX_ONLY_SOURCES
     src/render/TextureAtlas.cpp
     src/render/UnitRenderer.cpp
     src/app/Application.cpp
+    src/app/Application_HUD.cpp
     src/app/Window.cpp
     src/app/InputManager.cpp
     src/app/HotkeyManager.cpp
     src/app/UnitSelection.cpp
     # All ui/ except GameNotifications pull in Renderer2D
     src/ui/BitmapFont.cpp
+    src/ui/CityDetailTabs.cpp
     src/ui/DebugConsole.cpp
     src/ui/DiplomacyScreen.cpp
     src/ui/Encyclopedia.cpp
     src/ui/EventLog.cpp
+    src/ui/LayoutBuilder.cpp
+    src/ui/WidgetInspector.cpp
+    src/ui/LoadingScreen.cpp
+    src/ui/IconAtlas.cpp
+    src/ui/UITestHarness.cpp
+    src/ui/Localization.cpp
+    src/ui/UIPersistence.cpp
     src/ui/GameScreens.cpp
     src/ui/MainMenu.cpp
     src/ui/MapEditor.cpp
     src/ui/Notifications.cpp
     src/ui/ReligionScreen.cpp
     src/ui/ScoreScreen.cpp
+    src/ui/ScreenRegistry.cpp
+    src/ui/SettingsMenu.cpp
     src/ui/SpectatorHUD.cpp
+    src/ui/Theme.cpp
     src/ui/Tooltip.cpp
     src/ui/TradeRouteSetupScreen.cpp
     src/ui/TradeScreen.cpp
@@ -339,14 +351,25 @@ set(AOC_LIB_SOURCES
     src/ui/BitmapFont.cpp
     src/ui/UIManager.cpp
     src/ui/GameScreens.cpp
+    src/ui/CityDetailTabs.cpp
     src/ui/TradeScreen.cpp
     src/ui/TradeRouteSetupScreen.cpp
     src/ui/DiplomacyScreen.cpp
     src/ui/EventLog.cpp
+    src/ui/LayoutBuilder.cpp
+    src/ui/WidgetInspector.cpp
+    src/ui/LoadingScreen.cpp
+    src/ui/IconAtlas.cpp
+    src/ui/UITestHarness.cpp
+    src/ui/Localization.cpp
+    src/ui/UIPersistence.cpp
     src/ui/Tooltip.cpp
     src/ui/MainMenu.cpp
     src/ui/ReligionScreen.cpp
     src/ui/ScoreScreen.cpp
+    src/ui/ScreenRegistry.cpp
+    src/ui/SettingsMenu.cpp
+    src/ui/Theme.cpp
     src/ui/Notifications.cpp
     src/ui/MapEditor.cpp
     src/ui/Tutorial.cpp
@@ -366,6 +389,7 @@ set(AOC_LIB_SOURCES
     src/app/UnitSelection.cpp
     src/app/HotkeyManager.cpp
     src/app/Application.cpp
+    src/app/Application_HUD.cpp
     src/app/ScreenshotEncoder.cpp
 
     # Scripting

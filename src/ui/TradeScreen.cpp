@@ -59,11 +59,17 @@ void TradeScreen::open(UIManager& ui) {
         listWidget->childSpacing = 3.0f;
     }
 
-    // Show known players (not self, not barbarians)
+    // Show ONLY MET players (not self, not barbarians). Without the
+    // `haveMet` gate the list leaked every civ at turn 0, which let
+    // players trade with unseen rivals.
     if (this->m_gameState != nullptr) {
         for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState->players()) {
             const PlayerId otherId = playerPtr->id();
             if (otherId == this->m_player || otherId == BARBARIAN_PLAYER) {
+                continue;
+            }
+            if (this->m_diplomacy == nullptr
+                || !this->m_diplomacy->haveMet(this->m_player, otherId)) {
                 continue;
             }
 
