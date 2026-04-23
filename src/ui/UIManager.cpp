@@ -1225,9 +1225,9 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d,
         using T = std::decay_t<decltype(data)>;
 
         if constexpr (std::is_same_v<T, PanelData>) {
-            // Widget.alpha modulates the panel fill so fade-in/out
-            // tweens ripple through visually. Sub-widgets inherit by
-            // honouring alpha too (see other branches).
+            // Base fill — `Widget.alpha` modulates so fade tweens
+            // ripple through. Gradient bottom is layered on top as a
+            // second band if provided.
             const float a = data.backgroundColor.a * w->alpha;
             float cr = data.cornerRadius * scale;
             if (cr > 0.0f) {
@@ -1238,6 +1238,64 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d,
                 renderer2d.drawFilledRect(b.x, b.y, b.w, b.h,
                                            data.backgroundColor.r, data.backgroundColor.g,
                                            data.backgroundColor.b, a);
+            }
+            // Two-band gradient. Cheap — no shader change — just
+            // blends the bottom half toward `gradientBottom`. Six
+            // slices give a visible gradient without the banding an
+            // extreme step count introduces.
+            if (data.gradientBottom.a > 0.0f) {
+                constexpr int32_t kSlices = 6;
+                const float sliceH = b.h / static_cast<float>(kSlices);
+                for (int32_t s = 0; s < kSlices; ++s) {
+                    const float t = static_cast<float>(s)
+                                    / static_cast<float>(kSlices - 1);
+                    const float rr = data.backgroundColor.r * (1.0f - t)
+                                   + data.gradientBottom.r * t;
+                    const float gg = data.backgroundColor.g * (1.0f - t)
+                                   + data.gradientBottom.g * t;
+                    const float bb = data.backgroundColor.b * (1.0f - t)
+                                   + data.gradientBottom.b * t;
+                    const float aa = (data.backgroundColor.a * (1.0f - t)
+                                    + data.gradientBottom.a * t) * w->alpha;
+                    renderer2d.drawFilledRect(
+                        b.x, b.y + static_cast<float>(s) * sliceH,
+                        b.w, sliceH, rr, gg, bb, aa);
+                }
+            }
+            // Border.
+            if (data.borderColor.a > 0.0f) {
+                const float bw = std::max(1.0f, data.borderWidth * scale);
+                const float ba = data.borderColor.a * w->alpha;
+                renderer2d.drawFilledRect(b.x, b.y, b.w, bw,
+                                           data.borderColor.r, data.borderColor.g,
+                                           data.borderColor.b, ba);
+                renderer2d.drawFilledRect(b.x, b.y + b.h - bw, b.w, bw,
+                                           data.borderColor.r, data.borderColor.g,
+                                           data.borderColor.b, ba);
+                renderer2d.drawFilledRect(b.x, b.y, bw, b.h,
+                                           data.borderColor.r, data.borderColor.g,
+                                           data.borderColor.b, ba);
+                renderer2d.drawFilledRect(b.x + b.w - bw, b.y, bw, b.h,
+                                           data.borderColor.r, data.borderColor.g,
+                                           data.borderColor.b, ba);
+            }
+            // Top highlight + bottom shadow: cheap depth cues.
+            if (data.topHighlight.a > 0.0f) {
+                renderer2d.drawFilledRect(b.x, b.y, b.w, 1.0f * scale,
+                    data.topHighlight.r, data.topHighlight.g,
+                    data.topHighlight.b, data.topHighlight.a * w->alpha);
+            }
+            if (data.bottomShadow.a > 0.0f) {
+                renderer2d.drawFilledRect(b.x, b.y + b.h - 1.0f * scale, b.w, 1.0f * scale,
+                    data.bottomShadow.r, data.bottomShadow.g,
+                    data.bottomShadow.b, data.bottomShadow.a * w->alpha);
+            }
+            // Leading accent bar — Civ-6 style ribbon.
+            if (data.accentBarColor.a > 0.0f) {
+                const float abw = data.accentBarWidth * scale;
+                renderer2d.drawFilledRect(b.x, b.y, abw, b.h,
+                    data.accentBarColor.r, data.accentBarColor.g,
+                    data.accentBarColor.b, data.accentBarColor.a * w->alpha);
             }
         }
         else if constexpr (std::is_same_v<T, ButtonData>) {
@@ -1262,6 +1320,46 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d,
             } else {
                 renderer2d.drawFilledRect(b.x, b.y, b.w, b.h,
                                            color.r, color.g, color.b, color.a);
+            }
+
+            // Gradient bottom band for glossy depth. Six horizontal
+            // slices blend toward `gradientBottom` mixed with the
+            // active state colour. Off when alpha 0.
+            if (data.gradientBottom.a > 0.0f) {
+                constexpr int32_t kSlices = 5;
+                const float sliceH = b.h / static_cast<float>(kSlices);
+                for (int32_t s = 1; s < kSlices; ++s) {
+                    const float t = static_cast<float>(s)
+                                    / static_cast<float>(kSlices - 1);
+                    const float rr = color.r * (1.0f - t)
+                                   + data.gradientBottom.r * t;
+                    const float gg = color.g * (1.0f - t)
+                                   + data.gradientBottom.g * t;
+                    const float bb = color.b * (1.0f - t)
+                                   + data.gradientBottom.b * t;
+                    const float aa = (color.a * (1.0f - t)
+                                    + data.gradientBottom.a * t);
+                    renderer2d.drawFilledRect(
+                        b.x, b.y + static_cast<float>(s) * sliceH,
+                        b.w, sliceH, rr, gg, bb, aa);
+                }
+            }
+
+            // Thin outline for readability on busy backgrounds.
+            if (data.borderColor.a > 0.0f) {
+                const float bw = std::max(1.0f, data.borderWidth * scale);
+                renderer2d.drawFilledRect(b.x, b.y, b.w, bw,
+                    data.borderColor.r, data.borderColor.g,
+                    data.borderColor.b, data.borderColor.a);
+                renderer2d.drawFilledRect(b.x, b.y + b.h - bw, b.w, bw,
+                    data.borderColor.r, data.borderColor.g,
+                    data.borderColor.b, data.borderColor.a);
+                renderer2d.drawFilledRect(b.x, b.y, bw, b.h,
+                    data.borderColor.r, data.borderColor.g,
+                    data.borderColor.b, data.borderColor.a);
+                renderer2d.drawFilledRect(b.x + b.w - bw, b.y, bw, b.h,
+                    data.borderColor.r, data.borderColor.g,
+                    data.borderColor.b, data.borderColor.a);
             }
 
             // Depth effect: raised highlight on top edge when idle,

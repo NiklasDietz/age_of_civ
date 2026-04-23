@@ -69,20 +69,22 @@ void ScreenBase::onResize(UIManager& ui, float width, float height) {
 WidgetId ScreenBase::createScreenFrame(UIManager& ui, const std::string& title,
                                         float width, float height,
                                         float screenW, float screenH) {
-    // Dark semi-transparent full-screen overlay as root. Scissor-clip
-    // children so any overflow in the inner panel never bleeds past
-    // the viewport even if layout clamp misses an edge case.
+    // Dark semi-transparent full-screen overlay as root.
+    //
+    // Scissor clip intentionally NOT enabled here: in-game screen
+    // rendering runs through `uiManager.transformBounds` so widget
+    // bounds are world-space, but `pushScissor` expects screen-space
+    // pixels. Pushing world-space bounds to the Vulkan scissor clips
+    // away the whole panel (observed: inner panel + labels visible,
+    // background missing). The layout-level `clampChildren` pass
+    // already prevents overflow; scissor would be belt-and-suspenders
+    // but needs screen-space coords first.
     this->m_rootPanel = ui.createPanel(
         {0.0f, 0.0f, screenW, screenH},
         PanelData{{0.0f, 0.0f, 0.0f, 0.5f}, 0.0f});
-    {
-        Widget* rw = ui.getWidget(this->m_rootPanel);
-        if (rw != nullptr) { rw->clipChildren = true; }
-    }
 
-    // Open-animation: start transparent and fade in over 150ms so
-    // modal-screen appearance feels less abrupt. `UIManager::
-    // tickAnimations` integrates alpha toward alphaTarget each frame.
+    // Open-animation: fade in over 150ms. Starts at alpha 0 so the
+    // overlay + inner panel appear smoothly rather than popping.
     {
         Widget* rw = ui.getWidget(this->m_rootPanel);
         if (rw != nullptr) {
@@ -91,13 +93,27 @@ WidgetId ScreenBase::createScreenFrame(UIManager& ui, const std::string& title,
     }
     ui.tweenAlpha(this->m_rootPanel, 1.0f, 0.15f);
 
-    // Centered inner panel
+    // Centered inner panel — rich chrome: vertical gradient from
+    // slate-blue top to near-black bottom, subtle gold border, 1px
+    // bright top highlight + dark bottom shadow, and a gold accent
+    // ribbon on the left edge. Gives modal screens the Civ-6
+    // "framed window" look without any texture art.
     const float panelX = (screenW - width) * 0.5f;
     const float panelY = (screenH - height) * 0.5f;
+    PanelData innerBg;
+    innerBg.backgroundColor = {0.14f, 0.16f, 0.22f, 0.97f};
+    innerBg.gradientBottom  = {0.06f, 0.07f, 0.10f, 0.97f};
+    innerBg.borderColor     = {0.85f, 0.72f, 0.30f, 0.55f};
+    innerBg.borderWidth     = 1.5f;
+    innerBg.topHighlight    = {1.0f, 1.0f, 1.0f, 0.15f};
+    innerBg.bottomShadow    = {0.0f, 0.0f, 0.0f, 0.45f};
+    innerBg.accentBarColor  = {0.85f, 0.72f, 0.30f, 0.85f};
+    innerBg.accentBarWidth  = 3.0f;
+    innerBg.cornerRadius    = 6.0f;
     WidgetId innerPanel = ui.createPanel(
         this->m_rootPanel,
         {panelX, panelY, width, height},
-        PanelData{{0.1f, 0.1f, 0.15f, 0.95f}, 6.0f});
+        std::move(innerBg));
 
     Widget* inner = ui.getWidget(innerPanel);
     if (inner != nullptr) {

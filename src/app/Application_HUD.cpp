@@ -66,9 +66,15 @@ void Application::buildHUD() {
     // ================================================================
     // Top bar: full width. Resources on left, buttons on right.
     // ================================================================
+    // Top bar — gradient from deep slate to black plus a gold hairline
+    // bottom accent. Non-rounded so it flushes with the window edge.
+    aoc::ui::PanelData topBg;
+    topBg.backgroundColor = {0.10f, 0.11f, 0.17f, 0.95f};
+    topBg.gradientBottom  = {0.03f, 0.04f, 0.07f, 0.95f};
+    topBg.bottomShadow    = {0.85f, 0.72f, 0.30f, 0.45f};
+    topBg.cornerRadius    = 0.0f;
     this->m_topBar = this->m_uiManager.createPanel(
-        {0.0f, 0.0f, screenW, 32.0f},
-        aoc::ui::PanelData{{0.06f, 0.06f, 0.10f, 0.90f}, 0.0f});
+        {0.0f, 0.0f, screenW, 32.0f}, std::move(topBg));
     {
         aoc::ui::Widget* bar = this->m_uiManager.getWidget(this->m_topBar);
         bar->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
@@ -277,9 +283,17 @@ void Application::buildHUD() {
     // ================================================================
     // Info panel (below top bar)
     // ================================================================
+    aoc::ui::PanelData infoBg;
+    infoBg.backgroundColor = {0.12f, 0.14f, 0.20f, 0.92f};
+    infoBg.gradientBottom  = {0.05f, 0.06f, 0.09f, 0.92f};
+    infoBg.borderColor     = {0.85f, 0.72f, 0.30f, 0.40f};
+    infoBg.borderWidth     = 1.0f;
+    infoBg.topHighlight    = {1.0f, 1.0f, 1.0f, 0.10f};
+    infoBg.accentBarColor  = {0.30f, 0.55f, 0.80f, 0.80f};
+    infoBg.accentBarWidth  = 2.0f;
+    infoBg.cornerRadius    = 6.0f;
     aoc::ui::WidgetId infoPanel = this->m_uiManager.createPanel(
-        {10.0f, 42.0f, 250.0f, 170.0f},
-        aoc::ui::PanelData{{0.08f, 0.08f, 0.12f, 0.85f}, 6.0f});
+        {10.0f, 42.0f, 250.0f, 170.0f}, std::move(infoBg));
     {
         aoc::ui::Widget* panel = this->m_uiManager.getWidget(infoPanel);
         panel->padding = {8.0f, 10.0f, 8.0f, 10.0f};
@@ -767,9 +781,15 @@ void Application::rebuildUnitActionPanel() {
     if (this->m_selectedUnit == nullptr) {
         constexpr float MIN_W = 150.0f;
         constexpr float MIN_H = 50.0f;
+        aoc::ui::PanelData uapBg;
+        uapBg.backgroundColor = {0.12f, 0.14f, 0.20f, 0.94f};
+        uapBg.gradientBottom  = {0.05f, 0.06f, 0.09f, 0.94f};
+        uapBg.borderColor     = {0.85f, 0.72f, 0.30f, 0.40f};
+        uapBg.borderWidth     = 1.0f;
+        uapBg.topHighlight    = {1.0f, 1.0f, 1.0f, 0.10f};
+        uapBg.cornerRadius    = 6.0f;
         this->m_unitActionPanel = this->m_uiManager.createPanel(
-            {0.0f, 0.0f, MIN_W, MIN_H},
-            aoc::ui::PanelData{{0.08f, 0.08f, 0.12f, 0.90f}, 6.0f});
+            {0.0f, 0.0f, MIN_W, MIN_H}, std::move(uapBg));
         // Fade-in animation: start at alpha 0 and tween toward 1.
         // `tickAnimations` integrates each frame; PanelData render
         // multiplies widget alpha into its own colour alpha.
@@ -836,9 +856,17 @@ void Application::rebuildUnitActionPanel() {
     int32_t buttonRows = (buttonCount + 2) / 3;  // 3 buttons per row
     const float PANEL_H = 55.0f + static_cast<float>(buttonRows) * (BTN_H + BTN_SPACING) + 45.0f + PAD * 2.0f;
 
+    aoc::ui::PanelData uapFullBg;
+    uapFullBg.backgroundColor = {0.12f, 0.14f, 0.20f, 0.95f};
+    uapFullBg.gradientBottom  = {0.05f, 0.06f, 0.09f, 0.95f};
+    uapFullBg.borderColor     = {0.85f, 0.72f, 0.30f, 0.45f};
+    uapFullBg.borderWidth     = 1.0f;
+    uapFullBg.topHighlight    = {1.0f, 1.0f, 1.0f, 0.12f};
+    uapFullBg.accentBarColor  = {0.30f, 0.55f, 0.80f, 0.85f};
+    uapFullBg.accentBarWidth  = 2.0f;
+    uapFullBg.cornerRadius    = 6.0f;
     this->m_unitActionPanel = this->m_uiManager.createPanel(
-        {0.0f, 0.0f, PANEL_W, PANEL_H},
-        aoc::ui::PanelData{{0.08f, 0.08f, 0.12f, 0.90f}, 6.0f});
+        {0.0f, 0.0f, PANEL_W, PANEL_H}, std::move(uapFullBg));
     // Fade-in so the full-button panel doesn't pop instantly.
     if (aoc::ui::Widget* p1 = this->m_uiManager.getWidget(this->m_unitActionPanel)) {
         p1->alpha = 0.0f;

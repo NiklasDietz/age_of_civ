@@ -129,19 +129,24 @@ inline WidgetId label(UIManager& ui, WidgetId parent, std::string text) {
                           LabelData{std::move(text), WHITE_TEXT, t.fontMedium()});
 }
 
-/// Quick button with onClick handler.
+/// Quick button with onClick handler. Default styling now includes a
+/// subtle gradient + border so Layout::button callsites inherit the
+/// richer chrome without passing extra fields.
 inline WidgetId button(UIManager& ui, WidgetId parent, std::string label,
                         std::function<void()> onClick) {
     Theme& t = theme();
     ButtonData btn;
     btn.label        = std::move(label);
     btn.fontSize     = t.fontMedium();
-    btn.normalColor  = BTN_GREY;
-    btn.hoverColor   = BTN_GREY_HOVER;
-    btn.pressedColor = BTN_GREY_PRESS;
-    btn.labelColor   = WHITE_TEXT;
-    btn.cornerRadius = t.scaled(3.0f);
-    btn.onClick      = std::move(onClick);
+    btn.normalColor     = {0.28f, 0.30f, 0.38f, 0.95f};
+    btn.hoverColor      = {0.40f, 0.43f, 0.52f, 0.95f};
+    btn.pressedColor    = {0.18f, 0.20f, 0.26f, 0.95f};
+    btn.gradientBottom  = {0.14f, 0.16f, 0.22f, 0.95f};
+    btn.borderColor     = {0.85f, 0.72f, 0.30f, 0.35f};
+    btn.borderWidth     = 1.0f;
+    btn.labelColor      = WHITE_TEXT;
+    btn.cornerRadius    = t.scaled(3.0f);
+    btn.onClick         = std::move(onClick);
     return ui.createButton(parent, {0.0f, 0.0f, 0.0f, t.buttonH()},
                            std::move(btn));
 }

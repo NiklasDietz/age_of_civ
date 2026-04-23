@@ -70,6 +70,25 @@ struct WidgetHandle {
 struct PanelData {
     Color backgroundColor = {0.1f, 0.1f, 0.15f, 0.85f};
     float cornerRadius    = 4.0f;
+
+    /// Optional second colour for a vertical two-band gradient. Alpha
+    /// 0 = flat fill; non-zero draws a lower band blended with the
+    /// main `backgroundColor`. Cheap alternative to a shader-side
+    /// gradient and enough to break up the flat-grey look.
+    Color gradientBottom  = {0.0f, 0.0f, 0.0f, 0.0f};
+
+    /// Optional thin outline drawn just inside the bounds.
+    Color borderColor     = {0.0f, 0.0f, 0.0f, 0.0f};
+    float borderWidth     = 1.0f;
+
+    /// Optional leading accent bar (left edge ribbon).
+    Color accentBarColor  = {0.0f, 0.0f, 0.0f, 0.0f};
+    float accentBarWidth  = 3.0f;
+
+    /// Optional 1-px inner edges that fake depth: lighter top, darker
+    /// bottom. Alpha 0 = off.
+    Color topHighlight    = {0.0f, 0.0f, 0.0f, 0.0f};
+    Color bottomShadow    = {0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 /// Clickable button.
@@ -117,6 +136,15 @@ struct ButtonData {
     /// remaining space. Used for tab buttons with category icons.
     uint32_t iconSpriteId = 0;
     float    iconSize     = 16.0f;
+
+    /// Optional gradient bottom. When alpha > 0 the button renders
+    /// with a vertical gradient from `normalColor`/`hoverColor`/
+    /// `pressedColor` to this colour. Gives buttons glossy depth.
+    Color gradientBottom  = {0.0f, 0.0f, 0.0f, 0.0f};
+
+    /// Optional thin border. Alpha 0 = none.
+    Color borderColor     = {0.0f, 0.0f, 0.0f, 0.0f};
+    float borderWidth     = 1.0f;
 
     /// Persistent "this is the active choice" flag. Renderer uses
     /// `selectedColor` (falls back to hoverColor shifted brighter) so
