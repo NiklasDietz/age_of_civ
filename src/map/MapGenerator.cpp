@@ -559,7 +559,13 @@ void MapGenerator::generateRivers(HexGrid& grid, aoc::Random& rng) {
     if (sources.empty()) { return; }
 
     // Target density: ~1 river per 200 tiles, capped to source count.
-    const int32_t desiredRivers = std::max(1, grid.tileCount() / 200);
+    // Target density: ~1 river per 60 tiles.  Previous 1-per-200 was three
+    // times too sparse, and strict ±2 zigzag rejects ~40-60% of candidate
+    // sources (paths dead-end before reaching water), so the effective
+    // committed count comes out well below even the nominal target.  Over-
+    // provision sources 3x so we end up with roughly the real-world density
+    // of "most medium landmasses touch 2-3 rivers".
+    const int32_t desiredRivers = std::max(3, grid.tileCount() / 60);
     const int32_t riverCount = std::min(desiredRivers, static_cast<int32_t>(sources.size()));
 
     // Shuffle sources so the first N picks are random.
@@ -660,10 +666,23 @@ void MapGenerator::generateRivers(HexGrid& grid, aoc::Random& rng) {
         return true;
     };
 
+    int32_t committedRivers = 0;
+    int32_t rejectedRivers  = 0;
     for (int32_t r = 0; r < riverCount; ++r) {
         const int32_t startIndex = sources[static_cast<size_t>(r)];
         std::vector<Step> path;
-        if (!findPath(startIndex, path)) { continue; }
+        if (!findPath(startIndex, path)) { ++rejectedRivers; continue; }
+        if (path.empty())                { ++rejectedRivers; continue; }
+
+        // Hard sanity: the final committed boundary must actually touch water.
+        // findPath guarantees this (BFS success case), but double-check here
+        // so a silent future bug cannot leave dry-land rivers.
+        const Step& last = path.back();
+        const hex::AxialCoord lastC = grid.toAxial(last.tileIndex);
+        const hex::AxialCoord lastN = hex::neighbors(lastC)[static_cast<size_t>(last.direction)];
+        if (!grid.isValid(lastN)) { ++rejectedRivers; continue; }
+        const int32_t lastNIdx = grid.toIndex(lastN);
+        if (!isWater(grid.terrain(lastNIdx))) { ++rejectedRivers; continue; }
 
         for (const Step& s : path) {
             const hex::AxialCoord c = grid.toAxial(s.tileIndex);
@@ -679,7 +698,16 @@ void MapGenerator::generateRivers(HexGrid& grid, aoc::Random& rng) {
             neighborEdges |= static_cast<uint8_t>(1u << reverseDir);
             grid.setRiverEdges(nIdx, neighborEdges);
         }
+        ++committedRivers;
+        LOG_INFO("River committed: source=(%d,%d) outlet=(%d,%d) terrain=%.*s steps=%zu",
+                 grid.toAxial(startIndex).q, grid.toAxial(startIndex).r,
+                 lastN.q, lastN.r,
+                 static_cast<int>(terrainName(grid.terrain(lastNIdx)).size()),
+                 terrainName(grid.terrain(lastNIdx)).data(),
+                 path.size());
     }
+    LOG_INFO("River generation: %d committed, %d rejected (of %d sources tried)",
+             committedRivers, rejectedRivers, riverCount);
 }
 
 void MapGenerator::placeNaturalWonders(HexGrid& grid, aoc::Random& rng) {

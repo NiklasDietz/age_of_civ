@@ -267,20 +267,35 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         {0.0f, 0.0f, screenW, screenH},
         PanelData{BG_DARK, 0.0f});
 
-    // Centered content panel
+    // Centered content panel.  Height clamped to 90% of screen so on small
+    // displays the panel doesn't spill offscreen; a ScrollList inside takes
+    // over when the content exceeds the visible window (e.g. 8 player rows).
     constexpr float PANEL_W = 550.0f;
-    constexpr float PANEL_H = 620.0f;
+    const float PANEL_H = std::min(620.0f, screenH * 0.92f);
     const float panelX = (screenW - PANEL_W) * 0.5f;
     const float panelY = (screenH - PANEL_H) * 0.5f;
 
-    WidgetId contentPanel = ui.createPanel(
+    WidgetId outerPanel = ui.createPanel(
         this->m_rootPanel,
         {panelX, panelY, PANEL_W, PANEL_H},
         PanelData{PANEL_BG, 8.0f});
     {
-        Widget* cp = ui.getWidget(contentPanel);
+        Widget* cp = ui.getWidget(outerPanel);
         assert(cp != nullptr);
         cp->padding = {20.0f, 20.0f, 20.0f, 20.0f};
+        cp->childSpacing = 6.0f;
+    }
+
+    // ScrollList wraps the actual content so many-player configs stay
+    // reachable by scroll-wheel when they exceed the panel's visible height.
+    WidgetId contentPanel = ui.createScrollList(
+        outerPanel,
+        {0.0f, 0.0f, PANEL_W - 40.0f, PANEL_H - 40.0f},
+        ScrollListData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f, 0.0f});
+    {
+        Widget* cp = ui.getWidget(contentPanel);
+        assert(cp != nullptr);
+        cp->padding = {0.0f, 0.0f, 0.0f, 0.0f};
         cp->childSpacing = 6.0f;
     }
 
