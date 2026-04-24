@@ -138,8 +138,10 @@ inline constexpr std::array<BuildingDef, 43> BUILDING_DEFS = {{
     {BuildingId{8},  "Textile Mill",       DistrictType::Industrial,  80, 1, 2, 0, 1, 1.0f},
     {BuildingId{9},  "Food Proc. Plant",   DistrictType::Industrial,  90, 1, 1, 0, 1, 1.0f},
     {BuildingId{10}, "Precision Workshop", DistrictType::Industrial, 140, 2, 3, 1, 0, 1.0f,  {{63, 1}}},                // 1 Tools
-    {BuildingId{11}, "Semiconductor Fab",  DistrictType::Industrial, 220, 4, 2, 3, 2, 1.0f},
-    {BuildingId{12}, "Research Lab",       DistrictType::Campus,     480, 3, 0, 10, 0, 1.5f, {{76, 1}}},                // 1 Glass
+    // Late-tech buildings cheaper so cities actually finish them before
+    // the 700-900-turn victory window closes.
+    {BuildingId{11}, "Semiconductor Fab",  DistrictType::Industrial, 160, 4, 2, 3, 2, 1.0f},
+    {BuildingId{12}, "Research Lab",       DistrictType::Campus,     280, 3, 0, 10, 0, 1.5f, {{76, 1}}},                // 1 Glass
     {BuildingId{13}, "Telecom Hub",        DistrictType::Commercial, 130, 2, 0, 1, 4, 1.0f},
     {BuildingId{14}, "Airport",            DistrictType::Industrial, 200, 3, 2, 0, 3, 1.0f,  {{64, 2}}},                // 2 Steel
     {BuildingId{15}, "Granary",            DistrictType::CityCenter,  40, 1, 1, 0, 0, 1.0f},
@@ -163,7 +165,7 @@ inline constexpr std::array<BuildingDef, 43> BUILDING_DEFS = {{
     {BuildingId{32}, "Gas Plant",          DistrictType::Industrial, 100, 2, 0, 0, 0, 1.0f,  {}, 12, 1},                // burns 1 Natural Gas/turn
     {BuildingId{33}, "Biofuel Plant",      DistrictType::Industrial, 120, 2, 1, 0, 0, 1.0f},                            // enables biofuel recipes
     {BuildingId{34}, "Geothermal Plant",   DistrictType::Industrial, 180, 1, 0, 0, 0, 1.0f},                            // free power, requires volcanic/mountain
-    {BuildingId{35}, "Fusion Reactor",     DistrictType::Industrial, 500, 8, 0, 2, 0, 1.0f,  {{64, 3}, {76, 2}}, 80, 1}, // 3 Steel + 2 Glass to build, 1 Deuterium/turn
+    {BuildingId{35}, "Fusion Reactor",     DistrictType::Industrial, 350, 8, 0, 2, 0, 1.0f,  {{64, 3}, {76, 2}}, 80, 1}, // 3 Steel + 2 Glass to build, 1 Deuterium/turn
     // Faith buildings -- gate each city's faith output. Must be built on HolySite district.
     {BuildingId{36}, "Shrine",             DistrictType::HolySite,    40, 1, 0, 0, 0, 1.0f, {}, 0xFFFF, 0, 2},
     {BuildingId{37}, "Temple",             DistrictType::HolySite,   100, 2, 0, 0, 0, 1.0f, {}, 0xFFFF, 0, 4},

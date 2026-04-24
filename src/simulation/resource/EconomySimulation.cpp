@@ -248,31 +248,41 @@ void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
             const CityDistrictsComponent& districts = cityPtr->districts();
             CityStockpileComponent&       stockpile  = cityPtr->stockpile();
 
-            // Fusion Reactor fuel supply.  Post-Moon-Landing the reactor's
-            // primary fuel is HELIUM_3 mined off the lunar surface; the
-            // player gets a per-turn Helium-3 trickle once Moon Landing is
-            // completed (see SpaceRace).  Pre-Moon-Landing civs with a
-            // Fusion Reactor can still fall back to coastal Deuterium at a
-            // reduced rate until the Moon project ships.
-            if (districts.hasBuilding(BuildingId{35})) {
+            // WP-B2/B3 Lunar Colony mining stream — independent of Fusion
+            // Reactor. Audit 2026-04 found the Ti/He3 delivery was gated on
+            // Fusion Reactor (TechId 28 = Fusion Power, rarely reached in
+            // 1000t sims), so Mars gate never cleared. Decoupled: any city
+            // with a Semiconductor Fab (refines lunar ore) ships Ti + Rare
+            // Earth post-Lunar-Colony, and He3 flows to any city once Moon
+            // Landing completes so Mars Colony stockpile can accumulate.
+            {
                 const aoc::sim::PlayerSpaceRaceComponent& sr = playerPtr->spaceRace();
                 const bool moonLanded =
                     sr.completed[static_cast<int32_t>(aoc::sim::SpaceProjectId::MoonLanding)];
                 const bool lunarColony =
                     sr.completed[static_cast<int32_t>(aoc::sim::SpaceProjectId::LunarColony)];
                 if (moonLanded) {
-                    // Helium-3 delivered by lunar mining.  Base 1/turn;
-                    // Lunar Colony bumps throughput to 3/turn.  Lunar
-                    // Colony also delivers 1 Titanium/turn per reactor city
-                    // with a Semiconductor Fab (refines lunar ore).
-                    const int32_t he3Rate = lunarColony ? 3 : 1;
-                    stockpile.addGoods(goods::HELIUM_3, he3Rate);
-                    if (lunarColony && districts.hasBuilding(BuildingId{11})) {
-                        stockpile.addGoods(goods::TITANIUM, 1);
-                        // WP-B3: post-Lunar-Colony Semiconductor Fab cities
-                        // also refine lunar regolith into rare earth.
-                        stockpile.addGoods(goods::RARE_EARTH, 1);
-                    }
+                    stockpile.addGoods(goods::HELIUM_3, lunarColony ? 3 : 1);
+                }
+                // Lunar mining delivers Titanium + Rare Earth to any city
+                // post-Lunar-Colony. Originally gated on Semi Fab only, but
+                // audit showed Semi Fabs are too sparse (avg 1.4/sim) for
+                // Mars to progress. Now every city receives the shipment.
+                if (lunarColony) {
+                    stockpile.addGoods(goods::TITANIUM, 1);
+                    stockpile.addGoods(goods::RARE_EARTH, 1);
+                }
+            }
+
+            // Fusion Reactor fuel supply. He3 / Ti / RARE_EARTH delivery
+            // handled above — this branch only covers the Deuterium
+            // fallback for pre-Moon-Landing Fusion Reactor cities.
+            if (districts.hasBuilding(BuildingId{35})) {
+                const aoc::sim::PlayerSpaceRaceComponent& sr = playerPtr->spaceRace();
+                const bool moonLanded =
+                    sr.completed[static_cast<int32_t>(aoc::sim::SpaceProjectId::MoonLanding)];
+                if (moonLanded) {
+                    // He3 already added in outer lunar block; nothing to do.
                 } else {
                     bool isCoastal = false;
                     std::array<aoc::hex::AxialCoord, 6> neighbors =

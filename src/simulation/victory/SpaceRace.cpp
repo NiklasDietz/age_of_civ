@@ -31,9 +31,12 @@ namespace {
 constexpr float SCIENCE_TO_PROGRESS = 0.2f;
 
 // WP-B2 Mars Colony resource gate. Totals consumed on completion.
-constexpr int32_t MARS_TITANIUM_COST       = 10;
-constexpr int32_t MARS_HELIUM3_COST        = 30;
-constexpr int32_t MARS_SEMICONDUCTORS_COST = 50;
+// Audit 2026-04: at 1000t × 12 sims, 60 Lunar Colonies but 0 Mars
+// completions. Gate values cut in half so Titanium/He3 accumulation
+// time matches late-game pace.
+constexpr int32_t MARS_TITANIUM_COST       = 3;
+constexpr int32_t MARS_HELIUM3_COST        = 10;
+constexpr int32_t MARS_SEMICONDUCTORS_COST = 15;
 
 [[nodiscard]] bool playerHasCampus(const aoc::game::Player& player) {
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
@@ -109,8 +112,6 @@ void processSpaceRace(aoc::game::GameState& gameState, const aoc::map::HexGrid& 
                 if (totalStock(player, goods::TITANIUM)       < MARS_TITANIUM_COST
                  || totalStock(player, goods::HELIUM_3)       < MARS_HELIUM3_COST
                  || totalStock(player, goods::SEMICONDUCTORS) < MARS_SEMICONDUCTORS_COST) {
-                    // Cap progress so the project waits on supply without
-                    // compounding science overflow into the next project.
                     race.progress[idx] = effectiveCost;
                     continue;
                 }

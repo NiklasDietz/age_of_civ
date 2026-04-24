@@ -29,7 +29,13 @@ void PlayerGrievanceComponent::addGrievance(GrievanceType type, PlayerId against
             case GrievanceType::FailedAllianceObligation:  existing.turnsRemaining = 60; return;
             case GrievanceType::DMZViolation:              existing.turnsRemaining = 20; return;
             case GrievanceType::IdeologicalDifference:     existing.turnsRemaining = 8;  return;
-            case GrievanceType::EspionageCaught:           existing.turnsRemaining = 40; return;
+            case GrievanceType::EspionageCaught:
+                existing.turnsRemaining = 40;
+                // Audit 2026-04: repeat spy fails stack severity so the
+                // WP-A8 cascade (2+ incidents) can actually trigger;
+                // cap at -100 to avoid unbounded hate.
+                existing.severity = std::max(-100, existing.severity - 20);
+                return;
             case GrievanceType::BulliedCityState:          existing.turnsRemaining = 30; return;
             // Historically permanent (H1.10 capped at 100 turns). Re-incident
             // refreshes the countdown so repeated offenses stay fresh.

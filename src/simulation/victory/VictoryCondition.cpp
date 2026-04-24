@@ -334,7 +334,12 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
 
         // Legacy score for display/compatibility
         tracker.scienceProgress = s.techsResearched;
-        tracker.totalCultureAccumulated += s.culturePerTurn;
+        // Audit 2026-04: culture accumulation rate halved so the Culture
+        // victory lands around turn 800-1000 instead of 400-500. Paired
+        // with the 18000 threshold bump, this targets parity with other
+        // victory paths. Raising the threshold alone couldn't catch up to
+        // culture-per-turn growth from wonders + faith curves.
+        tracker.totalCultureAccumulated += s.culturePerTurn * 0.5f;
         tracker.score = static_cast<int32_t>(tracker.compositeCSI * 1000.0f);
 
         // Track peak GDP for collapse detection
@@ -598,13 +603,18 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
         }
     }
 
-    // 3b. Science Victory: completed all Space Race projects
+    // 3b. Science Victory: completed 4 of 5 Space Race projects.
+    // Audit 2026-04: all-5 (inc. Exoplanet / Nanotechnology tech 25) was
+    // unreachable in 1500t sims. 4-of-5 still requires the full Earth →
+    // Moon → Lunar → Mars chain and is a meaningful achievement, while
+    // allowing Science path to actually resolve.
     if ((enabledTypes & VICTORY_MASK_SCIENCE) != 0u) {
         for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
             if (candidate->victoryTracker().isEliminated) { continue; }
-            if (candidate->spaceRace().allCompleted()) {
-                LOG_INFO("Player %u wins by SCIENCE (all space projects completed)",
-                         static_cast<unsigned>(candidate->id()));
+            if (candidate->spaceRace().completedCount() >= 4) {
+                LOG_INFO("Player %u wins by SCIENCE (%d/5 space projects completed)",
+                         static_cast<unsigned>(candidate->id()),
+                         candidate->spaceRace().completedCount());
                 return {VictoryType::Science, candidate->id()};
             }
         }

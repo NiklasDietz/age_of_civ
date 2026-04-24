@@ -81,9 +81,12 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     // WP-A5 combined-stress trigger eligibility: war weariness, grievance
     // count, and city-level unhappiness all above their thresholds simulcast
     // a soft 10-turn Free-City flip.
+    // Audit 2026-04: thresholds never fired across 12-sim × 500t batch.
+    // Loosen weariness gate (40 → 25) and grievance count (4 → 2) so the
+    // signal actually appears in play without being spammy.
     const float weariness = gsPlayer->warWeariness().weariness;
-    const bool  civStressed = (weariness > 40.0f)
-                           && (gsPlayer->grievances().grievances.size() >= 4);
+    const bool  civStressed = (weariness > 25.0f)
+                           && (gsPlayer->grievances().grievances.size() >= 2);
 
     // Iterate all cities owned by this player. Cities captured/seceded away
     // remain in the old owner's vector (capture mechanic never rewires lists),

@@ -271,8 +271,14 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                     nearestCity = cityPtr.get();
                 }
             }
+            // WP-A3: pulse triggers in any city with a science-focused
+            // building (Library 7, University 19, Research Lab 12).
+            // Audit 2026-04: Research-Lab-only gate never fired in 1000t
+            // sims since Lab is rare late-game.
             const bool hasLab = (nearestCity != nullptr)
-                && nearestCity->districts().hasBuilding(BuildingId{12});
+                && (nearestCity->districts().hasBuilding(BuildingId{12})
+                 || nearestCity->districts().hasBuilding(BuildingId{19})
+                 || nearestCity->districts().hasBuilding(BuildingId{7}));
             if (hasLab) {
                 PlayerGreatPeopleComponent& gpComp = playerObj->greatPeople();
                 gpComp.pulseScienceAmount = 8.0f;

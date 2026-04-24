@@ -184,6 +184,65 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
             }
         }
 
+        // Step 1e-pre (WP-C4): build a Greenhouse on a blank grassland/
+        // plains tile the player owns, post-Advanced-Chemistry. Only fires
+        // every ~8th tile so Greenhouses don't blanket the map. Bypasses
+        // `bestImprovementForTile` (which never picks Greenhouse).
+        if (gsPlayer->hasResearched(TechId{24})
+            && grid.owner(currentIdx) == this->m_player
+            && grid.improvement(currentIdx) == aoc::map::ImprovementType::None
+            && !grid.resource(currentIdx).isValid()
+            && (currentIdx % 8 == 3)
+            && canPlaceImprovement(grid, currentIdx,
+                                   aoc::map::ImprovementType::Greenhouse)) {
+            grid.setImprovement(currentIdx, aoc::map::ImprovementType::Greenhouse);
+            builder.ptr->useCharge();
+            LOG_INFO("AI %u Builder built Greenhouse at (%d,%d)",
+                     static_cast<unsigned>(this->m_player),
+                     builder.position.q, builder.position.r);
+            if (!builder.ptr->hasCharges()) {
+                gsPlayer->removeUnit(builder.ptr);
+            }
+            continue;
+        }
+
+        // Step 1e (WP-C4): seed a Greenhouse the unit stands on. If the
+        // tile is a Greenhouse with no planted crop yet, auto-plant a
+        // climate-banded good the empire has in stock. Prefers the most
+        // abundant so the AI uses surplus trade goods rather than scarce
+        // natives. Consumes 1 seed. Skipped if no stock or already planted.
+        if (grid.improvement(currentIdx) == aoc::map::ImprovementType::Greenhouse
+            && grid.greenhouseCrop(currentIdx) == 0xFFFFu) {
+            uint16_t bestGood = 0xFFFFu;
+            int32_t bestStock = 0;
+            aoc::game::City* sourceCity = nullptr;
+            for (const std::unique_ptr<aoc::game::City>& c : gsPlayer->cities()) {
+                for (uint16_t gid = 0; gid < aoc::sim::goodCount(); ++gid) {
+                    if (aoc::sim::goodDef(gid).climateBand
+                        == aoc::sim::ClimateBand::Any) { continue; }
+                    const int32_t stock = c->stockpile().getAmount(gid);
+                    if (stock > bestStock) {
+                        bestStock = stock;
+                        bestGood = gid;
+                        sourceCity = c.get();
+                    }
+                }
+            }
+            if (bestGood != 0xFFFFu && sourceCity != nullptr) {
+                if (aoc::sim::plantGreenhouseCrop(
+                        grid, sourceCity->stockpile(), currentIdx, bestGood)) {
+                    builder.ptr->useCharge();
+                    LOG_INFO("AI %u Builder planted crop %u in Greenhouse",
+                             static_cast<unsigned>(this->m_player),
+                             static_cast<unsigned>(bestGood));
+                    if (!builder.ptr->hasCharges()) {
+                        gsPlayer->removeUnit(builder.ptr);
+                    }
+                    continue;
+                }
+            }
+        }
+
         // Step 1d (WP-C3): lay a Pipeline along proven oil/gas tiles.
         // Post-Mass-Production (TechId 15), if builder stands on an owned
         // tile whose resource is OIL or NATURAL_GAS (or hasn't yet been

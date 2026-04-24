@@ -1094,10 +1094,11 @@ int main(int argc, char* argv[]) {
     // tally at maxTurns; Score is the legacy fallback; LastStanding ends the
     // game early if only one civ remains.  `--victory-types` (CLI) or
     // `victory_types:` (yaml) overrides.
-    uint32_t victoryMask =
-        aoc::sim::VICTORY_MASK_PRESTIGE
-      | aoc::sim::VICTORY_MASK_SCORE
-      | aoc::sim::VICTORY_MASK_LAST_STANDING;
+    // Audit 2026-04: default enabled ALL victory types so headless sims
+    // actually test Domination / Science / Culture / Religion / Confederation
+    // paths. Previously only end-of-game Prestige/Score/LastStanding ran,
+    // which masked early-victory mechanics.
+    uint32_t victoryMask = aoc::sim::VICTORY_MASK_ALL;
 
     bool loadedConfig = false;
     if (argc >= 2) {

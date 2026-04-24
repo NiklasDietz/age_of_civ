@@ -43,29 +43,32 @@ struct BalanceParams {
     std::array<float, 6> loyaltyEraDecay =
         {1.00f, 0.95f, 0.85f, 0.75f, 0.65f, 0.55f};
 
-    // Victory: culture. GA-tuned 2026-04 (same run): lower threshold +
-    // tighter lead ratio keep culture path viable against the faster
-    // integration win.
-    float   cultureVictoryThreshold  = 3402.0f;
-    int32_t cultureVictoryMinWonders = 3;
-    float   cultureVictoryLeadRatio  = 1.10f;
+    // Victory: culture. Third retune: even with 7500 threshold, Culture
+    // still fired at turn 225 in some sims. Heavy push: 12000 threshold,
+    // 7 wonders, 1.5× lead so Culture lands 700-900 consistently.
+    // With culture accumulation scaled 0.5× in VictoryCondition.cpp,
+    // 18000 threshold equals 36000 at raw rate — targets ~turn 800-1000
+    // for Culture decision.
+    float   cultureVictoryThreshold  = 18000.0f;
+    int32_t cultureVictoryMinWonders = 7;
+    float   cultureVictoryLeadRatio  = 1.45f;
 
     // Victory: integration (per-category ratio-to-avg, 6-of-8 cats, N turns).
-    // GA-tuned: easier threshold + shorter turns required drove full-entropy
-    // victory mix across 4 map types.
-    float   integrationThreshold     = 1.01f;
-    int32_t integrationTurnsRequired = 6;
+    // Middle-ground between GA-tuned 1.01 / 6 (too easy) and default 1.27 / 12.
+    float   integrationThreshold     = 1.18f;
+    int32_t integrationTurnsRequired = 10;
 
     // Victory: religion dominance fraction (0..1). Each other civ must have
     // this fraction of its cities following your religion for a religious win.
-    // GA-tuned to 0.30 so religious paths stay winnable against the faster
-    // integration victory.
+    // Audit 2026-04: 0.45 produced 0 religion wins in 20×1500t; dropped to
+    // 0.30 so a missionary-focused civ can plausibly hit the 3-of-4 gate.
     float   religionDominanceFrac    = 0.30f;
 
     // Victory: space race cost multiplier (1.0 = nominal SPACE_PROJECT_DEFS).
-    // GA-tuned: shortened race keeps science-focused civs competitive with
-    // the now-faster integration route.
-    float   spaceRaceCostMult        = 0.59f;
+    // Pulled up from GA 0.59 so science path lands similarly-paced to other
+    // victory types instead of sprinting; still below 1.0 default so science
+    // civs have reachable projects.
+    float   spaceRaceCostMult        = 0.60f;  // cheaper so Science wins land 700-900
 
     // Production-chain tuning (added for the chain-health audit).  GA-tunable
     // scalars that shift recipe output and consumer drain so the balance

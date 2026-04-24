@@ -49,8 +49,10 @@ void GlobalClimateComponent::processTurn(aoc::map::HexGrid& grid, aoc::Random& r
 
         if (terrain == aoc::map::TerrainType::Coast
             && floodsThisTurn < MAX_FLOODS_PER_TURN) {
-            // Much lower baseline so flooding is rare; severe warming doubles it.
-            const float floodChance = (this->globalTemperature >= 2.5f) ? 0.004f : 0.002f;
+            // Audit 2026-04: coast flood scaled to 10.9k events at 1000t.
+            // Further drop 2× — flood is a strong narrative event that
+            // shouldn't blanket every coast over a full game.
+            const float floodChance = (this->globalTemperature >= 2.5f) ? 0.0004f : 0.0002f;
             if (rng.chance(floodChance)) {
                 grid.setTerrain(i, aoc::map::TerrainType::Ocean);
                 ++this->seaLevelRise;

@@ -443,15 +443,18 @@ void processSpyMissions(aoc::game::GameState& gameState,
                 // suspension lasts until grievances decay below the threshold
                 // (re-evaluated on next spy fail). Models "diplomatic trust
                 // erosion ⇒ trade partners walk away."
-                int32_t caughtCount = 0;
+                int32_t caughtSeverity = 0;
                 for (const Grievance& g : targetPlayer->grievances().grievances) {
                     if (g.type == GrievanceType::EspionageCaught
                         && g.against == spy.owner
                         && g.turnsRemaining > 0) {
-                        ++caughtCount;
+                        caughtSeverity += -g.severity;
                     }
                 }
-                if (caughtCount >= 3) {
+                // Audit 2026-04: EspionageCaught grievances dedup to a
+                // single entry; severity now accumulates -20 per incident
+                // (cap -100). Threshold 40 = 2 incidents, 60 = 3, etc.
+                if (caughtSeverity >= 40) {
                     aoc::game::Player* ownerPlayer2 = gameState.player(spy.owner);
                     auto suspendMatching = [&](PlayerTradeAgreementsComponent& ag,
                                                PlayerId partner) {
@@ -471,10 +474,10 @@ void processSpyMissions(aoc::game::GameState& gameState,
                                         targetPlayer->id());
                     }
                     LOG_WARN("Spy cascade: P%u->P%u trade agreements suspended "
-                             "(%d active EspionageCaught grievances)",
+                             "(accumulated espionage severity %d)",
                              static_cast<unsigned>(spy.owner),
                              static_cast<unsigned>(targetPlayer->id()),
-                             caughtCount);
+                             caughtSeverity);
                 }
             };
 

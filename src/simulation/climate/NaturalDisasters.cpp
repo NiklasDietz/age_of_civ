@@ -132,10 +132,17 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
 
         // Hurricane: coastal tiles at high climate delta; damages improvements,
         // naval units, and the nearest coastal city (amenity hit).
-        if (terrain == aoc::map::TerrainType::Coast && globalTemp > 1.0f) {
+        // Audit 2026-04: Hurricane still fired 44k events across 12 × 1000t
+        // sims (proportional to 9k @ 500t). globalTemp saturates at 10 for
+        // most of mid-to-late game so a per-tile coefficient of 2M * 8.8
+        // still yields ~18/turn per sim. Drop another 4× to 500k.
+        if (terrain == aoc::map::TerrainType::Coast && globalTemp > 1.5f) {
             const uint32_t hurHash = hash * 999983u;
+            // Audit 2026-04 second pass: 13k events at 1000t still ~10×
+            // earthquake rate. Drop coefficient another 3× so hurricane
+            // lands in the 3-5k range per batch, comparable to volcanic.
             const uint32_t threshold = static_cast<uint32_t>(
-                10000000.0f * (globalTemp - 0.7f));
+                150000.0f * (globalTemp - 1.2f));
             if (hurHash < threshold) {
                 if (grid.improvement(i) != aoc::map::ImprovementType::None) {
                     grid.setImprovement(i, aoc::map::ImprovementType::None);

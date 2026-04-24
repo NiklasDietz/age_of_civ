@@ -240,10 +240,20 @@ static void buildGoodEntries(std::vector<WikiEntry>& entries) {
             default: break;
         }
 
+        const char* bandName = "Any";
+        switch (g.climateBand) {
+            case aoc::sim::ClimateBand::Tropical:    bandName = "Tropical"; break;
+            case aoc::sim::ClimateBand::Subtropical: bandName = "Subtropical"; break;
+            case aoc::sim::ClimateBand::Temperate:   bandName = "Temperate"; break;
+            case aoc::sim::ClimateBand::Cold:        bandName = "Cold"; break;
+            default: break;
+        }
+
         entry.statsBlock = std::string("Category: ") + catName
             + "\nBase Price: " + std::to_string(g.basePrice)
             + "\nStrategic: " + (g.isStrategic ? "Yes" : "No")
-            + "\nPrice Volatility: " + std::to_string(static_cast<int>(g.priceElasticity * 100.0f)) + "%";
+            + "\nPrice Volatility: " + std::to_string(static_cast<int>(g.priceElasticity * 100.0f)) + "%"
+            + "\nClimate Band: " + bandName;
 
         entry.body = "";
         // Find recipes that produce this good
@@ -468,6 +478,73 @@ static void buildCivEntries(std::vector<WikiEntry>& entries) {
 }
 
 static void buildMechanicsEntries(std::vector<WikiEntry>& entries) {
+    // WP-C3 Power Grid
+    entries.push_back({WikiCategory::Mechanics, "Power Grid",
+        "Post-Electricity (tech 14) your builders can lay Power Poles on owned\n"
+        "land tiles. Poles stack with existing improvements (farm, mine, etc.).\n\n"
+        "POWERED CITY: reachable from a power-plant city via a BFS chain of\n"
+        "  same-owner Power Poles (own-city centers count as hub nodes).\n"
+        "  Powered cities get +25% production.\n\n"
+        "UNPOWERED CITY WITH ADJACENT POLES: +5% production per adjacent pole,\n"
+        "  capped at +15%. Readiness bonus until a plant-host connects.\n\n"
+        "Power plants: Coal (26), Oil (27), Hydro Dam (28), Nuclear (29),\n"
+        "Solar (30), Wind (31), Gas (32), Biofuel (33), Geothermal (34), Fusion (35).\n\n"
+        "Fallout wipes poles from affected tiles. Poles are serialized in the\n"
+        "Improvements save section.",
+        ""});
+
+    // WP-C3 Pipelines
+    entries.push_back({WikiCategory::Mechanics, "Pipelines",
+        "Post-Mass-Production (tech 15) your builders can lay Pipelines on\n"
+        "owned OIL / NATURAL_GAS tiles (or tiles adjacent to existing\n"
+        "pipelines). Pipelines stack with existing improvements.\n\n"
+        "EFFECT: land traders crossing a pipeline tile double their per-turn\n"
+        "movement distance. Bulk oil / gas / fuel logistics run faster.",
+        ""});
+
+    // WP-C3 Transit Treaty
+    entries.push_back({WikiCategory::Mechanics, "Transit Treaty",
+        "Two-player trade agreement granting zero-toll right-of-passage across\n"
+        "each other's territory. No tariff relief on goods — purely transit.\n\n"
+        "Traders of either member cross the other's tiles without paying the\n"
+        "owner's territory toll. Use for land trade routes that would\n"
+        "otherwise be blocked by hostile tariff walls.\n\n"
+        "Forms via `proposeTransitTreaty`. Duplicate treaties between the\n"
+        "same pair are rejected.",
+        ""});
+
+    // WP-C4 Greenhouse
+    entries.push_back({WikiCategory::Mechanics, "Greenhouse Planting",
+        "Greenhouse improvement (tech Advanced Chemistry, 24) lets you grow\n"
+        "off-climate crops at 50% rate.\n\n"
+        "WORKFLOW:\n"
+        "  1. Obtain crop seeds via trade (or local production).\n"
+        "  2. Build Greenhouse on any land tile you own.\n"
+        "  3. Stand a Builder on the Greenhouse tile and click 'Plant Crop'.\n"
+        "     Cycles through climate-banded goods your empire has stockpiled.\n"
+        "     Consumes 1 seed; sets tile to produce that crop.\n"
+        "  4. Each turn (at 50% rate: 1 per 2 turns) the tile produces the\n"
+        "     planted crop into its city's stockpile.\n\n"
+        "Re-click 'Plant Crop' to swap crops. Seed is consumed each replant.\n"
+        "Serialized in the Improvements save section.",
+        ""});
+
+    // WP-H Takeover
+    entries.push_back({WikiCategory::Mechanics, "AI Takeover (Spectator Mode)",
+        "In an auto-AI simulation, you can take over any AI player mid-game.\n\n"
+        "STEPS:\n"
+        "  1. Enter spectator mode.\n"
+        "  2. Use Tab to cycle to the player you want to control.\n"
+        "  3. Press Ctrl+T.\n\n"
+        "EFFECTS:\n"
+        "  - Target player becomes human-controlled (isHuman = true).\n"
+        "  - Previous human slot (default player 0) becomes AI-controlled.\n"
+        "  - Fog of war, camera, and UI switch to the target's perspective.\n"
+        "  - AIController for the taken-over slot is skipped each turn.\n\n"
+        "Game continues from the AI's exact state: cities, units, research,\n"
+        "diplomacy, treasury, everything.",
+        ""});
+
     // Monetary System
     entries.push_back({WikiCategory::Mechanics, "Monetary System",
         "Your civilization's money evolves through 4 stages:\n\n"
