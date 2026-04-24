@@ -1075,13 +1075,16 @@ void processTurn(TurnContext& turnContext) {
         }
     }
 
-    // 1. AI decisions
+    // 1. AI decisions. WP-H: skip players the user has taken over
+    // (isHuman == true). The user controls those slots manually.
     for (ai::AIController* ai : turnContext.aiControllers) {
-        if (ai != nullptr) {
-            ai->executeTurn(*turnContext.gameState, *turnContext.grid, turnContext.fogOfWar,
-                           *turnContext.diplomacy, turnContext.economy->market(), *turnContext.rng,
-                           turnContext.dealTracker);
-        }
+        if (ai == nullptr) { continue; }
+        const PlayerId pid = ai->player();
+        const aoc::game::Player* gsPlayer = turnContext.gameState->player(pid);
+        if (gsPlayer != nullptr && gsPlayer->isHuman()) { continue; }
+        ai->executeTurn(*turnContext.gameState, *turnContext.grid, turnContext.fogOfWar,
+                       *turnContext.diplomacy, turnContext.economy->market(), *turnContext.rng,
+                       turnContext.dealTracker);
     }
 
     // Robot-worker slot assignment runs before production so bonus recipe

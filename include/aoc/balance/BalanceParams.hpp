@@ -27,33 +27,45 @@ namespace aoc::balance {
 /// Rerun used the post-fix CSI (populated diplomacy avg, non-negative
 /// financial) so integration threshold reflects real game dynamics.
 struct BalanceParams {
-    // Loyalty / secession
-    float   baseLoyalty              = 5.80f;  ///< Per-turn baseline loyalty
-    int32_t loyaltyPressureRadius    = 14;     ///< Hexes a city projects pressure
+    // Loyalty / secession.
+    // GA-tuned 2026-04 (25 gen × 10 pop × 5 games × 250 turns, 4 map
+    // types, fit=0.8497, ent=0.97): tighter radius + aggressive
+    // periphery secession produced the highest victory-type diversity.
+    float   baseLoyalty              = 10.00f; ///< Per-turn baseline loyalty
+    int32_t loyaltyPressureRadius    = 6;      ///< Hexes a city projects pressure
     int32_t sustainedUnrestTurns     = 8;      ///< Turns below Unrest → secession eligible
-    int32_t distantCityThreshold     = 9;      ///< Hexes from capital for periphery secession
+    int32_t distantCityThreshold     = 4;      ///< Hexes from capital for periphery secession
 
-    // Victory: culture. GA-picked 4246/3 starved culture wins (1-of-18); manual
-    // rollback to 4000/2 to restore the 8-of-18 baseline while keeping the
-    // GA-picked leadRatio 1.48.
-    float   cultureVictoryThreshold  = 4000.0f;
-    int32_t cultureVictoryMinWonders = 2;
-    float   cultureVictoryLeadRatio  = 1.48f;
+    /// WP-C1: era-indexed foreign-city-pressure decay multiplier. Index is
+    /// the player's `currentRevolution` (0..5). Defaults match the legacy
+    /// `kForeignDecay` array. Exposed so the BalanceGenome GA can tune.
+    /// Own-city pressure decays as 0.80 + 0.20 * this[rev] (in code).
+    std::array<float, 6> loyaltyEraDecay =
+        {1.00f, 0.95f, 0.85f, 0.75f, 0.65f, 0.55f};
 
-    // Victory: integration (per-category ratio-to-avg, 6-of-8 cats, N turns)
-    float   integrationThreshold     = 1.27f;
-    int32_t integrationTurnsRequired = 12;
+    // Victory: culture. GA-tuned 2026-04 (same run): lower threshold +
+    // tighter lead ratio keep culture path viable against the faster
+    // integration win.
+    float   cultureVictoryThreshold  = 3402.0f;
+    int32_t cultureVictoryMinWonders = 3;
+    float   cultureVictoryLeadRatio  = 1.10f;
+
+    // Victory: integration (per-category ratio-to-avg, 6-of-8 cats, N turns).
+    // GA-tuned: easier threshold + shorter turns required drove full-entropy
+    // victory mix across 4 map types.
+    float   integrationThreshold     = 1.01f;
+    int32_t integrationTurnsRequired = 6;
 
     // Victory: religion dominance fraction (0..1). Each other civ must have
     // this fraction of its cities following your religion for a religious win.
-    // Lowered to 0.40 (from 0.50) because the 8-religion slot cap crowds the
-    // late-game board; combined with the "3-of-4 met civs" relaxation in
-    // VictoryCondition.cpp this makes religious victory reachable in live
-    // play without being trivially farmable.
-    float   religionDominanceFrac    = 0.40f;
+    // GA-tuned to 0.30 so religious paths stay winnable against the faster
+    // integration victory.
+    float   religionDominanceFrac    = 0.30f;
 
     // Victory: space race cost multiplier (1.0 = nominal SPACE_PROJECT_DEFS).
-    float   spaceRaceCostMult        = 1.01f;
+    // GA-tuned: shortened race keeps science-focused civs competitive with
+    // the now-faster integration route.
+    float   spaceRaceCostMult        = 0.59f;
 
     // Production-chain tuning (added for the chain-health audit).  GA-tunable
     // scalars that shift recipe output and consumer drain so the balance

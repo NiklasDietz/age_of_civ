@@ -18,6 +18,7 @@
  */
 
 #include "aoc/core/Types.hpp"
+#include "aoc/map/Terrain.hpp"
 
 #include <array>
 #include <cstdint>
@@ -44,6 +45,33 @@ enum class GoodCategory : uint8_t {
     Count
 };
 
+/// WP-C4: native climate band for crop-like raw goods. Non-crops = Any.
+/// Off-band tiles yield half via the Greenhouse improvement; on-band tiles
+/// yield full without a Greenhouse.
+enum class ClimateBand : uint8_t {
+    Any,          ///< Not climate-gated (metals, fish, processed goods).
+    Tropical,     ///< Hot & wet (sugar, rice, spices, rubber, coffee, tea, tobacco, dyes).
+    Subtropical,  ///< Warm temperate (cotton, silk, wine).
+    Temperate,    ///< Cool temperate (wheat, cattle, wood, salt, marble).
+    Cold,         ///< Tundra / polar (furs).
+    Count
+};
+
+/// WP-C4: map tile's native climate band from its terrain + feature.
+/// Used by Greenhouse to detect off-climate planting.
+[[nodiscard]] inline constexpr ClimateBand tileClimateBand(
+        aoc::map::TerrainType terrain, aoc::map::FeatureType feature) {
+    if (feature == aoc::map::FeatureType::Jungle) { return ClimateBand::Tropical; }
+    switch (terrain) {
+        case aoc::map::TerrainType::Tundra:
+        case aoc::map::TerrainType::Snow:      return ClimateBand::Cold;
+        case aoc::map::TerrainType::Desert:    return ClimateBand::Subtropical;
+        case aoc::map::TerrainType::Plains:    return ClimateBand::Subtropical;
+        case aoc::map::TerrainType::Grassland: return ClimateBand::Temperate;
+        default:                               return ClimateBand::Any;
+    }
+}
+
 /// Static definition of a good (raw resource or processed item).
 struct GoodDef {
     uint16_t         id;
@@ -54,6 +82,7 @@ struct GoodDef {
     float            priceElasticity;  ///< How much price changes with supply/demand ratio.
                                        ///< Low (0.2) = stable prices (necessities).
                                        ///< High (0.8) = volatile prices (luxuries/advanced).
+    ClimateBand      climateBand = ClimateBand::Any;  ///< WP-C4 native climate zone.
 };
 
 // ============================================================================
@@ -109,6 +138,7 @@ struct GoodDef {
     }
     // WP-C2 additive strategics.
     if (goodId == 146) { return 60; }  // LITHIUM: scarce, like niter.
+    if (goodId == 150) { return 35; }  // RARE_EARTH (WP-B3): very scarce.
     return 80;  // Default for unknown resources
 }
 
@@ -263,6 +293,7 @@ namespace goods {
     inline constexpr uint16_t BATTERIES            = 147;  ///< Processed: from Lithium + Copper, feeds electrified industry.
     inline constexpr uint16_t ELECTRICITY          = 148;  ///< Processed energy (tracked power), generated at power plants.
     inline constexpr uint16_t PHARMACEUTICALS      = 149;  ///< Advanced: consumer-health good; population/amenity multiplier input.
+    inline constexpr uint16_t RARE_EARTH           = 150;  ///< WP-B3 raw strategic: rare Mountain deposit OR Lunar Colony byproduct. Alt input for Semiconductors.
 
     inline constexpr uint16_t GOOD_COUNT = 153;
 } // namespace goods

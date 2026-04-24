@@ -142,6 +142,25 @@ void EconomySimulation::harvestResources(aoc::game::GameState& gameState,
                     stockpile.addGoods(cultivatedGood, 2);
                 }
 
+                // WP-C4 Greenhouse production: planted-crop output at 50%.
+                // Encoded as 1 unit every 2 turns via `(turn & 1) == 0`. Turn
+                // parity keyed off the city's location hash so greenhouses
+                // in different cities stagger their output. This gives
+                // cold-climate civs a way to grow tropical crops they got
+                // through trade.
+                if (imp == aoc::map::ImprovementType::Greenhouse) {
+                    const uint16_t planted = grid.greenhouseCrop(tileIndex);
+                    if (planted != 0xFFFFu && planted < goodCount()) {
+                        const uint32_t parity =
+                            static_cast<uint32_t>(gameState.currentTurn())
+                          ^ (static_cast<uint32_t>(cityPtr->location().q) * 73u)
+                          ^ (static_cast<uint32_t>(cityPtr->location().r) * 31u);
+                        if ((parity & 1u) == 0u) {
+                            stockpile.addGoods(planted, 1);
+                        }
+                    }
+                }
+
                 ResourceId resId = grid.resource(tileIndex);
                 if (!resId.isValid()) {
                     continue;
@@ -250,6 +269,9 @@ void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
                     stockpile.addGoods(goods::HELIUM_3, he3Rate);
                     if (lunarColony && districts.hasBuilding(BuildingId{11})) {
                         stockpile.addGoods(goods::TITANIUM, 1);
+                        // WP-B3: post-Lunar-Colony Semiconductor Fab cities
+                        // also refine lunar regolith into rare earth.
+                        stockpile.addGoods(goods::RARE_EARTH, 1);
                     }
                 } else {
                     bool isCoastal = false;

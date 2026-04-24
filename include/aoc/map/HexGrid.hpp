@@ -16,6 +16,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <unordered_map>
 #include <vector>
 
 namespace aoc::map {
@@ -258,6 +259,24 @@ public:
     /// True if the tile has any road-type infrastructure (road, railway, highway).
     [[nodiscard]] bool hasRoad(int32_t index) const { this->assertIndex(index); return this->m_road[static_cast<std::size_t>(index)] != 0; }
 
+    // -- WP-C4 Greenhouse planted-crop (sparse, keyed by tile index) --
+    // Value = good id of the crop the Greenhouse on that tile is planted
+    // with. 0xFFFF (default, no entry) = unplanted. Only meaningful when
+    // the tile's improvement is Greenhouse.
+    [[nodiscard]] uint16_t greenhouseCrop(int32_t index) const {
+        this->assertIndex(index);
+        auto it = this->m_greenhouseCrop.find(index);
+        return (it == this->m_greenhouseCrop.end()) ? uint16_t{0xFFFF} : it->second;
+    }
+    void setGreenhouseCrop(int32_t index, uint16_t cropId) {
+        this->assertIndex(index);
+        if (cropId == 0xFFFF) {
+            this->m_greenhouseCrop.erase(index);
+        } else {
+            this->m_greenhouseCrop[index] = cropId;
+        }
+    }
+
     // -- WP-C3 stacked infrastructure lanes (PowerPole + Pipeline) --
     static constexpr uint8_t INFRA_POWER_POLE = 1u << 0;
     static constexpr uint8_t INFRA_PIPELINE   = 1u << 1;
@@ -451,6 +470,9 @@ private:
     /// oil/gas/fuel trade throughput). Kept out of ImprovementType so a tile
     /// can have, e.g., Farm + PowerPole + Pipeline simultaneously.
     std::vector<uint8_t>          m_tileInfra;
+    /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
+    /// Greenhouse improvement actively populate. Tile index → good id.
+    std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;
     std::vector<NaturalWonderType> m_naturalWonder;
 
     // Strategic chokepoints (computed at map generation)
@@ -476,6 +498,8 @@ public:
         this->m_road[idx] = 0;
         // WP-C3: fallout wipes power poles + pipelines too.
         this->m_tileInfra[idx] = 0;
+        // WP-C4: and any Greenhouse crop planted on the tile.
+        this->m_greenhouseCrop.erase(index);
     }
 
     /// Tick fallout decay for all tiles (call once per turn).

@@ -13,6 +13,7 @@
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
+#include "aoc/simulation/map/Improvement.hpp"
 #include "aoc/simulation/monetary/Inflation.hpp"
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
@@ -238,10 +239,10 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
                 static_cast<float>(city->population()) * indGoldPerCitizen);
         }
 
-        // Gold from worked tiles
+        // Gold from worked tiles (WP-G adjacency cluster bonuses included).
         for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
             if (grid.isValid(tile)) {
-                aoc::map::TileYield yield = grid.tileYield(grid.toIndex(tile));
+                aoc::map::TileYield yield = effectiveTileYield(grid, grid.toIndex(tile));
                 cityGold += static_cast<CurrencyAmount>(yield.gold);
             }
         }

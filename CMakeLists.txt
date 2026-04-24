@@ -533,6 +533,31 @@ if(UNIX AND NOT APPLE AND PkgConfig_FOUND)
     endif()
 endif()
 
+# WP-F: profile-guided optimization. Two-stage GCC workflow.
+#   -DAOC_PGO_PHASE=off      (default) — normal build.
+#   -DAOC_PGO_PHASE=generate — instrument. Run a training sim after.
+#   -DAOC_PGO_PHASE=use      — rebuild using the collected profiles.
+# Only applied for Clang/GNU; MSVC ignores silently.
+set(AOC_PGO_PHASE "off" CACHE STRING "PGO phase: off | generate | use")
+set_property(CACHE AOC_PGO_PHASE PROPERTY STRINGS off generate use)
+set(AOC_PGO_PROFILE_DIR "${CMAKE_BINARY_DIR}/pgo_profiles"
+    CACHE PATH "Directory where PGO training profiles live")
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    if(AOC_PGO_PHASE STREQUAL "generate")
+        file(MAKE_DIRECTORY "${AOC_PGO_PROFILE_DIR}")
+        add_compile_options(-fprofile-generate=${AOC_PGO_PROFILE_DIR})
+        add_link_options(-fprofile-generate=${AOC_PGO_PROFILE_DIR})
+        message(STATUS "PGO: instrumented build, profiles -> ${AOC_PGO_PROFILE_DIR}")
+    elseif(AOC_PGO_PHASE STREQUAL "use")
+        add_compile_options(
+            -fprofile-use=${AOC_PGO_PROFILE_DIR}
+            -fprofile-correction
+        )
+        add_link_options(-fprofile-use=${AOC_PGO_PROFILE_DIR})
+        message(STATUS "PGO: optimized build, using profiles from ${AOC_PGO_PROFILE_DIR}")
+    endif()
+endif()
+
 # Compiler warnings
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(aoc_lib PRIVATE

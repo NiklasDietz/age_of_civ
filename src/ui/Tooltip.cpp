@@ -48,8 +48,12 @@ void TooltipManager::update(float mouseX, float mouseY,
     if (!grid.isValid(hovered)) {
         this->m_visible = false;
         this->m_showDelay = 0.0f;
+        this->m_hasHovered = false;
         return;
     }
+    // WP-J: expose the resolved tile so overlay code can draw adjacency arrows.
+    this->m_hoveredTile = hovered;
+    this->m_hasHovered = true;
 
     // Accumulate delay before showing
     this->m_showDelay += 1.0f;

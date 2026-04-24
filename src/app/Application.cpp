@@ -1060,6 +1060,23 @@ void Application::run() {
                 }
             }
 
+            // WP-H takeover: Ctrl+T in spectator mode — assume control of
+            // the currently-followed player. Sim switches to human-driven
+            // for that slot; AI skips it; fog resolves from their POV.
+            const bool ctrlHeld = this->m_inputManager.isKeyHeld(GLFW_KEY_LEFT_CONTROL)
+                               || this->m_inputManager.isKeyHeld(GLFW_KEY_RIGHT_CONTROL);
+            if (ctrlHeld && this->m_inputManager.isKeyPressed(GLFW_KEY_T)) {
+                if (this->m_spectatorFollowPlayer >= 0
+                    && this->m_spectatorFollowPlayer
+                       < this->m_gameState.playerCount()) {
+                    const PlayerId tookOver =
+                        static_cast<PlayerId>(this->m_spectatorFollowPlayer);
+                    this->m_gameState.setHumanPlayerId(tookOver);
+                    LOG_INFO("WP-H takeover: player %u is now human-controlled",
+                             static_cast<unsigned>(tookOver));
+                }
+            }
+
             // G: toggle fog of war between omniscient and per-player-follow view.
             if (this->m_inputManager.isKeyPressed(GLFW_KEY_G)) {
                 this->m_spectatorFogEnabled = !this->m_spectatorFogEnabled;

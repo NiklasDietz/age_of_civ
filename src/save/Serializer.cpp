@@ -320,6 +320,8 @@ void writeImprovementsSection(WriteBuffer& out, const aoc::map::HexGrid& grid) {
         section.writeU8(static_cast<uint8_t>(grid.improvement(i)));
         section.writeU8(grid.hasRoad(i) ? uint8_t{1} : uint8_t{0});
         section.writeU8(grid.tileInfraBits(i)); // WP-C3 power pole + pipeline lanes.
+        // WP-C4: Greenhouse crop per tile (0xFFFF = unplanted).
+        section.writeU16(grid.greenhouseCrop(i));
     }
     writeSection(out, SectionId::Improvements, section);
 }
@@ -1589,12 +1591,14 @@ ErrorCode loadGame(const std::string& filepath,
                     uint8_t improvementVal = buf.readU8();
                     uint8_t roadVal = buf.readU8();
                     uint8_t infraBits = buf.readU8();  // WP-C3 lanes.
+                    uint16_t greenhouse = buf.readU16();  // WP-C4 planted crop.
                     if (i < grid.tileCount()) {
                         grid.setImprovement(i, static_cast<aoc::map::ImprovementType>(improvementVal));
                         if (roadVal != 0 && !grid.hasRoad(i)) {
                             grid.setImprovement(i, aoc::map::ImprovementType::Road);
                         }
                         grid.setTileInfraBits(i, infraBits);
+                        grid.setGreenhouseCrop(i, greenhouse);
                     }
                 }
                 break;
@@ -1801,6 +1805,25 @@ ErrorCode loadGame(const std::string& filepath,
                 break;
             }
             case SectionId::Stockpiles: {
+                // WP-C2 save migration: remap deprecated luxury IDs that
+                // were cut from placement (PEARLS, TOBACCO, IVORY, INCENSE,
+                // TEA, COFFEE, GEMS, GOLD_CONTACTS) onto still-active
+                // goods so older saves load without orphan stockpile
+                // entries. IDs themselves remain reserved in the enum.
+                auto remapDeprecated = [](uint16_t id) -> uint16_t {
+                    switch (id) {
+                        case 21:  return aoc::sim::goods::SILVER_ORE;   // GEMS → SILVER
+                        case 24:  return aoc::sim::goods::SPICES;       // IVORY → SPICES
+                        case 28:  return aoc::sim::goods::SPICES;       // INCENSE → SPICES
+                        case 31:  return aoc::sim::goods::FISH;         // PEARLS → FISH
+                        case 32:  return aoc::sim::goods::SUGAR;        // TEA → SUGAR
+                        case 33:  return aoc::sim::goods::SUGAR;        // COFFEE → SUGAR
+                        case 34:  return aoc::sim::goods::SUGAR;        // TOBACCO → SUGAR
+                        case 82:  return aoc::sim::goods::SEMICONDUCTORS; // GOLD_CONTACTS → SEMICONDUCTORS
+                        default:  return id;
+                    }
+                };
+
                 uint32_t count = buf.readU32();
                 for (uint32_t i = 0; i < count; ++i) {
                     uint32_t cityIndex = buf.readU32();
@@ -1810,7 +1833,8 @@ ErrorCode loadGame(const std::string& filepath,
                     for (uint32_t g = 0; g < goodsCount; ++g) {
                         uint16_t goodId = buf.readU16();
                         int32_t amount = buf.readI32();
-                        stockpile.goods[goodId] = amount;
+                        const uint16_t mapped = remapDeprecated(goodId);
+                        stockpile.goods[mapped] += amount;
                     }
 
                     if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {

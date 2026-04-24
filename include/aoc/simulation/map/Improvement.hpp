@@ -17,6 +17,8 @@
 
 namespace aoc::sim {
 
+struct CityStockpileComponent;  // fwd-decl for plantGreenhouseCrop
+
 /// Static definition of a tile improvement.
 struct ImprovementDef {
     aoc::map::ImprovementType type;
@@ -116,6 +118,56 @@ inline constexpr std::array<ImprovementDef, 40> IMPROVEMENT_DEFS = {{
  * @return Extra food from farm adjacency (0 or 1).
  */
 [[nodiscard]] int32_t computeFarmAdjacencyBonus(const aoc::map::HexGrid& grid, int32_t index);
+
+/**
+ * @brief Count adjacent tiles sharing the given improvement type.
+ */
+[[nodiscard]] int32_t countSameImprovementNeighbors(const aoc::map::HexGrid& grid,
+                                                    int32_t index,
+                                                    aoc::map::ImprovementType type);
+
+/**
+ * @brief WP-G: adjacency cluster bonus for improvements that scale with
+ * same-type neighbors (Biogas, Solar, Wind). Returns the extra yield on
+ * top of the base improvement yield. Farm adjacency lives in
+ * `computeFarmAdjacencyBonus` for backwards compatibility.
+ */
+[[nodiscard]] aoc::map::TileYield computeImprovementClusterBonus(const aoc::map::HexGrid& grid,
+                                                                  int32_t index);
+
+/**
+ * @brief WP-C4 Greenhouse planting: consume 1 seed of `cropId` from the
+ * city's stockpile, set it as the Greenhouse tile's planted crop. Fails
+ * if the tile is not a Greenhouse, city doesn't own the tile, or the
+ * stockpile lacks the seed.
+ *
+ * @param grid           Hex grid (mutated: tile greenhouseCrop set).
+ * @param cityStockpile  City's stockpile (mutated: 1 seed consumed).
+ * @param tileIndex      Tile to plant in.
+ * @param cropGoodId     Good id of the crop to plant.
+ */
+[[nodiscard]] bool plantGreenhouseCrop(aoc::map::HexGrid& grid,
+                                        aoc::sim::CityStockpileComponent& cityStockpile,
+                                        int32_t tileIndex,
+                                        uint16_t cropGoodId);
+
+/**
+ * @brief Tile yield including WP-G adjacency cluster bonuses. Use this in
+ * place of `grid.tileYield(idx)` when worker-yield correctness matters
+ * (city growth, science, production, gold).
+ */
+[[nodiscard]] inline aoc::map::TileYield effectiveTileYield(const aoc::map::HexGrid& grid,
+                                                             int32_t index) {
+    aoc::map::TileYield y = grid.tileYield(index);
+    const aoc::map::TileYield cluster = computeImprovementClusterBonus(grid, index);
+    y.food       = static_cast<int8_t>(y.food       + cluster.food);
+    y.production = static_cast<int8_t>(y.production + cluster.production);
+    y.gold       = static_cast<int8_t>(y.gold       + cluster.gold);
+    y.science    = static_cast<int8_t>(y.science    + cluster.science);
+    y.culture    = static_cast<int8_t>(y.culture    + cluster.culture);
+    y.faith      = static_cast<int8_t>(y.faith      + cluster.faith);
+    return y;
+}
 
 /**
  * @brief Check if a tile can be prospected by a Prospector unit.

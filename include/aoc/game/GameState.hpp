@@ -79,9 +79,18 @@ public:
     [[nodiscard]] Player* player(PlayerId id);
     [[nodiscard]] const Player* player(PlayerId id) const;
 
-    /// Get the human player (always player 0).
+    /// Get the player currently under human control. Defaults to
+    /// PlayerId{0}; WP-H takeover changes this via `setHumanPlayerId`.
     [[nodiscard]] Player* humanPlayer();
     [[nodiscard]] const Player* humanPlayer() const;
+
+    /// PlayerId of the currently human-controlled slot.
+    [[nodiscard]] PlayerId humanPlayerId() const { return this->m_humanPlayerId; }
+
+    /// WP-H: switch which player the UI / fog-of-war / rendering follows.
+    /// Flips `isHuman` flags: target becomes human, previous holder
+    /// becomes AI-controlled.
+    void setHumanPlayerId(PlayerId id);
 
     /// All active *major* players. City-state players are NOT included here;
     /// use cityStatePlayers() to iterate those.
@@ -156,6 +165,8 @@ private:
     /// major-player iteration (victory, turn loop) does not pick them up.
     std::vector<std::unique_ptr<Player>> m_cityStatePlayers;
     int32_t m_currentTurn = 0;
+    /// WP-H takeover: which player the UI follows. Persists across turns.
+    PlayerId m_humanPlayerId = PlayerId{0};
 
     // Global state (singletons)
     aoc::sim::GlobalClimateComponent m_climate;

@@ -131,6 +131,27 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
             break;
     }
 
+    // Natural fish spots: seed FISH on Coast / ShallowWater tiles so the
+    // fishing chain has reachable spots from the start, not only via
+    // Fishing Boats improvement on empty coast. Coast tiles 4%, shallows
+    // 3%. Skips tiles that already carry a resource.
+    {
+        aoc::Random fishRng(config.seed ^ 0x46495348u);  // "FISH"
+        const int32_t tiles = outGrid.tileCount();
+        for (int32_t i = 0; i < tiles; ++i) {
+            const TerrainType t = outGrid.terrain(i);
+            if (t != TerrainType::Coast && t != TerrainType::ShallowWater) {
+                continue;
+            }
+            if (outGrid.resource(i).isValid()) { continue; }
+            const float p = (t == TerrainType::Coast) ? 0.04f : 0.03f;
+            if (fishRng.chance(p)) {
+                outGrid.setResource(i, ResourceId{aoc::sim::goods::FISH});
+                outGrid.setReserves(i, aoc::sim::defaultReserves(aoc::sim::goods::FISH));
+            }
+        }
+    }
+
     // Detect strategic chokepoints after all terrain is finalized
     aoc::sim::detectChokepoints(outGrid);
 }
@@ -400,6 +421,45 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             grid.setTerrain(index, terrain);
             grid.setElevation(index, static_cast<int8_t>(
                 std::clamp(static_cast<int>(elev * 4.0f), 0, 2)));
+        }
+    }
+
+    // WP-I rain-shadow + wind pass. Walk 1-2 tiles upwind of each land
+    // tile; if any is Mountain, convert the tile to Desert at a seeded
+    // probability. Wind direction derives from latitude band:
+    //   row < 20% OR row > 80%  -> polar easterly (upwind = +q)
+    //   row 20-50%              -> westerlies  (upwind = -q)
+    //   row 50-80%              -> westerlies  (upwind = -q)
+    //   row 40-60%              -> trade wind easterly (upwind = +q)
+    // Net: equator + polar caps pull from east; mid-lats pull from west.
+    aoc::Random shadowRng(config.seed ^ 0x52415348u);  // "RASH"
+    for (int32_t row = 0; row < height; ++row) {
+        const float latT = static_cast<float>(row) / static_cast<float>(height);
+        // Equator or polar → trade/polar easterly. Mid-lat → westerly.
+        const bool easterly = (latT < 0.20f) || (latT > 0.80f)
+                              || (latT >= 0.40f && latT <= 0.60f);
+        const int32_t upwindDQ = easterly ? 1 : -1;
+
+        for (int32_t col = 0; col < width; ++col) {
+            const int32_t index = row * width + col;
+            const TerrainType t = grid.terrain(index);
+            if (t != TerrainType::Grassland && t != TerrainType::Plains) {
+                continue;
+            }
+            // Walk 1..2 tiles upwind (same row, shifted column).
+            bool mountainUpwind = false;
+            for (int32_t step = 1; step <= 2; ++step) {
+                const int32_t uCol = col + upwindDQ * step;
+                if (uCol < 0 || uCol >= width) { continue; }
+                const int32_t uIdx = row * width + uCol;
+                if (grid.terrain(uIdx) == TerrainType::Mountain) {
+                    mountainUpwind = true;
+                    break;
+                }
+            }
+            if (!mountainUpwind) { continue; }
+            if (!shadowRng.chance(0.25f)) { continue; }
+            grid.setTerrain(index, TerrainType::Desert);
         }
     }
 }
@@ -1340,7 +1400,9 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
             ResourceId placed{};
 
             // Volcanic zone: convergent + high elevation.
-            // WP-C2 cut: GEMS slot redirected to ALUMINUM (dead-end good gone).
+            // WP-B3: Rare Earth deposit at 2% on these high-elev convergent
+            // tiles — fits the "mountain + volcanic" geology (real REE
+            // deposits cluster near carbonatites / alkaline intrusives).
             if (bType == BoundaryType::Convergent && elev >= 2) {
                 if (resRng.chance(0.05f)) {
                     placed = ResourceId{aoc::sim::goods::GOLD_ORE};
@@ -1348,6 +1410,8 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
                     placed = ResourceId{aoc::sim::goods::SILVER_ORE};
                 } else if (resRng.chance(0.05f)) {
                     placed = ResourceId{aoc::sim::goods::ALUMINUM};
+                } else if (resRng.chance(0.02f)) {
+                    placed = ResourceId{aoc::sim::goods::RARE_EARTH};
                 }
             }
             // Convergent boundary (mountain range).

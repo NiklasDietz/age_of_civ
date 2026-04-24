@@ -5,6 +5,7 @@
 
 #include "aoc/simulation/map/Improvement.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
+#include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/map/Terrain.hpp"
 
 namespace aoc::sim {
@@ -262,10 +263,13 @@ bool canPlaceImprovement(const aoc::map::HexGrid& grid,
                 && !grid.resource(index).isValid();
 
         case aoc::map::ImprovementType::FishFarm:
-            // Coast or ShallowWater, no resource present.
+            // Coast or ShallowWater. Empty water OR a water tile that
+            // already holds a natural FISH resource (fish farm augments
+            // the catch rather than replacing the school).
             return (terrain == aoc::map::TerrainType::Coast
                  || terrain == aoc::map::TerrainType::ShallowWater)
-                && !grid.resource(index).isValid();
+                && (!grid.resource(index).isValid()
+                    || grid.resource(index).value == aoc::sim::goods::FISH);
 
         case aoc::map::ImprovementType::Railway:
         case aoc::map::ImprovementType::Highway:
@@ -460,6 +464,73 @@ int32_t computeFarmAdjacencyBonus(const aoc::map::HexGrid& grid, int32_t index) 
 
     // Bonus: +1 food if 2+ adjacent farms (forming a triangle/cluster of 3+)
     return (adjacentFarms >= 2) ? 1 : 0;
+}
+
+int32_t countSameImprovementNeighbors(const aoc::map::HexGrid& grid,
+                                      int32_t index,
+                                      aoc::map::ImprovementType type) {
+    aoc::hex::AxialCoord center = grid.toAxial(index);
+    std::array<aoc::hex::AxialCoord, 6> neighbors = aoc::hex::neighbors(center);
+    int32_t count = 0;
+    for (const aoc::hex::AxialCoord& nbr : neighbors) {
+        if (!grid.isValid(nbr)) { continue; }
+        if (grid.improvement(grid.toIndex(nbr)) == type) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool plantGreenhouseCrop(aoc::map::HexGrid& grid,
+                          aoc::sim::CityStockpileComponent& cityStockpile,
+                          int32_t tileIndex,
+                          uint16_t cropGoodId) {
+    if (grid.improvement(tileIndex) != aoc::map::ImprovementType::Greenhouse) {
+        return false;
+    }
+    if (cropGoodId == 0xFFFFu) { return false; }
+    if (!cityStockpile.consumeGoods(cropGoodId, 1)) {
+        return false;
+    }
+    grid.setGreenhouseCrop(tileIndex, cropGoodId);
+    return true;
+}
+
+aoc::map::TileYield computeImprovementClusterBonus(const aoc::map::HexGrid& grid,
+                                                    int32_t index) {
+    aoc::map::TileYield bonus{};
+    const aoc::map::ImprovementType type = grid.improvement(index);
+
+    // WP-G2 biogas: each adjacent BiogasPlant adds +1 prod. At 3+ it also
+    // offsets the base -1 food penalty (+1 food), so a full cluster flips
+    // biogas into a renewable match for a single OIL tile on prod while
+    // staying neutral on food. Cap at +3 prod from adjacency alone.
+    if (type == aoc::map::ImprovementType::BiogasPlant) {
+        const int32_t n = countSameImprovementNeighbors(grid, index, type);
+        bonus.production = static_cast<int8_t>(std::min(n, 3));
+        if (n >= 3) {
+            bonus.food = 1;
+        }
+        return bonus;
+    }
+
+    // WP-G3 solar: +1 gold +1 sci per adjacent SolarFarm, cap +2 each.
+    if (type == aoc::map::ImprovementType::SolarFarm) {
+        const int32_t n = countSameImprovementNeighbors(grid, index, type);
+        const int32_t capped = std::min(n, 2);
+        bonus.gold    = static_cast<int8_t>(capped);
+        bonus.science = static_cast<int8_t>(capped);
+        return bonus;
+    }
+
+    // WP-G3 wind: +1 prod per adjacent WindFarm, cap +2.
+    if (type == aoc::map::ImprovementType::WindFarm) {
+        const int32_t n = countSameImprovementNeighbors(grid, index, type);
+        bonus.production = static_cast<int8_t>(std::min(n, 2));
+        return bonus;
+    }
+
+    return bonus;
 }
 
 } // namespace aoc::sim

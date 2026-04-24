@@ -14,6 +14,7 @@
 #include "aoc/simulation/tech/EraProgression.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
+#include "aoc/simulation/map/Improvement.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
@@ -42,10 +43,10 @@ float computePlayerScience(const aoc::game::Player& player,
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         float cityScience = 0.0f;
 
-        // 1. Science from worked tiles
+        // 1. Science from worked tiles (WP-G adjacency cluster bonuses included).
         for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
             if (grid.isValid(tile)) {
-                aoc::map::TileYield yield = grid.tileYield(grid.toIndex(tile));
+                aoc::map::TileYield yield = effectiveTileYield(grid, grid.toIndex(tile));
                 cityScience += static_cast<float>(yield.science);
             }
         }

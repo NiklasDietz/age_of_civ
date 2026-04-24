@@ -10,6 +10,7 @@
 
 #include "aoc/render/GameRenderer.hpp"
 #include "aoc/render/CameraController.hpp"
+#include "aoc/render/MapOverlays.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
@@ -80,6 +81,15 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     // Layer 1.5: Territory borders (hex outlines drawn ON TOP of terrain)
     this->m_mapRenderer.drawTerritoryBorders(renderer2d, grid, fog, viewingPlayer,
                                               camera, screenWidth, screenHeight);
+
+    // WP-J: adjacency arrows from hovered tile. World-space call — safe to
+    // emit from within the main camera-transformed pass; drawn only when
+    // tooltip manager has a valid hovered tile.
+    if (this->m_tooltipManager.hasHovered()) {
+        aoc::render::renderAdjacencyArrowOverlay(
+            renderer2d, grid, this->m_tooltipManager.hoveredTile(),
+            0.0f, 0.0f, 1.0f);
+    }
 
     // Layer 1.55: Tile yield labels (if enabled in settings)
     if (this->showTileYields) {

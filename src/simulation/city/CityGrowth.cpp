@@ -199,7 +199,8 @@ static float computeWorkedFood(const aoc::game::City& city,
     for (const aoc::hex::AxialCoord& tileCoord : city.workedTiles()) {
         if (!grid.isValid(tileCoord)) { continue; }
         int32_t tileIndex = grid.toIndex(tileCoord);
-        aoc::map::TileYield yield = grid.tileYield(tileIndex);
+        // WP-G adjacency cluster bonuses fold into the base tile yield.
+        aoc::map::TileYield yield = effectiveTileYield(grid, tileIndex);
         float tileFood = static_cast<float>(yield.food);
         if (tileCoord == city.location() && tileFood < 2.0f) {
             tileFood = 2.0f;

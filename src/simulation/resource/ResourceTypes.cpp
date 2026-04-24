@@ -32,8 +32,8 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     defs[goods::NITER]      = {goods::NITER,       "Niter",       GoodCategory::RawStrategic, 18, true,  0.4f};
     defs[goods::URANIUM]    = {goods::URANIUM,     "Uranium",     GoodCategory::RawStrategic, 50, true,  0.4f};
     defs[goods::ALUMINUM]   = {goods::ALUMINUM,    "Aluminum",    GoodCategory::RawStrategic, 35, true,  0.4f};
-    defs[goods::COTTON]     = {goods::COTTON,      "Cotton",      GoodCategory::RawStrategic, 10, false, 0.4f};
-    defs[goods::RUBBER]     = {goods::RUBBER,      "Rubber",      GoodCategory::RawStrategic, 18, true,  0.4f};
+    defs[goods::COTTON]     = {goods::COTTON,      "Cotton",      GoodCategory::RawStrategic, 10, false, 0.4f, ClimateBand::Subtropical};
+    defs[goods::RUBBER]     = {goods::RUBBER,      "Rubber",      GoodCategory::RawStrategic, 18, true,  0.4f, ClimateBand::Tropical};
     defs[goods::TIN]        = {goods::TIN,         "Tin",         GoodCategory::RawStrategic, 12, true,  0.4f};
     defs[goods::SILVER_ORE]  = {goods::SILVER_ORE,  "Silver Ore",  GoodCategory::RawStrategic, 22, false, 0.5f};
     defs[goods::NATURAL_GAS] = {goods::NATURAL_GAS, "Natural Gas", GoodCategory::RawStrategic, 20, true,  0.4f};
@@ -41,12 +41,12 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     // Raw luxury (20-39) -- high elasticity (0.7)
     defs[goods::GOLD_ORE]   = {goods::GOLD_ORE,   "Gold Ore",    GoodCategory::RawLuxury, 25, false, 0.7f};
     defs[goods::GEMS]       = {goods::GEMS,        "Gems",        GoodCategory::RawLuxury, 30, false, 0.7f};
-    defs[goods::SPICES]     = {goods::SPICES,      "Spices",      GoodCategory::RawLuxury, 18, false, 0.7f};
-    defs[goods::SILK]       = {goods::SILK,        "Silk",        GoodCategory::RawLuxury, 20, false, 0.7f};
+    defs[goods::SPICES]     = {goods::SPICES,      "Spices",      GoodCategory::RawLuxury, 18, false, 0.7f, ClimateBand::Tropical};
+    defs[goods::SILK]       = {goods::SILK,        "Silk",        GoodCategory::RawLuxury, 20, false, 0.7f, ClimateBand::Subtropical};
     defs[goods::IVORY]      = {goods::IVORY,       "Ivory",       GoodCategory::RawLuxury, 22, false, 0.7f};
-    defs[goods::WINE]       = {goods::WINE,        "Wine",        GoodCategory::RawLuxury, 16, false, 0.7f};
-    defs[goods::DYES]       = {goods::DYES,        "Dyes",        GoodCategory::RawLuxury, 15, false, 0.7f};
-    defs[goods::FURS]       = {goods::FURS,        "Furs",        GoodCategory::RawLuxury, 18, false, 0.7f};
+    defs[goods::WINE]       = {goods::WINE,        "Wine",        GoodCategory::RawLuxury, 16, false, 0.7f, ClimateBand::Subtropical};
+    defs[goods::DYES]       = {goods::DYES,        "Dyes",        GoodCategory::RawLuxury, 15, false, 0.7f, ClimateBand::Temperate};
+    defs[goods::FURS]       = {goods::FURS,        "Furs",        GoodCategory::RawLuxury, 18, false, 0.7f, ClimateBand::Cold};
     defs[goods::INCENSE]    = {goods::INCENSE,     "Incense",     GoodCategory::RawLuxury, 14, false, 0.7f};
     defs[goods::SALT]       = {goods::SALT,        "Salt",        GoodCategory::RawBonus,   8, false, 0.3f};
     defs[goods::MARBLE]     = {goods::MARBLE,      "Marble",      GoodCategory::RawStrategic, 20, true, 0.4f};
@@ -56,13 +56,13 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     defs[goods::TOBACCO]    = {goods::TOBACCO,     "Tobacco",     GoodCategory::RawLuxury, 15, false, 0.7f};
 
     // Raw bonus (40-59) -- low elasticity (0.2), necessities
-    defs[goods::WHEAT]      = {goods::WHEAT,       "Wheat",       GoodCategory::RawBonus, 5, false, 0.2f};
-    defs[goods::CATTLE]     = {goods::CATTLE,      "Cattle",      GoodCategory::RawBonus, 8, false, 0.2f};
+    defs[goods::WHEAT]      = {goods::WHEAT,       "Wheat",       GoodCategory::RawBonus, 5, false, 0.2f, ClimateBand::Temperate};
+    defs[goods::CATTLE]     = {goods::CATTLE,      "Cattle",      GoodCategory::RawBonus, 8, false, 0.2f, ClimateBand::Temperate};
     defs[goods::FISH]       = {goods::FISH,        "Fish",        GoodCategory::RawBonus, 6, false, 0.2f};
-    defs[goods::WOOD]       = {goods::WOOD,        "Wood",        GoodCategory::RawBonus, 7, false, 0.2f};
+    defs[goods::WOOD]       = {goods::WOOD,        "Wood",        GoodCategory::RawBonus, 7, false, 0.2f, ClimateBand::Temperate};
     defs[goods::STONE]      = {goods::STONE,       "Stone",       GoodCategory::RawBonus, 8, false, 0.2f};
-    defs[goods::RICE]       = {goods::RICE,        "Rice",        GoodCategory::RawBonus, 5, false, 0.2f};
-    defs[goods::SUGAR]      = {goods::SUGAR,       "Sugar",       GoodCategory::RawBonus, 7, false, 0.2f};
+    defs[goods::RICE]       = {goods::RICE,        "Rice",        GoodCategory::RawBonus, 5, false, 0.2f, ClimateBand::Tropical};
+    defs[goods::SUGAR]      = {goods::SUGAR,       "Sugar",       GoodCategory::RawBonus, 7, false, 0.2f, ClimateBand::Tropical};
     defs[goods::CLAY]       = {goods::CLAY,        "Clay",        GoodCategory::RawBonus, 6, false, 0.2f};
 
     // Processed (60-99) -- medium elasticity (0.5)
@@ -121,6 +121,7 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     defs[goods::BATTERIES]       = {goods::BATTERIES,       "Batteries",       GoodCategory::Processed,    160, true,  0.45f};
     defs[goods::ELECTRICITY]     = {goods::ELECTRICITY,     "Electricity",     GoodCategory::Processed,     60, true,  0.20f};
     defs[goods::PHARMACEUTICALS] = {goods::PHARMACEUTICALS, "Pharmaceuticals", GoodCategory::Advanced,     220, true,  0.50f};
+    defs[goods::RARE_EARTH]      = {goods::RARE_EARTH,      "Rare Earth",      GoodCategory::RawStrategic, 420, true,  0.80f};
 
     return defs;
 }();
@@ -511,6 +512,16 @@ std::vector<ProductionRecipe> buildRecipes() {
         {{goods::PLASTICS, 1}, {goods::GLASS, 1}},
         goods::PHARMACEUTICALS, 1, BuildingId{5}, 2,
         1, TechId{24}});
+
+    // WP-B3: Rare-Earth Semiconductors — alternate input path for civs
+    // that have a Rare Earth deposit (mountain tile) or Lunar Colony
+    // byproduct. Higher output than the standard Precision+Wire recipe,
+    // compensating for the scarce raw. Same Semiconductor Fab building
+    // as recipe 21; ranker picks whichever is profitable given stock.
+    recipes.push_back({63, "Fabricate Rare-Earth Semiconductors",
+        {{goods::RARE_EARTH, 1}, {goods::COPPER_WIRE, 1}},
+        goods::SEMICONDUCTORS, 2, BuildingId{11}, 3,
+        2, TechId{23}});
 
     // (Uranium intentionally has no refining recipe in this game — Nuclear
     //  Plant consumes it raw.  A self-loop refiner would break the ranker

@@ -20,6 +20,7 @@
  */
 
 #include "aoc/core/Types.hpp"
+#include "aoc/map/HexCoord.hpp"
 
 #include <cstdint>
 
@@ -97,5 +98,17 @@ void renderTradeRouteOverlay(vulkan_app::renderer::Renderer2D& renderer,
                              const aoc::map::HexGrid& grid,
                              float cameraX, float cameraY, float zoom,
                              PlayerId player);
+
+/**
+ * @brief WP-J adjacency-arrow overlay. Draws colored lines from the
+ * hovered tile toward each neighbor that participates in an active
+ * adjacency bonus (Farm cluster, BiogasPlant cluster, SolarFarm,
+ * WindFarm). Caller supplies the tile hovered this frame; pass an
+ * invalid coord when nothing is hovered to draw nothing.
+ */
+void renderAdjacencyArrowOverlay(vulkan_app::renderer::Renderer2D& renderer,
+                                 const aoc::map::HexGrid& grid,
+                                 aoc::hex::AxialCoord hovered,
+                                 float cameraX, float cameraY, float zoom);
 
 } // namespace aoc::render

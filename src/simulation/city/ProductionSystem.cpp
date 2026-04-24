@@ -30,6 +30,7 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
+#include "aoc/simulation/map/Improvement.hpp"
 
 #include <algorithm>
 #include <array>
@@ -124,7 +125,7 @@ static float computeCityProductionGS(const aoc::game::Player& player,
     for (const aoc::hex::AxialCoord& tile : city.workedTiles()) {
         if (grid.isValid(tile)) {
             int32_t index = grid.toIndex(tile);
-            aoc::map::TileYield yield = grid.tileYield(index);
+            aoc::map::TileYield yield = effectiveTileYield(grid, index);
             totalProduction += static_cast<float>(yield.production);
         }
     }

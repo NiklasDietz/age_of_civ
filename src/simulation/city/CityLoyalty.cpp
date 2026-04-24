@@ -191,12 +191,10 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         // also get a flat loyalty floor (the infrastructure keeps citizens
         // plugged in even far from the capital).
         {
+            // WP-C1: loyalty decay table sourced from BalanceParams so the
+            // GA tuner can sweep it instead of hitting a compile wall.
             const uint8_t rev = static_cast<uint8_t>(gsPlayer->industrial().currentRevolution);
-            // rev 0 → 1.00, rev 1 → 0.95, rev 2 → 0.85, rev 3 → 0.75,
-            // rev 4 → 0.65, rev 5 → 0.55.
-            static constexpr std::array<float, 6> kForeignDecay =
-                {1.00f, 0.95f, 0.85f, 0.75f, 0.65f, 0.55f};
-            const float mult = kForeignDecay[std::min<uint8_t>(rev, 5u)];
+            const float mult = bal.loyaltyEraDecay[std::min<uint8_t>(rev, 5u)];
             loyalty.foreignCityPressure *= mult;
             // Symmetric: own-city pressure also decays slightly so big
             // empires aren't over-glued together.

@@ -1101,6 +1101,68 @@ void Application::rebuildUnitActionPanel() {
                 }
             });
 
+        // -- Plant Crop (WP-C4) --
+        // If the selected civilian stands on a Greenhouse tile, cycle
+        // through crops the owning civ has stockpiled in ANY of its
+        // cities and plant one (consumes 1 seed). Re-click to swap crop.
+        makeActionBtn("Plant Crop", {0.20f, 0.36f, 0.18f, 0.9f},
+            [this, selectedUnitPtr]() {
+                if (selectedUnitPtr == nullptr) { return; }
+                const PlayerId ownerId = selectedUnitPtr->owner();
+                aoc::game::Player* owner = this->m_gameState.player(ownerId);
+                if (owner == nullptr) { return; }
+                const int32_t tileIdx =
+                    this->m_hexGrid.toIndex(selectedUnitPtr->position());
+                if (this->m_hexGrid.improvement(tileIdx)
+                    != aoc::map::ImprovementType::Greenhouse) {
+                    return;
+                }
+                const uint16_t current = this->m_hexGrid.greenhouseCrop(tileIdx);
+
+                // Candidate goods: any good with a non-Any climateBand.
+                // Rotate through based on `current`; start at the first
+                // candidate after `current` that the empire has stockpiled.
+                std::vector<uint16_t> candidates;
+                for (uint16_t gid = 0; gid < aoc::sim::goodCount(); ++gid) {
+                    if (aoc::sim::goodDef(gid).climateBand
+                        == aoc::sim::ClimateBand::Any) { continue; }
+                    candidates.push_back(gid);
+                }
+                if (candidates.empty()) { return; }
+
+                // Find starting index (after current, or 0 if current==0xFFFF).
+                std::size_t startIdx = 0;
+                if (current != 0xFFFFu) {
+                    for (std::size_t i = 0; i < candidates.size(); ++i) {
+                        if (candidates[i] == current) {
+                            startIdx = (i + 1) % candidates.size();
+                            break;
+                        }
+                    }
+                }
+
+                // Walk candidates looking for one any owned city has in stock.
+                for (std::size_t step = 0; step < candidates.size(); ++step) {
+                    const std::size_t idx = (startIdx + step) % candidates.size();
+                    const uint16_t cropId = candidates[idx];
+                    for (const std::unique_ptr<aoc::game::City>& c
+                            : owner->cities()) {
+                        if (c->stockpile().getAmount(cropId) > 0) {
+                            if (aoc::sim::plantGreenhouseCrop(
+                                    this->m_hexGrid, c->stockpile(),
+                                    tileIdx, cropId)) {
+                                LOG_INFO("Greenhouse planted %u in %s",
+                                         static_cast<unsigned>(cropId),
+                                         c->name().c_str());
+                                return;
+                            }
+                        }
+                    }
+                }
+                LOG_INFO("Plant Crop: no climate-band crop stockpiled "
+                         "(owner %u)", static_cast<unsigned>(ownerId));
+            });
+
         // -- Build Pole (WP-C3) --
         // Requires Electricity (TechId 14). Lays a PowerPole on the unit's
         // current tile. Consumes one builder charge. Allowed regardless of

@@ -82,11 +82,20 @@ const Player* GameState::player(PlayerId id) const {
 }
 
 Player* GameState::humanPlayer() {
-    return this->player(0);
+    return this->player(this->m_humanPlayerId);
 }
 
 const Player* GameState::humanPlayer() const {
-    return this->player(0);
+    return this->player(this->m_humanPlayerId);
+}
+
+void GameState::setHumanPlayerId(PlayerId id) {
+    if (id == this->m_humanPlayerId) { return; }
+    Player* prev = this->player(this->m_humanPlayerId);
+    if (prev != nullptr) { prev->setHuman(false); }
+    Player* next = this->player(id);
+    if (next != nullptr) { next->setHuman(true); }
+    this->m_humanPlayerId = id;
 }
 
 } // namespace aoc::game

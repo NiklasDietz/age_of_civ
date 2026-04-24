@@ -6,6 +6,7 @@
  */
 
 #include "aoc/core/Types.hpp"
+#include "aoc/map/HexCoord.hpp"
 
 #include <cstdint>
 #include <string>
@@ -67,6 +68,11 @@ public:
      */
     void render(vulkan_app::renderer::Renderer2D& renderer2d) const;
 
+    /// WP-J: last tile resolved from the mouse position. Valid iff
+    /// `hasHovered()` returns true.
+    [[nodiscard]] aoc::hex::AxialCoord hoveredTile() const { return this->m_hoveredTile; }
+    [[nodiscard]] bool hasHovered() const { return this->m_hasHovered; }
+
     [[nodiscard]] bool isVisible() const { return this->m_visible; }
     void hide() { this->m_visible = false; this->m_showDelay = 0.0f; }
     [[nodiscard]] float getX() const { return this->m_x; }
@@ -88,6 +94,8 @@ private:
     float       m_renderScale = 1.0f;  ///< Scale for world-space rendering (invZoom).
     std::string m_text;
     float       m_showDelay = 0.0f;  ///< Accumulated hover frames before showing.
+    aoc::hex::AxialCoord m_hoveredTile{0, 0};
+    bool        m_hasHovered = false;
 
     static constexpr float SHOW_DELAY_FRAMES = 5.0f;  ///< Frames to hover before showing (reduced for responsiveness)
     static constexpr float TOOLTIP_OFFSET_X  = 15.0f;
