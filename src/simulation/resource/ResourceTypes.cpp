@@ -113,6 +113,7 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
 
     // Automation goods
     defs[goods::ROBOT_WORKERS] = {goods::ROBOT_WORKERS, "Robot Workers", GoodCategory::Advanced, 300, false, 0.8f};
+    defs[goods::HELIUM_3]       = {goods::HELIUM_3,       "Helium-3",       GoodCategory::RawStrategic, 400, true, 0.9f};
 
     return defs;
 }();
@@ -226,15 +227,19 @@ std::vector<ProductionRecipe> buildRecipes() {
         goods::AMMUNITION, 2, BuildingId{3}, 1});
 
     // ================================================================
-    // NEW: Precision manufacturing chain (Surface Plate -> Instruments -> Parts)
+    // Precision manufacturing chain.  Surface Plate used to be its own
+    // tracked good, but it's a tech/flavour concept ("Precision
+    // Engineering") not a tradeable commodity — so both entry recipes
+    // now produce PRECISION_INSTRUMENTS directly.  Two paths: an Iron-age
+    // basic version and an Industrial glass/copper-wire premium.
     // ================================================================
-    recipes.push_back({18, "Grind Surface Plate",
+    recipes.push_back({18, "Build Precision Instruments (Basic)",
         {{goods::IRON_INGOTS, 2}, {goods::STONE, 1}},
-        goods::SURFACE_PLATE, 1, BuildingId{10}, 2});
+        goods::PRECISION_INSTRUMENTS, 1, BuildingId{10}, 2});
 
     recipes.push_back({19, "Build Precision Instruments",
-        {{goods::SURFACE_PLATE, 1}, {goods::COPPER_WIRE, 1}, {goods::GLASS, 1}},
-        goods::PRECISION_INSTRUMENTS, 1, BuildingId{10}, 2});
+        {{goods::IRON_INGOTS, 1}, {goods::COPPER_WIRE, 1}, {goods::GLASS, 1}},
+        goods::PRECISION_INSTRUMENTS, 2, BuildingId{10}, 2});
 
     recipes.push_back({20, "Standardize Parts",
         {{goods::PRECISION_INSTRUMENTS, 1}, {goods::STEEL, 1}, {goods::MACHINERY, 1}},
@@ -255,10 +260,22 @@ std::vector<ProductionRecipe> buildRecipes() {
         {{goods::MICROCHIPS, 1}, {goods::PLASTICS, 1}, {goods::ELECTRONICS, 1}},
         goods::COMPUTERS_GOOD, 1, BuildingId{4}, 2});
 
-    // Software: Computers good is required but NOT consumed (knowledge economy)
-    recipes.push_back({24, "Develop Software",
+    // Software: two paths, reflecting the knowledge-economy idea that a
+    // resource-poor civ with strong research infrastructure can still
+    // export code.
+    //   Premium: full Computers on hand (not consumed — "infrastructure")
+    //             → Software 2 per batch, Research Lab.
+    //   Bootstrap: Microchips consumed directly, no Computers needed
+    //             → Software 1 per batch, Research Lab.  Lets a civ start
+    //             a digital economy as soon as Microchips are available,
+    //             without the full assembly chain.
+    recipes.push_back({24, "Develop Software (Platform)",
         {{goods::COMPUTERS_GOOD, 1, false}},
         goods::SOFTWARE, 2, BuildingId{12}, 1});
+
+    recipes.push_back({60, "Develop Software (Bootstrap)",
+        {{goods::MICROCHIPS, 1}},
+        goods::SOFTWARE, 1, BuildingId{12}, 1});
 
     // ================================================================
     // NEW: Aviation chain (keeps Aluminum relevant)

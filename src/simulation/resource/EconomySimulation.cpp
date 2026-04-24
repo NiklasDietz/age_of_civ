@@ -229,21 +229,35 @@ void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
             const CityDistrictsComponent& districts = cityPtr->districts();
             CityStockpileComponent&       stockpile  = cityPtr->stockpile();
 
-            // Fusion Reactor deuterium self-supply for coastal cities
+            // Fusion Reactor fuel supply.  Post-Moon-Landing the reactor's
+            // primary fuel is HELIUM_3 mined off the lunar surface; the
+            // player gets a per-turn Helium-3 trickle once Moon Landing is
+            // completed (see SpaceRace).  Pre-Moon-Landing civs with a
+            // Fusion Reactor can still fall back to coastal Deuterium at a
+            // reduced rate until the Moon project ships.
             if (districts.hasBuilding(BuildingId{35})) {
-                bool isCoastal = false;
-                std::array<aoc::hex::AxialCoord, 6> neighbors = aoc::hex::neighbors(cityPtr->location());
-                for (const aoc::hex::AxialCoord& nbr : neighbors) {
-                    if (grid.isValid(nbr)) {
-                        int32_t nbrIdx = grid.toIndex(nbr);
-                        if (aoc::map::isWater(grid.terrain(nbrIdx))) {
-                            isCoastal = true;
-                            break;
+                const aoc::sim::PlayerSpaceRaceComponent& sr = playerPtr->spaceRace();
+                const bool moonLanded =
+                    sr.completed[static_cast<int32_t>(aoc::sim::SpaceProjectId::MoonLanding)];
+                if (moonLanded) {
+                    // Helium-3 delivered by lunar mining; 1 unit / reactor / turn.
+                    stockpile.addGoods(goods::HELIUM_3, 1);
+                } else {
+                    bool isCoastal = false;
+                    std::array<aoc::hex::AxialCoord, 6> neighbors =
+                        aoc::hex::neighbors(cityPtr->location());
+                    for (const aoc::hex::AxialCoord& nbr : neighbors) {
+                        if (grid.isValid(nbr)) {
+                            int32_t nbrIdx = grid.toIndex(nbr);
+                            if (aoc::map::isWater(grid.terrain(nbrIdx))) {
+                                isCoastal = true;
+                                break;
+                            }
                         }
                     }
-                }
-                if (isCoastal) {
-                    stockpile.addGoods(goods::DEUTERIUM, 1);
+                    if (isCoastal) {
+                        stockpile.addGoods(goods::DEUTERIUM, 1);
+                    }
                 }
             }
 
@@ -736,11 +750,30 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                         break;
                     default: break;
                 }
+
+                // DataCenter synergy: Software recipes (24 Platform, 60
+                // Bootstrap) get +50% output per worked DataCenter tile,
+                // capped at +200%.  Answers the "resource-poor civ should
+                // still be able to export software" design question — a
+                // Research Lab city with 3 Data Centers produces 3x the
+                // software of a resource-rich city without them.
+                float datacenterMult = 1.0f;
+                if (recipe->recipeId == 24 || recipe->recipeId == 60) {
+                    int32_t dcCount = 0;
+                    for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
+                        if (!grid.isValid(tile)) { continue; }
+                        if (grid.improvement(grid.toIndex(tile))
+                            == aoc::map::ImprovementType::DataCenter) {
+                            ++dcCount;
+                        }
+                    }
+                    datacenterMult = 1.0f + std::min(2.0f, 0.5f * static_cast<float>(dcCount));
+                }
                 const int32_t boostedOutput = std::max(1, static_cast<int32_t>(
                     static_cast<float>(recipe->outputAmount)
                     * infraBonus * envModifier * powerEff * expMultiplier
                     * revMultiplier * toolEff * supplyMultiplier * curseMultiplier
-                    * chainMult));
+                    * chainMult * datacenterMult));
                 stockpile.addGoods(recipe->outputGoodId, boostedOutput);
 
                 // Recipe-fire audit: in-memory counter + milestone log

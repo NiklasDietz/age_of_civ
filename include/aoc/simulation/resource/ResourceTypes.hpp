@@ -221,7 +221,7 @@ namespace goods {
     inline constexpr uint16_t RUBBER_GOODS         = 77;
     inline constexpr uint16_t BRONZE               = 78;
     inline constexpr uint16_t CHARCOAL            = 79;  ///< Wood-based fuel, early coal substitute
-    inline constexpr uint16_t DEUTERIUM           = 80;  ///< Fusion fuel, extracted from coastal water
+    inline constexpr uint16_t DEUTERIUM           = 80;  ///< [deprecated] coastal fusion fuel — superseded by HELIUM_3 from Moon
     inline constexpr uint16_t BIOFUEL             = 81;  ///< Renewable fuel from crops, substitutes for Fuel
     inline constexpr uint16_t GOLD_CONTACTS      = 82;  ///< Gold plating for electronics; late-game use of gold ore
 
@@ -241,13 +241,16 @@ namespace goods {
     inline constexpr uint16_t TELECOM_EQUIPMENT    = 112;
     inline constexpr uint16_t ADV_CONSUMER_GOODS   = 113;
 
-    // -- Monetary goods (140-159) -- produced at Mint from raw metals
+    // -- Monetary goods (140-142) -- produced at Mint from raw metals
     inline constexpr uint16_t COPPER_COINS         = 140;
     inline constexpr uint16_t SILVER_COINS         = 141;
     inline constexpr uint16_t GOLD_BARS            = 142;  ///< Treasury reserve bars, NOT circulating coins
 
-    // -- Automation goods (160-169) --
+    // -- Automation / space-age goods (143+) -- late-game advanced goods,
+    // NOT coinage.  ID 143 stayed where it was for save-compat; the group
+    // heading used to say "Monetary" by accident.
     inline constexpr uint16_t ROBOT_WORKERS        = 143;
+    inline constexpr uint16_t HELIUM_3             = 144;  ///< Lunar fusion fuel, harvested post-Moon-Landing
 
     inline constexpr uint16_t GOOD_COUNT = 153;
 } // namespace goods

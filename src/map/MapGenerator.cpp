@@ -1413,25 +1413,38 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
                         placed = ResourceId{aoc::sim::goods::IVORY};
                     }
                 } else if (temperature > 0.65f && terrain != TerrainType::Desert) {
-                    // Tropical: luxuries are more abundant here
+                    // Tropical (wet, hot) — equatorial cash crops.  Strictly
+                    // climate-gated so these appear nowhere else on the map.
+                    //   Rubber: only in Jungle feature within tropical zone
+                    //   Sugar/Coffee/Tea: wet tropical
+                    //   Tobacco/Cotton: warm, can tolerate subtropical
+                    //   Spices: pan-tropical
+                    const bool jungle = grid.feature(index) == FeatureType::Jungle;
                     if (resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::COTTON};
-                    } else if (resRng.chance(0.03f)) {
+                    } else if (jungle && resRng.chance(0.05f)) {
                         placed = ResourceId{aoc::sim::goods::RUBBER};
                     } else if (resRng.chance(0.05f)) {
                         placed = ResourceId{aoc::sim::goods::SPICES};
                     } else if (resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::SUGAR};
-                    } else if (resRng.chance(0.05f)) {
-                        placed = ResourceId{aoc::sim::goods::TEA};
-                    } else if (resRng.chance(0.05f)) {
+                    } else if (resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::COFFEE};
                     } else if (resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::TOBACCO};
-                    } else if (resRng.chance(0.03f)) {
-                        placed = ResourceId{aoc::sim::goods::SILK};
                     }
-                } else if (temperature >= 0.30f && temperature <= 0.65f) {
+                } else if (temperature >= 0.55f && temperature <= 0.70f) {
+                    // Subtropical band — warm temperate.  Tea + Silk live
+                    // here historically (China, India, Mediterranean).
+                    // Wine also prefers this zone.
+                    if (resRng.chance(0.05f)) {
+                        placed = ResourceId{aoc::sim::goods::TEA};
+                    } else if (resRng.chance(0.04f)) {
+                        placed = ResourceId{aoc::sim::goods::SILK};
+                    } else if (resRng.chance(0.04f)) {
+                        placed = ResourceId{aoc::sim::goods::WINE};
+                    }
+                } else if (temperature >= 0.30f && temperature < 0.55f) {
                     // Temperate: bonus + luxury resources
                     if (resRng.chance(0.06f)) {
                         placed = ResourceId{aoc::sim::goods::WHEAT};
@@ -1439,8 +1452,6 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
                         placed = ResourceId{aoc::sim::goods::WOOD};
                     } else if (resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::CATTLE};
-                    } else if (resRng.chance(0.04f)) {
-                        placed = ResourceId{aoc::sim::goods::WINE};
                     } else if (resRng.chance(0.03f)) {
                         placed = ResourceId{aoc::sim::goods::SALT};
                     } else if (resRng.chance(0.03f)) {
