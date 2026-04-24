@@ -252,6 +252,7 @@ enum class ImprovementType : uint8_t;
         case 36: return {1, 0, 0, 0, 1, 0};  // MangroveNursery:  +1 food, +1 culture
         case 37: return {2, 0, 0, 1, 0, 0};  // KelpFarm:         +2 food, +1 science
         case 38: return {2, 0, 1, 0, 0, 0};  // FishFarm:         +2 food, +1 gold
+        case 39: return {2, 0, 0, 0, 0, 0};  // Greenhouse:       +2 food (WP-C4)
         default: return {};                   // None / unknown
     }
 }

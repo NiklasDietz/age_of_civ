@@ -35,10 +35,11 @@ class HexGrid;
 namespace aoc::sim {
 
 enum class SpaceProjectId : uint8_t {
-    EarthSatellite  = 0,
-    MoonLanding     = 1,
-    MarsColony      = 2,
-    ExoplanetExpedition = 3,
+    EarthSatellite      = 0,
+    MoonLanding         = 1,
+    LunarColony         = 2,   ///< WP-B1: Post-landing colony; 3× He3 + empire-wide +20 science + unlocks Titanium.
+    MarsColony          = 3,
+    ExoplanetExpedition = 4,
 
     Count
 };
@@ -53,10 +54,11 @@ struct SpaceProjectDef {
 };
 
 inline constexpr std::array<SpaceProjectDef, SPACE_PROJECT_COUNT> SPACE_PROJECT_DEFS = {{
-    {SpaceProjectId::EarthSatellite,     "Launch Earth Satellite",  TechId{18}, 1200.0f},
-    {SpaceProjectId::MoonLanding,        "Launch Moon Landing",     TechId{20}, 1600.0f},
-    {SpaceProjectId::MarsColony,         "Mars Colony Ship",        TechId{22}, 2400.0f},
-    {SpaceProjectId::ExoplanetExpedition,"Exoplanet Expedition",    TechId{25}, 3200.0f},
+    {SpaceProjectId::EarthSatellite,      "Launch Earth Satellite",  TechId{18}, 1200.0f},
+    {SpaceProjectId::MoonLanding,         "Launch Moon Landing",     TechId{20}, 1600.0f},
+    {SpaceProjectId::LunarColony,         "Establish Lunar Colony",  TechId{20}, 2000.0f},
+    {SpaceProjectId::MarsColony,          "Mars Colony Ship",        TechId{22}, 2400.0f},
+    {SpaceProjectId::ExoplanetExpedition, "Exoplanet Expedition",    TechId{25}, 3200.0f},
 }};
 
 /// Per-player space race progress.

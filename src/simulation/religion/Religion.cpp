@@ -10,6 +10,7 @@
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
+#include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
@@ -18,6 +19,8 @@
 #include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/core/Log.hpp"
+
+#include <algorithm>
 
 namespace aoc::sim {
 
@@ -122,8 +125,11 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
         }
 
         // Wonder faith bonus (H4.9): Stonehenge etc.
+        // WP-A7: era-decay.
         for (const WonderId wid : city->wonders().wonders) {
-            faithGain += wonderDef(wid).effect.faithBonus;
+            const WonderDef& wdef = wonderDef(wid);
+            faithGain += wdef.effect.faithBonus
+                       * wonderEraDecayFactor(wdef, player.era().currentEra);
         }
     }
 
@@ -214,6 +220,24 @@ void processReligiousSpread(aoc::game::GameState& gameState,
                          target.location.q, target.location.r,
                          static_cast<int>(afterName.size()), afterName.data(),
                          static_cast<unsigned>(source.owner));
+
+                // WP-A2: converting a foreign-owned city to your religion
+                // irritates the target's civ. -8 relation, decays 30 turns.
+                // Only fires across distinct real players (skip city-states
+                // and unowned free cities).
+                if (diplomacy != nullptr
+                    && target.owner != INVALID_PLAYER
+                    && source.owner != INVALID_PLAYER
+                    && target.owner != source.owner
+                    && target.owner < aoc::sim::CITY_STATE_PLAYER_BASE
+                    && source.owner < aoc::sim::CITY_STATE_PLAYER_BASE) {
+                    aoc::sim::RelationModifier mod{};
+                    mod.reason         = "Converted one of our cities";
+                    mod.amount         = -8;
+                    mod.turnsRemaining = 30;
+                    const_cast<DiplomacyManager*>(diplomacy)->addModifier(
+                        target.owner, source.owner, mod);
+                }
             }
         }
     }
@@ -231,12 +255,62 @@ void applyReligionBonuses(aoc::game::Player& player) {
 
     // For now, apply a simplified bonus: each city with religion gets +1 faith
     // Full religion bonuses require GlobalReligionTracker which needs to move to GameState.
+    // Per-city bonus: cities whose dominant religion matches the founder's
+    // religion add to faith pool AND grant a small economic kickback.
+    // WP-A1 synergy: religion bonds should meaningfully change production.
+    // Per-city Gold delta: +1 gold per 3 citizens (spirit of tithe / alms).
+    // Per-city Faith: +0.5 per turn (was the only effect previously).
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         ReligionId dominant = city->religion().dominantReligion();
         if (dominant == playerFaith.foundedReligion) {
             player.faith().faith += 0.5f;
+            const int32_t tithe = city->population() / 3;
+            if (tithe > 0) {
+                player.addGold(tithe);
+            }
         }
     }
+}
+
+// ============================================================================
+// rushBuildingWithFaith (WP-A1)
+// ============================================================================
+
+ErrorCode rushBuildingWithFaith(aoc::game::Player& player,
+                                 aoc::game::City& city,
+                                 int32_t currentTurn) {
+    if (city.owner() != player.id()) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    ProductionQueueComponent& queue = city.production();
+    if (queue.queue.empty()) {
+        return ErrorCode::InvalidArgument;
+    }
+    ProductionQueueItem& head = queue.queue.front();
+    if (head.type != ProductionItemType::Building) {
+        return ErrorCode::InvalidArgument;
+    }
+    if (queue.lastFaithRushTurn == currentTurn) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    // Cost scales with remaining production cost (tier-proxy) × 0.5.
+    const float remaining = std::max(0.0f, head.totalCost - head.progress);
+    const float faithCost = std::max(20.0f, remaining * 0.5f);
+
+    PlayerFaithComponent& playerFaith = player.faith();
+    if (playerFaith.faith < faithCost) {
+        return ErrorCode::InsufficientResources;
+    }
+    playerFaith.faith -= faithCost;
+    head.progress = head.totalCost;
+    queue.lastFaithRushTurn = currentTurn;
+    LOG_INFO("Faith rush: player %u city %s completed %.*s for %.0f faith",
+             static_cast<unsigned>(player.id()), city.name().c_str(),
+             static_cast<int>(head.name.size()), head.name.c_str(),
+             static_cast<double>(faithCost));
+    return ErrorCode::Ok;
 }
 
 // ============================================================================

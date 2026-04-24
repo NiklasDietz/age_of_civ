@@ -16,6 +16,7 @@
 #include "aoc/simulation/monetary/CurrencyWar.hpp"
 #include "aoc/core/Types.hpp"
 
+#include <array>
 #include <unordered_map>
 
 namespace aoc::game {
@@ -96,7 +97,21 @@ private:
     /// city screen each session.
     std::unordered_map<uint64_t, uint16_t> m_recipePreference;
 
+    /// WP-C8: per-game recipe fire counter. Index = recipeId. Replaces a
+    /// function-local static array that leaked counts across games in the
+    /// same process (ml/headless runs). Written each time a recipe fires in
+    /// `executeProduction`. Size covers all currently-defined recipes.
+    static constexpr std::size_t MAX_RECIPES = 128;
+    std::array<int32_t, MAX_RECIPES> m_recipeFireCount = {};
+
 public:
+    /// Access the per-game recipe fire counter (read-only for UI / CSV dump).
+    [[nodiscard]] const std::array<int32_t, MAX_RECIPES>& recipeFireCount() const {
+        return this->m_recipeFireCount;
+    }
+    [[nodiscard]] std::array<int32_t, MAX_RECIPES>& recipeFireCount() {
+        return this->m_recipeFireCount;
+    }
     [[nodiscard]] GlobalSanctionTracker& sanctions() { return this->m_sanctions; }
     [[nodiscard]] const GlobalSanctionTracker& sanctions() const { return this->m_sanctions; }
     [[nodiscard]] GlobalEconomicZoneTracker& economicZones() { return this->m_economicZones; }

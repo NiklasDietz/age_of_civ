@@ -5,7 +5,9 @@
 
 #include "aoc/simulation/wonder/Wonder.hpp"
 
+#include <algorithm>
 #include <cassert>
+#include <cmath>
 
 namespace aoc::sim {
 
@@ -134,6 +136,16 @@ const std::array<WonderDef, WONDER_COUNT>& allWonderDefs() {
 const WonderDef& wonderDef(WonderId id) {
     assert(id < WONDER_COUNT);
     return s_wonderDefs[id];
+}
+
+float wonderEraDecayFactor(const WonderDef& wdef, EraId currentEra) {
+    const int32_t delta = std::max(0,
+        static_cast<int32_t>(currentEra.value) - static_cast<int32_t>(wdef.era.value));
+    if (delta == 0) {
+        return 1.0f;
+    }
+    const float factor = std::pow(0.85f, static_cast<float>(delta));
+    return std::max(0.35f, factor);
 }
 
 } // namespace aoc::sim

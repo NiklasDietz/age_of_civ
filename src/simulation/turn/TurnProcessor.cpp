@@ -526,6 +526,33 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     accumulateFaith(*gsPlayer, grid);
     applyReligionBonuses(*gsPlayer);
 
+    // WP-A1: AI faith-rush heuristic. When AI has a healthy faith buffer
+    // (> 200) and any city's queue front is a Building, rush the single
+    // city with the highest remaining-cost Building. Keeps faith from
+    // sitting idle late-game and gives religious civs a concrete
+    // production-race edge.
+    if (!gsPlayer->isHuman() && gsPlayer->faith().faith > 200.0f) {
+        aoc::game::City* bestCity = nullptr;
+        float bestRemaining = 0.0f;
+        for (const std::unique_ptr<aoc::game::City>& c : gsPlayer->cities()) {
+            const ProductionQueueComponent& q = c->production();
+            if (q.queue.empty()) { continue; }
+            if (q.queue.front().type != ProductionItemType::Building) { continue; }
+            if (q.lastFaithRushTurn
+                == static_cast<int32_t>(turnContext.currentTurn)) { continue; }
+            const float rem = q.queue.front().totalCost - q.queue.front().progress;
+            if (rem > bestRemaining) {
+                bestRemaining = rem;
+                bestCity = c.get();
+            }
+        }
+        if (bestCity != nullptr) {
+            [[maybe_unused]] ErrorCode rc = rushBuildingWithFaith(
+                *gsPlayer, *bestCity,
+                static_cast<int32_t>(turnContext.currentTurn));
+        }
+    }
+
     // Science and tech research
     // Science costs gold: each point of science generated costs 0.2 gold (research
     // funding). This means a player generating 100 science/turn pays 20 gold/turn
@@ -599,10 +626,67 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         // civs at 1.5x. Closes the loop between schools and tech speed.
         science *= gsPlayer->humanCapital().scienceMultiplier();
 
+        // WP-B1: Lunar Colony project — flat +20 science/turn empire-wide
+        // ("low-gravity physics" research bonus).
+        if (gsPlayer->spaceRace().completed[static_cast<int32_t>(
+                aoc::sim::SpaceProjectId::LunarColony)]) {
+            science += 20.0f;
+        }
+
+        // WP-A3: Great Scientist activated in a Research Lab city grants a
+        // sustained flat science bonus for up to 20 turns. Decrement counter.
+        if (gsPlayer->greatPeople().pulseScienceTurns > 0) {
+            science += gsPlayer->greatPeople().pulseScienceAmount;
+            --gsPlayer->greatPeople().pulseScienceTurns;
+            if (gsPlayer->greatPeople().pulseScienceTurns == 0) {
+                gsPlayer->greatPeople().pulseScienceAmount = 0.0f;
+            }
+        }
+
         // Fold any banked eureka/inspiration into the current research
         // before progress ticks, so boosts never go to waste.
         consumePendingEurekaBoosts(*gsPlayer);
 
+        // WP-A6 tech diffusion: if the current-research tech is already
+        // known by a bilateral-deal trade partner, boost this civ's
+        // science for that tech by +10% per such partner (capped +30%).
+        // Models tacit knowledge transfer through regular exchange.
+        if (gsPlayer->tech().currentResearch.isValid()) {
+            const TechId cur = gsPlayer->tech().currentResearch;
+            int32_t sharedPartners = 0;
+            for (const aoc::sim::TradeAgreementDef& agr
+                 : gsPlayer->tradeAgreements().agreements) {
+                if (!agr.isActive) { continue; }
+                if (agr.type != aoc::sim::TradeAgreementType::BilateralDeal) { continue; }
+                for (const PlayerId m : agr.members) {
+                    if (m == player) { continue; }
+                    const aoc::game::Player* other = turnContext.gameState->player(m);
+                    if (other != nullptr && other->tech().hasResearched(cur)) {
+                        ++sharedPartners;
+                        break;
+                    }
+                }
+            }
+            const float diffusion = 1.0f + 0.10f * static_cast<float>(std::min(3, sharedPartners));
+            science *= diffusion;
+
+            // A7 Great Library unique effect: +50% science while researching
+            // an Ancient (era 0) or Classical (era 1) tech. Scope: any city
+            // of this player that hosts Great Library (WonderId 3).
+            bool hasGreatLibrary = false;
+            for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+                if (city->wonders().hasWonder(static_cast<aoc::sim::WonderId>(3))) {
+                    hasGreatLibrary = true;
+                    break;
+                }
+            }
+            if (hasGreatLibrary) {
+                const aoc::sim::TechDef& tdef = aoc::sim::techDef(cur);
+                if (tdef.era.value <= 1) {
+                    science *= 1.50f;
+                }
+            }
+        }
         advanceResearch(gsPlayer->tech(), science);
         advanceCivicResearch(gsPlayer->civics(), culture, &gsPlayer->government());
     }
@@ -652,6 +736,50 @@ void processGlobalSystems(TurnContext& turnContext) {
     // AI religion founding: auto-found pantheons and religions for non-human players
     // once they accumulate sufficient faith. Human players use the UI screen.
     processAIReligionFounding(gameState);
+
+    // Religion × Diplomacy relation coupling (WP-A2).  Every N turns we
+    // assess how many cities each pair of civs shares by dominant religion
+    // and push a relation modifier.  Shared dominance → friendly pull,
+    // strong majority conversion of our cities by the other civ → tension.
+    if (turnContext.diplomacy != nullptr && (turnContext.currentTurn % 8) == 0) {
+        const auto dominantReligionCities = [](const aoc::game::Player& p) {
+            std::unordered_map<ReligionId, int32_t> counts;
+            for (const std::unique_ptr<aoc::game::City>& c : p.cities()) {
+                if (c == nullptr) { continue; }
+                const ReligionId dom = c->religion().dominantReligion();
+                if (dom != NO_RELIGION) { ++counts[dom]; }
+            }
+            return counts;
+        };
+
+        for (const std::unique_ptr<aoc::game::Player>& a : gameState.players()) {
+            if (a == nullptr) { continue; }
+            const auto aCounts = dominantReligionCities(*a);
+            if (aCounts.empty()) { continue; }
+            ReligionId aTop = NO_RELIGION;
+            int32_t aTopN = 0;
+            for (const auto& kv : aCounts) {
+                if (kv.second > aTopN) { aTopN = kv.second; aTop = kv.first; }
+            }
+            if (aTop == NO_RELIGION) { continue; }
+
+            for (const std::unique_ptr<aoc::game::Player>& b : gameState.players()) {
+                if (b == nullptr || b->id() == a->id()) { continue; }
+                const auto bCounts = dominantReligionCities(*b);
+                const auto it = bCounts.find(aTop);
+                if (it == bCounts.end()) { continue; }
+                // Shared religion modifier, scaled by overlap.  +2..+8 range
+                // per 8-turn tick, decays in 30 turns so shifts are felt.
+                const int32_t shared = it->second;
+                const int32_t magnitude = std::min(8, 2 + shared / 2);
+                RelationModifier mod{};
+                mod.reason = "Shared dominant religion";
+                mod.amount = magnitude;
+                mod.turnsRemaining = 30;
+                turnContext.diplomacy->addModifier(a->id(), b->id(), mod);
+            }
+        }
+    }
 
     // Space Race progress toward Science Victory. Gates on Campus + required tech.
     processSpaceRace(gameState, grid);

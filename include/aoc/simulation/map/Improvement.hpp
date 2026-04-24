@@ -27,7 +27,7 @@ struct ImprovementDef {
 };
 
 /// Hard-coded improvement definitions.
-inline constexpr std::array<ImprovementDef, 39> IMPROVEMENT_DEFS = {{
+inline constexpr std::array<ImprovementDef, 40> IMPROVEMENT_DEFS = {{
     {aoc::map::ImprovementType::Farm,         "Farm",          {1, 0, 0, 0, 0, 0}, TechId{},   3},
     {aoc::map::ImprovementType::Mine,         "Mine",          {0, 1, 0, 0, 0, 0}, TechId{0},  3},
     {aoc::map::ImprovementType::Plantation,   "Plantation",    {0, 0, 1, 0, 0, 0}, TechId{},   4},
@@ -38,9 +38,11 @@ inline constexpr std::array<ImprovementDef, 39> IMPROVEMENT_DEFS = {{
     {aoc::map::ImprovementType::FishingBoats, "Fishing Boats", {1, 0, 1, 0, 0, 0}, TechId{},   4},
     {aoc::map::ImprovementType::Fort,         "Fort",          {0, 0, 0, 0, 0, 0}, TechId{},   5},
     {aoc::map::ImprovementType::Road,         "Road",          {0, 0, 0, 0, 0, 0}, TechId{},   2},
-    {aoc::map::ImprovementType::Railway,      "Railway",       {0, 1, 0, 0, 0, 0}, TechId{7},  4},
-    {aoc::map::ImprovementType::Highway,      "Highway",       {0, 0, 1, 0, 0, 0}, TechId{16}, 3},
-    {aoc::map::ImprovementType::Dam,          "Dam",           {0, 1, 0, 0, 0, 0}, TechId{7},  6},
+    // WP-C7: aligned with TechTree.cpp. Railway/Dam need industrial-era
+    // engineering (11 Industrialization), Highway needs mass production (15).
+    {aoc::map::ImprovementType::Railway,      "Railway",       {0, 1, 0, 0, 0, 0}, TechId{11}, 4},
+    {aoc::map::ImprovementType::Highway,      "Highway",       {0, 0, 1, 0, 0, 0}, TechId{15}, 3},
+    {aoc::map::ImprovementType::Dam,          "Dam",           {0, 1, 0, 0, 0, 0}, TechId{11}, 6},
     // Cultivated export improvements: produce luxury/strategic goods without natural resources
     {aoc::map::ImprovementType::Vineyard,     "Vineyard",      {0, 0, 2, 0, 0, 0}, TechId{},   4}, // +2 gold (wine exports)
     {aoc::map::ImprovementType::SilkFarm,     "Silk Farm",     {0, 0, 2, 0, 0, 0}, TechId{},   4}, // +2 gold (silk exports)
@@ -55,21 +57,26 @@ inline constexpr std::array<ImprovementDef, 39> IMPROVEMENT_DEFS = {{
     {aoc::map::ImprovementType::HeritageSite, "Heritage Site", {0, 0, 0, 0, 2, 0}, TechId{},   5}, // +2 culture. Any land.
     // Modern / industrial improvements (gated by tech). Some consume food to
     // produce production (simulate resource-conversion: biogas, recycling).
-    {aoc::map::ImprovementType::TerraceFarm,      "Terrace Farm",      {1, 0, 0, 0, 0, 0}, TechId{2},  4}, // +1 food. Hills. Masonry.
-    {aoc::map::ImprovementType::BiogasPlant,      "Biogas Plant",      {-1, 2, 0, 0, 0, 0}, TechId{16}, 5}, // +2 prod, -1 food. Industrialization.
-    {aoc::map::ImprovementType::SolarFarm,        "Solar Farm",        {0, 0, 2, 1, 0, 0}, TechId{17}, 5}, // +2 gold, +1 sci. Electricity.
-    {aoc::map::ImprovementType::WindFarm,         "Wind Farm",         {0, 2, 0, 0, 0, 0}, TechId{17}, 4}, // +2 prod. Electricity.
-    {aoc::map::ImprovementType::OffshorePlatform, "Offshore Platform", {0, 2, 2, 0, 0, 0}, TechId{16}, 6}, // Coast + oil. Industrialization.
-    {aoc::map::ImprovementType::RecyclingCenter,  "Recycling Center",  {-1, 2, 0, 0, 0, 0}, TechId{17}, 5}, // Any land. +2 prod, -1 food.
+    // WP-C7: tech IDs aligned with TechTree.cpp names. Comments describe
+    // intended tech gate; earlier defs pointed at incorrect numerical IDs.
+    {aoc::map::ImprovementType::TerraceFarm,      "Terrace Farm",      {1, 0, 0, 0, 0, 0}, TechId{2},  4}, // +1 food. Hills. Pottery (Masonry-analog).
+    {aoc::map::ImprovementType::BiogasPlant,      "Biogas Plant",      {-1, 2, 0, 0, 0, 0}, TechId{11}, 5}, // +2 prod, -1 food. Industrialization.
+    {aoc::map::ImprovementType::SolarFarm,        "Solar Farm",        {0, 0, 2, 1, 0, 0}, TechId{14}, 5}, // +2 gold, +1 sci. Electricity.
+    {aoc::map::ImprovementType::WindFarm,         "Wind Farm",         {0, 2, 0, 0, 0, 0}, TechId{14}, 4}, // +2 prod. Electricity.
+    {aoc::map::ImprovementType::OffshorePlatform, "Offshore Platform", {0, 2, 2, 0, 0, 0}, TechId{11}, 6}, // Coast + oil. Industrialization.
+    {aoc::map::ImprovementType::RecyclingCenter,  "Recycling Center",  {-1, 2, 0, 0, 0, 0}, TechId{14}, 5}, // Any land. +2 prod, -1 food. Electricity.
     // Extended modern set
     {aoc::map::ImprovementType::GeothermalVent,    "Geothermal Vent",    {0, 1, 0, 0, 0, 1}, TechId{0},  5}, // Mountain-adjacent flag. Enables GeothermalPlant building.
-    {aoc::map::ImprovementType::DesalinationPlant, "Desalination Plant", {3, 0, 0, 0, 0, 0}, TechId{16}, 6}, // Coast. +3 food. Industrialization.
-    {aoc::map::ImprovementType::VerticalFarm,      "Vertical Farm",      {3, -1, 0, 0, 0, 0}, TechId{17}, 6}, // Any land. +3 food, -1 prod. Electricity.
-    {aoc::map::ImprovementType::DataCenter,        "Data Center",        {-1, 0, 0, 3, 0, 0}, TechId{18}, 7}, // Any land. +3 sci, -1 food. Computers.
-    {aoc::map::ImprovementType::TradingPost,       "Trading Post",       {0, 0, 2, 0, 0, 0}, TechId{1},  3}, // Desert/Plains. +2 gold. Currency.
-    {aoc::map::ImprovementType::MangroveNursery,   "Mangrove Nursery",   {1, 0, 0, 0, 1, 0}, TechId{17}, 4}, // Marsh/Coast+marsh. +1 food +1 culture.
-    {aoc::map::ImprovementType::KelpFarm,          "Kelp Farm",          {2, 0, 0, 1, 0, 0}, TechId{17}, 4}, // Coast. +2 food +1 sci.
+    {aoc::map::ImprovementType::DesalinationPlant, "Desalination Plant", {3, 0, 0, 0, 0, 0}, TechId{11}, 6}, // Coast. +3 food. Industrialization.
+    {aoc::map::ImprovementType::VerticalFarm,      "Vertical Farm",      {3, -1, 0, 0, 0, 0}, TechId{14}, 6}, // Any land. +3 food, -1 prod. Electricity.
+    {aoc::map::ImprovementType::DataCenter,        "Data Center",        {-1, 0, 0, 3, 0, 0}, TechId{16}, 7}, // Any land. +3 sci, -1 food. Computers.
+    {aoc::map::ImprovementType::TradingPost,       "Trading Post",       {0, 0, 2, 0, 0, 0}, TechId{5},  3}, // Desert/Plains. +2 gold. Currency.
+    {aoc::map::ImprovementType::MangroveNursery,   "Mangrove Nursery",   {1, 0, 0, 0, 1, 0}, TechId{14}, 4}, // Marsh/Coast+marsh. +1 food +1 culture.
+    {aoc::map::ImprovementType::KelpFarm,          "Kelp Farm",          {2, 0, 0, 1, 0, 0}, TechId{14}, 4}, // Coast. +2 food +1 sci.
     {aoc::map::ImprovementType::FishFarm,          "Fish Farm",          {2, 0, 1, 0, 0, 0}, TechId{2},  4}, // Coast/ShallowWater. +2 food +1 gold.
+    // WP-C4: Greenhouse enables crop growth on off-climate tiles. Gated by
+    // Advanced Chemistry (24, our Biology-analog). Flat +2 food for now.
+    {aoc::map::ImprovementType::Greenhouse,        "Greenhouse",         {2, 0, 0, 0, 0, 0}, TechId{24}, 5},
     {aoc::map::ImprovementType::None,         "None",          {0, 0, 0, 0, 0, 0}, TechId{},   0},
 }};
 

@@ -193,8 +193,12 @@ bool areInFreeTradeAgreement(const aoc::game::Player& territoryOwner, PlayerId t
     const PlayerTradeAgreementsComponent& agreements = territoryOwner.tradeAgreements();
     for (const TradeAgreementDef& agreement : agreements.agreements) {
         if (!agreement.isActive) { continue; }
+        // FreeTradeZone, CustomsUnion, and (WP-C3) TransitTreaty all grant
+        // zero-toll passage to traders whose owner is a member. Bilateral
+        // deals still charge the standard tariff.
         if (agreement.type != TradeAgreementType::FreeTradeZone
-            && agreement.type != TradeAgreementType::CustomsUnion) {
+            && agreement.type != TradeAgreementType::CustomsUnion
+            && agreement.type != TradeAgreementType::TransitTreaty) {
             continue;
         }
         bool traderIsMember = false;
@@ -262,7 +266,8 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     // a civ can spam unlimited permanent routes (trader.maxTrips = -1). Cap
     // comes from MonetarySystem::maxTradeRoutes() — 1 at Barter, 14 at Digital.
     {
-        const int32_t cap = ownerPlayer->monetary().maxTradeRoutes();
+        const int32_t cap = ownerPlayer->monetary().maxTradeRoutes()
+                          + ownerPlayer->greatPeople().extraTradeSlots;
         int32_t activeRoutes = 0;
         for (const std::unique_ptr<aoc::game::Unit>& u : ownerPlayer->units()) {
             if (u == nullptr) { continue; }
@@ -513,7 +518,9 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         bool onRailway = (tileIdx >= 0)
             && (grid.improvement(tileIdx) == aoc::map::ImprovementType::Railway
                 || grid.improvement(tileIdx) == aoc::map::ImprovementType::Highway);
-        int32_t speed = trader.movementSpeed(onRoad, onRailway);
+        // WP-C3 pipeline speed: pipelines double land-trader throughput.
+        bool onPipeline = (tileIdx >= 0) && grid.hasPipeline(tileIdx);
+        int32_t speed = trader.movementSpeed(onRoad, onRailway, onPipeline);
 
         // Scan upcoming tiles to compute toll per foreign owner
         struct TollEntry {

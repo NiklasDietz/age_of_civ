@@ -114,6 +114,13 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     // Automation goods
     defs[goods::ROBOT_WORKERS] = {goods::ROBOT_WORKERS, "Robot Workers", GoodCategory::Advanced, 300, false, 0.8f};
     defs[goods::HELIUM_3]       = {goods::HELIUM_3,       "Helium-3",       GoodCategory::RawStrategic, 400, true, 0.9f};
+    defs[goods::TITANIUM]       = {goods::TITANIUM,       "Titanium",       GoodCategory::RawStrategic, 350, true, 0.85f};
+
+    // WP-C2 additive goods.
+    defs[goods::LITHIUM]         = {goods::LITHIUM,         "Lithium",         GoodCategory::RawStrategic, 280, true,  0.75f};
+    defs[goods::BATTERIES]       = {goods::BATTERIES,       "Batteries",       GoodCategory::Processed,    160, true,  0.45f};
+    defs[goods::ELECTRICITY]     = {goods::ELECTRICITY,     "Electricity",     GoodCategory::Processed,     60, true,  0.20f};
+    defs[goods::PHARMACEUTICALS] = {goods::PHARMACEUTICALS, "Pharmaceuticals", GoodCategory::Advanced,     220, true,  0.50f};
 
     return defs;
 }();
@@ -392,9 +399,12 @@ std::vector<ProductionRecipe> buildRecipes() {
     // ================================================================
     // Biofuel: renewable fossil fuel substitute from crops
     // ================================================================
+    // WP-D1: Wheat biofuel yields 2/run (was 1) to keep it competitive with
+    // the Sugar recipe for wheat-heavy civs. Sugar still wins for sugar-heavy
+    // civs on raw profit, but Wheat no longer starves.
     recipes.push_back({44, "Distill Biofuel (Wheat)",
         {{goods::WHEAT, 3}},
-        goods::BIOFUEL, 1, BuildingId{33}, 1});  // Biofuel Plant
+        goods::BIOFUEL, 2, BuildingId{33}, 1});  // Biofuel Plant
 
     recipes.push_back({45, "Distill Biofuel (Sugar)",
         {{goods::SUGAR, 3}},
@@ -422,9 +432,13 @@ std::vector<ProductionRecipe> buildRecipes() {
     // Available once Biofuel Plant is built; yields less than refined
     // natural gas but needs no gas tile.
     // ================================================================
+    // WP-D2: Biogas output bumped 1→2 so the ranker actually picks it over
+    // wheat/sugar biofuel in civs with surplus cattle + wood. Same building
+    // (33) as biofuel recipes, so preference still matters — but now the
+    // profit margin is competitive.
     recipes.push_back({52, "Brew Biogas",
         {{goods::CATTLE, 2}, {goods::WOOD, 1}},
-        goods::NATURAL_GAS, 1, BuildingId{33}, 1});
+        goods::NATURAL_GAS, 2, BuildingId{33}, 1});
 
     // ================================================================
     // Orphan-good activation: recipes that connect previously-idle raw
@@ -477,6 +491,27 @@ std::vector<ProductionRecipe> buildRecipes() {
         {{goods::INDUSTRIAL_EQUIP, 1}, {goods::STEEL, 2}, {goods::FUEL, 1}},
         goods::ARMORED_VEHICLES, 2, BuildingId{3}, 3});
 
+    // ================================================================
+    // WP-C2 additive goods: producer recipes so the ranker wakes them up.
+    // Skipped ELECTRICITY (power-plant side of the graph handles it) and
+    // raw LITHIUM placement (tile-seed pass, handled elsewhere).
+    // ================================================================
+
+    // Batteries: Lithium + Copper Ore → Batteries. Electronics Plant (4).
+    // Gated by Electricity tech (14). Downstream consumer: future advanced
+    // consumer goods + EV vehicles. Producer recipe seeds the chain.
+    recipes.push_back({61, "Assemble Batteries",
+        {{goods::LITHIUM, 1}, {goods::COPPER_ORE, 1}},
+        goods::BATTERIES, 1, BuildingId{4}, 2,
+        1, TechId{14}});
+
+    // Pharmaceuticals: Plastics + Glass → Pharmaceuticals. Industrial
+    // Complex (5). Gated by Advanced Chemistry (24).
+    recipes.push_back({62, "Synthesize Pharmaceuticals",
+        {{goods::PLASTICS, 1}, {goods::GLASS, 1}},
+        goods::PHARMACEUTICALS, 1, BuildingId{5}, 2,
+        1, TechId{24}});
+
     // (Uranium intentionally has no refining recipe in this game — Nuclear
     //  Plant consumes it raw.  A self-loop refiner would break the ranker
     //  the same way Aluminium did.)
@@ -499,18 +534,11 @@ std::vector<ProductionRecipe> buildRecipes() {
         1, TechId{9}, true});  // Forge, Banking tech, recycling
 
     // ================================================================
-    // Gold-to-electronics chain: gold ore freed up after Fiat transition
-    // becomes raw material for gold contacts used in premium microchips.
-    // This gives gold ore late-game economic value beyond treasury backing.
+    // WP-C2 cut: GOLD_CONTACTS chain deprecated. Recipes 48/49 removed —
+    // Gold ore no longer bottlenecks electronics. Premium microchip tier
+    // can be reintroduced later keyed off an active good (e.g. LITHIUM or
+    // PHARMACEUTICALS) rather than a dead-end intermediate.
     // ================================================================
-    recipes.push_back({48, "Plate Gold Contacts",
-        {{goods::GOLD_ORE, 2}},
-        goods::GOLD_CONTACTS, 1, BuildingId{4}, 2});  // Electronics Plant
-
-    recipes.push_back({49, "Produce Premium Microchips",
-        {{goods::GOLD_CONTACTS, 1}, {goods::ELECTRONICS, 1}},
-        goods::MICROCHIPS, 2, BuildingId{11}, 3,       // Semiconductor Fab, 2x output vs standard
-        2, TechId{14}});  // 2 worker slots, requires Electricity tech
 
     // ================================================================
     // Worker slots: advanced recipes need more educated workers per batch.
@@ -540,7 +568,6 @@ std::vector<ProductionRecipe> buildRecipes() {
             case 23:  // Computers
             case 28:  // Telecom Equipment
             case 29:  // Advanced Consumer Goods
-            case 48:  // Gold Contacts
                 r.workerSlots = 2;
                 break;
             // Tier 4: 3 worker slots
@@ -553,7 +580,6 @@ std::vector<ProductionRecipe> buildRecipes() {
             case 26:  // Aircraft
             case 27:  // Armored Vehicles
             case 37:  // Robot Workers
-            case 49:  // Premium Microchips (gold contacts)
                 r.workerSlots = 3;
                 break;
             default:

@@ -102,6 +102,12 @@ struct CityLoyaltyComponent {
 
     int32_t unrestTurns       = 0;     ///< Consecutive turns with loyalty < 25
 
+    /// WP-A5 combined-stress revolt: while > 0 the city is a Free-City and
+    /// the countdown ticks each turn. On 0 the city reverts to
+    /// `revoltOriginalOwner` with loyalty reset to 50.
+    int32_t  revoltFreeCityTurns  = 0;
+    PlayerId revoltOriginalOwner  = INVALID_PLAYER;
+
     /// Current loyalty status tier.
     [[nodiscard]] LoyaltyStatus status() const {
         return loyaltyToStatus(this->loyalty);

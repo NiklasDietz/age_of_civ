@@ -62,6 +62,16 @@ struct PlayerGreatPeopleComponent {
     /// for exhausted types so points cannot silently drain forever (H3.8).
     std::array<bool, static_cast<std::size_t>(GreatPersonType::Count)> exhausted = {};
 
+    /// WP-A3 permanent effects:
+    ///  - extraTradeSlots: +1 per used Great Merchant. Added to monetary cap in
+    ///    TradeRouteSystem route-count check.
+    ///  - pulseScienceAmount/Turns: Great Scientist activated in a Research
+    ///    Lab city grants a sustained flat science bonus for N turns instead
+    ///    of a one-shot progress jolt. Decremented in TurnProcessor.
+    int32_t extraTradeSlots      = 0;
+    float   pulseScienceAmount   = 0.0f;
+    int32_t pulseScienceTurns    = 0;
+
     /// Threshold for next GP of this type: 60 + 40 * already_recruited.
     /// Returns +inf once the type is exhausted, so the recruitment check
     /// never fires for that slot again.

@@ -123,6 +123,8 @@ public:
     [[nodiscard]] int32_t chargesRemaining() const { return this->m_chargesRemaining; }
     void useCharge() { if (this->m_chargesRemaining > 0) { --this->m_chargesRemaining; } }
     [[nodiscard]] bool hasCharges() const { return this->m_chargesRemaining > 0; }
+    /// WP-A7: Pyramids / civic bonuses bump charges post-construction.
+    void setChargesRemaining(int32_t value) { this->m_chargesRemaining = value; }
 
     // ========================================================================
     // Automation

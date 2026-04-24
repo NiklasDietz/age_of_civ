@@ -69,6 +69,10 @@ struct ProductionQueueComponent {
     /// Whether the template is active (auto-refill).
     bool templateActive = false;
 
+    /// WP-A1: last turn this city rushed its queue head via faith spend.
+    /// Enforces "at most one faith-rush per city per turn".
+    int32_t lastFaithRushTurn = -1;
+
     [[nodiscard]] bool isEmpty() const { return this->queue.empty(); }
 
     [[nodiscard]] const ProductionQueueItem* currentItem() const {

@@ -14,6 +14,7 @@
 #include "aoc/simulation/diplomacy/EspionageSystem.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
+#include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
 #include "aoc/simulation/monetary/CurrencyTrust.hpp"
@@ -434,6 +435,46 @@ void processSpyMissions(aoc::game::GameState& gameState,
                     mod.amount         = relationDelta;
                     mod.turnsRemaining = decayTurns;
                     diplomacy->addModifier(targetPlayer->id(), spy.owner, mod);
+                }
+
+                // WP-A8: cascading grievance — three or more active
+                // EspionageCaught grievances against the same owner suspend
+                // every active trade agreement between the two players. The
+                // suspension lasts until grievances decay below the threshold
+                // (re-evaluated on next spy fail). Models "diplomatic trust
+                // erosion ⇒ trade partners walk away."
+                int32_t caughtCount = 0;
+                for (const Grievance& g : targetPlayer->grievances().grievances) {
+                    if (g.type == GrievanceType::EspionageCaught
+                        && g.against == spy.owner
+                        && g.turnsRemaining > 0) {
+                        ++caughtCount;
+                    }
+                }
+                if (caughtCount >= 3) {
+                    aoc::game::Player* ownerPlayer2 = gameState.player(spy.owner);
+                    auto suspendMatching = [&](PlayerTradeAgreementsComponent& ag,
+                                               PlayerId partner) {
+                        for (TradeAgreementDef& a : ag.agreements) {
+                            if (!a.isActive) { continue; }
+                            for (PlayerId m : a.members) {
+                                if (m == partner) {
+                                    a.isActive = false;
+                                    break;
+                                }
+                            }
+                        }
+                    };
+                    suspendMatching(targetPlayer->tradeAgreements(), spy.owner);
+                    if (ownerPlayer2 != nullptr) {
+                        suspendMatching(ownerPlayer2->tradeAgreements(),
+                                        targetPlayer->id());
+                    }
+                    LOG_WARN("Spy cascade: P%u->P%u trade agreements suspended "
+                             "(%d active EspionageCaught grievances)",
+                             static_cast<unsigned>(spy.owner),
+                             static_cast<unsigned>(targetPlayer->id()),
+                             caughtCount);
                 }
             };
 

@@ -18,6 +18,7 @@
 #include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 #include "aoc/simulation/tech/EraScore.hpp"
+#include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/economy/EnvironmentModifier.hpp"
@@ -27,12 +28,92 @@
 #include "aoc/game/City.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/map/HexGrid.hpp"
+#include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
+
+#include <algorithm>
+#include <array>
+#include <unordered_set>
+#include <vector>
 #include "aoc/core/Log.hpp"
 
 #include <vector>
 
 namespace aoc::sim {
+
+// WP-C3: city is fully powered if a plant-owning city can reach it through
+// a chain of same-owner PowerPole tiles (BFS). City that contains a plant
+// is trivially powered.
+static bool cityHasPowerPlant(const aoc::game::City& c) {
+    for (const CityDistrictsComponent::PlacedDistrict& d : c.districts().districts) {
+        for (BuildingId bid : d.buildings) {
+            if (bid.value >= 26 && bid.value <= 35) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool cityIsPowered(const aoc::game::Player& player,
+                          const aoc::game::City& city,
+                          const aoc::map::HexGrid& grid) {
+    if (cityHasPowerPlant(city)) {
+        return true;
+    }
+    if (!grid.isValid(city.location())) {
+        return false;
+    }
+
+    // Collect same-player plant-city center tile indices for fast check.
+    std::unordered_set<int32_t> plantTileIndices;
+    for (const std::unique_ptr<aoc::game::City>& other : player.cities()) {
+        if (other.get() == &city) { continue; }
+        if (!grid.isValid(other->location())) { continue; }
+        if (cityHasPowerPlant(*other)) {
+            plantTileIndices.insert(grid.toIndex(other->location()));
+        }
+    }
+    if (plantTileIndices.empty()) {
+        return false;
+    }
+
+    // BFS: start at city center, expand across owned PowerPole tiles, plus
+    // allow traversal through *any* own-city center (acts as a hub so plant
+    // and destination don't each need an adjacent pole on their own tile).
+    std::unordered_set<int32_t> ownedCityCenters;
+    for (const std::unique_ptr<aoc::game::City>& c : player.cities()) {
+        if (grid.isValid(c->location())) {
+            ownedCityCenters.insert(grid.toIndex(c->location()));
+        }
+    }
+    const int32_t startIdx = grid.toIndex(city.location());
+    std::vector<int32_t> frontier{startIdx};
+    std::unordered_set<int32_t> visited{startIdx};
+    constexpr std::size_t MAX_BFS_NODES = 256;
+
+    while (!frontier.empty() && visited.size() < MAX_BFS_NODES) {
+        const int32_t idx = frontier.back();
+        frontier.pop_back();
+        if (plantTileIndices.count(idx) != 0) {
+            return true;
+        }
+        const aoc::hex::AxialCoord pos = grid.toAxial(idx);
+        const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(pos);
+        for (const aoc::hex::AxialCoord& n : nbrs) {
+            if (!grid.isValid(n)) { continue; }
+            const int32_t nIdx = grid.toIndex(n);
+            if (visited.count(nIdx) != 0) { continue; }
+            if (grid.owner(nIdx) != player.id()) { continue; }
+            const bool passable = grid.hasPowerPole(nIdx)
+                               || ownedCityCenters.count(nIdx) != 0;
+            if (!passable) { continue; }
+            visited.insert(nIdx);
+            frontier.push_back(nIdx);
+        }
+    }
+    return false;
+}
 
 static float computeCityProductionGS(const aoc::game::Player& player,
                                       const aoc::game::City& city,
@@ -84,6 +165,34 @@ static float computeCityProductionGS(const aoc::game::Player& player,
         }
     }
 
+    // WP-C3 power-grid bonus: BFS from this city's center along same-owner
+    // PowerPole tiles (own-city centers act as hubs). If it reaches a
+    // plant-hosting city, full +25% bonus. Else fall back to a small
+    // adjacency readiness bonus (+5% per adjacent pole, cap +15%) so
+    // civs that wire poles pre-plant still see a modest return.
+    if (grid.isValid(city.location())) {
+        if (cityIsPowered(player, city, grid)) {
+            totalProduction *= 1.25f;
+        } else {
+            const int32_t cityIdx = grid.toIndex(city.location());
+            int32_t poleCount = 0;
+            if (grid.hasPowerPole(cityIdx) && grid.owner(cityIdx) == player.id()) {
+                ++poleCount;
+            }
+            const std::array<aoc::hex::AxialCoord, 6> nbrs =
+                aoc::hex::neighbors(city.location());
+            for (const aoc::hex::AxialCoord& n : nbrs) {
+                if (!grid.isValid(n)) { continue; }
+                const int32_t nIdx = grid.toIndex(n);
+                if (grid.hasPowerPole(nIdx) && grid.owner(nIdx) == player.id()) {
+                    ++poleCount;
+                }
+            }
+            const float gridBonus = std::min(0.15f, 0.05f * static_cast<float>(poleCount));
+            totalProduction *= (1.0f + gridBonus);
+        }
+    }
+
     // War weariness production modifier
     totalProduction *= warWearinessProductionModifier(player.warWeariness().weariness);
 
@@ -122,6 +231,35 @@ void processProductionQueues(aoc::game::GameState& gameState,
         if (queue.isEmpty()) { continue; }
 
         float production = computeCityProductionGS(*gsPlayer, *city, grid, gameState);
+
+        // A7 unit-class wonder boosts:
+        //   - Statue of Liberty (20): +50% Settler production, empire-wide.
+        //   - Venetian Arsenal (17): doubles Naval unit production (+100%),
+        //     empire-wide. Bonus applied only in cities whose production
+        //     queue front is a unit of the matching class.
+        if (!queue.isEmpty()
+            && queue.queue.front().type == ProductionItemType::Unit) {
+            const UnitTypeDef& udef = unitTypeDef(UnitTypeId{queue.queue.front().itemId});
+            bool hasStatue = false;
+            bool hasArsenal = false;
+            for (const std::unique_ptr<aoc::game::City>& c : gsPlayer->cities()) {
+                const CityWondersComponent& cw = c->wonders();
+                if (!hasStatue  && cw.hasWonder(static_cast<aoc::sim::WonderId>(20))) {
+                    hasStatue = true;
+                }
+                if (!hasArsenal && cw.hasWonder(static_cast<aoc::sim::WonderId>(17))) {
+                    hasArsenal = true;
+                }
+                if (hasStatue && hasArsenal) { break; }
+            }
+            if (hasStatue && udef.unitClass == UnitClass::Settler) {
+                production *= 1.50f;
+            }
+            if (hasArsenal && udef.unitClass == UnitClass::Naval) {
+                production *= 2.00f;
+            }
+        }
+
         bool completed = queue.addProgress(production);
 
         if (completed) {
@@ -175,7 +313,25 @@ void processProductionQueues(aoc::game::GameState& gameState,
             switch (item.type) {
                 case ProductionItemType::Unit: {
                     UnitTypeId unitTypeId{item.itemId};
-                    gsPlayer->addUnit(unitTypeId, city->location());
+                    aoc::game::Unit& newUnit =
+                        gsPlayer->addUnit(unitTypeId, city->location());
+                    // A7 Pyramids (0) unique effect: +1 builder charge on
+                    // newly produced Civilian-class (Builder) units.
+                    if (newUnit.typeDef().unitClass == UnitClass::Civilian) {
+                        bool hasPyramids = false;
+                        for (const std::unique_ptr<aoc::game::City>& c
+                                : gsPlayer->cities()) {
+                            if (c->wonders().hasWonder(
+                                    static_cast<aoc::sim::WonderId>(0))) {
+                                hasPyramids = true;
+                                break;
+                            }
+                        }
+                        if (hasPyramids && newUnit.chargesRemaining() > 0) {
+                            newUnit.setChargesRemaining(
+                                newUnit.chargesRemaining() + 1);
+                        }
+                    }
                     LOG_INFO("Produced %.*s in %s",
                              static_cast<int>(item.name.size()),
                              item.name.c_str(),
@@ -228,6 +384,26 @@ void processProductionQueues(aoc::game::GameState& gameState,
                              item.name.c_str(),
                              city->name().c_str(),
                              static_cast<unsigned>(city->owner()));
+
+                    // A7 Oracle (WonderId 13): grant the owner one free
+                    // researchable civic — the first eligible civic whose
+                    // prereqs are met and which isn't already completed.
+                    if (wonderId == 13) {
+                        PlayerCivicComponent& civics = gsPlayer->civics();
+                        const uint16_t total = aoc::sim::civicCount();
+                        for (uint16_t cid = 0; cid < total; ++cid) {
+                            const CivicId c{cid};
+                            if (!civics.hasCompleted(c) && civics.canResearch(c)) {
+                                if (c.value < civics.completedCivics.size()) {
+                                    civics.completedCivics[c.value] = true;
+                                }
+                                LOG_INFO("Oracle: player %u granted free civic %u",
+                                         static_cast<unsigned>(gsPlayer->id()),
+                                         static_cast<unsigned>(cid));
+                                break;
+                            }
+                        }
+                    }
                     {
                         VisibilityEvent ev{};
                         ev.type = VisibilityEventType::WonderCompleted;

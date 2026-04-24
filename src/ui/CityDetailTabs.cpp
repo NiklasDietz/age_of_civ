@@ -29,6 +29,7 @@
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/economy/Market.hpp"
+#include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/economy/DomesticCourier.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
@@ -626,6 +627,79 @@ void CityDetailScreen::buildBuildingsTab(UIManager& ui, WidgetId contentPanel) {
                 }
                 (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 13.0f},
                     LabelData{std::move(bldgLine), {0.72f, 0.76f, 0.82f, 1.0f}, 10.0f});
+
+                // WP-C5: recipe-preference cycle button on industrial
+                // buildings that host more than one matching recipe.
+                // Click cycles Auto → recipe1 → recipe2 → ... → Auto.
+                if (bdef.requiredDistrict == aoc::sim::DistrictType::Industrial
+                    && this->m_economy != nullptr) {
+                    std::vector<uint16_t> candidates;
+                    for (const aoc::sim::ProductionRecipe& r
+                            : aoc::sim::allRecipes()) {
+                        if (r.requiredBuilding == bid) {
+                            candidates.push_back(r.recipeId);
+                        }
+                    }
+                    if (candidates.size() >= 2) {
+                        const aoc::hex::AxialCoord loc = city->location();
+                        const uint32_t locHash =
+                            (static_cast<uint32_t>(static_cast<uint16_t>(loc.q)) << 16)
+                          | static_cast<uint32_t>(static_cast<uint16_t>(loc.r));
+                        const uint16_t current = this->m_economy->recipePreference(
+                            city->owner(), locHash, bid.value);
+
+                        std::string prefLabel = "        Recipe: ";
+                        if (current == 0xFFFFu) {
+                            prefLabel += "Auto";
+                        } else {
+                            // Find the recipe name by id.
+                            for (const aoc::sim::ProductionRecipe& r
+                                    : aoc::sim::allRecipes()) {
+                                if (r.recipeId == current) {
+                                    prefLabel += std::string(r.name);
+                                    break;
+                                }
+                            }
+                        }
+
+                        ButtonData prefBtn;
+                        prefBtn.label = std::move(prefLabel);
+                        prefBtn.fontSize = 9.0f;
+                        prefBtn.cornerRadius = 2.0f;
+                        prefBtn.normalColor  = {0.18f, 0.22f, 0.28f, 0.9f};
+                        prefBtn.hoverColor   = {0.26f, 0.32f, 0.40f, 0.9f};
+                        prefBtn.pressedColor = {0.14f, 0.18f, 0.22f, 0.9f};
+                        aoc::sim::EconomySimulation* econ = this->m_economy;
+                        const PlayerId cityOwner = city->owner();
+                        const uint16_t buildingIdVal = bid.value;
+                        std::vector<uint16_t> candidatesCopy = candidates;
+                        const uint32_t capturedHash = locHash;
+                        prefBtn.onClick = [econ, cityOwner, buildingIdVal,
+                                           capturedHash, candidatesCopy]() {
+                            if (econ == nullptr) { return; }
+                            const uint16_t curr = econ->recipePreference(
+                                cityOwner, capturedHash, buildingIdVal);
+                            uint16_t next = 0xFFFFu;  // Default: Auto.
+                            if (curr == 0xFFFFu) {
+                                next = candidatesCopy.front();
+                            } else {
+                                for (std::size_t i = 0;
+                                        i < candidatesCopy.size(); ++i) {
+                                    if (candidatesCopy[i] == curr) {
+                                        next = (i + 1 < candidatesCopy.size())
+                                             ? candidatesCopy[i + 1]
+                                             : 0xFFFFu;
+                                        break;
+                                    }
+                                }
+                            }
+                            econ->setRecipePreference(
+                                cityOwner, capturedHash, buildingIdVal, next);
+                        };
+                        (void)ui.createButton(scrollArea,
+                            {0.0f, 0.0f, kListWidth, 16.0f}, std::move(prefBtn));
+                    }
+                }
             }
 
             if (district.buildings.empty()) {

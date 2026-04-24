@@ -124,19 +124,25 @@ struct TraderComponent {
         return std::max(1, raw - weight);
     }
 
-    /// Movement speed (tiles per turn). Air is fastest, sea is medium, land depends on roads.
-    [[nodiscard]] int32_t movementSpeed(bool onRoad, bool onRailway) const {
+    /// Movement speed (tiles per turn). Air is fastest, sea is medium, land
+    /// depends on roads/rails. WP-C3: pipelines double the throughput of any
+    /// land trader whose current tile has `hasPipeline` — models bulk oil /
+    /// gas / fuel pumping rather than caravan hauling.
+    [[nodiscard]] int32_t movementSpeed(bool onRoad, bool onRailway,
+                                        bool onPipeline = false) const {
         switch (this->routeType) {
             case TradeRouteType::Air:
-                return 8;  // Air routes are the fastest
+                return 8;
             case TradeRouteType::Sea:
-                return 5;  // Sea routes are moderately fast
+                return 5;
             case TradeRouteType::Land:
             default: {
                 int32_t base = 2;
-                if (onRailway) { return base + 4; }
-                if (onRoad)    { return base + 2; }
-                return base;
+                int32_t speed = base;
+                if (onRailway)      { speed = base + 4; }
+                else if (onRoad)    { speed = base + 2; }
+                if (onPipeline)     { speed *= 2; }
+                return speed;
             }
         }
     }

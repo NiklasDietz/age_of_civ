@@ -64,6 +64,53 @@ namespace {
     return aoc::sim::GoodCategory::RawBonus;
 }
 
+/// Parse an ImprovementType from its string name. Used by the JSON loader.
+[[nodiscard]] aoc::map::ImprovementType parseImprovementType(const std::string& name) {
+    using I = aoc::map::ImprovementType;
+    if (name == "None")              { return I::None; }
+    if (name == "Farm")              { return I::Farm; }
+    if (name == "Mine")              { return I::Mine; }
+    if (name == "Plantation")        { return I::Plantation; }
+    if (name == "Quarry")            { return I::Quarry; }
+    if (name == "LumberMill")        { return I::LumberMill; }
+    if (name == "Camp")              { return I::Camp; }
+    if (name == "Pasture")           { return I::Pasture; }
+    if (name == "FishingBoats")      { return I::FishingBoats; }
+    if (name == "Fort")              { return I::Fort; }
+    if (name == "Road")              { return I::Road; }
+    if (name == "Railway")           { return I::Railway; }
+    if (name == "Highway")           { return I::Highway; }
+    if (name == "Dam")               { return I::Dam; }
+    if (name == "Vineyard")          { return I::Vineyard; }
+    if (name == "SilkFarm")          { return I::SilkFarm; }
+    if (name == "SpiceFarm")         { return I::SpiceFarm; }
+    if (name == "DyeWorks")          { return I::DyeWorks; }
+    if (name == "CottonField")       { return I::CottonField; }
+    if (name == "Workshop")          { return I::Workshop; }
+    if (name == "Canal")             { return I::Canal; }
+    if (name == "MountainMine")      { return I::MountainMine; }
+    if (name == "Observatory")       { return I::Observatory; }
+    if (name == "Monastery")         { return I::Monastery; }
+    if (name == "HeritageSite")      { return I::HeritageSite; }
+    if (name == "TerraceFarm")       { return I::TerraceFarm; }
+    if (name == "BiogasPlant")       { return I::BiogasPlant; }
+    if (name == "SolarFarm")         { return I::SolarFarm; }
+    if (name == "WindFarm")          { return I::WindFarm; }
+    if (name == "OffshorePlatform")  { return I::OffshorePlatform; }
+    if (name == "RecyclingCenter")   { return I::RecyclingCenter; }
+    if (name == "GeothermalVent")    { return I::GeothermalVent; }
+    if (name == "DesalinationPlant") { return I::DesalinationPlant; }
+    if (name == "VerticalFarm")      { return I::VerticalFarm; }
+    if (name == "DataCenter")        { return I::DataCenter; }
+    if (name == "TradingPost")       { return I::TradingPost; }
+    if (name == "MangroveNursery")   { return I::MangroveNursery; }
+    if (name == "KelpFarm")          { return I::KelpFarm; }
+    if (name == "FishFarm")          { return I::FishFarm; }
+    if (name == "Greenhouse")        { return I::Greenhouse; }
+    LOG_WARN("Unknown improvement type: '%s', defaulting to None", name.c_str());
+    return I::None;
+}
+
 /// Parse an AgendaCondition from its string name.
 [[nodiscard]] aoc::sim::AgendaCondition parseAgendaCondition(const std::string& name) {
     if (name == "None")                   { return aoc::sim::AgendaCondition::None; }
@@ -142,9 +189,16 @@ bool DataLoader::initialize(const std::string& dataDirectory) {
         allSucceeded = false;
     }
 
-    LOG_INFO("DataLoader: loaded %zu buildings, %zu units, %zu techs, %zu recipes, %zu goods, %zu leaders",
+    if (!this->loadImprovements(defDir + "/improvements.json")) {
+        LOG_WARN("DataLoader: improvements.json failed, using hardcoded fallback");
+        this->fallbackImprovements();
+        allSucceeded = false;
+    }
+
+    LOG_INFO("DataLoader: loaded %zu buildings, %zu units, %zu techs, %zu recipes, %zu goods, %zu leaders, %zu improvements",
              this->buildingDefs.size(), this->unitTypeDefs.size(), this->techDefs.size(),
-             this->recipeDefs.size(), this->goodDefs.size(), this->leaderDefs.size());
+             this->recipeDefs.size(), this->goodDefs.size(), this->leaderDefs.size(),
+             this->improvementDefs.size());
 
     return allSucceeded;
 }
@@ -564,6 +618,65 @@ void DataLoader::fallbackLeaders() {
         def.dislikeCondition = src.dislikeCondition;
         def.behavior = src.behavior;
         this->leaderDefs.push_back(std::move(def));
+    }
+}
+
+// ============================================================================
+// Improvements (WP-C7)
+// ============================================================================
+
+bool DataLoader::loadImprovements(const std::string& path) {
+    std::string content = readFileContents(path);
+    if (content.empty()) {
+        LOG_WARN("DataLoader::loadImprovements: could not read '%s'", path.c_str());
+        return false;
+    }
+
+    JsonValue root = parseJson(content, path);
+    if (!root.isArray()) {
+        LOG_ERROR("DataLoader::loadImprovements: '%s' root is not an array", path.c_str());
+        return false;
+    }
+
+    this->improvementDefs.clear();
+    this->improvementDefs.reserve(root.size());
+
+    for (std::size_t i = 0; i < root.size(); ++i) {
+        const JsonValue& entry = root[i];
+        if (!entry.isObject()) {
+            LOG_WARN("DataLoader::loadImprovements: entry %zu is not an object, skipping", i);
+            continue;
+        }
+        RuntimeImprovementDef def{};
+        def.type = parseImprovementType(entry["type"].asString());
+        def.name = entry["name"].asString();
+        def.yieldBonus.food       = static_cast<int8_t>(entry["food"].asInt32());
+        def.yieldBonus.production = static_cast<int8_t>(entry["production"].asInt32());
+        def.yieldBonus.gold       = static_cast<int8_t>(entry["gold"].asInt32());
+        def.yieldBonus.science    = static_cast<int8_t>(entry["science"].asInt32());
+        def.yieldBonus.culture    = static_cast<int8_t>(entry["culture"].asInt32());
+        def.yieldBonus.faith      = static_cast<int8_t>(entry["faith"].asInt32());
+        def.requiredTech = aoc::TechId{entry["requiredTech"].asUint16()};
+        def.buildTurns = entry["buildTurns"].asInt32();
+        this->improvementDefs.push_back(std::move(def));
+    }
+
+    LOG_INFO("DataLoader: loaded %zu improvement definitions from JSON",
+             this->improvementDefs.size());
+    return true;
+}
+
+void DataLoader::fallbackImprovements() {
+    this->improvementDefs.clear();
+    this->improvementDefs.reserve(aoc::sim::IMPROVEMENT_DEFS.size());
+    for (const aoc::sim::ImprovementDef& src : aoc::sim::IMPROVEMENT_DEFS) {
+        RuntimeImprovementDef def{};
+        def.type = src.type;
+        def.name = std::string(src.name);
+        def.yieldBonus = src.yieldBonus;
+        def.requiredTech = src.requiredTech;
+        def.buildTurns = src.buildTurns;
+        this->improvementDefs.push_back(std::move(def));
     }
 }
 

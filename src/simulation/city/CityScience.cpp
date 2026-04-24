@@ -110,7 +110,9 @@ float computePlayerScience(const aoc::game::Player& player,
         // before the religion curve so Great Library etc. count as building
         // science, not a religion modifier.
         for (const WonderId wid : city->wonders().wonders) {
-            cityScience += wonderDef(wid).effect.scienceBonus;
+            const WonderDef& wdef = wonderDef(wid);
+            cityScience += wdef.effect.scienceBonus
+                         * wonderEraDecayFactor(wdef, player.era().currentEra);
         }
 
         // 7. Religion-vs-education curve: net Devotion * era coefficient.
@@ -176,8 +178,12 @@ float computePlayerCulture(const aoc::game::Player& player,
         }
 
         // Wonder culture bonus (H4.9): Eiffel Tower, Forbidden City, etc.
+        // WP-A7: era-decay so earlier-era wonders still contribute late game
+        // but stop dominating over modern additions.
         for (const WonderId wid : city->wonders().wonders) {
-            totalCulture += wonderDef(wid).effect.cultureBonus;
+            const WonderDef& wdef = wonderDef(wid);
+            totalCulture += wdef.effect.cultureBonus
+                          * wonderEraDecayFactor(wdef, player.era().currentEra);
         }
     }
 

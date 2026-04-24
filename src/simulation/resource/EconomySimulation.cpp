@@ -239,9 +239,18 @@ void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
                 const aoc::sim::PlayerSpaceRaceComponent& sr = playerPtr->spaceRace();
                 const bool moonLanded =
                     sr.completed[static_cast<int32_t>(aoc::sim::SpaceProjectId::MoonLanding)];
+                const bool lunarColony =
+                    sr.completed[static_cast<int32_t>(aoc::sim::SpaceProjectId::LunarColony)];
                 if (moonLanded) {
-                    // Helium-3 delivered by lunar mining; 1 unit / reactor / turn.
-                    stockpile.addGoods(goods::HELIUM_3, 1);
+                    // Helium-3 delivered by lunar mining.  Base 1/turn;
+                    // Lunar Colony bumps throughput to 3/turn.  Lunar
+                    // Colony also delivers 1 Titanium/turn per reactor city
+                    // with a Semiconductor Fab (refines lunar ore).
+                    const int32_t he3Rate = lunarColony ? 3 : 1;
+                    stockpile.addGoods(goods::HELIUM_3, he3Rate);
+                    if (lunarColony && districts.hasBuilding(BuildingId{11})) {
+                        stockpile.addGoods(goods::TITANIUM, 1);
+                    }
                 } else {
                     bool isCoastal = false;
                     std::array<aoc::hex::AxialCoord, 6> neighbors =
@@ -776,22 +785,20 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                     * chainMult * datacenterMult));
                 stockpile.addGoods(recipe->outputGoodId, boostedOutput);
 
-                // Recipe-fire audit: in-memory counter + milestone log
-                // (first-fire per recipe per game).  Used by the production
-                // chain audit to identify recipes that never execute because
-                // their inputs/buildings never become available.
+                // Recipe-fire audit: per-game counter + milestone log
+                // (first-fire per recipe per game). WP-C8: counter lives on
+                // `this` so ml/headless runs don't leak counts across games.
                 {
-                    static std::array<int32_t, 64> s_recipeFireCount{};
                     const uint16_t rid = recipe->recipeId;
-                    if (rid < s_recipeFireCount.size()) {
-                        if (s_recipeFireCount[rid] == 0) {
+                    if (rid < this->m_recipeFireCount.size()) {
+                        if (this->m_recipeFireCount[rid] == 0) {
                             LOG_INFO("recipe_first_fire: id=%u output=%u city=%u turn=%d",
                                      static_cast<unsigned>(rid),
                                      static_cast<unsigned>(recipe->outputGoodId),
                                      static_cast<unsigned>(city->owner()),
                                      static_cast<int>(gameState.currentTurn()));
                         }
-                        ++s_recipeFireCount[rid];
+                        ++this->m_recipeFireCount[rid];
                     }
                 }
 

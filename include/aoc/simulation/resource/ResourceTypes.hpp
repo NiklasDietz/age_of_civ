@@ -107,6 +107,8 @@ struct GoodDef {
     if (goodId >= 40 && goodId <= 47) {
         return -1;  // Renewable
     }
+    // WP-C2 additive strategics.
+    if (goodId == 146) { return 60; }  // LITHIUM: scarce, like niter.
     return 80;  // Default for unknown resources
 }
 
@@ -251,6 +253,16 @@ namespace goods {
     // heading used to say "Monetary" by accident.
     inline constexpr uint16_t ROBOT_WORKERS        = 143;
     inline constexpr uint16_t HELIUM_3             = 144;  ///< Lunar fusion fuel, harvested post-Moon-Landing
+    inline constexpr uint16_t TITANIUM             = 145;  ///< Lunar ore, delivered only after Lunar Colony project; gates Mars.
+
+    // -- WP-C2 additive goods (146-149) -- fill chain gaps without breaking
+    // existing saves. Cuts (PEARLS, TOBACCO, IVORY, INCENSE, TEA, COFFEE,
+    // GEMS, DEUTERIUM, GOLD_CONTACTS) are deferred to a follow-up pass with
+    // a full migration path.
+    inline constexpr uint16_t LITHIUM              = 146;  ///< Raw strategic: rare-earth tile or Lunar Colony byproduct.
+    inline constexpr uint16_t BATTERIES            = 147;  ///< Processed: from Lithium + Copper, feeds electrified industry.
+    inline constexpr uint16_t ELECTRICITY          = 148;  ///< Processed energy (tracked power), generated at power plants.
+    inline constexpr uint16_t PHARMACEUTICALS      = 149;  ///< Advanced: consumer-health good; population/amenity multiplier input.
 
     inline constexpr uint16_t GOOD_COUNT = 153;
 } // namespace goods

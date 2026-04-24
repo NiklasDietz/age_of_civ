@@ -18,7 +18,7 @@
 
 namespace aoc::ui { class UIManager; }
 namespace aoc::map { class HexGrid; }
-namespace aoc::sim { class Market; }
+namespace aoc::sim { class Market; class EconomySimulation; }
 namespace aoc::game { class GameState; }
 
 namespace aoc::ui {
@@ -166,7 +166,8 @@ private:
 class CityDetailScreen final : public ScreenBase {
 public:
     void setContext(aoc::game::GameState* gameState, const aoc::map::HexGrid* grid,
-                    aoc::hex::AxialCoord cityLocation, PlayerId player);
+                    aoc::hex::AxialCoord cityLocation, PlayerId player,
+                    aoc::sim::EconomySimulation* economy = nullptr);
     void open(UIManager& ui) override;
     void close(UIManager& ui) override;
     void refresh(UIManager& ui) override;
@@ -204,6 +205,7 @@ private:
 
     aoc::game::GameState* m_gameState = nullptr;
     const aoc::map::HexGrid* m_grid = nullptr;
+    aoc::sim::EconomySimulation* m_economy = nullptr;   ///< WP-C5: recipe-preference UI
     aoc::hex::AxialCoord m_cityLocation{};
     PlayerId m_player = INVALID_PLAYER;
     WidgetId m_detailLabel = INVALID_WIDGET;

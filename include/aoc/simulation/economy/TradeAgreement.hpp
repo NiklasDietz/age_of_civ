@@ -34,7 +34,9 @@ enum class TradeAgreementType : uint8_t {
     BilateralDeal,   ///< Two-player: -20% tariff
     FreeTradeZone,   ///< Multi-player: -50% tariff, +1 trade route
     CustomsUnion,    ///< Multi-player: 0% tariff, common external tariff
-
+    TransitTreaty,   ///< WP-C3: two-player zero-toll right-of-passage. No
+                     ///         tariff relief — purely transit across
+                     ///         members' territories.
     Count
 };
 
@@ -112,6 +114,17 @@ struct PlayerTradeAgreementsComponent {
 [[nodiscard]] ErrorCode formCustomsUnion(aoc::game::GameState& gameState,
                                            const std::vector<PlayerId>& members,
                                            float externalTariff);
+
+/**
+ * @brief WP-C3: propose a zero-toll Transit Treaty between two players.
+ *
+ * Grants traders owned by either member free passage across the other's
+ * territory (skips tariff + toll). No tariff relief on delivered goods —
+ * purely right-of-passage. Duplicate active treaties between the same pair
+ * are rejected with InvalidArgument.
+ */
+[[nodiscard]] ErrorCode proposeTransitTreaty(aoc::game::GameState& gameState,
+                                              PlayerId proposer, PlayerId partner);
 
 /**
  * @brief Process trade agreement effects each turn (tick duration, check validity).

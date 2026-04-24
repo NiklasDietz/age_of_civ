@@ -40,6 +40,14 @@ struct WonderDef {
 /// Look up a single wonder definition by ID.
 [[nodiscard]] const WonderDef& wonderDef(WonderId id);
 
+/// WP-A7 wonder era-decay multiplier. Wonders built in an earlier era decay
+/// on a half-life of ~4 eras so Classical wonders still matter in Modern
+/// rather than being dominated by flat Modern-era bonuses. Floor at 0.35
+/// (35%) to keep every wonder a non-trivial contributor.
+///   delta = max(0, currentEra.value - wonder.era.value)
+///   factor = max(0.35, pow(0.85, delta))
+[[nodiscard]] float wonderEraDecayFactor(const WonderDef& wdef, EraId currentEra);
+
 /// ECS component tracking which wonders have been built globally (one per game).
 struct GlobalWonderTracker {
     std::array<PlayerId, WONDER_COUNT> builtBy;  ///< INVALID_PLAYER = not yet built

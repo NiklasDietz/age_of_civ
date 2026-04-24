@@ -14,6 +14,8 @@
 #include "aoc/simulation/tech/EraScore.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
+#include "aoc/simulation/diplomacy/WarWeariness.hpp"
+#include "aoc/core/Log.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -50,6 +52,38 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
     bool secededThisTurn = false;
 
     const aoc::balance::BalanceParams& bal = aoc::balance::params();
+
+    // WP-A5 combined-stress revolt: cities currently in temporary Free-City
+    // status still live in the original player's cities() vector. Tick down
+    // before the normal loyalty pass so a city whose timer hit 0 resumes
+    // normal owner processing the same turn.
+    for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+        CityLoyaltyComponent& loyalty = city->loyalty();
+        if (loyalty.revoltFreeCityTurns > 0) {
+            --loyalty.revoltFreeCityTurns;
+            if (loyalty.revoltFreeCityTurns == 0
+                && loyalty.revoltOriginalOwner != INVALID_PLAYER) {
+                city->setOwner(loyalty.revoltOriginalOwner);
+                if (grid.isValid(city->location())) {
+                    grid.setOwner(grid.toIndex(city->location()),
+                                  loyalty.revoltOriginalOwner);
+                }
+                LOG_INFO("REVOLT-END: %s returns to player %u",
+                         city->name().c_str(),
+                         static_cast<unsigned>(loyalty.revoltOriginalOwner));
+                loyalty.revoltOriginalOwner = INVALID_PLAYER;
+                loyalty.loyalty = 50.0f;
+                loyalty.unrestTurns = 0;
+            }
+        }
+    }
+
+    // WP-A5 combined-stress trigger eligibility: war weariness, grievance
+    // count, and city-level unhappiness all above their thresholds simulcast
+    // a soft 10-turn Free-City flip.
+    const float weariness = gsPlayer->warWeariness().weariness;
+    const bool  civStressed = (weariness > 40.0f)
+                           && (gsPlayer->grievances().grievances.size() >= 4);
 
     // Iterate all cities owned by this player. Cities captured/seceded away
     // remain in the old owner's vector (capture mechanic never rewires lists),
@@ -149,6 +183,30 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             loyalty.devotionBonus = netDevotion * devotionLoyaltyCoef;
         }
 
+        // Era decay on foreign pressure + communication-building floor.
+        // Idea: as a civ enters Electric / Digital / Information Age, the
+        // physical-proximity pressure from rival cities matters less.  Mass
+        // communication, travel, financial integration all dampen local
+        // separatist momentum.  Cities with Telecom Hub or Research Lab
+        // also get a flat loyalty floor (the infrastructure keeps citizens
+        // plugged in even far from the capital).
+        {
+            const uint8_t rev = static_cast<uint8_t>(gsPlayer->industrial().currentRevolution);
+            // rev 0 → 1.00, rev 1 → 0.95, rev 2 → 0.85, rev 3 → 0.75,
+            // rev 4 → 0.65, rev 5 → 0.55.
+            static constexpr std::array<float, 6> kForeignDecay =
+                {1.00f, 0.95f, 0.85f, 0.75f, 0.65f, 0.55f};
+            const float mult = kForeignDecay[std::min<uint8_t>(rev, 5u)];
+            loyalty.foreignCityPressure *= mult;
+            // Symmetric: own-city pressure also decays slightly so big
+            // empires aren't over-glued together.
+            loyalty.ownCityPressure *= (0.80f + 0.20f * mult);
+        }
+        if (city->hasBuilding(BuildingId{13}) || city->hasBuilding(BuildingId{12})) {
+            // Telecom Hub or Research Lab — +3 communication floor.
+            loyalty.monumentBonus += 3.0f;
+        }
+
         // Sum it all up
         float change = loyalty.baseLoyalty
                      + loyalty.ownCityPressure
@@ -170,6 +228,27 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             ++loyalty.unrestTurns;
         } else {
             loyalty.unrestTurns = 0;
+        }
+
+        // WP-A5 combined-stress revolt: if civ-level war-weariness and
+        // grievance count are both high, AND the city itself is actively
+        // unhappy (happiness < -1), flip to Free-City for 10 turns. Softer
+        // than true secession — city reverts automatically.
+        if (civStressed && loyalty.revoltFreeCityTurns == 0
+            && city->happiness().happiness < -1.0f) {
+            loyalty.revoltFreeCityTurns = 10;
+            loyalty.revoltOriginalOwner = player;
+            city->setOwner(INVALID_PLAYER);
+            if (grid.isValid(city->location())) {
+                grid.setOwner(grid.toIndex(city->location()), INVALID_PLAYER);
+            }
+            LOG_INFO("COMBINED REVOLT: %s (P%u) → Free City for 10 turns "
+                     "(weariness=%.1f, grievances=%zu, happiness=%.1f)",
+                     city->name().c_str(), static_cast<unsigned>(player),
+                     static_cast<double>(weariness),
+                     gsPlayer->grievances().grievances.size(),
+                     static_cast<double>(city->happiness().happiness));
+            continue;
         }
 
         // Secession path: sustained unrest in a distant city flips even above 0.

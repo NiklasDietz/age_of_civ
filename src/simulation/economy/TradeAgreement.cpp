@@ -120,6 +120,47 @@ ErrorCode formCustomsUnion(aoc::game::GameState& gameState,
     return ErrorCode::Ok;
 }
 
+ErrorCode proposeTransitTreaty(aoc::game::GameState& gameState,
+                                 PlayerId proposer, PlayerId partner) {
+    if (proposer == partner) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    aoc::game::Player* proposerPlayer = gameState.player(proposer);
+    aoc::game::Player* partnerPlayer  = gameState.player(partner);
+    if (proposerPlayer == nullptr || partnerPlayer == nullptr) {
+        return ErrorCode::InvalidArgument;
+    }
+
+    PlayerTradeAgreementsComponent& proposerComp = proposerPlayer->tradeAgreements();
+
+    // Reject duplicate active TransitTreaty between these two players.
+    for (const TradeAgreementDef& existing : proposerComp.agreements) {
+        if (existing.type == TradeAgreementType::TransitTreaty && existing.isActive) {
+            for (PlayerId member : existing.members) {
+                if (member == partner) {
+                    return ErrorCode::InvalidArgument;
+                }
+            }
+        }
+    }
+
+    TradeAgreementDef treaty;
+    treaty.type        = TradeAgreementType::TransitTreaty;
+    treaty.members     = {proposer, partner};
+    treaty.turnsActive = 0;
+    treaty.isActive    = true;
+    // No standing route: TransitTreaty is purely right-of-passage.
+
+    proposerPlayer->tradeAgreements().agreements.push_back(treaty);
+    partnerPlayer->tradeAgreements().agreements.push_back(treaty);
+
+    LOG_INFO("Transit treaty: zero-toll passage between player %u and %u",
+             static_cast<unsigned>(proposer), static_cast<unsigned>(partner));
+
+    return ErrorCode::Ok;
+}
+
 void processTradeAgreements(aoc::game::GameState& gameState) {
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         if (playerPtr == nullptr) { continue; }

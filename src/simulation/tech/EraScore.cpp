@@ -7,12 +7,27 @@
 
 #include "aoc/simulation/tech/EraScore.hpp"
 #include "aoc/simulation/tech/EraProgression.hpp"
+#include "aoc/simulation/wonder/Wonder.hpp"
+#include "aoc/game/City.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
+#include <memory>
 
 namespace aoc::sim {
+
+// A7: Taj Mahal (WonderId 16) — "+1 era score per Golden Age". On Golden Age
+// entry, seed the next accumulation period with a positive head-start so
+// subsequent Golden Ages chain more reliably for the owner.
+static bool playerOwnsTajMahal(const aoc::game::Player& player) {
+    for (const std::unique_ptr<aoc::game::City>& c : player.cities()) {
+        if (c->wonders().hasWonder(static_cast<aoc::sim::WonderId>(16))) {
+            return true;
+        }
+    }
+    return false;
+}
 
 void addEraScore(aoc::game::Player& player, int32_t points, const std::string& reason) {
     PlayerEraScoreComponent& esc = player.eraScore();
@@ -33,6 +48,18 @@ void checkEraTransition(aoc::game::Player& player) {
         LOG_INFO("Player %u enters GOLDEN AGE (score %d >= %d)",
                  static_cast<unsigned>(player.id()),
                  esc.eraScore, esc.goldenAgeThreshold);
+
+        // A7 Taj Mahal: owner banks +3 era score for the next period so
+        // Golden Ages tend to chain. Applied AFTER the score-reset below.
+        if (playerOwnsTajMahal(player)) {
+            esc.eraScore = 0;
+            esc.goldenAgeThreshold += 5;
+            esc.darkAgeThreshold += 2;
+            esc.eraScore += 3;
+            LOG_INFO("Player %u Taj Mahal: +3 era score carry-over",
+                     static_cast<unsigned>(player.id()));
+            return;
+        }
     } else if (esc.eraScore < esc.darkAgeThreshold) {
         esc.currentAgeType = AgeType::Dark;
         esc.turnsRemaining = AGE_DURATION;

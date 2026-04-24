@@ -1488,7 +1488,8 @@ void Application::run() {
                             this->m_selectedUnit = nullptr;
                             this->m_cityDetailScreen.setContext(
                                 &this->m_gameState, &this->m_hexGrid,
-                                clickedCity->location(), 0);
+                                clickedCity->location(), 0,
+                                &this->m_economy);
                             this->m_cityDetailScreen.open(this->m_uiManager);
                             clickedOtherEntity = true;
                         }

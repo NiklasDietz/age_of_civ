@@ -1157,9 +1157,11 @@ void EconomyScreen::refresh(UIManager& ui) {
 // ============================================================================
 
 void CityDetailScreen::setContext(aoc::game::GameState* gameState, const aoc::map::HexGrid* grid,
-                                   aoc::hex::AxialCoord cityLocation, PlayerId player) {
+                                   aoc::hex::AxialCoord cityLocation, PlayerId player,
+                                   aoc::sim::EconomySimulation* economy) {
     this->m_gameState  = gameState;
     this->m_grid       = grid;
+    this->m_economy    = economy;
     this->m_cityLocation = cityLocation;
     this->m_player     = player;
 }

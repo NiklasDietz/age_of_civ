@@ -258,19 +258,43 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
 
     switch (def.type) {
         case GreatPersonType::Scientist: {
-            // Add 50% of current research cost as progress
-            PlayerTechComponent& tech = playerObj->tech();
-            if (tech.currentResearch.isValid()) {
-                const TechDef& tdef = techDef(tech.currentResearch);
-                const float bonus   = static_cast<float>(tdef.researchCost) * 0.5f;
-                tech.researchProgress += bonus;
-                LOG_INFO("Scientist added %.0f research progress", static_cast<double>(bonus));
+            // WP-A3: if nearest owned city has a Research Lab (BuildingId 12),
+            // start a 20-turn sustained science pulse (+8/turn) instead of a
+            // one-shot jolt. Otherwise fall back to +50% of current research.
+            aoc::game::City* nearestCity = nullptr;
+            int32_t bestDist = std::numeric_limits<int32_t>::max();
+            for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
+                if (cityPtr == nullptr) { continue; }
+                const int32_t dist = grid.distance(gp.position, cityPtr->location());
+                if (dist < bestDist) {
+                    bestDist    = dist;
+                    nearestCity = cityPtr.get();
+                }
+            }
+            const bool hasLab = (nearestCity != nullptr)
+                && nearestCity->districts().hasBuilding(BuildingId{12});
+            if (hasLab) {
+                PlayerGreatPeopleComponent& gpComp = playerObj->greatPeople();
+                gpComp.pulseScienceAmount = 8.0f;
+                gpComp.pulseScienceTurns  = 20;
+                LOG_INFO("Scientist: 20-turn +8 science pulse (Research Lab synergy)");
+            } else {
+                PlayerTechComponent& tech = playerObj->tech();
+                if (tech.currentResearch.isValid()) {
+                    const TechDef& tdef = techDef(tech.currentResearch);
+                    const float bonus   = static_cast<float>(tdef.researchCost) * 0.5f;
+                    tech.researchProgress += bonus;
+                    LOG_INFO("Scientist added %.0f research progress",
+                             static_cast<double>(bonus));
+                }
             }
             break;
         }
 
         case GreatPersonType::Engineer: {
-            // Add 100 production to the nearest owned city's queue
+            // WP-A3: find nearest owned city, grant +100 production. Additionally,
+            // if the city has no Industrial district yet, create one at no cost
+            // — "Renaissance Man" unlocks industry.
             aoc::game::City* nearestCity = nullptr;
             int32_t bestDist = std::numeric_limits<int32_t>::max();
             for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
@@ -283,8 +307,18 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
                     nearestCity = cityPtr.get();
                 }
             }
-            if (nearestCity != nullptr && !nearestCity->production().isEmpty()) {
-                nearestCity->production().queue.front().progress += 100.0f;
+            if (nearestCity != nullptr) {
+                if (!nearestCity->production().isEmpty()) {
+                    nearestCity->production().queue.front().progress += 100.0f;
+                }
+                if (!nearestCity->districts().hasDistrict(DistrictType::Industrial)) {
+                    CityDistrictsComponent::PlacedDistrict newDistrict;
+                    newDistrict.type     = DistrictType::Industrial;
+                    newDistrict.location = gp.position;
+                    nearestCity->districts().districts.push_back(std::move(newDistrict));
+                    LOG_INFO("Engineer placed free Industrial district in %s",
+                             nearestCity->name().c_str());
+                }
                 LOG_INFO("Engineer added 100 production to city queue");
             }
             break;
@@ -323,9 +357,12 @@ void activateGreatPerson(aoc::game::GameState& gameState, aoc::map::HexGrid& gri
         }
 
         case GreatPersonType::Merchant: {
-            // Add 200 gold to treasury
+            // WP-A3: +200 gold AND permanent +1 trade route slot.
             playerObj->economy().treasury += 200;
-            LOG_INFO("Merchant added 200 gold to treasury");
+            PlayerGreatPeopleComponent& gpComp = playerObj->greatPeople();
+            gpComp.extraTradeSlots += 1;
+            LOG_INFO("Merchant: +200 gold + 1 permanent trade slot (total %d)",
+                     gpComp.extraTradeSlots);
             break;
         }
 

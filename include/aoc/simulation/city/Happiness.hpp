@@ -24,6 +24,9 @@ struct CityHappinessComponent {
     float amenities       = 1.0f;   ///< From luxury resources, buildings, policies
     float demand          = 0.0f;   ///< Based on population (1 per 2 citizens)
     float modifiers       = 0.0f;   ///< From war weariness, inflation, taxes, etc.
+    /// WP-A4: persistent unhappiness from climate-driven disasters. Decays
+    /// 10%/turn in computeCityHappiness; folded into modifiers each recompute.
+    float disasterUnhappiness = 0.0f;
     float happiness       = 1.0f;   ///< Net happiness = amenities - demand + modifiers
 
     /// Growth multiplier from happiness. Happy cities grow faster.

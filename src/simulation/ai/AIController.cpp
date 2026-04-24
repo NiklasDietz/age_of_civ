@@ -452,7 +452,20 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
     // once AIResearchPlanner started delivering Nuclear Fission reliably.
     {
         aoc::game::Player* nukePlayer = gameState.player(this->m_player);
-        if (nukePlayer != nullptr && nukePlayer->tech().hasResearched(TechId{17})) {
+        // A7 Manhattan Project (WonderId 11) is the nuke-unlock gate on top
+        // of Nuclear Fission (TechId 17): tech alone enables reactors, but
+        // weaponization requires the wonder.
+        bool hasManhattan = false;
+        if (nukePlayer != nullptr) {
+            for (const std::unique_ptr<aoc::game::City>& c : nukePlayer->cities()) {
+                if (c->wonders().hasWonder(static_cast<aoc::sim::WonderId>(11))) {
+                    hasManhattan = true;
+                    break;
+                }
+            }
+        }
+        if (nukePlayer != nullptr && nukePlayer->tech().hasResearched(TechId{17})
+            && hasManhattan) {
             bool atWar = false;
             PlayerId enemyId = INVALID_PLAYER;
             for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {

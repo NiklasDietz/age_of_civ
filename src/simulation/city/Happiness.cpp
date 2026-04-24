@@ -149,11 +149,28 @@ void computeCityHappiness(aoc::game::Player& player) {
             }
         }
 
-        // Wonder amenities
+        // Wonder amenities. WP-A7: era-decay.
         const CityWondersComponent& cityWonders = city->wonders();
         for (const WonderId wid : cityWonders.wonders) {
             const WonderDef& wdef = wonderDef(wid);
-            happiness.amenities += wdef.effect.amenityBonus;
+            happiness.amenities += wdef.effect.amenityBonus
+                                 * wonderEraDecayFactor(wdef, player.era().currentEra);
+        }
+
+        // A7 Colosseum (id 2) unique effect: radiates +2 amenities to every
+        // same-owner city within 6 hexes of the Colosseum host. Applied
+        // additively on top of the host's own amenityBonus.
+        for (const std::unique_ptr<aoc::game::City>& host : player.cities()) {
+            if (host.get() == city.get()) { continue; }
+            if (!host->wonders().hasWonder(static_cast<aoc::sim::WonderId>(2))) {
+                continue;
+            }
+            if (aoc::hex::distance(city->location(), host->location()) <= 6) {
+                const WonderDef& wdef = wonderDef(static_cast<aoc::sim::WonderId>(2));
+                const float decay = wonderEraDecayFactor(wdef, player.era().currentEra);
+                happiness.amenities += 2.0f * decay;
+                break;
+            }
         }
 
         // Religion follower belief amenity bonus
@@ -173,8 +190,15 @@ void computeCityHappiness(aoc::game::Player& player) {
         // Demand: scales sub-linearly with population
         happiness.demand = std::sqrt(static_cast<float>(city->population())) * 0.8f;
 
-        // Modifiers from economy and war weariness
-        happiness.modifiers = -inflationPenalty - taxPenalty + warWearinessPenalty;
+        // Modifiers from economy and war weariness. WP-A4 disaster
+        // unhappiness decays 10%/turn and folds in here so climate damage
+        // has a persistent-but-recoverable feel.
+        happiness.disasterUnhappiness *= 0.90f;
+        if (happiness.disasterUnhappiness < 0.05f) {
+            happiness.disasterUnhappiness = 0.0f;
+        }
+        happiness.modifiers = -inflationPenalty - taxPenalty + warWearinessPenalty
+                            - happiness.disasterUnhappiness;
 
         // Pollution amenity penalty
         happiness.amenities -= static_cast<float>(city->pollution().amenityPenalty());

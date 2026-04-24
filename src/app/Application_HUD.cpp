@@ -1101,6 +1101,54 @@ void Application::rebuildUnitActionPanel() {
                 }
             });
 
+        // -- Build Pole (WP-C3) --
+        // Requires Electricity (TechId 14). Lays a PowerPole on the unit's
+        // current tile. Consumes one builder charge. Allowed regardless of
+        // whether another improvement already sits on the tile — poles
+        // stack with any existing Farm/Mine/etc.
+        makeActionBtn("Build Pole", {0.30f, 0.28f, 0.15f, 0.9f},
+            [this, selectedUnitPtr]() {
+                if (selectedUnitPtr == nullptr) { return; }
+                const PlayerId ownerId = selectedUnitPtr->owner();
+                aoc::game::Player* owner = this->m_gameState.player(ownerId);
+                if (owner == nullptr) { return; }
+                if (!owner->hasResearched(TechId{14})) { return; }
+                const int32_t currentIdx = this->m_hexGrid.toIndex(selectedUnitPtr->position());
+                if (this->m_hexGrid.owner(currentIdx) != ownerId) { return; }
+                if (this->m_hexGrid.hasPowerPole(currentIdx)) { return; }
+                this->m_hexGrid.setPowerPole(currentIdx, true);
+                selectedUnitPtr->useCharge();
+                LOG_INFO("Builder placed PowerPole via action panel");
+                if (!selectedUnitPtr->hasCharges()) {
+                    owner->removeUnit(selectedUnitPtr);
+                    this->m_selectedUnit = nullptr;
+                    this->m_actionPanelUnit = nullptr;
+                }
+            });
+
+        // -- Build Pipeline (WP-C3) --
+        // Requires Mass Production (TechId 15). Lays a Pipeline on the
+        // current tile. Stackable with existing improvement.
+        makeActionBtn("Build Pipeline", {0.30f, 0.18f, 0.08f, 0.9f},
+            [this, selectedUnitPtr]() {
+                if (selectedUnitPtr == nullptr) { return; }
+                const PlayerId ownerId = selectedUnitPtr->owner();
+                aoc::game::Player* owner = this->m_gameState.player(ownerId);
+                if (owner == nullptr) { return; }
+                if (!owner->hasResearched(TechId{15})) { return; }
+                const int32_t currentIdx = this->m_hexGrid.toIndex(selectedUnitPtr->position());
+                if (this->m_hexGrid.owner(currentIdx) != ownerId) { return; }
+                if (this->m_hexGrid.hasPipeline(currentIdx)) { return; }
+                this->m_hexGrid.setPipeline(currentIdx, true);
+                selectedUnitPtr->useCharge();
+                LOG_INFO("Builder placed Pipeline via action panel");
+                if (!selectedUnitPtr->hasCharges()) {
+                    owner->removeUnit(selectedUnitPtr);
+                    this->m_selectedUnit = nullptr;
+                    this->m_actionPanelUnit = nullptr;
+                }
+            });
+
         // -- Auto-Improve toggle (Civilian units) --
         makeActionBtn("Auto-Improve", {0.20f, 0.28f, 0.30f, 0.9f},
             [this, selectedUnitPtr]() {

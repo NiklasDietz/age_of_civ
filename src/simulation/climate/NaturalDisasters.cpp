@@ -10,6 +10,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/city/Happiness.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -20,15 +21,25 @@
 
 namespace aoc::sim {
 
+// WP-A4: apply a lasting amenity hit to the given city. Accumulates into the
+// city's disasterUnhappiness pool (decays 10%/turn in computeCityHappiness),
+// so repeat disasters stack but a single hit does not linger forever.
+static void applyDisasterAmenityHit(aoc::game::City& city, float delta) {
+    CityHappinessComponent& hp = city.happiness();
+    hp.disasterUnhappiness = std::min(10.0f, hp.disasterUnhappiness + delta);
+}
+
 int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                                 int32_t turnNumber, float globalTemp) {
     int32_t disasterCount = 0;
     const int32_t totalTiles = grid.tileCount();
 
-    // Temperature increases disaster frequency.
-    // Base: 1% chance per eligible tile per turn.
-    // At +2 degrees above 14: 3% chance.
-    const float tempMultiplier = 1.0f + std::max(0.0f, globalTemp - 14.0f) * 0.5f;
+    // WP-A4: climate globalTemp is a 0-10 delta (co2Level * 0.001). Old code
+    // compared against 14/15/16 as if it were absolute °C, so the delta-based
+    // triggers never fired. Rescale: +5% disaster rate per +0.1 temperature
+    // delta, capped at +250% (globalTemp == 5.0). Beyond that, late-game
+    // warming is already saturating the map with base disasters.
+    const float tempMultiplier = 1.0f + std::min(5.0f, std::max(0.0f, globalTemp)) * 0.5f;
 
     for (int32_t i = 0; i < totalTiles; ++i) {
         const uint32_t hash = static_cast<uint32_t>(i) * 2654435761u
@@ -74,6 +85,7 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
                                     break;
                                 }
                             }
+                            applyDisasterAmenityHit(*city, 1.5f);
                             LOG_INFO("EARTHQUAKE damaged city %s", city->name().c_str());
                             damaged = true;
                             break;
@@ -85,15 +97,15 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
             }
         }
 
-        // Drought: plains/grassland tiles at high temperature.
-        // H6.8: previously counter-only. Now grassland → plains (mild) and
-        // plains → desert (severe) so drought has a lasting food effect.
+        // Drought: plains/grassland tiles above a climate-delta threshold.
+        // WP-A4: rescaled to the 0-10 globalTemp delta. Fires once climate
+        // rises >+0.8; lasting effect (Grassland→Plains, Plains→Desert).
         if ((terrain == aoc::map::TerrainType::Plains
              || terrain == aoc::map::TerrainType::Grassland)
-            && globalTemp > 15.0f) {
+            && globalTemp > 0.8f) {
             const uint32_t drHash = hash * 7919u;
             const uint32_t threshold = static_cast<uint32_t>(
-                2000000.0f * (globalTemp - 14.0f));
+                2000000.0f * (globalTemp - 0.5f));
             if (drHash < threshold) {
                 if (terrain == aoc::map::TerrainType::Grassland) {
                     grid.setTerrain(i, aoc::map::TerrainType::Plains);
@@ -106,11 +118,11 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
             }
         }
 
-        // Wildfire: forest tiles at very high temperature.
-        if (feature == aoc::map::FeatureType::Forest && globalTemp > 16.0f) {
+        // Wildfire: forest tiles at high climate delta.
+        if (feature == aoc::map::FeatureType::Forest && globalTemp > 1.2f) {
             const uint32_t fireHash = hash * 15485863u;
             const uint32_t threshold = static_cast<uint32_t>(
-                15000000.0f * (globalTemp - 15.0f));
+                15000000.0f * (globalTemp - 1.0f));
             if (fireHash < threshold) {
                 grid.setFeature(i, aoc::map::FeatureType::None);
                 ++disasterCount;
@@ -118,11 +130,12 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
             }
         }
 
-        // Hurricane: coastal tiles at high temperature damage improvements and naval units.
-        if (terrain == aoc::map::TerrainType::Coast && globalTemp > 15.5f) {
+        // Hurricane: coastal tiles at high climate delta; damages improvements,
+        // naval units, and the nearest coastal city (amenity hit).
+        if (terrain == aoc::map::TerrainType::Coast && globalTemp > 1.0f) {
             const uint32_t hurHash = hash * 999983u;
             const uint32_t threshold = static_cast<uint32_t>(
-                10000000.0f * (globalTemp - 14.5f));
+                10000000.0f * (globalTemp - 0.7f));
             if (hurHash < threshold) {
                 if (grid.improvement(i) != aoc::map::ImprovementType::None) {
                     grid.setImprovement(i, aoc::map::ImprovementType::None);
@@ -132,6 +145,13 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
                     for (const std::unique_ptr<aoc::game::Unit>& unit : playerPtr->units()) {
                         if (unit->position() == tileCoord) {
                             unit->takeDamage(30);
+                        }
+                    }
+                    // Amenity hit to nearest coastal-adjacent city (<=2 hexes).
+                    for (const std::unique_ptr<aoc::game::City>& city : playerPtr->cities()) {
+                        if (grid.distance(city->location(), tileCoord) <= 2) {
+                            applyDisasterAmenityHit(*city, 0.75f);
+                            break;
                         }
                     }
                 }

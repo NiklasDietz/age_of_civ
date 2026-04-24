@@ -6,6 +6,7 @@
  */
 
 #include "aoc/core/Types.hpp"
+#include "aoc/core/ErrorCodes.hpp"
 #include "aoc/map/HexCoord.hpp"
 
 #include <array>
@@ -161,6 +162,21 @@ void processReligiousSpread(aoc::game::GameState& gameState, const aoc::map::Hex
 
 /// Apply religion bonuses (founder beliefs give gold/science, follower beliefs give amenities).
 void applyReligionBonuses(aoc::game::Player& player);
+
+/// WP-A1: spend faith to complete the building currently at the head of a
+/// city's production queue. Enforces one rush per city per turn via
+/// `ProductionQueueComponent.lastFaithRushTurn`. Cost scales with building
+/// tier (estimated from buildingDef.productionCost).
+///
+/// Returns:
+///   - InvalidArgument  : queue empty / head is not a Building / owner is
+///                         not the player owning the city / already rushed
+///                         this turn.
+///   - InsufficientResources : player lacks required faith.
+///   - Ok                : progress advanced to totalCost, faith deducted.
+[[nodiscard]] ErrorCode rushBuildingWithFaith(aoc::game::Player& player,
+                                               aoc::game::City& city,
+                                               int32_t currentTurn);
 
 /**
  * @brief Automatically found pantheons and religions for AI players who have

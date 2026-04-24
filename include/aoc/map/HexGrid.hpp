@@ -87,6 +87,11 @@ enum class ImprovementType : uint8_t {
     KelpFarm,            ///< Coast, no resource: +2 food +1 science. Biology.
     FishFarm,            ///< Coast or ShallowWater, no resource: +2 food +1 gold. Masonry.
 
+    // WP-C4: Greenhouse improvement. Any owned non-water tile. Allows crop
+    // growth on off-climate tiles at reduced yield (50% of native-zone yield
+    // when the full climate-metadata layer lands). For now: flat +2 food.
+    Greenhouse,          ///< Any land: +2 food. Requires Advanced Chemistry (Biology-analog).
+
     Count
 };
 
@@ -253,6 +258,39 @@ public:
     /// True if the tile has any road-type infrastructure (road, railway, highway).
     [[nodiscard]] bool hasRoad(int32_t index) const { this->assertIndex(index); return this->m_road[static_cast<std::size_t>(index)] != 0; }
 
+    // -- WP-C3 stacked infrastructure lanes (PowerPole + Pipeline) --
+    static constexpr uint8_t INFRA_POWER_POLE = 1u << 0;
+    static constexpr uint8_t INFRA_PIPELINE   = 1u << 1;
+
+    [[nodiscard]] bool hasPowerPole(int32_t index) const {
+        this->assertIndex(index);
+        return (this->m_tileInfra[static_cast<std::size_t>(index)] & INFRA_POWER_POLE) != 0;
+    }
+    [[nodiscard]] bool hasPipeline(int32_t index) const {
+        this->assertIndex(index);
+        return (this->m_tileInfra[static_cast<std::size_t>(index)] & INFRA_PIPELINE) != 0;
+    }
+    void setPowerPole(int32_t index, bool on) {
+        this->assertIndex(index);
+        uint8_t& bits = this->m_tileInfra[static_cast<std::size_t>(index)];
+        bits = on ? static_cast<uint8_t>(bits | INFRA_POWER_POLE)
+                  : static_cast<uint8_t>(bits & ~INFRA_POWER_POLE);
+    }
+    void setPipeline(int32_t index, bool on) {
+        this->assertIndex(index);
+        uint8_t& bits = this->m_tileInfra[static_cast<std::size_t>(index)];
+        bits = on ? static_cast<uint8_t>(bits | INFRA_PIPELINE)
+                  : static_cast<uint8_t>(bits & ~INFRA_PIPELINE);
+    }
+    [[nodiscard]] uint8_t tileInfraBits(int32_t index) const {
+        this->assertIndex(index);
+        return this->m_tileInfra[static_cast<std::size_t>(index)];
+    }
+    void setTileInfraBits(int32_t index, uint8_t bits) {
+        this->assertIndex(index);
+        this->m_tileInfra[static_cast<std::size_t>(index)] = bits;
+    }
+
     /// True if the tile has a canal improvement (navigable by ships).
     [[nodiscard]] bool hasCanal(int32_t index) const { this->assertIndex(index); return this->m_improvement[static_cast<std::size_t>(index)] == ImprovementType::Canal; }
 
@@ -408,6 +446,11 @@ private:
     std::vector<PlayerId>        m_owner;
     std::vector<ImprovementType>  m_improvement;
     std::vector<uint8_t>          m_road;            ///< 1 if tile has road, 0 otherwise
+    /// WP-C3: per-tile infrastructure lanes that stack with `m_improvement`.
+    /// Bit 0 = PowerPole (transmits electricity), Bit 1 = Pipeline (boosts
+    /// oil/gas/fuel trade throughput). Kept out of ImprovementType so a tile
+    /// can have, e.g., Farm + PowerPole + Pipeline simultaneously.
+    std::vector<uint8_t>          m_tileInfra;
     std::vector<NaturalWonderType> m_naturalWonder;
 
     // Strategic chokepoints (computed at map generation)
@@ -431,6 +474,8 @@ public:
         // Destroy improvements in fallout zone
         this->m_improvement[idx] = ImprovementType::None;
         this->m_road[idx] = 0;
+        // WP-C3: fallout wipes power poles + pipelines too.
+        this->m_tileInfra[idx] = 0;
     }
 
     /// Tick fallout decay for all tiles (call once per turn).

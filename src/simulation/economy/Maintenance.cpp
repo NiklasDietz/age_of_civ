@@ -267,8 +267,54 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
         }
 
         // Wonder gold bonus (H4.9): Big Ben, Colossus, Machu Picchu, etc.
+        // WP-A7: era-decay so ancient gold wonders don't dominate late-game.
+        // A7 unique effects:
+        //   - Machu Picchu (7): only pays out when the host city is adjacent
+        //     to a Mountain tile — per its description.
+        //   - Big Ben (9): doubles per-market-building gold in the host city.
         for (const WonderId wid : city->wonders().wonders) {
-            cityGold += static_cast<CurrencyAmount>(wonderDef(wid).effect.goldBonus);
+            const WonderDef& wdef = wonderDef(wid);
+            const float decay = wonderEraDecayFactor(wdef, player.era().currentEra);
+
+            if (wid == 7) { // Machu Picchu
+                bool mountainAdj = false;
+                if (grid.isValid(city->location())) {
+                    const std::array<aoc::hex::AxialCoord, 6> nbrs =
+                        aoc::hex::neighbors(city->location());
+                    for (const aoc::hex::AxialCoord& n : nbrs) {
+                        if (!grid.isValid(n)) { continue; }
+                        if (grid.terrain(grid.toIndex(n))
+                            == aoc::map::TerrainType::Mountain) {
+                            mountainAdj = true;
+                            break;
+                        }
+                    }
+                }
+                if (mountainAdj) {
+                    cityGold += static_cast<CurrencyAmount>(
+                        wdef.effect.goldBonus * decay);
+                }
+                continue;
+            }
+
+            if (wid == 9) { // Big Ben — flat bonus + doubles market gold.
+                cityGold += static_cast<CurrencyAmount>(wdef.effect.goldBonus * decay);
+                int32_t marketGold = 0;
+                for (const CityDistrictsComponent::PlacedDistrict& d
+                        : city->districts().districts) {
+                    for (BuildingId bid : d.buildings) {
+                        if (bid.value == 6 || bid.value == 20 || bid.value == 21) {
+                            // Market (6), Bank (20), Stock Exchange (21).
+                            marketGold += buildingDef(bid).goldBonus;
+                        }
+                    }
+                }
+                cityGold += static_cast<CurrencyAmount>(
+                    static_cast<float>(marketGold) * decay);
+                continue;
+            }
+
+            cityGold += static_cast<CurrencyAmount>(wdef.effect.goldBonus * decay);
         }
 
         // Goods-based commerce tax: goods circulating in the city represent

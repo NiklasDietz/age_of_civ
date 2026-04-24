@@ -41,7 +41,7 @@ namespace aoc::save {
 
 /// File format magic bytes: "AOC\0"
 inline constexpr uint32_t SAVE_MAGIC   = 0x00434F41;
-inline constexpr uint32_t SAVE_VERSION = 8;
+inline constexpr uint32_t SAVE_VERSION = 9;
 
 /// Section IDs for each chunk of game state.
 enum class SectionId : uint16_t {

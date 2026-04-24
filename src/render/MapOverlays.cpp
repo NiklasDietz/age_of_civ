@@ -60,22 +60,38 @@ void renderInfrastructureOverlay(vulkan_app::renderer::Renderer2D& renderer,
     for (int32_t i = 0; i < tileCount; ++i) {
         if (grid.owner(i) != player) { continue; }
 
-        int32_t tier = grid.infrastructureTier(i);
-        if (tier < 2) { continue; }  // Only render railway (2) and highway (3)
-
         hex::AxialCoord center = grid.toAxial(i);
         float cx = 0.0f;
         float cy = 0.0f;
         hexToScreen(center, cameraX, cameraY, zoom, cx, cy);
 
-        // Draw a colored dot at the tile center
-        float r = (tier == 3) ? 0.3f : 0.5f;  // Highway = light grey, Railway = brown
-        float g = (tier == 3) ? 0.3f : 0.3f;
-        float b = (tier == 3) ? 0.4f : 0.2f;
-        float size = 4.0f * zoom;
+        const int32_t tier = grid.infrastructureTier(i);
+        if (tier >= 2) {
+            float r = (tier == 3) ? 0.3f : 0.5f;  // Highway light grey, Railway brown
+            float g = (tier == 3) ? 0.3f : 0.3f;
+            float b = (tier == 3) ? 0.4f : 0.2f;
+            float size = 4.0f * zoom;
+            renderer.drawFilledRect(cx - size / 2.0f, cy - size / 2.0f,
+                              size, size, r, g, b, 0.7f);
+        }
 
-        renderer.drawFilledRect(cx - size / 2.0f, cy - size / 2.0f,
-                          size, size, r, g, b, 0.7f);
+        // WP-C3: PowerPole marker (yellow dot, offset top-left so it
+        // doesn't overlap the road tier dot).
+        if (grid.hasPowerPole(i)) {
+            const float size = 3.0f * zoom;
+            const float ox = cx - 4.0f * zoom - size / 2.0f;
+            const float oy = cy - 4.0f * zoom - size / 2.0f;
+            renderer.drawFilledRect(ox, oy, size, size,
+                              0.95f, 0.85f, 0.15f, 0.85f);
+        }
+        // WP-C3: Pipeline marker (orange dot, offset top-right).
+        if (grid.hasPipeline(i)) {
+            const float size = 3.0f * zoom;
+            const float ox = cx + 4.0f * zoom - size / 2.0f;
+            const float oy = cy - 4.0f * zoom - size / 2.0f;
+            renderer.drawFilledRect(ox, oy, size, size,
+                              0.95f, 0.55f, 0.10f, 0.85f);
+        }
     }
 }
 

@@ -11,6 +11,7 @@
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/map/Improvement.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
@@ -137,6 +138,89 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                 break;
             }
             if (builtMountainMine) {
+                continue;
+            }
+        }
+
+        // Step 1c (WP-C3): lay a PowerPole on the builder's current tile
+        // when owner has researched Electricity and the tile is on a
+        // well-improved owned slab adjacent to a city / existing pole.
+        // Cheap heuristic: post-Electricity, if tile is owned, has any
+        // improvement (so poles thread along worked tiles), and no pole
+        // yet AND any neighbor tile is either a city center or already
+        // has a pole — lay a pole. Bootstraps the grid from each city
+        // outward. Consumes one charge.
+        if (gsPlayer->hasResearched(TechId{14})
+            && grid.owner(currentIdx) == this->m_player
+            && !grid.hasPowerPole(currentIdx)) {
+            bool adjacentToCityOrPole = false;
+            for (const aoc::hex::AxialCoord& cityLoc : cityLocations) {
+                if (grid.distance(cityLoc, builder.position) <= 1) {
+                    adjacentToCityOrPole = true;
+                    break;
+                }
+            }
+            if (!adjacentToCityOrPole) {
+                const std::array<aoc::hex::AxialCoord, 6> polNbrs =
+                    aoc::hex::neighbors(builder.position);
+                for (const aoc::hex::AxialCoord& n : polNbrs) {
+                    if (!grid.isValid(n)) { continue; }
+                    if (grid.hasPowerPole(grid.toIndex(n))) {
+                        adjacentToCityOrPole = true;
+                        break;
+                    }
+                }
+            }
+            if (adjacentToCityOrPole) {
+                grid.setPowerPole(currentIdx, true);
+                builder.ptr->useCharge();
+                LOG_INFO("AI %u Builder laid PowerPole at (%d,%d)",
+                         static_cast<unsigned>(this->m_player),
+                         builder.position.q, builder.position.r);
+                if (!builder.ptr->hasCharges()) {
+                    gsPlayer->removeUnit(builder.ptr);
+                }
+                continue;
+            }
+        }
+
+        // Step 1d (WP-C3): lay a Pipeline along proven oil/gas tiles.
+        // Post-Mass-Production (TechId 15), if builder stands on an owned
+        // tile whose resource is OIL or NATURAL_GAS (or hasn't yet been
+        // piped AND a neighbor already has a pipeline) — lay a pipeline.
+        // Bootstraps pipelines outward from extraction tiles so traders
+        // get the hauling speed bonus on the routes that matter.
+        if (gsPlayer->hasResearched(TechId{15})
+            && grid.owner(currentIdx) == this->m_player
+            && !grid.hasPipeline(currentIdx)) {
+            bool atExtractionTile = false;
+            const ResourceId res = grid.resource(currentIdx);
+            if (res.isValid()
+                && (res.value == aoc::sim::goods::OIL
+                    || res.value == aoc::sim::goods::NATURAL_GAS)) {
+                atExtractionTile = true;
+            }
+            bool adjacentToPipeline = false;
+            if (!atExtractionTile) {
+                const std::array<aoc::hex::AxialCoord, 6> pipNbrs =
+                    aoc::hex::neighbors(builder.position);
+                for (const aoc::hex::AxialCoord& n : pipNbrs) {
+                    if (!grid.isValid(n)) { continue; }
+                    if (grid.hasPipeline(grid.toIndex(n))) {
+                        adjacentToPipeline = true;
+                        break;
+                    }
+                }
+            }
+            if (atExtractionTile || adjacentToPipeline) {
+                grid.setPipeline(currentIdx, true);
+                builder.ptr->useCharge();
+                LOG_INFO("AI %u Builder laid Pipeline at (%d,%d)",
+                         static_cast<unsigned>(this->m_player),
+                         builder.position.q, builder.position.r);
+                if (!builder.ptr->hasCharges()) {
+                    gsPlayer->removeUnit(builder.ptr);
+                }
                 continue;
             }
         }

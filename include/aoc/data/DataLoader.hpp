@@ -17,10 +17,12 @@
 
 #include "aoc/core/Types.hpp"
 #include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/map/Improvement.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
+#include "aoc/map/Terrain.hpp"
 
 #include <string>
 #include <vector>
@@ -93,6 +95,17 @@ struct RuntimeGoodDef {
     float                   priceElasticity;
 };
 
+/// Runtime improvement definition with owned string storage. Mirrors
+/// aoc::sim::ImprovementDef from the constexpr IMPROVEMENT_DEFS array.
+/// WP-C7: source of truth migrated to data/definitions/improvements.json.
+struct RuntimeImprovementDef {
+    aoc::map::ImprovementType type;
+    std::string               name;
+    aoc::map::TileYield       yieldBonus;
+    aoc::TechId               requiredTech;
+    int32_t                   buildTurns;
+};
+
 /// Runtime leader personality with owned string storage.
 struct RuntimeLeaderPersonalityDef {
     aoc::sim::CivId                 civId;
@@ -142,6 +155,9 @@ public:
     /// Access loaded leader personality definitions.
     [[nodiscard]] const std::vector<RuntimeLeaderPersonalityDef>& leaders() const { return this->leaderDefs; }
 
+    /// Access loaded improvement definitions (WP-C7).
+    [[nodiscard]] const std::vector<RuntimeImprovementDef>& improvements() const { return this->improvementDefs; }
+
     /// Singleton access. The DataLoader is created once and shared globally.
     [[nodiscard]] static DataLoader& instance();
 
@@ -152,6 +168,7 @@ private:
     bool loadRecipes(const std::string& path);
     bool loadGoods(const std::string& path);
     bool loadLeaders(const std::string& path);
+    bool loadImprovements(const std::string& path);
 
     void fallbackBuildings();
     void fallbackUnits();
@@ -159,6 +176,7 @@ private:
     void fallbackGoods();
     void fallbackRecipes();
     void fallbackLeaders();
+    void fallbackImprovements();
 
     std::vector<RuntimeBuildingDef>           buildingDefs;
     std::vector<RuntimeUnitTypeDef>           unitTypeDefs;
@@ -166,6 +184,7 @@ private:
     std::vector<RuntimeProductionRecipe>      recipeDefs;
     std::vector<RuntimeGoodDef>               goodDefs;
     std::vector<RuntimeLeaderPersonalityDef>  leaderDefs;
+    std::vector<RuntimeImprovementDef>        improvementDefs;
 };
 
 } // namespace aoc::data

@@ -220,6 +220,12 @@ bool canPlaceImprovement(const aoc::map::HexGrid& grid,
             return !aoc::map::isWater(terrain)
                 && terrain != aoc::map::TerrainType::Mountain;
 
+        case aoc::map::ImprovementType::Greenhouse:
+            // WP-C4: any non-water, non-mountain tile. Future work: check
+            // per-crop climate metadata so off-climate crops at 50% yield.
+            return !aoc::map::isWater(terrain)
+                && terrain != aoc::map::TerrainType::Mountain;
+
         case aoc::map::ImprovementType::DataCenter:
             // Any land, non-mountain.
             return !aoc::map::isWater(terrain)
@@ -403,10 +409,12 @@ bool prospectTile(aoc::map::HexGrid& grid, int32_t index,
         if (plainsRoll < 60) { discovered = ResourceId{aoc::sim::goods::OIL}; }
         else                 { discovered = ResourceId{aoc::sim::goods::NITER}; }
     } else if (terrain == aoc::map::TerrainType::Tundra) {
+        // WP-C2 cut GEMS; tundra prospect now redirects to LITHIUM on the
+        // non-Coal branch so prospector still finds a strategic good.
         baseChance = 0.15f;
         uint32_t tundraRoll = (hash >> 12) % 100u;
         if (tundraRoll < 60) { discovered = ResourceId{aoc::sim::goods::COAL}; }
-        else                 { discovered = ResourceId{aoc::sim::goods::GEMS}; }
+        else                 { discovered = ResourceId{aoc::sim::goods::LITHIUM}; }
     } else {
         baseChance = 0.05f;
         uint32_t otherRoll = (hash >> 12) % 100u;

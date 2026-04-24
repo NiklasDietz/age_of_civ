@@ -1339,19 +1339,19 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
 
             ResourceId placed{};
 
-            // Volcanic zone: convergent + high elevation
+            // Volcanic zone: convergent + high elevation.
+            // WP-C2 cut: GEMS slot redirected to ALUMINUM (dead-end good gone).
             if (bType == BoundaryType::Convergent && elev >= 2) {
                 if (resRng.chance(0.05f)) {
                     placed = ResourceId{aoc::sim::goods::GOLD_ORE};
                 } else if (resRng.chance(0.04f)) {
                     placed = ResourceId{aoc::sim::goods::SILVER_ORE};
-                } else if (resRng.chance(0.03f)) {
-                    placed = ResourceId{aoc::sim::goods::GEMS};
-                } else if (resRng.chance(0.02f)) {
+                } else if (resRng.chance(0.05f)) {
                     placed = ResourceId{aoc::sim::goods::ALUMINUM};
                 }
             }
-            // Convergent boundary (mountain range)
+            // Convergent boundary (mountain range).
+            // WP-C2 cut: GEMS slot redirected to TIN.
             else if (bType == BoundaryType::Convergent) {
                 if (resRng.chance(0.06f)) {
                     placed = ResourceId{aoc::sim::goods::COPPER_ORE};
@@ -1359,10 +1359,8 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
                     placed = ResourceId{aoc::sim::goods::GOLD_ORE};
                 } else if (resRng.chance(0.04f)) {
                     placed = ResourceId{aoc::sim::goods::SILVER_ORE};
-                } else if (resRng.chance(0.03f)) {
+                } else if (resRng.chance(0.05f)) {
                     placed = ResourceId{aoc::sim::goods::TIN};
-                } else if (resRng.chance(0.02f)) {
-                    placed = ResourceId{aoc::sim::goods::GEMS};
                 }
             }
             // Divergent boundary (rift zone)
@@ -1402,46 +1400,34 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
                 }
             }
 
-            // Climate-based resources (only if no geology resource was placed)
+            // Climate-based resources (only if no geology resource was placed).
+            // WP-C2 cut: INCENSE/IVORY/COFFEE/TOBACCO/TEA lines stripped —
+            // those goods were dead-end luxuries with no downstream recipe.
+            // Remaining lines pick up the probability mass.
             if (!placed.isValid()) {
                 if (terrain == TerrainType::Desert) {
                     if (elev <= 0 && resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::OIL};
                     } else if (resRng.chance(0.04f)) {
-                        placed = ResourceId{aoc::sim::goods::INCENSE};
-                    } else if (resRng.chance(0.03f)) {
-                        placed = ResourceId{aoc::sim::goods::IVORY};
+                        placed = ResourceId{aoc::sim::goods::NATURAL_GAS};
                     }
                 } else if (temperature > 0.65f && terrain != TerrainType::Desert) {
-                    // Tropical (wet, hot) — equatorial cash crops.  Strictly
-                    // climate-gated so these appear nowhere else on the map.
-                    //   Rubber: only in Jungle feature within tropical zone
-                    //   Sugar/Coffee/Tea: wet tropical
-                    //   Tobacco/Cotton: warm, can tolerate subtropical
-                    //   Spices: pan-tropical
+                    // Tropical (wet, hot). Cotton / Rubber / Spices / Sugar only.
                     const bool jungle = grid.feature(index) == FeatureType::Jungle;
                     if (resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::COTTON};
                     } else if (jungle && resRng.chance(0.05f)) {
                         placed = ResourceId{aoc::sim::goods::RUBBER};
-                    } else if (resRng.chance(0.05f)) {
+                    } else if (resRng.chance(0.06f)) {
                         placed = ResourceId{aoc::sim::goods::SPICES};
-                    } else if (resRng.chance(0.04f)) {
+                    } else if (resRng.chance(0.05f)) {
                         placed = ResourceId{aoc::sim::goods::SUGAR};
-                    } else if (resRng.chance(0.04f)) {
-                        placed = ResourceId{aoc::sim::goods::COFFEE};
-                    } else if (resRng.chance(0.04f)) {
-                        placed = ResourceId{aoc::sim::goods::TOBACCO};
                     }
                 } else if (temperature >= 0.55f && temperature <= 0.70f) {
-                    // Subtropical band — warm temperate.  Tea + Silk live
-                    // here historically (China, India, Mediterranean).
-                    // Wine also prefers this zone.
+                    // Subtropical band. SILK + WINE only.
                     if (resRng.chance(0.05f)) {
-                        placed = ResourceId{aoc::sim::goods::TEA};
-                    } else if (resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::SILK};
-                    } else if (resRng.chance(0.04f)) {
+                    } else if (resRng.chance(0.05f)) {
                         placed = ResourceId{aoc::sim::goods::WINE};
                     }
                 } else if (temperature >= 0.30f && temperature < 0.55f) {
@@ -1458,17 +1444,17 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
                         placed = ResourceId{aoc::sim::goods::DYES};
                     } else if (grid.feature(index) == FeatureType::Hills && resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::MARBLE};
-                    } else if (resRng.chance(0.04f) && grid.riverEdges(index) != 0) {
+                    } else if (grid.riverEdges(index) != 0 && resRng.chance(0.06f)) {
+                        placed = ResourceId{aoc::sim::goods::RICE};
+                    } else if (resRng.chance(0.03f)) {
                         placed = ResourceId{aoc::sim::goods::RICE};
                     } else if (resRng.chance(0.03f)) {
                         placed = ResourceId{aoc::sim::goods::CLAY};
                     }
                 } else if (temperature < 0.30f) {
-                    // Cold: furs and gems are more common
+                    // Cold: furs. WP-C2 cut GEMS (dead-end).
                     if (resRng.chance(0.06f)) {
                         placed = ResourceId{aoc::sim::goods::FURS};
-                    } else if (resRng.chance(0.03f)) {
-                        placed = ResourceId{aoc::sim::goods::GEMS};
                     } else if (nearCoast && resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::FISH};
                     }
@@ -1482,14 +1468,13 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
                 }
             }
 
-            // Coast adjacency resources (only if still nothing placed)
+            // Coast adjacency resources (only if still nothing placed).
+            // WP-C2 cut PEARLS (dead-end).
             if (!placed.isValid() && nearCoast) {
                 if (resRng.chance(0.06f)) {
                     placed = ResourceId{aoc::sim::goods::FISH};
                 } else if (resRng.chance(0.02f)) {
                     placed = ResourceId{aoc::sim::goods::SUGAR};
-                } else if (resRng.chance(0.02f)) {
-                    placed = ResourceId{aoc::sim::goods::PEARLS};
                 }
             }
 
@@ -1668,7 +1653,8 @@ void MapGenerator::placeBasicResources(const Config& config, HexGrid& grid,
             else if (terrain == TerrainType::Desert) {
                 if (rng.chance(0.10f))      { placed = ResourceId{aoc::sim::goods::OIL}; }
                 else if (rng.chance(0.05f)) { placed = ResourceId{aoc::sim::goods::NATURAL_GAS}; }
-                else if (rng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::INCENSE}; }
+                // WP-C2: INCENSE cut (dead-end). Lithium favors dry-lake basins.
+                else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::LITHIUM}; }
             }
             // Forest/jungle: wood, rubber, spices, dyes
             else if (feature == FeatureType::Forest) {
@@ -1687,9 +1673,13 @@ void MapGenerator::placeBasicResources(const Config& config, HexGrid& grid,
                 else if (rng.chance(0.04f)) { placed = ResourceId{aoc::sim::goods::CATTLE}; }
                 else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::COTTON}; }
                 else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::HORSES}; }
-                else if (rng.chance(0.04f) && grid.riverEdges(index) != 0) {
+                // Rice: river-adjacent gets a higher chance (paddy field), but
+                // any Grassland is also valid (upland rice) so the recipe
+                // actually gets raw inputs across more seeds.
+                else if (grid.riverEdges(index) != 0 && rng.chance(0.06f)) {
                     placed = ResourceId{aoc::sim::goods::RICE};
                 }
+                else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::RICE}; }
                 else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::CLAY}; }
             }
             // Plains: food, stone, horses, niter, oil (inland basins)
@@ -1705,10 +1695,12 @@ void MapGenerator::placeBasicResources(const Config& config, HexGrid& grid,
             // Tundra: furs, gems, oil (arctic basins), coal
             else if (terrain == TerrainType::Tundra) {
                 if (rng.chance(0.04f))      { placed = ResourceId{aoc::sim::goods::FURS}; }
-                else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::GEMS}; }
+                // WP-C2: GEMS cut (dead-end luxury).
                 else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::COAL}; }
                 else if (rng.chance(0.05f)) { placed = ResourceId{aoc::sim::goods::OIL}; }
                 else if (rng.chance(0.03f)) { placed = ResourceId{aoc::sim::goods::NATURAL_GAS}; }
+                // WP-C2: Lithium also in high-altitude tundra hard rock.
+                else if (rng.chance(0.02f)) { placed = ResourceId{aoc::sim::goods::LITHIUM}; }
             }
 
             // Coastal tiles: fish
@@ -1856,7 +1848,11 @@ void MapGenerator::placeRandomResources(const Config& config, HexGrid& grid,
     // ballpark as placeBasicResources.  Mountain/water/impassable tiles opt
     // out of land resources; mountains get a separate metals pass below.
     struct GoodChance { uint16_t id; float chance; };
-    const std::array<GoodChance, 20> pool = {{
+    // WP-C2: LITHIUM seeded alongside legacy strategics. Rarer than coal/oil
+    // (0.006) so early-game maps still have chain variety without Lithium
+    // saturating every civ.
+    // WP-C2 cut GEMS + INCENSE (dead-end luxuries with no downstream).
+    const std::array<GoodChance, 19> pool = {{
         {aoc::sim::goods::IRON_ORE,   0.030f},
         {aoc::sim::goods::COPPER_ORE, 0.030f},
         {aoc::sim::goods::COAL,       0.030f},
@@ -1872,11 +1868,10 @@ void MapGenerator::placeRandomResources(const Config& config, HexGrid& grid,
         {aoc::sim::goods::SPICES,     0.012f},
         {aoc::sim::goods::DYES,       0.010f},
         {aoc::sim::goods::FURS,       0.012f},
-        {aoc::sim::goods::GEMS,       0.008f},
         {aoc::sim::goods::GOLD_ORE,   0.008f},
         {aoc::sim::goods::SILVER_ORE, 0.010f},
-        {aoc::sim::goods::INCENSE,    0.010f},
         {aoc::sim::goods::TIN,        0.010f},
+        {aoc::sim::goods::LITHIUM,    0.006f},
     }};
 
     int32_t totalPlaced = 0;

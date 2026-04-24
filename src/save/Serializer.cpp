@@ -319,6 +319,7 @@ void writeImprovementsSection(WriteBuffer& out, const aoc::map::HexGrid& grid) {
     for (int32_t i = 0; i < count; ++i) {
         section.writeU8(static_cast<uint8_t>(grid.improvement(i)));
         section.writeU8(grid.hasRoad(i) ? uint8_t{1} : uint8_t{0});
+        section.writeU8(grid.tileInfraBits(i)); // WP-C3 power pole + pipeline lanes.
     }
     writeSection(out, SectionId::Improvements, section);
 }
@@ -645,6 +646,10 @@ void writePlayerStateSection(WriteBuffer& out, const aoc::game::GameState& gameS
         for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
             section.writeU8(gp.exhausted[t] ? 1 : 0);
         }
+        // WP-A3: permanent Merchant trade slots + Scientist pulse state.
+        section.writeI32(gp.extraTradeSlots);
+        section.writeF32(gp.pulseScienceAmount);
+        section.writeI32(gp.pulseScienceTurns);
     }
 
     // --- PlayerEurekaComponent ---
@@ -1036,7 +1041,9 @@ void writePollutionSection(WriteBuffer& out, const aoc::game::GameState& gameSta
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
         for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
             const aoc::sim::CityPollutionComponent& pol = city->pollution();
-            if (pol.wasteAccumulated != 0 || pol.co2ContributionPerTurn != 0) {
+            const aoc::sim::CityHappinessComponent& hp  = city->happiness();
+            if (pol.wasteAccumulated != 0 || pol.co2ContributionPerTurn != 0
+                || hp.disasterUnhappiness != 0.0f) {
                 ++count;
             }
         }
@@ -1048,10 +1055,13 @@ void writePollutionSection(WriteBuffer& out, const aoc::game::GameState& gameSta
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
         for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
             const aoc::sim::CityPollutionComponent& pol = city->pollution();
-            if (pol.wasteAccumulated != 0 || pol.co2ContributionPerTurn != 0) {
+            const aoc::sim::CityHappinessComponent& hp  = city->happiness();
+            if (pol.wasteAccumulated != 0 || pol.co2ContributionPerTurn != 0
+                || hp.disasterUnhappiness != 0.0f) {
                 section.writeU32(cityIndex);
                 section.writeI32(pol.wasteAccumulated);
                 section.writeI32(pol.co2ContributionPerTurn);
+                section.writeF32(hp.disasterUnhappiness);
             }
             ++cityIndex;
         }
@@ -1578,11 +1588,13 @@ ErrorCode loadGame(const std::string& filepath,
                 for (int32_t i = 0; i < count; ++i) {
                     uint8_t improvementVal = buf.readU8();
                     uint8_t roadVal = buf.readU8();
+                    uint8_t infraBits = buf.readU8();  // WP-C3 lanes.
                     if (i < grid.tileCount()) {
                         grid.setImprovement(i, static_cast<aoc::map::ImprovementType>(improvementVal));
                         if (roadVal != 0 && !grid.hasRoad(i)) {
                             grid.setImprovement(i, aoc::map::ImprovementType::Road);
                         }
+                        grid.setTileInfraBits(i, infraBits);
                     }
                 }
                 break;
@@ -1867,6 +1879,15 @@ ErrorCode loadGame(const std::string& filepath,
                         if (player != nullptr) {
                             player->greatPeople().exhausted[t] = (flag != 0);
                         }
+                    }
+                    // WP-A3: permanent Merchant trade slots + Scientist pulse.
+                    int32_t xts = buf.readI32();
+                    float   psa = buf.readF32();
+                    int32_t pst = buf.readI32();
+                    if (player != nullptr) {
+                        player->greatPeople().extraTradeSlots    = xts;
+                        player->greatPeople().pulseScienceAmount = psa;
+                        player->greatPeople().pulseScienceTurns  = pst;
                     }
                 }
 
@@ -2243,9 +2264,11 @@ ErrorCode loadGame(const std::string& filepath,
                     uint32_t cityIndex = buf.readU32();
                     int32_t wasteAccumulated = buf.readI32();
                     int32_t co2PerTurn = buf.readI32();
+                    float   disasterUnhappy = buf.readF32();
                     if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
                         loadedCities[cityIndex]->pollution().wasteAccumulated = wasteAccumulated;
                         loadedCities[cityIndex]->pollution().co2ContributionPerTurn = co2PerTurn;
+                        loadedCities[cityIndex]->happiness().disasterUnhappiness = disasterUnhappy;
                     }
                 }
                 break;

@@ -19,6 +19,7 @@
 #include "aoc/simulation/city/CityScience.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
+#include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <memory>
@@ -29,6 +30,11 @@ namespace {
 
 constexpr float SCIENCE_TO_PROGRESS = 0.2f;
 
+// WP-B2 Mars Colony resource gate. Totals consumed on completion.
+constexpr int32_t MARS_TITANIUM_COST       = 10;
+constexpr int32_t MARS_HELIUM3_COST        = 30;
+constexpr int32_t MARS_SEMICONDUCTORS_COST = 50;
+
 [[nodiscard]] bool playerHasCampus(const aoc::game::Player& player) {
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         if (city->districts().hasDistrict(DistrictType::Campus)) {
@@ -36,6 +42,34 @@ constexpr float SCIENCE_TO_PROGRESS = 0.2f;
         }
     }
     return false;
+}
+
+[[nodiscard]] int32_t totalStock(const aoc::game::Player& player, uint16_t goodId) {
+    int32_t total = 0;
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        total += city->stockpile().getAmount(goodId);
+    }
+    return total;
+}
+
+/// Drain @p amount of @p goodId across the player's cities greedily.
+/// Returns true iff the full amount was drained; on false the stockpiles are
+/// left unchanged.
+[[nodiscard]] bool drainGoods(aoc::game::Player& player, uint16_t goodId,
+                              int32_t amount) {
+    if (totalStock(player, goodId) < amount) {
+        return false;
+    }
+    int32_t remaining = amount;
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        if (remaining <= 0) { break; }
+        const int32_t avail = city->stockpile().getAmount(goodId);
+        if (avail <= 0) { continue; }
+        const int32_t take = std::min(avail, remaining);
+        (void)city->stockpile().consumeGoods(goodId, take);
+        remaining -= take;
+    }
+    return true;
 }
 
 } // namespace
@@ -67,6 +101,28 @@ void processSpaceRace(aoc::game::GameState& gameState, const aoc::map::HexGrid& 
                                   * aoc::balance::params().spaceRaceCostMult;
 
         if (race.progress[idx] >= effectiveCost) {
+            // WP-B2 Mars gate: require stockpiled Titanium + He3 +
+            // Semiconductors. Titanium only flows once Lunar Colony is
+            // complete (EconomySimulation), so civs that skipped Lunar
+            // Colony cannot launch Mars even with enough production.
+            if (next == SpaceProjectId::MarsColony) {
+                if (totalStock(player, goods::TITANIUM)       < MARS_TITANIUM_COST
+                 || totalStock(player, goods::HELIUM_3)       < MARS_HELIUM3_COST
+                 || totalStock(player, goods::SEMICONDUCTORS) < MARS_SEMICONDUCTORS_COST) {
+                    // Cap progress so the project waits on supply without
+                    // compounding science overflow into the next project.
+                    race.progress[idx] = effectiveCost;
+                    continue;
+                }
+                (void)drainGoods(player, goods::TITANIUM,       MARS_TITANIUM_COST);
+                (void)drainGoods(player, goods::HELIUM_3,       MARS_HELIUM3_COST);
+                (void)drainGoods(player, goods::SEMICONDUCTORS, MARS_SEMICONDUCTORS_COST);
+                LOG_INFO("Player %u Mars Colony consumed %d Ti + %d He3 + %d Semi",
+                         static_cast<unsigned>(player.id()),
+                         MARS_TITANIUM_COST, MARS_HELIUM3_COST,
+                         MARS_SEMICONDUCTORS_COST);
+            }
+
             race.completed[idx] = true;
             race.progress[idx] = effectiveCost;
             LOG_INFO("Player %u [SpaceRace.cpp:processSpaceRace] completed '%.*s' (%d/%d projects)",
