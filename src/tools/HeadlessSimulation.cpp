@@ -382,6 +382,24 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     aoc::game::GameState gameState;
     gameState.initialize(playerCount);
 
+    // Shuffle civ-to-slot assignment so P0 doesn't always = Rome (civ 0).
+    // Without shuffle, slot 0's first-action turn-order advantage compounded
+    // into civ-0 winning ~20% across audits regardless of modifiers.
+    std::vector<int32_t> civAssignment(static_cast<std::size_t>(playerCount));
+    {
+        std::vector<int32_t> pool;
+        pool.reserve(aoc::sim::CIV_COUNT);
+        for (int32_t i = 0; i < aoc::sim::CIV_COUNT; ++i) { pool.push_back(i); }
+        for (int32_t p = 0; p < playerCount; ++p) {
+            const int32_t idx = rng.nextInt(0, static_cast<int32_t>(pool.size()) - 1);
+            civAssignment[static_cast<std::size_t>(p)] = pool[static_cast<std::size_t>(idx)];
+            pool.erase(pool.begin() + idx);
+            if (pool.empty()) {
+                for (int32_t i = 0; i < aoc::sim::CIV_COUNT; ++i) { pool.push_back(i); }
+            }
+        }
+    }
+
     // Spawn each AI player with a starting city and scout
     for (int32_t p = 0; p < playerCount; ++p) {
         aoc::PlayerId player = static_cast<aoc::PlayerId>(p);
@@ -441,9 +459,12 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
         startPositions.push_back(startPos);
 
-        // Found starting city (creates City in player's city list via GameState)
+        // Found starting city (creates City in player's city list via GameState).
+        // Use shuffled civ assignment so capital city name matches the civ
+        // actually assigned to this slot.
         std::string cityName = std::string(
-            aoc::sim::civDef(static_cast<aoc::sim::CivId>(p % aoc::sim::CIV_COUNT)).cityNames[0]);
+            aoc::sim::civDef(static_cast<aoc::sim::CivId>(
+                civAssignment[static_cast<std::size_t>(p)])).cityNames[0]);
         aoc::sim::foundCity(gameState, grid, player, startPos, cityName, true, 1);
 
         // Guarantee minimum resources near starting position
@@ -529,7 +550,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         // Configure player state via the GameState Player object (no ECS entity creation)
         aoc::game::Player* gsPlayer = gameState.player(player);
         if (gsPlayer != nullptr) {
-            gsPlayer->setCivId(static_cast<aoc::sim::CivId>(p % aoc::sim::CIV_COUNT));
+            gsPlayer->setCivId(static_cast<aoc::sim::CivId>(
+                civAssignment[static_cast<std::size_t>(p)]));
             gsPlayer->setHuman(false);
             gsPlayer->setTreasury(0);  // No money at start: barter economy
 
@@ -1240,7 +1262,24 @@ int main(int argc, char* argv[]) {
 
     if (turns <= 0) { turns = 200; }
     if (players < 2) { players = 2; }
-    if (players > 12) { players = 12; }
+    if (players > 20) { players = 20; }
+
+    // Auto-derive game pace from --turns. Reference is 1000t = 1.0x cost
+    // (matches existing balance defaults); shorter games scale costs DOWN
+    // so content fits, longer games scale UP so progression feels paced.
+    // Movement does NOT scale — shorter games naturally favor Domination.
+    {
+        const float ref = 1000.0f;
+        const float mult = static_cast<float>(turns) / ref;
+        aoc::sim::GamePace::instance().costMultiplier = mult;
+        aoc::sim::GamePace::instance().growthMultiplier = mult;
+        aoc::sim::GamePace::instance().eraInterval =
+            std::max(10, static_cast<int32_t>(static_cast<float>(turns) / 16.0f));
+        std::fprintf(stderr, "  Pace:    cost×%.2f growth×%.2f eraEvery=%d\n",
+                     static_cast<double>(mult),
+                     static_cast<double>(mult),
+                     aoc::sim::GamePace::instance().eraInterval);
+    }
 
     if (!tunedDir.empty()) {
         loadTunedOverrides(tunedDir);

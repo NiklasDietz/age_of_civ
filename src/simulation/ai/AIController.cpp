@@ -314,7 +314,7 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
     this->executeCityActions(gameState, grid);
     this->m_builderController.manageBuildersAndImprovements(gameState, grid);
     this->m_settlerController.executeSettlerActions(gameState, grid);
-    this->m_militaryController.executeMilitaryActions(gameState, grid, rng);
+    this->m_militaryController.executeMilitaryActions(gameState, grid, rng, &diplomacy);
     this->manageEconomy(gameState, diplomacy, market);
     this->manageMonetarySystem(gameState, grid, diplomacy);
     aoc::sim::aiEconomicStrategy(gameState, grid, market, diplomacy, this->m_player,
@@ -482,7 +482,7 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                 const float launchScore = bh.nukeWillingness * bh.riskTolerance;
                 const float roll = rng.nextFloat(0.0f, 1.0f);
 
-                if (roll < launchScore * 0.04f) {
+                if (roll < launchScore * 0.015f) {  // was 0.04 — audit showed 1.7 strikes/sim, too spammy
                     aoc::game::Player* enemy = gameState.player(enemyId);
                     aoc::hex::AxialCoord targetLoc{};
                     int32_t weakestPop = std::numeric_limits<int32_t>::max();
@@ -809,9 +809,18 @@ static float scoreMilitary(const LeaderBehavior& behavior,
     const float threatLevelBoost = 1.0f + behavior.milThreatSensitivity * threatLevel;
 
     (void)treasury;  // production paid in hammers, not gold.
+    // WP-D3: warmonger pivot. Leaders with militaryAggression >= 1.5 get a
+    // sharp boost to military score so production queue dominates with
+    // military units. This is the "pump out tanks" mode for civs like
+    // Tlatoani / Genghis. Without this they still build wonders/buildings
+    // even when supposedly all-in on conquest.
+    const float warmongerBoost = (behavior.militaryAggression >= 1.5f)
+        ? 2.0f * behavior.militaryAggression
+        : 1.0f;
     return behavior.milBaseWeight
            * behavior.prodMilitary
            * behavior.militaryAggression
+           * warmongerBoost
            * militaryNeed.score(static_cast<float>(militaryUnits))
            * threatScore
            * emergencyMultiplier

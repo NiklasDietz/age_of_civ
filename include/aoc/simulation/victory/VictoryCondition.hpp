@@ -106,8 +106,8 @@ inline constexpr uint32_t VICTORY_MASK_SCIENCE      = 1u << 3;
 inline constexpr uint32_t VICTORY_MASK_DOMINATION   = 1u << 4;
 inline constexpr uint32_t VICTORY_MASK_CULTURE      = 1u << 5;
 inline constexpr uint32_t VICTORY_MASK_RELIGION     = 1u << 6;
-inline constexpr uint32_t VICTORY_MASK_CONFEDERATION = 1u << 7;
-inline constexpr uint32_t VICTORY_MASK_ALL          = 0xFFu;
+inline constexpr uint32_t VICTORY_MASK_CONFEDERATION = 1u << 7;  // RESERVED — disabled (AI never forms qualifying blocs)
+inline constexpr uint32_t VICTORY_MASK_ALL          = 0x7Fu;     // excludes CONFEDERATION
 
 /// Parse a comma-separated list like "score,science,domination" into a bitmask.
 /// Recognised tokens (case-insensitive): score, integration, laststanding,

@@ -37,10 +37,10 @@ struct BalanceParams {
     // Loyalty / secession.
     // GA-tuned 2026-04-25 (30 gen × 12 pop × 5 games × 800 turns, 4 maps,
     // --balance-winrate, fit=0.9120, ent=0.97): committed top genome.
-    float   baseLoyalty              = 2.33f;  ///< Per-turn baseline loyalty
-    int32_t loyaltyPressureRadius    = 5;      ///< Hexes a city projects pressure
-    int32_t sustainedUnrestTurns     = 4;      ///< Turns below Unrest → secession eligible
-    int32_t distantCityThreshold     = 7;      ///< Hexes from capital for periphery secession
+    float   baseLoyalty              = 2.56f;  ///< GA 2026-04-25 v3
+    int32_t loyaltyPressureRadius    = 5;
+    int32_t sustainedUnrestTurns     = 2;
+    int32_t distantCityThreshold     = 8;
 
     /// WP-C1: era-indexed foreign-city-pressure decay multiplier. Index is
     /// the player's `currentRevolution` (0..5). Defaults match the legacy
@@ -53,13 +53,12 @@ struct BalanceParams {
     // still fired at turn 225 in some sims. Heavy push: 12000 threshold,
     // 7 wonders, 1.5× lead so Culture lands 700-900 consistently.
     // GA-tuned 2026-04-25 with 0.5× culture accumulation rate active.
-    float   cultureVictoryThreshold  = 9000.0f;  // 6000=9/12, 12000=0/12 → midpoint
-    int32_t cultureVictoryMinWonders = 4;
-    float   cultureVictoryLeadRatio  = 1.10f;
+    float   cultureVictoryThreshold  = 5684.0f;  // GA 2026-04-25 v3
+    int32_t cultureVictoryMinWonders = 5;
+    float   cultureVictoryLeadRatio  = 1.77f;
 
-    // GA-tuned 2026-04-25.
-    float   integrationThreshold     = 1.63f;
-    int32_t integrationTurnsRequired = 8;
+    float   integrationThreshold     = 2.00f;  // GA 2026-04-25 v3
+    int32_t integrationTurnsRequired = 9;
 
     // Victory: religion dominance fraction (0..1). Each other civ must have
     // this fraction of its cities following your religion for a religious win.
@@ -67,13 +66,13 @@ struct BalanceParams {
     // adopt your religion to count that civ as dominated. With multi-
     // religion crowding (every player founds), high fractions are
     // architecturally impossible.
-    float   religionDominanceFrac    = 0.10f;
+    float   religionDominanceFrac    = 0.10f;  // GA suggested 0.38 — too restrictive, audit dropped Religion 17%->5%
 
     // Victory: space race cost multiplier (1.0 = nominal SPACE_PROJECT_DEFS).
     // Pulled up from GA 0.59 so science path lands similarly-paced to other
     // victory types instead of sprinting; still below 1.0 default so science
     // civs have reachable projects.
-    float   spaceRaceCostMult        = 1.00f;  // 5/5 + Exoplanet required; nominal cost
+    float   spaceRaceCostMult        = 0.69f;  // GA 2026-04-25 v3
 
     // Production-chain tuning (added for the chain-health audit).  GA-tunable
     // scalars that shift recipe output and consumer drain so the balance

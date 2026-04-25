@@ -181,6 +181,26 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     atkStrength += static_cast<float>(attacker.experience().totalCombatBonus());
     defStrength += static_cast<float>(defender.experience().totalCombatBonus());
 
+    // Civ-specific unique unit bonuses. Applies only when the unit's type
+    // matches the civ's `uniqueUnit.baseUnit` — Civ-6 style: Romans get the
+    // Legion bonus only on Swordsmen, not on Warriors.
+    {
+        const aoc::game::Player* atkP = gameState.player(attacker.owner());
+        const aoc::game::Player* defP = gameState.player(defender.owner());
+        if (atkP != nullptr) {
+            const aoc::sim::CivilizationDef& cd = aoc::sim::civDef(atkP->civId());
+            if (cd.uniqueUnit.baseUnit == attacker.typeId()) {
+                atkStrength += static_cast<float>(cd.uniqueUnit.combatBonus);
+            }
+        }
+        if (defP != nullptr) {
+            const aoc::sim::CivilizationDef& cd = aoc::sim::civDef(defP->civId());
+            if (cd.uniqueUnit.baseUnit == defender.typeId()) {
+                defStrength += static_cast<float>(cd.uniqueUnit.combatBonus);
+            }
+        }
+    }
+
     // Civ ability: flat combat strength bonus for land units.
     {
         const aoc::game::Player* atkPlayer = gameState.player(attacker.owner());
@@ -444,6 +464,24 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
     };
     atkStrength *= rngStarveMult(attacker.turnsStarving());
     defStrength *= rngStarveMult(defender.turnsStarving());
+
+    // Civ unique-unit bonuses (ranged uses rangedBonus for atk, combatBonus for def).
+    {
+        const aoc::game::Player* atkP = gameState.player(attacker.owner());
+        const aoc::game::Player* defP = gameState.player(defender.owner());
+        if (atkP != nullptr) {
+            const aoc::sim::CivilizationDef& cd = aoc::sim::civDef(atkP->civId());
+            if (cd.uniqueUnit.baseUnit == attacker.typeId()) {
+                atkStrength += static_cast<float>(cd.uniqueUnit.rangedBonus);
+            }
+        }
+        if (defP != nullptr) {
+            const aoc::sim::CivilizationDef& cd = aoc::sim::civDef(defP->civId());
+            if (cd.uniqueUnit.baseUnit == defender.typeId()) {
+                defStrength += static_cast<float>(cd.uniqueUnit.combatBonus);
+            }
+        }
+    }
 
     // Formation multiplier (symmetric with melee).
     atkStrength *= formationStrengthMultiplier(attacker.formationLevel());

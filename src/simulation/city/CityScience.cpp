@@ -65,6 +65,7 @@ float computePlayerScience(const aoc::game::Player& player,
 
         // 4. Building bonuses and multiplier
         float bestMultiplier = 1.0f;
+        const CivilizationDef& civSpec = civDef(player.civId());
         const CityDistrictsComponent& districts = city->districts();
         for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
             for (BuildingId bid : district.buildings) {
@@ -72,6 +73,9 @@ float computePlayerScience(const aoc::game::Player& player,
                     const BuildingDef& bdef = buildingDef(bid);
                     cityScience += static_cast<float>(bdef.scienceBonus);
                     bestMultiplier = std::max(bestMultiplier, bdef.scienceMultiplier);
+                    if (civSpec.uniqueBuilding.baseBuilding == bid) {
+                        cityScience += static_cast<float>(civSpec.uniqueBuilding.scienceBonus);
+                    }
                 }
             }
 
@@ -169,11 +173,15 @@ float computePlayerCulture(const aoc::game::Player& player,
         }
 
         // Building culture (Theatre Square district buildings)
+        const CivilizationDef& civSpec = civDef(player.civId());
         const CityDistrictsComponent& districts = city->districts();
         for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
             for (BuildingId bid : district.buildings) {
                 if (bid.value < BUILDING_DEFS.size()) {
                     totalCulture += static_cast<float>(buildingDef(bid).cultureBonus);
+                    if (civSpec.uniqueBuilding.baseBuilding == bid) {
+                        totalCulture += static_cast<float>(civSpec.uniqueBuilding.cultureBonus);
+                    }
                 }
             }
         }

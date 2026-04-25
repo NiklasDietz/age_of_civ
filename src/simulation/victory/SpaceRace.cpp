@@ -19,6 +19,7 @@
 #include "aoc/simulation/city/CityScience.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
+#include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/core/Log.hpp"
 
@@ -102,7 +103,8 @@ void processSpaceRace(aoc::game::GameState& gameState, const aoc::map::HexGrid& 
         // Scale the nominal cost by the balance multiplier so the balance GA
         // can tune game length without touching SPACE_PROJECT_DEFS.
         const float effectiveCost = def.productionCost
-                                  * aoc::balance::params().spaceRaceCostMult;
+                                  * aoc::balance::params().spaceRaceCostMult
+                                  * aoc::sim::GamePace::instance().costMultiplier;
 
         if (race.progress[idx] >= effectiveCost) {
             // WP-B2 Mars gate: require stockpiled Titanium + He3 +

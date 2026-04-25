@@ -131,10 +131,16 @@ static float computeCityProductionGS(const aoc::game::Player& player,
     }
 
     // Building production bonuses + district adjacency
+    const CivilizationDef& civSpec = civDef(player.civId());
     const CityDistrictsComponent& districts = city.districts();
     for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
         for (BuildingId bid : district.buildings) {
             totalProduction += static_cast<float>(buildingDef(bid).productionBonus);
+            // Civ-6 style unique building bonus: if civ has uniqueBuilding
+            // with this base, add productionBonus.
+            if (civSpec.uniqueBuilding.baseBuilding == bid) {
+                totalProduction += static_cast<float>(civSpec.uniqueBuilding.productionBonus);
+            }
         }
         // Adjacency bonus (still uses legacy world for cross-city district lookup)
         if (grid.isValid(district.location)) {

@@ -12,6 +12,7 @@
 #include "aoc/simulation/victory/Prestige.hpp"
 #include "aoc/simulation/victory/SpaceRace.hpp"
 #include "aoc/balance/BalanceParams.hpp"
+#include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
@@ -642,7 +643,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
             const float ratio = (rivalCount > 0)
                 ? static_cast<float>(capitalsOwned) / static_cast<float>(rivalCount)
                 : 0.0f;
-            if (ratio >= 0.50f && alive > 1 && capitalsOwned >= 3) {
+            if (ratio >= 0.25f && alive > 1 && capitalsOwned >= 2) {
                 LOG_INFO("Player %u wins by DOMINATION (%d/%d rival capitals owned)",
                          static_cast<unsigned>(candidate->id()),
                          capitalsOwned, rivalCount);
@@ -727,7 +728,10 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     // the winner to have meaningfully out-produced everyone on culture.
     if ((enabledTypes & VICTORY_MASK_CULTURE) != 0u) {
         const aoc::balance::BalanceParams& bal = aoc::balance::params();
-        const float CULTURE_VICTORY_THRESHOLD = bal.cultureVictoryThreshold;
+        // Scale threshold by GamePace so 300t and 2000t games take comparable
+        // proportion-of-game to Culture-win.
+        const float CULTURE_VICTORY_THRESHOLD = bal.cultureVictoryThreshold
+                                              * aoc::sim::GamePace::instance().costMultiplier;
         const int32_t CULTURE_VICTORY_MIN_WONDERS = bal.cultureVictoryMinWonders;
         const float CULTURE_VICTORY_LEAD_RATIO = bal.cultureVictoryLeadRatio;
 
@@ -772,13 +776,12 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
         }
     }
 
-    // 3e. Confederation co-win. Uses explicit ConfederationComponent records
-    // (formed via formConfederation with era + trade-route + stance gates).
-    // Effective bloc prestige = sum / sqrt(N) — diminishing-share factor stops
-    // a 5-member bloc from trivially outscoring a lone front-runner. Still
-    // needs CONFEDERATION_COWIN_MIN (3+) live members and combined effective
-    // prestige >= 1.2x the best single civ.
-    if ((enabledTypes & VICTORY_MASK_CONFEDERATION) != 0u
+    // 3e. Confederation co-win — DISABLED 2026-04-25.
+    // AI doesn't form qualifying 3+ blocs (only ephemeral 2-member pacts);
+    // mechanic was always firing as Prestige timeout. Removed from default
+    // VICTORY_MASK_ALL (0x7F). Code retained for potential future re-enable
+    // once an AI confederation-formation heuristic is built.
+    if (false && (enabledTypes & VICTORY_MASK_CONFEDERATION) != 0u
         && currentTurn >= maxTurns
         && gameState.playerCount() >= 3) {
         float bestSinglePrestige = 0.0f;

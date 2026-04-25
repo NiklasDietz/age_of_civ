@@ -43,7 +43,7 @@ using TurnNumber  = uint32_t;
 inline constexpr PlayerId   INVALID_PLAYER = std::numeric_limits<PlayerId>::max();
 inline constexpr TurnNumber TURN_ZERO      = 0;
 
-inline constexpr uint8_t MAX_PLAYERS = 16;
+inline constexpr uint8_t MAX_PLAYERS = 20;
 
 /// Special player ID for barbarian-controlled units and encampments.
 inline constexpr PlayerId BARBARIAN_PLAYER = 255;

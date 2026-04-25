@@ -21,6 +21,7 @@
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/unit/Combat.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -153,7 +154,8 @@ AIMilitaryController::AIMilitaryController(PlayerId player, aoc::ui::AIDifficult
  */
 void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameState,
                                                    aoc::map::HexGrid& grid,
-                                                   aoc::Random& rng) {
+                                                   aoc::Random& rng,
+                                                   aoc::sim::DiplomacyManager* diplomacy) {
     aoc::game::Player* gsPlayer = gameState.player(this->m_player);
     if (gsPlayer == nullptr) {
         return;
@@ -587,37 +589,139 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
         // Low peripheryTolerance leaders hate extending supply lines; scale
         // striking range 8..25 tiles from the gene (baseline 15 at 1.0).
         const LeaderBehavior& myBehavior = leaderPersonality(gsPlayer->civId()).behavior;
+        // WP-D3: range scales with periphery + aggression but kept tight
+        // so units stay close enough to actually capture. 18 base × periphery,
+        // capped 10-28. Wider range stretched units thin and cut captures.
         const int32_t strikingRange = static_cast<int32_t>(
-            std::clamp(15.0f * myBehavior.peripheryTolerance, 8.0f, 25.0f));
-        if (ownMilitary >= 2 && threatRatio < 0.65f) {
-            // Identify the weakest neighbour within striking range.
-            // WP-D: relaxed to <= 100% so AI conquers parity-strength
-            // neighbours when geography favors. Domination victory was
-            // 0/12 with the 80% gate.
-            PlayerId  weakestNeighbour = INVALID_PLAYER;
-            int32_t   weakestMilitary  = ownMilitary;
+            std::clamp(18.0f * myBehavior.peripheryTolerance
+                            * std::sqrt(myBehavior.militaryAggression),
+                       10.0f, 28.0f));
+        // WP-D3: per-leader war affinity. High-aggression leaders launch
+        // wars at higher threat ratios + accept stronger opponents. Low-
+        // aggression leaders stay defensive. militaryAggression range
+        // 0.2..1.7 in leaders.json.
+        const float aggression = std::clamp(myBehavior.militaryAggression, 0.2f, 2.0f);
+        const float threatGate = std::clamp(0.5f + 0.4f * aggression, 0.4f, 1.4f);
 
-            for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
-                if (other->id() == this->m_player) {
-                    continue;
-                }
-                // Check if this player has a city within striking range.
-                bool hasNearCity = false;
-                for (const std::unique_ptr<aoc::game::City>& city : other->cities()) {
-                    for (const aoc::hex::AxialCoord& ownCity : ownCityLocs) {
-                        if (grid.distance(city->location(), ownCity) <= strikingRange) {
-                            hasNearCity = true;
+        // WP-D3 part 2: validate persistent war target. Reset if target
+        // eliminated, capital lost to us, or commitment expired.
+        if (this->m_currentWarTarget != INVALID_PLAYER) {
+            const aoc::game::Player* tp = gameState.player(this->m_currentWarTarget);
+            bool stillValid = (tp != nullptr) && !tp->victoryTracker().isEliminated;
+            // Drop target if their original capital is now ours (mission accomplished).
+            if (stillValid && tp != nullptr) {
+                bool capCaptured = false;
+                for (const std::unique_ptr<aoc::game::Player>& holder : gameState.players()) {
+                    for (const std::unique_ptr<aoc::game::City>& c : holder->cities()) {
+                        if (c->isOriginalCapital()
+                         && c->originalOwner() == this->m_currentWarTarget
+                         && c->owner() == this->m_player) {
+                            capCaptured = true;
                             break;
                         }
                     }
-                    if (hasNearCity) { break; }
+                    if (capCaptured) { break; }
                 }
-                if (!hasNearCity) { continue; }
+                if (capCaptured) { stillValid = false; }
+            }
+            // Sustained-pressure cap: 60 turns max per campaign before
+            // re-evaluation (avoid endless quagmire on a strong neighbour).
+            if (this->m_warCommitmentTurns >= 30) { stillValid = false; }
+            if (!stillValid) {
+                this->m_currentWarTarget = INVALID_PLAYER;
+                this->m_warCommitmentTurns = 0;
+            }
+        }
 
-                const int32_t theirMilitary = other->militaryUnitCount();
-                if (theirMilitary < weakestMilitary) {
-                    weakestMilitary  = theirMilitary;
-                    weakestNeighbour = other->id();
+        if (ownMilitary >= 2 && threatRatio < threatGate) {
+            // Aggressive leaders attack opponents up to 150% own strength;
+            // defensive leaders only attack <80%.
+            const float oppRatio = std::clamp(0.8f + 0.4f * aggression, 0.5f, 1.6f);
+            PlayerId  weakestNeighbour = INVALID_PLAYER;
+            int32_t   weakestMilitary  = static_cast<int32_t>(
+                static_cast<float>(ownMilitary) * oppRatio);
+
+            // Persistent target overrides re-evaluation if still in range.
+            if (this->m_currentWarTarget != INVALID_PLAYER) {
+                const aoc::game::Player* tp = gameState.player(this->m_currentWarTarget);
+                if (tp != nullptr) {
+                    bool hasNearCity = false;
+                    for (const std::unique_ptr<aoc::game::City>& city : tp->cities()) {
+                        for (const aoc::hex::AxialCoord& ownCity : ownCityLocs) {
+                            if (grid.distance(city->location(), ownCity) <= strikingRange) {
+                                hasNearCity = true; break;
+                            }
+                        }
+                        if (hasNearCity) { break; }
+                    }
+                    if (hasNearCity) {
+                        weakestNeighbour = this->m_currentWarTarget;
+                        ++this->m_warCommitmentTurns;
+                    }
+                }
+            }
+
+            // Skip new-target search if we already have a persistent target.
+            if (this->m_currentWarTarget == INVALID_PLAYER) {
+                for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+                    if (other->id() == this->m_player) {
+                        continue;
+                    }
+                    // Check if this player has a city within striking range.
+                    bool hasNearCity = false;
+                    for (const std::unique_ptr<aoc::game::City>& city : other->cities()) {
+                        for (const aoc::hex::AxialCoord& ownCity : ownCityLocs) {
+                            if (grid.distance(city->location(), ownCity) <= strikingRange) {
+                                hasNearCity = true;
+                                break;
+                            }
+                        }
+                        if (hasNearCity) { break; }
+                    }
+                    if (!hasNearCity) { continue; }
+
+                    // WP-D3: prefer victims who still hold their original
+                    // capital (a Domination-relevant target) over civs whose
+                    // capital we / someone else already took.
+                    bool stillHasOwnCapital = false;
+                    for (const std::unique_ptr<aoc::game::City>& city : other->cities()) {
+                        if (city->isOriginalCapital()
+                         && city->originalOwner() == other->id()
+                         && city->owner() == other->id()) {
+                            stillHasOwnCapital = true;
+                            break;
+                        }
+                    }
+
+                    int32_t theirMilitary = other->militaryUnitCount();
+                    // Bias: subtract 2 from effective strength if they still
+                    // hold their original capital (juicy Domination target).
+                    if (stillHasOwnCapital) { theirMilitary -= 2; }
+                    if (theirMilitary < weakestMilitary) {
+                        weakestMilitary  = theirMilitary;
+                        weakestNeighbour = other->id();
+                    }
+                }
+                // Commit to the new target.
+                if (weakestNeighbour != INVALID_PLAYER) {
+                    this->m_currentWarTarget = weakestNeighbour;
+                    this->m_warCommitmentTurns = 1;
+                    // WP-D3: actually declare war (not just move troops). Without
+                    // a formal war state the engine treats movement as ZoC stops
+                    // and city-capture occurs without diplomatic consequence —
+                    // muddles AI decisions on retaliation, alliance triggers,
+                    // and peace-deal negotiation.
+                    if (diplomacy != nullptr
+                     && this->m_player < aoc::sim::CITY_STATE_PLAYER_BASE
+                     && weakestNeighbour < aoc::sim::CITY_STATE_PLAYER_BASE
+                     && !diplomacy->isAtWar(this->m_player, weakestNeighbour)) {
+                        diplomacy->declareWar(this->m_player, weakestNeighbour,
+                                              CasusBelliType::SurpriseWar,
+                                              nullptr, &gameState, 0);
+                        LOG_INFO("AI Player %u declared war on Player %u (Domination campaign)",
+                                 static_cast<unsigned>(this->m_player),
+                                 static_cast<unsigned>(weakestNeighbour));
+                    }
                 }
             }
 
@@ -646,11 +750,10 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                         continue;  // Overextended — hold position this turn.
                     }
 
-                    // WP-D1: garrison freshly-captured enemy capitals. If unit
-                    // is sitting on a captured original-capital tile and that
-                    // capital was last flipped within recent turns, hold
-                    // position to defend. Prevents the "capture then walk away
-                    // and lose it next turn" cycle that kept Domination 0/12.
+                    // WP-D2: only ONE unit per captured capital stays as
+                    // garrison. Other units push out to next target. Prior
+                    // version held ALL units on captured caps so AI never
+                    // amassed 2+ capitals (units locked at first conquest).
                     {
                         aoc::game::City* hereCity = nullptr;
                         for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
@@ -664,9 +767,16 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                          && hereCity->isOriginalCapital()
                          && hereCity->originalOwner() != this->m_player
                          && hereCity->loyalty().loyalty < 80.0f) {
-                            // Captured enemy capital still consolidating —
-                            // garrison it instead of pushing out.
-                            continue;
+                            // Count own units already standing on this tile.
+                            int32_t alreadyHere = 0;
+                            for (const std::unique_ptr<aoc::game::Unit>& u : gsPlayer->units()) {
+                                if (u.get() == unit) { continue; }
+                                if (u->position() == unit->position()
+                                 && aoc::sim::isMilitary(u->typeDef().unitClass)) {
+                                    ++alreadyHere;
+                                }
+                            }
+                            if (alreadyHere == 0) { continue; }  // sole defender, hold
                         }
                     }
 
@@ -675,11 +785,31 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                         continue;
                     }
 
-                    // Domination bias: target capital if within striking range,
-                    // else nearest city. Capitals decide Domination victory so
-                    // AI must actively prioritize them, not just nearest mass.
-                    const aoc::hex::AxialCoord capitalLoc =
+                    // WP-D3: army coordination — every military unit converges
+                    // on the SAME enemy capital (or nearest non-captured city
+                    // if capital already ours). Without this, units scatter to
+                    // closest enemy cities + never amass enough force on the
+                    // capital to break siege.
+                    aoc::hex::AxialCoord capitalLoc =
                         targetPlayer->cities().front()->location();
+                    // If capital already ours, retarget to next non-captured
+                    // enemy city of the same target so we keep pressure on.
+                    {
+                        aoc::game::City* capCity = nullptr;
+                        for (const std::unique_ptr<aoc::game::Player>& holder : gameState.players()) {
+                            aoc::game::City* c = holder->cityAt(capitalLoc);
+                            if (c != nullptr) { capCity = c; break; }
+                        }
+                        if (capCity != nullptr && capCity->owner() == this->m_player) {
+                            // Pick next enemy city of this target still owned by them.
+                            for (const std::unique_ptr<aoc::game::City>& c : targetPlayer->cities()) {
+                                if (c->owner() == targetPlayer->id()) {
+                                    capitalLoc = c->location();
+                                    break;
+                                }
+                            }
+                        }
+                    }
                     const int32_t capitalDist = grid.distance(unit->position(), capitalLoc);
                     aoc::hex::AxialCoord targetCity = capitalLoc;
                     int32_t              bestDist   = capitalDist;

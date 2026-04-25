@@ -222,14 +222,56 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
                 city->loyalty().loyalty = 60.0f;
                 city->loyalty().unrestTurns = 0;
 
-                // WP-D1: garrison walls. Force-restore ancient wall tier so
-                // re-capture requires siege (multiple turns of bombardment),
-                // not a one-step militia walk-in. Without walls, captured
-                // cities flip 4-5 times per game between attackers.
-                if (city->walls().maxHP <= 0) {
-                    city->walls().setTier(aoc::sim::WallTier::Ancient);
-                }
+                // WP-D1 v2: garrison walls. Restore Medieval tier (200 HP)
+                // so siege actually takes multiple turns. Ancient (100 HP)
+                // fell in 1-2 bombardments, allowing rapid back-flipping.
+                city->walls().setTier(aoc::sim::WallTier::Medieval);
                 city->walls().currentHP = city->walls().maxHP;
+
+                // WP-D3: civ elimination check. If previous owner has no
+                // remaining owned cities, mark them eliminated for victory
+                // condition tracking. Without this, captured-out civs linger
+                // in the alive count and inflate the Domination ratio
+                // denominator.
+                {
+                    aoc::game::Player* prev = gameState.player(previousOwner);
+                    if (prev != nullptr && !prev->victoryTracker().isEliminated) {
+                        bool stillHasOwnedCity = false;
+                        for (const std::unique_ptr<aoc::game::Player>& holder : gameState.players()) {
+                            for (const std::unique_ptr<aoc::game::City>& c : holder->cities()) {
+                                if (c->owner() == previousOwner) {
+                                    stillHasOwnedCity = true;
+                                    break;
+                                }
+                            }
+                            if (stillHasOwnedCity) { break; }
+                        }
+                        if (!stillHasOwnedCity) {
+                            prev->victoryTracker().isEliminated = true;
+                            LOG_INFO("Player %u eliminated (last city captured by Player %u)",
+                                     static_cast<unsigned>(previousOwner),
+                                     static_cast<unsigned>(unit.owner()));
+                            // Score VP: eliminating a rival civ = +100 VP for
+                            // the conqueror. Lets warmonger civs compete with
+                            // wonder/district builders under Score victory.
+                            aoc::game::Player* ownerP = gameState.player(unit.owner());
+                            if (ownerP != nullptr) {
+                                ownerP->victoryTracker().eraVictoryPoints += 100;
+                            }
+                        }
+                    }
+                }
+                // Score VP per capture: capital +25, regular +5. Rewards
+                // conquest under Score so military civs are competitive.
+                {
+                    aoc::game::Player* ownerP = gameState.player(unit.owner());
+                    if (ownerP != nullptr) {
+                        const int32_t vp = (city->isOriginalCapital()
+                                            && city->originalOwner() != unit.owner())
+                                          ? 25 : 5;
+                        ownerP->victoryTracker().eraVictoryPoints += vp;
+                    }
+                }
 
                 // Transfer tile ownership for worked tiles
                 for (const aoc::hex::AxialCoord& workedTile : city->workedTiles()) {

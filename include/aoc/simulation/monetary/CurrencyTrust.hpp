@@ -52,7 +52,7 @@ struct CurrencyTrustComponent {
 
     /// Per-player trust modifiers (bilateral). Players who traded with you
     /// longer trust you more. Indexed by PlayerId.
-    static constexpr int32_t MAX_PLAYERS = 16;
+    static constexpr int32_t MAX_PLAYERS = 20;
     float bilateralTrust[MAX_PLAYERS] = {};
 };
 
