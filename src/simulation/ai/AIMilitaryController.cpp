@@ -646,6 +646,30 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                         continue;  // Overextended — hold position this turn.
                     }
 
+                    // WP-D1: garrison freshly-captured enemy capitals. If unit
+                    // is sitting on a captured original-capital tile and that
+                    // capital was last flipped within recent turns, hold
+                    // position to defend. Prevents the "capture then walk away
+                    // and lose it next turn" cycle that kept Domination 0/12.
+                    {
+                        aoc::game::City* hereCity = nullptr;
+                        for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+                            aoc::game::City* c = p->cityAt(unit->position());
+                            if (c != nullptr && c->owner() == this->m_player) {
+                                hereCity = c;
+                                break;
+                            }
+                        }
+                        if (hereCity != nullptr
+                         && hereCity->isOriginalCapital()
+                         && hereCity->originalOwner() != this->m_player
+                         && hereCity->loyalty().loyalty < 80.0f) {
+                            // Captured enemy capital still consolidating —
+                            // garrison it instead of pushing out.
+                            continue;
+                        }
+                    }
+
                     const aoc::game::Player* targetPlayer = gameState.player(weakestNeighbour);
                     if (targetPlayer == nullptr || targetPlayer->cities().empty()) {
                         continue;

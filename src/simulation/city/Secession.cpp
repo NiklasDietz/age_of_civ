@@ -47,8 +47,16 @@ bool checkAndPerformSecession(aoc::game::GameState& gameState,
     // Primary trigger: loyalty floor hit zero.
     bool trigger = (loyalty.loyalty <= 0.0f);
 
+    // WP-D1: occupied cities (original owner != current owner) require 3x
+    // longer sustained unrest before secession, modeling military
+    // occupation suppression. Without this, captured capitals flip back
+    // within ~5 turns and Domination victory was 0/12.
+    const int32_t unrestThreshold = (city.originalOwner() != player)
+        ? bal.sustainedUnrestTurns * 3
+        : bal.sustainedUnrestTurns;
+
     // Secondary trigger: sustained unrest in a distant periphery city.
-    if (!trigger && loyalty.unrestTurns >= bal.sustainedUnrestTurns) {
+    if (!trigger && loyalty.unrestTurns >= unrestThreshold) {
         int32_t distFromCapital = 0;
         for (const std::unique_ptr<aoc::game::City>& other : gsPlayer->cities()) {
             if (other->isOriginalCapital()) {

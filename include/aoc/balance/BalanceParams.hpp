@@ -53,9 +53,9 @@ struct BalanceParams {
     // still fired at turn 225 in some sims. Heavy push: 12000 threshold,
     // 7 wonders, 1.5× lead so Culture lands 700-900 consistently.
     // GA-tuned 2026-04-25 with 0.5× culture accumulation rate active.
-    float   cultureVictoryThreshold  = 4398.0f;
-    int32_t cultureVictoryMinWonders = 3;
-    float   cultureVictoryLeadRatio  = 1.20f;
+    float   cultureVictoryThreshold  = 9000.0f;  // 6000=9/12, 12000=0/12 → midpoint
+    int32_t cultureVictoryMinWonders = 4;
+    float   cultureVictoryLeadRatio  = 1.10f;
 
     // GA-tuned 2026-04-25.
     float   integrationThreshold     = 1.63f;
@@ -73,7 +73,7 @@ struct BalanceParams {
     // Pulled up from GA 0.59 so science path lands similarly-paced to other
     // victory types instead of sprinting; still below 1.0 default so science
     // civs have reachable projects.
-    float   spaceRaceCostMult        = 0.60f;  // cheaper so Science wins land 700-900
+    float   spaceRaceCostMult        = 1.00f;  // 5/5 + Exoplanet required; nominal cost
 
     // Production-chain tuning (added for the chain-health audit).  GA-tunable
     // scalars that shift recipe output and consumer drain so the balance

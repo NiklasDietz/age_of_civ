@@ -233,6 +233,20 @@ CurrencyAmount pillageTrader(aoc::game::GameState& gameState,
 [[nodiscard]] int32_t countActiveTradeRoutes(const aoc::game::GameState& gameState,
                                               PlayerId player);
 
+/**
+ * @brief WP-S2: drive Logistics units' supply cycle for one turn.
+ *
+ * For each Logistics unit owned by any player:
+ *   - Idle: scan owner's encampments; pick one with food < 50 or fuel < 50.
+ *           Set as target. Walk to nearest home city to load.
+ *   - LoadingAtCity: drain stockpile into onboard cargo, set state EnRouteToDepot.
+ *   - EnRouteToDepot: walk toward target encampment.
+ *   - UnloadingAtDepot: dump cargo into encampment buffer, set state EnRouteToCity.
+ *   - EnRouteToCity: walk back to home city, return to idle.
+ */
+void processLogisticsUnits(aoc::game::GameState& gameState,
+                            aoc::map::HexGrid& grid);
+
 /// Preview information for a potential trade route (no side effects).
 struct TradeRouteEstimate {
     int32_t        distanceTiles  = 0;   ///< Path length in tiles.

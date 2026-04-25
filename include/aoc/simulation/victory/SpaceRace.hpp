@@ -57,7 +57,7 @@ inline constexpr std::array<SpaceProjectDef, SPACE_PROJECT_COUNT> SPACE_PROJECT_
     {SpaceProjectId::EarthSatellite,      "Launch Earth Satellite",  TechId{18}, 1200.0f},
     {SpaceProjectId::MoonLanding,         "Launch Moon Landing",     TechId{20}, 1600.0f},
     {SpaceProjectId::LunarColony,         "Establish Lunar Colony",  TechId{20}, 2000.0f},
-    {SpaceProjectId::MarsColony,          "Mars Colony Ship",        TechId{22}, 2400.0f},
+    {SpaceProjectId::MarsColony,          "Mars Colony Ship",        TechId{20}, 2400.0f},
     {SpaceProjectId::ExoplanetExpedition, "Exoplanet Expedition",    TechId{25}, 3200.0f},
 }};
 

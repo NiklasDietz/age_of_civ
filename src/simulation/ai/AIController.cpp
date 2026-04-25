@@ -1112,6 +1112,40 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             }
         }
 
+        // --- WP-S2 Supply Wagon (Logistics) ---
+        // Build one wagon per ~3 owned encampments, capped at cities/3 + 1.
+        // Engineering tech (TechId 6) gates the unit. Score scales with
+        // unmet supply demand (encampment buffer < refill threshold).
+        if (gsPlayer->tech().hasResearched(TechId{6})) {
+            int32_t ownedEncampments = 0;
+            int32_t needRefill = 0;
+            for (const std::pair<const int32_t,
+                    aoc::game::GameState::EncampmentBuffer>& kv
+                    : gameState.encampments()) {
+                if (kv.second.owner != gsPlayer->id()) { continue; }
+                ++ownedEncampments;
+                if (kv.second.food < 50 || kv.second.fuel < 50) { ++needRefill; }
+            }
+            int32_t existingWagons = 0;
+            for (const std::unique_ptr<aoc::game::Unit>& u : gsPlayer->units()) {
+                if (u->typeDef().unitClass == UnitClass::Logistics) {
+                    ++existingWagons;
+                }
+            }
+            const int32_t cap = std::max(1, ownedCityCount / 3 + 1);
+            if (ownedEncampments > 0 && needRefill > 0 && existingWagons < cap) {
+                ProductionCandidate candidate{};
+                candidate.item.type      = ProductionItemType::Unit;
+                candidate.item.itemId    = 62u;
+                candidate.item.name      = "Supply Wagon";
+                candidate.item.totalCost = static_cast<float>(
+                    unitTypeDef(UnitTypeId{62}).productionCost);
+                candidate.item.progress  = 0.0f;
+                candidate.score          = 1.5f * static_cast<float>(needRefill);
+                candidates.push_back(std::move(candidate));
+            }
+        }
+
         // --- Buildings ---
         {
             aoc::sim::AIContext aiCtx{};

@@ -15,6 +15,7 @@
 #include "aoc/simulation/unit/SupplyLines.hpp"
 #include "aoc/simulation/economy/TradeRouteSystem.hpp"
 #include "aoc/simulation/economy/DomesticCourier.hpp"
+#include "aoc/simulation/economy/LogisticsComponent.hpp"
 #include "aoc/simulation/diplomacy/Espionage.hpp"
 #include "aoc/simulation/greatpeople/GreatPeople.hpp"
 #include "aoc/simulation/unit/Promotion.hpp"
@@ -56,7 +57,8 @@ public:
     [[nodiscard]] bool isCivilian() const {
         return this->typeDef().unitClass == aoc::sim::UnitClass::Civilian
             || this->typeDef().unitClass == aoc::sim::UnitClass::Settler
-            || this->typeDef().unitClass == aoc::sim::UnitClass::Trader;
+            || this->typeDef().unitClass == aoc::sim::UnitClass::Trader
+            || this->typeDef().unitClass == aoc::sim::UnitClass::Logistics;
     }
 
     // ========================================================================
@@ -183,6 +185,10 @@ public:
     [[nodiscard]] aoc::sim::DomesticCourierComponent& courier() { return this->m_courier; }
     [[nodiscard]] const aoc::sim::DomesticCourierComponent& courier() const { return this->m_courier; }
 
+    /// WP-S2: military supply unit state.
+    [[nodiscard]] aoc::sim::LogisticsComponent& logistics() { return this->m_logistics; }
+    [[nodiscard]] const aoc::sim::LogisticsComponent& logistics() const { return this->m_logistics; }
+
     [[nodiscard]] aoc::sim::SpyComponent& spy() { return this->m_spy; }
     [[nodiscard]] const aoc::sim::SpyComponent& spy() const { return this->m_spy; }
 
@@ -228,6 +234,7 @@ private:
     aoc::sim::NuclearWeaponComponent m_nuclear;
     aoc::sim::TraderComponent m_trader;
     aoc::sim::DomesticCourierComponent m_courier;
+    aoc::sim::LogisticsComponent m_logistics;
     aoc::sim::SpyComponent m_spy;
     aoc::sim::GreatPersonComponent m_greatPerson;
     aoc::sim::UnitExperienceComponent m_experience;

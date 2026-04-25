@@ -20,6 +20,7 @@
 #include "aoc/simulation/economy/AdvancedEconomics.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/simulation/automation/Automation.hpp"
+#include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/simulation/government/Government.hpp"
@@ -1403,6 +1404,139 @@ CurrencyAmount pillageTrader(aoc::game::GameState& gameState,
     }
 
     return totalValue;
+}
+
+void processLogisticsUnits(aoc::game::GameState& gameState,
+                            aoc::map::HexGrid& grid) {
+    constexpr int32_t REFILL_THRESHOLD = 50;
+    constexpr std::array<uint16_t, 5> FOOD_GOODS = {
+        goods::PROCESSED_FOOD, goods::WHEAT, goods::CATTLE,
+        goods::FISH, goods::RICE
+    };
+
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        aoc::game::Player& player = *playerPtr;
+        for (const std::unique_ptr<aoc::game::Unit>& unitPtr : player.units()) {
+            aoc::game::Unit& unit = *unitPtr;
+            if (unit.typeDef().unitClass != UnitClass::Logistics) { continue; }
+            LogisticsComponent& log = unit.logistics();
+
+            switch (log.state) {
+                case LogisticsState::AssigningTask: {
+                    // Pick encampment most in need of refill.
+                    int32_t bestNeed = -1;
+                    int32_t bestIdx = -1;
+                    for (const std::pair<const int32_t,
+                            aoc::game::GameState::EncampmentBuffer>& kv
+                            : gameState.encampments()) {
+                        if (kv.second.owner != player.id()) { continue; }
+                        const int32_t need = (REFILL_THRESHOLD - kv.second.food)
+                                           + (REFILL_THRESHOLD - kv.second.fuel);
+                        if (need > bestNeed) {
+                            bestNeed = need;
+                            bestIdx = kv.first;
+                        }
+                    }
+                    if (bestIdx < 0 || bestNeed <= 0) {
+                        // Idle, no work this turn. Keeps unit alive.
+                        break;
+                    }
+                    log.targetDepotLocation = grid.toAxial(bestIdx);
+
+                    // Pick nearest owned city as home.
+                    aoc::game::City* nearest = nullptr;
+                    int32_t bestDist = std::numeric_limits<int32_t>::max();
+                    for (const std::unique_ptr<aoc::game::City>& c : player.cities()) {
+                        const int32_t d = grid.distance(unit.position(), c->location());
+                        if (d < bestDist) { bestDist = d; nearest = c.get(); }
+                    }
+                    if (nearest == nullptr) { break; }
+                    log.homeCityLocation = nearest->location();
+                    log.state = LogisticsState::EnRouteToCity;
+                    aoc::sim::orderUnitMove(unit, log.homeCityLocation, grid);
+                    aoc::sim::moveUnitAlongPath(gameState, unit, grid);
+                    break;
+                }
+                case LogisticsState::EnRouteToCity: {
+                    if (unit.position() == log.homeCityLocation) {
+                        log.state = LogisticsState::LoadingAtCity;
+                    } else {
+                        aoc::sim::orderUnitMove(unit, log.homeCityLocation, grid);
+                        aoc::sim::moveUnitAlongPath(gameState, unit, grid);
+                        if (unit.position() == log.homeCityLocation) {
+                            log.state = LogisticsState::LoadingAtCity;
+                        }
+                    }
+                    break;
+                }
+                case LogisticsState::LoadingAtCity: {
+                    aoc::game::City* home = player.cityAt(log.homeCityLocation);
+                    if (home == nullptr) {
+                        log.state = LogisticsState::AssigningTask;
+                        break;
+                    }
+                    CityStockpileComponent& sp = home->stockpile();
+                    int32_t foodRem = log.foodCapacity - log.food;
+                    for (uint16_t gid : FOOD_GOODS) {
+                        if (foodRem <= 0) { break; }
+                        const int32_t avail = sp.getAmount(gid);
+                        if (avail <= 0) { continue; }
+                        const int32_t take = std::min(avail, foodRem);
+                        if (sp.consumeGoods(gid, take)) {
+                            log.food += take;
+                            foodRem -= take;
+                        }
+                    }
+                    int32_t fuelRem = log.fuelCapacity - log.fuel;
+                    for (uint16_t gid : {goods::FUEL, goods::COAL}) {
+                        if (fuelRem <= 0) { break; }
+                        const int32_t avail = sp.getAmount(gid);
+                        if (avail <= 0) { continue; }
+                        const int32_t take = std::min(avail, fuelRem);
+                        if (sp.consumeGoods(gid, take)) {
+                            log.fuel += take;
+                            fuelRem -= take;
+                        }
+                    }
+                    log.state = LogisticsState::EnRouteToDepot;
+                    aoc::sim::orderUnitMove(unit, log.targetDepotLocation, grid);
+                    aoc::sim::moveUnitAlongPath(gameState, unit, grid);
+                    break;
+                }
+                case LogisticsState::EnRouteToDepot: {
+                    if (unit.position() == log.targetDepotLocation) {
+                        log.state = LogisticsState::UnloadingAtDepot;
+                    } else {
+                        aoc::sim::orderUnitMove(unit, log.targetDepotLocation, grid);
+                        aoc::sim::moveUnitAlongPath(gameState, unit, grid);
+                        if (unit.position() == log.targetDepotLocation) {
+                            log.state = LogisticsState::UnloadingAtDepot;
+                        }
+                    }
+                    break;
+                }
+                case LogisticsState::UnloadingAtDepot: {
+                    const int32_t depotIdx = grid.toIndex(log.targetDepotLocation);
+                    std::unordered_map<int32_t, aoc::game::GameState::EncampmentBuffer>::iterator
+                        it = gameState.encampments().find(depotIdx);
+                    if (it != gameState.encampments().end()
+                     && it->second.owner == player.id()) {
+                        it->second.food += log.food;
+                        it->second.fuel += log.fuel;
+                        LOG_INFO("Logistics P%u dropped %d food + %d fuel at (%d,%d)",
+                                 static_cast<unsigned>(player.id()),
+                                 log.food, log.fuel,
+                                 log.targetDepotLocation.q,
+                                 log.targetDepotLocation.r);
+                    }
+                    log.food = 0;
+                    log.fuel = 0;
+                    log.state = LogisticsState::AssigningTask;
+                    break;
+                }
+            }
+        }
+    }
 }
 
 int32_t countActiveTradeRoutes(const aoc::game::GameState& gameState, PlayerId player) {

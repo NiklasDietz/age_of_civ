@@ -31,12 +31,13 @@ namespace {
 constexpr float SCIENCE_TO_PROGRESS = 0.2f;
 
 // WP-B2 Mars Colony resource gate. Totals consumed on completion.
-// Audit 2026-04 second pass: with 48 Lunar / 0 Mars at 1000t the He3 + Semi
-// gate still bottlenecks. Cut further: Ti 3->2, He3 10->5, Semi 15->8.
-// Civs that complete Lunar should now reasonably reach Mars within 200t.
-constexpr int32_t MARS_TITANIUM_COST       = 2;
-constexpr int32_t MARS_HELIUM3_COST        = 5;
-constexpr int32_t MARS_SEMICONDUCTORS_COST = 8;
+// Audit 2026-04 fourth pass: SemiFab built only 11 times across 12 sims, so
+// Semi gate (cost 4) blocks Mars in most sims. Drop Semi gate entirely;
+// keep Ti+He3 as the meaningful "Lunar Colony delivered enough material"
+// check. Civs that built SemiFab still get the boost via Semi-fueled science.
+constexpr int32_t MARS_TITANIUM_COST       = 1;
+constexpr int32_t MARS_HELIUM3_COST        = 2;
+constexpr int32_t MARS_SEMICONDUCTORS_COST = 0;  // gate disabled
 
 [[nodiscard]] bool playerHasCampus(const aoc::game::Player& player) {
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {

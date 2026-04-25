@@ -214,6 +214,23 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
                 // Clear the captured city's production queue
                 city->production().queue.clear();
 
+                // WP-D1: occupier loyalty reset. Captured cities default to
+                // loyalty 60 (above unrest threshold) for the new owner so
+                // they don't immediately flip back via revolt. Reset unrest
+                // counter. Domination victory previously failed because cities
+                // flipped back within 5-10 turns of capture.
+                city->loyalty().loyalty = 60.0f;
+                city->loyalty().unrestTurns = 0;
+
+                // WP-D1: garrison walls. Force-restore ancient wall tier so
+                // re-capture requires siege (multiple turns of bombardment),
+                // not a one-step militia walk-in. Without walls, captured
+                // cities flip 4-5 times per game between attackers.
+                if (city->walls().maxHP <= 0) {
+                    city->walls().setTier(aoc::sim::WallTier::Ancient);
+                }
+                city->walls().currentHP = city->walls().maxHP;
+
                 // Transfer tile ownership for worked tiles
                 for (const aoc::hex::AxialCoord& workedTile : city->workedTiles()) {
                     if (grid.isValid(workedTile)) {

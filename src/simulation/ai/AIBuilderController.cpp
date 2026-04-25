@@ -325,6 +325,51 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
             }
         }
 
+        // Step 1h (WP-S2): place an Encampment on current owned land tile
+        // if it's near the border (within 4 hex of foreign territory) and
+        // no encampment exists within 6 hex. Engineering tech (6).
+        if (gsPlayer->hasResearched(TechId{6})
+            && grid.owner(currentIdx) == this->m_player
+            && grid.improvement(currentIdx) == aoc::map::ImprovementType::None) {
+            // Border check: any tile within 4 hex owned by another player.
+            bool nearBorder = false;
+            const std::array<aoc::hex::AxialCoord, 6> nbrs1 = aoc::hex::neighbors(builder.position);
+            for (const aoc::hex::AxialCoord& nbr : nbrs1) {
+                if (!grid.isValid(nbr)) { continue; }
+                const PlayerId own = grid.owner(grid.toIndex(nbr));
+                if (own != this->m_player && own != INVALID_PLAYER) {
+                    nearBorder = true;
+                    break;
+                }
+            }
+            if (nearBorder) {
+                // Avoid encampment spam: check 6-hex radius for existing depots.
+                bool tooClose = false;
+                const int32_t tilesN = grid.tileCount();
+                for (int32_t ti = 0; ti < tilesN; ++ti) {
+                    if (grid.improvement(ti) != aoc::map::ImprovementType::Encampment) { continue; }
+                    if (grid.distance(builder.position, grid.toAxial(ti)) <= 6) {
+                        tooClose = true;
+                        break;
+                    }
+                }
+                if (!tooClose
+                 && canPlaceImprovement(grid, currentIdx,
+                                        aoc::map::ImprovementType::Encampment)) {
+                    grid.setImprovement(currentIdx,
+                                        aoc::map::ImprovementType::Encampment);
+                    builder.ptr->useCharge();
+                    LOG_INFO("AI %u Builder placed Encampment at (%d,%d)",
+                             static_cast<unsigned>(this->m_player),
+                             builder.position.q, builder.position.r);
+                    if (!builder.ptr->hasCharges()) {
+                        gsPlayer->removeUnit(builder.ptr);
+                    }
+                    continue;
+                }
+            }
+        }
+
         // Step 2: Find nearest unimproved owned tile near any city
         aoc::hex::AxialCoord bestTarget = builder.position;
         int32_t bestDist = std::numeric_limits<int32_t>::max();

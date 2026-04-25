@@ -29,6 +29,8 @@ enum class UnitClass : uint8_t {
     Civilian,      ///< Builders, medics, great people
     Religious,     ///< Missionaries, apostles, inquisitors
     Trader,        ///< Trade units that carry goods between cities
+    Logistics,     ///< WP-S2: military supply units (wagon, tanker, plane)
+                   ///< — refills Encampment buffers from city stockpiles.
 
     Count
 };
@@ -88,7 +90,8 @@ struct UnitTypeDef {
     /// income growth from population and commercial buildings.
     [[nodiscard]] constexpr int32_t maintenanceGold() const {
         if (this->unitClass == UnitClass::Settler || this->unitClass == UnitClass::Civilian
-            || this->unitClass == UnitClass::Trader || this->unitClass == UnitClass::Scout) {
+            || this->unitClass == UnitClass::Trader || this->unitClass == UnitClass::Scout
+            || this->unitClass == UnitClass::Logistics) {
             return 0;  // Civilian units have no maintenance
         }
         return static_cast<int32_t>(this->era) / 2 + 1;
@@ -109,6 +112,7 @@ struct UnitTypeDef {
             case UnitClass::Trader:
             case UnitClass::Scout:
             case UnitClass::Religious:
+            case UnitClass::Logistics:
                 return 0;
             case UnitClass::Cavalry:
             case UnitClass::Helicopter:
@@ -130,8 +134,8 @@ struct UnitTypeDef {
 // Unit type IDs: keep stable for serialization. Gaps are fine.
 // Format: {id, name, class, era, hp, melee, ranged, range, move, cost, reqTech, upgradesTo, upgradeCost}
 
-inline constexpr int32_t UNIT_TYPE_COUNT = 66;
-inline constexpr std::array<UnitTypeDef, 66> UNIT_TYPE_DEFS = {{
+inline constexpr int32_t UNIT_TYPE_COUNT = 68;
+inline constexpr std::array<UnitTypeDef, 68> UNIT_TYPE_DEFS = {{
     // ========================================================================
     // MELEE INFANTRY: Warrior -> Swordsman -> Man-at-Arms -> Musketman -> Infantry -> Mech Infantry
     // ========================================================================
@@ -238,6 +242,11 @@ inline constexpr std::array<UnitTypeDef, 66> UNIT_TYPE_DEFS = {{
     // Trade
     {UnitTypeId{30}, "Trader",          UnitClass::Trader,   UnitEra::Ancient,       60,  0,  0, 0, 3,  40, TechId{},   UnitTypeId{31}, 30},
     {UnitTypeId{31}, "Caravan",         UnitClass::Trader,   UnitEra::Medieval,      80,  0,  0, 0, 4,  80, TechId{5},  UnitTypeId{},   0},
+
+    // WP-S2: Logistics — military supply chain. Refills Encampment buffers.
+    // Separate cap from trade slots so war doesn't choke commerce.
+    {UnitTypeId{62}, "Supply Wagon",    UnitClass::Logistics,UnitEra::Classical,     50,  0,  0, 0, 3,  60, TechId{6},  UnitTypeId{63}, 80},
+    {UnitTypeId{63}, "Tanker Ship",     UnitClass::Logistics,UnitEra::Industrial,    80,  0,  0, 0, 5, 140, TechId{12}, UnitTypeId{},   0},
 
     // Courier: domestic goods transport, player-dispatched only. Never appears
     // in the production queue (productionCost 0 is filtered out by buildables).

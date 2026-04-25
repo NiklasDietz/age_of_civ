@@ -355,13 +355,14 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
         const uint16_t eraVal = gsPlayer->era().currentEra.value;
         float eraMult = 0.0f;
         switch (eraVal) {
-            case 0: case 1: eraMult = 0.0f;  break;  // Ancient/Classical
-            case 2:         eraMult = 0.2f;  break;  // Medieval
-            case 3:         eraMult = 0.5f;  break;  // Renaissance
-            case 4:         eraMult = 0.8f;  break;  // Industrial
-            case 5:         eraMult = 1.0f;  break;  // Modern
-            case 6:         eraMult = 1.2f;  break;  // Atomic
-            default:        eraMult = 1.5f;  break;  // Information+
+            case 0:         eraMult = 0.1f;  break;  // Ancient
+            case 1:         eraMult = 0.3f;  break;  // Classical
+            case 2:         eraMult = 0.5f;  break;  // Medieval
+            case 3:         eraMult = 0.8f;  break;  // Renaissance
+            case 4:         eraMult = 1.2f;  break;  // Industrial
+            case 5:         eraMult = 1.5f;  break;  // Modern
+            case 6:         eraMult = 1.8f;  break;  // Atomic
+            default:        eraMult = 2.2f;  break;  // Information+
         }
         // WP-N2: tourism rides on the same era gate but at 1.5x rate so it
         // dominates accumulation late-game. Pre-Renaissance contributes zero
@@ -606,6 +607,11 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     // path. Still meaningful — conquering 3 capitals is a major
     // achievement.
     if ((enabledTypes & VICTORY_MASK_DOMINATION) != 0u) {
+        // WP-D1 BUG FIX: candidate->cities() is the founder list; captured
+        // cities REMAIN in the original founder's list with `owner()` updated
+        // to the conqueror. Iterate ALL cities globally and check
+        // `city->owner() == candidate->id() && originalOwner() == other->id()`.
+        // Previously this loop never saw captured capitals.
         for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
             if (candidate->victoryTracker().isEliminated) { continue; }
             int32_t rivalCount = 0;
@@ -615,12 +621,19 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                 if (other->victoryTracker().isEliminated) { continue; }
                 ++rivalCount;
                 bool foundCapital = false;
-                for (const std::unique_ptr<aoc::game::City>& city : candidate->cities()) {
-                    if (city->isOriginalCapital()
-                        && city->originalOwner() == other->id()) {
+                // Walk all founder lists; a captured capital still lives in
+                // the original founder's m_cities even after ownership flip.
+                for (const std::unique_ptr<aoc::game::Player>& holder
+                        : gameState.players()) {
+                    for (const std::unique_ptr<aoc::game::City>& city
+                            : holder->cities()) {
+                        if (city->owner() != candidate->id()) { continue; }
+                        if (!city->isOriginalCapital()) { continue; }
+                        if (city->originalOwner() != other->id()) { continue; }
                         foundCapital = true;
                         break;
                     }
+                    if (foundCapital) { break; }
                 }
                 if (foundCapital) {
                     ++capitalsOwned;
@@ -629,7 +642,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
             const float ratio = (rivalCount > 0)
                 ? static_cast<float>(capitalsOwned) / static_cast<float>(rivalCount)
                 : 0.0f;
-            if (ratio >= 0.60f && alive > 1 && capitalsOwned >= 3) {
+            if (ratio >= 0.50f && alive > 1 && capitalsOwned >= 3) {
                 LOG_INFO("Player %u wins by DOMINATION (%d/%d rival capitals owned)",
                          static_cast<unsigned>(candidate->id()),
                          capitalsOwned, rivalCount);
@@ -646,7 +659,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     if ((enabledTypes & VICTORY_MASK_SCIENCE) != 0u) {
         for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
             if (candidate->victoryTracker().isEliminated) { continue; }
-            if (candidate->spaceRace().completedCount() >= 4) {
+            if (candidate->spaceRace().completedCount() >= 5) {
                 LOG_INFO("Player %u wins by SCIENCE (%d/5 space projects completed)",
                          static_cast<unsigned>(candidate->id()),
                          candidate->spaceRace().completedCount());

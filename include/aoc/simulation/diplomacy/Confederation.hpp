@@ -62,7 +62,7 @@ inline constexpr std::size_t CONFEDERATION_MAX_MEMBERS = 5;
 /// form but don't qualify for the confederation victory path.
 /// Audit 2026-04: was 3; pushed to 4 so Confederation needs a real
 /// majority bloc rather than any tight trio of friendlies.
-inline constexpr std::size_t CONFEDERATION_COWIN_MIN = 4;
+inline constexpr std::size_t CONFEDERATION_COWIN_MIN = 3;
 
 /// Diminishing-share exponent applied to the combined-prestige sum at
 /// co-win time. Effective bloc prestige = sum / sqrt(N). Set to 0.5 to

@@ -902,6 +902,9 @@ void processGlobalSystems(TurnContext& turnContext) {
     // Physical trade routes: move Traders, exchange goods
     processTradeRoutes(gameState, grid, turnContext.economy->market(), turnContext.diplomacy);
 
+    // WP-S2: drive Logistics units' supply cycle (city → encampment → city).
+    processLogisticsUnits(gameState, grid);
+
     // Domestic couriers: player-dispatched goods transport between own cities.
     // Advances each active courier one turn, delivers on arrival, clamps
     // stockpiles to per-city caps.
