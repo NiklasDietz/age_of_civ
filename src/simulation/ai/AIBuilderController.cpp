@@ -284,6 +284,46 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
             }
         }
 
+        // Step 1g (WP-K7): place a Trading Post on the current tile if
+        // it's a neutral (unowned) Desert/Plains tile within 8 hex of any
+        // owned city. Post-Currency (TechId 5). Boosts trade range relay
+        // outside the civ's borders. Builder retains charges if civ owner
+        // already has 3+ Trading Posts (avoid spam).
+        if (gsPlayer->hasResearched(TechId{5})
+            && grid.owner(currentIdx) == INVALID_PLAYER
+            && grid.improvement(currentIdx) == aoc::map::ImprovementType::None) {
+            const aoc::map::TerrainType t = grid.terrain(currentIdx);
+            if (t == aoc::map::TerrainType::Desert
+             || t == aoc::map::TerrainType::Plains) {
+                int32_t closeOwn = std::numeric_limits<int32_t>::max();
+                for (const aoc::hex::AxialCoord& c : cityLocations) {
+                    closeOwn = std::min(closeOwn, grid.distance(builder.position, c));
+                }
+                int32_t existingPosts = 0;
+                const int32_t tilesN = grid.tileCount();
+                for (int32_t ti = 0; ti < tilesN; ++ti) {
+                    if (grid.improvement(ti) == aoc::map::ImprovementType::TradingPost) {
+                        ++existingPosts;
+                    }
+                }
+                if (closeOwn <= 8 && closeOwn >= 3 && existingPosts < 3 + this->m_player) {
+                    if (canPlaceImprovement(grid, currentIdx,
+                                            aoc::map::ImprovementType::TradingPost)) {
+                        grid.setImprovement(currentIdx,
+                                            aoc::map::ImprovementType::TradingPost);
+                        builder.ptr->useCharge();
+                        LOG_INFO("AI %u Builder placed TradingPost relay at (%d,%d)",
+                                 static_cast<unsigned>(this->m_player),
+                                 builder.position.q, builder.position.r);
+                        if (!builder.ptr->hasCharges()) {
+                            gsPlayer->removeUnit(builder.ptr);
+                        }
+                        continue;
+                    }
+                }
+            }
+        }
+
         // Step 2: Find nearest unimproved owned tile near any city
         aoc::hex::AxialCoord bestTarget = builder.position;
         int32_t bestDist = std::numeric_limits<int32_t>::max();

@@ -969,6 +969,46 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
     csv.close();
 
+    // WP-L1: tile snapshot dump for AI / analysis tooling. One row per
+    // tile with ownership + improvement + resource + reserves. Pairs with
+    // simulation_log.csv (per-turn per-player metrics). Filename mirrors
+    // the main CSV but with "_tiles" suffix.
+    {
+        std::string tilesPath = outputPath;
+        const auto dot = tilesPath.find_last_of('.');
+        if (dot != std::string::npos) {
+            tilesPath.insert(dot, "_tiles");
+        } else {
+            tilesPath += "_tiles.csv";
+        }
+        std::ofstream tcsv(tilesPath);
+        if (tcsv.is_open()) {
+            tcsv << "tile_idx,q,r,terrain,feature,elevation,owner,improvement,"
+                    "resource,reserves,has_road,has_pole,has_pipe,greenhouse_crop,"
+                    "natural_wonder\n";
+            const int32_t tcount = grid.tileCount();
+            for (int32_t i = 0; i < tcount; ++i) {
+                const aoc::hex::AxialCoord ax = grid.toAxial(i);
+                tcsv << i << ','
+                     << ax.q << ',' << ax.r << ','
+                     << static_cast<int>(grid.terrain(i)) << ','
+                     << static_cast<int>(grid.feature(i)) << ','
+                     << static_cast<int>(grid.elevation(i)) << ','
+                     << static_cast<int>(grid.owner(i)) << ','
+                     << static_cast<int>(grid.improvement(i)) << ','
+                     << static_cast<int>(grid.resource(i).value) << ','
+                     << grid.reserves(i) << ','
+                     << (grid.hasRoad(i) ? 1 : 0) << ','
+                     << (grid.hasPowerPole(i) ? 1 : 0) << ','
+                     << (grid.hasPipeline(i) ? 1 : 0) << ','
+                     << grid.greenhouseCrop(i) << ','
+                     << static_cast<int>(grid.naturalWonder(i)) << '\n';
+            }
+            tcsv.close();
+            LOG_INFO("Tile snapshot written to: %s", tilesPath.c_str());
+        }
+    }
+
     LOG_INFO("Simulation complete. Data written to: %s", outputPath.c_str());
     return 0;
 }

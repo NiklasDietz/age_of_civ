@@ -5,6 +5,7 @@
 
 #include "aoc/simulation/economy/TradeRouteSystem.hpp"
 
+#include "aoc/balance/BalanceParams.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -53,28 +54,36 @@ void selectTradeGoods(const CityStockpileComponent& originStock,
         float    score;
     };
     std::vector<ScoredGood> candidates;
-    candidates.reserve(originStock.goods.size());
+    candidates.reserve(originStock.goods.size() + originStock.exportBuffer.size());
 
-    for (const std::pair<const uint16_t, int32_t>& entry : originStock.goods) {
-        if (entry.second <= 1) { continue; }  // Keep at least 1 in reserve
-
-        int32_t surplus = entry.second - 1;
-        int32_t destDeficit = 1;  // Base score even if no dest info
+    // WP-O: scan buffer + stockpile combined. Buffer entries are "ready
+    // for export" so they get scored first, but the loader pulls from
+    // both transparently. Avoid double-counting by walking buffer first
+    // and tracking which goodIds have been seen.
+    auto scoreCandidate = [&](uint16_t gid, int32_t total) {
+        if (total <= 1) { return; }
+        int32_t surplus = total - 1;
+        int32_t destDeficit = 1;
         if (destStock != nullptr) {
-            int32_t destAmount = destStock->getAmount(entry.first);
-            // Deficit: how much the dest would benefit from this good
-            // Higher score if dest has none of this good
+            int32_t destAmount = destStock->getAmount(gid);
             destDeficit = std::max(1, 5 - destAmount);
         }
-
-        int32_t price = market.marketData(entry.first).currentPrice;
+        int32_t price = market.marketData(gid).currentPrice;
         if (price <= 0) { price = 1; }
-
         float score = static_cast<float>(surplus)
                     * static_cast<float>(destDeficit)
                     * static_cast<float>(price);
-
-        candidates.push_back({entry.first, surplus, score});
+        candidates.push_back({gid, surplus, score});
+    };
+    std::unordered_map<uint16_t, int32_t> combined;
+    for (const auto& entry : originStock.goods) {
+        combined[entry.first] += entry.second;
+    }
+    for (const auto& entry : originStock.exportBuffer) {
+        combined[entry.first] += entry.second;
+    }
+    for (const auto& entry : combined) {
+        scoreCandidate(entry.first, entry.second);
     }
 
     std::sort(candidates.begin(), candidates.end(),
@@ -94,6 +103,28 @@ void selectTradeGoods(const CityStockpileComponent& originStock,
     }
 }
 
+/// WP-O: predict and reserve goods at `seller` city for an upcoming pickup.
+/// Moves planned amounts from `goods` to `exportBuffer` (frees stockpile during
+/// transit). Stores the planned cargo on the trader so death can release it.
+void commitPickupReservation(aoc::game::City& seller,
+                              const Market& market,
+                              TraderComponent& trader) {
+    CityStockpileComponent& sellerStock = seller.stockpile();
+    const int32_t slots = trader.maxCargoSlots();
+
+    std::vector<TradeCargo> planned;
+    selectTradeGoods(sellerStock, /*destStock*/ nullptr, market, planned, slots);
+
+    trader.pendingPickupCargo.clear();
+    trader.pendingPickupCargo.reserve(planned.size());
+    for (const TradeCargo& c : planned) {
+        if (c.amount <= 0) { continue; }
+        sellerStock.commitToExport(c.goodId, c.amount);
+        trader.pendingPickupCargo.push_back(c);
+    }
+    trader.pickupCityLocation = seller.location();
+}
+
 /// Find a city by its location across all players.
 static aoc::game::City* findCityByLocation(aoc::game::GameState& gameState,
                                             aoc::hex::AxialCoord location) {
@@ -102,6 +133,36 @@ static aoc::game::City* findCityByLocation(aoc::game::GameState& gameState,
         if (c != nullptr) { return c; }
     }
     return nullptr;
+}
+
+/// WP-O: trader died/expired before picking up. Roll back the seller's
+/// reservation: pull units from the buffer (capped by what's still there)
+/// and restore to stockpile (capped by stockpileSoftCap). Excess is lost
+/// (modeled as goods that already aged out of the buffer).
+void releasePickupReservation(aoc::game::GameState& gameState,
+                                TraderComponent& trader) {
+    if (trader.pendingPickupCargo.empty()) { return; }
+    aoc::game::City* seller = findCityByLocation(gameState, trader.pickupCityLocation);
+    if (seller == nullptr) {
+        trader.pendingPickupCargo.clear();
+        return;
+    }
+    CityStockpileComponent& sp = seller->stockpile();
+    const int32_t cap = aoc::balance::params().stockpileSoftCap;
+    for (const TradeCargo& c : trader.pendingPickupCargo) {
+        std::unordered_map<uint16_t, int32_t>::iterator bufIt =
+            sp.exportBuffer.find(c.goodId);
+        if (bufIt == sp.exportBuffer.end()) { continue; }
+        int32_t fromBuf = std::min(c.amount, bufIt->second);
+        if (fromBuf <= 0) { continue; }
+        bufIt->second -= fromBuf;
+        if (bufIt->second <= 0) { sp.exportBuffer.erase(bufIt); }
+        const int32_t cur = sp.getAmount(c.goodId);
+        const int32_t free = std::max(0, cap - cur);
+        const int32_t restore = std::min(fromBuf, free);
+        if (restore > 0) { sp.addGoods(c.goodId, restore); }
+    }
+    trader.pendingPickupCargo.clear();
 }
 
 /// Find a Trader unit by EntityId across all players.
@@ -188,6 +249,110 @@ CurrencyAmount computeCargoValue(const std::vector<TradeCargo>& cargo, const Mar
     return total;
 }
 
+/// WP-K1: civ-wide trade slot pool. Sources:
+///   - monetary tier baseline (`monetary.maxTradeRoutes()`)
+///   - +1 per Market (BuildingId 6) anywhere in civ
+///   - +1 per Bank (20)
+///   - +2 per Stock Exchange (21)
+///   - +1 per Trading Post improvement on any owned tile
+///   - +greatPeople.extraTradeSlots (Merchant GP)
+int32_t computeTotalTradeSlots(const aoc::game::Player& player,
+                                const aoc::map::HexGrid& grid) {
+    int32_t total = player.monetary().maxTradeRoutes()
+                  + player.greatPeople().extraTradeSlots;
+    for (const std::unique_ptr<aoc::game::City>& cityPtr : player.cities()) {
+        if (cityPtr == nullptr) { continue; }
+        for (const CityDistrictsComponent::PlacedDistrict& d
+                : cityPtr->districts().districts) {
+            for (BuildingId bid : d.buildings) {
+                if (bid.value == 6)  { total += 1; }   // Market
+                else if (bid.value == 20) { total += 1; } // Bank
+                else if (bid.value == 21) { total += 2; } // Stock Exchange
+            }
+        }
+    }
+    const int32_t tiles = grid.tileCount();
+    for (int32_t i = 0; i < tiles; ++i) {
+        if (grid.owner(i) != player.id()) { continue; }
+        if (grid.improvement(i) == aoc::map::ImprovementType::TradingPost) {
+            ++total;
+        }
+    }
+    return total;
+}
+
+/// WP-K4: max trade route distance gated by transport tech.
+/// Land + Sea progress independently. Air ignores range once Aviation
+/// (TechId 26) researched.
+int32_t maxTradeRange(const aoc::game::Player& player, TradeRouteType type) {
+    auto has = [&](uint16_t techId) {
+        return player.tech().hasResearched(TechId{techId});
+    };
+    switch (type) {
+        case TradeRouteType::Air:
+            // Air requires Aviation (26) at all; once researched, unlimited.
+            return has(26) ? std::numeric_limits<int32_t>::max() : 0;
+        case TradeRouteType::Sea: {
+            int32_t r = 8;            // coastal hugger baseline
+            if (has(7))  { r = 10; } // Apprenticeship: organized shipping
+            if (has(8))  { r = 12; } // Metallurgy: larger sailing fleets
+            if (has(11)) { r = 16; } // Industrialization: steam ships
+            if (has(12)) { r = 22; } // Refining: oil-burning ships
+            if (has(15)) { r = 26; } // Mass Production: diesel cargo
+            if (has(26)) { return std::numeric_limits<int32_t>::max(); }
+            return r;
+        }
+        case TradeRouteType::Land:
+        default: {
+            int32_t r = 4;            // foot caravan baseline
+            if (has(1))  { r = 6;  } // Animal Husbandry: pack animals
+            if (has(6))  { r = 8;  } // Engineering: paved roads
+            if (has(7))  { r = 10; } // Apprenticeship: commercial network
+            if (has(11)) { r = 16; } // Industrialization: railways (big jump)
+            if (has(12)) { r = 20; } // Refining: trucks
+            if (has(15)) { r = 24; } // Mass Production: logistics
+            if (has(26)) { return std::numeric_limits<int32_t>::max(); }
+            return r;
+        }
+    }
+}
+
+/// WP-K7: walk a path and find longest gap between relay nodes (cities or
+/// Trading Posts). Returns the longest segment length so the caller can
+/// compare against `maxTradeRange`. Origin / destination tiles are always
+/// considered relay points.
+int32_t longestRangeGap(const std::vector<aoc::hex::AxialCoord>& path,
+                         const aoc::map::HexGrid& grid,
+                         const aoc::game::GameState& gameState) {
+    if (path.size() < 2) { return 0; }
+    int32_t longest = 0;
+    int32_t segment = 0;
+    for (std::size_t i = 0; i + 1 < path.size(); ++i) {
+        ++segment;
+        const aoc::hex::AxialCoord next = path[i + 1];
+        if (!grid.isValid(next)) { continue; }
+        const int32_t nIdx = grid.toIndex(next);
+        bool isRelay = false;
+        if (grid.improvement(nIdx) == aoc::map::ImprovementType::TradingPost) {
+            isRelay = true;
+        }
+        // Any city on this tile (any owner) acts as a relay.
+        if (!isRelay) {
+            for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+                if (p == nullptr) { continue; }
+                if (p->cityAt(next) != nullptr) { isRelay = true; break; }
+            }
+        }
+        if (isRelay) {
+            if (segment > longest) { longest = segment; }
+            segment = 0;
+        }
+    }
+    // Final segment to destination.
+    if (segment > longest) { longest = segment; }
+    return longest;
+}
+
 /// Check if two players share a FTZ or Customs Union (0% toll between members).
 bool areInFreeTradeAgreement(const aoc::game::Player& territoryOwner, PlayerId trader) {
     const PlayerTradeAgreementsComponent& agreements = territoryOwner.tradeAgreements();
@@ -262,12 +427,12 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
         return ErrorCode::InvalidArgument;
     }
 
-    // C23: enforce per-civ route cap scaling with monetary tier. Without this,
-    // a civ can spam unlimited permanent routes (trader.maxTrips = -1). Cap
-    // comes from MonetarySystem::maxTradeRoutes() — 1 at Barter, 14 at Digital.
+    // WP-K1: civ-wide trade slot pool. Replaces the legacy per-civ cap
+    // that was strictly monetary-tier driven. Pool aggregates monetary
+    // baseline + Markets/Banks/Stock Exchanges anywhere in the civ +
+    // Trading Posts on owned tiles + Merchant GP slots.
     {
-        const int32_t cap = ownerPlayer->monetary().maxTradeRoutes()
-                          + ownerPlayer->greatPeople().extraTradeSlots;
+        const int32_t cap = computeTotalTradeSlots(*ownerPlayer, grid);
         int32_t activeRoutes = 0;
         for (const std::unique_ptr<aoc::game::Unit>& u : ownerPlayer->units()) {
             if (u == nullptr) { continue; }
@@ -452,6 +617,27 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     }
     trader.pathIndex = 0;
 
+    // WP-K4 + K7: range gate. Compute longest unbroken segment between
+    // relay points (cities or Trading Posts) and reject if greater than
+    // the player's tech-gated max. Trading Posts on neutral land act as
+    // range extenders, mirroring Civ-6 trader chains.
+    {
+        const int32_t maxRange = maxTradeRange(*ownerPlayer, trader.routeType);
+        if (maxRange > 0) {
+            const int32_t longestSegment = longestRangeGap(
+                trader.path, grid, gameState);
+            if (longestSegment > maxRange) {
+                LOG_INFO("Trade route rejected: P%u %s longest segment %d > range %d "
+                         "(build a Trading Post or extend tech)",
+                         static_cast<unsigned>(traderUnit->owner()),
+                         (trader.routeType == TradeRouteType::Land ? "land" :
+                          trader.routeType == TradeRouteType::Sea  ? "sea"  : "air"),
+                         longestSegment, maxRange);
+                return ErrorCode::InvalidArgument;
+            }
+        }
+    }
+
     const char* routeNames[] = {"Land", "Sea", "Air"};
     LOG_INFO("Trade route type: %s (player %u -> player %u)",
              routeNames[static_cast<int>(trader.routeType)],
@@ -469,13 +655,23 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
         : MonetarySystemType::Barter;
     const int32_t cargoSlots = trader.effectiveCargoSlots(ownerSys);
     selectTradeGoods(originStock, &destStock, market, trader.cargo, cargoSlots);
-    for (const TradeCargo& c : trader.cargo) {
-        [[maybe_unused]] bool ok = originStock.consumeGoods(c.goodId, c.amount);
+    for (TradeCargo& c : trader.cargo) {
+        // WP-O: pull from exportBuffer first (drains the queue), then
+        // stockpile if buffer underflows. May load less than requested
+        // if both are empty.
+        const int32_t taken = originStock.pullForExport(c.goodId, c.amount);
+        c.amount = taken;
+        [[maybe_unused]] bool ok = (taken == c.amount);
     }
 
-    LOG_INFO("Trade route established: player %u, %d goods loaded",
+    // WP-O: reserve dest city's pickup goods now. Frees dest stockpile during
+    // the outbound transit; trader pulls from buffer on arrival.
+    commitPickupReservation(*destCity, market, trader);
+
+    LOG_INFO("Trade route established: player %u, %d goods loaded, %d reserved at dest",
              static_cast<unsigned>(traderUnit->owner()),
-             static_cast<int>(trader.cargo.size()));
+             static_cast<int>(trader.cargo.size()),
+             static_cast<int>(trader.pendingPickupCargo.size()));
 
     return ErrorCode::Ok;
 }
@@ -759,21 +955,26 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 }
             }
 
-            // Load return cargo: demand-driven, capacity shrunk by money weight.
-            aoc::hex::AxialCoord returnDestLoc = trader.isReturning ? trader.destCityLocation : trader.originCityLocation;
-            const aoc::game::City* returnDestCity = findCityByLocation(gameState, returnDestLoc);
-            const CityStockpileComponent* returnDestStock =
-                (returnDestCity != nullptr) ? &returnDestCity->stockpile() : nullptr;
-
+            // WP-O: load from this city's exportBuffer using the reservation
+            // committed when the leg started. Capacity capped by money weight.
             const MonetarySystemType sellerSys = (sellerPlayer != nullptr)
                 ? sellerPlayer->monetary().system
                 : MonetarySystemType::Barter;
             const int32_t returnSlots = trader.effectiveCargoSlots(sellerSys);
-            selectTradeGoods(targetStock, returnDestStock, market, trader.cargo,
-                             returnSlots);
-            for (const TradeCargo& c : trader.cargo) {
-                [[maybe_unused]] bool ok = targetStock.consumeGoods(c.goodId, c.amount);
+            trader.cargo.clear();
+            int32_t loaded = 0;
+            for (const TradeCargo& planned : trader.pendingPickupCargo) {
+                if (loaded >= returnSlots) { break; }
+                int32_t taken = targetStock.pullForExport(planned.goodId, planned.amount);
+                if (taken > 0) {
+                    TradeCargo c;
+                    c.goodId = planned.goodId;
+                    c.amount = taken;
+                    trader.cargo.push_back(c);
+                    ++loaded;
+                }
             }
+            trader.pendingPickupCargo.clear();
         }
 
         // Science/culture spread: trade spreads ideas
@@ -887,14 +1088,63 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         std::vector<aoc::hex::AxialCoord> reversedPath(trader.path.rbegin(), trader.path.rend());
         trader.path = std::move(reversedPath);
         trader.pathIndex = 0;
+
+        // WP-O: reserve next-arrival city's goods now (during this leg's
+        // transit). Picks up at next arrival via pendingPickupCargo.
+        const aoc::hex::AxialCoord nextPickupLoc = trader.isReturning
+            ? trader.originCityLocation : trader.destCityLocation;
+        aoc::game::City* nextPickup = findCityByLocation(gameState, nextPickupLoc);
+        if (nextPickup != nullptr) {
+            commitPickupReservation(*nextPickup, market, trader);
+        } else {
+            trader.pendingPickupCargo.clear();
+        }
     }
 
-    // Remove expired trader units
+    // Remove expired trader units. WP-O: try to return any cargo still
+    // aboard to the nearest owned city, capped at the per-good soft cap.
+    // Excess is lost (modeled as stale-warehouse pillage). Pillaged
+    // traders go through `pillageTrader` instead.
     for (aoc::game::Unit* deadUnit : toRemove) {
         aoc::game::Player* ownerPlayer = gameState.player(deadUnit->owner());
-        if (ownerPlayer != nullptr) {
-            ownerPlayer->removeUnit(deadUnit);
+        if (ownerPlayer == nullptr) {
+            continue;
         }
+        // WP-O: release any outstanding pickup reservation at the seller city.
+        releasePickupReservation(gameState, deadUnit->trader());
+        const TraderComponent& deadCargo = deadUnit->trader();
+        if (!deadCargo.cargo.empty()) {
+            const int32_t cap = aoc::balance::params().stockpileSoftCap;
+            // Find nearest owned city to trader's last position.
+            aoc::game::City* nearest = nullptr;
+            int32_t bestDist = std::numeric_limits<int32_t>::max();
+            for (const std::unique_ptr<aoc::game::City>& c : ownerPlayer->cities()) {
+                if (c == nullptr) { continue; }
+                const int32_t d = grid.distance(deadUnit->position(), c->location());
+                if (d < bestDist) { bestDist = d; nearest = c.get(); }
+            }
+            if (nearest != nullptr) {
+                CityStockpileComponent& sp = nearest->stockpile();
+                int32_t returned = 0;
+                int32_t lost = 0;
+                for (const TradeCargo& c : deadCargo.cargo) {
+                    const int32_t current = sp.getAmount(c.goodId);
+                    const int32_t free = std::max(0, cap - current);
+                    const int32_t take = std::min(c.amount, free);
+                    if (take > 0) {
+                        sp.addGoods(c.goodId, take);
+                        returned += take;
+                    }
+                    lost += (c.amount - take);
+                }
+                if (returned > 0 || lost > 0) {
+                    LOG_INFO("Trader expired (P%u): returned %d to %s, lost %d",
+                             static_cast<unsigned>(ownerPlayer->id()),
+                             returned, nearest->name().c_str(), lost);
+                }
+            }
+        }
+        ownerPlayer->removeUnit(deadUnit);
     }
 }
 
@@ -905,6 +1155,9 @@ CurrencyAmount pillageTrader(aoc::game::GameState& gameState,
     if (traderUnit == nullptr) {
         return 0;
     }
+
+    // WP-O: pillaged trader can't pick up. Release the seller's reservation.
+    releasePickupReservation(gameState, traderUnit->trader());
 
     const TraderComponent& trader = traderUnit->trader();
 

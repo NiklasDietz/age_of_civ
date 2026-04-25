@@ -108,6 +108,32 @@ public:
     void advanceTurn() { ++this->m_currentTurn; }
     void setCurrentTurn(int32_t turn) { this->m_currentTurn = turn; }
 
+    // WP-L1: per-tile event log. Lightweight append-only stream for
+    // post-sim analysis. Recorded at hot sites:
+    //   TerritoryClaimed / CityFoundedTile / CityCapturedTile /
+    //   ImprovementBuilt / ResourceDiscovered / TerrainConverted.
+    enum class TileEventType : uint8_t {
+        TerritoryClaimed,
+        CityFoundedTile,
+        CityCapturedTile,
+        ImprovementBuilt,
+        ResourceDiscovered,
+        TerrainConverted,
+    };
+    struct TileEvent {
+        int32_t       turn;
+        int32_t       tileIndex;
+        TileEventType type;
+        PlayerId      actor;
+        int32_t       payload;  ///< type-specific (improvement id, good id, terrain id...)
+    };
+    void recordTileEvent(int32_t tileIndex, TileEventType type,
+                         PlayerId actor, int32_t payload = 0) {
+        this->m_tileEvents.push_back(TileEvent{
+            this->m_currentTurn, tileIndex, type, actor, payload});
+    }
+    [[nodiscard]] const std::vector<TileEvent>& tileEvents() const { return this->m_tileEvents; }
+
     // ========================================================================
     // Global state (singletons)
     // ========================================================================
@@ -165,6 +191,7 @@ private:
     /// major-player iteration (victory, turn loop) does not pick them up.
     std::vector<std::unique_ptr<Player>> m_cityStatePlayers;
     int32_t m_currentTurn = 0;
+    std::vector<TileEvent> m_tileEvents;
     /// WP-H takeover: which player the UI follows. Persists across turns.
     PlayerId m_humanPlayerId = PlayerId{0};
 

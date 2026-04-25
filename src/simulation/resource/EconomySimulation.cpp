@@ -95,6 +95,63 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
     }
 
     this->executeProduction(gameState, grid);
+
+    // WP-O: stockpile soft-cap → auto-commit surplus to export buffer.
+    // Frees stockpile space so production keeps running. Buffer drains
+    // when traders pick goods up. Stale buffer entries (no pickup for
+    // N turns) trickle back to stockpile up to cap; the rest is lost
+    // to warehouse spoilage.
+    {
+        const aoc::balance::BalanceParams& bal = aoc::balance::params();
+        const int32_t cap = bal.stockpileSoftCap;
+        constexpr int32_t BUFFER_STALE_TURNS = 30;
+        // Skip food + late-game strategics (preserve Mars chain).
+        auto isExempt = [](uint16_t gid) {
+            return gid == goods::WHEAT || gid == goods::CATTLE
+                || gid == goods::FISH  || gid == goods::RICE
+                || gid == goods::PROCESSED_FOOD
+                || gid == goods::LITHIUM || gid == goods::RARE_EARTH
+                || gid == goods::TITANIUM || gid == goods::HELIUM_3;
+        };
+        for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+            if (p == nullptr) { continue; }
+            for (const std::unique_ptr<aoc::game::City>& c : p->cities()) {
+                if (c == nullptr) { continue; }
+                CityStockpileComponent& sp = c->stockpile();
+                // Commit surplus to export buffer.
+                for (auto& kv : sp.goods) {
+                    if (kv.second <= cap) { continue; }
+                    if (isExempt(kv.first)) { continue; }
+                    const int32_t excess = kv.second - cap;
+                    sp.exportBuffer[kv.first] += excess;
+                    sp.exportBufferIdleTurns[kv.first] = 0;
+                    kv.second = cap;
+                }
+                // Tick idle counter for buffer entries that didn't move.
+                // Stale entries: spill back to stockpile (capped); lose excess.
+                std::vector<uint16_t> drained;
+                for (auto& kv : sp.exportBuffer) {
+                    sp.exportBufferIdleTurns[kv.first] += 1;
+                    if (sp.exportBufferIdleTurns[kv.first] >= BUFFER_STALE_TURNS) {
+                        const int32_t free = std::max(0, cap - sp.getAmount(kv.first));
+                        const int32_t back = std::min(kv.second, free);
+                        if (back > 0) {
+                            sp.goods[kv.first] += back;
+                        }
+                        // Anything not returned is lost (spoilage).
+                        kv.second = 0;
+                        sp.exportBufferIdleTurns[kv.first] = 0;
+                        drained.push_back(kv.first);
+                    }
+                }
+                for (uint16_t gid : drained) {
+                    sp.exportBuffer.erase(gid);
+                    sp.exportBufferIdleTurns.erase(gid);
+                }
+            }
+        }
+    }
+
     this->reportToMarket(gameState);
     this->computePlayerNeeds(gameState);
     this->m_market.updatePrices();

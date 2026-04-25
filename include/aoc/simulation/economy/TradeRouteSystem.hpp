@@ -74,6 +74,16 @@ struct TraderComponent {
     /// Goods currently being carried.
     std::vector<TradeCargo> cargo;
 
+    /// WP-O: goods reserved at the next-pickup city's exportBuffer for this
+    /// trader. Set when a leg starts toward a city; consumed on arrival;
+    /// released back to that city's stockpile on trader death pre-pickup.
+    /// Keeps the seller's stockpile freed during travel.
+    std::vector<TradeCargo> pendingPickupCargo;
+
+    /// City whose exportBuffer holds `pendingPickupCargo`. Equals the leg's
+    /// target (origin or destination depending on isReturning).
+    aoc::hex::AxialCoord pickupCityLocation{};
+
     /// Planned path from current position to next destination.
     std::vector<aoc::hex::AxialCoord> path;
     int32_t pathIndex = 0;  ///< Current position along path
@@ -106,12 +116,15 @@ struct TraderComponent {
     float scienceSpread = 0.0f;
     float cultureSpread = 0.0f;
 
-    /// Maximum cargo slots (varies by route type).
-    /// Land: 4, Sea: 6 (+50%), Air: 4 (same as land, but faster)
+    /// WP-K3: cargo by route type. Land 3 (wagons / pack animals — smallest
+    /// payload, modeled per user request), Sea 6 (bulk shipping — largest),
+    /// Air 4 (mid — faster but limited fuselage).
     [[nodiscard]] int32_t maxCargoSlots() const {
         switch (this->routeType) {
             case TradeRouteType::Sea: return 6;
-            default: return 4;
+            case TradeRouteType::Air: return 4;
+            case TradeRouteType::Land:
+            default: return 3;
         }
     }
 

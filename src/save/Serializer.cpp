@@ -580,12 +580,22 @@ void writeStockpilesSection(WriteBuffer& out, const aoc::game::GameState& gameSt
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
         for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
             const aoc::sim::CityStockpileComponent& stockpile = city->stockpile();
-            if (!stockpile.goods.empty()) {
+            if (!stockpile.goods.empty() || !stockpile.exportBuffer.empty()) {
                 section.writeU32(cityIndex);
                 section.writeU32(static_cast<uint32_t>(stockpile.goods.size()));
                 for (const std::pair<const uint16_t, int32_t>& entry : stockpile.goods) {
                     section.writeU16(entry.first);
                     section.writeI32(entry.second);
+                }
+                // WP-O export buffer + idle counters.
+                section.writeU32(static_cast<uint32_t>(stockpile.exportBuffer.size()));
+                for (const std::pair<const uint16_t, int32_t>& entry : stockpile.exportBuffer) {
+                    section.writeU16(entry.first);
+                    section.writeI32(entry.second);
+                    int32_t idle = 0;
+                    auto it = stockpile.exportBufferIdleTurns.find(entry.first);
+                    if (it != stockpile.exportBufferIdleTurns.end()) { idle = it->second; }
+                    section.writeI32(idle);
                 }
             }
             ++cityIndex;
@@ -1835,6 +1845,16 @@ ErrorCode loadGame(const std::string& filepath,
                         int32_t amount = buf.readI32();
                         const uint16_t mapped = remapDeprecated(goodId);
                         stockpile.goods[mapped] += amount;
+                    }
+                    // WP-O export buffer + idle counters.
+                    uint32_t bufCount = buf.readU32();
+                    for (uint32_t b = 0; b < bufCount; ++b) {
+                        uint16_t goodId = buf.readU16();
+                        int32_t amount = buf.readI32();
+                        int32_t idle   = buf.readI32();
+                        const uint16_t mapped = remapDeprecated(goodId);
+                        stockpile.exportBuffer[mapped] += amount;
+                        stockpile.exportBufferIdleTurns[mapped] = idle;
                     }
 
                     if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {

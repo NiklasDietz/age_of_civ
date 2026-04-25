@@ -334,12 +334,22 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
 
         // Legacy score for display/compatibility
         tracker.scienceProgress = s.techsResearched;
-        // Audit 2026-04: culture accumulation rate halved so the Culture
-        // victory lands around turn 800-1000 instead of 400-500. Paired
-        // with the 18000 threshold bump, this targets parity with other
-        // victory paths. Raising the threshold alone couldn't catch up to
-        // culture-per-turn growth from wonders + faith curves.
-        tracker.totalCultureAccumulated += s.culturePerTurn * 0.5f;
+        // WP-N1: per-era multiplier on culture-toward-victory. Civ-6
+        // tourism analog: pre-Renaissance culture builds civic unlocks
+        // but barely contributes to victory. Renaissance opens the gate;
+        // Industrial+ scales toward 1.0×.
+        const uint16_t eraVal = gsPlayer->era().currentEra.value;
+        float eraMult = 0.0f;
+        switch (eraVal) {
+            case 0: case 1: eraMult = 0.0f;  break;  // Ancient/Classical
+            case 2:         eraMult = 0.2f;  break;  // Medieval
+            case 3:         eraMult = 0.5f;  break;  // Renaissance
+            case 4:         eraMult = 0.8f;  break;  // Industrial
+            case 5:         eraMult = 1.0f;  break;  // Modern
+            case 6:         eraMult = 1.2f;  break;  // Atomic
+            default:        eraMult = 1.5f;  break;  // Information+
+        }
+        tracker.totalCultureAccumulated += s.culturePerTurn * 0.5f * eraMult;
         tracker.score = static_cast<int32_t>(tracker.compositeCSI * 1000.0f);
 
         // Track peak GDP for collapse detection
@@ -571,33 +581,40 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     // whether they're the PRIMARY win conditions or bonus achievements.
     // ================================================================
 
-    // 3a. Domination Victory: own every other civ's original capital
+    // 3a. Domination Victory: own ≥60% of other civs' original capitals.
+    // Audit 2026-04: full all-capitals requirement never fired in
+    // 1500t sims (6-player game = conquer 5 capitals). Relaxed to 60%
+    // (3-of-5 for 6-player) so a strong military civ has a reachable
+    // path. Still meaningful — conquering 3 capitals is a major
+    // achievement.
     if ((enabledTypes & VICTORY_MASK_DOMINATION) != 0u) {
         for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
             if (candidate->victoryTracker().isEliminated) { continue; }
-            bool ownsAllCapitals = true;
+            int32_t rivalCount = 0;
+            int32_t capitalsOwned = 0;
             for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
                 if (other->id() == candidate->id()) { continue; }
                 if (other->victoryTracker().isEliminated) { continue; }
-                // Check if candidate owns the other's original capital
+                ++rivalCount;
                 bool foundCapital = false;
                 for (const std::unique_ptr<aoc::game::City>& city : candidate->cities()) {
-                    if (city->isOriginalCapital() && city->originalOwner() != candidate->id()) {
-                        // This is a captured capital — check if it was from 'other'
-                        if (city->originalOwner() == other->id()) {
-                            foundCapital = true;
-                            break;
-                        }
+                    if (city->isOriginalCapital()
+                        && city->originalOwner() == other->id()) {
+                        foundCapital = true;
+                        break;
                     }
                 }
-                if (!foundCapital) {
-                    ownsAllCapitals = false;
-                    break;
+                if (foundCapital) {
+                    ++capitalsOwned;
                 }
             }
-            if (ownsAllCapitals && alive > 1) {
-                LOG_INFO("Player %u wins by DOMINATION (owns all original capitals)",
-                         static_cast<unsigned>(candidate->id()));
+            const float ratio = (rivalCount > 0)
+                ? static_cast<float>(capitalsOwned) / static_cast<float>(rivalCount)
+                : 0.0f;
+            if (ratio >= 0.60f && alive > 1 && capitalsOwned >= 3) {
+                LOG_INFO("Player %u wins by DOMINATION (%d/%d rival capitals owned)",
+                         static_cast<unsigned>(candidate->id()),
+                         capitalsOwned, rivalCount);
                 return {VictoryType::Domination, candidate->id()};
             }
         }
@@ -654,11 +671,13 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
             }
 
             if (rivalCount > 0) {
-                // Require >=75% of rivals dominated and at least one rival
-                // (otherwise a solo survivor wins trivially by default).
+                // Audit 2026-04 third pass: 0.60 (3-of-5) still 0 fires.
+                // Relax to 0.50 (majority of rivals dominated) — a clear
+                // bar but achievable for a faith-focused civ with the
+                // boosted BASE_PASSIVE_PRESSURE in Religion.cpp.
                 const float ratio = static_cast<float>(dominatedCount)
                                   / static_cast<float>(rivalCount);
-                if (ratio >= 0.75f) {
+                if (ratio >= 0.50f) {
                     LOG_INFO("Player %u wins by RELIGION (%d/%d rivals dominated)",
                              static_cast<unsigned>(candidate->id()),
                              dominatedCount, rivalCount);
@@ -768,9 +787,12 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
             }
         }
 
+        // Audit 2026-04: 1.2× was too lenient — Confederation timeout-won
+        // 10/20 sims. Bump to 1.5× so Confederation needs a clear bloc
+        // edge over the strongest lone civ.
         if (winningConf != nullptr
             && bestSinglePrestige > 0.0f
-            && bestEffective >= 1.2f * bestSinglePrestige) {
+            && bestEffective >= 1.5f * bestSinglePrestige) {
             PlayerId leader      = INVALID_PLAYER;
             float    leaderScore = -1.0f;
             for (PlayerId m : bestMembers) {

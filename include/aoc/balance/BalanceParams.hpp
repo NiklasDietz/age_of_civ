@@ -27,14 +27,20 @@ namespace aoc::balance {
 /// Rerun used the post-fix CSI (populated diplomacy avg, non-negative
 /// financial) so integration threshold reflects real game dynamics.
 struct BalanceParams {
+    // WP-O: per-good city stockpile soft cap. Above this, the surplus
+    // each turn auto-sells at 0.7× market price to pressure trade flow.
+    // Skip food + strategic-late-game uniques (Lithium / Rare Earth /
+    // Titanium / He3) so the rule doesn't starve cities or break Mars.
+    int32_t stockpileSoftCap         = 80;
+    float   stockpileFireSaleMult    = 0.7f;
+
     // Loyalty / secession.
-    // GA-tuned 2026-04 (25 gen × 10 pop × 5 games × 250 turns, 4 map
-    // types, fit=0.8497, ent=0.97): tighter radius + aggressive
-    // periphery secession produced the highest victory-type diversity.
-    float   baseLoyalty              = 10.00f; ///< Per-turn baseline loyalty
-    int32_t loyaltyPressureRadius    = 6;      ///< Hexes a city projects pressure
-    int32_t sustainedUnrestTurns     = 8;      ///< Turns below Unrest → secession eligible
-    int32_t distantCityThreshold     = 4;      ///< Hexes from capital for periphery secession
+    // GA-tuned 2026-04-25 (30 gen × 12 pop × 5 games × 800 turns, 4 maps,
+    // --balance-winrate, fit=0.9120, ent=0.97): committed top genome.
+    float   baseLoyalty              = 2.33f;  ///< Per-turn baseline loyalty
+    int32_t loyaltyPressureRadius    = 5;      ///< Hexes a city projects pressure
+    int32_t sustainedUnrestTurns     = 4;      ///< Turns below Unrest → secession eligible
+    int32_t distantCityThreshold     = 7;      ///< Hexes from capital for periphery secession
 
     /// WP-C1: era-indexed foreign-city-pressure decay multiplier. Index is
     /// the player's `currentRevolution` (0..5). Defaults match the legacy
@@ -46,23 +52,22 @@ struct BalanceParams {
     // Victory: culture. Third retune: even with 7500 threshold, Culture
     // still fired at turn 225 in some sims. Heavy push: 12000 threshold,
     // 7 wonders, 1.5× lead so Culture lands 700-900 consistently.
-    // With culture accumulation scaled 0.5× in VictoryCondition.cpp,
-    // 18000 threshold equals 36000 at raw rate — targets ~turn 800-1000
-    // for Culture decision.
-    float   cultureVictoryThreshold  = 18000.0f;
-    int32_t cultureVictoryMinWonders = 7;
-    float   cultureVictoryLeadRatio  = 1.45f;
+    // GA-tuned 2026-04-25 with 0.5× culture accumulation rate active.
+    float   cultureVictoryThreshold  = 4398.0f;
+    int32_t cultureVictoryMinWonders = 3;
+    float   cultureVictoryLeadRatio  = 1.20f;
 
-    // Victory: integration (per-category ratio-to-avg, 6-of-8 cats, N turns).
-    // Middle-ground between GA-tuned 1.01 / 6 (too easy) and default 1.27 / 12.
-    float   integrationThreshold     = 1.18f;
-    int32_t integrationTurnsRequired = 10;
+    // GA-tuned 2026-04-25.
+    float   integrationThreshold     = 1.63f;
+    int32_t integrationTurnsRequired = 8;
 
     // Victory: religion dominance fraction (0..1). Each other civ must have
     // this fraction of its cities following your religion for a religious win.
-    // Audit 2026-04: 0.45 produced 0 religion wins in 20×1500t; dropped to
-    // 0.30 so a missionary-focused civ can plausibly hit the 3-of-4 gate.
-    float   religionDominanceFrac    = 0.30f;
+    // Audit 2026-04: pushed to 0.10 — only 10% of rival cities need to
+    // adopt your religion to count that civ as dominated. With multi-
+    // religion crowding (every player founds), high fractions are
+    // architecturally impossible.
+    float   religionDominanceFrac    = 0.10f;
 
     // Victory: space race cost multiplier (1.0 = nominal SPACE_PROJECT_DEFS).
     // Pulled up from GA 0.59 so science path lands similarly-paced to other
