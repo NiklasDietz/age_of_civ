@@ -589,10 +589,13 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
         const LeaderBehavior& myBehavior = leaderPersonality(gsPlayer->civId()).behavior;
         const int32_t strikingRange = static_cast<int32_t>(
             std::clamp(15.0f * myBehavior.peripheryTolerance, 8.0f, 25.0f));
-        if (ownMilitary >= 2 && threatRatio < 0.5f) {
+        if (ownMilitary >= 2 && threatRatio < 0.65f) {
             // Identify the weakest neighbour within striking range.
+            // WP-D: relaxed to <= 100% so AI conquers parity-strength
+            // neighbours when geography favors. Domination victory was
+            // 0/12 with the 80% gate.
             PlayerId  weakestNeighbour = INVALID_PLAYER;
-            int32_t   weakestMilitary  = (ownMilitary * 4) / 5;  // < 80% of ours
+            int32_t   weakestMilitary  = ownMilitary;
 
             for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
                 if (other->id() == this->m_player) {
@@ -648,14 +651,22 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                         continue;
                     }
 
-                    // Find the nearest enemy city to this unit.
-                    aoc::hex::AxialCoord targetCity = targetPlayer->cities().front()->location();
-                    int32_t              bestDist   = grid.distance(unit->position(), targetCity);
-                    for (const std::unique_ptr<aoc::game::City>& city : targetPlayer->cities()) {
-                        const int32_t d = grid.distance(unit->position(), city->location());
-                        if (d < bestDist) {
-                            bestDist   = d;
-                            targetCity = city->location();
+                    // Domination bias: target capital if within striking range,
+                    // else nearest city. Capitals decide Domination victory so
+                    // AI must actively prioritize them, not just nearest mass.
+                    const aoc::hex::AxialCoord capitalLoc =
+                        targetPlayer->cities().front()->location();
+                    const int32_t capitalDist = grid.distance(unit->position(), capitalLoc);
+                    aoc::hex::AxialCoord targetCity = capitalLoc;
+                    int32_t              bestDist   = capitalDist;
+                    if (capitalDist > strikingRange) {
+                        // Capital out of reach — fall back to nearest city.
+                        for (const std::unique_ptr<aoc::game::City>& city : targetPlayer->cities()) {
+                            const int32_t d = grid.distance(unit->position(), city->location());
+                            if (d < bestDist) {
+                                bestDist   = d;
+                                targetCity = city->location();
+                            }
                         }
                     }
 

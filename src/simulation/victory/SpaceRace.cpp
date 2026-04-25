@@ -31,12 +31,12 @@ namespace {
 constexpr float SCIENCE_TO_PROGRESS = 0.2f;
 
 // WP-B2 Mars Colony resource gate. Totals consumed on completion.
-// Audit 2026-04: at 1000t × 12 sims, 60 Lunar Colonies but 0 Mars
-// completions. Gate values cut in half so Titanium/He3 accumulation
-// time matches late-game pace.
-constexpr int32_t MARS_TITANIUM_COST       = 3;
-constexpr int32_t MARS_HELIUM3_COST        = 10;
-constexpr int32_t MARS_SEMICONDUCTORS_COST = 15;
+// Audit 2026-04 second pass: with 48 Lunar / 0 Mars at 1000t the He3 + Semi
+// gate still bottlenecks. Cut further: Ti 3->2, He3 10->5, Semi 15->8.
+// Civs that complete Lunar should now reasonably reach Mars within 200t.
+constexpr int32_t MARS_TITANIUM_COST       = 2;
+constexpr int32_t MARS_HELIUM3_COST        = 5;
+constexpr int32_t MARS_SEMICONDUCTORS_COST = 8;
 
 [[nodiscard]] bool playerHasCampus(const aoc::game::Player& player) {
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {

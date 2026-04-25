@@ -56,9 +56,12 @@ struct TradeCargo {
 
 /// How a trade route travels between cities.
 enum class TradeRouteType : uint8_t {
-    Land,   ///< Walks overland, uses roads/railways, slowest but cheapest
-    Sea,    ///< Sails between coastal cities (both need Harbor), +50% capacity
-    Air,    ///< Flies between cities with Airports, fastest, +25% gold, late-game
+    Land,   ///< Walks overland, uses roads/railways. Wagon = worst capacity;
+            ///< rail-majority path = train tier (large capacity).
+    Sea,    ///< Sails between coastal cities (both need Harbor). Largest
+            ///< capacity (8 slots). Profit comes from volume, not bonuses.
+    Air,    ///< Flies between cities with Airports. Lowest capacity but
+            ///< fastest (8 tiles/turn). Profit comes from trip frequency.
 };
 
 /// State of an active trade route (attached to the Trader entity).
@@ -112,27 +115,41 @@ struct TraderComponent {
     /// Toll paid this turn to territory owners along the route.
     CurrencyAmount tollPaidThisTurn = 0;
 
+    /// WP-R: fuel pre-filled at establish + topped up at each round-trip
+    /// reversal. Drained per tile travelled. 0 for wagon (Land pre-rail).
+    /// goodId 0 = no fuel needed.
+    uint16_t fuelGoodId = 0;
+    int32_t  fuelOnBoard = 0;
+    float    fuelPerTile = 0.0f;
+    /// Consecutive turns the trader has stalled with empty fuel. After
+    /// 20 idle turns the route is auto-abandoned.
+    int32_t  idleTurnsNoFuel = 0;
+
     /// Cumulative science/culture spread bonus.
     float scienceSpread = 0.0f;
     float cultureSpread = 0.0f;
 
-    /// WP-K3: cargo by route type. Land 3 (wagons / pack animals — smallest
-    /// payload, modeled per user request), Sea 6 (bulk shipping — largest),
-    /// Air 4 (mid — faster but limited fuselage).
-    [[nodiscard]] int32_t maxCargoSlots() const {
+    /// WP-K3 v2: cargo by route type, with land split by infrastructure.
+    ///   Sea: 8 slots (bulk shipping — vastly highest, cheapest per-unit).
+    ///   Land + railway majority on path: 6 slots (train haulage).
+    ///   Land wagon/truck (no rail majority): 2 slots (worst, slow).
+    ///   Air: 3 slots (lower than train, but speed compensates).
+    /// `onRail` flag is computed once at load time from path coverage.
+    [[nodiscard]] int32_t maxCargoSlots(bool onRail = false) const {
         switch (this->routeType) {
-            case TradeRouteType::Sea: return 6;
-            case TradeRouteType::Air: return 4;
+            case TradeRouteType::Sea: return 8;
+            case TradeRouteType::Air: return 3;
             case TradeRouteType::Land:
-            default: return 3;
+            default: return onRail ? 6 : 2;
         }
     }
 
     /// Cargo slots actually available for goods after the currency medium
     /// takes its cut. Metal coins (CommodityMoney) chew into the bay; paper
     /// and electronic money are effectively free. Always leaves >= 1 slot.
-    [[nodiscard]] int32_t effectiveCargoSlots(MonetarySystemType system) const {
-        const int32_t raw    = this->maxCargoSlots();
+    [[nodiscard]] int32_t effectiveCargoSlots(MonetarySystemType system,
+                                                bool onRail = false) const {
+        const int32_t raw    = this->maxCargoSlots(onRail);
         const int32_t weight = moneyWeightSlots(system);
         return std::max(1, raw - weight);
     }
@@ -160,14 +177,6 @@ struct TraderComponent {
         }
     }
 
-    /// Gold multiplier for route type. Air and Sea give bonuses.
-    [[nodiscard]] float goldMultiplier() const {
-        switch (this->routeType) {
-            case TradeRouteType::Air: return 1.25f;  // +25% gold (premium express delivery)
-            case TradeRouteType::Sea: return 1.50f;  // +50% gold (bulk shipping)
-            default: return 1.0f;
-        }
-    }
 };
 
 // ============================================================================

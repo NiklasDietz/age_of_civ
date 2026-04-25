@@ -29,15 +29,15 @@ struct ImprovementDef {
 };
 
 /// Hard-coded improvement definitions.
-inline constexpr std::array<ImprovementDef, 40> IMPROVEMENT_DEFS = {{
-    {aoc::map::ImprovementType::Farm,         "Farm",          {1, 0, 0, 0, 0, 0}, TechId{},   3},
+inline constexpr std::array<ImprovementDef, 41> IMPROVEMENT_DEFS = {{
+    {aoc::map::ImprovementType::Farm,         "Farm",          {3, 0, 0, 0, 0, 0}, TechId{},   3},
     {aoc::map::ImprovementType::Mine,         "Mine",          {0, 1, 0, 0, 0, 0}, TechId{0},  3},
     {aoc::map::ImprovementType::Plantation,   "Plantation",    {0, 0, 1, 0, 0, 0}, TechId{},   4},
     {aoc::map::ImprovementType::Quarry,       "Quarry",        {0, 1, 0, 0, 0, 0}, TechId{0},  3},
     {aoc::map::ImprovementType::LumberMill,   "Lumber Mill",   {0, 1, 0, 0, 0, 0}, TechId{},   3},
     {aoc::map::ImprovementType::Camp,         "Camp",          {0, 0, 1, 0, 0, 0}, TechId{},   3},
-    {aoc::map::ImprovementType::Pasture,      "Pasture",       {1, 0, 0, 0, 0, 0}, TechId{},   3},
-    {aoc::map::ImprovementType::FishingBoats, "Fishing Boats", {1, 0, 1, 0, 0, 0}, TechId{},   4},
+    {aoc::map::ImprovementType::Pasture,      "Pasture",       {3, 0, 0, 0, 0, 0}, TechId{},   3},
+    {aoc::map::ImprovementType::FishingBoats, "Fishing Boats", {3, 0, 1, 0, 0, 0}, TechId{},   4},
     {aoc::map::ImprovementType::Fort,         "Fort",          {0, 0, 0, 0, 0, 0}, TechId{},   5},
     {aoc::map::ImprovementType::Road,         "Road",          {0, 0, 0, 0, 0, 0}, TechId{},   2},
     // WP-C7: aligned with TechTree.cpp. Railway/Dam need industrial-era
@@ -79,6 +79,9 @@ inline constexpr std::array<ImprovementDef, 40> IMPROVEMENT_DEFS = {{
     // WP-C4: Greenhouse enables crop growth on off-climate tiles. Gated by
     // Advanced Chemistry (24, our Biology-analog). Flat +2 food for now.
     {aoc::map::ImprovementType::Greenhouse,        "Greenhouse",         {2, 0, 0, 0, 0, 0}, TechId{24}, 5},
+    // WP-S: Encampment. Forward military supply depot. Engineering tech.
+    // No yields (it's a buffer, not a producer).
+    {aoc::map::ImprovementType::Encampment,        "Encampment",         {0, 0, 0, 0, 0, 0}, TechId{6},  4},
     {aoc::map::ImprovementType::None,         "None",          {0, 0, 0, 0, 0, 0}, TechId{},   0},
 }};
 

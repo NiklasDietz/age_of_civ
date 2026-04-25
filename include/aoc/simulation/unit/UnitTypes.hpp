@@ -98,6 +98,33 @@ struct UnitTypeDef {
     [[nodiscard]] constexpr bool hasResourceRequirement() const {
         return this->resourceReqs[0].isValid() || this->resourceReqs[1].isValid();
     }
+
+    /// WP-P1: per-turn food cost for military units. Civilian/trader/scout
+    /// units consume 0 (foraging implicit). Foot infantry 1, mounted/heavy
+    /// 2, mech/armor 3. Fed from owner's aggregate stockpile each turn.
+    [[nodiscard]] constexpr int32_t foodPerTurn() const {
+        switch (this->unitClass) {
+            case UnitClass::Settler:
+            case UnitClass::Civilian:
+            case UnitClass::Trader:
+            case UnitClass::Scout:
+            case UnitClass::Religious:
+                return 0;
+            case UnitClass::Cavalry:
+            case UnitClass::Helicopter:
+                return 2;
+            case UnitClass::Armor:
+            case UnitClass::Air:
+            case UnitClass::Naval:
+                return 3;
+            case UnitClass::Melee:
+            case UnitClass::Ranged:
+            case UnitClass::AntiCavalry:
+            case UnitClass::Artillery:
+            default:
+                return 1;
+        }
+    }
 };
 
 // Unit type IDs: keep stable for serialization. Gaps are fine.

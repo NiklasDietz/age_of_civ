@@ -93,6 +93,12 @@ enum class ImprovementType : uint8_t {
     // when the full climate-metadata layer lands). For now: flat +2 food.
     Greenhouse,          ///< Any land: +2 food. Requires Advanced Chemistry (Biology-analog).
 
+    /// WP-S: military supply depot. Holds food + fuel buffer; military units
+    /// within 5 hex draw from the encampment first, fall back to city stockpile.
+    /// Buildable on owned land or neutral land within 8 hex of own city.
+    /// Pillage-able. Tech: Engineering.
+    Encampment,
+
     Count
 };
 

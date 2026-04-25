@@ -18,6 +18,7 @@ class HexGrid;
 
 namespace aoc::game {
 class Player;
+class GameState;
 }
 
 namespace aoc::sim {
@@ -80,5 +81,19 @@ void processUnitMaintenance(aoc::game::Player& player);
  * district, +2 per city beyond the capital. Scaled by inflation price level.
  */
 void processBuildingMaintenance(aoc::game::Player& player);
+
+/**
+ * @brief WP-P: drain food from owner's stockpile per military unit / turn.
+ *
+ * Per-unit cost: foot 1, cavalry/heli 2, armor/air/naval 3 (UnitTypeDef::foodPerTurn).
+ * Drains priority order: nearby Encampment (5 hex) first, then PROCESSED_FOOD,
+ * WHEAT, CATTLE, FISH, RICE from owner's city stockpiles.
+ * Units that cannot be fed accumulate `turnsStarving`. Combat strength
+ * derates 10%/turn (capped at 50%); after 5 starving turns the oldest
+ * starving unit auto-disbands.
+ */
+void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
+                                     const aoc::map::HexGrid& grid,
+                                     aoc::game::Player& player);
 
 } // namespace aoc::sim

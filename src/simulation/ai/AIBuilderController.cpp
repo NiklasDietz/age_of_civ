@@ -16,6 +16,7 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 
+#include <cmath>
 #include <limits>
 #include <unordered_set>
 #include <vector>
@@ -372,6 +373,64 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                 if (weighted < bestDist) {
                     bestDist = weighted;
                     bestTarget = tile;
+                }
+            }
+        }
+
+        // Step 2b (WP-K7): deliberate relay-seek. If a foreign city sits
+        // beyond direct trade range, target a neutral passable midpoint
+        // tile (Desert/Plains) to drop a future Trading Post relay.
+        // Skips when civ already has plenty of posts so builders don't spam.
+        if (gsPlayer->hasResearched(TechId{5})) {
+            int32_t existingPosts = 0;
+            const int32_t tilesN = grid.tileCount();
+            for (int32_t ti = 0; ti < tilesN; ++ti) {
+                if (grid.improvement(ti) == aoc::map::ImprovementType::TradingPost) {
+                    ++existingPosts;
+                }
+            }
+            const int32_t postCap = 3 + static_cast<int32_t>(this->m_player);
+            if (existingPosts < postCap) {
+                std::vector<aoc::hex::AxialCoord> foreignCities;
+                for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+                    if (other == nullptr) { continue; }
+                    if (other->id() == this->m_player) { continue; }
+                    for (const std::unique_ptr<aoc::game::City>& fc : other->cities()) {
+                        foreignCities.push_back(fc->location());
+                    }
+                }
+                for (const aoc::hex::AxialCoord& fc : foreignCities) {
+                    for (const aoc::hex::AxialCoord& cityLoc : cityLocations) {
+                        const int32_t pairDist = grid.distance(cityLoc, fc);
+                        if (pairDist <= 8 || pairDist > 24) { continue; }
+                        const int32_t midSteps = pairDist / 2;
+                        const float lerp = static_cast<float>(midSteps)
+                                         / static_cast<float>(pairDist);
+                        const int32_t mq = static_cast<int32_t>(std::round(
+                            static_cast<float>(cityLoc.q) * (1.0f - lerp)
+                          + static_cast<float>(fc.q) * lerp));
+                        const int32_t mr = static_cast<int32_t>(std::round(
+                            static_cast<float>(cityLoc.r) * (1.0f - lerp)
+                          + static_cast<float>(fc.r) * lerp));
+                        const aoc::hex::AxialCoord mid{mq, mr};
+                        if (!grid.isValid(mid)) { continue; }
+                        const int32_t midIdx = grid.toIndex(mid);
+                        if (grid.owner(midIdx) != INVALID_PLAYER) { continue; }
+                        if (grid.improvement(midIdx) != aoc::map::ImprovementType::None) { continue; }
+                        if (grid.movementCost(midIdx) <= 0) { continue; }
+                        const aoc::map::TerrainType tt = grid.terrain(midIdx);
+                        if (tt != aoc::map::TerrainType::Desert
+                         && tt != aoc::map::TerrainType::Plains) { continue; }
+                        if (targetedTiles.find(mid) != targetedTiles.end()) { continue; }
+                        const int32_t bdist = grid.distance(builder.position, mid);
+                        if (bdist > 12) { continue; }
+                        // Strong priority bias: relays unlock entire trade lanes.
+                        const int32_t weighted = bdist - 4;
+                        if (weighted < bestDist) {
+                            bestDist = weighted;
+                            bestTarget = mid;
+                        }
+                    }
                 }
             }
         }

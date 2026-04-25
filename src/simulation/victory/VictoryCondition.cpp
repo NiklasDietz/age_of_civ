@@ -58,6 +58,10 @@ struct PlayerRawStats {
     // Cultural
     float culturePerTurn = 0.0f;
     int32_t wonderCount = 0;
+    // WP-N2: tourism. Distinct accumulator from culture-per-turn. Sourced
+    // from late-era wonders + Theatre district buildings. Folded into the
+    // culture-toward-victory total at 1.5x once Renaissance unlocks.
+    float tourismPerTurn = 0.0f;
     // Scientific
     int32_t techsResearched = 0;
     // Diplomatic
@@ -94,14 +98,24 @@ static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
         PlayerRawStats& s = stats[pid];
         s.owner = pid;
 
-        // Cities: population, happiness, loyalty, wonders
+        // Cities: population, happiness, loyalty, wonders, tourism
+        int32_t theatreBuildings = 0;
         for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
             ++s.cityCount;
             s.totalPopulation += city->population();
             s.avgHappiness += city->happiness().amenities - city->happiness().demand;
             s.avgLoyalty  += city->loyalty().loyalty;
             s.wonderCount += static_cast<int32_t>(city->wonders().wonders.size());
+            for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& d
+                    : city->districts().districts) {
+                if (d.type == aoc::sim::DistrictType::Theatre) {
+                    theatreBuildings += static_cast<int32_t>(d.buildings.size());
+                }
+            }
         }
+        // WP-N2: tourism = late-era wonders ×5 + Theatre buildings ×2.
+        s.tourismPerTurn = static_cast<float>(s.wonderCount) * 5.0f
+                         + static_cast<float>(theatreBuildings) * 2.0f;
         if (s.cityCount > 0) {
             s.avgHappiness /= static_cast<float>(s.cityCount);
             s.avgLoyalty   /= static_cast<float>(s.cityCount);
@@ -349,7 +363,11 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
             case 6:         eraMult = 1.2f;  break;  // Atomic
             default:        eraMult = 1.5f;  break;  // Information+
         }
-        tracker.totalCultureAccumulated += s.culturePerTurn * 0.5f * eraMult;
+        // WP-N2: tourism rides on the same era gate but at 1.5x rate so it
+        // dominates accumulation late-game. Pre-Renaissance contributes zero
+        // (eraMult = 0). Wonders + Theatre buildings drive it; Civ-6 analog.
+        tracker.totalCultureAccumulated +=
+            (s.culturePerTurn * 0.5f + s.tourismPerTurn * 1.5f) * eraMult;
         tracker.score = static_cast<int32_t>(tracker.compositeCSI * 1000.0f);
 
         // Track peak GDP for collapse detection

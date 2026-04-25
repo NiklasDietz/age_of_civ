@@ -165,6 +165,15 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     float atkStrength = static_cast<float>(atkDef.combatStrength);
     float defStrength = static_cast<float>(defDef.combatStrength);
 
+    // WP-P2: starvation derate. -10% per consecutive starving turn, floor 50%.
+    auto starveMult = [](int32_t turns) -> float {
+        if (turns <= 0) { return 1.0f; }
+        const float mult = 1.0f - 0.1f * static_cast<float>(turns);
+        return std::max(0.5f, mult);
+    };
+    atkStrength *= starveMult(attacker.turnsStarving());
+    defStrength *= starveMult(defender.turnsStarving());
+
     atkStrength *= formationStrengthMultiplier(attacker.formationLevel());
     defStrength *= formationStrengthMultiplier(defender.formationLevel());
 
@@ -428,6 +437,14 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
     float atkStrength = static_cast<float>(atkDef.rangedStrength);
     float defStrength = static_cast<float>(defDef.combatStrength);
 
+    // WP-P2: starvation derate.
+    auto rngStarveMult = [](int32_t turns) -> float {
+        if (turns <= 0) { return 1.0f; }
+        return std::max(0.5f, 1.0f - 0.1f * static_cast<float>(turns));
+    };
+    atkStrength *= rngStarveMult(attacker.turnsStarving());
+    defStrength *= rngStarveMult(defender.turnsStarving());
+
     // Formation multiplier (symmetric with melee).
     atkStrength *= formationStrengthMultiplier(attacker.formationLevel());
     defStrength *= formationStrengthMultiplier(defender.formationLevel());
@@ -524,6 +541,14 @@ CombatPreview previewCombat(const aoc::game::GameState& gameState,
         ? static_cast<float>(atkDef.rangedStrength)
         : static_cast<float>(atkDef.combatStrength);
     float defStrength = static_cast<float>(defDef.combatStrength);
+
+    // WP-P2: starvation derate (preview must match resolution).
+    auto previewStarveMult = [](int32_t turns) -> float {
+        if (turns <= 0) { return 1.0f; }
+        return std::max(0.5f, 1.0f - 0.1f * static_cast<float>(turns));
+    };
+    atkStrength *= previewStarveMult(attacker.turnsStarving());
+    defStrength *= previewStarveMult(defender.turnsStarving());
 
     // Embarked modifier
     if (attacker.state() == aoc::sim::UnitState::Embarked) {

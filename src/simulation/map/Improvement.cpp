@@ -284,6 +284,12 @@ bool canPlaceImprovement(const aoc::map::HexGrid& grid,
         case aoc::map::ImprovementType::None:
         case aoc::map::ImprovementType::Count:
             return false;
+
+        case aoc::map::ImprovementType::Encampment:
+            // WP-S: military supply depot. Any non-water, non-mountain tile.
+            // Owner gating handled by caller (8-hex check from own city).
+            return !aoc::map::isWater(terrain)
+                && terrain != aoc::map::TerrainType::Mountain;
     }
 
     return false;

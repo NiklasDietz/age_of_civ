@@ -292,7 +292,10 @@ static void processSingleCityGrowth(aoc::game::City& city,
     // is converted to stockpiled Wheat goods (can be sold on the market).
     // Negative surplus: before starvation, consume Wheat from city stockpile.
     constexpr uint16_t WHEAT_GOOD_ID = 40;
-    constexpr float FOOD_TO_GOODS_RATIO = 0.5f;  // 2 surplus food → 1 Wheat good
+    // WP-Q: 0.5 was too tight given WP-P military food consumption (foot 1/turn,
+    // cavalry 2/turn, armor 3/turn). Bump to 3.0 so cities export ~6x more
+    // wheat into stockpile → armies can be fed without farm tile spam.
+    constexpr float FOOD_TO_GOODS_RATIO = 3.0f;
 
     float needed = foodForGrowth(city.population());
 

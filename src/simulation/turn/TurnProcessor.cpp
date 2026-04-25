@@ -435,6 +435,11 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     processUnitMaintenance(*gsPlayer);
     processBuildingMaintenance(*gsPlayer);
 
+    // WP-P: military food consumption + starve tracking. Drains owner's
+    // aggregated food stockpile per-unit each turn. Empty stockpile →
+    // units accumulate `turnsStarving` (combat strength derate + auto-disband).
+    processMilitaryFoodConsumption(*turnContext.gameState, grid, *gsPlayer);
+
     // Sync monetary().treasury from the actual spending account so AI decisions
     // and display both see the real value.
     gsPlayer->monetary().treasury = gsPlayer->treasury();

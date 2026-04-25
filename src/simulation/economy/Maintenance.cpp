@@ -19,6 +19,7 @@
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
+#include "aoc/game/GameState.hpp"
 #include "aoc/game/Unit.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -648,6 +649,141 @@ void processBuildingMaintenance(aoc::game::Player& player) {
                  static_cast<unsigned>(player.id()),
                  static_cast<long long>(adjustedMaintenance),
                  static_cast<long long>(player.treasury()));
+    }
+}
+
+void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
+                                     const aoc::map::HexGrid& grid,
+                                     aoc::game::Player& player) {
+    // WP-P1: aggregate food demand across all military / mounted / armor units.
+    // WP-Q: only units OUTSIDE owned territory drain stockpile. Garrison
+    // forages locally (zero cost). Expeditionary forces need supply lines.
+    int32_t demand = 0;
+    int32_t fed = 0;
+    int32_t starving = 0;
+    for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+        if (unit->typeDef().foodPerTurn() <= 0) { continue; }
+        const int32_t pIdx = grid.toIndex(unit->position());
+        if (grid.owner(pIdx) == player.id()) {
+            // Reset starving on garrison (returning home heals food state).
+            if (unit->turnsStarving() > 0) { unit->setTurnsStarving(0); }
+            continue;
+        }
+        demand += unit->typeDef().foodPerTurn();
+    }
+    if (demand <= 0) { return; }
+
+    // WP-S: lazy-seed Encampment buffers for any owned encampment improvement
+    // that has no buffer entry yet (50 food + 50 fuel seed).
+    {
+        const int32_t tilesN = grid.tileCount();
+        for (int32_t ti = 0; ti < tilesN; ++ti) {
+            if (grid.improvement(ti) != aoc::map::ImprovementType::Encampment) { continue; }
+            if (grid.owner(ti) != player.id()) { continue; }
+            std::unordered_map<int32_t, aoc::game::GameState::EncampmentBuffer>::iterator it =
+                gameState.encampments().find(ti);
+            if (it == gameState.encampments().end()) {
+                aoc::game::GameState::EncampmentBuffer buf;
+                buf.owner = player.id();
+                buf.food = 100;
+                buf.fuel = 100;
+                gameState.encampments().emplace(ti, buf);
+            }
+        }
+    }
+
+    // WP-S: drain encampment buffers first for units within 5 hex.
+    int32_t remaining = demand;
+    {
+        for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+            const int32_t cost = unit->typeDef().foodPerTurn();
+            if (cost <= 0) { continue; }
+            for (std::pair<const int32_t, aoc::game::GameState::EncampmentBuffer>& kv
+                    : gameState.encampments()) {
+                if (kv.second.owner != player.id()) { continue; }
+                if (kv.second.food <= 0) { continue; }
+                const aoc::hex::AxialCoord depot = grid.toAxial(kv.first);
+                if (grid.distance(unit->position(), depot) > 5) { continue; }
+                const int32_t take = std::min(cost, kv.second.food);
+                kv.second.food -= take;
+                remaining -= take;
+                break;
+            }
+        }
+    }
+
+    // Drain priority order: processed first (most efficient), then raw foods.
+    constexpr std::array<uint16_t, 5> FOOD_GOODS = {
+        goods::PROCESSED_FOOD, goods::WHEAT, goods::CATTLE,
+        goods::FISH, goods::RICE
+    };
+
+    for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        if (remaining <= 0) { break; }
+        CityStockpileComponent& sp = city->stockpile();
+        for (uint16_t goodId : FOOD_GOODS) {
+            if (remaining <= 0) { break; }
+            const int32_t avail = sp.getAmount(goodId);
+            if (avail <= 0) { continue; }
+            const int32_t take = std::min(avail, remaining);
+            (void)sp.consumeGoods(goodId, take);
+            remaining -= take;
+        }
+    }
+    fed = demand - remaining;
+
+    // Per-unit starve tracking. Distribute satisfied food first to weakest
+    // (highest foodPerTurn) units so heavy armor doesn't bypass infantry.
+    // Only units outside own territory are tracked (garrison eats local).
+    std::vector<aoc::game::Unit*> sorted;
+    sorted.reserve(player.units().size());
+    for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+        if (unit->typeDef().foodPerTurn() <= 0) { continue; }
+        const int32_t pIdx = grid.toIndex(unit->position());
+        if (grid.owner(pIdx) == player.id()) { continue; }
+        sorted.push_back(unit.get());
+    }
+    std::sort(sorted.begin(), sorted.end(),
+        [](const aoc::game::Unit* a, const aoc::game::Unit* b) {
+            return a->typeDef().foodPerTurn() < b->typeDef().foodPerTurn();
+        });
+
+    int32_t budget = fed;
+    for (aoc::game::Unit* unit : sorted) {
+        const int32_t cost = unit->typeDef().foodPerTurn();
+        if (budget >= cost) {
+            budget -= cost;
+            if (unit->turnsStarving() > 0) {
+                unit->setTurnsStarving(0);
+            }
+        } else {
+            unit->incrementStarving();
+            ++starving;
+        }
+    }
+
+    // 5+ consecutive starving turns → auto-disband oldest starving unit.
+    aoc::game::Unit* disbandTarget = nullptr;
+    int32_t worst = 0;
+    for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+        if (unit->turnsStarving() >= 5 && unit->turnsStarving() > worst) {
+            worst = unit->turnsStarving();
+            disbandTarget = unit.get();
+        }
+    }
+    if (disbandTarget != nullptr) {
+        LOG_WARN("Player %u unit '%.*s' deserted after %d starving turns",
+                 static_cast<unsigned>(player.id()),
+                 static_cast<int>(disbandTarget->typeDef().name.size()),
+                 disbandTarget->typeDef().name.data(),
+                 disbandTarget->turnsStarving());
+        player.removeUnit(disbandTarget);
+    }
+
+    if (starving > 0) {
+        LOG_INFO("Player %u food upkeep: demand %d, fed %d, %d starving",
+                 static_cast<unsigned>(player.id()),
+                 demand, fed, starving);
     }
 }
 

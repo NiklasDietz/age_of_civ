@@ -38,6 +38,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 namespace aoc::map { class HexGrid; }
@@ -184,6 +185,17 @@ public:
     [[nodiscard]] std::vector<aoc::sim::ElectricityAgreementComponent>& electricityAgreements() { return this->m_electricityAgreements; }
     [[nodiscard]] const std::vector<aoc::sim::ElectricityAgreementComponent>& electricityAgreements() const { return this->m_electricityAgreements; }
 
+    /// WP-S: per-encampment supply buffer keyed by tile index. food + fuel
+    /// (one bundle per encampment tile). Drained by nearby military units;
+    /// refilled by Logistics convoys (later WP) or by initial seed.
+    struct EncampmentBuffer {
+        PlayerId owner = INVALID_PLAYER;
+        int32_t  food  = 0;
+        int32_t  fuel  = 0;
+    };
+    [[nodiscard]] std::unordered_map<int32_t, EncampmentBuffer>& encampments() { return this->m_encampments; }
+    [[nodiscard]] const std::unordered_map<int32_t, EncampmentBuffer>& encampments() const { return this->m_encampments; }
+
 private:
     std::vector<std::unique_ptr<Player>> m_players;
     /// City-state Player slots. Sparse by design: index i corresponds to
@@ -212,6 +224,9 @@ private:
     std::vector<aoc::sim::CityStateComponent> m_cityStates;
     std::vector<aoc::sim::ConfederationComponent> m_confederations;
     std::vector<aoc::sim::ElectricityAgreementComponent> m_electricityAgreements;
+
+    /// WP-S: encampment supply buffers keyed by tile index.
+    std::unordered_map<int32_t, EncampmentBuffer> m_encampments;
 };
 
 } // namespace aoc::game

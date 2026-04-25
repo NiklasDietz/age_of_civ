@@ -116,6 +116,14 @@ public:
     [[nodiscard]] bool isFortified() const { return this->m_state == aoc::sim::UnitState::Fortified; }
     [[nodiscard]] bool isSleeping() const { return this->m_state == aoc::sim::UnitState::Sleeping; }
 
+    /// WP-P2: consecutive turns this unit has been starving. Each turn under
+    /// starvation reduces effective combat strength by 10% (cumulative, capped
+    /// at 50%). Resets to 0 when food restored. After 5 turns the oldest
+    /// starving unit auto-disbands.
+    [[nodiscard]] int32_t turnsStarving() const { return this->m_turnsStarving; }
+    void setTurnsStarving(int32_t turns) { this->m_turnsStarving = turns; }
+    void incrementStarving() { ++this->m_turnsStarving; }
+
     // ========================================================================
     // Builder charges
     // ========================================================================
@@ -206,6 +214,7 @@ private:
 
     int32_t m_hitPoints;
     int32_t m_movementRemaining;
+    int32_t m_turnsStarving = 0;
     aoc::sim::UnitState m_state = aoc::sim::UnitState::Idle;
     aoc::sim::FormationLevel m_formationLevel = aoc::sim::FormationLevel::Single;
     int32_t m_chargesRemaining = 0;

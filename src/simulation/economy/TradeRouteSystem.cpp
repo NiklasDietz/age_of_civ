@@ -103,14 +103,118 @@ void selectTradeGoods(const CityStockpileComponent& originStock,
     }
 }
 
+/// WP-R + WP-T: returns the fuel good + per-tile rate for a route. Wagon
+/// Land returns goodId 0 (free). Land rail uses COAL (steam). Sea
+/// pre-Refining uses COAL, post-Refining FUEL. Air uses FUEL post-Aviation.
+/// WP-T: Land rail with Electricity tech + power-pole coverage on path
+/// switches to electric mode (free — drains power grid implicitly).
+struct FuelSpec {
+    uint16_t goodId = 0;
+    float    perTile = 0.0f;
+};
+FuelSpec routeFuelSpec(const TraderComponent& trader,
+                        const aoc::map::HexGrid& grid,
+                        const aoc::game::Player& owner) {
+    FuelSpec spec;
+    const bool hasRefining = owner.tech().hasResearched(TechId{12});
+    const bool hasElectricity = owner.tech().hasResearched(TechId{14});
+    switch (trader.routeType) {
+        case TradeRouteType::Air:
+            // WP-Q: 2.0 starved Air routes 100% (audit: 0 air after WP-R).
+            // 1.0/tile keeps Air rare (still needs Aviation + Airport gates)
+            // but viable for late-game premium cargo.
+            spec.goodId  = goods::FUEL;
+            spec.perTile = 1.0f;
+            return spec;
+        case TradeRouteType::Sea:
+            spec.goodId  = hasRefining ? goods::FUEL : goods::COAL;
+            spec.perTile = 0.5f;
+            return spec;
+        case TradeRouteType::Land:
+        default: {
+            // Rail-majority path = train tier. Else wagon (free).
+            int32_t railCount = 0;
+            int32_t poleCount = 0;
+            int32_t total = 0;
+            for (const aoc::hex::AxialCoord& tile : trader.path) {
+                if (!grid.isValid(tile)) { continue; }
+                const int32_t tIdx = grid.toIndex(tile);
+                const aoc::map::ImprovementType imp = grid.improvement(tIdx);
+                if (imp == aoc::map::ImprovementType::Railway
+                 || imp == aoc::map::ImprovementType::Highway) {
+                    ++railCount;
+                }
+                if (grid.hasPowerPole(tIdx)) { ++poleCount; }
+                ++total;
+            }
+            if (total > 0
+             && static_cast<float>(railCount) / static_cast<float>(total) >= 0.5f) {
+                // Train tier. Default coal (steam).
+                spec.goodId  = goods::COAL;
+                spec.perTile = 1.0f;
+                // WP-T: electric trains. Path needs Electricity tech + power-
+                // pole coverage on at least 50% of path tiles. Renewables-
+                // backed grid is "free" stockpile-wise (real cost = building
+                // power plants + maintenance, not consuming coal/oil).
+                if (hasElectricity
+                 && static_cast<float>(poleCount) / static_cast<float>(total) >= 0.5f) {
+                    spec.goodId  = 0;
+                    spec.perTile = 0.0f;
+                }
+            }
+            return spec;
+        }
+    }
+}
+
+/// WP-R: drain `requested` fuel of `goodId` from `seller` aggregated stockpiles.
+/// Returns units actually drained.
+int32_t drainFuel(aoc::game::Player& owner, uint16_t goodId, int32_t requested) {
+    if (requested <= 0 || goodId == 0) { return 0; }
+    int32_t got = 0;
+    for (const std::unique_ptr<aoc::game::City>& city : owner.cities()) {
+        if (got >= requested) { break; }
+        CityStockpileComponent& sp = city->stockpile();
+        const int32_t avail = sp.getAmount(goodId);
+        if (avail <= 0) { continue; }
+        const int32_t take = std::min(avail, requested - got);
+        if (sp.consumeGoods(goodId, take)) {
+            got += take;
+        }
+    }
+    return got;
+}
+
+/// WP-K3 v2: returns true if the trader's path is at least 50% railway/highway
+/// (rail tier) so the trader can haul bulk cargo. Otherwise wagon tier.
+bool pathOnRail(const TraderComponent& trader, const aoc::map::HexGrid& grid) {
+    if (trader.routeType != TradeRouteType::Land) { return false; }
+    if (trader.path.empty()) { return false; }
+    int32_t railCount = 0;
+    int32_t total = 0;
+    for (const aoc::hex::AxialCoord& tile : trader.path) {
+        if (!grid.isValid(tile)) { continue; }
+        const aoc::map::ImprovementType imp = grid.improvement(grid.toIndex(tile));
+        if (imp == aoc::map::ImprovementType::Railway
+         || imp == aoc::map::ImprovementType::Highway) {
+            ++railCount;
+        }
+        ++total;
+    }
+    if (total == 0) { return false; }
+    return static_cast<float>(railCount) / static_cast<float>(total) >= 0.5f;
+}
+
 /// WP-O: predict and reserve goods at `seller` city for an upcoming pickup.
 /// Moves planned amounts from `goods` to `exportBuffer` (frees stockpile during
 /// transit). Stores the planned cargo on the trader so death can release it.
 void commitPickupReservation(aoc::game::City& seller,
                               const Market& market,
-                              TraderComponent& trader) {
+                              TraderComponent& trader,
+                              const aoc::map::HexGrid& grid) {
     CityStockpileComponent& sellerStock = seller.stockpile();
-    const int32_t slots = trader.maxCargoSlots();
+    const bool rail = pathOnRail(trader, grid);
+    const int32_t slots = trader.maxCargoSlots(rail);
 
     std::vector<TradeCargo> planned;
     selectTradeGoods(sellerStock, /*destStock*/ nullptr, market, planned, slots);
@@ -555,12 +659,12 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
                 }
 
                 // Estimate time-savings value: each saved tile = earlier delivery.
-                // Sea trader speed ~5 tiles/turn. Cargo delivers gold = cargoValue * goldMultiplier.
-                // Saved turns = savedTiles / speed. Value of saved time = goldPerTurn * savedTurns.
+                // Sea trader speed ~5 tiles/turn. Saved turns = savedTiles / speed.
+                // Value of saved time = goldPerTurn * savedTurns.
                 constexpr float SEA_SPEED = 5.0f;
                 constexpr float ESTIMATED_CARGO_VALUE = 200.0f;  // Rough average
                 float savedTurns = static_cast<float>(savedTiles) / SEA_SPEED;
-                float goldPerTurn = ESTIMATED_CARGO_VALUE * trader.goldMultiplier()
+                float goldPerTurn = ESTIMATED_CARGO_VALUE
                     / (static_cast<float>(canalLen) * 2.0f / SEA_SPEED);
                 float timeSavingsValue = goldPerTurn * savedTurns;
 
@@ -653,7 +757,8 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     const MonetarySystemType ownerSys = (ownerPtrForCargo != nullptr)
         ? ownerPtrForCargo->monetary().system
         : MonetarySystemType::Barter;
-    const int32_t cargoSlots = trader.effectiveCargoSlots(ownerSys);
+    const bool railOutbound = pathOnRail(trader, grid);
+    const int32_t cargoSlots = trader.effectiveCargoSlots(ownerSys, railOutbound);
     selectTradeGoods(originStock, &destStock, market, trader.cargo, cargoSlots);
     for (TradeCargo& c : trader.cargo) {
         // WP-O: pull from exportBuffer first (drains the queue), then
@@ -664,9 +769,39 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
         [[maybe_unused]] bool ok = (taken == c.amount);
     }
 
+    // WP-R: pre-fill fuel for the round trip. Drains owner's stockpile.
+    // Refuses route if insufficient fuel (clear failure log).
+    {
+        const FuelSpec fs = routeFuelSpec(trader, grid, *ownerPlayer);
+        trader.fuelGoodId = fs.goodId;
+        trader.fuelPerTile = fs.perTile;
+        if (fs.goodId != 0 && fs.perTile > 0.0f) {
+            const float needFloat = static_cast<float>(trader.path.size())
+                                   * 2.0f * fs.perTile * 1.1f;
+            const int32_t need = static_cast<int32_t>(std::ceil(needFloat));
+            const int32_t drained = drainFuel(*ownerPlayer, fs.goodId, need);
+            if (drained < need) {
+                LOG_INFO("Trade route refused: P%u %s out of fuel (needed %d %s, had %d)",
+                         static_cast<unsigned>(traderUnit->owner()),
+                         (trader.routeType == TradeRouteType::Land ? "land" :
+                          trader.routeType == TradeRouteType::Sea  ? "sea"  : "air"),
+                         need,
+                         (fs.goodId == goods::FUEL ? "FUEL" : "COAL"),
+                         drained);
+                // Return drained partial back to nearest origin city stockpile.
+                if (drained > 0 && originCity != nullptr) {
+                    originCity->stockpile().addGoods(fs.goodId, drained);
+                }
+                return ErrorCode::InvalidArgument;
+            }
+            trader.fuelOnBoard = drained;
+        }
+        trader.idleTurnsNoFuel = 0;
+    }
+
     // WP-O: reserve dest city's pickup goods now. Frees dest stockpile during
     // the outbound transit; trader pulls from buffer on arrival.
-    commitPickupReservation(*destCity, market, trader);
+    commitPickupReservation(*destCity, market, trader, grid);
 
     LOG_INFO("Trade route established: player %u, %d goods loaded, %d reserved at dest",
              static_cast<unsigned>(traderUnit->owner()),
@@ -853,13 +988,54 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             }
         }
 
-        // Move along path (tolls already settled above)
-        for (int32_t step = 0; step < speed; ++step) {
-            if (trader.pathIndex >= static_cast<int32_t>(trader.path.size()) - 1) {
-                break;  // Arrived
+        // WP-R: fuel-gate movement. If fuel needed and exhausted, stall + try
+        // emergency resupply from owner stockpile. After 20 idle turns, give
+        // up — caller-side toRemove handles cargo recovery.
+        bool stalled = false;
+        if (trader.fuelGoodId != 0 && trader.fuelPerTile > 0.0f) {
+            aoc::game::Player* tplayer = gameState.player(trader.owner);
+            if (tplayer != nullptr && trader.fuelOnBoard <= 0) {
+                // Try resupply from any own city stockpile.
+                const int32_t need = static_cast<int32_t>(
+                    std::ceil(static_cast<float>(speed) * trader.fuelPerTile));
+                const int32_t got = drainFuel(*tplayer, trader.fuelGoodId, need);
+                if (got > 0) {
+                    trader.fuelOnBoard += got;
+                    trader.idleTurnsNoFuel = 0;
+                    LOG_INFO("Trader P%u resupplied %d fuel from home stockpile",
+                             static_cast<unsigned>(trader.owner), got);
+                } else {
+                    ++trader.idleTurnsNoFuel;
+                    stalled = true;
+                    if (trader.idleTurnsNoFuel >= 20) {
+                        toRemove.push_back(unitPtr);
+                        LOG_WARN("Trader P%u abandoned: no fuel for 20 turns",
+                                 static_cast<unsigned>(trader.owner));
+                        continue;
+                    }
+                }
             }
-            ++trader.pathIndex;
-            unitPtr->setPosition(trader.path[static_cast<std::size_t>(trader.pathIndex)]);
+        }
+
+        // Move along path (tolls already settled above)
+        if (!stalled) {
+            for (int32_t step = 0; step < speed; ++step) {
+                if (trader.pathIndex >= static_cast<int32_t>(trader.path.size()) - 1) {
+                    break;  // Arrived
+                }
+                ++trader.pathIndex;
+                unitPtr->setPosition(trader.path[static_cast<std::size_t>(trader.pathIndex)]);
+                // WP-R: per-tile fuel drain.
+                if (trader.fuelGoodId != 0 && trader.fuelPerTile > 0.0f) {
+                    const int32_t cost = static_cast<int32_t>(
+                        std::ceil(trader.fuelPerTile));
+                    trader.fuelOnBoard -= cost;
+                    if (trader.fuelOnBoard <= 0) {
+                        trader.fuelOnBoard = 0;
+                        break;  // out of fuel mid-step; rest of speed wasted.
+                    }
+                }
+            }
         }
 
         // Check if arrived at destination
@@ -915,18 +1091,24 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
 
             // Unload cargo and earn gold based on market prices
             CurrencyAmount goldEarned = 0;
+            int32_t totalUnits = 0;
             for (const TradeCargo& c : trader.cargo) {
                 targetStock.addGoods(c.goodId, c.amount);
+                totalUnits += c.amount;
                 // Gold = 20% of market value per unit traded
                 int32_t price = market.marketData(c.goodId).currentPrice;
                 if (price <= 0) { price = 1; }
                 goldEarned += static_cast<CurrencyAmount>(c.amount)
                             * static_cast<CurrencyAmount>(price) / 5;
             }
-
-            // Route type gold multiplier (Sea +50%, Air +25%, Land 1.0x)
-            goldEarned = static_cast<CurrencyAmount>(
-                static_cast<float>(goldEarned) * trader.goldMultiplier());
+            // WP-K3: throughput log per route type for audit ratio analysis.
+            const char* routeTag =
+                (trader.routeType == TradeRouteType::Land) ? "Land"
+              : (trader.routeType == TradeRouteType::Sea)  ? "Sea"  : "Air";
+            LOG_INFO("Trade delivery: P%u %s %d units cargo, %lld gold",
+                     static_cast<unsigned>(trader.owner),
+                     routeTag, totalUnits,
+                     static_cast<long long>(goldEarned));
 
             trader.goldEarnedThisTurn = goldEarned;
 
@@ -960,7 +1142,8 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             const MonetarySystemType sellerSys = (sellerPlayer != nullptr)
                 ? sellerPlayer->monetary().system
                 : MonetarySystemType::Barter;
-            const int32_t returnSlots = trader.effectiveCargoSlots(sellerSys);
+            const bool railReturn = pathOnRail(trader, grid);
+            const int32_t returnSlots = trader.effectiveCargoSlots(sellerSys, railReturn);
             trader.cargo.clear();
             int32_t loaded = 0;
             for (const TradeCargo& planned : trader.pendingPickupCargo) {
@@ -1095,9 +1278,26 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             ? trader.originCityLocation : trader.destCityLocation;
         aoc::game::City* nextPickup = findCityByLocation(gameState, nextPickupLoc);
         if (nextPickup != nullptr) {
-            commitPickupReservation(*nextPickup, market, trader);
+            commitPickupReservation(*nextPickup, market, trader, grid);
         } else {
             trader.pendingPickupCargo.clear();
+        }
+
+        // WP-R: top up fuel for the next leg from owner stockpile.
+        // Failure leaves the trader on whatever's already on board; if it
+        // depletes mid-route the stall + emergency resupply path handles it.
+        if (trader.fuelGoodId != 0 && trader.fuelPerTile > 0.0f) {
+            aoc::game::Player* tp = gameState.player(trader.owner);
+            if (tp != nullptr) {
+                const float legNeedF = static_cast<float>(trader.path.size())
+                                     * trader.fuelPerTile * 1.05f;
+                const int32_t legNeed = static_cast<int32_t>(std::ceil(legNeedF));
+                const int32_t deficit = std::max(0, legNeed - trader.fuelOnBoard);
+                if (deficit > 0) {
+                    const int32_t got = drainFuel(*tp, trader.fuelGoodId, deficit);
+                    trader.fuelOnBoard += got;
+                }
+            }
         }
     }
 
@@ -1339,7 +1539,12 @@ TradeRouteEstimate estimateTradeRouteIncome(
               });
 
     const MonetarySystemType estSys = ownerPlayer->monetary().system;
-    int32_t maxSlots = tempTrader.effectiveCargoSlots(estSys);
+    // Estimate uses optimistic rail-tier capacity for Land routes — actual
+    // capacity at load time depends on path coverage, but this matches the
+    // potential gain so the AI utility doesn't undervalue future-rail lanes.
+    const bool estRail = (estimate.routeType == TradeRouteType::Land)
+        && ownerPlayer->tech().hasResearched(TechId{11});
+    int32_t maxSlots = tempTrader.effectiveCargoSlots(estSys, estRail);
     int32_t totalValue = 0;
     int32_t slotCount = 0;
     for (const ScoredGood& sg : scoredGoods) {
@@ -1351,8 +1556,7 @@ TradeRouteEstimate estimateTradeRouteIncome(
     // C31: AI was booking routes at gross value. Subtract expected tolls so
     // the utility score matches realized profit — keeps AI from signing
     // negative-EV routes when partner raised their rate.
-    const CurrencyAmount grossGold = static_cast<CurrencyAmount>(
-        static_cast<float>(totalValue) * tempTrader.goldMultiplier());
+    const CurrencyAmount grossGold = static_cast<CurrencyAmount>(totalValue);
     CurrencyAmount expectedTolls = 0;
     if (destCity.owner() != traderUnit.owner()) {
         const aoc::game::Player* destPlayer = gameState.player(destCity.owner());

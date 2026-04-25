@@ -146,11 +146,11 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
 void processReligiousSpread(aoc::game::GameState& gameState,
                              const aoc::map::HexGrid& grid,
                              const DiplomacyManager* diplomacy) {
-    constexpr int32_t SPREAD_RANGE = 3;
-    // Audit 2026-04: even after doubling pressure to 1.0, Religion
-    // victory stayed at 0/12 sims. Triple base pressure to 1.5 so a
-    // founder-civ can plausibly reach dominance in the 1500t window.
-    constexpr float BASE_PASSIVE_PRESSURE = 1.5f;
+    // Audit 2026-04: SPREAD_RANGE was 3 (only adjacent + neighbour); pressure
+    // saturated at neighbour cluster. Bumped to 5 + base 2.0 so the founder's
+    // religion can radiate across 4-civ continents within the 1500t window.
+    constexpr int32_t SPREAD_RANGE = 5;
+    constexpr float BASE_PASSIVE_PRESSURE = 2.0f;
 
     // Gather city info from GameState. Owner is tracked so cross-owner spread
     // can be gated by diplomatic state (war blocks passive conversion) and the
