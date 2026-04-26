@@ -239,6 +239,9 @@ ErrorCode Application::initialize(const Config& config) {
 }
 
 void Application::startGame(const aoc::ui::GameSetupConfig& config) {
+    // Apply user-selected turn limit. Used by Score victory + spectator HUD.
+    this->m_spectatorMaxTurns = config.maxTurns;
+
     // Loading overlay. Rendered on next frame — we synchronously
     // block through map-gen / spawn below so the screen only appears
     // if something errors out, but it sets expectation for async work
@@ -1060,12 +1063,13 @@ void Application::run() {
                 }
             }
 
-            // WP-H takeover: Ctrl+T in spectator mode — assume control of
-            // the currently-followed player. Sim switches to human-driven
+            // WP-H takeover: T (or Ctrl+T) in spectator mode — assume control
+            // of the currently-followed player. Sim switches to human-driven
             // for that slot; AI skips it; fog resolves from their POV.
-            const bool ctrlHeld = this->m_inputManager.isKeyHeld(GLFW_KEY_LEFT_CONTROL)
-                               || this->m_inputManager.isKeyHeld(GLFW_KEY_RIGHT_CONTROL);
-            if (ctrlHeld && this->m_inputManager.isKeyPressed(GLFW_KEY_T)) {
+            // Plain 'T' kept as alias for Ctrl+T per user request — clicking
+            // a civ in the scoreboard sets m_spectatorFollowPlayer, then
+            // pressing T overtakes that civ.
+            if (this->m_inputManager.isKeyPressed(GLFW_KEY_T)) {
                 if (this->m_spectatorFollowPlayer >= 0
                     && this->m_spectatorFollowPlayer
                        < this->m_gameState.playerCount()) {

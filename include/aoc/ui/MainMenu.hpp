@@ -54,6 +54,7 @@ struct GameSetupConfig {
     bool sequentialTurnsInWar = false;        ///< Use sequential turns when at war
     AIDifficulty aiDifficulty = AIDifficulty::Normal; ///< AI difficulty level
     VictoryMode victoryMode = VictoryMode::Default;   ///< Victory condition mode
+    int32_t maxTurns = 1000;                          ///< User-selectable turn limit
 };
 
 class MainMenu {
@@ -131,6 +132,13 @@ private:
     WidgetId m_btnSmall       = INVALID_WIDGET;
     WidgetId m_btnStandard    = INVALID_WIDGET;
     WidgetId m_btnLarge       = INVALID_WIDGET;
+    WidgetId m_btnHuge        = INVALID_WIDGET;
+
+    // Turn count selection buttons (300, 1000, 2000, 5000)
+    WidgetId m_btnTurns300    = INVALID_WIDGET;
+    WidgetId m_btnTurns1000   = INVALID_WIDGET;
+    WidgetId m_btnTurns2000   = INVALID_WIDGET;
+    WidgetId m_btnTurns5000   = INVALID_WIDGET;
 
     // Resource placement mode buttons
     WidgetId m_btnPlaceRealistic = INVALID_WIDGET;
@@ -142,6 +150,9 @@ private:
 
     /// Re-color map size selection buttons to reflect current selection.
     void updateMapSizeButtons(UIManager& ui);
+
+    /// Re-color turn-count selection buttons to reflect current selection.
+    void updateTurnButtons(UIManager& ui);
 
     /// Re-color placement-mode buttons to reflect current selection.
     void updatePlacementButtons(UIManager& ui);

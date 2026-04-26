@@ -406,13 +406,15 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
 
             // Assign terrain based on temperature
             TerrainType terrain;
-            if (temperature < 0.15f) {
+            // Tightened biome cuts to reduce desert + arctic dominance.
+            // User feedback: too much desert, too much unusable terrain.
+            if (temperature < 0.10f) {
                 terrain = TerrainType::Snow;
-            } else if (temperature < 0.30f) {
+            } else if (temperature < 0.22f) {
                 terrain = TerrainType::Tundra;
-            } else if (temperature > 0.80f) {
+            } else if (temperature > 0.88f) {  // was 0.80 — now narrower desert band
                 terrain = TerrainType::Desert;
-            } else if (temperature > 0.50f) {
+            } else if (temperature > 0.55f) {
                 terrain = TerrainType::Plains;
             } else {
                 terrain = TerrainType::Grassland;
@@ -458,7 +460,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 }
             }
             if (!mountainUpwind) { continue; }
-            if (!shadowRng.chance(0.25f)) { continue; }
+            if (!shadowRng.chance(0.10f)) { continue; }  // was 0.25 — too aggressive
             grid.setTerrain(index, TerrainType::Desert);
         }
     }
@@ -1246,16 +1248,17 @@ void MapGenerator::generateRealisticTerrain(const Config& config, HexGrid& grid,
             // tiles are snow/tundra regardless of precipitation (ice deserts
             // still read as "snow"). Warm tiles then branch by moisture.
             TerrainType terrain;
-            if (temperature < 0.15f) {
+            // Tightened cuts to reduce desert/snow dominance (user feedback).
+            if (temperature < 0.10f) {
                 terrain = TerrainType::Snow;
-            } else if (temperature < 0.30f) {
+            } else if (temperature < 0.22f) {
                 terrain = TerrainType::Tundra;
-            } else if (precipitation < 0.22f && temperature > 0.40f) {
+            } else if (precipitation < 0.15f && temperature > 0.55f) {
+                // Was: precipitation<0.22 + temp>0.40. Now requires hotter+drier.
                 terrain = TerrainType::Desert;
-            } else if (precipitation < 0.45f) {
+            } else if (precipitation < 0.40f) {
                 terrain = TerrainType::Plains;
             } else if (temperature > 0.70f && precipitation > 0.65f) {
-                // Hot + wet: grassland for now; feature pass adds jungle.
                 terrain = TerrainType::Grassland;
             } else {
                 terrain = TerrainType::Grassland;

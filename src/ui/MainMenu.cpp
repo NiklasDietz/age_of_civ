@@ -513,6 +513,64 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
     }
 
+    // Huge
+    {
+        ButtonData btn;
+        btn.label        = "Huge";
+        btn.fontSize     = 12.0f;
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this, &ui]() {
+            this->m_config.mapSize = aoc::map::MapSize::Huge;
+            this->updateMapSizeButtons(ui);
+        };
+        this->m_btnHuge = ui.createButton(
+            mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
+    }
+
+    // ---- Turn Count section ----
+    [[maybe_unused]] WidgetId turnsLabel = ui.createLabel(
+        contentPanel,
+        {0.0f, 0.0f, innerW, 18.0f},
+        LabelData{"Turn Limit:", SECTION_TEXT, 14.0f});
+
+    WidgetId turnsRow = ui.createPanel(
+        contentPanel,
+        {0.0f, 0.0f, innerW, 32.0f},
+        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    {
+        Widget* row = ui.getWidget(turnsRow);
+        assert(row != nullptr);
+        row->layoutDirection = LayoutDirection::Horizontal;
+        row->childSpacing = 6.0f;
+    }
+    constexpr float TURN_BTN_W = 80.0f;
+    constexpr float TURN_BTN_H = 28.0f;
+
+    auto makeTurnButton = [&](const char* label, int32_t turns, WidgetId* outId) {
+        ButtonData btn;
+        btn.label        = label;
+        btn.fontSize     = 12.0f;
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this, &ui, turns]() {
+            this->m_config.maxTurns = turns;
+            this->updateTurnButtons(ui);
+        };
+        *outId = ui.createButton(
+            turnsRow, {0.0f, 0.0f, TURN_BTN_W, TURN_BTN_H}, std::move(btn));
+    };
+    makeTurnButton("300",  300,  &this->m_btnTurns300);
+    makeTurnButton("1000", 1000, &this->m_btnTurns1000);
+    makeTurnButton("2000", 2000, &this->m_btnTurns2000);
+    makeTurnButton("5000", 5000, &this->m_btnTurns5000);
+
     // ---- Resource placement section ----
     [[maybe_unused]] WidgetId placementLabel = ui.createLabel(
         contentPanel,
@@ -829,6 +887,9 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
     }
 
+    this->updateMapSizeButtons(ui);
+    this->updateTurnButtons(ui);
+
     this->m_isBuilt = true;
     LOG_INFO("Game setup screen built (%.0fx%.0f)",
              static_cast<double>(screenW), static_cast<double>(screenH));
@@ -850,6 +911,11 @@ void GameSetupScreen::destroy(UIManager& ui) {
     this->m_btnSmall         = INVALID_WIDGET;
     this->m_btnStandard      = INVALID_WIDGET;
     this->m_btnLarge         = INVALID_WIDGET;
+    this->m_btnHuge          = INVALID_WIDGET;
+    this->m_btnTurns300      = INVALID_WIDGET;
+    this->m_btnTurns1000     = INVALID_WIDGET;
+    this->m_btnTurns2000     = INVALID_WIDGET;
+    this->m_btnTurns5000     = INVALID_WIDGET;
     this->m_btnPlaceRealistic= INVALID_WIDGET;
     this->m_btnPlaceFair     = INVALID_WIDGET;
     this->m_btnPlaceRandom   = INVALID_WIDGET;
@@ -923,6 +989,15 @@ void GameSetupScreen::updateMapSizeButtons(UIManager& ui) {
                       this->m_config.mapSize == aoc::map::MapSize::Standard);
     setButtonSelected(ui, this->m_btnLarge,
                       this->m_config.mapSize == aoc::map::MapSize::Large);
+    setButtonSelected(ui, this->m_btnHuge,
+                      this->m_config.mapSize == aoc::map::MapSize::Huge);
+}
+
+void GameSetupScreen::updateTurnButtons(UIManager& ui) {
+    setButtonSelected(ui, this->m_btnTurns300,  this->m_config.maxTurns == 300);
+    setButtonSelected(ui, this->m_btnTurns1000, this->m_config.maxTurns == 1000);
+    setButtonSelected(ui, this->m_btnTurns2000, this->m_config.maxTurns == 2000);
+    setButtonSelected(ui, this->m_btnTurns5000, this->m_config.maxTurns == 5000);
 }
 
 void GameSetupScreen::updatePlacementButtons(UIManager& ui) {

@@ -28,9 +28,10 @@ enum class MapType : uint8_t {
 
 /// Predefined map sizes.
 enum class MapSize : uint8_t {
-    Small,     ///< 60x40
-    Standard,  ///< 80x52
-    Large,     ///< 100x66
+    Small,     ///< 100x66
+    Standard,  ///< 140x90
+    Large,     ///< 200x130
+    Huge,      ///< 280x180
 };
 
 /// Resource placement policy.
@@ -49,23 +50,24 @@ enum class ResourcePlacementMode : uint8_t {
 /// Get dimensions for a given MapSize preset.
 [[nodiscard]] constexpr std::pair<int32_t, int32_t> mapSizeDimensions(MapSize size) {
     switch (size) {
-        case MapSize::Small:    return {60, 40};
-        case MapSize::Standard: return {80, 52};
-        case MapSize::Large:    return {100, 66};
-        default:                return {80, 52};
+        case MapSize::Small:    return {100, 66};
+        case MapSize::Standard: return {140, 90};
+        case MapSize::Large:    return {200, 130};
+        case MapSize::Huge:     return {280, 180};
+        default:                return {140, 90};
     }
 }
 
 class MapGenerator {
 public:
     struct Config {
-        int32_t  width     = 80;
-        int32_t  height    = 52;
+        int32_t  width     = 140;
+        int32_t  height    = 90;
         uint64_t seed      = 42;
-        float    waterRatio = 0.35f;   ///< Approximate fraction of water tiles
-        float    mountainRatio = 0.05f;
-        float    forestRatio   = 0.20f;
-        float    hillRatio     = 0.15f;
+        float    waterRatio    = 0.25f;  ///< Reduced from 0.35 — too much ocean killed land games
+        float    mountainRatio = 0.04f;
+        float    forestRatio   = 0.25f;
+        float    hillRatio     = 0.18f;
         MapType     mapType   = MapType::Continents;  ///< Landmass generation style
         MapSize     mapSize   = MapSize::Standard;     ///< Preset size (overrides width/height when applied)
         MapTopology topology  = MapTopology::Flat;     ///< Grid topology (Flat or Cylindrical)
