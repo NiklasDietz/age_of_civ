@@ -222,7 +222,17 @@ std::vector<BuildableItem> getBuildableItems(const aoc::game::GameState& gameSta
         BuildableItem item{};
         item.type = ProductionItemType::Unit;
         item.id   = unitDef.id.value;
-        item.name = unitDef.name;
+        // Civ-6 style display: if civ has a unique unit replacing this base
+        // unit, show the unique name (Legion, Samurai, Hwacha, etc).
+        const aoc::game::Player* gsPlayer = gameState.player(player);
+        const CivilizationDef& civSpec = (gsPlayer != nullptr)
+            ? civDef(gsPlayer->civId()) : civDef(0);
+        if (civSpec.uniqueUnit.baseUnit == unitDef.id
+            && !civSpec.uniqueUnit.name.empty()) {
+            item.name = civSpec.uniqueUnit.name;
+        } else {
+            item.name = unitDef.name;
+        }
         item.cost = static_cast<float>(unitDef.productionCost);
         items.push_back(item);
     }

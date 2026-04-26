@@ -121,8 +121,8 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Great Wall", 0, 1, 1, 0, 1, 0}, {"Hanyamen", 2}},
 
     {3, "Germany", "Frederick",     "Free Imperial Cities",
-     "+25% production. +10% sci. +5 combat. +1 trade route.",
-     {1.25f, 1.10f, 1.0f, 1.0f, 5.0f, 0, 1.0f, 1}, UnitTypeId{}, BuildingId{},
+     "+25% production. +15% sci. +5% culture. +5 combat. +1 trade route.",
+     {1.25f, 1.15f, 1.05f, 1.0f, 5.0f, 0, 1.0f, 1}, UnitTypeId{}, BuildingId{},
      {{"Berlin", "Hamburg", "Munich", "Cologne", "Frankfurt", "Stuttgart",
        "Dresden", "Leipzig", "Aachen", "Nuremberg", "Bremen", "Dortmund"}},
      {UnitTypeId{59}, "U-Boat", 5, 0, 1, 0},
@@ -166,8 +166,8 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Royal Road", 0, 0, 2, 0, 0, 0}, {"Satrapy", 2}},
 
     {8, "Aztec",   "Montezuma",     "Legend of the Five Suns",
-     "+15% faith. +1 amenity. +3 combat strength. +5% production.",
-     {1.05f, 1.0f, 1.0f, 1.0f, 3.0f, 0, 1.15f, 0}, UnitTypeId{}, BuildingId{},
+     "+15% faith. +10% culture. +5% sci. +3 combat. +5% prod.",
+     {1.05f, 1.05f, 1.10f, 1.0f, 3.0f, 0, 1.15f, 0}, UnitTypeId{}, BuildingId{},
      {{"Tenochtitlan", "Texcoco", "Tlacopan", "Cholula", "Tlaxcala", "Calixtlahuaca",
        "Xochicalco", "Tula", "Cempoala", "Malinalco", "Tamuin", "Coatepec"}},
      {UnitTypeId{0}, "Eagle Warrior", 5, 0, 0, 0},

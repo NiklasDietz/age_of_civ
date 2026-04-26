@@ -37,9 +37,9 @@ struct BalanceParams {
     // Loyalty / secession.
     // GA-tuned 2026-04-25 (30 gen × 12 pop × 5 games × 800 turns, 4 maps,
     // --balance-winrate, fit=0.9120, ent=0.97): committed top genome.
-    float   baseLoyalty              = 2.56f;  ///< GA 2026-04-25 v3
-    int32_t loyaltyPressureRadius    = 5;
-    int32_t sustainedUnrestTurns     = 2;
+    float   baseLoyalty              = 2.0f;   ///< GA 2026-04-26
+    int32_t loyaltyPressureRadius    = 11;
+    int32_t sustainedUnrestTurns     = 8;
     int32_t distantCityThreshold     = 8;
 
     /// WP-C1: era-indexed foreign-city-pressure decay multiplier. Index is
@@ -53,12 +53,12 @@ struct BalanceParams {
     // still fired at turn 225 in some sims. Heavy push: 12000 threshold,
     // 7 wonders, 1.5× lead so Culture lands 700-900 consistently.
     // GA-tuned 2026-04-25 with 0.5× culture accumulation rate active.
-    float   cultureVictoryThreshold  = 5684.0f;  // GA 2026-04-25 v3
-    int32_t cultureVictoryMinWonders = 5;
-    float   cultureVictoryLeadRatio  = 1.77f;
+    float   cultureVictoryThreshold  = 7000.0f;  // GA's 4262 → 45.8% Culture; raised
+    int32_t cultureVictoryMinWonders = 4;
+    float   cultureVictoryLeadRatio  = 1.15f;
 
-    float   integrationThreshold     = 2.00f;  // GA 2026-04-25 v3
-    int32_t integrationTurnsRequired = 9;
+    float   integrationThreshold     = 1.66f;  // GA 2026-04-26
+    int32_t integrationTurnsRequired = 10;
 
     // Victory: religion dominance fraction (0..1). Each other civ must have
     // this fraction of its cities following your religion for a religious win.
@@ -72,7 +72,7 @@ struct BalanceParams {
     // Pulled up from GA 0.59 so science path lands similarly-paced to other
     // victory types instead of sprinting; still below 1.0 default so science
     // civs have reachable projects.
-    float   spaceRaceCostMult        = 0.69f;  // GA 2026-04-25 v3
+    float   spaceRaceCostMult        = 1.30f;  // tuned post-GA for ~25-30% Science
 
     // Production-chain tuning (added for the chain-health audit).  GA-tunable
     // scalars that shift recipe output and consumer drain so the balance

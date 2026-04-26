@@ -150,6 +150,15 @@ static float computeCityProductionGS(const aoc::game::Player& player,
         }
     }
 
+    // Civ unique improvement passive: applied once per city as flat bonus.
+    // Models the Civ-6 idea that civs with strong improvements (Polder,
+    // Outback Station, Kurgan etc) get baseline empire-wide tile output.
+    totalProduction += static_cast<float>(civSpec.uniqueImprovement.productionBonus);
+
+    // Civ unique district adjacency: small flat bump per city (proxy for
+    // Civ-6 district adjacency-bonus boost like Hansa, Acropolis).
+    totalProduction += static_cast<float>(civSpec.uniqueDistrict.adjacencyBonus);
+
     // Happiness production multiplier
     totalProduction *= city.happiness().productionMultiplier();
 

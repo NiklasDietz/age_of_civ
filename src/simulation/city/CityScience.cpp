@@ -132,6 +132,9 @@ float computePlayerScience(const aoc::game::Player& player,
             }
         }
 
+        // Civ-6 style unique improvement + district science bonus per city.
+        cityScience += static_cast<float>(civSpec.uniqueImprovement.scienceBonus);
+
         totalScience += cityScience;
     }
 
@@ -194,6 +197,9 @@ float computePlayerCulture(const aoc::game::Player& player,
             totalCulture += wdef.effect.cultureBonus
                           * wonderEraDecayFactor(wdef, player.era().currentEra);
         }
+
+        // Civ unique improvement culture bonus per city.
+        totalCulture += static_cast<float>(civSpec.uniqueImprovement.cultureBonus);
     }
 
     // Apply civilization culture multiplier
