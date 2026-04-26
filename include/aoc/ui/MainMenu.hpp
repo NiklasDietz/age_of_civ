@@ -50,7 +50,7 @@ struct GameSetupConfig {
     aoc::map::MapSize mapSize = aoc::map::MapSize::Standard;
     aoc::map::ResourcePlacementMode placement = aoc::map::ResourcePlacementMode::Realistic;
     uint8_t           playerCount = 2;
-    std::array<PlayerSlotConfig, 8> players;  ///< max 8 players
+    std::array<PlayerSlotConfig, 20> players;  ///< max 20 players
     bool sequentialTurnsInWar = false;        ///< Use sequential turns when at war
     AIDifficulty aiDifficulty = AIDifficulty::Normal; ///< AI difficulty level
     VictoryMode victoryMode = VictoryMode::Default;   ///< Victory condition mode
@@ -112,9 +112,9 @@ private:
 
     // Widget IDs for dynamic content
     WidgetId m_playerCountLabel = INVALID_WIDGET;
-    std::array<WidgetId, 8> m_playerRows{};
-    std::array<WidgetId, 8> m_civLabels{};
-    std::array<WidgetId, 8> m_typeLabels{};
+    std::array<WidgetId, 20> m_playerRows{};
+    std::array<WidgetId, 20> m_civLabels{};
+    std::array<WidgetId, 20> m_typeLabels{};
 
     // Sequential turns toggle
     WidgetId m_btnSequential  = INVALID_WIDGET;

@@ -239,6 +239,22 @@ ErrorCode Application::initialize(const Config& config) {
 }
 
 void Application::startGame(const aoc::ui::GameSetupConfig& config) {
+    // Full state reset so a new game doesn't inherit prior game's data.
+    // User feedback: "starting AI game after one finished, the old one
+    // restarts and ends with the victory window while the new game proceeds".
+    // Root cause: m_aiControllers / m_gameOver / m_turnManager / etc were
+    // not cleared between games when entering startGame directly.
+    this->m_aiControllers.clear();
+    this->m_gameOver = false;
+    this->m_selectedUnit = nullptr;
+    this->m_selectedCity = nullptr;
+    this->m_actionPanelUnit = nullptr;
+    this->m_spectatorMode = false;
+    this->m_spectatorPaused = false;
+    this->m_spectatorTurnAccumulator = 0.0f;
+    this->m_spectatorFollowPlayer = -1;
+    this->m_victoryResult = {};
+
     // Apply user-selected turn limit. Used by Score victory + spectator HUD.
     this->m_spectatorMaxTurns = config.maxTurns;
 
@@ -435,11 +451,11 @@ void Application::startSpectate(int32_t playerCount, int32_t maxTurns) {
     this->m_settingsMenu.destroy(this->m_uiManager);
 
     // Clamp parameters to valid ranges.
-    // GameSetupConfig::players array has 8 slots; cap at 8.
+    // GameSetupConfig::players array has 20 slots.
     if (playerCount < 2)  { playerCount = 2;  }
-    if (playerCount > 8)  { playerCount = 8;  }
+    if (playerCount > 20) { playerCount = 20; }
     if (maxTurns < 100)   { maxTurns = 100;   }
-    if (maxTurns > 2000)  { maxTurns = 2000;  }
+    if (maxTurns > 5000)  { maxTurns = 5000;  }
 
     // Build an all-AI GameSetupConfig and delegate to startGame().
     aoc::ui::GameSetupConfig config{};
@@ -1232,12 +1248,23 @@ void Application::run() {
             }
         }
 
-        // -- Escape: close any open screen first, then quit --
+        // -- Escape: close any open screen, else open Settings as pause menu.
+        // Was: `break` (quit game). User feedback: ESC should not kill game —
+        // it should pause + offer save/load/main-menu options. Settings menu
+        // doubles as pause menu for now (Save/Load via F5/F9).
         if (this->m_inputManager.isActionPressed(InputAction::Cancel)) {
             if (this->anyScreenOpen()) {
                 this->closeAllScreens();
-            } else {
-                break;
+            } else if (!this->m_settingsMenu.isBuilt()) {
+                // ESC opens settings as pause menu (was: quit game). User
+                // can F5 quick-save, F9 quick-load, or click Back to resume.
+                const std::pair<uint32_t, uint32_t> sz = this->m_window.framebufferSize();
+                this->m_settingsMenu.build(this->m_uiManager,
+                                            static_cast<float>(sz.first),
+                                            static_cast<float>(sz.second),
+                                            [this]() {
+                                                this->m_settingsMenu.destroy(this->m_uiManager);
+                                            });
             }
         }
 

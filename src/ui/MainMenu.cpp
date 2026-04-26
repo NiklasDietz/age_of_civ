@@ -256,7 +256,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
     this->m_config.mapType     = aoc::map::MapType::Continents;
     this->m_config.mapSize     = aoc::map::MapSize::Standard;
     this->m_config.playerCount = 2;
-    for (uint8_t i = 0; i < 8; ++i) {
+    for (uint8_t i = 0; i < 20; ++i) {
         this->m_config.players[i].isActive = (i < 2);
         this->m_config.players[i].isHuman  = (i == 0);
         this->m_config.players[i].civId    = i;  // Each slot defaults to a unique civ
@@ -668,7 +668,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.onClick = [this, &ui]() {
             if (this->m_config.playerCount > 2) {
                 --this->m_config.playerCount;
-                for (uint8_t i = 0; i < 8; ++i) {
+                for (uint8_t i = 0; i < 20; ++i) {
                     this->m_config.players[i].isActive = (i < this->m_config.playerCount);
                 }
                 this->refresh(ui);
@@ -694,9 +694,9 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 3.0f;
         btn.onClick = [this, &ui]() {
-            if (this->m_config.playerCount < 8) {
+            if (this->m_config.playerCount < 20) {
                 ++this->m_config.playerCount;
-                for (uint8_t i = 0; i < 8; ++i) {
+                for (uint8_t i = 0; i < 20; ++i) {
                     this->m_config.players[i].isActive = (i < this->m_config.playerCount);
                 }
                 this->refresh(ui);
@@ -921,7 +921,7 @@ void GameSetupScreen::destroy(UIManager& ui) {
     this->m_btnPlaceRandom   = INVALID_WIDGET;
     this->m_btnSequential    = INVALID_WIDGET;
     this->m_btnDifficulty    = INVALID_WIDGET;
-    for (uint8_t i = 0; i < 8; ++i) {
+    for (uint8_t i = 0; i < 20; ++i) {
         this->m_playerRows[i] = INVALID_WIDGET;
         this->m_civLabels[i]  = INVALID_WIDGET;
         this->m_typeLabels[i] = INVALID_WIDGET;
@@ -936,7 +936,7 @@ void GameSetupScreen::refresh(UIManager& ui) {
                     std::to_string(this->m_config.playerCount));
 
     // Show/hide player rows and update labels
-    for (uint8_t i = 0; i < 8; ++i) {
+    for (uint8_t i = 0; i < 20; ++i) {
         const bool active = (i < this->m_config.playerCount);
         ui.setVisible(this->m_playerRows[i], active);
         if (active) {
