@@ -94,8 +94,8 @@ inline constexpr uint8_t CIV_COUNT = 36;
 
 inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
     {0, "Rome",    "Trajan",        "All Roads Lead to Rome",
-     "Free roads in capital territory.",
-     {1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+5% production. +1 trade route. Free roads in capital.",
+     {1.05f, 1.0f, 1.0f, 1.0f, 0.0f, 0, 1.0f, 1}, UnitTypeId{}, BuildingId{},
      {{"Rome", "Antium", "Cumae", "Neapolis", "Ravenna", "Mediolanum",
        "Arretium", "Brundisium", "Capua", "Tarentum", "Pisae", "Genua"}},
      {UnitTypeId{10}, "Legion", 5, 0, 0, 0},
@@ -104,7 +104,7 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
 
     {1, "Egypt",   "Cleopatra",     "Mediterranean's Bride",
      "+15% production toward wonders and districts.",
-     {1.04f, 1.0f, 1.0f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     {1.02f, 1.0f, 1.0f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
      {{"Thebes", "Memphis", "Alexandria", "Heliopolis", "Giza", "Luxor",
        "Aswan", "Abydos", "Edfu", "Karnak", "Faiyum", "Rosetta"}},
      {UnitTypeId{4}, "Maryannu Chariot", 3, 0, 1, 0},
@@ -121,8 +121,8 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Great Wall", 0, 1, 1, 0, 1, 0}, {"Hanyamen", 2}},
 
     {3, "Germany", "Frederick",     "Free Imperial Cities",
-     "+10% production all cities. +1 military policy slot.",
-     {1.10f, 1.0f, 1.0f, 1.0f, 1.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+15% production all cities. +1 military policy slot. +3 combat.",
+     {1.15f, 1.0f, 1.0f, 1.0f, 3.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
      {{"Berlin", "Hamburg", "Munich", "Cologne", "Frankfurt", "Stuttgart",
        "Dresden", "Leipzig", "Aachen", "Nuremberg", "Bremen", "Dortmund"}},
      {UnitTypeId{59}, "U-Boat", 5, 0, 1, 0},
@@ -130,8 +130,8 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Stadt", 0, 2, 0, 0, 0, 0}, {"Hansa Quarter", 3}},
 
     {4, "Greece",  "Pericles",      "Plato's Republic",
-     "+8% culture. +3% science.",
-     {1.0f, 1.03f, 1.08f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+4% culture. +0% science (was strong).",
+     {1.0f, 1.0f, 1.04f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
      {{"Athens", "Sparta", "Corinth", "Argos", "Thebes", "Delphi",
        "Olympia", "Mycenae", "Rhodes", "Ephesus", "Syracuse", "Thessaloniki"}},
      {UnitTypeId{9}, "Hoplite", 5, 0, 0, 0},
@@ -148,8 +148,8 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Naval Yard", 0, 1, 2, 0, 0, 0}, {"Royal Dockyard", 3}},
 
     {6, "Japan",   "Hojo Tokimune", "Meiji Restoration",
-     "+5 combat strength for land units adjacent to coast.",
-     {1.0f, 1.0f, 1.0f, 1.0f, 5.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+7 combat. +5% production + science. Coastal bonus.",
+     {1.05f, 1.05f, 1.0f, 1.0f, 7.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
      {{"Kyoto", "Tokyo", "Osaka", "Nara", "Nagoya", "Sapporo",
        "Hiroshima", "Kobe", "Fukuoka", "Yokohama", "Sendai", "Kamakura"}},
      {UnitTypeId{33}, "Samurai", 7, 0, 0, 0},
@@ -166,8 +166,8 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Royal Road", 0, 0, 2, 0, 0, 0}, {"Satrapy", 2}},
 
     {8, "Aztec",   "Montezuma",     "Legend of the Five Suns",
-     "+25% faith. +1 amenity from luxury resources. +2 combat strength.",
-     {1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 0, 1.25f, 0}, UnitTypeId{}, BuildingId{},
+     "+35% faith. +1 amenity. +5 combat strength. +5% production.",
+     {1.05f, 1.0f, 1.0f, 1.0f, 5.0f, 0, 1.35f, 0}, UnitTypeId{}, BuildingId{},
      {{"Tenochtitlan", "Texcoco", "Tlacopan", "Cholula", "Tlaxcala", "Calixtlahuaca",
        "Xochicalco", "Tula", "Cempoala", "Malinalco", "Tamuin", "Coatepec"}},
      {UnitTypeId{0}, "Eagle Warrior", 5, 0, 0, 0},
@@ -292,8 +292,8 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Mekewap", 1, 0, 1, 0, 0, 0}, {"Trading Plaza", 2}},
 
     {22, "Mapuche",  "Lautaro",       "Toqui",
-     "+25% combat strength against units with golden age active. Pillage yields +50% loot.",
-     {1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+25% combat vs golden-age. Pillage +50% loot.",
+     {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
      {{"Wallmapu", "Temuco", "Concepcion", "Chillan", "Valdivia", "Imperial",
        "Quillen", "Lebu", "Lumaco", "Pucon", "Villarrica", "Curacautin"}},
      {UnitTypeId{14}, "Malon Raider", 5, 0, 1, 0},

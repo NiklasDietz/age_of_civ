@@ -1253,18 +1253,58 @@ void Application::run() {
         // it should pause + offer save/load/main-menu options. Settings menu
         // doubles as pause menu for now (Save/Load via F5/F9).
         if (this->m_inputManager.isActionPressed(InputAction::Cancel)) {
-            if (this->anyScreenOpen()) {
+            if (this->m_pauseMenu.isBuilt()) {
+                this->m_pauseMenu.destroy(this->m_uiManager);
+            } else if (this->anyScreenOpen()) {
                 this->closeAllScreens();
-            } else if (!this->m_settingsMenu.isBuilt()) {
-                // ESC opens settings as pause menu (was: quit game). User
-                // can F5 quick-save, F9 quick-load, or click Back to resume.
+            } else {
                 const std::pair<uint32_t, uint32_t> sz = this->m_window.framebufferSize();
-                this->m_settingsMenu.build(this->m_uiManager,
-                                            static_cast<float>(sz.first),
-                                            static_cast<float>(sz.second),
-                                            [this]() {
-                                                this->m_settingsMenu.destroy(this->m_uiManager);
-                                            });
+                this->m_pauseMenu.build(
+                    this->m_uiManager,
+                    static_cast<float>(sz.first),
+                    static_cast<float>(sz.second),
+                    [this]() { this->m_pauseMenu.destroy(this->m_uiManager); },
+                    [this]() {
+                        ErrorCode r = aoc::save::saveGame(
+                            "quicksave.aoc", this->m_gameState, this->m_hexGrid,
+                            this->m_turnManager, this->m_economy, this->m_diplomacy,
+                            this->m_fogOfWar, this->m_gameRng);
+                        if (r != ErrorCode::Ok) {
+                            LOG_ERROR("PauseMenu save failed: %.*s",
+                                static_cast<int>(describeError(r).size()),
+                                describeError(r).data());
+                        } else {
+                            LOG_INFO("PauseMenu: game saved to quicksave.aoc");
+                        }
+                        this->m_pauseMenu.destroy(this->m_uiManager);
+                    },
+                    [this]() {
+                        ErrorCode r = aoc::save::loadGame(
+                            "quicksave.aoc", this->m_gameState, this->m_hexGrid,
+                            this->m_turnManager, this->m_economy, this->m_diplomacy,
+                            this->m_fogOfWar, this->m_gameRng);
+                        if (r != ErrorCode::Ok) {
+                            LOG_ERROR("PauseMenu load failed: %.*s",
+                                static_cast<int>(describeError(r).size()),
+                                describeError(r).data());
+                        } else {
+                            this->m_economy.initialize();
+                            this->m_fogOfWar.initialize(
+                                this->m_hexGrid.tileCount(), MAX_PLAYERS);
+                            this->m_fogOfWar.updateVisibility(
+                                this->m_gameState, this->m_hexGrid, 0);
+                            LOG_INFO("PauseMenu: game loaded from quicksave.aoc");
+                        }
+                        this->m_pauseMenu.destroy(this->m_uiManager);
+                    },
+                    [this]() {
+                        this->m_pauseMenu.destroy(this->m_uiManager);
+                        this->returnToMainMenu();
+                    },
+                    [this]() {
+                        this->m_pauseMenu.destroy(this->m_uiManager);
+                        glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
+                    });
             }
         }
 

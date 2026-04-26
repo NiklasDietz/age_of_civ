@@ -25,6 +25,7 @@
 #include "aoc/ui/ScreenRegistry.hpp"
 #include "aoc/ui/WidgetInspector.hpp"
 #include "aoc/ui/LoadingScreen.hpp"
+#include "aoc/ui/PauseMenu.hpp"
 #include "aoc/ui/GameScreens.hpp"
 #include "aoc/ui/TradeScreen.hpp"
 #include "aoc/ui/TradeRouteSetupScreen.hpp"
@@ -308,6 +309,7 @@ private:
     aoc::ui::MainMenu       m_mainMenu;
     aoc::ui::GameSetupScreen m_gameSetupScreen;
     aoc::ui::SettingsMenu   m_settingsMenu;
+    aoc::ui::PauseMenu      m_pauseMenu;
 
     /// Build the main menu with all its callbacks. Used by initialize() and returnToMainMenu().
     void buildMainMenu(float screenW, float screenH);

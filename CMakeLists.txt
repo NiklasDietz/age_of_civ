@@ -176,6 +176,7 @@ set(AOC_GFX_ONLY_SOURCES
     src/ui/MainMenu.cpp
     src/ui/MapEditor.cpp
     src/ui/Notifications.cpp
+    src/ui/PauseMenu.cpp
     src/ui/ReligionScreen.cpp
     src/ui/ScoreScreen.cpp
     src/ui/ScreenRegistry.cpp
