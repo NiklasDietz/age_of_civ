@@ -186,6 +186,27 @@ void Application::buildHUD() {
         }
     });
 
+    // Overtake: takes control of currently-followed civ in spectator mode.
+    // Click any civ in scoreboard / press digit 1-9 to set follow target,
+    // then click Overtake (or press T).
+    makeTopBtn(this->m_topBar, "Overtake", 70.0f, [this]() {
+        if (this->m_spectatorFollowPlayer >= 0
+            && this->m_spectatorFollowPlayer < this->m_gameState.playerCount()) {
+            const PlayerId tookOver =
+                static_cast<PlayerId>(this->m_spectatorFollowPlayer);
+            this->m_gameState.setHumanPlayerId(tookOver);
+            LOG_INFO("HUD overtake: player %u is now human-controlled",
+                     static_cast<unsigned>(tookOver));
+            this->m_notificationManager.push(
+                "Took over civ — switching control",
+                3.0f, 0.4f, 0.9f, 0.4f);
+        } else {
+            this->m_notificationManager.push(
+                "No civ selected — click civ in scoreboard first",
+                2.5f, 0.9f, 0.6f, 0.3f);
+        }
+    });
+
     // Separator
     [[maybe_unused]] aoc::ui::WidgetId sep = this->m_uiManager.createPanel(
         this->m_topBar, {0.0f, 0.0f, 2.0f, 22.0f},

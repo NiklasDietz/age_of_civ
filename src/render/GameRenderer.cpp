@@ -375,9 +375,16 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                           EVENT_LOG_W * invZoom, EVENT_LOG_H * invZoom, invZoom);
     }
 
-    // Minimap (transformed to world-space)
-    constexpr float MINIMAP_W = 200.0f;
-    constexpr float MINIMAP_H = 130.0f;
+    // Minimap (transformed to world-space). Scale with map size so Huge
+    // maps get more detail. Aspect ratio matches grid (W/H).
+    const float aspect = (grid.height() > 0)
+        ? static_cast<float>(grid.width()) / static_cast<float>(grid.height())
+        : 1.5f;
+    const float tilesArea = static_cast<float>(grid.width() * grid.height());
+    // Base 200x130 for ~4160 tiles. Scale linearly up to ~360x ratio for 50400.
+    const float scaleArea = std::clamp(std::sqrt(tilesArea / 4160.0f), 1.0f, 1.8f);
+    const float MINIMAP_H = std::clamp(130.0f * scaleArea, 130.0f, 240.0f);
+    const float MINIMAP_W = MINIMAP_H * aspect;
     constexpr float MINIMAP_MARGIN = 10.0f;
     float mmScreenX = MINIMAP_MARGIN;
     float mmScreenY = static_cast<float>(screenHeight) - MINIMAP_H - MINIMAP_MARGIN;

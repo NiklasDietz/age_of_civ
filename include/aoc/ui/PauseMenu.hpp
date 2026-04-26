@@ -18,8 +18,8 @@ class PauseMenu : public IScreen {
 public:
     void build(UIManager& ui, float screenW, float screenH,
                std::function<void()> onResume,
-               std::function<void()> onSave,
-               std::function<void()> onLoad,
+               std::function<void(int)> onSaveSlot,   ///< slot 0..4 (5 slots)
+               std::function<void(int)> onLoadSlot,   ///< slot 0..4
                std::function<void()> onMainMenu,
                std::function<void()> onQuit);
 
@@ -38,8 +38,8 @@ private:
     float m_lastH = 0.0f;
 
     std::function<void()> m_onResume;
-    std::function<void()> m_onSave;
-    std::function<void()> m_onLoad;
+    std::function<void(int)> m_onSaveSlot;
+    std::function<void(int)> m_onLoadSlot;
     std::function<void()> m_onMainMenu;
     std::function<void()> m_onQuit;
 };

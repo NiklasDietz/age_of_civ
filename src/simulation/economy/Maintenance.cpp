@@ -674,7 +674,8 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
     if (demand <= 0) { return; }
 
     // WP-S: lazy-seed Encampment buffers for any owned encampment improvement
-    // that has no buffer entry yet (50 food + 50 fuel seed).
+    // that has no buffer entry yet (100 food + 100 fuel seed). Also auto-
+    // refill 5 food + 5 fuel per turn from owner's nearest city stockpile.
     {
         const int32_t tilesN = grid.tileCount();
         for (int32_t ti = 0; ti < tilesN; ++ti) {
@@ -688,6 +689,46 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
                 buf.food = 100;
                 buf.fuel = 100;
                 gameState.encampments().emplace(ti, buf);
+                continue;
+            }
+            // WP-S2 lite: auto-refill if buffers below cap (100/100).
+            // Drains 5 food + 5 fuel from nearest owned city's stockpile.
+            constexpr int32_t REFILL_RATE = 5;
+            constexpr int32_t CAP = 100;
+            const aoc::hex::AxialCoord depot = grid.toAxial(ti);
+            aoc::game::City* nearest = nullptr;
+            int32_t bestDist = std::numeric_limits<int32_t>::max();
+            for (const std::unique_ptr<aoc::game::City>& c : player.cities()) {
+                if (c == nullptr) { continue; }
+                const int32_t d = grid.distance(depot, c->location());
+                if (d < bestDist) { bestDist = d; nearest = c.get(); }
+            }
+            if (nearest == nullptr) { continue; }
+            CityStockpileComponent& sp = nearest->stockpile();
+            if (it->second.food < CAP) {
+                const int32_t want = std::min(REFILL_RATE, CAP - it->second.food);
+                int32_t got = 0;
+                for (uint16_t gid : {goods::PROCESSED_FOOD, goods::WHEAT,
+                                      goods::CATTLE, goods::FISH, goods::RICE}) {
+                    if (got >= want) { break; }
+                    const int32_t avail = sp.getAmount(gid);
+                    if (avail <= 0) { continue; }
+                    const int32_t take = std::min(avail, want - got);
+                    if (sp.consumeGoods(gid, take)) { got += take; }
+                }
+                it->second.food += got;
+            }
+            if (it->second.fuel < CAP) {
+                const int32_t want = std::min(REFILL_RATE, CAP - it->second.fuel);
+                int32_t got = 0;
+                for (uint16_t gid : {goods::FUEL, goods::COAL}) {
+                    if (got >= want) { break; }
+                    const int32_t avail = sp.getAmount(gid);
+                    if (avail <= 0) { continue; }
+                    const int32_t take = std::min(avail, want - got);
+                    if (sp.consumeGoods(gid, take)) { got += take; }
+                }
+                it->second.fuel += got;
             }
         }
     }

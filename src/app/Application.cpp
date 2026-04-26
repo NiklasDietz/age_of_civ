@@ -1264,38 +1264,51 @@ void Application::run() {
                     static_cast<float>(sz.first),
                     static_cast<float>(sz.second),
                     [this]() { this->m_pauseMenu.destroy(this->m_uiManager); },
-                    [this]() {
+                    [this](int slot) {
+                        const std::string fname =
+                            "save_slot_" + std::to_string(slot + 1) + ".aoc";
                         ErrorCode r = aoc::save::saveGame(
-                            "quicksave.aoc", this->m_gameState, this->m_hexGrid,
+                            fname.c_str(), this->m_gameState, this->m_hexGrid,
                             this->m_turnManager, this->m_economy, this->m_diplomacy,
                             this->m_fogOfWar, this->m_gameRng);
                         if (r != ErrorCode::Ok) {
-                            LOG_ERROR("PauseMenu save failed: %.*s",
+                            LOG_ERROR("PauseMenu save slot %d failed: %.*s",
+                                slot + 1,
                                 static_cast<int>(describeError(r).size()),
                                 describeError(r).data());
+                            this->m_notificationManager.push(
+                                "Save failed", 3.0f, 0.9f, 0.3f, 0.3f);
                         } else {
-                            LOG_INFO("PauseMenu: game saved to quicksave.aoc");
+                            LOG_INFO("PauseMenu: saved to %s", fname.c_str());
+                            this->m_notificationManager.push(
+                                ("Saved to " + fname).c_str(),
+                                3.0f, 0.4f, 0.9f, 0.4f);
                         }
-                        this->m_pauseMenu.destroy(this->m_uiManager);
                     },
-                    [this]() {
+                    [this](int slot) {
+                        const std::string fname =
+                            "save_slot_" + std::to_string(slot + 1) + ".aoc";
                         ErrorCode r = aoc::save::loadGame(
-                            "quicksave.aoc", this->m_gameState, this->m_hexGrid,
+                            fname.c_str(), this->m_gameState, this->m_hexGrid,
                             this->m_turnManager, this->m_economy, this->m_diplomacy,
                             this->m_fogOfWar, this->m_gameRng);
                         if (r != ErrorCode::Ok) {
-                            LOG_ERROR("PauseMenu load failed: %.*s",
+                            LOG_ERROR("PauseMenu load slot %d failed: %.*s",
+                                slot + 1,
                                 static_cast<int>(describeError(r).size()),
                                 describeError(r).data());
+                            this->m_notificationManager.push(
+                                "Load failed (no save in slot?)",
+                                3.0f, 0.9f, 0.3f, 0.3f);
                         } else {
                             this->m_economy.initialize();
                             this->m_fogOfWar.initialize(
                                 this->m_hexGrid.tileCount(), MAX_PLAYERS);
                             this->m_fogOfWar.updateVisibility(
                                 this->m_gameState, this->m_hexGrid, 0);
-                            LOG_INFO("PauseMenu: game loaded from quicksave.aoc");
+                            LOG_INFO("PauseMenu: loaded from %s", fname.c_str());
+                            this->m_pauseMenu.destroy(this->m_uiManager);
                         }
-                        this->m_pauseMenu.destroy(this->m_uiManager);
                     },
                     [this]() {
                         this->m_pauseMenu.destroy(this->m_uiManager);

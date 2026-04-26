@@ -312,7 +312,9 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                           const std::string& tracePath,
                           aoc::map::MapType mapType,
                           aoc::map::ResourcePlacementMode placement
-                              = aoc::map::ResourcePlacementMode::Realistic) {
+                              = aoc::map::ResourcePlacementMode::Realistic,
+                          int32_t mapWidthOverride = 0,
+                          int32_t mapHeightOverride = 0) {
     LOG_INFO("=== HEADLESS SIMULATION: %d turns, %d AI players, victoryMask=0x%x ===",
              maxTurns, playerCount, victoryMask);
 
@@ -340,10 +342,11 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
     std::random_device rd;
     aoc::Random rng(rd());
 
-    // Generate map
+    // Generate map. New default 140x90 (was 80x52) — bigger maps per
+    // user request. --map-size W x H overrides.
     aoc::map::MapGenerator::Config mapConfig{};
-    mapConfig.width = 80;
-    mapConfig.height = 52;
+    mapConfig.width  = (mapWidthOverride  > 0) ? mapWidthOverride  : 140;
+    mapConfig.height = (mapHeightOverride > 0) ? mapHeightOverride : 90;
     mapConfig.seed = rng.next();
     mapConfig.mapType = mapType;
     mapConfig.placement = placement;
@@ -1213,9 +1216,9 @@ int main(int argc, char* argv[]) {
     }
 
     std::string tunedDir;
+    int32_t mapWidth = 0;   // 0 = use runHeadlessSimulation default
+    int32_t mapHeight = 0;
     if (!loadedConfig) {
-        int32_t mapWidth = 60;
-        int32_t mapHeight = 40;
         for (int i = 1; i < argc; ++i) {
             std::string arg(argv[i]);
             if (arg == "--turns" && i + 1 < argc) {
@@ -1251,8 +1254,6 @@ int main(int argc, char* argv[]) {
                 else if (val > 0 && players == 4) { players = val; }
             }
         }
-        (void)mapWidth;
-        (void)mapHeight;
 
         std::fprintf(stderr, "\n  === Age of Civilization: Headless Simulation ===\n\n");
         std::fprintf(stderr, "  Turns:   %d\n", turns);
@@ -1287,7 +1288,7 @@ int main(int argc, char* argv[]) {
 
     std::fprintf(stderr, "  Map:     %s\n", mapTypeLabel(mapType));
     std::fprintf(stderr, "  Placement: %s\n", placementLabel(placement));
-    int result = runHeadlessSimulation(turns, players, outputPath, victoryMask, tracePath, mapType, placement);
+    int result = runHeadlessSimulation(turns, players, outputPath, victoryMask, tracePath, mapType, placement, mapWidth, mapHeight);
 
     std::fprintf(stderr, "\n\n");
     return result;

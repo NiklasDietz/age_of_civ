@@ -27,7 +27,7 @@
             "trustworthiness": 0.9, "grudgeHolding": 0.4,
             "techMilitary": 0.7, "techEconomic": 1.8, "techIndustrial": 1.0, "techNaval": 1.3, "techInformation": 1.0,
             "prodSettlers": 1.0, "prodMilitary": 0.6, "prodBuilders": 0.8, "prodBuildings": 1.5,
-            "prodWonders": 1.8, "prodNaval": 1.2, "prodReligious": 0.5,
+            "prodWonders": 1.2, "prodNaval": 1.2, "prodReligious": 0.5,
             "warDeclarationThreshold": 2.0, "peaceAcceptanceThreshold": 0.3, "allianceDesire": 1.3
         }
     },
@@ -43,7 +43,7 @@
             "trustworthiness": 1.0, "grudgeHolding": 0.8,
             "techMilitary": 0.8, "techEconomic": 1.0, "techIndustrial": 1.5, "techNaval": 0.6, "techInformation": 1.3,
             "prodSettlers": 1.2, "prodMilitary": 0.8, "prodBuilders": 1.0, "prodBuildings": 1.5,
-            "prodWonders": 2.0, "prodNaval": 0.5, "prodReligious": 0.3,
+            "prodWonders": 1.2, "prodNaval": 0.5, "prodReligious": 0.3,
             "warDeclarationThreshold": 2.5, "peaceAcceptanceThreshold": 0.4, "allianceDesire": 0.7
         }
     },
@@ -57,9 +57,9 @@
             "militaryAggression": 1.5, "expansionism": 1.3, "scienceFocus": 1.3, "cultureFocus": 0.8,
             "economicFocus": 1.5, "diplomaticOpenness": 0.8, "religiousZeal": 0.3, "nukeWillingness": 0.5,
             "trustworthiness": 0.9, "grudgeHolding": 0.7,
-            "techMilitary": 1.8, "techEconomic": 1.2, "techIndustrial": 1.8, "techNaval": 0.8, "techInformation": 0.8,
+            "techMilitary": 1.8, "techEconomic": 1.2, "techIndustrial": 2.2, "techNaval": 0.8, "techInformation": 0.8,
             "prodSettlers": 1.2, "prodMilitary": 1.8, "prodBuilders": 1.0, "prodBuildings": 1.5,
-            "prodWonders": 0.5, "prodNaval": 0.8, "prodReligious": 0.2,
+            "prodWonders": 1.2, "prodNaval": 0.8, "prodReligious": 0.2,
             "warDeclarationThreshold": 1.2, "peaceAcceptanceThreshold": 0.8, "allianceDesire": 0.7
         }
     },
@@ -137,9 +137,9 @@
             "militaryAggression": 1.7, "expansionism": 1.2, "scienceFocus": 0.7, "cultureFocus": 0.8,
             "economicFocus": 1.0, "diplomaticOpenness": 0.6, "religiousZeal": 1.5, "nukeWillingness": 0.3,
             "trustworthiness": 0.7, "grudgeHolding": 0.9,
-            "techMilitary": 1.8, "techEconomic": 0.7, "techIndustrial": 0.8, "techNaval": 0.5, "techInformation": 0.5,
-            "prodSettlers": 1.2, "prodMilitary": 2.0, "prodBuilders": 1.0, "prodBuildings": 0.8,
-            "prodWonders": 0.5, "prodNaval": 0.5, "prodReligious": 1.8,
+            "techMilitary": 1.8, "techEconomic": 0.7, "techIndustrial": 1.5, "techNaval": 0.5, "techInformation": 0.5,
+            "prodSettlers": 1.2, "prodMilitary": 1.5, "prodBuilders": 1.0, "prodBuildings": 1.4,
+            "prodWonders": 1.0, "prodNaval": 0.5, "prodReligious": 1.4,
             "warDeclarationThreshold": 1.0, "peaceAcceptanceThreshold": 0.8, "allianceDesire": 0.5
         }
     },
@@ -150,12 +150,12 @@
         "likeCondition": "None",
         "dislikeCondition": "HasNuclearWeapons",
         "behavior": {
-            "militaryAggression": 0.2, "expansionism": 0.7, "scienceFocus": 1.3, "cultureFocus": 1.3,
-            "economicFocus": 1.0, "diplomaticOpenness": 1.8, "religiousZeal": 1.6, "nukeWillingness": 0.0,
+            "militaryAggression": 0.2, "expansionism": 0.7, "scienceFocus": 0.8, "cultureFocus": 1.0,
+            "economicFocus": 1.0, "diplomaticOpenness": 1.0, "religiousZeal": 1.0, "nukeWillingness": 0.0,
             "trustworthiness": 1.0, "grudgeHolding": 0.2,
             "techMilitary": 0.3, "techEconomic": 1.0, "techIndustrial": 0.8, "techNaval": 0.5, "techInformation": 1.5,
             "prodSettlers": 0.7, "prodMilitary": 0.2, "prodBuilders": 0.8, "prodBuildings": 1.5,
-            "prodWonders": 1.0, "prodNaval": 0.3, "prodReligious": 2.0,
+            "prodWonders": 1.0, "prodNaval": 0.3, "prodReligious": 1.2,
             "warDeclarationThreshold": 5.0, "peaceAcceptanceThreshold": 0.2, "allianceDesire": 1.8
         }
     },
