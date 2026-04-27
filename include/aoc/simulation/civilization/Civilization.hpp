@@ -14,8 +14,10 @@ namespace aoc::sim {
 
 using CivId = uint8_t;
 
-/// Modifier bonuses unique to each civilization.
+/// Modifier bonuses unique to each civilization. Mostly flat global bonuses;
+/// conditional fields below give Civ-6-style situational advantages.
 struct CivAbilityModifiers {
+    // Flat global modifiers (use sparingly — favor conditional bonuses).
     float productionMultiplier = 1.0f;
     float scienceMultiplier    = 1.0f;
     float cultureMultiplier    = 1.0f;
@@ -24,6 +26,29 @@ struct CivAbilityModifiers {
     int32_t extraMovement      = 0;       ///< Bonus movement for specific unit types
     float faithMultiplier      = 1.0f;
     int32_t extraTradeRoutes   = 0;
+
+    // Conditional / contextual bonuses (fire only in specific situations).
+    // These give civs unique playstyles instead of "+5% everything".
+    int32_t cultureFromTradeRoute   = 0;  ///< +N culture/turn per active trade route (Brazil, France)
+    int32_t faithFromTradeRoute     = 0;  ///< +N faith/turn per active trade route (India, Arabia)
+    int32_t scienceFromTradeRoute   = 0;  ///< +N science/turn per route (Russia, Korea)
+    int32_t goldFromTradeRoute      = 0;  ///< +N gold/turn per route (Mali, Phoenicia, Netherlands)
+
+    int32_t productionFromMine      = 0;  ///< +N prod per worked mine (Germany)
+    int32_t scienceFromMine         = 0;  ///< +N sci per worked mine (Korea)
+    int32_t cultureFromForest       = 0;  ///< +N cult per worked forest (Maori, Vietnam)
+    int32_t productionFromForest    = 0;  ///< +N prod per worked forest (Germany, Norway)
+    int32_t foodFromRiver           = 0;  ///< +N food per worked river-adj tile (Khmer, Egypt)
+    int32_t cultureFromRainforest   = 0;  ///< +N cult per rainforest tile worked (Brazil, Vietnam)
+
+    int32_t combatBonusOwnTerritory = 0;  ///< +N strength when fighting in own territory (Mapuche)
+    int32_t combatBonusVsCities     = 0;  ///< +N strength attacking cities (Ottoman)
+    int32_t combatBonusInForest     = 0;  ///< +N strength in forest/jungle (Vietnam)
+    int32_t combatBonusVsDifferentReligion = 0; ///< Civ-6 "Spanish Inquisition" (Spain)
+
+    int32_t goldOnCityCapture       = 0;  ///< +N gold one-time on each capture (Zulu, Mongolia, Norway)
+    int32_t scienceOnUnitKill       = 0;  ///< +N science per enemy unit killed (Macedon)
+    int32_t faithOnUnitKill         = 0;  ///< +N faith per enemy unit killed (Aztec, Sumeria)
 };
 
 /// Civ-specific unique unit. Replaces a standard UnitTypeId for the civ
@@ -94,8 +119,8 @@ inline constexpr uint8_t CIV_COUNT = 36;
 
 inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
     {0, "Rome",    "Trajan",        "All Roads Lead to Rome",
-     "+5% production. +1 trade route. Free roads in capital.",
-     {1.05f, 1.0f, 1.0f, 1.0f, 0.0f, 0, 1.0f, 1}, UnitTypeId{}, BuildingId{},
+     "+1 trade route. +2 gold per trade route (road network).",
+     {.extraTradeRoutes=1, .goldFromTradeRoute=2}, UnitTypeId{}, BuildingId{},
      {{"Rome", "Antium", "Cumae", "Neapolis", "Ravenna", "Mediolanum",
        "Arretium", "Brundisium", "Capua", "Tarentum", "Pisae", "Genua"}},
      {UnitTypeId{10}, "Legion", 5, 0, 0, 0},
@@ -103,8 +128,8 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Cardo Maximus", 0, 1, 1, 0, 0, 0}, {"Forum", 2}},
 
     {1, "Egypt",   "Cleopatra",     "Mediterranean's Bride",
-     "+15% production toward wonders and districts.",
-     {1.02f, 1.0f, 1.0f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+1 food on tiles adjacent to rivers (Nile flood plains).",
+     {.foodFromRiver=1}, UnitTypeId{}, BuildingId{},
      {{"Thebes", "Memphis", "Alexandria", "Heliopolis", "Giza", "Luxor",
        "Aswan", "Abydos", "Edfu", "Karnak", "Faiyum", "Rosetta"}},
      {UnitTypeId{4}, "Maryannu Chariot", 3, 0, 1, 0},
@@ -112,8 +137,8 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Sphinx", 0, 0, 0, 0, 1, 1}, {"Necropolis", 2}},
 
     {2, "China",   "Qin Shi Huang", "Dynastic Cycle",
-     "+5% science. Builders gain +1 charge.",
-     {1.0f, 1.05f, 1.0f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+1 science per worked Mine (Great Wall scholarship).",
+     {.scienceFromMine=1}, UnitTypeId{}, BuildingId{},
      {{"Beijing", "Shanghai", "Nanjing", "Xian", "Chengdu", "Hangzhou",
        "Luoyang", "Kaifeng", "Guangzhou", "Wuhan", "Suzhou", "Tianjin"}},
      {UnitTypeId{37}, "Crouching Tiger", 0, 8, 0, 0},
@@ -121,8 +146,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Great Wall", 0, 1, 1, 0, 1, 0}, {"Hanyamen", 2}},
 
     {3, "Germany", "Frederick",     "Free Imperial Cities",
-     "+25% production. +15% sci. +5% culture. +5 combat. +1 trade route.",
-     {1.25f, 1.15f, 1.05f, 1.0f, 5.0f, 0, 1.0f, 1}, UnitTypeId{}, BuildingId{},
+     "+1 production per worked Mine. +3 strength attacking cities. +1 trade route.",
+     {.extraTradeRoutes=1, .productionFromMine=1, .combatBonusVsCities=3},
+     UnitTypeId{}, BuildingId{},
      {{"Berlin", "Hamburg", "Munich", "Cologne", "Frankfurt", "Stuttgart",
        "Dresden", "Leipzig", "Aachen", "Nuremberg", "Bremen", "Dortmund"}},
      {UnitTypeId{59}, "U-Boat", 5, 0, 1, 0},
@@ -130,8 +156,8 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Stadt", 0, 2, 0, 0, 0, 0}, {"Hansa Quarter", 3}},
 
     {4, "Greece",  "Pericles",      "Plato's Republic",
-     "+2% culture. -5% production (philosopher tax).",
-     {0.95f, 1.0f, 1.02f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+1 culture per active trade route (philosophical exchange).",
+     {.cultureFromTradeRoute=1}, UnitTypeId{}, BuildingId{},
      {{"Athens", "Sparta", "Corinth", "Argos", "Thebes", "Delphi",
        "Olympia", "Mycenae", "Rhodes", "Ephesus", "Syracuse", "Thessaloniki"}},
      {UnitTypeId{9}, "Hoplite", 5, 0, 0, 0},
@@ -139,8 +165,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Amphitheatre", 0, 0, 0, 0, 2, 0}, {"Theatre Square", 3}},
 
     {5, "England", "Victoria",      "British Museum",
-     "+2 movement for naval units. +10% gold.",
-     {1.0f, 1.0f, 1.0f, 1.1f, 0.0f, 2, 1.0f, 1}, UnitTypeId{}, BuildingId{},
+     "+2 naval movement. +1 trade route. +2 gold per trade route.",
+     {.extraMovement=2, .extraTradeRoutes=1, .goldFromTradeRoute=2},
+     UnitTypeId{}, BuildingId{},
      {{"London", "York", "Canterbury", "Oxford", "Cambridge", "Bristol",
        "Manchester", "Liverpool", "Edinburgh", "Bath", "Winchester", "Dover"}},
      {UnitTypeId{55}, "Sea Dog", 5, 5, 1, 0},
@@ -148,8 +175,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Naval Yard", 0, 1, 2, 0, 0, 0}, {"Royal Dockyard", 3}},
 
     {6, "Japan",   "Hojo Tokimune", "Meiji Restoration",
-     "+7 combat. +5% production + science. Coastal bonus.",
-     {1.05f, 1.05f, 1.0f, 1.0f, 7.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+2 combat strength. +1 production per worked forest (kokoku spirit).",
+     {.combatStrengthBonus=2.0f, .productionFromForest=1},
+     UnitTypeId{}, BuildingId{},
      {{"Kyoto", "Tokyo", "Osaka", "Nara", "Nagoya", "Sapporo",
        "Hiroshima", "Kobe", "Fukuoka", "Yokohama", "Sendai", "Kamakura"}},
      {UnitTypeId{33}, "Samurai", 7, 0, 0, 0},
@@ -157,8 +185,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Pagoda", 0, 0, 0, 0, 1, 1}, {"Tea House", 2}},
 
     {7, "Persia",  "Cyrus",         "Satrapies",
-     "+10% gold. +1 trade route. +2 movement during golden age.",
-     {1.0f, 1.0f, 1.0f, 1.1f, 0.0f, 0, 1.0f, 1}, UnitTypeId{}, BuildingId{},
+     "+1 trade route. +1 gold/+1 culture per trade route (Royal Road network).",
+     {.extraTradeRoutes=1, .cultureFromTradeRoute=1, .goldFromTradeRoute=1},
+     UnitTypeId{}, BuildingId{},
      {{"Persepolis", "Pasargadae", "Susa", "Ecbatana", "Isfahan", "Shiraz",
        "Tabriz", "Hamadan", "Kerman", "Yazd", "Balkh", "Merv"}},
      {UnitTypeId{10}, "Immortal", 5, 10, 0, 1},
@@ -166,8 +195,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Royal Road", 0, 0, 2, 0, 0, 0}, {"Satrapy", 2}},
 
     {8, "Aztec",   "Montezuma",     "Legend of the Five Suns",
-     "+15% faith. +10% culture. +5% sci. +3 combat. +5% prod.",
-     {1.05f, 1.05f, 1.10f, 1.0f, 3.0f, 0, 1.15f, 0}, UnitTypeId{}, BuildingId{},
+     "+2 faith per enemy unit killed. +2 combat strength (eagle warriors).",
+     {.combatStrengthBonus=2.0f, .faithOnUnitKill=2},
+     UnitTypeId{}, BuildingId{},
      {{"Tenochtitlan", "Texcoco", "Tlacopan", "Cholula", "Tlaxcala", "Calixtlahuaca",
        "Xochicalco", "Tula", "Cempoala", "Malinalco", "Tamuin", "Coatepec"}},
      {UnitTypeId{0}, "Eagle Warrior", 5, 0, 0, 0},
@@ -175,8 +205,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Chinampa", 2, 0, 0, 0, 0, 1}, {"Sacrificial Pyramid", 2}},
 
     {9, "India",   "Gandhi",        "Satyagraha",
-     "+5 faith per turn. -10% production. -10% gold (pacifist tax).",
-     {0.90f, 1.0f, 1.0f, 0.90f, -2.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+2 faith and +1 culture per active trade route (peaceful exchange).",
+     {.cultureFromTradeRoute=1, .faithFromTradeRoute=2},
+     UnitTypeId{}, BuildingId{},
      {{"Mumbai", "Delhi", "Kolkata", "Chennai", "Varanasi", "Agra",
        "Jaipur", "Patna", "Hyderabad", "Lucknow", "Ahmedabad", "Pune"}},
      {UnitTypeId{12}, "Varu", 5, 0, 0, 0},
@@ -184,8 +215,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Ashram", 0, 0, 0, 0, 1, 2}, {"Holy District", 2}},
 
     {10, "Russia", "Peter",         "The Grand Embassy",
-     "+1 science/culture per trade route. Extra territory from city founding (+2 tiles).",
-     {1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0, 1.0f, 1}, UnitTypeId{}, BuildingId{},
+     "+1 trade route. +1 science and +1 culture per active trade route.",
+     {.extraTradeRoutes=1, .cultureFromTradeRoute=1, .scienceFromTradeRoute=1},
+     UnitTypeId{}, BuildingId{},
      {{"Moscow", "St Petersburg", "Novgorod", "Kiev", "Kazan", "Samara",
        "Rostov", "Tula", "Smolensk", "Pskov", "Yaroslavl", "Vladimir"}},
      {UnitTypeId{14}, "Cossack", 7, 0, 0, 0},
@@ -193,8 +225,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Tundra Village", 1, 1, 0, 0, 0, 0}, {"Holy Site", 2}},
 
     {11, "Brazil", "Pedro II",      "Magnanimous",
-     "+20% culture. +2 amenity in cities with rainforest nearby.",
-     {1.0f, 1.0f, 1.2f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+2 culture per worked rainforest tile. +1 culture per trade route.",
+     {.cultureFromTradeRoute=1, .cultureFromRainforest=2},
+     UnitTypeId{}, BuildingId{},
      {{"Rio", "Sao Paulo", "Brasilia", "Salvador", "Recife", "Belem",
        "Manaus", "Curitiba", "Fortaleza", "Natal", "Porto Alegre", "Santos"}},
      {UnitTypeId{8}, "Minas Geraes", 5, 5, 0, 0},
@@ -202,8 +235,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Rainforest Lodge", 0, 1, 0, 0, 1, 0}, {"Carnival Square", 2}},
 
     {12, "Mongolia", "Genghis Khan",  "Mongol Horde",
-     "+3 combat strength for cavalry. +2 movement for cavalry. Captures yield extra gold.",
-     {1.0f, 1.0f, 1.0f, 1.0f, 3.0f, 1, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+1 movement. +2 combat. +20 gold per population on city capture.",
+     {.combatStrengthBonus=2.0f, .extraMovement=1, .goldOnCityCapture=20},
+     UnitTypeId{}, BuildingId{},
      {{"Karakorum", "Ulaanbaatar", "Erdenet", "Khovd", "Olgii", "Ulaangom",
        "Choibalsan", "Bayanhongor", "Hujirt", "Mandalgovi", "Sukhbaatar", "Darhan"}},
      {UnitTypeId{12}, "Keshig", 5, 0, 1, 0},
@@ -211,8 +245,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Yurt", 1, 1, 0, 0, 0, 0}, {"Khanate", 2}},
 
     {13, "Arabia",   "Saladin",       "Last Prophet",
-     "Auto-founds first religion. +10% faith. +1 science from holy site adjacency.",
-     {1.0f, 1.05f, 1.0f, 1.0f, 0.0f, 0, 1.10f, 0}, UnitTypeId{}, BuildingId{},
+     "+1 faith per trade route. +5% faith (Last Prophet pulpit reach).",
+     {.faithMultiplier=1.05f, .faithFromTradeRoute=1},
+     UnitTypeId{}, BuildingId{},
      {{"Mecca", "Medina", "Damascus", "Baghdad", "Cairo", "Cordoba",
        "Granada", "Kufa", "Basra", "Aleppo", "Mosul", "Riyadh"}},
      {UnitTypeId{12}, "Mamluk", 5, 0, 0, 0},
@@ -220,8 +255,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Caravanserai", 0, 0, 2, 0, 0, 0}, {"Holy Site", 2}},
 
     {14, "Zulu",     "Shaka",         "Impi Strike",
-     "+3 combat. Capture rewards. -5% production (raider tax).",
-     {0.95f, 1.0f, 1.0f, 1.0f, 3.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+3 combat strength. +15 gold per population on city capture.",
+     {.combatStrengthBonus=3.0f, .goldOnCityCapture=15},
+     UnitTypeId{}, BuildingId{},
      {{"Ulundi", "Nodwengu", "Mgungundlovu", "Eshowe", "Empangeni", "Vryheid",
        "Pongola", "Bonjeni", "Mahlabathini", "Nkandla", "Babanango", "Pietermaritzburg"}},
      {UnitTypeId{9}, "Impi", 7, 0, 0, 0},
@@ -229,8 +265,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Kraal", 1, 1, 0, 0, 0, 0}, {"Encampment", 2}},
 
     {15, "Scythia",  "Tomyris",       "People of the Steppe",
-     "+50% prod for cavalry. Heal +10 HP after kills. +3 combat.",
-     {1.0f, 1.0f, 1.0f, 1.0f, 3.0f, 1, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+1 movement. +2 combat strength. +1 faith per enemy unit killed.",
+     {.combatStrengthBonus=2.0f, .extraMovement=1, .faithOnUnitKill=1},
+     UnitTypeId{}, BuildingId{},
      {{"Pokrovka", "Tomyris", "Saksanokhur", "Saka", "Issyk", "Pazyryk",
        "Arzhan", "Tilla Tepe", "Kostromskaya", "Aldy Bel", "Kelermes", "Ulskij"}},
      {UnitTypeId{4}, "Saka Horse Archer", 3, 15, 1, 1},
@@ -238,8 +275,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Burial Mound", 0, 0, 1, 0, 1, 0}, {"Steppe Camp", 2}},
 
     {16, "Macedon",  "Alexander",     "To World's End",
-     "+15% combat strength. No war weariness. +5% science from kills.",
-     {1.0f, 1.05f, 1.0f, 1.0f, 6.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+2 combat strength. +3 science per enemy unit killed (Hellenic learning).",
+     {.combatStrengthBonus=2.0f, .scienceOnUnitKill=3},
+     UnitTypeId{}, BuildingId{},
      {{"Pella", "Aegae", "Edessa", "Stagira", "Pydna", "Amphipolis",
        "Thessalonica", "Mieza", "Dion", "Olynthus", "Methone", "Alexandria"}},
      {UnitTypeId{4}, "Hetairoi", 7, 0, 1, 0},
@@ -247,8 +285,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Stoa", 0, 0, 0, 1, 1, 0}, {"Acropolis", 2}},
 
     {17, "Mali",     "Mansa Musa",    "Songs of the Jeli",
-     "+10% production. +10% culture. +30% gold. +2 trade routes.",
-     {1.10f, 1.0f, 1.10f, 1.30f, 0.0f, 0, 1.0f, 2}, UnitTypeId{}, BuildingId{},
+     "+2 trade routes. +3 gold per active trade route (caravan empire).",
+     {.extraTradeRoutes=2, .goldFromTradeRoute=3},
+     UnitTypeId{}, BuildingId{},
      {{"Niani", "Timbuktu", "Djenne", "Gao", "Walata", "Awdaghust",
        "Koumbi Saleh", "Bamako", "Segou", "Mopti", "Kayes", "Sikasso"}},
      {UnitTypeId{12}, "Mandekalu Cavalry", 5, 0, 0, 0},
@@ -256,8 +295,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Salt Mine", 0, 0, 2, 0, 0, 0}, {"Commercial Hub", 2}},
 
     {18, "Sumeria",  "Gilgamesh",     "Epic Quest",
-     "+5% production. +5% science. +3 combat.",
-     {1.05f, 1.05f, 1.0f, 1.0f, 3.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+2 combat strength. +1 faith per enemy unit killed (epic legend).",
+     {.combatStrengthBonus=2.0f, .faithOnUnitKill=1},
+     UnitTypeId{}, BuildingId{},
      {{"Uruk", "Ur", "Eridu", "Lagash", "Nippur", "Kish",
        "Larsa", "Sippar", "Adab", "Akkad", "Mari", "Shuruppak"}},
      {UnitTypeId{4}, "War-Cart", 8, 0, 1, 0},
@@ -265,8 +305,8 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Cuneiform Library", 0, 0, 0, 2, 0, 0}, {"Holy Site", 2}},
 
     {19, "Babylon",  "Hammurabi",     "Enuma Anu Enlil",
-     "Tech eurekas grant full tech. +5% science. +5% production.",
-     {1.05f, 1.05f, 1.0f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+2 science per worked Mine (astronomers studying ore-bearing strata).",
+     {.scienceFromMine=2}, UnitTypeId{}, BuildingId{},
      {{"Babylon", "Eshnunna", "Borsippa", "Sippar", "Kish", "Nippur",
        "Lagash", "Mari", "Akkad", "Susa", "Akshak", "Tell el-Muqayyar"}},
      {UnitTypeId{0}, "Sabum Kibittum", 5, 0, 1, 0},
@@ -274,8 +314,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Palgum", 1, 0, 0, 1, 0, 0}, {"Code District", 2}},
 
     {20, "Khmer",    "Jayavarman",    "Grand Barays",
-     "+2 food in cities adjacent to rivers. Rainforest tiles give +1 production.",
-     {1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0, 1.05f, 0}, UnitTypeId{}, BuildingId{},
+     "+2 food per worked tile adjacent to river. +1 culture per rainforest.",
+     {.foodFromRiver=2, .cultureFromRainforest=1},
+     UnitTypeId{}, BuildingId{},
      {{"Angkor", "Hariharalaya", "Sambor", "Yasodharapura", "Koh Ker", "Beng Mealea",
        "Banteay Chhmar", "Vyadhapura", "Sresthapura", "Lavo", "Bhavapura", "Isanapura"}},
      {UnitTypeId{23}, "Domrey", 0, 12, 0, 0},
@@ -283,8 +324,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Baray", 2, 0, 0, 0, 0, 0}, {"Temple Complex", 2}},
 
     {21, "Cree",     "Poundmaker",    "Nihithaw",
-     "+1 trade route. Receive a free Trader on starting Currency. Trade routes give vision.",
-     {1.0f, 1.0f, 1.0f, 1.05f, 0.0f, 0, 1.0f, 2}, UnitTypeId{}, BuildingId{},
+     "+2 trade routes. +1 culture and +1 gold per active trade route.",
+     {.extraTradeRoutes=2, .cultureFromTradeRoute=1, .goldFromTradeRoute=1},
+     UnitTypeId{}, BuildingId{},
      {{"Nehiyaw", "Asiniskaw", "Sakistaw", "Maskwacis", "Pikwakanagan", "Ahtahkakoop",
        "Mistawasis", "Onion Lake", "Sturgeon Lake", "Witchekan", "Big River", "Beardy"}},
      {UnitTypeId{2}, "Okihtcitaw", 5, 0, 1, 0},
@@ -292,8 +334,8 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Mekewap", 1, 0, 1, 0, 0, 0}, {"Trading Plaza", 2}},
 
     {22, "Mapuche",  "Lautaro",       "Toqui",
-     "+25% combat vs golden-age. Pillage +50% loot.",
-     {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+5 combat strength when fighting on own territory (defenders' edge).",
+     {.combatBonusOwnTerritory=5}, UnitTypeId{}, BuildingId{},
      {{"Wallmapu", "Temuco", "Concepcion", "Chillan", "Valdivia", "Imperial",
        "Quillen", "Lebu", "Lumaco", "Pucon", "Villarrica", "Curacautin"}},
      {UnitTypeId{14}, "Malon Raider", 5, 0, 1, 0},
@@ -301,8 +343,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Chemamull", 0, 0, 0, 0, 1, 1}, {"War Lodge", 2}},
 
     {23, "Ottoman",  "Suleiman",      "Great Turkish Bombard",
-     "+10% combat strength against city walls. Captured cities don't lose population.",
-     {1.0f, 1.0f, 1.0f, 1.0f, 3.0f, 0, 1.05f, 0}, UnitTypeId{}, BuildingId{},
+     "+1 combat strength. +5 strength attacking cities. +10 gold/pop on capture.",
+     {.combatStrengthBonus=1.0f, .combatBonusVsCities=5, .goldOnCityCapture=10},
+     UnitTypeId{}, BuildingId{},
      {{"Constantinople", "Edirne", "Bursa", "Ankara", "Izmir", "Konya",
        "Erzurum", "Adana", "Trabzon", "Antalya", "Diyarbakir", "Gaziantep"}},
      {UnitTypeId{34}, "Janissary", 7, 0, 0, 0},
@@ -310,8 +353,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Grand Bazaar", 0, 0, 3, 0, 0, 0}, {"Sultan's Court", 2}},
 
     {24, "Phoenicia","Dido",          "Mediterranean Colonies",
-     "+50% production for naval units. Founding new cities don't reduce loyalty.",
-     {1.0f, 1.0f, 1.0f, 1.05f, 0.0f, 1, 1.0f, 1}, UnitTypeId{}, BuildingId{},
+     "+1 trade route. +1 naval movement. +2 gold per active trade route.",
+     {.extraMovement=1, .extraTradeRoutes=1, .goldFromTradeRoute=2},
+     UnitTypeId{}, BuildingId{},
      {{"Tyre", "Sidon", "Byblos", "Carthage", "Utica", "Hadrumetum",
        "Gades", "Lixus", "Mogador", "Leptis", "Hippo", "Malaca"}},
      {UnitTypeId{6}, "Bireme", 5, 0, 1, 0},
@@ -319,8 +363,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Purple Dye Works", 0, 0, 2, 0, 1, 0}, {"Harbor", 2}},
 
     {25, "Norway",   "Harald",        "Knarr",
-     "Embarked units have +1 movement. Coastal raiding deals +50% pillage gold.",
-     {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+1 movement. +1 production per worked forest. +15 gold/pop on capture.",
+     {.extraMovement=1, .productionFromForest=1, .goldOnCityCapture=15},
+     UnitTypeId{}, BuildingId{},
      {{"Nidaros", "Bjorgvin", "Hamar", "Kongelv", "Tunsberg", "Sarpsborg",
        "Oslo", "Stavanger", "Skien", "Tromso", "Bodo", "Tromsdalen"}},
      {UnitTypeId{33}, "Berserker", 7, 0, 0, 0},
@@ -328,8 +373,8 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Longhouse", 1, 1, 0, 0, 0, 0}, {"Sea King's Hall", 2}},
 
     {26, "Spain",    "Philip II",     "El Escorial",
-     "+25% combat against civs founding a different religion. Galleons unique.",
-     {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0, 1.10f, 0}, UnitTypeId{}, BuildingId{},
+     "+5 combat strength when fighting civs of a different founded religion.",
+     {.combatBonusVsDifferentReligion=5}, UnitTypeId{}, BuildingId{},
      {{"Madrid", "Toledo", "Seville", "Cordoba", "Valencia", "Zaragoza",
        "Salamanca", "Granada", "Bilbao", "Cadiz", "Pamplona", "Burgos"}},
      {UnitTypeId{34}, "Conquistador", 5, 0, 1, 0},
@@ -337,8 +382,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Mission", 0, 0, 0, 1, 0, 1}, {"El Escorial", 2}},
 
     {27, "Korea",    "Seondeok",      "Three Kingdoms",
-     "+2 science from Mines, +1 from Farms. Seowon district replaces Campus.",
-     {1.0f, 1.10f, 1.0f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+2 science per worked Mine. +1 science per active trade route.",
+     {.scienceFromTradeRoute=1, .scienceFromMine=2},
+     UnitTypeId{}, BuildingId{},
      {{"Seoul", "Pyongyang", "Gyeongju", "Busan", "Daegu", "Incheon",
        "Suwon", "Daejeon", "Gwangju", "Ulsan", "Jeonju", "Andong"}},
      {UnitTypeId{37}, "Hwacha", 0, 15, 0, 1},
@@ -346,8 +392,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Three Kingdoms Mine", 0, 1, 0, 2, 0, 0}, {"Campus", 3}},
 
     {28, "Indonesia","Gitarja",       "Great Nusantara",
-     "Coast tiles give +1 production for adjacent cities. Naval units repair faster.",
-     {1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0, 1.05f, 1}, UnitTypeId{}, BuildingId{},
+     "+1 trade route. +1 gold and +1 faith per active trade route.",
+     {.extraTradeRoutes=1, .faithFromTradeRoute=1, .goldFromTradeRoute=1},
+     UnitTypeId{}, BuildingId{},
      {{"Java", "Sumatra", "Bali", "Jakarta", "Surabaya", "Yogyakarta",
        "Medan", "Semarang", "Makassar", "Palembang", "Pontianak", "Banjarmasin"}},
      {UnitTypeId{55}, "Jong", 5, 5, 1, 0},
@@ -355,8 +402,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Kampung", 1, 0, 1, 0, 0, 0}, {"Spice Wharf", 2}},
 
     {29, "Vietnam",  "Ba Trieu",      "Nine Dragon River",
-     "+5% production. +5% culture. +3 combat. Forest/jungle ambush.",
-     {1.05f, 1.0f, 1.05f, 1.0f, 3.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+5 combat strength when fighting in forest. +1 culture per rainforest.",
+     {.cultureFromRainforest=1, .combatBonusInForest=5},
+     UnitTypeId{}, BuildingId{},
      {{"Hanoi", "Hue", "Ho Chi Minh", "Da Nang", "Can Tho", "Hai Phong",
        "Bien Hoa", "Vung Tau", "Nha Trang", "Quy Nhon", "Buon Ma Thuot", "Pleiku"}},
      {UnitTypeId{12}, "Voi Chien", 5, 0, 0, 0},
@@ -364,8 +412,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Rice Terrace", 2, 0, 0, 0, 0, 0}, {"Jungle Citadel", 2}},
 
     {30, "Maori",    "Kupe",          "Mana",
-     "Start with Sailing tech. +1 housing per Fishing Boats. Tropical adaptation.",
-     {1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+1 culture per worked forest. +1 culture per rainforest tile.",
+     {.cultureFromForest=1, .cultureFromRainforest=1},
+     UnitTypeId{}, BuildingId{},
      {{"Aotearoa", "Auckland", "Wellington", "Christchurch", "Hamilton", "Tauranga",
        "Dunedin", "Napier", "Rotorua", "Whangarei", "Gisborne", "Nelson"}},
      {UnitTypeId{0}, "Toa", 5, 0, 0, 0},
@@ -373,8 +422,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Pa", 0, 1, 0, 0, 1, 0}, {"Whare", 2}},
 
     {31, "America",  "Roosevelt",     "Founding Fathers",
-     "+1 production per district built in same city. Rough Riders unique unit.",
-     {1.05f, 1.0f, 1.0f, 1.0f, 1.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+1 production per worked Mine. +4 combat strength on own territory.",
+     {.productionFromMine=1, .combatBonusOwnTerritory=4},
+     UnitTypeId{}, BuildingId{},
      {{"Washington", "New York", "Boston", "Philadelphia", "Chicago", "Los Angeles",
        "Houston", "San Francisco", "Detroit", "Seattle", "Denver", "Miami"}},
      {UnitTypeId{14}, "Rough Rider", 5, 0, 0, 0},
@@ -382,8 +432,8 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"National Park", 0, 0, 1, 0, 2, 0}, {"Capitol", 2}},
 
     {32, "France",   "Catherine",     "Black Queen",
-     "+2 science/culture from spies. +50% production for medieval/renaissance wonders.",
-     {1.0f, 1.0f, 1.10f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+2 culture per active trade route (Parisian salons abroad).",
+     {.cultureFromTradeRoute=2}, UnitTypeId{}, BuildingId{},
      {{"Paris", "Lyon", "Marseille", "Reims", "Bordeaux", "Toulouse",
        "Strasbourg", "Avignon", "Orleans", "Nantes", "Lille", "Rouen"}},
      {UnitTypeId{15}, "Garde Imperiale", 7, 0, 0, 0},
@@ -391,8 +441,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Chateau", 0, 0, 1, 0, 2, 0}, {"Court of Versailles", 3}},
 
     {33, "Netherlands","Wilhelmina",  "Radio Oranje",
-     "+1 loyalty per turn for cities founded on coast. Polder unique improvement.",
-     {1.0f, 1.0f, 1.0f, 1.10f, 0.0f, 0, 1.0f, 1}, UnitTypeId{}, BuildingId{},
+     "+1 trade route. +2 gold per active trade route (VOC mercantile reach).",
+     {.extraTradeRoutes=1, .goldFromTradeRoute=2},
+     UnitTypeId{}, BuildingId{},
      {{"Amsterdam", "Rotterdam", "The Hague", "Utrecht", "Eindhoven", "Groningen",
        "Maastricht", "Leiden", "Haarlem", "Delft", "Tilburg", "Nijmegen"}},
      {UnitTypeId{55}, "De Zeven Provincien", 5, 5, 0, 0},
@@ -400,8 +451,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Polder", 2, 1, 0, 0, 0, 0}, {"Trade Guild", 2}},
 
     {34, "Australia","Curtin",        "Land Down Under",
-     "Coastal tiles give +3 housing. Outback Station unique improvement.",
-     {1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0, 1.0f, 0}, UnitTypeId{}, BuildingId{},
+     "+1 production per worked Mine. +4 combat strength on own territory.",
+     {.productionFromMine=1, .combatBonusOwnTerritory=4},
+     UnitTypeId{}, BuildingId{},
      {{"Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide", "Canberra",
        "Hobart", "Darwin", "Gold Coast", "Newcastle", "Cairns", "Townsville"}},
      {UnitTypeId{15}, "Digger", 5, 0, 0, 0},
@@ -409,8 +461,9 @@ inline constexpr std::array<CivilizationDef, CIV_COUNT> CIV_DEFS = {{
      {"Outback Station", 1, 1, 1, 0, 0, 0}, {"Stockman's Camp", 2}},
 
     {35, "Canada",   "Laurier",       "Four Faces of Peace",
-     "Cannot declare surprise war. Tundra tiles give +1 production. Mountie unique unit.",
-     {1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0, 1.0f, 1}, UnitTypeId{}, BuildingId{},
+     "+1 trade route. +1 science per active trade route. +1 food per river tile.",
+     {.extraTradeRoutes=1, .scienceFromTradeRoute=1, .foodFromRiver=1},
+     UnitTypeId{}, BuildingId{},
      {{"Ottawa", "Toronto", "Vancouver", "Montreal", "Calgary", "Edmonton",
        "Winnipeg", "Quebec City", "Halifax", "Saskatoon", "Regina", "St Johns"}},
      {UnitTypeId{14}, "Mountie", 5, 0, 0, 0},

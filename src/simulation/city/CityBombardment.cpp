@@ -5,6 +5,7 @@
 
 #include "aoc/simulation/city/CityBombardment.hpp"
 #include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
 #include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/core/Log.hpp"

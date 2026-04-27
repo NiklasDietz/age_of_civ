@@ -17,6 +17,8 @@
 #include "aoc/simulation/map/Improvement.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
+#include "aoc/game/Unit.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
 
@@ -44,10 +46,17 @@ float computePlayerScience(const aoc::game::Player& player,
         float cityScience = 0.0f;
 
         // 1. Science from worked tiles (WP-G adjacency cluster bonuses included).
+        const aoc::sim::CivilizationDef& civModSpec = aoc::sim::civDef(player.civId());
         for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
             if (grid.isValid(tile)) {
-                aoc::map::TileYield yield = effectiveTileYield(grid, grid.toIndex(tile));
+                const int32_t tIdx = grid.toIndex(tile);
+                aoc::map::TileYield yield = effectiveTileYield(grid, tIdx);
                 cityScience += static_cast<float>(yield.science);
+                // Conditional: scienceFromMine on Mine improvement.
+                if (civModSpec.modifiers.scienceFromMine > 0
+                 && grid.improvement(tIdx) == aoc::map::ImprovementType::Mine) {
+                    cityScience += static_cast<float>(civModSpec.modifiers.scienceFromMine);
+                }
             }
         }
 
@@ -138,6 +147,19 @@ float computePlayerScience(const aoc::game::Player& player,
         totalScience += cityScience;
     }
 
+    // Conditional civ bonus: +N science per active trade route.
+    {
+        const aoc::sim::CivilizationDef& cs = aoc::sim::civDef(player.civId());
+        if (cs.modifiers.scienceFromTradeRoute > 0) {
+            int32_t routes = 0;
+            for (const std::unique_ptr<aoc::game::Unit>& u : player.units()) {
+                if (u->typeDef().unitClass == aoc::sim::UnitClass::Trader
+                 && u->trader().owner != INVALID_PLAYER) { ++routes; }
+            }
+            totalScience += static_cast<float>(routes * cs.modifiers.scienceFromTradeRoute);
+        }
+    }
+
     // Apply government science multiplier
     GovernmentModifiers govMods = computeGovernmentModifiers(player.government());
     totalScience *= govMods.scienceMultiplier;
@@ -158,12 +180,24 @@ float computePlayerCulture(const aoc::game::Player& player,
                             const aoc::map::HexGrid& grid) {
     float totalCulture = 0.0f;
 
+    const aoc::sim::CivilizationDef& cultCivSpec = aoc::sim::civDef(player.civId());
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         // Culture from worked tiles
         for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
             if (grid.isValid(tile)) {
-                aoc::map::TileYield yield = grid.tileYield(grid.toIndex(tile));
+                const int32_t tIdx = grid.toIndex(tile);
+                aoc::map::TileYield yield = grid.tileYield(tIdx);
                 totalCulture += static_cast<float>(yield.culture);
+                // Conditional culture-from-feature bonuses (Brazil/Vietnam etc).
+                const aoc::map::FeatureType ft = grid.feature(tIdx);
+                if (cultCivSpec.modifiers.cultureFromForest > 0
+                 && ft == aoc::map::FeatureType::Forest) {
+                    totalCulture += static_cast<float>(cultCivSpec.modifiers.cultureFromForest);
+                }
+                if (cultCivSpec.modifiers.cultureFromRainforest > 0
+                 && ft == aoc::map::FeatureType::Jungle) {
+                    totalCulture += static_cast<float>(cultCivSpec.modifiers.cultureFromRainforest);
+                }
             }
         }
 
@@ -200,6 +234,19 @@ float computePlayerCulture(const aoc::game::Player& player,
 
         // Civ unique improvement culture bonus per city.
         totalCulture += static_cast<float>(civSpec.uniqueImprovement.cultureBonus);
+    }
+
+    // Conditional civ bonus: +N culture per active trade route.
+    {
+        const aoc::sim::CivilizationDef& cs = aoc::sim::civDef(player.civId());
+        if (cs.modifiers.cultureFromTradeRoute > 0) {
+            int32_t routes = 0;
+            for (const std::unique_ptr<aoc::game::Unit>& u : player.units()) {
+                if (u->typeDef().unitClass == aoc::sim::UnitClass::Trader
+                 && u->trader().owner != INVALID_PLAYER) { ++routes; }
+            }
+            totalCulture += static_cast<float>(routes * cs.modifiers.cultureFromTradeRoute);
+        }
     }
 
     // Apply civilization culture multiplier

@@ -6,6 +6,7 @@
 #include "aoc/simulation/city/CityGrowth.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
+#include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/simulation/map/Improvement.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/game/Player.hpp"
@@ -193,9 +194,12 @@ void autoAssignWorkers(CityComponent& city, const aoc::map::HexGrid& grid,
 // ============================================================================
 
 static float computeWorkedFood(const aoc::game::City& city,
+                               const aoc::game::Player& player,
                                const aoc::map::HexGrid& grid,
                                bool hasFeudalismCivic) {
     float total = 0.0f;
+    const aoc::sim::CivilizationDef& civSpec = aoc::sim::civDef(player.civId());
+    const int32_t foodFromRiver = civSpec.modifiers.foodFromRiver;
     for (const aoc::hex::AxialCoord& tileCoord : city.workedTiles()) {
         if (!grid.isValid(tileCoord)) { continue; }
         int32_t tileIndex = grid.toIndex(tileCoord);
@@ -207,6 +211,10 @@ static float computeWorkedFood(const aoc::game::City& city,
         }
         if (hasFeudalismCivic) {
             tileFood += static_cast<float>(computeFarmAdjacencyBonus(grid, tileIndex));
+        }
+        // Conditional foodFromRiver: any of 6 river edges qualifies.
+        if (foodFromRiver > 0 && grid.riverEdges(tileIndex) != 0u) {
+            tileFood += static_cast<float>(foodFromRiver);
         }
         total += tileFood;
     }
@@ -225,7 +233,7 @@ static void processSingleCityGrowth(aoc::game::City& city,
     // falls below 85% of consumption, rebalance in Food focus so existing
     // citizens can migrate off resources onto farms.
     {
-        float totalFoodPre = computeWorkedFood(city, grid, hasFeudalismCivic);
+        float totalFoodPre = computeWorkedFood(city, player, grid, hasFeudalismCivic);
         float consumption  = static_cast<float>(city.population()) * 2.0f;
         if (consumption > 0.0f && totalFoodPre < consumption * 0.85f) {
             city.autoAssignWorkers(grid, aoc::sim::WorkerFocus::Food, &player);
@@ -233,7 +241,7 @@ static void processSingleCityGrowth(aoc::game::City& city,
     }
 
     // Calculate food from worked tiles (post-reassignment)
-    float totalFood = computeWorkedFood(city, grid, hasFeudalismCivic);
+    float totalFood = computeWorkedFood(city, player, grid, hasFeudalismCivic);
 
     // Food consumption: 2 per citizen
     float consumption = static_cast<float>(city.population()) * 2.0f;

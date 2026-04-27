@@ -206,10 +206,42 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
         const aoc::game::Player* atkPlayer = gameState.player(attacker.owner());
         const aoc::game::Player* defPlayer = gameState.player(defender.owner());
         if (atkPlayer != nullptr) {
-            atkStrength += aoc::sim::civDef(atkPlayer->civId()).modifiers.combatStrengthBonus;
+            const aoc::sim::CivAbilityModifiers& m =
+                aoc::sim::civDef(atkPlayer->civId()).modifiers;
+            atkStrength += m.combatStrengthBonus;
+            // Conditional combat bonuses keyed off attacker tile / context.
+            const int32_t atkIdx = grid.toIndex(attacker.position());
+            if (m.combatBonusOwnTerritory > 0
+             && grid.owner(atkIdx) == attacker.owner()) {
+                atkStrength += static_cast<float>(m.combatBonusOwnTerritory);
+            }
+            if (m.combatBonusInForest > 0
+             && grid.feature(atkIdx) == aoc::map::FeatureType::Forest) {
+                atkStrength += static_cast<float>(m.combatBonusInForest);
+            }
+            if (m.combatBonusVsDifferentReligion > 0 && defPlayer != nullptr) {
+                const ReligionId atkR = atkPlayer->faith().foundedReligion;
+                const ReligionId defR = defPlayer->faith().foundedReligion;
+                if (atkR != aoc::sim::NO_RELIGION
+                 && defR != aoc::sim::NO_RELIGION
+                 && atkR != defR) {
+                    atkStrength += static_cast<float>(m.combatBonusVsDifferentReligion);
+                }
+            }
         }
         if (defPlayer != nullptr) {
-            defStrength += aoc::sim::civDef(defPlayer->civId()).modifiers.combatStrengthBonus;
+            const aoc::sim::CivAbilityModifiers& m =
+                aoc::sim::civDef(defPlayer->civId()).modifiers;
+            defStrength += m.combatStrengthBonus;
+            const int32_t defIdx = grid.toIndex(defender.position());
+            if (m.combatBonusOwnTerritory > 0
+             && grid.owner(defIdx) == defender.owner()) {
+                defStrength += static_cast<float>(m.combatBonusOwnTerritory);
+            }
+            if (m.combatBonusInForest > 0
+             && grid.feature(defIdx) == aoc::map::FeatureType::Forest) {
+                defStrength += static_cast<float>(m.combatBonusInForest);
+            }
         }
     }
 
@@ -433,6 +465,19 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
                          static_cast<unsigned>(attackerOwner),
                          defenderTile.q, defenderTile.r,
                          static_cast<long long>(TILE_PILLAGE_BONUS));
+            }
+
+            // Conditional civ bonus: scienceOnUnitKill (Macedon),
+            // faithOnUnitKill (Aztec). Bypassed against Barbarians above.
+            const aoc::sim::CivAbilityModifiers& m =
+                aoc::sim::civDef(atkPlayer->civId()).modifiers;
+            if (m.scienceOnUnitKill > 0) {
+                atkPlayer->tech().researchProgress +=
+                    static_cast<float>(m.scienceOnUnitKill);
+            }
+            if (m.faithOnUnitKill > 0) {
+                atkPlayer->faith().faith +=
+                    static_cast<float>(m.faithOnUnitKill);
             }
         }
     }

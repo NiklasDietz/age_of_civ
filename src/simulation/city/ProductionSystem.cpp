@@ -122,16 +122,25 @@ static float computeCityProductionGS(const aoc::game::Player& player,
                                       const aoc::game::GameState& gameState) {
     // Sum production from worked tiles
     float totalProduction = 0.0f;
+    const CivilizationDef& civSpec = civDef(player.civId());
     for (const aoc::hex::AxialCoord& tile : city.workedTiles()) {
         if (grid.isValid(tile)) {
             int32_t index = grid.toIndex(tile);
             aoc::map::TileYield yield = effectiveTileYield(grid, index);
             totalProduction += static_cast<float>(yield.production);
+            // Conditional production-from-tile bonuses.
+            if (civSpec.modifiers.productionFromMine > 0
+             && grid.improvement(index) == aoc::map::ImprovementType::Mine) {
+                totalProduction += static_cast<float>(civSpec.modifiers.productionFromMine);
+            }
+            if (civSpec.modifiers.productionFromForest > 0
+             && grid.feature(index) == aoc::map::FeatureType::Forest) {
+                totalProduction += static_cast<float>(civSpec.modifiers.productionFromForest);
+            }
         }
     }
 
     // Building production bonuses + district adjacency
-    const CivilizationDef& civSpec = civDef(player.civId());
     const CityDistrictsComponent& districts = city.districts();
     for (const CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
         for (BuildingId bid : district.buildings) {

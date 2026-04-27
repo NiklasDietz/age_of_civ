@@ -6,6 +6,7 @@
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/simulation/city/CityBombardment.hpp"
+#include "aoc/simulation/civilization/Civilization.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
@@ -270,6 +271,15 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
                                             && city->originalOwner() != unit.owner())
                                           ? 25 : 5;
                         ownerP->victoryTracker().eraVictoryPoints += vp;
+                        // Conditional civ bonus: goldOnCityCapture (Mongolia,
+                        // Norway raid). Scales with city size.
+                        const int32_t loot =
+                            aoc::sim::civDef(ownerP->civId())
+                                .modifiers.goldOnCityCapture;
+                        if (loot > 0) {
+                            ownerP->monetary().treasury += static_cast<int64_t>(
+                                loot) * std::max(1, city->population());
+                        }
                     }
                 }
 
