@@ -18,6 +18,7 @@
 #include "aoc/map/Terrain.hpp"
 #include "aoc/core/Log.hpp"
 
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <vector>
@@ -197,8 +198,33 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
                     continue;  // Already captured — stale entry in old owner's list.
                 }
                 if (!canCaptureCity(*city)) {
-                    LOG_INFO("Unit blocked by intact walls of %s (%d/%d HP)",
+                    // Siege: military unit pressing into a wall-protected
+                    // city deals dealSiegeDamage. The attacker's civ
+                    // combatBonusVsCities adds to wall damage so siege-
+                    // specialist civs (Ottoman, Aztec) crack walls faster.
+                    int32_t siegeDmg = dealSiegeDamage(*city, unit);
+                    if (siegeDmg > 0) {
+                        const aoc::sim::CivAbilityModifiers& m =
+                            aoc::sim::civDef(
+                                gameState.player(unit.owner())
+                                    ? gameState.player(unit.owner())->civId()
+                                    : 0).modifiers;
+                        if (m.combatBonusVsCities > 0) {
+                            const int32_t extra = std::min(
+                                static_cast<int32_t>(city->walls().currentHP),
+                                m.combatBonusVsCities);
+                            if (extra > 0) {
+                                city->walls().currentHP = static_cast<int16_t>(
+                                    city->walls().currentHP - extra);
+                                siegeDmg += extra;
+                            }
+                        }
+                    }
+                    LOG_INFO("Siege: %.*s vs %s walls -%d HP (%d/%d remaining)",
+                             static_cast<int>(unit.typeDef().name.size()),
+                             unit.typeDef().name.data(),
                              city->name().c_str(),
+                             siegeDmg,
                              city->walls().currentHP, city->walls().maxHP);
                     unit.clearPath();
                     unit.setMovementRemaining(0);
