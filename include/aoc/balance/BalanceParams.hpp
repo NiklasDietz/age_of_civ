@@ -53,9 +53,9 @@ struct BalanceParams {
     // still fired at turn 225 in some sims. Heavy push: 12000 threshold,
     // 7 wonders, 1.5× lead so Culture lands 700-900 consistently.
     // GA-tuned 2026-04-25 with 0.5× culture accumulation rate active.
-    float   cultureVictoryThreshold  = 7000.0f;  // GA's 4262 → 45.8% Culture; raised
-    int32_t cultureVictoryMinWonders = 4;
-    float   cultureVictoryLeadRatio  = 1.15f;
+    float   cultureVictoryThreshold  = 9000.0f;  // 2026-04-27: 8500→39%, 9500→5.6%; midpoint 9000
+    int32_t cultureVictoryMinWonders = 5;
+    float   cultureVictoryLeadRatio  = 1.25f;
 
     float   integrationThreshold     = 1.66f;  // GA 2026-04-26
     int32_t integrationTurnsRequired = 10;

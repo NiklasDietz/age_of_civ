@@ -844,6 +844,13 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                             aoc::sim::orderUnitMove(*unit, bestMove, grid);
                             aoc::sim::moveUnitAlongPath(gameState, *unit, grid);
                         }
+                    } else if (bestDist == 1
+                            && aoc::sim::isMilitary(unit->typeDef().unitClass)) {
+                        // Adjacent to enemy city: assault. Stepping onto the
+                        // tile triggers siege (walls) or capture (no walls)
+                        // via Movement.cpp's capture handler.
+                        aoc::sim::orderUnitMove(*unit, targetCity, grid);
+                        aoc::sim::moveUnitAlongPath(gameState, *unit, grid);
                     }
                 }
 
