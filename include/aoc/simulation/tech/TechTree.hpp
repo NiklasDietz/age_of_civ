@@ -55,9 +55,17 @@ struct PlayerTechComponent {
     /// Bitfield: which techs have been completed.
     std::vector<bool> completedTechs;
 
+    /// Techs the player KNOWS (researched OR acquired via trade). Always
+    /// superset of completedTechs. Known-but-not-completed techs are
+    /// visible (reveal resources, show in tech tree) but cannot be used
+    /// to build/produce until all prereqs are completed. Per-turn tick
+    /// auto-promotes known→completed when prereqs are met.
+    std::vector<bool> knownTechs;
+
     /// Initialize with the right number of tech slots.
     void initialize() {
         this->completedTechs.resize(techCount(), false);
+        this->knownTechs.resize(techCount(), false);
         this->currentResearch = TechId{};
     }
 
@@ -66,6 +74,18 @@ struct PlayerTechComponent {
             return false;
         }
         return this->completedTechs[tech.value];
+    }
+
+    /// Visibility / tree-display check: tech is known via research or trade.
+    /// Use this for resource visibility, tech-tree display. NOT for build
+    /// gating — that uses hasResearched().
+    [[nodiscard]] bool knows(TechId tech) const {
+        if (!tech.isValid()) { return false; }
+        if (tech.value < this->completedTechs.size()
+            && this->completedTechs[tech.value]) { return true; }
+        if (tech.value < this->knownTechs.size()
+            && this->knownTechs[tech.value]) { return true; }
+        return false;
     }
 
     /// Check if all prerequisites for a tech are met.
@@ -100,6 +120,9 @@ struct PlayerTechComponent {
         if (this->currentResearch.isValid() &&
             this->currentResearch.value < this->completedTechs.size()) {
             this->completedTechs[this->currentResearch.value] = true;
+            if (this->currentResearch.value < this->knownTechs.size()) {
+                this->knownTechs[this->currentResearch.value] = true;
+            }
         }
         this->currentResearch = TechId{};
         this->researchProgress = 0.0f;
@@ -121,5 +144,16 @@ struct PlayerTechComponent {
  * @return true if a tech was completed this turn.
  */
 bool advanceResearch(PlayerTechComponent& tech, float sciencePoints);
+
+/// Acquire a tech via trade/gift. Marks it KNOWN. If all prereqs are already
+/// completed, also marks it COMPLETED (immediately usable). Otherwise it
+/// stays known-but-locked until prereqs are met (then promoted by
+/// promotePendingTechs each turn).
+void acquireTechFromTrade(PlayerTechComponent& tech, TechId techId);
+
+/// Per-turn promotion: scan knownTechs and promote any whose prereqs
+/// are now all completed. Cascades: completing one tech may unlock
+/// another known-but-locked tech in the same pass.
+void promotePendingTechs(PlayerTechComponent& tech);
 
 } // namespace aoc::sim

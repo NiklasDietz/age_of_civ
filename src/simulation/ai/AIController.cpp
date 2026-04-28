@@ -1756,7 +1756,9 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                       static_cast<int32_t>(this->m_player) * 31) % 10);
                 if (warChance < warChanceThreshold) {
                     diplomacy.declareWar(this->m_player, other,
-                                         aoc::sim::CasusBelliType::SurpriseWar,
+                                         rel.casusBelliGranted()
+                                             ? aoc::sim::CasusBelliType::FormalWar
+                                             : aoc::sim::CasusBelliType::SurpriseWar,
                                          nullptr, &gameState,
                                          gameState.currentTurn());
                     LOG_INFO("AI %u Declared war on player %u (military %d vs %d, "

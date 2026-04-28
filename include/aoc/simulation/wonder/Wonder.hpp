@@ -24,12 +24,34 @@ struct WonderEffect {
     float faithBonus           = 0.0f;
 };
 
+/// Spatial requirement applied to wonders, districts, and buildings.
+/// The check is run against the city center + its 6 neighbours.
+/// `requiresHill` checks the city center tile's feature; everything else
+/// looks for any matching neighbour.
+struct WonderAdjacencyReq {
+    bool requiresMountain      = false;  ///< Need any Mountain neighbour
+    bool requiresCoast         = false;  ///< Need any Coast/Ocean neighbour
+    bool requiresRiver         = false;  ///< City tile must touch a river
+    bool requiresForest        = false;  ///< Need Forest feature neighbour
+    bool requiresJungle        = false;  ///< Need Jungle/Rainforest neighbour
+    bool requiresNaturalWonder = false;  ///< Need Natural Wonder neighbour
+    bool requiresDesert        = false;  ///< Need Desert tile in city center or adj
+    bool requiresHill          = false;  ///< Need Hills feature in city
+    bool requiresFlat          = false;  ///< City center must NOT be hill/mountain (Aerodrome)
+};
+
+/// Alias — same struct reused by districts/buildings. Wonder name kept
+/// for backwards compatibility.
+using SpatialReq = WonderAdjacencyReq;
+
 struct WonderDef {
     WonderId         id;
     std::string_view name;
     EraId            era;
     int32_t          productionCost;
     TechId           prerequisiteTech;    ///< INVALID = no prereq
+    CivicId          prerequisiteCivic{}; ///< INVALID = no civic prereq
+    WonderAdjacencyReq adjacency{};       ///< Spatial requirements
     WonderEffect     effect;
     std::string_view description;
 };
@@ -62,6 +84,30 @@ struct GlobalWonderTracker {
         this->builtBy[id] = player;
     }
 };
+
+/// Reason a buildable item (wonder/district/building/unit) cannot
+/// currently be built. UI shows item greyed out with hint.
+enum class WonderLockReason : uint8_t {
+    None              = 0, ///< Buildable now
+    AlreadyBuilt      = 1, ///< Wonder already built by some civ
+    AlreadyOwned      = 2, ///< This civ already owns or has it queued
+    TechMissing       = 3,
+    CivicMissing      = 4,
+    NeedMountain      = 5,
+    NeedCoast         = 6,
+    NeedRiver         = 7,
+    NeedForest        = 8,
+    NeedJungle        = 9,
+    NeedNaturalWonder = 10,
+    NeedDesert        = 11,
+    NeedHill          = 12,
+    NeedFlat          = 13,
+    NeedDistrict      = 14, ///< Building requires a district that doesn't exist
+    NoResource        = 15, ///< Strategic resource missing (e.g. uranium for nuke)
+};
+
+/// Alias — generic name for the same enum used by buildings/units/districts.
+using BuildLockReason = WonderLockReason;
 
 /// ECS component on city entities listing which wonders it contains.
 struct CityWondersComponent {

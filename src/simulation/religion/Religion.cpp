@@ -7,6 +7,8 @@
  */
 
 #include "aoc/simulation/religion/Religion.hpp"
+#include "aoc/simulation/government/Government.hpp"
+#include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
 #include "aoc/simulation/city/Happiness.hpp"
@@ -153,6 +155,12 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
 
     // Civilization ability: faith multiplier.
     faithGain *= aoc::sim::civDef(player.civId()).modifiers.faithMultiplier;
+
+    // Government faith multiplier (policy cards)
+    {
+        const GovernmentModifiers gov = computeGovernmentModifiers(player.government());
+        faithGain *= gov.faithMultiplier;
+    }
 
     playerFaith.faith += faithGain;
 }

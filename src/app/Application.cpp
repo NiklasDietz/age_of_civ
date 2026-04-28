@@ -1253,6 +1253,9 @@ void Application::run() {
         // it should pause + offer save/load/main-menu options. Settings menu
         // doubles as pause menu for now (Save/Load via F5/F9).
         if (this->m_inputManager.isActionPressed(InputAction::Cancel)) {
+            LOG_INFO("ESC pressed in-game (pauseBuilt=%d, anyScreen=%d)",
+                     this->m_pauseMenu.isBuilt() ? 1 : 0,
+                     this->anyScreenOpen() ? 1 : 0);
             if (this->m_pauseMenu.isBuilt()) {
                 this->m_pauseMenu.destroy(this->m_uiManager);
             } else if (this->anyScreenOpen()) {

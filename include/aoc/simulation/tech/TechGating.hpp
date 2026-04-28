@@ -30,6 +30,8 @@ struct BuildableItem {
     uint16_t           id;
     std::string_view   name;
     float              cost;
+    bool               locked = false;        ///< true = greyed out (prereq unmet)
+    uint8_t            lockReason = 0;        ///< WonderLockReason cast as uint8 (0 = None)
 };
 
 /// Check if a player can build a specific unit type.
@@ -45,6 +47,29 @@ struct BuildableItem {
 
 /// Check if a player can build a specific wonder.
 [[nodiscard]] bool canBuildWonder(const aoc::game::GameState& gameState, PlayerId player, uint8_t wonderId);
+
+/// Detailed wonder availability check returning the specific lock reason.
+/// Considers tech, civic, adjacency requirements + already-built status.
+[[nodiscard]] uint8_t wonderLockReason(const aoc::game::GameState& gameState,
+                                        PlayerId player,
+                                        const aoc::game::City& city,
+                                        uint8_t wonderId,
+                                        const aoc::map::HexGrid* grid = nullptr);
+
+/// Detailed building availability: checks tech, civic, district, spatial,
+/// resource. Returns BuildLockReason cast as uint8_t.
+[[nodiscard]] uint8_t buildingLockReason(const aoc::game::GameState& gameState,
+                                          PlayerId player,
+                                          const aoc::game::City& city,
+                                          BuildingId buildingId,
+                                          const aoc::map::HexGrid* grid = nullptr);
+
+/// Detailed district availability: stage, presence, adjacency.
+[[nodiscard]] uint8_t districtLockReason(const aoc::game::GameState& gameState,
+                                          PlayerId player,
+                                          const aoc::game::City& city,
+                                          uint8_t districtTypeIdx,
+                                          const aoc::map::HexGrid* grid = nullptr);
 
 /// Get all buildable items for a city (units + buildings + wonders + districts).
 [[nodiscard]] std::vector<BuildableItem> getBuildableItems(const aoc::game::GameState& gameState,

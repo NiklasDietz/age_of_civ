@@ -82,9 +82,20 @@ static int32_t counterSpyLevel(const aoc::game::GameState& gameState,
 static void executeMissionSuccess(aoc::game::GameState& gameState,
                                    aoc::game::Player& ownerPlayer,
                                    SpyComponent& spy,
-                                   aoc::Random& rng) {
+                                   aoc::Random& rng,
+                                   DiplomacyManager* diplomacy) {
+    // Helper: raise intel tier vs the owner of the city the spy stands in.
+    auto raiseIntel = [&](uint8_t tier) {
+        if (diplomacy == nullptr) { return; }
+        aoc::game::City* tc = findEnemyCityAt(gameState, spy.owner, spy.location);
+        if (tc == nullptr || tc->owner() == INVALID_PLAYER) { return; }
+        if (tc->owner() == spy.owner) { return; }
+        PairwiseRelation& r = diplomacy->relation(spy.owner, tc->owner());
+        if (tier > r.intelLevel) { r.intelLevel = tier; }
+    };
     switch (spy.currentMission) {
         case SpyMission::GatherIntelligence: {
+            raiseIntel(static_cast<uint8_t>(IntelligenceLevel::Basic));
             LOG_INFO("Spy (%.*s, P%u) gathered intelligence at (%d,%d)",
                      static_cast<int>(spyLevelName(spy.level).size()),
                      spyLevelName(spy.level).data(),
@@ -94,7 +105,7 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
         }
 
         case SpyMission::MonitorTreasury: {
-            // Passive: intelligence level set in the calling code.
+            raiseIntel(static_cast<uint8_t>(IntelligenceLevel::Economic));
             LOG_INFO("Spy (P%u) monitoring treasury at (%d,%d)",
                      static_cast<unsigned>(spy.owner),
                      spy.location.q, spy.location.r);
@@ -102,6 +113,7 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
         }
 
         case SpyMission::MonitorResearch: {
+            raiseIntel(static_cast<uint8_t>(IntelligenceLevel::Comprehensive));
             LOG_INFO("Spy (P%u) monitoring research at (%d,%d)",
                      static_cast<unsigned>(spy.owner),
                      spy.location.q, spy.location.r);
@@ -422,7 +434,7 @@ void processSpyMissions(aoc::game::GameState& gameState,
         if (success) {
             aoc::game::Player* ownerPlayer = gameState.player(spy.owner);
             if (ownerPlayer != nullptr) {
-                executeMissionSuccess(gameState, *ownerPlayer, spy, rng);
+                executeMissionSuccess(gameState, *ownerPlayer, spy, rng, diplomacy);
             }
 
             // XP gain: 3 base + 2 for harder missions

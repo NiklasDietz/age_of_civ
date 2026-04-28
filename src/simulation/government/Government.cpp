@@ -12,6 +12,8 @@
 #include "aoc/game/Unit.hpp"
 #include "aoc/core/Log.hpp"
 
+#include <algorithm>
+
 namespace aoc::sim {
 
 GovernmentModifiers computeGovernmentModifiers(
@@ -25,8 +27,14 @@ GovernmentModifiers computeGovernmentModifiers(
     const GovernmentDef& gdef = governmentDef(gov.government);
     GovernmentModifiers result = gdef.inherentBonuses;
 
-    // Combine active policy card modifiers
-    for (uint8_t slot = 0; slot < MAX_POLICY_SLOTS; ++slot) {
+    // Combine active policy card modifiers. Limit iteration to slots
+    // actually granted by the current government tier — early govs have
+    // fewer slots, so policy cards in higher slots are inert until the
+    // player advances to a government with enough slots.
+    const uint8_t availableSlots = std::min<uint8_t>(MAX_POLICY_SLOTS,
+        static_cast<uint8_t>(gdef.militarySlots + gdef.economicSlots
+                              + gdef.diplomaticSlots + gdef.wildcardSlots));
+    for (uint8_t slot = 0; slot < availableSlots; ++slot) {
         const int8_t policyId = gov.activePolicies[slot];
         if (policyId == EMPTY_POLICY_SLOT || policyId < 0) {
             continue;

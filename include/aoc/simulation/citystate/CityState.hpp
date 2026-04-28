@@ -93,6 +93,13 @@ struct CityStateQuest {
     int32_t  snapshot       = 0;
 };
 
+/// Per-assignee streak: consecutive quests completed by the same player
+/// scale the reward: streak 0 → 2 envoys, 1 → 3, 2 → 4, 3+ → 5 + 25 gold.
+struct CityStateQuestStreak {
+    PlayerId player = INVALID_PLAYER;
+    int32_t  streak = 0;
+};
+
 // ============================================================================
 // Component
 // ============================================================================
@@ -115,6 +122,10 @@ struct CityStateComponent {
     /// One active quest per city-state. Completing it awards envoys to the
     /// `assignedTo` player. Regenerated after completion or timeout.
     CityStateQuest activeQuest{};
+
+    /// Quest-completion streak for the most recent assignee. Each
+    /// consecutive completion increases envoy reward + adds gold bonus.
+    CityStateQuestStreak questStreak{};
 
     /// Player whose forces are currently levied (military units
     /// temporarily granted by the suzerain). INVALID_PLAYER = none.

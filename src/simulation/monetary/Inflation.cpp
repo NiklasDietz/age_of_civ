@@ -156,6 +156,15 @@ void computeInflation(MonetaryStateComponent& state,
 
     // Clamp to reasonable range (-20% to +50% per turn)
     state.inflationRate = std::clamp(state.inflationRate, -0.20f, 0.50f);
+
+    // Mirror inflation rate into hyperinflationTurns counter for UI/AI use.
+    // The active CurrencyCrisis system uses its own turnsHighInflation
+    // counter for the actual crisis trigger; this is purely informational.
+    if (state.inflationRate >= 0.30f) {
+        ++state.hyperinflationTurns;
+    } else if (state.inflationRate < 0.20f) {
+        state.hyperinflationTurns = 0;
+    }
 }
 
 void applyInflationEffects(MonetaryStateComponent& state) {

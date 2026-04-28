@@ -7,6 +7,8 @@
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/government/Government.hpp"
+#include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/map/Improvement.hpp"
 #include "aoc/simulation/turn/GameLength.hpp"
 #include "aoc/game/Player.hpp"
@@ -219,6 +221,11 @@ static float computeWorkedFood(const aoc::game::City& city,
         }
         total += tileFood;
     }
+    // Pollution food penalty: each waste tier deducts food units.
+    // foodPenalty returns 0/1/2/3 based on wasteAccumulated.
+    total -= static_cast<float>(city.pollution().foodPenalty());
+    if (total < 0.0f) { total = 0.0f; }
+
     // Climate food penalty: late-stage CO2 reduces yield (≥ industrial).
     return total * climateFoodMult;
 }
@@ -279,6 +286,14 @@ static void processSingleCityGrowth(aoc::game::City& city,
         } else if (excess >= 1) {
             // 1 → *0.75, 2 → *0.50, 3 → *0.25
             surplus *= (1.0f - 0.25f * static_cast<float>(excess));
+        }
+    }
+
+    // Government growth multiplier (policy cards).
+    {
+        GovernmentModifiers gov = computeGovernmentModifiers(player.government());
+        if (surplus > 0.0f) {
+            surplus *= gov.growthMultiplier;
         }
     }
 
@@ -512,6 +527,26 @@ static void processSingleCityGrowth(aoc::game::City& city,
         }
         LOG_WARN("%s lost population (starvation), now %d",
                  city.name().c_str(), city.population());
+    }
+
+    // Unhappiness-driven shrinkage: happiness ≤ -10 for sustained turns
+    // causes citizens to flee. Tracks via flee counter on city, shrinks
+    // when counter exceeds threshold.
+    if (cityHappiness <= -10.0f && city.population() > 1) {
+        city.unhappinessFleeCounter += 1;
+        if (city.unhappinessFleeCounter >= 5) {
+            city.growPopulation(-1);
+            city.unhappinessFleeCounter = 0;
+            if (city.workedTiles().size() > 1) {
+                city.removeWorker(city.workedTiles().back());
+            }
+            LOG_WARN("%s lost population (mass unhappiness, h=%.1f), now %d",
+                     city.name().c_str(),
+                     static_cast<double>(cityHappiness), city.population());
+        }
+    } else if (cityHappiness > -5.0f) {
+        // Recovery: happiness improving wipes flee counter.
+        city.unhappinessFleeCounter = 0;
     }
 }
 

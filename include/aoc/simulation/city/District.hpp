@@ -11,6 +11,7 @@
 
 #include "aoc/core/Types.hpp"
 #include "aoc/map/HexCoord.hpp"
+#include "aoc/simulation/wonder/Wonder.hpp"  // WonderAdjacencyReq (alias SpatialReq)
 
 #include <array>
 #include <cstdint>
@@ -44,6 +45,38 @@ static constexpr uint8_t DISTRICT_TYPE_COUNT = static_cast<uint8_t>(DistrictType
         "Holy Site", "Harbor", "Encampment", "Theatre Square"
     }};
     return NAMES[static_cast<uint8_t>(type)];
+}
+
+/// Per-district-type spatial requirement table. Civ-6 inspired:
+///   Harbor    → coast adjacency
+///   Encampment, Industrial, Theatre, Commercial, Holy, Campus → no req
+[[nodiscard]] inline constexpr aoc::sim::WonderAdjacencyReq districtSpatialReq(DistrictType type) {
+    aoc::sim::WonderAdjacencyReq r{};
+    if (type == DistrictType::Harbor) {
+        r.requiresCoast = true;
+    }
+    return r;
+}
+
+/// Per-building spatial requirement override (separate from
+/// BuildingDef::spatial which is set inline; this lookup catches
+/// pre-existing entries that haven't been migrated to designated-init).
+[[nodiscard]] inline constexpr aoc::sim::WonderAdjacencyReq buildingSpatialReq(BuildingId id) {
+    aoc::sim::WonderAdjacencyReq r{};
+    switch (id.value) {
+        case 28:  // Hydroelectric Dam → must touch river
+            r.requiresRiver = true;
+            break;
+        case 14:  // Airport → flat ground (no mountain/hill)
+            r.requiresFlat = true;
+            break;
+        case 23:  // Shipyard → coast (also enforced via Harbor district)
+            r.requiresCoast = true;
+            break;
+        default:
+            break;
+    }
+    return r;
 }
 
 // ============================================================================
@@ -80,6 +113,15 @@ struct BuildingDef {
     int32_t faithBonus = 0;    ///< Per-turn faith generated (Shrine/Temple/Cathedral)
     int32_t cultureBonus = 0;  ///< Per-turn culture generated (Theatre buildings)
     uint8_t greatWorksSlots = 0; ///< Capacity for housed great works
+
+    /// Optional civic prerequisite (alongside requiredTech, which lives on
+    /// the tech tree's unlockedBuildings list). Default-invalid = no civic
+    /// gate.
+    CivicId requiredCivic{};
+
+    /// Optional spatial requirement (terrain/feature adjacency). Examples:
+    /// Lighthouse → Harbor district (coast); Hydroelectric Plant → river.
+    aoc::sim::WonderAdjacencyReq spatial{};
 
     /// Whether this building requires any resources to construct.
     [[nodiscard]] constexpr bool hasResourceCost() const {

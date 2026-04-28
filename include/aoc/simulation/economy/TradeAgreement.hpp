@@ -99,8 +99,12 @@ struct PlayerTradeAgreementsComponent {
 /**
  * @brief Propose a bilateral trade deal between two players.
  */
+/// Optional `diplomacy` parameter: when supplied, the deal is REFUSED if
+/// the proposer-partner pair is at war or has Hostile/Unfriendly stance —
+/// the partner's leader won't sign with someone they actively dislike.
 [[nodiscard]] ErrorCode proposeBilateralDeal(aoc::game::GameState& gameState,
-                                               PlayerId proposer, PlayerId partner);
+                                               PlayerId proposer, PlayerId partner,
+                                               DiplomacyManager* diplomacy = nullptr);
 
 /**
  * @brief Create a free trade zone among multiple players.
@@ -125,6 +129,19 @@ struct PlayerTradeAgreementsComponent {
  */
 [[nodiscard]] ErrorCode proposeTransitTreaty(aoc::game::GameState& gameState,
                                               PlayerId proposer, PlayerId partner);
+
+/// Exit a trade agreement.  Removes `leaver` from every active agreement of
+/// `type` they belong to.  If the agreement drops below the minimum member
+/// count (2 for Bilateral, 3 for FTZ, 2 for Customs), it is dissolved.
+/// War-driven dissolution uses this same path.
+void exitTradeAgreement(aoc::game::GameState& gameState,
+                         PlayerId leaver,
+                         TradeAgreementType type);
+
+/// Dissolve all trade agreements between two players (called from
+/// declareWar so wartime cuts off member-tariff perks immediately).
+void breakTradeAgreementsBetween(aoc::game::GameState& gameState,
+                                  PlayerId a, PlayerId b);
 
 /**
  * @brief Process trade agreement effects each turn (tick duration, check validity).

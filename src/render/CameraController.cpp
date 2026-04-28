@@ -26,7 +26,7 @@ CameraController::CameraController(const Config& config)
 }
 
 void CameraController::update(const aoc::app::InputManager& input, float deltaTime,
-                               uint32_t /*screenWidth*/, uint32_t /*screenHeight*/) {
+                               uint32_t screenWidth, uint32_t screenHeight) {
     // --- Keyboard pan (WASD) ---
     const float panAmount = this->m_config.panSpeed * deltaTime / this->m_zoom;
 
@@ -41,6 +41,33 @@ void CameraController::update(const aoc::app::InputManager& input, float deltaTi
     }
     if (input.isActionHeld(aoc::app::InputAction::PanDown)) {
         this->m_cameraY += panAmount;
+    }
+
+    // --- Mouse edge scrolling ---
+    // Move camera when cursor enters edge zone (Civ-style). Zone width
+    // 16 pixels. Speed ramps to full panSpeed at 0 px from edge.
+    {
+        constexpr float EDGE_ZONE = 16.0f;
+        const float mx = static_cast<float>(input.mouseX());
+        const float my = static_cast<float>(input.mouseY());
+        const float w = static_cast<float>(screenWidth);
+        const float h = static_cast<float>(screenHeight);
+        // Only scroll while cursor is inside the window.
+        if (mx >= 0.0f && mx <= w && my >= 0.0f && my <= h) {
+            float dx = 0.0f, dy = 0.0f;
+            if (mx < EDGE_ZONE) {
+                dx = -(EDGE_ZONE - mx) / EDGE_ZONE;
+            } else if (mx > w - EDGE_ZONE) {
+                dx = (mx - (w - EDGE_ZONE)) / EDGE_ZONE;
+            }
+            if (my < EDGE_ZONE) {
+                dy = -(EDGE_ZONE - my) / EDGE_ZONE;
+            } else if (my > h - EDGE_ZONE) {
+                dy = (my - (h - EDGE_ZONE)) / EDGE_ZONE;
+            }
+            this->m_cameraX += dx * panAmount;
+            this->m_cameraY += dy * panAmount;
+        }
     }
 
     // --- Right-mouse or middle-mouse drag pan ---

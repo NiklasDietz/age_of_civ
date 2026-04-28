@@ -94,7 +94,20 @@ void selectTradeGoods(const CityStockpileComponent& originStock,
     for (const ScoredGood& c : candidates) {
         if (count >= maxGoods) { break; }
 
+        // Volume scales with surplus and destination demand: more demand
+        // → larger shipment. Higher-tier goods (rank by index) get
+        // diminishing volume since they're heavier per unit. Cap 12.
         int32_t transfer = std::max(1, c.surplus / 2);
+        if (destStock != nullptr) {
+            const int32_t destAmount = destStock->getAmount(c.goodId);
+            if (destAmount < 3) {
+                transfer = std::min(c.surplus, transfer * 2);  // urgent demand: double load
+            } else if (destAmount > 10) {
+                transfer = std::max(1, transfer / 2);           // saturated: half load
+            }
+        }
+        // Hard cap: traders can carry 12 units max per cargo entry.
+        transfer = std::min(transfer, 12);
 
         TradeCargo cargo;
         cargo.goodId = c.goodId;
@@ -1101,6 +1114,42 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 if (price <= 0) { price = 1; }
                 goldEarned += static_cast<CurrencyAmount>(c.amount)
                             * static_cast<CurrencyAmount>(price) / 5;
+            }
+            // Distance penalty: long routes lose more cargo in transit.
+            // Floor 0.50× at 30+ tile distance. Models physical attrition,
+            // doesn't touch underlying money supply.
+            {
+                const int32_t dist = grid.distance(trader.originCityLocation,
+                                                    trader.destCityLocation);
+                const float distMult = std::max(0.50f, 1.0f - 0.0167f * static_cast<float>(dist));
+                goldEarned = static_cast<CurrencyAmount>(
+                    static_cast<float>(goldEarned) * distMult);
+            }
+            // Diplomatic relation modifier: hostile civs impose tariffs/seizures,
+            // friendly civs grant favorable terms. Skip city-states.
+            if (diplomacy != nullptr
+                && trader.owner != INVALID_PLAYER && cityOwner != INVALID_PLAYER
+                && trader.owner != cityOwner
+                && trader.owner < aoc::sim::CITY_STATE_PLAYER_BASE
+                && cityOwner < aoc::sim::CITY_STATE_PLAYER_BASE) {
+                const PairwiseRelation& rel = diplomacy->relation(trader.owner, cityOwner);
+                float relMult;
+                if (rel.isAtWar) {
+                    relMult = 0.20f;  // most cargo seized
+                } else {
+                    switch (rel.stance()) {
+                        case aoc::sim::DiplomaticStance::Hostile:    relMult = 0.50f; break;
+                        case aoc::sim::DiplomaticStance::Unfriendly: relMult = 0.75f; break;
+                        case aoc::sim::DiplomaticStance::Neutral:    relMult = 1.00f; break;
+                        case aoc::sim::DiplomaticStance::Friendly:   relMult = 1.15f; break;
+                        case aoc::sim::DiplomaticStance::Allied:     relMult = 1.30f; break;
+                        default:                                     relMult = 1.00f; break;
+                    }
+                    if (rel.hasOpenBorders)     { relMult += 0.10f; }
+                    if (rel.hasEconomicAlliance){ relMult += 0.15f; }
+                }
+                goldEarned = static_cast<CurrencyAmount>(
+                    static_cast<float>(goldEarned) * relMult);
             }
             // WP-K3: throughput log per route type for audit ratio analysis.
             const char* routeTag =

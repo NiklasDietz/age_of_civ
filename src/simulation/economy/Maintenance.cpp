@@ -395,6 +395,13 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
         }
     }
 
+    // Government gold multiplier (policy cards / inherent bonus).
+    {
+        GovernmentModifiers gov = computeGovernmentModifiers(player.government());
+        goldIncome = static_cast<CurrencyAmount>(
+            static_cast<float>(goldIncome) * gov.goldMultiplier);
+    }
+
     // Apply gold allocation slider: only the gold fraction goes to treasury.
     // The rest is allocated to science and luxury bonuses (handled in their respective systems).
     CurrencyAmount effectiveGold = static_cast<CurrencyAmount>(
@@ -405,6 +412,42 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
 }
 
 void processUnitMaintenance(aoc::game::Player& player) {
+    // Strategic-resource upkeep (always runs regardless of monetary system).
+    // Armor/Air/Naval units consume 1 FUEL per turn. Nuclear bombs do not
+    // tick (one-shot). If stockpile empty, unit takes attrition damage.
+    {
+        int32_t fuelCity = -1;  // first city found with FUEL stockpile
+        // Units don't have direct stockpile — drain from any owned city.
+        for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
+            if (unit == nullptr) { continue; }
+            const aoc::sim::UnitClass uc = unit->typeDef().unitClass;
+            const bool needsFuel = (uc == aoc::sim::UnitClass::Armor
+                                 || uc == aoc::sim::UnitClass::Air
+                                 || uc == aoc::sim::UnitClass::Helicopter
+                                 || uc == aoc::sim::UnitClass::Naval);
+            if (!needsFuel) { continue; }
+            // Find a city with FUEL.
+            bool drained = false;
+            int32_t cityIdx = 0;
+            for (const std::unique_ptr<aoc::game::City>& c : player.cities()) {
+                if (c == nullptr) { ++cityIdx; continue; }
+                if (c->stockpile().getAmount(aoc::sim::goods::FUEL) > 0) {
+                    [[maybe_unused]] bool ok = c->stockpile().consumeGoods(
+                        aoc::sim::goods::FUEL, 1);
+                    drained = true;
+                    fuelCity = cityIdx;
+                    break;
+                }
+                ++cityIdx;
+            }
+            if (!drained) {
+                // Out of fuel: 5 HP attrition this turn.
+                unit->setHitPoints(std::max(1, unit->hitPoints() - 5));
+            }
+        }
+        (void)fuelCity;
+    }
+
     // In barter mode with no coins, money doesn't exist yet.
     // Units are maintained by the city's food/production (not tracked monetarily).
     if (player.monetary().system == MonetarySystemType::Barter

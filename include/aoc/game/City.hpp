@@ -222,6 +222,10 @@ public:
     [[nodiscard]] aoc::sim::CityPowerComponent& power() { return this->m_power; }
     [[nodiscard]] const aoc::sim::CityPowerComponent& power() const { return this->m_power; }
 
+    /// Counter for sustained-unhappiness-driven shrinkage. Increments per
+    /// turn while happiness ≤ −10; on threshold trips citizen flees.
+    int32_t unhappinessFleeCounter = 0;
+
     [[nodiscard]] aoc::sim::CityWondersComponent& wonders() { return this->m_wonders; }
     [[nodiscard]] const aoc::sim::CityWondersComponent& wonders() const { return this->m_wonders; }
 

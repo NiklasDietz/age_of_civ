@@ -413,6 +413,22 @@ void processProductionQueues(aoc::game::GameState& gameState,
                 }
                 case ProductionItemType::Wonder: {
                     WonderId wonderId = static_cast<WonderId>(item.itemId);
+                    // First-builder-wins: if another civ already built this
+                    // wonder this turn (or earlier), abort and refund.
+                    if (gameState.wonderTracker().isBuilt(wonderId)) {
+                        // Refund a portion of production: convert to gold to
+                        // soften the loss. 50% of wonder cost as gold.
+                        const int32_t refund = static_cast<int32_t>(
+                            static_cast<float>(wonderDef(wonderId).productionCost) * 0.5f);
+                        gsPlayer->addGold(refund);
+                        LOG_INFO("Wonder %.*s already built — %s race-lost, +%d gold refund",
+                                 static_cast<int>(item.name.size()),
+                                 item.name.c_str(),
+                                 city->name().c_str(), refund);
+                        // Pop from queue without granting wonder.
+                        if (!queue.queue.empty()) { queue.queue.erase(queue.queue.begin()); }
+                        break;
+                    }
                     city->wonders().wonders.push_back(wonderId);
                     gameState.wonderTracker().markBuilt(wonderId, city->owner());
                     LOG_INFO("Completed wonder %.*s in %s (player %u)",

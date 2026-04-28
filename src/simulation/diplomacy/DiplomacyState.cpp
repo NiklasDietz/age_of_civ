@@ -5,6 +5,7 @@
 
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/AllianceObligations.hpp"
+#include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/ui/GameNotifications.hpp"
 #include "aoc/core/Log.hpp"
 
@@ -59,7 +60,7 @@ void DiplomacyManager::addModifier(PlayerId a, PlayerId b, RelationModifier modi
 void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target,
                                    CasusBelliType cb,
                                    AllianceObligationTracker* allianceTracker,
-                                   aoc::game::GameState* /*gameState*/,
+                                   aoc::game::GameState* gameState,
                                    int32_t /*currentTurn*/) {
     PairwiseRelation& relAB = this->relation(aggressor, target);
     PairwiseRelation& relBA = this->relation(target, aggressor);
@@ -119,6 +120,11 @@ void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target,
     // Generate alliance obligations for the target's allies
     if (allianceTracker != nullptr) {
         allianceTracker->onWarDeclared(aggressor, target, *this);
+    }
+
+    // Break trade agreements between the warring parties.
+    if (gameState != nullptr) {
+        breakTradeAgreementsBetween(*gameState, aggressor, target);
     }
 
     LOG_INFO("Player %u declared war on Player %u",

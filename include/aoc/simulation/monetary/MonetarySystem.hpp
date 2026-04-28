@@ -275,6 +275,12 @@ struct MonetaryStateComponent {
     CurrencyAmount governmentSpending = 0;
     CurrencyAmount governmentDebt     = 0;
     CurrencyAmount taxRevenue         = 0;
+
+    // Sustained-hyperinflation tracker. Each turn inflationRate ≥ 0.30
+    // bumps this counter; resets to 0 when inflation eases below 0.20.
+    // When it crosses 5, the collapse system is signaled to set
+    // CollapseType::DebtSpiral. UI surfaces a warning at counter ≥ 3.
+    int32_t        hyperinflationTurns = 0;
     CurrencyAmount deficit            = 0;
 
     // -- Derived stats --

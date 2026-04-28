@@ -546,16 +546,35 @@ void checkCityStateQuests(aoc::game::GameState& gameState) {
         }
 
         if (questCompleted(gameState, cs, i, cs.activeQuest)) {
-            cs.addEnvoys(cs.activeQuest.assignedTo, cs.activeQuest.envoyReward);
-            LOG_INFO("City-state quest completed: player %d +%d envoys",
-                     static_cast<int>(cs.activeQuest.assignedTo),
-                     cs.activeQuest.envoyReward);
+            // Streak-scaled reward: same player completing consecutive
+            // quests gets +1 envoy per streak step (cap +3) and a gold bonus
+            // at streak ≥3. Different player resets the streak.
+            const PlayerId assignee = cs.activeQuest.assignedTo;
+            if (cs.questStreak.player == assignee) {
+                ++cs.questStreak.streak;
+            } else {
+                cs.questStreak.player = assignee;
+                cs.questStreak.streak = 0;
+            }
+            const int32_t bonus = std::min(3, cs.questStreak.streak);
+            const int32_t envoys = cs.activeQuest.envoyReward + bonus;
+            cs.addEnvoys(assignee, envoys);
+            if (cs.questStreak.streak >= 3) {
+                aoc::game::Player* p = gameState.player(assignee);
+                if (p != nullptr) {
+                    p->monetary().treasury += 25;
+                }
+            }
+            LOG_INFO("City-state quest completed: player %d +%d envoys (streak %d)",
+                     static_cast<int>(assignee), envoys, cs.questStreak.streak);
             cs.activeQuest = CityStateQuest{};
             continue;
         }
 
         --cs.activeQuest.turnsRemaining;
         if (cs.activeQuest.turnsRemaining <= 0) {
+            // Failed quest breaks streak.
+            cs.questStreak = CityStateQuestStreak{};
             cs.activeQuest = CityStateQuest{};
         }
     }

@@ -9,6 +9,7 @@
 #include "aoc/game/Unit.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
 #include "aoc/simulation/economy/TradeRouteSystem.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -23,7 +24,8 @@ constexpr int32_t   kDefaultStandingInterval = 5;
 } // namespace
 
 ErrorCode proposeBilateralDeal(aoc::game::GameState& gameState,
-                                 PlayerId proposer, PlayerId partner) {
+                                 PlayerId proposer, PlayerId partner,
+                                 DiplomacyManager* diplomacy) {
     if (proposer == partner) {
         return ErrorCode::InvalidArgument;
     }
@@ -32,6 +34,19 @@ ErrorCode proposeBilateralDeal(aoc::game::GameState& gameState,
     aoc::game::Player* partnerPlayer  = gameState.player(partner);
     if (proposerPlayer == nullptr || partnerPlayer == nullptr) {
         return ErrorCode::InvalidArgument;
+    }
+
+    // Diplomatic gate: hostile/unfriendly partners refuse trade. Mirrors
+    // Civ-6 behavior where leaders won't sign deals with civs they dislike.
+    if (diplomacy != nullptr) {
+        const PairwiseRelation& rel = diplomacy->relation(proposer, partner);
+        if (rel.isAtWar) {
+            return ErrorCode::InvalidArgument;
+        }
+        const DiplomaticStance st = rel.stance();
+        if (st == DiplomaticStance::Hostile || st == DiplomaticStance::Unfriendly) {
+            return ErrorCode::InvalidArgument;
+        }
     }
 
     PlayerTradeAgreementsComponent& proposerComp = proposerPlayer->tradeAgreements();
@@ -254,6 +269,60 @@ void processStandingRoutes(aoc::game::GameState& gameState,
             }
         }
     }
+}
+
+void exitTradeAgreement(aoc::game::GameState& gameState,
+                         PlayerId leaver,
+                         TradeAgreementType type) {
+    aoc::game::Player* leaverPlayer = gameState.player(leaver);
+    if (leaverPlayer == nullptr) { return; }
+
+    // Remove leaver from agreements they belong to of the given type.
+    for (TradeAgreementDef& a : leaverPlayer->tradeAgreements().agreements) {
+        if (!a.isActive || a.type != type) { continue; }
+        a.members.erase(std::remove(a.members.begin(), a.members.end(), leaver),
+                        a.members.end());
+        if ((type == TradeAgreementType::FreeTradeZone && a.members.size() < 3)
+         || (type == TradeAgreementType::BilateralDeal && a.members.size() < 2)
+         || (type == TradeAgreementType::CustomsUnion && a.members.size() < 2)) {
+            a.isActive = false;
+        }
+    }
+    // Mirror change on the other members so they see the leaver gone.
+    for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+        if (other == nullptr || other->id() == leaver) { continue; }
+        for (TradeAgreementDef& a : other->tradeAgreements().agreements) {
+            if (!a.isActive || a.type != type) { continue; }
+            const auto it = std::find(a.members.begin(), a.members.end(), leaver);
+            if (it != a.members.end()) {
+                a.members.erase(it);
+                if ((type == TradeAgreementType::FreeTradeZone && a.members.size() < 3)
+                 || (type == TradeAgreementType::BilateralDeal && a.members.size() < 2)
+                 || (type == TradeAgreementType::CustomsUnion && a.members.size() < 2)) {
+                    a.isActive = false;
+                }
+            }
+        }
+    }
+}
+
+void breakTradeAgreementsBetween(aoc::game::GameState& gameState,
+                                  PlayerId a, PlayerId b) {
+    // Walk both players' agreements; deactivate any that contain both.
+    auto purge = [&](PlayerId who, PlayerId other) {
+        aoc::game::Player* p = gameState.player(who);
+        if (p == nullptr) { return; }
+        for (TradeAgreementDef& ag : p->tradeAgreements().agreements) {
+            if (!ag.isActive) { continue; }
+            const bool hasA = std::find(ag.members.begin(), ag.members.end(), who) != ag.members.end();
+            const bool hasB = std::find(ag.members.begin(), ag.members.end(), other) != ag.members.end();
+            if (hasA && hasB) {
+                ag.isActive = false;
+            }
+        }
+    };
+    purge(a, b);
+    purge(b, a);
 }
 
 } // namespace aoc::sim

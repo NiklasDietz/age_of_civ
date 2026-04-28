@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/unit/Combat.hpp"
+#include "aoc/simulation/government/Government.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/Unit.hpp"
@@ -209,6 +210,8 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
             const aoc::sim::CivAbilityModifiers& m =
                 aoc::sim::civDef(atkPlayer->civId()).modifiers;
             atkStrength += m.combatStrengthBonus;
+            atkStrength += aoc::sim::computeGovernmentModifiers(
+                atkPlayer->government()).combatStrengthBonus;
             // Conditional combat bonuses keyed off attacker tile / context.
             const int32_t atkIdx = grid.toIndex(attacker.position());
             if (m.combatBonusOwnTerritory > 0
@@ -233,6 +236,8 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
             const aoc::sim::CivAbilityModifiers& m =
                 aoc::sim::civDef(defPlayer->civId()).modifiers;
             defStrength += m.combatStrengthBonus;
+            defStrength += aoc::sim::computeGovernmentModifiers(
+                defPlayer->government()).combatStrengthBonus;
             const int32_t defIdx = grid.toIndex(defender.position());
             if (m.combatBonusOwnTerritory > 0
              && grid.owner(defIdx) == defender.owner()) {

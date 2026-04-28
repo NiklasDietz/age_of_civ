@@ -197,11 +197,24 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
             // WP-C1: loyalty decay table sourced from BalanceParams so the
             // GA tuner can sweep it instead of hitting a compile wall.
             const uint8_t rev = static_cast<uint8_t>(gsPlayer->industrial().currentRevolution);
-            const float mult = bal.loyaltyEraDecay[std::min<uint8_t>(rev, 5u)];
+            float mult = bal.loyaltyEraDecay[std::min<uint8_t>(rev, 5u)];
+            // Age-state variation:
+            //   GoldenAge → strengthen empire-glue (own pressure +20%, foreign
+            //               -20%), encouraging expansion during boom times.
+            //   DarkAge   → weaken glue (own pressure -25%, foreign +25%),
+            //               creating real flip risk during crisis.
+            const aoc::sim::AgeType age = gsPlayer->eraScore().currentAgeType;
+            float ownAdjust = 0.0f;
+            if (age == aoc::sim::AgeType::Golden) {
+                mult *= 0.80f;       // foreign pressure damped further
+                ownAdjust = +0.20f;  // own pressure boosted
+            } else if (age == aoc::sim::AgeType::Dark) {
+                mult *= 1.25f;       // foreign pressure stronger
+                ownAdjust = -0.25f;
+            }
             loyalty.foreignCityPressure *= mult;
-            // Symmetric: own-city pressure also decays slightly so big
-            // empires aren't over-glued together.
-            loyalty.ownCityPressure *= (0.80f + 0.20f * mult);
+            loyalty.ownCityPressure *= std::max(0.10f,
+                (0.80f + 0.20f * mult) + ownAdjust);
         }
         if (city->hasBuilding(BuildingId{13}) || city->hasBuilding(BuildingId{12})) {
             // Telecom Hub or Research Lab — +3 communication floor.

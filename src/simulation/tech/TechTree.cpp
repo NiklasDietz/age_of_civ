@@ -231,4 +231,38 @@ bool advanceResearch(PlayerTechComponent& tech, float sciencePoints) {
     return false;
 }
 
+void acquireTechFromTrade(PlayerTechComponent& tech, TechId techId) {
+    if (!techId.isValid() || techId.value >= tech.knownTechs.size()) { return; }
+    tech.knownTechs[techId.value] = true;
+    // If all prereqs already met, promote to completed immediately.
+    const TechDef& def = techDef(techId);
+    bool allPrereqsMet = true;
+    for (TechId p : def.prerequisites) {
+        if (!tech.hasResearched(p)) { allPrereqsMet = false; break; }
+    }
+    if (allPrereqsMet && techId.value < tech.completedTechs.size()) {
+        tech.completedTechs[techId.value] = true;
+    }
+}
+
+void promotePendingTechs(PlayerTechComponent& tech) {
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (uint16_t i = 0; i < tech.knownTechs.size(); ++i) {
+            if (!tech.knownTechs[i]) { continue; }
+            if (tech.completedTechs[i]) { continue; }
+            const TechDef& def = techDef(TechId{i});
+            bool allMet = true;
+            for (TechId p : def.prerequisites) {
+                if (!tech.hasResearched(p)) { allMet = false; break; }
+            }
+            if (allMet) {
+                tech.completedTechs[i] = true;
+                changed = true;
+            }
+        }
+    }
+}
+
 } // namespace aoc::sim

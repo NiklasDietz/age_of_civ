@@ -83,6 +83,12 @@ struct PairwiseRelation {
     bool    hasReligiousAlliance = false;   ///< +25% faith on shared holy sites (L1)
     bool    hasEmbargo         = false;
 
+    /// Highest intelligence tier achieved against this player (0=None,
+    /// 1=Basic, 2=Military, 3=Economic, 4=Comprehensive, 5=Complete).
+    /// Set by successful spy missions and decays slowly when no spy is
+    /// stationed. UI/AI gates revealed info on this level.
+    uint8_t intelLevel = 0;
+
     // -- Alliance level tracking (H1.1) --
     /// Per-type level/turnsActive. Index by AllianceType value. Entry 0 is
     /// reserved for AllianceType::None and unused. The matching boolean

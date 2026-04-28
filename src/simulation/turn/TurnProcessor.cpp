@@ -56,6 +56,8 @@
 #include "aoc/simulation/diplomacy/NavalPassage.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyExtensions.hpp"
+#include "aoc/simulation/ai/LeaderPersonality.hpp"
+#include "aoc/simulation/unit/UnitUpgrade.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/diplomacy/AllianceObligations.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
@@ -506,6 +508,23 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     processCityGrowth(*gsPlayer, grid,
                       aoc::sim::climateFoodMultiplier(turnContext.gameState->climate()));
 
+    // Resource depletion: each worked finite-reserve tile consumes 1 unit
+    // per turn. Renewable (reserves == -1) never deplete. When reserves hit
+    // 0, the resource is removed (consumeReserve handles this).
+    {
+        for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+            if (city == nullptr) { continue; }
+            for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
+                if (!grid.isValid(tile)) { continue; }
+                const int32_t idx = grid.toIndex(tile);
+                if (!grid.resource(idx).isValid()) { continue; }
+                if (grid.reserves(idx) > 0) {
+                    grid.consumeReserve(idx);
+                }
+            }
+        }
+    }
+
     // Periodic worker re-assignment so cities pick up newly-revealed
     // strategic resources (Oil after Refining, Aluminium after Electricity,
     // etc.).  autoAssignWorkers is expensive-ish (scans all owned tiles) so
@@ -665,6 +684,8 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         // Fold any banked eureka/inspiration into the current research
         // before progress ticks, so boosts never go to waste.
         consumePendingEurekaBoosts(*gsPlayer);
+        // Promote any tech-trade-acquired techs whose prereqs are now met.
+        aoc::sim::promotePendingTechs(gsPlayer->tech());
 
         // WP-A6 tech diffusion: if the current-research tech is already
         // known by a bilateral-deal trade partner, boost this civ's
@@ -708,6 +729,25 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         }
         advanceResearch(gsPlayer->tech(), science);
         advanceCivicResearch(gsPlayer->civics(), culture, &gsPlayer->government());
+    }
+
+    // AI auto-upgrade: every 8 turns scan units, upgrade any obsolete
+    // unit when player has the tech and gold. Skip human player.
+    if (player != turnContext.humanPlayer
+        && (turnContext.currentTurn % 8) == 0) {
+        for (const std::unique_ptr<aoc::game::Unit>& u : gsPlayer->units()) {
+            if (u == nullptr) { continue; }
+            std::vector<aoc::sim::UnitUpgradeDef> upgrades =
+                aoc::sim::getAvailableUpgrades(u->typeId());
+            for (const aoc::sim::UnitUpgradeDef& up : upgrades) {
+                if (!gsPlayer->tech().hasResearched(up.requiredTech)) { continue; }
+                const int32_t cost = aoc::sim::upgradeCost(u->typeId(), up.to);
+                if (gsPlayer->monetary().treasury < cost) { continue; }
+                [[maybe_unused]] bool ok =
+                    aoc::sim::upgradeUnit(*turnContext.gameState, *u, up.to, player);
+                break;  // one upgrade per unit per cycle
+            }
+        }
     }
 
     // Production queues
@@ -796,6 +836,29 @@ void processGlobalSystems(TurnContext& turnContext) {
                 mod.amount = magnitude;
                 mod.turnsRemaining = 30;
                 turnContext.diplomacy->addModifier(a->id(), b->id(), mod);
+            }
+        }
+    }
+
+    // Leader-personality agenda: every 12 turns each AI evaluates its
+    // like/dislike conditions vs each rival and pushes a relation modifier
+    // (+15 like, -20 dislike, decaying over 30 turns).
+    if (turnContext.diplomacy != nullptr && (turnContext.currentTurn % 12) == 0) {
+        for (const std::unique_ptr<aoc::game::Player>& a : gameState.players()) {
+            if (a == nullptr) { continue; }
+            const PlayerId aid = a->id();
+            if (aid >= aoc::sim::CITY_STATE_PLAYER_BASE) { continue; }
+            for (const std::unique_ptr<aoc::game::Player>& b : gameState.players()) {
+                if (b == nullptr || b->id() == aid) { continue; }
+                const PlayerId bid = b->id();
+                if (bid >= aoc::sim::CITY_STATE_PLAYER_BASE) { continue; }
+                const int32_t agendaMod = aoc::sim::evaluateAgenda(gameState, aid, bid);
+                if (agendaMod == 0) { continue; }
+                RelationModifier mod{};
+                mod.reason = (agendaMod > 0) ? "Agenda agreement" : "Agenda violation";
+                mod.amount = agendaMod;
+                mod.turnsRemaining = 30;
+                turnContext.diplomacy->addModifier(aid, bid, mod);
             }
         }
     }

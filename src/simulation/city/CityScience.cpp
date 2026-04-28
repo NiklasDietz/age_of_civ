@@ -252,6 +252,12 @@ float computePlayerCulture(const aoc::game::Player& player,
     // Apply civilization culture multiplier
     totalCulture *= civDef(player.civId()).modifiers.cultureMultiplier;
 
+    // Government culture multiplier (policy cards)
+    {
+        GovernmentModifiers gov = computeGovernmentModifiers(player.government());
+        totalCulture *= gov.cultureMultiplier;
+    }
+
     // Economic stability bonus
     totalCulture *= economicStabilityMultiplier(player.monetary());
 

@@ -7,6 +7,8 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
+#include "aoc/map/HexCoord.hpp"
+#include "aoc/map/Terrain.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/tech/TechGating.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
@@ -15,6 +17,11 @@
 #include "aoc/simulation/wonder/Wonder.hpp"
 
 namespace aoc::sim {
+
+// Forward decl — definition lower in file.
+static uint8_t checkSpatial(const aoc::map::HexGrid* grid,
+                             const aoc::game::City& city,
+                             const aoc::sim::WonderAdjacencyReq& req);
 
 bool canBuildUnit(const aoc::game::GameState& gameState, PlayerId player, UnitTypeId unitType) {
     const aoc::game::Player* gsPlayer = gameState.player(player);
@@ -50,6 +57,12 @@ bool canBuildUnit(const aoc::game::GameState& gameState, PlayerId player, UnitTy
         if (!playerTech.hasResearched(udef.requiredTech)) {
             return false;
         }
+    }
+
+    // Civic prerequisite (e.g. Spy after Cryptography civic).
+    if (udef.requiredCivic.isValid()
+     && !gsPlayer->civics().hasCompleted(udef.requiredCivic)) {
+        return false;
     }
 
     // Naval units require the player to have at least one city with a Harbor district
@@ -148,47 +161,243 @@ bool canBuildBuilding(const aoc::game::GameState& gameState, PlayerId player,
         if (!hasVent) { return false; }
     }
 
+    // Civic prereq.
+    if (bdef.requiredCivic.isValid()
+     && !gsPlayer->civics().hasCompleted(bdef.requiredCivic)) {
+        return false;
+    }
+
+    // Generic spatial requirement (BuildingDef::spatial + extern lookup).
+    // Only enforced when a grid is supplied; UI fallbacks remain permissive.
+    if (grid != nullptr) {
+        aoc::sim::WonderAdjacencyReq req = bdef.spatial;
+        const aoc::sim::WonderAdjacencyReq extra = buildingSpatialReq(buildingId);
+        if (extra.requiresMountain)      req.requiresMountain      = true;
+        if (extra.requiresCoast)         req.requiresCoast         = true;
+        if (extra.requiresRiver)         req.requiresRiver         = true;
+        if (extra.requiresForest)        req.requiresForest        = true;
+        if (extra.requiresJungle)        req.requiresJungle        = true;
+        if (extra.requiresNaturalWonder) req.requiresNaturalWonder = true;
+        if (extra.requiresDesert)        req.requiresDesert        = true;
+        if (extra.requiresHill)          req.requiresHill          = true;
+        if (extra.requiresFlat)          req.requiresFlat          = true;
+        const uint8_t sp = checkSpatial(grid, city, req);
+        if (sp != static_cast<uint8_t>(BuildLockReason::None)) { return false; }
+    }
     return true;
+}
+
+// Shared spatial-requirement checker. Returns BuildLockReason or None.
+static uint8_t checkSpatial(const aoc::map::HexGrid* grid,
+                             const aoc::game::City& city,
+                             const aoc::sim::WonderAdjacencyReq& req) {
+    if (grid == nullptr) {
+        return static_cast<uint8_t>(WonderLockReason::None);
+    }
+    const aoc::hex::AxialCoord center = city.location();
+    if (!grid->isValid(center)) {
+        return static_cast<uint8_t>(WonderLockReason::None);
+    }
+    const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(center);
+    const int32_t centerIdx = grid->toIndex(center);
+    auto hasNeighbor = [&](auto pred) {
+        for (const auto& n : nbrs) {
+            if (!grid->isValid(n)) { continue; }
+            if (pred(grid->toIndex(n))) { return true; }
+        }
+        return false;
+    };
+    if (req.requiresMountain
+     && !hasNeighbor([&](int32_t i){ return grid->terrain(i) == aoc::map::TerrainType::Mountain; })) {
+        return static_cast<uint8_t>(WonderLockReason::NeedMountain);
+    }
+    if (req.requiresCoast
+     && !hasNeighbor([&](int32_t i){
+            const auto t = grid->terrain(i);
+            return t == aoc::map::TerrainType::Coast || t == aoc::map::TerrainType::Ocean;
+        })) {
+        return static_cast<uint8_t>(WonderLockReason::NeedCoast);
+    }
+    if (req.requiresRiver && grid->riverEdges(centerIdx) == 0u) {
+        return static_cast<uint8_t>(WonderLockReason::NeedRiver);
+    }
+    if (req.requiresForest
+     && !hasNeighbor([&](int32_t i){ return grid->feature(i) == aoc::map::FeatureType::Forest; })) {
+        return static_cast<uint8_t>(WonderLockReason::NeedForest);
+    }
+    if (req.requiresJungle
+     && !hasNeighbor([&](int32_t i){ return grid->feature(i) == aoc::map::FeatureType::Jungle; })) {
+        return static_cast<uint8_t>(WonderLockReason::NeedJungle);
+    }
+    if (req.requiresNaturalWonder
+     && !hasNeighbor([&](int32_t i){
+            return grid->naturalWonder(i) != aoc::map::NaturalWonderType::None;
+        })) {
+        return static_cast<uint8_t>(WonderLockReason::NeedNaturalWonder);
+    }
+    if (req.requiresDesert) {
+        const bool centerDesert = (grid->terrain(centerIdx) == aoc::map::TerrainType::Desert);
+        const bool nearDesert = hasNeighbor([&](int32_t i){
+            return grid->terrain(i) == aoc::map::TerrainType::Desert;
+        });
+        if (!centerDesert && !nearDesert) {
+            return static_cast<uint8_t>(WonderLockReason::NeedDesert);
+        }
+    }
+    if (req.requiresHill && grid->feature(centerIdx) != aoc::map::FeatureType::Hills) {
+        return static_cast<uint8_t>(WonderLockReason::NeedHill);
+    }
+    if (req.requiresFlat
+     && (grid->terrain(centerIdx) == aoc::map::TerrainType::Mountain
+         || grid->feature(centerIdx) == aoc::map::FeatureType::Hills)) {
+        return static_cast<uint8_t>(WonderLockReason::NeedFlat);
+    }
+    return static_cast<uint8_t>(WonderLockReason::None);
+}
+
+uint8_t wonderLockReason(const aoc::game::GameState& gameState,
+                          PlayerId player,
+                          const aoc::game::City& city,
+                          uint8_t wonderId,
+                          const aoc::map::HexGrid* grid) {
+    if (wonderId >= WONDER_COUNT) {
+        return static_cast<uint8_t>(WonderLockReason::AlreadyBuilt);
+    }
+    if (gameState.wonderTracker().isBuilt(wonderId)) {
+        return static_cast<uint8_t>(WonderLockReason::AlreadyBuilt);
+    }
+    const aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer == nullptr) {
+        return static_cast<uint8_t>(WonderLockReason::AlreadyBuilt);
+    }
+    const WonderDef& wdef = wonderDef(wonderId);
+
+    if (wdef.prerequisiteTech.isValid()
+     && !gsPlayer->tech().hasResearched(wdef.prerequisiteTech)) {
+        return static_cast<uint8_t>(WonderLockReason::TechMissing);
+    }
+    if (wdef.prerequisiteCivic.isValid()
+     && !gsPlayer->civics().hasCompleted(wdef.prerequisiteCivic)) {
+        return static_cast<uint8_t>(WonderLockReason::CivicMissing);
+    }
+    // Already-owned-by-this-civ check (queued or built).
+    for (const std::unique_ptr<aoc::game::City>& c : gsPlayer->cities()) {
+        if (c == nullptr) { continue; }
+        if (c->wonders().hasWonder(wonderId)) {
+            return static_cast<uint8_t>(WonderLockReason::AlreadyOwned);
+        }
+        for (const ProductionQueueItem& it : c->production().queue) {
+            if (it.type == ProductionItemType::Wonder && it.itemId == wonderId) {
+                return static_cast<uint8_t>(WonderLockReason::AlreadyOwned);
+            }
+        }
+    }
+
+    // Adjacency / spatial requirements (shared helper).
+    const uint8_t spatial = checkSpatial(grid, city, wdef.adjacency);
+    if (spatial != static_cast<uint8_t>(WonderLockReason::None)) {
+        return spatial;
+    }
+
+    return static_cast<uint8_t>(WonderLockReason::None);
+}
+
+uint8_t buildingLockReason(const aoc::game::GameState& gameState,
+                            PlayerId player,
+                            const aoc::game::City& city,
+                            BuildingId buildingId,
+                            const aoc::map::HexGrid* grid) {
+    if (city.hasBuilding(buildingId)) {
+        return static_cast<uint8_t>(BuildLockReason::AlreadyOwned);
+    }
+    const BuildingDef& bdef = buildingDef(buildingId);
+
+    // District presence.
+    if (bdef.requiredDistrict != DistrictType::CityCenter
+     && !city.hasDistrict(bdef.requiredDistrict)) {
+        return static_cast<uint8_t>(BuildLockReason::NeedDistrict);
+    }
+
+    const aoc::game::Player* gsPlayer = gameState.player(player);
+    if (gsPlayer == nullptr) {
+        return static_cast<uint8_t>(BuildLockReason::TechMissing);
+    }
+
+    // Tech prereq via tech tree's unlockedBuildings list.
+    {
+        const PlayerTechComponent& playerTech = gsPlayer->tech();
+        bool gated = false;
+        bool researched = false;
+        for (const TechDef& tech : allTechs()) {
+            for (const BuildingId& bid : tech.unlockedBuildings) {
+                if (bid == buildingId) {
+                    gated = true;
+                    if (playerTech.hasResearched(tech.id)) { researched = true; }
+                    break;
+                }
+            }
+            if (researched) { break; }
+        }
+        if (gated && !researched) {
+            return static_cast<uint8_t>(BuildLockReason::TechMissing);
+        }
+    }
+    // Civic prereq.
+    if (bdef.requiredCivic.isValid()
+     && !gsPlayer->civics().hasCompleted(bdef.requiredCivic)) {
+        return static_cast<uint8_t>(BuildLockReason::CivicMissing);
+    }
+    // Spatial: union of per-def `spatial` field and external lookup
+    // table buildingSpatialReq (for pre-existing constexpr entries that
+    // didn't get designated-init updates).
+    {
+        aoc::sim::WonderAdjacencyReq req = bdef.spatial;
+        const aoc::sim::WonderAdjacencyReq extra = buildingSpatialReq(buildingId);
+        if (extra.requiresMountain)      req.requiresMountain      = true;
+        if (extra.requiresCoast)         req.requiresCoast         = true;
+        if (extra.requiresRiver)         req.requiresRiver         = true;
+        if (extra.requiresForest)        req.requiresForest        = true;
+        if (extra.requiresJungle)        req.requiresJungle        = true;
+        if (extra.requiresNaturalWonder) req.requiresNaturalWonder = true;
+        if (extra.requiresDesert)        req.requiresDesert        = true;
+        if (extra.requiresHill)          req.requiresHill          = true;
+        if (extra.requiresFlat)          req.requiresFlat          = true;
+        const uint8_t sp = checkSpatial(grid, city, req);
+        if (sp != static_cast<uint8_t>(BuildLockReason::None)) { return sp; }
+    }
+    return static_cast<uint8_t>(BuildLockReason::None);
+}
+
+uint8_t districtLockReason(const aoc::game::GameState& gameState,
+                            PlayerId player,
+                            const aoc::game::City& city,
+                            uint8_t districtTypeIdx,
+                            const aoc::map::HexGrid* grid) {
+    (void)gameState;
+    (void)player;
+    if (districtTypeIdx >= DISTRICT_TYPE_COUNT) {
+        return static_cast<uint8_t>(BuildLockReason::AlreadyOwned);
+    }
+    const DistrictType dtype = static_cast<DistrictType>(districtTypeIdx);
+    if (city.hasDistrict(dtype)) {
+        return static_cast<uint8_t>(BuildLockReason::AlreadyOwned);
+    }
+    return checkSpatial(grid, city, districtSpatialReq(dtype));
 }
 
 bool canBuildWonder(const aoc::game::GameState& gameState, PlayerId player, uint8_t wonderId) {
     if (wonderId >= WONDER_COUNT) {
         return false;
     }
-
-    // Check if already built globally
-    if (gameState.wonderTracker().isBuilt(wonderId)) {
-        return false;
-    }
-
+    // Use detailed lock check — without grid we miss adjacency, but UI
+    // listing path (via getBuildableItems) does pass grid. Production
+    // enqueue path will need grid passed too (see getBuildableItems).
     const aoc::game::Player* gsPlayer = gameState.player(player);
     if (gsPlayer == nullptr) { return false; }
-
-    // Check tech prerequisite
-    const WonderDef& wdef = wonderDef(wonderId);
-    if (wdef.prerequisiteTech.isValid()) {
-        if (!gsPlayer->tech().hasResearched(wdef.prerequisiteTech)) {
-            return false;
-        }
-    }
-
-    // H4.10: prevent the same civ from owning the wonder or queueing it in
-    // multiple cities at once. Without this, a rush-happy player could queue
-    // Pyramids in 5 cities and waste the losing four's production.
-    for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
-        if (city == nullptr) { continue; }
-        if (city->wonders().hasWonder(wonderId)) {
-            return false;
-        }
-        for (const ProductionQueueItem& it : city->production().queue) {
-            if (it.type == ProductionItemType::Wonder
-                && it.itemId == wonderId) {
-                return false;
-            }
-        }
-    }
-
-    return true;
+    if (gsPlayer->cities().empty()) { return false; }
+    return wonderLockReason(gameState, player, *gsPlayer->cities().front(),
+                            wonderId, nullptr)
+           == static_cast<uint8_t>(WonderLockReason::None);
 }
 
 std::vector<BuildableItem> getBuildableItems(const aoc::game::GameState& gameState,
@@ -237,36 +446,50 @@ std::vector<BuildableItem> getBuildableItems(const aoc::game::GameState& gameSta
         items.push_back(item);
     }
 
-    // Buildings
+    // Buildings: grey out when only spatial/civic prereq missing so player
+    // sees future upgrade path. Hide if already-owned, no-district, or
+    // tech-locked (those reflect deeper game-state and would be noisy).
     for (const BuildingDef& bdef : BUILDING_DEFS) {
-        if (!canBuildBuilding(gameState, player, city, bdef.id)) {
+        const uint8_t reason = buildingLockReason(gameState, player, city,
+                                                   bdef.id, nullptr);
+        if (reason == static_cast<uint8_t>(BuildLockReason::AlreadyOwned)
+         || reason == static_cast<uint8_t>(BuildLockReason::NeedDistrict)
+         || reason == static_cast<uint8_t>(BuildLockReason::TechMissing)) {
             continue;
         }
-
         BuildableItem item{};
-        item.type = ProductionItemType::Building;
-        item.id   = bdef.id.value;
-        item.name = bdef.name;
-        item.cost = static_cast<float>(bdef.productionCost);
+        item.type   = ProductionItemType::Building;
+        item.id     = bdef.id.value;
+        item.name   = bdef.name;
+        item.cost   = static_cast<float>(bdef.productionCost);
+        item.locked = (reason != static_cast<uint8_t>(BuildLockReason::None));
+        item.lockReason = reason;
         items.push_back(item);
     }
 
-    // Wonders
+    // Wonders: list ALL with lock-status flag so UI can grey out.
+    // Hide only wonders already-built (irreversibly unavailable) and
+    // already-owned by this civ to avoid clutter.
     const std::array<WonderDef, WONDER_COUNT>& allWonders = allWonderDefs();
     for (const WonderDef& wonderDef : allWonders) {
-        if (!canBuildWonder(gameState, player, wonderDef.id)) {
+        const uint8_t reason = wonderLockReason(gameState, player, city,
+                                                 wonderDef.id, nullptr);
+        if (reason == static_cast<uint8_t>(WonderLockReason::AlreadyBuilt)
+         || reason == static_cast<uint8_t>(WonderLockReason::AlreadyOwned)) {
             continue;
         }
-
         BuildableItem witem{};
-        witem.type = ProductionItemType::Wonder;
-        witem.id   = wonderDef.id;
-        witem.name = wonderDef.name;
-        witem.cost = static_cast<float>(wonderDef.productionCost);
+        witem.type   = ProductionItemType::Wonder;
+        witem.id     = wonderDef.id;
+        witem.name   = wonderDef.name;
+        witem.cost   = static_cast<float>(wonderDef.productionCost);
+        witem.locked = (reason != static_cast<uint8_t>(WonderLockReason::None));
+        witem.lockReason = reason;
         items.push_back(witem);
     }
 
-    // Districts -- show district types the city doesn't have yet.
+    // Districts -- show district types the city doesn't have yet, with
+    // grey-out for spatial requirements (Harbor needs coast, etc).
     // Stage gate: only Town and City can place non-CityCenter districts.
     const bool allowDistricts = city.stage() == aoc::game::CitySize::Town
                              || city.stage() == aoc::game::CitySize::City;
@@ -278,11 +501,15 @@ std::vector<BuildableItem> getBuildableItems(const aoc::game::GameState& gameSta
         if (!allowDistricts) {
             continue;
         }
+        const uint8_t reason = districtLockReason(gameState, player, city,
+                                                   d, nullptr);
         BuildableItem item{};
-        item.type = ProductionItemType::District;
-        item.id   = d;
-        item.name = districtTypeName(dtype);
-        item.cost = 60.0f;  // Base district cost
+        item.type       = ProductionItemType::District;
+        item.id         = d;
+        item.name       = districtTypeName(dtype);
+        item.cost       = 60.0f;  // Base district cost
+        item.locked     = (reason != static_cast<uint8_t>(BuildLockReason::None));
+        item.lockReason = reason;
         items.push_back(item);
     }
 

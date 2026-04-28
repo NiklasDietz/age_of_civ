@@ -43,36 +43,54 @@ void processWarWeariness(aoc::game::Player& player,
 }
 
 float warWearinessHappinessPenalty(float weariness) {
-    if (weariness < 20.0f) {
+    // Steeper curve: low-level weariness already costs amenities.
+    if (weariness < 10.0f) {
         return 0.0f;
     }
-    if (weariness < 40.0f) {
+    if (weariness < 25.0f) {
         return -1.0f;
     }
-    if (weariness < 60.0f) {
+    if (weariness < 40.0f) {
         return -2.0f;
     }
-    if (weariness < 80.0f) {
-        return -3.0f;
+    if (weariness < 60.0f) {
+        return -4.0f;
     }
-    return -5.0f;
+    if (weariness < 80.0f) {
+        return -6.0f;
+    }
+    return -10.0f;
 }
 
 float warWearinessProductionModifier(float weariness) {
-    if (weariness < 60.0f) {
+    // Penalties start at 30% weariness, deeper at high levels.
+    if (weariness < 30.0f) {
         return 1.0f;
     }
-    if (weariness < 80.0f) {
-        return 0.9f;   // -10%
+    if (weariness < 50.0f) {
+        return 0.95f;
     }
-    return 0.8f;       // -20%
+    if (weariness < 70.0f) {
+        return 0.85f;
+    }
+    if (weariness < 85.0f) {
+        return 0.75f;
+    }
+    return 0.65f;        // -35% at extreme weariness
 }
 
 float warWearinessCombatModifier(float weariness) {
-    if (weariness < 80.0f) {
+    // Combat morale: reduces strength on attack as weariness mounts.
+    if (weariness < 40.0f) {
         return 1.0f;
     }
-    return 0.9f;        // -10%
+    if (weariness < 60.0f) {
+        return 0.95f;
+    }
+    if (weariness < 80.0f) {
+        return 0.85f;
+    }
+    return 0.75f;
 }
 
 } // namespace aoc::sim

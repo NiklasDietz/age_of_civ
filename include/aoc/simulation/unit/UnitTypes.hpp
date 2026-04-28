@@ -84,6 +84,11 @@ struct UnitTypeDef {
     /// Up to 2 different resource requirements (e.g., Tank: Steel + Fuel).
     UnitResourceReq resourceReqs[2] = {};
 
+    /// Optional civic prereq. Default-invalid = no civic gate. Examples:
+    /// Mercenary units (post-Mercenaries civic), Spy (post-Cryptography),
+    /// Special Forces (post-Cold War civic).
+    CivicId         requiredCivic{};
+
     /// Per-turn gold maintenance. Scales gently with era so late-game armies
     /// don't bankrupt the economy. Ancient=1, Classical=1, Medieval=2, Renaissance=2,
     /// Modern=3, Atomic=3, Information=4. This keeps armies affordable relative to
