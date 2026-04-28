@@ -601,8 +601,10 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
         LOG_INFO("Player %d (%.*s) placed at (%d,%d)",
                  p,
-                 static_cast<int>(aoc::sim::civDef(static_cast<aoc::sim::CivId>(p % aoc::sim::CIV_COUNT)).name.size()),
-                 aoc::sim::civDef(static_cast<aoc::sim::CivId>(p % aoc::sim::CIV_COUNT)).name.data(),
+                 static_cast<int>(aoc::sim::civDef(static_cast<aoc::sim::CivId>(
+                     civAssignment[static_cast<std::size_t>(p)])).name.size()),
+                 aoc::sim::civDef(static_cast<aoc::sim::CivId>(
+                     civAssignment[static_cast<std::size_t>(p)])).name.data(),
                  startPos.q, startPos.r);
     }
 
