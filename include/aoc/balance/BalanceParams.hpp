@@ -53,9 +53,9 @@ struct BalanceParams {
     // still fired at turn 225 in some sims. Heavy push: 12000 threshold,
     // 7 wonders, 1.5× lead so Culture lands 700-900 consistently.
     // GA-tuned 2026-04-25 with 0.5× culture accumulation rate active.
-    float   cultureVictoryThreshold  = 9000.0f;  // 2026-04-27: 8500→39%, 9500→5.6%; midpoint 9000
+    float   cultureVictoryThreshold  = 10500.0f; // 2026-04-28 iter10: 10000 → 28%; nudge up
     int32_t cultureVictoryMinWonders = 5;
-    float   cultureVictoryLeadRatio  = 1.25f;
+    float   cultureVictoryLeadRatio  = 1.27f;
 
     float   integrationThreshold     = 1.66f;  // GA 2026-04-26
     int32_t integrationTurnsRequired = 10;
@@ -66,13 +66,13 @@ struct BalanceParams {
     // adopt your religion to count that civ as dominated. With multi-
     // religion crowding (every player founds), high fractions are
     // architecturally impossible.
-    float   religionDominanceFrac    = 0.10f;  // GA suggested 0.38 — too restrictive, audit dropped Religion 17%->5%
+    float   religionDominanceFrac    = 0.08f;  // 2026-04-27: 0.10 still gave 7% RELIGION; eased
 
     // Victory: space race cost multiplier (1.0 = nominal SPACE_PROJECT_DEFS).
     // Pulled up from GA 0.59 so science path lands similarly-paced to other
     // victory types instead of sprinting; still below 1.0 default so science
     // civs have reachable projects.
-    float   spaceRaceCostMult        = 1.30f;  // tuned post-GA for ~25-30% Science
+    float   spaceRaceCostMult        = 1.70f;  // 2026-04-27 iter8: 1.55 → 31%; bump for ~22%
 
     // Production-chain tuning (added for the chain-health audit).  GA-tunable
     // scalars that shift recipe output and consumer drain so the balance

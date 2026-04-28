@@ -85,10 +85,6 @@ enum class VictoryType : uint8_t {
     Domination,
     Culture,
     Religion,
-    /// Confederation co-win: a mutually-allied bloc of 3+ civs whose combined
-    /// prestige dominates any single civ at turn limit. All bloc members share
-    /// the victory (reported via VictoryResult::coWinners).
-    Confederation,
 };
 
 // ============================================================================
@@ -106,8 +102,7 @@ inline constexpr uint32_t VICTORY_MASK_SCIENCE      = 1u << 3;
 inline constexpr uint32_t VICTORY_MASK_DOMINATION   = 1u << 4;
 inline constexpr uint32_t VICTORY_MASK_CULTURE      = 1u << 5;
 inline constexpr uint32_t VICTORY_MASK_RELIGION     = 1u << 6;
-inline constexpr uint32_t VICTORY_MASK_CONFEDERATION = 1u << 7;  // RESERVED — disabled (AI never forms qualifying blocs)
-inline constexpr uint32_t VICTORY_MASK_ALL          = 0x7Fu;     // excludes CONFEDERATION
+inline constexpr uint32_t VICTORY_MASK_ALL          = 0x7Fu;
 
 /// Parse a comma-separated list like "score,science,domination" into a bitmask.
 /// Recognised tokens (case-insensitive): score, integration, laststanding,
@@ -173,10 +168,6 @@ struct VictoryTrackerComponent {
 struct VictoryResult {
     VictoryType type   = VictoryType::None;
     PlayerId    winner = INVALID_PLAYER;
-    /// Additional winners for shared-victory types (e.g., Confederation). The
-    /// `winner` field holds the bloc leader (highest prestige); `coWinners`
-    /// holds the remaining bloc members. Empty for single-winner types.
-    std::vector<PlayerId> coWinners;
 };
 
 // ============================================================================

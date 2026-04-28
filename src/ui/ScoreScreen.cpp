@@ -165,22 +165,11 @@ void ScoreScreen::open(UIManager& ui) {
             this->m_victoryResult.type == aoc::sim::VictoryType::Domination    ? "Domination" :
             this->m_victoryResult.type == aoc::sim::VictoryType::Culture       ? "Culture" :
             this->m_victoryResult.type == aoc::sim::VictoryType::Score         ? "Score" :
-            this->m_victoryResult.type == aoc::sim::VictoryType::Religion      ? "Religion" :
-            this->m_victoryResult.type == aoc::sim::VictoryType::Confederation ? "Confederation" : "Unknown";
+            this->m_victoryResult.type == aoc::sim::VictoryType::Religion      ? "Religion" : "Unknown";
 
-        std::string header;
-        if (this->m_victoryResult.type == aoc::sim::VictoryType::Confederation) {
-            header = "Confederation Victory! Players ";
-            header += std::to_string(static_cast<unsigned>(this->m_victoryResult.winner));
-            for (aoc::PlayerId co : this->m_victoryResult.coWinners) {
-                header += ", ";
-                header += std::to_string(static_cast<unsigned>(co));
-            }
-            header += " share the win!";
-        } else {
-            header = "Player " + std::to_string(static_cast<unsigned>(this->m_victoryResult.winner))
-                   + " wins by " + victoryName + " Victory!";
-        }
+        std::string header =
+            "Player " + std::to_string(static_cast<unsigned>(this->m_victoryResult.winner))
+                      + " wins by " + victoryName + " Victory!";
         (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 660.0f, 24.0f},
             LabelData{std::move(header), {1.0f, 0.85f, 0.2f, 1.0f}, 18.0f});
     }

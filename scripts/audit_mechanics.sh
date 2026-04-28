@@ -130,7 +130,7 @@ unique_ids() { (grep -hoE "$1" ${LOGS} 2>/dev/null || true) | awk -F= '{print $2
   echo
   echo "| Type | Count |"
   echo "|---|---:|"
-  for vt in CULTURE SCIENCE RELIGION DOMINATION CONFEDERATION PRESTIGE SCORE; do
+  for vt in CULTURE SCIENCE RELIGION DOMINATION PRESTIGE SCORE; do
     n=$(cnt "wins by ${vt}")
     echo "| ${vt} | ${n} |"
   done

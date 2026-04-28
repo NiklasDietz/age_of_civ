@@ -258,7 +258,6 @@ set(AOC_LIB_SOURCES
     src/simulation/diplomacy/DealTerms.cpp
     src/simulation/diplomacy/NavalPassage.cpp
     src/simulation/diplomacy/AllianceObligations.cpp
-    src/simulation/diplomacy/Confederation.cpp
     src/simulation/climate/Climate.cpp
     src/simulation/victory/VictoryCondition.cpp
     src/simulation/victory/Prestige.cpp

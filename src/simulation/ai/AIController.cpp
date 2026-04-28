@@ -27,7 +27,6 @@
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
-#include "aoc/simulation/diplomacy/Confederation.hpp"
 #include "aoc/simulation/economy/EnergyDependency.hpp"
 #include "aoc/simulation/production/PowerGrid.hpp"
 #include "aoc/simulation/economy/Market.hpp"
@@ -2338,81 +2337,6 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                     }
                     canalToll = std::min(canalToll, 0.50f);
                     ourPlayer->tariffs().perPlayerCanalTollRates[other] = canalToll;
-                }
-            }
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Confederation formation (Staatenbund / EU-like bloc).
-    // ------------------------------------------------------------------
-    // Late-industrial AIs with diplomatic personality look for 1..4 warm
-    // partners of similar era with whom they share trade and Friendly+
-    // stance. Firing is rate-limited to one attempt every ~40 turns per
-    // AI — forming too eagerly would flatten late-game diplomacy and
-    // lock the front-runner out too cheaply.
-    {
-        const aoc::game::Player* me = gameState.player(this->m_player);
-        const bool industrial = (me != nullptr && aoc::sim::effectiveEraFromTech(*me).value >= 4);
-        const bool openPersonality =
-            beh.allianceDesire > 0.5f && beh.diplomaticOpenness > 0.6f;
-        const int32_t confedTick =
-            gameState.currentTurn() + static_cast<int32_t>(this->m_player) * 7;
-        if (industrial && openPersonality && (confedTick % 40 == 0)
-            && aoc::sim::confederationForPlayer(gameState, this->m_player) == nullptr) {
-
-            std::vector<PlayerId> candidates;
-            candidates.push_back(this->m_player);
-
-            for (uint8_t other = 0; other < playerCount; ++other) {
-                if (other == this->m_player) { continue; }
-                const aoc::game::Player* o = gameState.player(other);
-                if (o == nullptr) { continue; }
-                if (o->victoryTracker().isEliminated) { continue; }
-                if (aoc::sim::effectiveEraFromTech(*o).value < 4) { continue; }
-                if (aoc::sim::confederationForPlayer(gameState, other) != nullptr) { continue; }
-                const PairwiseRelation& r = diplomacy.relation(this->m_player, other);
-                if (!r.hasMet || r.isAtWar) { continue; }
-                if (r.totalScore() < 10) { continue; }  // Friendly+ gate
-
-                // Trade-interdependence sanity: Confederation accepts
-                // either an in-flight physical route or a standing
-                // agreement (bilateral/FTZ/customs union). Mirror that
-                // here so the AI doesn't self-reject.
-                bool interdependent = false;
-                for (const aoc::sim::TradeRouteComponent& tr : gameState.tradeRoutes()) {
-                    if ((tr.sourcePlayer == this->m_player && tr.destPlayer == other)
-                        || (tr.sourcePlayer == other && tr.destPlayer == this->m_player)) {
-                        interdependent = true;
-                        break;
-                    }
-                }
-                if (!interdependent && me != nullptr) {
-                    for (const aoc::sim::TradeAgreementDef& agr
-                             : me->tradeAgreements().agreements) {
-                        if (!agr.isActive) { continue; }
-                        for (PlayerId mem : agr.members) {
-                            if (mem == other) { interdependent = true; break; }
-                        }
-                        if (interdependent) { break; }
-                    }
-                }
-                if (!interdependent) { continue; }
-
-                candidates.push_back(other);
-                if (candidates.size() >= aoc::sim::CONFEDERATION_MAX_MEMBERS) { break; }
-            }
-
-            if (candidates.size() >= 2) {
-                const aoc::ErrorCode ec = aoc::sim::formConfederation(
-                    gameState, diplomacy, candidates, gameState.currentTurn());
-                if (ec == aoc::ErrorCode::Ok) {
-                    LOG_INFO("AI %u formed confederation with %zu members "
-                             "(openness %.2f, allianceDesire %.2f)",
-                             static_cast<unsigned>(this->m_player),
-                             candidates.size(),
-                             static_cast<double>(beh.diplomaticOpenness),
-                             static_cast<double>(beh.allianceDesire));
                 }
             }
         }

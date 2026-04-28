@@ -1249,23 +1249,6 @@ void writeStockPortfolioSection(WriteBuffer& out, const aoc::game::GameState& ga
     writeSection(out, SectionId::StockPortfolioState, section);
 }
 
-/// Serialize active confederations (Staatenbund blocs).
-void writeConfederationSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
-    WriteBuffer section;
-    const std::vector<aoc::sim::ConfederationComponent>& bands = gameState.confederations();
-    section.writeU32(static_cast<uint32_t>(bands.size()));
-    for (const aoc::sim::ConfederationComponent& c : bands) {
-        section.writeU32(c.id);
-        section.writeI32(c.formedTurn);
-        section.writeU8(c.isActive ? 1u : 0u);
-        section.writeU32(static_cast<uint32_t>(c.members.size()));
-        for (PlayerId m : c.members) {
-            section.writeU8(static_cast<uint8_t>(m));
-        }
-    }
-    writeSection(out, SectionId::ConfederationState, section);
-}
-
 /// Serialize bilateral electricity import agreements.
 void writeElectricityAgreementSection(WriteBuffer& out,
                                        const aoc::game::GameState& gameState) {
@@ -1345,7 +1328,6 @@ ErrorCode saveGame(const std::string& filepath,
     writeGrievanceSection(buf, gameState);
     writeWarWearinessSection(buf, gameState);
     writeStockPortfolioSection(buf, gameState);
-    writeConfederationSection(buf, gameState);
     writeElectricityAgreementSection(buf, gameState);
 
     // Write to file
@@ -2483,22 +2465,18 @@ ErrorCode loadGame(const std::string& filepath,
                 break;
             }
             case SectionId::ConfederationState: {
+                // Confederation removed 2026-04-27. Skip section to keep
+                // backwards-compat with old saves: read count + per-record
+                // bytes and discard.
                 uint32_t count = buf.readU32();
-                std::vector<aoc::sim::ConfederationComponent>& bands =
-                    gameState.confederations();
-                bands.clear();
-                bands.reserve(count);
                 for (uint32_t i = 0; i < count; ++i) {
-                    aoc::sim::ConfederationComponent c{};
-                    c.id         = buf.readU32();
-                    c.formedTurn = buf.readI32();
-                    c.isActive   = (buf.readU8() != 0u);
+                    (void)buf.readU32();      // id
+                    (void)buf.readI32();      // formedTurn
+                    (void)buf.readU8();       // isActive
                     uint32_t memberCount = buf.readU32();
-                    c.members.reserve(memberCount);
                     for (uint32_t m = 0; m < memberCount; ++m) {
-                        c.members.push_back(buf.readU8());
+                        (void)buf.readU8();
                     }
-                    bands.push_back(std::move(c));
                 }
                 break;
             }

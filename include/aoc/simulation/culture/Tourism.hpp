@@ -31,6 +31,8 @@ namespace aoc::map { class HexGrid; }
 
 namespace aoc::sim {
 
+class DiplomacyManager;
+
 /// Per-player tourism state.
 struct PlayerTourismComponent {
     PlayerId owner = INVALID_PLAYER;
@@ -51,7 +53,8 @@ struct PlayerTourismComponent {
  * Applies modifiers for open borders and trade routes.
  */
 void computeTourism(aoc::game::GameState& gameState, PlayerId player,
-                    const aoc::map::HexGrid& grid);
+                    const aoc::map::HexGrid& grid,
+                    const DiplomacyManager* diplomacy = nullptr);
 
 /**
  * @brief Check Cultural Victory condition (Classic mode only).

@@ -102,7 +102,7 @@ unique_ids() { (grep -hoE "$1" ${LOGS} 2>/dev/null || true) | awk -F= '{print $2
   echo
   echo "| Type | Count | % |"
   echo "|---|---:|---:|"
-  for vt in CULTURE SCIENCE RELIGION DOMINATION CONFEDERATION PRESTIGE SCORE; do
+  for vt in CULTURE SCIENCE RELIGION DOMINATION PRESTIGE SCORE; do
     n=$(cnt "wins by ${vt}")
     pct=$(awk "BEGIN { printf \"%.1f\", ${n} * 100.0 / ${TOTAL} }")
     echo "| ${vt} | ${n} | ${pct}% |"
@@ -129,7 +129,7 @@ unique_ids() { (grep -hoE "$1" ${LOGS} 2>/dev/null || true) | awk -F= '{print $2
     echo "### players=${players} (${pcount} sims)"
     echo "| Type | Count |"
     echo "|---|---:|"
-    for vt in CULTURE SCIENCE RELIGION DOMINATION CONFEDERATION PRESTIGE SCORE; do
+    for vt in CULTURE SCIENCE RELIGION DOMINATION PRESTIGE SCORE; do
       n=$( (grep -hoE "wins by ${vt}" ${glob} 2>/dev/null || true) | wc -l)
       echo "| ${vt} | ${n} |"
     done
@@ -145,7 +145,7 @@ unique_ids() { (grep -hoE "$1" ${LOGS} 2>/dev/null || true) | awk -F= '{print $2
     echo "### turns=${turns} (${pcount} sims)"
     echo "| Type | Count |"
     echo "|---|---:|"
-    for vt in CULTURE SCIENCE RELIGION DOMINATION CONFEDERATION PRESTIGE SCORE; do
+    for vt in CULTURE SCIENCE RELIGION DOMINATION PRESTIGE SCORE; do
       n=$( (grep -hoE "wins by ${vt}" ${glob} 2>/dev/null || true) | wc -l)
       echo "| ${vt} | ${n} |"
     done
@@ -161,7 +161,7 @@ unique_ids() { (grep -hoE "$1" ${LOGS} 2>/dev/null || true) | awk -F= '{print $2
     echo "### map=${map} (${pcount} sims)"
     echo "| Type | Count |"
     echo "|---|---:|"
-    for vt in CULTURE SCIENCE RELIGION DOMINATION CONFEDERATION PRESTIGE SCORE; do
+    for vt in CULTURE SCIENCE RELIGION DOMINATION PRESTIGE SCORE; do
       n=$( (grep -hoE "wins by ${vt}" ${glob} 2>/dev/null || true) | wc -l)
       echo "| ${vt} | ${n} |"
     done

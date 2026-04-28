@@ -26,7 +26,6 @@
 #include "aoc/simulation/monetary/Bonds.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
-#include "aoc/simulation/diplomacy/Confederation.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/religion/Religion.hpp"
@@ -643,7 +642,12 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
             const float ratio = (rivalCount > 0)
                 ? static_cast<float>(capitalsOwned) / static_cast<float>(rivalCount)
                 : 0.0f;
-            if (ratio >= 0.25f && alive > 1 && capitalsOwned >= 2) {
+            // 2026-04-28 iter11: combined 384-sim Dom 14.8%. Widen late-game
+            // escape from "≤4 alive" to "≤5 alive" so 8-player games entering
+            // late attrition (3 dead) qualify with 1 captured capital.
+            if (alive > 1
+                && (capitalsOwned >= 2
+                    || (capitalsOwned >= 1 && alive <= 5))) {
                 LOG_INFO("Player %u wins by DOMINATION (%d/%d rival capitals owned)",
                          static_cast<unsigned>(candidate->id()),
                          capitalsOwned, rivalCount);
@@ -660,6 +664,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     if ((enabledTypes & VICTORY_MASK_SCIENCE) != 0u) {
         for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
             if (candidate->victoryTracker().isEliminated) { continue; }
+            // 2026-04-27 iter6: 4-of-5 → 43%; revert to 5-of-5 with eased cost.
             if (candidate->spaceRace().completedCount() >= 5) {
                 LOG_INFO("Player %u wins by SCIENCE (%d/5 space projects completed)",
                          static_cast<unsigned>(candidate->id()),
@@ -709,7 +714,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                 // boosted BASE_PASSIVE_PRESSURE in Religion.cpp.
                 const float ratio = static_cast<float>(dominatedCount)
                                   / static_cast<float>(rivalCount);
-                if (ratio >= 0.50f) {
+                if (ratio >= 0.35f) {  // 2026-04-28 iter10: 0.40 → 13%; relax further
                     LOG_INFO("Player %u wins by RELIGION (%d/%d rivals dominated)",
                              static_cast<unsigned>(candidate->id()),
                              dominatedCount, rivalCount);
@@ -766,7 +771,27 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                     break;
                 }
             }
-            if (clearLead) {
+            // Political tourism gate (2026-04-27): leader's foreign-tourist
+            // count must exceed every rival's domestic-tourist count. Open
+            // borders, allies, and friendly stance accelerate tourism;
+            // war/hostile/embargo throttle it. Without this, culture wins
+            // ignore diplomatic resistance entirely.
+            bool tourismDominant = true;
+            const aoc::game::Player* leaderPlayer = gameState.player(leader);
+            if (leaderPlayer != nullptr) {
+                const int32_t leaderForeign =
+                    leaderPlayer->tourism().foreignTourists;
+                for (const std::unique_ptr<aoc::game::Player>& other :
+                         gameState.players()) {
+                    if (other == nullptr || other->id() == leader) { continue; }
+                    if (other->victoryTracker().isEliminated) { continue; }
+                    if (leaderForeign <= other->tourism().domesticTourists) {
+                        tourismDominant = false;
+                        break;
+                    }
+                }
+            }
+            if (clearLead && tourismDominant) {
                 LOG_INFO("Player %u wins by CULTURE (culture=%.0f wonders=%d)",
                          static_cast<unsigned>(leader),
                          static_cast<double>(bestCulture),
@@ -776,84 +801,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
         }
     }
 
-    // 3e. Confederation co-win — DISABLED 2026-04-25.
-    // AI doesn't form qualifying 3+ blocs (only ephemeral 2-member pacts);
-    // mechanic was always firing as Prestige timeout. Removed from default
-    // VICTORY_MASK_ALL (0x7F). Code retained for potential future re-enable
-    // once an AI confederation-formation heuristic is built.
-    if (false && (enabledTypes & VICTORY_MASK_CONFEDERATION) != 0u
-        && currentTurn >= maxTurns
-        && gameState.playerCount() >= 3) {
-        float bestSinglePrestige = 0.0f;
-        for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
-            if (p->victoryTracker().isEliminated) { continue; }
-            if (p->prestige().total > bestSinglePrestige) {
-                bestSinglePrestige = p->prestige().total;
-            }
-        }
-
-        const ConfederationComponent* winningConf = nullptr;
-        float bestEffective = 0.0f;
-        float bestSum = 0.0f;
-        std::vector<PlayerId> bestMembers;
-
-        for (const ConfederationComponent& conf : gameState.confederations()) {
-            if (!conf.isActive) { continue; }
-            std::vector<PlayerId> live;
-            live.reserve(conf.members.size());
-            float sum = 0.0f;
-            for (PlayerId m : conf.members) {
-                const aoc::game::Player* p = gameState.player(m);
-                if (p == nullptr || p->victoryTracker().isEliminated) { continue; }
-                live.push_back(m);
-                sum += p->prestige().total;
-            }
-            if (live.size() < CONFEDERATION_COWIN_MIN) { continue; }
-
-            const float denom   = std::pow(static_cast<float>(live.size()),
-                                            CONFEDERATION_PRESTIGE_SQRT_EXP);
-            const float effective = (denom > 0.0f) ? (sum / denom) : sum;
-            if (effective > bestEffective) {
-                bestEffective = effective;
-                bestSum       = sum;
-                bestMembers   = std::move(live);
-                winningConf   = &conf;
-            }
-        }
-
-        // Audit 2026-04: 1.2× was too lenient — Confederation timeout-won
-        // 10/20 sims. Bump to 1.5× so Confederation needs a clear bloc
-        // edge over the strongest lone civ.
-        if (winningConf != nullptr
-            && bestSinglePrestige > 0.0f
-            && bestEffective >= 1.5f * bestSinglePrestige) {
-            PlayerId leader      = INVALID_PLAYER;
-            float    leaderScore = -1.0f;
-            for (PlayerId m : bestMembers) {
-                const aoc::game::Player* p = gameState.player(m);
-                if (p == nullptr) { continue; }
-                const float s = p->prestige().total;
-                if (s > leaderScore) { leaderScore = s; leader = m; }
-            }
-            VictoryResult result;
-            result.type   = VictoryType::Confederation;
-            result.winner = leader;
-            for (PlayerId m : bestMembers) {
-                if (m != leader) { result.coWinners.push_back(m); }
-            }
-            LOG_INFO("CONFEDERATION wins at turn %d: conf %u size %zu, combined %.1f "
-                     "(effective %.1f vs best single %.1f). Leader = Player %u",
-                     static_cast<int>(currentTurn),
-                     static_cast<unsigned>(winningConf->id),
-                     bestMembers.size(),
-                     static_cast<double>(bestSum),
-                     static_cast<double>(bestEffective),
-                     static_cast<double>(bestSinglePrestige),
-                     static_cast<unsigned>(leader));
-            return result;
-        }
-    }
-    (void)diplomacy;  // Confederation path no longer needs the pairwise matrix.
+    (void)diplomacy;  // Pairwise matrix unused after Confederation removal.
 
     // 4. Turn limit: Prestige tally first (participation-based endgame).
     // Prestige wins when all turns have elapsed -- highest accumulated total
@@ -944,7 +892,6 @@ uint32_t parseVictoryTypeMask(std::string_view list) {
         {"domination",   VICTORY_MASK_DOMINATION},
         {"culture",      VICTORY_MASK_CULTURE},
         {"religion",     VICTORY_MASK_RELIGION},
-        {"confederation", VICTORY_MASK_CONFEDERATION},
         {"all",          VICTORY_MASK_ALL},
     };
 

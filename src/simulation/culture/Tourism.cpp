@@ -21,6 +21,7 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/core/Types.hpp"
 
@@ -58,7 +59,8 @@ constexpr float DOMESTIC_TOURIST_COST = 100.0f;
 } // namespace
 
 void computeTourism(aoc::game::GameState& gameState, PlayerId playerId,
-                    const aoc::map::HexGrid& /*grid*/) {
+                    const aoc::map::HexGrid& /*grid*/,
+                    const DiplomacyManager* diplomacy) {
     aoc::game::Player* player = gameState.player(playerId);
     if (player == nullptr) { return; }
 
@@ -90,8 +92,47 @@ void computeTourism(aoc::game::GameState& gameState, PlayerId playerId,
     for (const TradeAgreementDef& a : player->tradeAgreements().agreements) {
         if (a.isActive) { ++activeAgreements; }
     }
-    const float mult = 1.0f + std::min(0.5f, 0.12f * static_cast<float>(activeAgreements));
-    base *= mult;
+    const float tradeMult = 1.0f + std::min(0.5f, 0.12f * static_cast<float>(activeAgreements));
+    base *= tradeMult;
+
+    // Diplomatic resistance: average tourism multiplier across all rivals
+    // based on diplomatic stance. War → 0.30×, Hostile → 0.50×,
+    // Unfriendly → 0.75×, Neutral → 1.00×, Friendly → 1.20×, Allied → 1.50×.
+    // Open Borders adds +0.25 × on top of stance, Cultural Alliance +0.25 ×,
+    // Embargo subtracts 0.25 ×. Models Civ-6 tourism politics: hostile civs
+    // resist your culture, allied/open-bordered civs absorb it faster.
+    if (diplomacy != nullptr) {
+        int32_t rivalCount = 0;
+        float diplomatSum = 0.0f;
+        for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
+            if (other == nullptr || other->id() == playerId) { continue; }
+            if (other->victoryTracker().isEliminated) { continue; }
+            ++rivalCount;
+            const aoc::sim::PairwiseRelation& rel =
+                diplomacy->relation(playerId, other->id());
+            float m;
+            if (rel.isAtWar) {
+                m = 0.30f;
+            } else {
+                switch (rel.stance()) {
+                    case aoc::sim::DiplomaticStance::Hostile:    m = 0.50f; break;
+                    case aoc::sim::DiplomaticStance::Unfriendly: m = 0.75f; break;
+                    case aoc::sim::DiplomaticStance::Neutral:    m = 1.00f; break;
+                    case aoc::sim::DiplomaticStance::Friendly:   m = 1.20f; break;
+                    case aoc::sim::DiplomaticStance::Allied:     m = 1.50f; break;
+                    default:                                     m = 1.00f; break;
+                }
+                if (rel.hasOpenBorders)      { m += 0.25f; }
+                if (rel.hasCulturalAlliance) { m += 0.25f; }
+                if (rel.hasEmbargo)          { m -= 0.25f; }
+            }
+            m = std::clamp(m, 0.10f, 2.00f);
+            diplomatSum += m;
+        }
+        if (rivalCount > 0) {
+            base *= diplomatSum / static_cast<float>(rivalCount);
+        }
+    }
 
     t.tourismPerTurn     = base;
     t.cumulativeTourism += base;

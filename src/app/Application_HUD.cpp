@@ -762,7 +762,6 @@ void Application::updateHUD() {
             this->m_victoryResult.type == aoc::sim::VictoryType::Culture       ? "Culture" :
             this->m_victoryResult.type == aoc::sim::VictoryType::Score         ? "Score" :
             this->m_victoryResult.type == aoc::sim::VictoryType::Religion      ? "Religion" :
-            this->m_victoryResult.type == aoc::sim::VictoryType::Confederation ? "Confederation" :
             this->m_victoryResult.type == aoc::sim::VictoryType::Prestige      ? "Prestige" :
             this->m_victoryResult.type == aoc::sim::VictoryType::LastStanding  ? "Last Standing" : "Unknown";
 

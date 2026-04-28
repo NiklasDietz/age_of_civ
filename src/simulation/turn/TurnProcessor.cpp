@@ -57,7 +57,6 @@
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/diplomacy/AllianceObligations.hpp"
-#include "aoc/simulation/diplomacy/Confederation.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
 
 // Government
@@ -981,11 +980,6 @@ void processGlobalSystems(TurnContext& turnContext) {
         turnContext.allianceTracker->tickObligations(*turnContext.diplomacy, gameState);
     }
 
-    // Confederation bookkeeping: purge eliminated members, auto-dissolve
-    // blocs that have dropped below 2 live members. War-driven dissolves
-    // happen eagerly inside declareWar; this tick cleans up the rest.
-    tickConfederations(gameState);
-
     // Electricity agreements: expire contracts, settle the per-turn gold
     // transfer, record delivery for computeCityPower to read on its next
     // pass. Must run after diplomacy but before production/power —
@@ -1238,7 +1232,8 @@ void processTurn(TurnContext& turnContext) {
         for (const std::unique_ptr<aoc::game::Player>& playerPtr :
                  turnContext.gameState->players()) {
             if (playerPtr == nullptr) { continue; }
-            computeTourism(*turnContext.gameState, playerPtr->id(), *turnContext.grid);
+            computeTourism(*turnContext.gameState, playerPtr->id(),
+                           *turnContext.grid, turnContext.diplomacy);
         }
         const PlayerId culturalWinner = checkCulturalVictory(*turnContext.gameState);
         if (culturalWinner != INVALID_PLAYER) {

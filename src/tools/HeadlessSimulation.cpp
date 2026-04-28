@@ -967,16 +967,9 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         const aoc::sim::VictoryResult& vr = turnCtx.lastVictoryResult;
         if (vr.type != aoc::sim::VictoryType::None) {
             printProgressBar(turn, maxTurns);
-            if (vr.type == aoc::sim::VictoryType::Confederation) {
-                std::fprintf(stderr,
-                    "\n\n  GAME OVER on turn %d: CONFEDERATION wins (leader P%u, bloc size %zu)\n",
-                    turn, static_cast<unsigned>(vr.winner),
-                    vr.coWinners.size() + 1);
-            } else {
-                std::fprintf(stderr, "\n\n  GAME OVER on turn %d: Player %u wins (type %d)\n",
-                             turn, static_cast<unsigned>(vr.winner),
-                             static_cast<int>(vr.type));
-            }
+            std::fprintf(stderr, "\n\n  GAME OVER on turn %d: Player %u wins (type %d)\n",
+                         turn, static_cast<unsigned>(vr.winner),
+                         static_cast<int>(vr.type));
             break;
         }
 
@@ -1160,7 +1153,7 @@ int main(int argc, char* argv[]) {
     // game early if only one civ remains.  `--victory-types` (CLI) or
     // `victory_types:` (yaml) overrides.
     // Audit 2026-04: default enabled ALL victory types so headless sims
-    // actually test Domination / Science / Culture / Religion / Confederation
+    // actually test Domination / Science / Culture / Religion
     // paths. Previously only end-of-game Prestige/Score/LastStanding ran,
     // which masked early-victory mechanics.
     uint32_t victoryMask = aoc::sim::VICTORY_MASK_ALL;

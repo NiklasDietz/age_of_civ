@@ -2837,8 +2837,7 @@ void Application::handleEndTurn() {
                      vr.type == aoc::sim::VictoryType::Domination    ? "Domination" :
                      vr.type == aoc::sim::VictoryType::Culture       ? "Culture" :
                      vr.type == aoc::sim::VictoryType::Score         ? "Score" :
-                     vr.type == aoc::sim::VictoryType::Religion      ? "Religion" :
-                     vr.type == aoc::sim::VictoryType::Confederation ? "Confederation" : "Unknown");
+                     vr.type == aoc::sim::VictoryType::Religion      ? "Religion" : "Unknown");
 
             const uint8_t totalPlayers = static_cast<uint8_t>(1 + this->m_aiControllers.size());
             this->m_scoreScreen.setContext(

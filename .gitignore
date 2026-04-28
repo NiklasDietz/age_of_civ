@@ -1,1 +1,9 @@
 ai_command
+
+# ML pipeline artifacts
+ml/venv/
+ml/data/
+ml/*.pt
+ml/*.npz
+ml/__pycache__/
+claude-code-tweaks
