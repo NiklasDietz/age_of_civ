@@ -216,6 +216,12 @@ public:
     [[nodiscard]] aoc::sim::CityPollutionComponent& pollution() { return this->m_pollution; }
     [[nodiscard]] const aoc::sim::CityPollutionComponent& pollution() const { return this->m_pollution; }
 
+    /// Last-turn power balance (supply/demand). Refreshed by the economy
+    /// simulation each turn. Production system reads this to penalize
+    /// brownouts (under-supplied cities run buildings at reduced output).
+    [[nodiscard]] aoc::sim::CityPowerComponent& power() { return this->m_power; }
+    [[nodiscard]] const aoc::sim::CityPowerComponent& power() const { return this->m_power; }
+
     [[nodiscard]] aoc::sim::CityWondersComponent& wonders() { return this->m_wonders; }
     [[nodiscard]] const aoc::sim::CityWondersComponent& wonders() const { return this->m_wonders; }
 
@@ -309,6 +315,7 @@ private:
 
     // Extended subsystems (formerly ECS-only, now owned by City)
     aoc::sim::CityPollutionComponent m_pollution;
+    aoc::sim::CityPowerComponent     m_power;
     aoc::sim::CityWondersComponent m_wonders;
     aoc::sim::CityBuildingLevelsComponent m_buildingLevels;
     aoc::sim::CityProductionExperienceComponent m_productionExperience;

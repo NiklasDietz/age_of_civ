@@ -284,6 +284,32 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
             break;
         }
 
+        case SpyMission::SiphonTourism: {
+            // Drain ~20-35% of target's accumulated tourism — burns down
+            // their cumulativeTourism so foreign-tourist count drops, breaking
+            // a near-victory cultural lead. Counter-mechanic the target can
+            // negate via their own counter-intelligence + open borders.
+            aoc::game::City* city = findEnemyCityAt(gameState, spy.owner, spy.location);
+            if (city != nullptr) {
+                aoc::game::Player* tp = gameState.player(city->owner());
+                if (tp != nullptr) {
+                    const float drainFraction = 0.20f + rng.nextFloat() * 0.15f;
+                    const float drained =
+                        tp->tourism().cumulativeTourism * drainFraction;
+                    tp->tourism().cumulativeTourism -= drained;
+                    if (tp->tourism().cumulativeTourism < 0.0f) {
+                        tp->tourism().cumulativeTourism = 0.0f;
+                    }
+                    LOG_INFO("Spy (P%u) siphoned tourism from P%u via %s: -%.0f points",
+                             static_cast<unsigned>(spy.owner),
+                             static_cast<unsigned>(city->owner()),
+                             city->name().c_str(),
+                             static_cast<double>(drained));
+                }
+            }
+            break;
+        }
+
         case SpyMission::NeutralizeGovernor:
         case SpyMission::RecruitDoubleAgent:
         case SpyMission::EstablishEmbassy:

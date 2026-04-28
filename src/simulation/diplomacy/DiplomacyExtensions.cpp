@@ -5,11 +5,40 @@
 
 #include "aoc/game/GameState.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyExtensions.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/AllianceTypes.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
 
 namespace aoc::sim {
+
+AllianceYieldModifiers computeAllianceYieldModifiers(
+        const DiplomacyManager& diplomacy, PlayerId player, uint8_t playerCount) {
+    AllianceYieldModifiers out{};
+    if (player >= playerCount) { return out; }
+    for (uint8_t other = 0; other < playerCount; ++other) {
+        if (other == player) { continue; }
+        const PairwiseRelation& rel =
+            diplomacy.relation(player, static_cast<PlayerId>(other));
+        // Walk the per-type alliance slots; entry 0 is reserved (None).
+        for (std::size_t i = 1; i < rel.alliances.size(); ++i) {
+            const AllianceState& a = rel.alliances[i];
+            if (!a.isActive()) { continue; }
+            const float lvl = 1.0f + static_cast<float>(static_cast<uint8_t>(a.level));
+            const float bump = 0.05f * lvl;  // L1: +10%, L2: +15%, L3: +20%
+            switch (a.type) {
+                case AllianceType::Research:  out.scienceMult += bump; break;
+                case AllianceType::Cultural:  out.cultureMult += bump; break;
+                case AllianceType::Economic:  out.goldMult    += bump; break;
+                case AllianceType::Religious: out.faithMult   += bump; break;
+                case AllianceType::Military:  out.combatBonus += 1.0f * lvl; break;
+                default: break;
+            }
+        }
+    }
+    return out;
+}
 
 void triggerEmergency(aoc::game::GameState& /*gameState*/, GlobalEmergencyTracker& tracker,
                       EmergencyType type, PlayerId target) {

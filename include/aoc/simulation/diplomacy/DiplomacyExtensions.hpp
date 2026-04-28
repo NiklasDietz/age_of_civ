@@ -161,4 +161,24 @@ enum class ExtendedResolution : uint8_t {
     Count
 };
 
+/// Bundle of yield multipliers granted by active alliances for a single player.
+/// Each active alliance type (Research, Cultural, Economic, Religious, Military)
+/// contributes +5% per level (Level1=1, Level2=2, Level3=3) to its associated
+/// yield, summed across all current allies. Designed so a small alliance web
+/// is meaningful but not overpowered.
+struct AllianceYieldModifiers {
+    float scienceMult = 1.0f;
+    float cultureMult = 1.0f;
+    float goldMult    = 1.0f;
+    float faithMult   = 1.0f;
+    float combatBonus = 0.0f;  ///< Flat combat strength bonus (military alliance)
+};
+
+class DiplomacyManager;
+
+/// Compute alliance-driven yield modifiers for a given player.
+/// Iterates pairwise relations and accumulates +5% per active-alliance level.
+[[nodiscard]] AllianceYieldModifiers computeAllianceYieldModifiers(
+    const DiplomacyManager& diplomacy, PlayerId player, uint8_t playerCount);
+
 } // namespace aoc::sim

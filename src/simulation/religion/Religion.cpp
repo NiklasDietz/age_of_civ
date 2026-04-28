@@ -69,7 +69,22 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
 
     float faithGain = 0.0f;
 
+    const ReligionId myRel = playerFaith.foundedReligion;
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
+        // Religious-spread asymmetry: a city whose dominant religion no
+        // longer matches our founded religion contributes only 30% of its
+        // faith (residual sympathizers). Cities pre-pantheon (myRel == NO)
+        // still get full credit so early-game accumulation works.
+        float cityFaithMult = 1.0f;
+        if (myRel != NO_RELIGION) {
+            const ReligionId cityRel = city->religion().dominantReligion();
+            if (cityRel != NO_RELIGION && cityRel != myRel) {
+                cityFaithMult = 0.30f;
+            }
+        }
+        const float faithBeforeCity = faithGain;
+        faithGain = 0.0f;
+
         // Base faith income: every city produces 1 faith per turn regardless of buildings.
         // Without this floor, players never accumulate enough faith to found a pantheon
         // in the early game when tiles with faith yield are rare.
@@ -131,6 +146,9 @@ void accumulateFaith(aoc::game::Player& player, const aoc::map::HexGrid& grid) {
             faithGain += wdef.effect.faithBonus
                        * wonderEraDecayFactor(wdef, player.era().currentEra);
         }
+
+        // Apply per-city religious match multiplier and re-add prior cities.
+        faithGain = faithBeforeCity + faithGain * cityFaithMult;
     }
 
     // Civilization ability: faith multiplier.

@@ -171,6 +171,17 @@ static float computeCityProductionGS(const aoc::game::Player& player,
     // Happiness production multiplier
     totalProduction *= city.happiness().productionMultiplier();
 
+    // Power deficit penalty: when energy supply < demand, factories
+    // brownout. Floor at 0.5× so a fully-blacked-out city still ekes
+    // out something (laborers + tile yields), but loses serious output.
+    {
+        const float eff = city.power().powerEfficiency();
+        if (eff < 1.0f) {
+            const float scaled = 0.5f + 0.5f * eff;  // 1.0 efficiency → 1.0×, 0.0 → 0.5×
+            totalProduction *= scaled;
+        }
+    }
+
     // Loyalty yield penalty
     totalProduction *= city.loyalty().yieldMultiplier();
 

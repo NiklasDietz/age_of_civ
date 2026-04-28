@@ -12,6 +12,21 @@
 
 namespace aoc::sim {
 
+float climateFoodMultiplier(const GlobalClimateComponent& climate) {
+    const float co2 = climate.co2Level;
+    if (co2 <= 3000.0f) { return 1.0f; }                  // pre-industrial / early industrial: no hit
+    if (co2 <= 5000.0f) {
+        // 3000→5000: 1.00→0.95 (industrial era, soft warning)
+        return 1.0f - 0.05f * (co2 - 3000.0f) / 2000.0f;
+    }
+    if (co2 <= 7500.0f) {
+        // 5000→7500: 0.95→0.85 (modern era — should be transitioning to green)
+        return 0.95f - 0.10f * (co2 - 5000.0f) / 2500.0f;
+    }
+    // 7500→CO2_MAX (10000): 0.85→0.70 (atomic/info-era crisis if no green energy)
+    return 0.85f - 0.15f * std::min(1.0f, (co2 - 7500.0f) / 2500.0f);
+}
+
 void GlobalClimateComponent::addCO2(float amount) {
     this->co2Level = std::min(CO2_MAX, this->co2Level + amount);
     // Temperature rises 0.01 degrees per 10 CO2

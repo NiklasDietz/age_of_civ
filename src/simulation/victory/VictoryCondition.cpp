@@ -801,7 +801,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
         }
     }
 
-    (void)diplomacy;  // Pairwise matrix unused after Confederation removal.
+    (void)diplomacy;  // Pairwise matrix not currently used by victory checks.
 
     // 4. Turn limit: Prestige tally first (participation-based endgame).
     // Prestige wins when all turns have elapsed -- highest accumulated total

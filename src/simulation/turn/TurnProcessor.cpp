@@ -55,6 +55,7 @@
 #include "aoc/simulation/diplomacy/Grievance.hpp"
 #include "aoc/simulation/diplomacy/NavalPassage.hpp"
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
+#include "aoc/simulation/diplomacy/DiplomacyExtensions.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
 #include "aoc/simulation/diplomacy/AllianceObligations.hpp"
 #include "aoc/simulation/diplomacy/WarWeariness.hpp"
@@ -501,8 +502,9 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     // Golden/Dark age effects
     processAgeEffects(*gsPlayer);
 
-    // City growth
-    processCityGrowth(*gsPlayer, grid);
+    // City growth (climate food penalty applied at high CO2 levels).
+    processCityGrowth(*gsPlayer, grid,
+                      aoc::sim::climateFoodMultiplier(turnContext.gameState->climate()));
 
     // Periodic worker re-assignment so cities pick up newly-revealed
     // strategic resources (Oil after Refining, Aluminium after Electricity,
@@ -565,7 +567,20 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     // research operates at minimum 50% efficiency).
     {
         float science = computePlayerScience(*gsPlayer, grid);
-        const float culture = computePlayerCulture(*gsPlayer, grid);
+        float culture = computePlayerCulture(*gsPlayer, grid);
+
+        // Alliance yield modifiers (Research/Cultural/Religious/Economic).
+        if (turnContext.diplomacy != nullptr) {
+            const aoc::sim::AllianceYieldModifiers all =
+                aoc::sim::computeAllianceYieldModifiers(
+                    *turnContext.diplomacy, player,
+                    static_cast<uint8_t>(turnContext.gameState->playerCount()));
+            science *= all.scienceMult;
+            culture *= all.cultureMult;
+            if (all.faithMult != 1.0f) {
+                gsPlayer->faith().faith *= all.faithMult;  // applied as an instant boost
+            }
+        }
 
         // Science funding cost: 0.2 gold per science point
         constexpr float SCIENCE_FUNDING_COST = 0.2f;
@@ -1024,9 +1039,8 @@ void processGlobalSystems(TurnContext& turnContext) {
     ai::resolvePendingAIEvents(gameState);
     tickWorldEvents(gameState);
 
-    // Prestige accrual first — victory tracker's Confederation clique scoring
-    // and CSI diplomacy weighting read prestige, so accrue for this turn
-    // before the tracker snapshots it.
+    // Prestige accrual first — CSI diplomacy weighting reads prestige, so
+    // accrue for this turn before the tracker snapshots it.
     processPrestige(gameState, grid, turnContext.diplomacy);
 
     // Victory tracking (CSI, collapse, era evaluation).

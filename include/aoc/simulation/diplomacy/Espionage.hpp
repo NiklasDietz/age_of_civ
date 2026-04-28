@@ -62,6 +62,7 @@ enum class SpyMission : uint8_t {
     RecruitPartisans,      ///< Spawn hostile militia units near the target city
     FomentUnrest,          ///< Reduce target city loyalty by 20-30 points
     NeutralizeGovernor,    ///< Disable enemy governor in target city for 10 turns
+    SiphonTourism,         ///< Drain target's accumulated cumulativeTourism (cultural countermeasure)
 
     // === Special ===
     RecruitDoubleAgent,    ///< Turn a captured enemy spy into a double agent
@@ -265,6 +266,7 @@ inline constexpr std::array<SpyMissionDef, static_cast<std::size_t>(SpyMission::
     {SpyMission::RecruitPartisans,    "Recruit Partisans",      0, 8, false, true},
     {SpyMission::FomentUnrest,        "Foment Unrest",          3, 6, false, true},
     {SpyMission::NeutralizeGovernor,  "Neutralize Governor",    2, 8, false, true},
+    {SpyMission::SiphonTourism,       "Siphon Tourism",         2, 8, false, true},
     {SpyMission::RecruitDoubleAgent,  "Recruit Double Agent",   1, 10, false, true},
     {SpyMission::EstablishEmbassy,    "Establish Embassy",      7, 1, false, true},
 }};

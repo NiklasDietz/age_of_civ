@@ -457,14 +457,34 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
             // Bonus pillage gold if the tile has improvements or resources.
             // Represents looting infrastructure — like Civ 6's pillaging.
             const int32_t tileIdx = grid.toIndex(defenderTile);
-            if (grid.resource(tileIdx).isValid()
-                || grid.improvement(tileIdx) != aoc::map::ImprovementType::None) {
+            const aoc::ResourceId tileRes = grid.resource(tileIdx);
+            const aoc::map::ImprovementType tileImp = grid.improvement(tileIdx);
+            if (tileRes.isValid() || tileImp != aoc::map::ImprovementType::None) {
                 constexpr CurrencyAmount TILE_PILLAGE_BONUS = 15;
                 atkPlayer->addGold(TILE_PILLAGE_BONUS);
                 LOG_INFO("Player %u pillaged tile improvements at (%d,%d) for %lld gold",
                          static_cast<unsigned>(attackerOwner),
                          defenderTile.q, defenderTile.r,
                          static_cast<long long>(TILE_PILLAGE_BONUS));
+            }
+            // Resource loot: dump 5 units of the tile's resource into
+            // attacker's nearest city stockpile (closest to defenderTile).
+            if (tileRes.isValid()) {
+                aoc::game::City* nearestCity = nullptr;
+                int32_t bestDist = std::numeric_limits<int32_t>::max();
+                for (const std::unique_ptr<aoc::game::City>& cityPtr : atkPlayer->cities()) {
+                    if (cityPtr == nullptr) { continue; }
+                    const int32_t d = grid.distance(defenderTile, cityPtr->location());
+                    if (d < bestDist) { bestDist = d; nearestCity = cityPtr.get(); }
+                }
+                if (nearestCity != nullptr) {
+                    constexpr int32_t LOOTED_UNITS = 5;
+                    nearestCity->stockpile().addGoods(tileRes.value, LOOTED_UNITS);
+                    LOG_INFO("Player %u looted %d units of good %u to %s",
+                             static_cast<unsigned>(attackerOwner), LOOTED_UNITS,
+                             static_cast<unsigned>(tileRes.value),
+                             nearestCity->name().c_str());
+                }
             }
 
             // Conditional civ bonus: scienceOnUnitKill (Macedon),

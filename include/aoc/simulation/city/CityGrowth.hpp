@@ -45,6 +45,11 @@ namespace aoc::sim {
  *   4. If surplus >= threshold, grow and auto-assign new citizen.
  *   5. If surplus < -30 and pop > 1, starve.
  */
-void processCityGrowth(aoc::game::Player& player, const aoc::map::HexGrid& grid);
+/// Climate food multiplier scales worked-tile food output. Driven by the
+/// global CO2 level (see climateFoodMultiplier). Defaults to 1.0 (no
+/// penalty) so legacy callers without a climate handle keep current
+/// behavior.
+void processCityGrowth(aoc::game::Player& player, const aoc::map::HexGrid& grid,
+                       float climateFoodMult = 1.0f);
 
 } // namespace aoc::sim

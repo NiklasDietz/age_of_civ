@@ -41,4 +41,10 @@ struct GlobalClimateComponent {
     void processTurn(aoc::map::HexGrid& grid, aoc::Random& rng);
 };
 
+/// Per-tile food multiplier from accumulated CO2.
+/// Players have time to transition to green energy: no penalty below
+/// co2=3000 (~industrial era), gentle drop 3000-5000, steeper 5000-7500
+/// (modern era), severe 7500+. Floors at 0.70 at CO2_MAX.
+[[nodiscard]] float climateFoodMultiplier(const GlobalClimateComponent& climate);
+
 } // namespace aoc::sim

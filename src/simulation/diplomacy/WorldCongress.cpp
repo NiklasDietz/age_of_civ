@@ -329,6 +329,26 @@ void tickActiveEffects(WorldCongressComponent& congress,
     auto it = congress.activeEffects.begin();
     while (it != congress.activeEffects.end()) {
         --it->turnsRemaining;
+        // Per-turn ongoing effects.
+        switch (it->type) {
+            case Resolution::ClimateAccord: {
+                // Suppress global CO2 emissions for the duration: each turn
+                // remove an extra unit of CO2 to model green-tech mandates.
+                gs.climate().co2Level = std::max(0.0f, gs.climate().co2Level - 1.5f);
+                gs.climate().globalTemperature = gs.climate().co2Level * 0.001f;
+                break;
+            }
+            case Resolution::WorldsFair:
+            case Resolution::InternationalGames: {
+                // Host civ gets +5 culture/turn while active.
+                aoc::game::Player* host = gs.player(it->target);
+                if (host != nullptr) {
+                    host->victoryTracker().totalCultureAccumulated += 5.0f;
+                }
+                break;
+            }
+            default: break;
+        }
         if (it->turnsRemaining <= 0) {
             if (it->type == Resolution::GlobalSanctions) {
                 applySanctionsEnd(diplomacy, gs, it->target);

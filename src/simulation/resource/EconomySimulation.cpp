@@ -606,6 +606,8 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
             CityPowerComponent power = computeCityPower(gameState, grid, *cityPtr);
             power.energyDemand += cityPtr->automation().robotEnergyDemand();
             cityPowerEfficiency[cityPtr.get()] = power.powerEfficiency();
+            // Cache for next turn's production penalty + UI readout.
+            cityPtr->power() = power;
 
             if (power.hasNuclear) {
                 // Use player id + city pointer address as a stable turn hash seed.

@@ -26,7 +26,9 @@ namespace aoc::sim {
 // so repeat disasters stack but a single hit does not linger forever.
 static void applyDisasterAmenityHit(aoc::game::City& city, float delta) {
     CityHappinessComponent& hp = city.happiness();
-    hp.disasterUnhappiness = std::min(10.0f, hp.disasterUnhappiness + delta);
+    // 2026-04-28: cap raised 10→20 so accumulating disasters can produce a
+    // meaningfully unhappy region (forces evacuation/rebuild decisions).
+    hp.disasterUnhappiness = std::min(20.0f, hp.disasterUnhappiness + delta);
 }
 
 int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
@@ -63,6 +65,15 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
                         grid.setImprovement(nIdx, aoc::map::ImprovementType::None);
                     }
                 }
+                // Amenity hit to nearest city (<=3 hexes).
+                for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+                    for (const std::unique_ptr<aoc::game::City>& city : playerPtr->cities()) {
+                        if (grid.distance(city->location(), center) <= 3) {
+                            applyDisasterAmenityHit(*city, 3.0f);
+                            break;
+                        }
+                    }
+                }
                 ++disasterCount;
                 LOG_INFO("VOLCANIC ERUPTION at tile %d!", i);
             }
@@ -85,7 +96,7 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
                                     break;
                                 }
                             }
-                            applyDisasterAmenityHit(*city, 1.5f);
+                            applyDisasterAmenityHit(*city, 4.0f);
                             LOG_INFO("EARTHQUAKE damaged city %s", city->name().c_str());
                             damaged = true;
                             break;
@@ -111,6 +122,25 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
                     grid.setTerrain(i, aoc::map::TerrainType::Plains);
                 } else {
                     grid.setTerrain(i, aoc::map::TerrainType::Desert);
+                }
+                // Amenity hit to nearest owning city.
+                {
+                    const PlayerId tileOwner = grid.owner(i);
+                    if (tileOwner != INVALID_PLAYER) {
+                        const aoc::hex::AxialCoord tcoord = grid.toAxial(i);
+                        aoc::game::Player* p = gameState.player(tileOwner);
+                        if (p != nullptr) {
+                            aoc::game::City* nearest = nullptr;
+                            int32_t bd = std::numeric_limits<int32_t>::max();
+                            for (const std::unique_ptr<aoc::game::City>& c : p->cities()) {
+                                int32_t d = grid.distance(c->location(), tcoord);
+                                if (d < bd) { bd = d; nearest = c.get(); }
+                            }
+                            if (nearest != nullptr && bd <= 3) {
+                                applyDisasterAmenityHit(*nearest, 1.5f);
+                            }
+                        }
+                    }
                 }
                 ++disasterCount;
                 LOG_INFO("DROUGHT at tile %d (temp=%.2f)",
@@ -157,7 +187,7 @@ int32_t processNaturalDisasters(aoc::game::GameState& gameState, aoc::map::HexGr
                     // Amenity hit to nearest coastal-adjacent city (<=2 hexes).
                     for (const std::unique_ptr<aoc::game::City>& city : playerPtr->cities()) {
                         if (grid.distance(city->location(), tileCoord) <= 2) {
-                            applyDisasterAmenityHit(*city, 0.75f);
+                            applyDisasterAmenityHit(*city, 2.5f);
                             break;
                         }
                     }
