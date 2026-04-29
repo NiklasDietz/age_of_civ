@@ -21,7 +21,7 @@ public:
     struct Config {
         float panSpeed    = 500.0f;   ///< World units per second at zoom 1.0
         float zoomSpeed   = 0.15f;    ///< Zoom multiplier per scroll notch
-        float minZoom     = 0.35f;  // hex stays ~7 px at hexSize=20
+        float minZoom     = 0.5f;   // hex stays ~15 px at hexSize=30
         float maxZoom     = 5.0f;
         float dragSpeed   = 1.0f;     ///< Middle-mouse drag multiplier
     };

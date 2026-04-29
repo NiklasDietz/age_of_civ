@@ -109,17 +109,10 @@ void MapRenderer::draw(vulkan_app::renderer::Renderer2D& renderer2d,
             float cx = 0.0f, cy = 0.0f;
             hex::axialToPixel(axial, this->m_hexSize, cx, cy);
 
-            // Fine-grained per-tile check (accounts for odd-row offset
-            // shift). Threshold extended by a hexSize so a tile whose
-            // centre sits just outside the viewport — but whose body
-            // overlaps the visible window — still draws. Earlier the
-            // strict check culled border tiles when zoomed out and the
-            // map appeared to "stop" before the actual screen edge.
-            const float bleed = this->m_hexSize;
-            if (cx < topLeftX - bleed || cx > botRightX + bleed
-                || cy < topLeftY - bleed || cy > botRightY + bleed) {
-                continue;
-            }
+            // Per-tile cull removed: the row/col loop already bounds
+            // the iteration set, and the inner check was suspected of
+            // culling visible tiles at low zoom. Better to render a few
+            // off-edge hexes than leave the user with a half-blank view.
 
             this->drawTile(renderer2d, grid, index, cx, cy,
                            vis == aoc::map::TileVisibility::Revealed);

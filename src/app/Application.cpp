@@ -2942,6 +2942,13 @@ void Application::handleEndTurn() {
         for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
             this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, ai.player());
         }
+        // Spectator: re-reveal everything after the per-player updates so
+        // the viewer-side render always sees the whole world. Without
+        // this, updateVisibility above demotes Visible → Revealed each
+        // turn and the map looks dim/blank at zoom-out.
+        if (this->m_spectatorMode) {
+            this->spectatorRevealAll();
+        }
 
         // Check victory conditions: read cached result from processTurn.
         const aoc::sim::VictoryResult& vr = turnCtx.lastVictoryResult;
