@@ -175,8 +175,8 @@ inline constexpr std::array<BuildingDef, 43> BUILDING_DEFS = {{
     {BuildingId{3},  "Factory",            DistrictType::Industrial, 120, 2, 4, 0, 1, 1.0f},
     {BuildingId{4},  "Electronics Plant",  DistrictType::Industrial, 180, 3, 3, 2, 2, 1.0f},
     {BuildingId{5},  "Industrial Complex", DistrictType::Industrial, 250, 4, 6, 0, 3, 1.0f},
-    {BuildingId{6},  "Market",             DistrictType::Commercial,  50, 0, 0, 0, 6, 1.0f},
-    {BuildingId{7},  "Library",            DistrictType::Campus,      90, 1, 0, 3, 0, 1.0f},
+    {BuildingId{6},  "Market",             DistrictType::Commercial,  50, 0, 0, 0, 6, 1.0f, {{44, 1}}},                // 1 Stone (counter)
+    {BuildingId{7},  "Library",            DistrictType::Campus,      90, 1, 0, 3, 0, 1.0f, {{62, 1}}},                // 1 Lumber (shelves)
     {BuildingId{8},  "Textile Mill",       DistrictType::Industrial,  80, 1, 2, 0, 1, 1.0f},
     {BuildingId{9},  "Food Proc. Plant",   DistrictType::Industrial,  90, 1, 1, 0, 1, 1.0f},
     {BuildingId{10}, "Precision Workshop", DistrictType::Industrial, 140, 2, 3, 1, 0, 1.0f,  {{63, 1}}},                // 1 Tools
@@ -186,16 +186,16 @@ inline constexpr std::array<BuildingDef, 43> BUILDING_DEFS = {{
     {BuildingId{12}, "Research Lab",       DistrictType::Campus,     280, 3, 0, 10, 0, 1.5f, {{76, 1}}},                // 1 Glass
     {BuildingId{13}, "Telecom Hub",        DistrictType::Commercial, 130, 2, 0, 1, 4, 1.0f},
     {BuildingId{14}, "Airport",            DistrictType::Industrial, 200, 3, 2, 0, 3, 1.0f,  {{64, 2}}},                // 2 Steel
-    {BuildingId{15}, "Granary",            DistrictType::CityCenter,  40, 1, 1, 0, 0, 1.0f},
-    {BuildingId{16}, "Monument",           DistrictType::CityCenter,  30, 0, 0, 0, 0, 1.0f},
+    {BuildingId{15}, "Granary",            DistrictType::CityCenter,  40, 1, 1, 0, 0, 1.0f, {{62, 1}}},                // 1 Lumber (silo)
+    {BuildingId{16}, "Monument",           DistrictType::CityCenter,  30, 0, 0, 0, 0, 1.0f, {{44, 1}}},                // 1 Stone
     {BuildingId{17}, "Walls",              DistrictType::Encampment,  60, 0, 0, 0, 0, 1.0f,  {{44, 2}}},                // 2 Stone
-    {BuildingId{18}, "Barracks",           DistrictType::Encampment,  70, 2, 0, 0, 0, 1.0f},
-    {BuildingId{19}, "University",         DistrictType::Campus,     250, 2, 0, 6, 0, 1.0f},
-    {BuildingId{20}, "Bank",               DistrictType::Commercial, 100, 0, 0, 0, 10, 1.0f},
-    {BuildingId{21}, "Stock Exchange",     DistrictType::Commercial, 200, 0, 0, 0, 15, 1.0f},
-    {BuildingId{22}, "Hospital",           DistrictType::CityCenter, 150, 2, 0, 0, 0, 1.0f},
+    {BuildingId{18}, "Barracks",           DistrictType::Encampment,  70, 2, 0, 0, 0, 1.0f, {{62, 1}}},                // 1 Lumber
+    {BuildingId{19}, "University",         DistrictType::Campus,     250, 2, 0, 6, 0, 1.0f, {{44, 1}, {62, 1}}},       // 1 Stone + 1 Lumber
+    {BuildingId{20}, "Bank",               DistrictType::Commercial, 100, 0, 0, 0, 10, 1.0f, {{44, 1}}},                // 1 Stone
+    {BuildingId{21}, "Stock Exchange",     DistrictType::Commercial, 200, 0, 0, 0, 15, 1.0f, {{44, 2}}},                // 2 Stone
+    {BuildingId{22}, "Hospital",           DistrictType::CityCenter, 150, 2, 0, 0, 0, 1.0f, {{44, 2}}},                // 2 Stone
     {BuildingId{23}, "Shipyard",           DistrictType::Harbor,     120, 2, 3, 0, 2, 1.0f,  {{62, 2}}},                // 2 Lumber
-    {BuildingId{24}, "Mint",               DistrictType::CityCenter,  70, 1, 0, 0, 4, 1.0f},
+    {BuildingId{24}, "Mint",               DistrictType::CityCenter,  70, 1, 0, 0, 4, 1.0f, {{44, 1}}},                // 1 Stone
     {BuildingId{25}, "Waste Treatment",    DistrictType::Industrial, 100, 2, 0, 0, 0, 1.0f},
     {BuildingId{26}, "Coal Plant",         DistrictType::Industrial,  80, 2, 0, 0, 0, 1.0f,  {}, 2, 1},                 // burns 1 Coal/turn
     {BuildingId{27}, "Oil Plant",          DistrictType::Industrial, 120, 3, 0, 0, 0, 1.0f,  {}, 65, 1},                // burns 1 Fuel/turn

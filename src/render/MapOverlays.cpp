@@ -92,6 +92,15 @@ void renderInfrastructureOverlay(vulkan_app::renderer::Renderer2D& renderer,
             renderer.drawFilledRect(ox, oy, size, size,
                               0.95f, 0.55f, 0.10f, 0.85f);
         }
+        // Aqueduct marker (cyan dot, offset bottom-left so it doesn't
+        // collide with the power-pole / pipeline lanes above).
+        if (grid.hasAqueduct(i)) {
+            const float size = 3.0f * zoom;
+            const float ox = cx - 4.0f * zoom - size / 2.0f;
+            const float oy = cy + 4.0f * zoom - size / 2.0f;
+            renderer.drawFilledRect(ox, oy, size, size,
+                              0.30f, 0.75f, 0.95f, 0.90f);
+        }
     }
 }
 

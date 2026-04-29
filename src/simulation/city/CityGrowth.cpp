@@ -73,7 +73,10 @@ int32_t computeCityHousing(const aoc::game::City& city, const aoc::map::HexGrid&
     int32_t housing = 4;
     if (city.hasBuilding(BuildingId{15})) { housing += 2; }  // Granary
     if (city.hasBuilding(BuildingId{22})) { housing += 4; }  // Hospital
-    if (city.hasBuilding(BuildingId{42})) { housing += 4; }  // Aqueduct
+    // Aqueduct only counts when a connected aqueduct chain reaches a
+    // fresh-water source. Builder-laid INFRA_AQUEDUCT segments + the
+    // turn-end BFS in TurnProcessor.cpp set city.aqueductConnected.
+    if (city.hasBuilding(BuildingId{42}) && city.aqueductConnected()) { housing += 4; }
     int32_t farmCount = 0;
     std::vector<aoc::hex::AxialCoord> nearby;
     nearby.reserve(64);

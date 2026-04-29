@@ -283,9 +283,10 @@ public:
         }
     }
 
-    // -- WP-C3 stacked infrastructure lanes (PowerPole + Pipeline) --
+    // -- WP-C3 stacked infrastructure lanes (PowerPole + Pipeline + Aqueduct) --
     static constexpr uint8_t INFRA_POWER_POLE = 1u << 0;
     static constexpr uint8_t INFRA_PIPELINE   = 1u << 1;
+    static constexpr uint8_t INFRA_AQUEDUCT   = 1u << 2;
 
     [[nodiscard]] bool hasPowerPole(int32_t index) const {
         this->assertIndex(index);
@@ -294,6 +295,10 @@ public:
     [[nodiscard]] bool hasPipeline(int32_t index) const {
         this->assertIndex(index);
         return (this->m_tileInfra[static_cast<std::size_t>(index)] & INFRA_PIPELINE) != 0;
+    }
+    [[nodiscard]] bool hasAqueduct(int32_t index) const {
+        this->assertIndex(index);
+        return (this->m_tileInfra[static_cast<std::size_t>(index)] & INFRA_AQUEDUCT) != 0;
     }
     void setPowerPole(int32_t index, bool on) {
         this->assertIndex(index);
@@ -306,6 +311,12 @@ public:
         uint8_t& bits = this->m_tileInfra[static_cast<std::size_t>(index)];
         bits = on ? static_cast<uint8_t>(bits | INFRA_PIPELINE)
                   : static_cast<uint8_t>(bits & ~INFRA_PIPELINE);
+    }
+    void setAqueduct(int32_t index, bool on) {
+        this->assertIndex(index);
+        uint8_t& bits = this->m_tileInfra[static_cast<std::size_t>(index)];
+        bits = on ? static_cast<uint8_t>(bits | INFRA_AQUEDUCT)
+                  : static_cast<uint8_t>(bits & ~INFRA_AQUEDUCT);
     }
     [[nodiscard]] uint8_t tileInfraBits(int32_t index) const {
         this->assertIndex(index);

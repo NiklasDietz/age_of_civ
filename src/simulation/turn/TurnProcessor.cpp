@@ -957,6 +957,68 @@ void processGlobalSystems(TurnContext& turnContext) {
         }
     }
 
+    // Aqueduct connectivity: BFS each city centre over INFRA_AQUEDUCT
+    // tiles. Success if the BFS reaches a tile adjacent to a fresh-
+    // water source (river edge / lake / sea / mountain). Mountain
+    // counts as a spring source, matching the user spec. The result
+    // is stashed on City and consumed by per-turn housing logic.
+    {
+        for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+            for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
+                aoc::game::City& city = *cityPtr;
+                if (!grid.isValid(city.location())) {
+                    city.setAqueductConnected(false);
+                    continue;
+                }
+                const int32_t startIdx = grid.toIndex(city.location());
+
+                // Helper: tile index touches fresh water (river edge, or
+                // any of the 6 neighbours is water/mountain).
+                const auto touchesWater = [&](int32_t idx) -> bool {
+                    if (grid.riverEdges(idx) != 0) { return true; }
+                    const aoc::hex::AxialCoord c = grid.toAxial(idx);
+                    const std::array<aoc::hex::AxialCoord, 6> nbrs =
+                        aoc::hex::neighbors(c);
+                    for (const aoc::hex::AxialCoord& n : nbrs) {
+                        if (!grid.isValid(n)) { continue; }
+                        const int32_t ni = grid.toIndex(n);
+                        const aoc::map::TerrainType t = grid.terrain(ni);
+                        if (aoc::map::isWater(t)) { return true; }
+                        if (t == aoc::map::TerrainType::Mountain) { return true; }
+                    }
+                    return false;
+                };
+
+                std::vector<uint8_t> visited(static_cast<std::size_t>(grid.tileCount()), 0);
+                std::vector<int32_t> queue;
+                queue.reserve(64);
+                queue.push_back(startIdx);
+                visited[static_cast<std::size_t>(startIdx)] = 1;
+                bool connected = false;
+                if (touchesWater(startIdx)) {
+                    connected = true;
+                }
+                for (std::size_t qi = 0; qi < queue.size() && !connected; ++qi) {
+                    const int32_t cur = queue[qi];
+                    const aoc::hex::AxialCoord c = grid.toAxial(cur);
+                    const std::array<aoc::hex::AxialCoord, 6> nbrs =
+                        aoc::hex::neighbors(c);
+                    for (const aoc::hex::AxialCoord& n : nbrs) {
+                        if (!grid.isValid(n)) { continue; }
+                        const int32_t ni = grid.toIndex(n);
+                        if (visited[static_cast<std::size_t>(ni)]) { continue; }
+                        // BFS only walks across aqueduct-bearing tiles.
+                        if (!grid.hasAqueduct(ni)) { continue; }
+                        visited[static_cast<std::size_t>(ni)] = 1;
+                        if (touchesWater(ni)) { connected = true; break; }
+                        queue.push_back(ni);
+                    }
+                }
+                city.setAqueductConnected(connected);
+            }
+        }
+    }
+
     // Energy dependency and peak oil tracking
     {
         updateGlobalOilReserves(grid, gameState.oilReserves());

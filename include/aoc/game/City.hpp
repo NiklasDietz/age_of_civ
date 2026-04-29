@@ -98,6 +98,8 @@ public:
     // ========================================================================
 
     [[nodiscard]] int32_t population() const { return this->m_population; }
+    [[nodiscard]] bool aqueductConnected() const { return this->m_aqueductConnected; }
+    void setAqueductConnected(bool on) { this->m_aqueductConnected = on; }
     void setPopulation(int32_t pop) { this->m_population = pop; }
     void growPopulation(int32_t amount = 1) { this->m_population += amount; }
 
@@ -299,6 +301,11 @@ private:
 
     // Population
     int32_t m_population = 1;
+    /// True when an unbroken chain of INFRA_AQUEDUCT tiles links this
+    /// city's centre to a fresh-water source (river edge / lake / sea
+    /// adjacency or any mountain tile). Updated each turn by the
+    /// aqueduct connectivity pass; gates the Aqueduct building bonus.
+    bool m_aqueductConnected = false;
     float m_foodSurplus = 0.0f;
     float m_foodShortfallRatio = 0.0f;
     float m_cultureBorderProgress = 0.0f;

@@ -1176,6 +1176,47 @@ void Application::rebuildUnitActionPanel() {
                 }
             });
 
+        // -- Build Aqueduct Segment --
+        // Paints INFRA_AQUEDUCT on the builder's tile, consumes 1 Stone
+        // from the nearest owned-city stockpile, uses one builder
+        // charge. A connected chain of segments reaching a river /
+        // lake / mountain / sea source unlocks the per-city aqueduct
+        // housing bonus (see CityComponent::aqueductConnected).
+        makeActionBtn("Aqueduct", {0.18f, 0.32f, 0.45f, 0.9f},
+            [this, selectedUnitPtr]() {
+                if (selectedUnitPtr == nullptr) { return; }
+                const PlayerId ownerId = selectedUnitPtr->owner();
+                aoc::game::Player* owner = this->m_gameState.player(ownerId);
+                if (owner == nullptr) { return; }
+                const int32_t tileIdx = this->m_hexGrid.toIndex(selectedUnitPtr->position());
+                if (this->m_hexGrid.owner(tileIdx) != ownerId) { return; }
+                if (this->m_hexGrid.movementCost(tileIdx) <= 0) { return; }
+                if (this->m_hexGrid.hasAqueduct(tileIdx)) { return; }
+
+                // Find a city with at least 1 Stone in its stockpile.
+                aoc::game::City* payCity = nullptr;
+                for (const std::unique_ptr<aoc::game::City>& c : owner->cities()) {
+                    if (c == nullptr) { continue; }
+                    if (c->stockpile().getAmount(aoc::sim::goods::STONE) >= 1) {
+                        payCity = c.get();
+                        break;
+                    }
+                }
+                if (payCity == nullptr) {
+                    LOG_INFO("Aqueduct: no city has Stone in stockpile");
+                    return;
+                }
+                (void)payCity->stockpile().consumeGoods(aoc::sim::goods::STONE, 1);
+                this->m_hexGrid.setAqueduct(tileIdx, true);
+                selectedUnitPtr->useCharge();
+                LOG_INFO("Builder placed aqueduct segment");
+                if (!selectedUnitPtr->hasCharges()) {
+                    owner->removeUnit(selectedUnitPtr);
+                    this->m_selectedUnit = nullptr;
+                    this->m_actionPanelUnit = nullptr;
+                }
+            });
+
         // -- Plant Crop (WP-C4) --
         // If the selected civilian stands on a Greenhouse tile, cycle
         // through crops the owning civ has stockpiled in ANY of its
