@@ -1311,54 +1311,244 @@ void GovernmentScreen::open(UIManager& ui) {
     (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 450.0f, 16.0f},
                    LabelData{std::move(currentCivicText), tokens::RES_CULTURE, 13.0f});
 
-    WidgetId civicList = ui.createScrollList(
-        innerPanel, {0.0f, 0.0f, 450.0f, 140.0f});
-    {
-        Widget* lw = ui.getWidget(civicList);
-        if (lw != nullptr) {
-            lw->padding = {4.0f, 4.0f, 4.0f, 4.0f};
-            lw->childSpacing = 3.0f;
-        }
-    }
-
+    // Civic graph: same era-column layout as the tech tree, palette
+    // shifted to mulberry/RES_CULTURE so the two trees read distinctly.
     if (playerCivics != nullptr) {
-        const uint16_t civicTotal = aoc::sim::civicCount();
-        for (uint16_t cid = 0; cid < civicTotal; ++cid) {
-            const aoc::sim::CivicDef& cdef = aoc::sim::civicDef(CivicId{cid});
-            const bool completed = playerCivics->hasCompleted(CivicId{cid});
-            const bool researchable = !completed && playerCivics->canResearch(CivicId{cid});
-            if (completed) {
-                std::string label = "[OK] " + std::string(cdef.name);
-                (void)ui.createLabel(civicList, {0.0f, 0.0f, 440.0f, 18.0f},
-                               LabelData{std::move(label), tokens::STATE_SUCCESS, 12.0f});
-            } else if (researchable) {
-                std::string label = "> " + std::string(cdef.name)
-                                  + " (" + std::to_string(cdef.cultureCost) + ")";
-                ButtonData btn;
-                btn.label = std::move(label);
-                btn.fontSize = 12.0f;
-                btn.normalColor  = tokens::RES_CULTURE;
-                btn.hoverColor   = {0.654f, 0.348f, 0.654f, 1.0f};
-                btn.pressedColor = {0.408f, 0.184f, 0.408f, 1.0f};
-                btn.labelColor   = tokens::TEXT_GILT;
-                btn.cornerRadius = tokens::CORNER_BUTTON;
+        constexpr int   ERA_COUNT = 8;
+        constexpr float CARD_W    = 124.0f;
+        constexpr float CARD_H    = 80.0f;
+        constexpr float COL_GAP   = 50.0f;
+        constexpr float ROW_GAP   = 8.0f;
+        constexpr float ROW_PAD   = 12.0f;
+        constexpr float COL_PAD   = 16.0f;
+        constexpr float COL_W     = CARD_W + COL_GAP;
+        constexpr float ROW_H     = CARD_H + ROW_GAP;
+        constexpr int   MAX_ROWS  = 16;
+        const float graphW =
+            COL_PAD * 2.0f + COL_W * static_cast<float>(ERA_COUNT) - COL_GAP;
+        const float graphH = ROW_PAD * 2.0f + ROW_H * 12.0f;
+
+        PanelData canvasBg;
+        canvasBg.backgroundColor = tokens::SURFACE_PARCHMENT_DIM;
+        canvasBg.cornerRadius    = tokens::CORNER_PANEL;
+        canvasBg.borderColor     = tokens::BRONZE_DARK;
+        canvasBg.borderWidth     = 1.0f;
+        const float canvasW = std::min(graphW, 450.0f);
+        const float canvasH = std::min(graphH, 280.0f);
+        WidgetId civicCanvas = ui.createPanel(innerPanel,
+            {0.0f, 0.0f, canvasW, canvasH}, std::move(canvasBg));
+        {
+            Widget* lw = ui.getWidget(civicCanvas);
+            if (lw != nullptr) {
+                lw->layoutDirection = LayoutDirection::None;
+                lw->padding = {0.0f, 0.0f, 0.0f, 0.0f};
+                lw->canPan  = true;
+                lw->clampChildren = false;
+            }
+        }
+
+        constexpr std::array<const char*, ERA_COUNT> kEraNames = {
+            "Ancient", "Classical", "Medieval", "Renaissance",
+            "Industrial", "Modern", "Atomic", "Information",
+        };
+        for (int e = 0; e < ERA_COUNT; ++e) {
+            const float colX = COL_PAD + static_cast<float>(e) * COL_W;
+            (void)ui.createLabel(civicCanvas, {colX, 2.0f, CARD_W, 14.0f},
+                LabelData{kEraNames[static_cast<std::size_t>(e)],
+                          tokens::TEXT_HEADER, 11.0f});
+        }
+
+        IconAtlas& atlas = IconAtlas::instance();
+        const std::vector<aoc::sim::CivicDef>& civics = aoc::sim::allCivics();
+
+        struct CivicPos { float cx=0,cy=0,left=0,right=0,yMid=0; int row=-1; };
+        std::vector<CivicPos> pos(civics.size());
+        std::array<std::array<bool, MAX_ROWS>, ERA_COUNT> slotTaken{};
+
+        for (std::size_t i = 0; i < civics.size(); ++i) {
+            const int eraIdx =
+                std::clamp<int>(civics[i].era.value, 0, ERA_COUNT - 1);
+            int preferredRow = 0;
+            if (!civics[i].prerequisites.empty()) {
+                int sum = 0, n = 0;
+                for (CivicId p : civics[i].prerequisites) {
+                    if (p.isValid() && p.value < pos.size() && pos[p.value].row >= 0) {
+                        sum += pos[p.value].row; ++n;
+                    }
+                }
+                if (n > 0) { preferredRow = sum / n; }
+            }
+            preferredRow = std::clamp(preferredRow, 0, MAX_ROWS - 1);
+            int chosenRow = preferredRow;
+            if (slotTaken[static_cast<std::size_t>(eraIdx)][static_cast<std::size_t>(chosenRow)]) {
+                for (int delta = 1; delta < MAX_ROWS; ++delta) {
+                    const int dn = preferredRow + delta;
+                    const int up = preferredRow - delta;
+                    if (dn >= 0 && dn < MAX_ROWS
+                        && !slotTaken[static_cast<std::size_t>(eraIdx)][static_cast<std::size_t>(dn)]) {
+                        chosenRow = dn; break;
+                    }
+                    if (up >= 0 && up < MAX_ROWS
+                        && !slotTaken[static_cast<std::size_t>(eraIdx)][static_cast<std::size_t>(up)]) {
+                        chosenRow = up; break;
+                    }
+                }
+            }
+            slotTaken[static_cast<std::size_t>(eraIdx)][static_cast<std::size_t>(chosenRow)] = true;
+            const float x = COL_PAD + static_cast<float>(eraIdx) * COL_W;
+            const float y = ROW_PAD + 18.0f + static_cast<float>(chosenRow) * ROW_H;
+            CivicPos p;
+            p.cx = x + CARD_W * 0.5f; p.cy = y + CARD_H * 0.5f;
+            p.left = x; p.right = x + CARD_W; p.yMid = y + CARD_H * 0.5f;
+            p.row = chosenRow;
+            pos[i] = p;
+        }
+
+        // Connector pass.
+        constexpr float LINE_T  = 4.0f;
+        constexpr float SHADOW_T = LINE_T + 2.0f;
+        for (std::size_t i = 0; i < civics.size(); ++i) {
+            if (pos[i].row < 0) { continue; }
+            for (CivicId prereq : civics[i].prerequisites) {
+                if (!prereq.isValid() || prereq.value >= civics.size()) { continue; }
+                if (pos[prereq.value].row < 0) { continue; }
+                const CivicPos& src = pos[prereq.value];
+                const CivicPos& dst = pos[i];
+                Color lineColor = tokens::RES_CULTURE;
+                if (playerCivics->hasCompleted(civics[i].id)
+                    || playerCivics->hasCompleted(prereq)) {
+                    lineColor = tokens::STATE_SUCCESS;
+                } else if (playerCivics->canResearch(civics[i].id)) {
+                    lineColor = tokens::TEXT_GILT;
+                }
+                const float midX = (src.right + dst.left) * 0.5f;
+                const float vy0 = std::min(src.yMid, dst.yMid);
+                const float vy1 = std::max(src.yMid, dst.yMid);
+                const auto stroke = [&](float x, float y, float w, float h, const Color& c) {
+                    if (w <= 0.0f || h <= 0.0f) { return; }
+                    (void)ui.createPanel(civicCanvas, {x, y, w, h},
+                        PanelData{c, 0.0f});
+                };
+                // Shadow + colored.
+                stroke(src.right, src.yMid - SHADOW_T * 0.5f,
+                       midX - src.right + SHADOW_T * 0.5f, SHADOW_T,
+                       tokens::SURFACE_INK);
+                stroke(midX - SHADOW_T * 0.5f, vy0 - SHADOW_T * 0.5f,
+                       SHADOW_T, vy1 - vy0 + SHADOW_T, tokens::SURFACE_INK);
+                stroke(midX - SHADOW_T * 0.5f, dst.yMid - SHADOW_T * 0.5f,
+                       dst.left - midX + SHADOW_T * 0.5f, SHADOW_T,
+                       tokens::SURFACE_INK);
+                stroke(src.right, src.yMid - LINE_T * 0.5f,
+                       midX - src.right, LINE_T, lineColor);
+                stroke(midX - LINE_T * 0.5f, vy0,
+                       LINE_T, vy1 - vy0, lineColor);
+                stroke(midX, dst.yMid - LINE_T * 0.5f,
+                       dst.left - midX, LINE_T, lineColor);
+            }
+        }
+
+        // Cards.
+        for (std::size_t i = 0; i < civics.size(); ++i) {
+            if (pos[i].row < 0) { continue; }
+            const aoc::sim::CivicDef& cdef = civics[i];
+            const bool completed   = playerCivics->hasCompleted(cdef.id);
+            const bool researchable = !completed && playerCivics->canResearch(cdef.id);
+
+            Color rim, titleColor;
+            if (completed)        { rim = tokens::STATE_SUCCESS; titleColor = tokens::STATE_SUCCESS; }
+            else if (researchable){ rim = tokens::RES_CULTURE;   titleColor = tokens::TEXT_HEADER;   }
+            else                  { rim = tokens::TEXT_DISABLED; titleColor = tokens::TEXT_DISABLED; }
+
+            PanelData cardBg;
+            cardBg.backgroundColor = tokens::SURFACE_PARCHMENT;
+            cardBg.gradientBottom  = tokens::SURFACE_PARCHMENT_DIM;
+            cardBg.borderColor     = rim;
+            cardBg.borderWidth     = 1.0f;
+            cardBg.cornerRadius    = tokens::CORNER_PANEL;
+            cardBg.accentBarColor  = rim;
+            cardBg.accentBarWidth  = 3.0f;
+            cardBg.topHighlight    = tokens::BRONZE_LIGHT;
+            cardBg.bottomShadow    = tokens::SURFACE_MAHOGANY;
+
+            const CivicPos& p = pos[i];
+            WidgetId card = ui.createPanel(civicCanvas,
+                {p.left, p.yMid - CARD_H * 0.5f, CARD_W, CARD_H},
+                std::move(cardBg));
+            {
+                Widget* cw = ui.getWidget(card);
+                if (cw != nullptr) {
+                    cw->padding = {4.0f, 4.0f, 4.0f, 4.0f};
+                    cw->childSpacing = 2.0f;
+                    cw->layoutDirection = LayoutDirection::Vertical;
+                }
+            }
+            ui.setWidgetTooltip(card,
+                std::string(cdef.name) + "\nEra " + std::to_string(cdef.era.value)
+                + "  ·  " + std::to_string(cdef.cultureCost) + " culture");
+
+            // Top row: icon + name.
+            WidgetId topRow = ui.createPanel(card,
+                {0.0f, 0.0f, CARD_W - 8.0f, 18.0f},
+                PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+            {
+                Widget* tr = ui.getWidget(topRow);
+                if (tr != nullptr) {
+                    tr->layoutDirection = LayoutDirection::Horizontal;
+                    tr->childSpacing = 3.0f;
+                }
+            }
+            IconData civicIcon;
+            civicIcon.spriteId      = atlas.id("civics.unknown");
+            civicIcon.fallbackColor = rim;
+            (void)ui.createIcon(topRow, {0.0f, 0.0f, 14.0f, 14.0f},
+                                std::move(civicIcon));
+            {
+                LabelData ld;
+                ld.text         = std::string(cdef.name);
+                ld.color        = titleColor;
+                ld.fontSize     = 10.0f;
+                ld.outlineColor = tokens::SURFACE_PARCHMENT;
+                (void)ui.createLabel(topRow, {0.0f, 0.0f, CARD_W - 28.0f, 14.0f},
+                                     std::move(ld));
+            }
+
+            // Cost line.
+            std::string costLabel = std::to_string(cdef.cultureCost) + " cul";
+            (void)ui.createLabel(card, {0.0f, 0.0f, CARD_W - 8.0f, 12.0f},
+                LabelData{std::move(costLabel), tokens::RES_CULTURE, 9.0f});
+
+            // Status line.
+            std::string statusText;
+            if (completed)         { statusText = "Era " + std::to_string(cdef.era.value) + "   COMPLETED"; }
+            else if (researchable) { statusText = "Era " + std::to_string(cdef.era.value) + "   AVAILABLE"; }
+            else                   { statusText = "Era " + std::to_string(cdef.era.value) + "   LOCKED"; }
+            (void)ui.createLabel(card, {0.0f, 0.0f, CARD_W - 8.0f, 11.0f},
+                LabelData{std::move(statusText), titleColor, 9.0f});
+
+            // Research action.
+            if (researchable) {
                 aoc::game::GameState* gsPtr = this->m_gameState;
                 const PlayerId pid = this->m_player;
-                const uint16_t civicValue = cid;
-                btn.onClick = [gsPtr, pid, civicValue]() {
-                    aoc::game::Player* p = gsPtr->player(pid);
-                    if (p == nullptr) { return; }
-                    p->civics().currentResearch = CivicId{civicValue};
-                    p->civics().researchProgress = 0.0f;
+                const uint16_t civicValue = cdef.id.value;
+                ButtonData rb;
+                rb.label        = "Research";
+                rb.fontSize     = 9.0f;
+                rb.normalColor  = tokens::RES_CULTURE;
+                rb.hoverColor   = tokens::BRONZE_LIGHT;
+                rb.pressedColor = tokens::STATE_PRESSED;
+                rb.labelColor   = tokens::TEXT_GILT;
+                rb.cornerRadius = tokens::CORNER_BUTTON;
+                rb.onClick = [gsPtr, pid, civicValue]() {
+                    aoc::game::Player* pl = gsPtr->player(pid);
+                    if (pl == nullptr) { return; }
+                    pl->civics().currentResearch = CivicId{civicValue};
+                    pl->civics().researchProgress = 0.0f;
                     const aoc::sim::CivicDef& def = aoc::sim::civicDef(CivicId{civicValue});
                     LOG_INFO("Now researching civic: %.*s",
                              static_cast<int>(def.name.size()), def.name.data());
                 };
-                (void)ui.createButton(civicList, {0.0f, 0.0f, 440.0f, 24.0f}, std::move(btn));
-            } else {
-                std::string label = "-- " + std::string(cdef.name) + " (locked)";
-                (void)ui.createLabel(civicList, {0.0f, 0.0f, 440.0f, 18.0f},
-                               LabelData{std::move(label), tokens::TEXT_DISABLED, 12.0f});
+                (void)ui.createButton(card, {0.0f, 0.0f, CARD_W - 8.0f, 14.0f},
+                                       std::move(rb));
             }
         }
     }
