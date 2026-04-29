@@ -187,8 +187,16 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         float cx;
         float cy;
         bool  isLand;
+        float vx;       ///< Plate motion x-component (normalised units)
+        float vy;       ///< Plate motion y-component
     };
     std::vector<Plate> plates;
+    struct Hotspot {
+        float cx;
+        float cy;
+        float strength;
+    };
+    std::vector<Hotspot> hotspots;
 
     // Per-type waterRatio override. waterRatio drives the final ocean cutoff,
     // so LandOnly needs a tiny override and Islands a high one regardless of
@@ -214,7 +222,25 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 p.cx = centerRng.nextFloat(0.04f, 0.96f);
                 p.cy = centerRng.nextFloat(0.04f, 0.96f);
                 p.isLand = false;
+                // Random motion vector. Each plate drifts in a random
+                // direction at random speed; relative velocity at the
+                // boundary between adjacent plates drives subsequent
+                // mountain-ridge / trench placement.
+                p.vx = centerRng.nextFloat(-1.0f, 1.0f);
+                p.vy = centerRng.nextFloat(-1.0f, 1.0f);
                 plates.push_back(p);
+            }
+            // Hotspots: 3-5 mantle plumes that punch volcanic ridges /
+            // island chains regardless of plate boundaries (Hawaii,
+            // Iceland, Yellowstone reference). Strength shapes both
+            // peak elevation and falloff radius.
+            const int32_t hotspotCount = centerRng.nextInt(3, 5);
+            for (int32_t i = 0; i < hotspotCount; ++i) {
+                Hotspot h;
+                h.cx = centerRng.nextFloat(0.10f, 0.90f);
+                h.cy = centerRng.nextFloat(0.10f, 0.90f);
+                h.strength = centerRng.nextFloat(0.20f, 0.40f);
+                hotspots.push_back(h);
             }
             // Mark ~45% of plates as land. Random selection ensures
             // continents don't always sit in the same plate slots.
@@ -359,13 +385,88 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             : 0.0f;
                         const float landBase  = 0.85f;  // strong inland height
                         const float oceanBase = 0.10f;  // deep ocean
-                        const bool nearestIsLand = plates[static_cast<std::size_t>(nearest)].isLand;
+                        const Plate& pNearest = plates[static_cast<std::size_t>(nearest)];
+                        const bool nearestIsLand = pNearest.isLand;
                         const float nearestHeight = nearestIsLand ? landBase : oceanBase;
                         const bool secondIsLand =
                             (second >= 0) && plates[static_cast<std::size_t>(second)].isLand;
                         const float secondHeight = secondIsLand ? landBase : oceanBase;
                         edgeFalloff = nearestHeight * (1.0f - boundary)
                                     + secondHeight * boundary;
+
+                        // ---- Plate-motion stress at boundary ----
+                        // Convergent boundaries (plates pushing into
+                        // each other) build mountains; divergent
+                        // boundaries open trenches/rift valleys.
+                        // Stress = relative-velocity dotted with the
+                        // boundary normal pointing from nearest seed
+                        // into the second-nearest seed. Subduction is
+                        // captured by the land/ocean pair: convergent
+                        // ocean-into-land lifts coastal mountains while
+                        // deepening the trench just offshore.
+                        if (second >= 0 && boundary > 0.05f) {
+                            const Plate& pSecond = plates[static_cast<std::size_t>(second)];
+                            float bnx = pSecond.cx - pNearest.cx;
+                            float bny = pSecond.cy - pNearest.cy;
+                            const float bnLen = std::sqrt(bnx * bnx + bny * bny);
+                            if (bnLen > 0.0001f) {
+                                bnx /= bnLen;
+                                bny /= bnLen;
+                                const float relVx = pNearest.vx - pSecond.vx;
+                                const float relVy = pNearest.vy - pSecond.vy;
+                                // Positive stress = nearest plate moves
+                                // toward the second (convergent).
+                                const float stress = relVx * bnx + relVy * bny;
+                                // Boundary-proximity weight: peaks right
+                                // at the edge, falls off into either
+                                // plate.
+                                const float bandWeight = boundary * (1.0f - boundary) * 4.0f;
+                                if (stress > 0.0f) {
+                                    // Convergent.
+                                    if (nearestIsLand && secondIsLand) {
+                                        // Continental collision: high
+                                        // mountain ridge (Himalayas).
+                                        edgeFalloff += 0.30f * bandWeight * stress;
+                                    } else if (nearestIsLand != secondIsLand) {
+                                        // Subduction. Land side gets
+                                        // coastal cordillera; ocean side
+                                        // gets a deeper trench.
+                                        if (nearestIsLand) {
+                                            edgeFalloff += 0.25f * bandWeight * stress;
+                                        } else {
+                                            edgeFalloff -= 0.20f * bandWeight * stress;
+                                        }
+                                    } else {
+                                        // Ocean-ocean convergent: arc.
+                                        edgeFalloff += 0.10f * bandWeight * stress;
+                                    }
+                                } else {
+                                    // Divergent.
+                                    if (nearestIsLand && secondIsLand) {
+                                        // Rift valley.
+                                        edgeFalloff += 0.18f * bandWeight * stress;
+                                    } else {
+                                        // Mid-ocean ridge: modest rise.
+                                        edgeFalloff -= 0.05f * bandWeight * stress;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Hotspot plumes: distance-falloff bump regardless
+                    // of plate boundary. Stacks above plate elevation,
+                    // so a plume in an ocean cell becomes a volcanic
+                    // island; on land it forms an isolated highland.
+                    for (const Hotspot& h : hotspots) {
+                        const float hdx = wx - h.cx;
+                        const float hdy = wy - h.cy;
+                        const float hdist = std::sqrt(hdx * hdx + hdy * hdy);
+                        const float hRadius = 0.12f;
+                        if (hdist < hRadius) {
+                            const float t = 1.0f - hdist / hRadius;
+                            edgeFalloff += h.strength * t * t;
+                        }
                     }
                 } else {
                     for (const LandCenter& center : landCenters) {
