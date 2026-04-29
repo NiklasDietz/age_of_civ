@@ -26,7 +26,8 @@ CameraController::CameraController(const Config& config)
 }
 
 void CameraController::update(const aoc::app::InputManager& input, float deltaTime,
-                               uint32_t screenWidth, uint32_t screenHeight) {
+                               uint32_t screenWidth, uint32_t screenHeight,
+                               bool suppressEdgeScroll) {
     // --- Keyboard pan (WASD) ---
     const float panAmount = this->m_config.panSpeed * deltaTime / this->m_zoom;
 
@@ -44,29 +45,39 @@ void CameraController::update(const aoc::app::InputManager& input, float deltaTi
     }
 
     // --- Mouse edge scrolling ---
-    // Move camera when cursor enters edge zone (Civ-style). Zone width
-    // 16 pixels. Speed ramps to full panSpeed at 0 px from edge.
-    {
-        constexpr float EDGE_ZONE = 16.0f;
+    // Tight 4 px trigger zone right at the window edge. Earlier wider
+    // zones (48/16 px) fired when the cursor merely approached the
+    // bottom of the HUD or a button, sliding the map under the user
+    // mid-action. Only the outermost rim should scroll. Speed boost
+    // keeps the scroll responsive once committed.
+    if (!suppressEdgeScroll) {
+        constexpr float EDGE_ZONE  = 4.0f;
+        constexpr float RAMP_BAND  = 4.0f;
+        constexpr float EDGE_BOOST = 1.5f;
         const float mx = static_cast<float>(input.mouseX());
         const float my = static_cast<float>(input.mouseY());
         const float w = static_cast<float>(screenWidth);
         const float h = static_cast<float>(screenHeight);
-        // Only scroll while cursor is inside the window.
+        const auto edgeCoeff = [](float dist) -> float {
+            // dist = pixels into zone (0 at outer boundary, EDGE_ZONE at edge).
+            if (dist <= 0.0f)        { return 0.0f; }
+            if (dist >= RAMP_BAND)   { return 1.0f; }
+            return dist / RAMP_BAND;
+        };
         if (mx >= 0.0f && mx <= w && my >= 0.0f && my <= h) {
             float dx = 0.0f, dy = 0.0f;
             if (mx < EDGE_ZONE) {
-                dx = -(EDGE_ZONE - mx) / EDGE_ZONE;
+                dx = -edgeCoeff(EDGE_ZONE - mx);
             } else if (mx > w - EDGE_ZONE) {
-                dx = (mx - (w - EDGE_ZONE)) / EDGE_ZONE;
+                dx = edgeCoeff(mx - (w - EDGE_ZONE));
             }
             if (my < EDGE_ZONE) {
-                dy = -(EDGE_ZONE - my) / EDGE_ZONE;
+                dy = -edgeCoeff(EDGE_ZONE - my);
             } else if (my > h - EDGE_ZONE) {
-                dy = (my - (h - EDGE_ZONE)) / EDGE_ZONE;
+                dy = edgeCoeff(my - (h - EDGE_ZONE));
             }
-            this->m_cameraX += dx * panAmount;
-            this->m_cameraY += dy * panAmount;
+            this->m_cameraX += dx * panAmount * EDGE_BOOST;
+            this->m_cameraY += dy * panAmount * EDGE_BOOST;
         }
     }
 

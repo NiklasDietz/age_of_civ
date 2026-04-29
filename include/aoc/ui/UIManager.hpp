@@ -345,6 +345,12 @@ private:
     /// `m_pressedWidget` so left-drag and right-click are independent.
     WidgetId m_rightPressedWidget = INVALID_WIDGET;
 
+    /// Pan canvas (e.g. tech tree) currently being right-mouse dragged.
+    /// Tracks `panX`/`panY` deltas across frames; cleared on release.
+    WidgetId m_panningWidget = INVALID_WIDGET;
+    float    m_panLastMouseX = 0.0f;
+    float    m_panLastMouseY = 0.0f;
+
     /// Keyboard-focused widget (Tab order). Renders with a focus ring
     /// and responds to Enter/Space via `activateFocused`.
     WidgetId m_focusedWidget = INVALID_WIDGET;

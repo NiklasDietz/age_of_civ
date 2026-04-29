@@ -4,6 +4,7 @@
  */
 
 #include "aoc/ui/ScoreScreen.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -171,27 +172,21 @@ void ScoreScreen::open(UIManager& ui) {
             "Player " + std::to_string(static_cast<unsigned>(this->m_victoryResult.winner))
                       + " wins by " + victoryName + " Victory!";
         (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 660.0f, 24.0f},
-            LabelData{std::move(header), {1.0f, 0.85f, 0.2f, 1.0f}, 18.0f});
+            LabelData{std::move(header), tokens::TEXT_HEADER, 18.0f});
     }
 
     // Column header
     {
         std::string colHeader = "Player     Mil   Sci   Cul   Eco   City  Rel   Won   TOTAL";
         (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 660.0f, 16.0f},
-            LabelData{std::move(colHeader), {0.7f, 0.7f, 0.7f, 1.0f}, 12.0f});
+            LabelData{std::move(colHeader), tokens::TEXT_DISABLED, 12.0f});
     }
 
-    // Score rows
+    // Score rows. Winner highlighted with gilt; others in body ink.
+    // (Confederation co-winners removed sweep 2026-04-27.)
     for (const PlayerScoreEntry& entry : this->m_scores) {
-        bool isWinner = (entry.owner == this->m_victoryResult.winner);
-        if (!isWinner) {
-            for (aoc::PlayerId co : this->m_victoryResult.coWinners) {
-                if (co == entry.owner) { isWinner = true; break; }
-            }
-        }
-        const Color rowColor = isWinner
-            ? Color{1.0f, 0.95f, 0.4f, 1.0f}
-            : Color{0.85f, 0.85f, 0.85f, 1.0f};
+        const bool isWinner = (entry.owner == this->m_victoryResult.winner);
+        const Color rowColor = isWinner ? tokens::STATE_SUCCESS : tokens::TEXT_INK;
 
         // Resolve civ name from player's civId
         std::string civName;

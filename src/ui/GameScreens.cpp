@@ -4,7 +4,9 @@
  */
 
 #include "aoc/ui/GameScreens.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 #include "aoc/ui/UIManager.hpp"
+#include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/ui/IconAtlas.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -17,6 +19,7 @@
 #include "aoc/simulation/city/CityLoyalty.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/TechGating.hpp"
+#include "aoc/simulation/tech/EurekaBoost.hpp"
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/monetary/MonetarySystem.hpp"
@@ -31,16 +34,195 @@
 #include "aoc/map/Pathfinding.hpp"
 #include "aoc/simulation/wonder/Wonder.hpp"
 #include "aoc/simulation/map/Improvement.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
 
 namespace aoc::ui {
+
+// ============================================================================
+// Icon-mapping helpers (TechCard, ProductionCard, …)
+// Maps strong-typed game IDs to IconAtlas string keys. Keys live in
+// IconAtlas::seedBuiltIns(); when the requested key is missing the
+// atlas falls back to a neutral grey rect so the UI still draws.
+// ============================================================================
+namespace {
+
+const char* eraIconKey(uint16_t era) {
+    switch (era) {
+        case 0: return "techs.ancient";
+        case 1: return "techs.classical";
+        case 2: return "techs.medieval";
+        case 3: return "techs.renaissance";
+        case 4: return "techs.industrial";
+        case 5: return "techs.modern";
+        case 6: return "techs.atomic";
+        case 7: return "techs.information";
+        default: return "techs.unknown";
+    }
+}
+
+const char* techIconKey(const aoc::sim::TechDef& def) {
+    // Specific overrides take priority for the iconic techs; everything
+    // else falls back to its era band.
+    using namespace std::string_view_literals;
+    if (def.name == "Mining"sv)        { return "techs.mining"; }
+    if (def.name == "Iron Working"sv)  { return "techs.iron-working"; }
+    if (def.name == "Electricity"sv)   { return "techs.electricity"; }
+    if (def.name == "Computers"sv)     { return "techs.computers"; }
+    return eraIconKey(def.era.value);
+}
+
+const char* unitClassIconKey(aoc::sim::UnitClass cls) {
+    using UC = aoc::sim::UnitClass;
+    switch (cls) {
+        case UC::Melee:       return "units.melee";
+        case UC::Ranged:      return "units.ranged";
+        case UC::Cavalry:     return "units.cavalry";
+        case UC::Armor:       return "units.armor";
+        case UC::Artillery:   return "units.artillery";
+        case UC::AntiCavalry: return "units.anticavalry";
+        case UC::Air:         return "units.air-fighter";
+        case UC::Helicopter:  return "units.air-helicopter";
+        case UC::Naval:       return "units.naval-melee";
+        case UC::Settler:     return "units.settler";
+        case UC::Scout:       return "units.recon";
+        case UC::Civilian:    return "units.builder";
+        case UC::Religious:   return "units.missionary";
+        case UC::Trader:      return "units.trader";
+        case UC::Logistics:   return "units.support";
+        default:              return "units.unknown";
+    }
+}
+
+const char* buildableIconKey(const aoc::sim::BuildableItem& item) {
+    using PT = aoc::sim::ProductionItemType;
+    switch (item.type) {
+        case PT::Unit: {
+            // Item id is the UnitTypeId.value packed into uint16.
+            return unitClassIconKey(
+                aoc::sim::unitTypeDef(UnitTypeId{item.id}).unitClass);
+        }
+        case PT::Building: {
+            // For buildings, requiredDistrict drives the silhouette.
+            const aoc::sim::BuildingDef& def = aoc::sim::buildingDef(BuildingId{item.id});
+            switch (def.requiredDistrict) {
+                case aoc::sim::DistrictType::CityCenter:  return "buildings.citycenter";
+                case aoc::sim::DistrictType::Campus:      return "buildings.campus";
+                case aoc::sim::DistrictType::Commercial:  return "buildings.commercial";
+                case aoc::sim::DistrictType::Encampment:  return "buildings.encampment";
+                case aoc::sim::DistrictType::Industrial:  return "buildings.industrial";
+                case aoc::sim::DistrictType::HolySite:    return "buildings.holysite";
+                case aoc::sim::DistrictType::Theatre:     return "buildings.theatre";
+                case aoc::sim::DistrictType::Harbor:      return "buildings.harbor";
+                default:                                  return "buildings.unknown";
+            }
+        }
+        case PT::Wonder:
+            return "wonders.generic";
+        case PT::District:
+            return "districts.citycenter";
+    }
+    return "buildings.unknown";
+}
+
+Color buildableAccent(aoc::sim::ProductionItemType t) {
+    using PT = aoc::sim::ProductionItemType;
+    switch (t) {
+        case PT::Unit:     return tokens::DIPLO_HOSTILE;
+        case PT::Building: return tokens::RES_PRODUCTION;
+        case PT::Wonder:   return tokens::RES_GOLD;
+        case PT::District: return tokens::RES_CULTURE;
+    }
+    return tokens::BRONZE_BASE;
+}
+
+const char* buildableTypeLabel(aoc::sim::ProductionItemType t) {
+    using PT = aoc::sim::ProductionItemType;
+    switch (t) {
+        case PT::Unit:     return "Unit";
+        case PT::Building: return "Building";
+        case PT::Wonder:   return "Wonder";
+        case PT::District: return "District";
+    }
+    return "?";
+}
+
+const char* buildingDistrictIconKey(aoc::sim::DistrictType dt) {
+    using DT = aoc::sim::DistrictType;
+    switch (dt) {
+        case DT::CityCenter:  return "buildings.citycenter";
+        case DT::Campus:      return "buildings.campus";
+        case DT::Commercial:  return "buildings.commercial";
+        case DT::Encampment:  return "buildings.encampment";
+        case DT::Industrial:  return "buildings.industrial";
+        case DT::HolySite:    return "buildings.holysite";
+        case DT::Theatre:     return "buildings.theatre";
+        case DT::Harbor:      return "buildings.harbor";
+        default:              return "buildings.unknown";
+    }
+}
+
+/// Find the eureka boost matching a given tech (linear scan, ~30 entries).
+/// Returns nullptr when no boost is registered for the tech.
+const aoc::sim::EurekaBoostDef* findTechEureka(TechId id) {
+    if (!id.isValid()) { return nullptr; }
+    for (const aoc::sim::EurekaBoostDef& b : aoc::sim::getEurekaBoosts()) {
+        if (b.techId.isValid() && b.techId.value == id.value) {
+            return &b;
+        }
+    }
+    return nullptr;
+}
+
+/// Build the rich tooltip body for a tech card (name + era + cost +
+/// unlock list). Multi-line via "\n" — TooltipManager handles wrapping.
+std::string formatTechTooltip(const aoc::sim::TechDef& def) {
+    std::string out;
+    out.reserve(256);
+    out.append(def.name);
+    out += "\nEra ";
+    out += std::to_string(def.era.value);
+    out += "  ·  ";
+    out += std::to_string(def.researchCost);
+    out += " science";
+    if (!def.unlockedUnits.empty()) {
+        out += "\nUnlocks units: ";
+        for (std::size_t i = 0; i < def.unlockedUnits.size(); ++i) {
+            if (i > 0) { out += ", "; }
+            out.append(aoc::sim::unitTypeDef(def.unlockedUnits[i]).name);
+        }
+    }
+    if (!def.unlockedBuildings.empty()) {
+        out += "\nUnlocks buildings: ";
+        for (std::size_t i = 0; i < def.unlockedBuildings.size(); ++i) {
+            if (i > 0) { out += ", "; }
+            out.append(aoc::sim::buildingDef(def.unlockedBuildings[i]).name);
+        }
+    }
+    if (!def.unlockedGoods.empty()) {
+        out += "\nReveals ";
+        out += std::to_string(def.unlockedGoods.size());
+        out += " resource(s)";
+    }
+    if (const aoc::sim::EurekaBoostDef* eb = findTechEureka(def.id)) {
+        out += "\nEureka: ";
+        out.append(eb->description);
+        out += "  (+";
+        out += std::to_string(static_cast<int>(eb->boostFraction * 100.0f));
+        out += "% progress)";
+    }
+    return out;
+}
+
+} // anonymous namespace
 
 // ============================================================================
 // ScreenBase
@@ -79,9 +261,10 @@ WidgetId ScreenBase::createScreenFrame(UIManager& ui, const std::string& title,
     // background missing). The layout-level `clampChildren` pass
     // already prevents overflow; scissor would be belt-and-suspenders
     // but needs screen-space coords first.
+    // Frost-dim full-screen overlay (style guide: SURFACE_FROST_DIM under modals).
     this->m_rootPanel = ui.createPanel(
         {0.0f, 0.0f, screenW, screenH},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.5f}, 0.0f});
+        PanelData{tokens::SURFACE_FROST_DIM, 0.0f});
 
     // Open-animation: fade in over 150ms. Starts at alpha 0 so the
     // overlay + inner panel appear smoothly rather than popping.
@@ -100,16 +283,18 @@ WidgetId ScreenBase::createScreenFrame(UIManager& ui, const std::string& title,
     // "framed window" look without any texture art.
     const float panelX = (screenW - width) * 0.5f;
     const float panelY = (screenH - height) * 0.5f;
+    // Modal panel: parchment surface, bronze border, gilt highlight,
+    // mahogany-shadow underline, bronze accent ribbon on the left edge.
     PanelData innerBg;
-    innerBg.backgroundColor = {0.14f, 0.16f, 0.22f, 0.97f};
-    innerBg.gradientBottom  = {0.06f, 0.07f, 0.10f, 0.97f};
-    innerBg.borderColor     = {0.85f, 0.72f, 0.30f, 0.55f};
+    innerBg.backgroundColor = tokens::SURFACE_PARCHMENT;
+    innerBg.gradientBottom  = tokens::SURFACE_PARCHMENT_DIM;
+    innerBg.borderColor     = tokens::BRONZE_BASE;
     innerBg.borderWidth     = 1.5f;
-    innerBg.topHighlight    = {1.0f, 1.0f, 1.0f, 0.15f};
-    innerBg.bottomShadow    = {0.0f, 0.0f, 0.0f, 0.45f};
-    innerBg.accentBarColor  = {0.85f, 0.72f, 0.30f, 0.85f};
+    innerBg.topHighlight    = tokens::BRONZE_LIGHT;
+    innerBg.bottomShadow    = tokens::SURFACE_MAHOGANY;
+    innerBg.accentBarColor  = tokens::BRONZE_DARK;
     innerBg.accentBarWidth  = 3.0f;
-    innerBg.cornerRadius    = 6.0f;
+    innerBg.cornerRadius    = tokens::CORNER_PANEL;
     WidgetId innerPanel = ui.createPanel(
         this->m_rootPanel,
         {panelX, panelY, width, height},
@@ -121,18 +306,27 @@ WidgetId ScreenBase::createScreenFrame(UIManager& ui, const std::string& title,
         inner->childSpacing = 6.0f;
     }
 
-    // Title label at top
-    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, width - 24.0f, 22.0f},
-                   LabelData{title, {1.0f, 0.9f, 0.5f, 1.0f}, 18.0f});
+    // Title label at top. Header tone with parchment outline so titles
+    // read whether the modal sits over the map or on parchment fill.
+    {
+        LabelData ld;
+        ld.text         = title;
+        ld.color        = tokens::TEXT_HEADER;
+        ld.fontSize     = 18.0f;
+        ld.outlineColor = tokens::SURFACE_PARCHMENT;
+        (void)ui.createLabel(innerPanel, {0.0f, 0.0f, width - 24.0f, 22.0f},
+                       std::move(ld));
+    }
 
-    // "Close [ESC]" button at bottom-right
+    // "Close [ESC]" button at bottom-right (danger / cancel).
     ButtonData closeBtn;
     closeBtn.label = "Close [ESC]";
     closeBtn.fontSize = 12.0f;
-    closeBtn.normalColor = {0.3f, 0.15f, 0.15f, 0.9f};
-    closeBtn.hoverColor = {0.45f, 0.2f, 0.2f, 0.9f};
-    closeBtn.pressedColor = {0.2f, 0.1f, 0.1f, 0.9f};
-    closeBtn.cornerRadius = 4.0f;
+    closeBtn.normalColor  = tokens::STATE_DANGER;
+    closeBtn.hoverColor   = tokens::DIPLO_HOSTILE;
+    closeBtn.pressedColor = tokens::DIPLO_AT_WAR;
+    closeBtn.labelColor   = tokens::TEXT_PARCHMENT;
+    closeBtn.cornerRadius = tokens::CORNER_BUTTON;
     closeBtn.onClick = [this, &ui]() {
         this->close(ui);
     };
@@ -168,10 +362,11 @@ void ProductionScreen::open(UIManager& ui) {
     assert(this->m_gameState != nullptr);
     this->m_isOpen = true;
 
+    constexpr float SCREEN_W = 720.0f;
+    constexpr float SCREEN_H = 600.0f;
     WidgetId innerPanel = this->createScreenFrame(
-        ui, "Production", 450.0f, 500.0f, this->m_screenW, this->m_screenH);
+        ui, "Production", SCREEN_W, SCREEN_H, this->m_screenW, this->m_screenH);
 
-    // Locate the player and city in the GameState object model
     aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
     aoc::game::City* city = nullptr;
     if (owningPlayer != nullptr) {
@@ -183,39 +378,80 @@ void ProductionScreen::open(UIManager& ui) {
         }
     }
 
-    // Current queue label
-    std::string queueText = "Queue: empty";
-    if (city != nullptr) {
-        const aoc::sim::ProductionQueueItem* current = city->production().currentItem();
-        if (current != nullptr) {
-            queueText = "Building: " + current->name + " ("
-                      + std::to_string(static_cast<int>(current->progress)) + "/"
-                      + std::to_string(static_cast<int>(current->totalCost)) + ")";
-        }
-    }
-    this->m_queueLabel = ui.createLabel(
-        innerPanel, {0.0f, 0.0f, 420.0f, 16.0f},
-        LabelData{std::move(queueText), {0.8f, 0.9f, 0.8f, 1.0f}, 13.0f});
+    IconAtlas& atlas = IconAtlas::instance();
 
-    // Pending-queue reorder rows: drag an item over another to swap
-    // positions. Renders the queue.tail (skipping index 0 which is
-    // the current-building displayed above). onDrop fires the swap
-    // via UIManager's drop-handler map.
+    // ----- Current production banner with progress bar -----
+    {
+        WidgetId banner = ui.createPanel(innerPanel,
+            {0.0f, 0.0f, SCREEN_W - 24.0f, 56.0f},
+            [&]() {
+                PanelData pd;
+                pd.backgroundColor = tokens::SURFACE_PARCHMENT;
+                pd.gradientBottom  = tokens::SURFACE_PARCHMENT_DIM;
+                pd.borderColor     = tokens::BRONZE_DARK;
+                pd.borderWidth     = 1.0f;
+                pd.cornerRadius    = tokens::CORNER_PANEL;
+                pd.accentBarColor  = tokens::RES_PRODUCTION;
+                pd.accentBarWidth  = 4.0f;
+                return pd;
+            }());
+        {
+            Widget* bw = ui.getWidget(banner);
+            if (bw != nullptr) {
+                bw->padding = {6.0f, 8.0f, 6.0f, 8.0f};
+                bw->childSpacing = 3.0f;
+            }
+        }
+
+        std::string title = "Idle";
+        std::string costLine = "No active production";
+        float fillFrac = 0.0f;
+        if (city != nullptr) {
+            const aoc::sim::ProductionQueueItem* current = city->production().currentItem();
+            if (current != nullptr) {
+                title = "Producing: " + current->name;
+                costLine = std::to_string(static_cast<int>(current->progress)) + " / "
+                         + std::to_string(static_cast<int>(current->totalCost)) + " prod";
+                if (current->totalCost > 0.0f) {
+                    fillFrac = std::clamp(current->progress / current->totalCost, 0.0f, 1.0f);
+                }
+            }
+        }
+        this->m_queueLabel = ui.createLabel(
+            banner, {0.0f, 0.0f, SCREEN_W - 40.0f, 18.0f},
+            LabelData{std::move(title), tokens::TEXT_HEADER, 14.0f});
+        (void)ui.createLabel(
+            banner, {0.0f, 0.0f, SCREEN_W - 40.0f, 14.0f},
+            LabelData{std::move(costLine), tokens::TEXT_INK, 11.0f});
+        ProgressBarData pb;
+        pb.fillFraction = fillFrac;
+        pb.cornerRadius = 3.0f;
+        (void)ui.createProgressBar(banner,
+            {0.0f, 0.0f, SCREEN_W - 40.0f, 8.0f}, std::move(pb));
+    }
+
+    // ----- Queue rows (drag-to-reorder kept) -----
     if (city != nullptr) {
         std::vector<aoc::sim::ProductionQueueItem>& queue = city->production().queue;
         if (queue.size() > 1) {
-            (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 420.0f, 14.0f},
-                LabelData{"-- Queued (drag to reorder) --",
-                          {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
+            (void)ui.createLabel(innerPanel, {0.0f, 0.0f, SCREEN_W - 24.0f, 14.0f},
+                LabelData{"Queued (drag to reorder)", tokens::TEXT_HEADER, 12.0f});
             for (std::size_t qi = 1; qi < queue.size(); ++qi) {
                 ListRowData qrow;
-                qrow.title      = queue[qi].name;
-                qrow.subtitle   = std::to_string(static_cast<int>(queue[qi].totalCost))
-                                 + " prod";
-                qrow.rightValue = "#" + std::to_string(qi);
+                qrow.title       = queue[qi].name;
+                qrow.subtitle    = std::to_string(static_cast<int>(queue[qi].totalCost)) + " prod";
+                qrow.rightValue  = "#" + std::to_string(qi);
+                qrow.iconSpriteId = atlas.id("yields.production");
+                qrow.iconSize    = 18.0f;
+                qrow.titleColor    = tokens::TEXT_INK;
+                qrow.subtitleColor = tokens::TEXT_DISABLED;
+                qrow.valueColor    = tokens::TEXT_HEADER;
+                qrow.accentColor   = tokens::RES_PRODUCTION;
+                qrow.hoverBg       = tokens::SURFACE_PARCHMENT_DIM;
+                qrow.pressedBg     = tokens::BRONZE_DARK;
 
                 WidgetId rid = ui.createListRow(
-                    innerPanel, {0.0f, 0.0f, 0.0f, 26.0f}, std::move(qrow));
+                    innerPanel, {0.0f, 0.0f, SCREEN_W - 24.0f, 26.0f}, std::move(qrow));
                 Widget* rw = ui.getWidget(rid);
                 if (rw != nullptr) {
                     rw->canDrag     = true;
@@ -233,82 +469,141 @@ void ProductionScreen::open(UIManager& ui) {
         }
     }
 
-    // Separator label
-    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 420.0f, 14.0f},
-                   LabelData{"-- Available Items --", {0.6f, 0.6f, 0.7f, 1.0f}, 12.0f});
+    // ----- Buildable cards: 2-col grid -----
+    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, SCREEN_W - 24.0f, 14.0f},
+        LabelData{"Available", tokens::TEXT_HEADER, 12.0f});
 
-    // Scroll list of buildable items
     this->m_itemList = ui.createScrollList(
-        innerPanel, {0.0f, 0.0f, 420.0f, 350.0f});
-
-    Widget* listWidget = ui.getWidget(this->m_itemList);
-    if (listWidget != nullptr) {
-        listWidget->padding = {4.0f, 4.0f, 4.0f, 4.0f};
-        listWidget->childSpacing = 3.0f;
+        innerPanel, {0.0f, 0.0f, SCREEN_W - 24.0f, SCREEN_H - 240.0f});
+    {
+        Widget* listWidget = ui.getWidget(this->m_itemList);
+        if (listWidget != nullptr) {
+            listWidget->padding = {6.0f, 6.0f, 6.0f, 6.0f};
+            listWidget->childSpacing = 8.0f;
+            listWidget->gridColumns = 2;
+        }
     }
 
-    // Build the list of available items using tech gating
-    const std::vector<aoc::sim::BuildableItem> buildableItems =
-        aoc::sim::getBuildableItems(*this->m_gameState, this->m_player, *resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation));
+    constexpr float CARD_W = 330.0f;
+    constexpr float CARD_H = 78.0f;
 
-    for (const aoc::sim::BuildableItem& buildable : buildableItems) {
-        std::string itemLabel = std::string(buildable.name) + " ("
-                              + std::to_string(static_cast<int>(buildable.cost)) + ")";
+    aoc::game::City* cityPtr = city;
+    aoc::game::City* resolved = resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation);
+    if (resolved != nullptr) {
+        const std::vector<aoc::sim::BuildableItem> buildableItems =
+            aoc::sim::getBuildableItems(*this->m_gameState, this->m_player, *resolved);
 
-        // Tag wonders for clarity
-        if (buildable.type == aoc::sim::ProductionItemType::Wonder) {
-            itemLabel += " (Wonder)";
-        }
+        for (const aoc::sim::BuildableItem& buildable : buildableItems) {
+            const Color accent = buildableAccent(buildable.type);
+            const Color rim    = buildable.locked ? tokens::TEXT_DISABLED : accent;
 
-        ButtonData btn;
-        btn.label = std::move(itemLabel);
-        btn.fontSize = 12.0f;
-        btn.cornerRadius = 3.0f;
+            PanelData cardBg;
+            cardBg.backgroundColor = tokens::SURFACE_PARCHMENT;
+            cardBg.gradientBottom  = tokens::SURFACE_PARCHMENT_DIM;
+            cardBg.borderColor     = rim;
+            cardBg.borderWidth     = 1.0f;
+            cardBg.cornerRadius    = tokens::CORNER_PANEL;
+            cardBg.accentBarColor  = rim;
+            cardBg.accentBarWidth  = 3.0f;
+            cardBg.topHighlight    = tokens::BRONZE_LIGHT;
+            cardBg.bottomShadow    = tokens::SURFACE_MAHOGANY;
 
-        // Color-code by type
-        switch (buildable.type) {
-            case aoc::sim::ProductionItemType::Unit:
-                btn.normalColor  = {0.2f, 0.2f, 0.28f, 0.9f};
-                btn.hoverColor   = {0.3f, 0.3f, 0.38f, 0.9f};
-                btn.pressedColor = {0.15f, 0.15f, 0.2f, 0.9f};
-                break;
-            case aoc::sim::ProductionItemType::Building:
-                btn.normalColor  = {0.2f, 0.25f, 0.2f, 0.9f};
-                btn.hoverColor   = {0.3f, 0.35f, 0.3f, 0.9f};
-                btn.pressedColor = {0.15f, 0.18f, 0.15f, 0.9f};
-                break;
-            case aoc::sim::ProductionItemType::Wonder:
-                btn.normalColor  = {0.28f, 0.22f, 0.15f, 0.9f};
-                btn.hoverColor   = {0.40f, 0.32f, 0.20f, 0.9f};
-                btn.pressedColor = {0.20f, 0.15f, 0.10f, 0.9f};
-                break;
-            case aoc::sim::ProductionItemType::District:
-                btn.normalColor  = {0.2f, 0.2f, 0.25f, 0.9f};
-                btn.hoverColor   = {0.3f, 0.3f, 0.35f, 0.9f};
-                btn.pressedColor = {0.15f, 0.15f, 0.18f, 0.9f};
-                break;
-        }
-
-        const aoc::sim::ProductionItemType itemType = buildable.type;
-        const uint16_t itemId = buildable.id;
-        const float itemCost = buildable.cost;
-        const std::string itemName(buildable.name);
-        aoc::game::City* cityPtr = city;
-        btn.onClick = [cityPtr, itemType, itemId, itemCost, itemName]() {
-            if (cityPtr == nullptr) {
-                return;
+            WidgetId card = ui.createPanel(this->m_itemList,
+                {0.0f, 0.0f, CARD_W, CARD_H}, std::move(cardBg));
+            {
+                Widget* cw = ui.getWidget(card);
+                if (cw != nullptr) {
+                    cw->padding = {6.0f, 8.0f, 6.0f, 8.0f};
+                    cw->childSpacing = 3.0f;
+                    cw->layoutDirection = LayoutDirection::Horizontal;
+                }
             }
-            aoc::sim::ProductionQueueItem item{};
-            item.type      = itemType;
-            item.itemId    = itemId;
-            item.name      = itemName;
-            item.totalCost = itemCost;
-            item.progress  = 0.0f;
-            cityPtr->production().queue.push_back(std::move(item));
-            LOG_INFO("Enqueued: %s", itemName.c_str());
-        };
+            ui.setWidgetTooltip(card,
+                std::string(buildable.name) + "\n"
+                + buildableTypeLabel(buildable.type) + "  ·  "
+                + std::to_string(static_cast<int>(buildable.cost)) + " production"
+                + (buildable.locked ? "\n(locked: prereq unmet)" : std::string{}));
 
-        (void)ui.createButton(this->m_itemList, {0.0f, 0.0f, 410.0f, 24.0f}, std::move(btn));
+            // Left: portrait icon column
+            IconData portrait;
+            portrait.spriteId      = atlas.id(buildableIconKey(buildable));
+            portrait.fallbackColor = accent;
+            portrait.tint          = buildable.locked
+                ? Color{0.6f, 0.6f, 0.6f, 1.0f} : Color{1.0f, 1.0f, 1.0f, 1.0f};
+            (void)ui.createIcon(card, {0.0f, 0.0f, 48.0f, 48.0f}, std::move(portrait));
+
+            // Right: vertical text column inside its own sub-panel
+            WidgetId textCol = ui.createPanel(card,
+                {0.0f, 0.0f, CARD_W - 80.0f, 60.0f},
+                PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+            {
+                Widget* tc = ui.getWidget(textCol);
+                if (tc != nullptr) {
+                    tc->layoutDirection = LayoutDirection::Vertical;
+                    tc->childSpacing = 2.0f;
+                    tc->padding = {0.0f, 4.0f, 0.0f, 4.0f};
+                }
+            }
+            const Color titleColor = buildable.locked
+                ? tokens::TEXT_DISABLED : tokens::TEXT_HEADER;
+            (void)ui.createLabel(textCol,
+                {0.0f, 0.0f, CARD_W - 80.0f, 16.0f},
+                LabelData{std::string(buildable.name), titleColor, 13.0f});
+
+            // Type chip + cost line in a horizontal sub-row
+            WidgetId metaRow = ui.createPanel(textCol,
+                {0.0f, 0.0f, CARD_W - 80.0f, 16.0f},
+                PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+            {
+                Widget* mr = ui.getWidget(metaRow);
+                if (mr != nullptr) {
+                    mr->layoutDirection = LayoutDirection::Horizontal;
+                    mr->childSpacing = 6.0f;
+                }
+            }
+            (void)ui.createLabel(metaRow, {0.0f, 0.0f, 60.0f, 14.0f},
+                LabelData{buildableTypeLabel(buildable.type), accent, 11.0f});
+            IconData hammer;
+            hammer.spriteId      = atlas.id("yields.production");
+            hammer.fallbackColor = tokens::RES_PRODUCTION;
+            (void)ui.createIcon(metaRow, {0.0f, 0.0f, 12.0f, 12.0f}, std::move(hammer));
+            (void)ui.createLabel(metaRow, {0.0f, 0.0f, 60.0f, 14.0f},
+                LabelData{std::to_string(static_cast<int>(buildable.cost)),
+                          tokens::TEXT_HEADER, 12.0f});
+            if (buildable.locked) {
+                (void)ui.createLabel(metaRow, {0.0f, 0.0f, 60.0f, 14.0f},
+                    LabelData{"LOCKED", tokens::STATE_DANGER, 10.0f});
+            }
+
+            // Build action — child button at bottom of text column.
+            if (!buildable.locked) {
+                const aoc::sim::ProductionItemType itemType = buildable.type;
+                const uint16_t itemId = buildable.id;
+                const float itemCost = buildable.cost;
+                const std::string itemName(buildable.name);
+                ButtonData btn;
+                btn.label        = "Add to Queue";
+                btn.fontSize     = 11.0f;
+                btn.normalColor  = tokens::BRONZE_BASE;
+                btn.hoverColor   = tokens::BRONZE_LIGHT;
+                btn.pressedColor = tokens::STATE_PRESSED;
+                btn.labelColor   = tokens::TEXT_GILT;
+                btn.cornerRadius = tokens::CORNER_BUTTON;
+                btn.onClick = [cityPtr, itemType, itemId, itemCost, itemName]() {
+                    if (cityPtr == nullptr) { return; }
+                    aoc::sim::ProductionQueueItem item{};
+                    item.type      = itemType;
+                    item.itemId    = itemId;
+                    item.name      = itemName;
+                    item.totalCost = itemCost;
+                    item.progress  = 0.0f;
+                    cityPtr->production().queue.push_back(std::move(item));
+                    LOG_INFO("Enqueued: %s", itemName.c_str());
+                };
+                (void)ui.createButton(textCol,
+                    {0.0f, 0.0f, CARD_W - 80.0f, 18.0f}, std::move(btn));
+            }
+        }
     }
 
     ui.layout();
@@ -372,68 +667,471 @@ void TechScreen::open(UIManager& ui) {
     assert(this->m_gameState != nullptr);
     this->m_isOpen = true;
 
-    WidgetId innerPanel = this->createScreenFrame(
-        ui, "Technology", 500.0f, 550.0f, this->m_screenW, this->m_screenH);
+    // Civ-6-style horizontal tech graph. Eight era columns, prereq lines
+    // from each tech to its dependents. Cards laid out absolutely so the
+    // connector lines can land precisely on card centres. No scroll —
+    // 31 techs × max 7 per era fit at 100×56 cards.
+    constexpr int   ERA_COUNT = 8;
+    constexpr float CARD_W    = 124.0f;
+    constexpr float CARD_H    = 110.0f;  // fits topRow + cost + eureka + unlocks + donut
+    constexpr float COL_GAP   = 50.0f;   // horizontal gap (room for prereq lines)
+    constexpr float ROW_GAP   = 8.0f;
+    constexpr float ROW_PAD   = 12.0f;
+    constexpr float COL_PAD   = 16.0f;
+    constexpr float COL_W     = CARD_W + COL_GAP;
+    constexpr float ROW_H     = CARD_H + ROW_GAP;
+    const float graphW = COL_PAD * 2.0f + COL_W * static_cast<float>(ERA_COUNT) - COL_GAP;
+    // Reserve canvas space for ~16 rows; the bigger graph (up to 32 rows
+    // after expanded techs) lives off-screen and is reachable via pan /
+    // wheel scroll on the canvas.
+    const float graphH = ROW_PAD * 2.0f + ROW_H * 16.0f;
 
-    // Find player tech component through the object model
+    // Wider modal so all 8 eras fit. Height capped to fit the screen;
+    // the graph extends beyond visible bounds and is reachable via pan
+    // / mouse-wheel scroll.
+    const float SCREEN_W = std::min(graphW + 36.0f, this->m_screenW - 40.0f);
+    const float SCREEN_H = std::min(graphH + 110.0f, this->m_screenH - 40.0f);
+    WidgetId innerPanel = this->createScreenFrame(
+        ui, "Technology", SCREEN_W, SCREEN_H, this->m_screenW, this->m_screenH);
+
     const aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
     const aoc::sim::PlayerTechComponent* playerTech =
         (owningPlayer != nullptr) ? &owningPlayer->tech() : nullptr;
+    const aoc::sim::PlayerEurekaComponent* playerEureka =
+        (owningPlayer != nullptr) ? &owningPlayer->eureka() : nullptr;
+    // Snapshot science output once so per-card turn estimates are stable
+    // while the modal is open. No grid available → 0 → labels show "?".
+    float sciencePerTurn = 0.0f;
+    if (owningPlayer != nullptr && this->m_grid != nullptr) {
+        sciencePerTurn = owningPlayer->sciencePerTurn(*this->m_grid);
+    }
 
-    // Current research label
+    // ----- Current research banner -----
     std::string currentText = "No active research";
     if (playerTech != nullptr && playerTech->currentResearch.isValid()) {
         const aoc::sim::TechDef& def = aoc::sim::techDef(playerTech->currentResearch);
         currentText = "Researching: " + std::string(def.name)
-                    + " (" + std::to_string(static_cast<int>(playerTech->researchProgress))
+                    + "  (" + std::to_string(static_cast<int>(playerTech->researchProgress))
                     + "/" + std::to_string(def.researchCost) + ")";
     }
     this->m_currentLabel = ui.createLabel(
-        innerPanel, {0.0f, 0.0f, 470.0f, 16.0f},
-        LabelData{std::move(currentText), {0.7f, 0.85f, 1.0f, 1.0f}, 13.0f});
+        innerPanel, {0.0f, 0.0f, SCREEN_W - 24.0f, 18.0f},
+        LabelData{std::move(currentText), tokens::RES_SCIENCE, 14.0f});
 
-    // Separator
-    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 14.0f},
-                   LabelData{"-- All Technologies --", {0.6f, 0.6f, 0.7f, 1.0f}, 12.0f});
-
-    // Tech list rendered as 2-column grid. True tech-tree graph
-    // (prereq lines) pending — grid approximates the visual density
-    // of a node graph without the arrow primitives.
-    this->m_techList = ui.createScrollList(
-        innerPanel, {0.0f, 0.0f, 470.0f, 400.0f});
-
-    Widget* listWidget = ui.getWidget(this->m_techList);
-    if (listWidget != nullptr) {
-        listWidget->padding = {4.0f, 4.0f, 4.0f, 4.0f};
-        listWidget->childSpacing = 3.0f;
-        listWidget->gridColumns = 2;
+    // ----- Graph canvas (absolute positioning) -----
+    PanelData canvasBg;
+    canvasBg.backgroundColor = tokens::SURFACE_PARCHMENT_DIM;
+    canvasBg.cornerRadius    = tokens::CORNER_PANEL;
+    canvasBg.borderColor     = tokens::BRONZE_DARK;
+    canvasBg.borderWidth     = 1.0f;
+    // Cap rendered canvas size at the screen frame so wide graphs are
+    // viewport-clipped; canPan + edge-scroll let the user reach the
+    // hidden columns. The canvas's intrinsic content size still drives
+    // child layout via panX/panY shifting.
+    const float canvasW = std::min(graphW, SCREEN_W - 36.0f);
+    const float canvasH = std::min(graphH, SCREEN_H - 110.0f);
+    this->m_techList = ui.createPanel(innerPanel,
+        {0.0f, 0.0f, canvasW, canvasH}, std::move(canvasBg));
+    {
+        Widget* lw = ui.getWidget(this->m_techList);
+        if (lw != nullptr) {
+            lw->layoutDirection = LayoutDirection::None;
+            lw->padding = {0.0f, 0.0f, 0.0f, 0.0f};
+            lw->canPan  = true;
+            // Cards / lines are positioned absolutely beyond the
+            // canvas bounds when the graph is wider than the modal;
+            // clampChildren would shrink them to zero. Keep absolute
+            // sizes intact and rely on panning to reach hidden cards.
+            lw->clampChildren = false;
+        }
     }
 
+    // Era column labels along the top inside the canvas.
+    constexpr std::array<const char*, ERA_COUNT> kEraNames = {
+        "Ancient", "Classical", "Medieval", "Renaissance",
+        "Industrial", "Modern", "Atomic", "Information",
+    };
+    for (int e = 0; e < ERA_COUNT; ++e) {
+        const float colX = COL_PAD + static_cast<float>(e) * COL_W;
+        WidgetId hdr = ui.createLabel(this->m_techList,
+            {colX, 2.0f, CARD_W, 14.0f},
+            LabelData{kEraNames[static_cast<std::size_t>(e)],
+                      tokens::TEXT_HEADER, 11.0f});
+        Widget* hw = ui.getWidget(hdr);
+        if (hw != nullptr) { hw->anchor = Anchor::None; }
+    }
+
+    IconAtlas& atlas = IconAtlas::instance();
     const std::vector<aoc::sim::TechDef>& techs = aoc::sim::allTechs();
-    for (const aoc::sim::TechDef& tech : techs) {
-        if (playerTech != nullptr && playerTech->hasResearched(tech.id)) {
-            // Completed
-            std::string label = "[OK] " + std::string(tech.name)
-                              + " (Era " + std::to_string(tech.era.value) + ")";
-            (void)ui.createLabel(this->m_techList, {0.0f, 0.0f, 460.0f, 18.0f},
-                           LabelData{std::move(label), {0.4f, 0.8f, 0.4f, 1.0f}, 12.0f});
-        } else if (playerTech != nullptr && playerTech->canResearch(tech.id)) {
-            // Available for research
-            std::string label = "> " + std::string(tech.name)
-                              + " (" + std::to_string(tech.researchCost) + ")";
 
-            ButtonData btn;
-            btn.label = std::move(label);
-            btn.fontSize = 12.0f;
-            btn.normalColor = {0.15f, 0.25f, 0.35f, 0.9f};
-            btn.hoverColor = {0.2f, 0.35f, 0.5f, 0.9f};
-            btn.pressedColor = {0.1f, 0.18f, 0.25f, 0.9f};
-            btn.cornerRadius = 3.0f;
+    // First pass: compute (eraIdx, rowIdx) per tech.
+    struct CardPos { float cx = 0; float cy = 0; float left = 0; float right = 0; float yMid = 0; int row = -1; };
+    std::vector<CardPos> pos(techs.size());
 
+    // Layout pass: place each tech in its era column at a row that
+    // tries to align with its primary prerequisite. Cross-era branches
+    // therefore stay roughly horizontal, with vertical jogs only when
+    // a slot collision forces a step. Output looks like Civ-6 with
+    // multiple paths that occasionally cross instead of stacked
+    // vertical columns. MAX_ROWS sized for the worst-case era density
+    // after expanded techs (~15 in era 5, with headroom for growth).
+    constexpr int MAX_ROWS = 32;
+    std::array<std::array<bool, MAX_ROWS>, ERA_COUNT> slotTaken{};
+    for (std::size_t i = 0; i < techs.size(); ++i) {
+        const int eraIdx = std::clamp<int>(techs[i].era.value, 0, ERA_COUNT - 1);
+
+        // Preferred row: average of valid prereq rows; 0 if no prereqs.
+        int preferredRow = 0;
+        if (!techs[i].prerequisites.empty()) {
+            int rowSum = 0;
+            int rowCount = 0;
+            for (TechId pid : techs[i].prerequisites) {
+                if (pid.isValid() && pid.value < pos.size()
+                    && pos[pid.value].row >= 0) {
+                    rowSum += pos[pid.value].row;
+                    ++rowCount;
+                }
+            }
+            if (rowCount > 0) {
+                preferredRow = rowSum / rowCount;
+            }
+        }
+        if (preferredRow < 0) { preferredRow = 0; }
+        if (preferredRow >= MAX_ROWS) { preferredRow = MAX_ROWS - 1; }
+
+        // Find nearest free row in the era column. Try preferred first,
+        // then ±1, ±2, ... outward.
+        int chosenRow = preferredRow;
+        if (slotTaken[static_cast<std::size_t>(eraIdx)][static_cast<std::size_t>(chosenRow)]) {
+            for (int delta = 1; delta < MAX_ROWS; ++delta) {
+                const int up = preferredRow - delta;
+                const int dn = preferredRow + delta;
+                if (dn >= 0 && dn < MAX_ROWS
+                    && !slotTaken[static_cast<std::size_t>(eraIdx)][static_cast<std::size_t>(dn)]) {
+                    chosenRow = dn;
+                    break;
+                }
+                if (up >= 0 && up < MAX_ROWS
+                    && !slotTaken[static_cast<std::size_t>(eraIdx)][static_cast<std::size_t>(up)]) {
+                    chosenRow = up;
+                    break;
+                }
+            }
+        }
+        slotTaken[static_cast<std::size_t>(eraIdx)][static_cast<std::size_t>(chosenRow)] = true;
+
+        const float x = COL_PAD + static_cast<float>(eraIdx) * COL_W;
+        const float y = ROW_PAD + 18.0f + static_cast<float>(chosenRow) * ROW_H;
+        CardPos p;
+        p.cx    = x + CARD_W * 0.5f;
+        p.cy    = y + CARD_H * 0.5f;
+        p.left  = x;
+        p.right = x + CARD_W;
+        p.yMid  = y + CARD_H * 0.5f;
+        p.row   = chosenRow;
+        pos[i]  = p;
+    }
+
+    // Second pass: draw prereq connector lines BEFORE cards so cards
+    // overdraw the line endpoints. Each edge = three thin panels:
+    //   horizontal stub from prereq.right → midX,
+    //   vertical from prereq.yMid → target.yMid,
+    //   horizontal stub from midX → target.left.
+    // Connector pass. Thick high-contrast strokes so the dependency
+    // structure is impossible to miss against the dark canvas.
+    constexpr float LINE_T = 4.0f;
+    for (std::size_t i = 0; i < techs.size(); ++i) {
+        const aoc::sim::TechDef& tech = techs[i];
+        // Skip techs that didn't get a slot (out of MAX_ROWS) so we
+        // don't draw lines from / to (0,0).
+        if (pos[i].row < 0) { continue; }
+        for (TechId prereq : tech.prerequisites) {
+            if (!prereq.isValid() || prereq.value >= techs.size()) { continue; }
+            if (pos[prereq.value].row < 0) { continue; }
+            const CardPos& src = pos[prereq.value];
+            const CardPos& dst = pos[i];
+
+            // Color encodes player progress against this prereq edge.
+            // Researched edges glow olive, the next-research bronze
+            // gets the hot gilt highlight, locked stays warm bronze.
+            Color lineColor = tokens::BRONZE_BASE;
+            if (playerTech != nullptr) {
+                if (playerTech->hasResearched(tech.id)
+                    || playerTech->hasResearched(prereq)) {
+                    lineColor = tokens::STATE_SUCCESS;
+                } else if (playerTech->canResearch(tech.id)) {
+                    lineColor = tokens::TEXT_GILT;
+                }
+            }
+            // Backing stroke (darker shadow) drawn first to make the
+            // colored fore-stroke pop against the canvas regardless
+            // of the bg shade.
+            const Color shadow = tokens::SURFACE_INK;
+            const float SHADOW_T = LINE_T + 2.0f;
+
+            const float midX = (src.right + dst.left) * 0.5f;
+            const float vy0 = std::min(src.yMid, dst.yMid);
+            const float vy1 = std::max(src.yMid, dst.yMid);
+            const float hy_src = src.yMid;
+            const float hy_dst = dst.yMid;
+
+            // Helper: thin filled rect as a child of the canvas.
+            const auto stroke = [&](float x, float y, float w, float h,
+                                     const Color& c) {
+                if (w <= 0.0f || h <= 0.0f) { return; }
+                (void)ui.createPanel(this->m_techList,
+                    {x, y, w, h}, PanelData{c, 0.0f});
+            };
+
+            // Shadow strokes (dark backing).
+            stroke(src.right, hy_src - SHADOW_T * 0.5f,
+                   midX - src.right + SHADOW_T * 0.5f, SHADOW_T, shadow);
+            stroke(midX - SHADOW_T * 0.5f, vy0 - SHADOW_T * 0.5f,
+                   SHADOW_T, vy1 - vy0 + SHADOW_T, shadow);
+            stroke(midX - SHADOW_T * 0.5f, hy_dst - SHADOW_T * 0.5f,
+                   dst.left - midX + SHADOW_T * 0.5f, SHADOW_T, shadow);
+
+            // Foreground colored strokes on top of the shadow.
+            stroke(src.right, hy_src - LINE_T * 0.5f,
+                   midX - src.right, LINE_T, lineColor);
+            stroke(midX - LINE_T * 0.5f, vy0,
+                   LINE_T, vy1 - vy0, lineColor);
+            stroke(midX, hy_dst - LINE_T * 0.5f,
+                   dst.left - midX, LINE_T, lineColor);
+        }
+    }
+
+    // Third pass: draw the cards themselves. Skip any tech that the
+    // layout couldn't place (>32 in the same era). That's a soft
+    // failure — the user-visible part stays clean even if obscure
+    // expanded-content branches lose a placeholder.
+    for (std::size_t i = 0; i < techs.size(); ++i) {
+        if (pos[i].row < 0) { continue; }
+        const aoc::sim::TechDef& tech = techs[i];
+        const bool researched = playerTech && playerTech->hasResearched(tech.id);
+        const bool tradeKnown = playerTech && !researched && playerTech->knows(tech.id);
+        const bool available  = playerTech && !researched && !tradeKnown
+                                && playerTech->canResearch(tech.id);
+
+        Color rim;
+        Color titleColor;
+        if (researched)      { rim = tokens::STATE_SUCCESS;  titleColor = tokens::STATE_SUCCESS; }
+        else if (tradeKnown) { rim = tokens::DIPLO_ALLIED;   titleColor = tokens::DIPLO_ALLIED; }
+        else if (available)  { rim = tokens::BRONZE_BASE;    titleColor = tokens::TEXT_HEADER; }
+        else                 { rim = tokens::TEXT_DISABLED;  titleColor = tokens::TEXT_DISABLED; }
+
+        PanelData cardBg;
+        cardBg.backgroundColor = tokens::SURFACE_PARCHMENT;
+        cardBg.gradientBottom  = tokens::SURFACE_PARCHMENT_DIM;
+        cardBg.borderColor     = rim;
+        cardBg.borderWidth     = 1.0f;
+        cardBg.cornerRadius    = tokens::CORNER_PANEL;
+        cardBg.accentBarColor  = rim;
+        cardBg.accentBarWidth  = 3.0f;
+        cardBg.topHighlight    = tokens::BRONZE_LIGHT;
+        cardBg.bottomShadow    = tokens::SURFACE_MAHOGANY;
+
+        const CardPos& p = pos[i];
+        WidgetId card = ui.createPanel(this->m_techList,
+            {p.left, p.yMid - CARD_H * 0.5f, CARD_W, CARD_H}, std::move(cardBg));
+        {
+            Widget* cw = ui.getWidget(card);
+            if (cw != nullptr) {
+                cw->padding = {4.0f, 4.0f, 4.0f, 4.0f};
+                cw->childSpacing = 2.0f;
+                cw->layoutDirection = LayoutDirection::Vertical;
+            }
+        }
+        ui.setWidgetTooltip(card, formatTechTooltip(tech));
+
+        // Top row: icon + name (truncated to fit narrow card).
+        WidgetId topRow = ui.createPanel(card,
+            {0.0f, 0.0f, CARD_W - 8.0f, 18.0f},
+            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        {
+            Widget* tr = ui.getWidget(topRow);
+            if (tr != nullptr) {
+                tr->layoutDirection = LayoutDirection::Horizontal;
+                tr->childSpacing = 3.0f;
+            }
+        }
+        IconData techIcon;
+        techIcon.spriteId      = atlas.id(techIconKey(tech));
+        techIcon.fallbackColor = rim;
+        (void)ui.createIcon(topRow, {0.0f, 0.0f, 14.0f, 14.0f}, std::move(techIcon));
+        {
+            LabelData ld;
+            ld.text         = std::string(tech.name);
+            ld.color        = titleColor;
+            ld.fontSize     = 10.0f;
+            ld.outlineColor = tokens::SURFACE_PARCHMENT;
+            (void)ui.createLabel(topRow, {0.0f, 0.0f, CARD_W - 28.0f, 14.0f},
+                                 std::move(ld));
+        }
+
+        // Cost + turn-count line.
+        std::string costLabel = std::to_string(tech.researchCost) + " sci";
+        if (researched) {
+            costLabel = std::string(tech.name.size() > 0 ? "Researched" : "");
+        } else if (sciencePerTurn > 0.5f) {
+            const float remaining =
+                static_cast<float>(tech.researchCost) - playerTech->researchProgress
+                    * (playerTech->currentResearch.value == tech.id.value ? 1.0f : 0.0f);
+            const int turns = static_cast<int>(std::ceil(remaining / sciencePerTurn));
+            costLabel += "  ·  " + std::to_string(std::max(turns, 1)) + " turns";
+        }
+        (void)ui.createLabel(card, {0.0f, 0.0f, CARD_W - 8.0f, 12.0f},
+            LabelData{std::move(costLabel), tokens::RES_SCIENCE, 9.0f});
+
+        // Eureka chip: which condition triggers the boost + indicator
+        // (lit when already triggered or pending). Skip when no boost
+        // exists for this tech.
+        const aoc::sim::EurekaBoostDef* eb = findTechEureka(tech.id);
+        if (eb != nullptr) {
+            const bool achieved = playerEureka != nullptr
+                && (playerEureka->hasTriggered(eb->boostIndex)
+                    || playerEureka->isPending(eb->boostIndex));
+            WidgetId eRow = ui.createPanel(card,
+                {0.0f, 0.0f, CARD_W - 8.0f, 12.0f},
+                PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+            {
+                Widget* er = ui.getWidget(eRow);
+                if (er != nullptr) {
+                    er->layoutDirection = LayoutDirection::Horizontal;
+                    er->childSpacing = 3.0f;
+                }
+            }
+            IconData eIcon;
+            eIcon.spriteId      = atlas.id(achieved ? "actions.eureka" : "actions.boost");
+            eIcon.fallbackColor = achieved ? tokens::TEXT_GILT : tokens::TEXT_DISABLED;
+            (void)ui.createIcon(eRow, {0.0f, 0.0f, 10.0f, 10.0f}, std::move(eIcon));
+            const Color textCol = achieved ? tokens::TEXT_GILT : tokens::TEXT_DISABLED;
+            (void)ui.createLabel(eRow, {0.0f, 0.0f, CARD_W - 26.0f, 11.0f},
+                LabelData{std::string(eb->description), textCol, 8.0f});
+        }
+
+        // Donut-shaped progress for the currently-researched tech.
+        // Built from a ring of N=24 small dot-panels. Each dot is
+        // either filled-azure (regular progress), filled-gilt (eureka-
+        // covered portion), or muted track. The eureka segment is the
+        // first `eurekaFrac * N` dots so the brighter colour reads
+        // first. Sits inside a None-layout container right of the
+        // unlock row so it doesn't push the stack height further.
+        const bool isCurrent =
+            playerTech && playerTech->currentResearch.isValid()
+            && playerTech->currentResearch.value == tech.id.value;
+        if (isCurrent && tech.researchCost > 0) {
+            constexpr int   DOT_COUNT  = 24;
+            constexpr float DOT_SIZE   = 4.0f;
+            constexpr float RING_R     = 14.0f;
+            constexpr float RING_BOX_W = (RING_R + DOT_SIZE) * 2.0f;
+            const float frac = std::clamp(
+                playerTech->researchProgress / static_cast<float>(tech.researchCost),
+                0.0f, 1.0f);
+            float eurekaFrac = 0.0f;
+            if (eb != nullptr && playerEureka != nullptr
+                && playerEureka->hasTriggered(eb->boostIndex)) {
+                eurekaFrac = std::clamp(eb->boostFraction, 0.0f, frac);
+            }
+            const int filledDots = static_cast<int>(std::round(frac * DOT_COUNT));
+            const int eurekaDots = static_cast<int>(std::round(eurekaFrac * DOT_COUNT));
+
+            WidgetId ring = ui.createPanel(card,
+                {0.0f, 0.0f, RING_BOX_W, RING_BOX_W},
+                PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+            {
+                Widget* rw = ui.getWidget(ring);
+                if (rw != nullptr) {
+                    rw->layoutDirection = LayoutDirection::None;
+                    rw->clampChildren   = false;
+                    rw->padding = {0.0f, 0.0f, 0.0f, 0.0f};
+                }
+            }
+            const float cx = RING_R;
+            const float cy = RING_R;
+            for (int d = 0; d < DOT_COUNT; ++d) {
+                // Start at top (-pi/2) and walk clockwise so progress
+                // fills like a clock from 12 o'clock onward.
+                const float ang = (static_cast<float>(d) / DOT_COUNT) * 6.2831853f
+                                  - 1.5707963f;
+                const float dx = cx + RING_R * std::cos(ang) - DOT_SIZE * 0.5f;
+                const float dy = cy + RING_R * std::sin(ang) - DOT_SIZE * 0.5f;
+                Color dotCol = tokens::SURFACE_PARCHMENT_DIM;
+                if (d < eurekaDots) {
+                    dotCol = tokens::TEXT_GILT;       // brighter eureka segment
+                } else if (d < filledDots) {
+                    dotCol = tokens::RES_SCIENCE;     // regular progress
+                }
+                (void)ui.createPanel(ring,
+                    {dx, dy, DOT_SIZE, DOT_SIZE},
+                    PanelData{dotCol, DOT_SIZE * 0.5f});
+            }
+        }
+
+        // Unlock-icon row (single row of small pips).
+        WidgetId unlockRow = ui.createPanel(card,
+            {0.0f, 0.0f, CARD_W - 8.0f, 14.0f},
+            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        {
+            Widget* ur = ui.getWidget(unlockRow);
+            if (ur != nullptr) {
+                ur->layoutDirection = LayoutDirection::Horizontal;
+                ur->childSpacing = 2.0f;
+            }
+        }
+        constexpr float UNLOCK_ICON = 12.0f;
+        for (UnitTypeId uid : tech.unlockedUnits) {
+            const aoc::sim::UnitTypeDef& udef = aoc::sim::unitTypeDef(uid);
+            IconData ic;
+            ic.spriteId      = atlas.id(unitClassIconKey(udef.unitClass));
+            ic.fallbackColor = tokens::DIPLO_HOSTILE;
+            WidgetId iw = ui.createIcon(unlockRow,
+                {0.0f, 0.0f, UNLOCK_ICON, UNLOCK_ICON}, std::move(ic));
+            ui.setWidgetTooltip(iw,
+                "Unit: " + std::string(udef.name)
+                + "\nCombat " + std::to_string(udef.combatStrength)
+                + (udef.rangedStrength > 0
+                       ? "  · Ranged " + std::to_string(udef.rangedStrength)
+                       : std::string{})
+                + "\nCost " + std::to_string(udef.productionCost) + " prod");
+        }
+        for (BuildingId bid : tech.unlockedBuildings) {
+            const aoc::sim::BuildingDef& bdef = aoc::sim::buildingDef(bid);
+            IconData ic;
+            ic.spriteId      = atlas.id(buildingDistrictIconKey(bdef.requiredDistrict));
+            ic.fallbackColor = tokens::RES_PRODUCTION;
+            WidgetId iw = ui.createIcon(unlockRow,
+                {0.0f, 0.0f, UNLOCK_ICON, UNLOCK_ICON}, std::move(ic));
+            ui.setWidgetTooltip(iw,
+                "Building: " + std::string(bdef.name)
+                + "\nCost " + std::to_string(bdef.productionCost) + " prod"
+                + "  · Maint " + std::to_string(bdef.maintenanceCost) + " gold");
+        }
+        if (!tech.unlockedGoods.empty()) {
+            IconData ic;
+            ic.spriteId      = atlas.id("resources.unknown");
+            ic.fallbackColor = tokens::RES_GOLD;
+            WidgetId iw = ui.createIcon(unlockRow,
+                {0.0f, 0.0f, UNLOCK_ICON, UNLOCK_ICON}, std::move(ic));
+            ui.setWidgetTooltip(iw,
+                "Reveals " + std::to_string(tech.unlockedGoods.size())
+                + " resource(s)");
+        }
+
+        // Click-to-research pill on available cards.
+        if (available) {
             const uint16_t techValue = tech.id.value;
             aoc::game::GameState* gsPtr = this->m_gameState;
             const PlayerId player = this->m_player;
-            btn.onClick = [gsPtr, player, techValue]() {
+            ButtonData rb;
+            rb.label        = "Research";
+            rb.fontSize     = 9.0f;
+            rb.normalColor  = tokens::BRONZE_BASE;
+            rb.hoverColor   = tokens::BRONZE_LIGHT;
+            rb.pressedColor = tokens::STATE_PRESSED;
+            rb.labelColor   = tokens::TEXT_GILT;
+            rb.cornerRadius = tokens::CORNER_BUTTON;
+            rb.onClick = [gsPtr, player, techValue]() {
                 aoc::game::Player* p = gsPtr->player(player);
                 if (p == nullptr) { return; }
                 p->tech().currentResearch = TechId{techValue};
@@ -442,13 +1140,8 @@ void TechScreen::open(UIManager& ui) {
                 LOG_INFO("Now researching: %.*s",
                          static_cast<int>(def.name.size()), def.name.data());
             };
-
-            (void)ui.createButton(this->m_techList, {0.0f, 0.0f, 460.0f, 24.0f}, std::move(btn));
-        } else {
-            // Locked
-            std::string label = "-- " + std::string(tech.name) + " (locked)";
-            (void)ui.createLabel(this->m_techList, {0.0f, 0.0f, 460.0f, 18.0f},
-                           LabelData{std::move(label), {0.5f, 0.5f, 0.5f, 0.7f}, 12.0f});
+            (void)ui.createButton(card, {0.0f, 0.0f, CARD_W - 8.0f, 14.0f},
+                                  std::move(rb));
         }
     }
 
@@ -504,8 +1197,9 @@ void GovernmentScreen::open(UIManager& ui) {
     assert(this->m_gameState != nullptr);
     this->m_isOpen = true;
 
+    // Wider panel to fit the new Civic Research section.
     WidgetId innerPanel = this->createScreenFrame(
-        ui, "Government", 450.0f, 400.0f, this->m_screenW, this->m_screenH);
+        ui, "Government & Civics", 480.0f, 540.0f, this->m_screenW, this->m_screenH);
 
     // Find player government component through object model
     aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
@@ -519,15 +1213,15 @@ void GovernmentScreen::open(UIManager& ui) {
         currentText = "Current: " + std::string(def.name);
     }
     this->m_currentGovLabel = ui.createLabel(
-        innerPanel, {0.0f, 0.0f, 420.0f, 16.0f},
-        LabelData{std::move(currentText), {0.9f, 0.85f, 0.6f, 1.0f}, 14.0f});
+        innerPanel, {0.0f, 0.0f, 450.0f, 16.0f},
+        LabelData{std::move(currentText), tokens::TEXT_HEADER, 14.0f});
 
     // Available governments section
-    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 420.0f, 14.0f},
-                   LabelData{"-- Available Governments --", {0.6f, 0.6f, 0.7f, 1.0f}, 12.0f});
+    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 450.0f, 14.0f},
+                   LabelData{"-- Available Governments --", tokens::TEXT_HEADER, 12.0f});
 
     this->m_govList = ui.createScrollList(
-        innerPanel, {0.0f, 0.0f, 420.0f, 200.0f});
+        innerPanel, {0.0f, 0.0f, 450.0f, 140.0f});
 
     Widget* listWidget = ui.getWidget(this->m_govList);
     if (listWidget != nullptr) {
@@ -543,10 +1237,11 @@ void GovernmentScreen::open(UIManager& ui) {
             ButtonData btn;
             btn.label = std::string(govDef.name);
             btn.fontSize = 12.0f;
-            btn.normalColor = {0.2f, 0.2f, 0.28f, 0.9f};
-            btn.hoverColor = {0.3f, 0.3f, 0.38f, 0.9f};
-            btn.pressedColor = {0.15f, 0.15f, 0.2f, 0.9f};
-            btn.cornerRadius = 3.0f;
+            btn.normalColor  = tokens::BRONZE_BASE;
+            btn.hoverColor   = tokens::BRONZE_LIGHT;
+            btn.pressedColor = tokens::STATE_PRESSED;
+            btn.labelColor   = tokens::TEXT_GILT;
+            btn.cornerRadius = tokens::CORNER_BUTTON;
 
             aoc::game::GameState* gsPtr = this->m_gameState;
             const PlayerId player = this->m_player;
@@ -565,16 +1260,23 @@ void GovernmentScreen::open(UIManager& ui) {
         } else {
             std::string label = std::string(govDef.name) + " (locked)";
             (void)ui.createLabel(this->m_govList, {0.0f, 0.0f, 0.0f, 18.0f},
-                           LabelData{std::move(label), {0.5f, 0.5f, 0.5f, 0.7f}, 12.0f});
+                           LabelData{std::move(label), tokens::TEXT_DISABLED, 12.0f});
         }
     }
 
     // Active policies section
-    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 420.0f, 14.0f},
-                   LabelData{"-- Active Policies --", {0.6f, 0.6f, 0.7f, 1.0f}, 12.0f});
+    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 450.0f, 14.0f},
+                   LabelData{"-- Active Policies --", tokens::TEXT_HEADER, 12.0f});
 
     if (playerGov != nullptr) {
-        for (uint8_t slot = 0; slot < aoc::sim::MAX_POLICY_SLOTS; ++slot) {
+        // Slot count is gated by current government tier (style guide §9 +
+        // sweep-2 fix): only show slots actually granted.
+        const aoc::sim::GovernmentDef& govSlots =
+            aoc::sim::governmentDef(playerGov->government);
+        const uint8_t availableSlots = static_cast<uint8_t>(
+            govSlots.militarySlots + govSlots.economicSlots
+            + govSlots.diplomaticSlots + govSlots.wildcardSlots);
+        for (uint8_t slot = 0; slot < availableSlots; ++slot) {
             std::string policyText;
             if (playerGov->activePolicies[slot] != aoc::sim::EMPTY_POLICY_SLOT) {
                 uint8_t polId = static_cast<uint8_t>(playerGov->activePolicies[slot]);
@@ -584,8 +1286,80 @@ void GovernmentScreen::open(UIManager& ui) {
             } else {
                 policyText = "Slot " + std::to_string(slot + 1) + ": [Empty]";
             }
-            (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 420.0f, 16.0f},
-                           LabelData{std::move(policyText), {0.7f, 0.7f, 0.8f, 1.0f}, 12.0f});
+            (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 450.0f, 16.0f},
+                           LabelData{std::move(policyText), tokens::TEXT_INK, 12.0f});
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // Civic Research section (style guide §9.5: civic tree, culture-purple
+    // ribbon variant of the tech tree).
+    // ----------------------------------------------------------------
+    aoc::sim::PlayerCivicComponent* playerCivics =
+        (owningPlayer != nullptr) ? &owningPlayer->civics() : nullptr;
+
+    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 450.0f, 14.0f},
+                   LabelData{"-- Civic Research --", tokens::TEXT_HEADER, 12.0f});
+
+    std::string currentCivicText = "No active civic";
+    if (playerCivics != nullptr && playerCivics->currentResearch.isValid()) {
+        const aoc::sim::CivicDef& cdef = aoc::sim::civicDef(playerCivics->currentResearch);
+        currentCivicText = "Researching: " + std::string(cdef.name)
+                         + " (" + std::to_string(static_cast<int>(playerCivics->researchProgress))
+                         + "/" + std::to_string(cdef.cultureCost) + ")";
+    }
+    (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 450.0f, 16.0f},
+                   LabelData{std::move(currentCivicText), tokens::RES_CULTURE, 13.0f});
+
+    WidgetId civicList = ui.createScrollList(
+        innerPanel, {0.0f, 0.0f, 450.0f, 140.0f});
+    {
+        Widget* lw = ui.getWidget(civicList);
+        if (lw != nullptr) {
+            lw->padding = {4.0f, 4.0f, 4.0f, 4.0f};
+            lw->childSpacing = 3.0f;
+        }
+    }
+
+    if (playerCivics != nullptr) {
+        const uint16_t civicTotal = aoc::sim::civicCount();
+        for (uint16_t cid = 0; cid < civicTotal; ++cid) {
+            const aoc::sim::CivicDef& cdef = aoc::sim::civicDef(CivicId{cid});
+            const bool completed = playerCivics->hasCompleted(CivicId{cid});
+            const bool researchable = !completed && playerCivics->canResearch(CivicId{cid});
+            if (completed) {
+                std::string label = "[OK] " + std::string(cdef.name);
+                (void)ui.createLabel(civicList, {0.0f, 0.0f, 440.0f, 18.0f},
+                               LabelData{std::move(label), tokens::STATE_SUCCESS, 12.0f});
+            } else if (researchable) {
+                std::string label = "> " + std::string(cdef.name)
+                                  + " (" + std::to_string(cdef.cultureCost) + ")";
+                ButtonData btn;
+                btn.label = std::move(label);
+                btn.fontSize = 12.0f;
+                btn.normalColor  = tokens::RES_CULTURE;
+                btn.hoverColor   = {0.654f, 0.348f, 0.654f, 1.0f};
+                btn.pressedColor = {0.408f, 0.184f, 0.408f, 1.0f};
+                btn.labelColor   = tokens::TEXT_GILT;
+                btn.cornerRadius = tokens::CORNER_BUTTON;
+                aoc::game::GameState* gsPtr = this->m_gameState;
+                const PlayerId pid = this->m_player;
+                const uint16_t civicValue = cid;
+                btn.onClick = [gsPtr, pid, civicValue]() {
+                    aoc::game::Player* p = gsPtr->player(pid);
+                    if (p == nullptr) { return; }
+                    p->civics().currentResearch = CivicId{civicValue};
+                    p->civics().researchProgress = 0.0f;
+                    const aoc::sim::CivicDef& def = aoc::sim::civicDef(CivicId{civicValue});
+                    LOG_INFO("Now researching civic: %.*s",
+                             static_cast<int>(def.name.size()), def.name.data());
+                };
+                (void)ui.createButton(civicList, {0.0f, 0.0f, 440.0f, 24.0f}, std::move(btn));
+            } else {
+                std::string label = "-- " + std::string(cdef.name) + " (locked)";
+                (void)ui.createLabel(civicList, {0.0f, 0.0f, 440.0f, 18.0f},
+                               LabelData{std::move(label), tokens::TEXT_DISABLED, 12.0f});
+            }
         }
     }
 
@@ -661,14 +1435,14 @@ void EconomyScreen::open(UIManager& ui) {
     }
     this->m_infoLabel = ui.createLabel(
         innerPanel, {0.0f, 0.0f, 470.0f, 16.0f},
-        LabelData{std::move(infoText), {0.6f, 0.85f, 0.6f, 1.0f}, 12.0f});
+        LabelData{std::move(infoText), tokens::STATE_SUCCESS, 12.0f});
 
     // Tax rate with +/- buttons
     if (monetary != nullptr) {
         std::string taxText = "Tax Rate: "
                             + std::to_string(static_cast<int>(monetary->taxRate * 100.0f)) + "%";
         (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 250.0f, 16.0f},
-                       LabelData{std::move(taxText), {0.8f, 0.8f, 0.6f, 1.0f}, 12.0f});
+                       LabelData{std::move(taxText), tokens::TEXT_HEADER, 12.0f});
 
         // Create a horizontal row for tax buttons
         WidgetId taxRow = ui.createPanel(
@@ -684,9 +1458,9 @@ void EconomyScreen::open(UIManager& ui) {
         ButtonData minusBtn;
         minusBtn.label = "Tax -5%";
         minusBtn.fontSize = 11.0f;
-        minusBtn.normalColor = {0.3f, 0.2f, 0.2f, 0.9f};
-        minusBtn.hoverColor = {0.4f, 0.3f, 0.3f, 0.9f};
-        minusBtn.pressedColor = {0.2f, 0.15f, 0.15f, 0.9f};
+        minusBtn.normalColor = tokens::STATE_DANGER;
+        minusBtn.hoverColor = tokens::DIPLO_HOSTILE;
+        minusBtn.pressedColor = tokens::DIPLO_AT_WAR;
         minusBtn.cornerRadius = 3.0f;
 
         aoc::game::GameState* gsPtr = this->m_gameState;
@@ -704,9 +1478,9 @@ void EconomyScreen::open(UIManager& ui) {
         ButtonData plusBtn;
         plusBtn.label = "Tax +5%";
         plusBtn.fontSize = 11.0f;
-        plusBtn.normalColor = {0.2f, 0.3f, 0.2f, 0.9f};
-        plusBtn.hoverColor = {0.3f, 0.4f, 0.3f, 0.9f};
-        plusBtn.pressedColor = {0.15f, 0.2f, 0.15f, 0.9f};
+        plusBtn.normalColor = tokens::STATE_SUCCESS;
+        plusBtn.hoverColor = {0.432f, 0.654f, 0.292f, 1.0f};
+        plusBtn.pressedColor = {0.288f, 0.436f, 0.194f, 1.0f};
         plusBtn.cornerRadius = 3.0f;
 
         plusBtn.onClick = [gsPtr, player]() {
@@ -728,9 +1502,9 @@ void EconomyScreen::open(UIManager& ui) {
         ButtonData tradeRouteBtn;
         tradeRouteBtn.label = "Create Trade Route";
         tradeRouteBtn.fontSize = 12.0f;
-        tradeRouteBtn.normalColor  = {0.20f, 0.30f, 0.20f, 0.9f};
-        tradeRouteBtn.hoverColor   = {0.30f, 0.40f, 0.30f, 0.9f};
-        tradeRouteBtn.pressedColor = {0.15f, 0.20f, 0.15f, 0.9f};
+        tradeRouteBtn.normalColor  = tokens::BRONZE_BASE;
+        tradeRouteBtn.hoverColor   = tokens::BRONZE_LIGHT;
+        tradeRouteBtn.pressedColor = tokens::BRONZE_DARK;
         tradeRouteBtn.cornerRadius = 4.0f;
         tradeRouteBtn.onClick = [this, &ui, innerPanel]() {
             this->buildTradeRoutePanel(ui, innerPanel);
@@ -741,7 +1515,7 @@ void EconomyScreen::open(UIManager& ui) {
     // Market prices section
     (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 14.0f},
                    LabelData{"-- Market Prices (Trend | Supply | Demand) --",
-                              {0.6f, 0.6f, 0.7f, 1.0f}, 12.0f});
+                              tokens::TEXT_DISABLED, 12.0f});
 
     this->m_marketList = ui.createScrollList(
         innerPanel, {0.0f, 0.0f, 470.0f, 200.0f});
@@ -879,7 +1653,7 @@ void EconomyScreen::open(UIManager& ui) {
 
     (void)ui.createLabel(innerPanel, {0.0f, 0.0f, 470.0f, 14.0f},
                    LabelData{"-- Top 10 by Trade Volume --",
-                              {0.6f, 0.6f, 0.7f, 1.0f}, 11.0f});
+                              tokens::TEXT_DISABLED, 11.0f});
 
     uint32_t detailCount = 0;
     for (const GoodDisplayInfo& info : goodsInfo) {
@@ -914,7 +1688,7 @@ void EconomyScreen::buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel) {
 
     this->m_tradeRoutePanel = ui.createPanel(
         parentPanel, {0.0f, 0.0f, 470.0f, 300.0f},
-        PanelData{{0.12f, 0.12f, 0.16f, 0.95f}, 4.0f});
+        PanelData{tokens::SURFACE_PARCHMENT_DIM, 4.0f});
 
     Widget* trPanel = ui.getWidget(this->m_tradeRoutePanel);
     if (trPanel != nullptr) {
@@ -923,11 +1697,11 @@ void EconomyScreen::buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel) {
     }
 
     (void)ui.createLabel(this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 16.0f},
-                   LabelData{"-- Create Trade Route --", {1.0f, 0.9f, 0.5f, 1.0f}, 13.0f});
+                   LabelData{"-- Create Trade Route --", tokens::TEXT_HEADER, 13.0f});
 
     // Source city selection (player's own cities)
     (void)ui.createLabel(this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 14.0f},
-                   LabelData{"Source City (yours):", {0.7f, 0.8f, 0.7f, 1.0f}, 11.0f});
+                   LabelData{"Source City (yours):", tokens::TEXT_HEADER, 11.0f});
 
     WidgetId sourceList = ui.createScrollList(
         this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 80.0f});
@@ -946,9 +1720,9 @@ void EconomyScreen::buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel) {
             ButtonData srcBtn;
             srcBtn.label = city->name();
             srcBtn.fontSize = 10.0f;
-            srcBtn.normalColor  = {0.2f, 0.25f, 0.2f, 0.9f};
-            srcBtn.hoverColor   = {0.3f, 0.35f, 0.3f, 0.9f};
-            srcBtn.pressedColor = {0.15f, 0.18f, 0.15f, 0.9f};
+            srcBtn.normalColor  = tokens::BRONZE_BASE;
+            srcBtn.hoverColor   = tokens::BRONZE_LIGHT;
+            srcBtn.pressedColor = tokens::BRONZE_DARK;
             srcBtn.cornerRadius = 2.0f;
             srcBtn.onClick = [this, playerIdx, capturedCityIdx]() {
                 this->m_trSourcePlayerIdx = playerIdx;
@@ -962,7 +1736,7 @@ void EconomyScreen::buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel) {
 
     // Destination city selection (other players' cities)
     (void)ui.createLabel(this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 14.0f},
-                   LabelData{"Destination City (other players):", {0.7f, 0.8f, 0.7f, 1.0f}, 11.0f});
+                   LabelData{"Destination City (other players):", tokens::TEXT_HEADER, 11.0f});
 
     WidgetId destList = ui.createScrollList(
         this->m_tradeRoutePanel, {0.0f, 0.0f, 450.0f, 80.0f});
@@ -984,9 +1758,9 @@ void EconomyScreen::buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel) {
             ButtonData dstBtn;
             dstBtn.label = std::move(destLabel);
             dstBtn.fontSize = 10.0f;
-            dstBtn.normalColor  = {0.25f, 0.2f, 0.2f, 0.9f};
-            dstBtn.hoverColor   = {0.35f, 0.3f, 0.3f, 0.9f};
-            dstBtn.pressedColor = {0.18f, 0.15f, 0.15f, 0.9f};
+            dstBtn.normalColor  = tokens::BRONZE_BASE;
+            dstBtn.hoverColor   = tokens::BRONZE_LIGHT;
+            dstBtn.pressedColor = tokens::BRONZE_DARK;
             dstBtn.cornerRadius = 2.0f;
             dstBtn.onClick = [this, destPlayerIdx, capturedCityIdx]() {
                 this->m_trDestPlayerIdx = destPlayerIdx;
@@ -1002,9 +1776,9 @@ void EconomyScreen::buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel) {
     ButtonData establishBtn;
     establishBtn.label = "Establish Route";
     establishBtn.fontSize = 12.0f;
-    establishBtn.normalColor  = {0.15f, 0.35f, 0.15f, 0.9f};
-    establishBtn.hoverColor   = {0.20f, 0.50f, 0.20f, 0.9f};
-    establishBtn.pressedColor = {0.10f, 0.25f, 0.10f, 0.9f};
+    establishBtn.normalColor  = tokens::STATE_SUCCESS;
+    establishBtn.hoverColor   = {0.432f, 0.654f, 0.292f, 1.0f};
+    establishBtn.pressedColor = {0.288f, 0.436f, 0.194f, 1.0f};
     establishBtn.cornerRadius = 4.0f;
     establishBtn.onClick = [this]() {
         if (this->m_trSourcePlayerIdx < 0 || this->m_trSourceCityIdx < 0
@@ -1199,7 +1973,7 @@ void CityDetailScreen::open(UIManager& ui) {
 
     this->m_rootPanel = ui.createPanel(
         {0.0f, 0.0f, kPanelWidth, panelHeight},
-        PanelData{{0.12f, 0.14f, 0.18f, 0.95f}, 0.0f});
+        PanelData{tokens::SURFACE_PARCHMENT, 0.0f});
     {
         Widget* rootWidget = ui.getWidget(this->m_rootPanel);
         if (rootWidget != nullptr) {
@@ -1219,16 +1993,16 @@ void CityDetailScreen::open(UIManager& ui) {
 
     // Title label at top
     (void)ui.createLabel(innerPanel, {0.0f, 0.0f, kContentWidth, 22.0f},
-                   LabelData{"City Detail", {1.0f, 0.9f, 0.5f, 1.0f}, 18.0f});
+                   LabelData{"City Detail", tokens::TEXT_HEADER, 18.0f});
 
     // "Close [ESC]" button at top-right corner
     {
         ButtonData closeBtn;
         closeBtn.label = "X";
         closeBtn.fontSize = 13.0f;
-        closeBtn.normalColor = {0.3f, 0.15f, 0.15f, 0.9f};
-        closeBtn.hoverColor = {0.45f, 0.2f, 0.2f, 0.9f};
-        closeBtn.pressedColor = {0.2f, 0.1f, 0.1f, 0.9f};
+        closeBtn.normalColor = tokens::STATE_DANGER;
+        closeBtn.hoverColor = tokens::DIPLO_HOSTILE;
+        closeBtn.pressedColor = tokens::DIPLO_AT_WAR;
         closeBtn.cornerRadius = 3.0f;
         closeBtn.onClick = [this, &ui]() {
             this->close(ui);
@@ -1243,7 +2017,7 @@ void CityDetailScreen::open(UIManager& ui) {
     if (city == nullptr) {
         this->m_detailLabel = ui.createLabel(
             innerPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
-            LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
+            LabelData{"City not found", tokens::STATE_DANGER, 13.0f});
         ui.layout();
         return;
     }
@@ -1254,7 +2028,7 @@ void CityDetailScreen::open(UIManager& ui) {
     {
         WidgetId headerBar = ui.createPanel(
             innerPanel, {0.0f, 0.0f, kContentWidth, 36.0f},
-            PanelData{{0.08f, 0.10f, 0.14f, 0.98f}, 4.0f});
+            PanelData{tokens::SURFACE_INK, 4.0f});
         {
             Widget* hdr = ui.getWidget(headerBar);
             if (hdr != nullptr) {
@@ -1305,8 +2079,8 @@ void CityDetailScreen::open(UIManager& ui) {
         constexpr std::array<const char*, TAB_COUNT> kTabNames = {
             "Overview", "Production", "Buildings", "Citizens", "Couriers"
         };
-        constexpr Color kActiveTabColor   = {0.25f, 0.35f, 0.55f, 1.0f};
-        constexpr Color kInactiveTabColor = {0.15f, 0.17f, 0.22f, 0.9f};
+        constexpr Color kActiveTabColor   = tokens::BRONZE_BASE;
+        constexpr Color kInactiveTabColor = tokens::SURFACE_PARCHMENT_DIM;
 
         // Icon sprite-id per tab. Uses IconAtlas placeholders until
         // real art lands. Names mirror the built-in seeds.
@@ -1414,8 +2188,8 @@ void CityDetailScreen::switchTab(UIManager& ui, int32_t tabIndex) {
 // ----------------------------------------------------------------------------
 
 void CityDetailScreen::updateTabButtonColors(UIManager& ui) {
-    constexpr Color kActiveTabColor   = {0.25f, 0.35f, 0.55f, 1.0f};
-    constexpr Color kInactiveTabColor = {0.15f, 0.17f, 0.22f, 0.9f};
+    constexpr Color kActiveTabColor   = tokens::BRONZE_BASE;
+    constexpr Color kInactiveTabColor = tokens::SURFACE_PARCHMENT_DIM;
 
     for (int32_t tabIdx = 0; tabIdx < TAB_COUNT; ++tabIdx) {
         Widget* btnWidget = ui.getWidget(this->m_tabButtons[static_cast<std::size_t>(tabIdx)]);

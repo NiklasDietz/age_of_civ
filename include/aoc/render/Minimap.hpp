@@ -29,6 +29,22 @@ class Minimap {
 public:
     Minimap() = default;
 
+    /// Screen-space rectangle for the minimap. Computed identically by
+    /// the draw path and the click handler so big-map dynamic sizing
+    /// can't drift between the two.
+    struct Rect {
+        float x = 0.0f;
+        float y = 0.0f;
+        float w = 0.0f;
+        float h = 0.0f;
+    };
+
+    /// Compute the bottom-left minimap rectangle given the grid + the
+    /// current framebuffer height. Aspect ratio matches the grid; height
+    /// scales with map area (130 px floor, 240 px ceiling).
+    [[nodiscard]] static Rect computeRect(const aoc::map::HexGrid& grid,
+                                          uint32_t screenHeight);
+
     /**
      * @brief Draw the minimap overlay in screen space.
      *

@@ -244,6 +244,68 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     this->m_unitRenderer.drawUnits(renderer2d, gameState, fog, grid, viewingPlayer,
                                     camera, hexSize, screenWidth, screenHeight);
 
+    // Layer 3.1: Civ-6-style worker placement overlay. Highlights every
+    // tile the selected city can work (owned + walkable, within 3 hexes
+    // of the city centre) and marks worked tiles with a filled disc.
+    // Click handling lives in Application; this layer only draws.
+    if (this->workerOverlayCity != nullptr) {
+        const aoc::game::City* wc = this->workerOverlayCity;
+        const aoc::hex::AxialCoord ctr = wc->location();
+        constexpr int OVERLAY_RADIUS = 3;
+        for (int dq = -OVERLAY_RADIUS; dq <= OVERLAY_RADIUS; ++dq) {
+            for (int dr = -OVERLAY_RADIUS; dr <= OVERLAY_RADIUS; ++dr) {
+                const aoc::hex::AxialCoord t{ctr.q + dq, ctr.r + dr};
+                if (aoc::hex::distance(ctr, t) > OVERLAY_RADIUS) { continue; }
+                if (!grid.isValid(t)) { continue; }
+                const int32_t idx = grid.toIndex(t);
+                if (grid.movementCost(idx) == 0) { continue; }       // water/impassable
+                if (grid.owner(idx) != wc->owner() && t != ctr) { continue; }
+
+                float tcx = 0.0f, tcy = 0.0f;
+                aoc::hex::axialToPixel(t, hexSize, tcx, tcy);
+                float verts[12];
+                aoc::hex::hexVertices(tcx, tcy, hexSize, verts);
+
+                // Outline every workable tile in soft gold.
+                for (int e = 0; e < 6; ++e) {
+                    const float x1 = verts[e * 2];
+                    const float y1 = verts[e * 2 + 1];
+                    const float x2 = verts[((e + 1) % 6) * 2];
+                    const float y2 = verts[((e + 1) % 6) * 2 + 1];
+                    renderer2d.drawCapsule(x1, y1, x2, y2, 1.5f,
+                                           1.0f, 0.85f, 0.40f, 0.55f, 0.0f);
+                }
+
+                // City centre always counts as worked, draw a star-like
+                // ring around it for distinction.
+                const bool isCenter = (t == ctr);
+                bool isWorked = isCenter;
+                if (!isCenter) {
+                    for (const aoc::hex::AxialCoord& wt : wc->workedTiles()) {
+                        if (wt == t) { isWorked = true; break; }
+                    }
+                }
+                if (isWorked) {
+                    // Filled bronze disc + gold ring = "worker assigned".
+                    renderer2d.drawFilledRect(tcx - hexSize * 0.30f,
+                                               tcy - hexSize * 0.30f,
+                                               hexSize * 0.60f, hexSize * 0.60f,
+                                               0.643f, 0.486f, 0.227f, 0.85f);
+                    renderer2d.drawFilledRect(tcx - hexSize * 0.20f,
+                                               tcy - hexSize * 0.20f,
+                                               hexSize * 0.40f, hexSize * 0.40f,
+                                               1.0f, 0.85f, 0.40f, 0.95f);
+                } else {
+                    // Hollow muted dot = "tile workable but free".
+                    renderer2d.drawFilledRect(tcx - hexSize * 0.18f,
+                                               tcy - hexSize * 0.18f,
+                                               hexSize * 0.36f, hexSize * 0.36f,
+                                               0.20f, 0.18f, 0.13f, 0.55f);
+                }
+            }
+        }
+    }
+
     // Layer 3.2: Selection highlight for the active unit or city.  Drawn as
     // a bright ring around the tile so the player always knows which entity
     // responds to the action panel hotkeys.
@@ -375,24 +437,19 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                           EVENT_LOG_W * invZoom, EVENT_LOG_H * invZoom, invZoom);
     }
 
-    // Minimap (transformed to world-space). Scale with map size so Huge
-    // maps get more detail. Aspect ratio matches grid (W/H).
-    const float aspect = (grid.height() > 0)
-        ? static_cast<float>(grid.width()) / static_cast<float>(grid.height())
-        : 1.5f;
-    const float tilesArea = static_cast<float>(grid.width() * grid.height());
-    // Base 200x130 for ~4160 tiles. Scale linearly up to ~360x ratio for 50400.
-    const float scaleArea = std::clamp(std::sqrt(tilesArea / 4160.0f), 1.0f, 1.8f);
-    const float MINIMAP_H = std::clamp(130.0f * scaleArea, 130.0f, 240.0f);
-    const float MINIMAP_W = MINIMAP_H * aspect;
-    constexpr float MINIMAP_MARGIN = 10.0f;
-    float mmScreenX = MINIMAP_MARGIN;
-    float mmScreenY = static_cast<float>(screenHeight) - MINIMAP_H - MINIMAP_MARGIN;
-    float mmWorldX = topLeftX + mmScreenX * invZoom;
-    float mmWorldY = topLeftY + mmScreenY * invZoom;
-    this->m_minimap.draw(renderer2d, grid, fog, viewingPlayer, camera,
-                         mmWorldX, mmWorldY, MINIMAP_W * invZoom, MINIMAP_H * invZoom,
-                         screenWidth, screenHeight);
+    // Minimap (transformed to world-space). Suppressed while a modal
+    // screen is open — the world overview shouldn't peek through the
+    // tech tree, etc. Dimensions come from the shared
+    // `Minimap::computeRect` helper so the click-handler in
+    // Application.cpp uses identical bounds.
+    if (!this->m_minimapSuppressed) {
+        const Minimap::Rect mmRect = Minimap::computeRect(grid, screenHeight);
+        const float mmWorldX = topLeftX + mmRect.x * invZoom;
+        const float mmWorldY = topLeftY + mmRect.y * invZoom;
+        this->m_minimap.draw(renderer2d, grid, fog, viewingPlayer, camera,
+                             mmWorldX, mmWorldY, mmRect.w * invZoom, mmRect.h * invZoom,
+                             screenWidth, screenHeight);
+    }
 
     // Notifications (transformed to world-space)
     if (notifications != nullptr) {

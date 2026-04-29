@@ -5,6 +5,7 @@
 #include "aoc/ui/LoadingScreen.hpp"
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ui/Theme.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 
 #include <utility>
 
@@ -20,7 +21,7 @@ void LoadingScreen::open(UIManager& ui, const std::string& title) {
 
     this->m_rootPanel = ui.createPanel(
         {0.0f, 0.0f, sw, sh},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.75f}, 0.0f});
+        PanelData{tokens::SURFACE_FROST_DIM, 0.0f});
 
     const float panelW = t.scaled(480.0f);
     const float panelH = t.scaled(140.0f);

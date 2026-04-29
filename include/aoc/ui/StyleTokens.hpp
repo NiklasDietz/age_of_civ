@@ -65,12 +65,16 @@ inline constexpr float FS_TAB_DATA = 13.0f;
 // ============================================================================
 
 // --- Surfaces ---
-inline constexpr Color SURFACE_PARCHMENT     = {0.913f, 0.874f, 0.768f, 1.00f}; // #E9DFC4
-inline constexpr Color SURFACE_PARCHMENT_DIM = {0.784f, 0.725f, 0.541f, 1.00f}; // #C8B98A
-inline constexpr Color SURFACE_MARBLE        = {0.956f, 0.929f, 0.866f, 1.00f}; // #F4EDDD
-inline constexpr Color SURFACE_MAHOGANY      = {0.227f, 0.149f, 0.094f, 1.00f}; // #3A2618
-inline constexpr Color SURFACE_INK           = {0.105f, 0.078f, 0.031f, 1.00f}; // #1B1408
-inline constexpr Color SURFACE_FROST_DIM     = {0.054f, 0.058f, 0.070f, 0.75f}; // map dim under modal
+// Civ-6 leather UI: dark wood/leather panels with gold filigree + cream
+// body text. Light parchment surfaces glared over the 3D map. Tokens
+// renamed to keep call-sites stable; the SURFACE_PARCHMENT family now
+// reads as "panel face" (dark) rather than literal parchment.
+inline constexpr Color SURFACE_PARCHMENT     = {0.184f, 0.131f, 0.078f, 1.00f}; // #2F2114 dark walnut
+inline constexpr Color SURFACE_PARCHMENT_DIM = {0.117f, 0.082f, 0.046f, 1.00f}; // #1E150C deep shadow
+inline constexpr Color SURFACE_MARBLE        = {0.262f, 0.196f, 0.121f, 1.00f}; // #43321F tooltip card
+inline constexpr Color SURFACE_MAHOGANY      = {0.094f, 0.062f, 0.039f, 1.00f}; // #18100A
+inline constexpr Color SURFACE_INK           = {0.039f, 0.027f, 0.011f, 1.00f}; // #0A0703
+inline constexpr Color SURFACE_FROST_DIM     = {0.031f, 0.027f, 0.039f, 0.78f}; // map dim under modal
 
 // --- Bronze / gilt ---
 inline constexpr Color BRONZE_LIGHT      = {0.788f, 0.639f, 0.352f, 1.00f}; // #C9A35A
@@ -79,11 +83,14 @@ inline constexpr Color BRONZE_DARK       = {0.431f, 0.313f, 0.133f, 1.00f}; // #
 inline constexpr Color GOLD_HIGHLIGHT    = {0.945f, 0.835f, 0.556f, 1.00f}; // #F1D58E
 
 // --- Text ---
-inline constexpr Color TEXT_INK          = {0.168f, 0.121f, 0.054f, 1.00f}; // #2B1F0E
-inline constexpr Color TEXT_HEADER       = {0.352f, 0.227f, 0.094f, 1.00f}; // #5A3A18
-inline constexpr Color TEXT_GILT         = {0.886f, 0.764f, 0.415f, 1.00f}; // #E2C36A
-inline constexpr Color TEXT_PARCHMENT    = {0.913f, 0.874f, 0.768f, 1.00f}; // mirror of surface
-inline constexpr Color TEXT_DISABLED     = {0.556f, 0.509f, 0.415f, 1.00f}; // #8E826A
+// Inverted to cream tones for the dark leather surfaces above. Token
+// names retained for call-site stability; "TEXT_INK" is now the cream
+// body tone, "TEXT_HEADER" is bright gilt, "TEXT_GILT" is hot highlight.
+inline constexpr Color TEXT_INK          = {0.886f, 0.835f, 0.717f, 1.00f}; // #E2D5B7 cream body
+inline constexpr Color TEXT_HEADER       = {0.945f, 0.850f, 0.572f, 1.00f}; // #F1D992 gilt header
+inline constexpr Color TEXT_GILT         = {1.000f, 0.917f, 0.643f, 1.00f}; // #FFEAA4 hot gilt
+inline constexpr Color TEXT_PARCHMENT    = {0.886f, 0.835f, 0.717f, 1.00f}; // matches body
+inline constexpr Color TEXT_DISABLED     = {0.529f, 0.470f, 0.376f, 1.00f}; // #877860 muted cream
 
 // --- Resources (8 hue families, parchment-tuned) ---
 inline constexpr Color RES_FOOD       = {0.360f, 0.545f, 0.243f, 1.00f}; // #5C8B3E olive

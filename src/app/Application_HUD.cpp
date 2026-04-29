@@ -43,6 +43,7 @@
 #include "aoc/core/Types.hpp"
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ui/Theme.hpp"
+#include "aoc/ui/IconAtlas.hpp"
 
 #include <algorithm>
 #include <array>
@@ -68,10 +69,11 @@ void Application::buildHUD() {
     // ================================================================
     // Top bar — gradient from deep slate to black plus a gold hairline
     // bottom accent. Non-rounded so it flushes with the window edge.
+    // Mahogany frame top-bar with bronze rail (style guide §9.1).
     aoc::ui::PanelData topBg;
-    topBg.backgroundColor = {0.10f, 0.11f, 0.17f, 0.95f};
-    topBg.gradientBottom  = {0.03f, 0.04f, 0.07f, 0.95f};
-    topBg.bottomShadow    = {0.85f, 0.72f, 0.30f, 0.45f};
+    topBg.backgroundColor = aoc::ui::tokens::SURFACE_MAHOGANY;
+    topBg.gradientBottom  = aoc::ui::tokens::SURFACE_INK;
+    topBg.bottomShadow    = aoc::ui::tokens::BRONZE_BASE;  // bronze rail bottom
     topBg.cornerRadius    = 0.0f;
     this->m_topBar = this->m_uiManager.createPanel(
         {0.0f, 0.0f, screenW, 32.0f}, std::move(topBg));
@@ -87,23 +89,74 @@ void Application::buildHUD() {
     // auto required: lambda type is unnameable
     auto makeTopBtn = [this](aoc::ui::WidgetId parent, const std::string& label,
                               float width, std::function<void()> onClick) {
+        // Top-bar buttons: bronze action style.
         aoc::ui::ButtonData btn;
         btn.label = label;
         btn.fontSize = 11.0f;
-        btn.normalColor  = {0.18f, 0.18f, 0.22f, 0.9f};
-        btn.hoverColor   = {0.28f, 0.28f, 0.35f, 0.9f};
-        btn.pressedColor = {0.12f, 0.12f, 0.16f, 0.9f};
-        btn.labelColor   = {0.9f, 0.9f, 0.9f, 1.0f};
-        btn.cornerRadius = 3.0f;
+        btn.normalColor  = aoc::ui::tokens::BRONZE_BASE;
+        btn.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+        btn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        btn.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        btn.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         btn.onClick = std::move(onClick);
         return this->m_uiManager.createButton(
             parent, {0.0f, 0.0f, width, 22.0f}, std::move(btn));
     };
 
-    // LEFT SIDE: Resource display
+    // LEFT SIDE: Civ-6-style yield strip. Each yield has an icon + value
+    // pair so the HUD reads at-a-glance instead of as one wall of text.
+    // The numeric labels are stored individually so updateHUD can
+    // refresh them without rebuilding any widgets.
+    this->m_yieldStrip = this->m_uiManager.createPanel(
+        this->m_topBar, {0.0f, 0.0f, 320.0f, 22.0f},
+        aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    {
+        aoc::ui::Widget* ys = this->m_uiManager.getWidget(this->m_yieldStrip);
+        if (ys != nullptr) {
+            ys->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
+            ys->childSpacing = 6.0f;
+            ys->padding = {2.0f, 2.0f, 2.0f, 2.0f};
+        }
+    }
+    {
+        aoc::ui::IconAtlas& atlas = aoc::ui::IconAtlas::instance();
+        struct YieldChip {
+            const char* iconKey;
+            aoc::ui::Color color;
+            aoc::ui::WidgetId* labelOut;
+        };
+        const std::array<YieldChip, 4> chips = {{
+            {"yields.gold",    aoc::ui::tokens::RES_GOLD,    &this->m_goldLabel},
+            {"yields.science", aoc::ui::tokens::RES_SCIENCE, &this->m_scienceLabel},
+            {"yields.culture", aoc::ui::tokens::RES_CULTURE, &this->m_cultureLabel},
+            {"yields.faith",   aoc::ui::tokens::RES_FAITH,   &this->m_faithLabel},
+        }};
+        for (const YieldChip& chip : chips) {
+            aoc::ui::WidgetId chipPanel = this->m_uiManager.createPanel(
+                this->m_yieldStrip, {0.0f, 0.0f, 72.0f, 18.0f},
+                aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+            {
+                aoc::ui::Widget* cp = this->m_uiManager.getWidget(chipPanel);
+                if (cp != nullptr) {
+                    cp->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
+                    cp->childSpacing = 4.0f;
+                }
+            }
+            aoc::ui::IconData icon;
+            icon.spriteId      = atlas.id(chip.iconKey);
+            icon.fallbackColor = chip.color;
+            (void)this->m_uiManager.createIcon(chipPanel,
+                {0.0f, 0.0f, 14.0f, 14.0f}, std::move(icon));
+            *chip.labelOut = this->m_uiManager.createLabel(
+                chipPanel, {0.0f, 0.0f, 52.0f, 16.0f},
+                aoc::ui::LabelData{"0", chip.color, 11.0f});
+        }
+    }
+    // Stockpile goods strip kept as a single auto-text label (variable
+    // count). Sits to the right of the fixed yield strip.
     this->m_resourceLabel = this->m_uiManager.createLabel(
-        this->m_topBar, {0.0f, 0.0f, 700.0f, 22.0f},
-        aoc::ui::LabelData{"Resources: ...", {0.75f, 0.80f, 0.65f, 1.0f}, 10.0f});
+        this->m_topBar, {0.0f, 0.0f, 200.0f, 22.0f},
+        aoc::ui::LabelData{"", aoc::ui::tokens::TEXT_GILT, 10.0f});
 
     // Civ-6-style diplomacy strip. One icon per known civ; unmet
     // players render as neutral `?`, met players get their player
@@ -117,19 +170,26 @@ void Application::buildHUD() {
         if (s != nullptr) {
             s->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
             s->childSpacing = 4.0f;
-            s->requestedBounds.w = 400.0f;
+            s->requestedBounds.w = 220.0f;
         }
     }
 
-    // Spacer to push menu buttons to the right
-    [[maybe_unused]] aoc::ui::WidgetId spacer = this->m_uiManager.createPanel(
+    // Flex spacer eats the leftover horizontal space and shoves the
+    // right-hand button cluster against the window edge regardless of
+    // window width. Without flex the buttons hugged the left labels.
+    aoc::ui::WidgetId spacer = this->m_uiManager.createPanel(
         this->m_topBar, {0.0f, 0.0f, 1.0f, 22.0f},
         aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    {
+        aoc::ui::Widget* sp = this->m_uiManager.getWidget(spacer);
+        if (sp != nullptr) { sp->flex = 1.0f; }
+    }
 
     // RIGHT SIDE: Game screen buttons
     makeTopBtn(this->m_topBar, "Tech", 50.0f, [this]() {
         if (!this->m_techScreen.isOpen()) {
             this->m_techScreen.setContext(&this->m_gameState, 0);
+            this->m_techScreen.setGrid(&this->m_hexGrid);
             this->m_techScreen.open(this->m_uiManager);
         } else {
             this->m_techScreen.close(this->m_uiManager);
@@ -207,10 +267,10 @@ void Application::buildHUD() {
         }
     });
 
-    // Separator
+    // Separator (bronze hairline)
     [[maybe_unused]] aoc::ui::WidgetId sep = this->m_uiManager.createPanel(
         this->m_topBar, {0.0f, 0.0f, 2.0f, 22.0f},
-        aoc::ui::PanelData{{0.3f, 0.3f, 0.35f, 0.5f}, 0.0f});
+        aoc::ui::PanelData{aoc::ui::tokens::BRONZE_DARK, 0.0f});
 
     // MENU button -- toggles a dropdown with Save/Load/Settings
     makeTopBtn(this->m_topBar, "Menu", 55.0f, [this]() {
@@ -226,7 +286,8 @@ void Application::buildHUD() {
 
             this->m_menuDropdown = this->m_uiManager.createPanel(
                 {dropX, dropY, 110.0f, 150.0f},
-                aoc::ui::PanelData{{0.10f, 0.10f, 0.14f, 0.95f}, 4.0f});
+                aoc::ui::PanelData{aoc::ui::tokens::SURFACE_PARCHMENT,
+                                    aoc::ui::tokens::CORNER_PANEL});
             {
                 aoc::ui::Widget* dp = this->m_uiManager.getWidget(this->m_menuDropdown);
                 dp->padding = {6.0f, 6.0f, 6.0f, 6.0f};
@@ -236,14 +297,15 @@ void Application::buildHUD() {
             // auto required: lambda type is unnameable
             auto makeDropBtn = [this](aoc::ui::WidgetId parent, const std::string& label,
                                        std::function<void()> onClick) {
+                // Parchment dropdown items, ink text, bronze hover.
                 aoc::ui::ButtonData btn;
                 btn.label = label;
                 btn.fontSize = 12.0f;
-                btn.normalColor  = {0.15f, 0.15f, 0.20f, 0.9f};
-                btn.hoverColor   = {0.25f, 0.25f, 0.32f, 0.9f};
-                btn.pressedColor = {0.10f, 0.10f, 0.14f, 0.9f};
-                btn.labelColor   = {0.9f, 0.9f, 0.9f, 1.0f};
-                btn.cornerRadius = 3.0f;
+                btn.normalColor  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
+                btn.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+                btn.pressedColor = aoc::ui::tokens::BRONZE_DARK;
+                btn.labelColor   = aoc::ui::tokens::TEXT_INK;
+                btn.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
                 btn.onClick = std::move(onClick);
                 [[maybe_unused]] aoc::ui::WidgetId id = this->m_uiManager.createButton(
                     parent, {0.0f, 0.0f, 98.0f, 28.0f}, std::move(btn));
@@ -304,15 +366,16 @@ void Application::buildHUD() {
     // ================================================================
     // Info panel (below top bar)
     // ================================================================
+    // Info panel: parchment surface, bronze border, gilt accent rail.
     aoc::ui::PanelData infoBg;
-    infoBg.backgroundColor = {0.12f, 0.14f, 0.20f, 0.92f};
-    infoBg.gradientBottom  = {0.05f, 0.06f, 0.09f, 0.92f};
-    infoBg.borderColor     = {0.85f, 0.72f, 0.30f, 0.40f};
-    infoBg.borderWidth     = 1.0f;
-    infoBg.topHighlight    = {1.0f, 1.0f, 1.0f, 0.10f};
-    infoBg.accentBarColor  = {0.30f, 0.55f, 0.80f, 0.80f};
+    infoBg.backgroundColor = aoc::ui::tokens::SURFACE_PARCHMENT;
+    infoBg.gradientBottom  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
+    infoBg.borderColor     = aoc::ui::tokens::BRONZE_BASE;
+    infoBg.borderWidth     = aoc::ui::tokens::BORDER_HAIR;
+    infoBg.topHighlight    = aoc::ui::tokens::BRONZE_LIGHT;
+    infoBg.accentBarColor  = aoc::ui::tokens::BRONZE_BASE;
     infoBg.accentBarWidth  = 2.0f;
-    infoBg.cornerRadius    = 6.0f;
+    infoBg.cornerRadius    = aoc::ui::tokens::CORNER_PANEL;
     aoc::ui::WidgetId infoPanel = this->m_uiManager.createPanel(
         {10.0f, 42.0f, 250.0f, 170.0f}, std::move(infoBg));
     {
@@ -322,44 +385,45 @@ void Application::buildHUD() {
         panel->anchor = aoc::ui::Anchor::TopLeft;
     }
 
+    // Info-panel labels (ink text on parchment surface).
     this->m_turnLabel = this->m_uiManager.createLabel(
         infoPanel, {0.0f, 0.0f, 230.0f, 14.0f},
-        aoc::ui::LabelData{"Turn 0", {1.0f, 0.9f, 0.6f, 1.0f}, 14.0f});
+        aoc::ui::LabelData{"Turn 0", aoc::ui::tokens::TEXT_HEADER, 14.0f});
 
     this->m_economyLabel = this->m_uiManager.createLabel(
         infoPanel, {0.0f, 0.0f, 230.0f, 12.0f},
-        aoc::ui::LabelData{"Barter  Gold:100", {0.6f, 0.85f, 0.6f, 1.0f}, 11.0f});
+        aoc::ui::LabelData{"Barter  Gold:100", aoc::ui::tokens::RES_GOLD, 11.0f});
 
     this->m_selectionLabel = this->m_uiManager.createLabel(
         infoPanel, {0.0f, 0.0f, 230.0f, 12.0f},
-        aoc::ui::LabelData{"No selection", {0.8f, 0.8f, 0.8f, 1.0f}, 11.0f});
+        aoc::ui::LabelData{"No selection", aoc::ui::tokens::TEXT_INK, 11.0f});
 
-    // Research progress label + bar
+    // Research progress label + bar (azure science accent).
     this->m_researchLabel = this->m_uiManager.createLabel(
         infoPanel, {0.0f, 0.0f, 230.0f, 12.0f},
-        aoc::ui::LabelData{"No research", {0.7f, 0.85f, 1.0f, 1.0f}, 10.0f});
+        aoc::ui::LabelData{"No research", aoc::ui::tokens::RES_SCIENCE, 10.0f});
 
     constexpr float PROGRESS_BAR_W = 220.0f;
     constexpr float PROGRESS_BAR_H = 6.0f;
 
     this->m_researchBar = this->m_uiManager.createPanel(
         infoPanel, {0.0f, 0.0f, PROGRESS_BAR_W, PROGRESS_BAR_H},
-        aoc::ui::PanelData{{0.15f, 0.15f, 0.20f, 0.8f}, 2.0f});
+        aoc::ui::PanelData{aoc::ui::tokens::SURFACE_INK, 2.0f});
     this->m_researchBarFill = this->m_uiManager.createPanel(
         this->m_researchBar, {0.0f, 0.0f, 0.0f, PROGRESS_BAR_H},
-        aoc::ui::PanelData{{0.2f, 0.7f, 0.3f, 0.9f}, 2.0f});
+        aoc::ui::PanelData{aoc::ui::tokens::RES_SCIENCE, 2.0f});
 
-    // Production progress label + bar (visible when city selected)
+    // Production progress label + bar (terracotta hammers).
     this->m_productionLabel = this->m_uiManager.createLabel(
         infoPanel, {0.0f, 0.0f, 230.0f, 12.0f},
-        aoc::ui::LabelData{"", {0.9f, 0.75f, 0.4f, 1.0f}, 10.0f});
+        aoc::ui::LabelData{"", aoc::ui::tokens::RES_PRODUCTION, 10.0f});
 
     this->m_productionBar = this->m_uiManager.createPanel(
         infoPanel, {0.0f, 0.0f, PROGRESS_BAR_W, PROGRESS_BAR_H},
-        aoc::ui::PanelData{{0.15f, 0.15f, 0.20f, 0.8f}, 2.0f});
+        aoc::ui::PanelData{aoc::ui::tokens::SURFACE_INK, 2.0f});
     this->m_productionBarFill = this->m_uiManager.createPanel(
         this->m_productionBar, {0.0f, 0.0f, 0.0f, PROGRESS_BAR_H},
-        aoc::ui::PanelData{{0.85f, 0.6f, 0.15f, 0.9f}, 2.0f});
+        aoc::ui::PanelData{aoc::ui::tokens::RES_PRODUCTION, 2.0f});
 
     // Hide production bar initially
     this->m_uiManager.setVisible(this->m_productionLabel, false);
@@ -377,13 +441,15 @@ void Application::buildHUD() {
         }
     }
 
+    // End Turn — primary action button: bronze with gilt label.
     aoc::ui::ButtonData endTurnBtn;
     endTurnBtn.label       = "End Turn";
     endTurnBtn.fontSize    = 15.0f;
-    endTurnBtn.normalColor = {0.15f, 0.35f, 0.15f, 0.9f};
-    endTurnBtn.hoverColor  = {0.20f, 0.50f, 0.20f, 0.9f};
-    endTurnBtn.pressedColor = {0.10f, 0.25f, 0.10f, 0.9f};
-    endTurnBtn.cornerRadius = 5.0f;
+    endTurnBtn.normalColor  = aoc::ui::tokens::BRONZE_BASE;
+    endTurnBtn.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+    endTurnBtn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+    endTurnBtn.labelColor   = aoc::ui::tokens::TEXT_GILT;
+    endTurnBtn.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
     endTurnBtn.onClick = [this]() {
         this->handleEndTurn();
     };
@@ -604,51 +670,38 @@ void Application::updateHUD() {
     }
 
     // Update resource display in top bar
-    if (this->m_resourceLabel != aoc::ui::INVALID_WIDGET) {
-        std::string resText;
-
-        // Gold, science, culture, faith -- sourced from GameState object model.
-        // The ECS still has the canonical values (economy simulation writes there),
-        // but we read from GameState to exercise the new path during migration.
+    // Fill the per-yield chip labels (gold/sci/cul/faith). Per-tick text
+    // updates only — widget chrome stays static.
+    {
         const aoc::game::Player* humanHud = this->m_gameState.humanPlayer();
+        std::string goldText, sciText, culText, faithText;
         if (humanHud != nullptr) {
-            // Gold (total + per turn income/loss)
             CurrencyAmount goldTreasury = humanHud->treasury();
             CurrencyAmount goldIncome   = humanHud->incomePerTurn();
-            resText = "Gold:" + std::to_string(goldTreasury);
-            if (goldIncome >= 0) {
-                resText += "(+" + std::to_string(goldIncome) + "/turn)";
-            } else {
-                resText += "(" + std::to_string(goldIncome) + "/turn)";
-            }
-
-            // Science (+X/turn)
+            goldText = std::to_string(goldTreasury)
+                     + (goldIncome >= 0 ? "  (+" : "  (")
+                     + std::to_string(goldIncome) + ")";
             float totalScience = humanHud->sciencePerTurn(this->m_hexGrid);
-            int32_t sciInt = static_cast<int32_t>(totalScience);
-            resText += "  Sci:(+" + std::to_string(sciInt) + "/turn)";
-
-            // Culture (+X/turn)
+            sciText = "+" + std::to_string(static_cast<int32_t>(totalScience));
             float totalCulture = humanHud->culturePerTurn(this->m_hexGrid);
-            int32_t culInt = static_cast<int32_t>(totalCulture);
-            resText += "  Cul:(+" + std::to_string(culInt) + "/turn)";
-
-            // Faith (total)
-            int32_t faithTotal = static_cast<int32_t>(humanHud->faith().faith);
-            resText += "  Faith:" + std::to_string(faithTotal);
+            culText = "+" + std::to_string(static_cast<int32_t>(totalCulture));
+            faithText = std::to_string(static_cast<int32_t>(humanHud->faith().faith));
         } else {
-            // GameState not yet populated — show zeroed values
-            resText = "Gold:0(+0/turn)";
-
-            float totalScience = aoc::sim::computePlayerScience(this->m_gameState, this->m_hexGrid, 0);
-            int32_t sciInt = static_cast<int32_t>(totalScience);
-            resText += "  Sci:(+" + std::to_string(sciInt) + "/turn)";
-
-            float totalCulture = aoc::sim::computePlayerCulture(this->m_gameState, this->m_hexGrid, 0);
-            int32_t culInt = static_cast<int32_t>(totalCulture);
-            resText += "  Cul:(+" + std::to_string(culInt) + "/turn)";
-            resText += "  Faith:0";
+            goldText = "0  (+0)";
+            float ts = aoc::sim::computePlayerScience(this->m_gameState, this->m_hexGrid, 0);
+            sciText = "+" + std::to_string(static_cast<int32_t>(ts));
+            float tc = aoc::sim::computePlayerCulture(this->m_gameState, this->m_hexGrid, 0);
+            culText = "+" + std::to_string(static_cast<int32_t>(tc));
+            faithText = "0";
         }
+        if (this->m_goldLabel    != aoc::ui::INVALID_WIDGET) { this->m_uiManager.setLabelText(this->m_goldLabel,    std::move(goldText));  }
+        if (this->m_scienceLabel != aoc::ui::INVALID_WIDGET) { this->m_uiManager.setLabelText(this->m_scienceLabel, std::move(sciText));   }
+        if (this->m_cultureLabel != aoc::ui::INVALID_WIDGET) { this->m_uiManager.setLabelText(this->m_cultureLabel, std::move(culText));   }
+        if (this->m_faithLabel   != aoc::ui::INVALID_WIDGET) { this->m_uiManager.setLabelText(this->m_faithLabel,   std::move(faithText)); }
+    }
 
+    if (this->m_resourceLabel != aoc::ui::INVALID_WIDGET) {
+        std::string resText;
         // Aggregate stockpile goods across all player 0 cities via GameState
         {
             const aoc::game::Player* stockPlayer = this->m_gameState.player(0);
@@ -806,12 +859,12 @@ void Application::rebuildUnitActionPanel() {
         constexpr float MIN_W = 150.0f;
         constexpr float MIN_H = 50.0f;
         aoc::ui::PanelData uapBg;
-        uapBg.backgroundColor = {0.12f, 0.14f, 0.20f, 0.94f};
-        uapBg.gradientBottom  = {0.05f, 0.06f, 0.09f, 0.94f};
-        uapBg.borderColor     = {0.85f, 0.72f, 0.30f, 0.40f};
-        uapBg.borderWidth     = 1.0f;
-        uapBg.topHighlight    = {1.0f, 1.0f, 1.0f, 0.10f};
-        uapBg.cornerRadius    = 6.0f;
+        uapBg.backgroundColor = aoc::ui::tokens::SURFACE_PARCHMENT;
+        uapBg.gradientBottom  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
+        uapBg.borderColor     = aoc::ui::tokens::BRONZE_BASE;
+        uapBg.borderWidth     = aoc::ui::tokens::BORDER_HAIR;
+        uapBg.topHighlight    = aoc::ui::tokens::BRONZE_LIGHT;
+        uapBg.cornerRadius    = aoc::ui::tokens::CORNER_PANEL;
         this->m_unitActionPanel = this->m_uiManager.createPanel(
             {0.0f, 0.0f, MIN_W, MIN_H}, std::move(uapBg));
         // Fade-in animation: start at alpha 0 and tween toward 1.
@@ -833,11 +886,11 @@ void Application::rebuildUnitActionPanel() {
         aoc::ui::ButtonData endBtn;
         endBtn.label = "End Turn";
         endBtn.fontSize = 13.0f;
-        endBtn.normalColor = {0.15f, 0.35f, 0.15f, 0.9f};
-        endBtn.hoverColor = {0.20f, 0.50f, 0.20f, 0.9f};
-        endBtn.pressedColor = {0.10f, 0.25f, 0.10f, 0.9f};
-        endBtn.labelColor = {1.0f, 1.0f, 1.0f, 1.0f};
-        endBtn.cornerRadius = 4.0f;
+        endBtn.normalColor  = aoc::ui::tokens::BRONZE_BASE;
+        endBtn.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+        endBtn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        endBtn.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        endBtn.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         endBtn.onClick = [this]() { this->handleEndTurn(); };
         (void)this->m_uiManager.createButton(
             this->m_unitActionPanel,
@@ -881,14 +934,14 @@ void Application::rebuildUnitActionPanel() {
     const float PANEL_H = 55.0f + static_cast<float>(buttonRows) * (BTN_H + BTN_SPACING) + 45.0f + PAD * 2.0f;
 
     aoc::ui::PanelData uapFullBg;
-    uapFullBg.backgroundColor = {0.12f, 0.14f, 0.20f, 0.95f};
-    uapFullBg.gradientBottom  = {0.05f, 0.06f, 0.09f, 0.95f};
-    uapFullBg.borderColor     = {0.85f, 0.72f, 0.30f, 0.45f};
-    uapFullBg.borderWidth     = 1.0f;
-    uapFullBg.topHighlight    = {1.0f, 1.0f, 1.0f, 0.12f};
-    uapFullBg.accentBarColor  = {0.30f, 0.55f, 0.80f, 0.85f};
+    uapFullBg.backgroundColor = aoc::ui::tokens::SURFACE_PARCHMENT;
+    uapFullBg.gradientBottom  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
+    uapFullBg.borderColor     = aoc::ui::tokens::BRONZE_BASE;
+    uapFullBg.borderWidth     = aoc::ui::tokens::BORDER_HAIR;
+    uapFullBg.topHighlight    = aoc::ui::tokens::BRONZE_LIGHT;
+    uapFullBg.accentBarColor  = aoc::ui::tokens::BRONZE_DARK;
     uapFullBg.accentBarWidth  = 2.0f;
-    uapFullBg.cornerRadius    = 6.0f;
+    uapFullBg.cornerRadius    = aoc::ui::tokens::CORNER_PANEL;
     this->m_unitActionPanel = this->m_uiManager.createPanel(
         {0.0f, 0.0f, PANEL_W, PANEL_H}, std::move(uapFullBg));
     // Fade-in so the full-button panel doesn't pop instantly.
@@ -920,7 +973,7 @@ void Application::rebuildUnitActionPanel() {
             this->m_unitActionPanel,
             {0.0f, 0.0f, PANEL_W - PAD * 2.0f, 16.0f},
             aoc::ui::LabelData{std::string(infoBuf),
-                               {0.9f, 0.85f, 0.6f, 1.0f}, 11.0f});
+                               aoc::ui::tokens::TEXT_HEADER, 11.0f});
 
         // Combat strength info for military units
         if (aoc::sim::isMilitary(def.unitClass)) {
@@ -937,14 +990,14 @@ void Application::rebuildUnitActionPanel() {
                 this->m_unitActionPanel,
                 {0.0f, 0.0f, PANEL_W - PAD * 2.0f, 14.0f},
                 aoc::ui::LabelData{std::string(combatBuf),
-                                   {0.75f, 0.75f, 0.80f, 0.9f}, 10.0f});
+                                   aoc::ui::tokens::TEXT_INK, 10.0f});
         }
 
-        // Separator
+        // Separator (bronze hairline)
         (void)this->m_uiManager.createPanel(
             this->m_unitActionPanel,
             {0.0f, 0.0f, PANEL_W - PAD * 2.0f, 1.0f},
-            aoc::ui::PanelData{{0.3f, 0.3f, 0.4f, 0.4f}, 0.0f});
+            aoc::ui::PanelData{aoc::ui::tokens::BRONZE_DARK, 0.0f});
     }
 
     // Helper to create action buttons
@@ -953,20 +1006,22 @@ void Application::rebuildUnitActionPanel() {
 
     // auto required: lambda type is unnameable
     auto makeActionBtn = [this](const std::string& label,
-                                 aoc::ui::Color normalColor,
+                                 aoc::ui::Color tint,
                                  std::function<void()> onClick) {
+        // Action buttons: parchment-dim with bronze hover, ink label.
+        // `tint` left in for callers that want category accent — used as
+        // a thin colored ribbon on the left edge in future revision.
+        (void)tint;
         constexpr float ACTION_BTN_W2 = 125.0f;
         constexpr float ACTION_BTN_H2 = 24.0f;
         aoc::ui::ButtonData btn;
         btn.label = label;
         btn.fontSize = 10.0f;
-        btn.normalColor = normalColor;
-        btn.hoverColor = {normalColor.r + 0.10f, normalColor.g + 0.10f,
-                          normalColor.b + 0.10f, 0.9f};
-        btn.pressedColor = {normalColor.r - 0.05f, normalColor.g - 0.05f,
-                            normalColor.b - 0.05f, 0.9f};
-        btn.labelColor = {1.0f, 1.0f, 1.0f, 1.0f};
-        btn.cornerRadius = 3.0f;
+        btn.normalColor  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
+        btn.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+        btn.pressedColor = aoc::ui::tokens::BRONZE_DARK;
+        btn.labelColor   = aoc::ui::tokens::TEXT_INK;
+        btn.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         btn.onClick = std::move(onClick);
         (void)this->m_uiManager.createButton(
             this->m_unitActionPanel,
@@ -1277,11 +1332,11 @@ void Application::rebuildUnitActionPanel() {
         aoc::ui::ButtonData endBtn;
         endBtn.label = "End Turn";
         endBtn.fontSize = 13.0f;
-        endBtn.normalColor = {0.15f, 0.35f, 0.15f, 0.9f};
-        endBtn.hoverColor = {0.20f, 0.50f, 0.20f, 0.9f};
-        endBtn.pressedColor = {0.10f, 0.25f, 0.10f, 0.9f};
-        endBtn.labelColor = {1.0f, 1.0f, 1.0f, 1.0f};
-        endBtn.cornerRadius = 4.0f;
+        endBtn.normalColor  = aoc::ui::tokens::BRONZE_BASE;
+        endBtn.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+        endBtn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        endBtn.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        endBtn.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         endBtn.onClick = [this]() { this->handleEndTurn(); };
         (void)this->m_uiManager.createButton(
             this->m_unitActionPanel,

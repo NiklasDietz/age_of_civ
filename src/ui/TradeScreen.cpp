@@ -5,6 +5,7 @@
 
 #include "aoc/ui/TradeScreen.hpp"
 #include "aoc/ui/UIManager.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -149,9 +150,9 @@ void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId
         ButtonData offerMinusBtn;
         offerMinusBtn.label = "Gold-";
         offerMinusBtn.fontSize = 10.0f;
-        offerMinusBtn.normalColor = {0.3f, 0.2f, 0.2f, 0.9f};
-        offerMinusBtn.hoverColor  = {0.4f, 0.3f, 0.3f, 0.9f};
-        offerMinusBtn.pressedColor = {0.2f, 0.15f, 0.15f, 0.9f};
+        offerMinusBtn.normalColor = tokens::STATE_DANGER;
+        offerMinusBtn.hoverColor  = tokens::DIPLO_HOSTILE;
+        offerMinusBtn.pressedColor = tokens::DIPLO_AT_WAR;
         offerMinusBtn.cornerRadius = 2.0f;
         offerMinusBtn.onClick = [this]() {
             this->m_offerGold = (this->m_offerGold > 10) ? this->m_offerGold - 10 : 0;
@@ -161,9 +162,9 @@ void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId
         ButtonData offerPlusBtn;
         offerPlusBtn.label = "Gold+";
         offerPlusBtn.fontSize = 10.0f;
-        offerPlusBtn.normalColor = {0.2f, 0.3f, 0.2f, 0.9f};
-        offerPlusBtn.hoverColor  = {0.3f, 0.4f, 0.3f, 0.9f};
-        offerPlusBtn.pressedColor = {0.15f, 0.2f, 0.15f, 0.9f};
+        offerPlusBtn.normalColor = tokens::STATE_SUCCESS;
+        offerPlusBtn.hoverColor  = tokens::DIPLO_FRIENDLY;
+        offerPlusBtn.pressedColor = tokens::STATE_PRESSED;
         offerPlusBtn.cornerRadius = 2.0f;
         offerPlusBtn.onClick = [this]() {
             this->m_offerGold += 10;
@@ -178,9 +179,9 @@ void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId
         ButtonData reqMinusBtn;
         reqMinusBtn.label = "Gold-";
         reqMinusBtn.fontSize = 10.0f;
-        reqMinusBtn.normalColor = {0.3f, 0.2f, 0.2f, 0.9f};
-        reqMinusBtn.hoverColor  = {0.4f, 0.3f, 0.3f, 0.9f};
-        reqMinusBtn.pressedColor = {0.2f, 0.15f, 0.15f, 0.9f};
+        reqMinusBtn.normalColor = tokens::STATE_DANGER;
+        reqMinusBtn.hoverColor  = tokens::DIPLO_HOSTILE;
+        reqMinusBtn.pressedColor = tokens::DIPLO_AT_WAR;
         reqMinusBtn.cornerRadius = 2.0f;
         reqMinusBtn.onClick = [this]() {
             this->m_requestGold = (this->m_requestGold > 10) ? this->m_requestGold - 10 : 0;
@@ -190,9 +191,9 @@ void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId
         ButtonData reqPlusBtn;
         reqPlusBtn.label = "Gold+";
         reqPlusBtn.fontSize = 10.0f;
-        reqPlusBtn.normalColor = {0.2f, 0.3f, 0.2f, 0.9f};
-        reqPlusBtn.hoverColor  = {0.3f, 0.4f, 0.3f, 0.9f};
-        reqPlusBtn.pressedColor = {0.15f, 0.2f, 0.15f, 0.9f};
+        reqPlusBtn.normalColor = tokens::STATE_SUCCESS;
+        reqPlusBtn.hoverColor  = tokens::DIPLO_FRIENDLY;
+        reqPlusBtn.pressedColor = tokens::STATE_PRESSED;
         reqPlusBtn.cornerRadius = 2.0f;
         reqPlusBtn.onClick = [this]() {
             this->m_requestGold += 10;
@@ -228,9 +229,9 @@ void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId
         ButtonData offerMinus;
         offerMinus.label = "-";
         offerMinus.fontSize = 10.0f;
-        offerMinus.normalColor = {0.3f, 0.2f, 0.2f, 0.9f};
-        offerMinus.hoverColor  = {0.4f, 0.3f, 0.3f, 0.9f};
-        offerMinus.pressedColor = {0.2f, 0.15f, 0.15f, 0.9f};
+        offerMinus.normalColor = tokens::STATE_DANGER;
+        offerMinus.hoverColor  = tokens::DIPLO_HOSTILE;
+        offerMinus.pressedColor = tokens::DIPLO_AT_WAR;
         offerMinus.cornerRadius = 2.0f;
         offerMinus.onClick = [this, goodId]() {
             if (this->m_offerAmounts[goodId] > 0) {
@@ -242,9 +243,9 @@ void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId
         ButtonData offerPlus;
         offerPlus.label = "+";
         offerPlus.fontSize = 10.0f;
-        offerPlus.normalColor = {0.2f, 0.3f, 0.2f, 0.9f};
-        offerPlus.hoverColor  = {0.3f, 0.4f, 0.3f, 0.9f};
-        offerPlus.pressedColor = {0.15f, 0.2f, 0.15f, 0.9f};
+        offerPlus.normalColor = tokens::STATE_SUCCESS;
+        offerPlus.hoverColor  = tokens::DIPLO_FRIENDLY;
+        offerPlus.pressedColor = tokens::STATE_PRESSED;
         offerPlus.cornerRadius = 2.0f;
         offerPlus.onClick = [this, goodId]() {
             ++this->m_offerAmounts[goodId];
@@ -259,9 +260,9 @@ void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId
         ButtonData reqMinus;
         reqMinus.label = "-";
         reqMinus.fontSize = 10.0f;
-        reqMinus.normalColor = {0.3f, 0.2f, 0.2f, 0.9f};
-        reqMinus.hoverColor  = {0.4f, 0.3f, 0.3f, 0.9f};
-        reqMinus.pressedColor = {0.2f, 0.15f, 0.15f, 0.9f};
+        reqMinus.normalColor = tokens::STATE_DANGER;
+        reqMinus.hoverColor  = tokens::DIPLO_HOSTILE;
+        reqMinus.pressedColor = tokens::DIPLO_AT_WAR;
         reqMinus.cornerRadius = 2.0f;
         reqMinus.onClick = [this, goodId]() {
             if (this->m_requestAmounts[goodId] > 0) {
@@ -273,9 +274,9 @@ void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId
         ButtonData reqPlus;
         reqPlus.label = "+";
         reqPlus.fontSize = 10.0f;
-        reqPlus.normalColor = {0.2f, 0.3f, 0.2f, 0.9f};
-        reqPlus.hoverColor  = {0.3f, 0.4f, 0.3f, 0.9f};
-        reqPlus.pressedColor = {0.15f, 0.2f, 0.15f, 0.9f};
+        reqPlus.normalColor = tokens::STATE_SUCCESS;
+        reqPlus.hoverColor  = tokens::DIPLO_FRIENDLY;
+        reqPlus.pressedColor = tokens::STATE_PRESSED;
         reqPlus.cornerRadius = 2.0f;
         reqPlus.onClick = [this, goodId]() {
             ++this->m_requestAmounts[goodId];
@@ -297,13 +298,13 @@ void TradeScreen::buildTradeColumns(UIManager& ui, WidgetId innerPanel, PlayerId
     proposeBtn.label = embargoActive ? "Embargo Active" : "Propose Trade";
     proposeBtn.fontSize = 13.0f;
     if (embargoActive) {
-        proposeBtn.normalColor  = {0.3f, 0.3f, 0.3f, 0.9f};
-        proposeBtn.hoverColor   = {0.3f, 0.3f, 0.3f, 0.9f};
-        proposeBtn.pressedColor = {0.3f, 0.3f, 0.3f, 0.9f};
+        proposeBtn.normalColor  = tokens::TEXT_DISABLED;
+        proposeBtn.hoverColor   = tokens::TEXT_DISABLED;
+        proposeBtn.pressedColor = tokens::TEXT_DISABLED;
     } else {
-        proposeBtn.normalColor  = {0.15f, 0.35f, 0.15f, 0.9f};
-        proposeBtn.hoverColor   = {0.20f, 0.50f, 0.20f, 0.9f};
-        proposeBtn.pressedColor = {0.10f, 0.25f, 0.10f, 0.9f};
+        proposeBtn.normalColor  = tokens::STATE_SUCCESS;
+        proposeBtn.hoverColor   = tokens::DIPLO_FRIENDLY;
+        proposeBtn.pressedColor = tokens::STATE_PRESSED;
     }
     proposeBtn.cornerRadius = 4.0f;
     const bool localEmbargoActive = embargoActive;

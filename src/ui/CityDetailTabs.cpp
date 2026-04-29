@@ -12,7 +12,9 @@
  */
 
 #include "aoc/ui/GameScreens.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 #include "aoc/ui/UIManager.hpp"
+#include "aoc/ui/IconAtlas.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -72,29 +74,32 @@ static aoc::game::City* resolveCityByLocation(aoc::game::GameState* gs,
 
 void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
     constexpr float kListWidth = 310.0f;
+    // Style guide §9.1: parchment surface for the city detail screen.
+    // Header bar uses mahogany so titles read like leather banding atop
+    // the page; resource accents use the parchment-tuned hues.
     constexpr float kContentWidth = 330.0f;
-    constexpr Color kHeaderBg = {0.18f, 0.20f, 0.28f, 0.95f};
-    constexpr Color kHeaderTextColor = {0.9f, 0.85f, 0.6f, 1.0f};
-    constexpr Color kDimTextColor = {0.55f, 0.55f, 0.60f, 0.8f};
-    constexpr Color kBodyTextColor = {0.78f, 0.80f, 0.82f, 1.0f};
-    constexpr Color kSeparatorColor = {0.22f, 0.24f, 0.30f, 0.6f};
-    constexpr Color kFoodColor = {0.3f, 0.8f, 0.3f, 1.0f};
-    constexpr Color kProdColor = {0.9f, 0.55f, 0.2f, 1.0f};
-    constexpr Color kGoldColor = {0.95f, 0.85f, 0.2f, 1.0f};
-    constexpr Color kSciColor = {0.3f, 0.55f, 0.95f, 1.0f};
-    constexpr Color kCultColor = {0.7f, 0.35f, 0.85f, 1.0f};
+    constexpr Color kHeaderBg        = tokens::SURFACE_MAHOGANY;
+    constexpr Color kHeaderTextColor = tokens::TEXT_GILT;
+    constexpr Color kDimTextColor    = tokens::TEXT_DISABLED;
+    constexpr Color kBodyTextColor   = tokens::TEXT_INK;
+    constexpr Color kSeparatorColor  = tokens::BRONZE_DARK;
+    constexpr Color kFoodColor       = tokens::RES_FOOD;
+    constexpr Color kProdColor       = tokens::RES_PRODUCTION;
+    constexpr Color kGoldColor       = tokens::RES_GOLD;
+    constexpr Color kSciColor        = tokens::RES_SCIENCE;
+    constexpr Color kCultColor       = tokens::RES_CULTURE;
 
     const aoc::game::City* city = resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation);
     if (city == nullptr) {
         (void)ui.createLabel(contentPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
-            LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
+            LabelData{"City not found", tokens::STATE_DANGER, 13.0f});
         return;
     }
 
     // Scrollable area for tab content
     WidgetId scrollArea = ui.createScrollList(
         contentPanel, {0.0f, 0.0f, kContentWidth, 520.0f},
-        ScrollListData{{0.12f, 0.14f, 0.18f, 0.0f}, 0.0f, 0.0f});
+        ScrollListData{tokens::SURFACE_PARCHMENT, 0.0f, 0.0f});
     {
         Widget* listWidget = ui.getWidget(scrollArea);
         if (listWidget != nullptr) {
@@ -142,7 +147,7 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
         // line automatically if the panel narrows. Height grows to fit.
         WidgetId yieldRow = ui.createPanel(
             scrollArea, {0.0f, 0.0f, kListWidth, 58.0f},
-            PanelData{{0.15f, 0.17f, 0.22f, 0.95f}, 4.0f});
+            PanelData{tokens::SURFACE_PARCHMENT_DIM, tokens::CORNER_BUTTON});
         {
             Widget* yr = ui.getWidget(yieldRow);
             if (yr != nullptr) {
@@ -153,18 +158,20 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
         }
 
         struct YieldEntry {
-            const char* name;
+            const char* iconKey;
+            const char* tooltip;
             int32_t value;
-            Color dotColor;
+            Color color;
         };
         const std::array<YieldEntry, 5> yieldEntries = {{
-            {"Food",    totalFood,              kFoodColor},
-            {"Prod",    totalProd + bldgProd,    kProdColor},
-            {"Gold",    totalGold + bldgGold,    kGoldColor},
-            {"Sci",     totalSci + bldgSci,      kSciColor},
-            {"Cult",    totalCult,               kCultColor},
+            {"yields.food",       "Food",       totalFood,            kFoodColor},
+            {"yields.production", "Production", totalProd + bldgProd, kProdColor},
+            {"yields.gold",       "Gold",       totalGold + bldgGold, kGoldColor},
+            {"yields.science",    "Science",    totalSci + bldgSci,   kSciColor},
+            {"yields.culture",    "Culture",    totalCult,            kCultColor},
         }};
 
+        IconAtlas& atlas = IconAtlas::instance();
         constexpr float kChipW = 72.0f;
         constexpr float kChipH = 22.0f;
 
@@ -180,13 +187,17 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
                     ep->childSpacing = 4.0f;
                 }
             }
-            (void)ui.createPanel(
-                entryPanel, {0.0f, 2.0f, 10.0f, 10.0f},
-                PanelData{entry.dotColor, 5.0f});
-            std::string valueText = std::to_string(entry.value) + " " + entry.name;
+            IconData yieldIcon;
+            yieldIcon.spriteId      = atlas.id(entry.iconKey);
+            yieldIcon.fallbackColor = entry.color;
+            (void)ui.createIcon(entryPanel, {0.0f, 0.0f, 14.0f, 14.0f},
+                                std::move(yieldIcon));
             (void)ui.createLabel(
-                entryPanel, {0.0f, 0.0f, kChipW - 18.0f, 14.0f},
-                LabelData{std::move(valueText), {0.92f, 0.92f, 0.92f, 1.0f}, 11.0f});
+                entryPanel, {0.0f, 0.0f, kChipW - 22.0f, 14.0f},
+                LabelData{std::to_string(entry.value), entry.color, 12.0f});
+            ui.setWidgetTooltip(entryPanel,
+                std::string(entry.tooltip) + ": "
+                + std::to_string(entry.value) + " per turn");
         }
     }
 
@@ -205,27 +216,27 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
         const char* statusName = aoc::sim::loyaltyStatusName(loyaltyStatus);
 
         Color loyaltyTextColor = {1.0f, 1.0f, 1.0f, 1.0f};
-        Color loyaltyBarColor = {0.3f, 0.9f, 0.3f, 0.9f};
+        Color loyaltyBarColor = tokens::STATE_SUCCESS;
         switch (loyaltyStatus) {
             case aoc::sim::LoyaltyStatus::Loyal:
-                loyaltyTextColor = {0.3f, 0.9f, 0.3f, 1.0f};
-                loyaltyBarColor = {0.2f, 0.7f, 0.2f, 0.9f};
+                loyaltyTextColor = tokens::STATE_SUCCESS;
+                loyaltyBarColor = tokens::STATE_SUCCESS;
                 break;
             case aoc::sim::LoyaltyStatus::Content:
-                loyaltyTextColor = {0.85f, 0.85f, 0.85f, 1.0f};
-                loyaltyBarColor = {0.5f, 0.7f, 0.3f, 0.9f};
+                loyaltyTextColor = tokens::TEXT_INK;
+                loyaltyBarColor = tokens::STATE_SUCCESS;
                 break;
             case aoc::sim::LoyaltyStatus::Disloyal:
-                loyaltyTextColor = {0.9f, 0.9f, 0.2f, 1.0f};
-                loyaltyBarColor = {0.8f, 0.8f, 0.15f, 0.9f};
+                loyaltyTextColor = tokens::STATE_WARN;
+                loyaltyBarColor = tokens::STATE_WARN;
                 break;
             case aoc::sim::LoyaltyStatus::Unrest:
-                loyaltyTextColor = {0.9f, 0.4f, 0.2f, 1.0f};
-                loyaltyBarColor = {0.85f, 0.35f, 0.15f, 0.9f};
+                loyaltyTextColor = tokens::DIPLO_UNFRIENDLY;
+                loyaltyBarColor = tokens::DIPLO_UNFRIENDLY;
                 break;
             case aoc::sim::LoyaltyStatus::Revolt:
-                loyaltyTextColor = {0.9f, 0.1f, 0.1f, 1.0f};
-                loyaltyBarColor = {0.8f, 0.1f, 0.1f, 0.9f};
+                loyaltyTextColor = tokens::STATE_DANGER;
+                loyaltyBarColor = tokens::STATE_DANGER;
                 break;
         }
 
@@ -242,7 +253,7 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
         constexpr float kBarHeight = 10.0f;
         WidgetId barBg = ui.createPanel(
             scrollArea, {0.0f, 0.0f, kBarWidth, kBarHeight},
-            PanelData{{0.08f, 0.08f, 0.10f, 0.9f}, 3.0f});
+            PanelData{tokens::SURFACE_INK, tokens::CORNER_BUTTON});
         {
             const float fillFraction = std::clamp(loyaltyComp.loyalty / 100.0f, 0.0f, 1.0f);
             const float fillWidth = std::max(fillFraction * kBarWidth, 2.0f);
@@ -311,11 +322,11 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
         const aoc::sim::CityHappinessComponent& happiness = city->happiness();
         const int32_t netHappy = static_cast<int32_t>(happiness.amenities - happiness.demand + happiness.modifiers);
 
-        Color happyIndicatorColor = {0.3f, 0.8f, 0.3f, 1.0f};
+        Color happyIndicatorColor = tokens::STATE_SUCCESS;
         if (netHappy < 0) {
-            happyIndicatorColor = {0.85f, 0.3f, 0.3f, 1.0f};
+            happyIndicatorColor = tokens::STATE_DANGER;
         } else if (netHappy == 0) {
-            happyIndicatorColor = {0.8f, 0.8f, 0.3f, 1.0f};
+            happyIndicatorColor = tokens::STATE_WARN;
         }
 
         WidgetId happyRow = ui.createPanel(
@@ -378,7 +389,7 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
         constexpr float kProdBarHeight = 10.0f;
         WidgetId prodBarBg = ui.createPanel(
             scrollArea, {0.0f, 0.0f, kProdBarWidth, kProdBarHeight},
-            PanelData{{0.08f, 0.08f, 0.10f, 0.9f}, 3.0f});
+            PanelData{tokens::SURFACE_INK, tokens::CORNER_BUTTON});
         {
             const float fraction = (prodTotal > 0.0f)
                 ? std::clamp(prodProgress / prodTotal, 0.0f, 1.0f)
@@ -395,7 +406,7 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
 
     // -- Purchase hint --
     (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 1.0f},
-        PanelData{{0.3f, 0.3f, 0.4f, 0.3f}, 0.0f});
+        PanelData{tokens::BRONZE_DARK, 0.0f});
     (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
         LabelData{"  Right-click unowned tiles on the map to purchase them", kDimTextColor, 10.0f});
 }
@@ -407,23 +418,23 @@ void CityDetailScreen::buildOverviewTab(UIManager& ui, WidgetId contentPanel) {
 void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) {
     constexpr float kListWidth = 310.0f;
     constexpr float kContentWidth = 330.0f;
-    constexpr Color kHeaderBg = {0.18f, 0.20f, 0.28f, 0.95f};
-    constexpr Color kHeaderTextColor = {0.9f, 0.85f, 0.6f, 1.0f};
-    constexpr Color kDimTextColor = {0.55f, 0.55f, 0.60f, 0.8f};
-    constexpr Color kBodyTextColor = {0.78f, 0.80f, 0.82f, 1.0f};
-    constexpr Color kSeparatorColor = {0.22f, 0.24f, 0.30f, 0.6f};
-    constexpr Color kProdColor = {0.9f, 0.55f, 0.2f, 1.0f};
+    constexpr Color kHeaderBg        = tokens::SURFACE_MAHOGANY;
+    constexpr Color kHeaderTextColor = tokens::TEXT_GILT;
+    constexpr Color kDimTextColor    = tokens::TEXT_DISABLED;
+    constexpr Color kBodyTextColor   = tokens::TEXT_INK;
+    constexpr Color kSeparatorColor  = tokens::BRONZE_DARK;
+    constexpr Color kProdColor       = tokens::RES_PRODUCTION;
 
     aoc::game::City* city = resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation);
     if (city == nullptr) {
         (void)ui.createLabel(contentPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
-            LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
+            LabelData{"City not found", tokens::STATE_DANGER, 13.0f});
         return;
     }
 
     WidgetId scrollArea = ui.createScrollList(
         contentPanel, {0.0f, 0.0f, kContentWidth, 520.0f},
-        ScrollListData{{0.12f, 0.14f, 0.18f, 0.0f}, 0.0f, 0.0f});
+        ScrollListData{tokens::SURFACE_PARCHMENT, 0.0f, 0.0f});
     {
         Widget* listWidget = ui.getWidget(scrollArea);
         if (listWidget != nullptr) {
@@ -457,7 +468,7 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
             constexpr float kProdBarHeight = 8.0f;
             WidgetId barBg = ui.createPanel(
                 scrollArea, {0.0f, 0.0f, kProdBarWidth, kProdBarHeight},
-                PanelData{{0.08f, 0.08f, 0.10f, 0.9f}, 3.0f});
+                PanelData{tokens::SURFACE_INK, tokens::CORNER_BUTTON});
             {
                 const float fraction = (item.totalCost > 0.0f)
                     ? std::clamp(item.progress / item.totalCost, 0.0f, 1.0f)
@@ -501,24 +512,24 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
 
         switch (buildable.type) {
             case aoc::sim::ProductionItemType::Unit:
-                btn.normalColor  = {0.2f, 0.2f, 0.28f, 0.9f};
-                btn.hoverColor   = {0.3f, 0.3f, 0.38f, 0.9f};
-                btn.pressedColor = {0.15f, 0.15f, 0.2f, 0.9f};
+                btn.normalColor  = tokens::SURFACE_PARCHMENT_DIM;
+                btn.hoverColor   = tokens::BRONZE_LIGHT;
+                btn.pressedColor = tokens::BRONZE_DARK;
                 break;
             case aoc::sim::ProductionItemType::Building:
-                btn.normalColor  = {0.2f, 0.25f, 0.2f, 0.9f};
-                btn.hoverColor   = {0.3f, 0.35f, 0.3f, 0.9f};
-                btn.pressedColor = {0.15f, 0.18f, 0.15f, 0.9f};
+                btn.normalColor  = tokens::BRONZE_BASE;
+                btn.hoverColor   = tokens::BRONZE_LIGHT;
+                btn.pressedColor = tokens::BRONZE_DARK;
                 break;
             case aoc::sim::ProductionItemType::Wonder:
-                btn.normalColor  = {0.28f, 0.22f, 0.15f, 0.9f};
-                btn.hoverColor   = {0.40f, 0.32f, 0.20f, 0.9f};
-                btn.pressedColor = {0.20f, 0.15f, 0.10f, 0.9f};
+                btn.normalColor  = tokens::BRONZE_BASE;
+                btn.hoverColor   = tokens::BRONZE_LIGHT;
+                btn.pressedColor = tokens::BRONZE_DARK;
                 break;
             case aoc::sim::ProductionItemType::District:
-                btn.normalColor  = {0.2f, 0.2f, 0.25f, 0.9f};
-                btn.hoverColor   = {0.3f, 0.3f, 0.35f, 0.9f};
-                btn.pressedColor = {0.15f, 0.15f, 0.18f, 0.9f};
+                btn.normalColor  = tokens::SURFACE_PARCHMENT_DIM;
+                btn.hoverColor   = tokens::BRONZE_LIGHT;
+                btn.pressedColor = tokens::BRONZE_DARK;
                 break;
         }
 
@@ -550,20 +561,20 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
 void CityDetailScreen::buildBuildingsTab(UIManager& ui, WidgetId contentPanel) {
     constexpr float kListWidth = 310.0f;
     constexpr float kContentWidth = 330.0f;
-    constexpr Color kHeaderBg = {0.18f, 0.20f, 0.28f, 0.95f};
-    constexpr Color kHeaderTextColor = {0.9f, 0.85f, 0.6f, 1.0f};
-    constexpr Color kDimTextColor = {0.55f, 0.55f, 0.60f, 0.8f};
+    constexpr Color kHeaderBg        = tokens::SURFACE_MAHOGANY;
+    constexpr Color kHeaderTextColor = tokens::TEXT_GILT;
+    constexpr Color kDimTextColor    = tokens::TEXT_DISABLED;
 
     const aoc::game::City* city = resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation);
     if (city == nullptr) {
         (void)ui.createLabel(contentPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
-            LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
+            LabelData{"City not found", tokens::STATE_DANGER, 13.0f});
         return;
     }
 
     WidgetId scrollArea = ui.createScrollList(
         contentPanel, {0.0f, 0.0f, kContentWidth, 520.0f},
-        ScrollListData{{0.12f, 0.14f, 0.18f, 0.0f}, 0.0f, 0.0f});
+        ScrollListData{tokens::SURFACE_PARCHMENT, 0.0f, 0.0f});
     {
         Widget* listWidget = ui.getWidget(scrollArea);
         if (listWidget != nullptr) {
@@ -580,27 +591,62 @@ void CityDetailScreen::buildBuildingsTab(UIManager& ui, WidgetId contentPanel) {
     const aoc::sim::CityDistrictsComponent& districts = city->districts();
 
     if (!districts.districts.empty()) {
-        constexpr std::array<Color, 4> kDistrictAccents = {{
-            {0.20f, 0.24f, 0.38f, 0.9f},
-            {0.26f, 0.20f, 0.35f, 0.9f},
-            {0.20f, 0.30f, 0.24f, 0.9f},
-            {0.30f, 0.24f, 0.20f, 0.9f},
-        }};
+        IconAtlas& atlas = IconAtlas::instance();
+        const auto districtIconKey = [](aoc::sim::DistrictType dt) -> const char* {
+            using DT = aoc::sim::DistrictType;
+            switch (dt) {
+                case DT::CityCenter: return "districts.citycenter";
+                case DT::Campus:     return "districts.campus";
+                case DT::Commercial: return "districts.commercial";
+                case DT::Encampment: return "districts.encampment";
+                case DT::Industrial: return "districts.industrial";
+                case DT::HolySite:   return "districts.holysite";
+                case DT::Theatre:    return "districts.theatre";
+                case DT::Harbor:     return "districts.harbor";
+                default:             return "buildings.unknown";
+            }
+        };
+        const auto districtAccent = [](aoc::sim::DistrictType dt) -> Color {
+            using DT = aoc::sim::DistrictType;
+            switch (dt) {
+                case DT::CityCenter: return tokens::BRONZE_BASE;
+                case DT::Campus:     return tokens::RES_SCIENCE;
+                case DT::Commercial: return tokens::RES_GOLD;
+                case DT::Encampment: return tokens::DIPLO_HOSTILE;
+                case DT::Industrial: return tokens::RES_PRODUCTION;
+                case DT::HolySite:   return tokens::RES_FAITH;
+                case DT::Theatre:    return tokens::RES_CULTURE;
+                case DT::Harbor:     return tokens::DIPLO_ALLIED;
+                default:             return tokens::BRONZE_BASE;
+            }
+        };
 
         int32_t bldgProd = 0;
         int32_t bldgSci  = 0;
         int32_t bldgGold = 0;
-        std::size_t districtIdx = 0;
 
         for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& district : districts.districts) {
-            const Color accentColor = kDistrictAccents[districtIdx % kDistrictAccents.size()];
-            ++districtIdx;
+            const Color accentColor = districtAccent(district.type);
 
-            (void)ui.createPanel(scrollArea, {0.0f, 0.0f, kListWidth, 18.0f},
-                PanelData{accentColor, 2.0f});
-            const std::string districtName = std::string(aoc::sim::districtTypeName(district.type));
-            (void)ui.createLabel(scrollArea, {0.0f, -17.0f, kListWidth, 14.0f},
-                LabelData{"   " + districtName, {0.9f, 0.9f, 0.95f, 1.0f}, 10.0f});
+            // District header: icon + colored bar + name
+            WidgetId dhRow = ui.createPanel(scrollArea,
+                {0.0f, 0.0f, kListWidth, 22.0f},
+                PanelData{tokens::SURFACE_PARCHMENT_DIM, 3.0f});
+            {
+                Widget* dr = ui.getWidget(dhRow);
+                if (dr != nullptr) {
+                    dr->layoutDirection = LayoutDirection::Horizontal;
+                    dr->padding = {2.0f, 4.0f, 2.0f, 4.0f};
+                    dr->childSpacing = 4.0f;
+                }
+            }
+            IconData distIcon;
+            distIcon.spriteId      = atlas.id(districtIconKey(district.type));
+            distIcon.fallbackColor = accentColor;
+            (void)ui.createIcon(dhRow, {0.0f, 0.0f, 16.0f, 16.0f}, std::move(distIcon));
+            (void)ui.createLabel(dhRow, {0.0f, 0.0f, kListWidth - 30.0f, 14.0f},
+                LabelData{std::string(aoc::sim::districtTypeName(district.type)),
+                          accentColor, 11.0f});
 
             for (BuildingId bid : district.buildings) {
                 const aoc::sim::BuildingDef& bdef = aoc::sim::buildingDef(bid);
@@ -608,25 +654,58 @@ void CityDetailScreen::buildBuildingsTab(UIManager& ui, WidgetId contentPanel) {
                 bldgSci  += bdef.scienceBonus;
                 bldgGold += bdef.goldBonus;
 
-                std::string bldgLine = "      " + std::string(bdef.name);
-                bool hasBonus = false;
-                if (bdef.productionBonus != 0) {
-                    bldgLine += (hasBonus ? ", " : "  ");
-                    bldgLine += "+" + std::to_string(bdef.productionBonus) + " prod";
-                    hasBonus = true;
+                // Building chip: icon + name + small yield strip
+                WidgetId chip = ui.createPanel(scrollArea,
+                    {0.0f, 0.0f, kListWidth, 18.0f},
+                    PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+                {
+                    Widget* cw = ui.getWidget(chip);
+                    if (cw != nullptr) {
+                        cw->layoutDirection = LayoutDirection::Horizontal;
+                        cw->padding = {12.0f, 2.0f, 4.0f, 2.0f};
+                        cw->childSpacing = 4.0f;
+                    }
                 }
-                if (bdef.scienceBonus != 0) {
-                    bldgLine += (hasBonus ? ", " : "  ");
-                    bldgLine += "+" + std::to_string(bdef.scienceBonus) + " sci";
-                    hasBonus = true;
+                IconData bIcon;
+                bIcon.spriteId      = atlas.id("buildings.commercial"); // gets overridden below
+                {
+                    using DT = aoc::sim::DistrictType;
+                    switch (bdef.requiredDistrict) {
+                        case DT::CityCenter: bIcon.spriteId = atlas.id("buildings.citycenter"); break;
+                        case DT::Campus:     bIcon.spriteId = atlas.id("buildings.campus");     break;
+                        case DT::Commercial: bIcon.spriteId = atlas.id("buildings.commercial"); break;
+                        case DT::Encampment: bIcon.spriteId = atlas.id("buildings.encampment"); break;
+                        case DT::Industrial: bIcon.spriteId = atlas.id("buildings.industrial"); break;
+                        case DT::HolySite:   bIcon.spriteId = atlas.id("buildings.holysite");   break;
+                        case DT::Theatre:    bIcon.spriteId = atlas.id("buildings.theatre");    break;
+                        case DT::Harbor:     bIcon.spriteId = atlas.id("buildings.harbor");     break;
+                        default:             bIcon.spriteId = atlas.id("buildings.unknown");    break;
+                    }
                 }
-                if (bdef.goldBonus != 0) {
-                    bldgLine += (hasBonus ? ", " : "  ");
-                    bldgLine += "+" + std::to_string(bdef.goldBonus) + " gold";
-                    hasBonus = true;
-                }
-                (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 13.0f},
-                    LabelData{std::move(bldgLine), {0.72f, 0.76f, 0.82f, 1.0f}, 10.0f});
+                bIcon.fallbackColor = accentColor;
+                (void)ui.createIcon(chip, {0.0f, 0.0f, 12.0f, 12.0f}, std::move(bIcon));
+                (void)ui.createLabel(chip, {0.0f, 0.0f, 130.0f, 13.0f},
+                    LabelData{std::string(bdef.name), tokens::TEXT_INK, 10.0f});
+
+                // Yield pips (icon + value, only non-zero bonuses).
+                const auto yieldPip = [&](const char* iconKey, int32_t v, Color col) {
+                    if (v == 0) { return; }
+                    IconData yi;
+                    yi.spriteId      = atlas.id(iconKey);
+                    yi.fallbackColor = col;
+                    (void)ui.createIcon(chip, {0.0f, 0.0f, 10.0f, 10.0f}, std::move(yi));
+                    (void)ui.createLabel(chip, {0.0f, 0.0f, 26.0f, 12.0f},
+                        LabelData{"+" + std::to_string(v), col, 10.0f});
+                };
+                yieldPip("yields.production", bdef.productionBonus, tokens::RES_PRODUCTION);
+                yieldPip("yields.science",    bdef.scienceBonus,    tokens::RES_SCIENCE);
+                yieldPip("yields.gold",       bdef.goldBonus,       tokens::RES_GOLD);
+
+                // Tooltip on whole chip with full breakdown.
+                ui.setWidgetTooltip(chip,
+                    std::string(bdef.name)
+                    + "\nDistrict: " + std::string(aoc::sim::districtTypeName(district.type))
+                    + "\nMaint: " + std::to_string(bdef.maintenanceCost) + " gold");
 
                 // WP-C5: recipe-preference cycle button on industrial
                 // buildings that host more than one matching recipe.
@@ -666,9 +745,9 @@ void CityDetailScreen::buildBuildingsTab(UIManager& ui, WidgetId contentPanel) {
                         prefBtn.label = std::move(prefLabel);
                         prefBtn.fontSize = 9.0f;
                         prefBtn.cornerRadius = 2.0f;
-                        prefBtn.normalColor  = {0.18f, 0.22f, 0.28f, 0.9f};
-                        prefBtn.hoverColor   = {0.26f, 0.32f, 0.40f, 0.9f};
-                        prefBtn.pressedColor = {0.14f, 0.18f, 0.22f, 0.9f};
+                        prefBtn.normalColor  = tokens::SURFACE_PARCHMENT_DIM;
+                        prefBtn.hoverColor   = tokens::BRONZE_LIGHT;
+                        prefBtn.pressedColor = tokens::BRONZE_DARK;
                         aoc::sim::EconomySimulation* econ = this->m_economy;
                         const PlayerId cityOwner = city->owner();
                         const uint16_t buildingIdVal = bid.value;
@@ -714,7 +793,7 @@ void CityDetailScreen::buildBuildingsTab(UIManager& ui, WidgetId contentPanel) {
             "  Building totals: +%d prod, +%d sci, +%d gold",
             bldgProd, bldgSci, bldgGold);
         (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
-            LabelData{std::string(bldgTotalBuf), {0.65f, 0.7f, 0.8f, 1.0f}, 10.0f});
+            LabelData{std::string(bldgTotalBuf), tokens::TEXT_DISABLED, 10.0f});
     } else {
         (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
             LabelData{"  No districts built", kDimTextColor, 10.0f});
@@ -728,21 +807,21 @@ void CityDetailScreen::buildBuildingsTab(UIManager& ui, WidgetId contentPanel) {
 void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
     constexpr float kListWidth = 310.0f;
     constexpr float kContentWidth = 330.0f;
-    constexpr Color kHeaderBg = {0.18f, 0.20f, 0.28f, 0.95f};
-    constexpr Color kHeaderTextColor = {0.9f, 0.85f, 0.6f, 1.0f};
-    constexpr Color kBodyTextColor = {0.78f, 0.80f, 0.82f, 1.0f};
-    constexpr Color kSeparatorColor = {0.22f, 0.24f, 0.30f, 0.6f};
+    constexpr Color kHeaderBg        = tokens::SURFACE_MAHOGANY;
+    constexpr Color kHeaderTextColor = tokens::TEXT_GILT;
+    constexpr Color kBodyTextColor   = tokens::TEXT_INK;
+    constexpr Color kSeparatorColor  = tokens::BRONZE_DARK;
 
     aoc::game::City* city = resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation);
     if (city == nullptr) {
         (void)ui.createLabel(contentPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
-            LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
+            LabelData{"City not found", tokens::STATE_DANGER, 13.0f});
         return;
     }
 
     WidgetId scrollArea = ui.createScrollList(
         contentPanel, {0.0f, 0.0f, kContentWidth, 520.0f},
-        ScrollListData{{0.12f, 0.14f, 0.18f, 0.0f}, 0.0f, 0.0f});
+        ScrollListData{tokens::SURFACE_PARCHMENT, 0.0f, 0.0f});
     {
         Widget* listWidget = ui.getWidget(scrollArea);
         if (listWidget != nullptr) {
@@ -820,8 +899,8 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
             citizenBtn.label = std::string(tileBuf);
             citizenBtn.fontSize = 10.0f;
             citizenBtn.normalColor = isWorked
-                ? Color{0.12f, 0.28f, 0.14f, 0.9f}
-                : Color{0.20f, 0.22f, 0.28f, 0.9f};
+                ? tokens::STATE_SUCCESS
+                : tokens::SURFACE_PARCHMENT_DIM;
             citizenBtn.hoverColor = {citizenBtn.normalColor.r + 0.08f,
                                       citizenBtn.normalColor.g + 0.08f,
                                       citizenBtn.normalColor.b + 0.08f, 0.95f};
@@ -845,9 +924,9 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
             ButtonData assignBtn;
             assignBtn.label = std::string("   Reassign (") + mgmtLabel + ")";
             assignBtn.fontSize = 9.0f;
-            assignBtn.normalColor = {0.16f, 0.18f, 0.24f, 0.85f};
-            assignBtn.hoverColor = {0.24f, 0.26f, 0.34f, 0.9f};
-            assignBtn.pressedColor = {0.12f, 0.14f, 0.20f, 0.85f};
+            assignBtn.normalColor = tokens::SURFACE_PARCHMENT_DIM;
+            assignBtn.hoverColor = tokens::BRONZE_LIGHT;
+            assignBtn.pressedColor = tokens::BRONZE_DARK;
             assignBtn.cornerRadius = 3.0f;
 
             aoc::game::Player* playerCap = playerMut;
@@ -889,16 +968,16 @@ void CityDetailScreen::buildCitizensTab(UIManager& ui, WidgetId contentPanel) {
 void CityDetailScreen::buildCouriersTab(UIManager& ui, WidgetId contentPanel) {
     constexpr float kListWidth = 310.0f;
     constexpr float kContentWidth = 330.0f;
-    constexpr Color kHeaderBg        = {0.18f, 0.20f, 0.28f, 0.95f};
-    constexpr Color kHeaderTextColor = {0.9f, 0.85f, 0.6f, 1.0f};
-    constexpr Color kBodyTextColor   = {0.78f, 0.80f, 0.82f, 1.0f};
-    constexpr Color kDimTextColor    = {0.55f, 0.55f, 0.60f, 0.8f};
-    constexpr Color kSeparatorColor  = {0.22f, 0.24f, 0.30f, 0.6f};
+    constexpr Color kHeaderBg        = tokens::SURFACE_MAHOGANY;
+    constexpr Color kHeaderTextColor = tokens::TEXT_GILT;
+    constexpr Color kBodyTextColor   = tokens::TEXT_INK;
+    constexpr Color kDimTextColor    = tokens::TEXT_DISABLED;
+    constexpr Color kSeparatorColor  = tokens::BRONZE_DARK;
 
     aoc::game::City* city = resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation);
     if (city == nullptr || this->m_gameState == nullptr || this->m_grid == nullptr) {
         (void)ui.createLabel(contentPanel, {0.0f, 0.0f, kContentWidth, 16.0f},
-            LabelData{"City not found", {0.8f, 0.4f, 0.4f, 1.0f}, 13.0f});
+            LabelData{"City not found", tokens::STATE_DANGER, 13.0f});
         return;
     }
 
@@ -907,7 +986,7 @@ void CityDetailScreen::buildCouriersTab(UIManager& ui, WidgetId contentPanel) {
 
     WidgetId scrollArea = ui.createScrollList(
         contentPanel, {0.0f, 0.0f, kContentWidth, 520.0f},
-        ScrollListData{{0.12f, 0.14f, 0.18f, 0.0f}, 0.0f, 0.0f});
+        ScrollListData{tokens::SURFACE_PARCHMENT, 0.0f, 0.0f});
     {
         Widget* listWidget = ui.getWidget(scrollArea);
         if (listWidget != nullptr) {
@@ -1024,9 +1103,9 @@ void CityDetailScreen::buildCouriersTab(UIManager& ui, WidgetId contentPanel) {
         ButtonData rmBtn;
         rmBtn.label = std::string(buf);
         rmBtn.fontSize = 10.0f;
-        rmBtn.normalColor  = {0.32f, 0.18f, 0.18f, 0.9f};
-        rmBtn.hoverColor   = {0.44f, 0.26f, 0.26f, 0.95f};
-        rmBtn.pressedColor = {0.26f, 0.14f, 0.14f, 0.9f};
+        rmBtn.normalColor  = tokens::STATE_DANGER;
+        rmBtn.hoverColor   = {0.767f, 0.272f, 0.197f, 1.0f};
+        rmBtn.pressedColor = {0.511f, 0.182f, 0.131f, 1.0f};
         rmBtn.cornerRadius = 3.0f;
 
         aoc::game::City* cityMut = city;
@@ -1076,9 +1155,9 @@ void CityDetailScreen::buildCouriersTab(UIManager& ui, WidgetId contentPanel) {
             ButtonData dispatchBtn;
             dispatchBtn.label = std::string(btnBuf);
             dispatchBtn.fontSize = 10.0f;
-            dispatchBtn.normalColor  = {0.18f, 0.26f, 0.32f, 0.9f};
-            dispatchBtn.hoverColor   = {0.26f, 0.36f, 0.44f, 0.95f};
-            dispatchBtn.pressedColor = {0.14f, 0.20f, 0.26f, 0.9f};
+            dispatchBtn.normalColor  = tokens::BRONZE_BASE;
+            dispatchBtn.hoverColor   = tokens::BRONZE_LIGHT;
+            dispatchBtn.pressedColor = tokens::BRONZE_DARK;
             dispatchBtn.cornerRadius = 3.0f;
 
             aoc::game::GameState* gsPtr = this->m_gameState;
@@ -1113,9 +1192,9 @@ void CityDetailScreen::buildCouriersTab(UIManager& ui, WidgetId contentPanel) {
             ButtonData standBtn;
             standBtn.label = std::string(standBuf);
             standBtn.fontSize = 10.0f;
-            standBtn.normalColor  = {0.20f, 0.28f, 0.20f, 0.9f};
-            standBtn.hoverColor   = {0.28f, 0.38f, 0.28f, 0.95f};
-            standBtn.pressedColor = {0.14f, 0.22f, 0.14f, 0.9f};
+            standBtn.normalColor  = tokens::STATE_SUCCESS;
+            standBtn.hoverColor   = {0.432f, 0.654f, 0.292f, 1.0f};
+            standBtn.pressedColor = {0.288f, 0.436f, 0.194f, 1.0f};
             standBtn.cornerRadius = 3.0f;
 
             aoc::game::City* cityMut = city;

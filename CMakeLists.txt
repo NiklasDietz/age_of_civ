@@ -377,6 +377,7 @@ set(AOC_LIB_SOURCES
     src/ui/GameNotifications.cpp
     src/ui/DebugConsole.cpp
     src/ui/SpectatorHUD.cpp
+    src/ui/PauseMenu.cpp
 
     # Networking / Server-Client
     src/net/Transport.cpp

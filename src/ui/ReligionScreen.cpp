@@ -5,6 +5,7 @@
 
 #include "aoc/ui/ReligionScreen.hpp"
 #include "aoc/ui/UIManager.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -137,10 +138,10 @@ void ReligionScreen::buildBeliefList(UIManager& ui) {
         ButtonData btnData;
         btnData.label = std::move(btnText);
         btnData.normalColor = canAfford
-            ? Color{0.2f, 0.6f, 0.2f, 0.9f}
-            : Color{0.4f, 0.4f, 0.4f, 0.9f};
-        btnData.hoverColor = {0.3f, 0.7f, 0.3f, 0.9f};
-        btnData.labelColor = {1.0f, 1.0f, 1.0f, 1.0f};
+            ? tokens::STATE_SUCCESS
+            : tokens::TEXT_DISABLED;
+        btnData.hoverColor = tokens::DIPLO_FRIENDLY;
+        btnData.labelColor = tokens::TEXT_PARCHMENT;
         btnData.fontSize = 12.0f;
 
         if (canAfford) {
@@ -182,10 +183,10 @@ void ReligionScreen::buildBeliefList(UIManager& ui) {
         ButtonData btnData;
         btnData.label = std::move(btnText);
         btnData.normalColor = canAfford
-            ? Color{0.2f, 0.5f, 0.7f, 0.9f}
-            : Color{0.4f, 0.4f, 0.4f, 0.9f};
-        btnData.hoverColor = {0.3f, 0.6f, 0.8f, 0.9f};
-        btnData.labelColor = {1.0f, 1.0f, 1.0f, 1.0f};
+            ? tokens::DIPLO_ALLIED
+            : tokens::TEXT_DISABLED;
+        btnData.hoverColor = tokens::RES_SCIENCE;
+        btnData.labelColor = tokens::TEXT_PARCHMENT;
         btnData.fontSize = 12.0f;
 
         if (canAfford) {
@@ -288,10 +289,10 @@ void ReligionScreen::buildBeliefList(UIManager& ui) {
             ButtonData btnData;
             btnData.label = std::move(btnText);
             btnData.normalColor = canAfford
-                ? Color{0.5f, 0.3f, 0.6f, 0.9f}
-                : Color{0.4f, 0.4f, 0.4f, 0.9f};
-            btnData.hoverColor = {0.6f, 0.4f, 0.7f, 0.9f};
-            btnData.labelColor = {1.0f, 1.0f, 1.0f, 1.0f};
+                ? tokens::RES_CULTURE
+                : tokens::TEXT_DISABLED;
+            btnData.hoverColor = tokens::RES_CULTURE;
+            btnData.labelColor = tokens::TEXT_PARCHMENT;
             btnData.fontSize = 12.0f;
 
             if (canAfford) {
@@ -313,10 +314,10 @@ void ReligionScreen::buildBeliefList(UIManager& ui) {
             ButtonData btnData;
             btnData.label = std::move(btnText);
             btnData.normalColor = canAfford
-                ? Color{0.6f, 0.3f, 0.3f, 0.9f}
-                : Color{0.4f, 0.4f, 0.4f, 0.9f};
-            btnData.hoverColor = {0.7f, 0.4f, 0.4f, 0.9f};
-            btnData.labelColor = {1.0f, 1.0f, 1.0f, 1.0f};
+                ? tokens::DIPLO_HOSTILE
+                : tokens::TEXT_DISABLED;
+            btnData.hoverColor = tokens::STATE_DANGER;
+            btnData.labelColor = tokens::TEXT_PARCHMENT;
             btnData.fontSize = 12.0f;
 
             if (canAfford) {

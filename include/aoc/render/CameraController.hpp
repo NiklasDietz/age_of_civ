@@ -37,7 +37,8 @@ public:
      * @param screenHeight Current framebuffer height.
      */
     void update(const aoc::app::InputManager& input, float deltaTime,
-                uint32_t screenWidth, uint32_t screenHeight);
+                uint32_t screenWidth, uint32_t screenHeight,
+                bool suppressEdgeScroll = false);
 
     [[nodiscard]] float cameraX() const { return this->m_cameraX; }
     [[nodiscard]] float cameraY() const { return this->m_cameraY; }

@@ -165,6 +165,14 @@ struct LabelData {
     std::string text;
     Color       color    = {1.0f, 1.0f, 1.0f, 1.0f};
     float       fontSize = 14.0f;
+    /// Optional 1-pixel outline drawn behind the glyphs in 8 directions.
+    /// Alpha 0 = no outline. Use for titles + chip values laid over busy
+    /// or low-contrast backgrounds where readability matters more than
+    /// crispness. Cost is 8× drawText calls — fine for a handful of
+    /// titles, avoid for body text. The outline draws the glyph in the
+    /// outline colour at offsets of `pixelScale` along the 8 cardinal/
+    /// diagonal directions, then the main fill on top.
+    Color       outlineColor = {0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 /// Scrollable list container. Children outside the visible window are skipped during rendering.
@@ -326,6 +334,11 @@ enum class LayoutDirection : uint8_t {
     /// vertically with `childSpacing`. Use for chip lists, resource
     /// summaries, etc.
     HorizontalWrap,
+    /// Absolute positioning: each child is placed at its
+    /// `requestedBounds.x / y` relative to the parent's content
+    /// origin. Layout pass skips cursor advance and cross-axis fill.
+    /// Use for tech-tree node graphs, world-map overlays, etc.
+    None,
 };
 
 /// Anchor point for root widget positioning relative to the screen.
@@ -462,6 +475,19 @@ struct Widget {
     /// is on UIManager, not the widget, so callers can swap targets
     /// without rewriting the widget tree.
     bool      acceptsDrop  = false;
+
+    // ------------------------------------------------------------------
+    // Pan canvas (right-mouse drag + edge scroll)
+    // ------------------------------------------------------------------
+    /// Mark the widget as a pannable canvas. Right-mouse drag inside its
+    /// bounds shifts `panX`/`panY`, and the layout pass applies that
+    /// offset to children when `layoutDirection == None`. Use for the
+    /// tech-tree graph, world-strategic overlays, etc. Edge-scroll
+    /// (mouse near widget border) is enabled separately by callers via
+    /// the per-frame tick.
+    bool      canPan       = false;
+    float     panX         = 0.0f;
+    float     panY         = 0.0f;
 
     // ------------------------------------------------------------------
     // Multi-select

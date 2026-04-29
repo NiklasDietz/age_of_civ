@@ -649,6 +649,25 @@ bool UIManager::handleInput(float mouseX, float mouseY,
                              bool mousePressed, bool mouseReleased,
                              float scrollDelta,
                              bool rightPressed, bool rightReleased) {
+    // Pan canvas pass: while right-mouse is held over a `canPan` widget
+    // (tech-tree graph etc.), accumulate the per-frame mouse delta into
+    // its panX/panY. Released → clear. Runs before hit-test so the pan
+    // keeps tracking even when the cursor leaves the canvas bounds.
+    if (rightReleased) {
+        this->m_panningWidget = INVALID_WIDGET;
+    }
+    if (this->m_panningWidget != INVALID_WIDGET) {
+        Widget* pw = this->getWidget(this->m_panningWidget);
+        if (pw != nullptr && pw->canPan) {
+            pw->panX += (mouseX - this->m_panLastMouseX);
+            pw->panY += (mouseY - this->m_panLastMouseY);
+            this->m_panLastMouseX = mouseX;
+            this->m_panLastMouseY = mouseY;
+        } else {
+            this->m_panningWidget = INVALID_WIDGET;
+        }
+    }
+
     // Panel drag pass: if the pressed widget is flagged draggable and
     // the button is still held, translate it under the cursor.
     // Mirrors the slider pass so both interactions work the same way.
@@ -705,20 +724,30 @@ bool UIManager::handleInput(float mouseX, float mouseY,
         Widget& w = this->m_widgets[hit];
         w.isHovered = true;
 
-        // Scroll wheel: walk up from hovered widget to find a ScrollList ancestor.
-        // Any scroll over a UI widget is consumed (prevents camera zoom while in menus).
+        // Scroll wheel: walk up from hovered widget to find either a
+        // ScrollList ancestor or a pannable canvas (canPan). Either one
+        // gets the scroll delta. Any scroll over a UI widget is consumed
+        // (prevents camera zoom while in menus).
         if (scrollDelta != 0.0f) {
             constexpr float SCROLL_PIXEL_MULTIPLIER = 20.0f;
             WidgetId cur = hit;
             while (cur != INVALID_WIDGET) {
                 Widget* candidate = this->getWidget(cur);
-                if (candidate != nullptr && std::holds_alternative<ScrollListData>(candidate->data)) {
-                    this->scrollWidget(cur, -scrollDelta * SCROLL_PIXEL_MULTIPLIER);
-                    break;
+                if (candidate != nullptr) {
+                    if (std::holds_alternative<ScrollListData>(candidate->data)) {
+                        this->scrollWidget(cur, -scrollDelta * SCROLL_PIXEL_MULTIPLIER);
+                        break;
+                    }
+                    if (candidate->canPan) {
+                        // Wheel scrolls Y for pan canvases; shift held
+                        // could later switch to X but isn't plumbed yet.
+                        candidate->panY += scrollDelta * SCROLL_PIXEL_MULTIPLIER;
+                        break;
+                    }
                 }
                 cur = (candidate != nullptr) ? candidate->parent : INVALID_WIDGET;
             }
-            return true;  // Consume scroll even if no scroll list found (hovering any UI)
+            return true;
         }
 
         if (mousePressed) {
@@ -829,6 +858,21 @@ bool UIManager::handleInput(float mouseX, float mouseY,
         // drift tolerance) since it's used for context menus.
         if (rightPressed) {
             this->m_rightPressedWidget = hit;
+            // Walk hit's ancestor chain to find a pannable canvas. Tech
+            // tree's cards live inside the canvas panel; right-click on
+            // a card should still grab the canvas for panning.
+            WidgetId panTarget = hit;
+            while (panTarget != INVALID_WIDGET) {
+                Widget* pw = this->getWidget(panTarget);
+                if (pw == nullptr) { break; }
+                if (pw->canPan) {
+                    this->m_panningWidget = panTarget;
+                    this->m_panLastMouseX = mouseX;
+                    this->m_panLastMouseY = mouseY;
+                    break;
+                }
+                panTarget = pw->parent;
+            }
             return true;
         }
         if (rightReleased) {
@@ -1096,7 +1140,8 @@ void UIManager::layoutWidget(WidgetId id, float parentX, float parentY) {
         // defaults to the parent's content width when the child opts
         // in (via `fillParentCross` or `w == 0`). Horizontal mirrors
         // with height. Kills the "set w=230 to match parent" ritual
-        // that litters screen code.
+        // that litters screen code. Absolute (None) mode: caller
+        // supplies explicit bounds, no fill.
         if (w->layoutDirection == LayoutDirection::Vertical) {
             if (child->fillParentCross || child->requestedBounds.w <= 0.0f) {
                 child->requestedBounds.w = contentW;
@@ -1154,7 +1199,19 @@ void UIManager::layoutWidget(WidgetId id, float parentX, float parentY) {
             child->requestedBounds.h = child->maxH;
         }
 
-        if (w->layoutDirection == LayoutDirection::Vertical) {
+        if (w->layoutDirection == LayoutDirection::None) {
+            // Absolute positioning: caller supplies child requestedBounds
+            // x/y in the parent's local content space. Pan offset (when
+            // the parent is a pannable canvas) shifts every child by
+            // (panX, panY) so right-mouse drag scrolls the graph.
+            // layoutWidget adds the child's own requestedBounds.x/y to
+            // its parent origin, so we pass the parent's content origin
+            // (plus pan) — NOT contentX + child->requestedBounds.x, or
+            // the offset would land twice.
+            const float ax = contentX + w->panX;
+            const float ay = contentY + w->panY;
+            this->layoutWidget(childId, ax, ay);
+        } else if (w->layoutDirection == LayoutDirection::Vertical) {
             this->layoutWidget(childId, cursorX, cursorY);
             // Post-layout clamp: computed bounds may still exceed
             // parent because child has internal padding / spacing.
@@ -1424,6 +1481,20 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d,
         else if constexpr (std::is_same_v<T, LabelData>) {
             if (!data.text.empty()) {
                 float worldFontSize = data.fontSize * scale;
+                if (data.outlineColor.a > 0.0f) {
+                    // 1-pixel outline: 8-direction halo before main fill.
+                    constexpr int OFFSETS[8][2] = {
+                        {-1,-1},{ 0,-1},{ 1,-1},
+                        {-1, 0},        { 1, 0},
+                        {-1, 1},{ 0, 1},{ 1, 1},
+                    };
+                    for (const auto& off : OFFSETS) {
+                        BitmapFont::drawText(renderer2d, data.text,
+                            b.x + static_cast<float>(off[0]) * scale,
+                            b.y + static_cast<float>(off[1]) * scale,
+                            worldFontSize, data.outlineColor, scale);
+                    }
+                }
                 BitmapFont::drawText(renderer2d, data.text, b.x, b.y,
                                       worldFontSize, data.color, scale);
             }

@@ -6,6 +6,7 @@
 #include "aoc/ui/EventLog.hpp"
 #include "aoc/ui/BitmapFont.hpp"
 #include "aoc/ui/Widget.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 
 #include <renderer/Renderer2D.hpp>
 
@@ -30,7 +31,9 @@ void EventLog::render(vulkan_app::renderer::Renderer2D& renderer2d,
     }
 
     // Draw semi-transparent background panel
-    renderer2d.drawFilledRect(x, y, w, h, 0.05f, 0.05f, 0.08f, 0.70f);
+    renderer2d.drawFilledRect(x, y, w, h,
+                               tokens::SURFACE_INK.r, tokens::SURFACE_INK.g,
+                               tokens::SURFACE_INK.b, 0.70f);
 
     // Draw events, most recent at bottom
     constexpr float FONT_SIZE  = 11.0f;

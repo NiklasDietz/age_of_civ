@@ -5,6 +5,7 @@
 
 #include "aoc/ui/Tooltip.hpp"
 #include "aoc/ui/BitmapFont.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 #include "aoc/ui/Theme.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -343,29 +344,58 @@ void TooltipManager::render(vulkan_app::renderer::Renderer2D& renderer2d) const 
     const float tooltipW = (static_cast<float>(maxLineLen) * FONT_SIZE * 0.7f + PADDING * 2.0f) * scale;
     const float tooltipH = (static_cast<float>(lineCount) * LINE_HEIGHT + PADDING * 2.0f) * scale;
 
-    // Draw background panel
-    renderer2d.drawRoundedRect(this->m_x, this->m_y, tooltipW, tooltipH,
-                               3.0f * scale, 0.05f, 0.05f, 0.08f, 0.92f);
+    // Style guide §7: marble surface, 1 px BRONZE_DARK border.
+    using namespace tokens;
+    const float r = tokens::CORNER_TOOLTIP * scale;
 
-    // Thin accent border
-    renderer2d.drawRoundedRect(this->m_x, this->m_y, tooltipW, tooltipH,
-                               3.0f * scale, 0.3f, 0.3f, 0.4f, 0.5f);
+    // Drop shadow (style guide SHADOW_HOVER tier).
+    renderer2d.drawRoundedRect(this->m_x + 1.0f, this->m_y + 2.0f,
+                               tooltipW, tooltipH, r,
+                               0.0f, 0.0f, 0.0f, SHADOW_HOVER.a);
+    // Marble surface.
+    renderer2d.drawRoundedRect(this->m_x, this->m_y, tooltipW, tooltipH, r,
+                               SURFACE_MARBLE.r, SURFACE_MARBLE.g,
+                               SURFACE_MARBLE.b, 0.95f);
+    // Bronze hairline border.
+    renderer2d.drawRoundedRect(this->m_x, this->m_y, tooltipW, tooltipH, r,
+                               BRONZE_DARK.r, BRONZE_DARK.g,
+                               BRONZE_DARK.b, 0.9f);
+    // Inner gilt highlight (1 px inset top edge) — drawn as a thin
+    // bright rect; subtle "engraved" feel.
+    renderer2d.drawRoundedRect(this->m_x + 1.0f, this->m_y + 1.0f,
+                               tooltipW - 2.0f, 1.0f * scale, 0.0f,
+                               GOLD_HIGHLIGHT.r, GOLD_HIGHLIGHT.g,
+                               GOLD_HIGHLIGHT.b, 0.6f);
 
-    // Draw text lines
-    const Color textColor{0.9f, 0.9f, 0.9f, 1.0f};
+    // Draw text lines. First line (if multi-line) renders as header
+    // in TEXT_HEADER; remaining lines render in TEXT_INK body color.
     float lineY = this->m_y + scaledPadding;
     std::size_t lineStart = 0;
+    std::size_t lineIdx = 0;
 
     for (std::size_t i = 0; i <= this->m_text.size(); ++i) {
         if (i == this->m_text.size() || this->m_text[i] == '\n') {
             const std::string_view line(this->m_text.data() + lineStart, i - lineStart);
             if (!line.empty()) {
+                const Color& c = (lineIdx == 0 && lineCount > 1)
+                                     ? TEXT_HEADER : TEXT_INK;
                 BitmapFont::drawText(renderer2d, line,
                                      this->m_x + scaledPadding, lineY,
-                                     scaledFontSize, textColor, scale);
+                                     scaledFontSize, c, scale);
+                // Header rule: gilt 1 px line under the first row of
+                // a multi-line tooltip, like an illuminated divider.
+                if (lineIdx == 0 && lineCount > 1) {
+                    renderer2d.drawRoundedRect(
+                        this->m_x + scaledPadding,
+                        lineY + scaledLineHeight - 2.0f * scale,
+                        tooltipW - 2.0f * scaledPadding,
+                        1.0f * scale, 0.0f,
+                        BRONZE_BASE.r, BRONZE_BASE.g, BRONZE_BASE.b, 0.7f);
+                }
             }
             lineY += scaledLineHeight;
             lineStart = i + 1;
+            ++lineIdx;
         }
     }
 }

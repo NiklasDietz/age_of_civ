@@ -5,6 +5,7 @@
 
 #include "aoc/ui/Notifications.hpp"
 #include "aoc/ui/BitmapFont.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 
 #include <renderer/Renderer2D.hpp>
 
@@ -115,7 +116,8 @@ void NotificationManager::render(vulkan_app::renderer::Renderer2D& renderer2d,
 
         // Background
         renderer2d.drawFilledRect(nx, ny, nw, nh,
-                                   0.08f, 0.08f, 0.12f, 0.85f * alpha);
+                                   tokens::SURFACE_INK.r, tokens::SURFACE_INK.g,
+                                   tokens::SURFACE_INK.b, 0.85f * alpha);
 
         // Text
         BitmapFont::drawText(renderer2d, notif.message,

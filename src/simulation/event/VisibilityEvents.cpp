@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <string>
+#include <unordered_set>
 
 namespace aoc::sim {
 
@@ -17,6 +18,35 @@ void VisibilityEventBus::dispatch(const aoc::game::GameState& gameState,
                                   const aoc::map::HexGrid& grid,
                                   const aoc::map::FogOfWar& fog,
                                   const Handler& handler) {
+    // Dedupe per dispatch: a unit walking N tiles in a single turn used
+    // to emit N EnemyUnitSpotted events at the same destination, each
+    // fanning out to every player that could see it. Suppress identical
+    // (viewer, type, location, actor) tuples so the notification log
+    // doesn't spam the same line dozens of times per turn.
+    struct Key {
+        PlayerId viewer;
+        uint8_t  type;
+        int32_t  q;
+        int32_t  r;
+        PlayerId actor;
+        bool operator==(const Key& o) const {
+            return viewer == o.viewer && type == o.type
+                && q == o.q && r == o.r && actor == o.actor;
+        }
+    };
+    struct KeyHash {
+        std::size_t operator()(const Key& k) const noexcept {
+            std::size_t h = static_cast<std::size_t>(k.viewer);
+            h = h * 131u + k.type;
+            h = h * 131u + static_cast<std::size_t>(k.q);
+            h = h * 131u + static_cast<std::size_t>(k.r);
+            h = h * 131u + static_cast<std::size_t>(k.actor);
+            return h;
+        }
+    };
+    std::unordered_set<Key, KeyHash> seen;
+    seen.reserve(this->m_queue.size());
+
     const int32_t playerCount = gameState.playerCount();
     for (const VisibilityEvent& event : this->m_queue) {
         if (!grid.isValid(event.location)) { continue; }
@@ -26,6 +56,9 @@ void VisibilityEventBus::dispatch(const aoc::game::GameState& gameState,
             if (fog.visibility(pid, tileIndex) != aoc::map::TileVisibility::Visible) {
                 continue;
             }
+            const Key k{pid, static_cast<uint8_t>(event.type),
+                        event.location.q, event.location.r, event.actor};
+            if (!seen.insert(k).second) { continue; }
             handler(pid, event);
         }
     }

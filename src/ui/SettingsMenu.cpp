@@ -5,6 +5,7 @@
 #include "aoc/ui/SettingsMenu.hpp"
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ui/MainMenuTheme.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 #include "aoc/ui/Theme.hpp"
 #include "aoc/core/Log.hpp"
 
@@ -125,9 +126,10 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
     // change without the caller having to re-thread it through.
     this->m_onBack = onBack;
 
+    // Frost-dim full-screen overlay (style guide §3 modal layer).
     this->m_rootPanel = ui.createPanel(
         {0.0f, 0.0f, screenW, screenH},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.6f}, 0.0f});
+        PanelData{tokens::SURFACE_FROST_DIM, 0.0f});
 
     constexpr float PANEL_W = 420.0f;
     constexpr float PANEL_H = 450.0f;

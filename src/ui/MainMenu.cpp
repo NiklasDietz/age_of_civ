@@ -90,11 +90,17 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
 
     const float innerW = PANEL_W - 40.0f;  // 20px padding each side
 
-    // Title
-    [[maybe_unused]] WidgetId titleLabel = ui.createLabel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 30.0f},
-        LabelData{"Age of Civilization", GOLDEN_TEXT, 22.0f});
+    // Title — gilt face with a dark outline so it stays legible whether
+    // the menu sits over parchment or the in-game map background.
+    {
+        LabelData ld;
+        ld.text         = "Age of Civilization";
+        ld.color        = GOLDEN_TEXT;
+        ld.fontSize     = 22.0f;
+        ld.outlineColor = aoc::ui::tokens::SURFACE_INK;
+        [[maybe_unused]] WidgetId titleLabel = ui.createLabel(
+            contentPanel, {0.0f, 0.0f, innerW, 30.0f}, std::move(ld));
+    }
 
     // Spacer
     [[maybe_unused]] WidgetId spacer1 = ui.createPanel(
@@ -243,7 +249,11 @@ void MainMenu::destroy(UIManager& ui) {
 /// Civilization names (indexed by CivId).
 static constexpr std::array<std::string_view, aoc::sim::CIV_COUNT> CIV_NAMES = {{
     "Rome", "Egypt", "China", "Germany", "Greece", "England", "Japan", "Persia",
-    "Aztec", "India", "Russia", "Brazil"
+    "Aztec", "India", "Russia", "Brazil",
+    "Mongolia", "Arabia", "Zulu", "Scythia", "Macedon", "Mali", "Sumeria",
+    "Babylon", "Khmer", "Cree", "Mapuche", "Ottoman", "Phoenicia", "Norway",
+    "Spain", "Korea", "Indonesia", "Vietnam", "Maori", "America", "France",
+    "Netherlands", "Australia", "Canada"
 }};
 
 void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
@@ -302,10 +312,15 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
     const float innerW = PANEL_W - 40.0f;
 
     // Title
-    [[maybe_unused]] WidgetId titleLabel = ui.createLabel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 30.0f},
-        LabelData{"Game Setup", GOLDEN_TEXT, 22.0f});
+    {
+        LabelData ld;
+        ld.text         = "Game Setup";
+        ld.color        = GOLDEN_TEXT;
+        ld.fontSize     = 22.0f;
+        ld.outlineColor = aoc::ui::tokens::SURFACE_INK;
+        [[maybe_unused]] WidgetId titleLabel = ui.createLabel(
+            contentPanel, {0.0f, 0.0f, innerW, 30.0f}, std::move(ld));
+    }
 
     // ---- Map Type section ----
     [[maybe_unused]] WidgetId mapTypeLabel = ui.createLabel(
@@ -712,7 +727,11 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
     constexpr float CIV_BTN_W   = 100.0f;
     constexpr float TYPE_BTN_W  = 70.0f;
 
-    for (uint8_t slot = 0; slot < 8; ++slot) {
+    // Build all 20 slot rows up-front. Earlier loop only created 8, so
+    // clicking "+" past player 8 had refresh() poke INVALID widgets in
+    // m_playerRows / m_civLabels / m_typeLabels and the modal froze
+    // ("grey window"). Refresh now toggles isVisible across all 20.
+    for (uint8_t slot = 0; slot < 20; ++slot) {
         WidgetId slotRow = ui.createPanel(
             contentPanel,
             {0.0f, 0.0f, innerW, SLOT_ROW_H},
@@ -889,6 +908,10 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
 
     this->updateMapSizeButtons(ui);
     this->updateTurnButtons(ui);
+    // Hide the inactive slot rows up front. Without this all 20 rows
+    // render visible until the user toggles "+" / "−", which overflows
+    // the modal and freezes the layout pass on first paint.
+    this->refresh(ui);
 
     this->m_isBuilt = true;
     LOG_INFO("Game setup screen built (%.0fx%.0f)",

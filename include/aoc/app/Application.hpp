@@ -184,6 +184,15 @@ private:
     aoc::ui::WidgetId  m_lastPlayerBanner = aoc::ui::INVALID_WIDGET; ///< "Waiting for you" glow
     aoc::ui::WidgetId  m_topBar         = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId  m_resourceLabel  = aoc::ui::INVALID_WIDGET;
+    /// Civ-6-style yield strip in the HUD top bar. Each yield gets its
+    /// own (icon + value) pair so updateHUD can refresh just the
+    /// numeric text without rebuilding labels. Labels live as siblings
+    /// inside `m_yieldStrip`.
+    aoc::ui::WidgetId  m_yieldStrip     = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId  m_goldLabel      = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId  m_scienceLabel   = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId  m_cultureLabel   = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId  m_faithLabel     = aoc::ui::INVALID_WIDGET;
     /// Civ-6 style strip of player icons in the top bar. Children
     /// rebuilt each frame from `updateDiploStrip` to reflect met /
     /// at-war / allied state. One icon per known civ.

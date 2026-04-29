@@ -37,6 +37,24 @@ static constexpr float PLAYER_COLORS[][3] = {
 
 static constexpr uint8_t PLAYER_COLOR_COUNT = 8;
 
+Minimap::Rect Minimap::computeRect(const aoc::map::HexGrid& grid,
+                                    uint32_t screenHeight) {
+    constexpr float MARGIN = 10.0f;
+    const float aspect = (grid.height() > 0)
+        ? static_cast<float>(grid.width()) / static_cast<float>(grid.height())
+        : 1.5f;
+    const float tilesArea = static_cast<float>(grid.width() * grid.height());
+    const float scaleArea = std::clamp(std::sqrt(tilesArea / 4160.0f), 1.0f, 1.8f);
+    const float h = std::clamp(130.0f * scaleArea, 130.0f, 240.0f);
+    const float w = h * aspect;
+    Rect r;
+    r.x = MARGIN;
+    r.y = static_cast<float>(screenHeight) - h - MARGIN;
+    r.w = w;
+    r.h = h;
+    return r;
+}
+
 void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d,
                    const aoc::map::HexGrid& grid,
                    const aoc::map::FogOfWar& fog,

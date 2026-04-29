@@ -6,6 +6,7 @@
 #include "aoc/ui/SpectatorHUD.hpp"
 #include "aoc/ui/BitmapFont.hpp"
 #include "aoc/ui/Widget.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
@@ -47,18 +48,20 @@ void SpectatorHUD::drawStatusBar(vulkan_app::renderer::Renderer2D& renderer,
 
     // Translucent background strip across the top.
     renderer.drawFilledRect(0.0f, 0.0f, screenW, BAR_H,
-                             0.04f, 0.04f, 0.08f, 0.88f);
+                             tokens::SURFACE_INK.r, tokens::SURFACE_INK.g,
+                             tokens::SURFACE_INK.b, 0.88f);
 
     // Separator line beneath bar.
     renderer.drawFilledRect(0.0f, BAR_H - 1.0f, screenW, 1.0f,
-                             0.25f, 0.45f, 0.70f, 0.7f);
+                             tokens::BRONZE_BASE.r, tokens::BRONZE_BASE.g,
+                             tokens::BRONZE_BASE.b, 0.7f);
 
     // Left section: SPECTATOR label.
     aoc::ui::BitmapFont::drawText(renderer,
                                    "SPECTATOR",
                                    PADDING_X, PADDING_Y,
                                    FONT_SIZE,
-                                   aoc::ui::Color{0.40f, 0.75f, 1.0f, 1.0f});
+                                   tokens::TEXT_GILT);
 
     // Center section: turn counter and speed.
     std::string centerText = "Turn " + std::to_string(currentTurn)
@@ -70,8 +73,8 @@ void SpectatorHUD::drawStatusBar(vulkan_app::renderer::Renderer2D& renderer,
     const aoc::ui::Rect centerMeasure = aoc::ui::BitmapFont::measureText(centerText, FONT_SIZE);
     const float centerX = (screenW - centerMeasure.w) * 0.5f;
     const aoc::ui::Color centerColor = isPaused
-        ? aoc::ui::Color{1.0f, 0.75f, 0.20f, 1.0f}
-        : aoc::ui::Color{0.90f, 0.90f, 0.90f, 1.0f};
+        ? tokens::STATE_WARN
+        : tokens::TEXT_PARCHMENT;
     aoc::ui::BitmapFont::drawText(renderer, centerText, centerX, PADDING_Y,
                                    FONT_SIZE, centerColor);
 
@@ -83,7 +86,7 @@ void SpectatorHUD::drawStatusBar(vulkan_app::renderer::Renderer2D& renderer,
     const float followX = screenW - followMeasure.w - PADDING_X;
     aoc::ui::BitmapFont::drawText(renderer, followText, followX, PADDING_Y,
                                    FONT_SIZE,
-                                   aoc::ui::Color{0.65f, 0.80f, 0.65f, 1.0f});
+                                   tokens::DIPLO_FRIENDLY);
 }
 
 // ---------------------------------------------------------------------------
@@ -149,11 +152,14 @@ void SpectatorHUD::drawScoreboard(vulkan_app::renderer::Renderer2D& renderer,
 
     // Background panel.
     renderer.drawFilledRect(panelX, panelY, PANEL_W, panelH,
-                             0.04f, 0.04f, 0.08f, 0.85f);
+                             tokens::SURFACE_INK.r, tokens::SURFACE_INK.g,
+                             tokens::SURFACE_INK.b, 0.85f);
     renderer.drawFilledRect(panelX, panelY, PANEL_W, 1.0f,
-                             0.25f, 0.45f, 0.70f, 0.8f);
+                             tokens::BRONZE_BASE.r, tokens::BRONZE_BASE.g,
+                             tokens::BRONZE_BASE.b, 0.8f);
     renderer.drawFilledRect(panelX, panelY + panelH - 1.0f, PANEL_W, 1.0f,
-                             0.25f, 0.45f, 0.70f, 0.8f);
+                             tokens::BRONZE_BASE.r, tokens::BRONZE_BASE.g,
+                             tokens::BRONZE_BASE.b, 0.8f);
 
     // Header row.
     const float headerY = panelY + PADDING_Y;
@@ -161,11 +167,12 @@ void SpectatorHUD::drawScoreboard(vulkan_app::renderer::Renderer2D& renderer,
                                    "#  Civilization       Cities Pop  Gold   VP   CSI",
                                    panelX + PADDING_X, headerY,
                                    FONT_HEADER,
-                                   aoc::ui::Color{0.75f, 0.85f, 1.0f, 1.0f});
+                                   tokens::TEXT_GILT);
 
     // Separator under header.
     renderer.drawFilledRect(panelX, headerY + HEADER_H, PANEL_W, 1.0f,
-                             0.25f, 0.35f, 0.50f, 0.6f);
+                             tokens::BRONZE_DARK.r, tokens::BRONZE_DARK.g,
+                             tokens::BRONZE_DARK.b, 0.6f);
 
     // Player rows.
     float rowY = headerY + HEADER_H + 2.0f;
@@ -174,7 +181,8 @@ void SpectatorHUD::drawScoreboard(vulkan_app::renderer::Renderer2D& renderer,
         // Highlight the leading player with a subtle tint.
         if (rank == 1) {
             renderer.drawFilledRect(panelX, rowY - 1.0f, PANEL_W, ROW_H,
-                                     0.15f, 0.25f, 0.15f, 0.35f);
+                                     tokens::STATE_SUCCESS.r, tokens::STATE_SUCCESS.g,
+                                     tokens::STATE_SUCCESS.b, 0.35f);
         }
 
         // Build the row string with fixed-width columns for alignment.
@@ -218,10 +226,10 @@ void SpectatorHUD::drawScoreboard(vulkan_app::renderer::Renderer2D& renderer,
         // Color gold for rank 1, silver for rank 2, bronze for rank 3, white otherwise.
         aoc::ui::Color rowColor;
         switch (rank) {
-            case 1:  rowColor = {1.00f, 0.85f, 0.20f, 1.0f}; break;
-            case 2:  rowColor = {0.80f, 0.82f, 0.84f, 1.0f}; break;
-            case 3:  rowColor = {0.80f, 0.55f, 0.30f, 1.0f}; break;
-            default: rowColor = {0.80f, 0.80f, 0.80f, 1.0f}; break;
+            case 1:  rowColor = tokens::TEXT_GILT;       break;
+            case 2:  rowColor = tokens::RES_FAITH;       break;
+            case 3:  rowColor = tokens::BRONZE_LIGHT;    break;
+            default: rowColor = tokens::TEXT_PARCHMENT;  break;
         }
 
         aoc::ui::BitmapFont::drawText(renderer, rowText,

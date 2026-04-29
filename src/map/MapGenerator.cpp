@@ -807,6 +807,14 @@ void MapGenerator::generateRivers(HexGrid& grid, aoc::Random& rng) {
             const hex::AxialCoord n = hex::neighbors(c)[static_cast<size_t>(s.direction)];
             const int32_t nIdx = grid.toIndex(n);
 
+            // Realism guard: a river edge on the boundary land↔water IS the
+            // coastline. Civ-6 rivers spill into the ocean without painting
+            // an extra segment on the shore. Skip those edges so the river
+            // visually terminates at the last land tile.
+            if (isWater(grid.terrain(nIdx))) {
+                continue;
+            }
+
             uint8_t edges = grid.riverEdges(s.tileIndex);
             edges |= static_cast<uint8_t>(1u << s.direction);
             grid.setRiverEdges(s.tileIndex, edges);

@@ -6,6 +6,7 @@
 #include "aoc/ui/Tutorial.hpp"
 #include "aoc/ui/BitmapFont.hpp"
 #include "aoc/ui/Widget.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <renderer/Renderer2D.hpp>
@@ -78,7 +79,8 @@ void TutorialManager::render(vulkan_app::renderer::Renderer2D& renderer2d,
 
     // Background
     renderer2d.drawFilledRect(overlayX, overlayY, overlayW, overlayH,
-                               0.05f, 0.05f, 0.10f, 0.85f);
+                               tokens::SURFACE_INK.r, tokens::SURFACE_INK.g,
+                               tokens::SURFACE_INK.b, 0.85f);
 
     // Step counter
     std::string stepText = "Step " + std::to_string(this->m_step + 1) + "/" +
@@ -87,7 +89,7 @@ void TutorialManager::render(vulkan_app::renderer::Renderer2D& renderer2d,
                           overlayX + PADDING * pixelScale,
                           overlayY + PADDING * 0.5f * pixelScale,
                           10.0f,
-                          Color{0.6f, 0.6f, 0.7f, 1.0f},
+                          tokens::TEXT_DISABLED,
                           pixelScale);
 
     // Tutorial message
@@ -95,30 +97,32 @@ void TutorialManager::render(vulkan_app::renderer::Renderer2D& renderer2d,
                           overlayX + PADDING * pixelScale,
                           overlayY + PADDING * 2.0f * pixelScale,
                           FONT_SIZE,
-                          Color{1.0f, 0.95f, 0.7f, 1.0f},
+                          tokens::TEXT_GILT,
                           pixelScale);
 
     // "Next" button indicator
     const float nextX = (screenW - BTN_W * 2.0f - PADDING) * pixelScale;
     const float nextY = overlayY + (OVERLAY_H - BTN_H - PADDING * 0.5f) * pixelScale;
     renderer2d.drawFilledRect(nextX, nextY, BTN_W * pixelScale, BTN_H * pixelScale,
-                               0.15f, 0.40f, 0.15f, 0.9f);
+                               tokens::STATE_SUCCESS.r, tokens::STATE_SUCCESS.g,
+                               tokens::STATE_SUCCESS.b, 0.9f);
     BitmapFont::drawText(renderer2d, "Next",
                           nextX + 20.0f * pixelScale,
                           nextY + 6.0f * pixelScale,
                           12.0f,
-                          Color{1.0f, 1.0f, 1.0f, 1.0f},
+                          tokens::TEXT_PARCHMENT,
                           pixelScale);
 
     // "Skip" button indicator
     const float skipX = nextX + (BTN_W + PADDING * 0.5f) * pixelScale;
     renderer2d.drawFilledRect(skipX, nextY, BTN_W * pixelScale, BTN_H * pixelScale,
-                               0.40f, 0.15f, 0.15f, 0.9f);
+                               tokens::STATE_DANGER.r, tokens::STATE_DANGER.g,
+                               tokens::STATE_DANGER.b, 0.9f);
     BitmapFont::drawText(renderer2d, "Skip",
                           skipX + 20.0f * pixelScale,
                           nextY + 6.0f * pixelScale,
                           12.0f,
-                          Color{1.0f, 1.0f, 1.0f, 1.0f},
+                          tokens::TEXT_PARCHMENT,
                           pixelScale);
 }
 

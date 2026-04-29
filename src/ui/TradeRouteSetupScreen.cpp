@@ -4,6 +4,7 @@
  */
 
 #include "aoc/ui/TradeRouteSetupScreen.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -100,13 +101,13 @@ void TradeRouteSetupScreen::open(UIManager& ui) {
                 btn.label = std::move(label);
                 btn.fontSize = 11.0f;
                 if (isIdle) {
-                    btn.normalColor  = {0.2f, 0.28f, 0.2f, 0.9f};
-                    btn.hoverColor   = {0.3f, 0.38f, 0.3f, 0.9f};
-                    btn.pressedColor = {0.15f, 0.2f, 0.15f, 0.9f};
+                    btn.normalColor  = tokens::STATE_SUCCESS;
+                    btn.hoverColor   = tokens::DIPLO_FRIENDLY;
+                    btn.pressedColor = tokens::STATE_PRESSED;
                 } else {
-                    btn.normalColor  = {0.25f, 0.25f, 0.25f, 0.7f};
-                    btn.hoverColor   = {0.3f, 0.3f, 0.3f, 0.7f};
-                    btn.pressedColor = {0.2f, 0.2f, 0.2f, 0.7f};
+                    btn.normalColor  = tokens::TEXT_DISABLED;
+                    btn.hoverColor   = tokens::TEXT_DISABLED;
+                    btn.pressedColor = tokens::TEXT_DISABLED;
                 }
                 btn.cornerRadius = 3.0f;
 
@@ -184,9 +185,9 @@ void TradeRouteSetupScreen::buildDestinationPanel(UIManager& ui, WidgetId innerP
             ButtonData btn;
             btn.label = std::move(label);
             btn.fontSize = 10.0f;
-            btn.normalColor  = {0.2f, 0.25f, 0.2f, 0.9f};
-            btn.hoverColor   = {0.3f, 0.35f, 0.3f, 0.9f};
-            btn.pressedColor = {0.15f, 0.18f, 0.15f, 0.9f};
+            btn.normalColor  = tokens::STATE_SUCCESS;
+            btn.hoverColor   = tokens::DIPLO_FRIENDLY;
+            btn.pressedColor = tokens::STATE_PRESSED;
             btn.cornerRadius = 2.0f;
 
             aoc::game::City* cityRawPtr = city.get();
@@ -244,17 +245,17 @@ void TradeRouteSetupScreen::buildDestinationPanel(UIManager& ui, WidgetId innerP
 
             if (isAtWar) {
                 // Cannot trade with enemies
-                btn.normalColor  = {0.35f, 0.15f, 0.15f, 0.7f};
-                btn.hoverColor   = {0.35f, 0.15f, 0.15f, 0.7f};
-                btn.pressedColor = {0.35f, 0.15f, 0.15f, 0.7f};
+                btn.normalColor  = tokens::DIPLO_AT_WAR;
+                btn.hoverColor   = tokens::DIPLO_AT_WAR;
+                btn.pressedColor = tokens::DIPLO_AT_WAR;
             } else if (hasTradeAgreement) {
-                btn.normalColor  = {0.2f, 0.2f, 0.28f, 0.9f};
-                btn.hoverColor   = {0.3f, 0.3f, 0.38f, 0.9f};
-                btn.pressedColor = {0.15f, 0.15f, 0.2f, 0.9f};
+                btn.normalColor  = tokens::DIPLO_ALLIED;
+                btn.hoverColor   = tokens::RES_SCIENCE;
+                btn.pressedColor = tokens::SURFACE_INK;
             } else {
-                btn.normalColor  = {0.25f, 0.2f, 0.2f, 0.9f};
-                btn.hoverColor   = {0.35f, 0.3f, 0.3f, 0.9f};
-                btn.pressedColor = {0.18f, 0.15f, 0.15f, 0.9f};
+                btn.normalColor  = tokens::BRONZE_BASE;
+                btn.hoverColor   = tokens::BRONZE_LIGHT;
+                btn.pressedColor = tokens::BRONZE_DARK;
             }
 
             aoc::game::City* cityRawPtr = city.get();
@@ -292,7 +293,7 @@ void TradeRouteSetupScreen::buildRoutePreview(UIManager& ui, WidgetId innerPanel
 
     this->m_previewPanel = ui.createPanel(
         innerPanel, {0.0f, 0.0f, 550.0f, 120.0f},
-        PanelData{{0.12f, 0.12f, 0.18f, 0.95f}, 4.0f});
+        PanelData{tokens::SURFACE_PARCHMENT_DIM, 4.0f});
 
     Widget* prevWidget = ui.getWidget(this->m_previewPanel);
     if (prevWidget != nullptr) {
@@ -366,9 +367,9 @@ void TradeRouteSetupScreen::buildRoutePreview(UIManager& ui, WidgetId innerPanel
     ButtonData establishBtn;
     establishBtn.label = "Establish Trade Route";
     establishBtn.fontSize = 13.0f;
-    establishBtn.normalColor  = {0.15f, 0.35f, 0.15f, 0.9f};
-    establishBtn.hoverColor   = {0.20f, 0.50f, 0.20f, 0.9f};
-    establishBtn.pressedColor = {0.10f, 0.25f, 0.10f, 0.9f};
+    establishBtn.normalColor  = tokens::STATE_SUCCESS;
+    establishBtn.hoverColor   = tokens::DIPLO_FRIENDLY;
+    establishBtn.pressedColor = tokens::STATE_PRESSED;
     establishBtn.cornerRadius = 4.0f;
 
     establishBtn.onClick = [this, &ui]() {

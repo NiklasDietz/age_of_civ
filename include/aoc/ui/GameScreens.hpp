@@ -108,6 +108,11 @@ private:
 /// Technology research screen.
 class TechScreen final : public ScreenBase {
 public:
+    /// Optional context: hex grid pointer for per-turn science estimates
+    /// shown on the tech cards. Stored as a non-owning observer.
+    void setGrid(const aoc::map::HexGrid* grid) { this->m_grid = grid; }
+    const aoc::map::HexGrid* m_grid = nullptr;
+public:
     void setContext(aoc::game::GameState* gameState, PlayerId player);
     void open(UIManager& ui) override;
     void close(UIManager& ui) override;

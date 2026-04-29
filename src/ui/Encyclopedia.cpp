@@ -5,6 +5,7 @@
 
 #include "aoc/ui/Encyclopedia.hpp"
 #include "aoc/ui/UIManager.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 
 // Game data includes for content generation
 #include "aoc/simulation/unit/UnitTypes.hpp"
@@ -808,7 +809,7 @@ void EncyclopediaScreen::open(UIManager& ui) {
     // Category buttons (horizontal row)
     this->m_categoryPanel = ui.createPanel(innerPanel,
         {0.0f, 0.0f, PANEL_W - 24.0f, 28.0f},
-        PanelData{{0.08f, 0.08f, 0.12f, 0.9f}, 2.0f});
+        PanelData{tokens::SURFACE_INK, 2.0f});
     Widget* catPanel = ui.getWidget(this->m_categoryPanel);
     if (catPanel != nullptr) {
         catPanel->layoutDirection = LayoutDirection::Horizontal;
@@ -821,8 +822,8 @@ void EncyclopediaScreen::open(UIManager& ui) {
         ButtonData btn;
         btn.label = wikiCategoryName(cat);
         btn.fontSize = 9.0f;
-        btn.normalColor = {0.20f, 0.20f, 0.25f, 0.9f};
-        btn.hoverColor = {0.30f, 0.30f, 0.40f, 0.9f};
+        btn.normalColor = tokens::BRONZE_BASE;
+        btn.hoverColor = tokens::BRONZE_LIGHT;
         btn.onClick = [this, cat, &ui]() {
             this->setCategory(cat);
             this->rebuildEntryList(ui);
@@ -903,8 +904,8 @@ void EncyclopediaScreen::rebuildEntryList(UIManager& ui) {
         ButtonData btn;
         btn.label = entry->title;
         btn.fontSize = 10.0f;
-        btn.normalColor = {0.18f, 0.18f, 0.22f, 0.9f};
-        btn.hoverColor = {0.28f, 0.28f, 0.35f, 0.9f};
+        btn.normalColor = tokens::SURFACE_PARCHMENT_DIM;
+        btn.hoverColor = tokens::BRONZE_LIGHT;
         btn.onClick = [this, i, &ui]() {
             this->m_selectedEntry = i;
             if (i >= 0 && i < static_cast<int32_t>(this->m_filteredEntries.size())) {

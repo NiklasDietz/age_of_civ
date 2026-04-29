@@ -1341,6 +1341,7 @@ void Application::run() {
         if (!this->m_spectatorMode
             && this->m_inputManager.isActionPressed(InputAction::OpenTechTree)) {
             this->m_techScreen.setContext(&this->m_gameState, 0);
+            this->m_techScreen.setGrid(&this->m_hexGrid);
             this->m_techScreen.toggle(this->m_uiManager);
         }
         if (!this->m_spectatorMode
@@ -1503,38 +1504,51 @@ void Application::run() {
 
         // -- UI input (consumes clicks on widgets) --
         {
-            const bool leftPressed  = this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
-            const bool leftReleased = this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT);
+            const bool leftPressed   = this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
+            const bool leftReleased  = this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT);
+            const bool rightPressed  = this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_RIGHT);
+            const bool rightReleased = this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_RIGHT);
             const float scrollDelta = static_cast<float>(this->m_inputManager.scrollDelta());
             this->m_uiConsumedInput = this->m_uiManager.handleInput(
                 static_cast<float>(this->m_inputManager.mouseX()),
                 static_cast<float>(this->m_inputManager.mouseY()),
-                leftPressed, leftReleased, scrollDelta);
+                leftPressed, leftReleased, scrollDelta,
+                rightPressed, rightReleased);
         }
 
         // -- Camera update (after UI so scroll doesn't zoom when scrolling menus) --
         if (this->m_uiConsumedInput || this->m_debugConsole.isOpen()) {
             this->m_inputManager.consumeScroll();
         }
-        this->m_cameraController.update(this->m_inputManager, deltaTime, fbWidth, fbHeight);
+        // Suppress edge-scroll while the mouse sits over a UI widget,
+        // over the minimap, or while a modal is open. Without this the
+        // map slides whenever the cursor brushes the HUD bar or hovers
+        // a button — caller wants edge-scroll only over the actual map.
+        const aoc::render::Minimap::Rect mmRect =
+            aoc::render::Minimap::computeRect(this->m_hexGrid, fbHeight);
+        const float mouseXf = static_cast<float>(this->m_inputManager.mouseX());
+        const float mouseYf = static_cast<float>(this->m_inputManager.mouseY());
+        const bool overMinimap = this->m_gameRenderer.minimap().containsPoint(
+            mouseXf, mouseYf, mmRect.x, mmRect.y, mmRect.w, mmRect.h);
+        const bool overWidget = this->m_uiManager.hoveredWidget() != aoc::ui::INVALID_WIDGET;
+        const bool suppressEdgeScroll =
+            overWidget || overMinimap || this->anyScreenOpen()
+            || this->m_uiConsumedInput || this->m_debugConsole.isOpen();
+        this->m_cameraController.update(this->m_inputManager, deltaTime,
+                                         fbWidth, fbHeight, suppressEdgeScroll);
 
         // -- Minimap click detection --
-        constexpr float MINIMAP_W = 200.0f;
-        constexpr float MINIMAP_H = 130.0f;
-        constexpr float MINIMAP_MARGIN = 10.0f;
-        const float minimapX = MINIMAP_MARGIN;
-        const float minimapY = static_cast<float>(fbHeight) - MINIMAP_H - MINIMAP_MARGIN;
+        // Dimensions reused from the suppress-edge-scroll calculation
+        // above; the click rect is the same rect sourced from the
+        // shared helper.
 
         if (this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT)
             && !this->m_uiConsumedInput) {
-            const float mouseXf = static_cast<float>(this->m_inputManager.mouseX());
-            const float mouseYf = static_cast<float>(this->m_inputManager.mouseY());
-            if (this->m_gameRenderer.minimap().containsPoint(
-                    mouseXf, mouseYf, minimapX, minimapY, MINIMAP_W, MINIMAP_H)) {
+            if (overMinimap) {
                 float worldX = 0.0f;
                 float worldY = 0.0f;
                 this->m_gameRenderer.minimap().screenToWorld(
-                    mouseXf, mouseYf, minimapX, minimapY, MINIMAP_W, MINIMAP_H,
+                    mouseXf, mouseYf, mmRect.x, mmRect.y, mmRect.w, mmRect.h,
                     this->m_hexGrid,
                     this->m_gameRenderer.mapRenderer().hexSize(),
                     worldX, worldY);
@@ -1723,7 +1737,19 @@ void Application::run() {
             this->m_gameRenderer.selectionHighlight =
                 aoc::render::GameRenderer::INVALID_SELECTION;
         }
+        // Worker-placement overlay: only when a city is selected by the
+        // human player, panel is closed, and we're not in spectator mode.
+        // Mirrors Civ-6's "click city → tiles glow, click tile → toggle
+        // worker" interaction.
+        const bool showOverlay =
+            this->m_selectedCity != nullptr
+            && this->m_selectedCity->owner() == 0
+            && !this->m_cityDetailScreen.isOpen()
+            && !this->m_spectatorMode;
+        this->m_gameRenderer.workerOverlayCity =
+            showOverlay ? this->m_selectedCity : nullptr;
 
+        this->m_gameRenderer.m_minimapSuppressed = this->anyScreenOpen();
         this->m_gameRenderer.render(
             *this->m_renderer2d,
             frame.commandBuffer,
@@ -2174,6 +2200,18 @@ void Application::onResize(uint32_t width, uint32_t height) {
     if (this->m_appState == AppState::InGame) {
         this->rebuildUnitActionPanel();
 
+        // Top bar is a root widget anchored to TopLeft; the layout pass
+        // doesn't auto-stretch root widths to the screen, so push the
+        // new width into its requestedBounds. Children flex-spacer then
+        // re-distributes leftover horizontal space, keeping the right-
+        // hand button cluster against the new window edge.
+        if (this->m_topBar != aoc::ui::INVALID_WIDGET) {
+            aoc::ui::Widget* bar = this->m_uiManager.getWidget(this->m_topBar);
+            if (bar != nullptr) {
+                bar->requestedBounds.w = newW;
+            }
+        }
+
         if (this->m_menuDropdown != aoc::ui::INVALID_WIDGET) {
             this->m_uiManager.removeWidget(this->m_menuDropdown);
             this->m_menuDropdown = aoc::ui::INVALID_WIDGET;
@@ -2235,15 +2273,54 @@ void Application::handleSelect() {
     if (humanGs != nullptr) {
         aoc::game::City* selectedCity = humanGs->cityAt(clickedTile);
         if (selectedCity != nullptr) {
+            // First click: select + show worker overlay. Second click on
+            // the same already-selected city: open the detail panel.
+            // Mirrors Civ-6's click-twice-to-manage flow without losing
+            // the on-map worker UI.
+            if (this->m_selectedCity == selectedCity) {
+                this->m_cityDetailScreen.setContext(
+                    &this->m_gameState, &this->m_hexGrid, clickedTile, 0);
+                if (!this->m_cityDetailScreen.isOpen()) {
+                    this->m_cityDetailScreen.open(this->m_uiManager);
+                }
+                return;
+            }
             this->m_selectedCity = selectedCity;
             this->m_selectedUnit = nullptr;
-            // Open city detail screen
-            this->m_cityDetailScreen.setContext(
-                &this->m_gameState, &this->m_hexGrid, clickedTile, 0);
-            if (!this->m_cityDetailScreen.isOpen()) {
-                this->m_cityDetailScreen.open(this->m_uiManager);
-            }
             return;
+        }
+    }
+
+    // Click on a workable tile of the currently selected city → toggle
+    // worker assignment (free if currently worked, assign if free).
+    // Population caps the headcount: each citizen besides the always-
+    // worked centre tile consumes one slot. Without this guard the
+    // user could assign workers indefinitely.
+    if (this->m_selectedCity != nullptr
+        && this->m_selectedCity->owner() == 0) {
+        const aoc::hex::AxialCoord ctr = this->m_selectedCity->location();
+        if (aoc::hex::distance(ctr, clickedTile) <= 3) {
+            const int32_t idx = this->m_hexGrid.toIndex(clickedTile);
+            if (this->m_hexGrid.movementCost(idx) != 0
+                && this->m_hexGrid.owner(idx) == 0) {
+                aoc::game::City* selCity = this->m_selectedCity;
+                if (selCity->isTileWorked(clickedTile)) {
+                    // Free a worker — always allowed.
+                    selCity->toggleWorker(clickedTile);
+                } else {
+                    // Assigning a worker: must have a free citizen slot.
+                    const int32_t nonCenterWorked = static_cast<int32_t>(
+                        selCity->workedTiles().size()) - 1;
+                    const int32_t cap = selCity->population();
+                    if (nonCenterWorked < cap) {
+                        selCity->toggleWorker(clickedTile);
+                    } else {
+                        LOG_INFO("No free citizen slots in %s (pop %d)",
+                                 selCity->name().c_str(), cap);
+                    }
+                }
+                return;
+            }
         }
     }
 
@@ -2712,6 +2789,7 @@ void Application::handleEndTurn() {
 
             if (!humanPost->tech().currentResearch.isValid()) {
                 this->m_techScreen.setContext(&this->m_gameState, 0);
+                this->m_techScreen.setGrid(&this->m_hexGrid);
                 this->m_techScreen.open(this->m_uiManager);
             }
         }

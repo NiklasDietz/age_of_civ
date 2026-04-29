@@ -29,6 +29,7 @@ class Renderer2D;
 
 namespace aoc::game {
 class GameState;
+class City;
 }
 
 namespace aoc::map {
@@ -71,6 +72,18 @@ public:
 
     /// Whether to show yield labels on all visible tiles.
     bool showTileYields = true;
+
+    /// When true, the world minimap overlay is hidden. Set by
+    /// Application while a modal screen (tech tree, diplomacy, etc.)
+    /// is open so the world overview doesn't peek through.
+    bool m_minimapSuppressed = false;
+
+    /// Civ-6-style worker placement overlay. When non-null, the
+    /// renderer draws a highlight ring on every tile that the city
+    /// can work (3-hex radius around its centre, owned + walkable),
+    /// with a filled marker on currently-worked tiles. Click handling
+    /// lives in Application; the renderer only draws.
+    const aoc::game::City* workerOverlayCity = nullptr;
 
     /// Selection highlight: axial coord of the currently-selected unit or
     /// city.  Set by Application each frame.  Draws a glowing hex outline at

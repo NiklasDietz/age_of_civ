@@ -51,8 +51,12 @@ void MapRenderer::draw(vulkan_app::renderer::Renderer2D& renderer2d,
     camera.screenToWorld(static_cast<double>(screenWidth), static_cast<double>(screenHeight),
                          botRightX, botRightY, screenWidth, screenHeight);
 
-    // Add margin to avoid popping at edges
-    const float margin = this->m_hexSize * 3.0f;
+    // Add margin to avoid popping at edges. Scale with zoom — at low
+    // zoom the visible viewport spans many hexes per pixel, so a fixed
+    // 3-hex margin is too small relative to inverse-zoom drift and tiles
+    // near the edges get culled. invZoom term keeps a generous border.
+    const float invZoom = (camera.zoom() > 0.0f) ? (1.0f / camera.zoom()) : 1.0f;
+    const float margin = this->m_hexSize * std::max(3.0f, 6.0f * invZoom);
     topLeftX  -= margin;
     topLeftY  -= margin;
     botRightX += margin;
@@ -105,8 +109,15 @@ void MapRenderer::draw(vulkan_app::renderer::Renderer2D& renderer2d,
             float cx = 0.0f, cy = 0.0f;
             hex::axialToPixel(axial, this->m_hexSize, cx, cy);
 
-            // Fine-grained per-tile check (accounts for odd-row offset shift)
-            if (cx < topLeftX || cx > botRightX || cy < topLeftY || cy > botRightY) {
+            // Fine-grained per-tile check (accounts for odd-row offset
+            // shift). Threshold extended by a hexSize so a tile whose
+            // centre sits just outside the viewport — but whose body
+            // overlaps the visible window — still draws. Earlier the
+            // strict check culled border tiles when zoomed out and the
+            // map appeared to "stop" before the actual screen edge.
+            const float bleed = this->m_hexSize;
+            if (cx < topLeftX - bleed || cx > botRightX + bleed
+                || cy < topLeftY - bleed || cy > botRightY + bleed) {
                 continue;
             }
 

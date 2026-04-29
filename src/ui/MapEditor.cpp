@@ -5,6 +5,7 @@
 
 #include "aoc/ui/MapEditor.hpp"
 #include "aoc/ui/UIManager.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/core/Log.hpp"
@@ -24,7 +25,7 @@ void MapEditor::build(UIManager& ui, float screenW, float /*screenH*/,
     constexpr float TOOLBAR_H = 40.0f;
     this->m_rootPanel = ui.createPanel(
         {0.0f, 0.0f, screenW, TOOLBAR_H},
-        PanelData{{0.10f, 0.10f, 0.14f, 0.92f}, 0.0f});
+        PanelData{tokens::SURFACE_INK, 0.0f});
 
     Widget* rootWidget = ui.getWidget(this->m_rootPanel);
     if (rootWidget != nullptr) {
@@ -38,9 +39,9 @@ void MapEditor::build(UIManager& ui, float screenW, float /*screenH*/,
         ButtonData btn;
         btn.label = "Back";
         btn.fontSize = 12.0f;
-        btn.normalColor  = {0.40f, 0.15f, 0.15f, 0.9f};
-        btn.hoverColor   = {0.55f, 0.20f, 0.20f, 0.9f};
-        btn.pressedColor = {0.30f, 0.10f, 0.10f, 0.9f};
+        btn.normalColor  = tokens::STATE_DANGER;
+        btn.hoverColor   = tokens::DIPLO_HOSTILE;
+        btn.pressedColor = tokens::DIPLO_AT_WAR;
         btn.cornerRadius = 3.0f;
         btn.onClick = std::move(onBack);
         (void)ui.createButton(this->m_rootPanel, {0.0f, 0.0f, 60.0f, 28.0f}, std::move(btn));
@@ -49,16 +50,16 @@ void MapEditor::build(UIManager& ui, float screenW, float /*screenH*/,
     // Terrain label
     (void)ui.createLabel(this->m_rootPanel, {0.0f, 0.0f, 120.0f, 28.0f},
                           LabelData{"LClick: Terrain  RClick: Feature",
-                                    {0.7f, 0.7f, 0.8f, 1.0f}, 10.0f});
+                                    tokens::TEXT_PARCHMENT, 10.0f});
 
     // Save button
     {
         ButtonData btn;
         btn.label = "Save Map";
         btn.fontSize = 11.0f;
-        btn.normalColor  = {0.15f, 0.30f, 0.15f, 0.9f};
-        btn.hoverColor   = {0.20f, 0.40f, 0.20f, 0.9f};
-        btn.pressedColor = {0.10f, 0.22f, 0.10f, 0.9f};
+        btn.normalColor  = tokens::STATE_SUCCESS;
+        btn.hoverColor   = tokens::DIPLO_FRIENDLY;
+        btn.pressedColor = tokens::STATE_PRESSED;
         btn.cornerRadius = 3.0f;
         btn.onClick = []() {
             LOG_INFO("Map save requested (use saveMap method)");
@@ -71,9 +72,9 @@ void MapEditor::build(UIManager& ui, float screenW, float /*screenH*/,
         ButtonData btn;
         btn.label = "Load Map";
         btn.fontSize = 11.0f;
-        btn.normalColor  = {0.20f, 0.25f, 0.35f, 0.9f};
-        btn.hoverColor   = {0.30f, 0.35f, 0.50f, 0.9f};
-        btn.pressedColor = {0.15f, 0.18f, 0.25f, 0.9f};
+        btn.normalColor  = tokens::DIPLO_ALLIED;
+        btn.hoverColor   = tokens::RES_SCIENCE;
+        btn.pressedColor = tokens::SURFACE_INK;
         btn.cornerRadius = 3.0f;
         btn.onClick = []() {
             LOG_INFO("Map load requested (use loadMap method)");
