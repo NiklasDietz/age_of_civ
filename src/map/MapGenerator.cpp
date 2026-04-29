@@ -178,6 +178,18 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
 
     std::vector<LandCenter> landCenters;
 
+    // Tectonic-plate seeds for the Continents map type. Each seed owns
+    // a Voronoi cell and is flagged ocean or land. Plate-based generation
+    // (vs the older additive falloff) produces sharp coastline gradients
+    // and unambiguous deep-water gaps, so 4 continents at random positions
+    // never re-merge into a single landmass via the falloff sum.
+    struct Plate {
+        float cx;
+        float cy;
+        bool  isLand;
+    };
+    std::vector<Plate> plates;
+
     // Per-type waterRatio override. waterRatio drives the final ocean cutoff,
     // so LandOnly needs a tiny override and Islands a high one regardless of
     // the caller's default.
@@ -185,23 +197,44 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
 
     switch (config.mapType) {
         case MapType::Continents: {
-            // Pick 2, 3, or 4 continents randomly. Centers pushed toward corners
-            // so clear ocean separates them. Strength >=1.8 keeps each blob
-            // compact enough that max-falloff doesn't merge them.
-            const int32_t variant = centerRng.nextInt(0, 2);
-            if (variant == 0) {
-                landCenters.push_back({0.22f, 0.50f, 1.9f});
-                landCenters.push_back({0.78f, 0.50f, 1.9f});
-            } else if (variant == 1) {
-                landCenters.push_back({0.22f, 0.30f, 2.0f});
-                landCenters.push_back({0.78f, 0.35f, 2.0f});
-                landCenters.push_back({0.50f, 0.78f, 2.0f});
-            } else {
-                landCenters.push_back({0.22f, 0.25f, 2.1f});
-                landCenters.push_back({0.78f, 0.25f, 2.1f});
-                landCenters.push_back({0.22f, 0.75f, 2.1f});
-                landCenters.push_back({0.78f, 0.75f, 2.1f});
+            // Plate-tectonic continent layout: pick ~14 plate seeds
+            // randomly, flag ~55% as ocean, run a Voronoi assignment
+            // per tile. Land plates produce land, ocean plates produce
+            // deep ocean. Plate boundaries blur via the same domain-
+            // warp used for tile elevation, so coastlines are irregular
+            // rather than straight Voronoi edges.
+            //
+            // This is closer to real Earth generation (compare PlaTec /
+            // Lautenschlager / Wraight & Carrillo 2013 plate sims) and
+            // crucially avoids the "additive falloff" failure mode that
+            // merged neighbouring continents into one landmass.
+            constexpr int32_t PLATE_COUNT = 14;
+            for (int32_t i = 0; i < PLATE_COUNT; ++i) {
+                Plate p;
+                p.cx = centerRng.nextFloat(0.04f, 0.96f);
+                p.cy = centerRng.nextFloat(0.04f, 0.96f);
+                p.isLand = false;
+                plates.push_back(p);
             }
+            // Mark ~45% of plates as land. Random selection ensures
+            // continents don't always sit in the same plate slots.
+            std::vector<int32_t> indices;
+            indices.reserve(static_cast<std::size_t>(PLATE_COUNT));
+            for (int32_t i = 0; i < PLATE_COUNT; ++i) { indices.push_back(i); }
+            for (std::size_t i = indices.size(); i > 1; --i) {
+                const std::size_t j = static_cast<std::size_t>(
+                    centerRng.nextInt(0, static_cast<int32_t>(i) - 1));
+                std::swap(indices[i - 1], indices[j]);
+            }
+            const int32_t landCount = static_cast<int32_t>(PLATE_COUNT * 0.45f);
+            for (int32_t i = 0; i < landCount; ++i) {
+                plates[static_cast<std::size_t>(indices[static_cast<std::size_t>(i)])]
+                    .isLand = true;
+            }
+            // Effective water ratio is now governed by plate flags +
+            // noise. A modest cutoff bump cleans up small lakes inside
+            // ocean cells without re-flooding land plates.
+            effectiveWaterRatio = std::clamp(config.waterRatio, 0.40f, 0.55f);
             break;
         }
         case MapType::Islands: {
@@ -271,29 +304,90 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // inland seas) instead of perfect discs.  Previous version
                 // produced circular continents with mountains piled at the
                 // geometric centre — no trace of actual continental drift.
+                // Two-octave domain warp (large-scale displacement +
+                // smaller-scale ripple) so coastlines fjord, peninsulate,
+                // and curve in plausible ways instead of reading as a
+                // distorted disc. Magnitudes inspired by Wang/Voronoi-
+                // plate plus FBM warping techniques used in procedural
+                // continent generators (Inigo Quilez "domain warping").
                 aoc::Random warpRng(noiseRng);
-                const float warpX =
-                    (fractalNoise(nx * 2.0f, ny * 2.0f, 3, 2.0f, 0.5f, warpRng) - 0.5f) * 0.55f;
-                const float warpY =
-                    (fractalNoise(nx * 2.0f + 17.0f, ny * 2.0f + 31.0f, 3, 2.0f, 0.5f, warpRng) - 0.5f) * 0.55f;
+                const float warpX1 =
+                    (fractalNoise(nx * 1.7f, ny * 1.7f, 4, 2.0f, 0.5f, warpRng) - 0.5f) * 0.85f;
+                const float warpY1 =
+                    (fractalNoise(nx * 1.7f + 17.0f, ny * 1.7f + 31.0f, 4, 2.0f, 0.5f, warpRng) - 0.5f) * 0.85f;
+                const float warpX2 =
+                    (fractalNoise(nx * 5.0f, ny * 5.0f, 2, 2.0f, 0.5f, warpRng) - 0.5f) * 0.20f;
+                const float warpY2 =
+                    (fractalNoise(nx * 5.0f + 9.0f, ny * 5.0f + 21.0f, 2, 2.0f, 0.5f, warpRng) - 0.5f) * 0.20f;
+                const float warpX = warpX1 + warpX2;
+                const float warpY = warpY1 + warpY2;
                 const float wx = nx + warpX;
                 const float wy = ny + warpY;
-                for (const LandCenter& center : landCenters) {
-                    float dx = (wx - center.cx) * 2.0f;
-                    float dy = (wy - center.cy) * 2.0f;
-                    float distFromCenter = std::sqrt(dx * dx + dy * dy);
-                    float falloff = 1.0f - std::clamp(distFromCenter * center.strength, 0.0f, 1.0f);
-                    falloff = smoothstep(falloff);
-                    edgeFalloff = std::max(edgeFalloff, falloff);
+
+                if (!plates.empty()) {
+                    // Voronoi plate lookup. Track first and second
+                    // closest seeds so we can softly blend across the
+                    // plate boundary rather than producing knife-edge
+                    // straight Voronoi lines.
+                    float d1Sq = 1e9f, d2Sq = 1e9f;
+                    int32_t nearest = -1;
+                    int32_t second  = -1;
+                    for (std::size_t pi = 0; pi < plates.size(); ++pi) {
+                        const float dx = wx - plates[pi].cx;
+                        const float dy = wy - plates[pi].cy;
+                        const float dsq = dx * dx + dy * dy;
+                        if (dsq < d1Sq) {
+                            d2Sq    = d1Sq;
+                            second  = nearest;
+                            d1Sq    = dsq;
+                            nearest = static_cast<int32_t>(pi);
+                        } else if (dsq < d2Sq) {
+                            d2Sq   = dsq;
+                            second = static_cast<int32_t>(pi);
+                        }
+                    }
+                    if (nearest < 0) { edgeFalloff = 0.0f; }
+                    else {
+                        const float d1 = std::sqrt(d1Sq);
+                        const float d2 = std::sqrt(d2Sq);
+                        // Blend factor: 0 deep inside the nearest plate,
+                        // ramping toward 1 right on the boundary. Thin
+                        // band so plates look distinct but aren't razor-
+                        // sharp.
+                        const float boundary = (d2 > 0.0001f)
+                            ? std::clamp((d1 / d2 - 0.85f) / 0.15f, 0.0f, 1.0f)
+                            : 0.0f;
+                        const float landBase  = 0.85f;  // strong inland height
+                        const float oceanBase = 0.10f;  // deep ocean
+                        const bool nearestIsLand = plates[static_cast<std::size_t>(nearest)].isLand;
+                        const float nearestHeight = nearestIsLand ? landBase : oceanBase;
+                        const bool secondIsLand =
+                            (second >= 0) && plates[static_cast<std::size_t>(second)].isLand;
+                        const float secondHeight = secondIsLand ? landBase : oceanBase;
+                        edgeFalloff = nearestHeight * (1.0f - boundary)
+                                    + secondHeight * boundary;
+                    }
+                } else {
+                    for (const LandCenter& center : landCenters) {
+                        float dx = (wx - center.cx) * 2.0f;
+                        float dy = (wy - center.cy) * 2.0f;
+                        float distFromCenter = std::sqrt(dx * dx + dy * dy);
+                        float falloff = 1.0f - std::clamp(distFromCenter * center.strength, 0.0f, 1.0f);
+                        falloff = smoothstep(falloff);
+                        edgeFalloff = std::max(edgeFalloff, falloff);
+                    }
                 }
             }
 
-            // Continents/Pangaea/Archipelago: balance noise + falloff so the
-            // shape is irregular but continents don't dissolve into islands.
-            // Noise now dominates (0.55 vs 0.45) for earthlike coastlines;
-            // domain-warp above already breaks the radial symmetry.
+            // Blend noise + plate/falloff. Continents now use a
+            // plate-dominant blend (35/65) so ocean plates stay deep
+            // and land plates form coherent landmasses; otherwise noise
+            // would chew holes in continents and bridge gaps between
+            // them.  Other land-shaped types keep the older balance.
             if (config.mapType == MapType::Fractal) {
                 elev = elev * 0.6f + edgeFalloff * 0.4f;
+            } else if (config.mapType == MapType::Continents) {
+                elev = elev * 0.35f + edgeFalloff * 0.65f;
             } else {
                 elev = elev * 0.55f + edgeFalloff * 0.45f;
             }
