@@ -21,7 +21,7 @@ public:
     struct Config {
         float panSpeed    = 500.0f;   ///< World units per second at zoom 1.0
         float zoomSpeed   = 0.15f;    ///< Zoom multiplier per scroll notch
-        float minZoom     = 0.1f;
+        float minZoom     = 0.35f;  // hex stays ~7 px at hexSize=20
         float maxZoom     = 5.0f;
         float dragSpeed   = 1.0f;     ///< Middle-mouse drag multiplier
     };
@@ -56,6 +56,9 @@ public:
 
     void setPosition(float x, float y) { this->m_cameraX = x; this->m_cameraY = y; }
     void setZoom(float z) { this->m_zoom = z; }
+    void setMinZoom(float z) { this->m_config.minZoom = z; }
+    void setMaxZoom(float z) { this->m_config.maxZoom = z; }
+    [[nodiscard]] float minZoom() const { return this->m_config.minZoom; }
 
     /// Set world width for cylindrical wrapping (0 = no wrapping).
     void setWorldWidth(float w) { this->m_worldWidth = w; }

@@ -294,6 +294,42 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
         this->m_cameraController.setWorldWidth(worldWidth);
     }
 
+    // Fit-to-screen minimum zoom: compute the zoom level at which the
+    // entire map fits inside the framebuffer, and use it as the floor.
+    // Default 0.1f minZoom let the user zoom out so far that the map
+    // turned into a thin sliver in the centre and most of the world
+    // appeared blank. Now the lowest zoom shows the whole map filling
+    // the screen, with a small padding factor so borders stay visible.
+    {
+        constexpr float SQRT3 = 1.7320508075688772f;
+        const float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
+        const float mapWWorld = static_cast<float>(this->m_hexGrid.width())
+                              * SQRT3 * hexSize;
+        const float mapHWorld = static_cast<float>(this->m_hexGrid.height())
+                              * 1.5f * hexSize;
+        const std::pair<uint32_t, uint32_t> fb = this->m_window.framebufferSize();
+        const float fbW = static_cast<float>(fb.first);
+        const float fbH = static_cast<float>(fb.second);
+        if (mapWWorld > 0.0f && mapHWorld > 0.0f && fbW > 0.0f && fbH > 0.0f) {
+            const float fitZoom = std::min(fbW / mapWWorld, fbH / mapHWorld) * 0.95f;
+            // Hard floor: hex must remain at least 6 pixels on screen so
+            // it stays readable. Without this even fitZoom can push hexes
+            // to ~1 px on huge maps and the world looks like coloured
+            // noise. The floor wins when the map is too big to ever fit
+            // entirely on screen at a useful zoom level.
+            constexpr float MIN_HEX_PIXELS = 6.0f;
+            const float pxFloor = MIN_HEX_PIXELS / hexSize;
+            const float minZoom = std::max(fitZoom, pxFloor);
+            this->m_cameraController.setMinZoom(minZoom);
+            // Snap current zoom up if the new floor is stricter, so the
+            // first frame after game start doesn't render at a stale
+            // sub-floor zoom.
+            if (this->m_cameraController.zoom() < minZoom) {
+                this->m_cameraController.setZoom(minZoom);
+            }
+        }
+    }
+
     // -- Count human and AI players --
     uint8_t humanCount = 0;
     uint8_t aiCount    = 0;

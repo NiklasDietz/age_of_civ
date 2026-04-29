@@ -107,6 +107,13 @@ void CameraController::update(const aoc::app::InputManager& input, float deltaTi
         this->m_zoom = std::max(this->m_zoom, this->m_config.minZoom);
     }
 
+    // Per-frame zoom clamp: even when the user isn't actively scrolling
+    // (e.g. game started before minZoom was raised, or saved-state loaded
+    // a sub-floor zoom), pin zoom into [minZoom, maxZoom] so the map
+    // never renders at the broken sub-pixel scale.
+    this->m_zoom = std::clamp(this->m_zoom,
+                               this->m_config.minZoom, this->m_config.maxZoom);
+
     // --- Cylindrical wrapping: wrap camera X within [0, worldWidth) ---
     if (this->m_worldWidth > 0.0f) {
         this->m_cameraX = std::fmod(this->m_cameraX, this->m_worldWidth);

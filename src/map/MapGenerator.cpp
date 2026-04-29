@@ -664,10 +664,12 @@ void MapGenerator::generateRivers(HexGrid& grid, aoc::Random& rng) {
             const int32_t idx = row * width + col;
             const TerrainType t = grid.terrain(idx);
             if (isWater(t) || isImpassable(t)) { continue; }
-            const FeatureType f = grid.feature(idx);
-            const bool isMountain = (t == TerrainType::Mountain);
-            const bool isHill     = (f == FeatureType::Hills);
-            if (!isMountain && !isHill) { continue; }
+            // Civ-6 behaviour: rivers spring only from mountain tiles.
+            // Earlier we also accepted Hills features but that produced
+            // springs on plain-with-hills tiles, which read as "river
+            // appears on a plain". Restricting to Mountain makes the
+            // origin always read as a mountain on the map.
+            if (t != TerrainType::Mountain) { continue; }
             // Needs a reachable outlet.  Islands of hills with no BFS path to
             // water are disqualified.
             if (distToWater[static_cast<size_t>(idx)] < 1) { continue; }
