@@ -59,7 +59,8 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
                      std::function<void()> onSettings,
                      std::function<void()> onTutorial,
                      std::function<void()> onSpectate,
-                     std::function<void()> onContinentCreator) {
+                     std::function<void()> onContinentCreator,
+                     std::function<void()> onMapEditor) {
     assert(!this->m_isBuilt);
 
     this->m_onStartGame = std::move(onStartGame);
@@ -68,6 +69,7 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
     this->m_onTutorial  = std::move(onTutorial);
     this->m_onSpectate  = std::move(onSpectate);
     this->m_onContinentCreator = std::move(onContinentCreator);
+    this->m_onMapEditor = std::move(onMapEditor);
 
     // Full-screen dark background
     this->m_rootPanel = ui.createPanel(
@@ -180,6 +182,23 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
             }
         };
         [[maybe_unused]] WidgetId spectateBtn = ui.createButton(
+            contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+    }
+
+    // --- Map Editor button ---
+    if (this->m_onMapEditor) {
+        ButtonData btn;
+        btn.label        = "Map Editor";
+        btn.fontSize     = 14.0f;
+        btn.normalColor  = {0.40f, 0.32f, 0.20f, 0.90f};
+        btn.hoverColor   = {0.55f, 0.45f, 0.28f, 0.90f};
+        btn.pressedColor = {0.30f, 0.24f, 0.15f, 0.90f};
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this]() {
+            if (this->m_onMapEditor) { this->m_onMapEditor(); }
+        };
+        [[maybe_unused]] WidgetId meBtn = ui.createButton(
             contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
     }
 
@@ -512,7 +531,11 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.cornerRadius = 4.0f;
         btn.onClick = [this, &ui]() {
             this->m_config.mapSize = aoc::map::MapSize::Small;
+            const auto d = aoc::map::mapSizeDimensions(aoc::map::MapSize::Small);
+            this->m_config.customWidth  = d.first;
+            this->m_config.customHeight = d.second;
             this->updateMapSizeButtons(ui);
+            this->refresh(ui);
         };
         this->m_btnSmall = ui.createButton(
             mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
@@ -530,7 +553,11 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.cornerRadius = 4.0f;
         btn.onClick = [this, &ui]() {
             this->m_config.mapSize = aoc::map::MapSize::Standard;
+            const auto d = aoc::map::mapSizeDimensions(aoc::map::MapSize::Standard);
+            this->m_config.customWidth  = d.first;
+            this->m_config.customHeight = d.second;
             this->updateMapSizeButtons(ui);
+            this->refresh(ui);
         };
         this->m_btnStandard = ui.createButton(
             mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
@@ -548,7 +575,11 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.cornerRadius = 4.0f;
         btn.onClick = [this, &ui]() {
             this->m_config.mapSize = aoc::map::MapSize::Large;
+            const auto d = aoc::map::mapSizeDimensions(aoc::map::MapSize::Large);
+            this->m_config.customWidth  = d.first;
+            this->m_config.customHeight = d.second;
             this->updateMapSizeButtons(ui);
+            this->refresh(ui);
         };
         this->m_btnLarge = ui.createButton(
             mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
@@ -566,11 +597,67 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.cornerRadius = 4.0f;
         btn.onClick = [this, &ui]() {
             this->m_config.mapSize = aoc::map::MapSize::Huge;
+            const auto d = aoc::map::mapSizeDimensions(aoc::map::MapSize::Huge);
+            this->m_config.customWidth  = d.first;
+            this->m_config.customHeight = d.second;
             this->updateMapSizeButtons(ui);
+            this->refresh(ui);
         };
         this->m_btnHuge = ui.createButton(
             mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
     }
+
+    // ---- Custom W/H spinners (override presets when adjusted) ----
+    auto buildSpinnerRow = [this, &ui, innerW](const char* label,
+                                                int32_t* target,
+                                                int32_t minVal,
+                                                WidgetId* labelOut) {
+        WidgetId row = ui.createPanel(this->m_rootPanel,
+            {0.0f, 0.0f, innerW, 28.0f},
+            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        Widget* r = ui.getWidget(row);
+        if (r != nullptr) {
+            r->layoutDirection = LayoutDirection::Horizontal;
+            r->childSpacing = 6.0f;
+        }
+        (void)ui.createLabel(row, {0.0f, 0.0f, 110.0f, 24.0f},
+            LabelData{label, WHITE_TEXT, 12.0f});
+
+        ButtonData minus;
+        minus.label        = "-";
+        minus.fontSize     = 13.0f;
+        minus.normalColor  = BTN_NORMAL;
+        minus.hoverColor   = BTN_HOVER;
+        minus.pressedColor = BTN_PRESSED;
+        minus.labelColor   = WHITE_TEXT;
+        minus.cornerRadius = 3.0f;
+        minus.repeatDelaySec = 0.35f;
+        minus.repeatRateHz   = 15.0f;
+        minus.onClick = [this, &ui, target, minVal]() {
+            if (*target > minVal) { --(*target); this->refresh(ui); }
+        };
+        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(minus));
+
+        *labelOut = ui.createLabel(row, {0.0f, 0.0f, 70.0f, 24.0f},
+            LabelData{std::to_string(*target), WHITE_TEXT, 12.0f});
+
+        ButtonData plus;
+        plus.label        = "+";
+        plus.fontSize     = 13.0f;
+        plus.normalColor  = BTN_NORMAL;
+        plus.hoverColor   = BTN_HOVER;
+        plus.pressedColor = BTN_PRESSED;
+        plus.labelColor   = WHITE_TEXT;
+        plus.cornerRadius = 3.0f;
+        plus.repeatDelaySec = 0.35f;
+        plus.repeatRateHz   = 15.0f;
+        plus.onClick = [this, &ui, target]() {
+            ++(*target); this->refresh(ui);
+        };
+        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(plus));
+    };
+    buildSpinnerRow("Width:",  &this->m_config.customWidth,  20, &this->m_widthLabel);
+    buildSpinnerRow("Height:", &this->m_config.customHeight, 20, &this->m_heightLabel);
 
     // ---- Turn Count section ----
     [[maybe_unused]] WidgetId turnsLabel = ui.createLabel(
@@ -706,6 +793,8 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         minus.pressedColor = BTN_GREY_PRESS;
         minus.labelColor   = WHITE_TEXT;
         minus.cornerRadius = 3.0f;
+        minus.repeatDelaySec = 0.35f;
+        minus.repeatRateHz   = 12.0f;
         minus.onClick = [this, &ui]() {
             if (this->m_config.tectonicEpochs > 3) {
                 --this->m_config.tectonicEpochs;
@@ -727,11 +816,13 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         plus.pressedColor = BTN_GREY_PRESS;
         plus.labelColor   = WHITE_TEXT;
         plus.cornerRadius = 3.0f;
+        plus.repeatDelaySec = 0.35f;
+        plus.repeatRateHz   = 12.0f;
         plus.onClick = [this, &ui]() {
-            if (this->m_config.tectonicEpochs < 40) {
-                ++this->m_config.tectonicEpochs;
-                this->refresh(ui);
-            }
+            // No upper cap — user-decided value, generator clamps the
+            // lower bound (3) and runs whatever the user picks above it.
+            ++this->m_config.tectonicEpochs;
+            this->refresh(ui);
         };
         (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(plus));
     }
@@ -756,6 +847,8 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         minus.pressedColor = BTN_GREY_PRESS;
         minus.labelColor   = WHITE_TEXT;
         minus.cornerRadius = 3.0f;
+        minus.repeatDelaySec = 0.35f;
+        minus.repeatRateHz   = 10.0f;
         minus.onClick = [this, &ui]() {
             if (this->m_config.landPlateCount > 1) {
                 --this->m_config.landPlateCount;
@@ -777,11 +870,12 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         plus.pressedColor = BTN_GREY_PRESS;
         plus.labelColor   = WHITE_TEXT;
         plus.cornerRadius = 3.0f;
+        plus.repeatDelaySec = 0.35f;
+        plus.repeatRateHz   = 10.0f;
         plus.onClick = [this, &ui]() {
-            if (this->m_config.landPlateCount < 8) {
-                ++this->m_config.landPlateCount;
-                this->refresh(ui);
-            }
+            // No upper cap; generator clamps lower bound only.
+            ++this->m_config.landPlateCount;
+            this->refresh(ui);
         };
         (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(plus));
     }
@@ -1108,6 +1202,8 @@ void GameSetupScreen::destroy(UIManager& ui) {
     this->m_btnStandard      = INVALID_WIDGET;
     this->m_btnLarge         = INVALID_WIDGET;
     this->m_btnHuge          = INVALID_WIDGET;
+    this->m_widthLabel       = INVALID_WIDGET;
+    this->m_heightLabel      = INVALID_WIDGET;
     this->m_btnTurns300      = INVALID_WIDGET;
     this->m_btnTurns1000     = INVALID_WIDGET;
     this->m_btnTurns2000     = INVALID_WIDGET;
@@ -1143,6 +1239,14 @@ void GameSetupScreen::refresh(UIManager& ui) {
     if (this->m_seedLabel != INVALID_WIDGET) {
         ui.setLabelText(this->m_seedLabel,
             std::to_string(this->m_config.mapSeed));
+    }
+    if (this->m_widthLabel != INVALID_WIDGET) {
+        ui.setLabelText(this->m_widthLabel,
+            std::to_string(this->m_config.customWidth));
+    }
+    if (this->m_heightLabel != INVALID_WIDGET) {
+        ui.setLabelText(this->m_heightLabel,
+            std::to_string(this->m_config.customHeight));
     }
 
     // Show/hide player rows and update labels

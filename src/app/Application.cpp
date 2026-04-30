@@ -267,10 +267,13 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     this->m_loadingScreen.setProgress(0.1f);
 
     // -- Map generation --
+    // Custom W/H override the preset when >= 20. Preset buttons sync
+    // customWidth/Height to their preset values, so this single source
+    // covers both preset clicks and the custom +/- spinners.
     const std::pair<int32_t, int32_t> dims = aoc::map::mapSizeDimensions(config.mapSize);
     aoc::map::MapGenerator::Config mapConfig{};
-    mapConfig.width   = dims.first;
-    mapConfig.height  = dims.second;
+    mapConfig.width  = (config.customWidth  >= 20) ? config.customWidth  : dims.first;
+    mapConfig.height = (config.customHeight >= 20) ? config.customHeight : dims.second;
     // Use hardware entropy for a unique map seed each launch.  steady_clock
     // truncated to 32 bits loses entropy on systems where the clock advances
     // slowly between launches; random_device draws from the OS entropy pool
@@ -296,15 +299,36 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     if (config.mapType == aoc::map::MapType::Continents) {
         mapConfig.topology = aoc::map::MapTopology::Cylindrical;
     }
-    aoc::map::MapGenerator::generate(mapConfig, this->m_hexGrid);
-    LOG_INFO("Map generated (%dx%d)", this->m_hexGrid.width(), this->m_hexGrid.height());
+    // Map Editor handoff: when "Use This Map" was pressed in the editor,
+    // skip MapGenerator and reuse the in-memory grid the user just edited.
+    // Flag is one-shot — cleared after consumption so the next game falls
+    // back to normal generation.
+    if (this->m_useExistingGridOnNextStart && this->m_hexGrid.width() > 0) {
+        this->m_useExistingGridOnNextStart = false;
+        LOG_INFO("Reusing in-memory map from editor (%dx%d)",
+                 this->m_hexGrid.width(), this->m_hexGrid.height());
+    } else {
+        this->m_useExistingGridOnNextStart = false;
+        aoc::map::MapGenerator::generate(mapConfig, this->m_hexGrid);
+        LOG_INFO("Map generated (%dx%d)", this->m_hexGrid.width(), this->m_hexGrid.height());
+    }
 
-    // Set camera world width for cylindrical wrapping
-    if (this->m_hexGrid.topology() == aoc::map::MapTopology::Cylindrical) {
+    // Set camera world width for cylindrical wrapping + world height
+    // for vertical pan clamp. Without setting these the camera can pan
+    // off into infinite empty space.
+    {
         constexpr float SQRT3 = 1.7320508075688772f;
-        float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
-        float worldWidth = static_cast<float>(this->m_hexGrid.width()) * SQRT3 * hexSize;
-        this->m_cameraController.setWorldWidth(worldWidth);
+        const float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
+        const float worldHeight = static_cast<float>(this->m_hexGrid.height())
+            * 1.5f * hexSize;
+        this->m_cameraController.setWorldHeight(worldHeight);
+        if (this->m_hexGrid.topology() == aoc::map::MapTopology::Cylindrical) {
+            const float worldWidth = static_cast<float>(this->m_hexGrid.width())
+                * SQRT3 * hexSize;
+            this->m_cameraController.setWorldWidth(worldWidth);
+        } else {
+            this->m_cameraController.setWorldWidth(0.0f);
+        }
     }
 
     // Fit-to-screen minimum zoom: compute the zoom level at which the
@@ -725,6 +749,102 @@ void Application::spectatorDrawHUD(void* cmdBufferPtr, uint32_t frameWidth, uint
     this->m_renderer2d->end(cmdBuffer);
 }
 
+void Application::numInputFocus(int32_t* target,
+                                  int32_t minVal,
+                                  aoc::ui::WidgetId labelId,
+                                  std::function<void()> onChange,
+                                  std::function<std::string()> display) {
+    this->m_numInputTarget   = target;
+    this->m_numInputMin      = minVal;
+    this->m_numInputLabelId  = labelId;
+    this->m_numInputBuffer   = std::to_string(*target);
+    this->m_numInputOnChange = std::move(onChange);
+    this->m_numInputDisplay  = std::move(display);
+    if (labelId != aoc::ui::INVALID_WIDGET) {
+        // Visual focus cue: prepend a > marker.
+        this->m_uiManager.setLabelText(labelId, ">" + this->m_numInputBuffer + "<");
+    }
+}
+
+void Application::numInputDefocus() {
+    // On exit, ensure value is at least the minimum and refresh label.
+    if (this->m_numInputTarget != nullptr) {
+        if (*this->m_numInputTarget < this->m_numInputMin) {
+            *this->m_numInputTarget = this->m_numInputMin;
+        }
+        if (this->m_numInputLabelId != aoc::ui::INVALID_WIDGET
+            && this->m_numInputDisplay) {
+            this->m_uiManager.setLabelText(this->m_numInputLabelId,
+                this->m_numInputDisplay());
+        }
+        if (this->m_numInputOnChange) { this->m_numInputOnChange(); }
+    }
+    this->m_numInputTarget   = nullptr;
+    this->m_numInputLabelId  = aoc::ui::INVALID_WIDGET;
+    this->m_numInputBuffer.clear();
+    this->m_numInputOnChange = nullptr;
+    this->m_numInputDisplay  = nullptr;
+}
+
+void Application::numInputTick() {
+    if (this->m_numInputTarget == nullptr) { return; }
+
+    bool changed = false;
+    // Digits 0-9.
+    for (int32_t k = GLFW_KEY_0; k <= GLFW_KEY_9; ++k) {
+        if (this->m_inputManager.isKeyPressed(k)) {
+            if (this->m_numInputBuffer.size() < 9) {
+                this->m_numInputBuffer.push_back(
+                    static_cast<char>('0' + (k - GLFW_KEY_0)));
+                changed = true;
+            }
+        }
+    }
+    // Numpad.
+    for (int32_t k = GLFW_KEY_KP_0; k <= GLFW_KEY_KP_9; ++k) {
+        if (this->m_inputManager.isKeyPressed(k)) {
+            if (this->m_numInputBuffer.size() < 9) {
+                this->m_numInputBuffer.push_back(
+                    static_cast<char>('0' + (k - GLFW_KEY_KP_0)));
+                changed = true;
+            }
+        }
+    }
+    // Backspace.
+    if (this->m_inputManager.isKeyPressed(GLFW_KEY_BACKSPACE)) {
+        if (!this->m_numInputBuffer.empty()) {
+            this->m_numInputBuffer.pop_back();
+            changed = true;
+        }
+    }
+    // Enter / Escape commit and defocus.
+    if (this->m_inputManager.isKeyPressed(GLFW_KEY_ENTER)
+        || this->m_inputManager.isKeyPressed(GLFW_KEY_KP_ENTER)
+        || this->m_inputManager.isKeyPressed(GLFW_KEY_ESCAPE)) {
+        this->numInputDefocus();
+        return;
+    }
+
+    if (!changed) { return; }
+
+    // Parse buffer → int. Empty buffer = treat as min.
+    int32_t parsed = this->m_numInputMin;
+    if (!this->m_numInputBuffer.empty()) {
+        try {
+            parsed = std::stoi(this->m_numInputBuffer);
+        } catch (...) {
+            parsed = this->m_numInputMin;
+        }
+    }
+    if (parsed < this->m_numInputMin) { parsed = this->m_numInputMin; }
+    *this->m_numInputTarget = parsed;
+    if (this->m_numInputLabelId != aoc::ui::INVALID_WIDGET) {
+        this->m_uiManager.setLabelText(this->m_numInputLabelId,
+            ">" + this->m_numInputBuffer + "<");
+    }
+    if (this->m_numInputOnChange) { this->m_numInputOnChange(); }
+}
+
 void Application::regenerateContinentPreview(int32_t epochLimit) {
     if (epochLimit < 1) { epochLimit = 1; }
     if (epochLimit > this->m_creatorEpochsTotal) {
@@ -733,10 +853,8 @@ void Application::regenerateContinentPreview(int32_t epochLimit) {
     this->m_creatorEpochCurrent = epochLimit;
 
     aoc::map::MapGenerator::Config cfg{};
-    const std::pair<int32_t, int32_t> dims =
-        aoc::map::mapSizeDimensions(aoc::map::MapSize::Standard);
-    cfg.width = dims.first;
-    cfg.height = dims.second;
+    cfg.width  = std::max(20, this->m_creatorWidth);
+    cfg.height = std::max(20, this->m_creatorHeight);
     cfg.seed = this->m_creatorSeed;
     cfg.mapType = aoc::map::MapType::Continents;
     cfg.mapSize = aoc::map::MapSize::Standard;
@@ -745,9 +863,62 @@ void Application::regenerateContinentPreview(int32_t epochLimit) {
     cfg.landPlateCount = this->m_creatorLandPlates;
     cfg.runEpochsLimit = epochLimit;
     aoc::map::MapGenerator::generate(cfg, this->m_hexGrid);
+
+    // Resize fog-of-war to match the new tile count. Without this, the
+    // FogOfWar bounds-check rejects any tile index past the OLD count
+    // and returns Unseen → renderer skips those tiles, so the world
+    // looks bigger but no new tiles render. spectatorRevealAll below
+    // sets every tile visible against the freshly sized fog.
+    this->m_fogOfWar.initialize(this->m_hexGrid.tileCount(), aoc::MAX_PLAYERS);
+
+    // Update camera world width and minZoom for the new dimensions.
+    // Without this the camera retains the previous map's world bounds
+    // and zoom floor, so larger grids appear cropped (only the original
+    // map's tile area is visible) even though the minimap shows the full
+    // new map.
+    {
+        constexpr float SQRT3 = 1.7320508075688772f;
+        const float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
+        const float worldH = static_cast<float>(this->m_hexGrid.height())
+                           * 1.5f * hexSize;
+        this->m_cameraController.setWorldHeight(worldH);
+        if (this->m_hexGrid.topology() == aoc::map::MapTopology::Cylindrical) {
+            const float worldWidth = static_cast<float>(this->m_hexGrid.width())
+                                   * SQRT3 * hexSize;
+            this->m_cameraController.setWorldWidth(worldWidth);
+        } else {
+            this->m_cameraController.setWorldWidth(0.0f);
+        }
+    }
+    {
+        constexpr float SQRT3 = 1.7320508075688772f;
+        const float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
+        const float mapWWorld = static_cast<float>(this->m_hexGrid.width())
+                              * SQRT3 * hexSize;
+        const float mapHWorld = static_cast<float>(this->m_hexGrid.height())
+                              * 1.5f * hexSize;
+        const std::pair<uint32_t, uint32_t> fb = this->m_window.framebufferSize();
+        const float fbW = static_cast<float>(fb.first);
+        const float fbH = static_cast<float>(fb.second);
+        if (mapWWorld > 0.0f && mapHWorld > 0.0f && fbW > 0.0f && fbH > 0.0f) {
+            const float fitZoom = std::min(fbW / mapWWorld, fbH / mapHWorld) * 0.95f;
+            constexpr float MIN_HEX_PIXELS = 6.0f;
+            const float pxFloor = MIN_HEX_PIXELS / hexSize;
+            const float minZoom = std::max(fitZoom, pxFloor);
+            this->m_cameraController.setMinZoom(minZoom);
+            // Re-fit zoom on size change so the new map fills the screen.
+            this->m_cameraController.setZoom(minZoom);
+            // Re-centre on the map so camera doesn't sit at an offset
+            // from the previous (smaller) map.
+            this->m_cameraController.setPosition(mapWWorld * 0.5f,
+                                                  mapHWorld * 0.5f);
+        }
+    }
+
     this->spectatorRevealAll();
-    LOG_INFO("Creator: regenerated at epoch %d/%d",
-             epochLimit, this->m_creatorEpochsTotal);
+    LOG_INFO("Creator: regenerated at epoch %d/%d (%dx%d)",
+             epochLimit, this->m_creatorEpochsTotal,
+             this->m_hexGrid.width(), this->m_hexGrid.height());
 }
 
 void Application::buildContinentCreatorControls(float screenW, float screenH) {
@@ -787,6 +958,8 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         minus.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         minus.labelColor   = aoc::ui::tokens::TEXT_GILT;
         minus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        minus.repeatDelaySec = 0.35f;
+        minus.repeatRateHz   = 8.0f;
         minus.onClick = [this]() {
             this->regenerateContinentPreview(this->m_creatorEpochCurrent - 1);
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
@@ -799,14 +972,40 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             {0.0f, 0.0f, 56.0f, 36.0f}, std::move(minus));
     }
 
-    // Epoch label
-    this->m_creatorEpochLabelId = this->m_uiManager.createLabel(
-        this->m_creatorPanelId,
-        {0.0f, 0.0f, 160.0f, 36.0f},
-        aoc::ui::LabelData{
-            "Epoch " + std::to_string(this->m_creatorEpochCurrent)
-                + "/" + std::to_string(this->m_creatorEpochsTotal),
-            aoc::ui::tokens::TEXT_HEADER, 14.0f});
+    // Epoch button — click to type total sim length directly.
+    {
+        aoc::ui::ButtonData epoch;
+        epoch.label        = "Epoch " + std::to_string(this->m_creatorEpochCurrent)
+                           + "/" + std::to_string(this->m_creatorEpochsTotal);
+        epoch.fontSize     = 14.0f;
+        epoch.normalColor  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
+        epoch.hoverColor   = aoc::ui::tokens::SURFACE_PARCHMENT;
+        epoch.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        epoch.labelColor   = aoc::ui::tokens::TEXT_HEADER;
+        epoch.cornerRadius = 3.0f;
+        // Click focuses the TOTAL field (the user-tweakable sim length).
+        // Display formatter rebuilds "Epoch cur/total" each keystroke.
+        epoch.onClick = [this]() {
+            this->numInputDefocus();
+            this->numInputFocus(&this->m_creatorEpochsTotal, 3,
+                this->m_creatorEpochLabelId,
+                [this]() {
+                    if (this->m_creatorEpochCurrent > this->m_creatorEpochsTotal) {
+                        this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
+                    }
+                    // Defer regen: typing each digit shouldn't hang.
+                    this->m_creatorDirty = true;
+                },
+                [this]() {
+                    return std::string("Epoch ")
+                         + std::to_string(this->m_creatorEpochCurrent)
+                         + "/" + std::to_string(this->m_creatorEpochsTotal);
+                });
+        };
+        this->m_creatorEpochLabelId = this->m_uiManager.createButton(
+            this->m_creatorPanelId, {0.0f, 0.0f, 160.0f, 36.0f},
+            std::move(epoch));
+    }
 
     // Epoch + button
     {
@@ -818,6 +1017,8 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         plus.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         plus.labelColor   = aoc::ui::tokens::TEXT_GILT;
         plus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        plus.repeatDelaySec = 0.35f;
+        plus.repeatRateHz   = 8.0f;
         plus.onClick = [this]() {
             this->regenerateContinentPreview(this->m_creatorEpochCurrent + 1);
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
@@ -841,20 +1042,27 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         lessEp.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         lessEp.labelColor   = aoc::ui::tokens::TEXT_GILT;
         lessEp.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        lessEp.onClick = [this]() {
-            if (this->m_creatorEpochsTotal > 3) {
-                --this->m_creatorEpochsTotal;
-                if (this->m_creatorEpochCurrent > this->m_creatorEpochsTotal) {
-                    this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
-                }
-                this->regenerateContinentPreview(this->m_creatorEpochCurrent);
-                if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
-                    this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
-                        "Epoch " + std::to_string(this->m_creatorEpochCurrent)
-                        + "/" + std::to_string(this->m_creatorEpochsTotal));
-                }
+        lessEp.repeatDelaySec = 0.35f;
+        lessEp.repeatRateHz   = 8.0f;
+        // EpochsTotal (sim length) is a generator parameter, not a
+        // playback control — defer regen to the Generate button.
+        auto epochDelta = [this](int32_t d) {
+            int32_t newTotal = this->m_creatorEpochsTotal + d;
+            if (newTotal < 3) { newTotal = 3; }
+            if (newTotal == this->m_creatorEpochsTotal) { return; }
+            this->m_creatorEpochsTotal = newTotal;
+            if (this->m_creatorEpochCurrent > this->m_creatorEpochsTotal) {
+                this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
+            }
+            this->m_creatorDirty = true;
+            if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
+                    "Epoch " + std::to_string(this->m_creatorEpochCurrent)
+                    + "/" + std::to_string(this->m_creatorEpochsTotal));
             }
         };
+        lessEp.onClick  = [epochDelta]() { epochDelta(-1); };
+        lessEp.onScroll = [epochDelta](float dy) { epochDelta(dy > 0.0f ? -1 : 1); };
         (void)this->m_uiManager.createButton(this->m_creatorPanelId,
             {0.0f, 0.0f, 56.0f, 36.0f}, std::move(lessEp));
 
@@ -866,22 +1074,30 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         moreEp.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         moreEp.labelColor   = aoc::ui::tokens::TEXT_GILT;
         moreEp.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        moreEp.onClick = [this]() {
-            if (this->m_creatorEpochsTotal < 40) {
-                ++this->m_creatorEpochsTotal;
-                this->regenerateContinentPreview(this->m_creatorEpochCurrent);
-                if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
-                    this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
-                        "Epoch " + std::to_string(this->m_creatorEpochCurrent)
-                        + "/" + std::to_string(this->m_creatorEpochsTotal));
-                }
+        moreEp.repeatDelaySec = 0.35f;
+        moreEp.repeatRateHz   = 8.0f;
+        auto epochDeltaP = [this](int32_t d) {
+            int32_t newTotal = this->m_creatorEpochsTotal + d;
+            if (newTotal < 3) { newTotal = 3; }
+            if (newTotal == this->m_creatorEpochsTotal) { return; }
+            this->m_creatorEpochsTotal = newTotal;
+            if (this->m_creatorEpochCurrent > this->m_creatorEpochsTotal) {
+                this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
+            }
+            this->m_creatorDirty = true;
+            if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
+                    "Epoch " + std::to_string(this->m_creatorEpochCurrent)
+                    + "/" + std::to_string(this->m_creatorEpochsTotal));
             }
         };
+        moreEp.onClick  = [epochDeltaP]() { epochDeltaP(1); };
+        moreEp.onScroll = [epochDeltaP](float dy) { epochDeltaP(dy > 0.0f ? 1 : -1); };
         (void)this->m_uiManager.createButton(this->m_creatorPanelId,
             {0.0f, 0.0f, 56.0f, 36.0f}, std::move(moreEp));
     }
 
-    // Continent count adjuster (1-8 land plates).
+    // Land plate count adjuster — no upper cap. Hold-to-repeat for fast scan.
     {
         aoc::ui::ButtonData lessC;
         lessC.label        = "Cont-";
@@ -891,14 +1107,48 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         lessC.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         lessC.labelColor   = aoc::ui::tokens::TEXT_GILT;
         lessC.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        lessC.onClick = [this]() {
-            if (this->m_creatorLandPlates > 1) {
-                --this->m_creatorLandPlates;
-                this->regenerateContinentPreview(this->m_creatorEpochCurrent);
+        lessC.repeatDelaySec = 0.35f;
+        lessC.repeatRateHz   = 8.0f;
+        auto plateDelta = [this](int32_t d) {
+            int32_t nv = this->m_creatorLandPlates + d;
+            if (nv < 1) { nv = 1; }
+            if (nv == this->m_creatorLandPlates) { return; }
+            this->m_creatorLandPlates = nv;
+            this->m_creatorDirty = true;
+            if (this->m_creatorPlatesLabelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setLabelText(this->m_creatorPlatesLabelId,
+                    "P:" + std::to_string(this->m_creatorLandPlates));
             }
         };
+        lessC.onClick  = [plateDelta]() { plateDelta(-1); };
+        lessC.onScroll = [plateDelta](float dy) { plateDelta(dy > 0.0f ? -1 : 1); };
         (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 60.0f, 36.0f}, std::move(lessC));
+            {0.0f, 0.0f, 50.0f, 36.0f}, std::move(lessC));
+
+        // Plates value box — click to type initial-plate count.
+        {
+            aoc::ui::ButtonData pBtn;
+            pBtn.label        = "P:" + std::to_string(this->m_creatorLandPlates);
+            pBtn.fontSize     = 12.0f;
+            pBtn.normalColor  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
+            pBtn.hoverColor   = aoc::ui::tokens::SURFACE_PARCHMENT;
+            pBtn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+            pBtn.labelColor   = aoc::ui::tokens::TEXT_HEADER;
+            pBtn.cornerRadius = 3.0f;
+            pBtn.onClick = [this]() {
+                this->numInputDefocus();
+                this->numInputFocus(&this->m_creatorLandPlates, 1,
+                    this->m_creatorPlatesLabelId,
+                    [this]() { this->m_creatorDirty = true; },
+                    [this]() {
+                        return std::string("P:")
+                             + std::to_string(this->m_creatorLandPlates);
+                    });
+            };
+            this->m_creatorPlatesLabelId = this->m_uiManager.createButton(
+                this->m_creatorPanelId, {0.0f, 0.0f, 50.0f, 36.0f},
+                std::move(pBtn));
+        }
 
         aoc::ui::ButtonData moreC;
         moreC.label        = "Cont+";
@@ -908,17 +1158,156 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         moreC.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         moreC.labelColor   = aoc::ui::tokens::TEXT_GILT;
         moreC.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        moreC.onClick = [this]() {
-            if (this->m_creatorLandPlates < 8) {
-                ++this->m_creatorLandPlates;
-                this->regenerateContinentPreview(this->m_creatorEpochCurrent);
+        moreC.repeatDelaySec = 0.35f;
+        moreC.repeatRateHz   = 8.0f;
+        auto plateDeltaP = [this](int32_t d) {
+            int32_t nv = this->m_creatorLandPlates + d;
+            if (nv < 1) { nv = 1; }
+            if (nv == this->m_creatorLandPlates) { return; }
+            this->m_creatorLandPlates = nv;
+            this->m_creatorDirty = true;
+            if (this->m_creatorPlatesLabelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setLabelText(this->m_creatorPlatesLabelId,
+                    "P:" + std::to_string(this->m_creatorLandPlates));
+            }
+        };
+        moreC.onClick  = [plateDeltaP]() { plateDeltaP(1); };
+        moreC.onScroll = [plateDeltaP](float dy) { plateDeltaP(dy > 0.0f ? 1 : -1); };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
+            {0.0f, 0.0f, 50.0f, 36.0f}, std::move(moreC));
+    }
+
+    // Map width / height spinners. Each pair: label + W- W+ / H- H+.
+    // Both - and + have hold-to-repeat AND scroll-wheel support: hover
+    // either button and roll the wheel to scrub the value.
+    auto buildDimSpinner = [this](const char* prefix,
+                                   int32_t* target,
+                                   aoc::ui::WidgetId* labelOut) {
+        const std::string pfx(prefix);
+        auto applyDelta = [this, target, labelOut, pfx](int32_t delta) {
+            int32_t newVal = *target + delta;
+            if (newVal < 20) { newVal = 20; }
+            if (newVal == *target) { return; }
+            *target = newVal;
+            this->m_creatorDirty = true;
+            if (*labelOut != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setLabelText(*labelOut,
+                    pfx + ":" + std::to_string(*target));
+            }
+        };
+
+        aoc::ui::ButtonData minus;
+        minus.label        = pfx + "-";
+        minus.fontSize     = 11.0f;
+        minus.normalColor  = aoc::ui::tokens::BRONZE_DARK;
+        minus.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
+        minus.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        minus.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        minus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        minus.repeatDelaySec = 0.30f;
+        minus.repeatRateHz   = 20.0f;
+        minus.onClick  = [applyDelta]() { applyDelta(-1); };
+        minus.onScroll = [applyDelta](float dy) {
+            applyDelta(dy > 0.0f ? -1 : 1);
+        };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
+            {0.0f, 0.0f, 36.0f, 36.0f}, std::move(minus));
+
+        // Value box — Button styled like a label. Click to focus + type.
+        aoc::ui::ButtonData valBtn;
+        valBtn.label        = pfx + ":" + std::to_string(*target);
+        valBtn.fontSize     = 11.0f;
+        valBtn.normalColor  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
+        valBtn.hoverColor   = aoc::ui::tokens::SURFACE_PARCHMENT;
+        valBtn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        valBtn.labelColor   = aoc::ui::tokens::TEXT_HEADER;
+        valBtn.cornerRadius = 3.0f;
+        // Capture by value: pfx (string), target/labelOut (raw ptrs into Application
+        // members, stable for the lifetime of the panel).
+        valBtn.onClick = [this, target, labelOut, pfx, this_target_min = 20]() {
+            this->numInputDefocus();
+            this->numInputFocus(target, this_target_min, *labelOut,
+                [this]() { this->m_creatorDirty = true; },
+                [target, pfx]() {
+                    return pfx + ":" + std::to_string(*target);
+                });
+        };
+        *labelOut = this->m_uiManager.createButton(this->m_creatorPanelId,
+            {0.0f, 0.0f, 64.0f, 36.0f}, std::move(valBtn));
+
+        aoc::ui::ButtonData plus;
+        plus.label        = pfx + "+";
+        plus.fontSize     = 11.0f;
+        plus.normalColor  = aoc::ui::tokens::BRONZE_DARK;
+        plus.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
+        plus.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        plus.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        plus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        plus.repeatDelaySec = 0.30f;
+        plus.repeatRateHz   = 20.0f;
+        plus.onClick  = [applyDelta]() { applyDelta(1); };
+        plus.onScroll = [applyDelta](float dy) {
+            applyDelta(dy > 0.0f ? 1 : -1);
+        };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
+            {0.0f, 0.0f, 36.0f, 36.0f}, std::move(plus));
+    };
+    buildDimSpinner("W", &this->m_creatorWidth,  &this->m_creatorWidthLabelId);
+    buildDimSpinner("H", &this->m_creatorHeight, &this->m_creatorHeightLabelId);
+
+    // Overlay toggles. Each button switches the global MapOverlay to
+    // its mode (or None if it's already on). Plates / Winds / Currents.
+    auto addOverlayBtn = [this](const char* label,
+                                  aoc::render::GameRenderer::MapOverlay mode) {
+        aoc::ui::ButtonData ovl;
+        ovl.label        = label;
+        ovl.fontSize     = 12.0f;
+        ovl.normalColor  = aoc::ui::tokens::BRONZE_DARK;
+        ovl.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
+        ovl.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        ovl.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        ovl.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        ovl.onClick = [this, mode]() {
+            using OM = aoc::render::GameRenderer::MapOverlay;
+            this->m_gameRenderer.overlayMode =
+                (this->m_gameRenderer.overlayMode == mode) ? OM::None : mode;
+        };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
+            {0.0f, 0.0f, 64.0f, 36.0f}, std::move(ovl));
+    };
+    addOverlayBtn("Plates",   aoc::render::GameRenderer::MapOverlay::TectonicPlates);
+    addOverlayBtn("Wind",     aoc::render::GameRenderer::MapOverlay::Winds);
+    addOverlayBtn("Currents", aoc::render::GameRenderer::MapOverlay::OceanCurrents);
+    addOverlayBtn("Hotspots", aoc::render::GameRenderer::MapOverlay::Hotspots);
+
+    // Generate — rebuilds the world with current parameters. Apply
+    // when the user is done tweaking values; deferred so each
+    // setting change doesn't hang the UI.
+    {
+        aoc::ui::ButtonData gen;
+        gen.label        = "Generate";
+        gen.fontSize     = 13.0f;
+        gen.normalColor  = aoc::ui::tokens::STATE_SUCCESS;
+        gen.hoverColor   = aoc::ui::tokens::DIPLO_FRIENDLY;
+        gen.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        gen.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        gen.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        gen.onClick = [this]() {
+            this->numInputDefocus();
+            this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
+            this->regenerateContinentPreview(this->m_creatorEpochsTotal);
+            this->m_creatorDirty = false;
+            if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
+                    "Epoch " + std::to_string(this->m_creatorEpochCurrent)
+                    + "/" + std::to_string(this->m_creatorEpochsTotal));
             }
         };
         (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 60.0f, 36.0f}, std::move(moreC));
+            {0.0f, 0.0f, 90.0f, 36.0f}, std::move(gen));
     }
 
-    // Re-roll seed
+    // Re-roll seed (also regenerates with the new seed).
     {
         aoc::ui::ButtonData reroll;
         reroll.label        = "Re-roll";
@@ -929,9 +1318,12 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         reroll.labelColor   = aoc::ui::tokens::TEXT_GILT;
         reroll.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         reroll.onClick = [this]() {
+            this->numInputDefocus();
             std::random_device rd;
             this->m_creatorSeed = rd();
+            this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
             this->regenerateContinentPreview(this->m_creatorEpochsTotal);
+            this->m_creatorDirty = false;
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
                     "Epoch " + std::to_string(this->m_creatorEpochCurrent)
@@ -1004,6 +1396,235 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         };
         (void)this->m_uiManager.createButton(this->m_creatorPanelId,
             {0.0f, 0.0f, 80.0f, 36.0f}, std::move(back));
+    }
+}
+
+void Application::buildMapEditorControls(float screenW, float screenH) {
+    if (this->m_editorPanelId != aoc::ui::INVALID_WIDGET) {
+        this->m_uiManager.removeWidget(this->m_editorPanelId);
+        this->m_editorPanelId = aoc::ui::INVALID_WIDGET;
+        this->m_editorBrushLabelId = aoc::ui::INVALID_WIDGET;
+    }
+    constexpr float PANEL_H = 64.0f;
+    constexpr float PANEL_PAD = 8.0f;
+    aoc::ui::PanelData bg;
+    bg.backgroundColor = aoc::ui::tokens::SURFACE_PARCHMENT;
+    bg.gradientBottom  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
+    bg.borderColor     = aoc::ui::tokens::BRONZE_DARK;
+    bg.borderWidth     = 1.0f;
+    bg.cornerRadius    = aoc::ui::tokens::CORNER_PANEL;
+    this->m_editorPanelId = this->m_uiManager.createPanel(
+        {PANEL_PAD, screenH - PANEL_H - PANEL_PAD,
+         screenW - PANEL_PAD * 2.0f, PANEL_H},
+        std::move(bg));
+    {
+        aoc::ui::Widget* w = this->m_uiManager.getWidget(this->m_editorPanelId);
+        if (w != nullptr) {
+            w->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
+            w->padding = {6.0f, 8.0f, 6.0f, 8.0f};
+            w->childSpacing = 6.0f;
+        }
+    }
+
+    // -- Terrain palette (6 buttons) --
+    struct BrushEntry {
+        const char* label;
+        aoc::map::TerrainType type;
+    };
+    const std::array<BrushEntry, 6> brushes = {{
+        {"Grass",  aoc::map::TerrainType::Grassland},
+        {"Plain",  aoc::map::TerrainType::Plains},
+        {"Desert", aoc::map::TerrainType::Desert},
+        {"Snow",   aoc::map::TerrainType::Snow},
+        {"Mtn",    aoc::map::TerrainType::Mountain},
+        {"Ocean",  aoc::map::TerrainType::Ocean},
+    }};
+    for (const BrushEntry& be : brushes) {
+        aoc::ui::ButtonData btn;
+        btn.label        = be.label;
+        btn.fontSize     = 11.0f;
+        btn.normalColor  = aoc::ui::tokens::BRONZE_BASE;
+        btn.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+        btn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        btn.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        btn.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        const aoc::map::TerrainType t = be.type;
+        const std::string lbl = be.label;
+        btn.onClick = [this, t, lbl]() {
+            this->m_editorBrushMode = BrushMode::Terrain;
+            this->m_editorBrush = t;
+            if (this->m_editorBrushLabelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setLabelText(this->m_editorBrushLabelId,
+                    "Brush: " + lbl);
+            }
+        };
+        (void)this->m_uiManager.createButton(this->m_editorPanelId,
+            {0.0f, 0.0f, 56.0f, 36.0f}, std::move(btn));
+    }
+
+    // -- Feature palette (4 buttons; Clear maps to None) --
+    struct FBrush { const char* label; aoc::map::FeatureType f; };
+    const std::array<FBrush, 4> fbrushes = {{
+        {"Forest", aoc::map::FeatureType::Forest},
+        {"Jungle", aoc::map::FeatureType::Jungle},
+        {"Hills",  aoc::map::FeatureType::Hills},
+        {"Clear",  aoc::map::FeatureType::None},
+    }};
+    for (const FBrush& fb : fbrushes) {
+        aoc::ui::ButtonData btn;
+        btn.label        = fb.label;
+        btn.fontSize     = 11.0f;
+        btn.normalColor  = aoc::ui::tokens::BRONZE_DARK;
+        btn.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
+        btn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        btn.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        btn.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        const aoc::map::FeatureType f = fb.f;
+        const std::string lbl = fb.label;
+        btn.onClick = [this, f, lbl]() {
+            this->m_editorBrushMode = BrushMode::Feature;
+            this->m_editorFeatureBrush = f;
+            if (this->m_editorBrushLabelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setLabelText(this->m_editorBrushLabelId,
+                    "Brush: " + lbl);
+            }
+        };
+        (void)this->m_uiManager.createButton(this->m_editorPanelId,
+            {0.0f, 0.0f, 56.0f, 36.0f}, std::move(btn));
+    }
+
+    this->m_editorBrushLabelId = this->m_uiManager.createLabel(
+        this->m_editorPanelId, {0.0f, 0.0f, 110.0f, 36.0f},
+        aoc::ui::LabelData{"Brush: Grass", aoc::ui::tokens::TEXT_HEADER, 12.0f});
+
+    // -- Brush radius (1..4) --
+    {
+        aoc::ui::ButtonData rMinus;
+        rMinus.label        = "R-";
+        rMinus.fontSize     = 12.0f;
+        rMinus.normalColor  = aoc::ui::tokens::BRONZE_DARK;
+        rMinus.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
+        rMinus.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        rMinus.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        rMinus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        rMinus.onClick = [this]() {
+            if (this->m_editorBrushRadius > 1) { --this->m_editorBrushRadius; }
+            if (this->m_editorRadiusLabelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setLabelText(this->m_editorRadiusLabelId,
+                    "R" + std::to_string(this->m_editorBrushRadius));
+            }
+        };
+        (void)this->m_uiManager.createButton(this->m_editorPanelId,
+            {0.0f, 0.0f, 36.0f, 36.0f}, std::move(rMinus));
+
+        this->m_editorRadiusLabelId = this->m_uiManager.createLabel(
+            this->m_editorPanelId, {0.0f, 0.0f, 36.0f, 36.0f},
+            aoc::ui::LabelData{"R" + std::to_string(this->m_editorBrushRadius),
+                                aoc::ui::tokens::TEXT_HEADER, 13.0f});
+
+        aoc::ui::ButtonData rPlus;
+        rPlus.label        = "R+";
+        rPlus.fontSize     = 12.0f;
+        rPlus.normalColor  = aoc::ui::tokens::BRONZE_DARK;
+        rPlus.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
+        rPlus.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        rPlus.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        rPlus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        rPlus.onClick = [this]() {
+            if (this->m_editorBrushRadius < 4) { ++this->m_editorBrushRadius; }
+            if (this->m_editorRadiusLabelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setLabelText(this->m_editorRadiusLabelId,
+                    "R" + std::to_string(this->m_editorBrushRadius));
+            }
+        };
+        (void)this->m_uiManager.createButton(this->m_editorPanelId,
+            {0.0f, 0.0f, 36.0f, 36.0f}, std::move(rPlus));
+    }
+
+    // Undo
+    {
+        aoc::ui::ButtonData undo;
+        undo.label        = "Undo";
+        undo.fontSize     = 12.0f;
+        undo.normalColor  = aoc::ui::tokens::BRONZE_BASE;
+        undo.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+        undo.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        undo.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        undo.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        undo.onClick = [this]() {
+            if (this->m_editorUndoStack.empty()) { return; }
+            const EditorAction& act = this->m_editorUndoStack.back();
+            for (const EditorChange& ch : act.changes) {
+                if (act.isFeature) {
+                    this->m_hexGrid.setFeature(ch.tileIndex,
+                        static_cast<aoc::map::FeatureType>(ch.oldValue));
+                } else {
+                    this->m_hexGrid.setTerrain(ch.tileIndex,
+                        static_cast<aoc::map::TerrainType>(ch.oldValue));
+                }
+            }
+            this->m_editorUndoStack.pop_back();
+        };
+        (void)this->m_uiManager.createButton(this->m_editorPanelId,
+            {0.0f, 0.0f, 60.0f, 36.0f}, std::move(undo));
+    }
+
+    // Use This Map: returns to GameSetup with the edited grid intact.
+    // startGame() consumes the m_useExistingGridOnNextStart flag below.
+    {
+        aoc::ui::ButtonData use;
+        use.label        = "Use This Map";
+        use.fontSize     = 12.0f;
+        use.normalColor  = aoc::ui::tokens::STATE_SUCCESS;
+        use.hoverColor   = aoc::ui::tokens::DIPLO_FRIENDLY;
+        use.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        use.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        use.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        use.onClick = [this, screenW, screenH]() {
+            if (this->m_editorPanelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.removeWidget(this->m_editorPanelId);
+                this->m_editorPanelId = aoc::ui::INVALID_WIDGET;
+            }
+            this->m_mapEditorMode = false;
+            this->m_useExistingGridOnNextStart = true;
+            this->returnToMainMenu();
+            this->m_mainMenu.destroy(this->m_uiManager);
+            this->m_gameSetupScreen.build(
+                this->m_uiManager, screenW, screenH,
+                [this](const aoc::ui::GameSetupConfig& cfg) {
+                    this->m_gameSetupScreen.destroy(this->m_uiManager);
+                    this->startGame(cfg);
+                },
+                [this, screenW, screenH]() {
+                    this->m_gameSetupScreen.destroy(this->m_uiManager);
+                    this->buildMainMenu(screenW, screenH);
+                });
+        };
+        (void)this->m_uiManager.createButton(this->m_editorPanelId,
+            {0.0f, 0.0f, 110.0f, 36.0f}, std::move(use));
+    }
+
+    // Done (back to main menu without using the edit)
+    {
+        aoc::ui::ButtonData done;
+        done.label        = "Back";
+        done.fontSize     = 12.0f;
+        done.normalColor  = aoc::ui::tokens::STATE_DANGER;
+        done.hoverColor   = aoc::ui::tokens::DIPLO_HOSTILE;
+        done.pressedColor = aoc::ui::tokens::DIPLO_AT_WAR;
+        done.labelColor   = aoc::ui::tokens::TEXT_PARCHMENT;
+        done.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        done.onClick = [this]() {
+            if (this->m_editorPanelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.removeWidget(this->m_editorPanelId);
+                this->m_editorPanelId = aoc::ui::INVALID_WIDGET;
+            }
+            this->m_mapEditorMode = false;
+            this->m_editorUndoStack.clear();
+            this->returnToMainMenu();
+        };
+        (void)this->m_uiManager.createButton(this->m_editorPanelId,
+            {0.0f, 0.0f, 60.0f, 36.0f}, std::move(done));
     }
 }
 
@@ -1172,6 +1793,12 @@ void Application::run() {
 
         this->m_inputManager.processFrame();
         this->m_window.pollEvents();
+
+        // Numeric text-input focus tick: when active, intercept digits +
+        // backspace + enter so the user can type into the focused field
+        // (creator panel value boxes). Runs after input collection so
+        // newly-pressed keys are visible.
+        this->numInputTick();
 
         // Drain DBus messages and satisfy any screenshot request. Runs here
         // so all sd-bus calls stay on the render thread.
@@ -1349,7 +1976,8 @@ void Application::run() {
         // ================================================================
         // Spectator mode input and turn advancement
         // ================================================================
-        if (this->m_spectatorMode && !this->m_debugConsole.isOpen()) {
+        if (this->m_spectatorMode && !this->m_debugConsole.isOpen()
+            && !this->m_continentCreatorMode && !this->m_mapEditorMode) {
             // Space: toggle pause/resume.
             if (this->m_inputManager.isKeyPressed(GLFW_KEY_SPACE)) {
                 this->m_spectatorPaused = !this->m_spectatorPaused;
@@ -1868,8 +2496,9 @@ void Application::run() {
         // over the minimap, or while a modal is open. Without this the
         // map slides whenever the cursor brushes the HUD bar or hovers
         // a button — caller wants edge-scroll only over the actual map.
-        const aoc::render::Minimap::Rect mmRect =
+        aoc::render::Minimap::Rect mmRect =
             aoc::render::Minimap::computeRect(this->m_hexGrid, fbHeight);
+        mmRect.y -= this->m_gameRenderer.m_minimapBottomOffset;
         const float mouseXf = static_cast<float>(this->m_inputManager.mouseX());
         const float mouseYf = static_cast<float>(this->m_inputManager.mouseY());
         const bool overMinimap = this->m_gameRenderer.minimap().containsPoint(
@@ -1907,6 +2536,77 @@ void Application::run() {
             this->handleContextAction();
             this->handleUndoAction();
         }
+        // Map editor: left-click on a tile paints all tiles within the
+        // brush radius using the active terrain or feature brush. A
+        // mouse-down opens a fresh EditorAction that collects every
+        // change while the button stays held; mouse-release pushes the
+        // action onto the undo stack. The drag dedupes tiles already
+        // captured in the current action so a tile records only its
+        // pre-drag value (one undo step rolls a whole stroke back).
+        const bool editorMouseHeld = this->m_mapEditorMode
+            && !this->m_uiConsumedInput
+            && this->m_inputManager.isMouseButtonHeld(GLFW_MOUSE_BUTTON_LEFT);
+        const bool editorMouseReleased = this->m_mapEditorMode
+            && this->m_editorMouseDownLast
+            && !this->m_inputManager.isMouseButtonHeld(GLFW_MOUSE_BUTTON_LEFT);
+        if (this->m_mapEditorMode && !this->m_uiConsumedInput
+            && this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT)) {
+            this->m_editorCurrentAction.changes.clear();
+            this->m_editorCurrentAction.isFeature =
+                (this->m_editorBrushMode == BrushMode::Feature);
+        }
+        if (editorMouseHeld) {
+            const std::pair<uint32_t, uint32_t> editorFb =
+                this->m_window.framebufferSize();
+            float ewx = 0.0f, ewy = 0.0f;
+            this->m_cameraController.screenToWorld(
+                this->m_inputManager.mouseX(), this->m_inputManager.mouseY(),
+                ewx, ewy, editorFb.first, editorFb.second);
+            const float editorHexSize = this->m_gameRenderer.mapRenderer().hexSize();
+            const aoc::hex::AxialCoord centerTile =
+                aoc::hex::pixelToAxial(ewx, ewy, editorHexSize);
+            std::vector<aoc::hex::AxialCoord> brushTiles;
+            brushTiles.reserve(static_cast<std::size_t>(
+                1 + 3 * this->m_editorBrushRadius * (this->m_editorBrushRadius + 1)));
+            aoc::hex::spiral(centerTile, this->m_editorBrushRadius,
+                             std::back_inserter(brushTiles));
+            const bool paintFeature = (this->m_editorBrushMode == BrushMode::Feature);
+            for (const aoc::hex::AxialCoord& t : brushTiles) {
+                if (!this->m_hexGrid.isValid(t)) { continue; }
+                const int32_t pIdx = this->m_hexGrid.toIndex(t);
+                bool alreadyCaptured = false;
+                for (const EditorChange& ch : this->m_editorCurrentAction.changes) {
+                    if (ch.tileIndex == pIdx) { alreadyCaptured = true; break; }
+                }
+                if (paintFeature) {
+                    const aoc::map::FeatureType prev = this->m_hexGrid.feature(pIdx);
+                    if (prev == this->m_editorFeatureBrush) { continue; }
+                    if (!alreadyCaptured) {
+                        this->m_editorCurrentAction.changes.push_back(
+                            EditorChange{pIdx, static_cast<uint8_t>(prev)});
+                    }
+                    this->m_hexGrid.setFeature(pIdx, this->m_editorFeatureBrush);
+                } else {
+                    const aoc::map::TerrainType prev = this->m_hexGrid.terrain(pIdx);
+                    if (prev == this->m_editorBrush) { continue; }
+                    if (!alreadyCaptured) {
+                        this->m_editorCurrentAction.changes.push_back(
+                            EditorChange{pIdx, static_cast<uint8_t>(prev)});
+                    }
+                    this->m_hexGrid.setTerrain(pIdx, this->m_editorBrush);
+                }
+            }
+        }
+        if (editorMouseReleased) {
+            if (!this->m_editorCurrentAction.changes.empty()) {
+                this->m_editorUndoStack.push_back(std::move(this->m_editorCurrentAction));
+            }
+            this->m_editorCurrentAction.changes.clear();
+            this->m_editorCurrentAction.isFeature = false;
+        }
+        this->m_editorMouseDownLast =
+            this->m_mapEditorMode
+            && this->m_inputManager.isMouseButtonHeld(GLFW_MOUSE_BUTTON_LEFT);
         // When only the city detail panel is open (right-side, non-blocking),
         // allow map interactions on the MAP area (left of the city panel).
         // Don't check m_uiConsumedInput — the HUD widgets shouldn't block tile clicks.
@@ -2094,6 +2794,12 @@ void Application::run() {
             showOverlay ? this->m_selectedCity : nullptr;
 
         this->m_gameRenderer.m_minimapSuppressed = this->anyScreenOpen();
+        // In creator/editor the bottom HUD panel is 64px tall + 8px padding.
+        // Lift the minimap above it so buttons are not obscured.
+        constexpr float BOTTOM_PANEL_H = 80.0f; // PANEL_H(64) + PANEL_PAD*2(16)
+        this->m_gameRenderer.m_minimapBottomOffset =
+            (this->m_continentCreatorMode || this->m_mapEditorMode)
+            ? BOTTOM_PANEL_H : 0.0f;
         this->m_gameRenderer.render(
             *this->m_renderer2d,
             frame.commandBuffer,
@@ -2270,6 +2976,7 @@ void Application::returnToMainMenu() {
     if (this->m_endTurnButton != aoc::ui::INVALID_WIDGET) {
         this->m_uiManager.removeWidget(this->m_endTurnButton);
         this->m_endTurnButton = aoc::ui::INVALID_WIDGET;
+        this->m_endTurnInnerBtn = aoc::ui::INVALID_WIDGET;
     }
     // The info panel and victory panel are root widgets too
     // Simplest: just remove all widgets and rebuild
@@ -2440,8 +3147,10 @@ void Application::buildMainMenu(float screenW, float screenH) {
 
             std::random_device rdc;
             this->m_creatorSeed         = rdc();
-            this->m_creatorEpochsTotal  = 14;
-            this->m_creatorLandPlates   = 4;
+            this->m_creatorEpochsTotal  = 40;
+            this->m_creatorLandPlates   = 7;
+            this->m_creatorWidth        = 200;
+            this->m_creatorHeight       = 120;
             this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
             this->m_continentCreatorMode = true;
 
@@ -2471,14 +3180,69 @@ void Application::buildMainMenu(float screenW, float screenH) {
             this->m_spectatorMode            = true;
             this->m_spectatorPaused          = true;
             this->m_spectatorFogEnabled      = false;
+            // Hide top resource/Tech/Gov bar — it has no purpose in the
+            // creator. Keep the End Turn button visible but relabel it
+            // "Back to Main Menu"; handleEndTurn checks creator mode and
+            // routes to returnToMainMenu so the same widget serves both.
+            if (this->m_topBar != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setVisible(this->m_topBar, false);
+            }
             if (this->m_endTurnButton != aoc::ui::INVALID_WIDGET) {
-                this->m_uiManager.setVisible(this->m_endTurnButton, false);
+                this->m_uiManager.setVisible(this->m_endTurnButton, true);
+            }
+            if (this->m_endTurnInnerBtn != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setButtonLabel(this->m_endTurnInnerBtn,
+                    "Back to Main Menu");
             }
             this->buildContinentCreatorControls(screenW, screenH);
             LOG_INFO("Continent Creator opened (seed=%u epochs=%d/%d)",
                      this->m_creatorSeed,
                      this->m_creatorEpochCurrent,
                      this->m_creatorEpochsTotal);
+        },
+        [this, screenW, screenH]() {
+            // Map Editor: launches a quick AI-only sandbox so the
+            // player can paint tiles. Re-uses the continent generator
+            // for the starting layout; left-click swaps the clicked
+            // tile's terrain to the active brush.
+            this->m_mainMenu.destroy(this->m_uiManager);
+            this->m_settingsMenu.destroy(this->m_uiManager);
+
+            aoc::ui::GameSetupConfig editorConfig{};
+            editorConfig.mapType = aoc::map::MapType::Continents;
+            editorConfig.mapSize = aoc::map::MapSize::Standard;
+            editorConfig.playerCount = 2;
+            editorConfig.players[0].isActive = true;
+            editorConfig.players[0].isHuman  = true;
+            editorConfig.players[0].civId    = 0;
+            editorConfig.players[1].isActive = true;
+            editorConfig.players[1].isHuman  = false;
+            editorConfig.players[1].civId    = 1;
+            this->startGame(editorConfig);
+            aoc::game::Player* slot0 = this->m_gameState.player(0);
+            if (slot0 != nullptr) { slot0->setHuman(false); }
+            this->m_aiControllers.emplace(this->m_aiControllers.begin(),
+                                           aoc::PlayerId{0},
+                                           editorConfig.aiDifficulty);
+            this->spectatorRevealAll();
+            this->m_spectatorMode       = true;
+            this->m_spectatorPaused     = true;
+            this->m_spectatorFogEnabled = false;
+            // Hide top bar; reuse end-turn button as "Back to Main Menu".
+            if (this->m_topBar != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setVisible(this->m_topBar, false);
+            }
+            if (this->m_endTurnButton != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setVisible(this->m_endTurnButton, true);
+            }
+            if (this->m_endTurnInnerBtn != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setButtonLabel(this->m_endTurnInnerBtn,
+                    "Back to Main Menu");
+            }
+            this->m_mapEditorMode = true;
+            this->m_editorBrush = aoc::map::TerrainType::Grassland;
+            this->buildMapEditorControls(screenW, screenH);
+            LOG_INFO("Map Editor opened");
         });
 }
 
@@ -3036,6 +3800,24 @@ void Application::handleUndoAction() {
 }
 
 void Application::handleEndTurn() {
+    // In design tools (Continent Creator / Map Editor) the End Turn button
+    // is repurposed as "Back to Main Menu" — game logic is paused, so
+    // there is no turn to advance. Just exit back to the main menu.
+    if (this->m_continentCreatorMode || this->m_mapEditorMode) {
+        this->m_continentCreatorMode = false;
+        this->m_mapEditorMode = false;
+        if (this->m_creatorPanelId != aoc::ui::INVALID_WIDGET) {
+            this->m_uiManager.removeWidget(this->m_creatorPanelId);
+            this->m_creatorPanelId = aoc::ui::INVALID_WIDGET;
+        }
+        if (this->m_editorPanelId != aoc::ui::INVALID_WIDGET) {
+            this->m_uiManager.removeWidget(this->m_editorPanelId);
+            this->m_editorPanelId = aoc::ui::INVALID_WIDGET;
+        }
+        this->m_editorUndoStack.clear();
+        this->returnToMainMenu();
+        return;
+    }
     // If the game is over, skip all turn processing
     if (this->m_gameOver) {
         return;

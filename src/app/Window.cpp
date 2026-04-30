@@ -58,6 +58,11 @@ ErrorCode Window::create(const Config& config) {
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);  // Vulkan, no OpenGL
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+    // Don't minimize fullscreen window when it loses focus.
+    // Default GLFW behavior in fullscreen is to iconify on focus loss
+    // so the user can use other apps; we want the game to stay rendering
+    // in the background instead.
+    glfwWindowHint(GLFW_AUTO_ICONIFY, GLFW_FALSE);
 
     this->m_window = glfwCreateWindow(
         static_cast<int>(config.width),
@@ -107,6 +112,8 @@ void Window::setFullscreen(bool fullscreen) {
         // Switch to fullscreen on primary monitor
         GLFWmonitor* monitor = glfwGetPrimaryMonitor();
         const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+        // Keep AUTO_ICONIFY off in fullscreen — alt-tab should not minimize.
+        glfwSetWindowAttrib(this->m_window, GLFW_AUTO_ICONIFY, GLFW_FALSE);
         glfwSetWindowMonitor(this->m_window, monitor, 0, 0,
                              mode->width, mode->height, mode->refreshRate);
     } else {

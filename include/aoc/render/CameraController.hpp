@@ -64,12 +64,19 @@ public:
     void setWorldWidth(float w) { this->m_worldWidth = w; }
     [[nodiscard]] float worldWidth() const { return this->m_worldWidth; }
 
+    /// Set world height for vertical pan clamping (0 = no clamp).
+    /// Clamp keeps the camera within the world plus a small margin so
+    /// the user can't pan past where tiles still cover ≥ half the screen.
+    void setWorldHeight(float h) { this->m_worldHeight = h; }
+    [[nodiscard]] float worldHeight() const { return this->m_worldHeight; }
+
 private:
     Config m_config;
-    float  m_cameraX    = 0.0f;
-    float  m_cameraY    = 0.0f;
-    float  m_zoom       = 1.0f;
-    float  m_worldWidth = 0.0f;  ///< >0 when cylindrical wrapping is active
+    float  m_cameraX     = 0.0f;
+    float  m_cameraY     = 0.0f;
+    float  m_zoom        = 1.0f;
+    float  m_worldWidth  = 0.0f;  ///< >0 when cylindrical wrapping is active
+    float  m_worldHeight = 0.0f;  ///< >0 to clamp Y; 0 = unlimited
 };
 
 } // namespace aoc::render

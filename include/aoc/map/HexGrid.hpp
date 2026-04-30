@@ -491,6 +491,16 @@ public:
     /// Tectonic plate id assigned by the Continents map generator.
     /// 0xFF = unset / not applicable (non-Continents map). Used by the
     /// tectonic-overlay UI mode.
+    /// Hotspot world positions (normalised 0..1 coords) — set by
+    /// MapGenerator on Continents maps. Empty otherwise. Used by the
+    /// Hotspots overlay to render dark red dots at mantle plumes.
+    [[nodiscard]] const std::vector<std::pair<float, float>>& hotspots() const {
+        return this->m_hotspots;
+    }
+    void setHotspots(std::vector<std::pair<float, float>> hs) {
+        this->m_hotspots = std::move(hs);
+    }
+
     [[nodiscard]] uint8_t plateId(int32_t index) const {
         const int32_t total = this->tileCount();
         if (index < 0 || index >= total) { return 0xFFu; }
@@ -508,6 +518,7 @@ public:
     }
 private:
     std::vector<uint8_t>          m_plateId;
+    std::vector<std::pair<float, float>> m_hotspots;
     /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
     /// Greenhouse improvement actively populate. Tile index → good id.
     std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;

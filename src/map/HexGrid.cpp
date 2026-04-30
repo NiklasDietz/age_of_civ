@@ -30,6 +30,12 @@ void HexGrid::initialize(int32_t width, int32_t height, MapTopology topology) {
     this->m_chokepoint.assign(count, ChokepointType::None);
     this->m_falloutTurns.assign(count, 0);
     this->m_preFalloutFeature.assign(count, FeatureType::None);
+    // m_plateId is lazy-allocated by setPlateId. Reset it on every
+    // initialize so a regenerate with a different grid size doesn't
+    // leave a stale vector sized to the previous tile count — which
+    // would cause out-of-bounds writes in setPlateId and heap corruption.
+    this->m_plateId.clear();
+    this->m_hotspots.clear();
 }
 
 } // namespace aoc::map

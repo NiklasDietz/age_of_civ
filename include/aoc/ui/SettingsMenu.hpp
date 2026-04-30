@@ -27,7 +27,7 @@ struct GameSettings {
     int32_t sfxVolume    = 100;   ///< 0-100
     int32_t musicVolume  = 70;    ///< 0-100
     bool    vsync        = true;
-    bool    fullscreen   = false;
+    bool    fullscreen   = true;
     bool    showFPS      = false;
     bool    showTileYields = true; ///< Display F/P/G/S yields directly on all map tiles
 };

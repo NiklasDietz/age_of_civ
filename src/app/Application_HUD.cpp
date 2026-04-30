@@ -455,7 +455,7 @@ void Application::buildHUD() {
     };
 
     // The button is inside the panel container so it gets the panel background
-    [[maybe_unused]] aoc::ui::WidgetId btnId = this->m_uiManager.createButton(
+    this->m_endTurnInnerBtn = this->m_uiManager.createButton(
         this->m_endTurnButton,
         {0.0f, 0.0f, 130.0f, 40.0f},
         std::move(endTurnBtn));

@@ -452,6 +452,11 @@ void UIManager::setLabelText(WidgetId id, std::string text) {
     }
     if (LabelData* label = std::get_if<LabelData>(&w->data)) {
         label->text = std::move(text);
+    } else if (ButtonData* btn = std::get_if<ButtonData>(&w->data)) {
+        // Convenience: callers that update text uniformly across mixed
+        // Label/Button widgets (e.g. value spinners that switched from
+        // Label to clickable Button) get correct behavior either way.
+        btn->label = std::move(text);
     }
 }
 
@@ -730,6 +735,21 @@ bool UIManager::handleInput(float mouseX, float mouseY,
         // (prevents camera zoom while in menus).
         if (scrollDelta != 0.0f) {
             constexpr float SCROLL_PIXEL_MULTIPLIER = 20.0f;
+            // Button-level wheel handler: spinner buttons subscribe by
+            // setting `ButtonData::onScroll`. Hovering them and rolling
+            // the wheel adjusts the underlying value without competing
+            // with parent ScrollList/canvas pan logic.
+            {
+                Widget* hitW = this->getWidget(hit);
+                if (hitW != nullptr
+                    && std::holds_alternative<ButtonData>(hitW->data)) {
+                    auto& bd = std::get<ButtonData>(hitW->data);
+                    if (bd.onScroll) {
+                        bd.onScroll(scrollDelta);
+                        return true;
+                    }
+                }
+            }
             WidgetId cur = hit;
             while (cur != INVALID_WIDGET) {
                 Widget* candidate = this->getWidget(cur);

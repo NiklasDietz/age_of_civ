@@ -181,6 +181,7 @@ private:
     aoc::ui::WidgetId  m_selectionLabel = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId  m_economyLabel   = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId  m_endTurnButton  = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId  m_endTurnInnerBtn = aoc::ui::INVALID_WIDGET; ///< Inner button child for label/onClick mutation
     aoc::ui::WidgetId  m_lastPlayerBanner = aoc::ui::INVALID_WIDGET; ///< "Waiting for you" glow
     aoc::ui::WidgetId  m_topBar         = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId  m_resourceLabel  = aoc::ui::INVALID_WIDGET;
@@ -410,11 +411,44 @@ private:
     /// scrubber regenerates the map by re-running MapGenerator with
     /// these params and a varying runEpochsLimit.
     uint32_t m_creatorSeed = 0;
-    int32_t  m_creatorEpochsTotal = 14;
-    int32_t  m_creatorLandPlates  = 4;
-    int32_t  m_creatorEpochCurrent = 14;
+    int32_t  m_creatorEpochsTotal = 40;
+    int32_t  m_creatorLandPlates  = 7;
+    int32_t  m_creatorEpochCurrent = 40;
+    int32_t  m_creatorWidth  = 200;
+    int32_t  m_creatorHeight = 120;
     aoc::ui::WidgetId m_creatorPanelId = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorEpochLabelId = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_creatorWidthLabelId  = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_creatorHeightLabelId = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_creatorPlatesLabelId = aoc::ui::INVALID_WIDGET;
+    /// Deferred-regen flag. Setup-knob changes (W/H/Plates/EpochsTotal/
+    /// text-input typing) only set this to true; the explicit "Generate"
+    /// button consumes it and runs MapGenerator. Without this each
+    /// keystroke would hang the UI mid-typing.
+    bool m_creatorDirty = false;
+
+    /// Focused numeric text-input. When `m_numInputTarget != nullptr`,
+    /// digit / backspace / Enter / Esc keys go to this field; the
+    /// `m_numInputBuffer` accumulates user keystrokes and the value
+    /// commits on each edit so the live preview regenerates immediately.
+    int32_t* m_numInputTarget = nullptr;
+    int32_t  m_numInputMin    = 1;
+    aoc::ui::WidgetId m_numInputLabelId = aoc::ui::INVALID_WIDGET;
+    std::string m_numInputBuffer;
+    std::function<void()> m_numInputOnChange;
+    std::function<std::string()> m_numInputDisplay; ///< Render label text from int
+
+    /// Begin editing the int pointed to by `target`. Snapshot value to
+    /// buffer, raise focus indicator on `labelId`, store callbacks.
+    void numInputFocus(int32_t* target,
+                        int32_t minVal,
+                        aoc::ui::WidgetId labelId,
+                        std::function<void()> onChange,
+                        std::function<std::string()> display);
+    /// Commit + clear focus. Optional applyDelta=true triggers onChange.
+    void numInputDefocus();
+    /// Per-frame keystroke routing while focused.
+    void numInputTick();
 
     /// Re-run MapGenerator with the stored creator config + a custom
     /// epoch limit, replacing m_hexGrid in place. Used by the scrubber.
@@ -422,6 +456,46 @@ private:
     /// Build the creator overlay (slider + Use This Map button) along
     /// the bottom of the screen.
     void buildContinentCreatorControls(float screenW, float screenH);
+
+    // ---- Map Editor state ----
+    enum class BrushMode : uint8_t {
+        Terrain,
+        Feature,
+    };
+    /// True while the player is in the map-editor preview mode.
+    bool m_mapEditorMode = false;
+    BrushMode m_editorBrushMode = BrushMode::Terrain;
+    aoc::map::TerrainType m_editorBrush = aoc::map::TerrainType::Grassland;
+    aoc::map::FeatureType m_editorFeatureBrush = aoc::map::FeatureType::Forest;
+    int32_t m_editorBrushRadius = 1;  ///< 1..4 hex radius
+    aoc::ui::WidgetId m_editorPanelId = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_editorBrushLabelId = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_editorRadiusLabelId = aoc::ui::INVALID_WIDGET;
+
+    /// Per-action change list captured between mouse-down and the
+    /// next mouse-down (so a single drag groups into one undo step).
+    /// Each entry: tileIndex + previous TerrainType (or FeatureType
+    /// encoded into the same byte slot since we never mix kinds in
+    /// one action — see m_undoLastWasFeature).
+    struct EditorChange {
+        int32_t  tileIndex;
+        uint8_t  oldValue;
+    };
+    struct EditorAction {
+        std::vector<EditorChange> changes;
+        bool isFeature = false;
+    };
+    std::vector<EditorAction> m_editorUndoStack;
+    bool m_editorMouseDownLast = false;
+    EditorAction m_editorCurrentAction;
+
+    /// Set true when "Use This Map" is pressed in the editor; the next
+    /// startGame() reuses the in-memory m_hexGrid instead of running
+    /// MapGenerator. Cleared after consumption.
+    bool m_useExistingGridOnNextStart = false;
+
+    /// Build the editor overlay (palette + Save/Use/Back buttons).
+    void buildMapEditorControls(float screenW, float screenH);
 
     /// Persist current game state to a /tmp file keyed by turn so the seek
     /// slider can reload older turns on backwards scrub.

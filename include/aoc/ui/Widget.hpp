@@ -120,6 +120,13 @@ struct ButtonData {
     float repeatDelaySec = 0.0f;
     float repeatRateHz   = 0.0f;
 
+    /// Optional scroll-wheel handler. When set, scrolling the wheel
+    /// while hovering this button dispatches the wheel delta (yoffset)
+    /// directly to this callback instead of bubbling up to the parent
+    /// scroll/pan widget. Used by spinner-style number controls so the
+    /// user can hover a +/- button and roll the wheel to scrub.
+    std::function<void(float)> onScroll;
+
     /// Optional keyboard shortcut. ASCII key code; 0 = none. Renders
     /// an underline on the matching label letter (first occurrence,
     /// case-insensitive). Application dispatches the key through

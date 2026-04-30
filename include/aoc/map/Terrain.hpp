@@ -142,15 +142,16 @@ struct TerrainColor {
 
 [[nodiscard]] constexpr TerrainColor terrainColor(TerrainType type) {
     switch (type) {
-        case TerrainType::Ocean:     return {0.10f, 0.20f, 0.55f};
-        case TerrainType::Coast:     return {0.20f, 0.45f, 0.70f};
-        case TerrainType::Desert:    return {0.82f, 0.75f, 0.50f};
-        case TerrainType::Plains:    return {0.65f, 0.70f, 0.35f};
-        case TerrainType::Grassland: return {0.30f, 0.65f, 0.30f};
-        case TerrainType::Tundra:    return {0.55f, 0.60f, 0.55f};
-        case TerrainType::Snow:      return {0.85f, 0.88f, 0.90f};
-        case TerrainType::Mountain:  return {0.45f, 0.40f, 0.35f};
-        default:                     return {0.50f, 0.50f, 0.50f};
+        case TerrainType::Ocean:        return {0.06f, 0.16f, 0.50f}; // deep dark blue
+        case TerrainType::Coast:        return {0.35f, 0.65f, 0.85f}; // light blue (legacy)
+        case TerrainType::ShallowWater: return {0.35f, 0.65f, 0.85f}; // light blue continental shelf
+        case TerrainType::Desert:       return {0.82f, 0.75f, 0.50f};
+        case TerrainType::Plains:       return {0.65f, 0.70f, 0.35f};
+        case TerrainType::Grassland:    return {0.30f, 0.65f, 0.30f};
+        case TerrainType::Tundra:       return {0.55f, 0.60f, 0.55f};
+        case TerrainType::Snow:         return {0.85f, 0.88f, 0.90f};
+        case TerrainType::Mountain:     return {0.45f, 0.40f, 0.35f};
+        default:                        return {0.50f, 0.50f, 0.50f};
     }
 }
 

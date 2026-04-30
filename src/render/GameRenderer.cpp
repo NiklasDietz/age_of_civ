@@ -163,6 +163,208 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                     rgb[0], rgb[1], rgb[2], 0.45f);
             }
         }
+
+        // Pass 2: draw black borders along edges where neighbour belongs to
+        // a different category. Mirrors the in-game government / religion
+        // overlay treatment so plate boundaries read at a glance.
+        // edge i (vertices i → (i+1)%6) maps to neighbour DIR via:
+        //   edge 0 → SE(5), 1 → SW(4), 2 → W(3), 3 → NW(2), 4 → NE(1), 5 → E(0).
+        constexpr int32_t EDGE_TO_DIR[6] = {5, 4, 3, 2, 1, 0};
+        for (int32_t row = minRow; row <= maxRow; ++row) {
+            for (int32_t col = minCol; col <= maxCol; ++col) {
+                int32_t dataCol = col;
+                if (cyl) {
+                    dataCol = ((col % width) + width) % width;
+                } else {
+                    if (col < 0 || col >= width) { continue; }
+                }
+                const int32_t index = row * width + dataCol;
+                if (fog.visibility(viewingPlayer, index)
+                        == aoc::map::TileVisibility::Unseen) {
+                    continue;
+                }
+                uint8_t myCat = 0xFF;
+                if (this->overlayMode == MapOverlay::TectonicPlates) {
+                    myCat = grid.plateId(index);
+                }
+                if (myCat == 0xFFu) { continue; }
+
+                const aoc::hex::AxialCoord axial =
+                    aoc::hex::offsetToAxial({col, row});
+                float cx = 0.0f, cy = 0.0f;
+                aoc::hex::axialToPixel(axial, hexSizeOv, cx, cy);
+                float verts[12];
+                aoc::hex::hexVertices(cx, cy, hexSizeOv, verts);
+                const std::array<aoc::hex::AxialCoord, 6> nbrs =
+                    aoc::hex::neighbors(axial);
+                for (int32_t edge = 0; edge < 6; ++edge) {
+                    const aoc::hex::AxialCoord nb = nbrs[
+                        static_cast<std::size_t>(EDGE_TO_DIR[edge])];
+                    bool drawEdge = false;
+                    if (!grid.isValid(nb)) {
+                        drawEdge = true; // map edge counts as boundary
+                    } else {
+                        const int32_t nIdx = grid.toIndex(nb);
+                        uint8_t nbCat = 0xFF;
+                        if (this->overlayMode == MapOverlay::TectonicPlates) {
+                            nbCat = grid.plateId(nIdx);
+                        }
+                        if (nbCat != myCat) { drawEdge = true; }
+                    }
+                    if (!drawEdge) { continue; }
+                    const float ax = verts[edge * 2];
+                    const float ay = verts[edge * 2 + 1];
+                    const float bx = verts[((edge + 1) % 6) * 2];
+                    const float by = verts[((edge + 1) % 6) * 2 + 1];
+                    renderer2d.drawLine(ax, ay, bx, by,
+                        0.0f, 0.0f, 0.0f, 0.95f, 2.0f);
+                }
+            }
+        }
+    }
+
+    // Wind overlay: thick arrows on land tiles showing prevailing wind
+    // direction by latitude band. Easterlies (trade + polar) blow E→W,
+    // westerlies blow W→E. Renders ALL tiles to make it obvious; thick
+    // lines + bright colours + filled arrowhead so it can't be missed.
+    if (this->overlayMode == MapOverlay::Winds) {
+        const float hexSizeOv = this->m_mapRenderer.hexSize();
+        const int32_t width  = grid.width();
+        const int32_t height = grid.height();
+        for (int32_t row = 0; row < height; row += 3) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            const bool easterly = (lat < 0.30f) || (lat >= 0.60f);
+            // Arrow points in wind-FLOW direction (where the wind blows TO).
+            // Easterly = blows from east to west = arrow points -x.
+            // Westerly = blows from west to east = arrow points +x.
+            const float dirX = easterly ? -1.0f : +1.0f;
+            // Bright colour band per zone.
+            float r = 0.30f, g = 0.55f, b = 1.0f; // westerly (cool blue)
+            if (lat < 0.30f)      { r = 1.0f;  g = 0.55f; b = 0.10f; } // trade (warm orange)
+            else if (lat >= 0.60f){ r = 0.95f; g = 0.95f; b = 1.0f;  } // polar (bright white)
+            for (int32_t col = 0; col < width; col += 4) {
+                const aoc::hex::AxialCoord ax =
+                    aoc::hex::offsetToAxial({col, row});
+                float cx = 0.0f, cy = 0.0f;
+                aoc::hex::axialToPixel(ax, hexSizeOv, cx, cy);
+                const float L = hexSizeOv * 2.4f;
+                // Shaft.
+                const float x0 = cx - dirX * L * 0.5f;
+                const float x1 = cx + dirX * L * 0.5f;
+                renderer2d.drawLine(x0, cy, x1, cy, r, g, b, 1.0f, 3.0f);
+                // Arrowhead: two strokes from tip backward + outward.
+                const float head = L * 0.35f;
+                const float headBack = -dirX * head; // back along shaft
+                const float headSide = head * 0.6f;
+                renderer2d.drawLine(x1, cy,
+                    x1 + headBack, cy - headSide, r, g, b, 1.0f, 3.0f);
+                renderer2d.drawLine(x1, cy,
+                    x1 + headBack, cy + headSide, r, g, b, 1.0f, 3.0f);
+            }
+        }
+    }
+
+    // Ocean-current overlay: arrows along coastal ShallowWater tiles
+    // showing gyre direction. Warm currents = orange, cold = blue.
+    if (this->overlayMode == MapOverlay::OceanCurrents) {
+        const float hexSizeOv = this->m_mapRenderer.hexSize();
+        const int32_t width  = grid.width();
+        const int32_t height = grid.height();
+        for (int32_t row = 0; row < height; row += 2) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            const bool northern = (ny < 0.5f);
+            for (int32_t col = 0; col < width; col += 2) {
+                const int32_t idx = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(idx);
+                if (t != aoc::map::TerrainType::ShallowWater) { continue; }
+                // Detect coast side: scan a few tiles east and west to
+                // find which direction has land. If land is east of
+                // here, this water is on a continent's WEST coast.
+                bool landEast = false, landWest = false;
+                for (int32_t s = 1; s <= 4 && !landEast; ++s) {
+                    const int32_t c2 = col + s;
+                    if (c2 >= width) break;
+                    if (!aoc::map::isWater(grid.terrain(row * width + c2))) {
+                        landEast = true;
+                    }
+                }
+                for (int32_t s = 1; s <= 4 && !landWest; ++s) {
+                    const int32_t c2 = col - s;
+                    if (c2 < 0) break;
+                    if (!aoc::map::isWater(grid.terrain(row * width + c2))) {
+                        landWest = true;
+                    }
+                }
+                if (!landEast && !landWest) { continue; }
+                // Pick the closer land for the coast side.
+                const bool isWestCoast = landEast && !landWest;
+                const bool isEastCoast = landWest && !landEast;
+                if (!isWestCoast && !isEastCoast) {
+                    // Bay/strait — pick by which is closer (eastward search hit).
+                    // Just default to west coast for visualization.
+                }
+                float dirY = 0.0f;
+                float r = 0.30f, g = 0.50f, b = 1.0f;  // cold blue
+                bool warm = false;
+                if (lat < 0.40f) {
+                    // Subtropical: west coast cold + equatorward, east coast warm + poleward.
+                    if (isWestCoast) {
+                        dirY = northern ? +1.0f : -1.0f; warm = false;
+                    } else {
+                        dirY = northern ? -1.0f : +1.0f; warm = true;
+                    }
+                } else if (lat < 0.70f) {
+                    // Mid-lat: west coast warm + poleward (Gulf Stream), east cold + equatorward.
+                    if (isWestCoast) {
+                        dirY = northern ? -1.0f : +1.0f; warm = true;
+                    } else {
+                        dirY = northern ? +1.0f : -1.0f; warm = false;
+                    }
+                } else {
+                    // Sub-polar.
+                    if (isWestCoast) {
+                        dirY = northern ? -1.0f : +1.0f; warm = true;
+                    } else {
+                        dirY = northern ? +1.0f : -1.0f; warm = false;
+                    }
+                }
+                if (warm) { r = 1.0f; g = 0.45f; b = 0.10f; }
+                const aoc::hex::AxialCoord ax =
+                    aoc::hex::offsetToAxial({col, row});
+                float cx = 0.0f, cy = 0.0f;
+                aoc::hex::axialToPixel(ax, hexSizeOv, cx, cy);
+                const float L = hexSizeOv * 2.0f;
+                const float y0 = cy - dirY * L * 0.5f;
+                const float y1 = cy + dirY * L * 0.5f;
+                renderer2d.drawLine(cx, y0, cx, y1, r, g, b, 1.0f, 3.0f);
+                const float head = L * 0.35f;
+                const float headBack = -dirY * head;
+                const float headSide = head * 0.6f;
+                renderer2d.drawLine(cx, y1,
+                    cx - headSide, y1 + headBack, r, g, b, 1.0f, 3.0f);
+                renderer2d.drawLine(cx, y1,
+                    cx + headSide, y1 + headBack, r, g, b, 1.0f, 3.0f);
+            }
+        }
+    }
+
+    // Hotspots overlay: dark red dot at each mantle plume position.
+    if (this->overlayMode == MapOverlay::Hotspots) {
+        const float hexSizeOv = this->m_mapRenderer.hexSize();
+        constexpr float SQRT3 = 1.7320508075688772f;
+        const float worldW = static_cast<float>(grid.width()) * SQRT3 * hexSizeOv;
+        const float worldH = static_cast<float>(grid.height()) * 1.5f * hexSizeOv;
+        for (const std::pair<float, float>& hs : grid.hotspots()) {
+            const float wx = hs.first  * worldW;
+            const float wy = hs.second * worldH;
+            // Filled dark-red disk + thin black ring.
+            renderer2d.drawFilledCircle(wx, wy, hexSizeOv * 0.6f,
+                                         0.55f, 0.0f, 0.0f, 0.95f);
+            renderer2d.drawCircle(wx, wy, hexSizeOv * 0.6f,
+                                   0.0f, 0.0f, 0.0f, 1.0f, 1.5f);
+        }
     }
 
     // Layer 1.5: Territory borders (hex outlines drawn ON TOP of terrain)
@@ -530,7 +732,8 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     // `Minimap::computeRect` helper so the click-handler in
     // Application.cpp uses identical bounds.
     if (!this->m_minimapSuppressed) {
-        const Minimap::Rect mmRect = Minimap::computeRect(grid, screenHeight);
+        Minimap::Rect mmRect = Minimap::computeRect(grid, screenHeight);
+        mmRect.y -= this->m_minimapBottomOffset;
         const float mmWorldX = topLeftX + mmRect.x * invZoom;
         const float mmWorldY = topLeftY + mmRect.y * invZoom;
         this->m_minimap.draw(renderer2d, grid, fog, viewingPlayer, camera,

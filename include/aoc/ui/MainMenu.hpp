@@ -48,6 +48,11 @@ enum class VictoryMode : uint8_t {
 struct GameSetupConfig {
     aoc::map::MapType mapType = aoc::map::MapType::Continents;
     aoc::map::MapSize mapSize = aoc::map::MapSize::Standard;
+    /// Custom map dimensions. When >0, override the preset.
+    /// Updated by setup-screen W/H +/- spinners; preset buttons sync these
+    /// to the preset's tile counts so all paths use the same fields.
+    int32_t customWidth  = 200;
+    int32_t customHeight = 120;
     aoc::map::ResourcePlacementMode placement = aoc::map::ResourcePlacementMode::Realistic;
     uint8_t           playerCount = 2;
     std::array<PlayerSlotConfig, 20> players;  ///< max 20 players
@@ -62,8 +67,8 @@ struct GameSetupConfig {
     /// the rest. mapSeed is the deterministic RNG seed; same seed +
     /// same parameters → same world. mapSeed = 0 means "auto" (the
     /// app picks a fresh random seed at game start).
-    int32_t tectonicEpochs = 14;
-    int32_t landPlateCount = 4;
+    int32_t tectonicEpochs = 40;
+    int32_t landPlateCount = 7;    ///< Earth has ~7 major plates
     uint32_t mapSeed = 0;
 };
 
@@ -81,7 +86,8 @@ public:
                std::function<void()> onSettings  = {},
                std::function<void()> onTutorial  = {},
                std::function<void()> onSpectate  = {},
-               std::function<void()> onContinentCreator = {});
+               std::function<void()> onContinentCreator = {},
+               std::function<void()> onMapEditor = {});
 
     /// Rebuild positions after resize.
     void updateLayout(UIManager& ui, float screenW, float screenH);
@@ -102,6 +108,7 @@ private:
     std::function<void()> m_onTutorial;
     std::function<void()> m_onSpectate;
     std::function<void()> m_onContinentCreator;
+    std::function<void()> m_onMapEditor;
 };
 
 // ============================================================================
@@ -161,6 +168,9 @@ private:
     WidgetId m_btnStandard    = INVALID_WIDGET;
     WidgetId m_btnLarge       = INVALID_WIDGET;
     WidgetId m_btnHuge        = INVALID_WIDGET;
+    /// Custom map dimension labels — updated when W/H spinners fire.
+    WidgetId m_widthLabel     = INVALID_WIDGET;
+    WidgetId m_heightLabel    = INVALID_WIDGET;
 
     // Turn count selection buttons (300, 1000, 2000, 5000)
     WidgetId m_btnTurns300    = INVALID_WIDGET;

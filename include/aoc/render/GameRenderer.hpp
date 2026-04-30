@@ -76,7 +76,8 @@ public:
     /// When true, the world minimap overlay is hidden. Set by
     /// Application while a modal screen (tech tree, diplomacy, etc.)
     /// is open so the world overview doesn't peek through.
-    bool m_minimapSuppressed = false;
+    bool  m_minimapSuppressed   = false;
+    float m_minimapBottomOffset = 0.0f; ///< Extra upward shift in screen px (clears bottom HUD panels).
 
     /// World map overlay mode. Controls the per-tile colour tint that
     /// the renderer applies on top of terrain. None = no overlay (
@@ -84,8 +85,18 @@ public:
     /// generator-assigned plate id. Future modes (Government / Religion
     /// / Continents) wire in here too.
     enum class MapOverlay : uint8_t {
+        // Modes:
+        //   None             — normal terrain, no tint
+        //   TectonicPlates   — per-plate hue + boundary borders
+        //   Winds            — arrows showing prevailing wind direction
+        //                       (trade easterlies / westerlies / polar)
+        //   OceanCurrents    — arrows along coast water tiles showing
+        //                       gyre direction with warm/cold colour
         None,
         TectonicPlates,
+        Winds,
+        OceanCurrents,
+        Hotspots,
     };
     MapOverlay overlayMode = MapOverlay::None;
 

@@ -120,6 +120,28 @@ void CameraController::update(const aoc::app::InputManager& input, float deltaTi
         if (this->m_cameraX < 0.0f) {
             this->m_cameraX += this->m_worldWidth;
         }
+    } else if (this->m_worldHeight > 0.0f) {
+        // Non-cylindrical X clamp. Allow camera to pan up to half a screen
+        // past the world edge — beyond that, less than half the screen
+        // would show tiles.
+        const float halfWView = static_cast<float>(screenWidth)
+            / (2.0f * this->m_zoom);
+        this->m_cameraX = std::clamp(this->m_cameraX,
+            -halfWView * 0.5f,
+            this->m_worldWidth + halfWView * 0.5f);
+    }
+
+    // --- Vertical clamp: keep at least half the screen on tiles ---
+    // halfHView is the world-space half-height visible at current zoom.
+    // Clamp m_cameraY so the world overlaps the screen by at least half:
+    //   cameraY >= -halfHView/2  (top of map sits at most 1/4 from top)
+    //   cameraY <= worldH + halfHView/2
+    if (this->m_worldHeight > 0.0f) {
+        const float halfHView = static_cast<float>(screenHeight)
+            / (2.0f * this->m_zoom);
+        this->m_cameraY = std::clamp(this->m_cameraY,
+            -halfHView * 0.5f,
+            this->m_worldHeight + halfHView * 0.5f);
     }
 }
 
