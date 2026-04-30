@@ -265,7 +265,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                             }
                         }
                     }
-                    renderer2d.drawLine(ax, ay, bx, by, r, g, b, 0.95f, 2.5f);
+                    renderer2d.drawLine(ax, ay, bx, by, r, g, b, 0.95f, 7.5f);
                 }
             }
         }
@@ -300,15 +300,15 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                 // Shaft.
                 const float x0 = cx - dirX * L * 0.5f;
                 const float x1 = cx + dirX * L * 0.5f;
-                renderer2d.drawLine(x0, cy, x1, cy, r, g, b, 1.0f, 3.0f);
+                renderer2d.drawLine(x0, cy, x1, cy, r, g, b, 1.0f, 9.0f);
                 // Arrowhead: two strokes from tip backward + outward.
                 const float head = L * 0.35f;
                 const float headBack = -dirX * head; // back along shaft
                 const float headSide = head * 0.6f;
                 renderer2d.drawLine(x1, cy,
-                    x1 + headBack, cy - headSide, r, g, b, 1.0f, 3.0f);
+                    x1 + headBack, cy - headSide, r, g, b, 1.0f, 9.0f);
                 renderer2d.drawLine(x1, cy,
-                    x1 + headBack, cy + headSide, r, g, b, 1.0f, 3.0f);
+                    x1 + headBack, cy + headSide, r, g, b, 1.0f, 9.0f);
             }
         }
     }
@@ -467,7 +467,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                 const float y0 = cy - fy * L * 0.5f;
                 const float x1 = cx + fx * L * 0.5f;
                 const float y1 = cy + fy * L * 0.5f;
-                renderer2d.drawLine(x0, y0, x1, y1, r, g, b, 1.0f, 3.0f);
+                renderer2d.drawLine(x0, y0, x1, y1, r, g, b, 1.0f, 9.0f);
                 // Arrowhead — perpendicular from tip backward.
                 const float head = L * 0.30f;
                 const float headBackX = -fx * head;
@@ -476,11 +476,59 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                 const float perpY =  fx * head * 0.5f;
                 renderer2d.drawLine(x1, y1,
                     x1 + headBackX + perpX, y1 + headBackY + perpY,
-                    r, g, b, 1.0f, 3.0f);
+                    r, g, b, 1.0f, 9.0f);
                 renderer2d.drawLine(x1, y1,
                     x1 + headBackX - perpX, y1 + headBackY - perpY,
-                    r, g, b, 1.0f, 3.0f);
+                    r, g, b, 1.0f, 9.0f);
             }
+        }
+    }
+
+    // Plate motion overlay: arrow at each plate centre showing its
+    // velocity vector. Length proportional to speed, hue from
+    // deterministic plate-id colour.
+    if (this->overlayMode == MapOverlay::PlateMotion) {
+        const float hexSizeOv = this->m_mapRenderer.hexSize();
+        constexpr float SQRT3 = 1.7320508075688772f;
+        const float worldW = static_cast<float>(grid.width()) * SQRT3 * hexSizeOv;
+        const float worldH = static_cast<float>(grid.height()) * 1.5f * hexSizeOv;
+        const auto& centers = grid.plateCenters();
+        const auto& motions = grid.plateMotions();
+        for (std::size_t i = 0; i < centers.size() && i < motions.size(); ++i) {
+            const float wx = centers[i].first  * worldW;
+            const float wy = centers[i].second * worldH;
+            const float vx = motions[i].first;
+            const float vy = motions[i].second;
+            const float vLen = std::sqrt(vx * vx + vy * vy);
+            if (vLen < 1e-3f) { continue; }
+            const float vnx = vx / vLen;
+            const float vny = vy / vLen;
+            // Arrow length scales with speed (capped). Big at fast plates.
+            const float L = hexSizeOv * (3.0f + std::min(vLen, 1.0f) * 8.0f);
+            const float ax = wx;
+            const float ay = wy;
+            const float bx = wx + vnx * L;
+            const float by = wy + vny * L;
+            // Plate hue (deterministic from id).
+            const uint32_t hh = static_cast<uint32_t>(i + 1) * 2654435761u;
+            const float r = std::min(1.0f,
+                static_cast<float>((hh >> 0)  & 0xFFu) / 255.0f * 0.7f + 0.3f);
+            const float g = std::min(1.0f,
+                static_cast<float>((hh >> 8)  & 0xFFu) / 255.0f * 0.7f + 0.3f);
+            const float b = std::min(1.0f,
+                static_cast<float>((hh >> 16) & 0xFFu) / 255.0f * 0.7f + 0.3f);
+            renderer2d.drawLine(ax, ay, bx, by, r, g, b, 1.0f, 9.0f);
+            // Filled arrowhead.
+            const float head = L * 0.30f;
+            const float perpX = -vny * head * 0.5f;
+            const float perpY =  vnx * head * 0.5f;
+            const float backX = bx - vnx * head;
+            const float backY = by - vny * head;
+            renderer2d.drawLine(bx, by, backX + perpX, backY + perpY, r, g, b, 1.0f, 9.0f);
+            renderer2d.drawLine(bx, by, backX - perpX, backY - perpY, r, g, b, 1.0f, 9.0f);
+            // Tail dot at plate centre for clarity.
+            renderer2d.drawFilledCircle(wx, wy, hexSizeOv * 0.6f,
+                                         r, g, b, 1.0f);
         }
     }
 

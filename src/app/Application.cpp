@@ -1289,6 +1289,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
     addOverlayBtn("Wind",     aoc::render::GameRenderer::MapOverlay::Winds);
     addOverlayBtn("Currents", aoc::render::GameRenderer::MapOverlay::OceanCurrents);
     addOverlayBtn("Hotspots", aoc::render::GameRenderer::MapOverlay::Hotspots);
+    addOverlayBtn("Motion",   aoc::render::GameRenderer::MapOverlay::PlateMotion);
 
     // Generate — rebuilds the world with current parameters. Apply
     // when the user is done tweaking values; deferred so each

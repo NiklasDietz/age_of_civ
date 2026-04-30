@@ -97,6 +97,7 @@ public:
         Winds,
         OceanCurrents,
         Hotspots,
+        PlateMotion,    ///< Arrow at each plate centre showing its velocity vector
     };
     MapOverlay overlayMode = MapOverlay::None;
 
