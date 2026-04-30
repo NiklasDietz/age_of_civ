@@ -83,6 +83,11 @@ public:
         /// intermediate states. 0 = run the full requested
         /// `tectonicEpochs` (default game-launch behaviour).
         int32_t  runEpochsLimit = 0;
+        /// Total plate-drift budget over the sim, in fraction of map width.
+        /// 0 = use default 0.6. Larger = plates traverse more of the world
+        /// per sim. Smaller = continents barely move. Each step's DT is
+        /// derived: DT = driftFraction / (EPOCHS * vMax).
+        float    driftFraction = 0.0f;
     };
 
     /**

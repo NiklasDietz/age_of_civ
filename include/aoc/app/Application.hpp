@@ -416,11 +416,15 @@ private:
     int32_t  m_creatorEpochCurrent = 40;
     int32_t  m_creatorWidth  = 400;
     int32_t  m_creatorHeight = 200;
+    /// Total plate-drift budget for the sim, in 10ths of a map width.
+    /// 1 = 0.1x map width total drift, 60 = 6x. Default 6 = 0.6 of map.
+    int32_t  m_creatorDriftPct = 6;
     aoc::ui::WidgetId m_creatorPanelId = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorEpochLabelId = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorWidthLabelId  = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorHeightLabelId = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorPlatesLabelId = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_creatorDriftLabelId  = aoc::ui::INVALID_WIDGET;
     /// Deferred-regen flag. Setup-knob changes (W/H/Plates/EpochsTotal/
     /// text-input typing) only set this to true; the explicit "Generate"
     /// button consumes it and runs MapGenerator. Without this each

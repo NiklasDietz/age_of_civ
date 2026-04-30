@@ -336,13 +336,21 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // plates have small islands and seamount chains. Adds
                 // realism: every plate has SOME land and SOME ocean
                 // intrinsic to it.
-                // Continental plates: 0.70-0.88 land. Even Eurasian
-                // (the largest land plate) is ~85% land + ~15% inland
-                // seas. Higher floor keeps continents solid before
-                // erosion + island purge gnaw at the edges.
+                // CRATONIC INIT. Initial continental plates are SMALL
+                // STABLE CRATONS (0.45-0.65 land coverage) — Archean-
+                // shield-like nuclei representing early continental
+                // crust. Over the sim they GROW via:
+                //   • Subduction-arc volcanism along their boundaries
+                //     pushing tiles above water (Andes, Cordillera)
+                //   • Terrane accretion at mergers (Cordilleran terranes)
+                //   • Hotspot tracks adding volcanic islands
+                //   • Orogeny lifting margin tiles above water level
+                // Net effect over 100+ epochs: cratons → full continents
+                // (matches Earth's progression from Archean nuclei to
+                // present continents through ~2.5 Ga of accretion).
                 p.landFraction = isLand
-                    ? centerRng.nextFloat(0.70f, 0.88f)
-                    : centerRng.nextFloat(0.05f, 0.20f);
+                    ? centerRng.nextFloat(0.45f, 0.65f)
+                    : centerRng.nextFloat(0.05f, 0.18f);
                 p.orogenyLocal.assign(
                     static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
                 plates.push_back(p);
@@ -599,14 +607,15 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             ? std::min(requestedEpochs, config.runEpochsLimit)
             : requestedEpochs;
         const int32_t CYCLE = 5;
-        // DT scales with EPOCHS so total simulated drift is roughly
-        // constant (~60% of map width over the full sim) regardless of
-        // how granular the user wants. Long sims = many small steps =
-        // smoother evolution; short sims = fewer larger jumps.
-        // Target: max plate displacement of 60% of map width.
-        // total_drift = EPOCHS * DT * v_max(0.7) → DT = 0.6 / (EPOCHS * 0.7) ≈ 0.86 / EPOCHS.
+        // DT derived from EPOCHS and the user-configurable total drift
+        // budget. Default drift = 0.6 map widths. Larger drift = bigger
+        // plate motion = more dramatic continental shuffle. Smaller =
+        // plates barely move, fine-grained evolution at small scale.
+        const float driftFrac = (config.driftFraction > 0.0f)
+            ? config.driftFraction : 0.6f;
         const float DT = std::clamp(
-            0.86f / static_cast<float>(EPOCHS), 0.003f, 0.030f);
+            (driftFrac / 0.7f) / static_cast<float>(EPOCHS),
+            0.001f, 0.040f);
         // Stress gate. 0.30 captures most active convergent margins.
         // With slower DT and per-epoch scaling, contributions are
         // smaller per step, so a lower gate is needed to let stress
@@ -972,16 +981,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     if (nearest < 0 || second < 0) { continue; }
                     const float d1 = std::sqrt(d1Sq);
                     const float d2 = std::sqrt(d2Sq);
-                    // Boundary band tuning. The d1/d2 ratio approaches
-                    // 1.0 right at the seam between two plates and
-                    // decreases inward. Narrow band (0.80 cutoff) gives
-                    // mountains a LINE shape following the boundary —
-                    // real Andes/Himalayas/Rockies are 10:1 elongated
-                    // along the boundary, not wide blobs. Wider bands
-                    // produce ring-shaped orogeny around the entire
-                    // plate Voronoi cell ("blob with hole" artefact).
+                    // Tight boundary band — only the OUTERMOST 12% of
+                    // d1/d2 ratio (>0.88) registers. Forms a narrow
+                    // LINE along the seam, mirroring real coast-hugging
+                    // arc volcanoes (Andes, Cascades, Rockies are
+                    // ~100-300 km wide, ~7000-4800 km long → ratio
+                    // 1:23 to 1:30). Wider bands produced inland blobs.
                     const float boundary = (d2 > 0.0001f)
-                        ? std::clamp((d1 / d2 - 0.80f) / 0.20f, 0.0f, 1.0f)
+                        ? std::clamp((d1 / d2 - 0.88f) / 0.12f, 0.0f, 1.0f)
                         : 0.0f;
                     if (boundary < 0.15f) { continue; }
                     const Plate& A = plates[static_cast<std::size_t>(nearest)];
@@ -1116,8 +1123,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         const float snA = std::sin(A.rot);
                         const float bnxLocal = (boundaryDirX * csA + boundaryDirY * snA);
                         const float bnyLocal = (-boundaryDirX * snA + boundaryDirY * csA);
-                        const float backArcLx = lxNearest + bnxLocal * 0.45f;
-                        const float backArcLy = lyNearest + bnyLocal * 0.45f;
+                        const float backArcLx = lxNearest + bnxLocal * 0.20f;
+                        const float backArcLy = lyNearest + bnyLocal * 0.20f;
                         scatterPL(Aw, backArcLx, backArcLy,
                                   -0.025f * bandWeight * stress);
                     }
@@ -1385,12 +1392,12 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             }
         }
 
-        // Blur each plate's local orogeny so mountain peaks have
-        // foothill aprons. Few passes (1-3) keeps ranges SHARP and
-        // ELONGATED rather than smearing into wide blobs. Earlier
-        // 2-6 passes was making 10:1 mountain belts (Andes-shape)
-        // look round and balloon-like.
-        const int32_t erosionPasses = std::clamp(EPOCHS / 15, 1, 3);
+        // Single blur pass keeps mountains as narrow elongated belts
+        // along plate boundaries. More than 1 pass widens them into
+        // round blobs. Foothill apron now comes from per-tile Hills
+        // feature on tiles with orogeny > 0.06, sourced naturally
+        // from the bilinear scatter footprint (no blur needed for it).
+        const int32_t erosionPasses = 1;
         for (Plate& p : plates) {
             std::vector<float> tmp(p.orogenyLocal.size(), 0.0f);
             for (int32_t passN = 0; passN < erosionPasses; ++passN) {
@@ -1468,26 +1475,26 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 if (bestPi < 0) { continue; }
                 float oroSampled = samplePL(
                     plates[static_cast<std::size_t>(bestPi)], bestLx, bestLy);
-                // Mask check: if the OWNING plate's crust mask says
-                // OCEAN at this tile's plate-local point, the orogeny
-                // can be at most "Hills" tier (0.10) — the tile is
-                // submerged ocean floor and shouldn't get pushed above
-                // sea level by ocean-ocean island-arc orogeny that
-                // happens to overlap a nearby continental plate edge.
-                // This kills the "ocean–ocean merger turns into a
-                // land bridge" artefact.
+                // Mask gate. Cap positive orogeny on ocean-tile-of-
+                // ocean-plate (prevents "ocean-ocean merger turns into
+                // land bridge" artefact). On a CONTINENTAL plate's
+                // ocean-mask tile, allow full orogeny — this is the
+                // mechanism by which subduction arcs CRATONICALLY
+                // GROW continents, lifting marginal seafloor into
+                // new land along the coast.
                 {
                     const Plate& owner = plates[static_cast<std::size_t>(bestPi)];
-                    aoc::Random crustRng(0u);
-                    const float crust = fractalNoise(
-                        bestLx * 4.5f + owner.seedX,
-                        bestLy * 4.5f + owner.seedY,
-                        4, 2.0f, 0.55f, crustRng);
-                    const bool ownerSaysLand = crust > (1.0f - owner.landFraction);
-                    if (!ownerSaysLand) {
-                        // Cap positive orogeny at Hills tier on ocean
-                        // tiles. Negative (trench) orogeny passes through.
-                        if (oroSampled > 0.10f) { oroSampled = 0.10f; }
+                    if (owner.landFraction < 0.40f) {
+                        // Ocean plate. Cap positive orogeny at Hills tier.
+                        aoc::Random crustRng(0u);
+                        const float crust = fractalNoise(
+                            bestLx * 4.5f + owner.seedX,
+                            bestLy * 4.5f + owner.seedY,
+                            4, 2.0f, 0.55f, crustRng);
+                        const bool ownerSaysLand = crust > (1.0f - owner.landFraction);
+                        if (!ownerSaysLand && oroSampled > 0.10f) {
+                            oroSampled = 0.10f;
+                        }
                     }
                 }
                 orogeny[static_cast<std::size_t>(row * width + col)] = oroSampled;

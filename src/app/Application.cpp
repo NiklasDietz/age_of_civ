@@ -862,6 +862,7 @@ void Application::regenerateContinentPreview(int32_t epochLimit) {
     cfg.tectonicEpochs = this->m_creatorEpochsTotal;
     cfg.landPlateCount = this->m_creatorLandPlates;
     cfg.runEpochsLimit = epochLimit;
+    cfg.driftFraction  = static_cast<float>(this->m_creatorDriftPct) * 0.1f;
     aoc::map::MapGenerator::generate(cfg, this->m_hexGrid);
 
     // Resize fog-of-war to match the new tile count. Without this, the
@@ -1264,6 +1265,33 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
     };
     buildDimSpinner("W", &this->m_creatorWidth,  &this->m_creatorWidthLabelId);
     buildDimSpinner("H", &this->m_creatorHeight, &this->m_creatorHeightLabelId);
+
+    // Drift value-box. Displays plate-drift budget × 0.1 (so 6 = 0.6
+    // map widths total over the whole sim). Click to type a number.
+    {
+        auto applyDriftDisplay = [this]() {
+            return std::string("Drift:")
+                 + std::to_string(this->m_creatorDriftPct);
+        };
+        aoc::ui::ButtonData driftBtn;
+        driftBtn.label        = applyDriftDisplay();
+        driftBtn.fontSize     = 12.0f;
+        driftBtn.normalColor  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
+        driftBtn.hoverColor   = aoc::ui::tokens::SURFACE_PARCHMENT;
+        driftBtn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        driftBtn.labelColor   = aoc::ui::tokens::TEXT_HEADER;
+        driftBtn.cornerRadius = 3.0f;
+        driftBtn.onClick = [this, applyDriftDisplay]() {
+            this->numInputDefocus();
+            this->numInputFocus(&this->m_creatorDriftPct, 1,
+                this->m_creatorDriftLabelId,
+                [this]() { this->m_creatorDirty = true; },
+                applyDriftDisplay);
+        };
+        this->m_creatorDriftLabelId = this->m_uiManager.createButton(
+            this->m_creatorPanelId, {0.0f, 0.0f, 80.0f, 36.0f},
+            std::move(driftBtn));
+    }
 
     // Overlay toggles. Each button switches the global MapOverlay to
     // its mode (or None if it's already on). Plates / Winds / Currents.
