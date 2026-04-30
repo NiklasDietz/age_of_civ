@@ -239,7 +239,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         float vx;       ///< Plate motion x-component (normalised units)
         float vy;       ///< Plate motion y-component
         float aspect;   ///< X stretch factor; >1 elongates east-west
-        float rot;      ///< Cell rotation in radians
+        float rot;      ///< Cell rotation in radians (base + oscillation)
+        float baseRot;  ///< Initial rotation, fixed at plate creation
+        float baseAspect; ///< Initial aspect, fixed at plate creation
         // Crust-mask seed in PLATE-LOCAL space. Stays fixed for the
         // plate's lifetime, so the land/ocean pattern within the plate
         // travels WITH the plate as it drifts. Real plates carry their
@@ -324,8 +326,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 p.isLand = isLand;
                 p.vx = centerRng.nextFloat(-0.70f, 0.70f);
                 p.vy = centerRng.nextFloat(-0.70f, 0.70f);
-                p.aspect = centerRng.nextFloat(0.85f, 1.20f);
-                p.rot    = centerRng.nextFloat(-3.14159f, 3.14159f);
+                p.aspect     = centerRng.nextFloat(0.85f, 1.20f);
+                p.rot        = centerRng.nextFloat(-3.14159f, 3.14159f);
+                p.baseRot    = p.rot;
+                p.baseAspect = p.aspect;
                 // Per-plate crust-mask seed (large random offsets so each
                 // plate samples a unique noise neighborhood). Stays fixed
                 // through the whole sim — pattern travels with the plate.
@@ -647,6 +651,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 ++p.ageEpochs;
             }
 
+            // (rotation/aspect drift moved further down — seeded by a
+            // SEPARATE RNG independent of epoch count so scrubber
+            // positions render the same per-plate state and don't
+            // jump randomly between adjacent epochs.)
+
             // POLAR WANDERING. Real Earth: the entire plate-mantle
             // system slowly rotates relative to the rotational axis
             // (~10° over 500 My). Every plate's centre rotates by a
@@ -710,16 +719,67 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     //      diverging, not colliding. Closing rate is
                     //      v_rel · displacement / |displacement|;
                     //      negative value = closing.
-                    constexpr float MERGE_DIST = 0.13f;
+                    // CONTINENTAL COLLISION DYNAMICS (multi-stage):
+                    //   1. Approach — plates close from afar at full velocity.
+                    //   2. CONTACT (d < CONTACT_DIST, closing): crust
+                    //      starts deforming. Relative velocity along the
+                    //      collision axis decays at COLLISION_DAMP per
+                    //      epoch (energy converts to crustal deformation
+                    //      → mountain orogeny accumulates separately via
+                    //      the convergent-stress code below). Plates
+                    //      keep their identities — no merge yet.
+                    //   3. SUTURING (d < MERGE_DIST AND |relV| < SLOW_V):
+                    //      collision energy mostly dissipated, plates
+                    //      have welded along the boundary → fuse.
+                    //
+                    // Real-world: India-Eurasia has been actively
+                    // colliding for ~50 My, building Himalayas. Plates
+                    // are still moving relative to each other (~5 cm/yr)
+                    // — they aren't yet fully merged. Our simulation
+                    // mirrors this: long collision phase, then merge.
+                    constexpr float MERGE_DIST   = 0.10f;
+                    constexpr float CONTACT_DIST = 0.16f;
+                    constexpr float SLOW_V       = 0.08f;
+                    constexpr float COLLISION_DAMP = 0.93f; // 7% energy loss/epoch in contact
+
+                    bool inContact = false;
                     bool isClosing = false;
-                    if (plates[a].isLand && plates[b].isLand && d < MERGE_DIST) {
-                        const float relVx = plates[a].vx - plates[b].vx;
-                        const float relVy = plates[a].vy - plates[b].vy;
-                        const float closing = (relVx * dx + relVy * dy)
-                                            / std::max(0.0001f, d);
-                        isClosing = (closing < -0.05f);
+                    float relVx = 0.0f, relVy = 0.0f;
+                    float closingRate = 0.0f;
+                    if (plates[a].isLand && plates[b].isLand && d < CONTACT_DIST) {
+                        relVx = plates[a].vx - plates[b].vx;
+                        relVy = plates[a].vy - plates[b].vy;
+                        closingRate = (relVx * dx + relVy * dy)
+                                    / std::max(0.0001f, d);
+                        isClosing = (closingRate < -0.02f);
+                        inContact = isClosing;
                     }
-                    if (isClosing) {
+
+                    // STAGE 2: in-contact, decelerate plates along the
+                    // collision axis. Apply equal+opposite impulse so
+                    // total momentum conserved (wallop both plates).
+                    if (inContact) {
+                        const float dxn = dx / std::max(0.0001f, d);
+                        const float dyn = dy / std::max(0.0001f, d);
+                        // Decompose relV into normal (along collision axis)
+                        // and dampen the normal component.
+                        const float relVn = relVx * dxn + relVy * dyn;
+                        const float dampedRelVn = relVn * COLLISION_DAMP;
+                        const float deltaVn = dampedRelVn - relVn; // negative
+                        // Distribute equal+opposite impulse so |momentum| conserved.
+                        plates[a].vx += deltaVn * dxn * 0.5f;
+                        plates[a].vy += deltaVn * dyn * 0.5f;
+                        plates[b].vx -= deltaVn * dxn * 0.5f;
+                        plates[b].vy -= deltaVn * dyn * 0.5f;
+                    }
+
+                    const float relVMag = std::sqrt(relVx * relVx + relVy * relVy);
+                    // STAGE 3: full merge. Distance close + collision
+                    // velocity nearly zero → plates have welded.
+                    const bool readyToMerge = (plates[a].isLand && plates[b].isLand
+                                                && d < MERGE_DIST
+                                                && relVMag < SLOW_V);
+                    if (readyToMerge) {
                         // Continental collision: fuse plates.
                         //
                         // TERRANE ACCRETION. When B docks against A,
@@ -783,21 +843,22 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     }
                 }
             }
-            // Per-epoch plate deformation. Real plates rotate slowly
-            // over geological time (~10-30° over a 500 My Wilson
-            // cycle), so per-epoch drift must be SMALL — otherwise
-            // the plate-local crust mask samples a wildly different
-            // region each epoch and tiles flip ocean↔land between
-            // sim steps. ±0.018 rad/epoch ≈ 1°/epoch matches Earth-
-            // scale rotation rates and keeps coastlines stable.
-            // Aspect ratio also drifts slowly toward a random target
-            // (very low blend rate).
-            for (Plate& p : plates) {
-                p.rot += centerRng.nextFloat(-0.018f, 0.018f);
-                const float targetAspect = centerRng.nextFloat(0.85f, 1.20f);
-                p.aspect = p.aspect * 0.985f + targetAspect * 0.015f;
-                if (p.aspect < 0.7f) { p.aspect = 0.7f; }
-                if (p.aspect > 1.40f) { p.aspect = 1.40f; }
+            // Per-epoch plate deformation. Use DETERMINISTIC per-plate-
+            // per-epoch noise (not centerRng) so scrubbing back/forth
+            // through epoch N always shows the same plate state. Each
+            // plate's rotation = base + sin(plate_seed + epoch*freq)
+            // for a smooth slow oscillation. Magnitude tiny so plate-
+            // local crust mask samples don't shift much per epoch.
+            for (std::size_t pi = 0; pi < plates.size(); ++pi) {
+                Plate& p = plates[pi];
+                const float phase = static_cast<float>(epoch) * 0.04f
+                                  + p.seedX * 0.001f;
+                // ±0.04 rad oscillation (~2.3°) on top of fixed baseRot.
+                const float rotOffset = std::sin(phase) * 0.04f;
+                p.rot = p.baseRot + rotOffset;
+                // Aspect oscillates ±0.08 around baseAspect.
+                const float aspectOsc = std::cos(phase * 0.7f + p.seedX * 0.002f) * 0.08f;
+                p.aspect = std::clamp(p.baseAspect + aspectOsc, 0.7f, 1.40f);
             }
 
             // Periodic rift events. Picks 1-3 land plates per CYCLE epochs
@@ -823,10 +884,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 const std::size_t maxPlates = std::max(
                     static_cast<std::size_t>(20),
                     startPlates.size() * 2);
+                // Only ONE rift per CYCLE epochs (was up to 3).
+                // Multiple simultaneous rifts produced abrupt visual
+                // jumps — real Wilson-cycle rifting happens piecemeal
+                // over millions of years, not all at once.
                 const int32_t splitsThisEpoch =
                     (plates.size() >= maxPlates)
                         ? 0
-                        : std::min(3, static_cast<int32_t>(landIdx.size()));
+                        : std::min(1, static_cast<int32_t>(landIdx.size()));
                 for (int32_t s = 0; s < splitsThisEpoch; ++s) {
                     if (landIdx.empty()) { break; }
                     const std::size_t pickPos = static_cast<std::size_t>(
@@ -857,7 +922,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // faultAxis ± π/2) so they really do sit on
                     // opposite sides of the rift.
                     const float faultAxis = centerRng.nextFloat(0.0f, 6.2832f);
-                    const float offsetMag = centerRng.nextFloat(0.10f, 0.18f);
+                    // Smaller initial separation (was 0.10–0.18) so a
+                    // rift is a less abrupt visual event. Children
+                    // gradually drift apart over subsequent epochs
+                    // instead of teleporting far at the rift moment.
+                    const float offsetMag = centerRng.nextFloat(0.05f, 0.10f);
                     // Push direction = perpendicular to the rift line.
                     const float pushAxis = faultAxis + 1.5708f; // +π/2
 
@@ -919,6 +988,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // look identical.)
                         child.rot          = centerRng.nextFloat(-3.14f, 3.14f);
                         child.aspect       = centerRng.nextFloat(0.85f, 1.30f);
+                        child.baseRot      = child.rot;
+                        child.baseAspect   = child.aspect;
                         child.seedX        = centerRng.nextFloat(0.0f, 1000.0f);
                         child.seedY        = centerRng.nextFloat(0.0f, 1000.0f);
                         // Children inherit most of parent's landFraction
@@ -1346,6 +1417,12 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // Earth relief: highest mountains are ~9 km vs 6 km ocean
         // depth → ratio ~1.5, so we cap mountains at +0.25 and
         // trenches at −0.18 in our normalised height space.
+        // Use a SEPARATE RNG seeded from config.seed alone for LIPs
+        // (and any other post-sim randomness). centerRng has advanced
+        // a different amount based on EPOCHS, so using it would cause
+        // LIPs to land at different positions for adjacent scrubber
+        // states → visible jumps between epochs N and N+1.
+        aoc::Random postRng(config.seed ^ 0x4C495021u); // "LIP!"
         // LARGE IGNEOUS PROVINCES (LIPs). Rare massive flood-basalt
         // events: Deccan Traps (~65 Mya, India, ~500k km² of basalt),
         // Siberian Traps (~250 Mya, ~7M km²), Columbia River Basalt
@@ -1355,13 +1432,13 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // basalt province on a random plate at a random plate-local
         // position. ~0.30 plate-local-units radius, +0.15 elevation.
         {
-            const int32_t numLIPs = centerRng.nextInt(1, 3);
+            const int32_t numLIPs = postRng.nextInt(1, 3);
             for (int32_t lip = 0; lip < numLIPs && !plates.empty(); ++lip) {
                 const std::size_t pi = static_cast<std::size_t>(
-                    centerRng.nextInt(0, static_cast<int32_t>(plates.size()) - 1));
+                    postRng.nextInt(0, static_cast<int32_t>(plates.size()) - 1));
                 Plate& p = plates[pi];
-                const float lipLx = centerRng.nextFloat(-1.2f, 1.2f);
-                const float lipLy = centerRng.nextFloat(-1.2f, 1.2f);
+                const float lipLx = postRng.nextFloat(-1.2f, 1.2f);
+                const float lipLy = postRng.nextFloat(-1.2f, 1.2f);
                 constexpr float LIP_RADIUS = 0.32f;
                 constexpr float LIP_HEIGHT = 0.15f;
                 for (int32_t gy = 0; gy < OROGENY_GRID; ++gy) {

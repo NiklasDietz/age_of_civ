@@ -51,6 +51,7 @@
 
 #include <cstdint>
 #include <map>
+#include <unordered_map>
 #include <memory>
 
 namespace vulkan_app {
@@ -419,6 +420,16 @@ private:
     /// Total plate-drift budget for the sim, in 10ths of a map width.
     /// 1 = 0.1x map width total drift, 60 = 6x. Default 6 = 0.6 of map.
     int32_t  m_creatorDriftPct = 6;
+    /// Lazy snapshot cache: maps epoch → HexGrid copy. Populated on
+    /// first visit to each epoch; subsequent scrubs to that epoch
+    /// blit from cache instead of re-running MapGenerator. Cleared
+    /// on parameter changes (Generate / Re-roll / W/H/Plates/Drift edits).
+    std::unordered_map<int32_t, aoc::map::HexGrid> m_creatorEpochCache;
+    /// Play state — when true, m_creatorEpochCurrent advances by 1
+    /// every PLAY_INTERVAL seconds, looping at m_creatorEpochsTotal.
+    bool   m_creatorPlaying    = false;
+    float  m_creatorPlayAccum  = 0.0f;
+    aoc::ui::WidgetId m_creatorPlayBtnId = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorPanelId = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorEpochLabelId = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorWidthLabelId  = aoc::ui::INVALID_WIDGET;

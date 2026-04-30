@@ -863,8 +863,16 @@ void Application::regenerateContinentPreview(int32_t epochLimit) {
     cfg.landPlateCount = this->m_creatorLandPlates;
     cfg.runEpochsLimit = epochLimit;
     cfg.driftFraction  = static_cast<float>(this->m_creatorDriftPct) * 0.1f;
-    aoc::map::MapGenerator::generate(cfg, this->m_hexGrid);
 
+    // Cache hit? Skip the slow MapGenerator pass and copy a snapshot.
+    auto cacheIt = this->m_creatorEpochCache.find(epochLimit);
+    if (cacheIt != this->m_creatorEpochCache.end()) {
+        this->m_hexGrid = cacheIt->second;
+    } else {
+        aoc::map::MapGenerator::generate(cfg, this->m_hexGrid);
+        // Populate cache for instant scrubback to this epoch.
+        this->m_creatorEpochCache.emplace(epochLimit, this->m_hexGrid);
+    }
     // Resize fog-of-war to match the new tile count. Without this, the
     // FogOfWar bounds-check rejects any tile index past the OLD count
     // and returns Unseen → renderer skips those tiles, so the world
@@ -1333,6 +1341,8 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         gen.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         gen.onClick = [this]() {
             this->numInputDefocus();
+            // Clear epoch cache — config changed, old snapshots are stale.
+            this->m_creatorEpochCache.clear();
             this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
             this->regenerateContinentPreview(this->m_creatorEpochsTotal);
             this->m_creatorDirty = false;
@@ -1344,6 +1354,31 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         };
         (void)this->m_uiManager.createButton(this->m_creatorPanelId,
             {0.0f, 0.0f, 90.0f, 36.0f}, std::move(gen));
+    }
+
+    // Play / Pause toggle. When playing, the scrubber auto-advances
+    // by 1 epoch per PLAY_INTERVAL seconds. Pulls from the snapshot
+    // cache for previously-visited epochs (instant), runs MapGenerator
+    // for new epochs (slower).
+    {
+        aoc::ui::ButtonData play;
+        play.label        = "Play";
+        play.fontSize     = 13.0f;
+        play.normalColor  = aoc::ui::tokens::BRONZE_BASE;
+        play.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+        play.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        play.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        play.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        play.onClick = [this]() {
+            this->m_creatorPlaying = !this->m_creatorPlaying;
+            this->m_creatorPlayAccum = 0.0f;
+            if (this->m_creatorPlayBtnId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setButtonLabel(this->m_creatorPlayBtnId,
+                    this->m_creatorPlaying ? "Pause" : "Play");
+            }
+        };
+        this->m_creatorPlayBtnId = this->m_uiManager.createButton(
+            this->m_creatorPanelId, {0.0f, 0.0f, 70.0f, 36.0f}, std::move(play));
     }
 
     // Re-roll seed (also regenerates with the new seed).
@@ -1358,10 +1393,16 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         reroll.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         reroll.onClick = [this]() {
             this->numInputDefocus();
+            this->m_creatorEpochCache.clear();
             std::random_device rd;
             this->m_creatorSeed = rd();
-            this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
-            this->regenerateContinentPreview(this->m_creatorEpochsTotal);
+            // Don't snap to total when Play is running — let it
+            // continue from the current epoch on the new seed and
+            // walk forward to the endpoint naturally.
+            if (!this->m_creatorPlaying) {
+                this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
+            }
+            this->regenerateContinentPreview(this->m_creatorEpochCurrent);
             this->m_creatorDirty = false;
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
@@ -2009,6 +2050,34 @@ void Application::run() {
             if (this->m_inputManager.isKeyPressed(GLFW_KEY_ENTER)) {
                 this->m_debugConsole.execute(this->m_gameState, this->m_hexGrid,
                                               this->m_fogOfWar, 0);
+            }
+        }
+
+        // Continent Creator: auto-advance scrubber when Play is on.
+        // Stops at endpoint; user must explicitly press Play again
+        // (or scrub) to continue. No auto-loop.
+        if (this->m_continentCreatorMode && this->m_creatorPlaying) {
+            constexpr float PLAY_INTERVAL = 0.25f;
+            this->m_creatorPlayAccum += deltaTime;
+            while (this->m_creatorPlayAccum >= PLAY_INTERVAL) {
+                this->m_creatorPlayAccum -= PLAY_INTERVAL;
+                if (this->m_creatorEpochCurrent >= this->m_creatorEpochsTotal) {
+                    // Reached endpoint — stop play.
+                    this->m_creatorPlaying = false;
+                    this->m_creatorPlayAccum = 0.0f;
+                    if (this->m_creatorPlayBtnId != aoc::ui::INVALID_WIDGET) {
+                        this->m_uiManager.setButtonLabel(
+                            this->m_creatorPlayBtnId, "Play");
+                    }
+                    break;
+                }
+                ++this->m_creatorEpochCurrent;
+                this->regenerateContinentPreview(this->m_creatorEpochCurrent);
+                if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
+                    this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
+                        "Epoch " + std::to_string(this->m_creatorEpochCurrent)
+                        + "/" + std::to_string(this->m_creatorEpochsTotal));
+                }
             }
         }
 
@@ -3192,6 +3261,9 @@ void Application::buildMainMenu(float screenW, float screenH) {
             this->m_creatorHeight       = 200;
             this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
             this->m_continentCreatorMode = true;
+            this->m_creatorEpochCache.clear();
+            this->m_creatorPlaying = false;
+            this->m_creatorPlayAccum = 0.0f;
 
             // Set up an empty AI player so the existing render path
             // (which expects players + a hexgrid) works. We hide HUD
