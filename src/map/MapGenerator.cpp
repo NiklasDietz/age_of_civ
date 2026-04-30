@@ -203,13 +203,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         float seedX;
         float seedY;
         float landFraction; ///< 0=pure ocean, 1=pure continental, 0.5=half/half
-        // Hotspot track in PLATE-LOCAL coords. Each epoch a hotspot
-        // sits over this plate, we record its plate-local position
-        // here. Over many epochs the plate slides past the (mantle-
-        // fixed) hotspot, leaving a trail of points — like the
-        // Hawaiian-Emperor seamount chain. The elevation pass adds a
-        // small uplift bump at each trail point, producing visible
-        // volcanic island chains.
+        // Hotspot track in PLATE-LOCAL coords.
         std::vector<std::pair<float, float>> hotspotTrail;
     };
     std::vector<Plate> plates;
@@ -789,6 +783,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         child.landFraction = std::clamp(
                             parent.landFraction * centerRng.nextFloat(0.80f, 1.00f),
                             0.30f, 0.85f);
+                        // Children get a fresh empty orogeny grid —
+                        // they're "new crust" formed at the rift, not
+                        // Hotspot trails reset (each fragment has its
+                        // own future trail).
+                        child.hotspotTrail.clear();
                         plates.push_back(child);
                     }
                 }
@@ -1073,19 +1072,28 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // hills then plains — the natural mountain lifecycle.
             // Negative orogeny (subduction trenches) also fills in
             // slowly via sediment deposition.
-            // Erosion 1.2 % per epoch (was 2.5 %). At 40 epochs, an
-            // inactive mountain decays from cap 0.32 to ~0.20 — still
-            // mountain-tall. Past 100 epochs decays to ~0.10 — Hills.
-            // Past 200 epochs to ~0.03 — flat plains. Matches Earth's
-            // Wilson cycle: Himalayas stay tall while active; old
-            // Caledonides (~400 My) are basically flat hills now.
-            constexpr float EROSION_RATE   = 0.012f;
-            constexpr float SEDIMENT_RATE  = 0.008f;
+            // Tiered erosion. High peaks erode fast (more relief →
+            // steeper slopes → faster mass wasting). Low remnants of
+            // old mountains erode VERY slowly because the resistant
+            // crystalline core rocks (granite, gneiss) survive long
+            // after the surrounding sediment is gone. This is why the
+            // Harz, Black Forest, Appalachians, and Urals — all 250-
+            // 400 My old — still stand as Hills surrounded by flat
+            // plains: their root rock outlasts the soft sediment.
+            //
+            //   orogeny > 0.20  : 1.5 %/epoch (active range, fast wear)
+            //   0.10 ≤ o ≤ 0.20 : 0.7 %/epoch (mature, moderate wear)
+            //   0.00 < o < 0.10 : 0.15 %/epoch (root-rock preservation)
+            //   o < 0           : 0.6 %/epoch sediment fill
             for (float& v : orogeny) {
-                if (v > 0.0f) {
-                    v *= (1.0f - EROSION_RATE);
+                if (v > 0.20f) {
+                    v *= 0.985f;
+                } else if (v > 0.10f) {
+                    v *= 0.993f;
+                } else if (v > 0.0f) {
+                    v *= 0.9985f;
                 } else if (v < 0.0f) {
-                    v *= (1.0f - SEDIMENT_RATE);
+                    v *= 0.994f;
                 }
             }
         }
@@ -1105,7 +1113,12 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // Erosion: 1 pass per ~10 epochs, 1-4 max. Older worlds get
         // softer mountain ranges (smoothing > 100 My old ranges down
         // toward Appalachian-like rolling hills).
-        const int32_t erosionPasses = std::clamp(EPOCHS / 10, 1, 4);
+        // Orogeny blur passes: spread peak orogeny into surrounding
+        // tiles so mountain → foothill → plains forms a smooth gradient.
+        // Wider spread (max 6 passes vs 4) → broader Hills aprons
+        // around active ranges, matching real-world geography where
+        // every major mountain has a band of foothills.
+        const int32_t erosionPasses = std::clamp(EPOCHS / 8, 2, 6);
         for (int passN = 0; passN < erosionPasses; ++passN) {
             std::vector<float> blurred = orogeny;
             for (int32_t row = 0; row < height; ++row) {
@@ -1195,9 +1208,25 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 const float landThresh = 1.0f - fp.landFraction;
                 const bool tileIsLand = crust > landThresh;
                 if (tileIsLand) {
+                    // No negative orogeny on land (no underwater trenches
+                    // under continents).
                     if (orogeny[idx] < 0.0f) { orogeny[idx] = 0.0f; }
                 } else {
-                    if (orogeny[idx] > 0.0f) { orogeny[idx] = 0.0f; }
+                    // Tile is currently in an oceanic part of the plate.
+                    // Active mountain orogeny gets wiped (no Mountain
+                    // tiles underwater). HOWEVER, ancient eroded
+                    // remnants in the Hills tier (0.06 < o ≤ 0.20)
+                    // SURVIVE: this tile may have been an active
+                    // mountain belt 300 My ago whose root rock now
+                    // stands ABOVE the surrounding ocean as an island
+                    // chain or submarine plateau. Preserves the
+                    // Variscan/Harz pattern — old orogeny that the
+                    // sea never quite reclaimed.
+                    if (orogeny[idx] > 0.20f) { orogeny[idx] = 0.0f; }
+                    // Mid-tier orogeny on water tiles fades faster
+                    // (marine erosion of submerged ranges).
+                    else if (orogeny[idx] > 0.10f) { orogeny[idx] *= 0.5f; }
+                    // Low-tier orogeny (Hills root) survives in place.
                 }
             }
         }

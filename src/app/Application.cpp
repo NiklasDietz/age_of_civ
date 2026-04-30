@@ -906,12 +906,22 @@ void Application::regenerateContinentPreview(int32_t epochLimit) {
             const float pxFloor = MIN_HEX_PIXELS / hexSize;
             const float minZoom = std::max(fitZoom, pxFloor);
             this->m_cameraController.setMinZoom(minZoom);
-            // Re-fit zoom on size change so the new map fills the screen.
-            this->m_cameraController.setZoom(minZoom);
-            // Re-centre on the map so camera doesn't sit at an offset
-            // from the previous (smaller) map.
-            this->m_cameraController.setPosition(mapWWorld * 0.5f,
-                                                  mapHWorld * 0.5f);
+            // Only re-fit + re-centre if the camera is currently
+            // OUTSIDE the new map bounds. Scrubbing through epochs
+            // shouldn't snap the view back to the centre — the user
+            // is probably looking at a specific region and wants to
+            // watch it evolve in place.
+            const float cx = this->m_cameraController.cameraX();
+            const float cy = this->m_cameraController.cameraY();
+            const bool outOfBoundsX = cx < 0.0f || cx > mapWWorld;
+            const bool outOfBoundsY = cy < 0.0f || cy > mapHWorld;
+            if (this->m_cameraController.zoom() < minZoom) {
+                this->m_cameraController.setZoom(minZoom);
+            }
+            if (outOfBoundsX || outOfBoundsY) {
+                this->m_cameraController.setPosition(mapWWorld * 0.5f,
+                                                      mapHWorld * 0.5f);
+            }
         }
     }
 
