@@ -501,6 +501,25 @@ public:
         this->m_hotspots = std::move(hs);
     }
 
+    /// Per-plate velocity in normalised world units (vx, vy).
+    /// Indexed by plate id. Used by the plate-overlay renderer to
+    /// classify each boundary as convergent / divergent / transform
+    /// based on relative motion of the two adjacent plates.
+    [[nodiscard]] const std::vector<std::pair<float, float>>& plateMotions() const {
+        return this->m_plateMotion;
+    }
+    void setPlateMotions(std::vector<std::pair<float, float>> v) {
+        this->m_plateMotion = std::move(v);
+    }
+    /// Per-plate centre position (cx, cy) in normalised coords.
+    /// Used to compute the boundary normal direction between two plates.
+    [[nodiscard]] const std::vector<std::pair<float, float>>& plateCenters() const {
+        return this->m_plateCenter;
+    }
+    void setPlateCenters(std::vector<std::pair<float, float>> c) {
+        this->m_plateCenter = std::move(c);
+    }
+
     [[nodiscard]] uint8_t plateId(int32_t index) const {
         const int32_t total = this->tileCount();
         if (index < 0 || index >= total) { return 0xFFu; }
@@ -519,6 +538,8 @@ public:
 private:
     std::vector<uint8_t>          m_plateId;
     std::vector<std::pair<float, float>> m_hotspots;
+    std::vector<std::pair<float, float>> m_plateMotion;
+    std::vector<std::pair<float, float>> m_plateCenter;
     /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
     /// Greenhouse improvement actively populate. Tile index → good id.
     std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;

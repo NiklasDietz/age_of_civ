@@ -36,6 +36,8 @@ void HexGrid::initialize(int32_t width, int32_t height, MapTopology topology) {
     // would cause out-of-bounds writes in setPlateId and heap corruption.
     this->m_plateId.clear();
     this->m_hotspots.clear();
+    this->m_plateMotion.clear();
+    this->m_plateCenter.clear();
 }
 
 } // namespace aoc::map

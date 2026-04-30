@@ -216,8 +216,56 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                     const float ay = verts[edge * 2 + 1];
                     const float bx = verts[((edge + 1) % 6) * 2];
                     const float by = verts[((edge + 1) % 6) * 2 + 1];
-                    renderer2d.drawLine(ax, ay, bx, by,
-                        0.0f, 0.0f, 0.0f, 0.95f, 2.0f);
+                    // Boundary type colour. Lookup neighbour plate id;
+                    // compute relative velocity along boundary normal
+                    // (= convergence/divergence) vs tangent (= transform).
+                    //   |normal|  ≫ |tangent|  → convergent (red)
+                    //                            or divergent (blue)
+                    //   |tangent| ≫ |normal|  → transform (yellow)
+                    //   both small             → passive (black)
+                    float r = 0.0f, g = 0.0f, b = 0.0f;
+                    uint8_t nbCatLine = 0xFFu;
+                    if (grid.isValid(nbrs[static_cast<std::size_t>(EDGE_TO_DIR[edge])])) {
+                        nbCatLine = grid.plateId(grid.toIndex(
+                            nbrs[static_cast<std::size_t>(EDGE_TO_DIR[edge])]));
+                    }
+                    const auto& motions = grid.plateMotions();
+                    const auto& centers = grid.plateCenters();
+                    if (myCat < motions.size() && nbCatLine < motions.size()
+                        && nbCatLine != 0xFFu) {
+                        const std::pair<float, float>& vA = motions[myCat];
+                        const std::pair<float, float>& vB = motions[nbCatLine];
+                        const std::pair<float, float>& cA = centers[myCat];
+                        const std::pair<float, float>& cB = centers[nbCatLine];
+                        float bnx = cB.first  - cA.first;
+                        float bny = cB.second - cA.second;
+                        const float bnLen = std::sqrt(bnx * bnx + bny * bny);
+                        if (bnLen > 1e-4f) {
+                            bnx /= bnLen; bny /= bnLen;
+                            const float relVx = vA.first  - vB.first;
+                            const float relVy = vA.second - vB.second;
+                            const float normProj = relVx * bnx + relVy * bny;
+                            const float tangProj = -relVx * bny + relVy * bnx;
+                            const float aN = std::abs(normProj);
+                            const float aT = std::abs(tangProj);
+                            if (aN > aT && aN > 0.05f) {
+                                if (normProj > 0.0f) {
+                                    // Plates closing on this boundary → convergent (red).
+                                    r = 0.95f; g = 0.10f; b = 0.10f;
+                                } else {
+                                    // Plates pulling apart → divergent (blue).
+                                    r = 0.10f; g = 0.40f; b = 0.95f;
+                                }
+                            } else if (aT > 0.05f) {
+                                // Sliding past each other → transform (yellow).
+                                r = 1.0f; g = 0.85f; b = 0.10f;
+                            } else {
+                                // Negligible relative motion → passive (grey).
+                                r = 0.4f; g = 0.4f; b = 0.4f;
+                            }
+                        }
+                    }
+                    renderer2d.drawLine(ax, ay, bx, by, r, g, b, 0.95f, 2.5f);
                 }
             }
         }
@@ -265,87 +313,173 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
         }
     }
 
-    // Ocean-current overlay: arrows along coastal ShallowWater tiles
-    // showing gyre direction. Warm currents = orange, cold = blue.
+    // Ocean-current overlay: arrows on ALL water tiles showing gyre
+    // circulation. Each tile's flow direction is the sum of
+    //   1) base gyre flow per latitude band (Coriolis-driven)
+    //   2) coast-deflection: parallel-to-coast push when near land
+    // The result curves currents along continent edges, producing
+    // gyre-like patterns around landmasses (Gulf Stream/N Atlantic
+    // Drift/Canary/N Equatorial loop visible in the overlay).
     if (this->overlayMode == MapOverlay::OceanCurrents) {
         const float hexSizeOv = this->m_mapRenderer.hexSize();
         const int32_t width  = grid.width();
         const int32_t height = grid.height();
-        for (int32_t row = 0; row < height; row += 2) {
+        for (int32_t row = 1; row < height; row += 3) {
             const float ny = static_cast<float>(row) / static_cast<float>(height);
             const float lat = 2.0f * std::abs(ny - 0.5f);
             const bool northern = (ny < 0.5f);
-            for (int32_t col = 0; col < width; col += 2) {
+            for (int32_t col = 0; col < width; col += 3) {
                 const int32_t idx = row * width + col;
                 const aoc::map::TerrainType t = grid.terrain(idx);
-                if (t != aoc::map::TerrainType::ShallowWater) { continue; }
-                // Detect coast side: scan a few tiles east and west to
-                // find which direction has land. If land is east of
-                // here, this water is on a continent's WEST coast.
-                bool landEast = false, landWest = false;
-                for (int32_t s = 1; s <= 4 && !landEast; ++s) {
-                    const int32_t c2 = col + s;
-                    if (c2 >= width) break;
-                    if (!aoc::map::isWater(grid.terrain(row * width + c2))) {
-                        landEast = true;
-                    }
-                }
-                for (int32_t s = 1; s <= 4 && !landWest; ++s) {
-                    const int32_t c2 = col - s;
-                    if (c2 < 0) break;
-                    if (!aoc::map::isWater(grid.terrain(row * width + c2))) {
-                        landWest = true;
-                    }
-                }
-                if (!landEast && !landWest) { continue; }
-                // Pick the closer land for the coast side.
-                const bool isWestCoast = landEast && !landWest;
-                const bool isEastCoast = landWest && !landEast;
-                if (!isWestCoast && !isEastCoast) {
-                    // Bay/strait — pick by which is closer (eastward search hit).
-                    // Just default to west coast for visualization.
-                }
-                float dirY = 0.0f;
-                float r = 0.30f, g = 0.50f, b = 1.0f;  // cold blue
+                if (!aoc::map::isWater(t)) { continue; }
+
+                // 1) Base gyre flow by latitude band. Subtropical NH
+                //    gyres rotate clockwise: westward at low lat,
+                //    poleward on west side of basin (right-hand part
+                //    of an N-hemi gyre), eastward at higher lat,
+                //    equatorward on east side. We approximate each
+                //    tile's flow with a per-band rotational vector.
+                float fx = 0.0f, fy = 0.0f;
                 bool warm = false;
-                if (lat < 0.40f) {
-                    // Subtropical: west coast cold + equatorward, east coast warm + poleward.
-                    if (isWestCoast) {
-                        dirY = northern ? +1.0f : -1.0f; warm = false;
-                    } else {
-                        dirY = northern ? -1.0f : +1.0f; warm = true;
-                    }
-                } else if (lat < 0.70f) {
-                    // Mid-lat: west coast warm + poleward (Gulf Stream), east cold + equatorward.
-                    if (isWestCoast) {
-                        dirY = northern ? -1.0f : +1.0f; warm = true;
-                    } else {
-                        dirY = northern ? +1.0f : -1.0f; warm = false;
-                    }
+                if (lat < 0.10f) {
+                    // Equatorial counter-current — eastward.
+                    fx = +1.0f; warm = true;
+                } else if (lat < 0.32f) {
+                    // Tropical (trade-wind driven) — westward.
+                    fx = -1.0f; warm = true;
+                } else if (lat < 0.60f) {
+                    // Mid-lat (westerlies-driven) — eastward.
+                    fx = +1.0f; warm = false;
                 } else {
-                    // Sub-polar.
-                    if (isWestCoast) {
-                        dirY = northern ? -1.0f : +1.0f; warm = true;
-                    } else {
-                        dirY = northern ? +1.0f : -1.0f; warm = false;
+                    // Sub-polar — slow westward.
+                    fx = -0.7f; warm = false;
+                }
+
+                // 2) Coast deflection. Scan up to 6 tiles in 4 cardinal
+                //    directions for the nearest land. If land is close,
+                //    deflect parallel to coastline (90° rotation of
+                //    the toward-land vector). Strength scales with
+                //    proximity (linear falloff over scan distance).
+                int32_t distE = 99, distW = 99, distN = 99, distS = 99;
+                for (int32_t s = 1; s <= 6; ++s) {
+                    const int32_t cE = col + s;
+                    if (cE < width && !aoc::map::isWater(grid.terrain(row * width + cE))) {
+                        distE = std::min(distE, s);
+                    }
+                    const int32_t cW = col - s;
+                    if (cW >= 0 && !aoc::map::isWater(grid.terrain(row * width + cW))) {
+                        distW = std::min(distW, s);
+                    }
+                    const int32_t rN = row - s;
+                    if (rN >= 0 && !aoc::map::isWater(grid.terrain(rN * width + col))) {
+                        distN = std::min(distN, s);
+                    }
+                    const int32_t rS = row + s;
+                    if (rS < height && !aoc::map::isWater(grid.terrain(rS * width + col))) {
+                        distS = std::min(distS, s);
                     }
                 }
+                // Strength proportional to land-proximity. Land east of
+                // us → ocean here pushed parallel to that coast (along
+                // ±y), with sign chosen by gyre direction.
+                auto prox = [](int32_t d) {
+                    return (d >= 6) ? 0.0f : 1.0f - static_cast<float>(d) / 6.0f;
+                };
+                const float pE = prox(distE);
+                const float pW = prox(distW);
+                const float pN = prox(distN);
+                const float pS = prox(distS);
+                // Land east of tile = WESTERN boundary of an ocean basin
+                // (east coast of the continent the OCEAN is east of —
+                // wait, this is the WEST coast of the next continent
+                // looking east). For gyres: the western boundary
+                // current (Gulf Stream, Kuroshio) is the FAST narrow
+                // poleward current. So if land is east of us, we're
+                // not on the gyre's western boundary.
+                //
+                // Reframing: gyre = closed loop around a basin centre.
+                //   • Western boundary (east-coast of continent west
+                //     of the basin) → narrow + STRONG + warm + poleward
+                //   • Eastern boundary (west-coast of continent east of
+                //     the basin) → broad + WEAK + cold + equatorward.
+                // From this tile's perspective:
+                //   • If LAND lies to the WEST → this is the gyre's
+                //     western boundary current → strong, warm, poleward.
+                //   • If LAND lies to the EAST → this is the gyre's
+                //     eastern boundary → weak, cold, equatorward.
+                if (pW > 0.0f) {
+                    // Western boundary (Gulf-Stream-style). Strong
+                    // narrow poleward warm current.
+                    if (lat < 0.60f) {
+                        fy += (northern ? -1.0f : +1.0f) * pW * 2.5f; warm = true;
+                    } else {
+                        fy += (northern ? -1.0f : +1.0f) * pW * 1.0f; warm = true;
+                    }
+                    // Strong poleward push outweighs horizontal.
+                    fx *= 0.3f;
+                }
+                if (pE > 0.0f) {
+                    // Eastern boundary (Canary-style). Weak broad
+                    // equatorward cold current.
+                    if (lat < 0.60f) {
+                        fy += (northern ? +1.0f : -1.0f) * pE * 1.0f; warm = false;
+                    } else {
+                        fy += (northern ? +1.0f : -1.0f) * pE * 0.6f; warm = false;
+                    }
+                    fx *= 0.6f;
+                }
+                // Land to north/south: deflect parallel to coast.
+                if (pN > 0.0f) {
+                    fx -= pN * 0.6f;
+                }
+                if (pS > 0.0f) {
+                    fx += pS * 0.6f;
+                }
+
+                // Coriolis deflection. Moving water in NH is deflected
+                // right (clockwise rotation), in SH left (counter-clockwise).
+                // Magnitude scales with latitude (≈ sin(lat) — strongest
+                // at poles, zero at equator). Rotates each tile's flow
+                // vector by a small angle, producing the gyre curl.
+                {
+                    const float coriolisAngle = (northern ? -1.0f : +1.0f)
+                                              * lat * 0.35f; // ~20° max
+                    const float cs = std::cos(coriolisAngle);
+                    const float sn = std::sin(coriolisAngle);
+                    const float nfx = fx * cs - fy * sn;
+                    const float nfy = fx * sn + fy * cs;
+                    fx = nfx; fy = nfy;
+                }
+
+                // Normalise.
+                const float fLen = std::sqrt(fx * fx + fy * fy);
+                if (fLen < 0.05f) { continue; }
+                fx /= fLen; fy /= fLen;
+
+                float r = 0.30f, g = 0.50f, b = 1.0f;
                 if (warm) { r = 1.0f; g = 0.45f; b = 0.10f; }
-                const aoc::hex::AxialCoord ax =
+                const aoc::hex::AxialCoord axc =
                     aoc::hex::offsetToAxial({col, row});
                 float cx = 0.0f, cy = 0.0f;
-                aoc::hex::axialToPixel(ax, hexSizeOv, cx, cy);
+                aoc::hex::axialToPixel(axc, hexSizeOv, cx, cy);
                 const float L = hexSizeOv * 2.0f;
-                const float y0 = cy - dirY * L * 0.5f;
-                const float y1 = cy + dirY * L * 0.5f;
-                renderer2d.drawLine(cx, y0, cx, y1, r, g, b, 1.0f, 3.0f);
-                const float head = L * 0.35f;
-                const float headBack = -dirY * head;
-                const float headSide = head * 0.6f;
-                renderer2d.drawLine(cx, y1,
-                    cx - headSide, y1 + headBack, r, g, b, 1.0f, 3.0f);
-                renderer2d.drawLine(cx, y1,
-                    cx + headSide, y1 + headBack, r, g, b, 1.0f, 3.0f);
+                const float x0 = cx - fx * L * 0.5f;
+                const float y0 = cy - fy * L * 0.5f;
+                const float x1 = cx + fx * L * 0.5f;
+                const float y1 = cy + fy * L * 0.5f;
+                renderer2d.drawLine(x0, y0, x1, y1, r, g, b, 1.0f, 3.0f);
+                // Arrowhead — perpendicular from tip backward.
+                const float head = L * 0.30f;
+                const float headBackX = -fx * head;
+                const float headBackY = -fy * head;
+                const float perpX = -fy * head * 0.5f;
+                const float perpY =  fx * head * 0.5f;
+                renderer2d.drawLine(x1, y1,
+                    x1 + headBackX + perpX, y1 + headBackY + perpY,
+                    r, g, b, 1.0f, 3.0f);
+                renderer2d.drawLine(x1, y1,
+                    x1 + headBackX - perpX, y1 + headBackY - perpY,
+                    r, g, b, 1.0f, 3.0f);
             }
         }
     }

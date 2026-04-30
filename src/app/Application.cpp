@@ -3149,8 +3149,8 @@ void Application::buildMainMenu(float screenW, float screenH) {
             this->m_creatorSeed         = rdc();
             this->m_creatorEpochsTotal  = 40;
             this->m_creatorLandPlates   = 7;
-            this->m_creatorWidth        = 200;
-            this->m_creatorHeight       = 120;
+            this->m_creatorWidth        = 400;
+            this->m_creatorHeight       = 200;
             this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
             this->m_continentCreatorMode = true;
 

@@ -51,8 +51,8 @@ struct GameSetupConfig {
     /// Custom map dimensions. When >0, override the preset.
     /// Updated by setup-screen W/H +/- spinners; preset buttons sync these
     /// to the preset's tile counts so all paths use the same fields.
-    int32_t customWidth  = 200;
-    int32_t customHeight = 120;
+    int32_t customWidth  = 400;
+    int32_t customHeight = 200;
     aoc::map::ResourcePlacementMode placement = aoc::map::ResourcePlacementMode::Realistic;
     uint8_t           playerCount = 2;
     std::array<PlayerSlotConfig, 20> players;  ///< max 20 players

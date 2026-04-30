@@ -414,8 +414,8 @@ private:
     int32_t  m_creatorEpochsTotal = 40;
     int32_t  m_creatorLandPlates  = 7;
     int32_t  m_creatorEpochCurrent = 40;
-    int32_t  m_creatorWidth  = 200;
-    int32_t  m_creatorHeight = 120;
+    int32_t  m_creatorWidth  = 400;
+    int32_t  m_creatorHeight = 200;
     aoc::ui::WidgetId m_creatorPanelId = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorEpochLabelId = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorWidthLabelId  = aoc::ui::INVALID_WIDGET;
