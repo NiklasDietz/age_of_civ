@@ -403,6 +403,26 @@ private:
     /// once from the spectate-start path.
     void buildSpectatorSeekControls(float screenW, float screenH);
 
+    // ---- Continent Creator state ----
+    /// True while the player is in continent-creator preview mode.
+    bool m_continentCreatorMode = false;
+    /// Frozen seed + parameters for the current preview. The epoch
+    /// scrubber regenerates the map by re-running MapGenerator with
+    /// these params and a varying runEpochsLimit.
+    uint32_t m_creatorSeed = 0;
+    int32_t  m_creatorEpochsTotal = 14;
+    int32_t  m_creatorLandPlates  = 4;
+    int32_t  m_creatorEpochCurrent = 14;
+    aoc::ui::WidgetId m_creatorPanelId = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_creatorEpochLabelId = aoc::ui::INVALID_WIDGET;
+
+    /// Re-run MapGenerator with the stored creator config + a custom
+    /// epoch limit, replacing m_hexGrid in place. Used by the scrubber.
+    void regenerateContinentPreview(int32_t epochLimit);
+    /// Build the creator overlay (slider + Use This Map button) along
+    /// the bottom of the screen.
+    void buildContinentCreatorControls(float screenW, float screenH);
+
     /// Persist current game state to a /tmp file keyed by turn so the seek
     /// slider can reload older turns on backwards scrub.
     void spectatorMaybeSnapshot();

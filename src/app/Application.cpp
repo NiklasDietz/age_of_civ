@@ -276,13 +276,26 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     // slowly between launches; random_device draws from the OS entropy pool
     // (getrandom/CryptGenRandom) giving true per-launch uniqueness.
     std::random_device rd;
-    const uint32_t timeSeed = rd();
+    const uint32_t autoSeed = rd();
+    // Setup-screen seed wins when set (>0); zero means "auto", in
+    // which case we draw a fresh OS-entropy seed. Same setup seed +
+    // same params → identical world every game.
+    const uint32_t timeSeed = (config.mapSeed != 0u) ? config.mapSeed : autoSeed;
     mapConfig.seed = timeSeed;
-    LOG_INFO("Map seed: %u", timeSeed);
+    LOG_INFO("Map seed: %u%s", timeSeed,
+             (config.mapSeed != 0u) ? " (from setup)" : " (auto)");
     this->m_gameRng = aoc::Random(timeSeed + 1);
     mapConfig.mapType = config.mapType;
     mapConfig.mapSize = config.mapSize;
     mapConfig.placement = config.placement;
+    mapConfig.tectonicEpochs = config.tectonicEpochs;
+    mapConfig.landPlateCount = config.landPlateCount;
+    // Continents wrap horizontally (cylindrical topology) so scrolling
+    // east past the right edge re-enters from the west — the world has
+    // no east/west boundary, matching a globe's longitude band.
+    if (config.mapType == aoc::map::MapType::Continents) {
+        mapConfig.topology = aoc::map::MapTopology::Cylindrical;
+    }
     aoc::map::MapGenerator::generate(mapConfig, this->m_hexGrid);
     LOG_INFO("Map generated (%dx%d)", this->m_hexGrid.width(), this->m_hexGrid.height());
 
@@ -712,6 +725,288 @@ void Application::spectatorDrawHUD(void* cmdBufferPtr, uint32_t frameWidth, uint
     this->m_renderer2d->end(cmdBuffer);
 }
 
+void Application::regenerateContinentPreview(int32_t epochLimit) {
+    if (epochLimit < 1) { epochLimit = 1; }
+    if (epochLimit > this->m_creatorEpochsTotal) {
+        epochLimit = this->m_creatorEpochsTotal;
+    }
+    this->m_creatorEpochCurrent = epochLimit;
+
+    aoc::map::MapGenerator::Config cfg{};
+    const std::pair<int32_t, int32_t> dims =
+        aoc::map::mapSizeDimensions(aoc::map::MapSize::Standard);
+    cfg.width = dims.first;
+    cfg.height = dims.second;
+    cfg.seed = this->m_creatorSeed;
+    cfg.mapType = aoc::map::MapType::Continents;
+    cfg.mapSize = aoc::map::MapSize::Standard;
+    cfg.topology = aoc::map::MapTopology::Cylindrical;
+    cfg.tectonicEpochs = this->m_creatorEpochsTotal;
+    cfg.landPlateCount = this->m_creatorLandPlates;
+    cfg.runEpochsLimit = epochLimit;
+    aoc::map::MapGenerator::generate(cfg, this->m_hexGrid);
+    this->spectatorRevealAll();
+    LOG_INFO("Creator: regenerated at epoch %d/%d",
+             epochLimit, this->m_creatorEpochsTotal);
+}
+
+void Application::buildContinentCreatorControls(float screenW, float screenH) {
+    if (this->m_creatorPanelId != aoc::ui::INVALID_WIDGET) {
+        this->m_uiManager.removeWidget(this->m_creatorPanelId);
+        this->m_creatorPanelId = aoc::ui::INVALID_WIDGET;
+        this->m_creatorEpochLabelId = aoc::ui::INVALID_WIDGET;
+    }
+    constexpr float PANEL_H = 64.0f;
+    constexpr float PANEL_PAD = 8.0f;
+    aoc::ui::PanelData bg;
+    bg.backgroundColor = aoc::ui::tokens::SURFACE_PARCHMENT;
+    bg.gradientBottom  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
+    bg.borderColor     = aoc::ui::tokens::BRONZE_DARK;
+    bg.borderWidth     = 1.0f;
+    bg.cornerRadius    = aoc::ui::tokens::CORNER_PANEL;
+    this->m_creatorPanelId = this->m_uiManager.createPanel(
+        {PANEL_PAD, screenH - PANEL_H - PANEL_PAD,
+         screenW - PANEL_PAD * 2.0f, PANEL_H},
+        std::move(bg));
+    {
+        aoc::ui::Widget* w = this->m_uiManager.getWidget(this->m_creatorPanelId);
+        if (w != nullptr) {
+            w->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
+            w->padding = {6.0f, 8.0f, 6.0f, 8.0f};
+            w->childSpacing = 8.0f;
+        }
+    }
+
+    // Epoch − button
+    {
+        aoc::ui::ButtonData minus;
+        minus.label        = "<<";
+        minus.fontSize     = 14.0f;
+        minus.normalColor  = aoc::ui::tokens::BRONZE_BASE;
+        minus.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+        minus.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        minus.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        minus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        minus.onClick = [this]() {
+            this->regenerateContinentPreview(this->m_creatorEpochCurrent - 1);
+            if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
+                    "Epoch " + std::to_string(this->m_creatorEpochCurrent)
+                    + "/" + std::to_string(this->m_creatorEpochsTotal));
+            }
+        };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
+            {0.0f, 0.0f, 56.0f, 36.0f}, std::move(minus));
+    }
+
+    // Epoch label
+    this->m_creatorEpochLabelId = this->m_uiManager.createLabel(
+        this->m_creatorPanelId,
+        {0.0f, 0.0f, 160.0f, 36.0f},
+        aoc::ui::LabelData{
+            "Epoch " + std::to_string(this->m_creatorEpochCurrent)
+                + "/" + std::to_string(this->m_creatorEpochsTotal),
+            aoc::ui::tokens::TEXT_HEADER, 14.0f});
+
+    // Epoch + button
+    {
+        aoc::ui::ButtonData plus;
+        plus.label        = ">>";
+        plus.fontSize     = 14.0f;
+        plus.normalColor  = aoc::ui::tokens::BRONZE_BASE;
+        plus.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+        plus.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        plus.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        plus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        plus.onClick = [this]() {
+            this->regenerateContinentPreview(this->m_creatorEpochCurrent + 1);
+            if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
+                    "Epoch " + std::to_string(this->m_creatorEpochCurrent)
+                    + "/" + std::to_string(this->m_creatorEpochsTotal));
+            }
+        };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
+            {0.0f, 0.0f, 56.0f, 36.0f}, std::move(plus));
+    }
+
+    // Sim-length adjuster: changes the TOTAL epoch count, regenerates
+    // at full length so user can see effect of older / younger world.
+    {
+        aoc::ui::ButtonData lessEp;
+        lessEp.label        = "Sim-";
+        lessEp.fontSize     = 12.0f;
+        lessEp.normalColor  = aoc::ui::tokens::BRONZE_DARK;
+        lessEp.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
+        lessEp.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        lessEp.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        lessEp.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        lessEp.onClick = [this]() {
+            if (this->m_creatorEpochsTotal > 3) {
+                --this->m_creatorEpochsTotal;
+                if (this->m_creatorEpochCurrent > this->m_creatorEpochsTotal) {
+                    this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
+                }
+                this->regenerateContinentPreview(this->m_creatorEpochCurrent);
+                if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
+                    this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
+                        "Epoch " + std::to_string(this->m_creatorEpochCurrent)
+                        + "/" + std::to_string(this->m_creatorEpochsTotal));
+                }
+            }
+        };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
+            {0.0f, 0.0f, 56.0f, 36.0f}, std::move(lessEp));
+
+        aoc::ui::ButtonData moreEp;
+        moreEp.label        = "Sim+";
+        moreEp.fontSize     = 12.0f;
+        moreEp.normalColor  = aoc::ui::tokens::BRONZE_DARK;
+        moreEp.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
+        moreEp.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        moreEp.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        moreEp.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        moreEp.onClick = [this]() {
+            if (this->m_creatorEpochsTotal < 40) {
+                ++this->m_creatorEpochsTotal;
+                this->regenerateContinentPreview(this->m_creatorEpochCurrent);
+                if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
+                    this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
+                        "Epoch " + std::to_string(this->m_creatorEpochCurrent)
+                        + "/" + std::to_string(this->m_creatorEpochsTotal));
+                }
+            }
+        };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
+            {0.0f, 0.0f, 56.0f, 36.0f}, std::move(moreEp));
+    }
+
+    // Continent count adjuster (1-8 land plates).
+    {
+        aoc::ui::ButtonData lessC;
+        lessC.label        = "Cont-";
+        lessC.fontSize     = 12.0f;
+        lessC.normalColor  = aoc::ui::tokens::BRONZE_DARK;
+        lessC.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
+        lessC.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        lessC.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        lessC.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        lessC.onClick = [this]() {
+            if (this->m_creatorLandPlates > 1) {
+                --this->m_creatorLandPlates;
+                this->regenerateContinentPreview(this->m_creatorEpochCurrent);
+            }
+        };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
+            {0.0f, 0.0f, 60.0f, 36.0f}, std::move(lessC));
+
+        aoc::ui::ButtonData moreC;
+        moreC.label        = "Cont+";
+        moreC.fontSize     = 12.0f;
+        moreC.normalColor  = aoc::ui::tokens::BRONZE_DARK;
+        moreC.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
+        moreC.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        moreC.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        moreC.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        moreC.onClick = [this]() {
+            if (this->m_creatorLandPlates < 8) {
+                ++this->m_creatorLandPlates;
+                this->regenerateContinentPreview(this->m_creatorEpochCurrent);
+            }
+        };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
+            {0.0f, 0.0f, 60.0f, 36.0f}, std::move(moreC));
+    }
+
+    // Re-roll seed
+    {
+        aoc::ui::ButtonData reroll;
+        reroll.label        = "Re-roll";
+        reroll.fontSize     = 13.0f;
+        reroll.normalColor  = aoc::ui::tokens::BRONZE_BASE;
+        reroll.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+        reroll.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        reroll.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        reroll.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        reroll.onClick = [this]() {
+            std::random_device rd;
+            this->m_creatorSeed = rd();
+            this->regenerateContinentPreview(this->m_creatorEpochsTotal);
+            if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
+                    "Epoch " + std::to_string(this->m_creatorEpochCurrent)
+                    + "/" + std::to_string(this->m_creatorEpochsTotal));
+            }
+        };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
+            {0.0f, 0.0f, 90.0f, 36.0f}, std::move(reroll));
+    }
+
+    // Use This Map (returns to GameSetup with current params pre-filled)
+    {
+        aoc::ui::ButtonData use;
+        use.label        = "Use This Map";
+        use.fontSize     = 13.0f;
+        use.normalColor  = aoc::ui::tokens::STATE_SUCCESS;
+        use.hoverColor   = aoc::ui::tokens::DIPLO_FRIENDLY;
+        use.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        use.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        use.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        use.onClick = [this, screenW, screenH]() {
+            const uint32_t seed = this->m_creatorSeed;
+            const int32_t epochs = this->m_creatorEpochsTotal;
+            const int32_t plates = this->m_creatorLandPlates;
+            // Tear down preview state.
+            if (this->m_creatorPanelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.removeWidget(this->m_creatorPanelId);
+                this->m_creatorPanelId = aoc::ui::INVALID_WIDGET;
+            }
+            this->m_continentCreatorMode = false;
+            this->returnToMainMenu();
+            this->m_mainMenu.destroy(this->m_uiManager);
+            // Pre-fill the GameSetup with the chosen seed/tectonics.
+            this->m_gameSetupScreen.setContinentPreset(
+                aoc::map::MapType::Continents, seed, epochs, plates);
+            this->m_gameSetupScreen.build(
+                this->m_uiManager, screenW, screenH,
+                [this](const aoc::ui::GameSetupConfig& cfg) {
+                    this->m_gameSetupScreen.destroy(this->m_uiManager);
+                    this->startGame(cfg);
+                },
+                [this, screenW, screenH]() {
+                    this->m_gameSetupScreen.destroy(this->m_uiManager);
+                    this->buildMainMenu(screenW, screenH);
+                });
+        };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
+            {0.0f, 0.0f, 130.0f, 36.0f}, std::move(use));
+    }
+
+    // Back to Main Menu
+    {
+        aoc::ui::ButtonData back;
+        back.label        = "Back";
+        back.fontSize     = 13.0f;
+        back.normalColor  = aoc::ui::tokens::STATE_DANGER;
+        back.hoverColor   = aoc::ui::tokens::DIPLO_HOSTILE;
+        back.pressedColor = aoc::ui::tokens::DIPLO_AT_WAR;
+        back.labelColor   = aoc::ui::tokens::TEXT_PARCHMENT;
+        back.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        back.onClick = [this, screenW, screenH]() {
+            // Tear down preview, return to main menu.
+            if (this->m_creatorPanelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.removeWidget(this->m_creatorPanelId);
+                this->m_creatorPanelId = aoc::ui::INVALID_WIDGET;
+            }
+            this->m_continentCreatorMode = false;
+            this->returnToMainMenu();
+            (void)screenW; (void)screenH;
+        };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
+            {0.0f, 0.0f, 80.0f, 36.0f}, std::move(back));
+    }
+}
+
 void Application::buildSpectatorSeekControls(float screenW, float screenH) {
     // Destroy any prior widgets from a previous spectate session.
     if (this->m_spectatorSeekPanelId != aoc::ui::INVALID_WIDGET) {
@@ -1004,6 +1299,19 @@ void Application::run() {
         // in-game and on menus so layout bugs surface anywhere.
         if (this->m_inputManager.isKeyPressed(GLFW_KEY_F11)) {
             this->m_widgetInspector.toggle();
+        }
+        // F8 toggles the tectonic-plate overlay (a stand-in for the
+        // future map-view overlay strip). Each press cycles
+        // None → TectonicPlates → None. Easy lookup tool for the
+        // generator's plate layout while iterating on geology code.
+        if (this->m_inputManager.isKeyPressed(GLFW_KEY_F8)) {
+            using OM = aoc::render::GameRenderer::MapOverlay;
+            this->m_gameRenderer.overlayMode =
+                (this->m_gameRenderer.overlayMode == OM::None)
+                    ? OM::TectonicPlates : OM::None;
+            LOG_INFO("Overlay mode: %s",
+                this->m_gameRenderer.overlayMode == OM::None
+                    ? "off" : "tectonic plates");
         }
         if (this->m_debugConsole.isOpen()) {
             // Route character input to console
@@ -2121,6 +2429,56 @@ void Application::buildMainMenu(float screenW, float screenH) {
                     this->m_gameSetupScreen.destroy(this->m_uiManager);
                     this->buildMainMenu(screenW, screenH);
                 });
+        },
+        [this, screenW, screenH]() {
+            // Continent Creator: dedicated preview mode using the new
+            // tectonic stepper hook. The map regenerates on every
+            // epoch-slider change, so the user watches plates collide
+            // and rift through geological time before committing.
+            this->m_mainMenu.destroy(this->m_uiManager);
+            this->m_settingsMenu.destroy(this->m_uiManager);
+
+            std::random_device rdc;
+            this->m_creatorSeed         = rdc();
+            this->m_creatorEpochsTotal  = 14;
+            this->m_creatorLandPlates   = 4;
+            this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
+            this->m_continentCreatorMode = true;
+
+            // Set up an empty AI player so the existing render path
+            // (which expects players + a hexgrid) works. We hide HUD
+            // for clarity below.
+            aoc::ui::GameSetupConfig ccConfig{};
+            ccConfig.mapType = aoc::map::MapType::Continents;
+            ccConfig.mapSize = aoc::map::MapSize::Standard;
+            ccConfig.playerCount = 2;
+            ccConfig.players[0].isActive = true;
+            ccConfig.players[0].isHuman  = true;
+            ccConfig.players[0].civId    = 0;
+            ccConfig.players[1].isActive = true;
+            ccConfig.players[1].isHuman  = false;
+            ccConfig.players[1].civId    = 1;
+            ccConfig.mapSeed = this->m_creatorSeed;
+            ccConfig.tectonicEpochs = this->m_creatorEpochsTotal;
+            ccConfig.landPlateCount = this->m_creatorLandPlates;
+            this->startGame(ccConfig);
+            aoc::game::Player* slot0 = this->m_gameState.player(0);
+            if (slot0 != nullptr) { slot0->setHuman(false); }
+            this->m_aiControllers.emplace(this->m_aiControllers.begin(),
+                                           aoc::PlayerId{0},
+                                           ccConfig.aiDifficulty);
+            this->spectatorRevealAll();
+            this->m_spectatorMode            = true;
+            this->m_spectatorPaused          = true;
+            this->m_spectatorFogEnabled      = false;
+            if (this->m_endTurnButton != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setVisible(this->m_endTurnButton, false);
+            }
+            this->buildContinentCreatorControls(screenW, screenH);
+            LOG_INFO("Continent Creator opened (seed=%u epochs=%d/%d)",
+                     this->m_creatorSeed,
+                     this->m_creatorEpochCurrent,
+                     this->m_creatorEpochsTotal);
         });
 }
 
@@ -3210,17 +3568,23 @@ void Application::spawnStartingEntities(aoc::sim::CivId civId) {
 
 hex::AxialCoord Application::findNearbyLandTile(hex::AxialCoord target) const {
     // Spiral outward from target to find a good starting tile.
-    // Prefer grassland/plains over desert/tundra/snow.
+    // Prefer grassland/plains over desert/tundra/snow. Radius extended
+    // to 60 — ocean-heavy maps could push the nearest land far from the
+    // requested anchor; the older 15-radius cap silently returned the
+    // original tile (which was water) when no land was reachable, and
+    // that's how AI civs ended up spawning on water.
     aoc::hex::AxialCoord bestTile = target;
     float bestScore = -999.0f;
+    bool  foundLand = false;
 
-    for (int32_t radius = 0; radius < 15; ++radius) {
+    for (int32_t radius = 0; radius < 60; ++radius) {
         std::vector<aoc::hex::AxialCoord> ringTiles;
         aoc::hex::ring(target, radius, std::back_inserter(ringTiles));
         for (const aoc::hex::AxialCoord& tile : ringTiles) {
             if (!this->m_hexGrid.isValid(tile)) { continue; }
             int32_t index = this->m_hexGrid.toIndex(tile);
             if (this->m_hexGrid.movementCost(index) <= 0) { continue; }
+            foundLand = true;
 
             aoc::map::TerrainType terrain = this->m_hexGrid.terrain(index);
             float score = 0.0f;
@@ -3252,6 +3616,19 @@ hex::AxialCoord Application::findNearbyLandTile(hex::AxialCoord target) const {
 
         // Stop early if we found a great tile (grassland with river)
         if (bestScore >= 12.0f) { break; }
+    }
+    // Last-resort fallback: scan the whole grid for any land tile if
+    // the spiral failed (target on a tiny island, or in deep ocean
+    // far from any continent). Guarantees the spawn never lands on
+    // water even on weird seeds.
+    if (!foundLand) {
+        const int32_t totalTiles = this->m_hexGrid.tileCount();
+        for (int32_t idx = 0; idx < totalTiles; ++idx) {
+            if (this->m_hexGrid.movementCost(idx) > 0) {
+                bestTile = this->m_hexGrid.toAxial(idx);
+                break;
+            }
+        }
     }
     return bestTile;
 }

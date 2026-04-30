@@ -78,6 +78,17 @@ public:
     /// is open so the world overview doesn't peek through.
     bool m_minimapSuppressed = false;
 
+    /// World map overlay mode. Controls the per-tile colour tint that
+    /// the renderer applies on top of terrain. None = no overlay (
+    /// normal terrain). TectonicPlates = colour each tile by its
+    /// generator-assigned plate id. Future modes (Government / Religion
+    /// / Continents) wire in here too.
+    enum class MapOverlay : uint8_t {
+        None,
+        TectonicPlates,
+    };
+    MapOverlay overlayMode = MapOverlay::None;
+
     /// Civ-6-style worker placement overlay. When non-null, the
     /// renderer draws a highlight ring on every tile that the city
     /// can work (3-hex radius around its centre, owned + walkable),

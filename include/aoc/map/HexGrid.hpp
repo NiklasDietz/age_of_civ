@@ -487,6 +487,27 @@ private:
     /// oil/gas/fuel trade throughput). Kept out of ImprovementType so a tile
     /// can have, e.g., Farm + PowerPole + Pipeline simultaneously.
     std::vector<uint8_t>          m_tileInfra;
+public:
+    /// Tectonic plate id assigned by the Continents map generator.
+    /// 0xFF = unset / not applicable (non-Continents map). Used by the
+    /// tectonic-overlay UI mode.
+    [[nodiscard]] uint8_t plateId(int32_t index) const {
+        const int32_t total = this->tileCount();
+        if (index < 0 || index >= total) { return 0xFFu; }
+        if (this->m_plateId.empty()) { return 0xFFu; }
+        return this->m_plateId[static_cast<std::size_t>(index)];
+    }
+    void setPlateId(int32_t index, uint8_t pid) {
+        const int32_t total = this->tileCount();
+        if (this->m_plateId.empty()) {
+            this->m_plateId.assign(static_cast<std::size_t>(total), 0xFFu);
+        }
+        if (index >= 0 && index < total) {
+            this->m_plateId[static_cast<std::size_t>(index)] = pid;
+        }
+    }
+private:
+    std::vector<uint8_t>          m_plateId;
     /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
     /// Greenhouse improvement actively populate. Tile index → good id.
     std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;

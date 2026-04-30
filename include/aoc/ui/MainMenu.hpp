@@ -55,6 +55,16 @@ struct GameSetupConfig {
     AIDifficulty aiDifficulty = AIDifficulty::Normal; ///< AI difficulty level
     VictoryMode victoryMode = VictoryMode::Default;   ///< Victory condition mode
     int32_t maxTurns = 1000;                          ///< User-selectable turn limit
+    /// Continents-only generation knobs. tectonicEpochs controls how
+    /// long the plate sim runs (more = older, more eroded world,
+    /// Pangaea cycles get more chances to play out). landPlateCount
+    /// caps how many continent seeds are placed before ocean fills
+    /// the rest. mapSeed is the deterministic RNG seed; same seed +
+    /// same parameters → same world. mapSeed = 0 means "auto" (the
+    /// app picks a fresh random seed at game start).
+    int32_t tectonicEpochs = 14;
+    int32_t landPlateCount = 4;
+    uint32_t mapSeed = 0;
 };
 
 class MainMenu {
@@ -70,7 +80,8 @@ public:
                std::function<void()> onQuit,
                std::function<void()> onSettings  = {},
                std::function<void()> onTutorial  = {},
-               std::function<void()> onSpectate  = {});
+               std::function<void()> onSpectate  = {},
+               std::function<void()> onContinentCreator = {});
 
     /// Rebuild positions after resize.
     void updateLayout(UIManager& ui, float screenW, float screenH);
@@ -90,6 +101,7 @@ private:
     std::function<void()> m_onSettings;
     std::function<void()> m_onTutorial;
     std::function<void()> m_onSpectate;
+    std::function<void()> m_onContinentCreator;
 };
 
 // ============================================================================
@@ -104,6 +116,22 @@ public:
     void destroy(UIManager& ui);
     void refresh(UIManager& ui);
     [[nodiscard]] bool isBuilt() const { return this->m_isBuilt; }
+
+    /// Pre-fill the screen's working config before build(). Used by
+    /// the Continent Creator's "Use This Map" handoff so the chosen
+    /// seed + tectonic params survive into the actual game launch.
+    /// Caller passes a partial config; only the continent-gen knobs
+    /// (mapType / seed / tectonicEpochs / landPlateCount) are
+    /// adopted — player slots and the rest stay at defaults.
+    void setContinentPreset(aoc::map::MapType mapType,
+                             uint32_t seed,
+                             int32_t tectonicEpochs,
+                             int32_t landPlateCount) {
+        this->m_config.mapType = mapType;
+        this->m_config.mapSeed = seed;
+        this->m_config.tectonicEpochs = tectonicEpochs;
+        this->m_config.landPlateCount = landPlateCount;
+    }
 
 private:
     bool m_isBuilt = false;
@@ -144,6 +172,11 @@ private:
     WidgetId m_btnPlaceRealistic = INVALID_WIDGET;
     WidgetId m_btnPlaceFair      = INVALID_WIDGET;
     WidgetId m_btnPlaceRandom    = INVALID_WIDGET;
+
+    // Continent generation knobs (Continents map type only).
+    WidgetId m_epochsLabel       = INVALID_WIDGET;
+    WidgetId m_landCountLabel    = INVALID_WIDGET;
+    WidgetId m_seedLabel         = INVALID_WIDGET;
 
     /// Re-color map type selection buttons to reflect current selection.
     void updateMapTypeButtons(UIManager& ui);

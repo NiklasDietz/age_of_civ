@@ -12,6 +12,7 @@
 #include <cassert>
 #include <cstdint>
 #include <fstream>
+#include <random>
 #include <string>
 #include <utility>
 
@@ -57,7 +58,8 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
                      std::function<void()> onQuit,
                      std::function<void()> onSettings,
                      std::function<void()> onTutorial,
-                     std::function<void()> onSpectate) {
+                     std::function<void()> onSpectate,
+                     std::function<void()> onContinentCreator) {
     assert(!this->m_isBuilt);
 
     this->m_onStartGame = std::move(onStartGame);
@@ -65,6 +67,7 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
     this->m_onSettings  = std::move(onSettings);
     this->m_onTutorial  = std::move(onTutorial);
     this->m_onSpectate  = std::move(onSpectate);
+    this->m_onContinentCreator = std::move(onContinentCreator);
 
     // Full-screen dark background
     this->m_rootPanel = ui.createPanel(
@@ -180,6 +183,23 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
             contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
     }
 
+    // --- Continent Creator button ---
+    if (this->m_onContinentCreator) {
+        ButtonData btn;
+        btn.label        = "Continent Creator";
+        btn.fontSize     = 14.0f;
+        btn.normalColor  = {0.30f, 0.45f, 0.30f, 0.90f};
+        btn.hoverColor   = {0.40f, 0.60f, 0.40f, 0.90f};
+        btn.pressedColor = {0.22f, 0.32f, 0.22f, 0.90f};
+        btn.labelColor   = WHITE_TEXT;
+        btn.cornerRadius = 4.0f;
+        btn.onClick = [this]() {
+            if (this->m_onContinentCreator) { this->m_onContinentCreator(); }
+        };
+        [[maybe_unused]] WidgetId ccBtn = ui.createButton(
+            contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+    }
+
     // --- Quit button ---
     {
         ButtonData btn;
@@ -261,10 +281,16 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
                             std::function<void()> onBack) {
     assert(!this->m_isBuilt);
 
-    // Initialize default config
-    this->m_config = GameSetupConfig{};
-    this->m_config.mapType     = aoc::map::MapType::Continents;
-    this->m_config.mapSize     = aoc::map::MapSize::Standard;
+    // Initialize default config UNLESS a preset is in place (mapSeed
+    // != 0 indicates the Continent Creator already wrote chosen values
+    // before calling build). Preserves seed + tectonic knobs so the
+    // generated game uses exactly the previewed map.
+    const bool hasPreset = (this->m_config.mapSeed != 0u);
+    if (!hasPreset) {
+        this->m_config = GameSetupConfig{};
+        this->m_config.mapType     = aoc::map::MapType::Continents;
+        this->m_config.mapSize     = aoc::map::MapSize::Standard;
+    }
     this->m_config.playerCount = 2;
     for (uint8_t i = 0; i < 20; ++i) {
         this->m_config.players[i].isActive = (i < 2);
@@ -647,6 +673,153 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         "resource-rich and resource-starved starts.",
         this->m_config.placement == aoc::map::ResourcePlacementMode::Random);
 
+    // ---- Continent generation knobs (Continents map type) ----
+    [[maybe_unused]] WidgetId genHeaderLabel = ui.createLabel(
+        contentPanel, {0.0f, 0.0f, innerW, 18.0f},
+        LabelData{"Continent Generation:", SECTION_TEXT, 14.0f});
+    if (this->m_config.mapSeed == 0u) {
+        // Initial seed: draw an OS-entropy value so the field shows a
+        // real number rather than 0. User can re-roll or type a custom
+        // one (text input deferred — re-roll covers the common case).
+        std::random_device rdSeed;
+        this->m_config.mapSeed = rdSeed();
+    }
+
+    // -- Tectonic epochs row --
+    {
+        WidgetId row = ui.createPanel(contentPanel,
+            {0.0f, 0.0f, innerW, 28.0f},
+            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        Widget* r = ui.getWidget(row);
+        if (r != nullptr) {
+            r->layoutDirection = LayoutDirection::Horizontal;
+            r->childSpacing = 6.0f;
+        }
+        (void)ui.createLabel(row, {0.0f, 0.0f, 110.0f, 24.0f},
+            LabelData{"Sim time:", WHITE_TEXT, 12.0f});
+        // Minus
+        ButtonData minus;
+        minus.label        = "-";
+        minus.fontSize     = 13.0f;
+        minus.normalColor  = BTN_GREY;
+        minus.hoverColor   = BTN_GREY_HOVER;
+        minus.pressedColor = BTN_GREY_PRESS;
+        minus.labelColor   = WHITE_TEXT;
+        minus.cornerRadius = 3.0f;
+        minus.onClick = [this, &ui]() {
+            if (this->m_config.tectonicEpochs > 3) {
+                --this->m_config.tectonicEpochs;
+                this->refresh(ui);
+            }
+        };
+        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(minus));
+
+        this->m_epochsLabel = ui.createLabel(row,
+            {0.0f, 0.0f, 70.0f, 24.0f},
+            LabelData{std::to_string(this->m_config.tectonicEpochs)
+                + " epochs", WHITE_TEXT, 12.0f});
+
+        ButtonData plus;
+        plus.label        = "+";
+        plus.fontSize     = 13.0f;
+        plus.normalColor  = BTN_GREY;
+        plus.hoverColor   = BTN_GREY_HOVER;
+        plus.pressedColor = BTN_GREY_PRESS;
+        plus.labelColor   = WHITE_TEXT;
+        plus.cornerRadius = 3.0f;
+        plus.onClick = [this, &ui]() {
+            if (this->m_config.tectonicEpochs < 40) {
+                ++this->m_config.tectonicEpochs;
+                this->refresh(ui);
+            }
+        };
+        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(plus));
+    }
+
+    // -- Continent count row --
+    {
+        WidgetId row = ui.createPanel(contentPanel,
+            {0.0f, 0.0f, innerW, 28.0f},
+            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        Widget* r = ui.getWidget(row);
+        if (r != nullptr) {
+            r->layoutDirection = LayoutDirection::Horizontal;
+            r->childSpacing = 6.0f;
+        }
+        (void)ui.createLabel(row, {0.0f, 0.0f, 110.0f, 24.0f},
+            LabelData{"Continents:", WHITE_TEXT, 12.0f});
+        ButtonData minus;
+        minus.label        = "-";
+        minus.fontSize     = 13.0f;
+        minus.normalColor  = BTN_GREY;
+        minus.hoverColor   = BTN_GREY_HOVER;
+        minus.pressedColor = BTN_GREY_PRESS;
+        minus.labelColor   = WHITE_TEXT;
+        minus.cornerRadius = 3.0f;
+        minus.onClick = [this, &ui]() {
+            if (this->m_config.landPlateCount > 1) {
+                --this->m_config.landPlateCount;
+                this->refresh(ui);
+            }
+        };
+        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(minus));
+
+        this->m_landCountLabel = ui.createLabel(row,
+            {0.0f, 0.0f, 70.0f, 24.0f},
+            LabelData{std::to_string(this->m_config.landPlateCount),
+                      WHITE_TEXT, 12.0f});
+
+        ButtonData plus;
+        plus.label        = "+";
+        plus.fontSize     = 13.0f;
+        plus.normalColor  = BTN_GREY;
+        plus.hoverColor   = BTN_GREY_HOVER;
+        plus.pressedColor = BTN_GREY_PRESS;
+        plus.labelColor   = WHITE_TEXT;
+        plus.cornerRadius = 3.0f;
+        plus.onClick = [this, &ui]() {
+            if (this->m_config.landPlateCount < 8) {
+                ++this->m_config.landPlateCount;
+                this->refresh(ui);
+            }
+        };
+        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(plus));
+    }
+
+    // -- Seed row --
+    {
+        WidgetId row = ui.createPanel(contentPanel,
+            {0.0f, 0.0f, innerW, 28.0f},
+            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        Widget* r = ui.getWidget(row);
+        if (r != nullptr) {
+            r->layoutDirection = LayoutDirection::Horizontal;
+            r->childSpacing = 6.0f;
+        }
+        (void)ui.createLabel(row, {0.0f, 0.0f, 110.0f, 24.0f},
+            LabelData{"Seed:", WHITE_TEXT, 12.0f});
+
+        this->m_seedLabel = ui.createLabel(row,
+            {0.0f, 0.0f, 180.0f, 24.0f},
+            LabelData{std::to_string(this->m_config.mapSeed),
+                      WHITE_TEXT, 12.0f});
+
+        ButtonData reroll;
+        reroll.label        = "Re-roll";
+        reroll.fontSize     = 12.0f;
+        reroll.normalColor  = BTN_GREY;
+        reroll.hoverColor   = BTN_GREY_HOVER;
+        reroll.pressedColor = BTN_GREY_PRESS;
+        reroll.labelColor   = WHITE_TEXT;
+        reroll.cornerRadius = 3.0f;
+        reroll.onClick = [this, &ui]() {
+            std::random_device rdr;
+            this->m_config.mapSeed = rdr();
+            this->refresh(ui);
+        };
+        (void)ui.createButton(row, {0.0f, 0.0f, 80.0f, 24.0f}, std::move(reroll));
+    }
+
     // ---- Players section ----
     [[maybe_unused]] WidgetId playersSectionLabel = ui.createLabel(
         contentPanel,
@@ -957,6 +1130,20 @@ void GameSetupScreen::refresh(UIManager& ui) {
     // Update player count label
     ui.setLabelText(this->m_playerCountLabel,
                     std::to_string(this->m_config.playerCount));
+
+    // Continent generation knobs.
+    if (this->m_epochsLabel != INVALID_WIDGET) {
+        ui.setLabelText(this->m_epochsLabel,
+            std::to_string(this->m_config.tectonicEpochs) + " epochs");
+    }
+    if (this->m_landCountLabel != INVALID_WIDGET) {
+        ui.setLabelText(this->m_landCountLabel,
+            std::to_string(this->m_config.landPlateCount));
+    }
+    if (this->m_seedLabel != INVALID_WIDGET) {
+        ui.setLabelText(this->m_seedLabel,
+            std::to_string(this->m_config.mapSeed));
+    }
 
     // Show/hide player rows and update labels
     for (uint8_t i = 0; i < 20; ++i) {

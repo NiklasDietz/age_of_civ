@@ -78,6 +78,93 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     this->m_mapRenderer.draw(renderer2d, grid, fog, viewingPlayer, camera,
                               screenWidth, screenHeight);
 
+    // Layer 1.1: Map view overlay (e.g. tectonic plates). Draws a
+    // semi-transparent tint per tile keyed off the selected mode. Each
+    // overlay maps a per-tile category (plate id, government id, etc.)
+    // to a deterministic colour so neighbouring tiles in the same
+    // category share a hue. None mode skips the pass entirely.
+    if (this->overlayMode != MapOverlay::None) {
+        const float hexSizeOv = this->m_mapRenderer.hexSize();
+        const float invZoomOv = 1.0f / camera.zoom();
+        float ovTL_X = 0.0f, ovTL_Y = 0.0f;
+        float ovBR_X = 0.0f, ovBR_Y = 0.0f;
+        camera.screenToWorld(0.0, 0.0, ovTL_X, ovTL_Y,
+                              screenWidth, screenHeight);
+        camera.screenToWorld(static_cast<double>(screenWidth),
+                              static_cast<double>(screenHeight),
+                              ovBR_X, ovBR_Y,
+                              screenWidth, screenHeight);
+        const float marginOv = hexSizeOv * 6.0f * invZoomOv;
+        ovTL_X -= marginOv;  ovTL_Y -= marginOv;
+        ovBR_X += marginOv;  ovBR_Y += marginOv;
+
+        constexpr float SQRT3 = 1.7320508075688772f;
+        const float xSpacing = SQRT3 * hexSizeOv;
+        const float ySpacing = 1.5f  * hexSizeOv;
+        const int32_t width  = grid.width();
+        const int32_t height = grid.height();
+        const bool cyl = (grid.topology() == aoc::map::MapTopology::Cylindrical);
+        const int32_t minCol = cyl
+            ? (static_cast<int32_t>(ovTL_X / xSpacing) - 1)
+            : std::max(0, static_cast<int32_t>(std::max(0.0f, ovTL_X) / xSpacing) - 1);
+        const int32_t maxCol = cyl
+            ? (static_cast<int32_t>(ovBR_X / xSpacing) + 1)
+            : std::min(width - 1,
+                static_cast<int32_t>(std::max(0.0f, ovBR_X) / xSpacing) + 1);
+        const int32_t minRow = std::max(0,
+            static_cast<int32_t>(std::max(0.0f, ovTL_Y) / ySpacing) - 1);
+        const int32_t maxRow = std::min(height - 1,
+            static_cast<int32_t>(std::max(0.0f, ovBR_Y) / ySpacing) + 1);
+
+        // Helper: deterministic hue per category id.
+        const auto categoryColor = [](uint8_t cat) {
+            if (cat == 0xFF) {
+                return std::array<float, 3>{0.0f, 0.0f, 0.0f};
+            }
+            const uint32_t h = static_cast<uint32_t>(cat) * 2654435761u;
+            const float r = static_cast<float>((h >> 0)  & 0xFFu) / 255.0f;
+            const float g = static_cast<float>((h >> 8)  & 0xFFu) / 255.0f;
+            const float b = static_cast<float>((h >> 16) & 0xFFu) / 255.0f;
+            // Pull saturation up + brightness so the overlay reads
+            // clearly on top of darker terrain.
+            return std::array<float, 3>{
+                std::min(1.0f, r * 0.7f + 0.3f),
+                std::min(1.0f, g * 0.7f + 0.3f),
+                std::min(1.0f, b * 0.7f + 0.3f)};
+        };
+
+        for (int32_t row = minRow; row <= maxRow; ++row) {
+            for (int32_t col = minCol; col <= maxCol; ++col) {
+                int32_t dataCol = col;
+                if (cyl) {
+                    dataCol = ((col % width) + width) % width;
+                } else {
+                    if (col < 0 || col >= width) { continue; }
+                }
+                const int32_t index = row * width + dataCol;
+                if (fog.visibility(viewingPlayer, index)
+                        == aoc::map::TileVisibility::Unseen) {
+                    continue;
+                }
+
+                uint8_t cat = 0xFF;
+                if (this->overlayMode == MapOverlay::TectonicPlates) {
+                    cat = grid.plateId(index);
+                }
+                if (cat == 0xFFu) { continue; }
+
+                const aoc::hex::AxialCoord axial =
+                    aoc::hex::offsetToAxial({col, row});
+                float cx = 0.0f, cy = 0.0f;
+                aoc::hex::axialToPixel(axial, hexSizeOv, cx, cy);
+                const std::array<float, 3> rgb = categoryColor(cat);
+                renderer2d.drawFilledHexagon(cx, cy,
+                    hexSizeOv * 0.866f, hexSizeOv,
+                    rgb[0], rgb[1], rgb[2], 0.45f);
+            }
+        }
+    }
+
     // Layer 1.5: Territory borders (hex outlines drawn ON TOP of terrain)
     this->m_mapRenderer.drawTerritoryBorders(renderer2d, grid, fog, viewingPlayer,
                                               camera, screenWidth, screenHeight);

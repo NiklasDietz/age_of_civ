@@ -72,6 +72,17 @@ public:
         MapSize     mapSize   = MapSize::Standard;     ///< Preset size (overrides width/height when applied)
         MapTopology topology  = MapTopology::Flat;     ///< Grid topology (Flat or Cylindrical)
         ResourcePlacementMode placement = ResourcePlacementMode::Realistic;
+        /// Continents-only knobs. tectonicEpochs controls how long the
+        /// plate-tectonic sim runs; landPlateCount caps the initial
+        /// continent seeds (the rest fill as ocean). 0 = use built-in
+        /// defaults / random in-range.
+        int32_t  tectonicEpochs = 0;
+        int32_t  landPlateCount = 0;
+        /// Stepper hook: if >0, the sim halts after this many epochs
+        /// have run. Used by the Continent Creator scrubber to render
+        /// intermediate states. 0 = run the full requested
+        /// `tectonicEpochs` (default game-launch behaviour).
+        int32_t  runEpochsLimit = 0;
     };
 
     /**
