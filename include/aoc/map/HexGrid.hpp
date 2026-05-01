@@ -519,6 +519,15 @@ public:
     void setPlateCenters(std::vector<std::pair<float, float>> c) {
         this->m_plateCenter = std::move(c);
     }
+    /// Per-plate landFraction (0 = oceanic, 1 = continental). Used by
+    /// the plate overlay to distinguish ocean-cont subduction from
+    /// continental collision when classifying convergent boundaries.
+    [[nodiscard]] const std::vector<float>& plateLandFrac() const {
+        return this->m_plateLandFrac;
+    }
+    void setPlateLandFrac(std::vector<float> v) {
+        this->m_plateLandFrac = std::move(v);
+    }
 
     [[nodiscard]] uint8_t plateId(int32_t index) const {
         const int32_t total = this->tileCount();
@@ -535,11 +544,56 @@ public:
             this->m_plateId[static_cast<std::size_t>(index)] = pid;
         }
     }
+
+    /// Per-tile crust age in epoch units. 0 = freshly-formed at ridge,
+    /// high = old continental craton. Drives the CrustAge overlay (red
+    /// young → blue ancient) and matches real-Earth seafloor age maps.
+    [[nodiscard]] const std::vector<float>& crustAgeTile() const {
+        return this->m_crustAgeTile;
+    }
+    void setCrustAgeTile(std::vector<float> v) {
+        this->m_crustAgeTile = std::move(v);
+    }
+
+    /// Per-tile sediment depth in normalised orogeny units. Built up by
+    /// erosion of nearby mountains (mass conservation: eroded mass goes
+    /// here). Foreland basins, alluvial plains, abyssal fans are all
+    /// elevated-sediment tiles.
+    [[nodiscard]] const std::vector<float>& sedimentDepth() const {
+        return this->m_sedimentDepth;
+    }
+    void setSedimentDepth(std::vector<float> v) {
+        this->m_sedimentDepth = std::move(v);
+    }
+
+    /// Per-tile rock type tag (Sedimentary / Igneous / Metamorphic).
+    /// Drives mineral resource availability + geological visualisation.
+    /// 0 = sedimentary (default), 1 = igneous, 2 = metamorphic, 3 = ophiolite.
+    [[nodiscard]] const std::vector<uint8_t>& rockType() const {
+        return this->m_rockType;
+    }
+    void setRockType(std::vector<uint8_t> v) {
+        this->m_rockType = std::move(v);
+    }
+
+    /// Per-tile margin classification: 0 = interior, 1 = passive margin
+    /// (sediment-rich, wide shelf), 2 = active margin (arc/trench, narrow).
+    [[nodiscard]] const std::vector<uint8_t>& marginType() const {
+        return this->m_marginType;
+    }
+    void setMarginType(std::vector<uint8_t> v) {
+        this->m_marginType = std::move(v);
+    }
 private:
     std::vector<uint8_t>          m_plateId;
     std::vector<std::pair<float, float>> m_hotspots;
     std::vector<std::pair<float, float>> m_plateMotion;
     std::vector<std::pair<float, float>> m_plateCenter;
+    std::vector<float>                   m_plateLandFrac;
+    std::vector<float>                   m_crustAgeTile;
+    std::vector<float>                   m_sedimentDepth;
+    std::vector<uint8_t>                 m_rockType;
+    std::vector<uint8_t>                 m_marginType;
     /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
     /// Greenhouse improvement actively populate. Tile index → good id.
     std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;

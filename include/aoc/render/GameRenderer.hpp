@@ -98,6 +98,11 @@ public:
         OceanCurrents,
         Hotspots,
         PlateMotion,    ///< Arrow at each plate centre showing its velocity vector
+        PlateBoundaries,///< Boundary lines only (no plate-id fill) — collision-type colours
+        CrustAge,       ///< Per-tile crust age — red young / blue ancient
+        Sediment,       ///< Per-tile sediment depth — yellow basins
+        RockType,       ///< Per-tile rock-type tag — Sed / Igneous / Metamorphic / Ophiolite
+        Margins,        ///< Active (red) vs passive (blue) continental margins
     };
     MapOverlay overlayMode = MapOverlay::None;
 

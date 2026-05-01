@@ -151,6 +151,79 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                 if (this->overlayMode == MapOverlay::TectonicPlates) {
                     cat = grid.plateId(index);
                 }
+                // PlateBoundaries skips the fill pass entirely — only
+                // borders are drawn, so collision-type colours read
+                // clearly without competing against plate-id hues.
+                // CrustAge / Sediment / RockType / Margins compute their
+                // own per-tile colours (skip the cat-based path).
+                float fillR = 0.0f, fillG = 0.0f, fillB = 0.0f, fillA = 0.45f;
+                bool useFill = false;
+                if (this->overlayMode == MapOverlay::CrustAge) {
+                    const auto& ages = grid.crustAgeTile();
+                    if (!ages.empty()) {
+                        const float a = ages[static_cast<std::size_t>(index)];
+                        // Red (young) → green → blue (ancient); cap age
+                        // colouring at 200 epochs.
+                        const float t = std::clamp(a / 200.0f, 0.0f, 1.0f);
+                        fillR = 1.0f - t;
+                        fillG = (t < 0.5f) ? (t * 2.0f) : (1.0f - (t - 0.5f) * 2.0f);
+                        fillB = t;
+                        fillA = 0.55f;
+                        useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Sediment) {
+                    const auto& sed = grid.sedimentDepth();
+                    if (!sed.empty()) {
+                        const float s = sed[static_cast<std::size_t>(index)];
+                        if (s > 0.005f) {
+                            const float t = std::clamp(s / 0.20f, 0.0f, 1.0f);
+                            // Yellow → orange → brown (deeper basins).
+                            fillR = 1.0f;
+                            fillG = 0.85f - 0.55f * t;
+                            fillB = 0.10f * (1.0f - t);
+                            fillA = 0.30f + 0.40f * t;
+                            useFill = true;
+                        }
+                    }
+                } else if (this->overlayMode == MapOverlay::RockType) {
+                    const auto& rt = grid.rockType();
+                    if (!rt.empty()) {
+                        const uint8_t r = rt[static_cast<std::size_t>(index)];
+                        switch (r) {
+                            case 0: fillR = 0.95f; fillG = 0.85f; fillB = 0.55f; break; // sed: tan
+                            case 1: fillR = 0.20f; fillG = 0.30f; fillB = 0.55f; break; // igneous: dark blue
+                            case 2: fillR = 0.55f; fillG = 0.25f; fillB = 0.65f; break; // meta: purple
+                            case 3: fillR = 0.10f; fillG = 0.85f; fillB = 0.25f; break; // ophiolite: bright green
+                            default: break;
+                        }
+                        fillA = 0.55f;
+                        useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Margins) {
+                    const auto& mt = grid.marginType();
+                    if (!mt.empty()) {
+                        const uint8_t m = mt[static_cast<std::size_t>(index)];
+                        if (m == 1) {
+                            // Active margin: bright red
+                            fillR = 0.95f; fillG = 0.20f; fillB = 0.20f;
+                            fillA = 0.55f; useFill = true;
+                        } else if (m == 2) {
+                            // Passive margin: bright blue
+                            fillR = 0.20f; fillG = 0.45f; fillB = 0.95f;
+                            fillA = 0.50f; useFill = true;
+                        }
+                    }
+                }
+                if (useFill) {
+                    const aoc::hex::AxialCoord axialF =
+                        aoc::hex::offsetToAxial({col, row});
+                    float fx = 0.0f, fy = 0.0f;
+                    aoc::hex::axialToPixel(axialF, hexSizeOv, fx, fy);
+                    renderer2d.drawFilledHexagon(fx, fy,
+                        hexSizeOv * 0.866f, hexSizeOv,
+                        fillR, fillG, fillB, fillA);
+                    continue;
+                }
                 if (cat == 0xFFu) { continue; }
 
                 const aoc::hex::AxialCoord axial =
@@ -184,7 +257,8 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                     continue;
                 }
                 uint8_t myCat = 0xFF;
-                if (this->overlayMode == MapOverlay::TectonicPlates) {
+                if (this->overlayMode == MapOverlay::TectonicPlates
+                    || this->overlayMode == MapOverlay::PlateBoundaries) {
                     myCat = grid.plateId(index);
                 }
                 if (myCat == 0xFFu) { continue; }
@@ -206,7 +280,8 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                     } else {
                         const int32_t nIdx = grid.toIndex(nb);
                         uint8_t nbCat = 0xFF;
-                        if (this->overlayMode == MapOverlay::TectonicPlates) {
+                        if (this->overlayMode == MapOverlay::TectonicPlates
+                            || this->overlayMode == MapOverlay::PlateBoundaries) {
                             nbCat = grid.plateId(nIdx);
                         }
                         if (nbCat != myCat) { drawEdge = true; }
@@ -231,6 +306,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                     }
                     const auto& motions = grid.plateMotions();
                     const auto& centers = grid.plateCenters();
+                    const auto& landFr  = grid.plateLandFrac();
                     if (myCat < motions.size() && nbCatLine < motions.size()
                         && nbCatLine != 0xFFu) {
                         const std::pair<float, float>& vA = motions[myCat];
@@ -248,15 +324,36 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                             const float tangProj = -relVx * bny + relVy * bnx;
                             const float aN = std::abs(normProj);
                             const float aT = std::abs(tangProj);
-                            if (aN > aT && aN > 0.05f) {
+                            // Looser threshold (0.02 vs 0.05) — boundaries
+                            // with weak relative motion still register.
+                            // Real plates rarely sit exactly still.
+                            if (aN > aT && aN > 0.02f) {
                                 if (normProj > 0.0f) {
-                                    // Plates closing on this boundary → convergent (red).
-                                    r = 0.95f; g = 0.10f; b = 0.10f;
+                                    // Plates closing → split convergent
+                                    // into 3 sub-types using landFraction:
+                                    //   both continental → collision (red)
+                                    //   one ocean / one cont → subduction
+                                    //     of ocean under cont (magenta)
+                                    //   both oceanic → ocean subduction
+                                    //     forms island arc (orange)
+                                    const float lA = (myCat < landFr.size())
+                                        ? landFr[myCat] : 0.5f;
+                                    const float lB = (nbCatLine < landFr.size())
+                                        ? landFr[nbCatLine] : 0.5f;
+                                    const bool aLand = lA > 0.4f;
+                                    const bool bLand = lB > 0.4f;
+                                    if (aLand && bLand) {
+                                        r = 0.95f; g = 0.10f; b = 0.10f; // collision red
+                                    } else if (aLand != bLand) {
+                                        r = 0.95f; g = 0.20f; b = 0.85f; // subduction magenta
+                                    } else {
+                                        r = 1.0f; g = 0.55f; b = 0.10f;  // ocean-ocean orange
+                                    }
                                 } else {
                                     // Plates pulling apart → divergent (blue).
                                     r = 0.10f; g = 0.40f; b = 0.95f;
                                 }
-                            } else if (aT > 0.05f) {
+                            } else if (aT > 0.02f) {
                                 // Sliding past each other → transform (yellow).
                                 r = 1.0f; g = 0.85f; b = 0.10f;
                             } else {
@@ -265,14 +362,17 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                             }
                         }
                     }
-                    // Thick double-stroke border. First a wide black
-                    // halo (16 px) for clean separation against terrain,
-                    // then the colored type indicator (10 px) on top.
-                    // Makes plate territories pop visually.
+                    // Thick double-stroke border. PlateBoundaries mode
+                    // uses heavier strokes (no per-tile fill underneath
+                    // means borders carry the entire visual signal).
+                    const bool boundariesOnly = (this->overlayMode
+                        == MapOverlay::PlateBoundaries);
+                    const float haloWidth   = boundariesOnly ? 26.0f : 16.0f;
+                    const float colorWidth  = boundariesOnly ? 18.0f : 10.0f;
                     renderer2d.drawLine(ax, ay, bx, by,
-                                         0.0f, 0.0f, 0.0f, 0.95f, 16.0f);
+                                         0.0f, 0.0f, 0.0f, 0.95f, haloWidth);
                     renderer2d.drawLine(ax, ay, bx, by,
-                                         r, g, b, 1.0f, 10.0f);
+                                         r, g, b, 1.0f, colorWidth);
                 }
             }
         }

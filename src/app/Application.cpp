@@ -1322,10 +1322,15 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             {0.0f, 0.0f, 64.0f, 36.0f}, std::move(ovl));
     };
     addOverlayBtn("Plates",   aoc::render::GameRenderer::MapOverlay::TectonicPlates);
+    addOverlayBtn("Bounds",   aoc::render::GameRenderer::MapOverlay::PlateBoundaries);
     addOverlayBtn("Wind",     aoc::render::GameRenderer::MapOverlay::Winds);
     addOverlayBtn("Currents", aoc::render::GameRenderer::MapOverlay::OceanCurrents);
     addOverlayBtn("Hotspots", aoc::render::GameRenderer::MapOverlay::Hotspots);
     addOverlayBtn("Motion",   aoc::render::GameRenderer::MapOverlay::PlateMotion);
+    addOverlayBtn("Age",      aoc::render::GameRenderer::MapOverlay::CrustAge);
+    addOverlayBtn("Sed",      aoc::render::GameRenderer::MapOverlay::Sediment);
+    addOverlayBtn("Rock",     aoc::render::GameRenderer::MapOverlay::RockType);
+    addOverlayBtn("Margins",  aoc::render::GameRenderer::MapOverlay::Margins);
 
     // Generate — rebuilds the world with current parameters. Apply
     // when the user is done tweaking values; deferred so each

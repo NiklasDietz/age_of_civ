@@ -412,14 +412,16 @@ private:
     /// scrubber regenerates the map by re-running MapGenerator with
     /// these params and a varying runEpochsLimit.
     uint32_t m_creatorSeed = 0;
-    int32_t  m_creatorEpochsTotal = 40;
+    int32_t  m_creatorEpochsTotal = 120;
     int32_t  m_creatorLandPlates  = 7;
-    int32_t  m_creatorEpochCurrent = 40;
+    int32_t  m_creatorEpochCurrent = 120;
     int32_t  m_creatorWidth  = 400;
     int32_t  m_creatorHeight = 200;
     /// Total plate-drift budget for the sim, in 10ths of a map width.
-    /// 1 = 0.1x map width total drift, 60 = 6x. Default 6 = 0.6 of map.
-    int32_t  m_creatorDriftPct = 6;
+    /// 1 = 0.1x map width total drift, 60 = 6x. Default 12 = 1.2 of
+    /// map width — plates traverse the map ≥ once during the sim,
+    /// enabling multi-cycle Pangea assembly/dispersal.
+    int32_t  m_creatorDriftPct = 12;
     /// Lazy snapshot cache: maps epoch → HexGrid copy. Populated on
     /// first visit to each epoch; subsequent scrubs to that epoch
     /// blit from cache instead of re-running MapGenerator. Cleared
