@@ -1392,12 +1392,30 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // (When Pangaea broke apart, Africa and S America
                         // each carried different territory; they don't
                         // look identical.)
-                        child.rot          = centerRng.nextFloat(-3.14f, 3.14f);
-                        child.aspect       = centerRng.nextFloat(0.85f, 1.30f);
+                        // GONDWANA COAST MATCHING. When continents rift,
+                        // their conjugate margins are mirror images
+                        // (S America Atlantic margin fits Africa's like
+                        // a jigsaw because they were once one piece).
+                        // Child inherits parent's seedX/seedY so the
+                        // crust mask noise pattern is identical → the
+                        // rifted edges have matching shapes when pushed
+                        // back together. We rotate the child's local
+                        // frame so the same noise is sampled differently
+                        // away from the seam, producing a divergent
+                        // interior but a matching coastline.
+                        child.rot          = parent.rot
+                                           + centerRng.nextFloat(-0.30f, 0.30f);
+                        child.aspect       = parent.aspect
+                                           * centerRng.nextFloat(0.92f, 1.08f);
                         child.baseRot      = child.rot;
                         child.baseAspect   = child.aspect;
-                        child.seedX        = centerRng.nextFloat(0.0f, 1000.0f);
-                        child.seedY        = centerRng.nextFloat(0.0f, 1000.0f);
+                        // Inherit parent crust seed → conjugate margin
+                        // shape match. Tiny offset prevents identical
+                        // copy across the rift.
+                        child.seedX        = parent.seedX
+                                           + centerRng.nextFloat(-2.0f, 2.0f);
+                        child.seedY        = parent.seedY
+                                           + centerRng.nextFloat(-2.0f, 2.0f);
                         // Children inherit most of parent's landFraction
                         // — a child plate is a chunk of the original
                         // continent and stays mostly land. Mild reduction
@@ -2038,7 +2056,29 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // record a different plate-local coord (since the plate
             // moved) → trail forms. At the elevation pass we sample
             // each plate's trail to add small volcanic island bumps.
-            for (const Hotspot& h : hotspots) {
+            for (Hotspot& h : hotspots) {
+                // HOTSPOT DRIFT. Real plumes aren't perfectly fixed —
+                // they drift slowly (~1 cm/yr equivalent). The Hawaiian-
+                // Emperor bend at 47 Mya records a plume drift event.
+                // Apply a deterministic tiny rotation about the map
+                // centre per epoch so trails curve subtly over long
+                // sims rather than being perfectly straight.
+                {
+                    constexpr float HS_DRIFT_RAD = 0.00040f;
+                    const float rx = h.cx - 0.5f;
+                    const float ry = h.cy - 0.5f;
+                    const float cw = std::cos(HS_DRIFT_RAD);
+                    const float sw = std::sin(HS_DRIFT_RAD);
+                    h.cx = 0.5f + rx * cw - ry * sw;
+                    h.cy = 0.5f + rx * sw + ry * cw;
+                    if (cylSim) {
+                        if (h.cx < 0.0f) { h.cx += 1.0f; }
+                        if (h.cx > 1.0f) { h.cx -= 1.0f; }
+                    } else {
+                        h.cx = std::clamp(h.cx, 0.05f, 0.95f);
+                    }
+                    h.cy = std::clamp(h.cy, 0.05f, 0.95f);
+                }
                 float bestSq = 1e9f; int32_t bestPi = -1;
                 for (std::size_t pi = 0; pi < plates.size(); ++pi) {
                     float dx = h.cx - plates[pi].cx;
@@ -2672,13 +2712,22 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             const float trdist = std::sqrt(trdx * trdx + trdy * trdy);
                             constexpr float TR_RADIUS = 0.025f;
                             if (trdist < TR_RADIUS) {
-                                // Age factor: most-recent point (end
-                                // of vector) is highest; oldest is most
-                                // eroded. Linear falloff over trail.
+                                // Atoll → guyot lifecycle: oldest trail
+                                // points (k=0) have eroded flat AND
+                                // sunk below water as the plate cooled
+                                // and subsided. They contribute no
+                                // elevation but the underwater seamount
+                                // remains. Quadratic age decay: only
+                                // the most recent ~40 % of the trail
+                                // breaks the surface. Real Hawaiian-
+                                // Emperor: only the youngest 5-6
+                                // islands are subaerial; the rest are
+                                // guyots / drowned seamounts.
                                 const float ageT = static_cast<float>(k + 1)
                                                  / static_cast<float>(trailLen);
                                 const float t = 1.0f - trdist / TR_RADIUS;
-                                edgeFalloff += 0.18f * t * t * (0.4f + 0.6f * ageT);
+                                const float ageBoost = ageT * ageT;
+                                edgeFalloff += 0.18f * t * t * ageBoost;
                             }
                         }
                     }
@@ -3717,6 +3766,37 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // No separate binary post-pass needed — biome assignment already
     // produces the correct Desert/Plains/Grassland mix from T × M.
     (void)config;
+
+    // ICE SHEET EXPANSION. Real Earth: continents sitting at the poles
+    // host continental ice sheets (Antarctica today, Laurentide during
+    // Pleistocene). Ice depresses crust isostatically (~30 % of ice
+    // thickness, Greenland still rebounding). Override biome to Snow on
+    // any LAND tile owned by a polar plate AND apply small elevation
+    // depression so coastal tiles flatten into ice shelves.
+    if (config.mapType == MapType::Continents) {
+        const int32_t totalT = width * height;
+        for (int32_t i = 0; i < totalT; ++i) {
+            const aoc::map::TerrainType t = grid.terrain(i);
+            if (t == aoc::map::TerrainType::Ocean
+                || t == aoc::map::TerrainType::ShallowWater) {
+                continue;
+            }
+            const uint8_t pid = grid.plateId(i);
+            if (pid == 0xFFu || pid >= plates.size()) { continue; }
+            if (!plates[pid].isPolar) { continue; }
+            // Polar plate land tile → Snow terrain, Ice feature on
+            // tundra-like tiles (so the existing Ice feature renders).
+            grid.setTerrain(i, aoc::map::TerrainType::Snow);
+            // Drop hills feature — flattened by ice cover.
+            if (grid.feature(i) == aoc::map::FeatureType::Hills) {
+                grid.setFeature(i, aoc::map::FeatureType::None);
+            }
+            // Add Ice feature for visualization (ice shelf / glacier).
+            if (grid.feature(i) == aoc::map::FeatureType::None) {
+                grid.setFeature(i, aoc::map::FeatureType::Ice);
+            }
+        }
+    }
 
     // ROCK-TYPE ASSIGNMENT. Real Earth tiles host different rock types
     // by tectonic setting:
@@ -4775,81 +4855,67 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
     const int32_t height = grid.height();
     const int32_t tileCount = width * height;
 
-    // Rebuild plate and boundary data (lightweight, same seed path guarantees consistency).
-    // We re-derive from the same rng sequence used in generate(), but since rng has advanced
-    // past terrain generation, we use a fresh sub-rng seeded from the current state.
-    aoc::Random plateRng(rng.next());
-    const int32_t plateCount = plateRng.nextInt(4, 6);
+    // Use REAL tectonic data captured by the Continents generator:
+    // plateId per tile, plateMotions, plateCenters, plateLandFrac,
+    // rockType, marginType, sedimentDepth, crustAgeTile. Earlier this
+    // function rebuilt 4-6 fake plate seeds and ignored the actual
+    // simulated tectonics — resources were placed against bogus
+    // boundaries. Now we classify each tile's nearest plate-boundary
+    // type by looking at the velocity-relative-to-neighbor direction
+    // (same logic the renderer's PlateBoundaries overlay uses) and
+    // place resources by real geology + rock type + margin type.
+    const auto& realMotions = grid.plateMotions();
+    const auto& realCenters = grid.plateCenters();
+    const auto& realLandFr  = grid.plateLandFrac();
+    const auto& realRock    = grid.rockType();
+    const auto& realMargin  = grid.marginType();
+    const auto& realSed     = grid.sedimentDepth();
+    const auto& realAge     = grid.crustAgeTile();
+    const bool  cylRes = (grid.topology() == aoc::map::MapTopology::Cylindrical);
 
-    struct PlateSeed {
-        float x;
-        float y;
-        float driftX;
-        float driftY;
-    };
-
-    std::vector<PlateSeed> plates(static_cast<std::size_t>(plateCount));
-    for (int32_t p = 0; p < plateCount; ++p) {
-        plates[static_cast<std::size_t>(p)].x = plateRng.nextFloat(0.05f, 0.95f);
-        plates[static_cast<std::size_t>(p)].y = plateRng.nextFloat(0.05f, 0.95f);
-        const float angle = plateRng.nextFloat(0.0f, 6.28318f);
-        plates[static_cast<std::size_t>(p)].driftX = std::cos(angle);
-        plates[static_cast<std::size_t>(p)].driftY = std::sin(angle);
-    }
-
-    std::vector<int32_t> plateId(static_cast<std::size_t>(tileCount));
-    std::vector<BoundaryType> boundary(static_cast<std::size_t>(tileCount), BoundaryType::None);
-
-    for (int32_t row = 0; row < height; ++row) {
-        for (int32_t col = 0; col < width; ++col) {
-            const float nx = static_cast<float>(col) / static_cast<float>(width);
-            const float ny = static_cast<float>(row) / static_cast<float>(height);
-
-            float bestDist = 1e9f;
-            int32_t bestPlate = 0;
-            for (int32_t p = 0; p < plateCount; ++p) {
-                const float dx = nx - plates[static_cast<std::size_t>(p)].x;
-                const float dy = ny - plates[static_cast<std::size_t>(p)].y;
-                const float dist = dx * dx + dy * dy;
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    bestPlate = p;
-                }
-            }
-            plateId[static_cast<std::size_t>(row * width + col)] = bestPlate;
-        }
-    }
-
+    std::vector<BoundaryType> boundary(
+        static_cast<std::size_t>(tileCount), BoundaryType::None);
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
             const int32_t index = row * width + col;
-            const int32_t myPlate = plateId[static_cast<std::size_t>(index)];
+            const uint8_t myPid = grid.plateId(index);
+            if (myPid == 0xFFu) { continue; }
             const hex::AxialCoord axial = hex::offsetToAxial({col, row});
             const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(axial);
-
             for (const hex::AxialCoord& n : nbrs) {
-                if (!grid.isValid(n)) {
-                    continue;
-                }
+                if (!grid.isValid(n)) { continue; }
                 const int32_t nIndex = grid.toIndex(n);
-                const int32_t nPlate = plateId[static_cast<std::size_t>(nIndex)];
-                if (nPlate == myPlate) {
-                    continue;
+                const uint8_t nPid = grid.plateId(nIndex);
+                if (nPid == 0xFFu || nPid == myPid) { continue; }
+                if (myPid >= realMotions.size()
+                    || nPid >= realMotions.size()) { continue; }
+                const std::pair<float, float>& vA = realMotions[myPid];
+                const std::pair<float, float>& vB = realMotions[nPid];
+                const std::pair<float, float>& cA = realCenters[myPid];
+                const std::pair<float, float>& cB = realCenters[nPid];
+                float bnx = cB.first  - cA.first;
+                float bny = cB.second - cA.second;
+                if (cylRes) {
+                    if (bnx >  0.5f) { bnx -= 1.0f; }
+                    if (bnx < -0.5f) { bnx += 1.0f; }
                 }
-
-                const PlateSeed& myP = plates[static_cast<std::size_t>(myPlate)];
-                const PlateSeed& nP  = plates[static_cast<std::size_t>(nPlate)];
-                const float towardX = nP.x - myP.x;
-                const float towardY = nP.y - myP.y;
-                const float dotMy = myP.driftX * towardX + myP.driftY * towardY;
-                const float dotN  = nP.driftX * (-towardX) + nP.driftY * (-towardY);
-
-                if (dotMy > 0.0f && dotN > 0.0f) {
-                    boundary[static_cast<std::size_t>(index)] = BoundaryType::Convergent;
-                } else if (dotMy < 0.0f && dotN < 0.0f) {
-                    boundary[static_cast<std::size_t>(index)] = BoundaryType::Divergent;
-                } else {
-                    boundary[static_cast<std::size_t>(index)] = BoundaryType::Transform;
+                const float bnLen = std::sqrt(bnx * bnx + bny * bny);
+                if (bnLen < 1e-4f) { continue; }
+                bnx /= bnLen; bny /= bnLen;
+                const float relVx = vA.first  - vB.first;
+                const float relVy = vA.second - vB.second;
+                const float normProj = relVx * bnx + relVy * bny;
+                const float tangProj = -relVx * bny + relVy * bnx;
+                const float aN = std::abs(normProj);
+                const float aT = std::abs(tangProj);
+                if (aN > aT && aN > 0.02f) {
+                    boundary[static_cast<std::size_t>(index)] =
+                        (normProj > 0.0f)
+                            ? BoundaryType::Convergent
+                            : BoundaryType::Divergent;
+                } else if (aT > 0.02f) {
+                    boundary[static_cast<std::size_t>(index)] =
+                        BoundaryType::Transform;
                 }
                 break;
             }
@@ -4893,72 +4959,133 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
             const float temperature = 1.0f - 2.0f * std::abs(latitudeT - 0.5f);
             const bool nearCoast = isNearCoast(row, col);
 
+            // Real-tectonic context per tile.
+            const std::size_t sIdx = static_cast<std::size_t>(index);
+            const uint8_t rType   = (sIdx < realRock.size())   ? realRock[sIdx]   : 0;
+            const uint8_t mType   = (sIdx < realMargin.size()) ? realMargin[sIdx] : 0;
+            const float   sedDep  = (sIdx < realSed.size())    ? realSed[sIdx]    : 0.0f;
+            const float   tileAge = (sIdx < realAge.size())    ? realAge[sIdx]    : 0.0f;
+            const uint8_t myPid   = grid.plateId(index);
+            const float   landFr  = (myPid != 0xFFu && myPid < realLandFr.size())
+                ? realLandFr[myPid] : 0.5f;
+
             ResourceId placed{};
 
-            // Volcanic zone: convergent + high elevation.
-            // WP-B3: Rare Earth deposit at 2% on these high-elev convergent
-            // tiles — fits the "mountain + volcanic" geology (real REE
-            // deposits cluster near carbonatites / alkaline intrusives).
+            // Volcanic arc — convergent + mountain elevation. Cu+Au
+            // porphyry deposits cluster on subduction arcs (Andes,
+            // Carpathians). Rare-earth on alkaline intrusives.
             if (bType == BoundaryType::Convergent && elev >= 2) {
-                if (resRng.chance(0.05f)) {
+                if (resRng.chance(0.07f)) {
+                    placed = ResourceId{aoc::sim::goods::COPPER_ORE};
+                } else if (resRng.chance(0.05f)) {
                     placed = ResourceId{aoc::sim::goods::GOLD_ORE};
                 } else if (resRng.chance(0.04f)) {
                     placed = ResourceId{aoc::sim::goods::SILVER_ORE};
-                } else if (resRng.chance(0.05f)) {
+                } else if (resRng.chance(0.04f)) {
                     placed = ResourceId{aoc::sim::goods::ALUMINUM};
-                } else if (resRng.chance(0.02f)) {
+                } else if (resRng.chance(0.03f)) {
                     placed = ResourceId{aoc::sim::goods::RARE_EARTH};
                 }
             }
-            // Convergent boundary (mountain range).
-            // WP-C2 cut: GEMS slot redirected to TIN.
+            // Lower-elevation convergent: foothills / forearc accretionary
+            // wedge — tin (greisens), copper (volcanic-hosted massive
+            // sulfide), gold (orogenic), silver.
             else if (bType == BoundaryType::Convergent) {
                 if (resRng.chance(0.06f)) {
                     placed = ResourceId{aoc::sim::goods::COPPER_ORE};
+                } else if (resRng.chance(0.05f)) {
+                    placed = ResourceId{aoc::sim::goods::TIN};
                 } else if (resRng.chance(0.04f)) {
                     placed = ResourceId{aoc::sim::goods::GOLD_ORE};
                 } else if (resRng.chance(0.04f)) {
                     placed = ResourceId{aoc::sim::goods::SILVER_ORE};
-                } else if (resRng.chance(0.05f)) {
-                    placed = ResourceId{aoc::sim::goods::TIN};
                 }
             }
-            // Divergent boundary (rift zone)
+            // Divergent boundary — continental rift basins (East African
+            // Rift accumulates oil + gas in graben sediments). Mid-ocean
+            // ridges proper are submarine (already filtered out: water).
             else if (bType == BoundaryType::Divergent) {
-                if (resRng.chance(0.04f)) {
-                    placed = ResourceId{aoc::sim::goods::COPPER_ORE};
-                } else if (elev <= 0 && resRng.chance(0.03f)) {
+                if (elev <= 0 && resRng.chance(0.06f)) {
                     placed = ResourceId{aoc::sim::goods::OIL};
+                } else if (resRng.chance(0.05f)) {
+                    placed = ResourceId{aoc::sim::goods::NATURAL_GAS};
+                } else if (resRng.chance(0.04f)) {
+                    placed = ResourceId{aoc::sim::goods::COPPER_ORE};
                 }
             }
-            // Continental interior (no boundary)
+            // Passive margin — wide sediment apron, prolific oil + gas.
+            // Real Earth: Gulf of Mexico, North Sea, West African margin
+            // host most offshore-onshore hydrocarbon basins. Salt domes
+            // from old evaporite layers trap oil.
+            else if (mType == 1 || mType == 2) {
+                // Active margin (1) → uplifted, less sediment → fewer
+                // oil traps. Passive (2) → sediment pile + salt domes.
+                if (mType == 2) {
+                    if (resRng.chance(0.13f)) {
+                        placed = ResourceId{aoc::sim::goods::OIL};
+                    } else if (resRng.chance(0.08f)) {
+                        placed = ResourceId{aoc::sim::goods::NATURAL_GAS};
+                    } else if (resRng.chance(0.05f)) {
+                        placed = ResourceId{aoc::sim::goods::SALT};
+                    } else if (resRng.chance(0.04f)) {
+                        placed = ResourceId{aoc::sim::goods::COAL};
+                    }
+                } else { // active margin
+                    if (resRng.chance(0.05f)) {
+                        placed = ResourceId{aoc::sim::goods::COPPER_ORE};
+                    } else if (resRng.chance(0.04f)) {
+                        placed = ResourceId{aoc::sim::goods::GOLD_ORE};
+                    }
+                }
+            }
+            // Continental interior. Branch by rock type + age:
+            //   Old craton (age > 100, metamorphic + igneous shield) →
+            //     iron-ore (BIF), gold (orogenic gold in greenstone),
+            //     stone, marble, gemstones (kimberlite pipes).
+            //   Young / sediment-rich basin → oil, gas, coal, niter.
             else if (bType == BoundaryType::None) {
-                // Sedimentary basin: low elevation interior (oil + gas +
-                // coal + niter).  Oil + gas rates bumped so strategic energy
-                // resources actually appear on typical continents instead of
-                // depending on the rare elev==0 interior subset alone.
-                if (elev <= 1) {
+                const bool oldCraton = (tileAge > 100.0f
+                    && (rType == 1 || rType == 2));
+                const bool sedBasin  = (sedDep > 0.04f
+                    || (rType == 0 && elev <= 1));
+                if (oldCraton) {
+                    if (resRng.chance(0.10f)) {
+                        placed = ResourceId{aoc::sim::goods::IRON_ORE};
+                    } else if (resRng.chance(0.06f)) {
+                        placed = ResourceId{aoc::sim::goods::GOLD_ORE};
+                    } else if (resRng.chance(0.05f)) {
+                        placed = ResourceId{aoc::sim::goods::STONE};
+                    } else if (resRng.chance(0.04f)) {
+                        placed = ResourceId{aoc::sim::goods::SILVER_ORE};
+                    }
+                } else if (sedBasin) {
                     if (resRng.chance(0.10f)) {
                         placed = ResourceId{aoc::sim::goods::OIL};
                     } else if (resRng.chance(0.06f)) {
                         placed = ResourceId{aoc::sim::goods::NATURAL_GAS};
-                    } else if (resRng.chance(0.05f)) {
+                    } else if (resRng.chance(0.07f)) {
                         placed = ResourceId{aoc::sim::goods::COAL};
                     } else if (resRng.chance(0.03f)) {
                         placed = ResourceId{aoc::sim::goods::NITER};
                     }
-                }
-                // Continental shield (higher elevation interior)
-                else {
-                    if (resRng.chance(0.08f)) {
+                } else if (elev >= 2) {
+                    if (resRng.chance(0.07f)) {
                         placed = ResourceId{aoc::sim::goods::IRON_ORE};
-                    } else if (resRng.chance(0.06f)) {
+                    } else if (resRng.chance(0.05f)) {
                         placed = ResourceId{aoc::sim::goods::STONE};
-                    } else if (resRng.chance(0.04f)) {
-                        placed = ResourceId{aoc::sim::goods::COAL};
                     }
                 }
             }
+            // Ophiolite-rock tiles (suture lines): chromite, copper,
+            // platinum-group metals real Earth: Oman, Cyprus.
+            if (!placed.isValid() && rType == 3) {
+                if (resRng.chance(0.10f)) {
+                    placed = ResourceId{aoc::sim::goods::COPPER_ORE};
+                } else if (resRng.chance(0.06f)) {
+                    placed = ResourceId{aoc::sim::goods::IRON_ORE};
+                }
+            }
+            (void)landFr;
 
             // Climate-based resources (only if no geology resource was placed).
             // WP-C2 cut: INCENSE/IVORY/COFFEE/TOBACCO/TEA lines stripped —
