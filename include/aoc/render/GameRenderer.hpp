@@ -112,6 +112,20 @@ public:
         Ocean,          ///< Tidal range + salinity bins
         Clouds,         ///< Cloud cover proxy
         Flow,           ///< Drainage flow direction (downhill)
+        Hazards,        ///< Natural hazards (wildfire/flood/drought/etc)
+        BiomeSub,       ///< Biome subtypes (Mediterranean / taiga / atoll / etc)
+        MarineDepth,    ///< Shelf / slope / rise / abyssal / trench
+        Wildlife,       ///< Big game / fur / marine / salmon / birds
+        Disease,        ///< Malaria / yellow fever / sleeping sickness / etc
+        EnergyWind,
+        EnergySolar,
+        EnergyHydro,
+        EnergyGeothermal,
+        EnergyTidal,
+        EnergyWave,
+        AtmExtras,      ///< Föhn / katabatic / pressure cells / vortex
+        HydroExtras,    ///< Aquifers / springs / lake types
+        Events,         ///< Eruption sites / impact craters / supervolcano
     };
     MapOverlay overlayMode = MapOverlay::None;
 

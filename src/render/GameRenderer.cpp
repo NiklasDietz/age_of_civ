@@ -252,6 +252,129 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                         fillB = 0.20f * (1.0f - s);
                         fillA = 0.55f; useFill = true;
                     }
+                } else if (this->overlayMode == MapOverlay::Hazards) {
+                    const auto& nh = grid.naturalHazard();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!nh.empty() && si < nh.size() && nh[si] != 0) {
+                        const uint16_t h = nh[si];
+                        if      (h & 0x0001) { fillR=1.0f; fillG=0.30f; fillB=0.0f; }
+                        else if (h & 0x0002) { fillR=0.10f; fillG=0.55f; fillB=0.95f; }
+                        else if (h & 0x0004) { fillR=0.85f; fillG=0.70f; fillB=0.30f; }
+                        else if (h & 0x0008) { fillR=0.95f; fillG=0.95f; fillB=0.95f; }
+                        else if (h & 0x0010) { fillR=0.70f; fillG=0.40f; fillB=0.20f; }
+                        else if (h & 0x0020) { fillR=0.55f; fillG=0.30f; fillB=0.55f; }
+                        else if (h & 0x0040) { fillR=0.30f; fillG=0.20f; fillB=0.10f; }
+                        else if (h & 0x0080) { fillR=0.30f; fillG=0.10f; fillB=0.30f; }
+                        else if (h & 0x0100) { fillR=0.20f; fillG=0.20f; fillB=0.95f; }
+                        else if (h & 0x0200) { fillR=0.85f; fillG=0.55f; fillB=0.10f; }
+                        fillA = 0.55f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::BiomeSub) {
+                    const auto& bs = grid.biomeSubtype();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!bs.empty() && si < bs.size() && bs[si] != 0) {
+                        const uint8_t b = bs[si];
+                        const float h = static_cast<float>(b) / 14.0f;
+                        fillR = 0.4f + 0.5f * std::cos(h * 6.2832f);
+                        fillG = 0.4f + 0.5f * std::cos((h + 0.33f) * 6.2832f);
+                        fillB = 0.4f + 0.5f * std::cos((h + 0.66f) * 6.2832f);
+                        fillA = 0.55f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::MarineDepth) {
+                    const auto& md = grid.marineDepth();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!md.empty() && si < md.size() && md[si] != 0) {
+                        const uint8_t z = md[si];
+                        const float t = static_cast<float>(z) / 6.0f;
+                        fillR = 0.10f * (1.0f - t);
+                        fillG = 0.30f + 0.40f * (1.0f - t);
+                        fillB = 0.50f + 0.45f * t;
+                        fillA = 0.55f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Wildlife) {
+                    const auto& wl = grid.wildlife();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!wl.empty() && si < wl.size() && wl[si] != 0) {
+                        switch (wl[si]) {
+                            case 1: fillR=0.85f; fillG=0.60f; fillB=0.20f; break;
+                            case 2: fillR=0.55f; fillG=0.35f; fillB=0.20f; break;
+                            case 3: fillR=0.20f; fillG=0.55f; fillB=0.85f; break;
+                            case 4: fillR=0.95f; fillG=0.30f; fillB=0.55f; break;
+                            case 5: fillR=0.55f; fillG=0.95f; fillB=0.30f; break;
+                            default: break;
+                        }
+                        fillA = 0.55f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Disease) {
+                    const auto& ds = grid.disease();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!ds.empty() && si < ds.size() && ds[si] != 0) {
+                        fillR = 0.65f; fillG = 0.20f; fillB = 0.65f;
+                        fillA = std::min(0.65f,
+                            0.30f + 0.10f * static_cast<float>(__builtin_popcount(ds[si])));
+                        useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::EnergyWind
+                        || this->overlayMode == MapOverlay::EnergySolar
+                        || this->overlayMode == MapOverlay::EnergyHydro
+                        || this->overlayMode == MapOverlay::EnergyGeothermal
+                        || this->overlayMode == MapOverlay::EnergyTidal
+                        || this->overlayMode == MapOverlay::EnergyWave) {
+                    const std::vector<uint8_t>* en = nullptr;
+                    if (this->overlayMode == MapOverlay::EnergyWind)        { en = &grid.windEnergy(); }
+                    else if (this->overlayMode == MapOverlay::EnergySolar)  { en = &grid.solarEnergy(); }
+                    else if (this->overlayMode == MapOverlay::EnergyHydro)  { en = &grid.hydroEnergy(); }
+                    else if (this->overlayMode == MapOverlay::EnergyGeothermal) { en = &grid.geothermalEnergy(); }
+                    else if (this->overlayMode == MapOverlay::EnergyTidal)  { en = &grid.tidalEnergy(); }
+                    else                                                    { en = &grid.waveEnergy(); }
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (en && !en->empty() && si < en->size()) {
+                        const float v = static_cast<float>((*en)[si]) / 255.0f;
+                        fillR = v;
+                        fillG = 0.85f * v;
+                        fillB = 0.20f * (1.0f - v);
+                        fillA = 0.20f + 0.40f * v;
+                        useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::AtmExtras) {
+                    const auto& ae = grid.atmosphericExtras();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!ae.empty() && si < ae.size() && ae[si] != 0) {
+                        const uint8_t v = ae[si];
+                        if      (v & 0x01) { fillR=0.95f; fillG=0.85f; fillB=0.20f; }
+                        else if (v & 0x02) { fillR=0.20f; fillG=0.85f; fillB=0.95f; }
+                        else if (v & 0x04) { fillR=0.85f; fillG=0.20f; fillB=0.20f; }
+                        else if (v & 0x08) { fillR=0.20f; fillG=0.20f; fillB=0.95f; }
+                        else if (v & 0x10) { fillR=0.95f; fillG=0.55f; fillB=0.20f; }
+                        else if (v & 0x20) { fillR=0.20f; fillG=0.95f; fillB=0.55f; }
+                        fillA = 0.50f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::HydroExtras) {
+                    const auto& he = grid.hydroExtras();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!he.empty() && si < he.size() && he[si] != 0) {
+                        const uint8_t v = he[si];
+                        if      (v & 0x40) { fillR=0.85f; fillG=0.85f; fillB=0.10f; } // salt lake
+                        else if (v & 0x80) { fillR=0.30f; fillG=0.55f; fillB=0.95f; } // fresh lake
+                        else if (v & 0x04) { fillR=0.95f; fillG=0.30f; fillB=0.30f; } // crater
+                        else if (v & 0x10) { fillR=0.55f; fillG=0.85f; fillB=0.95f; } // thermokarst
+                        else if (v & 0x20) { fillR=0.65f; fillG=0.95f; fillB=0.65f; } // oxbow
+                        else if (v & 0x02) { fillR=0.20f; fillG=0.95f; fillB=0.95f; } // spring
+                        else if (v & 0x01) { fillR=0.20f; fillG=0.55f; fillB=0.55f; } // aquifer
+                        fillA = 0.55f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Events) {
+                    const auto& ev = grid.eventMarker();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!ev.empty() && si < ev.size() && ev[si] != 0) {
+                        switch (ev[si]) {
+                            case 1: fillR=0.95f; fillG=0.20f; fillB=0.20f; break; // eruption
+                            case 2: fillR=0.85f; fillG=0.65f; fillB=0.20f; break; // crater
+                            case 3: fillR=0.95f; fillG=0.10f; fillB=0.95f; break; // supervolcano
+                            default: break;
+                        }
+                        fillA = 0.85f; useFill = true;
+                    }
                 } else if (this->overlayMode == MapOverlay::Storms) {
                     const auto& ch = grid.climateHazard();
                     const std::size_t si = static_cast<std::size_t>(index);

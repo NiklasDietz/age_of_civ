@@ -721,6 +721,128 @@ public:
     void setFlowDir(std::vector<uint8_t> v) {
         this->m_flowDir = std::move(v);
     }
+
+    /// Per-tile natural-hazard bitfield (16-bit).
+    /// b0 wildfire, b1 flood, b2 drought, b3 avalanche, b4 landslide,
+    /// b5 ash fall, b6 lahar, b7 sinkhole, b8 storm surge, b9 dust storm.
+    [[nodiscard]] const std::vector<uint16_t>& naturalHazard() const {
+        return this->m_naturalHazard;
+    }
+    void setNaturalHazard(std::vector<uint16_t> v) {
+        this->m_naturalHazard = std::move(v);
+    }
+
+    /// Per-tile biome subtype tag.
+    /// 0 none, 1 Mediterranean (Cs), 2 cloud forest, 3 temperate
+    /// rainforest, 4 mangrove, 5 taiga, 6 alpine tundra, 7 polar
+    /// desert, 8 cold desert, 9 steppe, 10 prairie, 11 atoll, 12 kelp
+    /// forest, 13 estuary, 14 carbonate platform.
+    [[nodiscard]] const std::vector<uint8_t>& biomeSubtype() const {
+        return this->m_biomeSubtype;
+    }
+    void setBiomeSubtype(std::vector<uint8_t> v) {
+        this->m_biomeSubtype = std::move(v);
+    }
+
+    /// Per-tile marine depth zone.
+    /// 0 land, 1 continental shelf (<200 m), 2 slope (200-2000 m),
+    /// 3 rise (2000-4000 m), 4 abyssal plain (4000-6000 m),
+    /// 5 trench (>6000 m), 6 submarine canyon.
+    [[nodiscard]] const std::vector<uint8_t>& marineDepth() const {
+        return this->m_marineDepth;
+    }
+    void setMarineDepth(std::vector<uint8_t> v) {
+        this->m_marineDepth = std::move(v);
+    }
+
+    /// Per-tile wildlife class.
+    /// 0 none, 1 big game (savanna/forest), 2 fur game (boreal/cold),
+    /// 3 marine mammals (cold ocean), 4 salmon (cold river+coast),
+    /// 5 migratory bird stopover.
+    [[nodiscard]] const std::vector<uint8_t>& wildlife() const {
+        return this->m_wildlife;
+    }
+    void setWildlife(std::vector<uint8_t> v) {
+        this->m_wildlife = std::move(v);
+    }
+
+    /// Per-tile disease bitfield.
+    /// b0 malaria, b1 yellow fever, b2 sleeping sickness, b3 typhus,
+    /// b4 plague reservoir, b5 cholera-prone delta.
+    [[nodiscard]] const std::vector<uint8_t>& disease() const {
+        return this->m_disease;
+    }
+    void setDisease(std::vector<uint8_t> v) {
+        this->m_disease = std::move(v);
+    }
+
+    /// Per-tile renewable-energy potential 0-255.
+    [[nodiscard]] const std::vector<uint8_t>& windEnergy() const {
+        return this->m_windEnergy;
+    }
+    void setWindEnergy(std::vector<uint8_t> v) {
+        this->m_windEnergy = std::move(v);
+    }
+    [[nodiscard]] const std::vector<uint8_t>& solarEnergy() const {
+        return this->m_solarEnergy;
+    }
+    void setSolarEnergy(std::vector<uint8_t> v) {
+        this->m_solarEnergy = std::move(v);
+    }
+    [[nodiscard]] const std::vector<uint8_t>& hydroEnergy() const {
+        return this->m_hydroEnergy;
+    }
+    void setHydroEnergy(std::vector<uint8_t> v) {
+        this->m_hydroEnergy = std::move(v);
+    }
+    [[nodiscard]] const std::vector<uint8_t>& geothermalEnergy() const {
+        return this->m_geothermalEnergy;
+    }
+    void setGeothermalEnergy(std::vector<uint8_t> v) {
+        this->m_geothermalEnergy = std::move(v);
+    }
+    [[nodiscard]] const std::vector<uint8_t>& tidalEnergy() const {
+        return this->m_tidalEnergy;
+    }
+    void setTidalEnergy(std::vector<uint8_t> v) {
+        this->m_tidalEnergy = std::move(v);
+    }
+    [[nodiscard]] const std::vector<uint8_t>& waveEnergy() const {
+        return this->m_waveEnergy;
+    }
+    void setWaveEnergy(std::vector<uint8_t> v) {
+        this->m_waveEnergy = std::move(v);
+    }
+
+    /// Per-tile atmospheric-extras bitfield.
+    /// b0 föhn, b1 katabatic, b2 high pressure cell, b3 polar vortex,
+    /// b4 ITCZ migrant, b5 monsoon belt explicit.
+    [[nodiscard]] const std::vector<uint8_t>& atmosphericExtras() const {
+        return this->m_atmosphericExtras;
+    }
+    void setAtmosphericExtras(std::vector<uint8_t> v) {
+        this->m_atmosphericExtras = std::move(v);
+    }
+
+    /// Per-tile hydrological-extras bitfield.
+    /// b0 aquifer, b1 spring, b2 crater lake, b3 tarn, b4 thermokarst,
+    /// b5 oxbow, b6 salt lake, b7 fresh lake.
+    [[nodiscard]] const std::vector<uint8_t>& hydroExtras() const {
+        return this->m_hydroExtras;
+    }
+    void setHydroExtras(std::vector<uint8_t> v) {
+        this->m_hydroExtras = std::move(v);
+    }
+
+    /// Per-tile event marker.
+    /// 0 none, 1 historical eruption, 2 impact crater, 3 supervolcano
+    /// caldera, 4 ancient battlefield (game-state), 5 prehistoric site.
+    [[nodiscard]] const std::vector<uint8_t>& eventMarker() const {
+        return this->m_eventMarker;
+    }
+    void setEventMarker(std::vector<uint8_t> v) {
+        this->m_eventMarker = std::move(v);
+    }
 private:
     std::vector<uint8_t>          m_plateId;
     std::vector<std::pair<float, float>> m_hotspots;
@@ -745,6 +867,20 @@ private:
     std::vector<uint8_t>                 m_oceanZone;
     std::vector<float>                   m_cloudCover;
     std::vector<uint8_t>                 m_flowDir;
+    std::vector<uint16_t>                m_naturalHazard;
+    std::vector<uint8_t>                 m_biomeSubtype;
+    std::vector<uint8_t>                 m_marineDepth;
+    std::vector<uint8_t>                 m_wildlife;
+    std::vector<uint8_t>                 m_disease;
+    std::vector<uint8_t>                 m_windEnergy;
+    std::vector<uint8_t>                 m_solarEnergy;
+    std::vector<uint8_t>                 m_hydroEnergy;
+    std::vector<uint8_t>                 m_geothermalEnergy;
+    std::vector<uint8_t>                 m_tidalEnergy;
+    std::vector<uint8_t>                 m_waveEnergy;
+    std::vector<uint8_t>                 m_atmosphericExtras;
+    std::vector<uint8_t>                 m_hydroExtras;
+    std::vector<uint8_t>                 m_eventMarker;
     /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
     /// Greenhouse improvement actively populate. Tile index → good id.
     std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;

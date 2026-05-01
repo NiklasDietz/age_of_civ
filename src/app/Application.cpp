@@ -1340,6 +1340,20 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
     addOverlayBtn("Ocean",    aoc::render::GameRenderer::MapOverlay::Ocean);
     addOverlayBtn("Cloud",    aoc::render::GameRenderer::MapOverlay::Clouds);
     addOverlayBtn("Flow",     aoc::render::GameRenderer::MapOverlay::Flow);
+    addOverlayBtn("Hazard",   aoc::render::GameRenderer::MapOverlay::Hazards);
+    addOverlayBtn("BioSub",   aoc::render::GameRenderer::MapOverlay::BiomeSub);
+    addOverlayBtn("Depth",    aoc::render::GameRenderer::MapOverlay::MarineDepth);
+    addOverlayBtn("Wild",     aoc::render::GameRenderer::MapOverlay::Wildlife);
+    addOverlayBtn("Disease",  aoc::render::GameRenderer::MapOverlay::Disease);
+    addOverlayBtn("Wind",     aoc::render::GameRenderer::MapOverlay::EnergyWind);
+    addOverlayBtn("Solar",    aoc::render::GameRenderer::MapOverlay::EnergySolar);
+    addOverlayBtn("Hydro",    aoc::render::GameRenderer::MapOverlay::EnergyHydro);
+    addOverlayBtn("Geo",      aoc::render::GameRenderer::MapOverlay::EnergyGeothermal);
+    addOverlayBtn("Tide",     aoc::render::GameRenderer::MapOverlay::EnergyTidal);
+    addOverlayBtn("Wave",     aoc::render::GameRenderer::MapOverlay::EnergyWave);
+    addOverlayBtn("Atm",      aoc::render::GameRenderer::MapOverlay::AtmExtras);
+    addOverlayBtn("HydroX",   aoc::render::GameRenderer::MapOverlay::HydroExtras);
+    addOverlayBtn("Events",   aoc::render::GameRenderer::MapOverlay::Events);
 
     // Generate — rebuilds the world with current parameters. Apply
     // when the user is done tweaking values; deferred so each
