@@ -69,7 +69,8 @@ public:
               PlayerId player,
               const CameraController& camera,
               float mapX, float mapY, float mapW, float mapH,
-              uint32_t screenWidth, uint32_t screenHeight) const;
+              uint32_t screenWidth, uint32_t screenHeight,
+              bool platesOverlay = false) const;
 
     /**
      * @brief Test if a screen-space click is inside the minimap.

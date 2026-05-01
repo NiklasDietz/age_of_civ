@@ -61,7 +61,8 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d,
                    PlayerId player,
                    const CameraController& camera,
                    float mapX, float mapY, float mapW, float mapH,
-                   uint32_t screenWidth, uint32_t screenHeight) const {
+                   uint32_t screenWidth, uint32_t screenHeight,
+                   bool platesOverlay) const {
     // Background
     renderer2d.drawFilledRect(mapX - 2.0f, mapY - 2.0f,
                               mapW + 4.0f, mapH + 4.0f,
@@ -94,6 +95,22 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d,
 
             const aoc::map::TerrainType terrain = grid.terrain(index);
             aoc::map::TerrainColor tc = aoc::map::terrainColor(terrain);
+
+            // Plate overlay: replace per-tile colour with a deterministic
+            // hue derived from plate id. Same hash as the main map's
+            // plate overlay so colours match between the two views.
+            if (platesOverlay) {
+                const uint8_t cat = grid.plateId(index);
+                if (cat != 0xFFu) {
+                    const uint32_t h = static_cast<uint32_t>(cat) * 2654435761u;
+                    tc.r = std::min(1.0f,
+                        static_cast<float>((h >> 0)  & 0xFFu) / 255.0f * 0.7f + 0.3f);
+                    tc.g = std::min(1.0f,
+                        static_cast<float>((h >> 8)  & 0xFFu) / 255.0f * 0.7f + 0.3f);
+                    tc.b = std::min(1.0f,
+                        static_cast<float>((h >> 16) & 0xFFu) / 255.0f * 0.7f + 0.3f);
+                }
+            }
 
             // Dim revealed (non-visible) tiles
             if (vis == aoc::map::TileVisibility::Revealed) {

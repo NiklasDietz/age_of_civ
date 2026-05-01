@@ -252,7 +252,22 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         float seedX;
         float seedY;
         float landFraction; ///< 0=pure ocean, 1=pure continental, 0.5=half/half
-        int32_t ageEpochs = 0; ///< Epochs since this plate was created (for shelf width scaling)
+        int32_t ageEpochs = 0;
+        /// Per-plate Voronoi weight. Real Earth plate sizes vary
+        /// ~50× (Pacific ≈ 100M km², Cocos ≈ 3M km²). Multiplicatively
+        /// weighted Voronoi gives each plate a "claim radius" — high
+        /// weight = larger territory.
+        float weight = 1.0f;
+        /// Extra Voronoi seeds in WORLD coords. When non-empty, the
+        /// plate's Voronoi distance uses min over all seeds. Lets a
+        /// single plate cover an irregular L/U/wrapped territory
+        /// (Eurasian Plate covers Europe + most of Asia + Arctic
+        /// fringe — not a convex Voronoi blob).
+        std::vector<std::pair<float, float>> extraSeeds;
+        /// True for the two stationary polar plates (Arctic / Antarctic
+        /// analogues). They drift very little so the polar band stays
+        /// covered consistently across the sim.
+        bool isPolar = false;
         // Hotspot track in PLATE-LOCAL coords.
         std::vector<std::pair<float, float>> hotspotTrail;
         // Orogeny field in PLATE-LOCAL coordinates. 64×64 grid covering
@@ -311,7 +326,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 : centerRng.nextInt(6, 8);
             // More ocean plates = tighter Voronoi cells around land =
             // narrower continental shelves, more separated landmasses.
-            const int32_t oceanCountTarget = centerRng.nextInt(12, 16);
+            // Real Earth: 7 major + 8 minor = ~15 plates total. With
+            // ~7 land seeds + ~5 ocean + 6 forced polar = 18 plates,
+            // close to Earth's count. Earlier 12-16 produced 25-29
+            // initial plates → too many small territories.
+            const int32_t oceanCountTarget = centerRng.nextInt(4, 6);
             // Tighter land gap lets 7-14 seeds fit on the unit square.
             // 0.42 was fine for 3-4 plates but rejects half the targets
             // when landCountTarget ≥ 6.
@@ -326,7 +345,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 p.isLand = isLand;
                 p.vx = centerRng.nextFloat(-0.70f, 0.70f);
                 p.vy = centerRng.nextFloat(-0.70f, 0.70f);
-                p.aspect     = centerRng.nextFloat(0.85f, 1.20f);
+                p.aspect     = centerRng.nextFloat(0.95f, 1.10f);
                 p.rot        = centerRng.nextFloat(-3.14159f, 3.14159f);
                 p.baseRot    = p.rot;
                 p.baseAspect = p.aspect;
@@ -357,6 +376,43 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     : centerRng.nextFloat(0.05f, 0.18f);
                 p.orogenyLocal.assign(
                     static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
+                // Earth plate-size distribution: a couple of giants
+                // (Pacific 1.5, Eurasian 1.3, African 1.2 — relative
+                // to the median). Most plates ~1.0. Some small minor
+                // plates 0.6-0.8. We sample from a skewed range so
+                // generated worlds get a similar size mix.
+                const float wRoll = centerRng.nextFloat(0.0f, 1.0f);
+                if (wRoll < 0.15f)      { p.weight = centerRng.nextFloat(1.30f, 1.55f); } // giant
+                else if (wRoll < 0.55f) { p.weight = centerRng.nextFloat(0.95f, 1.20f); } // medium
+                else                    { p.weight = centerRng.nextFloat(0.60f, 0.90f); } // small
+                // Irregular-shape probability: 35 % of plates get one
+                // extra Voronoi seed offset from the primary, giving
+                // an L-shape / lobed / curved territory rather than
+                // a clean Voronoi cell. Real Earth plates are highly
+                // irregular due to accretion + rifting history.
+                // 60 % of plates get 1 extra seed, 25 % of those get
+                // a SECOND extra seed → multi-lobed territory.
+                // Real Earth plates almost never have clean Voronoi
+                // shapes; they have arms and bays from accretion +
+                // partial mergers.
+                const float irregRoll = centerRng.nextFloat(0.0f, 1.0f);
+                const int32_t extras = (irregRoll < 0.15f) ? 2
+                                     : (irregRoll < 0.60f) ? 1 : 0;
+                const bool cylC = (config.topology == MapTopology::Cylindrical);
+                for (int32_t e = 0; e < extras; ++e) {
+                    const float ang = centerRng.nextFloat(0.0f, 6.2832f);
+                    const float off = centerRng.nextFloat(0.10f, 0.22f) * p.weight;
+                    float sx = cx + std::cos(ang) * off;
+                    float sy = cy + std::sin(ang) * off;
+                    if (cylC) {
+                        if (sx < 0.0f) { sx += 1.0f; }
+                        if (sx > 1.0f) { sx -= 1.0f; }
+                    } else {
+                        sx = std::clamp(sx, 0.05f, 0.95f);
+                    }
+                    sy = std::clamp(sy, 0.05f, 0.95f);
+                    p.extraSeeds.emplace_back(sx, sy);
+                }
                 plates.push_back(p);
             };
 
@@ -454,27 +510,43 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // (Arctic / Southern Ocean style).
             attempts = 0;
             int32_t oceanPlaced = 0;
-            const int32_t POLAR_OCEANS_PER_BAND = 3;
-            for (int32_t b = 0; b < POLAR_OCEANS_PER_BAND; ++b) {
-                // Top band (Arctic).
-                const float topCx = (b + 0.5f)
-                    * ((xHiOcn - xLoOcn) / static_cast<float>(POLAR_OCEANS_PER_BAND))
-                    + xLoOcn;
-                pushPlate(std::clamp(topCx + centerRng.nextFloat(-0.05f, 0.05f),
-                                      xLoOcn, xHiOcn),
-                          centerRng.nextFloat(0.03f, LAND_LAT_LO - 0.02f),
-                          false);
-                ++oceanPlaced;
-                // Bottom band (Southern Ocean / Antarctic surroundings).
-                const float botCx = (b + 0.5f)
-                    * ((xHiOcn - xLoOcn) / static_cast<float>(POLAR_OCEANS_PER_BAND))
-                    + xLoOcn;
-                pushPlate(std::clamp(botCx + centerRng.nextFloat(-0.05f, 0.05f),
-                                      xLoOcn, xHiOcn),
-                          centerRng.nextFloat(LAND_LAT_HI + 0.02f, 0.97f),
-                          false);
-                ++oceanPlaced;
-            }
+            // Two GIANT polar plates (Arctic + Antarctic analogues).
+            // Each is a single high-weight plate spanning its polar
+            // band rather than 3 small plates. With weight 1.6 + extra
+            // seeds spaced across the map width, these dominate the
+            // top/bottom strip → Antarctica-style continuous polar
+            // ocean. Marked isPolar so they barely drift.
+            const auto pushPolarPlate = [&](float cy0) {
+                Plate p;
+                p.cx = 0.5f;
+                p.cy = cy0;
+                p.isLand = false;
+                p.vx = centerRng.nextFloat(-0.10f, 0.10f);
+                p.vy = centerRng.nextFloat(-0.05f, 0.05f);
+                p.aspect = 1.0f;
+                p.rot    = 0.0f;
+                p.baseRot = p.rot;
+                p.baseAspect = p.aspect;
+                p.seedX = centerRng.nextFloat(0.0f, 1000.0f);
+                p.seedY = centerRng.nextFloat(0.0f, 1000.0f);
+                p.landFraction = centerRng.nextFloat(0.05f, 0.15f);
+                p.orogenyLocal.assign(
+                    static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
+                // Modest weight + many extra seeds = thin band coverage.
+                // weight 1.15 lets normal mid-lat plates still claim
+                // their territories, while extra seeds keep the polar
+                // strip continuous across the map width.
+                p.weight = 1.15f;
+                p.isPolar = true;
+                p.extraSeeds.emplace_back(0.15f, cy0);
+                p.extraSeeds.emplace_back(0.35f, cy0);
+                p.extraSeeds.emplace_back(0.65f, cy0);
+                p.extraSeeds.emplace_back(0.85f, cy0);
+                plates.push_back(p);
+            };
+            pushPolarPlate(centerRng.nextFloat(0.03f, 0.10f));      // Arctic
+            pushPolarPlate(centerRng.nextFloat(0.90f, 0.97f));      // Antarctic
+            oceanPlaced += 2;
             // Then fill remaining ocean seeds across the map (interior
             // gaps between continents).
             while (oceanPlaced < oceanCountTarget && attempts < 800) {
@@ -610,7 +682,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         const int32_t EPOCHS = (config.runEpochsLimit > 0)
             ? std::min(requestedEpochs, config.runEpochsLimit)
             : requestedEpochs;
-        const int32_t CYCLE = 5;
+        // Slower rift cycle (8 epochs) so plate count grows less over
+        // a sim. Real Wilson-cycle rifting events are rare (~once per
+        // 100 My); over 40 epochs we want maybe 4-5 rifts.
+        const int32_t CYCLE = 8;
         // DT derived from EPOCHS and the user-configurable total drift
         // budget. Default drift = 0.6 map widths. Larger drift = bigger
         // plate motion = more dramatic continental shuffle. Smaller =
@@ -624,7 +699,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // With slower DT and per-epoch scaling, contributions are
         // smaller per step, so a lower gate is needed to let stress
         // accumulate to mountain-tall over the sim.
-        constexpr float   STRESS_GATE = 0.30f;
+        // Lower gate so MORE boundaries register (with smaller per-
+        // epoch contribution) — produces a gradient: weak boundaries
+        // equilibrate around Hills, strongest reach Mountain.
+        constexpr float   STRESS_GATE = 0.40f;
 
         // Snapshot starting positions so we can restore the final ones
         // for the rendering pass below — stress accumulates across the
@@ -637,8 +715,12 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // flat maps BOUNCE so plates stay on the rectangle.
             // Y always bounces (poles aren't wrap-connected).
             for (Plate& p : plates) {
-                p.cx += p.vx * DT;
-                p.cy += p.vy * DT;
+                // Polar plates barely drift — Antarctica is essentially
+                // stationary on geological timescales. Apply 0.3× DT
+                // to keep them anchored at the poles.
+                const float motionScale = p.isPolar ? 0.3f : 1.0f;
+                p.cx += p.vx * DT * motionScale;
+                p.cy += p.vy * DT * motionScale;
                 if (cylSim) {
                     if (p.cx < 0.0f) { p.cx += 1.0f; }
                     if (p.cx > 1.0f) { p.cx -= 1.0f; }
@@ -761,16 +843,43 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     if (inContact) {
                         const float dxn = dx / std::max(0.0001f, d);
                         const float dyn = dy / std::max(0.0001f, d);
-                        // Decompose relV into normal (along collision axis)
-                        // and dampen the normal component.
                         const float relVn = relVx * dxn + relVy * dyn;
                         const float dampedRelVn = relVn * COLLISION_DAMP;
-                        const float deltaVn = dampedRelVn - relVn; // negative
-                        // Distribute equal+opposite impulse so |momentum| conserved.
+                        const float deltaVn = dampedRelVn - relVn;
                         plates[a].vx += deltaVn * dxn * 0.5f;
                         plates[a].vy += deltaVn * dyn * 0.5f;
                         plates[b].vx -= deltaVn * dxn * 0.5f;
                         plates[b].vy -= deltaVn * dyn * 0.5f;
+
+                        // TECTONIC ESCAPE / LATERAL EXTRUSION. Real
+                        // example: India crashing into Eurasia pushed
+                        // Indochina sideways out of the way (~5 cm/yr
+                        // SE motion of SE Asia). Apply a small lateral
+                        // velocity nudge to nearby plates perpendicular
+                        // to the collision axis, simulating crustal
+                        // material being squeezed sideways.
+                        const float perpX = -dyn;
+                        const float perpY =  dxn;
+                        for (std::size_t k = 0; k < plates.size(); ++k) {
+                            if (k == a || k == b) { continue; }
+                            float kdx = plates[k].cx
+                                      - (plates[a].cx + plates[b].cx) * 0.5f;
+                            float kdy = plates[k].cy
+                                      - (plates[a].cy + plates[b].cy) * 0.5f;
+                            if (cylSim) {
+                                if (kdx > 0.5f) { kdx -= 1.0f; }
+                                if (kdx < -0.5f) { kdx += 1.0f; }
+                            }
+                            const float kd = std::sqrt(kdx * kdx + kdy * kdy);
+                            if (kd > 0.30f) { continue; }
+                            // Sign chosen so plate is pushed away from
+                            // collision center perpendicular to axis.
+                            const float side = (perpX * kdx + perpY * kdy) > 0.0f
+                                ? 1.0f : -1.0f;
+                            const float strength = (1.0f - kd / 0.30f) * 0.004f;
+                            plates[k].vx += perpX * side * strength;
+                            plates[k].vy += perpY * side * strength;
+                        }
                     }
 
                     const float relVMag = std::sqrt(relVx * relVx + relVy * relVy);
@@ -833,10 +942,42 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         plates[a].cy = (plates[a].cy + plates[b].cy) * 0.5f;
                         plates[a].vx = (plates[a].vx + plates[b].vx) * 0.5f;
                         plates[a].vy = (plates[a].vy + plates[b].vy) * 0.5f;
-                        // Merged plate keeps the older age (preserves
-                        // long history for shelf-width purposes).
                         plates[a].ageEpochs = std::max(
                             plates[a].ageEpochs, plates[b].ageEpochs);
+
+                        // SLAB BREAK-OFF. After continental collision
+                        // shuts off subduction, the trailing oceanic
+                        // slab detaches from the buoyant continental
+                        // crust and sinks into the mantle. Surface
+                        // rebounds upward as the slab's downward pull
+                        // is removed (~+1 km uplift across Tibet-
+                        // Himalaya, post-Indian collision). Add a
+                        // broad +0.05 uplift across a wide area of the
+                        // merged plate centred on the seam.
+                        // Smaller rebound area + height — earlier values
+                        // dumped +0.05 across most of the merged plate
+                        // each merge, eventually pushing every tile
+                        // above mountain threshold.
+                        constexpr float SLAB_REBOUND_RADIUS = 0.18f;
+                        constexpr float SLAB_REBOUND_HEIGHT = 0.02f;
+                        for (int32_t gy = 0; gy < OROGENY_GRID; ++gy) {
+                            for (int32_t gx = 0; gx < OROGENY_GRID; ++gx) {
+                                const float lx = (static_cast<float>(gx) + 0.5f)
+                                               / static_cast<float>(OROGENY_GRID)
+                                               * (2.0f * OROGENY_HALF) - OROGENY_HALF;
+                                const float ly = (static_cast<float>(gy) + 0.5f)
+                                               / static_cast<float>(OROGENY_GRID)
+                                               * (2.0f * OROGENY_HALF) - OROGENY_HALF;
+                                const float dxL = lx - seamLx;
+                                const float dyL = ly - seamLy;
+                                const float dL = std::sqrt(dxL * dxL + dyL * dyL);
+                                if (dL < SLAB_REBOUND_RADIUS) {
+                                    const float t = 1.0f - dL / SLAB_REBOUND_RADIUS;
+                                    plates[a].orogenyLocal[static_cast<std::size_t>(
+                                        gy * OROGENY_GRID + gx)] += SLAB_REBOUND_HEIGHT * t;
+                                }
+                            }
+                        }
                         plates.erase(plates.begin()
                             + static_cast<std::ptrdiff_t>(b));
                         --b;
@@ -881,9 +1022,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // world fills up with land plates → land-only map.
                 // Real-world Pangaea cycle has CONSTANT net plate count:
                 // mergers balance rifts.
+                // Tight cap: 18-22 plates total max. Earth has ~15.
+                // Earlier 2× allowed 36+ plates → fragmented appearance.
                 const std::size_t maxPlates = std::max(
-                    static_cast<std::size_t>(20),
-                    startPlates.size() * 2);
+                    static_cast<std::size_t>(18),
+                    startPlates.size() + static_cast<std::size_t>(4));
                 // Only ONE rift per CYCLE epochs (was up to 3).
                 // Multiple simultaneous rifts produced abrupt visual
                 // jumps — real Wilson-cycle rifting happens piecemeal
@@ -894,9 +1037,42 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         : std::min(1, static_cast<int32_t>(landIdx.size()));
                 for (int32_t s = 0; s < splitsThisEpoch; ++s) {
                     if (landIdx.empty()) { break; }
-                    const std::size_t pickPos = static_cast<std::size_t>(
-                        centerRng.nextInt(0,
-                            static_cast<int32_t>(landIdx.size()) - 1));
+                    // PLUME-INDUCED RIFTING. Prefer plates near a
+                    // hotspot — major rifts on Earth correlate with
+                    // mantle plumes (Afar plume → East African Rift +
+                    // Red Sea opening; CAMP plume → Atlantic opening
+                    // ~200 Mya; Iceland plume → North Atlantic
+                    // separation). For each candidate plate compute
+                    // its distance to the nearest hotspot; weight the
+                    // pick toward closer plates.
+                    std::size_t pickPos = 0;
+                    if (!hotspots.empty()) {
+                        float bestProx = -1.0f;
+                        for (std::size_t k = 0; k < landIdx.size(); ++k) {
+                            const Plate& cand = plates[landIdx[k]];
+                            float minHd = 1e9f;
+                            for (const Hotspot& h : hotspots) {
+                                float hdx = cand.cx - h.cx;
+                                float hdy = cand.cy - h.cy;
+                                if (cylSim) {
+                                    if (hdx > 0.5f) { hdx -= 1.0f; }
+                                    if (hdx < -0.5f) { hdx += 1.0f; }
+                                }
+                                const float hd = std::sqrt(hdx * hdx + hdy * hdy);
+                                if (hd < minHd) { minHd = hd; }
+                            }
+                            const float prox = 1.0f / (0.05f + minHd);
+                            const float jitter = centerRng.nextFloat(0.0f, prox * 0.5f);
+                            if (prox + jitter > bestProx) {
+                                bestProx = prox + jitter;
+                                pickPos = k;
+                            }
+                        }
+                    } else {
+                        pickPos = static_cast<std::size_t>(
+                            centerRng.nextInt(0,
+                                static_cast<int32_t>(landIdx.size()) - 1));
+                    }
                     const std::size_t pi = landIdx[pickPos];
                     landIdx.erase(landIdx.begin()
                         + static_cast<std::ptrdiff_t>(pickPos));
@@ -1011,6 +1187,63 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         plates.push_back(child);
                     }
                 }
+                // MICROPLATES. Between major plates, smaller fragments
+                // sometimes form (Caribbean, Cocos, Scotia, Adria,
+                // Anatolian, Aegean). Random small chance per rift epoch
+                // to spawn a tiny plate at a triple-junction-like spot
+                // between two adjacent major plates. Gives world a more
+                // realistic "messy" plate distribution rather than only
+                // major plates.
+                if (plates.size() < maxPlates
+                    && plates.size() >= 4
+                    && centerRng.nextFloat(0.0f, 1.0f) < 0.05f) {
+                    // Pick two random plates that are close to each other.
+                    const std::size_t pa = static_cast<std::size_t>(
+                        centerRng.nextInt(0, static_cast<int32_t>(plates.size()) - 1));
+                    std::size_t pb = pa;
+                    float bestD = 1e9f;
+                    for (std::size_t k = 0; k < plates.size(); ++k) {
+                        if (k == pa) { continue; }
+                        float kdx = plates[k].cx - plates[pa].cx;
+                        float kdy = plates[k].cy - plates[pa].cy;
+                        if (cylSim) {
+                            if (kdx > 0.5f) { kdx -= 1.0f; }
+                            if (kdx < -0.5f) { kdx += 1.0f; }
+                        }
+                        const float kd = std::sqrt(kdx * kdx + kdy * kdy);
+                        if (kd < bestD) { bestD = kd; pb = k; }
+                    }
+                    if (pb != pa && bestD < 0.30f) {
+                        Plate micro;
+                        micro.cx = (plates[pa].cx + plates[pb].cx) * 0.5f
+                                 + centerRng.nextFloat(-0.04f, 0.04f);
+                        micro.cy = (plates[pa].cy + plates[pb].cy) * 0.5f
+                                 + centerRng.nextFloat(-0.04f, 0.04f);
+                        if (cylSim) {
+                            if (micro.cx < 0.0f) { micro.cx += 1.0f; }
+                            if (micro.cx > 1.0f) { micro.cx -= 1.0f; }
+                        }
+                        micro.cx = std::clamp(micro.cx, 0.05f, 0.95f);
+                        micro.cy = std::clamp(micro.cy, 0.10f, 0.90f);
+                        // Small random velocity (microplates have erratic motion).
+                        micro.vx = centerRng.nextFloat(-0.5f, 0.5f);
+                        micro.vy = centerRng.nextFloat(-0.5f, 0.5f);
+                        micro.aspect = centerRng.nextFloat(0.85f, 1.20f);
+                        micro.rot    = centerRng.nextFloat(-3.14f, 3.14f);
+                        micro.baseRot    = micro.rot;
+                        micro.baseAspect = micro.aspect;
+                        micro.seedX  = centerRng.nextFloat(0.0f, 1000.0f);
+                        micro.seedY  = centerRng.nextFloat(0.0f, 1000.0f);
+                        // Mixed land/ocean character — typical for
+                        // microplates (Caribbean has both).
+                        micro.isLand = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f);
+                        micro.landFraction = centerRng.nextFloat(0.30f, 0.55f);
+                        micro.ageEpochs = 0;
+                        micro.orogenyLocal.assign(
+                            static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
+                        plates.push_back(micro);
+                    }
+                }
             }
 
             // Accumulate orogeny stress for this epoch. For each tile
@@ -1039,7 +1272,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         const float sn = std::sin(plates[pi].rot);
                         const float lx = (dx * cs + dy * sn) / plates[pi].aspect;
                         const float ly = (-dx * sn + dy * cs) * plates[pi].aspect;
-                        const float dsq = lx * lx + ly * ly;
+                        const float dsq = (lx * lx + ly * ly) / (plates[pi].weight * plates[pi].weight);
                         if (dsq < d1Sq) {
                             d2Sq = d1Sq; second = nearest;
                             d1Sq = dsq;  nearest = static_cast<int32_t>(pi);
@@ -1052,14 +1285,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     if (nearest < 0 || second < 0) { continue; }
                     const float d1 = std::sqrt(d1Sq);
                     const float d2 = std::sqrt(d2Sq);
-                    // Tight boundary band — only the OUTERMOST 12% of
-                    // d1/d2 ratio (>0.88) registers. Forms a narrow
-                    // LINE along the seam, mirroring real coast-hugging
-                    // arc volcanoes (Andes, Cascades, Rockies are
-                    // ~100-300 km wide, ~7000-4800 km long → ratio
-                    // 1:23 to 1:30). Wider bands produced inland blobs.
+                    // Very tight boundary band (0.93+) — orogeny only on
+                    // tiles right at the seam. Avoids dispersing
+                    // mountain belts across a wide region.
                     const float boundary = (d2 > 0.0001f)
-                        ? std::clamp((d1 / d2 - 0.88f) / 0.12f, 0.0f, 1.0f)
+                        ? std::clamp((d1 / d2 - 0.93f) / 0.07f, 0.0f, 1.0f)
                         : 0.0f;
                     if (boundary < 0.15f) { continue; }
                     const Plate& A = plates[static_cast<std::size_t>(nearest)];
@@ -1121,6 +1351,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // [-OROGENY_HALF, +OROGENY_HALF] in 64×64 cells,
                     // so this stress contribution will TRAVEL with the
                     // plate even as it drifts to new world positions.
+                    // NEAREST-cell scatter (was bilinear). Bilinear's
+                    // 4-cell footprint plus blur smeared orogeny across
+                    // wide areas. Real orogeny is sharp along the
+                    // boundary line — single-cell deposits keep it tight.
                     auto scatterPL = [&](Plate& p, float lx, float ly, float val) {
                         const float gx = (lx + OROGENY_HALF) / (2.0f * OROGENY_HALF)
                                        * static_cast<float>(OROGENY_GRID);
@@ -1128,39 +1362,50 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                        * static_cast<float>(OROGENY_GRID);
                         const int32_t ix = static_cast<int32_t>(std::floor(gx));
                         const int32_t iy = static_cast<int32_t>(std::floor(gy));
-                        if (ix < 0 || ix >= OROGENY_GRID - 1
-                            || iy < 0 || iy >= OROGENY_GRID - 1) { return; }
-                        const float fx = gx - static_cast<float>(ix);
-                        const float fy = gy - static_cast<float>(iy);
+                        if (ix < 0 || ix >= OROGENY_GRID
+                            || iy < 0 || iy >= OROGENY_GRID) { return; }
                         p.orogenyLocal[static_cast<std::size_t>(iy * OROGENY_GRID + ix)]
-                            += val * (1.0f - fx) * (1.0f - fy);
-                        p.orogenyLocal[static_cast<std::size_t>(iy * OROGENY_GRID + ix + 1)]
-                            += val * fx * (1.0f - fy);
-                        p.orogenyLocal[static_cast<std::size_t>((iy + 1) * OROGENY_GRID + ix)]
-                            += val * (1.0f - fx) * fy;
-                        p.orogenyLocal[static_cast<std::size_t>((iy + 1) * OROGENY_GRID + ix + 1)]
-                            += val * fx * fy;
+                            += val;
                     };
 
                     Plate& Aw = plates[static_cast<std::size_t>(nearest)];
+                    // STRAIN-RATE RHEOLOGY. At very high relative
+                    // velocity (fast convergence), crust deforms
+                    // ductilely — energy goes into lateral flow rather
+                    // than orogeny. Cap effective stress so super-fast
+                    // collisions don't produce runaway mountain growth.
+                    const float effectiveStress = std::min(stress, 1.6f);
                     float contrib = 0.0f;
-                    if (stress > STRESS_GATE) {
+                    if (effectiveStress > STRESS_GATE) {
                         if (A_land && B_land) {
-                            contrib = 0.09f * bandWeight * stress;
+                            contrib = 0.008f * bandWeight * effectiveStress;
                         } else if (A_land && !B_land) {
-                            contrib = 0.13f * bandWeight * stress;
+                            contrib = 0.011f * bandWeight * effectiveStress;
+
+                            // FOREARC ACCRETIONARY WEDGE. Sediment
+                            // scraped off the subducting oceanic plate
+                            // piles up at the trench, forming a low
+                            // mountain-like feature on A's side BETWEEN
+                            // trench and arc (Olympic Peninsula, Coast
+                            // Ranges of California). Add small uplift
+                            // ~0.10 plate-local-units toward the
+                            // boundary from the arc location.
+                            const float wedgeLx = lxNearest + bnx * 0.10f;
+                            const float wedgeLy = lyNearest + bny * 0.10f;
+                            scatterPL(Aw, wedgeLx, wedgeLy,
+                                      0.04f * bandWeight * effectiveStress);
                         } else if (!A_land && B_land) {
-                            contrib = -0.07f * bandWeight * stress;
+                            contrib = -0.07f * bandWeight * effectiveStress;
                         } else {
                             const bool aDenser = (A.landFraction <= B.landFraction);
                             contrib = aDenser
-                                ? -0.02f * bandWeight * stress
-                                :  0.04f * bandWeight * stress;
+                                ? -0.02f * bandWeight * effectiveStress
+                                :  0.04f * bandWeight * effectiveStress;
                         }
                     } else if (stress < -STRESS_GATE) {
                         if (A_land && B_land) {
                             // Continental rift (East African Rift).
-                            contrib = 0.03f * bandWeight * stress;
+                            contrib = 0.03f * bandWeight * effectiveStress;
                         } else if (!A_land && !B_land) {
                             // Mid-ocean ridge — divergent boundary
                             // between two oceanic plates. New crust
@@ -1170,7 +1415,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             // (Mid-Atlantic Ridge, East Pacific Rise).
                             // Stress is negative for divergent → -stress
                             // gives a positive uplift contribution.
-                            contrib = -0.05f * bandWeight * stress;
+                            contrib = -0.05f * bandWeight * effectiveStress;
                         }
                     }
                     if (contrib != 0.0f) {
@@ -1197,7 +1442,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         const float backArcLx = lxNearest + bnxLocal * 0.20f;
                         const float backArcLy = lyNearest + bnyLocal * 0.20f;
                         scatterPL(Aw, backArcLx, backArcLy,
-                                  -0.025f * bandWeight * stress);
+                                  -0.025f * bandWeight * effectiveStress);
                     }
 
                     // OUTER RISE / FOREARC BULGE. The subducting plate
@@ -1227,7 +1472,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         const float orLx = lxB + bnxLocalB * 0.30f;
                         const float orLy = lyB + bnyLocalB * 0.30f;
                         scatterPL(Bw, orLx, orLy,
-                                  0.018f * bandWeight * stress);
+                                  0.018f * bandWeight * effectiveStress);
                     }
                     (void)idx;
                 }
@@ -1302,6 +1547,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 constexpr float SLAB_PULL_GAIN = 0.012f;
                 plates[pi].vx += (slabPullX[pi] / pullLen) * SLAB_PULL_GAIN;
                 plates[pi].vy += (slabPullY[pi] / pullLen) * SLAB_PULL_GAIN;
+                // SLAB ROLLBACK / TRENCH RETREAT. Sustained subduction
+                // causes the slab to steepen over time as it sinks.
+                // The trench (boundary on the OVERRIDING plate) migrates
+                // SEAWARD relative to the overriding plate; equivalently
+                // the overriding plate retreats AWAY from the trench
+                // slightly. Tonga and Mariana arcs both show this.
+                // We approximate by giving the OVERRIDING plate a small
+                // velocity component AWAY from the slab pull direction
+                // (where the slab is going DOWN). Weaker than slab pull.
+                if (plates[pi].landFraction > 0.40f) {
+                    constexpr float ROLLBACK_GAIN = 0.005f;
+                    plates[pi].vx -= (slabPullX[pi] / pullLen) * ROLLBACK_GAIN;
+                    plates[pi].vy -= (slabPullY[pi] / pullLen) * ROLLBACK_GAIN;
+                }
                 // Clamp velocity to prevent runaway acceleration.
                 const float vLen = std::sqrt(
                     plates[pi].vx * plates[pi].vx + plates[pi].vy * plates[pi].vy);
@@ -1384,12 +1643,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // mountain memory travels with the plate.
             for (Plate& p : plates) {
                 for (float& v : p.orogenyLocal) {
-                    if (v > 0.20f) {
-                        v *= 0.985f;
+                    if (v > 0.18f) {
+                        v *= 0.965f; // 3.5 %/epoch
                     } else if (v > 0.10f) {
-                        v *= 0.993f;
+                        v *= 0.965f; // 3.5 %/epoch — same as tall, stops mid-tier
+                                      // creep into Mountain when contribution ~equals
+                                      // erosion at low values.
                     } else if (v > 0.0f) {
-                        v *= 0.9985f;
+                        v *= 0.997f; // root preservation 0.3 %/epoch
                     } else if (v < 0.0f) {
                         v *= 0.994f;
                     }
@@ -1439,8 +1700,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 Plate& p = plates[pi];
                 const float lipLx = postRng.nextFloat(-1.2f, 1.2f);
                 const float lipLy = postRng.nextFloat(-1.2f, 1.2f);
-                constexpr float LIP_RADIUS = 0.32f;
-                constexpr float LIP_HEIGHT = 0.15f;
+                // LIPs were also too big — covered substantial fraction
+                // of plates which then crossed mountain threshold.
+                constexpr float LIP_RADIUS = 0.14f;
+                constexpr float LIP_HEIGHT = 0.08f;
                 for (int32_t gy = 0; gy < OROGENY_GRID; ++gy) {
                     for (int32_t gx = 0; gx < OROGENY_GRID; ++gx) {
                         const float lx = (static_cast<float>(gx) + 0.5f)
@@ -1462,19 +1725,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             }
         }
 
-        // Cap each plate's local grid (real-world relief ratio).
+        // Cap orogeny tighter — 0.22 max. With mountain threshold at
+        // 0.18, only the actively-stressed boundary tiles cross. Earth
+        // ratio: ~7 % land has Himalayan-class elevation.
         for (Plate& p : plates) {
             for (float& v : p.orogenyLocal) {
-                v = std::clamp(v, -0.20f, 0.32f);
+                v = std::clamp(v, -0.15f, 0.22f);
             }
         }
 
-        // Single blur pass keeps mountains as narrow elongated belts
-        // along plate boundaries. More than 1 pass widens them into
-        // round blobs. Foothill apron now comes from per-tile Hills
-        // feature on tiles with orogeny > 0.06, sourced naturally
-        // from the bilinear scatter footprint (no blur needed for it).
-        const int32_t erosionPasses = 1;
+        // No blur. Nearest-cell scatter keeps orogeny pinned to the
+        // exact boundary cells — sharp mountain RIDGES, not blobs.
+        // Foothill apron will come from a separate ONE-tile dilation
+        // below targeted at Hills-tier (avoids inflating mountains).
+        const int32_t erosionPasses = 0;
         for (Plate& p : plates) {
             std::vector<float> tmp(p.orogenyLocal.size(), 0.0f);
             for (int32_t passN = 0; passN < erosionPasses; ++passN) {
@@ -1543,7 +1807,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     const float sn = std::sin(plates[pi].rot);
                     const float lx = (dx * cs + dy * sn) / plates[pi].aspect;
                     const float ly = (-dx * sn + dy * cs) * plates[pi].aspect;
-                    const float dsq = lx * lx + ly * ly;
+                    const float dsq = (lx * lx + ly * ly) / (plates[pi].weight * plates[pi].weight);
                     if (dsq < bestSq) {
                         bestSq = dsq; bestPi = static_cast<int32_t>(pi);
                         bestLx = lx; bestLy = ly;
@@ -1586,27 +1850,31 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // aren't 1-tile holes). Fill any tile that has ≥ 4 neighbours
         // with substantially higher orogeny by lifting it to the
         // neighbour median. Two passes catches 2-tile-wide gaps too.
-        for (int32_t fillPass = 0; fillPass < 2; ++fillPass) {
+        // Single conservative hole-fill pass. Only lift to 0.65× of
+        // neighbour mean (was 0.85) and require ALL 6 neighbours of
+        // mountain-tier orogeny (was 4) to fill a hole. Stops the
+        // pass from inflating ridges into wide mountain blocks.
+        for (int32_t fillPass = 0; fillPass < 1; ++fillPass) {
             std::vector<float> filled(orogeny);
             for (int32_t row = 0; row < height; ++row) {
                 for (int32_t col = 0; col < width; ++col) {
                     const std::size_t idx = static_cast<std::size_t>(
                         row * width + col);
                     const float my = orogeny[idx];
-                    if (my >= 0.10f) { continue; } // already mountain/hill
+                    if (my >= 0.18f) { continue; }
                     int32_t high = 0;
                     float sumHigh = 0.0f;
                     const hex::AxialCoord ax = hex::offsetToAxial({col, row});
                     for (const hex::AxialCoord& n : hex::neighbors(ax)) {
                         if (!grid.isValid(n)) { continue; }
                         const float nv = orogeny[static_cast<std::size_t>(grid.toIndex(n))];
-                        if (nv > my + 0.05f) {
+                        if (nv > 0.20f) {
                             ++high;
                             sumHigh += nv;
                         }
                     }
-                    if (high >= 4) {
-                        filled[idx] = sumHigh / static_cast<float>(high) * 0.85f;
+                    if (high >= 6) {
+                        filled[idx] = sumHigh / static_cast<float>(high) * 0.65f;
                     }
                 }
             }
@@ -1654,7 +1922,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     const float sn = std::sin(plates[pi].rot);
                     const float lx = (dx * cs + dy * sn) / plates[pi].aspect;
                     const float ly = (-dx * sn + dy * cs) * plates[pi].aspect;
-                    const float dsq = lx * lx + ly * ly;
+                    const float dsq = (lx * lx + ly * ly) / (plates[pi].weight * plates[pi].weight);
                     if (dsq < d1Sq) {
                         d1Sq = dsq;
                         finalNearest = static_cast<int32_t>(pi);
@@ -1797,7 +2065,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         const float sn = std::sin(plates[pi].rot);
                         const float lx = (dx * cs + dy * sn) / plates[pi].aspect;
                         const float ly = (-dx * sn + dy * cs) * plates[pi].aspect;
-                        const float dsq = lx * lx + ly * ly;
+                        const float dsq = (lx * lx + ly * ly) / (plates[pi].weight * plates[pi].weight);
                         if (dsq < d1Sq) {
                             d2Sq    = d1Sq;
                             second  = nearest;
@@ -2011,7 +2279,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     const float t = (latFromEq - 0.55f) / 0.45f;
                     reboundBoost = 0.03f * t;
                 }
-                elev = edgeFalloff + noiseCentred * 0.28f + oro + reboundBoost;
+                elev = edgeFalloff + noiseCentred * 0.16f + oro + reboundBoost;
             } else {
                 elev = elev * 0.55f + edgeFalloff * 0.45f;
             }
@@ -2033,30 +2301,52 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // Match the gentle two-octave warp from the elevation
                 // pass so overlay tints / borders trace the actual
                 // continent outlines smoothly.
+                // Multi-octave warp with stronger low-frequency
+                // component. Real plate boundaries follow accreted
+                // fault lines that wander a lot — they're not
+                // Voronoi-curved. Larger warp amplitude (0.18 + 0.05)
+                // bends boundaries dramatically. Subsequent 6-pass
+                // smoothing erases noise pixels so territories stay
+                // coherent.
                 const float pwX1 =
-                    (fractalNoise(nx * 1.3f, ny * 1.3f, 4, 2.0f, 0.55f, plateWarpRng) - 0.5f) * 0.24f;
+                    (fractalNoise(nx * 1.2f, ny * 1.2f, 4, 2.0f, 0.55f, plateWarpRng) - 0.5f) * 0.18f;
                 const float pwY1 =
-                    (fractalNoise(nx * 1.3f + 17.0f, ny * 1.3f + 31.0f, 4, 2.0f, 0.55f, plateWarpRng) - 0.5f) * 0.24f;
+                    (fractalNoise(nx * 1.2f + 17.0f, ny * 1.2f + 31.0f, 4, 2.0f, 0.55f, plateWarpRng) - 0.5f) * 0.18f;
                 const float pwX2 =
-                    (fractalNoise(nx * 3.5f, ny * 3.5f, 2, 2.0f, 0.5f, plateWarpRng) - 0.5f) * 0.06f;
+                    (fractalNoise(nx * 3.0f, ny * 3.0f, 2, 2.0f, 0.5f, plateWarpRng) - 0.5f) * 0.05f;
                 const float pwY2 =
-                    (fractalNoise(nx * 3.5f + 9.0f, ny * 3.5f + 21.0f, 2, 2.0f, 0.5f, plateWarpRng) - 0.5f) * 0.06f;
+                    (fractalNoise(nx * 3.0f + 9.0f, ny * 3.0f + 21.0f, 2, 2.0f, 0.5f, plateWarpRng) - 0.5f) * 0.05f;
                 const float pwx = nx + pwX1 + pwX2;
                 const float pwy = ny + pwY1 + pwY2;
                 float d1Sq = 1e9f;
                 int32_t nearest = -1;
+                // Multi-seed weighted Voronoi for plate ownership:
+                // each plate's distance is the MIN over its primary
+                // seed + all extraSeeds, divided by weight². Lets
+                // polar plates with ~5 seeds claim the entire polar
+                // band, and lets some normal plates have L/lobed
+                // territories via their extra seed.
                 for (std::size_t pi = 0; pi < plates.size(); ++pi) {
-                    float dx = pwx - plates[pi].cx;
-                    float dy = pwy - plates[pi].cy;
-                    if (cylSim) {
-                        if (dx >  0.5f) { dx -= 1.0f; }
-                        if (dx < -0.5f) { dx += 1.0f; }
+                    const Plate& p = plates[pi];
+                    const float cs = std::cos(p.rot);
+                    const float sn = std::sin(p.rot);
+                    auto seedDsq = [&](float sx, float sy) {
+                        float dx = pwx - sx;
+                        float dy = pwy - sy;
+                        if (cylSim) {
+                            if (dx >  0.5f) { dx -= 1.0f; }
+                            if (dx < -0.5f) { dx += 1.0f; }
+                        }
+                        const float lx = (dx * cs + dy * sn) / p.aspect;
+                        const float ly = (-dx * sn + dy * cs) * p.aspect;
+                        return lx * lx + ly * ly;
+                    };
+                    float minDsq = seedDsq(p.cx, p.cy);
+                    for (const std::pair<float, float>& es : p.extraSeeds) {
+                        const float d = seedDsq(es.first, es.second);
+                        if (d < minDsq) { minDsq = d; }
                     }
-                    const float cs = std::cos(plates[pi].rot);
-                    const float sn = std::sin(plates[pi].rot);
-                    const float lx = (dx * cs + dy * sn) / plates[pi].aspect;
-                    const float ly = (-dx * sn + dy * cs) * plates[pi].aspect;
-                    const float dsq = lx * lx + ly * ly;
+                    const float dsq = minDsq / (p.weight * p.weight);
                     if (dsq < d1Sq) {
                         d1Sq = dsq;
                         nearest = static_cast<int32_t>(pi);
@@ -2069,13 +2359,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             }
         }
 
-        // Plate-id boundary smoothing. The domain warp can flip
-        // individual tiles near a Voronoi seam into a different plate,
-        // creating noisy 1-2 tile "arms" jutting from a plate's edge.
-        // Two majority-vote passes: a tile whose plate id disagrees
-        // with ≥ 4 of its 6 neighbours adopts the neighbour majority.
-        // Smooths plate edges without dragging in distant plates.
-        for (int32_t pass = 0; pass < 2; ++pass) {
+        // 6 majority-vote passes at 3-of-6 threshold cleans up the
+        // splatter the stronger warp introduces, leaving coherent
+        // irregular territories.
+        for (int32_t pass = 0; pass < 6; ++pass) {
             std::vector<uint8_t> nextId(static_cast<std::size_t>(width * height), 0xFFu);
             for (int32_t row = 0; row < height; ++row) {
                 for (int32_t col = 0; col < width; ++col) {
@@ -2118,7 +2405,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     }
                     // Switch ownership only when overwhelming majority
                     // disagrees with us (4+ neighbours of a different plate).
-                    if (bestId != my && bestCount >= 4) {
+                    if (bestId != my && bestCount >= 3) {
                         nextId[static_cast<std::size_t>(idx)] = bestId;
                     }
                 }
@@ -2429,6 +2716,37 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         }
     }
 
+    // Percentile cap on mountain orogeny: only the top ~6 % of LAND
+    // tiles by orogeny may become Mountain. Combined with the absolute
+    // 0.20 floor, this prevents saturated boundary regions from
+    // covering an entire continent — narrow ridges along the most
+    // stressed seams remain, lower-stress halos drop to Hills.
+    float mountainOrogenyPercentile = 1.0e9f;
+    {
+        std::vector<float> landOro;
+        landOro.reserve(static_cast<std::size_t>(totalTiles));
+        for (int32_t i = 0; i < totalTiles; ++i) {
+            if (elevationMap[static_cast<std::size_t>(i)] >= waterThreshold) {
+                const float v = orogeny[static_cast<std::size_t>(i)];
+                if (v > 0.0f) {
+                    landOro.push_back(v);
+                }
+            }
+        }
+        if (!landOro.empty()) {
+            // nth-element at the 94th percentile → top 6 % above this.
+            const std::size_t n = landOro.size();
+            const std::size_t k = static_cast<std::size_t>(
+                static_cast<double>(n) * 0.94);
+            const std::size_t kClamped = std::min(k, n - 1);
+            std::nth_element(landOro.begin(),
+                             landOro.begin()
+                                 + static_cast<std::ptrdiff_t>(kClamped),
+                             landOro.end());
+            mountainOrogenyPercentile = landOro[kClamped];
+        }
+    }
+
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
             int32_t index = row * width + col;
@@ -2442,19 +2760,32 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 continue;
             }
 
-            // Mountain assignment: require BOTH the percentile gate
-            // (top mountainRatio % of elevation) AND a minimum
-            // orogeny floor. Eroded ranges drop below the orogeny
-            // floor → fall into the Hills feature pass below, not
-            // Mountain. Active boundaries with fresh orogeny still
-            // qualify and form sharp ranges.
+            // Mountain assignment: ABSOLUTE orogeny threshold only.
+            // Earlier percentile-based pick was selecting the top X%
+            // of elevation tiles regardless of orogeny — caught a lot
+            // of base-noise peaks scattered across continents,
+            // producing speckled "noise mountains" instead of belts.
+            // Now mountains form ONLY where orogeny accumulated to
+            // ≥ 0.13 (boundaries), so they appear AS LINES along
+            // plate seams (subduction arcs at coast, collision belts
+            // inland). Tiles with 0.06 < orogeny < 0.13 become Hills
+            // (existing pass below).
             const float oroAt = orogeny[static_cast<std::size_t>(index)];
-            if (mountainElev[static_cast<std::size_t>(index)] >= mountainThreshold
-                && oroAt >= MIN_OROGENY_FOR_MOUNTAIN) {
+            constexpr float MOUNTAIN_OROGENY_THRESHOLD = 0.20f;
+            // Mountain assignment must clear BOTH the orogeny floor
+            // AND the global mountain percentile (top X % of orogeny
+            // values). Cap mountain coverage at ~6 % of land —
+            // matches Earth's high-mountain proportion and prevents
+            // saturated boundary rings from making half the world
+            // mountainous.
+            if (oroAt >= MOUNTAIN_OROGENY_THRESHOLD
+                && oroAt >= mountainOrogenyPercentile) {
                 grid.setTerrain(index, TerrainType::Mountain);
                 grid.setElevation(index, 3);
                 continue;
             }
+            (void)mountainThreshold; // legacy percentile no longer used
+            (void)MIN_OROGENY_FOR_MOUNTAIN;
 
             float nx = static_cast<float>(col) / static_cast<float>(width);
             float ny = static_cast<float>(row) / static_cast<float>(height);
@@ -2707,6 +3038,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             if (compSize[static_cast<std::size_t>(cid)] < MIN_ISLAND_SIZE) {
                 grid.setTerrain(i, TerrainType::Ocean);
                 grid.setElevation(i, -1);
+                // Clear any feature (Hills/Forest/Jungle) — drowned
+                // land mustn't carry land-only features into the ocean.
+                grid.setFeature(i, FeatureType::None);
             }
         }
     }
@@ -2814,6 +3148,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         for (int32_t i : drown) {
             grid.setTerrain(i, TerrainType::Ocean);
             grid.setElevation(i, -1);
+            grid.setFeature(i, FeatureType::None);
         }
         if (drown.empty()) { break; }
     }
@@ -2909,19 +3244,31 @@ void MapGenerator::assignFeatures(const Config& config, HexGrid& grid, aoc::Rand
                 continue;
             }
 
-            // Hills
-            if (featureRng.chance(config.hillRatio)) {
-                grid.setFeature(index, FeatureType::Hills);
-                continue;
-            }
+            // Hills feature is now placed by the orogeny pass in
+            // assignTerrain (tied to actual mountain root rock).
+            // Random Hills sprinkling scattered them across plains
+            // unrelated to geology — disabled.
 
-            // Forest/Jungle based on terrain temperature
+            // Forest / Jungle placement via low-frequency noise so
+            // neighboring tiles share their forest status — produces
+            // coherent forest/jungle patches instead of random
+            // scattered tiles. Jungle = tropical-only band; Forest =
+            // outside that band.
             if (terrain == TerrainType::Grassland || terrain == TerrainType::Plains) {
-                if (featureRng.chance(config.forestRatio)) {
-                    // Latitude determines forest vs jungle
+                const float fnx = static_cast<float>(col) / static_cast<float>(width);
+                const float fny = static_cast<float>(row) / static_cast<float>(height);
+                aoc::Random forestNoiseRng(featureRng);
+                const float forestN = fractalNoise(
+                    fnx * 4.5f + 11.0f, fny * 4.5f + 7.0f,
+                    3, 2.0f, 0.5f, forestNoiseRng);
+                // Threshold tuned so ~30 % of land in Grassland/Plains
+                // gets a forest patch. Higher forestRatio = more cover.
+                const float thresh = std::clamp(
+                    1.0f - config.forestRatio * 1.5f, 0.30f, 0.85f);
+                if (forestN > thresh) {
                     float latitudeT = static_cast<float>(row) / static_cast<float>(height);
                     float temperature = 1.0f - 2.0f * std::abs(latitudeT - 0.5f);
-                    if (temperature > 0.65f) {
+                    if (temperature > 0.70f && terrain == TerrainType::Grassland) {
                         grid.setFeature(index, FeatureType::Jungle);
                     } else {
                         grid.setFeature(index, FeatureType::Forest);

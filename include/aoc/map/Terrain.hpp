@@ -159,13 +159,15 @@ struct TerrainColor {
 [[nodiscard]] constexpr TerrainColor featureColorTint(FeatureType type) {
     switch (type) {
         case FeatureType::Forest:      return {-0.05f, 0.10f, -0.05f};
-        case FeatureType::Jungle:      return {-0.05f, 0.05f, -0.10f};
+        // Jungle: deep dark-green tint so it reads as rainforest.
+        case FeatureType::Jungle:      return {-0.20f, 0.20f, -0.25f};
         case FeatureType::Marsh:       return {-0.05f, -0.05f, 0.05f};
         case FeatureType::Floodplains: return {0.05f, 0.10f, -0.05f};
         case FeatureType::Oasis:       return {0.05f, 0.15f, 0.00f};
         case FeatureType::Reef:        return {0.05f, 0.10f, 0.10f};
         case FeatureType::Ice:         return {0.20f, 0.20f, 0.25f};
-        case FeatureType::Hills:       return {0.05f, 0.02f, -0.02f};
+        // Hills: reddish-brown so they don't blend with desert sand.
+        case FeatureType::Hills:       return {0.20f, -0.10f, -0.18f};
         default:                       return {0.00f, 0.00f, 0.00f};
     }
 }

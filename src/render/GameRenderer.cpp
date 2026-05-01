@@ -265,7 +265,14 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                             }
                         }
                     }
-                    renderer2d.drawLine(ax, ay, bx, by, r, g, b, 0.95f, 7.5f);
+                    // Thick double-stroke border. First a wide black
+                    // halo (16 px) for clean separation against terrain,
+                    // then the colored type indicator (10 px) on top.
+                    // Makes plate territories pop visually.
+                    renderer2d.drawLine(ax, ay, bx, by,
+                                         0.0f, 0.0f, 0.0f, 0.95f, 16.0f);
+                    renderer2d.drawLine(ax, ay, bx, by,
+                                         r, g, b, 1.0f, 10.0f);
                 }
             }
         }
@@ -918,9 +925,12 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
         mmRect.y -= this->m_minimapBottomOffset;
         const float mmWorldX = topLeftX + mmRect.x * invZoom;
         const float mmWorldY = topLeftY + mmRect.y * invZoom;
+        const bool platesOnMinimap =
+            (this->overlayMode == MapOverlay::TectonicPlates);
         this->m_minimap.draw(renderer2d, grid, fog, viewingPlayer, camera,
                              mmWorldX, mmWorldY, mmRect.w * invZoom, mmRect.h * invZoom,
-                             screenWidth, screenHeight);
+                             screenWidth, screenHeight,
+                             platesOnMinimap);
     }
 
     // Notifications (transformed to world-space)

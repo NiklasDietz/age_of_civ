@@ -1370,6 +1370,15 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         play.labelColor   = aoc::ui::tokens::TEXT_GILT;
         play.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         play.onClick = [this]() {
+            // If pressing Play while at the endpoint, restart from
+            // epoch 1 so playback actually has somewhere to go.
+            // Otherwise the play tick immediately hits the end and
+            // stops, making the button bounce back to "Play".
+            if (!this->m_creatorPlaying
+                && this->m_creatorEpochCurrent >= this->m_creatorEpochsTotal) {
+                this->m_creatorEpochCurrent = 1;
+                this->regenerateContinentPreview(1);
+            }
             this->m_creatorPlaying = !this->m_creatorPlaying;
             this->m_creatorPlayAccum = 0.0f;
             if (this->m_creatorPlayBtnId != aoc::ui::INVALID_WIDGET) {
@@ -2623,19 +2632,21 @@ void Application::run() {
         // above; the click rect is the same rect sourced from the
         // shared helper.
 
-        if (this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT)
-            && !this->m_uiConsumedInput) {
-            if (overMinimap) {
-                float worldX = 0.0f;
-                float worldY = 0.0f;
-                this->m_gameRenderer.minimap().screenToWorld(
-                    mouseXf, mouseYf, mmRect.x, mmRect.y, mmRect.w, mmRect.h,
-                    this->m_hexGrid,
-                    this->m_gameRenderer.mapRenderer().hexSize(),
-                    worldX, worldY);
-                this->m_cameraController.setPosition(worldX, worldY);
-                this->m_uiConsumedInput = true;
-            }
+        // Minimap click + drag to pan. While the left mouse button is
+        // held over the minimap, pan the camera continuously to follow
+        // the cursor. Releasing stops panning.
+        if (overMinimap
+            && !this->m_uiConsumedInput
+            && this->m_inputManager.isMouseButtonHeld(GLFW_MOUSE_BUTTON_LEFT)) {
+            float worldX = 0.0f;
+            float worldY = 0.0f;
+            this->m_gameRenderer.minimap().screenToWorld(
+                mouseXf, mouseYf, mmRect.x, mmRect.y, mmRect.w, mmRect.h,
+                this->m_hexGrid,
+                this->m_gameRenderer.mapRenderer().hexSize(),
+                worldX, worldY);
+            this->m_cameraController.setPosition(worldX, worldY);
+            this->m_uiConsumedInput = true;
         }
 
         // -- Game input (only in human mode, only if UI didn't consume it and no screen is open) --
