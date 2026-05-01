@@ -1331,6 +1331,15 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
     addOverlayBtn("Sed",      aoc::render::GameRenderer::MapOverlay::Sediment);
     addOverlayBtn("Rock",     aoc::render::GameRenderer::MapOverlay::RockType);
     addOverlayBtn("Margins",  aoc::render::GameRenderer::MapOverlay::Margins);
+    addOverlayBtn("Volc",     aoc::render::GameRenderer::MapOverlay::Volcanism);
+    addOverlayBtn("Quake",    aoc::render::GameRenderer::MapOverlay::Hazard);
+    addOverlayBtn("Soil",     aoc::render::GameRenderer::MapOverlay::Soil);
+    addOverlayBtn("Realms",   aoc::render::GameRenderer::MapOverlay::Realms);
+    addOverlayBtn("Storm",    aoc::render::GameRenderer::MapOverlay::Storms);
+    addOverlayBtn("Glacial",  aoc::render::GameRenderer::MapOverlay::Glacial);
+    addOverlayBtn("Ocean",    aoc::render::GameRenderer::MapOverlay::Ocean);
+    addOverlayBtn("Cloud",    aoc::render::GameRenderer::MapOverlay::Clouds);
+    addOverlayBtn("Flow",     aoc::render::GameRenderer::MapOverlay::Flow);
 
     // Generate — rebuilds the world with current parameters. Apply
     // when the user is done tweaking values; deferred so each

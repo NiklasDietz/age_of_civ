@@ -584,6 +584,143 @@ public:
     void setMarginType(std::vector<uint8_t> v) {
         this->m_marginType = std::move(v);
     }
+
+    /// Per-tile soil fertility 0..1. 0 = barren (laterite/podzol/desert),
+    /// 0.5 = average, 1.0 = excellent (chernozem/volcanic/alluvial/loess).
+    /// Drives agricultural yield.
+    [[nodiscard]] const std::vector<float>& soilFertility() const {
+        return this->m_soilFertility;
+    }
+    void setSoilFertility(std::vector<float> v) {
+        this->m_soilFertility = std::move(v);
+    }
+
+    /// Per-tile volcanism tag.
+    /// 0 = none, 1 = subduction arc volcano, 2 = hotspot volcano,
+    /// 3 = LIP / flood basalt province, 4 = continental rift volcanic.
+    [[nodiscard]] const std::vector<uint8_t>& volcanism() const {
+        return this->m_volcanism;
+    }
+    void setVolcanism(std::vector<uint8_t> v) {
+        this->m_volcanism = std::move(v);
+    }
+
+    /// Per-tile seismic hazard. 0 = stable interior, 1 = moderate
+    /// (passive margin, intraplate), 2 = high (transform fault),
+    /// 3 = severe (convergent / subduction zone).
+    [[nodiscard]] const std::vector<uint8_t>& seismicHazard() const {
+        return this->m_seismicHazard;
+    }
+    void setSeismicHazard(std::vector<uint8_t> v) {
+        this->m_seismicHazard = std::move(v);
+    }
+
+    /// Per-tile permafrost flag. 1 = perma-frozen ground (cold soil
+    /// limits agriculture, rare during summer thaw).
+    [[nodiscard]] const std::vector<uint8_t>& permafrost() const {
+        return this->m_permafrost;
+    }
+    void setPermafrost(std::vector<uint8_t> v) {
+        this->m_permafrost = std::move(v);
+    }
+
+    /// Per-tile lake flag — 1 if this water tile is a lake (positive
+    /// generation: tectonic rift, endorheic, glacial, volcanic), 0 if
+    /// open ocean. Lakes still use TerrainType::ShallowWater so existing
+    /// game code treats them as fishable water.
+    [[nodiscard]] const std::vector<uint8_t>& lakeFlag() const {
+        return this->m_lakeFlag;
+    }
+    void setLakeFlag(std::vector<uint8_t> v) {
+        this->m_lakeFlag = std::move(v);
+    }
+
+    /// Per-tile upwelling flag — 1 if coastal water with active deep-
+    /// water upwelling (high fishery productivity), 2 if fjord.
+    [[nodiscard]] const std::vector<uint8_t>& upwelling() const {
+        return this->m_upwelling;
+    }
+    void setUpwelling(std::vector<uint8_t> v) {
+        this->m_upwelling = std::move(v);
+    }
+
+    /// Per-tile flag — 1 if owning plate is biogeographically isolated
+    /// (never merged + old enough to develop endemic species).
+    /// Australia, Madagascar, Antarctica analogues.
+    [[nodiscard]] const std::vector<uint8_t>& isolatedRealm() const {
+        return this->m_isolatedRealm;
+    }
+    void setIsolatedRealm(std::vector<uint8_t> v) {
+        this->m_isolatedRealm = std::move(v);
+    }
+
+    /// Per-tile flag — 1 if shallow water tile sits between two
+    /// continental landmasses (potential ice-age land bridge — Beringia,
+    /// Sahul shelf, Doggerland).
+    [[nodiscard]] const std::vector<uint8_t>& landBridge() const {
+        return this->m_landBridge;
+    }
+    void setLandBridge(std::vector<uint8_t> v) {
+        this->m_landBridge = std::move(v);
+    }
+
+    /// Per-tile flag — 1 if tile is a glacial refugium (mid-lat near
+    /// mountains, high biodiversity, ice-age species refuge).
+    [[nodiscard]] const std::vector<uint8_t>& refugium() const {
+        return this->m_refugium;
+    }
+    void setRefugium(std::vector<uint8_t> v) {
+        this->m_refugium = std::move(v);
+    }
+
+    /// Per-tile climate-hazard bitfield.
+    /// Bit 0 = hurricane belt, Bit 1 = tornado alley,
+    /// Bit 2 = mid-lat storm track, Bit 3 = jet-stream zone.
+    [[nodiscard]] const std::vector<uint8_t>& climateHazard() const {
+        return this->m_climateHazard;
+    }
+    void setClimateHazard(std::vector<uint8_t> v) {
+        this->m_climateHazard = std::move(v);
+    }
+
+    /// Per-tile glacial-feature tag.
+    /// 0 = none, 1 = moraine, 2 = U-shaped valley, 3 = cave system,
+    /// 4 = drumlin field, 5 = esker.
+    [[nodiscard]] const std::vector<uint8_t>& glacialFeature() const {
+        return this->m_glacialFeature;
+    }
+    void setGlacialFeature(std::vector<uint8_t> v) {
+        this->m_glacialFeature = std::move(v);
+    }
+
+    /// Per-tile ocean property bitfield.
+    /// Bits 0-1 = tidal range (0 micro / 1 meso / 2 macro / 3 mega),
+    /// Bits 2-3 = salinity (0 brackish / 1 normal / 2 hypersaline / 3 fresh).
+    [[nodiscard]] const std::vector<uint8_t>& oceanZone() const {
+        return this->m_oceanZone;
+    }
+    void setOceanZone(std::vector<uint8_t> v) {
+        this->m_oceanZone = std::move(v);
+    }
+
+    /// Per-tile cloud-cover proxy 0..1. Computed from moisture × temp;
+    /// not used for any game effect, drives a visual overlay only.
+    [[nodiscard]] const std::vector<float>& cloudCover() const {
+        return this->m_cloudCover;
+    }
+    void setCloudCover(std::vector<float> v) {
+        this->m_cloudCover = std::move(v);
+    }
+
+    /// Per-tile flow-direction byte (0-5 hex neighbour index that this
+    /// tile drains toward, 0xFF = sink / endorheic). Drives drainage
+    /// divides + watershed grouping.
+    [[nodiscard]] const std::vector<uint8_t>& flowDir() const {
+        return this->m_flowDir;
+    }
+    void setFlowDir(std::vector<uint8_t> v) {
+        this->m_flowDir = std::move(v);
+    }
 private:
     std::vector<uint8_t>          m_plateId;
     std::vector<std::pair<float, float>> m_hotspots;
@@ -594,6 +731,20 @@ private:
     std::vector<float>                   m_sedimentDepth;
     std::vector<uint8_t>                 m_rockType;
     std::vector<uint8_t>                 m_marginType;
+    std::vector<float>                   m_soilFertility;
+    std::vector<uint8_t>                 m_volcanism;
+    std::vector<uint8_t>                 m_seismicHazard;
+    std::vector<uint8_t>                 m_permafrost;
+    std::vector<uint8_t>                 m_lakeFlag;
+    std::vector<uint8_t>                 m_upwelling;
+    std::vector<uint8_t>                 m_isolatedRealm;
+    std::vector<uint8_t>                 m_landBridge;
+    std::vector<uint8_t>                 m_refugium;
+    std::vector<uint8_t>                 m_climateHazard;
+    std::vector<uint8_t>                 m_glacialFeature;
+    std::vector<uint8_t>                 m_oceanZone;
+    std::vector<float>                   m_cloudCover;
+    std::vector<uint8_t>                 m_flowDir;
     /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
     /// Greenhouse improvement actively populate. Tile index → good id.
     std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;

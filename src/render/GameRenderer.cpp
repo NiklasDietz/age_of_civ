@@ -213,6 +213,143 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                             fillA = 0.50f; useFill = true;
                         }
                     }
+                } else if (this->overlayMode == MapOverlay::Volcanism) {
+                    const auto& vc = grid.volcanism();
+                    if (!vc.empty()) {
+                        const uint8_t v = vc[static_cast<std::size_t>(index)];
+                        switch (v) {
+                            case 1: fillR = 1.0f;  fillG = 0.30f; fillB = 0.10f; useFill = true; break; // arc
+                            case 2: fillR = 1.0f;  fillG = 0.55f; fillB = 0.0f;  useFill = true; break; // hotspot
+                            case 3: fillR = 0.55f; fillG = 0.05f; fillB = 0.35f; useFill = true; break; // LIP
+                            case 4: fillR = 0.10f; fillG = 0.85f; fillB = 0.55f; useFill = true; break; // rift volc
+                            case 5: fillR = 1.0f;  fillG = 1.0f;  fillB = 0.20f; useFill = true; break; // hot spring
+                            case 6: fillR = 0.85f; fillG = 0.85f; fillB = 0.85f; useFill = true; break; // inselberg
+                            case 7: fillR = 0.95f; fillG = 0.90f; fillB = 0.60f; useFill = true; break; // dunes
+                            default: break;
+                        }
+                        if (useFill) { fillA = 0.55f; }
+                    }
+                } else if (this->overlayMode == MapOverlay::Hazard) {
+                    const auto& hz = grid.seismicHazard();
+                    if (!hz.empty()) {
+                        const uint8_t h = hz[static_cast<std::size_t>(index)];
+                        const uint8_t lvl = h & 0x07;
+                        const bool tsunami = (h & 0x08) != 0;
+                        if (lvl > 0 || tsunami) {
+                            fillR = 0.50f + 0.15f * static_cast<float>(lvl);
+                            fillG = (lvl >= 3) ? 0.10f : 0.40f;
+                            fillB = tsunami ? 0.85f : 0.10f;
+                            fillA = 0.55f; useFill = true;
+                        }
+                    }
+                } else if (this->overlayMode == MapOverlay::Soil) {
+                    const auto& sf = grid.soilFertility();
+                    if (!sf.empty()) {
+                        const float s = sf[static_cast<std::size_t>(index)];
+                        // Brown (poor) → green (rich)
+                        fillR = 0.45f + 0.15f * (1.0f - s);
+                        fillG = 0.30f + 0.55f * s;
+                        fillB = 0.20f * (1.0f - s);
+                        fillA = 0.55f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Storms) {
+                    const auto& ch = grid.climateHazard();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!ch.empty() && si < ch.size()) {
+                        const uint8_t f = ch[si];
+                        if ((f & 0x01) != 0) {
+                            // Hurricane belt — orange
+                            fillR = 1.0f; fillG = 0.55f; fillB = 0.10f;
+                            fillA = 0.55f; useFill = true;
+                        } else if ((f & 0x02) != 0) {
+                            // Tornado alley — red
+                            fillR = 0.95f; fillG = 0.10f; fillB = 0.20f;
+                            fillA = 0.55f; useFill = true;
+                        } else if ((f & 0x04) != 0) {
+                            // Storm track — light blue
+                            fillR = 0.30f; fillG = 0.55f; fillB = 0.95f;
+                            fillA = 0.50f; useFill = true;
+                        } else if ((f & 0x08) != 0) {
+                            // Jet stream — purple
+                            fillR = 0.55f; fillG = 0.20f; fillB = 0.85f;
+                            fillA = 0.40f; useFill = true;
+                        }
+                    }
+                } else if (this->overlayMode == MapOverlay::Glacial) {
+                    const auto& gf = grid.glacialFeature();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!gf.empty() && si < gf.size()) {
+                        switch (gf[si]) {
+                            case 1: fillR = 0.85f; fillG = 0.85f; fillB = 0.50f; useFill = true; break; // moraine
+                            case 2: fillR = 0.40f; fillG = 0.65f; fillB = 0.95f; useFill = true; break; // U-valley
+                            case 3: fillR = 0.30f; fillG = 0.30f; fillB = 0.30f; useFill = true; break; // cave
+                            case 4: fillR = 0.65f; fillG = 0.50f; fillB = 0.30f; useFill = true; break; // drumlin
+                            case 5: fillR = 0.50f; fillG = 0.85f; fillB = 0.65f; useFill = true; break; // esker
+                            default: break;
+                        }
+                        if (useFill) { fillA = 0.55f; }
+                    }
+                } else if (this->overlayMode == MapOverlay::Ocean) {
+                    const auto& oz = grid.oceanZone();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!oz.empty() && si < oz.size()) {
+                        const uint8_t v = oz[si];
+                        const uint8_t tidal = v & 0x03;
+                        const uint8_t salin = (v >> 2) & 0x03;
+                        if (tidal != 0 || salin != 1) {
+                            // Tidal in red channel, salinity in blue.
+                            fillR = 0.20f + 0.25f * static_cast<float>(tidal);
+                            fillG = 0.45f;
+                            fillB = (salin == 2) ? 0.20f
+                                  : (salin == 3) ? 0.95f
+                                  : (salin == 0) ? 0.70f : 0.55f;
+                            fillA = 0.55f; useFill = true;
+                        }
+                    }
+                } else if (this->overlayMode == MapOverlay::Clouds) {
+                    const auto& cc = grid.cloudCover();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!cc.empty() && si < cc.size()) {
+                        const float c = cc[si];
+                        fillR = 0.85f; fillG = 0.85f; fillB = 0.95f;
+                        fillA = std::clamp(c * 0.55f, 0.0f, 0.55f);
+                        useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Flow) {
+                    const auto& fl = grid.flowDir();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!fl.empty() && si < fl.size()) {
+                        const uint8_t d = fl[si];
+                        if (d == 0xFFu) {
+                            // Sink / endorheic — black
+                            fillR = 0.0f; fillG = 0.0f; fillB = 0.0f;
+                        } else {
+                            // Color by direction (0-5) hue ramp
+                            const float h = static_cast<float>(d) / 6.0f;
+                            fillR = 0.4f + 0.5f * std::cos(h * 6.2832f);
+                            fillG = 0.4f + 0.5f * std::cos((h + 0.33f) * 6.2832f);
+                            fillB = 0.4f + 0.5f * std::cos((h + 0.66f) * 6.2832f);
+                        }
+                        fillA = 0.50f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Realms) {
+                    const auto& iso = grid.isolatedRealm();
+                    const auto& bri = grid.landBridge();
+                    const auto& ref = grid.refugium();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!iso.empty() && si < iso.size() && iso[si] != 0) {
+                        // Magenta — biogeographically isolated continent
+                        fillR = 0.85f; fillG = 0.20f; fillB = 0.85f;
+                        fillA = 0.55f; useFill = true;
+                    } else if (!bri.empty() && si < bri.size() && bri[si] != 0) {
+                        // Cyan — potential land bridge
+                        fillR = 0.20f; fillG = 0.85f; fillB = 0.95f;
+                        fillA = 0.65f; useFill = true;
+                    } else if (!ref.empty() && si < ref.size() && ref[si] != 0) {
+                        // Yellow-green — glacial refugium
+                        fillR = 0.65f; fillG = 0.95f; fillB = 0.20f;
+                        fillA = 0.55f; useFill = true;
+                    }
                 }
                 if (useFill) {
                     const aoc::hex::AxialCoord axialF =

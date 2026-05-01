@@ -103,6 +103,15 @@ public:
         Sediment,       ///< Per-tile sediment depth — yellow basins
         RockType,       ///< Per-tile rock-type tag — Sed / Igneous / Metamorphic / Ophiolite
         Margins,        ///< Active (red) vs passive (blue) continental margins
+        Volcanism,      ///< Volcano/hot-spring/dune/inselberg markers
+        Hazard,         ///< Seismic + tsunami hazard intensity
+        Soil,           ///< Soil fertility 0..1
+        Realms,         ///< Biogeographic isolation + land bridges + refugia
+        Storms,         ///< Hurricane / tornado / storm track / jet stream
+        Glacial,        ///< Moraines, U-valleys, drumlins, eskers, caves
+        Ocean,          ///< Tidal range + salinity bins
+        Clouds,         ///< Cloud cover proxy
+        Flow,           ///< Drainage flow direction (downhill)
     };
     MapOverlay overlayMode = MapOverlay::None;
 
