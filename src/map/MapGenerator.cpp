@@ -10,6 +10,7 @@
 #include "aoc/simulation/map/Chokepoint.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <vector>
 
@@ -103,18 +104,36 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
 
     aoc::Random rng(config.seed);
 
+    // Coarse-grained per-stage timing for profiling. Logs at DEBUG.
+    using PerfClock = std::chrono::steady_clock;
+    const auto t0 = PerfClock::now();
+    auto logStage = [&t0](const char* name) {
+        const auto now = PerfClock::now();
+        const auto ms = std::chrono::duration_cast<
+            std::chrono::milliseconds>(now - t0).count();
+        LOG_DEBUG("[mapgen] %lld ms total — stage: %s",
+            static_cast<long long>(ms), name);
+    };
+
     if (config.mapType == MapType::LandWithSeas) {
         generateRealisticTerrain(config, outGrid, rng);
+        logStage("realistic-terrain");
         smoothCoastlines(outGrid);
         assignFeatures(config, outGrid, rng);
         generateRivers(outGrid, rng);
         placeNaturalWonders(outGrid, rng);
+        logStage("LandWithSeas-done");
     } else {
         assignTerrain(config, outGrid, rng);
+        logStage("assign-terrain");
         smoothCoastlines(outGrid);
+        logStage("smooth-coastlines");
         assignFeatures(config, outGrid, rng);
+        logStage("assign-features");
         generateRivers(outGrid, rng);
+        logStage("generate-rivers");
         placeNaturalWonders(outGrid, rng);
+        logStage("natural-wonders");
     }
 
     // SEDIMENT / ALLUVIAL PLAINS. Real rivers deposit sediment along
@@ -189,6 +208,7 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
             }
             break;
     }
+    logStage("resource-placement-DONE");
 
     // Natural fish spots: seed FISH on ShallowWater tiles.
     // Coast terrain is no longer generated; all shallow water is ShallowWater.
@@ -2420,6 +2440,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                  + v01 * (1.0f - fx) *        fy
                  + v11 *        fx  *        fy;
         };
+        // Parallel: world-frame elevation pass — each iteration writes
+        // only elevationMap[i]. Hot path (heavy per-tile work: nearest-
+        // plate Voronoi + samplePL bilinear + crust mask sample).
+        AOC_PARALLEL_FOR_ROWS
         for (int32_t row = 0; row < height; ++row) {
             for (int32_t col = 0; col < width; ++col) {
                 const float nx = static_cast<float>(col) / static_cast<float>(width);

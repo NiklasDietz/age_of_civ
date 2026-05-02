@@ -1012,7 +1012,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                               float widthPx = 96.0f) {
             aoc::ui::ButtonData btn;
             btn.label        = prefix + std::to_string(*value);
-            btn.fontSize     = 12.0f;
+            btn.fontSize     = 14.0f;
             btn.normalColor  = aoc::ui::tokens::BRONZE_BASE;
             btn.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
             btn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
@@ -1032,18 +1032,20 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                 {0.0f, 0.0f, widthPx, 36.0f}, std::move(btn));
             *labelOut = id;
         };
-        addCycler("SS:",     &this->m_creatorSuperSample,    1,   4,   1,
-            &this->m_creatorSuperSampleLabel, 64.0f);
+        // Plates grid resolution (per-plate orogeny grid scale).
+        // 1 = 64×64 default, 2 = 128×128, 4 = 256×256.
+        addCycler("Grid:",   &this->m_creatorSuperSample,    1,   4,   1,
+            &this->m_creatorSuperSampleLabel, 96.0f);
         addCycler("Phase:",  &this->m_creatorClimatePhase,   0,   2,   1,
-            &this->m_creatorClimatePhaseLabel, 88.0f);
+            &this->m_creatorClimatePhaseLabel, 96.0f);
         addCycler("SL:",     &this->m_creatorSeaLevelTenths, -10, 10,  1,
-            &this->m_creatorSeaLevelLabel, 80.0f);
+            &this->m_creatorSeaLevelLabel, 88.0f);
         addCycler("Tilt:",   &this->m_creatorAxialTiltTenths, 0, 400, 25,
-            &this->m_creatorAxialTiltLabel, 96.0f);
+            &this->m_creatorAxialTiltLabel, 100.0f);
         addCycler("ENSO:",   &this->m_creatorEnsoState,      0,   2,   1,
-            &this->m_creatorEnsoLabel, 80.0f);
+            &this->m_creatorEnsoLabel, 88.0f);
         addCycler("Milan:",  &this->m_creatorMilanTenths,    0,  10,   1,
-            &this->m_creatorMilanLabel, 80.0f);
+            &this->m_creatorMilanLabel, 88.0f);
     }
 
     // Epoch − button
