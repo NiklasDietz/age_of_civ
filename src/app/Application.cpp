@@ -863,6 +863,13 @@ void Application::regenerateContinentPreview(int32_t epochLimit) {
     cfg.landPlateCount = this->m_creatorLandPlates;
     cfg.runEpochsLimit = epochLimit;
     cfg.driftFraction  = static_cast<float>(this->m_creatorDriftPct) * 0.1f;
+    // Advanced config from top panel.
+    cfg.superSampleFactor  = this->m_creatorSuperSample;
+    cfg.climatePhase       = this->m_creatorClimatePhase;
+    cfg.seaLevelDelta      = static_cast<float>(this->m_creatorSeaLevelTenths) * 0.10f;
+    cfg.axialTilt          = static_cast<float>(this->m_creatorAxialTiltTenths) * 0.10f;
+    cfg.ensoState          = this->m_creatorEnsoState;
+    cfg.milankovitchPhase  = static_cast<float>(this->m_creatorMilanTenths) * 0.10f;
 
     // Cache hit? Skip the slow MapGenerator pass and copy a snapshot.
     auto cacheIt = this->m_creatorEpochCache.find(epochLimit);
@@ -946,6 +953,16 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         this->m_creatorPanelId = aoc::ui::INVALID_WIDGET;
         this->m_creatorEpochLabelId = aoc::ui::INVALID_WIDGET;
     }
+    if (this->m_creatorAdvPanelId != aoc::ui::INVALID_WIDGET) {
+        this->m_uiManager.removeWidget(this->m_creatorAdvPanelId);
+        this->m_creatorAdvPanelId = aoc::ui::INVALID_WIDGET;
+        this->m_creatorSuperSampleLabel  = aoc::ui::INVALID_WIDGET;
+        this->m_creatorClimatePhaseLabel = aoc::ui::INVALID_WIDGET;
+        this->m_creatorSeaLevelLabel     = aoc::ui::INVALID_WIDGET;
+        this->m_creatorAxialTiltLabel    = aoc::ui::INVALID_WIDGET;
+        this->m_creatorEnsoLabel         = aoc::ui::INVALID_WIDGET;
+        this->m_creatorMilanLabel        = aoc::ui::INVALID_WIDGET;
+    }
     constexpr float PANEL_H = 64.0f;
     constexpr float PANEL_PAD = 8.0f;
     aoc::ui::PanelData bg;
@@ -965,6 +982,68 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             w->padding = {6.0f, 8.0f, 6.0f, 8.0f};
             w->childSpacing = 8.0f;
         }
+    }
+    // Top advanced panel — climate + sea level + axial tilt + super-
+    // sample + ENSO + Milankovitch. Bottom panel was getting full;
+    // these are tuning knobs that don't need first-class real-estate.
+    {
+        aoc::ui::PanelData topBg;
+        topBg.backgroundColor = aoc::ui::tokens::SURFACE_PARCHMENT;
+        topBg.gradientBottom  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
+        topBg.borderColor     = aoc::ui::tokens::BRONZE_DARK;
+        topBg.borderWidth     = 1.0f;
+        topBg.cornerRadius    = aoc::ui::tokens::CORNER_PANEL;
+        this->m_creatorAdvPanelId = this->m_uiManager.createPanel(
+            {PANEL_PAD, PANEL_PAD,
+             screenW - PANEL_PAD * 2.0f, PANEL_H},
+            std::move(topBg));
+        aoc::ui::Widget* w = this->m_uiManager.getWidget(
+            this->m_creatorAdvPanelId);
+        if (w != nullptr) {
+            w->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
+            w->padding = {6.0f, 8.0f, 6.0f, 8.0f};
+            w->childSpacing = 8.0f;
+        }
+        // Helper: add cycler button (label + tap-to-cycle through ints).
+        auto addCycler = [&](const std::string& prefix,
+                              int32_t* value,
+                              int32_t lo, int32_t hi, int32_t step,
+                              aoc::ui::WidgetId* labelOut,
+                              float widthPx = 96.0f) {
+            aoc::ui::ButtonData btn;
+            btn.label        = prefix + std::to_string(*value);
+            btn.fontSize     = 12.0f;
+            btn.normalColor  = aoc::ui::tokens::BRONZE_BASE;
+            btn.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+            btn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+            btn.onClick = [this, value, prefix, lo, hi, step, labelOut]() {
+                int32_t nv = *value + step;
+                if (nv > hi) { nv = lo; }
+                *value = nv;
+                if (*labelOut != aoc::ui::INVALID_WIDGET) {
+                    this->m_uiManager.setLabelText(*labelOut,
+                        prefix + std::to_string(nv));
+                }
+                this->m_creatorEpochCache.clear();
+                this->m_creatorRegenPending = true;
+            };
+            const aoc::ui::WidgetId id = this->m_uiManager.createButton(
+                this->m_creatorAdvPanelId,
+                {0.0f, 0.0f, widthPx, 36.0f}, std::move(btn));
+            *labelOut = id;
+        };
+        addCycler("SS:",     &this->m_creatorSuperSample,    1,   4,   1,
+            &this->m_creatorSuperSampleLabel, 64.0f);
+        addCycler("Phase:",  &this->m_creatorClimatePhase,   0,   2,   1,
+            &this->m_creatorClimatePhaseLabel, 88.0f);
+        addCycler("SL:",     &this->m_creatorSeaLevelTenths, -10, 10,  1,
+            &this->m_creatorSeaLevelLabel, 80.0f);
+        addCycler("Tilt:",   &this->m_creatorAxialTiltTenths, 0, 400, 25,
+            &this->m_creatorAxialTiltLabel, 96.0f);
+        addCycler("ENSO:",   &this->m_creatorEnsoState,      0,   2,   1,
+            &this->m_creatorEnsoLabel, 80.0f);
+        addCycler("Milan:",  &this->m_creatorMilanTenths,    0,  10,   1,
+            &this->m_creatorMilanLabel, 80.0f);
     }
 
     // Epoch − button
@@ -1478,6 +1557,10 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                 this->m_uiManager.removeWidget(this->m_creatorPanelId);
                 this->m_creatorPanelId = aoc::ui::INVALID_WIDGET;
             }
+            if (this->m_creatorAdvPanelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.removeWidget(this->m_creatorAdvPanelId);
+                this->m_creatorAdvPanelId = aoc::ui::INVALID_WIDGET;
+            }
             this->m_continentCreatorMode = false;
             this->returnToMainMenu();
             this->m_mainMenu.destroy(this->m_uiManager);
@@ -1514,6 +1597,10 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             if (this->m_creatorPanelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.removeWidget(this->m_creatorPanelId);
                 this->m_creatorPanelId = aoc::ui::INVALID_WIDGET;
+            }
+            if (this->m_creatorAdvPanelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.removeWidget(this->m_creatorAdvPanelId);
+                this->m_creatorAdvPanelId = aoc::ui::INVALID_WIDGET;
             }
             this->m_continentCreatorMode = false;
             this->returnToMainMenu();
@@ -3967,6 +4054,10 @@ void Application::handleEndTurn() {
         if (this->m_creatorPanelId != aoc::ui::INVALID_WIDGET) {
             this->m_uiManager.removeWidget(this->m_creatorPanelId);
             this->m_creatorPanelId = aoc::ui::INVALID_WIDGET;
+        }
+        if (this->m_creatorAdvPanelId != aoc::ui::INVALID_WIDGET) {
+            this->m_uiManager.removeWidget(this->m_creatorAdvPanelId);
+            this->m_creatorAdvPanelId = aoc::ui::INVALID_WIDGET;
         }
         if (this->m_editorPanelId != aoc::ui::INVALID_WIDGET) {
             this->m_uiManager.removeWidget(this->m_editorPanelId);

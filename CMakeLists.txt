@@ -466,6 +466,16 @@ endif()
 find_package(Threads REQUIRED)
 target_link_libraries(aoc_lib PUBLIC Threads::Threads)
 
+# OpenMP — used for parallel per-tile passes in MapGenerator post-pass.
+# Optional: builds without OpenMP fall back to serial loops via the
+# AOC_HAS_OPENMP guard in the generator.
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(aoc_lib PUBLIC OpenMP::OpenMP_CXX)
+    target_compile_definitions(aoc_lib PUBLIC AOC_HAS_OPENMP=1)
+    message(STATUS "OpenMP enabled for parallel map generation")
+endif()
+
 target_compile_features(aoc_lib PUBLIC cxx_std_20)
 
 # LuaJIT scripting (preferred, 10-50x faster), falls back to Lua 5.4
@@ -559,7 +569,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     endif()
 endif()
 
-# Compiler warnings
+# Compiler warnings + SIMD autovectorization for Release builds.
+# -ftree-vectorize (default at -O2/-O3) lets the compiler auto-SIMD the
+# tight per-tile post-pass loops in MapGenerator. -march=native enables
+# AVX2/AVX-512 on the build host so noise sampling + Voronoi distance
+# loops use wide vector registers. Skip in Debug builds for visibility.
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(aoc_lib PRIVATE
         -Wall -Wextra -Wpedantic -Wconversion -Wshadow
@@ -567,6 +581,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         -Wnull-dereference -Wdouble-promotion
         -Wformat=2
         -pipe
+        $<$<CONFIG:Release>:-O3>
+        $<$<CONFIG:RelWithDebInfo>:-O3>
+        $<$<CONFIG:Release>:-march=native>
+        $<$<CONFIG:RelWithDebInfo>:-march=native>
+        $<$<CONFIG:Release>:-ftree-vectorize>
+        $<$<CONFIG:RelWithDebInfo>:-ftree-vectorize>
     )
 elseif(MSVC)
     # /W4 is the practical max; /Wall floods with noise from system headers.
