@@ -5,13 +5,14 @@
  * @brief Game length presets and turn scaling.
  *
  * Five game length presets that scale production costs, research costs,
- * and victory thresholds proportionally:
+ * and victory thresholds proportionally to keep per-turn pace constant
+ * (~0.002 cost-units per turn at reference Standard).
  *
- *   Quick:    250 turns, 0.67x costs -- fast-paced, less depth
- *   Standard: 400 turns, 1.0x costs  -- balanced, full era progression
- *   Epic:     600 turns, 1.5x costs  -- extended mid-game, more diplomacy
- *   Marathon: 1000 turns, 2.5x costs -- every system gets deep use
- *   Eternal:  2000 turns, 5.0x costs -- full sandbox stress test
+ *   Quick:    330 turns, 0.67x costs -- fast-paced, less depth
+ *   Standard: 500 turns, 1.0x costs  -- balanced, full era progression
+ *   Epic:     750 turns, 1.5x costs  -- extended mid-game, more diplomacy
+ *   Marathon: 1500 turns, 3.0x costs -- every system gets deep use
+ *   Eternal:  2000 turns, 4.0x costs -- full sandbox stress test
  *
  * The cost multiplier scales: production costs, research costs, civic costs,
  * wonder costs, and growth thresholds. This keeps the relative progression
@@ -50,7 +51,7 @@ inline constexpr GameLengthDef GAME_LENGTH_DEFS[] = {
     {GameLength::Standard, "Standard",  500, 1.00f, 1.00f, 30, 10},
     {GameLength::Epic,     "Epic",      750, 1.50f, 1.50f, 45, 15},
     {GameLength::Marathon, "Marathon", 1500, 3.00f, 3.00f, 60, 20},
-    {GameLength::Eternal,  "Eternal",  2000, 1.50f, 1.25f, 75, 30},
+    {GameLength::Eternal,  "Eternal",  2000, 4.00f, 4.00f, 75, 30},
 };
 
 inline constexpr int32_t GAME_LENGTH_COUNT = 5;

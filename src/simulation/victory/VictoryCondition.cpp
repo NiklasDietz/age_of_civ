@@ -658,7 +658,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
             // smaller games) — keeps Domination from photo-finishing the
             // moment the window opens just because one capital is held.
             if (alive > 1 && rivalCount > 0
-                && (ratio >= 0.50f || capitalsOwned >= rivalCount)) {
+                && (ratio >= 0.55f || capitalsOwned >= rivalCount)) {
                 LOG_INFO("Player %u wins by DOMINATION (%d/%d rival capitals owned)",
                          static_cast<unsigned>(candidate->id()),
                          capitalsOwned, rivalCount);
@@ -675,9 +675,10 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     if (victoryWindowOpen && (enabledTypes & VICTORY_MASK_SCIENCE) != 0u) {
         for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
             if (candidate->victoryTracker().isEliminated) { continue; }
-            // 2026-05-02: 3/5 (Earth/Moon/Lunar). Now that the
-            // victoryWindowOpen gate forces wins past 60% of turn budget,
-            // domination no longer races ahead, so 3/5 is reachable.
+            // 2026-05-02: 2/5 caused 53% Science mix because most civs hit
+            // it the moment the gate opened. 3/5 (Earth/Moon/Lunar) is the
+            // honest "Science victory" bar — Science civs that committed to
+            // the project, not just-passed-Computers civs.
             if (candidate->spaceRace().completedCount() >= 3) {
                 LOG_INFO("Player %u wins by SCIENCE (%d/5 space projects completed)",
                          static_cast<unsigned>(candidate->id()),
@@ -727,7 +728,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                 // boosted BASE_PASSIVE_PRESSURE in Religion.cpp.
                 const float ratio = static_cast<float>(dominatedCount)
                                   / static_cast<float>(rivalCount);
-                if (ratio >= 0.40f) {  // 2026-05-02: 0.35 → 0.55 → 0.45 → 0.40.
+                if (ratio >= 0.50f) {  // 2026-05-02: 0.40 → 0.50 to stagger
                                        // Window gate already prevents early
                                        // wins; 0.45 keeps religion competitive.
                     LOG_INFO("Player %u wins by RELIGION (%d/%d rivals dominated)",

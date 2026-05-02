@@ -54,12 +54,14 @@ struct BalanceParams {
     // 7 wonders, 1.5× lead so Culture lands 700-900 consistently.
     // GA-tuned 2026-04-25 with 0.5× culture accumulation rate active.
     // 2026-05-02 audit iter5: 1/18 culture wins still. Drop threshold.
-    // 2026-05-02: bumped after victoryWindowOpen gate landed; old 2500/2/1.10
-    // produced 57% Culture mix because most civs cross 2500 culture by the
-    // 60% turn mark. 5000 threshold + 3 wonders + 1.20 lead spreads winners.
-    float   cultureVictoryThreshold  = 3500.0f;
-    int32_t cultureVictoryMinWonders = 2;
-    float   cultureVictoryLeadRatio  = 1.15f;
+    // 2026-05-02: tuned after multi-length audit showed Culture 46% at 2000t.
+    // Bumped to 4500/3/1.20 to spread winners across paths. Culture
+    // accumulates over the whole game so longer games naturally favour it
+    // unless the threshold bites harder. (Threshold scaled by GamePace
+    // costMultiplier at use site, so still turn-fraction-independent.)
+    float   cultureVictoryThreshold  = 5500.0f;
+    int32_t cultureVictoryMinWonders = 3;
+    float   cultureVictoryLeadRatio  = 1.25f;
 
     float   integrationThreshold     = 1.66f;  // GA 2026-04-26
     int32_t integrationTurnsRequired = 10;
