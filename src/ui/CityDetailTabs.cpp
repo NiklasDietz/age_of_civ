@@ -550,7 +550,33 @@ void CityDetailScreen::buildProductionTab(UIManager& ui, WidgetId contentPanel) 
             LOG_INFO("Enqueued: %s", itemName.c_str());
         };
 
-        (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth, 22.0f}, std::move(btn));
+        (void)ui.createButton(scrollArea, {0.0f, 0.0f, kListWidth - 60.0f, 22.0f}, std::move(btn));
+
+        // "Build Now" — interrupt current production. Active item keeps its
+        // progress field, just gets shifted to index 1; resumes after the
+        // urgent item completes.
+        ButtonData nowBtn;
+        nowBtn.label        = "Now";
+        nowBtn.fontSize     = 10.0f;
+        nowBtn.cornerRadius = 3.0f;
+        nowBtn.normalColor  = tokens::STATE_DANGER;
+        nowBtn.hoverColor   = tokens::BRONZE_LIGHT;
+        nowBtn.pressedColor = tokens::BRONZE_DARK;
+        nowBtn.labelColor   = tokens::TEXT_GILT;
+        nowBtn.onClick = [cityPtr, itemType, itemId, itemCost, itemName]() {
+            if (cityPtr == nullptr) { return; }
+            aoc::sim::ProductionQueueItem item{};
+            item.type      = itemType;
+            item.itemId    = itemId;
+            item.name      = itemName;
+            item.totalCost = itemCost;
+            item.progress  = 0.0f;
+            std::vector<aoc::sim::ProductionQueueItem>& q =
+                cityPtr->production().queue;
+            q.insert(q.begin(), std::move(item));
+            LOG_INFO("Interrupted production -- now building: %s", itemName.c_str());
+        };
+        (void)ui.createButton(scrollArea, {0.0f, 0.0f, 56.0f, 22.0f}, std::move(nowBtn));
     }
 }
 

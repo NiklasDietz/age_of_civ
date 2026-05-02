@@ -599,6 +599,17 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     // These trigger regardless of VictoryMode — the mode only determines
     // whether they're the PRIMARY win conditions or bonus achievements.
     // ================================================================
+    //
+    // 2026-05-02: gate non-elimination victory paths to the last 40% of the
+    // turn budget. Civ6-style standard pacing puts most wins in the back
+    // half of the game; before this gate religion-rush civs were winning at
+    // turn 35-114 (4-11% of a 1000-turn game). Threshold left looser than
+    // user's "last 10-20%" so games still reach a winner under shorter
+    // budgets and faith-rush builds get a meaningful but late payoff.
+    constexpr float MIN_VICTORY_TURN_FRAC = 0.70f;
+    const TurnNumber minVictoryTurn =
+        static_cast<TurnNumber>(static_cast<float>(maxTurns) * MIN_VICTORY_TURN_FRAC);
+    const bool victoryWindowOpen = (currentTurn >= minVictoryTurn);
 
     // 3a. Domination Victory: own ≥60% of other civs' original capitals.
     // Audit 2026-04: full all-capitals requirement never fired in
@@ -606,7 +617,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     // (3-of-5 for 6-player) so a strong military civ has a reachable
     // path. Still meaningful — conquering 3 capitals is a major
     // achievement.
-    if ((enabledTypes & VICTORY_MASK_DOMINATION) != 0u) {
+    if (victoryWindowOpen && (enabledTypes & VICTORY_MASK_DOMINATION) != 0u) {
         // WP-D1 BUG FIX: candidate->cities() is the founder list; captured
         // cities REMAIN in the original founder's list with `owner()` updated
         // to the conqueror. Iterate ALL cities globally and check
@@ -642,12 +653,12 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
             const float ratio = (rivalCount > 0)
                 ? static_cast<float>(capitalsOwned) / static_cast<float>(rivalCount)
                 : 0.0f;
-            // 2026-04-28 iter11: combined 384-sim Dom 14.8%. Widen late-game
-            // escape from "≤4 alive" to "≤5 alive" so 8-player games entering
-            // late attrition (3 dead) qualify with 1 captured capital.
-            if (alive > 1
-                && (capitalsOwned >= 2
-                    || (capitalsOwned >= 1 && alive <= 5))) {
+            // 2026-05-02: now gated to victoryWindowOpen (≥60% of turns), so
+            // tighten capital requirement to 60% of rivals (or all of them in
+            // smaller games) — keeps Domination from photo-finishing the
+            // moment the window opens just because one capital is held.
+            if (alive > 1 && rivalCount > 0
+                && (ratio >= 0.50f || capitalsOwned >= rivalCount)) {
                 LOG_INFO("Player %u wins by DOMINATION (%d/%d rival capitals owned)",
                          static_cast<unsigned>(candidate->id()),
                          capitalsOwned, rivalCount);
@@ -661,13 +672,13 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     // unreachable in 1500t sims. 4-of-5 still requires the full Earth →
     // Moon → Lunar → Mars chain and is a meaningful achievement, while
     // allowing Science path to actually resolve.
-    if ((enabledTypes & VICTORY_MASK_SCIENCE) != 0u) {
+    if (victoryWindowOpen && (enabledTypes & VICTORY_MASK_SCIENCE) != 0u) {
         for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
             if (candidate->victoryTracker().isEliminated) { continue; }
-            // 2026-05-02 audit iter3: 3/5 still 0 — AI rarely commits
-            // to space race + tech-leader civs lose to Domination
-            // first. Drop to 2/5 (Earth Sat + Moon Landing minimum).
-            if (candidate->spaceRace().completedCount() >= 2) {
+            // 2026-05-02: 3/5 (Earth/Moon/Lunar). Now that the
+            // victoryWindowOpen gate forces wins past 60% of turn budget,
+            // domination no longer races ahead, so 3/5 is reachable.
+            if (candidate->spaceRace().completedCount() >= 3) {
                 LOG_INFO("Player %u wins by SCIENCE (%d/5 space projects completed)",
                          static_cast<unsigned>(candidate->id()),
                          candidate->spaceRace().completedCount());
@@ -677,7 +688,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     }
 
     // 3c. Religious Victory: your religion is dominant in >50% of every other civ's cities
-    if ((enabledTypes & VICTORY_MASK_RELIGION) != 0u) {
+    if (victoryWindowOpen && (enabledTypes & VICTORY_MASK_RELIGION) != 0u) {
         for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
             if (candidate->victoryTracker().isEliminated) { continue; }
             const ReligionId myReligion = candidate->faith().foundedReligion;
@@ -716,7 +727,9 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                 // boosted BASE_PASSIVE_PRESSURE in Religion.cpp.
                 const float ratio = static_cast<float>(dominatedCount)
                                   / static_cast<float>(rivalCount);
-                if (ratio >= 0.35f) {  // 2026-05-02 iter6: 0.40 → 11%; ease
+                if (ratio >= 0.40f) {  // 2026-05-02: 0.35 → 0.55 → 0.45 → 0.40.
+                                       // Window gate already prevents early
+                                       // wins; 0.45 keeps religion competitive.
                     LOG_INFO("Player %u wins by RELIGION (%d/%d rivals dominated)",
                              static_cast<unsigned>(candidate->id()),
                              dominatedCount, rivalCount);
@@ -733,7 +746,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     //   - culture total is at least 2x the next-best non-eliminated civ
     // The 2x gap prevents photo-finish flips near the threshold and forces
     // the winner to have meaningfully out-produced everyone on culture.
-    if ((enabledTypes & VICTORY_MASK_CULTURE) != 0u) {
+    if (victoryWindowOpen && (enabledTypes & VICTORY_MASK_CULTURE) != 0u) {
         const aoc::balance::BalanceParams& bal = aoc::balance::params();
         // Scale threshold by GamePace so 300t and 2000t games take comparable
         // proportion-of-game to Culture-win.

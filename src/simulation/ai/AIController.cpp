@@ -1708,14 +1708,17 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
             const int32_t relationThreshold = static_cast<int32_t>(
                 static_cast<float>(baseRelThreshold)
                 / std::sqrt(std::max(beh.militaryAggression, 0.1f)));
-            // War chance per turn: bumped base so wars actually happen in
-            // mid/late game. Montezuma: 3 * 1.7 = 5 (50%); Gandhi still ~0.
-            const int32_t baseWarChance = hardAI ? 4 : 3;
+            // War chance per turn: tuned down so 1000-turn games don't see
+            // ~140 declarations. Montezuma: 2 * 1.7 = 3.4 (~34%/elig turn);
+            // Gandhi still ~0.
+            const int32_t baseWarChance = hardAI ? 3 : 2;
             const int32_t warChanceThreshold = static_cast<int32_t>(
                 static_cast<float>(baseWarChance) * beh.militaryAggression);
 
-            // Peace cooldown: cannot re-declare war within 15 turns of a peace treaty.
-            constexpr int32_t WAR_COOLDOWN_TURNS = 15;
+            // Peace cooldown: cannot re-declare war within 40 turns of a peace
+            // treaty. Was 15 — too short for 1000-turn games (allowed up to
+            // ~66 wars between same pair).
+            constexpr int32_t WAR_COOLDOWN_TURNS = 40;
             if (rel.turnsSincePeace < WAR_COOLDOWN_TURNS) { continue; }
 
             // Periphery gate: refuse wars against civs beyond our projection
@@ -1753,7 +1756,9 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                 relationScore < relationThreshold) {
                 const int32_t warChance =
                     ((ourMilitary * 7 + theirMilitary * 13 +
-                      static_cast<int32_t>(this->m_player) * 31) % 10);
+                      static_cast<int32_t>(this->m_player) * 31 +
+                      gameState.currentTurn() * 53 +
+                      static_cast<int32_t>(other) * 71) % 100);
                 if (warChance < warChanceThreshold) {
                     diplomacy.declareWar(this->m_player, other,
                                          rel.casusBelliGranted()
@@ -1784,8 +1789,10 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                         oppoRatioThreshold * static_cast<float>(std::max(1, theirMilitary))) {
                     const int32_t warChance =
                         ((ourMilitary * 11 + theirMilitary * 17 +
-                          static_cast<int32_t>(this->m_player) * 37) % 10);
-                    const int32_t threshold = hardAI ? 4 : 3;
+                          static_cast<int32_t>(this->m_player) * 37 +
+                          gameState.currentTurn() * 59 +
+                          static_cast<int32_t>(other) * 73) % 100);
+                    const int32_t threshold = hardAI ? 3 : 2;
                     if (warChance < threshold) {
                         diplomacy.declareWar(this->m_player, other,
                                              aoc::sim::CasusBelliType::SurpriseWar,

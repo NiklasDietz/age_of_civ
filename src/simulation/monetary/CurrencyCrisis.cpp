@@ -28,9 +28,11 @@ constexpr float BANK_RUN_DRAIN_RATE = 0.20f;
 constexpr int32_t BANK_RUN_DURATION = 3;
 
 /// Hyperinflation triggers after this many consecutive turns above threshold.
-constexpr int32_t HYPERINFLATION_CONSEC_TURNS = 3;
+/// 2026-05-02: 3→6. Audit showed ~0.7 events/sim — meant to be rare crisis.
+constexpr int32_t HYPERINFLATION_CONSEC_TURNS = 6;
 /// Inflation rate that counts toward hyperinflation trigger.
-constexpr float HYPERINFLATION_THRESHOLD = 0.25f;
+/// 2026-05-02: 0.25→0.30 to gate noisy mid-cycle inflation spikes.
+constexpr float HYPERINFLATION_THRESHOLD = 0.30f;
 /// Hyperinflation crisis duration.
 constexpr int32_t HYPERINFLATION_DURATION = 5;
 
@@ -153,9 +155,11 @@ bool processCurrencyCrisis(aoc::game::GameState& gameState,
     // Check for new crisis triggers (highest severity first)
     // ================================================================
 
-    // 1. Hyperinflation (Fiat/Digital only)
+    // 1. Hyperinflation (Fiat/Digital only) — block while post-reform lockout
+    // active so a civ cannot re-hyperinflate the same cycle.
     if ((state.system == MonetarySystemType::FiatMoney
          || state.system == MonetarySystemType::Digital)
+        && crisis.reformLockoutTurns <= 0
         && crisis.turnsHighInflation >= HYPERINFLATION_CONSEC_TURNS) {
         crisis.activeCrisis = CrisisType::Hyperinflation;
         crisis.turnsRemaining = HYPERINFLATION_DURATION;

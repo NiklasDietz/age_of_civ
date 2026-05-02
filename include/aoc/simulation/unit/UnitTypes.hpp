@@ -140,7 +140,7 @@ struct UnitTypeDef {
 // Format: {id, name, class, era, hp, melee, ranged, range, move, cost, reqTech, upgradesTo, upgradeCost}
 
 inline constexpr int32_t UNIT_TYPE_COUNT = 68;
-inline constexpr std::array<UnitTypeDef, 68> UNIT_TYPE_DEFS = {{
+inline constexpr std::array<UnitTypeDef, 79> UNIT_TYPE_DEFS = {{
     // ========================================================================
     // MELEE INFANTRY: Warrior -> Swordsman -> Man-at-Arms -> Musketman -> Infantry -> Mech Infantry
     // ========================================================================
@@ -274,6 +274,39 @@ inline constexpr std::array<UnitTypeDef, 68> UNIT_TYPE_DEFS = {{
     // collision with Frigate/Ironclad.
     // ========================================================================
     {UnitTypeId{102}, "Great Person",   UnitClass::Civilian, UnitEra::Ancient,       50,  0,  0, 0, 3,   0, TechId{},   UnitTypeId{},    0},
+
+    // ========================================================================
+    // CIV6 PARITY UNITS (added 2026-05-02)
+    // ========================================================================
+
+    // ANTI-AIR: AA Gun -> Mobile SAM. Damages air units, weak vs ground.
+    {UnitTypeId{70}, "AA Gun",          UnitClass::Ranged,   UnitEra::Modern,       100, 30, 60, 3, 2, 280, TechId{15}, UnitTypeId{71}, 200, {{63, 1}}},
+    {UnitTypeId{71}, "Mobile SAM",      UnitClass::Ranged,   UnitEra::Atomic,       110, 40, 80, 4, 4, 400, TechId{18}, UnitTypeId{},   0,   {{109, 1}, {65, 1}}},
+
+    // PARATROOPER: airborne deploy infantry. Modern/Atomic.
+    {UnitTypeId{72}, "Paratrooper",     UnitClass::Melee,    UnitEra::Modern,       110, 65,  0, 0, 4, 320, TechId{15}, UnitTypeId{73}, 220},
+    {UnitTypeId{73}, "Special Forces",  UnitClass::Melee,    UnitEra::Atomic,       120, 80,  0, 0, 4, 420, TechId{18}, UnitTypeId{},   0,   {{63, 1}}},
+
+    // PRIVATEER: Renaissance naval raider. Can capture trade ships.
+    {UnitTypeId{74}, "Privateer",       UnitClass::Naval,    UnitEra::Renaissance,   90, 40,  0, 0, 4, 180, TechId{8},  UnitTypeId{},   0},
+
+    // HELICOPTER TRANSPORT: separate from Attack Helicopter.
+    {UnitTypeId{75}, "Helicopter",      UnitClass::Helicopter,UnitEra::Atomic,       80, 25,  0, 0, 6, 280, TechId{18}, UnitTypeId{},   0,   {{109, 1}, {65, 1}}},
+
+    // HEAVY CHARIOT: Ancient cavalry-class missing from current chain.
+    {UnitTypeId{76}, "Heavy Chariot",   UnitClass::Cavalry,  UnitEra::Ancient,       100, 28,  0, 0, 4,  80, TechId{1},  UnitTypeId{14}, 50},
+
+    // HOT AIR BALLOON: Industrial recon, line-of-sight bonus.
+    {UnitTypeId{77}, "Hot Air Balloon", UnitClass::Scout,    UnitEra::Industrial,    60,  0,  0, 0, 3, 120, TechId{12}, UnitTypeId{},   0},
+
+    // RANGER: Modern recon, scout upgrade.
+    {UnitTypeId{78}, "Ranger",          UnitClass::Scout,    UnitEra::Modern,        80, 35,  0, 0, 4, 240, TechId{15}, UnitTypeId{},   0},
+
+    // BATTLE CRUISER: Modern naval, between Battleship and Missile Cruiser.
+    {UnitTypeId{79}, "Battle Cruiser",  UnitClass::Naval,    UnitEra::Modern,       150, 70, 50, 3, 5, 380, TechId{15}, UnitTypeId{},   0,   {{64, 2}, {65, 2}}},
+
+    // SUPERTANKER (super-heavy logistics, late game).
+    {UnitTypeId{80}, "Supertanker",     UnitClass::Logistics,UnitEra::Atomic,        120, 0,  0, 0, 5, 280, TechId{18}, UnitTypeId{},   0,   {{64, 1}, {65, 2}}},
 }};
 
 /// Lookup a unit type definition by ID. IDs are not contiguous so this

@@ -97,12 +97,22 @@ static NodePtr actionBuildSettler() {
             aoc::game::Player* player = gameState.player(bb.player);
             if (player == nullptr) { return Status::Failure; }
 
-            // Find best city to produce settler (highest population with empty queue)
+            // 2026-05-02: stop requiring an empty queue. Cities almost always
+            // have an item building, so the old check meant a settler was
+            // never queued and most civs stayed mono-city. Now: skip cities
+            // that already have a settler queued, otherwise pick the highest-
+            // population city and append.
             aoc::game::City* bestCity = nullptr;
-            int32_t bestPop = 0;
+            int32_t bestPop = -1;
             for (const std::unique_ptr<aoc::game::City>& cityPtr : player->cities()) {
                 if (cityPtr == nullptr) { continue; }
-                if (!cityPtr->production().isEmpty()) { continue; }
+                bool settlerAlready = false;
+                for (const ProductionQueueItem& q : cityPtr->production().queue) {
+                    if (q.type == ProductionItemType::Unit && q.itemId == 3) {
+                        settlerAlready = true; break;
+                    }
+                }
+                if (settlerAlready) { continue; }
                 if (cityPtr->population() > bestPop) {
                     bestPop = cityPtr->population();
                     bestCity = cityPtr.get();
@@ -295,14 +305,17 @@ NodePtr buildLeaderBehaviorTree(const LeaderPersonalityDef& personality) {
             std::make_unique<Sequence>("Emergency", std::move(emergencySeq)));
     }
 
-    // 2. Expansion
+    // 2. Expansion -- 2026-05-02: unwrap WeightedChance so settler queues
+    // every turn the condition is true, not stochastically. With prodSettlers
+    // <1.0 the gate skipped most turns and left ~43% of civs mono-city.
+    // needsSettler() already ensures we only fire when below target and no
+    // settler in flight, so spamming is bounded.
     {
         std::vector<NodePtr> expandSeq;
         expandSeq.push_back(needsSettler());
         expandSeq.push_back(actionBuildSettler());
         rootChildren.push_back(
-            std::make_unique<WeightedChance>(b.prodSettlers,
-                std::make_unique<Sequence>("Expand", std::move(expandSeq))));
+            std::make_unique<Sequence>("Expand", std::move(expandSeq)));
     }
 
     // 3. Builder

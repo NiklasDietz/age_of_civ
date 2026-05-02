@@ -461,7 +461,11 @@ void ProductionScreen::open(UIManager& ui) {
                 std::vector<aoc::sim::ProductionQueueItem>* qPtr = &queue;
                 const std::size_t targetIdx = qi;
                 ui.onDrop(rid, [qPtr, targetIdx](uint32_t fromIdx) {
-                    if (fromIdx == 0 || fromIdx >= qPtr->size()) { return; }
+                    // 2026-05-02: allow swapping with index 0 (active item).
+                    // Each ProductionQueueItem carries its own progress field,
+                    // so the old front keeps its accumulated progress when
+                    // shifted to a different position.
+                    if (fromIdx >= qPtr->size()) { return; }
                     if (targetIdx == fromIdx) { return; }
                     std::swap((*qPtr)[fromIdx], (*qPtr)[targetIdx]);
                 });
@@ -601,7 +605,35 @@ void ProductionScreen::open(UIManager& ui) {
                     LOG_INFO("Enqueued: %s", itemName.c_str());
                 };
                 (void)ui.createButton(textCol,
-                    {0.0f, 0.0f, CARD_W - 80.0f, 18.0f}, std::move(btn));
+                    {0.0f, 0.0f, CARD_W - 150.0f, 18.0f}, std::move(btn));
+
+                // "Build Now" interrupts current production. Active item's
+                // progress field stays intact when shifted to idx 1, so it
+                // resumes once the urgent item completes.
+                ButtonData nowBtn;
+                nowBtn.label        = "Build Now";
+                nowBtn.fontSize     = 11.0f;
+                nowBtn.normalColor  = tokens::STATE_DANGER;
+                nowBtn.hoverColor   = tokens::BRONZE_LIGHT;
+                nowBtn.pressedColor = tokens::STATE_PRESSED;
+                nowBtn.labelColor   = tokens::TEXT_GILT;
+                nowBtn.cornerRadius = tokens::CORNER_BUTTON;
+                nowBtn.onClick = [cityPtr, itemType, itemId, itemCost, itemName]() {
+                    if (cityPtr == nullptr) { return; }
+                    aoc::sim::ProductionQueueItem item{};
+                    item.type      = itemType;
+                    item.itemId    = itemId;
+                    item.name      = itemName;
+                    item.totalCost = itemCost;
+                    item.progress  = 0.0f;
+                    std::vector<aoc::sim::ProductionQueueItem>& q =
+                        cityPtr->production().queue;
+                    q.insert(q.begin(), std::move(item));
+                    LOG_INFO("Interrupted production -- now building: %s",
+                             itemName.c_str());
+                };
+                (void)ui.createButton(textCol,
+                    {0.0f, 0.0f, 64.0f, 18.0f}, std::move(nowBtn));
             }
         }
     }
