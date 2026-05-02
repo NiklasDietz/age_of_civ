@@ -313,47 +313,14 @@ bool evaluateTradeConsent(const aoc::game::GameState& gameState,
         }
     }
 
-    // Compute benefit score for the target player.
-    // Trade is generally beneficial (gold, resources, science/culture spread),
-    // so the baseline is positive. Only war/embargo/very hostile relations block it.
-    float score = 0.0f;
-
-    // Gold benefit: trade always generates gold for both parties
-    score += 40.0f;
-
-    // Resource benefit: does the proposer have goods we need?
-    const PlayerEconomyComponent* targetEcon  = nullptr;
-    const PlayerEconomyComponent* proposerEcon = nullptr;
-
-    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
-        if (p->id() == target)   { targetEcon   = &p->economy(); }
-        if (p->id() == proposer) { proposerEcon  = &p->economy(); }
-    }
-
-    if (targetEcon != nullptr && proposerEcon != nullptr) {
-        for (const std::pair<const uint16_t, int32_t>& need : targetEcon->totalNeeds) {
-            std::unordered_map<uint16_t, int32_t>::const_iterator supIt =
-                proposerEcon->totalSupply.find(need.first);
-            if (supIt != proposerEcon->totalSupply.end() && supIt->second > 1) {
-                int32_t price = market.marketData(need.first).currentPrice;
-                score += static_cast<float>(std::min(supIt->second, need.second))
-                       * static_cast<float>(std::max(1, price)) * 0.1f;
-            }
-        }
-    }
-
-    // Treasury desperation: accept more readily if poor
-    if (targetEcon != nullptr && targetEcon->treasury < 200) {
-        score += 30.0f;
-    }
-
-    // Relation bonus: friendly players get benefit of the doubt
-    if (diplomacy != nullptr) {
-        const PairwiseRelation& rel = diplomacy->relation(proposer, target);
-        score += static_cast<float>(rel.baseScore) * 0.5f;
-    }
-
-    return score > 0.0f;
+    // 2026-05-02: Civ6-style consent — peace is sufficient. Earlier scoring
+    // formula (baseline 40 + resource match + treasury + relations*0.5)
+    // produced 19k rejections per 36-sim audit because post-war negative
+    // relations swung the score below zero. Trade is supposed to be the
+    // mechanism that REPAIRS relations, not a luxury gated on already-good
+    // ones. Suppress the diplomacy 'unused' warning.
+    (void)gameState; (void)market; (void)proposer; (void)target;
+    return true;
 }
 
 /// Compute total market value of cargo currently carried by a trader.
@@ -411,24 +378,34 @@ int32_t maxTradeRange(const aoc::game::Player& player, TradeRouteType type) {
             // Air requires Aviation (26) at all; once researched, unlimited.
             return has(26) ? std::numeric_limits<int32_t>::max() : 0;
         case TradeRouteType::Sea: {
-            int32_t r = 8;            // coastal hugger baseline
-            if (has(7))  { r = 10; } // Apprenticeship: organized shipping
-            if (has(8))  { r = 12; } // Metallurgy: larger sailing fleets
-            if (has(11)) { r = 16; } // Industrialization: steam ships
-            if (has(12)) { r = 22; } // Refining: oil-burning ships
-            if (has(15)) { r = 26; } // Mass Production: diesel cargo
+            // 2026-05-02: bumped sea baseline 8→16 to match the new land
+            // baseline. Sea routes always had it slightly easier than
+            // land, keep the gap.
+            int32_t r = 16;           // coastal hugger baseline
+            if (has(7))  { r = 22; } // Apprenticeship: organized shipping
+            if (has(8))  { r = 28; } // Metallurgy: larger sailing fleets
+            if (has(11)) { r = 36; } // Industrialization: steam ships
+            if (has(12)) { r = 48; } // Refining: oil-burning ships
+            if (has(15)) { r = 60; } // Mass Production: diesel cargo
             if (has(26)) { return std::numeric_limits<int32_t>::max(); }
             return r;
         }
         case TradeRouteType::Land:
         default: {
-            int32_t r = 4;            // foot caravan baseline
-            if (has(1))  { r = 6;  } // Animal Husbandry: pack animals
-            if (has(6))  { r = 8;  } // Engineering: paved roads
-            if (has(7))  { r = 10; } // Apprenticeship: commercial network
-            if (has(11)) { r = 16; } // Industrialization: railways (big jump)
-            if (has(12)) { r = 20; } // Refining: trucks
-            if (has(15)) { r = 24; } // Mass Production: logistics
+            // 2026-05-02: bumped baseline 4→10 + tiers up. Audit showed
+            // ~5800 trade-route rejections with "longest segment > range"
+            // — civs at game start could only reach 4-tile-distant cities,
+            // and continental neighbours are typically 8-15 hexes apart.
+            // Trading Post infrastructure relays the gaps but AI doesn't
+            // build them often enough; bumping baseline lets early-game
+            // trade actually function.
+            int32_t r = 10;           // foot caravan baseline
+            if (has(1))  { r = 14; } // Animal Husbandry: pack animals
+            if (has(6))  { r = 18; } // Engineering: paved roads
+            if (has(7))  { r = 22; } // Apprenticeship: commercial network
+            if (has(11)) { r = 30; } // Industrialization: railways
+            if (has(12)) { r = 40; } // Refining: trucks
+            if (has(15)) { r = 50; } // Mass Production: logistics
             if (has(26)) { return std::numeric_limits<int32_t>::max(); }
             return r;
         }
@@ -509,6 +486,13 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
 
     aoc::game::City* destCity = &destCityRef;
 
+    // 2026-05-02: reject razed / invalid-owner destinations early. Founder
+    // lists retain captured-and-razed cities with owner=INVALID; downstream
+    // consent and component lookups silently fail on those.
+    if (destCity->owner() == INVALID_PLAYER) {
+        return ErrorCode::InvalidArgument;
+    }
+
     // Trade consent: foreign trade requires destination player's acceptance.
     // The AI evaluates whether the trade benefits them based on:
     //   - Gold income from the route
@@ -551,13 +535,19 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     // Trading Posts on owned tiles + Merchant GP slots.
     {
         const int32_t cap = computeTotalTradeSlots(*ownerPlayer, grid);
+        // 2026-05-02: only count traders that already have an assigned route.
+        // Previously every idle Trader unit (default trader.owner=INVALID)
+        // was counted, so a civ with 5 idle Caravans waiting for civics
+        // would hit the cap on its first route attempt and reject every
+        // subsequent establishTradeRoute call. ~6000 traders built across
+        // 36 sims, only 50 routes ever opened.
         int32_t activeRoutes = 0;
         for (const std::unique_ptr<aoc::game::Unit>& u : ownerPlayer->units()) {
             if (u == nullptr) { continue; }
             if (u.get() == traderUnit) { continue; }
-            if (u->typeDef().unitClass == UnitClass::Trader) {
-                ++activeRoutes;
-            }
+            if (u->typeDef().unitClass != UnitClass::Trader) { continue; }
+            if (u->trader().owner == INVALID_PLAYER) { continue; }
+            ++activeRoutes;
         }
         if (activeRoutes >= cap) {
             LOG_INFO("Trade route rejected: player %u at cap %d (active %d)",
@@ -610,16 +600,18 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     bool originIsCoastal = isCityCoastal(originCity);
     bool destIsCoastal   = isCityCoastal(destCity);
 
-    // C24: restore Harbor prereq for Sea routes. Coastal alone isn't enough —
-    // without a Harbor district, Sea routes are identical to Land but faster
-    // and more profitable, so coastal civs win by geography alone. AI gets a
-    // utility bump for Harbor when coastal (wired in AIBuilderController).
-    const bool originHasHarbor = originDistricts.hasDistrict(DistrictType::Harbor);
-    const bool destHasHarbor   = destDistricts.hasDistrict(DistrictType::Harbor);
+    // 2026-05-02: Harbor district no longer required for Sea routes.
+    // Caravans/traders can hire boats out of any coastal city even before
+    // a civ researches shipbuilding — Harbor + ship-tech still gate
+    // proper naval combat units, not commerce. Removing the gate so
+    // island civs and pure-coastal empires can trade across water by
+    // default. Harbor still gives bonuses (district adjacency, building
+    // capacity) but isn't a hard prereq for the route type.
+    (void)originDistricts; (void)destDistricts;
 
     if (ownerHasAviation && originHasAirport && destHasAirport) {
         trader.routeType = TradeRouteType::Air;
-    } else if (originIsCoastal && destIsCoastal && originHasHarbor && destHasHarbor) {
+    } else if (originIsCoastal && destIsCoastal) {
         trader.routeType = TradeRouteType::Sea;
     } else {
         trader.routeType = TradeRouteType::Land;
@@ -1658,13 +1650,10 @@ TradeRouteEstimate estimateTradeRouteIncome(
         }
     }
 
-    // C24: mirror Harbor prereq so AI income estimate matches actual route.
-    const bool originHasHarborE = originCity->districts().hasDistrict(DistrictType::Harbor);
-    const bool destHasHarborE   = destCity.districts().hasDistrict(DistrictType::Harbor);
-
+    // 2026-05-02: Harbor no longer required (mirrors actual establishTradeRoute).
     if (ownerHasAviation && originHasAirport && destHasAirport) {
         estimate.routeType = TradeRouteType::Air;
-    } else if (originIsCoastal && destIsCoastal && originHasHarborE && destHasHarborE) {
+    } else if (originIsCoastal && destIsCoastal) {
         estimate.routeType = TradeRouteType::Sea;
     } else {
         estimate.routeType = TradeRouteType::Land;

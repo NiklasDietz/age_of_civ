@@ -60,10 +60,13 @@ float computePlayerScience(const aoc::game::Player& player,
             }
         }
 
-        // 2. Population base science (1.5 per citizen).
-        // Raised from 0.5 to ensure early cities with 1-2 pop can realistically
-        // advance through the tech tree within a normal game length.
-        cityScience += static_cast<float>(city->population()) * 1.5f;
+        // 2. Population base science (2.5 per citizen).
+        // 2026-05-02: 1.5 → 2.5. Audit showed median civ ends with only 17
+        // researched techs across a 1000-turn game; era-4 rev gates (11/18/21)
+        // were unreachable for ~80% of civs. SCIENCE-win dominance from this
+        // bump is countered by raising the space-race threshold (3/5 → 4/5)
+        // in VictoryCondition.cpp.
+        cityScience += static_cast<float>(city->population()) * 2.5f;
 
         // 3. Palace bonus: capital gets extra science from the seat of government.
         // Raised from 3 to 5 to give the capital a meaningful research advantage

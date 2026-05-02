@@ -208,6 +208,24 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                     }
                 }
 
+                // 2026-05-02: also boost direct prereqs of rev-gate techs.
+                // Without this, AI sees only one of the three rev techs is
+                // currently available (the others gated by prereqs) and
+                // chases something unrelated. Smaller bump (+8000) since
+                // it's a transitive incentive — gets full +15000 when the
+                // rev tech itself enters the available set.
+                for (const uint32_t reqTechId : nextRevTechs) {
+                    if (reqTechId == 0xFFFFu) { continue; }
+                    const TechDef& reqDef =
+                        techDef(TechId{static_cast<uint16_t>(reqTechId)});
+                    for (const TechId& p : reqDef.prerequisites) {
+                        if (p.value == tid.value) {
+                            score += 8000;
+                            break;
+                        }
+                    }
+                }
+
                 // Production-chain gateway bonus: techs that unlock whole
                 // downstream chains get a large flat bonus.  Tech IDs from
                 // TechTree.cpp — double-checked after discovering an earlier

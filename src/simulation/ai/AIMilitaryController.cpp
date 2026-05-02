@@ -257,33 +257,77 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
             aoc::hex::neighbors(unit->position());
 
         // ============================================================
-        // SCOUTS: Move toward least-explored territory.
-        // ============================================================
+        // SCOUTS: Move toward least-explored territory using full move budget.
+        // 2026-05-02: old logic only checked 6 neighbors and moved 1 tile,
+        // wasting 2/3 of scout's movement (move=3). Now picks a frontier
+        // tile up to 8 hex away with the fewest own-territory tiles in a
+        // wider neighbourhood; moveUnitAlongPath then consumes the full
+        // budget. Drives met-players-count up — audit showed civs meeting
+        // 1-2 others almost never trade (0-2%) while civs meeting 7-8
+        // trade 75%+.
         if (def.unitClass == aoc::sim::UnitClass::Scout) {
-            aoc::hex::AxialCoord bestMove    = unit->position();
-            int32_t              lowestOwned = std::numeric_limits<int32_t>::max();
+            std::vector<aoc::hex::AxialCoord> candidates;
+            candidates.reserve(60);
+            aoc::hex::ring(unit->position(), 5, std::back_inserter(candidates));
+            aoc::hex::ring(unit->position(), 6, std::back_inserter(candidates));
+            aoc::hex::ring(unit->position(), 7, std::back_inserter(candidates));
+            aoc::hex::ring(unit->position(), 8, std::back_inserter(candidates));
 
-            for (const aoc::hex::AxialCoord& nbr : neighborTiles) {
-                if (!grid.isValid(nbr) || grid.movementCost(grid.toIndex(nbr)) <= 0) {
-                    continue;
-                }
+            aoc::hex::AxialCoord bestTarget = unit->position();
+            int32_t              bestScore  = std::numeric_limits<int32_t>::max();
+
+            for (const aoc::hex::AxialCoord& cand : candidates) {
+                if (!grid.isValid(cand)) { continue; }
+                const int32_t cIdx = grid.toIndex(cand);
+                if (grid.movementCost(cIdx) <= 0) { continue; }
+                if (aoc::map::isWater(grid.terrain(cIdx))) { continue; }
+                // Score: count own-territory tiles in a 3-hex spiral.
+                // Lower = more frontier = preferred.
                 int32_t ownedNearby = 0;
-                std::vector<aoc::hex::AxialCoord> checkTiles;
-                checkTiles.reserve(18);
-                aoc::hex::spiral(nbr, 2, std::back_inserter(checkTiles));
-                for (const aoc::hex::AxialCoord& ct : checkTiles) {
-                    if (grid.isValid(ct) && grid.owner(grid.toIndex(ct)) == this->m_player) {
+                std::vector<aoc::hex::AxialCoord> nearby;
+                nearby.reserve(37);
+                aoc::hex::spiral(cand, 3, std::back_inserter(nearby));
+                for (const aoc::hex::AxialCoord& nt : nearby) {
+                    if (grid.isValid(nt) && grid.owner(grid.toIndex(nt)) == this->m_player) {
                         ++ownedNearby;
                     }
                 }
-                if (ownedNearby < lowestOwned) {
-                    lowestOwned = ownedNearby;
-                    bestMove    = nbr;
+                // Tiebreak: prefer further from origin so scout actually moves
+                // out instead of orbiting near the city.
+                const int32_t score =
+                    ownedNearby * 100 - grid.distance(unit->position(), cand);
+                if (score < bestScore) {
+                    bestScore  = score;
+                    bestTarget = cand;
                 }
             }
 
-            if (bestMove != unit->position()) {
-                aoc::sim::orderUnitMove(*unit, bestMove, grid);
+            // Fallback: if every ring-5..8 tile is invalid (tiny island),
+            // fall back to the original 1-tile neighbour pick.
+            if (bestTarget == unit->position()) {
+                int32_t lowestOwned = std::numeric_limits<int32_t>::max();
+                for (const aoc::hex::AxialCoord& nbr : neighborTiles) {
+                    if (!grid.isValid(nbr) || grid.movementCost(grid.toIndex(nbr)) <= 0) {
+                        continue;
+                    }
+                    int32_t ownedNearby = 0;
+                    std::vector<aoc::hex::AxialCoord> checkTiles;
+                    checkTiles.reserve(18);
+                    aoc::hex::spiral(nbr, 2, std::back_inserter(checkTiles));
+                    for (const aoc::hex::AxialCoord& ct : checkTiles) {
+                        if (grid.isValid(ct) && grid.owner(grid.toIndex(ct)) == this->m_player) {
+                            ++ownedNearby;
+                        }
+                    }
+                    if (ownedNearby < lowestOwned) {
+                        lowestOwned = ownedNearby;
+                        bestTarget  = nbr;
+                    }
+                }
+            }
+
+            if (bestTarget != unit->position()) {
+                aoc::sim::orderUnitMove(*unit, bestTarget, grid);
                 aoc::sim::moveUnitAlongPath(gameState, *unit, grid);
             }
             continue;

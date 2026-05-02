@@ -286,16 +286,26 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
         }
 
         // Step 1g (WP-K7): place a Trading Post on the current tile if
-        // it's a neutral (unowned) Desert/Plains tile within 8 hex of any
+        // it's a neutral (unowned) passable land tile within 12 hex of any
         // owned city. Post-Currency (TechId 5). Boosts trade range relay
-        // outside the civ's borders. Builder retains charges if civ owner
-        // already has 3+ Trading Posts (avoid spam).
+        // outside the civ's borders.
+        // 2026-05-02: any passable land terrain (was Desert/Plains only),
+        // closeOwn cap 8 → 12, post cap 3 → 8 per civ.
+        // Overbuild allowed on neutral tiles: another civ's stale improvement
+        // (e.g. razed-city remnant or rival relay) can be replaced. Tile
+        // ownership stays unowned; the new improvement just supersedes the
+        // old. Trading Post relays work for everyone regardless of placer.
         if (gsPlayer->hasResearched(TechId{5})
             && grid.owner(currentIdx) == INVALID_PLAYER
-            && grid.improvement(currentIdx) == aoc::map::ImprovementType::None) {
+            // No-op overbuild: skip tiles that already host a Trading Post.
+            // Posts are shared infrastructure; replacing a post with a post
+            // wastes the builder's charge.
+            && grid.improvement(currentIdx) != aoc::map::ImprovementType::TradingPost) {
             const aoc::map::TerrainType t = grid.terrain(currentIdx);
-            if (t == aoc::map::TerrainType::Desert
-             || t == aoc::map::TerrainType::Plains) {
+            const bool passableLand = !aoc::map::isWater(t)
+                                   && t != aoc::map::TerrainType::Mountain
+                                   && grid.movementCost(currentIdx) > 0;
+            if (passableLand) {
                 int32_t closeOwn = std::numeric_limits<int32_t>::max();
                 for (const aoc::hex::AxialCoord& c : cityLocations) {
                     closeOwn = std::min(closeOwn, grid.distance(builder.position, c));
@@ -307,7 +317,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                         ++existingPosts;
                     }
                 }
-                if (closeOwn <= 8 && closeOwn >= 3 && existingPosts < 3 + this->m_player) {
+                if (closeOwn <= 12 && closeOwn >= 2 && existingPosts < 8 + this->m_player) {
                     if (canPlaceImprovement(grid, currentIdx,
                                             aoc::map::ImprovementType::TradingPost)) {
                         grid.setImprovement(currentIdx,
@@ -422,10 +432,15 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
             }
         }
 
-        // Step 2b (WP-K7): deliberate relay-seek. If a foreign city sits
-        // beyond direct trade range, target a neutral passable midpoint
-        // tile (Desert/Plains) to drop a future Trading Post relay.
-        // Skips when civ already has plenty of posts so builders don't spam.
+        // Step 2b (WP-K7): deliberate relay-seek. AI drops Trading Posts
+        // along trade-route paths so caravans crossing wide neutral land
+        // don't fail with "longest segment > range".
+        // 2026-05-02: aggressive variant — any passable land terrain
+        // qualifies (was Desert/Plains only), pair-distance gate dropped
+        // to >5 hex (was >8), builder-distance gate widened to 20 (was 12),
+        // post cap raised to 8 + player_id (was 3 + player_id). Audit
+        // showed ~3k "longest segment > range" rejections; the prior
+        // restrictive variant rarely placed enough relays to clear them.
         if (gsPlayer->hasResearched(TechId{5})) {
             int32_t existingPosts = 0;
             const int32_t tilesN = grid.tileCount();
@@ -434,7 +449,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                     ++existingPosts;
                 }
             }
-            const int32_t postCap = 3 + static_cast<int32_t>(this->m_player);
+            const int32_t postCap = 8 + static_cast<int32_t>(this->m_player);
             if (existingPosts < postCap) {
                 std::vector<aoc::hex::AxialCoord> foreignCities;
                 for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
@@ -447,7 +462,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                 for (const aoc::hex::AxialCoord& fc : foreignCities) {
                     for (const aoc::hex::AxialCoord& cityLoc : cityLocations) {
                         const int32_t pairDist = grid.distance(cityLoc, fc);
-                        if (pairDist <= 8 || pairDist > 24) { continue; }
+                        if (pairDist <= 5 || pairDist > 40) { continue; }
                         const int32_t midSteps = pairDist / 2;
                         const float lerp = static_cast<float>(midSteps)
                                          / static_cast<float>(pairDist);
@@ -461,16 +476,22 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                         if (!grid.isValid(mid)) { continue; }
                         const int32_t midIdx = grid.toIndex(mid);
                         if (grid.owner(midIdx) != INVALID_PLAYER) { continue; }
-                        if (grid.improvement(midIdx) != aoc::map::ImprovementType::None) { continue; }
+                        // Skip tiles that already host a Trading Post — Posts
+                        // are owner-agnostic relays, no value in re-placing.
+                        // Other improvements may be overbuilt (rival Mine on
+                        // razed-city tile etc.).
+                        if (grid.improvement(midIdx)
+                            == aoc::map::ImprovementType::TradingPost) { continue; }
                         if (grid.movementCost(midIdx) <= 0) { continue; }
+                        // Accept any passable LAND tile (not water, not mountain).
                         const aoc::map::TerrainType tt = grid.terrain(midIdx);
-                        if (tt != aoc::map::TerrainType::Desert
-                         && tt != aoc::map::TerrainType::Plains) { continue; }
+                        if (aoc::map::isWater(tt)) { continue; }
+                        if (tt == aoc::map::TerrainType::Mountain) { continue; }
                         if (targetedTiles.find(mid) != targetedTiles.end()) { continue; }
                         const int32_t bdist = grid.distance(builder.position, mid);
-                        if (bdist > 12) { continue; }
+                        if (bdist > 20) { continue; }
                         // Strong priority bias: relays unlock entire trade lanes.
-                        const int32_t weighted = bdist - 4;
+                        const int32_t weighted = bdist - 6;
                         if (weighted < bestDist) {
                             bestDist = weighted;
                             bestTarget = mid;

@@ -1097,6 +1097,37 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             }
         }
 
+        // --- Scout ---
+        // 2026-05-02: Scouts were never produced by AI (no candidate path
+        // existed). Civs got 1 starter scout in headless sim, 0 in UI mode,
+        // and never replaced losses. Audit: civs that met 1-2 others traded
+        // 0-2%; civs meeting 7-8 traded 75%+. More scouts = more met civs
+        // = more trade.
+        // Score must out-rank Mint (4.0) and Settlers (~2-5) in capital
+        // when civ has no scouts at all — exploration is the ONE early
+        // need that other branches don't cover. Cap at 2 per civ; once
+        // exploration done, scouts naturally lose to other candidates.
+        {
+            const int32_t scoutCap = 3;
+            if (unitCounts.scouts < scoutCap) {
+                ProductionCandidate candidate{};
+                candidate.item.type      = ProductionItemType::Unit;
+                candidate.item.itemId    = 2u;
+                candidate.item.name      = "Scout";
+                candidate.item.totalCost = static_cast<float>(
+                    unitTypeDef(UnitTypeId{2}).productionCost);
+                candidate.item.progress  = 0.0f;
+                if (unitCounts.scouts == 0) {
+                    candidate.score = 6.0f;  // Top priority — nothing met yet
+                } else if (ownedCityCount <= 2) {
+                    candidate.score = 4.5f;  // Second scout in young empire
+                } else {
+                    candidate.score = 2.0f;  // Late replacement
+                }
+                candidates.push_back(std::move(candidate));
+            }
+        }
+
         // --- Trader ---
         {
             const float traderScore = scoreTrader(
@@ -2770,6 +2801,21 @@ void AIController::manageTradeRoutes(aoc::game::GameState& gameState, aoc::map::
         for (const std::unique_ptr<aoc::game::Player>& pPtr : gameState.players()) {
             for (const std::unique_ptr<aoc::game::City>& cityPtr : pPtr->cities()) {
                 if (cityPtr->location() == traderUnit->position()) { continue; }
+                // 2026-05-02: skip razed / invalid-owner cities. Founder list
+                // retains captured-then-razed cities with owner == INVALID;
+                // every trade-route attempt against those rejected as
+                // "no benefit / hostile" because gameState.player(255)==null.
+                if (cityPtr->owner() == aoc::INVALID_PLAYER) { continue; }
+                // 2026-05-02: skip cities owned by civs we're at war with or
+                // embargoing. Audit: 14k Trade-route-rejected logs were all
+                // from this collision — AI proposed routes to enemy capitals
+                // because score formula ignored war state. Pre-filter here
+                // so traders pick a peaceful partner immediately.
+                if (cityPtr->owner() != this->m_player
+                    && (diplomacy.isAtWar(this->m_player, cityPtr->owner())
+                        || diplomacy.hasEmbargo(this->m_player, cityPtr->owner()))) {
+                    continue;
+                }
 
                 float score = 0.0f;
                 const int32_t dist =

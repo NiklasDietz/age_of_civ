@@ -675,11 +675,13 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     if (victoryWindowOpen && (enabledTypes & VICTORY_MASK_SCIENCE) != 0u) {
         for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
             if (candidate->victoryTracker().isEliminated) { continue; }
-            // 2026-05-02: 2/5 caused 53% Science mix because most civs hit
-            // it the moment the gate opened. 3/5 (Earth/Moon/Lunar) is the
-            // honest "Science victory" bar — Science civs that committed to
-            // the project, not just-passed-Computers civs.
-            if (candidate->spaceRace().completedCount() >= 3) {
+            // 2026-05-02: 2/5 → 3/5 → 4/5. Per-pop science was bumped 1.5→2.5
+            // in CityScience.cpp to make Industrial Revolutions reachable;
+            // the side-effect was Science-win share jumping to 53%. 4/5
+            // requires the full Earth → Moon → Lunar → Mars chain so it
+            // again represents a real Science civilization, not a side
+            // effect of generic tech speed-up.
+            if (candidate->spaceRace().completedCount() >= 4) {
                 LOG_INFO("Player %u wins by SCIENCE (%d/5 space projects completed)",
                          static_cast<unsigned>(candidate->id()),
                          candidate->spaceRace().completedCount());

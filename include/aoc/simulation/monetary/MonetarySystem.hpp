@@ -616,30 +616,29 @@ struct MonetaryStateComponent {
     }
 
     /// Maximum number of simultaneous trade routes allowed.
-    /// Scales with currency strength in commodity money (more coins = more trade capacity).
+    /// 2026-05-02: bumped tier baselines so early-game civs aren't
+    /// permanently locked at 1-2 routes. Audit showed 7191 "at cap"
+    /// rejections per 36-sim run when most civs sat in Barter/Commodity
+    /// for the first quartile of the game.
     [[nodiscard]] int32_t maxTradeRoutes() const {
         switch (this->system) {
-            case MonetarySystemType::Barter:         return 1;
+            case MonetarySystemType::Barter:         return 2;
             case MonetarySystemType::CommodityMoney: {
-                // Currency strength determines trade capacity
                 int32_t strength = this->currencyStrength();
-                if (strength < STRENGTH_LOCAL_TRADE)    { return 1; }
-                if (strength < STRENGTH_REGIONAL_TRADE) { return 2; }
-                if (strength < STRENGTH_INTERNATIONAL)  { return 3; }
-                return 4;  // Full commodity money trade capacity
+                if (strength < STRENGTH_LOCAL_TRADE)    { return 3; }
+                if (strength < STRENGTH_REGIONAL_TRADE) { return 4; }
+                if (strength < STRENGTH_INTERNATIONAL)  { return 5; }
+                return 6;
             }
             case MonetarySystemType::GoldStandard:
-                // G11: broken currency (M below the floor) degrades capacity
-                // so the fiat/gold tier can't silently keep full trade capacity
-                // while strength math reports 0.
-                if (this->moneySupply < MONEY_SUPPLY_FLOOR) { return 1; }
-                return 6;
+                if (this->moneySupply < MONEY_SUPPLY_FLOOR) { return 2; }
+                return 8;
             case MonetarySystemType::FiatMoney:
-                if (this->moneySupply < MONEY_SUPPLY_FLOOR) { return 1; }
-                return 10;
+                if (this->moneySupply < MONEY_SUPPLY_FLOOR) { return 2; }
+                return 12;
             case MonetarySystemType::Digital:
-                if (this->moneySupply < MONEY_SUPPLY_FLOOR) { return 1; }
-                return 14;
+                if (this->moneySupply < MONEY_SUPPLY_FLOOR) { return 2; }
+                return 16;
             default:                                 return 1;
         }
     }

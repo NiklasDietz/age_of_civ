@@ -212,6 +212,10 @@ set(AOC_LIB_SOURCES
     # Map
     src/map/HexGrid.cpp
     src/map/MapGenerator.cpp
+    src/map/gen/Noise.cpp
+    src/map/gen/Resources.cpp
+    src/map/gen/Features.cpp
+    src/map/gen/Rivers.cpp
     src/map/Pathfinding.cpp
     src/map/FogOfWar.cpp
     src/map/RiverGameplay.cpp

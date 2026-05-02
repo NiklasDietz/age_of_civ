@@ -38,7 +38,7 @@ void computeInflation(MonetaryStateComponent& state,
     // real monetary dynamics.  Clamp the Fisher input to a realistic single-
     // turn range; printing detection below still catches runaway issuance via
     // the printAmountThisTurn / GDP path.
-    moneyGrowth = std::clamp(moneyGrowth, -0.15f, 0.25f);
+    moneyGrowth = std::clamp(moneyGrowth, -0.10f, 0.15f);
 
     float gdpGrowth = 0.0f;
     if (previousGDP > 0) {
@@ -46,17 +46,16 @@ void computeInflation(MonetaryStateComponent& state,
                   / static_cast<float>(previousGDP);
     }
 
-    // currentGDP / previousGDP are nominal (coin-denominated, include price level).
-    // Fisher equation needs REAL output growth: subtract prior-turn inflation to
-    // deflate. Without this the -gdpGrowth term self-cancels inflation, inverting
-    // the feedback loop and letting printing run undetected.
-    //
-    // Clamped band prevents self-reinforcing peg: once inflationRate is at the
-    // top clamp (0.5), nominal growth that lags 0.5 would make "real growth"
-    // look like -0.5, then capacityPressure amplifies Fisher back up to the cap.
-    // Real output can't swing ±50% turn-over-turn; cap the signal before it
-    // feeds back into inflation.
-    const float realGDPGrowth = std::clamp(gdpGrowth - state.inflationRate, -0.10f, 0.20f);
+    // currentGDP / previousGDP are nominal (coin-denominated, include price
+    // level). Fisher equation needs REAL output growth, but subtracting full
+    // inflationRate creates a self-sustaining peg: with g=0, full subtraction
+    // saturates the clamp at -0.10, capacityPressure amplifies to 1.5, and
+    // Fisher locks at +0.15 every turn (which 84% of Fiat-civ turns hit in
+    // a 36-sim audit on 2026-05-02). Use partial inflation deflator so the
+    // feedback loop has dissipation, and tighten the lower clamp to -0.05
+    // so a still-positive real economy can't pretend to be in deep recession.
+    const float realGDPGrowth = std::clamp(gdpGrowth - 0.5f * state.inflationRate,
+                                           -0.05f, 0.15f);
 
     // Velocity changes slowly. High interest rates slow velocity (people save more).
     // Low rates increase velocity (people spend/invest more).
@@ -103,7 +102,9 @@ void computeInflation(MonetaryStateComponent& state,
     if (realGDPGrowth > 0.0f) {
         capacityPressure = std::max(0.3f, 1.0f - realGDPGrowth * 3.5f);
     } else if (realGDPGrowth < -0.02f) {
-        capacityPressure = std::min(1.5f, 1.0f + std::abs(realGDPGrowth) * 10.0f);
+        // 2026-05-02: ceiling 1.5 → 1.2. Combined with the partial-inflation
+        // deflator above, inflation no longer pegs at 0.15 in equilibrium.
+        capacityPressure = std::min(1.2f, 1.0f + std::abs(realGDPGrowth) * 6.0f);
     }
 
     state.inflationRate = fisherInflation * capacityPressure;

@@ -541,6 +541,95 @@ std::vector<ProductionRecipe> buildRecipes() {
         goods::SEMICONDUCTORS, 2, BuildingId{11}, 3,
         2, TechId{23}});
 
+    // ================================================================
+    // 2026-05-02: Geology-driven specialty resources (151-166) wired to
+    // existing chains. Most feed into established endpoints (steel,
+    // ammunition, semiconductors, batteries) so map-placement isn't a
+    // dead end. Recipe IDs 64-79.
+    // ================================================================
+
+    // NICKEL → premium Steel (with Iron + Coal). Higher output than recipe 7.
+    recipes.push_back({64, "Smelt Stainless Steel",
+        {{goods::NICKEL, 1}, {goods::IRON_ORE, 1}, {goods::COAL, 1}},
+        goods::STEEL, 3, BuildingId{3}, 1});
+
+    // COBALT → Batteries (alt to LITHIUM-only path, gives chemistry diversity).
+    recipes.push_back({65, "Cobalt Cell Batteries",
+        {{goods::COBALT, 1}, {goods::COPPER_ORE, 1}},
+        goods::BATTERIES, 2, BuildingId{4}, 2,
+        1, TechId{14}});
+
+    // HELIUM → Semiconductor cooling (3rd path to SEMICONDUCTORS).
+    recipes.push_back({66, "Helium-Cooled Semiconductors",
+        {{goods::HELIUM, 1}, {goods::RARE_EARTH, 1}, {goods::COPPER_WIRE, 1}},
+        goods::SEMICONDUCTORS, 3, BuildingId{11}, 3,
+        2, TechId{23}});
+
+    // PLATINUM → Jewelry-grade luxury via consumer-goods plant.
+    recipes.push_back({67, "Platinum Jewelry",
+        {{goods::PLATINUM, 1}, {goods::GOLD_ORE, 1}},
+        goods::CONSUMER_GOODS, 4, BuildingId{8}, 1});
+
+    // SULFUR → Gunpowder, alt path to Ammunition (NITER + STEEL is recipe 17).
+    recipes.push_back({68, "Sulfur Gunpowder Ammunition",
+        {{goods::SULFUR, 1}, {goods::STEEL, 1}, {goods::COAL, 1}},
+        goods::AMMUNITION, 3, BuildingId{3}, 1});
+
+    // GYPSUM → Bricks (drywall path, alt to STONE).
+    recipes.push_back({69, "Gypsum Plasterwork",
+        {{goods::GYPSUM, 1}, {goods::WOOD, 1}},
+        goods::BRICKS, 3, BuildingId{1}, 1});
+
+    // FLUORITE → smelting flux, doubles iron output.
+    recipes.push_back({70, "Flux Smelting",
+        {{goods::FLUORITE, 1}, {goods::IRON_ORE, 1}},
+        goods::IRON_INGOTS, 2, BuildingId{0}, 1});
+
+    // DOLOMITE → Construction Materials.
+    recipes.push_back({71, "Dolomite Cement",
+        {{goods::DOLOMITE, 2}, {goods::STONE, 1}},
+        goods::CONSTRUCTION_MAT, 2, BuildingId{1}, 1});
+
+    // BARITE → drilling fluid, boosts oil refining.
+    recipes.push_back({72, "Drilling Mud Fuel",
+        {{goods::BARITE, 1}, {goods::OIL, 1}},
+        goods::FUEL, 3, BuildingId{2}, 1});
+
+    // ALLUVIAL_GOLD → effectively GOLD_ORE without mountain mine.
+    recipes.push_back({73, "Pan Alluvial Gold",
+        {{goods::ALLUVIAL_GOLD, 2}},
+        goods::GOLD_ORE, 1, BuildingId{0}, 1});
+
+    // BEACH_PLACER → Rare Earth + Tin via heavy-mineral separation.
+    recipes.push_back({74, "Heavy Mineral Separation",
+        {{goods::BEACH_PLACER, 2}},
+        goods::RARE_EARTH, 1, BuildingId{0}, 2});
+
+    // PYRITE → Sulfur (intermediate good for ammunition chain).
+    recipes.push_back({75, "Roast Pyrite for Sulfur",
+        {{goods::PYRITE, 2}},
+        goods::SULFUR, 1, BuildingId{0}, 1});
+
+    // PHOSPHATE → Fertilizer-driven Processed Food.
+    recipes.push_back({76, "Phosphate Fertilizer",
+        {{goods::PHOSPHATE, 1}, {goods::WHEAT, 1}, {goods::CATTLE, 1}},
+        goods::PROCESSED_FOOD, 3, BuildingId{9}, 1});
+
+    // VMS_ORE → Copper Ore (volcanic massive sulfide is mostly Cu).
+    recipes.push_back({77, "Process VMS Ore",
+        {{goods::VMS_ORE, 1}},
+        goods::COPPER_ORE, 2, BuildingId{0}, 1});
+
+    // SKARN_ORE → Iron Ingots + Tin co-product.
+    recipes.push_back({78, "Smelt Skarn Ore",
+        {{goods::SKARN_ORE, 1}, {goods::COAL, 1}},
+        goods::IRON_INGOTS, 2, BuildingId{0}, 1});
+
+    // MVT_ORE → Silver Ore (lead-zinc deposits often carry silver).
+    recipes.push_back({79, "Refine MVT Ore",
+        {{goods::MVT_ORE, 1}, {goods::COAL, 1}},
+        goods::SILVER_ORE, 1, BuildingId{0}, 1});
+
     // (Uranium intentionally has no refining recipe in this game — Nuclear
     //  Plant consumes it raw.  A self-loop refiner would break the ranker
     //  the same way Aluminium did.)

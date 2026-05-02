@@ -369,7 +369,13 @@ static void processSingleCityGrowth(aoc::game::City& city,
     }
 
     city.setFoodSurplus(city.foodSurplus() + surplus);
-    if (city.foodSurplus() >= needed && city.population() < housing) {
+    // 2026-05-02: also require this-turn surplus > 0. Without it cities
+    // grow off accumulated stockpile while currently in deficit, which
+    // immediately triggers starvation yo-yo (47k pop-loss events / 36-sim
+    // audit). Growing only when the current turn produces a real surplus
+    // keeps pop sustainable and keeps the FamineCities counter low.
+    if (city.foodSurplus() >= needed && city.population() < housing
+        && surplus > 0.0f) {
         // H4.1: housing cap binds population (not just throttles surplus).
         // Growth blocked when already at or above cap so the prior turn's
         // excess surplus can't push pop past housing by 1 on the next tick.

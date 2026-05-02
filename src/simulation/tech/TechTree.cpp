@@ -60,8 +60,10 @@ std::vector<TechDef> buildTechDefs() {
     // NEW TECHS (18-27)
     // ================================================================
 
-    // Era 4: Industrial -- precision manufacturing chain (costs scaled to era 4).
-    techs.push_back({TechId{18}, "Surface Plate", EraId{4}, 1000,
+    // Era 4: Industrial -- precision manufacturing chain.
+    // 2026-05-02: cost 1000 → 700 → 500 to reach Steam Age inside game
+    // length. Audit: with 700 only 21% of civs hit all 3 era-4 rev gates.
+    techs.push_back({TechId{18}, "Surface Plate", EraId{4}, 500,
         {{TechId{8}, TechId{11}}},  // Metallurgy + Industrialization
         {}, {BuildingId{10}}, {}});  // Unlocks Precision Workshop
 
@@ -75,12 +77,16 @@ std::vector<TechDef> buildTechDefs() {
         {}, {BuildingId{8}}, {}});  // Unlocks Textile Mill
 
     // Era 4: Industrial -- food preservation.
-    techs.push_back({TechId{21}, "Food Preservation", EraId{4}, 1120,
+    // 2026-05-02: cost 1120 → 750 → 500. Rev gate intact; cheaper to fit
+    // inside game length.
+    techs.push_back({TechId{21}, "Food Preservation", EraId{4}, 500,
         {{TechId{11}}},  // Industrialization
         {}, {BuildingId{9}}, {}});  // Unlocks Food Processing Plant
 
     // Era 5: Modern -- precision instruments.
-    techs.push_back({TechId{22}, "Precision Instruments", EraId{5}, 1850,
+    // 2026-05-02: cost 1850 → 1300 → 900. Electric-Age rev gate retains
+    // all three tech reqs; cheaper to actually reach the 2nd revolution.
+    techs.push_back({TechId{22}, "Precision Instruments", EraId{5}, 900,
         {{TechId{19}, TechId{14}}},  // Interchangeable Parts + Electricity
         {}, {}, {}});
 

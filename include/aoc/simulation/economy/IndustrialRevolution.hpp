@@ -99,23 +99,15 @@ namespace rev_goods {
 }
 
 inline constexpr std::array<RevolutionDef, 5> REVOLUTION_DEFS = {{
-    // 1st: Steam Age -- Industrialization(11) + Surface Plate(18) + Food Preservation(21)
-    // Three era-4 techs gate the revolution so it cannot fire the turn
-    // Industrialization is researched.  Matching Civ 6 pacing (~t256/500, ~51%).
-    // Goods: Charcoal + Iron Ore.  Historical note: early iron-working used
-    // charcoal (wood-burned) as the fuel; coal mining followed later as forests
-    // depleted.  Coal also has reveal-tech = Industrialization(11), so gating
-    // the First rev on coal created a chicken-and-egg: tech 11 unlocks both
-    // the rev and the resource visibility simultaneously, so players rarely
-    // accumulated any coal in-stockpile before run-end.  Charcoal requires no
-    // reveal tech and can be burned from Wood via recipe 38 from game start.
+    // 1st: Steam Age -- Industrialization(11) + Surface Plate(18) + Food Preservation(21).
+    // Three era-4 techs gate the revolution. Reach-rate driven by AI research
+    // prioritisation, not by removing requirements. Goods: Charcoal + Iron Ore.
     {IndustrialRevolutionId::First, "Steam Age",
      {{TechId{11}, TechId{18}, TechId{21}},
       {rev_goods::CHARCOAL, rev_goods::IRON_ORE, rev_goods::NONE}, 1},
      {1.50f, 1.0f, 1.0f, 0.5f, 1.15f, 1.5f, true, false, false, false}},
 
-    // 2nd: Electric Age -- Electricity(14) + Precision Instruments(22) + Telecommunications(25)
-    // Three era-5 techs plus Oil + Steel goods.  Mass Production depends on it.
+    // 2nd: Electric Age -- Electricity(14) + Precision Instruments(22) + Telecommunications(25).
     {IndustrialRevolutionId::Second, "Electric Age",
      {{TechId{14}, TechId{22}, TechId{25}},
       {rev_goods::OIL, rev_goods::STEEL_GOOD, rev_goods::NONE}, 2},
