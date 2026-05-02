@@ -7950,6 +7950,241 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         grid.setEndemismIndex(std::move(endIdx));
         grid.setSpeciesRichness(std::move(spRich));
 
+        // ============================================================
+        // SESSION 15 — NPP / growing season / frost days / carrying
+        // capacity / soil texture (3) / seasonal & diurnal temp range /
+        // UV index / coral bleach / magnetic stripes / heat flow /
+        // volcano return / tsunami runup.
+        // ============================================================
+        std::vector<uint8_t> npp     (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> growSeas(static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> frost   (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> carryCap(static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> clay    (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> silt    (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> sand    (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> seasRng (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> diurRng (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> uv      (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> coralB  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> magAnom (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> heatF   (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> volRet  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> tsunRun (static_cast<std::size_t>(totalT), 0);
+
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const std::size_t si = static_cast<std::size_t>(i);
+                const aoc::map::TerrainType t = grid.terrain(i);
+                const aoc::map::FeatureType f = grid.feature(i);
+
+                // ---- GROWING SEASON / FROST DAYS ----
+                // Frost-free band: warmer = longer. Tropical 365,
+                // mid-lat ~200, polar ~30.
+                int32_t gs = 0;
+                if (lat < 0.20f)      { gs = 240; } // 360 d (tropical)
+                else if (lat < 0.40f) { gs = 200; } // 280 d
+                else if (lat < 0.55f) { gs = 150; } // 210 d
+                else if (lat < 0.70f) { gs = 80;  } // 110 d
+                else                  { gs = 20;  } // 30 d
+                if (t == aoc::map::TerrainType::Mountain) { gs /= 2; }
+                if (t == aoc::map::TerrainType::Snow)     { gs = 0; }
+                if (t == aoc::map::TerrainType::Tundra)   { gs = std::min(gs, 30); }
+                growSeas[si] = static_cast<uint8_t>(gs);
+                frost[si] = static_cast<uint8_t>(255 - growSeas[si]);
+
+                // ---- SEASONAL / DIURNAL TEMP RANGE ----
+                // Continentality from continentalFactor analog: tiles
+                // far from ocean have higher swing. Approx via lat:
+                // seasonal range scales with lat (more at poles), modulated
+                // by water proximity (less at coast).
+                int32_t seasonalK = static_cast<int32_t>(lat * 200.0f);
+                bool nearWater = false;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    const aoc::map::TerrainType nt = grid.terrain(nIdx);
+                    if (nt == aoc::map::TerrainType::Ocean
+                        || nt == aoc::map::TerrainType::ShallowWater) {
+                        nearWater = true; break;
+                    }
+                }
+                if (nearWater) { seasonalK = seasonalK * 60 / 100; }
+                seasRng[si] = static_cast<uint8_t>(
+                    std::clamp(seasonalK, 0, 255));
+                // Diurnal: high in deserts (clear sky → fast cooling),
+                // low on water + humid biomes.
+                int32_t diurnalK = 80;
+                if (t == aoc::map::TerrainType::Desert) { diurnalK = 200; }
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater) {
+                    diurnalK = 30;
+                }
+                if (f == aoc::map::FeatureType::Jungle) { diurnalK = 40; }
+                diurRng[si] = static_cast<uint8_t>(
+                    std::clamp(diurnalK, 0, 255));
+
+                // ---- UV INDEX ----
+                // High at equator + high altitude. Polar ozone hole
+                // pulls polar UV up at extreme latitudes.
+                int32_t uvK = static_cast<int32_t>(
+                    (1.0f - lat) * 200.0f);
+                const int8_t elev = grid.elevation(i);
+                uvK += elev * 20;
+                if (lat > 0.85f) { uvK += 40; } // polar ozone hole
+                uv[si] = static_cast<uint8_t>(std::clamp(uvK, 0, 255));
+
+                // ---- NPP ----
+                // Composite: temperature × moisture proxy from biome.
+                int32_t nppK = 60;
+                if (f == aoc::map::FeatureType::Jungle)      { nppK = 240; }
+                else if (f == aoc::map::FeatureType::Forest) { nppK = 180; }
+                else if (f == aoc::map::FeatureType::Floodplains
+                      || f == aoc::map::FeatureType::Marsh)  { nppK = 200; }
+                else if (t == aoc::map::TerrainType::Grassland) { nppK = 120; }
+                else if (t == aoc::map::TerrainType::Plains)   { nppK = 80;  }
+                else if (t == aoc::map::TerrainType::Tundra)   { nppK = 40;  }
+                else if (t == aoc::map::TerrainType::Desert
+                      || t == aoc::map::TerrainType::Snow)     { nppK = 10;  }
+                // Soil fertility boost.
+                if (si < soilFert.size()) {
+                    nppK = static_cast<int32_t>(
+                        static_cast<float>(nppK) * (0.5f + soilFert[si]));
+                }
+                npp[si] = static_cast<uint8_t>(std::clamp(nppK, 0, 255));
+
+                // ---- CARRYING CAPACITY ----
+                // Composite: NPP + freshwater + climate hospitability.
+                int32_t cap = static_cast<int32_t>(npp[si]) / 2;
+                if (grid.riverEdges(i) != 0) { cap += 50; }
+                if (lat > 0.20f && lat < 0.55f) { cap += 30; }
+                if (t == aoc::map::TerrainType::Snow
+                    || t == aoc::map::TerrainType::Tundra
+                    || t == aoc::map::TerrainType::Mountain) {
+                    cap = cap / 4;
+                }
+                carryCap[si] = static_cast<uint8_t>(std::clamp(cap, 0, 255));
+
+                // ---- SOIL TEXTURE (clay/silt/sand %) ----
+                // Approximate from soilOrder + climate:
+                //  oxisol/ultisol → high clay (tropical weathered)
+                //  mollisol/chernozem → loam (balanced)
+                //  aridisol → sand-rich
+                //  alfisol → loam
+                //  spodosol → sand-rich (boreal podzol)
+                //  vertisol → very high clay
+                const auto& so = grid.soilOrder();
+                uint8_t cP = 0, sP = 0, sandP = 0;
+                if (so.size() > si) {
+                    switch (so[si]) {
+                        case 4:  cP=180; sP=40;  sandP=35;  break; // oxisol
+                        case 5:  cP=140; sP=60;  sandP=55;  break; // ultisol
+                        case 3:  cP=80;  sP=110; sandP=65;  break; // mollisol
+                        case 6:  cP=80;  sP=100; sandP=75;  break; // alfisol
+                        case 7:  cP=40;  sP=70;  sandP=145; break; // spodosol
+                        case 8:  cP=30;  sP=60;  sandP=165; break; // aridisol
+                        case 9:  cP=200; sP=35;  sandP=20;  break; // vertisol
+                        case 10: cP=80;  sP=120; sandP=55;  break; // andisol
+                        case 11: cP=130; sP=85;  sandP=40;  break; // histosol
+                        case 12: cP=60;  sP=90;  sandP=105; break; // gelisol
+                        default: cP=80;  sP=85;  sandP=90;  break;
+                    }
+                }
+                clay[si] = cP;
+                silt[si] = sP;
+                sand[si] = sandP;
+
+                // ---- CORAL BLEACH RISK ----
+                // High SST + tropical + reef tile.
+                if (t == aoc::map::TerrainType::ShallowWater
+                    && lat < 0.30f) {
+                    const auto& sst = grid.seaSurfaceTemp();
+                    if (sst.size() > si) {
+                        const uint8_t s = sst[si];
+                        if (s > 230) {
+                            // 30-32°C = bleach risk; > 33°C = severe.
+                            coralB[si] = static_cast<uint8_t>(
+                                std::clamp((static_cast<int32_t>(s) - 230) * 10,
+                                    0, 255));
+                        }
+                    }
+                }
+
+                // ---- MAGNETIC ANOMALY STRIPES ----
+                // Banded oceanic crust: distance from nearest plate
+                // boundary (proxied by Voronoi distance) modulo stripe
+                // wavelength gives the stripe id. Only set on oceanic
+                // tiles.
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater) {
+                    const auto& ages = grid.crustAgeTile();
+                    if (ages.size() > si) {
+                        // Convert age to stripe id (~10 My per stripe).
+                        const float a = ages[si];
+                        magAnom[si] = static_cast<uint8_t>(
+                            (static_cast<int32_t>(a * 5.0f)) & 0xFF);
+                    }
+                }
+
+                // ---- HEAT FLOW REFINED ----
+                // Combine geothermalGradient + crust age (older = lower).
+                int32_t hf = 80;
+                const auto& gg = grid.geothermalGradient();
+                if (gg.size() > si) { hf = static_cast<int32_t>(gg[si]); }
+                const auto& ages = grid.crustAgeTile();
+                if (ages.size() > si) {
+                    const float a = ages[si];
+                    if (a > 100.0f) { hf = std::max(20, hf - 30); }
+                }
+                heatF[si] = static_cast<uint8_t>(std::clamp(hf, 0, 255));
+
+                // ---- VOLCANO RETURN PERIOD ----
+                // Volcanism flag → low return period (frequent).
+                const auto& vc = grid.volcanism();
+                if (vc.size() > si && vc[si] != 0
+                    && vc[si] != 6 && vc[si] != 7) {
+                    // Active arc/hotspot/LIP/rift: 30-300 yr scale.
+                    int32_t rp = 50;
+                    if (vc[si] == 2) { rp = 100; } // hotspot rare
+                    if (vc[si] == 3) { rp = 200; } // LIP rare large
+                    if (vc[si] == 5) { rp = 30;  } // hot spring frequent
+                    volRet[si] = static_cast<uint8_t>(rp);
+                }
+
+                // ---- TSUNAMI RUNUP ----
+                // Coastal land tile + tsunami hazard bit set → runup
+                // height proxy from cyclone basin proximity + slope.
+                const auto& sh = grid.seismicHazard();
+                if (sh.size() > si && (sh[si] & 0x08) != 0) {
+                    int32_t r = 40;
+                    const auto& sl = grid.slopeAngle();
+                    if (sl.size() > si && sl[si] < 60) { r += 80; } // flat amplifies
+                    tsunRun[si] = static_cast<uint8_t>(
+                        std::clamp(r, 0, 255));
+                }
+            }
+        }
+
+        grid.setNetPrimaryProductivity(std::move(npp));
+        grid.setGrowingSeasonDays(std::move(growSeas));
+        grid.setFrostDays(std::move(frost));
+        grid.setCarryingCapacity(std::move(carryCap));
+        grid.setSoilClayPct(std::move(clay));
+        grid.setSoilSiltPct(std::move(silt));
+        grid.setSoilSandPct(std::move(sand));
+        grid.setSeasonalTempRange(std::move(seasRng));
+        grid.setDiurnalTempRange(std::move(diurRng));
+        grid.setUvIndex(std::move(uv));
+        grid.setCoralBleachRisk(std::move(coralB));
+        grid.setMagneticAnomaly(std::move(magAnom));
+        grid.setHeatFlow(std::move(heatF));
+        grid.setVolcanoReturnPeriod(std::move(volRet));
+        grid.setTsunamiRunup(std::move(tsunRun));
+
         grid.setLithology(std::move(litho));
         grid.setBedrockLithology(std::move(bedrock));
         grid.setSoilOrder(std::move(sOrder));

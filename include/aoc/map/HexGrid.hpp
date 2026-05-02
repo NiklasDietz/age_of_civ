@@ -1625,6 +1625,127 @@ public:
     void setSpeciesRichness(std::vector<uint8_t> v) {
         this->m_speciesRichness = std::move(v);
     }
+
+    /// Per-tile net primary productivity 0-255 (composite biomass-
+    /// production capacity from temperature × moisture × growing
+    /// season). Drives ag yield, fishery, forestry capacity.
+    [[nodiscard]] const std::vector<uint8_t>& netPrimaryProductivity() const {
+        return this->m_netPrimaryProductivity;
+    }
+    void setNetPrimaryProductivity(std::vector<uint8_t> v) {
+        this->m_netPrimaryProductivity = std::move(v);
+    }
+    /// Per-tile growing season length 0-255 (= 0-365 frost-free days).
+    [[nodiscard]] const std::vector<uint8_t>& growingSeasonDays() const {
+        return this->m_growingSeasonDays;
+    }
+    void setGrowingSeasonDays(std::vector<uint8_t> v) {
+        this->m_growingSeasonDays = std::move(v);
+    }
+    /// Per-tile frost days per year 0-255 (= 0-365 frost days).
+    [[nodiscard]] const std::vector<uint8_t>& frostDays() const {
+        return this->m_frostDays;
+    }
+    void setFrostDays(std::vector<uint8_t> v) {
+        this->m_frostDays = std::move(v);
+    }
+    /// Per-tile carrying-capacity proxy 0-255 (max sustainable population
+    /// composite: NPP + freshwater + climate hospitability).
+    [[nodiscard]] const std::vector<uint8_t>& carryingCapacity() const {
+        return this->m_carryingCapacity;
+    }
+    void setCarryingCapacity(std::vector<uint8_t> v) {
+        this->m_carryingCapacity = std::move(v);
+    }
+
+    /// Per-tile soil texture fractions 0-255 (sums to ~255 across the
+    /// three components). Drives drainage, nutrient retention, tilth.
+    [[nodiscard]] const std::vector<uint8_t>& soilClayPct() const {
+        return this->m_soilClayPct;
+    }
+    void setSoilClayPct(std::vector<uint8_t> v) {
+        this->m_soilClayPct = std::move(v);
+    }
+    [[nodiscard]] const std::vector<uint8_t>& soilSiltPct() const {
+        return this->m_soilSiltPct;
+    }
+    void setSoilSiltPct(std::vector<uint8_t> v) {
+        this->m_soilSiltPct = std::move(v);
+    }
+    [[nodiscard]] const std::vector<uint8_t>& soilSandPct() const {
+        return this->m_soilSandPct;
+    }
+    void setSoilSandPct(std::vector<uint8_t> v) {
+        this->m_soilSandPct = std::move(v);
+    }
+
+    /// Per-tile annual temperature range (seasonal swing) 0-255
+    /// (= 0-50 °C amplitude). Drives continentality realism.
+    [[nodiscard]] const std::vector<uint8_t>& seasonalTempRange() const {
+        return this->m_seasonalTempRange;
+    }
+    void setSeasonalTempRange(std::vector<uint8_t> v) {
+        this->m_seasonalTempRange = std::move(v);
+    }
+    /// Per-tile diurnal temperature range 0-255 (day-night swing,
+    /// = 0-25 °C). High in deserts, low in marine climates.
+    [[nodiscard]] const std::vector<uint8_t>& diurnalTempRange() const {
+        return this->m_diurnalTempRange;
+    }
+    void setDiurnalTempRange(std::vector<uint8_t> v) {
+        this->m_diurnalTempRange = std::move(v);
+    }
+
+    /// Per-tile UV-index proxy 0-255 (lat + altitude + ozone).
+    [[nodiscard]] const std::vector<uint8_t>& uvIndex() const {
+        return this->m_uvIndex;
+    }
+    void setUvIndex(std::vector<uint8_t> v) {
+        this->m_uvIndex = std::move(v);
+    }
+
+    /// Per-tile coral bleaching risk 0-255 (high SST + low pH proxy).
+    [[nodiscard]] const std::vector<uint8_t>& coralBleachRisk() const {
+        return this->m_coralBleachRisk;
+    }
+    void setCoralBleachRisk(std::vector<uint8_t> v) {
+        this->m_coralBleachRisk = std::move(v);
+    }
+
+    /// Per-ocean-tile magnetic anomaly stripe id 0-255. Banded oceanic
+    /// crust ages in stripes parallel to ridge axis (Vine-Matthews).
+    [[nodiscard]] const std::vector<uint8_t>& magneticAnomaly() const {
+        return this->m_magneticAnomaly;
+    }
+    void setMagneticAnomaly(std::vector<uint8_t> v) {
+        this->m_magneticAnomaly = std::move(v);
+    }
+
+    /// Per-tile heat flow refined 0-255 (refined per-tile mW/m² blending
+    /// crust age + lithology + volcanism).
+    [[nodiscard]] const std::vector<uint8_t>& heatFlow() const {
+        return this->m_heatFlow;
+    }
+    void setHeatFlow(std::vector<uint8_t> v) {
+        this->m_heatFlow = std::move(v);
+    }
+
+    /// Per-tile volcano return period 0-255 (= 0-1000 yr scaled).
+    /// Lower = more frequent eruptions.
+    [[nodiscard]] const std::vector<uint8_t>& volcanoReturnPeriod() const {
+        return this->m_volcanoReturnPeriod;
+    }
+    void setVolcanoReturnPeriod(std::vector<uint8_t> v) {
+        this->m_volcanoReturnPeriod = std::move(v);
+    }
+    /// Per-coastal-tile tsunami runup elevation 0-255 (= 0-30 m).
+    /// 0 if not tsunami-prone.
+    [[nodiscard]] const std::vector<uint8_t>& tsunamiRunup() const {
+        return this->m_tsunamiRunup;
+    }
+    void setTsunamiRunup(std::vector<uint8_t> v) {
+        this->m_tsunamiRunup = std::move(v);
+    }
 private:
     std::vector<uint8_t>          m_plateId;
     std::vector<std::pair<float, float>> m_hotspots;
@@ -1737,6 +1858,21 @@ private:
     std::vector<uint8_t>                 m_habitatFragmentation;
     std::vector<uint8_t>                 m_endemismIndex;
     std::vector<uint8_t>                 m_speciesRichness;
+    std::vector<uint8_t>                 m_netPrimaryProductivity;
+    std::vector<uint8_t>                 m_growingSeasonDays;
+    std::vector<uint8_t>                 m_frostDays;
+    std::vector<uint8_t>                 m_carryingCapacity;
+    std::vector<uint8_t>                 m_soilClayPct;
+    std::vector<uint8_t>                 m_soilSiltPct;
+    std::vector<uint8_t>                 m_soilSandPct;
+    std::vector<uint8_t>                 m_seasonalTempRange;
+    std::vector<uint8_t>                 m_diurnalTempRange;
+    std::vector<uint8_t>                 m_uvIndex;
+    std::vector<uint8_t>                 m_coralBleachRisk;
+    std::vector<uint8_t>                 m_magneticAnomaly;
+    std::vector<uint8_t>                 m_heatFlow;
+    std::vector<uint8_t>                 m_volcanoReturnPeriod;
+    std::vector<uint8_t>                 m_tsunamiRunup;
     /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
     /// Greenhouse improvement actively populate. Tile index → good id.
     std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;
