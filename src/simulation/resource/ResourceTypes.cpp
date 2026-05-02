@@ -123,6 +123,24 @@ constexpr std::array<GoodDef, goods::GOOD_COUNT> GOOD_DEFS = []{
     defs[goods::PHARMACEUTICALS] = {goods::PHARMACEUTICALS, "Pharmaceuticals", GoodCategory::Advanced,     220, true,  0.50f};
     defs[goods::RARE_EARTH]      = {goods::RARE_EARTH,      "Rare Earth",      GoodCategory::RawStrategic, 420, true,  0.80f};
 
+    // Session 8 geology-driven specialty resources.
+    defs[goods::NICKEL]          = {goods::NICKEL,          "Nickel",          GoodCategory::RawStrategic,  90, true,  0.45f};
+    defs[goods::COBALT]          = {goods::COBALT,          "Cobalt",          GoodCategory::RawStrategic, 110, true,  0.50f};
+    defs[goods::HELIUM]          = {goods::HELIUM,          "Helium",          GoodCategory::RawStrategic, 200, true,  0.65f};
+    defs[goods::PLATINUM]        = {goods::PLATINUM,        "Platinum",        GoodCategory::RawLuxury,    300, false, 0.75f};
+    defs[goods::SULFUR]          = {goods::SULFUR,          "Sulfur",          GoodCategory::RawBonus,      14, false, 0.30f};
+    defs[goods::GYPSUM]          = {goods::GYPSUM,          "Gypsum",          GoodCategory::RawBonus,       9, false, 0.20f};
+    defs[goods::FLUORITE]        = {goods::FLUORITE,        "Fluorite",        GoodCategory::RawStrategic,  35, false, 0.40f};
+    defs[goods::DOLOMITE]        = {goods::DOLOMITE,        "Dolomite",        GoodCategory::RawBonus,      12, false, 0.20f};
+    defs[goods::BARITE]          = {goods::BARITE,          "Barite",          GoodCategory::RawStrategic,  18, false, 0.35f};
+    defs[goods::ALLUVIAL_GOLD]   = {goods::ALLUVIAL_GOLD,   "Alluvial Gold",   GoodCategory::RawLuxury,     85, false, 0.70f};
+    defs[goods::BEACH_PLACER]    = {goods::BEACH_PLACER,    "Beach Placer",    GoodCategory::RawStrategic,  55, false, 0.45f};
+    defs[goods::PYRITE]          = {goods::PYRITE,          "Pyrite",          GoodCategory::RawBonus,       8, false, 0.30f};
+    defs[goods::PHOSPHATE]       = {goods::PHOSPHATE,       "Phosphate",       GoodCategory::RawStrategic,  40, false, 0.40f};
+    defs[goods::VMS_ORE]         = {goods::VMS_ORE,         "VMS Ore",         GoodCategory::RawStrategic,  60, true,  0.50f};
+    defs[goods::SKARN_ORE]       = {goods::SKARN_ORE,       "Skarn Ore",       GoodCategory::RawStrategic,  50, true,  0.50f};
+    defs[goods::MVT_ORE]         = {goods::MVT_ORE,         "MVT Ore",         GoodCategory::RawStrategic,  45, true,  0.45f};
+
     return defs;
 }();
 // clang-format on

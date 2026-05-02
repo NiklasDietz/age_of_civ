@@ -317,6 +317,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // so LandOnly needs a tiny override and Islands a high one regardless of
     // the caller's default.
     float effectiveWaterRatio = config.waterRatio;
+    // Apply eustatic + climate-phase sea-level shift. Greenhouse (1)
+    // adds +0.04 (warm-period high), icehouse (2) subtracts -0.06
+    // (Pleistocene low, exposed shelves). User-supplied seaLevelDelta
+    // stacks on top.
+    if (config.climatePhase == 1)      { effectiveWaterRatio += 0.04f; }
+    else if (config.climatePhase == 2) { effectiveWaterRatio -= 0.06f; }
+    effectiveWaterRatio = std::clamp(
+        effectiveWaterRatio + config.seaLevelDelta, 0.05f, 0.85f);
 
     switch (config.mapType) {
         case MapType::Continents: {
@@ -3642,6 +3650,30 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             const float latFromEquator = 2.0f * std::abs(ny - 0.5f); // 0=eq,1=pole
             // Cosine curve: warmer equator, colder poles.
             float temperature = std::cos(latFromEquator * 1.5708f); // cos(π/2 * lat)
+            // Axial tilt scales the temperate band size. 0° = no tilt
+            // (everywhere temperate); higher = stronger pole-equator
+            // gradient. Real Earth = 23.5°. Stretch the cosine curve.
+            {
+                const float tiltScale = std::clamp(
+                    config.axialTilt / 23.5f, 0.0f, 2.0f);
+                temperature = std::pow(temperature,
+                    std::max(0.4f, tiltScale));
+            }
+            // Climate phase shift.
+            if (config.climatePhase == 1) {
+                temperature = std::clamp(temperature + 0.10f, 0.0f, 1.0f);
+            } else if (config.climatePhase == 2) {
+                temperature = std::clamp(temperature - 0.12f, 0.0f, 1.0f);
+            }
+            // Milankovitch eccentricity adds noise amplitude on top of
+            // the latitude curve (more eccentric orbit → larger seasonal
+            // contrast → biome-extremity).
+            if (config.milankovitchPhase > 0.05f) {
+                const float dev = (fractalNoise(nx * 1.5f, ny * 1.5f,
+                    2, 2.0f, 0.5f, tempRng) - 0.5f) * 2.0f;
+                temperature += dev * config.milankovitchPhase * 0.10f;
+                temperature = std::clamp(temperature, 0.0f, 1.0f);
+            }
             // Altitude cools: mountains already separated above; hills/plains
             // correction from raw elevation above water.
             const float elevAboveWater = (elev - waterThreshold)
@@ -3774,11 +3806,21 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     * (1.0f - continentalFactor * 0.6f); // strongest near coast
             }
 
+            // ENSO equatorial dipole. El Niño (1) = wet east Pacific
+            // (warm pool migrates east) → dry west; La Niña (2) =
+            // opposite. Approximate via west/east-coast moisture skew
+            // in equatorial band (lat<0.20).
+            float ensoDelta = 0.0f;
+            if (config.ensoState != 0 && latFromEquator < 0.20f) {
+                const float skew = (config.ensoState == 1) ? +1.0f : -1.0f;
+                ensoDelta = skew * (eastProx - westProx) * 0.18f;
+            }
             const float moisture = std::clamp(
                 moistureBase - continentalFactor * 0.32f
                 + currentMoistDelta
                 + windMoistTile * 0.45f
                 + monsoonBoost
+                + ensoDelta
                 + (fractalNoise(nx * 1.5f, ny * 1.5f + 7.3f, 3, 4.0f, 0.5f, moiRng) - 0.5f) * 0.28f,
                 0.0f, 1.0f);
 
@@ -5618,6 +5660,276 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             }
         }
 
+        // ---- MOUNTAIN PASSES ----
+        // Saddle detection: tile lower than all 6 neighbours that has
+        // ≥ 2 Mountain neighbours AND ≥ 2 non-Mountain neighbours,
+        // i.e. a low corridor between two mountain massifs (Khyber,
+        // Brenner, St. Bernard).
+        std::vector<uint8_t> passFlag(static_cast<std::size_t>(totalT), 0);
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater
+                    || t == aoc::map::TerrainType::Mountain) {
+                    continue;
+                }
+                int32_t mtnNb = 0;
+                int32_t openNb = 0;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    const aoc::map::TerrainType nt = grid.terrain(nIdx);
+                    if (nt == aoc::map::TerrainType::Mountain) {
+                        ++mtnNb;
+                    } else if (nt == aoc::map::TerrainType::Plains
+                            || nt == aoc::map::TerrainType::Grassland
+                            || nt == aoc::map::TerrainType::Desert) {
+                        ++openNb;
+                    }
+                }
+                if (mtnNb >= 2 && openNb >= 2) {
+                    passFlag[static_cast<std::size_t>(i)] = 1;
+                }
+            }
+        }
+        grid.setMountainPass(std::move(passFlag));
+
+        // ---- DEFENSIBILITY SCORE ----
+        // Higher score: own tile elevated relative to neighbours (high
+        // ground), flanked by water/mountain (natural barriers), with
+        // few easy approaches. River-adjacent gives moderate boost.
+        std::vector<uint8_t> defScore(static_cast<std::size_t>(totalT), 0);
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater) {
+                    continue;
+                }
+                const int8_t myE = grid.elevation(i);
+                int32_t score = 0;
+                if (t == aoc::map::TerrainType::Mountain) { score += 80; }
+                if (grid.feature(i) == aoc::map::FeatureType::Hills) {
+                    score += 40;
+                }
+                int32_t blockedFlanks = 0;
+                int32_t totalFlanks = 0;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    ++totalFlanks;
+                    const aoc::map::TerrainType nt = grid.terrain(nIdx);
+                    const int8_t nE = grid.elevation(nIdx);
+                    if (nt == aoc::map::TerrainType::Ocean
+                        || nt == aoc::map::TerrainType::ShallowWater
+                        || nt == aoc::map::TerrainType::Mountain) {
+                        ++blockedFlanks;
+                    }
+                    if (myE > nE) { score += 10; } // high ground
+                }
+                if (totalFlanks > 0) {
+                    score += static_cast<int32_t>(
+                        50.0f * static_cast<float>(blockedFlanks)
+                              / static_cast<float>(totalFlanks));
+                }
+                if (grid.riverEdges(i) != 0) { score += 20; }
+                defScore[static_cast<std::size_t>(i)] =
+                    static_cast<uint8_t>(std::clamp(score, 0, 255));
+            }
+        }
+        grid.setDefensibility(std::move(defScore));
+
+        // ---- DOMESTICABLE SPECIES ----
+        // Tile-based per-species availability (ties to Diamond GGS
+        // model — Eurasia got cattle/horse/sheep/pig/goat all available;
+        // Americas + Australia got nothing big = no draft animals).
+        // b0 cattle/buffalo: temperate Plains/Grassland (lat 0.20-0.55)
+        // b1 horses: steppe (lat 0.35-0.55, Plains, prairie)
+        // b2 sheep: Hills feature in temperate
+        // b3 goats: rocky Hills/foothills cool
+        // b4 llamas: high Andes (Mountain or Plains, lat 0.10-0.30)
+        // b5 camels: Desert + arid (lat 0.10-0.40)
+        // b6 reindeer: Tundra/Snow lat > 0.55
+        // b7 pigs: forested temperate-tropical
+        std::vector<uint8_t> dom(static_cast<std::size_t>(totalT), 0);
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row)
+                           / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                const aoc::map::FeatureType f = grid.feature(i);
+                uint8_t b = 0;
+                if ((t == aoc::map::TerrainType::Plains
+                     || t == aoc::map::TerrainType::Grassland)
+                    && lat > 0.20f && lat < 0.55f) {
+                    b |= 0x01; // cattle
+                }
+                if (t == aoc::map::TerrainType::Plains
+                    && lat > 0.35f && lat < 0.55f) {
+                    b |= 0x02; // horses (steppe)
+                }
+                if (f == aoc::map::FeatureType::Hills
+                    && lat > 0.30f && lat < 0.55f) {
+                    b |= 0x04; // sheep
+                }
+                if (f == aoc::map::FeatureType::Hills
+                    && lat > 0.40f) {
+                    b |= 0x08; // goats
+                }
+                if ((t == aoc::map::TerrainType::Mountain
+                     || (t == aoc::map::TerrainType::Plains
+                         && grid.elevation(i) >= 1))
+                    && lat > 0.10f && lat < 0.30f) {
+                    b |= 0x10; // llamas
+                }
+                if (t == aoc::map::TerrainType::Desert
+                    && lat > 0.10f && lat < 0.40f) {
+                    b |= 0x20; // camels
+                }
+                if ((t == aoc::map::TerrainType::Tundra
+                     || t == aoc::map::TerrainType::Snow)
+                    && lat > 0.55f) {
+                    b |= 0x40; // reindeer
+                }
+                if (f == aoc::map::FeatureType::Forest
+                    && lat > 0.20f && lat < 0.55f) {
+                    b |= 0x80; // pigs
+                }
+                dom[static_cast<std::size_t>(i)] = b;
+            }
+        }
+        grid.setDomesticable(std::move(dom));
+
+        // ---- TRADE ROUTE POTENTIAL ----
+        // High where movement is cheap: rivers, coast, passes, flat
+        // open terrain in temperate zones. Drives AI trade-route AI +
+        // historical-route placement.
+        std::vector<uint8_t> tradePot(static_cast<std::size_t>(totalT), 0);
+        for (int32_t i = 0; i < totalT; ++i) {
+            const aoc::map::TerrainType t = grid.terrain(i);
+            if (t == aoc::map::TerrainType::Mountain) {
+                if (grid.mountainPass()[
+                        static_cast<std::size_t>(i)] != 0) {
+                    tradePot[static_cast<std::size_t>(i)] = 200;
+                }
+                continue;
+            }
+            int32_t s = 30; // baseline land
+            if (t == aoc::map::TerrainType::Plains
+                || t == aoc::map::TerrainType::Grassland) { s += 60; }
+            if (t == aoc::map::TerrainType::Desert) { s -= 30; }
+            if (t == aoc::map::TerrainType::Snow
+                || t == aoc::map::TerrainType::Tundra) { s -= 20; }
+            if (grid.riverEdges(i) != 0) { s += 60; }
+            if (grid.feature(i) == aoc::map::FeatureType::Hills) {
+                s -= 20;
+            }
+            if (grid.feature(i) == aoc::map::FeatureType::Forest) {
+                s -= 10;
+            }
+            if (grid.feature(i) == aoc::map::FeatureType::Jungle) {
+                s -= 30;
+            }
+            // Ocean / coast — open trade.
+            if (t == aoc::map::TerrainType::Ocean
+                || t == aoc::map::TerrainType::ShallowWater) {
+                s = 80;
+                if (i < static_cast<int32_t>(marineD.size())
+                    && marineD[static_cast<std::size_t>(i)] == 1) {
+                    s = 130; // coastal shipping lane
+                }
+            }
+            tradePot[static_cast<std::size_t>(i)] =
+                static_cast<uint8_t>(std::clamp(s, 0, 255));
+        }
+        grid.setTradeRoutePotential(std::move(tradePot));
+
+        // ---- HABITABILITY ----
+        // Composite tile score for AI city placement: soil fertility +
+        // moderate climate + freshwater access + low hazard + biome
+        // quality.
+        std::vector<uint8_t> habit(static_cast<std::size_t>(totalT), 0);
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater
+                    || t == aoc::map::TerrainType::Mountain) {
+                    continue;
+                }
+                float score = 0.0f;
+                if (i < static_cast<int32_t>(soilFert.size())) {
+                    score += soilFert[static_cast<std::size_t>(i)] * 0.40f;
+                }
+                if (lat > 0.20f && lat < 0.55f) { score += 0.20f; }
+                else if (lat < 0.20f)            { score += 0.10f; }
+                if (grid.riverEdges(i) != 0) { score += 0.15f; }
+                bool nearWater = false;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    const aoc::map::TerrainType nt = grid.terrain(nIdx);
+                    if (nt == aoc::map::TerrainType::Ocean
+                        || nt == aoc::map::TerrainType::ShallowWater) {
+                        nearWater = true; break;
+                    }
+                }
+                if (nearWater) { score += 0.10f; }
+                // Hazard penalty.
+                if (i < static_cast<int32_t>(natHazard.size())) {
+                    const uint16_t h = natHazard[static_cast<std::size_t>(i)];
+                    const int32_t hCount = __builtin_popcount(h);
+                    score -= static_cast<float>(hCount) * 0.04f;
+                }
+                if (i < static_cast<int32_t>(disease.size())
+                    && disease[static_cast<std::size_t>(i)] != 0) {
+                    score -= 0.10f;
+                }
+                if (permafrost[static_cast<std::size_t>(i)] != 0) {
+                    score -= 0.20f;
+                }
+                habit[static_cast<std::size_t>(i)] =
+                    static_cast<uint8_t>(
+                        std::clamp(score * 255.0f, 0.0f, 255.0f));
+            }
+        }
+        grid.setHabitability(std::move(habit));
+
+        // ---- WETLAND SUBTYPES ----
+        // Differentiate Marsh into peat bog (cold + acidic),
+        // swamp (warm + tree-rich), fen (alkaline groundwater),
+        // floodplain (river-driven).
+        std::vector<uint8_t> wetSub(static_cast<std::size_t>(totalT), 0);
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::FeatureType f = grid.feature(i);
+                if (f == aoc::map::FeatureType::Floodplains) {
+                    wetSub[static_cast<std::size_t>(i)] = 4;
+                    continue;
+                }
+                if (f != aoc::map::FeatureType::Marsh) { continue; }
+                if (lat > 0.55f) {
+                    wetSub[static_cast<std::size_t>(i)] = 1; // peat bog
+                } else if (lat < 0.30f) {
+                    wetSub[static_cast<std::size_t>(i)] = 2; // swamp
+                } else {
+                    wetSub[static_cast<std::size_t>(i)] = 3; // fen
+                }
+            }
+        }
+        grid.setWetlandSubtype(std::move(wetSub));
+
         // ---- CORAL REEF placement ----
         // Real Earth: coral reefs build on tropical shelf (lat<0.30,
         // marine depth = shelf, biome subtype 14 carbonate platform OR
@@ -5640,6 +5952,911 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 grid.setFeature(i, aoc::map::FeatureType::Reef);
             }
         }
+
+        // ============================================================
+        // SESSION 9 — Köppen / mountain structure / ore grade /
+        // straits / harbor / channel pattern / vegetation density /
+        // coastal feature / submarine vent / volcanic profile / karst
+        // subtypes / desert subtypes / mass wasting / named winds /
+        // forest age / soil moisture.
+        // ============================================================
+        std::vector<uint8_t> kop  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> mtnS (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> oreG (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> strait(static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> harbor(static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> chanP (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> vegD  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> coast (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> subV  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> volP  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> karstS(static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> desS  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> massW (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> namedW(static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> forA  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> soilM (static_cast<std::size_t>(totalT), 0);
+
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                const aoc::map::FeatureType f = grid.feature(i);
+
+                // ---- KÖPPEN classification ----
+                // Approximate from terrain + lat. 30 codes won't all be
+                // hit but main bins: Af/Am/Aw, BWh/BWk/BSh/BSk,
+                // Csa/Csb/Cwa/Cwb/Cfa/Cfb, Dwa/Dwb/Dwc/Dwd/Dfa/Dfb/
+                // Dfc/Dfd, ET, EF.
+                uint8_t kc = 0;
+                if (t == aoc::map::TerrainType::Snow) {
+                    kc = 27; // EF (eternal frost)
+                } else if (t == aoc::map::TerrainType::Tundra) {
+                    kc = 26; // ET
+                } else if (t == aoc::map::TerrainType::Desert) {
+                    if (lat < 0.40f) {
+                        kc = 4;  // BWh hot desert
+                    } else {
+                        kc = 5;  // BWk cold desert
+                    }
+                } else if (t == aoc::map::TerrainType::Mountain) {
+                    kc = 28; // alpine highland
+                } else if (lat < 0.18f) {
+                    if (f == aoc::map::FeatureType::Jungle)      { kc = 1; } // Af
+                    else if (f == aoc::map::FeatureType::Forest) { kc = 2; } // Am
+                    else                                          { kc = 3; } // Aw
+                } else if (lat < 0.30f) {
+                    kc = 6; // BSh hot semi-arid
+                } else if (lat < 0.50f) {
+                    if (f == aoc::map::FeatureType::Forest)      { kc = 12; } // Cfa
+                    else                                          { kc = 8;  } // Csa Med
+                } else if (lat < 0.65f) {
+                    if (f == aoc::map::FeatureType::Forest)      { kc = 22; } // Dfa
+                    else                                          { kc = 9;  } // Csb
+                } else if (lat < 0.80f) {
+                    kc = 24; // Dfc subarctic continental
+                } else {
+                    kc = 26; // ET
+                }
+                kop[static_cast<std::size_t>(i)] = kc;
+
+                // ---- MOUNTAIN STRUCTURE ----
+                if (t == aoc::map::TerrainType::Mountain) {
+                    const auto& vc = grid.volcanism();
+                    if (vc.size() > static_cast<std::size_t>(i)
+                        && (vc[static_cast<std::size_t>(i)] == 1
+                            || vc[static_cast<std::size_t>(i)] == 2
+                            || vc[static_cast<std::size_t>(i)] == 3)) {
+                        mtnS[static_cast<std::size_t>(i)] = 3; // volcanic
+                    } else if (i < static_cast<int32_t>(orogeny.size())
+                        && orogeny[static_cast<std::size_t>(i)] > 0.18f) {
+                        mtnS[static_cast<std::size_t>(i)] = 1; // folded
+                    } else if (grid.crustAgeTile().size()
+                            > static_cast<std::size_t>(i)
+                        && grid.crustAgeTile()[static_cast<std::size_t>(i)] > 100.0f) {
+                        mtnS[static_cast<std::size_t>(i)] = 6; // eroded ancient
+                    } else if (grid.marginType().size()
+                            > static_cast<std::size_t>(i)
+                        && grid.marginType()[static_cast<std::size_t>(i)] == 1) {
+                        mtnS[static_cast<std::size_t>(i)] = 2; // faulted active margin
+                    } else {
+                        mtnS[static_cast<std::size_t>(i)] = 4; // uplifted block
+                    }
+                }
+
+                // ---- ORE GRADE ----
+                if (grid.resource(i).isValid()) {
+                    int32_t g = 100;
+                    // Hotspot/arc/LIP volcanism + age = bonanza.
+                    const auto& vc = grid.volcanism();
+                    if (vc.size() > static_cast<std::size_t>(i)
+                        && vc[static_cast<std::size_t>(i)] != 0) {
+                        g += 50;
+                    }
+                    if (grid.crustAgeTile().size()
+                            > static_cast<std::size_t>(i)) {
+                        const float a =
+                            grid.crustAgeTile()[
+                                static_cast<std::size_t>(i)];
+                        if (a > 100.0f) { g += 30; }
+                        else if (a > 50.0f) { g += 15; }
+                    }
+                    // Convergent boundary = active mineralization.
+                    // Use the seismic hazard proxy (3 = subduction).
+                    if (grid.seismicHazard().size()
+                            > static_cast<std::size_t>(i)
+                        && (grid.seismicHazard()[
+                                static_cast<std::size_t>(i)] & 0x07) >= 3) {
+                        g += 40;
+                    }
+                    g += static_cast<int32_t>(
+                        (i * 1103515245u + 12345u) % 50u) - 25;
+                    oreG[static_cast<std::size_t>(i)] =
+                        static_cast<uint8_t>(std::clamp(g, 30, 255));
+                }
+
+                // ---- VEGETATION DENSITY ----
+                {
+                    int32_t v = 30;
+                    if (f == aoc::map::FeatureType::Jungle)      { v = 240; }
+                    else if (f == aoc::map::FeatureType::Forest) { v = 180; }
+                    else if (f == aoc::map::FeatureType::Marsh
+                          || f == aoc::map::FeatureType::Floodplains) {
+                        v = 120;
+                    } else if (t == aoc::map::TerrainType::Grassland) {
+                        v = 80;
+                    } else if (t == aoc::map::TerrainType::Plains) {
+                        v = 60;
+                    } else if (t == aoc::map::TerrainType::Tundra) {
+                        v = 30;
+                    } else if (t == aoc::map::TerrainType::Desert
+                            || t == aoc::map::TerrainType::Snow) {
+                        v = 5;
+                    }
+                    vegD[static_cast<std::size_t>(i)] =
+                        static_cast<uint8_t>(std::clamp(v, 0, 255));
+                }
+
+                // ---- FOREST AGE CLASS ----
+                if (f == aoc::map::FeatureType::Forest
+                    || f == aoc::map::FeatureType::Jungle) {
+                    // Old growth in low-anthropogenic + isolated realm
+                    // tiles. Mature elsewhere; secondary is a future
+                    // game-state update via anthropogenic.
+                    if (grid.isolatedRealm().size()
+                            > static_cast<std::size_t>(i)
+                        && grid.isolatedRealm()[
+                                static_cast<std::size_t>(i)] != 0) {
+                        forA[static_cast<std::size_t>(i)] = 4; // old growth
+                    } else {
+                        forA[static_cast<std::size_t>(i)] = 3; // mature
+                    }
+                } else if (t == aoc::map::TerrainType::Plains
+                    && lat < 0.30f) {
+                    forA[static_cast<std::size_t>(i)] = 1; // scrub
+                }
+
+                // ---- SOIL MOISTURE REGIME ----
+                {
+                    uint8_t sm = 3; // ustic default
+                    if (t == aoc::map::TerrainType::Desert) { sm = 1; }   // aridic
+                    else if (lat > 0.30f && lat < 0.50f
+                        && t == aoc::map::TerrainType::Plains) {
+                        sm = 2; // xeric (Mediterranean)
+                    } else if (f == aoc::map::FeatureType::Marsh
+                            || f == aoc::map::FeatureType::Floodplains) {
+                        sm = 5; // aquic
+                    } else if (lakeFlag[static_cast<std::size_t>(i)] != 0) {
+                        sm = 6; // peraquic
+                    } else if (f == aoc::map::FeatureType::Forest
+                            || f == aoc::map::FeatureType::Jungle) {
+                        sm = 4; // udic
+                    }
+                    soilM[static_cast<std::size_t>(i)] = sm;
+                }
+
+                // ---- DESERT SUBTYPE ----
+                if (t == aoc::map::TerrainType::Desert) {
+                    const auto& vc = grid.volcanism();
+                    if (vc.size() > static_cast<std::size_t>(i)
+                        && vc[static_cast<std::size_t>(i)] == 7) {
+                        desS[static_cast<std::size_t>(i)] = 1; // erg sand
+                    } else {
+                        bool nearLake = false;
+                        for (int32_t d = 0; d < 6; ++d) {
+                            int32_t nIdx;
+                            if (!nbHelper(col, row, d, nIdx)) { continue; }
+                            if (lakeFlag[
+                                    static_cast<std::size_t>(nIdx)] != 0) {
+                                nearLake = true; break;
+                            }
+                        }
+                        if (nearLake) {
+                            desS[static_cast<std::size_t>(i)] = 4; // playa
+                        } else if (grid.elevation(i) >= 1) {
+                            desS[static_cast<std::size_t>(i)] = 3; // hammada
+                        } else if (i < static_cast<int32_t>(sediment.size())
+                                && sediment[static_cast<std::size_t>(i)] < 0.02f) {
+                            desS[static_cast<std::size_t>(i)] = 2; // reg gravel
+                        } else if (i < static_cast<int32_t>(sediment.size())
+                                && sediment[static_cast<std::size_t>(i)] > 0.05f) {
+                            desS[static_cast<std::size_t>(i)] = 5; // badlands
+                        }
+                    }
+                }
+
+                // ---- KARST SUBTYPE ----
+                {
+                    const auto& rk = grid.rockType();
+                    if (rk.size() > static_cast<std::size_t>(i)
+                        && rk[static_cast<std::size_t>(i)] == 5) {
+                        if (lat < 0.25f) {
+                            karstS[static_cast<std::size_t>(i)] = 3; // tropical tower
+                        } else if (f == aoc::map::FeatureType::Hills) {
+                            karstS[static_cast<std::size_t>(i)] = 1; // doline
+                        } else if (lat > 0.40f
+                            && t == aoc::map::TerrainType::Plains) {
+                            karstS[static_cast<std::size_t>(i)] = 2; // polje
+                        } else {
+                            karstS[static_cast<std::size_t>(i)] = 4; // pavement
+                        }
+                    }
+                }
+
+                // ---- MASS WASTING ----
+                if (t == aoc::map::TerrainType::Mountain) {
+                    if (lat > 0.55f) {
+                        massW[static_cast<std::size_t>(i)] = 5; // solifluction
+                    } else {
+                        massW[static_cast<std::size_t>(i)] = 1; // rockfall
+                    }
+                } else if (f == aoc::map::FeatureType::Hills
+                    && i < static_cast<int32_t>(sediment.size())
+                    && sediment[static_cast<std::size_t>(i)] > 0.04f) {
+                    if (lat < 0.30f) {
+                        massW[static_cast<std::size_t>(i)] = 4; // mudflow
+                    } else {
+                        massW[static_cast<std::size_t>(i)] = 2; // slump
+                    }
+                }
+
+                // ---- NAMED WINDS ----
+                if (f == aoc::map::FeatureType::Hills) {
+                    bool nearMtn = false;
+                    for (int32_t d = 0; d < 6; ++d) {
+                        int32_t nIdx;
+                        if (!nbHelper(col, row, d, nIdx)) { continue; }
+                        if (grid.terrain(nIdx)
+                                == aoc::map::TerrainType::Mountain) {
+                            nearMtn = true; break;
+                        }
+                    }
+                    if (nearMtn) {
+                        if (lat > 0.40f && lat < 0.55f) {
+                            namedW[static_cast<std::size_t>(i)] = 5; // föhn/chinook
+                        }
+                    }
+                }
+                if (t == aoc::map::TerrainType::Plains
+                    && lat > 0.35f && lat < 0.50f) {
+                    namedW[static_cast<std::size_t>(i)] = 1; // mistral-like
+                }
+                if (t == aoc::map::TerrainType::Desert
+                    && lat > 0.20f && lat < 0.40f) {
+                    namedW[static_cast<std::size_t>(i)] = 4; // harmattan
+                }
+                if (lat > 0.85f) {
+                    namedW[static_cast<std::size_t>(i)] = 6; // williwaw
+                }
+
+                // ---- COASTAL FEATURE ----
+                if (t != aoc::map::TerrainType::Ocean
+                    && t != aoc::map::TerrainType::ShallowWater) {
+                    int32_t waterNb = 0;
+                    int32_t totalNb = 0;
+                    for (int32_t d = 0; d < 6; ++d) {
+                        int32_t nIdx;
+                        if (!nbHelper(col, row, d, nIdx)) { continue; }
+                        ++totalNb;
+                        const aoc::map::TerrainType nt = grid.terrain(nIdx);
+                        if (nt == aoc::map::TerrainType::Ocean
+                            || nt == aoc::map::TerrainType::ShallowWater) {
+                            ++waterNb;
+                        }
+                    }
+                    if (totalNb > 0 && waterNb >= 4) {
+                        coast[static_cast<std::size_t>(i)] = 1; // cape
+                    } else if (waterNb == 3) {
+                        coast[static_cast<std::size_t>(i)] = 4; // headland
+                    } else if (waterNb == 1 && totalNb == 6) {
+                        // Bay tile = land deep into water indent.
+                        // Detection: opposite-direction land present.
+                        coast[static_cast<std::size_t>(i)] = 2; // bay-side
+                    }
+                }
+
+                // ---- CHANNEL PATTERN ----
+                if (grid.riverEdges(i) != 0) {
+                    const int8_t myE = grid.elevation(i);
+                    int8_t maxDrop = 0;
+                    for (int32_t d = 0; d < 6; ++d) {
+                        int32_t nIdx;
+                        if (!nbHelper(col, row, d, nIdx)) { continue; }
+                        const int8_t nE = grid.elevation(nIdx);
+                        const int8_t drop = static_cast<int8_t>(myE - nE);
+                        if (drop > maxDrop) { maxDrop = drop; }
+                    }
+                    const float sd = (i < static_cast<int32_t>(sediment.size()))
+                        ? sediment[static_cast<std::size_t>(i)] : 0.0f;
+                    if (maxDrop >= 2)               { chanP[static_cast<std::size_t>(i)] = 1; } // straight steep
+                    else if (sd > 0.08f && lat > 0.55f)
+                                                    { chanP[static_cast<std::size_t>(i)] = 3; } // braided glacial
+                    else if (sd > 0.05f)            { chanP[static_cast<std::size_t>(i)] = 2; } // meandering
+                    else                            { chanP[static_cast<std::size_t>(i)] = 4; } // anastomosing
+                }
+
+                // ---- SUBMARINE VENT ----
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater) {
+                    if (i < static_cast<int32_t>(orogeny.size())
+                        && orogeny[static_cast<std::size_t>(i)] > 0.005f
+                        && orogeny[static_cast<std::size_t>(i)] < 0.06f) {
+                        // ridge spawning area → vents
+                        if (((i * 2654435761u) >> 16) % 64u == 0) {
+                            subV[static_cast<std::size_t>(i)] = 1; // black smoker
+                        }
+                    } else if (i < static_cast<int32_t>(orogeny.size())
+                        && orogeny[static_cast<std::size_t>(i)] < -0.04f) {
+                        if (((i * 2654435761u) >> 16) % 96u == 0) {
+                            subV[static_cast<std::size_t>(i)] = 2; // cold seep
+                        }
+                    }
+                }
+
+                // ---- VOLCANIC PROFILE (VEI + magma type) ----
+                if (eventMrk[static_cast<std::size_t>(i)] == 1
+                    || eventMrk[static_cast<std::size_t>(i)] == 3) {
+                    const auto& vc = grid.volcanism();
+                    uint8_t magma = 1; // andesitic default
+                    if (vc.size() > static_cast<std::size_t>(i)) {
+                        if (vc[static_cast<std::size_t>(i)] == 2) {
+                            magma = 0; // basaltic (hotspot)
+                        } else if (vc[static_cast<std::size_t>(i)] == 1) {
+                            magma = 1; // andesitic (arc)
+                        } else if (vc[static_cast<std::size_t>(i)] == 3) {
+                            magma = 2; // rhyolitic (LIP / supervolcano)
+                        }
+                    }
+                    uint8_t vei = 4;
+                    if (eventMrk[static_cast<std::size_t>(i)] == 3) {
+                        vei = 7; // supervolcano
+                    } else if (magma == 2) {
+                        vei = 5;
+                    } else if (magma == 0) {
+                        vei = 2;
+                    }
+                    volP[static_cast<std::size_t>(i)] =
+                        static_cast<uint8_t>(vei | (magma << 4));
+                }
+            }
+        }
+
+        // ---- STRAIT detection ----
+        // Narrow water passage: ShallowWater/Ocean tile with ≥ 2 land
+        // neighbours on at least 2 OPPOSITE sides AND connected to
+        // larger water on 2 sides.
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                if (t != aoc::map::TerrainType::Ocean
+                    && t != aoc::map::TerrainType::ShallowWater) { continue; }
+                if (lakeFlag[static_cast<std::size_t>(i)] != 0) { continue; }
+                std::array<bool, 6> nbLand{};
+                int32_t landN = 0, waterN = 0;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    const aoc::map::TerrainType nt = grid.terrain(nIdx);
+                    if (nt == aoc::map::TerrainType::Ocean
+                        || nt == aoc::map::TerrainType::ShallowWater) {
+                        ++waterN;
+                    } else {
+                        ++landN;
+                        nbLand[static_cast<std::size_t>(d)] = true;
+                    }
+                }
+                if (landN >= 2 && waterN >= 2) {
+                    // Opposite-side land = strait.
+                    bool opposite = false;
+                    for (int32_t d = 0; d < 3; ++d) {
+                        if (nbLand[static_cast<std::size_t>(d)]
+                            && nbLand[static_cast<std::size_t>(d + 3)]) {
+                            opposite = true; break;
+                        }
+                    }
+                    if (opposite) {
+                        strait[static_cast<std::size_t>(i)] = 1;
+                    }
+                }
+            }
+        }
+
+        // ---- HARBOR SCORE ----
+        // ShallowWater tile with high land-enclosure count = sheltered
+        // bay. Add island-protection bonus (intervening land within 4
+        // hexes seaward).
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                if (grid.terrain(i) != aoc::map::TerrainType::ShallowWater) {
+                    continue;
+                }
+                int32_t landNb = 0;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    const aoc::map::TerrainType nt = grid.terrain(nIdx);
+                    if (nt != aoc::map::TerrainType::Ocean
+                        && nt != aoc::map::TerrainType::ShallowWater) {
+                        ++landNb;
+                    }
+                }
+                if (landNb >= 3) {
+                    int32_t s = 80 + 30 * landNb;
+                    harbor[static_cast<std::size_t>(i)] =
+                        static_cast<uint8_t>(std::clamp(s, 0, 255));
+                }
+            }
+        }
+
+        // ============================================================
+        // SESSION 10 — lithology / soil order / crustal thickness /
+        // geothermal gradient / albedo / vegetation type / atmos river
+        // / cyclone basin / SST / ice shelf / bedrock / permafrost depth.
+        // ============================================================
+        std::vector<uint8_t> litho   (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> bedrock (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> sOrder  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> crustTh (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> geoGrad (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> albedo  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> vegType (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> atmRiv  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> cycBasin(static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> sst     (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> iceShelf(static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> permaD  (static_cast<std::size_t>(totalT), 0);
+
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                const aoc::map::FeatureType f = grid.feature(i);
+                const std::size_t si = static_cast<std::size_t>(i);
+                const uint8_t pid = grid.plateId(i);
+                const float pLand = (pid != 0xFFu && pid < grid.plateLandFrac().size())
+                    ? grid.plateLandFrac()[pid] : 0.5f;
+                const float tileAge = (si < grid.crustAgeTile().size())
+                    ? grid.crustAgeTile()[si] : 0.0f;
+
+                // ---- LITHOLOGY (specific rock) ----
+                {
+                    const uint8_t rt = (si < grid.rockType().size())
+                        ? grid.rockType()[si] : 0;
+                    uint8_t L = 0;
+                    if (rt == 3) {
+                        L = 19; // serpentinite (ophiolite)
+                    } else if (rt == 5) {
+                        L = 9;  // limestone (karst host)
+                    } else if (t == aoc::map::TerrainType::Mountain) {
+                        const auto& mst = grid.mountainStructure();
+                        const uint8_t s = (si < mst.size()) ? mst[si] : 0;
+                        if (s == 3) {
+                            L = 5; // andesite (volcanic mountain)
+                        } else if (s == 1 || s == 6) {
+                            L = 14; // gneiss (folded/eroded)
+                        } else {
+                            L = 1; // granite (uplifted block)
+                        }
+                    } else if (rt == 1) {
+                        L = (pLand < 0.40f) ? 3 : 1; // basalt vs granite
+                    } else if (rt == 2) {
+                        L = 13; // schist (regional metamorphic)
+                    } else {
+                        // Sedimentary baseline by climate.
+                        if (t == aoc::map::TerrainType::Desert) {
+                            L = 7; // sandstone
+                        } else if (lat < 0.30f) {
+                            L = 9; // limestone (warm shallow seas legacy)
+                        } else if (lat > 0.55f) {
+                            L = 8; // shale (cool deep basin)
+                        } else {
+                            L = 12; // conglomerate / mixed
+                        }
+                    }
+                    litho[si] = L;
+                }
+                // Bedrock = parent rock under sediment cover. For sed
+                // tiles use age-old metamorphic basement; else same.
+                if (litho[si] == 7 || litho[si] == 8 || litho[si] == 9
+                    || litho[si] == 10 || litho[si] == 12) {
+                    bedrock[si] = (tileAge > 80.0f) ? 14 : 1; // gneiss vs granite
+                } else {
+                    bedrock[si] = litho[si];
+                }
+
+                // ---- SOIL ORDER (USDA) ----
+                {
+                    uint8_t S = 0;
+                    if (t == aoc::map::TerrainType::Snow
+                        || t == aoc::map::TerrainType::Tundra) {
+                        S = 12; // gelisol
+                    } else if (t == aoc::map::TerrainType::Desert) {
+                        S = 8; // aridisol
+                    } else if (f == aoc::map::FeatureType::Marsh
+                            || f == aoc::map::FeatureType::Floodplains) {
+                        S = 11; // histosol
+                    } else if (t == aoc::map::TerrainType::Mountain) {
+                        S = 13; // alpine bare
+                    } else if (lat < 0.20f) {
+                        if (f == aoc::map::FeatureType::Jungle) {
+                            S = 4; // oxisol (tropical weathered)
+                        } else {
+                            S = 5; // ultisol (humid subtropical)
+                        }
+                    } else if (lat < 0.45f) {
+                        if (f == aoc::map::FeatureType::Forest) {
+                            S = 6; // alfisol
+                        } else {
+                            S = 9; // vertisol (clay-rich subtropical)
+                        }
+                    } else if (lat < 0.60f) {
+                        if (f == aoc::map::FeatureType::Forest) {
+                            S = 6; // alfisol
+                        } else {
+                            S = 3; // mollisol (chernozem prairie)
+                        }
+                    } else {
+                        S = 7; // spodosol (boreal podzol)
+                    }
+                    // Volcanic boost: andisol on volcanic-rich tiles.
+                    const auto& vc = grid.volcanism();
+                    if (vc.size() > si && vc[si] != 0
+                        && vc[si] != 6 && vc[si] != 7) {
+                        S = 10; // andisol
+                    }
+                    sOrder[si] = S;
+                }
+
+                // ---- CRUSTAL THICKNESS ----
+                // Continental ~30-70 km, oceanic ~5-10 km, orogenic
+                // root ~70+. Encode 0-255 for 0-100 km.
+                {
+                    int32_t kmDepth = 30; // default sed-cont
+                    if (pLand < 0.40f) {
+                        kmDepth = 8; // oceanic
+                    } else if (t == aoc::map::TerrainType::Mountain) {
+                        kmDepth = 70 + static_cast<int32_t>(grid.elevation(i)) * 5;
+                    } else if (tileAge > 100.0f) {
+                        kmDepth = 50; // craton thicker
+                    }
+                    crustTh[si] = static_cast<uint8_t>(
+                        std::clamp(kmDepth * 255 / 100, 0, 255));
+                }
+
+                // ---- GEOTHERMAL GRADIENT ----
+                {
+                    int32_t flux = 50; // default mW/m²
+                    const auto& vc = grid.volcanism();
+                    if (vc.size() > si) {
+                        if (vc[si] == 5)      { flux = 250; }   // hot spring
+                        else if (vc[si] == 1
+                              || vc[si] == 2
+                              || vc[si] == 3
+                              || vc[si] == 4) { flux = 150; }
+                    }
+                    if (pLand >= 0.40f && tileAge > 100.0f) {
+                        flux = 35; // craton low
+                    } else if (pLand < 0.40f) {
+                        flux = std::max(flux, 80); // oceanic
+                    }
+                    geoGrad[si] = static_cast<uint8_t>(
+                        std::clamp(flux * 255 / 300, 0, 255));
+                }
+
+                // ---- ALBEDO ----
+                {
+                    int32_t alb = 60; // default Plains
+                    if (t == aoc::map::TerrainType::Snow)        { alb = 220; }
+                    else if (t == aoc::map::TerrainType::Tundra) { alb = 150; }
+                    else if (t == aoc::map::TerrainType::Desert) { alb = 100; }
+                    else if (t == aoc::map::TerrainType::Mountain) { alb = 130; }
+                    else if (t == aoc::map::TerrainType::Grassland) { alb = 50; }
+                    else if (t == aoc::map::TerrainType::Ocean
+                          || t == aoc::map::TerrainType::ShallowWater) { alb = 18; }
+                    if (f == aoc::map::FeatureType::Forest)        { alb -= 20; }
+                    if (f == aoc::map::FeatureType::Jungle)        { alb -= 30; }
+                    if (f == aoc::map::FeatureType::Ice)           { alb = 230; }
+                    albedo[si] = static_cast<uint8_t>(
+                        std::clamp(alb, 0, 255));
+                }
+
+                // ---- VEGETATION TYPE ----
+                {
+                    uint8_t V = 0; // grass default
+                    if (f == aoc::map::FeatureType::Jungle) {
+                        V = 2; // evergreen broadleaf
+                    } else if (f == aoc::map::FeatureType::Forest) {
+                        if (lat < 0.30f) {
+                            V = 1; // deciduous broadleaf temperate
+                        } else if (lat < 0.55f) {
+                            V = 5; // mixed
+                        } else if (lat < 0.75f) {
+                            V = 3; // evergreen needleleaf boreal
+                        } else {
+                            V = 4; // deciduous needleleaf (larch)
+                        }
+                    } else if (t == aoc::map::TerrainType::Plains
+                            && lat < 0.30f) {
+                        V = 6; // savanna
+                    } else if (t == aoc::map::TerrainType::Plains
+                            && lat > 0.30f && lat < 0.45f) {
+                        V = 7; // shrubland
+                    }
+                    // Mangrove subtype overrides: biomeSubtype 4
+                    const auto& bs = grid.biomeSubtype();
+                    if (bs.size() > si && bs[si] == 4) {
+                        V = 8; // mangrove
+                    }
+                    vegType[si] = V;
+                }
+
+                // ---- ATMOSPHERIC RIVER ----
+                // Mid-latitude westerly band over ocean +
+                // continent-margin combo: 0.40-0.60 lat tiles in
+                // storm track that head landward.
+                if ((t == aoc::map::TerrainType::Ocean
+                     || t == aoc::map::TerrainType::ShallowWater
+                     || t == aoc::map::TerrainType::Plains
+                     || t == aoc::map::TerrainType::Grassland)
+                    && lat > 0.40f && lat < 0.60f) {
+                    const auto& ch = grid.climateHazard();
+                    if (ch.size() > si && (ch[si] & 0x04) != 0) {
+                        atmRiv[si] = 1;
+                    }
+                }
+
+                // ---- CYCLONE BASIN ----
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater) {
+                    const auto& ch = grid.climateHazard();
+                    if (ch.size() > si && (ch[si] & 0x01) != 0) {
+                        // Pick basin by hemisphere + longitude bin.
+                        const float nx0 = static_cast<float>(col)
+                            / static_cast<float>(width);
+                        const bool north = (ny < 0.5f);
+                        if (north) {
+                            if (nx0 < 0.30f)      { cycBasin[si] = 1; } // N Atlantic
+                            else if (nx0 < 0.55f) { cycBasin[si] = 2; } // NE Pacific
+                            else if (nx0 < 0.80f) { cycBasin[si] = 3; } // NW Pacific
+                            else                  { cycBasin[si] = 4; } // N Indian
+                        } else {
+                            if (nx0 < 0.40f)      { cycBasin[si] = 5; } // SW Indian
+                            else if (nx0 < 0.70f) { cycBasin[si] = 6; } // SE Indian / Australian
+                            else                  { cycBasin[si] = 7; } // S Pacific
+                        }
+                    }
+                }
+
+                // ---- SEA SURFACE TEMPERATURE ----
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater) {
+                    // Range -2 to +30 °C → 0..255.
+                    const float c = std::cos(lat * 1.5708f);
+                    float sstC = -2.0f + c * 30.0f;
+                    // Upwelling cools.
+                    const auto& up = grid.upwelling();
+                    if (up.size() > si && up[si] == 1) {
+                        sstC -= 6.0f;
+                    }
+                    sst[si] = static_cast<uint8_t>(
+                        std::clamp((sstC + 2.0f) * 255.0f / 32.0f,
+                            0.0f, 255.0f));
+                }
+
+                // ---- ICE SHELF ZONE ----
+                // Polar ocean adjacent to continental ice = ice shelf.
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater) {
+                    if (lat > 0.85f) {
+                        // Check for adjacent Snow continental.
+                        bool adjIce = false;
+                        for (int32_t d = 0; d < 6; ++d) {
+                            int32_t nIdx;
+                            if (!nbHelper(col, row, d, nIdx)) { continue; }
+                            if (grid.terrain(nIdx)
+                                    == aoc::map::TerrainType::Snow) {
+                                adjIce = true; break;
+                            }
+                        }
+                        if (adjIce) {
+                            iceShelf[si] = 1; // shelf
+                        } else if (lat > 0.92f) {
+                            iceShelf[si] = 3; // fast ice
+                        } else {
+                            iceShelf[si] = 2; // iceberg-spawn
+                        }
+                    }
+                }
+
+                // ---- PERMAFROST DEPTH ----
+                {
+                    if (permafrost[si] != 0) {
+                        // Active layer depth: warmer = deeper thaw =
+                        // less severe. Encode 0-255 for 0-2.5 m.
+                        // Sub-arctic ~1m = 102; arctic ~30cm = 30.
+                        if (lat > 0.85f) { permaD[si] = 30; }
+                        else if (lat > 0.75f) { permaD[si] = 80; }
+                        else if (lat > 0.65f) { permaD[si] = 130; }
+                        else                  { permaD[si] = 180; }
+                    }
+                }
+            }
+        }
+
+        // ============================================================
+        // CLIFF COAST GENERATION
+        // ============================================================
+        // Real Earth coasts aren't uniformly traversable. Cliff types:
+        //   1 hard rock cliff — Mountain meets water OR active-margin
+        //     uplifted block coast (Big Sur, Dover, Cape Horn). Steep
+        //     drop, cannot embark/disembark units.
+        //   2 fjord wall — high-lat glaciated coast where Mountain
+        //     stands directly over ShallowWater. Sheltered deep
+        //     harbour but vertical sides; only inner-fjord landings.
+        //   3 wave-cut headland — Hills meeting water on convergent
+        //     coast. Lower cliff, possible beach landing at low tide.
+        //   4 ice cliff — polar Snow tile bordering Ocean (ice shelf
+        //     calving margin, Antarctica, Ross Ice Shelf).
+        // Beach (passable) coasts are everything else: Plains/
+        // Grassland/Desert with adjacent water at sea-level elevation.
+        std::vector<uint8_t> cliff(static_cast<std::size_t>(totalT), 0);
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row)
+                           / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater) {
+                    continue;
+                }
+                bool nextWater = false;
+                bool nextShallow = false;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    const aoc::map::TerrainType nt = grid.terrain(nIdx);
+                    if (nt == aoc::map::TerrainType::ShallowWater) {
+                        nextShallow = true; nextWater = true;
+                    } else if (nt == aoc::map::TerrainType::Ocean) {
+                        nextWater = true;
+                    }
+                }
+                if (!nextWater) { continue; }
+                uint8_t cType = 0;
+                // Ice cliff at polar Snow.
+                if (t == aoc::map::TerrainType::Snow && lat > 0.80f) {
+                    cType = 4;
+                }
+                // Hard cliff: Mountain meets water OR active-margin
+                // (mountainStructure 2 = faulted) coastal land at any
+                // elevation.
+                else if (t == aoc::map::TerrainType::Mountain) {
+                    cType = (lat > 0.55f && nextShallow) ? 2 : 1;
+                }
+                // Wave-cut headland: Hills feature on convergent /
+                // active margin coast.
+                else if (grid.feature(i) == aoc::map::FeatureType::Hills
+                    && grid.marginType().size() > static_cast<std::size_t>(i)
+                    && grid.marginType()[static_cast<std::size_t>(i)] == 1) {
+                    cType = 3;
+                }
+                // Hard cliff: any coast tile with mountain structure
+                // type 2 (faulted active uplift) within 1 hex.
+                else if (grid.marginType().size()
+                        > static_cast<std::size_t>(i)
+                    && grid.marginType()[static_cast<std::size_t>(i)] == 1
+                    && grid.elevation(i) >= 1) {
+                    cType = 1;
+                }
+                // Fjord wall: cold-lat coast next to Mountain neighbour.
+                else if (lat > 0.55f) {
+                    bool nearMtn = false;
+                    for (int32_t d = 0; d < 6; ++d) {
+                        int32_t nIdx;
+                        if (!nbHelper(col, row, d, nIdx)) { continue; }
+                        if (grid.terrain(nIdx)
+                                == aoc::map::TerrainType::Mountain) {
+                            nearMtn = true; break;
+                        }
+                    }
+                    if (nearMtn) { cType = 2; }
+                }
+                cliff[static_cast<std::size_t>(i)] = cType;
+            }
+        }
+        grid.setCliffCoast(std::move(cliff));
+
+        grid.setLithology(std::move(litho));
+        grid.setBedrockLithology(std::move(bedrock));
+        grid.setSoilOrder(std::move(sOrder));
+        grid.setCrustalThickness(std::move(crustTh));
+        grid.setGeothermalGradient(std::move(geoGrad));
+        grid.setAlbedo(std::move(albedo));
+        grid.setVegetationType(std::move(vegType));
+        grid.setAtmosphericRiver(std::move(atmRiv));
+        grid.setCycloneBasin(std::move(cycBasin));
+        grid.setSeaSurfaceTemp(std::move(sst));
+        grid.setIceShelfZone(std::move(iceShelf));
+        grid.setPermafrostDepth(std::move(permaD));
+
+        grid.setKoppen(std::move(kop));
+        grid.setMountainStructure(std::move(mtnS));
+        grid.setOreGrade(std::move(oreG));
+        grid.setStrait(std::move(strait));
+        grid.setHarborScore(std::move(harbor));
+        grid.setChannelPattern(std::move(chanP));
+        grid.setVegetationDensity(std::move(vegD));
+        grid.setCoastalFeature(std::move(coast));
+        grid.setSubmarineVent(std::move(subV));
+        grid.setVolcanicProfile(std::move(volP));
+        grid.setKarstSubtype(std::move(karstS));
+        grid.setDesertSubtype(std::move(desS));
+        grid.setMassWasting(std::move(massW));
+        grid.setNamedWind(std::move(namedW));
+        grid.setForestAgeClass(std::move(forA));
+        grid.setSoilMoistureRegime(std::move(soilM));
+
+        // ---- CORAL REEF TIER CLASSIFICATION ----
+        // Categorize each Reef-feature tile:
+        //   1 fringing — adjacent to land
+        //   2 barrier — within 3 hexes of land but not adjacent
+        //   3 atoll — biome subtype 11 (hotspot ring)
+        //   4 patch — open shelf, isolated
+        std::vector<uint8_t> reefT(static_cast<std::size_t>(totalT), 0);
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                if (grid.feature(i) != aoc::map::FeatureType::Reef) {
+                    continue;
+                }
+                if (bSub[static_cast<std::size_t>(i)] == 11) {
+                    reefT[static_cast<std::size_t>(i)] = 3; // atoll
+                    continue;
+                }
+                bool adjLand = false;
+                bool nearLand = false;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    const aoc::map::TerrainType nt = grid.terrain(nIdx);
+                    if (nt != aoc::map::TerrainType::Ocean
+                        && nt != aoc::map::TerrainType::ShallowWater) {
+                        adjLand = true; break;
+                    }
+                }
+                if (adjLand) {
+                    reefT[static_cast<std::size_t>(i)] = 1; // fringing
+                    continue;
+                }
+                for (int32_t dr = -3; dr <= 3 && !nearLand; ++dr) {
+                    const int32_t rr = row + dr;
+                    if (rr < 0 || rr >= height) { continue; }
+                    for (int32_t dc = -3; dc <= 3 && !nearLand; ++dc) {
+                        int32_t cc = col + dc;
+                        if (cylSim) {
+                            if (cc < 0)        { cc += width; }
+                            if (cc >= width)   { cc -= width; }
+                        } else if (cc < 0 || cc >= width) { continue; }
+                        const aoc::map::TerrainType nt =
+                            grid.terrain(rr * width + cc);
+                        if (nt != aoc::map::TerrainType::Ocean
+                            && nt != aoc::map::TerrainType::ShallowWater) {
+                            nearLand = true;
+                        }
+                    }
+                }
+                reefT[static_cast<std::size_t>(i)] = nearLand ? 2 : 4;
+            }
+        }
+        grid.setReefTier(std::move(reefT));
 
         grid.setNaturalHazard(std::move(natHazard));
         grid.setBiomeSubtype(std::move(bSub));
@@ -6978,6 +8195,141 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
                 && grid.volcanism()[sIdx] == 4
                 && resRng.chance(0.025f)) {
                 placed = ResourceId{aoc::sim::goods::RARE_EARTH};
+            }
+            // ----- Session 8 geology-driven specialty placement -----
+            // NICKEL: laterite weathering (tropical Hills + age) OR
+            // magmatic Ni-Cu (igneous + craton).
+            if (!placed.isValid()) {
+                const float ny0 = static_cast<float>(row)
+                                / static_cast<float>(height);
+                const float lat0 = 2.0f * std::abs(ny0 - 0.5f);
+                if (lat0 < 0.20f
+                    && grid.feature(index)
+                            == aoc::map::FeatureType::Hills
+                    && rType == 1
+                    && resRng.chance(0.04f)) {
+                    placed = ResourceId{aoc::sim::goods::NICKEL};
+                } else if (rType == 1
+                    && tileAge > 100.0f
+                    && resRng.chance(0.025f)) {
+                    placed = ResourceId{aoc::sim::goods::NICKEL};
+                }
+            }
+            // COBALT: sed-Cu basins + magmatic. Old craton + igneous.
+            if (!placed.isValid()
+                && (rType == 1 || rType == 2)
+                && tileAge > 100.0f
+                && resRng.chance(0.02f)) {
+                placed = ResourceId{aoc::sim::goods::COBALT};
+            }
+            // HELIUM: co-produced with natural-gas in old continental
+            // basins. Sedimentary + age > 50.
+            if (!placed.isValid()
+                && rType == 0
+                && tileAge > 50.0f
+                && sedDep > 0.05f
+                && resRng.chance(0.012f)) {
+                placed = ResourceId{aoc::sim::goods::HELIUM};
+            }
+            // PLATINUM: ophiolite (PGM) + layered intrusion (igneous +
+            // craton).
+            if (!placed.isValid()) {
+                if (rType == 3 && resRng.chance(0.04f)) {
+                    placed = ResourceId{aoc::sim::goods::PLATINUM};
+                } else if (rType == 1 && tileAge > 130.0f
+                    && resRng.chance(0.02f)) {
+                    placed = ResourceId{aoc::sim::goods::PLATINUM};
+                }
+            }
+            // SULFUR: volcanic fumaroles + evaporite.
+            if (!placed.isValid()) {
+                const auto& vc = grid.volcanism();
+                if (sIdx < vc.size()
+                    && (vc[sIdx] == 1 || vc[sIdx] == 5)
+                    && resRng.chance(0.05f)) {
+                    placed = ResourceId{aoc::sim::goods::SULFUR};
+                }
+            }
+            // GYPSUM: evaporite basin (passive margin or arid sed
+            // basin).
+            if (!placed.isValid()
+                && rType == 0
+                && (mType == 2
+                    || grid.terrain(index) == aoc::map::TerrainType::Desert)
+                && resRng.chance(0.04f)) {
+                placed = ResourceId{aoc::sim::goods::GYPSUM};
+            }
+            // FLUORITE: hydrothermal vein. Convergent + Hills tier.
+            if (!placed.isValid()
+                && bType == BoundaryType::Convergent
+                && grid.feature(index) == aoc::map::FeatureType::Hills
+                && resRng.chance(0.025f)) {
+                placed = ResourceId{aoc::sim::goods::FLUORITE};
+            }
+            // DOLOMITE: tropical carbonate / shelf platform — but we
+            // skip water tiles (water already filtered out at top).
+            // Place on temperate sediment + age (diagenetic).
+            if (!placed.isValid()
+                && rType == 0 && tileAge > 30.0f
+                && grid.feature(index) == aoc::map::FeatureType::Hills
+                && resRng.chance(0.03f)) {
+                placed = ResourceId{aoc::sim::goods::DOLOMITE};
+            }
+            // BARITE: bedded sedimentary + hydrothermal at convergent.
+            if (!placed.isValid()
+                && (bType == BoundaryType::Convergent || rType == 0)
+                && resRng.chance(0.02f)) {
+                placed = ResourceId{aoc::sim::goods::BARITE};
+            }
+            // ALLUVIAL_GOLD: river-edge tile + cratonic source upstream.
+            if (!placed.isValid()
+                && grid.riverEdges(index) != 0
+                && tileAge > 80.0f
+                && resRng.chance(0.025f)) {
+                placed = ResourceId{aoc::sim::goods::ALLUVIAL_GOLD};
+            }
+            // BEACH_PLACER: coastal land tile (heavy mineral sands).
+            if (!placed.isValid() && nearCoast
+                && grid.terrain(index) == aoc::map::TerrainType::Plains
+                && resRng.chance(0.03f)) {
+                placed = ResourceId{aoc::sim::goods::BEACH_PLACER};
+            }
+            // PYRITE: hydrothermal sulfide + sed.
+            if (!placed.isValid()
+                && (rType == 0 || bType == BoundaryType::Convergent)
+                && resRng.chance(0.02f)) {
+                placed = ResourceId{aoc::sim::goods::PYRITE};
+            }
+            // PHOSPHATE: biogenic — coastal land tiles in arid zones
+            // adjacent to upwelling water.
+            if (!placed.isValid()
+                && nearCoast
+                && grid.terrain(index) == aoc::map::TerrainType::Desert
+                && resRng.chance(0.05f)) {
+                placed = ResourceId{aoc::sim::goods::PHOSPHATE};
+            }
+            // VMS_ORE: volcanic massive sulfide — ophiolite-region rare.
+            if (!placed.isValid()
+                && rType == 3
+                && resRng.chance(0.06f)) {
+                placed = ResourceId{aoc::sim::goods::VMS_ORE};
+            }
+            // SKARN_ORE: contact metamorphic at intrusion-sediment
+            // boundary. Mountain edge with rockType=2 (metamorphic) +
+            // adjacent sed.
+            if (!placed.isValid()
+                && rType == 2
+                && bType == BoundaryType::Convergent
+                && resRng.chance(0.03f)) {
+                placed = ResourceId{aoc::sim::goods::SKARN_ORE};
+            }
+            // MVT_ORE: Mississippi-Valley Pb-Zn — sediment + age,
+            // continental interior carbonate platform proxy.
+            if (!placed.isValid()
+                && rType == 0 && tileAge > 80.0f
+                && bType == BoundaryType::None
+                && resRng.chance(0.025f)) {
+                placed = ResourceId{aoc::sim::goods::MVT_ORE};
             }
             (void)landFr;
 

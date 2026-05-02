@@ -252,6 +252,95 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                         fillB = 0.20f * (1.0f - s);
                         fillA = 0.55f; useFill = true;
                     }
+                } else if (this->overlayMode == MapOverlay::Cliff) {
+                    const auto& cf = grid.cliffCoastAll();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!cf.empty() && si < cf.size() && cf[si] != 0) {
+                        switch (cf[si]) {
+                            case 1: fillR=0.85f; fillG=0.20f; fillB=0.20f; break; // hard cliff
+                            case 2: fillR=0.20f; fillG=0.30f; fillB=0.85f; break; // fjord wall
+                            case 3: fillR=0.85f; fillG=0.55f; fillB=0.20f; break; // headland
+                            case 4: fillR=0.95f; fillG=0.95f; fillB=1.00f; break; // ice cliff
+                            default: break;
+                        }
+                        fillA = 0.75f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Trade) {
+                    const auto& tp = grid.tradeRoutePotential();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!tp.empty() && si < tp.size()) {
+                        const float v = static_cast<float>(tp[si]) / 255.0f;
+                        fillR = 0.10f + 0.85f * v;
+                        fillG = 0.65f * v;
+                        fillB = 0.20f;
+                        fillA = 0.20f + 0.40f * v;
+                        useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Habit) {
+                    const auto& hb = grid.habitability();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!hb.empty() && si < hb.size()) {
+                        const float v = static_cast<float>(hb[si]) / 255.0f;
+                        fillR = 0.20f * (1.0f - v);
+                        fillG = 0.30f + 0.65f * v;
+                        fillB = 0.20f;
+                        fillA = 0.20f + 0.50f * v;
+                        useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Wetland) {
+                    const auto& ws = grid.wetlandSubtype();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!ws.empty() && si < ws.size() && ws[si] != 0) {
+                        switch (ws[si]) {
+                            case 1: fillR=0.45f; fillG=0.30f; fillB=0.20f; break; // peat
+                            case 2: fillR=0.30f; fillG=0.55f; fillB=0.30f; break; // swamp
+                            case 3: fillR=0.55f; fillG=0.85f; fillB=0.55f; break; // fen
+                            case 4: fillR=0.20f; fillG=0.85f; fillB=0.95f; break; // floodplain
+                            default: break;
+                        }
+                        fillA = 0.55f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Reef) {
+                    const auto& rt = grid.reefTier();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!rt.empty() && si < rt.size() && rt[si] != 0) {
+                        switch (rt[si]) {
+                            case 1: fillR=0.95f; fillG=0.65f; fillB=0.45f; break; // fringing
+                            case 2: fillR=0.95f; fillG=0.30f; fillB=0.55f; break; // barrier
+                            case 3: fillR=0.30f; fillG=0.95f; fillB=0.95f; break; // atoll
+                            case 4: fillR=0.55f; fillG=0.85f; fillB=0.65f; break; // patch
+                            default: break;
+                        }
+                        fillA = 0.65f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Pass) {
+                    const auto& mp = grid.mountainPass();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!mp.empty() && si < mp.size() && mp[si] != 0) {
+                        fillR = 0.95f; fillG = 0.85f; fillB = 0.10f;
+                        fillA = 0.75f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Defense) {
+                    const auto& df = grid.defensibility();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!df.empty() && si < df.size()) {
+                        const float v = static_cast<float>(df[si]) / 255.0f;
+                        fillR = v;
+                        fillG = 0.30f * v;
+                        fillB = 0.10f;
+                        fillA = 0.20f + 0.40f * v;
+                        useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Domestic) {
+                    const auto& dm = grid.domesticable();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!dm.empty() && si < dm.size() && dm[si] != 0) {
+                        const int popcount = __builtin_popcount(dm[si]);
+                        fillR = 0.30f + 0.10f * static_cast<float>(popcount);
+                        fillG = 0.65f;
+                        fillB = 0.30f;
+                        fillA = 0.55f; useFill = true;
+                    }
                 } else if (this->overlayMode == MapOverlay::Hazards) {
                     const auto& nh = grid.naturalHazard();
                     const std::size_t si = static_cast<std::size_t>(index);

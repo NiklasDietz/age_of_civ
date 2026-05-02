@@ -88,6 +88,40 @@ public:
         /// per sim. Smaller = continents barely move. Each step's DT is
         /// derived: DT = driftFraction / (EPOCHS * vMax).
         float    driftFraction = 0.0f;
+
+        // ----- TEMPORAL CLIMATE PHASES (single-snapshot proxies) -----
+        // The map gen runs once at world creation, but real Earth has
+        // gone through climatic phases (greenhouse, icehouse, glacial)
+        // and orbital cycles (Milankovitch, ENSO). These knobs select a
+        // SNAPSHOT of those phases to apply at generation time.
+        //
+        // climatePhase: 0 = neutral, 1 = greenhouse (warmer, less ice,
+        //   higher sea level), 2 = icehouse (colder, expanded ice,
+        //   lower sea level — Pleistocene maximum).
+        int32_t  climatePhase = 0;
+        // seaLevelDelta: shifts effective waterRatio. -0.10 = -120 m
+        // Pleistocene low, +0.05 = mid-Cretaceous high.
+        float    seaLevelDelta = 0.0f;
+        // axialTilt in degrees (Earth = 23.5°). Higher = stronger
+        // seasonal contrast (wider tropic + polar zones, less temperate).
+        // 0 = uniform-temperate world.
+        float    axialTilt = 23.5f;
+        // ensoState: 0 = neutral, 1 = El Niño (Pacific-east warm/wet,
+        // west dry), 2 = La Niña (opposite). Affects equatorial moisture.
+        int32_t  ensoState = 0;
+        // milankovitchPhase: 0..1 — orbital eccentricity cycle position.
+        // 0 = circular (mild seasons), 1 = elliptical (extreme).
+        float    milankovitchPhase = 0.0f;
+
+        // ----- ACCURACY / SUPER-SAMPLING -----
+        // Plate-tectonic sim already runs in continuous coords (float
+        // plate positions, per-plate 64×64 plate-local orogeny grid).
+        // Tile rasterization happens at output. Increasing this factor
+        // raises the per-plate orogeny grid resolution from the default
+        // 64 to 64*factor, improving boundary precision + sub-hex
+        // detail at cost of memory and compute.
+        // 1 = default (64×64), 2 = high (128×128), 4 = ultra (256×256).
+        int32_t  superSampleFactor = 1;
     };
 
     /**

@@ -295,7 +295,28 @@ namespace goods {
     inline constexpr uint16_t PHARMACEUTICALS      = 149;  ///< Advanced: consumer-health good; population/amenity multiplier input.
     inline constexpr uint16_t RARE_EARTH           = 150;  ///< WP-B3 raw strategic: rare Mountain deposit OR Lunar Colony byproduct. Alt input for Semiconductors.
 
-    inline constexpr uint16_t GOOD_COUNT = 153;
+    // -- Geology-driven specialty resources (151-170) --
+    // Added Session 8. Raw extractables placed by tectonic setting.
+    // No recipes wired yet; these enrich map placement + serve as
+    // future industrial inputs.
+    inline constexpr uint16_t NICKEL               = 151;  ///< Laterite (tropical weathered) + magmatic Ni-Cu
+    inline constexpr uint16_t COBALT               = 152;  ///< Sed-Cu + magmatic + DR Congo style
+    inline constexpr uint16_t HELIUM               = 153;  ///< Co-produced with natural-gas, terrestrial
+    inline constexpr uint16_t PLATINUM             = 154;  ///< Layered-intrusion + ophiolite (PGM)
+    inline constexpr uint16_t SULFUR               = 155;  ///< Volcanic fumarole + evaporite
+    inline constexpr uint16_t GYPSUM               = 156;  ///< Evaporite basin
+    inline constexpr uint16_t FLUORITE             = 157;  ///< Hydrothermal vein
+    inline constexpr uint16_t DOLOMITE             = 158;  ///< Carbonate platform + diagenetic
+    inline constexpr uint16_t BARITE               = 159;  ///< Bedded sed + hydrothermal
+    inline constexpr uint16_t ALLUVIAL_GOLD        = 160;  ///< Placer in river gravels
+    inline constexpr uint16_t BEACH_PLACER         = 161;  ///< Heavy-mineral beach sands (Ti, REE, monazite)
+    inline constexpr uint16_t PYRITE               = 162;  ///< Sed + hydrothermal Fe-S
+    inline constexpr uint16_t PHOSPHATE            = 163;  ///< Biogenic upwelling residue (Morocco/Florida)
+    inline constexpr uint16_t VMS_ORE              = 164;  ///< Volcanic massive sulfide at MOR (Cyprus, Kuroko)
+    inline constexpr uint16_t SKARN_ORE            = 165;  ///< Contact metamorphic Cu/W/Sn/Mo
+    inline constexpr uint16_t MVT_ORE              = 166;  ///< Mississippi-Valley Pb-Zn in carbonate
+
+    inline constexpr uint16_t GOOD_COUNT = 167;
 } // namespace goods
 
 /// Is this good a metal resource that can spawn on mountain tiles?

@@ -126,6 +126,14 @@ public:
         AtmExtras,      ///< Föhn / katabatic / pressure cells / vortex
         HydroExtras,    ///< Aquifers / springs / lake types
         Events,         ///< Eruption sites / impact craters / supervolcano
+        Pass,           ///< Mountain pass (saddle between mountain massifs)
+        Defense,        ///< Defensibility 0-255
+        Domestic,       ///< Domesticable species bitfield
+        Trade,          ///< Trade route potential
+        Habit,          ///< Habitability composite score
+        Wetland,        ///< Wetland subtypes (peat/swamp/fen/floodplain)
+        Reef,           ///< Coral reef tier (fringing/barrier/atoll/patch)
+        Cliff,          ///< Cliff coast (hard rock / fjord / headland / ice)
     };
     MapOverlay overlayMode = MapOverlay::None;
 

@@ -843,6 +843,478 @@ public:
     void setEventMarker(std::vector<uint8_t> v) {
         this->m_eventMarker = std::move(v);
     }
+
+    /// Per-tile mountain-pass flag — 1 if saddle between two mountain
+    /// massifs (movement chokepoint, low elevation surrounded by high).
+    [[nodiscard]] const std::vector<uint8_t>& mountainPass() const {
+        return this->m_mountainPass;
+    }
+    void setMountainPass(std::vector<uint8_t> v) {
+        this->m_mountainPass = std::move(v);
+    }
+
+    /// Per-tile defensibility score 0-255 (elevation advantage + flank
+    /// protection from rivers/water/mountains).
+    [[nodiscard]] const std::vector<uint8_t>& defensibility() const {
+        return this->m_defensibility;
+    }
+    void setDefensibility(std::vector<uint8_t> v) {
+        this->m_defensibility = std::move(v);
+    }
+
+    /// Per-tile domesticable-species bitfield.
+    /// b0 cattle/buffalo, b1 horses, b2 sheep, b3 goats, b4 llamas,
+    /// b5 camels, b6 reindeer, b7 pigs.
+    [[nodiscard]] const std::vector<uint8_t>& domesticable() const {
+        return this->m_domesticable;
+    }
+    void setDomesticable(std::vector<uint8_t> v) {
+        this->m_domesticable = std::move(v);
+    }
+
+    /// Per-tile trade-route potential 0-255.
+    /// High where mountain passes / rivers / coast / flat terrain
+    /// connect distant settlements with low effective transport cost.
+    [[nodiscard]] const std::vector<uint8_t>& tradeRoutePotential() const {
+        return this->m_tradeRoutePotential;
+    }
+    void setTradeRoutePotential(std::vector<uint8_t> v) {
+        this->m_tradeRoutePotential = std::move(v);
+    }
+
+    /// Per-tile habitability score 0-255 (composite: fertility + soft
+    /// climate + freshwater + low hazard + biome quality). Game uses
+    /// for AI city-placement scoring.
+    [[nodiscard]] const std::vector<uint8_t>& habitability() const {
+        return this->m_habitability;
+    }
+    void setHabitability(std::vector<uint8_t> v) {
+        this->m_habitability = std::move(v);
+    }
+
+    /// Per-tile wetland subtype.
+    /// 0 none/Marsh-generic, 1 peat bog, 2 swamp, 3 fen, 4 floodplain.
+    [[nodiscard]] const std::vector<uint8_t>& wetlandSubtype() const {
+        return this->m_wetlandSubtype;
+    }
+    void setWetlandSubtype(std::vector<uint8_t> v) {
+        this->m_wetlandSubtype = std::move(v);
+    }
+
+    /// Per-tile coral reef tier.
+    /// 0 none, 1 fringing reef, 2 barrier reef, 3 atoll, 4 patch reef.
+    [[nodiscard]] const std::vector<uint8_t>& reefTier() const {
+        return this->m_reefTier;
+    }
+    void setReefTier(std::vector<uint8_t> v) {
+        this->m_reefTier = std::move(v);
+    }
+
+    // ----- Dynamic per-tile game state (post-generation) -----
+    // These fields track world changes during play. Map-gen leaves
+    // them zero; gameplay systems read/write them.
+
+    /// Per-tile war-damage value 0-255 (pillage / scorched-earth /
+    /// fallout intensity). 0 = pristine, 255 = totally devastated.
+    /// Gameplay systems decay this slowly each turn.
+    [[nodiscard]] uint8_t warDamage(int32_t index) const {
+        if (this->m_warDamage.empty()) { return 0; }
+        if (index < 0 || index >= this->tileCount()) { return 0; }
+        return this->m_warDamage[static_cast<std::size_t>(index)];
+    }
+    void setWarDamage(int32_t index, uint8_t v) {
+        const int32_t total = this->tileCount();
+        if (this->m_warDamage.empty()) {
+            this->m_warDamage.assign(static_cast<std::size_t>(total), 0);
+        }
+        if (index >= 0 && index < total) {
+            this->m_warDamage[static_cast<std::size_t>(index)] = v;
+        }
+    }
+    [[nodiscard]] const std::vector<uint8_t>& warDamageAll() const {
+        return this->m_warDamage;
+    }
+
+    /// Per-tile anthropogenic-modification level 0-255.
+    /// Low = wild, mid = farmed/forest cleared, high = urban / heavy
+    /// industrialization. Updated by improvement build / city growth.
+    [[nodiscard]] uint8_t anthropogenic(int32_t index) const {
+        if (this->m_anthropogenic.empty()) { return 0; }
+        if (index < 0 || index >= this->tileCount()) { return 0; }
+        return this->m_anthropogenic[static_cast<std::size_t>(index)];
+    }
+    void setAnthropogenic(int32_t index, uint8_t v) {
+        const int32_t total = this->tileCount();
+        if (this->m_anthropogenic.empty()) {
+            this->m_anthropogenic.assign(static_cast<std::size_t>(total), 0);
+        }
+        if (index >= 0 && index < total) {
+            this->m_anthropogenic[static_cast<std::size_t>(index)] = v;
+        }
+    }
+    [[nodiscard]] const std::vector<uint8_t>& anthropogenicAll() const {
+        return this->m_anthropogenic;
+    }
+
+    /// Per-tile abandoned-settlement marker. 1 = ancient ruins from a
+    /// formerly-active city that fell. Decays slowly (centuries) back
+    /// to 0 as nature reclaims.
+    [[nodiscard]] uint8_t settlementRuin(int32_t index) const {
+        if (this->m_settlementRuin.empty()) { return 0; }
+        if (index < 0 || index >= this->tileCount()) { return 0; }
+        return this->m_settlementRuin[static_cast<std::size_t>(index)];
+    }
+    void setSettlementRuin(int32_t index, uint8_t v) {
+        const int32_t total = this->tileCount();
+        if (this->m_settlementRuin.empty()) {
+            this->m_settlementRuin.assign(static_cast<std::size_t>(total), 0);
+        }
+        if (index >= 0 && index < total) {
+            this->m_settlementRuin[static_cast<std::size_t>(index)] = v;
+        }
+    }
+    [[nodiscard]] const std::vector<uint8_t>& settlementRuinAll() const {
+        return this->m_settlementRuin;
+    }
+
+    /// Per-tile active trade-route flag. Bitfield where each bit
+    /// represents a trade-route lane (limited to 8 simultaneous routes
+    /// passing through any one tile). Game systems set/clear bits as
+    /// trade routes form / collapse.
+    [[nodiscard]] uint8_t activeTradeRoute(int32_t index) const {
+        if (this->m_activeTradeRoute.empty()) { return 0; }
+        if (index < 0 || index >= this->tileCount()) { return 0; }
+        return this->m_activeTradeRoute[static_cast<std::size_t>(index)];
+    }
+    void setActiveTradeRoute(int32_t index, uint8_t v) {
+        const int32_t total = this->tileCount();
+        if (this->m_activeTradeRoute.empty()) {
+            this->m_activeTradeRoute.assign(static_cast<std::size_t>(total), 0);
+        }
+        if (index >= 0 && index < total) {
+            this->m_activeTradeRoute[static_cast<std::size_t>(index)] = v;
+        }
+    }
+    [[nodiscard]] const std::vector<uint8_t>& activeTradeRouteAll() const {
+        return this->m_activeTradeRoute;
+    }
+
+    /// Per-tile Köppen full classification (5 bits = 32 codes).
+    /// 0 = unset, 1-30 = Köppen codes (Af, Am, Aw, BWh, BWk, BSh, BSk,
+    /// Csa, Csb, Cwa, Cwb, Cfa, Cfb, Dsa, Dsb, Dsc, Dsd, Dwa, Dwb, Dwc,
+    /// Dwd, Dfa, Dfb, Dfc, Dfd, ET, EF, alpine, polar-night, hot-summer-
+    /// arctic).
+    [[nodiscard]] const std::vector<uint8_t>& koppen() const {
+        return this->m_koppen;
+    }
+    void setKoppen(std::vector<uint8_t> v) {
+        this->m_koppen = std::move(v);
+    }
+
+    /// Per-Mountain-tile structural type.
+    /// 0 = none/non-mountain, 1 = folded (Alpine collisional),
+    /// 2 = faulted (Basin/Range extensional), 3 = volcanic (arc/hotspot),
+    /// 4 = uplifted block (Sierra Nevada), 5 = dome (Black Hills),
+    /// 6 = eroded ancient (Appalachian-class).
+    [[nodiscard]] const std::vector<uint8_t>& mountainStructure() const {
+        return this->m_mountainStructure;
+    }
+    void setMountainStructure(std::vector<uint8_t> v) {
+        this->m_mountainStructure = std::move(v);
+    }
+
+    /// Per-tile ore-grade modifier 0-255.
+    /// Drives extraction yield: high = bonanza grade (Bingham, Rio
+    /// Tinto), low = marginal deposit. Independent of resource type.
+    [[nodiscard]] const std::vector<uint8_t>& oreGrade() const {
+        return this->m_oreGrade;
+    }
+    void setOreGrade(std::vector<uint8_t> v) {
+        this->m_oreGrade = std::move(v);
+    }
+
+    /// Per-tile strait / chokepoint flag — 1 if narrow water passage
+    /// connecting two larger ocean basins (Hormuz / Malacca / Bosphorus
+    /// / Gibraltar / Bering / Magellan / Hudson).
+    [[nodiscard]] const std::vector<uint8_t>& strait() const {
+        return this->m_strait;
+    }
+    void setStrait(std::vector<uint8_t> v) {
+        this->m_strait = std::move(v);
+    }
+
+    /// Per-tile natural-harbor score 0-255 (coastal indentation +
+    /// island protection). High = sheltered deepwater harbor.
+    [[nodiscard]] const std::vector<uint8_t>& harborScore() const {
+        return this->m_harborScore;
+    }
+    void setHarborScore(std::vector<uint8_t> v) {
+        this->m_harborScore = std::move(v);
+    }
+
+    /// Per-river-tile channel pattern.
+    /// 0 = none, 1 = straight (steep gradient), 2 = meandering (low
+    /// gradient + sediment), 3 = braided (high sediment + variable
+    /// flow — glacial outwash), 4 = anastomosing (low-gradient
+    /// stable multi-channel — Okavango).
+    [[nodiscard]] const std::vector<uint8_t>& channelPattern() const {
+        return this->m_channelPattern;
+    }
+    void setChannelPattern(std::vector<uint8_t> v) {
+        this->m_channelPattern = std::move(v);
+    }
+
+    /// Per-tile vegetation density 0-255 (% canopy / biomass).
+    [[nodiscard]] const std::vector<uint8_t>& vegetationDensity() const {
+        return this->m_vegetationDensity;
+    }
+    void setVegetationDensity(std::vector<uint8_t> v) {
+        this->m_vegetationDensity = std::move(v);
+    }
+
+    /// Per-tile coastal-feature tag.
+    /// 0 = none, 1 = cape / peninsula (protruding land), 2 = bay /
+    /// inlet (indented coast), 3 = isthmus (narrow land between two
+    /// waters), 4 = headland.
+    [[nodiscard]] const std::vector<uint8_t>& coastalFeature() const {
+        return this->m_coastalFeature;
+    }
+    void setCoastalFeature(std::vector<uint8_t> v) {
+        this->m_coastalFeature = std::move(v);
+    }
+
+    /// Per-tile submarine vent / cold seep flag.
+    /// 0 = none, 1 = mid-ocean ridge hydrothermal vent (black smoker),
+    /// 2 = continental-margin cold seep (methane-driven), 3 = white
+    /// smoker (lower-temp serpentinite).
+    [[nodiscard]] const std::vector<uint8_t>& submarineVent() const {
+        return this->m_submarineVent;
+    }
+    void setSubmarineVent(std::vector<uint8_t> v) {
+        this->m_submarineVent = std::move(v);
+    }
+
+    /// Per-eruption-site VEI (Volcanic Explosivity Index) 0-8 +
+    /// magma-type bits in upper nibble (high 4 bits: 0=basaltic,
+    /// 1=andesitic, 2=rhyolitic, 3=phreatomagmatic).
+    [[nodiscard]] const std::vector<uint8_t>& volcanicProfile() const {
+        return this->m_volcanicProfile;
+    }
+    void setVolcanicProfile(std::vector<uint8_t> v) {
+        this->m_volcanicProfile = std::move(v);
+    }
+
+    /// Per-tile karst subtype.
+    /// 0 = none, 1 = doline (sinkhole), 2 = polje (large flat plain),
+    /// 3 = tower karst, 4 = pavement, 5 = dry valley.
+    [[nodiscard]] const std::vector<uint8_t>& karstSubtype() const {
+        return this->m_karstSubtype;
+    }
+    void setKarstSubtype(std::vector<uint8_t> v) {
+        this->m_karstSubtype = std::move(v);
+    }
+
+    /// Per-tile desert subtype.
+    /// 0 = none, 1 = erg (sand sea), 2 = reg (gravel/stony desert),
+    /// 3 = hammada (rocky bedrock desert), 4 = playa (dry lakebed),
+    /// 5 = badlands (dissected sediment).
+    [[nodiscard]] const std::vector<uint8_t>& desertSubtype() const {
+        return this->m_desertSubtype;
+    }
+    void setDesertSubtype(std::vector<uint8_t> v) {
+        this->m_desertSubtype = std::move(v);
+    }
+
+    /// Per-tile mass-wasting type.
+    /// 0 = none, 1 = rockfall, 2 = slump, 3 = debris flow, 4 = mudflow,
+    /// 5 = solifluction (periglacial), 6 = rock glacier.
+    [[nodiscard]] const std::vector<uint8_t>& massWasting() const {
+        return this->m_massWasting;
+    }
+    void setMassWasting(std::vector<uint8_t> v) {
+        this->m_massWasting = std::move(v);
+    }
+
+    /// Per-tile named regional wind tag.
+    /// 0 = none, 1 = Mistral, 2 = Bora, 3 = Sirocco, 4 = Harmattan,
+    /// 5 = Chinook / Föhn, 6 = Williwaw, 7 = Khamsin, 8 = Santa Ana.
+    [[nodiscard]] const std::vector<uint8_t>& namedWind() const {
+        return this->m_namedWind;
+    }
+    void setNamedWind(std::vector<uint8_t> v) {
+        this->m_namedWind = std::move(v);
+    }
+
+    /// Per-tile forest age class.
+    /// 0 = no forest, 1 = scrub, 2 = secondary regrowth,
+    /// 3 = mature, 4 = old growth.
+    [[nodiscard]] const std::vector<uint8_t>& forestAgeClass() const {
+        return this->m_forestAgeClass;
+    }
+    void setForestAgeClass(std::vector<uint8_t> v) {
+        this->m_forestAgeClass = std::move(v);
+    }
+
+    /// Per-tile soil moisture regime.
+    /// 0 = unset, 1 = aridic (dry most of year), 2 = xeric (dry summer
+    /// only), 3 = ustic (intermittent moisture), 4 = udic (humid),
+    /// 5 = aquic (waterlogged), 6 = peraquic (permanently saturated).
+    [[nodiscard]] const std::vector<uint8_t>& soilMoistureRegime() const {
+        return this->m_soilMoistureRegime;
+    }
+    void setSoilMoistureRegime(std::vector<uint8_t> v) {
+        this->m_soilMoistureRegime = std::move(v);
+    }
+
+    /// Per-tile specific lithology (rock type fine-grained).
+    /// 0 unset, 1 granite, 2 gabbro, 3 basalt, 4 rhyolite, 5 andesite,
+    /// 6 peridotite, 7 sandstone, 8 shale, 9 limestone, 10 dolostone,
+    /// 11 chert, 12 conglomerate, 13 schist, 14 gneiss, 15 quartzite,
+    /// 16 marble, 17 slate, 18 amphibolite, 19 serpentinite,
+    /// 20 evaporite, 21 coal-bearing, 22 chalk, 23 ignimbrite tuff.
+    [[nodiscard]] const std::vector<uint8_t>& lithology() const {
+        return this->m_lithology;
+    }
+    void setLithology(std::vector<uint8_t> v) {
+        this->m_lithology = std::move(v);
+    }
+
+    /// Per-tile USDA soil order (12 orders + alpine + bare).
+    /// 0 unset, 1 entisol, 2 inceptisol, 3 mollisol (chernozem),
+    /// 4 oxisol, 5 ultisol, 6 alfisol, 7 spodosol (podzol),
+    /// 8 aridisol, 9 vertisol, 10 andisol (volcanic), 11 histosol
+    /// (peat), 12 gelisol (permafrost), 13 alpine bare rock,
+    /// 14 anthrosol.
+    [[nodiscard]] const std::vector<uint8_t>& soilOrder() const {
+        return this->m_soilOrder;
+    }
+    void setSoilOrder(std::vector<uint8_t> v) {
+        this->m_soilOrder = std::move(v);
+    }
+
+    /// Per-tile crustal thickness 0-255 (= 0-100 km depth).
+    /// Continental ~30-70 km, oceanic ~5-10 km, orogenic root ~70+.
+    [[nodiscard]] const std::vector<uint8_t>& crustalThickness() const {
+        return this->m_crustalThickness;
+    }
+    void setCrustalThickness(std::vector<uint8_t> v) {
+        this->m_crustalThickness = std::move(v);
+    }
+
+    /// Per-tile geothermal heat-flux gradient 0-255 (mW/m² scaled).
+    /// Volcanic / arc / hotspot high; cratonic low; oceanic mid.
+    [[nodiscard]] const std::vector<uint8_t>& geothermalGradient() const {
+        return this->m_geothermalGradient;
+    }
+    void setGeothermalGradient(std::vector<uint8_t> v) {
+        this->m_geothermalGradient = std::move(v);
+    }
+
+    /// Per-tile albedo 0-255 (= 0.00-0.95 reflectivity).
+    /// Snow/ice ~0.85, desert ~0.40, forest ~0.10, ocean ~0.07.
+    [[nodiscard]] const std::vector<uint8_t>& albedo() const {
+        return this->m_albedo;
+    }
+    void setAlbedo(std::vector<uint8_t> v) {
+        this->m_albedo = std::move(v);
+    }
+
+    /// Per-tile vegetation type.
+    /// 0 none/grass, 1 deciduous broadleaf, 2 evergreen broadleaf
+    /// (tropical), 3 evergreen needleleaf (boreal), 4 deciduous
+    /// needleleaf (larch), 5 mixed forest, 6 savanna, 7 shrubland,
+    /// 8 mangrove forest.
+    [[nodiscard]] const std::vector<uint8_t>& vegetationType() const {
+        return this->m_vegetationType;
+    }
+    void setVegetationType(std::vector<uint8_t> v) {
+        this->m_vegetationType = std::move(v);
+    }
+
+    /// Per-tile atmospheric-river-band flag — 1 if mid-latitude tile
+    /// in a concentrated moisture-transport corridor.
+    [[nodiscard]] const std::vector<uint8_t>& atmosphericRiver() const {
+        return this->m_atmosphericRiver;
+    }
+    void setAtmosphericRiver(std::vector<uint8_t> v) {
+        this->m_atmosphericRiver = std::move(v);
+    }
+
+    /// Per-tile tropical cyclone basin classification.
+    /// 0 none, 1 N Atlantic, 2 NE Pacific, 3 NW Pacific, 4 N Indian,
+    /// 5 SW Indian, 6 SE Indian/Australian, 7 S Pacific.
+    [[nodiscard]] const std::vector<uint8_t>& cycloneBasin() const {
+        return this->m_cycloneBasin;
+    }
+    void setCycloneBasin(std::vector<uint8_t> v) {
+        this->m_cycloneBasin = std::move(v);
+    }
+
+    /// Per-tile sea surface temperature 0-255 (= -2 to +32 °C).
+    /// Used for fishery suitability + cyclone formation potential +
+    /// climate dynamics.
+    [[nodiscard]] const std::vector<uint8_t>& seaSurfaceTemp() const {
+        return this->m_seaSurfaceTemp;
+    }
+    void setSeaSurfaceTemp(std::vector<uint8_t> v) {
+        this->m_seaSurfaceTemp = std::move(v);
+    }
+
+    /// Per-tile shelf-ice / iceberg-source flag.
+    /// 0 none, 1 ice shelf (floating extension of continental ice),
+    /// 2 iceberg-spawning zone (calving margin), 3 fast ice (frozen
+    /// to coast).
+    [[nodiscard]] const std::vector<uint8_t>& iceShelfZone() const {
+        return this->m_iceShelfZone;
+    }
+    void setIceShelfZone(std::vector<uint8_t> v) {
+        this->m_iceShelfZone = std::move(v);
+    }
+
+    /// Per-tile bedrock lithology — same enum as lithology(); separate
+    /// vector lets surface and subsurface differ (sediment cover over
+    /// granitic basement = sandstone+shale on top of granite).
+    [[nodiscard]] const std::vector<uint8_t>& bedrockLithology() const {
+        return this->m_bedrockLithology;
+    }
+    void setBedrockLithology(std::vector<uint8_t> v) {
+        this->m_bedrockLithology = std::move(v);
+    }
+
+    /// Per-tile permafrost active-layer thickness 0-255 (= 0-2.55 m).
+    /// 0 = no frozen ground, 255 = >2.5 m thaw depth in summer
+    /// (warm permafrost). Depth correlates inversely with severity.
+    [[nodiscard]] const std::vector<uint8_t>& permafrostDepth() const {
+        return this->m_permafrostDepth;
+    }
+    void setPermafrostDepth(std::vector<uint8_t> v) {
+        this->m_permafrostDepth = std::move(v);
+    }
+
+    /// Per-tile cliff-coast classification.
+    /// 0 = none / beach / passable, 1 = hard rock cliff (sheer drop —
+    /// units cannot embark/disembark, ships cannot land here),
+    /// 2 = fjord wall (glaciated cliff coast — sheltered deep harbor
+    /// but vertical sides), 3 = wave-cut headland (lower cliff, harder
+    /// landing but possible at low tide), 4 = barrier ice cliff (polar
+    /// ice-shelf wall).
+    [[nodiscard]] uint8_t cliffCoast(int32_t index) const {
+        if (this->m_cliffCoast.empty()) { return 0; }
+        if (index < 0 || index >= this->tileCount()) { return 0; }
+        return this->m_cliffCoast[static_cast<std::size_t>(index)];
+    }
+    [[nodiscard]] const std::vector<uint8_t>& cliffCoastAll() const {
+        return this->m_cliffCoast;
+    }
+    void setCliffCoast(std::vector<uint8_t> v) {
+        this->m_cliffCoast = std::move(v);
+    }
+    /// Helper: is the boundary between THIS tile and a water neighbour
+    /// passable (can a unit cross water-land at this edge)?
+    [[nodiscard]] bool coastIsPassable(int32_t index) const {
+        const uint8_t c = this->cliffCoast(index);
+        return (c == 0 || c == 3); // headland passable with penalty
+    }
 private:
     std::vector<uint8_t>          m_plateId;
     std::vector<std::pair<float, float>> m_hotspots;
@@ -881,6 +1353,46 @@ private:
     std::vector<uint8_t>                 m_atmosphericExtras;
     std::vector<uint8_t>                 m_hydroExtras;
     std::vector<uint8_t>                 m_eventMarker;
+    std::vector<uint8_t>                 m_mountainPass;
+    std::vector<uint8_t>                 m_defensibility;
+    std::vector<uint8_t>                 m_domesticable;
+    std::vector<uint8_t>                 m_tradeRoutePotential;
+    std::vector<uint8_t>                 m_habitability;
+    std::vector<uint8_t>                 m_wetlandSubtype;
+    std::vector<uint8_t>                 m_reefTier;
+    std::vector<uint8_t>                 m_warDamage;
+    std::vector<uint8_t>                 m_anthropogenic;
+    std::vector<uint8_t>                 m_settlementRuin;
+    std::vector<uint8_t>                 m_activeTradeRoute;
+    std::vector<uint8_t>                 m_koppen;
+    std::vector<uint8_t>                 m_mountainStructure;
+    std::vector<uint8_t>                 m_oreGrade;
+    std::vector<uint8_t>                 m_strait;
+    std::vector<uint8_t>                 m_harborScore;
+    std::vector<uint8_t>                 m_channelPattern;
+    std::vector<uint8_t>                 m_vegetationDensity;
+    std::vector<uint8_t>                 m_coastalFeature;
+    std::vector<uint8_t>                 m_submarineVent;
+    std::vector<uint8_t>                 m_volcanicProfile;
+    std::vector<uint8_t>                 m_karstSubtype;
+    std::vector<uint8_t>                 m_desertSubtype;
+    std::vector<uint8_t>                 m_massWasting;
+    std::vector<uint8_t>                 m_namedWind;
+    std::vector<uint8_t>                 m_forestAgeClass;
+    std::vector<uint8_t>                 m_soilMoistureRegime;
+    std::vector<uint8_t>                 m_lithology;
+    std::vector<uint8_t>                 m_soilOrder;
+    std::vector<uint8_t>                 m_crustalThickness;
+    std::vector<uint8_t>                 m_geothermalGradient;
+    std::vector<uint8_t>                 m_albedo;
+    std::vector<uint8_t>                 m_vegetationType;
+    std::vector<uint8_t>                 m_atmosphericRiver;
+    std::vector<uint8_t>                 m_cycloneBasin;
+    std::vector<uint8_t>                 m_seaSurfaceTemp;
+    std::vector<uint8_t>                 m_iceShelfZone;
+    std::vector<uint8_t>                 m_bedrockLithology;
+    std::vector<uint8_t>                 m_permafrostDepth;
+    std::vector<uint8_t>                 m_cliffCoast;
     /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
     /// Greenhouse improvement actively populate. Tile index → good id.
     std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;
