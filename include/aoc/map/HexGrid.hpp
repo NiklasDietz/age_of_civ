@@ -1746,6 +1746,142 @@ public:
     void setTsunamiRunup(std::vector<uint8_t> v) {
         this->m_tsunamiRunup = std::move(v);
     }
+
+    /// Per-tile Topographic Position Index.
+    /// 0 flat, 1 valley/depression, 2 slope, 3 ridge/hilltop.
+    [[nodiscard]] const std::vector<uint8_t>& topoPositionIndex() const {
+        return this->m_topoPositionIndex;
+    }
+    void setTopoPositionIndex(std::vector<uint8_t> v) {
+        this->m_topoPositionIndex = std::move(v);
+    }
+    /// Per-tile Topographic Wetness Index 0-255 (water accumulation
+    /// potential — drainage convergence × low slope).
+    [[nodiscard]] const std::vector<uint8_t>& topoWetnessIndex() const {
+        return this->m_topoWetnessIndex;
+    }
+    void setTopoWetnessIndex(std::vector<uint8_t> v) {
+        this->m_topoWetnessIndex = std::move(v);
+    }
+    /// Per-tile effective relief / roughness 0-255 (max-min elev in
+    /// 3-hex neighbourhood).
+    [[nodiscard]] const std::vector<uint8_t>& roughness() const {
+        return this->m_roughness;
+    }
+    void setRoughness(std::vector<uint8_t> v) {
+        this->m_roughness = std::move(v);
+    }
+    /// Per-tile topographic curvature.
+    /// 0 flat, 1 concave (bowl, accumulation), 2 convex (ridge, divergence).
+    [[nodiscard]] const std::vector<uint8_t>& curvature() const {
+        return this->m_curvature;
+    }
+    void setCurvature(std::vector<uint8_t> v) {
+        this->m_curvature = std::move(v);
+    }
+
+    /// Per-river-tile discharge estimate 0-255 (m³/s scaled).
+    /// Computed from drainage-area accumulation × precipitation proxy.
+    [[nodiscard]] const std::vector<uint8_t>& riverDischarge() const {
+        return this->m_riverDischarge;
+    }
+    void setRiverDischarge(std::vector<uint8_t> v) {
+        this->m_riverDischarge = std::move(v);
+    }
+    /// Per-tile accumulated drainage basin area 0-255 (upstream tile
+    /// count, log-scaled).
+    [[nodiscard]] const std::vector<uint8_t>& drainageBasinArea() const {
+        return this->m_drainageBasinArea;
+    }
+    void setDrainageBasinArea(std::vector<uint8_t> v) {
+        this->m_drainageBasinArea = std::move(v);
+    }
+    /// Per-tile watershed id 0-255 (tile cluster sharing common
+    /// drainage destination — Mississippi basin / Amazon basin / etc).
+    [[nodiscard]] const std::vector<uint8_t>& watershedId() const {
+        return this->m_watershedId;
+    }
+    void setWatershedId(std::vector<uint8_t> v) {
+        this->m_watershedId = std::move(v);
+    }
+
+    /// Per-tile per-livestock suitability 0-255. Indexed:
+    /// 0 cattle, 1 pig, 2 sheep, 3 horse, 4 goat, 5 chicken.
+    [[nodiscard]] const std::vector<uint8_t>& livestockSuit(int32_t species) const {
+        if (species < 0 || species >= 6) {
+            static const std::vector<uint8_t> empty;
+            return empty;
+        }
+        return this->m_livestockSuit[static_cast<std::size_t>(species)];
+    }
+    void setLivestockSuit(int32_t species, std::vector<uint8_t> v) {
+        if (species >= 0 && species < 6) {
+            this->m_livestockSuit[static_cast<std::size_t>(species)] = std::move(v);
+        }
+    }
+
+    /// Per-tile fault-trace flag.
+    /// 0 none, 1 active fault (current convergent/transform/divergent),
+    /// 2 inactive fossil fault scar.
+    [[nodiscard]] const std::vector<uint8_t>& faultTrace() const {
+        return this->m_faultTrace;
+    }
+    void setFaultTrace(std::vector<uint8_t> v) {
+        this->m_faultTrace = std::move(v);
+    }
+    /// Per-coastal-tile reef terrace level 0-255 (Quaternary glacio-
+    /// eustatic step, higher = older / higher elevation paleoshore).
+    [[nodiscard]] const std::vector<uint8_t>& reefTerrace() const {
+        return this->m_reefTerrace;
+    }
+    void setReefTerrace(std::vector<uint8_t> v) {
+        this->m_reefTerrace = std::move(v);
+    }
+
+    /// Per-tile mine suitability bitfield.
+    /// b0 open-pit (low slope + shallow deposit),
+    /// b1 underground (deep deposit + stable rock).
+    [[nodiscard]] const std::vector<uint8_t>& mineSuitability() const {
+        return this->m_mineSuitability;
+    }
+    void setMineSuitability(std::vector<uint8_t> v) {
+        this->m_mineSuitability = std::move(v);
+    }
+    /// Per-tile coal seam thickness 0-255 (= 0-25 m scaled). 0 if no
+    /// coal-bearing lithology.
+    [[nodiscard]] const std::vector<uint8_t>& coalSeamThickness() const {
+        return this->m_coalSeamThickness;
+    }
+    void setCoalSeamThickness(std::vector<uint8_t> v) {
+        this->m_coalSeamThickness = std::move(v);
+    }
+
+    /// Per-tile soil pH 0-255 (= pH 4.0..9.0 scaled). 0 = unset, 100
+    /// ≈ pH 5.5 acid, 130 ≈ pH 6.5 neutral, 180 ≈ pH 8.0 alkaline.
+    [[nodiscard]] const std::vector<uint8_t>& soilPh() const {
+        return this->m_soilPh;
+    }
+    void setSoilPh(std::vector<uint8_t> v) {
+        this->m_soilPh = std::move(v);
+    }
+
+    /// Per-lake-tile ice-cover duration 0-255 (months scaled,
+    /// 0-12 months / year).
+    [[nodiscard]] const std::vector<uint8_t>& iceCoverDuration() const {
+        return this->m_iceCoverDuration;
+    }
+    void setIceCoverDuration(std::vector<uint8_t> v) {
+        this->m_iceCoverDuration = std::move(v);
+    }
+
+    /// Per-tile hydropower reservoir capacity 0-255 (composite of
+    /// dam-site score × river discharge × upstream basin area).
+    [[nodiscard]] const std::vector<uint8_t>& hydropowerCapacity() const {
+        return this->m_hydropowerCapacity;
+    }
+    void setHydropowerCapacity(std::vector<uint8_t> v) {
+        this->m_hydropowerCapacity = std::move(v);
+    }
 private:
     std::vector<uint8_t>          m_plateId;
     std::vector<std::pair<float, float>> m_hotspots;
@@ -1873,6 +2009,21 @@ private:
     std::vector<uint8_t>                 m_heatFlow;
     std::vector<uint8_t>                 m_volcanoReturnPeriod;
     std::vector<uint8_t>                 m_tsunamiRunup;
+    std::vector<uint8_t>                 m_topoPositionIndex;
+    std::vector<uint8_t>                 m_topoWetnessIndex;
+    std::vector<uint8_t>                 m_roughness;
+    std::vector<uint8_t>                 m_curvature;
+    std::vector<uint8_t>                 m_riverDischarge;
+    std::vector<uint8_t>                 m_drainageBasinArea;
+    std::vector<uint8_t>                 m_watershedId;
+    std::array<std::vector<uint8_t>, 6>  m_livestockSuit;
+    std::vector<uint8_t>                 m_faultTrace;
+    std::vector<uint8_t>                 m_reefTerrace;
+    std::vector<uint8_t>                 m_mineSuitability;
+    std::vector<uint8_t>                 m_coalSeamThickness;
+    std::vector<uint8_t>                 m_soilPh;
+    std::vector<uint8_t>                 m_iceCoverDuration;
+    std::vector<uint8_t>                 m_hydropowerCapacity;
     /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
     /// Greenhouse improvement actively populate. Tile index → good id.
     std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;
