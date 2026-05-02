@@ -7168,6 +7168,305 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         grid.setDrumlinDirection(std::move(drumDir));
         grid.setSutureReactivated(std::move(sutReact));
 
+        // ============================================================
+        // SESSION 13 — solar insolation / topographic aspect / slope /
+        // ecotones / pelagic productivity / shelf sediment thickness /
+        // glacial rebound / sediment transport direction / coastal
+        // accretion-erosion.
+        // ============================================================
+        std::vector<uint8_t> insol  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> aspect (static_cast<std::size_t>(totalT), 0xFFu);
+        std::vector<uint8_t> slope  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> ecot   (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> pelagP (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> shelfSed(static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> rebound(static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> sedDir (static_cast<std::size_t>(totalT), 0xFFu);
+        std::vector<uint8_t> coastChg(static_cast<std::size_t>(totalT), 0);
+
+        // Earth-default tilt 23.5°, but config.axialTilt may override.
+        // Annual-mean insolation at latitude θ for tilt φ (simplified):
+        // I(θ) ≈ S0/π × cos(θ) × tilt-modulation.
+        // Pole gets ~40 % of equator at Earth tilt.
+        const float tiltDeg = (config.axialTilt > 0.0f)
+            ? config.axialTilt : 23.5f;
+        const float tiltRad = tiltDeg * 3.14159f / 180.0f;
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = std::abs(ny - 0.5f) * 3.14159f; // 0 equator → π/2 pole
+            // Annual-mean insolation: cos(lat) baseline + tilt effect.
+            // Tilt gives polar regions some summer sun → annual mean
+            // doesn't drop to 0 at pole. Approximation:
+            // I(θ) = S0/π × ((π/2 - |θ|) cos(φ) + sin(φ) cos(θ))   (gross simplification)
+            // We use simpler: I(θ) = cos(θ) × (1 - 0.4) + 0.4 × sin(φ).
+            const float baseI = std::cos(std::min(lat, 1.5708f));
+            const float polar = 0.30f * std::sin(tiltRad);
+            const float annualMean = std::clamp(baseI + polar, 0.0f, 1.0f);
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                float Ival = annualMean;
+                // Altitude bonus: less atmosphere = higher TOA flux.
+                // +5 % per elevation tier (rough: ~10 %/km altitude).
+                const int8_t elev = grid.elevation(i);
+                if (elev > 0) {
+                    Ival *= (1.0f + 0.06f * static_cast<float>(elev));
+                }
+                if (t == aoc::map::TerrainType::Mountain) {
+                    Ival *= 1.10f;
+                }
+                Ival = std::clamp(Ival, 0.0f, 1.0f);
+                insol[static_cast<std::size_t>(i)] =
+                    static_cast<uint8_t>(Ival * 255.0f);
+            }
+        }
+
+        // ---- SLOPE ANGLE + TOPOGRAPHIC ASPECT ----
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const int8_t myE = grid.elevation(i);
+                int8_t maxDrop = 0;
+                int8_t maxRise = 0;
+                int32_t dropDir = -1;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    const int8_t nE = grid.elevation(nIdx);
+                    const int8_t diff = static_cast<int8_t>(nE - myE);
+                    if (diff > maxRise) { maxRise = diff; }
+                    if (-diff > maxDrop) { maxDrop = static_cast<int8_t>(-diff); dropDir = d; }
+                }
+                // Steepness = max(rise, drop). Tier elev 0-3 max drop 3.
+                const int32_t steep = std::max<int32_t>(maxRise, maxDrop);
+                slope[static_cast<std::size_t>(i)] =
+                    static_cast<uint8_t>(std::clamp(steep * 80, 0, 255));
+                // Aspect: direction the slope FACES (= direction of
+                // descent = dropDir). 0xFF if flat.
+                if (dropDir >= 0 && maxDrop > 0) {
+                    aspect[static_cast<std::size_t>(i)] =
+                        static_cast<uint8_t>(dropDir);
+                }
+            }
+        }
+
+        // ---- ECOTONES ----
+        // Tile is ecotone if neighbour terrain class differs.
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater) {
+                    continue;
+                }
+                bool transition = false;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    const aoc::map::TerrainType nt = grid.terrain(nIdx);
+                    if (nt == aoc::map::TerrainType::Ocean
+                        || nt == aoc::map::TerrainType::ShallowWater) {
+                        continue;
+                    }
+                    if (nt != t) { transition = true; break; }
+                }
+                if (transition) {
+                    ecot[static_cast<std::size_t>(i)] = 1;
+                }
+            }
+        }
+
+        // ---- PELAGIC PRIMARY PRODUCTIVITY ----
+        // Cold mid-lat upwelling = highest. Tropical open ocean (gyres)
+        // = oligotrophic = lowest. River-mouth nutrient plumes boost.
+        // Coastal shelves moderate, abyssal low.
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                if (t != aoc::map::TerrainType::Ocean
+                    && t != aoc::map::TerrainType::ShallowWater) {
+                    continue;
+                }
+                int32_t p = 60; // baseline
+                if (lat < 0.20f) {
+                    p = 30;     // tropical gyre — oligotrophic
+                } else if (lat > 0.40f && lat < 0.70f) {
+                    p = 110;    // mid-lat productive
+                } else if (lat > 0.85f) {
+                    p = 50;     // polar — cold but light-limited
+                }
+                const auto& up = grid.upwelling();
+                const std::size_t si = static_cast<std::size_t>(i);
+                if (up.size() > si && up[si] == 1) { p += 100; }
+                // River runoff adjacency.
+                bool nearRiver = false;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    if (grid.riverEdges(nIdx) != 0) {
+                        nearRiver = true; break;
+                    }
+                }
+                if (nearRiver) { p += 60; }
+                pelagP[si] = static_cast<uint8_t>(std::clamp(p, 0, 255));
+            }
+        }
+
+        // ---- CONTINENTAL SHELF SEDIMENT THICKNESS ----
+        // Continental shelf tiles (marineDepth=1) accumulate sediment
+        // from adjacent land + river runoff. Passive margins = thick
+        // (Gulf of Mexico, Niger Delta), active margins = thin (Andes
+        // coast).
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const auto& md = grid.marineDepth();
+                const std::size_t si = static_cast<std::size_t>(i);
+                if (md.size() <= si || md[si] != 1) { continue; }
+                int32_t thick = 30;
+                bool nearRiver = false;
+                bool nearLand = false;
+                bool nearActive = false;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    const aoc::map::TerrainType nt = grid.terrain(nIdx);
+                    if (nt != aoc::map::TerrainType::Ocean
+                        && nt != aoc::map::TerrainType::ShallowWater) {
+                        nearLand = true;
+                    }
+                    if (grid.riverEdges(nIdx) != 0) { nearRiver = true; }
+                    const auto& mt = grid.marginType();
+                    if (mt.size() > static_cast<std::size_t>(nIdx)
+                        && mt[static_cast<std::size_t>(nIdx)] == 1) {
+                        nearActive = true;
+                    }
+                }
+                if (nearLand) { thick += 80; }
+                if (nearRiver) { thick += 90; }
+                if (nearActive) { thick = std::max(20, thick - 60); }
+                shelfSed[si] = static_cast<uint8_t>(
+                    std::clamp(thick, 0, 255));
+            }
+        }
+
+        // ---- GLACIAL ISOSTATIC REBOUND ----
+        // High-lat formerly-ice-loaded continental tiles still rising
+        // from Pleistocene unloading. Proxy: lat > 0.55 + non-mountain
+        // land + adjacent former-ice flag.
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            if (lat < 0.55f) { continue; }
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater
+                    || t == aoc::map::TerrainType::Mountain) { continue; }
+                // Strong rebound for Plains/Grassland in lat > 0.65.
+                int32_t r = 0;
+                if (lat > 0.65f) { r = 200; }
+                else             { r = 120; }
+                rebound[static_cast<std::size_t>(i)] =
+                    static_cast<uint8_t>(std::clamp(r, 0, 255));
+            }
+        }
+
+        // ---- SEDIMENT TRANSPORT DIRECTION ----
+        // Land tiles use flowDir (drainage). Coastal water tiles use
+        // longshore drift (parallel to coast in trade-wind direction).
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater) {
+                    // Longshore drift: in trade-wind belt 0-30°, drift
+                    // westward (drift dir 3 = W). Mid-lat westerlies:
+                    // drift eastward (dir 0 = E).
+                    if (lat < 0.30f) {
+                        sedDir[static_cast<std::size_t>(i)] = 3;
+                    } else if (lat < 0.60f) {
+                        sedDir[static_cast<std::size_t>(i)] = 0;
+                    } else {
+                        sedDir[static_cast<std::size_t>(i)] = 3;
+                    }
+                } else {
+                    // Land: use flowDir.
+                    const auto& fd = grid.flowDir();
+                    const std::size_t si = static_cast<std::size_t>(i);
+                    if (fd.size() > si) {
+                        sedDir[si] = fd[si];
+                    }
+                }
+            }
+        }
+
+        // ---- COASTAL ACCRETION / EROSION ----
+        // 1 accreting: river-mouth land tile (sediment plume builds).
+        // 2 eroding: cliff coast tile (waves cut back).
+        // 3 stable: other coastal tiles.
+        // 0: inland.
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater) {
+                    continue;
+                }
+                bool nearWater = false;
+                bool nearRiver = false;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    const aoc::map::TerrainType nt = grid.terrain(nIdx);
+                    if (nt == aoc::map::TerrainType::Ocean
+                        || nt == aoc::map::TerrainType::ShallowWater) {
+                        nearWater = true;
+                    }
+                    if (grid.riverEdges(nIdx) != 0) { nearRiver = true; }
+                }
+                if (!nearWater) { continue; }
+                const auto& cf = grid.cliffCoastAll();
+                const std::size_t si = static_cast<std::size_t>(i);
+                if (cf.size() > si
+                    && (cf[si] == 1 || cf[si] == 2 || cf[si] == 3)) {
+                    coastChg[si] = 2; // eroding (cliff)
+                } else if (nearRiver
+                    || grid.riverEdges(i) != 0) {
+                    coastChg[si] = 1; // accreting (delta)
+                } else {
+                    coastChg[si] = 3; // stable
+                }
+            }
+        }
+
+        grid.setSolarInsolation(std::move(insol));
+        grid.setTopographicAspect(std::move(aspect));
+        grid.setSlopeAngle(std::move(slope));
+        grid.setEcotone(std::move(ecot));
+        grid.setPelagicProductivity(std::move(pelagP));
+        grid.setShelfSedimentThickness(std::move(shelfSed));
+        grid.setGlacialRebound(std::move(rebound));
+        grid.setSedimentTransportDir(std::move(sedDir));
+        grid.setCoastalChange(std::move(coastChg));
+
         grid.setLithology(std::move(litho));
         grid.setBedrockLithology(std::move(bedrock));
         grid.setSoilOrder(std::move(sOrder));

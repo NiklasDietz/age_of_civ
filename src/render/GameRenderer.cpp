@@ -252,6 +252,100 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                         fillB = 0.20f * (1.0f - s);
                         fillA = 0.55f; useFill = true;
                     }
+                } else if (this->overlayMode == MapOverlay::Insolation) {
+                    const auto& iv = grid.solarInsolation();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!iv.empty() && si < iv.size()) {
+                        const float v = static_cast<float>(iv[si]) / 255.0f;
+                        fillR = v;
+                        fillG = 0.85f * v;
+                        fillB = 0.10f * (1.0f - v);
+                        fillA = 0.20f + 0.50f * v;
+                        useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Aspect) {
+                    const auto& asp = grid.topographicAspect();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!asp.empty() && si < asp.size() && asp[si] != 0xFFu) {
+                        const float h = static_cast<float>(asp[si]) / 6.0f;
+                        fillR = 0.4f + 0.5f * std::cos(h * 6.2832f);
+                        fillG = 0.4f + 0.5f * std::cos((h + 0.33f) * 6.2832f);
+                        fillB = 0.4f + 0.5f * std::cos((h + 0.66f) * 6.2832f);
+                        fillA = 0.55f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Slope) {
+                    const auto& sl = grid.slopeAngle();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!sl.empty() && si < sl.size() && sl[si] != 0) {
+                        const float v = static_cast<float>(sl[si]) / 255.0f;
+                        fillR = 0.85f * v;
+                        fillG = 0.20f;
+                        fillB = 0.20f * (1.0f - v);
+                        fillA = 0.20f + 0.50f * v;
+                        useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Ecotone) {
+                    const auto& ec = grid.ecotone();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!ec.empty() && si < ec.size() && ec[si] != 0) {
+                        fillR = 0.95f; fillG = 0.85f; fillB = 0.20f;
+                        fillA = 0.55f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::PelagicProd) {
+                    const auto& pp = grid.pelagicProductivity();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!pp.empty() && si < pp.size() && pp[si] != 0) {
+                        const float v = static_cast<float>(pp[si]) / 255.0f;
+                        fillR = 0.20f * (1.0f - v);
+                        fillG = 0.30f + 0.65f * v;
+                        fillB = 0.10f * (1.0f - v);
+                        fillA = 0.20f + 0.50f * v;
+                        useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::ShelfSed) {
+                    const auto& ss = grid.shelfSedimentThickness();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!ss.empty() && si < ss.size() && ss[si] != 0) {
+                        const float v = static_cast<float>(ss[si]) / 255.0f;
+                        fillR = 0.85f * v;
+                        fillG = 0.55f * v;
+                        fillB = 0.10f;
+                        fillA = 0.20f + 0.50f * v;
+                        useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Rebound) {
+                    const auto& rb = grid.glacialRebound();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!rb.empty() && si < rb.size() && rb[si] != 0) {
+                        const float v = static_cast<float>(rb[si]) / 255.0f;
+                        fillR = 0.20f;
+                        fillG = 0.30f;
+                        fillB = 0.55f + 0.40f * v;
+                        fillA = 0.20f + 0.50f * v;
+                        useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::SedDir) {
+                    const auto& sd = grid.sedimentTransportDir();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!sd.empty() && si < sd.size() && sd[si] != 0xFFu) {
+                        const float h = static_cast<float>(sd[si]) / 6.0f;
+                        fillR = 0.4f + 0.5f * std::cos(h * 6.2832f);
+                        fillG = 0.4f + 0.5f * std::cos((h + 0.33f) * 6.2832f);
+                        fillB = 0.4f + 0.5f * std::cos((h + 0.66f) * 6.2832f);
+                        fillA = 0.50f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::CoastChg) {
+                    const auto& cc = grid.coastalChange();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!cc.empty() && si < cc.size() && cc[si] != 0) {
+                        switch (cc[si]) {
+                            case 1: fillR=0.20f; fillG=0.85f; fillB=0.20f; break; // accreting
+                            case 2: fillR=0.85f; fillG=0.20f; fillB=0.20f; break; // eroding
+                            case 3: fillR=0.55f; fillG=0.55f; fillB=0.55f; break; // stable
+                            default: break;
+                        }
+                        fillA = 0.60f; useFill = true;
+                    }
                 } else if (this->overlayMode == MapOverlay::CoastalLF) {
                     const auto& cl = grid.coastalLandform();
                     const std::size_t si = static_cast<std::size_t>(index);

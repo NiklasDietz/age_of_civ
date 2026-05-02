@@ -1384,6 +1384,96 @@ public:
     void setSutureReactivated(std::vector<uint8_t> v) {
         this->m_sutureReactivated = std::move(v);
     }
+
+    /// Per-tile annual-mean solar insolation 0-255 (= 0 to ~400 W/m²).
+    /// Function of latitude × axial tilt × altitude (less atmosphere
+    /// at altitude → higher TOA flux at surface).
+    [[nodiscard]] const std::vector<uint8_t>& solarInsolation() const {
+        return this->m_solarInsolation;
+    }
+    void setSolarInsolation(std::vector<uint8_t> v) {
+        this->m_solarInsolation = std::move(v);
+    }
+
+    /// Per-tile topographic aspect (0-5 hex direction the slope faces;
+    /// 0xFF = flat). Used for solar exposure (S-facing in N hemisphere
+    /// = sunny / warmer; opposite in S hemisphere).
+    [[nodiscard]] const std::vector<uint8_t>& topographicAspect() const {
+        return this->m_topographicAspect;
+    }
+    void setTopographicAspect(std::vector<uint8_t> v) {
+        this->m_topographicAspect = std::move(v);
+    }
+
+    /// Per-tile slope angle 0-255 (= 0..90°). Computed from max
+    /// elevation difference with hex neighbours.
+    [[nodiscard]] const std::vector<uint8_t>& slopeAngle() const {
+        return this->m_slopeAngle;
+    }
+    void setSlopeAngle(std::vector<uint8_t> v) {
+        this->m_slopeAngle = std::move(v);
+    }
+
+    /// Per-tile ecotone flag — 1 if tile sits on a biome transition
+    /// boundary (different terrain / feature on adjacent tiles). High
+    /// ecological diversity, edge-effect species.
+    [[nodiscard]] const std::vector<uint8_t>& ecotone() const {
+        return this->m_ecotone;
+    }
+    void setEcotone(std::vector<uint8_t> v) {
+        this->m_ecotone = std::move(v);
+    }
+
+    /// Per-tile pelagic primary productivity 0-255 (chlorophyll proxy).
+    /// High in mid-lat upwelling zones, river-mouth nutrient plumes,
+    /// continental shelf carbonate platforms. Low in tropical open
+    /// ocean (oligotrophic gyres).
+    [[nodiscard]] const std::vector<uint8_t>& pelagicProductivity() const {
+        return this->m_pelagicProductivity;
+    }
+    void setPelagicProductivity(std::vector<uint8_t> v) {
+        this->m_pelagicProductivity = std::move(v);
+    }
+
+    /// Per-tile continental shelf sediment thickness 0-255 (= 0 to
+    /// ~10 km, scaled). Hosts hydrocarbon basins. High at passive-
+    /// margin, river-fed shelves; low at active margins.
+    [[nodiscard]] const std::vector<uint8_t>& shelfSedimentThickness() const {
+        return this->m_shelfSedimentThickness;
+    }
+    void setShelfSedimentThickness(std::vector<uint8_t> v) {
+        this->m_shelfSedimentThickness = std::move(v);
+    }
+
+    /// Per-tile glacial isostatic rebound rate 0-255 (proxy mm/yr).
+    /// High in formerly-ice-loaded high-latitude continental areas
+    /// (Scandinavia, Hudson Bay).
+    [[nodiscard]] const std::vector<uint8_t>& glacialRebound() const {
+        return this->m_glacialRebound;
+    }
+    void setGlacialRebound(std::vector<uint8_t> v) {
+        this->m_glacialRebound = std::move(v);
+    }
+
+    /// Per-tile sediment transport direction (0-5 hex direction;
+    /// 0xFF = no net transport). Land tiles use flow direction; coastal
+    /// water uses longshore drift.
+    [[nodiscard]] const std::vector<uint8_t>& sedimentTransportDir() const {
+        return this->m_sedimentTransportDir;
+    }
+    void setSedimentTransportDir(std::vector<uint8_t> v) {
+        this->m_sedimentTransportDir = std::move(v);
+    }
+
+    /// Per-tile coastal change classification.
+    /// 0 = inland or stable, 1 = accreting (gaining land), 2 = eroding
+    /// (losing land), 3 = neutral coast.
+    [[nodiscard]] const std::vector<uint8_t>& coastalChange() const {
+        return this->m_coastalChange;
+    }
+    void setCoastalChange(std::vector<uint8_t> v) {
+        this->m_coastalChange = std::move(v);
+    }
 private:
     std::vector<uint8_t>          m_plateId;
     std::vector<std::pair<float, float>> m_hotspots;
@@ -1469,6 +1559,15 @@ private:
     std::vector<uint8_t>                 m_lakeEffectSnow;
     std::vector<uint8_t>                 m_drumlinDirection;
     std::vector<uint8_t>                 m_sutureReactivated;
+    std::vector<uint8_t>                 m_solarInsolation;
+    std::vector<uint8_t>                 m_topographicAspect;
+    std::vector<uint8_t>                 m_slopeAngle;
+    std::vector<uint8_t>                 m_ecotone;
+    std::vector<uint8_t>                 m_pelagicProductivity;
+    std::vector<uint8_t>                 m_shelfSedimentThickness;
+    std::vector<uint8_t>                 m_glacialRebound;
+    std::vector<uint8_t>                 m_sedimentTransportDir;
+    std::vector<uint8_t>                 m_coastalChange;
     /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
     /// Greenhouse improvement actively populate. Tile index → good id.
     std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;

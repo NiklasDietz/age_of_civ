@@ -141,6 +141,15 @@ public:
         LakeFX,         ///< Lake-effect snow zones
         Drumlin,        ///< Drumlin field paleo-ice-flow direction
         SutureReact,    ///< Reactivated suture (Atlas-style fold belts)
+        Insolation,     ///< Annual mean solar insolation per tile
+        Aspect,         ///< Topographic aspect (slope direction)
+        Slope,          ///< Slope angle 0-255
+        Ecotone,        ///< Biome boundary tiles
+        PelagicProd,    ///< Pelagic primary productivity
+        ShelfSed,       ///< Continental shelf sediment thickness
+        Rebound,        ///< Glacial isostatic rebound rate
+        SedDir,         ///< Sediment transport direction
+        CoastChg,       ///< Coastal accretion / erosion
     };
     MapOverlay overlayMode = MapOverlay::None;
 
