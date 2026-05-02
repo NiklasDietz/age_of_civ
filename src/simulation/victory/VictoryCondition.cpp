@@ -664,8 +664,10 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     if ((enabledTypes & VICTORY_MASK_SCIENCE) != 0u) {
         for (const std::unique_ptr<aoc::game::Player>& candidate : gameState.players()) {
             if (candidate->victoryTracker().isEliminated) { continue; }
-            // 2026-04-27 iter6: 4-of-5 → 43%; revert to 5-of-5 with eased cost.
-            if (candidate->spaceRace().completedCount() >= 5) {
+            // 2026-05-02 audit iter3: 3/5 still 0 — AI rarely commits
+            // to space race + tech-leader civs lose to Domination
+            // first. Drop to 2/5 (Earth Sat + Moon Landing minimum).
+            if (candidate->spaceRace().completedCount() >= 2) {
                 LOG_INFO("Player %u wins by SCIENCE (%d/5 space projects completed)",
                          static_cast<unsigned>(candidate->id()),
                          candidate->spaceRace().completedCount());
@@ -714,7 +716,7 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                 // boosted BASE_PASSIVE_PRESSURE in Religion.cpp.
                 const float ratio = static_cast<float>(dominatedCount)
                                   / static_cast<float>(rivalCount);
-                if (ratio >= 0.35f) {  // 2026-04-28 iter10: 0.40 → 13%; relax further
+                if (ratio >= 0.35f) {  // 2026-05-02 iter6: 0.40 → 11%; ease
                     LOG_INFO("Player %u wins by RELIGION (%d/%d rivals dominated)",
                              static_cast<unsigned>(candidate->id()),
                              dominatedCount, rivalCount);
@@ -772,23 +774,30 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
                 }
             }
             // Political tourism gate (2026-04-27): leader's foreign-tourist
-            // count must exceed every rival's domestic-tourist count. Open
-            // borders, allies, and friendly stance accelerate tourism;
-            // war/hostile/embargo throttle it. Without this, culture wins
-            // ignore diplomatic resistance entirely.
+            // count must exceed at least HALF of rivals' domestic counts.
+            // 2026-05-02 audit: strict "exceed every rival" gate produced
+            // 0 culture wins because tourism stayed low across the board.
+            // Majority gate keeps the diplomatic-resistance signal but
+            // doesn't require a sweep.
             bool tourismDominant = true;
             const aoc::game::Player* leaderPlayer = gameState.player(leader);
             if (leaderPlayer != nullptr) {
                 const int32_t leaderForeign =
                     leaderPlayer->tourism().foreignTourists;
+                int32_t exceeded = 0;
+                int32_t rivals = 0;
                 for (const std::unique_ptr<aoc::game::Player>& other :
                          gameState.players()) {
                     if (other == nullptr || other->id() == leader) { continue; }
                     if (other->victoryTracker().isEliminated) { continue; }
-                    if (leaderForeign <= other->tourism().domesticTourists) {
-                        tourismDominant = false;
-                        break;
+                    ++rivals;
+                    if (leaderForeign > other->tourism().domesticTourists) {
+                        ++exceeded;
                     }
+                }
+                if (rivals > 0
+                    && exceeded * 2 < rivals) {
+                    tourismDominant = false;
                 }
             }
             if (clearLead && tourismDominant) {
@@ -803,44 +812,11 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
 
     (void)diplomacy;  // Pairwise matrix not currently used by victory checks.
 
-    // 4. Turn limit: Prestige tally first (participation-based endgame).
-    // Prestige wins when all turns have elapsed -- highest accumulated total
-    // across the 7 categories (science, culture, faith, trade, diplomacy,
-    // military, governance) wins.  Max per turn is capped, so the achievable
-    // ceiling scales with maxTurns and works for any game length.
-    if ((enabledTypes & VICTORY_MASK_PRESTIGE) != 0u && currentTurn >= maxTurns) {
-        // Tiebreaker: primary = prestige total, secondary = compositeCSI,
-        // tertiary = lowest playerId. Without this, iteration order decided
-        // ties between players with equal prestige.
-        PlayerId bestPlayer = INVALID_PLAYER;
-        float bestPrestige = -1.0f;
-        float bestCSI = -1.0f;
-        for (const std::unique_ptr<aoc::game::Player>& gsPlayer : gameState.players()) {
-            if (gsPlayer->victoryTracker().isEliminated) { continue; }
-            const float total = gsPlayer->prestige().total;
-            const float csi   = gsPlayer->victoryTracker().compositeCSI;
-            const PlayerId id = gsPlayer->id();
-            const bool better =
-                (total >  bestPrestige) ||
-                (total == bestPrestige && csi >  bestCSI) ||
-                (total == bestPrestige && csi == bestCSI && id < bestPlayer);
-            if (better) {
-                bestPrestige = total;
-                bestCSI      = csi;
-                bestPlayer   = id;
-            }
-        }
-        if (bestPlayer != INVALID_PLAYER) {
-            LOG_INFO("Player %u wins by PRESTIGE (score = %.1f, CSI = %.2f) at turn %d",
-                     static_cast<unsigned>(bestPlayer),
-                     static_cast<double>(bestPrestige),
-                     static_cast<double>(bestCSI),
-                     static_cast<int>(currentTurn));
-            return {VictoryType::Prestige, bestPlayer};
-        }
-    }
-
-    // 5. Turn limit (fallback): highest cumulative Era VP wins.
+    // 4. Turn limit (fallback): highest cumulative Era VP wins.
+    // SCORE fires whenever enabled at turn-limit. In traditional mode
+    // (multi-path) it acts as the rare fallback — most games resolve
+    // via path victories (Culture/Science/Religion/Domination) before
+    // the limit. In "score only" mode it's the sole victory metric.
     // Tiebreaker: primary = eraVictoryPoints, secondary = compositeCSI,
     // tertiary = lowest playerId.
     if ((enabledTypes & VICTORY_MASK_SCORE) != 0u && currentTurn >= maxTurns) {
