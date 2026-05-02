@@ -6852,6 +6852,322 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         }
         grid.setCliffCoast(std::move(cliff));
 
+        // ============================================================
+        // SESSION 12 — coastal landforms / river regime / arid erosion
+        // / transform-fault subtypes / lake-effect snow / drumlin
+        // alignment / suture reactivation.
+        // ============================================================
+        std::vector<uint8_t> coastLF (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> rivReg  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> aridLF  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> tfType  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> lakeFX  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> drumDir (static_cast<std::size_t>(totalT), 0xFFu);
+        std::vector<uint8_t> sutReact(static_cast<std::size_t>(totalT), 0);
+
+        // ---- COASTAL LANDFORMS ----
+        // Sea stack: tiny island (1-tile land surrounded by water).
+        // Spit: linear coastal land protruding into water (3-4 water
+        //   neighbours, oriented along longshore drift = wind axis).
+        // Sandbar: ShallowWater tile parallel to coast, separated from
+        //   land by lagoon water.
+        // Tombolo: ShallowWater tile bridging mainland to small island.
+        // Lagoon: ShallowWater enclosed by sandbar/coast on most sides.
+        // Tidal flat: ShallowWater with very shallow elev next to coast
+        //   in low-tide-range basin.
+        // Cuspate foreland: triangular protruding land tile (cape on
+        //   convex coast).
+        // Hooked spit: spit at recurved end (skip explicit detection).
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                int32_t waterNb = 0;
+                int32_t landNb = 0;
+                std::array<bool, 6> nbWater{};
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    const aoc::map::TerrainType nt = grid.terrain(nIdx);
+                    if (nt == aoc::map::TerrainType::Ocean
+                        || nt == aoc::map::TerrainType::ShallowWater) {
+                        ++waterNb;
+                        nbWater[static_cast<std::size_t>(d)] = true;
+                    } else { ++landNb; }
+                }
+                // Sea stack: any land tile fully surrounded by water.
+                if ((t != aoc::map::TerrainType::Ocean
+                     && t != aoc::map::TerrainType::ShallowWater)
+                    && waterNb == 6) {
+                    coastLF[static_cast<std::size_t>(i)] = 1;
+                    continue;
+                }
+                // Spit: land with 4-5 water neighbours (peninsula tip).
+                if ((t != aoc::map::TerrainType::Ocean
+                     && t != aoc::map::TerrainType::ShallowWater)
+                    && waterNb >= 4 && waterNb <= 5) {
+                    coastLF[static_cast<std::size_t>(i)] = 2;
+                    continue;
+                }
+                // Cuspate foreland: triangular protrusion (3 water +
+                // 3 land in alternating pattern → convex cape).
+                if ((t != aoc::map::TerrainType::Ocean
+                     && t != aoc::map::TerrainType::ShallowWater)
+                    && waterNb == 3) {
+                    int32_t alternations = 0;
+                    for (int32_t d = 0; d < 6; ++d) {
+                        const std::size_t a = static_cast<std::size_t>(d);
+                        const std::size_t b = static_cast<std::size_t>((d + 1) % 6);
+                        if (nbWater[a] != nbWater[b]) { ++alternations; }
+                    }
+                    if (alternations >= 4) {
+                        coastLF[static_cast<std::size_t>(i)] = 7;
+                    }
+                }
+                // Sandbar / lagoon / tombolo / tidal-flat detection on
+                // ShallowWater tiles.
+                if (t == aoc::map::TerrainType::ShallowWater) {
+                    if (lakeFlag[static_cast<std::size_t>(i)] != 0) {
+                        continue; // lake water, not coastal
+                    }
+                    // Lagoon: water with ≥ 4 land neighbours = enclosed.
+                    if (landNb >= 4) {
+                        coastLF[static_cast<std::size_t>(i)] = 5;
+                        continue;
+                    }
+                    // Tidal flat: water + adjacent shoreline + low-tide
+                    // basin (oceanZone tidal=0 micro), cool latitudes.
+                    const auto& oz = grid.oceanZone();
+                    const std::size_t si = static_cast<std::size_t>(i);
+                    if (oz.size() > si && (oz[si] & 0x03) == 0
+                        && landNb >= 1 && landNb <= 3) {
+                        coastLF[static_cast<std::size_t>(i)] = 6;
+                        continue;
+                    }
+                    // Sandbar: water with land on 1-2 sides + adjacent
+                    // marineDepth=1 shelf.
+                    if (landNb == 1 || landNb == 2) {
+                        const auto& md = grid.marineDepth();
+                        if (md.size() > si && md[si] == 1) {
+                            coastLF[static_cast<std::size_t>(i)] = 3;
+                        }
+                    }
+                    // Tombolo: water with land on opposite sides
+                    // (bridging two land masses).
+                    if (landNb == 2) {
+                        for (int32_t d = 0; d < 3; ++d) {
+                            const std::size_t a = static_cast<std::size_t>(d);
+                            const std::size_t b = static_cast<std::size_t>(d + 3);
+                            if (!nbWater[a] && !nbWater[b]) {
+                                coastLF[static_cast<std::size_t>(i)] = 4;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- RIVER REGIME ----
+        // 1 perennial: river tile in humid biome (Plains/Grassland +
+        //   moderate-to-wet climate, not desert)
+        // 2 intermittent: river tile in semi-arid (Mediterranean band)
+        // 3 ephemeral: river tile in Desert
+        // 4 glacier-fed: river tile near Mountain Ice feature
+        // 5 snow-fed: river tile near high-lat Mountain
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                if (grid.riverEdges(i) == 0) { continue; }
+                const aoc::map::TerrainType t = grid.terrain(i);
+                bool nearGlacier = false;
+                bool nearHighMtn = false;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    if (grid.terrain(nIdx) == aoc::map::TerrainType::Mountain) {
+                        if (grid.feature(nIdx) == aoc::map::FeatureType::Ice) {
+                            nearGlacier = true;
+                        }
+                        if (lat > 0.45f) { nearHighMtn = true; }
+                    }
+                }
+                uint8_t r = 1;
+                if (nearGlacier) {
+                    r = 4;
+                } else if (nearHighMtn) {
+                    r = 5;
+                } else if (t == aoc::map::TerrainType::Desert) {
+                    r = 3;
+                } else if (lat > 0.30f && lat < 0.45f) {
+                    // Mediterranean band → intermittent (dry summer).
+                    r = 2;
+                }
+                rivReg[static_cast<std::size_t>(i)] = r;
+            }
+        }
+
+        // ---- ARID EROSION LANDFORMS ----
+        // Mesa: high-elev Desert/Plains tile flat top + steep sides.
+        // Butte: smaller mesa.
+        // Plateau: large continuous high-elev arid area.
+        // Yardang: linear ridges in deserts (parallel to wind).
+        // Hoodoo: spire pinnacle (Hills feature in arid + high elev).
+        // Pediment: low-elev sloping plain at mountain base.
+        // Slot canyon: river edge in Desert + high-elev neighbour.
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                const aoc::map::FeatureType f = grid.feature(i);
+                if (t != aoc::map::TerrainType::Desert
+                    && t != aoc::map::TerrainType::Plains) { continue; }
+                const int8_t myE = grid.elevation(i);
+                int32_t lowerNb = 0;
+                int32_t higherNb = 0;
+                int32_t totalNb = 0;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    ++totalNb;
+                    const int8_t nE = grid.elevation(nIdx);
+                    if (nE < myE)      { ++lowerNb; }
+                    else if (nE > myE) { ++higherNb; }
+                }
+                if (myE >= 2 && lowerNb >= 5) {
+                    aridLF[static_cast<std::size_t>(i)] = 2; // butte
+                } else if (myE >= 2 && lowerNb >= 4 && lowerNb < 6) {
+                    aridLF[static_cast<std::size_t>(i)] = 1; // mesa
+                } else if (myE >= 2 && lowerNb < 4 && totalNb >= 4) {
+                    aridLF[static_cast<std::size_t>(i)] = 3; // plateau
+                } else if (t == aoc::map::TerrainType::Desert
+                    && f == aoc::map::FeatureType::None
+                    && myE == 1
+                    && lowerNb >= 2 && lowerNb <= 4) {
+                    aridLF[static_cast<std::size_t>(i)] = 4; // yardang
+                } else if (t == aoc::map::TerrainType::Desert
+                    && f == aoc::map::FeatureType::Hills
+                    && myE >= 1) {
+                    aridLF[static_cast<std::size_t>(i)] = 5; // hoodoo
+                } else if (t == aoc::map::TerrainType::Desert
+                    && myE == 0 && higherNb >= 3) {
+                    aridLF[static_cast<std::size_t>(i)] = 6; // pediment
+                }
+                if (t == aoc::map::TerrainType::Desert
+                    && grid.riverEdges(i) != 0
+                    && higherNb >= 4) {
+                    aridLF[static_cast<std::size_t>(i)] = 7; // slot canyon
+                }
+            }
+        }
+
+        // ---- TRANSFORM-FAULT SUBTYPES ----
+        // For each tile flagged as transform (seismicHazard bit
+        // matching transform), classify as pull-apart (transtensional,
+        // sediment-rich) or restraining bend (transpressional, uplift).
+        for (int32_t i = 0; i < totalT; ++i) {
+            const auto& sh = grid.seismicHazard();
+            if (sh.size() <= static_cast<std::size_t>(i)) { continue; }
+            // Hazard 2 = transform/divergent or active margin.
+            // Approximate: look at orogeny field — negative => pull-
+            // apart basin, positive => restraining bend uplift.
+            const float oro = orogeny[static_cast<std::size_t>(i)];
+            if ((sh[static_cast<std::size_t>(i)] & 0x07) == 2) {
+                if (oro < -0.04f) {
+                    tfType[static_cast<std::size_t>(i)] = 1; // pull-apart
+                } else if (oro > 0.06f) {
+                    tfType[static_cast<std::size_t>(i)] = 2; // restraining
+                } else {
+                    tfType[static_cast<std::size_t>(i)] = 3; // plain transform
+                }
+            }
+        }
+
+        // ---- LAKE-EFFECT SNOW ----
+        // Tile downwind of large lake in cold air mass: high-lat tile
+        // with lake-flagged water within 1-3 hexes upwind. Wind by
+        // latitude (existing band rules).
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            if (lat < 0.45f) { continue; }
+            // Wind direction: easterly in polar (lat>0.60), westerly
+            // mid-lat (0.30-0.60). Step direction: -1 for easterly (E→W),
+            // +1 for westerly (W→E). Lake-effect tile is DOWNWIND of
+            // lake → check upwind cells for lake flag.
+            const float windStep = (lat >= 0.60f) ? -1.0f : 1.0f;
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater) {
+                    continue;
+                }
+                bool foundLake = false;
+                for (int32_t s = 1; s <= 3 && !foundLake; ++s) {
+                    int32_t cc = col - static_cast<int32_t>(windStep) * s;
+                    if (cylSim) {
+                        if (cc < 0)        { cc += width; }
+                        if (cc >= width)   { cc -= width; }
+                    } else if (cc < 0 || cc >= width) { continue; }
+                    const int32_t uIdx = row * width + cc;
+                    if (lakeFlag[static_cast<std::size_t>(uIdx)] != 0) {
+                        foundLake = true;
+                    }
+                }
+                if (foundLake) {
+                    lakeFX[static_cast<std::size_t>(i)] = 1;
+                }
+            }
+        }
+
+        // ---- DRUMLIN ALIGNMENT ----
+        // Tiles flagged glacialFeature=4 (drumlin field) get direction
+        // = paleo ice flow vector. Approximate: ice flowed equator-
+        // ward from polar plates (away from poles). Direction = south
+        // in N hemisphere, north in S.
+        for (int32_t i = 0; i < totalT; ++i) {
+            const auto& gf = grid.glacialFeature();
+            if (gf.size() <= static_cast<std::size_t>(i)) { continue; }
+            if (gf[static_cast<std::size_t>(i)] != 4) { continue; }
+            const int32_t row = i / width;
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            // Paleo ice flow: away from pole → toward equator. In our
+            // hex offset coords, NW/N/NE come from the top, SW/S/SE
+            // from below. North hemisphere ice came FROM the top, so
+            // flow direction is SE-ish (dir 5 in hex offset).
+            uint8_t flowDirH = (ny < 0.5f) ? 5 : 1; // N: SE, S: NE
+            drumDir[static_cast<std::size_t>(i)] = flowDirH;
+        }
+
+        // ---- SUTURE REACTIVATION ----
+        // Tiles where ophiolite (rockType=3) AND current convergent
+        // boundary is active = old suture being re-deformed. Atlas-
+        // style. Use rockType + seismicHazard bit 3 (subduction).
+        for (int32_t i = 0; i < totalT; ++i) {
+            const auto& rk = grid.rockType();
+            const auto& sh = grid.seismicHazard();
+            const std::size_t si = static_cast<std::size_t>(i);
+            if (rk.size() > si && rk[si] == 3
+                && sh.size() > si && (sh[si] & 0x07) == 3) {
+                sutReact[si] = 1;
+            }
+        }
+
+        grid.setCoastalLandform(std::move(coastLF));
+        grid.setRiverRegime(std::move(rivReg));
+        grid.setAridLandform(std::move(aridLF));
+        grid.setTransformFaultType(std::move(tfType));
+        grid.setLakeEffectSnow(std::move(lakeFX));
+        grid.setDrumlinDirection(std::move(drumDir));
+        grid.setSutureReactivated(std::move(sutReact));
+
         grid.setLithology(std::move(litho));
         grid.setBedrockLithology(std::move(bedrock));
         grid.setSoilOrder(std::move(sOrder));

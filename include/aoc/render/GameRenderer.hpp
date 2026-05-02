@@ -134,6 +134,13 @@ public:
         Wetland,        ///< Wetland subtypes (peat/swamp/fen/floodplain)
         Reef,           ///< Coral reef tier (fringing/barrier/atoll/patch)
         Cliff,          ///< Cliff coast (hard rock / fjord / headland / ice)
+        CoastalLF,      ///< Coastal landforms (stack/spit/bar/tombolo/lagoon/flat/foreland)
+        RiverRegime,    ///< Perennial / intermittent / ephemeral / glacier-fed / snow-fed
+        AridLF,         ///< Mesa / butte / plateau / yardang / hoodoo / pediment / canyon
+        TransformFault, ///< Pull-apart / restraining bend / plain transform
+        LakeFX,         ///< Lake-effect snow zones
+        Drumlin,        ///< Drumlin field paleo-ice-flow direction
+        SutureReact,    ///< Reactivated suture (Atlas-style fold belts)
     };
     MapOverlay overlayMode = MapOverlay::None;
 

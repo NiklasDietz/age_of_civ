@@ -252,6 +252,89 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                         fillB = 0.20f * (1.0f - s);
                         fillA = 0.55f; useFill = true;
                     }
+                } else if (this->overlayMode == MapOverlay::CoastalLF) {
+                    const auto& cl = grid.coastalLandform();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!cl.empty() && si < cl.size() && cl[si] != 0) {
+                        switch (cl[si]) {
+                            case 1: fillR=0.95f; fillG=0.85f; fillB=0.20f; break; // stack
+                            case 2: fillR=0.85f; fillG=0.55f; fillB=0.20f; break; // spit
+                            case 3: fillR=0.95f; fillG=0.95f; fillB=0.55f; break; // sandbar
+                            case 4: fillR=0.55f; fillG=0.85f; fillB=0.55f; break; // tombolo
+                            case 5: fillR=0.30f; fillG=0.85f; fillB=0.95f; break; // lagoon
+                            case 6: fillR=0.65f; fillG=0.65f; fillB=0.45f; break; // tidal flat
+                            case 7: fillR=0.95f; fillG=0.30f; fillB=0.55f; break; // cuspate
+                            case 8: fillR=0.85f; fillG=0.30f; fillB=0.20f; break; // hooked spit
+                            default: break;
+                        }
+                        fillA = 0.65f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::RiverRegime) {
+                    const auto& rr = grid.riverRegime();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!rr.empty() && si < rr.size() && rr[si] != 0) {
+                        switch (rr[si]) {
+                            case 1: fillR=0.20f; fillG=0.55f; fillB=0.95f; break; // perennial
+                            case 2: fillR=0.85f; fillG=0.85f; fillB=0.30f; break; // intermittent
+                            case 3: fillR=0.95f; fillG=0.55f; fillB=0.20f; break; // ephemeral
+                            case 4: fillR=0.85f; fillG=0.95f; fillB=1.00f; break; // glacier-fed
+                            case 5: fillR=0.55f; fillG=0.85f; fillB=0.95f; break; // snow-fed
+                            default: break;
+                        }
+                        fillA = 0.65f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::AridLF) {
+                    const auto& al = grid.aridLandform();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!al.empty() && si < al.size() && al[si] != 0) {
+                        switch (al[si]) {
+                            case 1: fillR=0.85f; fillG=0.55f; fillB=0.20f; break; // mesa
+                            case 2: fillR=0.95f; fillG=0.45f; fillB=0.20f; break; // butte
+                            case 3: fillR=0.65f; fillG=0.45f; fillB=0.20f; break; // plateau
+                            case 4: fillR=0.95f; fillG=0.85f; fillB=0.55f; break; // yardang
+                            case 5: fillR=0.95f; fillG=0.30f; fillB=0.65f; break; // hoodoo
+                            case 6: fillR=0.65f; fillG=0.65f; fillB=0.45f; break; // pediment
+                            case 7: fillR=0.30f; fillG=0.30f; fillB=0.55f; break; // slot canyon
+                            default: break;
+                        }
+                        fillA = 0.65f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::TransformFault) {
+                    const auto& tf = grid.transformFaultType();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!tf.empty() && si < tf.size() && tf[si] != 0) {
+                        switch (tf[si]) {
+                            case 1: fillR=0.30f; fillG=0.30f; fillB=0.85f; break; // pull-apart
+                            case 2: fillR=0.85f; fillG=0.30f; fillB=0.30f; break; // restraining
+                            case 3: fillR=0.95f; fillG=0.85f; fillB=0.10f; break; // plain
+                            default: break;
+                        }
+                        fillA = 0.65f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::LakeFX) {
+                    const auto& lx = grid.lakeEffectSnow();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!lx.empty() && si < lx.size() && lx[si] != 0) {
+                        fillR = 0.85f; fillG = 0.95f; fillB = 1.00f;
+                        fillA = 0.55f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::Drumlin) {
+                    const auto& dd = grid.drumlinDirection();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!dd.empty() && si < dd.size() && dd[si] != 0xFFu) {
+                        const float h = static_cast<float>(dd[si]) / 6.0f;
+                        fillR = 0.4f + 0.5f * std::cos(h * 6.2832f);
+                        fillG = 0.4f + 0.5f * std::cos((h + 0.33f) * 6.2832f);
+                        fillB = 0.4f + 0.5f * std::cos((h + 0.66f) * 6.2832f);
+                        fillA = 0.55f; useFill = true;
+                    }
+                } else if (this->overlayMode == MapOverlay::SutureReact) {
+                    const auto& sr = grid.sutureReactivated();
+                    const std::size_t si = static_cast<std::size_t>(index);
+                    if (!sr.empty() && si < sr.size() && sr[si] != 0) {
+                        fillR = 0.85f; fillG = 0.10f; fillB = 0.85f;
+                        fillA = 0.65f; useFill = true;
+                    }
                 } else if (this->overlayMode == MapOverlay::Cliff) {
                     const auto& cf = grid.cliffCoastAll();
                     const std::size_t si = static_cast<std::size_t>(index);

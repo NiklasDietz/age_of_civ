@@ -1315,6 +1315,75 @@ public:
         const uint8_t c = this->cliffCoast(index);
         return (c == 0 || c == 3); // headland passable with penalty
     }
+
+    /// Per-tile coastal landform.
+    /// 0 none, 1 sea stack, 2 spit, 3 sandbar/barrier, 4 tombolo,
+    /// 5 lagoon, 6 tidal flat, 7 cuspate foreland, 8 hooked spit.
+    [[nodiscard]] const std::vector<uint8_t>& coastalLandform() const {
+        return this->m_coastalLandform;
+    }
+    void setCoastalLandform(std::vector<uint8_t> v) {
+        this->m_coastalLandform = std::move(v);
+    }
+
+    /// Per-tile river regime.
+    /// 0 no river, 1 perennial, 2 intermittent (seasonal), 3 ephemeral
+    /// (flash-flood wadi), 4 glacier-fed, 5 snow-fed.
+    [[nodiscard]] const std::vector<uint8_t>& riverRegime() const {
+        return this->m_riverRegime;
+    }
+    void setRiverRegime(std::vector<uint8_t> v) {
+        this->m_riverRegime = std::move(v);
+    }
+
+    /// Per-tile arid-erosion landform.
+    /// 0 none, 1 mesa, 2 butte, 3 plateau, 4 yardang, 5 hoodoo,
+    /// 6 pediment, 7 slot canyon.
+    [[nodiscard]] const std::vector<uint8_t>& aridLandform() const {
+        return this->m_aridLandform;
+    }
+    void setAridLandform(std::vector<uint8_t> v) {
+        this->m_aridLandform = std::move(v);
+    }
+
+    /// Per-tile transform-fault subtype.
+    /// 0 not transform, 1 pull-apart basin (transtensional),
+    /// 2 restraining bend (transpressional), 3 plain transform.
+    [[nodiscard]] const std::vector<uint8_t>& transformFaultType() const {
+        return this->m_transformFaultType;
+    }
+    void setTransformFaultType(std::vector<uint8_t> v) {
+        this->m_transformFaultType = std::move(v);
+    }
+
+    /// Per-tile lake-effect-snow flag (downwind of large lake in cold
+    /// air mass — Great Lakes effect).
+    [[nodiscard]] const std::vector<uint8_t>& lakeEffectSnow() const {
+        return this->m_lakeEffectSnow;
+    }
+    void setLakeEffectSnow(std::vector<uint8_t> v) {
+        this->m_lakeEffectSnow = std::move(v);
+    }
+
+    /// Per-tile drumlin alignment direction (0-5 hex direction of
+    /// paleo ice flow). 0xFF = no drumlins.
+    [[nodiscard]] const std::vector<uint8_t>& drumlinDirection() const {
+        return this->m_drumlinDirection;
+    }
+    void setDrumlinDirection(std::vector<uint8_t> v) {
+        this->m_drumlinDirection = std::move(v);
+    }
+
+    /// Per-tile reactivated-suture flag — 1 if tile lies on an
+    /// ophiolite suture that has been re-deformed by later collision
+    /// (Atlas, Pyrenees, Variscan). Drives potential mineral riches +
+    /// seismic anomalies.
+    [[nodiscard]] const std::vector<uint8_t>& sutureReactivated() const {
+        return this->m_sutureReactivated;
+    }
+    void setSutureReactivated(std::vector<uint8_t> v) {
+        this->m_sutureReactivated = std::move(v);
+    }
 private:
     std::vector<uint8_t>          m_plateId;
     std::vector<std::pair<float, float>> m_hotspots;
@@ -1393,6 +1462,13 @@ private:
     std::vector<uint8_t>                 m_bedrockLithology;
     std::vector<uint8_t>                 m_permafrostDepth;
     std::vector<uint8_t>                 m_cliffCoast;
+    std::vector<uint8_t>                 m_coastalLandform;
+    std::vector<uint8_t>                 m_riverRegime;
+    std::vector<uint8_t>                 m_aridLandform;
+    std::vector<uint8_t>                 m_transformFaultType;
+    std::vector<uint8_t>                 m_lakeEffectSnow;
+    std::vector<uint8_t>                 m_drumlinDirection;
+    std::vector<uint8_t>                 m_sutureReactivated;
     /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
     /// Greenhouse improvement actively populate. Tile index → good id.
     std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;
