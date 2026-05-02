@@ -1882,6 +1882,89 @@ public:
     void setHydropowerCapacity(std::vector<uint8_t> v) {
         this->m_hydropowerCapacity = std::move(v);
     }
+
+    /// Per-tile potential evapotranspiration 0-255 (Hargreaves proxy:
+    /// insolation × temperature). Higher in hot sunny zones.
+    [[nodiscard]] const std::vector<uint8_t>& petIndex() const {
+        return this->m_petIndex;
+    }
+    void setPetIndex(std::vector<uint8_t> v) {
+        this->m_petIndex = std::move(v);
+    }
+    /// Per-tile aridity index 0-255 (PET / precipitation ratio).
+    /// 0 hyper-humid, 255 hyper-arid.
+    [[nodiscard]] const std::vector<uint8_t>& aridityIndex() const {
+        return this->m_aridityIndex;
+    }
+    void setAridityIndex(std::vector<uint8_t> v) {
+        this->m_aridityIndex = std::move(v);
+    }
+    /// Per-tile erosion potential 0-255 (RUSLE-like: slope × rainfall
+    /// × soil erodibility). Drives long-term soil loss.
+    [[nodiscard]] const std::vector<uint8_t>& erosionPotential() const {
+        return this->m_erosionPotential;
+    }
+    void setErosionPotential(std::vector<uint8_t> v) {
+        this->m_erosionPotential = std::move(v);
+    }
+    /// Per-tile carbon stock 0-255 (vegetation + soil organic carbon).
+    /// Tropical jungles + boreal forests + peat bogs hold most.
+    [[nodiscard]] const std::vector<uint8_t>& carbonStock() const {
+        return this->m_carbonStock;
+    }
+    void setCarbonStock(std::vector<uint8_t> v) {
+        this->m_carbonStock = std::move(v);
+    }
+    /// Per-tile pristine wilderness flag — 1 if undisturbed (low
+    /// anthropogenic + high NPP + high biodiversity).
+    [[nodiscard]] const std::vector<uint8_t>& wilderness() const {
+        return this->m_wilderness;
+    }
+    void setWilderness(std::vector<uint8_t> v) {
+        this->m_wilderness = std::move(v);
+    }
+    /// Per-tile floodplain recurrence frequency 0-255.
+    /// Higher = more frequent flooding (lower return period).
+    /// 0 no flooding, 255 annual flooding.
+    [[nodiscard]] const std::vector<uint8_t>& floodFrequency() const {
+        return this->m_floodFrequency;
+    }
+    void setFloodFrequency(std::vector<uint8_t> v) {
+        this->m_floodFrequency = std::move(v);
+    }
+    /// Per-tile forest canopy stratification.
+    /// 0 not forest, 1 single-storey scrub, 2 simple canopy,
+    /// 3 canopy + understory, 4 emergent + canopy + understory + floor.
+    [[nodiscard]] const std::vector<uint8_t>& canopyStratification() const {
+        return this->m_canopyStratification;
+    }
+    void setCanopyStratification(std::vector<uint8_t> v) {
+        this->m_canopyStratification = std::move(v);
+    }
+    /// Per-tile riparian forest extent 0-255 (gallery forest along
+    /// rivers in arid zones, intermittent in humid).
+    [[nodiscard]] const std::vector<uint8_t>& riparianForest() const {
+        return this->m_riparianForest;
+    }
+    void setRiparianForest(std::vector<uint8_t> v) {
+        this->m_riparianForest = std::move(v);
+    }
+    /// Per-tile magnetic field intensity 0-255.
+    /// Latitudinal gradient: high at poles (vertical), low at equator.
+    [[nodiscard]] const std::vector<uint8_t>& magneticIntensity() const {
+        return this->m_magneticIntensity;
+    }
+    void setMagneticIntensity(std::vector<uint8_t> v) {
+        this->m_magneticIntensity = std::move(v);
+    }
+    /// Per-tile groundwater depth 0-255 (= 0-50 m below surface).
+    /// 0 = at-surface (wetland), 255 = very deep.
+    [[nodiscard]] const std::vector<uint8_t>& groundwaterDepth() const {
+        return this->m_groundwaterDepth;
+    }
+    void setGroundwaterDepth(std::vector<uint8_t> v) {
+        this->m_groundwaterDepth = std::move(v);
+    }
 private:
     std::vector<uint8_t>          m_plateId;
     std::vector<std::pair<float, float>> m_hotspots;
@@ -2024,6 +2107,16 @@ private:
     std::vector<uint8_t>                 m_soilPh;
     std::vector<uint8_t>                 m_iceCoverDuration;
     std::vector<uint8_t>                 m_hydropowerCapacity;
+    std::vector<uint8_t>                 m_petIndex;
+    std::vector<uint8_t>                 m_aridityIndex;
+    std::vector<uint8_t>                 m_erosionPotential;
+    std::vector<uint8_t>                 m_carbonStock;
+    std::vector<uint8_t>                 m_wilderness;
+    std::vector<uint8_t>                 m_floodFrequency;
+    std::vector<uint8_t>                 m_canopyStratification;
+    std::vector<uint8_t>                 m_riparianForest;
+    std::vector<uint8_t>                 m_magneticIntensity;
+    std::vector<uint8_t>                 m_groundwaterDepth;
     /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
     /// Greenhouse improvement actively populate. Tile index → good id.
     std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;
