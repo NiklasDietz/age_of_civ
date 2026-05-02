@@ -1531,6 +1531,33 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         }
                         micro.cx = std::clamp(micro.cx, 0.05f, 0.95f);
                         micro.cy = std::clamp(micro.cy, 0.10f, 0.90f);
+                        // Reject if midpoint lands inside a THIRD plate's
+                        // Voronoi territory. Real Earth: microplates form
+                        // at junctions BETWEEN adjacent plates, never
+                        // embedded inside one plate's interior.
+                        // Verify nearest plate at midpoint is pa or pb.
+                        {
+                            int32_t nearest = -1;
+                            float bestSq = 1e9f;
+                            for (std::size_t k = 0; k < plates.size(); ++k) {
+                                float ddx = micro.cx - plates[k].cx;
+                                float ddy = micro.cy - plates[k].cy;
+                                if (cylSim) {
+                                    if (ddx >  0.5f) { ddx -= 1.0f; }
+                                    if (ddx < -0.5f) { ddx += 1.0f; }
+                                }
+                                const float dsq = ddx * ddx + ddy * ddy;
+                                if (dsq < bestSq) {
+                                    bestSq = dsq;
+                                    nearest = static_cast<int32_t>(k);
+                                }
+                            }
+                            if (nearest != static_cast<int32_t>(pa)
+                                && nearest != static_cast<int32_t>(pb)) {
+                                // Midpoint inside third plate — skip.
+                                continue;
+                            }
+                        }
                         // Small random velocity (microplates have erratic motion).
                         micro.vx = centerRng.nextFloat(-0.5f, 0.5f);
                         micro.vy = centerRng.nextFloat(-0.5f, 0.5f);
@@ -2089,13 +2116,27 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                 / static_cast<float>(SCAN);
                             float minSq = 1e9f;
                             for (const Plate& p : plates) {
-                                float ddx = nxs - p.cx;
-                                float ddy = nys - p.cy;
-                                if (cylSim) {
-                                    if (ddx >  0.5f) { ddx -= 1.0f; }
-                                    if (ddx < -0.5f) { ddx += 1.0f; }
+                                // Include primary + extra seeds. Multi-
+                                // seed plates can claim territory far
+                                // from their primary centre; void
+                                // detection must use ALL seeds or new
+                                // ridge plates can spawn inside an
+                                // extra-seed lobe of an existing plate.
+                                auto seedDsq = [&](float sx, float sy) {
+                                    float ddx = nxs - sx;
+                                    float ddy = nys - sy;
+                                    if (cylSim) {
+                                        if (ddx >  0.5f) { ddx -= 1.0f; }
+                                        if (ddx < -0.5f) { ddx += 1.0f; }
+                                    }
+                                    return ddx * ddx + ddy * ddy;
+                                };
+                                float dsq = seedDsq(p.cx, p.cy);
+                                for (const auto& es : p.extraSeeds) {
+                                    const float d2 = seedDsq(
+                                        es.first, es.second);
+                                    if (d2 < dsq) { dsq = d2; }
                                 }
-                                const float dsq = ddx * ddx + ddy * ddy;
                                 if (dsq < minSq) { minSq = dsq; }
                             }
                             if (minSq > bestDist) {
@@ -7466,6 +7507,448 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         grid.setGlacialRebound(std::move(rebound));
         grid.setSedimentTransportDir(std::move(sedDir));
         grid.setCoastalChange(std::move(coastChg));
+
+        // ============================================================
+        // SESSION 14 — stream order / navigability / dam site / riparian
+        // / aquifer recharge / per-crop suitability (8) / pasture /
+        // forestry / fold axis / metamorphic facies / plate stress /
+        // cyclone intensity / drought severity / storm wave height /
+        // snow line / habitat fragmentation / endemism / species richness.
+        // ============================================================
+        std::vector<uint8_t> streamOrd(static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> nav      (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> damS     (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> ripa     (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> aqRecharge(static_cast<std::size_t>(totalT), 0);
+        std::array<std::vector<uint8_t>, 8> crops;
+        for (auto& c : crops) {
+            c.assign(static_cast<std::size_t>(totalT), 0);
+        }
+        std::vector<uint8_t> past   (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> forY   (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> foldA  (static_cast<std::size_t>(totalT), 0xFFu);
+        std::vector<uint8_t> metaF  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> pStress(static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> cycInt (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> drSev  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> waveH  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> snowL  (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> habFrag(static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> endIdx (static_cast<std::size_t>(totalT), 0);
+        std::vector<uint8_t> spRich (static_cast<std::size_t>(totalT), 0);
+
+        // ---- STRAHLER STREAM ORDER ----
+        // Approximate: walk down flow direction. Tile gets order N+1
+        // if it merges two N-order flows; else inherits max upstream
+        // order. Iterative sweep convergence: ~5 passes suffice.
+        // Initialize all river tiles to order 1.
+        for (int32_t i = 0; i < totalT; ++i) {
+            if (grid.riverEdges(i) != 0) { streamOrd[
+                static_cast<std::size_t>(i)] = 1; }
+        }
+        for (int32_t pass = 0; pass < 6; ++pass) {
+            for (int32_t i = 0; i < totalT; ++i) {
+                if (grid.riverEdges(i) == 0) { continue; }
+                const int32_t row = i / width;
+                const int32_t col = i % width;
+                // Find upstream river-tile orders (those that flow INTO me).
+                int32_t upstreamCount[8] = {0};
+                int32_t maxUp = 0;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    if (grid.riverEdges(nIdx) == 0) { continue; }
+                    const auto& fd = grid.flowDir();
+                    const std::size_t nsi = static_cast<std::size_t>(nIdx);
+                    if (fd.size() <= nsi) { continue; }
+                    // Reverse direction: if neighbour drains TOWARD me,
+                    // it flows in. Hex direction d from me; neighbour's
+                    // flow dir should equal (d+3)%6 to flow back.
+                    if (fd[nsi] == static_cast<uint8_t>((d + 3) % 6)) {
+                        const uint8_t up = streamOrd[nsi];
+                        if (up > 0 && up <= 7) { upstreamCount[up]++; }
+                        if (up > maxUp) { maxUp = up; }
+                    }
+                }
+                uint8_t order = static_cast<uint8_t>(std::max(1, maxUp));
+                if (upstreamCount[maxUp] >= 2) {
+                    order = static_cast<uint8_t>(maxUp + 1);
+                }
+                if (order > streamOrd[static_cast<std::size_t>(i)]) {
+                    streamOrd[static_cast<std::size_t>(i)] = order;
+                }
+            }
+        }
+
+        // ---- RIVER NAVIGABILITY + DAM SITE + RIPARIAN ----
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                if (grid.riverEdges(i) != 0) {
+                    const std::size_t si = static_cast<std::size_t>(i);
+                    // Navigable: order ≥ 4 + perennial regime + low slope.
+                    const uint8_t ord = streamOrd[si];
+                    const auto& rr = grid.riverRegime();
+                    const auto& sl = grid.slopeAngle();
+                    const bool peren = (rr.size() > si && rr[si] == 1);
+                    const bool flat = (sl.size() > si && sl[si] < 80);
+                    if (ord >= 4 && peren && flat) {
+                        nav[si] = 1;
+                    }
+                    // Dam site: high slope + perennial + downstream
+                    // basin (lower-elev neighbour).
+                    if (peren && sl.size() > si && sl[si] > 100) {
+                        damS[si] = static_cast<uint8_t>(
+                            std::clamp(static_cast<int32_t>(sl[si]) + 50, 0, 255));
+                    }
+                }
+                // Riparian: 1-tile band along river.
+                bool nearRiver = (grid.riverEdges(i) != 0);
+                if (!nearRiver) {
+                    for (int32_t d = 0; d < 6; ++d) {
+                        int32_t nIdx;
+                        if (!nbHelper(col, row, d, nIdx)) { continue; }
+                        if (grid.riverEdges(nIdx) != 0) {
+                            nearRiver = true; break;
+                        }
+                    }
+                }
+                if (nearRiver) {
+                    ripa[static_cast<std::size_t>(i)] = 1;
+                }
+            }
+        }
+
+        // ---- AQUIFER RECHARGE ----
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t i = 0; i < totalT; ++i) {
+            const auto& he = grid.hydroExtras();
+            const std::size_t si = static_cast<std::size_t>(i);
+            if (he.size() <= si || (he[si] & 0x01) == 0) { continue; }
+            // Has aquifer flag — score recharge.
+            int32_t rate = 80;
+            if (i < static_cast<int32_t>(soilFert.size())) {
+                rate += static_cast<int32_t>(soilFert[si] * 80.0f);
+            }
+            const auto& cc = grid.cloudCover();
+            if (cc.size() > si) {
+                rate += static_cast<int32_t>(cc[si] * 60.0f);
+            }
+            aqRecharge[si] = static_cast<uint8_t>(
+                std::clamp(rate, 0, 255));
+        }
+
+        // ---- PER-CROP SUITABILITY ----
+        // Wheat: temperate Plains/Grassland, lat 0.30-0.55, fertile soil
+        // Rice: hot+humid lowland, Floodplains/Marsh, lat<0.40
+        // Maize: warm Grassland, lat 0.20-0.45
+        // Potato: cool highland, Hills + lat 0.40-0.60
+        // Banana: tropical Grassland/Jungle, lat<0.20
+        // Coffee: subtropical mountain Hills, lat 0.15-0.35
+        // Wine: Mediterranean Plains, lat 0.30-0.45 + fertile
+        // Cotton: subtropical Plains, lat 0.20-0.40
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                const aoc::map::FeatureType f = grid.feature(i);
+                const std::size_t si = static_cast<std::size_t>(i);
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater
+                    || t == aoc::map::TerrainType::Mountain
+                    || t == aoc::map::TerrainType::Snow) {
+                    continue;
+                }
+                const float fert = (si < soilFert.size())
+                    ? soilFert[si] : 0.5f;
+                // Wheat
+                if ((t == aoc::map::TerrainType::Plains
+                     || t == aoc::map::TerrainType::Grassland)
+                    && lat > 0.30f && lat < 0.55f) {
+                    crops[0][si] = static_cast<uint8_t>(
+                        std::clamp(fert * 200.0f + 40.0f, 0.0f, 255.0f));
+                }
+                // Rice
+                if (lat < 0.40f
+                    && (f == aoc::map::FeatureType::Floodplains
+                        || f == aoc::map::FeatureType::Marsh
+                        || (t == aoc::map::TerrainType::Grassland
+                            && grid.riverEdges(i) != 0))) {
+                    crops[1][si] = static_cast<uint8_t>(
+                        std::clamp(fert * 220.0f + 30.0f, 0.0f, 255.0f));
+                }
+                // Maize
+                if (t == aoc::map::TerrainType::Grassland
+                    && lat > 0.20f && lat < 0.45f) {
+                    crops[2][si] = static_cast<uint8_t>(
+                        std::clamp(fert * 200.0f + 30.0f, 0.0f, 255.0f));
+                }
+                // Potato (cool highland)
+                if (f == aoc::map::FeatureType::Hills
+                    && lat > 0.40f && lat < 0.60f) {
+                    crops[3][si] = static_cast<uint8_t>(
+                        std::clamp(fert * 180.0f + 50.0f, 0.0f, 255.0f));
+                }
+                // Banana
+                if (lat < 0.20f
+                    && (t == aoc::map::TerrainType::Grassland
+                        || f == aoc::map::FeatureType::Jungle)) {
+                    crops[4][si] = static_cast<uint8_t>(
+                        std::clamp(fert * 200.0f + 40.0f, 0.0f, 255.0f));
+                }
+                // Coffee
+                if (f == aoc::map::FeatureType::Hills
+                    && lat > 0.15f && lat < 0.35f) {
+                    crops[5][si] = static_cast<uint8_t>(
+                        std::clamp(fert * 200.0f + 40.0f, 0.0f, 255.0f));
+                }
+                // Wine grape (Mediterranean)
+                if (t == aoc::map::TerrainType::Plains
+                    && lat > 0.30f && lat < 0.45f) {
+                    crops[6][si] = static_cast<uint8_t>(
+                        std::clamp(fert * 200.0f + 30.0f, 0.0f, 255.0f));
+                }
+                // Cotton
+                if (t == aoc::map::TerrainType::Plains
+                    && lat > 0.20f && lat < 0.40f) {
+                    crops[7][si] = static_cast<uint8_t>(
+                        std::clamp(fert * 200.0f + 20.0f, 0.0f, 255.0f));
+                }
+            }
+        }
+
+        // ---- PASTURE + FORESTRY ----
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const aoc::map::TerrainType t = grid.terrain(i);
+                const aoc::map::FeatureType f = grid.feature(i);
+                const std::size_t si = static_cast<std::size_t>(i);
+                if (t == aoc::map::TerrainType::Grassland && lat > 0.20f
+                    && lat < 0.60f) {
+                    const float fert = (si < soilFert.size())
+                        ? soilFert[si] : 0.5f;
+                    past[si] = static_cast<uint8_t>(
+                        std::clamp(fert * 220.0f + 30.0f, 0.0f, 255.0f));
+                }
+                if (f == aoc::map::FeatureType::Forest
+                    || f == aoc::map::FeatureType::Jungle) {
+                    const auto& vd = grid.vegetationDensity();
+                    if (vd.size() > si) {
+                        forY[si] = vd[si];
+                    }
+                }
+            }
+        }
+
+        // ---- FOLD AXIS + METAMORPHIC FACIES + PLATE STRESS ----
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const std::size_t si = static_cast<std::size_t>(i);
+                // Fold axis: Mountain tiles with mountainStructure=1
+                // (folded). Axis = perpendicular to compression =
+                // direction along boundary trend. Use the boundary
+                // line direction (orthogonal to nearest-other-plate
+                // vector). Approximation: use neighbour with greatest
+                // elevation match (along-strike).
+                const auto& mst = grid.mountainStructure();
+                if (mst.size() > si && mst[si] == 1) {
+                    // Find neighbour direction with min elev diff.
+                    const int8_t myE = grid.elevation(i);
+                    int32_t bestDir = -1;
+                    int8_t bestDiff = 127;
+                    for (int32_t d = 0; d < 6; ++d) {
+                        int32_t nIdx;
+                        if (!nbHelper(col, row, d, nIdx)) { continue; }
+                        if (grid.terrain(nIdx)
+                                != aoc::map::TerrainType::Mountain) {
+                            continue;
+                        }
+                        const int8_t df = static_cast<int8_t>(
+                            std::abs(grid.elevation(nIdx) - myE));
+                        if (df < bestDiff) {
+                            bestDiff = df;
+                            bestDir = d;
+                        }
+                    }
+                    if (bestDir >= 0) {
+                        foldA[si] = static_cast<uint8_t>(bestDir);
+                    }
+                }
+                // Metamorphic facies: based on rockType + crustal
+                // thickness + temperature gradient (geothermal).
+                const auto& rk = grid.rockType();
+                if (rk.size() > si && rk[si] == 2) {
+                    // Metamorphic. Pick facies by depth (crustalThick)
+                    // + temp (geothermal). Approximation by elevation.
+                    const auto& gg = grid.geothermalGradient();
+                    const auto& ct = grid.crustalThickness();
+                    const uint8_t G = (gg.size() > si) ? gg[si] : 50;
+                    const uint8_t T = (ct.size() > si) ? ct[si] : 100;
+                    if (G > 200 && T > 100) {
+                        metaF[si] = 4; // granulite (deep, hot)
+                    } else if (T > 130 && G < 60) {
+                        metaF[si] = 5; // blueschist (deep cold subduct)
+                    } else if (T > 200 && G < 70) {
+                        metaF[si] = 6; // eclogite
+                    } else if (T > 80 && G > 100) {
+                        metaF[si] = 3; // amphibolite
+                    } else if (T > 50) {
+                        metaF[si] = 2; // greenschist
+                    } else {
+                        metaF[si] = 1; // zeolite
+                    }
+                }
+                // Plate stress: read owning plate's orogenyLocal at
+                // tile's plate-local coords. Already done into orogeny[]
+                // for world-frame; re-encode 0-255 from |orogeny|.
+                const float oro = orogeny[si];
+                pStress[si] = static_cast<uint8_t>(
+                    std::clamp(std::abs(oro) * 800.0f, 0.0f, 255.0f));
+            }
+        }
+
+        // ---- CYCLONE INTENSITY + DROUGHT SEVERITY + STORM WAVE ----
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const std::size_t si = static_cast<std::size_t>(i);
+                // Cyclone: rated by SST × hurricane bit. SST > 200
+                // (= ~26°C) supports tropical cyclones. Cat 5 needs
+                // SST > 230 (29°C). Map SST 200-255 to Cat 1-5.
+                const auto& ch = grid.climateHazard();
+                const auto& sst = grid.seaSurfaceTemp();
+                if (ch.size() > si && (ch[si] & 0x01) != 0
+                    && sst.size() > si && sst[si] > 200) {
+                    const int32_t cat = std::min(5,
+                        static_cast<int32_t>((sst[si] - 200) / 11));
+                    cycInt[si] = static_cast<uint8_t>(std::max(1, cat));
+                }
+                // Drought severity: nat-hazard bit 2 (drought) tile.
+                // Severity = function of latitude in dry band + low
+                // cloud cover.
+                const auto& nh = grid.naturalHazard();
+                if (nh.size() > si && (nh[si] & 0x0004) != 0) {
+                    int32_t sev = 1;
+                    if (lat > 0.20f && lat < 0.30f) { sev = 2; }
+                    if (grid.terrain(i) == aoc::map::TerrainType::Desert) {
+                        sev += 1;
+                    }
+                    const auto& cc = grid.cloudCover();
+                    if (cc.size() > si && cc[si] < 0.20f) { sev += 1; }
+                    drSev[si] = static_cast<uint8_t>(std::min(4, sev));
+                }
+                // Storm wave height: storm-track ocean (climateHazard
+                // bit 2) + open water far from coast.
+                if (ch.size() > si && (ch[si] & 0x04) != 0) {
+                    const auto& md = grid.marineDepth();
+                    int32_t wave = 100;
+                    if (md.size() > si && md[si] >= 4) { wave = 220; }
+                    waveH[si] = static_cast<uint8_t>(wave);
+                }
+                // Snow line: elevation check vs latitude-dependent threshold.
+                // Tropics snow line ~5000m, polar 0m.
+                const float snowThr = std::max(0.0f, 1.0f - lat * 1.3f);
+                const int8_t elev = grid.elevation(i);
+                if (static_cast<float>(elev) >= snowThr * 3.0f
+                    && elev >= 1) {
+                    snowL[si] = 1;
+                }
+            }
+        }
+
+        // ---- HABITAT FRAGMENTATION + ENDEMISM + SPECIES RICHNESS ----
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float lat = 2.0f * std::abs(ny - 0.5f);
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t i = row * width + col;
+                const std::size_t si = static_cast<std::size_t>(i);
+                const aoc::map::TerrainType t = grid.terrain(i);
+                if (t == aoc::map::TerrainType::Ocean
+                    || t == aoc::map::TerrainType::ShallowWater) {
+                    continue;
+                }
+                // Fragmentation: count distinct neighbour terrain types.
+                int32_t types[16] = {0};
+                int32_t totalNb = 0;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    ++totalNb;
+                    const uint8_t nt = static_cast<uint8_t>(grid.terrain(nIdx));
+                    if (nt < 16) { types[nt]++; }
+                }
+                int32_t distinctCount = 0;
+                for (int32_t k = 0; k < 16; ++k) {
+                    if (types[k] > 0) { ++distinctCount; }
+                }
+                habFrag[si] = static_cast<uint8_t>(
+                    std::clamp(distinctCount * 50, 0, 255));
+                // Endemism: graded version of isolatedRealm. Higher
+                // score for older isolated plates.
+                const auto& iso = grid.isolatedRealm();
+                if (iso.size() > si && iso[si] != 0) {
+                    const uint8_t pid = grid.plateId(i);
+                    int32_t score = 150;
+                    // Plate age boost.
+                    if (pid != 0xFFu && pid < grid.plateLandFrac().size()
+                        && i < static_cast<int32_t>(grid.crustAgeTile().size())) {
+                        const float age = grid.crustAgeTile()[si];
+                        score += static_cast<int32_t>(age * 0.5f);
+                    }
+                    endIdx[si] = static_cast<uint8_t>(
+                        std::clamp(score, 0, 255));
+                }
+                // Species richness: tropical wet > temperate > polar.
+                int32_t rich = 60;
+                if (lat < 0.20f) { rich = 200; }
+                else if (lat < 0.40f) { rich = 150; }
+                else if (lat < 0.60f) { rich = 100; }
+                if (grid.feature(i) == aoc::map::FeatureType::Jungle) {
+                    rich += 40;
+                }
+                // Refugia boost.
+                const auto& ref = grid.refugium();
+                if (ref.size() > si && ref[si] != 0) { rich += 30; }
+                spRich[si] = static_cast<uint8_t>(
+                    std::clamp(rich, 0, 255));
+            }
+        }
+
+        grid.setStreamOrder(std::move(streamOrd));
+        grid.setNavigable(std::move(nav));
+        grid.setDamSite(std::move(damS));
+        grid.setRiparian(std::move(ripa));
+        grid.setAquiferRecharge(std::move(aqRecharge));
+        for (int32_t k = 0; k < 8; ++k) {
+            grid.setCropSuitability(k, std::move(crops[k]));
+        }
+        grid.setPastureScore(std::move(past));
+        grid.setForestryYield(std::move(forY));
+        grid.setFoldAxis(std::move(foldA));
+        grid.setMetamorphicFacies(std::move(metaF));
+        grid.setPlateStress(std::move(pStress));
+        grid.setCycloneIntensity(std::move(cycInt));
+        grid.setDroughtSeverity(std::move(drSev));
+        grid.setStormWaveHeight(std::move(waveH));
+        grid.setSnowLine(std::move(snowL));
+        grid.setHabitatFragmentation(std::move(habFrag));
+        grid.setEndemismIndex(std::move(endIdx));
+        grid.setSpeciesRichness(std::move(spRich));
 
         grid.setLithology(std::move(litho));
         grid.setBedrockLithology(std::move(bedrock));

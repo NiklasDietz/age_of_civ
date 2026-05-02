@@ -14,6 +14,7 @@
 #include "aoc/map/Terrain.hpp"
 #include "aoc/core/Types.hpp"
 
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <unordered_map>
@@ -1474,6 +1475,156 @@ public:
     void setCoastalChange(std::vector<uint8_t> v) {
         this->m_coastalChange = std::move(v);
     }
+
+    /// Per-river-tile Strahler stream order (1 headwater → 7+ trunk).
+    /// 0 if no river. Drives navigability (≥ 4 ocean-going).
+    [[nodiscard]] const std::vector<uint8_t>& streamOrder() const {
+        return this->m_streamOrder;
+    }
+    void setStreamOrder(std::vector<uint8_t> v) {
+        this->m_streamOrder = std::move(v);
+    }
+    /// Per-tile river navigability flag — 1 if ≥ Strahler order 4 +
+    /// perennial regime + low slope.
+    [[nodiscard]] const std::vector<uint8_t>& navigable() const {
+        return this->m_navigable;
+    }
+    void setNavigable(std::vector<uint8_t> v) {
+        this->m_navigable = std::move(v);
+    }
+    /// Per-tile reservoir-dam-site score 0-255 (narrow valley + perennial
+    /// + downstream basin).
+    [[nodiscard]] const std::vector<uint8_t>& damSite() const {
+        return this->m_damSite;
+    }
+    void setDamSite(std::vector<uint8_t> v) {
+        this->m_damSite = std::move(v);
+    }
+    /// Per-tile riparian buffer flag — 1 if 1-tile band along a river.
+    [[nodiscard]] const std::vector<uint8_t>& riparian() const {
+        return this->m_riparian;
+    }
+    void setRiparian(std::vector<uint8_t> v) {
+        this->m_riparian = std::move(v);
+    }
+    /// Per-tile aquifer recharge rate 0-255. Higher in humid climates
+    /// + permeable lithology.
+    [[nodiscard]] const std::vector<uint8_t>& aquiferRecharge() const {
+        return this->m_aquiferRecharge;
+    }
+    void setAquiferRecharge(std::vector<uint8_t> v) {
+        this->m_aquiferRecharge = std::move(v);
+    }
+
+    /// Per-tile per-crop suitability scores 0-255. Indexed:
+    /// 0 wheat, 1 rice, 2 maize, 3 potato, 4 banana, 5 coffee,
+    /// 6 wine grape, 7 cotton.
+    [[nodiscard]] const std::vector<uint8_t>& cropSuitability(int32_t crop) const {
+        if (crop < 0 || crop >= 8) {
+            static const std::vector<uint8_t> empty;
+            return empty;
+        }
+        return this->m_cropSuitability[static_cast<std::size_t>(crop)];
+    }
+    void setCropSuitability(int32_t crop, std::vector<uint8_t> v) {
+        if (crop >= 0 && crop < 8) {
+            this->m_cropSuitability[static_cast<std::size_t>(crop)] = std::move(v);
+        }
+    }
+    /// Per-tile pasture suitability 0-255 (Grassland temperate good).
+    [[nodiscard]] const std::vector<uint8_t>& pastureScore() const {
+        return this->m_pastureScore;
+    }
+    void setPastureScore(std::vector<uint8_t> v) {
+        this->m_pastureScore = std::move(v);
+    }
+    /// Per-tile forestry sustainable yield 0-255 (Forest density × climate).
+    [[nodiscard]] const std::vector<uint8_t>& forestryYield() const {
+        return this->m_forestryYield;
+    }
+    void setForestryYield(std::vector<uint8_t> v) {
+        this->m_forestryYield = std::move(v);
+    }
+
+    /// Per-Mountain-tile fold axis direction 0-5 (perpendicular to
+    /// compression axis). 0xFF if not folded.
+    [[nodiscard]] const std::vector<uint8_t>& foldAxis() const {
+        return this->m_foldAxis;
+    }
+    void setFoldAxis(std::vector<uint8_t> v) {
+        this->m_foldAxis = std::move(v);
+    }
+    /// Per-tile metamorphic facies tier.
+    /// 0 unmetamorphosed, 1 zeolite, 2 greenschist, 3 amphibolite,
+    /// 4 granulite, 5 blueschist, 6 eclogite.
+    [[nodiscard]] const std::vector<uint8_t>& metamorphicFacies() const {
+        return this->m_metamorphicFacies;
+    }
+    void setMetamorphicFacies(std::vector<uint8_t> v) {
+        this->m_metamorphicFacies = std::move(v);
+    }
+    /// Per-tile plate stress proxy 0-255 (sampled from owning plate's
+    /// orogenyLocal grid at this tile's plate-local coords).
+    [[nodiscard]] const std::vector<uint8_t>& plateStress() const {
+        return this->m_plateStress;
+    }
+    void setPlateStress(std::vector<uint8_t> v) {
+        this->m_plateStress = std::move(v);
+    }
+
+    /// Per-cyclone-tile Saffir-Simpson intensity 1-5 (0 if not cyclone).
+    [[nodiscard]] const std::vector<uint8_t>& cycloneIntensity() const {
+        return this->m_cycloneIntensity;
+    }
+    void setCycloneIntensity(std::vector<uint8_t> v) {
+        this->m_cycloneIntensity = std::move(v);
+    }
+    /// Per-tile drought severity tier 0-4.
+    [[nodiscard]] const std::vector<uint8_t>& droughtSeverity() const {
+        return this->m_droughtSeverity;
+    }
+    void setDroughtSeverity(std::vector<uint8_t> v) {
+        this->m_droughtSeverity = std::move(v);
+    }
+    /// Per-tile storm wave height 0-255 (storm-track ocean tiles).
+    [[nodiscard]] const std::vector<uint8_t>& stormWaveHeight() const {
+        return this->m_stormWaveHeight;
+    }
+    void setStormWaveHeight(std::vector<uint8_t> v) {
+        this->m_stormWaveHeight = std::move(v);
+    }
+    /// Per-tile snow-line flag — 1 if elevation above current snow line
+    /// for this latitude.
+    [[nodiscard]] const std::vector<uint8_t>& snowLine() const {
+        return this->m_snowLine;
+    }
+    void setSnowLine(std::vector<uint8_t> v) {
+        this->m_snowLine = std::move(v);
+    }
+
+    /// Per-tile habitat fragmentation index 0-255 (lower = continuous
+    /// habitat, higher = fragmented).
+    [[nodiscard]] const std::vector<uint8_t>& habitatFragmentation() const {
+        return this->m_habitatFragmentation;
+    }
+    void setHabitatFragmentation(std::vector<uint8_t> v) {
+        this->m_habitatFragmentation = std::move(v);
+    }
+    /// Per-tile endemism index 0-255 (replaces binary isolatedRealm
+    /// with a graded score).
+    [[nodiscard]] const std::vector<uint8_t>& endemismIndex() const {
+        return this->m_endemismIndex;
+    }
+    void setEndemismIndex(std::vector<uint8_t> v) {
+        this->m_endemismIndex = std::move(v);
+    }
+    /// Per-tile species richness proxy 0-255.
+    [[nodiscard]] const std::vector<uint8_t>& speciesRichness() const {
+        return this->m_speciesRichness;
+    }
+    void setSpeciesRichness(std::vector<uint8_t> v) {
+        this->m_speciesRichness = std::move(v);
+    }
 private:
     std::vector<uint8_t>          m_plateId;
     std::vector<std::pair<float, float>> m_hotspots;
@@ -1568,6 +1719,24 @@ private:
     std::vector<uint8_t>                 m_glacialRebound;
     std::vector<uint8_t>                 m_sedimentTransportDir;
     std::vector<uint8_t>                 m_coastalChange;
+    std::vector<uint8_t>                 m_streamOrder;
+    std::vector<uint8_t>                 m_navigable;
+    std::vector<uint8_t>                 m_damSite;
+    std::vector<uint8_t>                 m_riparian;
+    std::vector<uint8_t>                 m_aquiferRecharge;
+    std::array<std::vector<uint8_t>, 8>  m_cropSuitability;
+    std::vector<uint8_t>                 m_pastureScore;
+    std::vector<uint8_t>                 m_forestryYield;
+    std::vector<uint8_t>                 m_foldAxis;
+    std::vector<uint8_t>                 m_metamorphicFacies;
+    std::vector<uint8_t>                 m_plateStress;
+    std::vector<uint8_t>                 m_cycloneIntensity;
+    std::vector<uint8_t>                 m_droughtSeverity;
+    std::vector<uint8_t>                 m_stormWaveHeight;
+    std::vector<uint8_t>                 m_snowLine;
+    std::vector<uint8_t>                 m_habitatFragmentation;
+    std::vector<uint8_t>                 m_endemismIndex;
+    std::vector<uint8_t>                 m_speciesRichness;
     /// WP-C4 Greenhouse planted-crop map. Sparse — only tiles with a
     /// Greenhouse improvement actively populate. Tile index → good id.
     std::unordered_map<int32_t, uint16_t> m_greenhouseCrop;
