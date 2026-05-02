@@ -13,6 +13,18 @@
 #include <cmath>
 #include <vector>
 
+// OpenMP-backed parallelization for independent per-tile post-passes.
+// AOC_PARALLEL_FOR_ROWS expands to a row-parallel pragma when OpenMP is
+// available, otherwise a no-op. Each post-pass that writes ONLY to its
+// own tile (no neighbour scatter, no shared accumulators) can prefix
+// the outer for-row loop with this macro for free CPU-core scaling.
+#ifdef AOC_HAS_OPENMP
+#  include <omp.h>
+#  define AOC_PARALLEL_FOR_ROWS _Pragma("omp parallel for schedule(static)")
+#else
+#  define AOC_PARALLEL_FOR_ROWS
+#endif
+
 namespace aoc::map {
 
 // ============================================================================
@@ -303,7 +315,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         /// age too but it doesn't drive subduction (low density).
         float crustAge         = 0.0f;
     };
-    constexpr int32_t OROGENY_GRID = 64;
+    // Per-plate orogeny grid resolution. Default 64×64, scaled by
+    // config.superSampleFactor (1 = default, 2 = 128×128, 4 = 256×256).
+    // Higher resolution = sharper boundary precision + sub-hex detail
+    // at cost of memory/compute. Was constexpr; now driven by config.
+    const int32_t OROGENY_GRID = 64 * std::max(1, config.superSampleFactor);
     constexpr float   OROGENY_HALF = 2.0f; // local-frame half-extent
     std::vector<Plate> plates;
     struct Hotspot {
@@ -1553,6 +1569,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // than directly into elev. Subduction land-side stress is
             // gated by STRESS_GATE so only strong convergent motion
             // builds mountains — passive margins stay flat.
+            // Parallel: scatterPL uses atomic adds (see lambda above)
+            // so concurrent boundary contributions stack safely.
+            AOC_PARALLEL_FOR_ROWS
             for (int32_t row = 0; row < height; ++row) {
                 for (int32_t col = 0; col < width; ++col) {
                     const float nx = static_cast<float>(col)
@@ -1669,8 +1688,15 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         const int32_t iy = static_cast<int32_t>(std::floor(gy));
                         if (ix < 0 || ix >= OROGENY_GRID
                             || iy < 0 || iy >= OROGENY_GRID) { return; }
-                        p.orogenyLocal[static_cast<std::size_t>(iy * OROGENY_GRID + ix)]
-                            += val;
+                        // Atomic add when called from a parallel-for so
+                        // multiple tiles writing the same plate grid
+                        // cell don't lose contributions.
+                        float* cell = &p.orogenyLocal[
+                            static_cast<std::size_t>(iy * OROGENY_GRID + ix)];
+                        #ifdef AOC_HAS_OPENMP
+                        #pragma omp atomic
+                        #endif
+                        *cell += val;
                     };
 
                     Plate& Aw = plates[static_cast<std::size_t>(nearest)];
@@ -2866,6 +2892,15 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // matches the elevation-pass assignment.
     if (config.mapType == MapType::Continents && !plates.empty()) {
         aoc::Random plateWarpRng(noiseRng);
+        // Parallel: Voronoi nearest-plate per tile is independent.
+        // Each iteration writes ONLY grid.setPlateId(idx, ...). Reads
+        // shared `plates` vector + plateWarpRng noise (deterministic
+        // for given seed/coords). Race-free because each tile updates
+        // a distinct plateId entry.
+        // Note: plateWarpRng's nextFloat is stateful but fractalNoise
+        // here uses a hash-mixed seed inside, so per-call determinism
+        // holds without the rng's internal counter.
+        AOC_PARALLEL_FOR_ROWS
         for (int32_t row = 0; row < height; ++row) {
             for (int32_t col = 0; col < width; ++col) {
                 const float nx = static_cast<float>(col) / static_cast<float>(width);
@@ -2936,6 +2971,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // irregular territories.
         for (int32_t pass = 0; pass < 6; ++pass) {
             std::vector<uint8_t> nextId(static_cast<std::size_t>(width * height), 0xFFu);
+            // Parallel: majority vote reads grid.plateId neighbours,
+            // writes only nextId[idx]. Race-free.
+            AOC_PARALLEL_FOR_ROWS
             for (int32_t row = 0; row < height; ++row) {
                 for (int32_t col = 0; col < width; ++col) {
                     const int32_t idx = row * width + col;
@@ -3134,15 +3172,35 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // orogeny neighbour (downhill). Iterates twice so plain tiles
         // adjacent to long mountain belts receive sediment from both
         // sides (Ganges + Bengal Fan, Po Valley).
+        // Parallel sediment scatter: each thread accumulates into a
+        // PRIVATE buffer, then we reduce all buffers at the end. This
+        // avoids atomic-add cost on the inner-most write while keeping
+        // race-free correctness.
         for (int32_t pass = 0; pass < 2; ++pass) {
+            #ifdef AOC_HAS_OPENMP
+            const int32_t nThreads = omp_get_max_threads();
+            #else
+            const int32_t nThreads = 1;
+            #endif
+            const int32_t sedTotal = width * height;
+            std::vector<std::vector<float>> threadSed(
+                static_cast<std::size_t>(nThreads),
+                std::vector<float>(static_cast<std::size_t>(sedTotal), 0.0f));
+            AOC_PARALLEL_FOR_ROWS
             for (int32_t row = 0; row < height; ++row) {
+                #ifdef AOC_HAS_OPENMP
+                const int32_t tid = omp_get_thread_num();
+                #else
+                const int32_t tid = 0;
+                #endif
+                std::vector<float>& myBuf =
+                    threadSed[static_cast<std::size_t>(tid)];
                 for (int32_t col = 0; col < width; ++col) {
                     const int32_t idx = row * width + col;
                     const float oro = orogeny[
                         static_cast<std::size_t>(idx)];
                     if (oro < 0.08f) { continue; }
                     const float yield = (oro - 0.05f) * 0.10f;
-                    // Find the 3 lowest-orogeny neighbours (downhill).
                     int32_t bestIdx[3] = {-1, -1, -1};
                     float   bestOro[3] = {1e9f, 1e9f, 1e9f};
                     for (int32_t d = 0; d < 6; ++d) {
@@ -3150,8 +3208,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         if (!neighbourIdx(col, row, d, nIdx)) { continue; }
                         const float nOro = orogeny[
                             static_cast<std::size_t>(nIdx)];
-                        if (nOro >= oro) { continue; } // uphill, skip
-                        // Insert into sorted top-3 lowest list.
+                        if (nOro >= oro) { continue; }
                         for (int32_t k = 0; k < 3; ++k) {
                             if (nOro < bestOro[k]) {
                                 for (int32_t j = 2; j > k; --j) {
@@ -3173,9 +3230,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         / static_cast<float>(targets);
                     for (int32_t k = 0; k < 3; ++k) {
                         if (bestIdx[k] < 0) { continue; }
-                        sediment[static_cast<std::size_t>(bestIdx[k])]
+                        myBuf[static_cast<std::size_t>(bestIdx[k])]
                             += perTarget;
                     }
+                }
+            }
+            // Reduce per-thread buffers into shared sediment array.
+            for (const auto& buf : threadSed) {
+                AOC_PARALLEL_FOR_ROWS
+                for (int32_t i = 0; i < sedTotal; ++i) {
+                    sediment[static_cast<std::size_t>(i)]
+                        += buf[static_cast<std::size_t>(i)];
                 }
             }
         }
@@ -4465,6 +4530,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // Coastal tiles facing a convergent boundary at sea (subduction
         // trench within ~6 hexes) are tsunami-prone. Bit-set hazard
         // value's 4-bit so existing seismic hazard 0-3 is preserved.
+        // Parallel: each iteration only OR-bits hazard[i].
+        AOC_PARALLEL_FOR_ROWS
         for (int32_t i = 0; i < totalT; ++i) {
             const aoc::map::TerrainType t = grid.terrain(i);
             if (t == aoc::map::TerrainType::Ocean
@@ -4911,7 +4978,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // Tidal range: macro at narrow embayments (Bay of Fundy 16 m,
         // Bristol Channel 14 m). Mega ocean has micro tides. Salinity:
         // restricted basins hypersaline (Mediterranean), polar fresher
-        // (sea ice melt), open ocean normal.
+        // (sea ice melt), open ocean normal. Parallel.
+        AOC_PARALLEL_FOR_ROWS
         for (int32_t row = 0; row < height; ++row) {
             const float ny = static_cast<float>(row)
                            / static_cast<float>(height);
@@ -5047,6 +5115,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         std::vector<uint8_t>  eventMrk  (static_cast<std::size_t>(totalT), 0);
 
         // ---- WP1: NATURAL HAZARDS ----
+        // Parallel: each iteration writes only natHazard[i].
+        AOC_PARALLEL_FOR_ROWS
         for (int32_t row = 0; row < height; ++row) {
             const float ny = static_cast<float>(row) / static_cast<float>(height);
             const float lat = 2.0f * std::abs(ny - 0.5f);
@@ -5977,6 +6047,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         std::vector<uint8_t> forA  (static_cast<std::size_t>(totalT), 0);
         std::vector<uint8_t> soilM (static_cast<std::size_t>(totalT), 0);
 
+        // Parallel: every iteration writes ONLY to its own tile index;
+        // reads grid.terrain/feature/elevation/etc which are
+        // unchanged during this pass. Safe race-free.
+        AOC_PARALLEL_FOR_ROWS
         for (int32_t row = 0; row < height; ++row) {
             const float ny = static_cast<float>(row) / static_cast<float>(height);
             const float lat = 2.0f * std::abs(ny - 0.5f);
@@ -6326,7 +6400,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // ---- STRAIT detection ----
         // Narrow water passage: ShallowWater/Ocean tile with ≥ 2 land
         // neighbours on at least 2 OPPOSITE sides AND connected to
-        // larger water on 2 sides.
+        // larger water on 2 sides. Parallel.
+        AOC_PARALLEL_FOR_ROWS
         for (int32_t row = 0; row < height; ++row) {
             for (int32_t col = 0; col < width; ++col) {
                 const int32_t i = row * width + col;
@@ -6367,7 +6442,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // ---- HARBOR SCORE ----
         // ShallowWater tile with high land-enclosure count = sheltered
         // bay. Add island-protection bonus (intervening land within 4
-        // hexes seaward).
+        // hexes seaward). Parallel.
+        AOC_PARALLEL_FOR_ROWS
         for (int32_t row = 0; row < height; ++row) {
             for (int32_t col = 0; col < width; ++col) {
                 const int32_t i = row * width + col;
@@ -6410,6 +6486,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         std::vector<uint8_t> iceShelf(static_cast<std::size_t>(totalT), 0);
         std::vector<uint8_t> permaD  (static_cast<std::size_t>(totalT), 0);
 
+        // Parallel: each iteration writes only to its own tile index.
+        AOC_PARALLEL_FOR_ROWS
         for (int32_t row = 0; row < height; ++row) {
             const float ny = static_cast<float>(row) / static_cast<float>(height);
             const float lat = 2.0f * std::abs(ny - 0.5f);
