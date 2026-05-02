@@ -415,7 +415,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 p.isLand = isLand;
                 p.vx = centerRng.nextFloat(-0.70f, 0.70f);
                 p.vy = centerRng.nextFloat(-0.70f, 0.70f);
-                p.aspect     = centerRng.nextFloat(0.95f, 1.10f);
+                // Wide aspect range: real Earth plates are 1:1 (Pacific)
+                // to 4:1 (Andean Plate). Old 0.95-1.10 → all near-circle
+                // → all continents looked uniform. Now 0.50-2.20.
+                p.aspect     = centerRng.nextFloat(0.50f, 2.20f);
                 p.rot        = centerRng.nextFloat(-3.14159f, 3.14159f);
                 p.baseRot    = p.rot;
                 p.baseAspect = p.aspect;
@@ -483,9 +486,12 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // Real Earth plates almost never have clean Voronoi
                 // shapes; they have arms and bays from accretion +
                 // partial mergers.
-                const float irregRoll = centerRng.nextFloat(0.0f, 1.0f);
-                const int32_t extras = (irregRoll < 0.15f) ? 2
-                                     : (irregRoll < 0.60f) ? 1 : 0;
+                // Every plate gets 3-6 extra seeds for genuinely
+                // multi-lobed territory. Old 0-2 was too rare → most
+                // plates were single-blob Voronoi cells. Real Earth
+                // plates are ALL multi-lobed (Eurasian arms, African
+                // L, Indo-Australian fork, North American spread).
+                const int32_t extras = centerRng.nextInt(3, 6);
                 const bool cylC = (config.topology == MapTopology::Cylindrical);
                 for (int32_t e = 0; e < extras; ++e) {
                     const float ang = centerRng.nextFloat(0.0f, 6.2832f);
@@ -2440,6 +2446,12 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                  + v01 * (1.0f - fx) *        fy
                  + v11 *        fx  *        fy;
         };
+        // Pixel-anisotropic Voronoi: scale dx by W/H so plate cells
+        // appear roughly isotropic in pixel space. World map is W>H
+        // (typically 2:1) so without this fix all cells are E-W
+        // stretched and continents look horizontal.
+        const float aspectFix = static_cast<float>(width)
+            / static_cast<float>(height);
         // Parallel: world-frame elevation pass — each iteration writes
         // only elevationMap[i]. Hot path (heavy per-tile work: nearest-
         // plate Voronoi + samplePL bilinear + crust mask sample).
@@ -2457,10 +2469,28 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         if (dx >  0.5f) { dx -= 1.0f; }
                         if (dx < -0.5f) { dx += 1.0f; }
                     }
+                    dx *= aspectFix;
                     const float cs = std::cos(plates[pi].rot);
                     const float sn = std::sin(plates[pi].rot);
-                    const float lx = (dx * cs + dy * sn) / plates[pi].aspect;
-                    const float ly = (-dx * sn + dy * cs) * plates[pi].aspect;
+                    float lx = (dx * cs + dy * sn) / plates[pi].aspect;
+                    float ly = (-dx * sn + dy * cs) * plates[pi].aspect;
+                    // Plate-local boundary jitter — perturb the sample
+                    // point with a per-plate hash-noise so the Voronoi
+                    // boundary develops organic non-circular shape.
+                    // Travels with plate (deterministic from seedX).
+                    {
+                        const uint64_t pseed =
+                            static_cast<uint64_t>(plates[pi].seedX * 1.0e6f);
+                        const int32_t ix1 = static_cast<int32_t>(
+                            std::floor(lx * 5.0f));
+                        const int32_t iy1 = static_cast<int32_t>(
+                            std::floor(ly * 5.0f));
+                        const float n1 = hashNoise(ix1, iy1, pseed);
+                        const float n2 = hashNoise(
+                            ix1, iy1, pseed ^ 0xA5A5ULL);
+                        lx += (n1 - 0.5f) * 0.18f;
+                        ly += (n2 - 0.5f) * 0.18f;
+                    }
                     const float dsq = (lx * lx + ly * ly) / (plates[pi].weight * plates[pi].weight);
                     if (dsq < bestSq) {
                         bestSq = dsq; bestPi = static_cast<int32_t>(pi);
@@ -3002,6 +3032,16 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     const Plate& p = plates[pi];
                     const float cs = std::cos(p.rot);
                     const float sn = std::sin(p.rot);
+                    // Pixel-anisotropic Voronoi: world is W×H pixels
+                        // with W typically 2× H (400×200 default).
+                        // Treating dx and dy equally in normalized
+                        // [0,1]² makes plate cells 2× wider than tall
+                        // in pixel space → continents always appear
+                        // E-W stretched. Compensate by scaling dx by
+                        // (W/H) so cells are pixel-isotropic and
+                        // continents can be N-S elongated like Earth.
+                    const float aspectFix = static_cast<float>(width)
+                        / static_cast<float>(height);
                     auto seedDsq = [&](float sx, float sy) {
                         float dx = pwx - sx;
                         float dy = pwy - sy;
@@ -3009,8 +3049,25 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             if (dx >  0.5f) { dx -= 1.0f; }
                             if (dx < -0.5f) { dx += 1.0f; }
                         }
-                        const float lx = (dx * cs + dy * sn) / p.aspect;
-                        const float ly = (-dx * sn + dy * cs) * p.aspect;
+                        // Scale dx in pixel units BEFORE plate-rot
+                        // transform so per-plate aspect still applies.
+                        dx *= aspectFix;
+                        float lx = (dx * cs + dy * sn) / p.aspect;
+                        float ly = (-dx * sn + dy * cs) * p.aspect;
+                        // Boundary jitter: hash-noise perturbs the
+                        // sample point so Voronoi cells break the
+                        // smooth-blob pattern.
+                        const uint64_t pseed =
+                            static_cast<uint64_t>(p.seedX * 1.0e6f);
+                        const int32_t ix1 = static_cast<int32_t>(
+                            std::floor(lx * 5.0f));
+                        const int32_t iy1 = static_cast<int32_t>(
+                            std::floor(ly * 5.0f));
+                        const float n1 = hashNoise(ix1, iy1, pseed);
+                        const float n2 = hashNoise(
+                            ix1, iy1, pseed ^ 0xA5A5ULL);
+                        lx += (n1 - 0.5f) * 0.18f;
+                        ly += (n2 - 0.5f) * 0.18f;
                         return lx * lx + ly * ly;
                     };
                     float minDsq = seedDsq(p.cx, p.cy);

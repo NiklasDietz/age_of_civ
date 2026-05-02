@@ -141,6 +141,7 @@ public:
         LakeFX,         ///< Lake-effect snow zones
         Drumlin,        ///< Drumlin field paleo-ice-flow direction
         SutureReact,    ///< Reactivated suture (Atlas-style fold belts)
+        Resources,      ///< Color-tint per resource group for placement audit
         Insolation,     ///< Annual mean solar insolation per tile
         Aspect,         ///< Topographic aspect (slope direction)
         Slope,          ///< Slope angle 0-255

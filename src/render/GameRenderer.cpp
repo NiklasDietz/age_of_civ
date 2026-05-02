@@ -252,6 +252,46 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                         fillB = 0.20f * (1.0f - s);
                         fillA = 0.55f; useFill = true;
                     }
+                } else if (this->overlayMode == MapOverlay::Resources) {
+                    const aoc::ResourceId res = grid.resource(index);
+                    if (res.isValid()) {
+                        // Color groups for placement-correctness audit:
+                        //   metals (iron/copper/silver/gold/tin/aluminum/
+                        //          nickel/cobalt/platinum) → red-orange
+                        //   energy (oil/gas/coal/uranium/helium) → yellow
+                        //   gemstones/luxury → magenta
+                        //   ag-bonus (wheat/cattle/horse/fish/...) → green
+                        //   stone/marble/clay/dolomite/gypsum → grey
+                        //   strategic-special (rare-earth/lithium/...) → cyan
+                        const uint16_t v = res.value;
+                        const auto isOneOf = [&](std::initializer_list<uint16_t> list) {
+                            for (uint16_t x : list) { if (x == v) return true; }
+                            return false;
+                        };
+                        if (isOneOf({0, 1, 7, 10, 11, 20, 151, 152, 154, 162, 164, 165})) {
+                            // metals + ophiolite ores
+                            fillR = 0.95f; fillG = 0.45f; fillB = 0.10f;
+                        } else if (isOneOf({2, 3, 5, 6, 12, 153})) {
+                            // energy: coal/oil/niter/uranium/gas/helium
+                            fillR = 0.95f; fillG = 0.85f; fillB = 0.10f;
+                        } else if (isOneOf({21, 22, 23, 24, 25, 26, 27, 28, 32, 33, 34, 160, 161})) {
+                            // luxury (gems/spices/silk/ivory/wine/...)
+                            fillR = 0.85f; fillG = 0.20f; fillB = 0.85f;
+                        } else if (isOneOf({40, 41, 42, 43, 44, 45, 46, 47, 4, 8, 9})) {
+                            // ag bonus + horses + cotton + rubber
+                            fillR = 0.20f; fillG = 0.85f; fillB = 0.30f;
+                        } else if (isOneOf({29, 30, 47, 156, 158, 159, 155})) {
+                            // construction + evaporite + sulfur
+                            fillR = 0.65f; fillG = 0.65f; fillB = 0.65f;
+                        } else if (isOneOf({145, 146, 150, 157, 163, 166})) {
+                            // strategic specialty (titanium/lithium/REE/
+                            // fluorite/phosphate/MVT)
+                            fillR = 0.10f; fillG = 0.85f; fillB = 0.95f;
+                        } else {
+                            fillR = 0.95f; fillG = 0.95f; fillB = 0.95f;
+                        }
+                        fillA = 0.85f; useFill = true;
+                    }
                 } else if (this->overlayMode == MapOverlay::Insolation) {
                     const auto& iv = grid.solarInsolation();
                     const std::size_t si = static_cast<std::size_t>(index);
@@ -1556,7 +1596,8 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
         this->m_minimap.draw(renderer2d, grid, fog, viewingPlayer, camera,
                              mmWorldX, mmWorldY, mmRect.w * invZoom, mmRect.h * invZoom,
                              screenWidth, screenHeight,
-                             platesOnMinimap);
+                             platesOnMinimap,
+                             static_cast<int32_t>(this->overlayMode));
     }
 
     // Notifications (transformed to world-space)

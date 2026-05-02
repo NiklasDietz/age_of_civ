@@ -43,7 +43,8 @@ public:
     /// current framebuffer height. Aspect ratio matches the grid; height
     /// scales with map area (130 px floor, 240 px ceiling).
     [[nodiscard]] static Rect computeRect(const aoc::map::HexGrid& grid,
-                                          uint32_t screenHeight);
+                                          uint32_t screenHeight,
+                                          float bottomReservedPx = 10.0f);
 
     /**
      * @brief Draw the minimap overlay in screen space.
@@ -70,7 +71,8 @@ public:
               const CameraController& camera,
               float mapX, float mapY, float mapW, float mapH,
               uint32_t screenWidth, uint32_t screenHeight,
-              bool platesOverlay = false) const;
+              bool platesOverlay = false,
+              int32_t overlayModeRaw = 0) const;
 
     /**
      * @brief Test if a screen-space click is inside the minimap.

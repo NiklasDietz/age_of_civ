@@ -963,7 +963,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         this->m_creatorEnsoLabel         = aoc::ui::INVALID_WIDGET;
         this->m_creatorMilanLabel        = aoc::ui::INVALID_WIDGET;
     }
-    constexpr float PANEL_H = 64.0f;
+    constexpr float PANEL_H = 200.0f; // multi-row HorizontalWrap container
     constexpr float PANEL_PAD = 8.0f;
     aoc::ui::PanelData bg;
     bg.backgroundColor = aoc::ui::tokens::SURFACE_PARCHMENT;
@@ -978,32 +978,22 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
     {
         aoc::ui::Widget* w = this->m_uiManager.getWidget(this->m_creatorPanelId);
         if (w != nullptr) {
-            w->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
+            // HorizontalWrap auto-flows children into multiple rows
+            // when total width exceeds container. With ~70 buttons in
+            // creator we need wrap; single row at button width 64
+            // would need ~4500 px wide screen.
+            w->layoutDirection = aoc::ui::LayoutDirection::HorizontalWrap;
             w->padding = {6.0f, 8.0f, 6.0f, 8.0f};
-            w->childSpacing = 8.0f;
+            w->childSpacing = 6.0f;
         }
     }
-    // Top advanced panel — climate + sea level + axial tilt + super-
-    // sample + ENSO + Milankovitch. Bottom panel was getting full;
-    // these are tuning knobs that don't need first-class real-estate.
+    // Advanced cyclers — climate + sea level + axial tilt + super-
+    // sample + ENSO + Milankovitch. Inlined into main creator panel
+    // (HorizontalWrap auto-flows them onto separate rows).
     {
-        aoc::ui::PanelData topBg;
-        topBg.backgroundColor = aoc::ui::tokens::SURFACE_PARCHMENT;
-        topBg.gradientBottom  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
-        topBg.borderColor     = aoc::ui::tokens::BRONZE_DARK;
-        topBg.borderWidth     = 1.0f;
-        topBg.cornerRadius    = aoc::ui::tokens::CORNER_PANEL;
-        this->m_creatorAdvPanelId = this->m_uiManager.createPanel(
-            {PANEL_PAD, PANEL_PAD,
-             screenW - PANEL_PAD * 2.0f, PANEL_H},
-            std::move(topBg));
-        aoc::ui::Widget* w = this->m_uiManager.getWidget(
-            this->m_creatorAdvPanelId);
-        if (w != nullptr) {
-            w->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
-            w->padding = {6.0f, 8.0f, 6.0f, 8.0f};
-            w->childSpacing = 8.0f;
-        }
+        // Use main creator panel as parent for cyclers (no separate
+        // advanced panel — keeps minimap clear).
+        this->m_creatorAdvPanelId = this->m_creatorPanelId;
         // Helper: add cycler button (label + tap-to-cycle through ints).
         auto addCycler = [&](const std::string& prefix,
                               int32_t* value,
@@ -1025,7 +1015,8 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                         prefix + std::to_string(nv));
                 }
                 this->m_creatorEpochCache.clear();
-                this->m_creatorRegenPending = true;
+                this->regenerateContinentPreview(
+                    this->m_creatorEpochCurrent);
             };
             const aoc::ui::WidgetId id = this->m_uiManager.createButton(
                 this->m_creatorAdvPanelId,
@@ -1450,6 +1441,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
     addOverlayBtn("LakeFX",   aoc::render::GameRenderer::MapOverlay::LakeFX);
     addOverlayBtn("Drum",     aoc::render::GameRenderer::MapOverlay::Drumlin);
     addOverlayBtn("Sutur",    aoc::render::GameRenderer::MapOverlay::SutureReact);
+    addOverlayBtn("Res",      aoc::render::GameRenderer::MapOverlay::Resources);
     addOverlayBtn("Inso",     aoc::render::GameRenderer::MapOverlay::Insolation);
     addOverlayBtn("Asp",      aoc::render::GameRenderer::MapOverlay::Aspect);
     addOverlayBtn("Slope",    aoc::render::GameRenderer::MapOverlay::Slope);
@@ -3054,12 +3046,13 @@ void Application::run() {
             showOverlay ? this->m_selectedCity : nullptr;
 
         this->m_gameRenderer.m_minimapSuppressed = this->anyScreenOpen();
-        // In creator/editor the bottom HUD panel is 64px tall + 8px padding.
-        // Lift the minimap above it so buttons are not obscured.
-        constexpr float BOTTOM_PANEL_H = 80.0f; // PANEL_H(64) + PANEL_PAD*2(16)
+        // Creator panel is ~200 px tall (HorizontalWrap multi-row).
+        // Editor panel is 64 px. Lift minimap above whichever is shown.
+        constexpr float SINGLE_PANEL_H = 80.0f;  // editor: 64 + padding
+        constexpr float CREATOR_PANEL_H = 216.0f; // creator: 200 + padding
         this->m_gameRenderer.m_minimapBottomOffset =
-            (this->m_continentCreatorMode || this->m_mapEditorMode)
-            ? BOTTOM_PANEL_H : 0.0f;
+            this->m_continentCreatorMode ? CREATOR_PANEL_H
+            : (this->m_mapEditorMode ? SINGLE_PANEL_H : 0.0f);
         this->m_gameRenderer.render(
             *this->m_renderer2d,
             frame.commandBuffer,
@@ -3450,12 +3443,14 @@ void Application::buildMainMenu(float screenW, float screenH) {
             if (this->m_topBar != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setVisible(this->m_topBar, false);
             }
+            // Hide End Turn button entirely in Continent Creator —
+            // creator has its own "Back" + "Use This Map" controls in
+            // the bottom panel; ingame UI is irrelevant here.
             if (this->m_endTurnButton != aoc::ui::INVALID_WIDGET) {
-                this->m_uiManager.setVisible(this->m_endTurnButton, true);
+                this->m_uiManager.setVisible(this->m_endTurnButton, false);
             }
             if (this->m_endTurnInnerBtn != aoc::ui::INVALID_WIDGET) {
-                this->m_uiManager.setButtonLabel(this->m_endTurnInnerBtn,
-                    "Back to Main Menu");
+                this->m_uiManager.setVisible(this->m_endTurnInnerBtn, false);
             }
             this->buildContinentCreatorControls(screenW, screenH);
             LOG_INFO("Continent Creator opened (seed=%u epochs=%d/%d)",
