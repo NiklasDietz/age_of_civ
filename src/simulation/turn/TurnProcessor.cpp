@@ -1140,14 +1140,10 @@ void processGlobalSystems(TurnContext& turnContext) {
     // Black market smuggling (for embargoed players)
     processBlackMarketTrade(gameState);
 
-    // Speculation bubbles (per player)
-    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
-        PlayerBubbleComponent& bubble = playerPtr->bubble();
-        const aoc::sim::MonetaryStateComponent& mon = playerPtr->monetary();
-        // Shock triggers: inflation spike or negative treasury
-        const bool hasShock = (mon.inflationRate > 0.15f || mon.treasury < 0);
-        processSpeculationBubble(bubble, mon.gdp, mon.interestRate, hasShock);
-    }
+    // Speculation bubble mechanic disabled 2026-05-02 — too noisy in
+    // long sims (12 crashes/civ over 1000 turns), and the post-crash
+    // recovery state cluttered AI decisions without adding meaningful
+    // strategic depth. Bubble component still exists but isn't updated.
 
     // Per-player: unemployment and education
     for (PlayerId player : turnContext.allPlayers) {

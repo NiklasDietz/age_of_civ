@@ -89,13 +89,18 @@ namespace aoc::sim::ai {
     }
 
     // Penalise positions too close to existing cities.
+    // 2026-05-02: weakened far-distance penalty (was 3.0/tile beyond
+    // dist 10 → expansion stalled at dist 20+, leaving most AI civs
+    // mono-city). Now: only penalise far sites for OWN player; rival-
+    // distance penalty disabled. Penalty per tile dropped 3.0 → 0.5.
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+        const bool ownPlayer = (p->id() == player);
         for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
             const int32_t dist = grid.distance(pos, city->location());
             if (dist < 3) {
                 score -= 40.0f;
-            } else if (dist > 10) {
-                score -= static_cast<float>(dist - 10) * 3.0f;
+            } else if (ownPlayer && dist > 18) {
+                score -= static_cast<float>(dist - 18) * 0.5f;
             }
         }
     }
@@ -265,7 +270,7 @@ void updateExpansionAssessment(const aoc::game::GameState& gameState,
 
     // Scan candidate city sites within a moderate radius of each owned city.
     // Collect candidates, deduplicate, score, keep top 3.
-    constexpr int32_t SCAN_RADIUS = 12;
+    constexpr int32_t SCAN_RADIUS = 22; // 2026-05-02: 12→22 so AI sees expansion sites past first ring of neighbours
     constexpr int32_t TOP_N       = 3;
 
     struct ScoredSite {

@@ -864,11 +864,13 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
         player.removeUnit(disbandTarget);
     }
 
-    if (starving > 0) {
-        LOG_INFO("Player %u food upkeep: demand %d, fed %d, %d starving",
-                 static_cast<unsigned>(player.id()),
-                 demand, fed, starving);
-    }
+    // Food-upkeep log silenced 2026-05-02 — was firing per turn per
+    // civ with deficit, producing 200+ "starving" lines per sim. The
+    // mechanic still drives unit desertion (logged separately on
+    // disband). Famine as a STANDALONE event is gated to drought
+    // disasters only (WorldEventId::FamineWarning fires on globalTemp
+    // ≥ 2.0); routine food deficit is silent.
+    (void)demand; (void)fed; (void)starving;
 }
 
 } // namespace aoc::sim

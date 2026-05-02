@@ -1148,6 +1148,28 @@ void EconomySimulation::executeMonetaryPolicy(aoc::game::GameState& gameState) {
         computeInflation(state, prevGDP, currentGDP, prevMoney);
         applyInflationEffects(state);
 
+        // Monetary system advancement. Civs upgrade currency systems
+        // when prerequisite techs are researched. Without this all
+        // civs stayed in Barter through end-game (audit 2026-05-02).
+        // Tech tree: Currency=5, Banking=9, Industrialization=11,
+        // Computers=16.
+        if (state.system == MonetarySystemType::Barter
+            && playerPtr->hasResearched(aoc::TechId{5})) {
+            state.system = MonetarySystemType::CommodityMoney;
+        }
+        if (state.system == MonetarySystemType::CommodityMoney
+            && playerPtr->hasResearched(aoc::TechId{9})) {
+            state.system = MonetarySystemType::GoldStandard;
+        }
+        if (state.system == MonetarySystemType::GoldStandard
+            && playerPtr->hasResearched(aoc::TechId{11})) {
+            state.system = MonetarySystemType::FiatMoney;
+        }
+        if (state.system == MonetarySystemType::FiatMoney
+            && playerPtr->hasResearched(aoc::TechId{16})) {
+            state.system = MonetarySystemType::Digital;
+        }
+
         this->m_previousGDP[playerPtr->id()]         = currentGDP;
         this->m_previousMoneySupply[playerPtr->id()] = state.moneySupply;
     }
