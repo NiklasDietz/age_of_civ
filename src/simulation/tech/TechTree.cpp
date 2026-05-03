@@ -47,16 +47,18 @@ std::vector<TechDef> buildTechDefs() {
         {}, {BuildingId{2}}, {}});
     techs.push_back({TechId{13}, "Economics", EraId{4}, 960, {{TechId{9}}}, {}, {}, {}});
 
-    // Era 5: Modern -- costs ~1500-1800 (raised from 750-950).
-    techs.push_back({TechId{14}, "Electricity", EraId{5}, 1600, {{TechId{11}}},
+    // Era 5: Modern. Costs restored to 1500-1800 band — bulk era-5 cuts
+    // backfired in audit. Late-era pacing now adjusted at era-6/7 only.
+    techs.push_back({TechId{14}, "Electricity", EraId{5}, 1500, {{TechId{11}}},
         {}, {BuildingId{4}}, {}});
-    techs.push_back({TechId{15}, "Mass Production", EraId{5}, 1800, {{TechId{19}, TechId{12}}},
+    techs.push_back({TechId{15}, "Mass Production", EraId{5}, 1700, {{TechId{19}, TechId{12}}},
         {}, {BuildingId{5}}, {}});
 
-    // Era 6: Information -- costs ~2600-2800 (raised from 1100-1400).
-    techs.push_back({TechId{16}, "Computers", EraId{6}, 2600, {{TechId{14}, TechId{23}}},
+    // Era 6: Information -- costs ~1300-1500 (was 2600-2800 → 1800-2000 → 1300-1500).
+    // 2026-05-03: pushed lower again so IR #3 Digital Age fires beyond once-per-audit.
+    techs.push_back({TechId{16}, "Computers", EraId{6}, 950, {{TechId{14}, TechId{23}}},
         {}, {BuildingId{12}}, {}});
-    techs.push_back({TechId{17}, "Nuclear Fission", EraId{6}, 2800, {{TechId{14}}}, {}, {}, {}});
+    techs.push_back({TechId{17}, "Nuclear Fission", EraId{6}, 1100, {{TechId{14}}}, {}, {}, {}});
 
     // ================================================================
     // NEW TECHS (18-27)
@@ -95,14 +97,12 @@ std::vector<TechDef> buildTechDefs() {
         {{TechId{19}, TechId{14}}},  // Interchangeable Parts + Electricity
         {}, {}, {}});
 
-    // 2026-05-03: Semiconductors Modern → Information (era 5 → 6) to match
-    // Civ6 Atomic/Information era — transistor invented 1947. Cost bumped
-    // to Information band 2600-2800.
-    techs.push_back({TechId{23}, "Semiconductors", EraId{6}, 2700,
+    // Semiconductors: Information era. 2026-05-03: 2700 → 1900 → 1400.
+    techs.push_back({TechId{23}, "Semiconductors", EraId{6}, 1050,
         {{TechId{22}}},  // Precision Instruments
         {}, {BuildingId{11}}, {}});  // Unlocks Semiconductor Fab
 
-    techs.push_back({TechId{24}, "Advanced Chemistry", EraId{5}, 1700,
+    techs.push_back({TechId{24}, "Advanced Chemistry", EraId{5}, 1600,
         {{TechId{12}}},  // Refining
         {}, {}, {}});
 
@@ -114,17 +114,19 @@ std::vector<TechDef> buildTechDefs() {
         {}, {BuildingId{13}}, {}});  // Unlocks Telecom Hub
 
     // Era 5: Modern -- aviation.
-    techs.push_back({TechId{26}, "Aviation", EraId{5}, 2000,
+    techs.push_back({TechId{26}, "Aviation", EraId{5}, 1900,
         {{TechId{11}, TechId{12}}},  // Industrialization + Refining
         {}, {BuildingId{14}}, {}});  // Unlocks Airport
 
     // Era 6: Information -- internet.
-    techs.push_back({TechId{27}, "Internet", EraId{6}, 3120,
+    // 2026-05-03: 3120 → 2200 → 1650 so IR #4 fires regularly.
+    techs.push_back({TechId{27}, "Internet", EraId{6}, 1650,
         {{TechId{16}, TechId{25}}},  // Computers + Telecommunications
         {}, {}, {}});
 
-    // Era 7: Future -- fusion power.
-    techs.push_back({TechId{28}, "Fusion Power", EraId{7}, 4000,
+    // Era 7: Future -- fusion power. 2026-05-03: 4000 → 2400 so IR #5
+    // Post-Industrial becomes reachable in 2000-turn audits.
+    techs.push_back({TechId{28}, "Fusion Power", EraId{7}, 2400,
         {{TechId{17}, TechId{27}}},  // Nuclear Fission + Internet
         {}, {BuildingId{35}}, {}});  // Unlocks Fusion Reactor
 
@@ -269,19 +271,17 @@ std::vector<TechDef> buildTechDefs() {
         {{TechId{64}}}, {}, {}, {}});  // Flight
 
     // ================================================================
-    // Future-era techs (IDs 72-76). 2026-05-03.
-    // Concepts with no clean Civ6 analogue, gating advanced production
-    // chains beyond the standard tree.
+    // Future-era techs (IDs 72-76). 2026-05-03 cost cuts (was 3500-3800).
     // ================================================================
-    techs.push_back({TechId{72}, "Bioengineering", EraId{7}, 3500,
+    techs.push_back({TechId{72}, "Bioengineering", EraId{7}, 2200,
         {{TechId{65}}}, {}, {}, {}});  // Chemistry
-    techs.push_back({TechId{73}, "Cybernetics", EraId{7}, 3600,
+    techs.push_back({TechId{73}, "Cybernetics", EraId{7}, 2300,
         {{TechId{70}}}, {}, {}, {}});  // Robotics
-    techs.push_back({TechId{74}, "Quantum Computing", EraId{7}, 3800,
+    techs.push_back({TechId{74}, "Quantum Computing", EraId{7}, 2400,
         {{TechId{16}, TechId{49}}}, {}, {}, {}});  // Computers + Lasers
-    techs.push_back({TechId{75}, "Genetic Engineering", EraId{7}, 3500,
+    techs.push_back({TechId{75}, "Genetic Engineering", EraId{7}, 2200,
         {{TechId{72}}}, {}, {}, {}});  // Bioengineering
-    techs.push_back({TechId{76}, "Smart Materials", EraId{7}, 3700,
+    techs.push_back({TechId{76}, "Smart Materials", EraId{7}, 2300,
         {{TechId{50}, TechId{68}}}, {}, {}, {}});  // Composites + SyntMat
 
     // ================================================================

@@ -44,17 +44,32 @@ bool checkIndustrialRevolution(aoc::game::GameState& gameState, PlayerId player,
         return false;
     }
 
-    // Check resource requirements: player must have the good in any city stockpile
+    // Check resource requirements. 2026-05-03: also accept "ever supplied"
+    // via economy.totalSupply, not just current stockpile. Civs that produce
+    // a good and consume it the same turn (e.g. Steel feeding Tools/Tank
+    // production) used to fail the snapshot check despite having the
+    // manufacturing capability. Tech reach already gates capability; goods
+    // check now confirms the chain ran at least once.
+    const aoc::sim::PlayerEconomyComponent& econ = playerObj->economy();
     for (int32_t i = 0; i < 3; ++i) {
         uint16_t reqGood = rev.requirements.requiredGoods[i];
         if (reqGood == 0xFFFF) { continue; }
 
         bool found = false;
+        // Path A: in any city's stockpile right now.
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerObj->cities()) {
             if (cityPtr == nullptr) { continue; }
             if (cityPtr->stockpile().getAmount(reqGood) > 0) {
                 found = true;
                 break;
+            }
+        }
+        // Path B: or recently supplied at the player level (capture goods
+        // produced and immediately consumed).
+        if (!found) {
+            auto it = econ.totalSupply.find(reqGood);
+            if (it != econ.totalSupply.end() && it->second > 0) {
+                found = true;
             }
         }
         if (!found) {

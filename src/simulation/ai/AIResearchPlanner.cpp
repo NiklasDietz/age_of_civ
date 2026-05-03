@@ -198,29 +198,32 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                 score -= def.researchCost / 10;
 
                 // IR gating bonus: the next Industrial Revolution requires up
-                // to three specific techs.  Flat +15000 per match overrides
+                // to three specific techs.  Flat +25000 per match overrides
                 // generic unlock scores so the AI actually chases these rather
                 // than whatever the current leader-bias model prefers.
+                // 2026-05-03: bumped 15000 → 25000. Audit showed only 24/432
+                // civs reached IR #2 — research priority dilution across the
+                // 77-tech tree starved IR-gate techs of attention.
                 for (const uint32_t reqTechId : nextRevTechs) {
                     if (reqTechId != 0xFFFFu && reqTechId == tid.value) {
-                        score += 15000;
+                        score += 25000;
                         break;
                     }
                 }
 
                 // 2026-05-02: also boost direct prereqs of rev-gate techs.
-                // Without this, AI sees only one of the three rev techs is
-                // currently available (the others gated by prereqs) and
-                // chases something unrelated. Smaller bump (+8000) since
-                // it's a transitive incentive — gets full +15000 when the
-                // rev tech itself enters the available set.
+                // 2026-05-03: prereq bonus +8000 → +14000 (per direct match).
+                // Combined with +25000 on the rev tech itself, the path to
+                // IR #3 (Computers ← Electricity, Semiconductors ← Precision)
+                // gets weight comparable to mid-game generic unlocks even
+                // before the headline tech enters the available set.
                 for (const uint32_t reqTechId : nextRevTechs) {
                     if (reqTechId == 0xFFFFu) { continue; }
                     const TechDef& reqDef =
                         techDef(TechId{static_cast<uint16_t>(reqTechId)});
                     for (const TechId& p : reqDef.prerequisites) {
                         if (p.value == tid.value) {
-                            score += 8000;
+                            score += 14000;
                             break;
                         }
                     }
