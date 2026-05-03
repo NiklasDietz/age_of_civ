@@ -1108,7 +1108,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
         // need that other branches don't cover. Cap at 2 per civ; once
         // exploration done, scouts naturally lose to other candidates.
         {
-            const int32_t scoutCap = 3;
+            const int32_t scoutCap = 2;
             if (unitCounts.scouts < scoutCap) {
                 ProductionCandidate candidate{};
                 candidate.item.type      = ProductionItemType::Unit;

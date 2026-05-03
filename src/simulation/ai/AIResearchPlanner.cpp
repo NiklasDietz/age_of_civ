@@ -250,6 +250,14 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
                     }
                 }
 
+                // 2026-05-03: Navigation (TechId 30) unlocks ocean traversal
+                // for both embarked land units and naval units. Without it
+                // ships sit on coastal water and trade routes that cross
+                // ocean fail. Big flat bonus so AI prioritises it early.
+                if (tid.value == 30u) {
+                    score += 18000;
+                }
+
                 if (score > bestScore) {
                     bestScore = score;
                     best = tid;

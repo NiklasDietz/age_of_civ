@@ -25,7 +25,9 @@ std::vector<TechDef> buildTechDefs() {
     techs.push_back({TechId{3}, "Writing", EraId{0}, 40, {{TechId{2}}}, {}, {BuildingId{7}}, {}});
 
     // Era 1: Classical -- costs 50-80 (5-10 turns each)
-    techs.push_back({TechId{4}, "Bronze Working", EraId{1}, 60, {{TechId{0}}}, {}, {}, {UnitTypeId{0}}});
+    // 2026-05-03: Bronze Working moved Classical → Ancient (matches Civ6;
+    // it's a Mining-tier metallurgy tech, not Classical). Cost dropped 60→35.
+    techs.push_back({TechId{4}, "Bronze Working", EraId{0}, 35, {{TechId{0}}}, {}, {}, {UnitTypeId{0}}});
     techs.push_back({TechId{5}, "Currency", EraId{1}, 65, {{TechId{3}}}, {}, {BuildingId{6}}, {}});
     techs.push_back({TechId{6}, "Engineering", EraId{1}, 80, {{TechId{0}, TechId{2}}}, {}, {}, {}});
 
@@ -67,7 +69,11 @@ std::vector<TechDef> buildTechDefs() {
         {{TechId{8}, TechId{11}}},  // Metallurgy + Industrialization
         {}, {BuildingId{10}}, {}});  // Unlocks Precision Workshop
 
-    techs.push_back({TechId{19}, "Interchangeable Parts", EraId{4}, 1200,
+    // 2026-05-03: Interchangeable Parts Industrial → Modern (era 4 → 5) to
+    // match Civ6. Whitney's interchangeable-parts breakthrough was 1801,
+    // but the tech is conceptually a Modern manufacturing-era enabler.
+    // Cost bumped 1200 → 1500 (Modern band 1500-1800).
+    techs.push_back({TechId{19}, "Interchangeable Parts", EraId{5}, 1500,
         {{TechId{18}}},  // Surface Plate
         {}, {}, {}});
 
@@ -90,8 +96,10 @@ std::vector<TechDef> buildTechDefs() {
         {{TechId{19}, TechId{14}}},  // Interchangeable Parts + Electricity
         {}, {}, {}});
 
-    // Era 5: Modern -- semiconductors.
-    techs.push_back({TechId{23}, "Semiconductors", EraId{5}, 2100,
+    // 2026-05-03: Semiconductors Modern → Information (era 5 → 6) to match
+    // Civ6 Atomic/Information era — transistor invented 1947. Cost bumped
+    // to Information band 2600-2800.
+    techs.push_back({TechId{23}, "Semiconductors", EraId{6}, 2700,
         {{TechId{22}}},  // Precision Instruments
         {}, {BuildingId{11}}, {}});  // Unlocks Semiconductor Fab
 
@@ -99,7 +107,10 @@ std::vector<TechDef> buildTechDefs() {
         {{TechId{12}}},  // Refining
         {}, {}, {}});
 
-    // Era 5: Modern -- telecommunications.
+    // Era 5: Modern -- telecommunications. Civ6 puts this in Information era
+    // (telegraph→radio→TV→internet bundled), but our game gates the Electric
+    // Age Industrial Revolution on it, so Modern-era is the correct slot.
+    // Real-history radio + telephone are 19th-century inventions = Modern era.
     techs.push_back({TechId{25}, "Telecommunications", EraId{5}, 1850,
         {{TechId{14}}},  // Electricity
         {}, {BuildingId{13}}, {}});  // Unlocks Telecom Hub
@@ -123,6 +134,201 @@ std::vector<TechDef> buildTechDefs() {
     techs.push_back({TechId{29}, "Ecology", EraId{6}, 2400,
         {{TechId{24}}},  // Advanced Chemistry
         {}, {BuildingId{33}}, {}});  // Unlocks Biofuel Plant
+
+    // Era 3: Medieval/Renaissance -- Navigation. Unlocks ocean tile traversal
+    // for embarked land units and naval units. Coastal / shallow-water
+    // travel works from game start (canoes, rafts, coasters); deep ocean
+    // requires astronomical instruments + dead-reckoning. Real-history
+    // analogue: Polynesian / Norse coastal travel was prehistoric, but
+    // open-ocean blue-water navigation needed magnetic compass + astrolabe
+    // + cartography (~12-15th century). Civ6 puts Cartography in Medieval.
+    // Cost matches Banking (350) era-3 baseline. Prereq Apprenticeship (7).
+    techs.push_back({TechId{30}, "Navigation", EraId{3}, 320,
+        {{TechId{7}}},
+        {}, {}, {}});
+
+    // ================================================================
+    // Civ6-parity additions (IDs 31-50). 2026-05-03.
+    // The expanded-tech array's Ancient/Classical entries collided with
+    // base IDs and were silently skipped, so the tree was missing core
+    // Civ6 techs (Sailing, Astrology, Masonry, The Wheel, Archery, etc.).
+    // Add them explicitly here. Prereqs reference base IDs only.
+    // Costs follow band: Ancient 20-40, Classical 50-80, Medieval 160-240.
+    // ================================================================
+
+    // Era 0: Ancient -- naval bootstrap
+    techs.push_back({TechId{31}, "Sailing", EraId{0}, 30, {}, {}, {}, {}});
+    // Era 0: Ancient -- shrine, religion seed
+    techs.push_back({TechId{32}, "Astrology", EraId{0}, 30, {}, {}, {}, {}});
+    // Era 0: Ancient -- masonry / walls
+    techs.push_back({TechId{33}, "Masonry", EraId{0}, 35,
+        {{TechId{0}}}, {}, {}, {}});  // Mining
+    // Era 0: Ancient -- wheel / chariots
+    techs.push_back({TechId{34}, "The Wheel", EraId{0}, 35,
+        {{TechId{0}}}, {}, {}, {}});  // Mining
+    // Era 0: Ancient -- archery
+    techs.push_back({TechId{35}, "Archery", EraId{0}, 30,
+        {{TechId{1}}}, {}, {}, {}});  // Animal Husbandry
+    // Era 0: Ancient -- plantation / irrigation
+    techs.push_back({TechId{36}, "Irrigation", EraId{0}, 30,
+        {{TechId{2}}}, {}, {}, {}});  // Pottery
+    // Era 0: Ancient -- iron-grade swords
+    techs.push_back({TechId{37}, "Iron Working", EraId{0}, 40,
+        {{TechId{4}}}, {}, {}, {}});  // Bronze Working
+
+    // Era 1: Classical -- math
+    techs.push_back({TechId{38}, "Mathematics", EraId{1}, 70,
+        {{TechId{5}}}, {}, {}, {}});  // Currency
+    // Era 1: Classical -- construction
+    techs.push_back({TechId{39}, "Construction", EraId{1}, 75,
+        {{TechId{33}}}, {}, {}, {}});  // Masonry
+    // Era 1: Classical -- mounted units
+    techs.push_back({TechId{40}, "Horseback Riding", EraId{1}, 60,
+        {{TechId{1}}}, {}, {}, {}});  // Animal Husbandry
+    // Era 1: Classical -- celestial nav (Galley range bump in Civ6)
+    techs.push_back({TechId{41}, "Celestial Navigation", EraId{1}, 70,
+        {{TechId{31}}}, {}, {}, {}});  // Sailing
+    // Era 1: Classical -- larger ships
+    techs.push_back({TechId{42}, "Shipbuilding", EraId{1}, 75,
+        {{TechId{31}}}, {}, {}, {}});  // Sailing
+    // Era 2: Medieval -- military engineering
+    techs.push_back({TechId{43}, "Military Engineering", EraId{2}, 200,
+        {{TechId{6}, TechId{39}}}, {}, {}, {}});  // Engineering + Construction
+    // Era 2: Medieval -- university branch
+    techs.push_back({TechId{44}, "Education", EraId{2}, 220,
+        {{TechId{38}, TechId{7}}}, {}, {}, {}});  // Math + Apprenticeship
+    // Era 3: Renaissance -- astronomy
+    techs.push_back({TechId{45}, "Astronomy", EraId{3}, 360,
+        {{TechId{44}}}, {}, {}, {}});  // Education
+    // Era 3: Renaissance -- larger sail rigs
+    techs.push_back({TechId{46}, "Square Rigging", EraId{3}, 380,
+        {{TechId{30}}}, {}, {}, {}});  // Navigation
+    // Era 5: Modern -- steel
+    techs.push_back({TechId{47}, "Steel", EraId{5}, 1700,
+        {{TechId{8}}}, {}, {}, {}});  // Metallurgy
+    // Era 5: Modern -- replaceable parts (interchangeable assembly line)
+    techs.push_back({TechId{48}, "Replaceable Parts", EraId{5}, 1700,
+        {{TechId{19}}}, {}, {}, {}});  // Interchangeable Parts
+    // Era 6: Atomic -- lasers
+    techs.push_back({TechId{49}, "Lasers", EraId{6}, 2700,
+        {{TechId{17}}}, {}, {}, {}});  // Nuclear Fission
+    // Era 6: Atomic -- composites
+    techs.push_back({TechId{50}, "Composites", EraId{6}, 2600,
+        {{TechId{24}}}, {}, {}, {}});  // Advanced Chemistry
+
+    // ================================================================
+    // Civ6 medieval / industrial / modern parity (IDs 51-71). 2026-05-03.
+    // Previously these came from EXPANDED_TECHS array but got skipped
+    // when maxBaseId rose past 30. Defining explicitly so AI can research
+    // and prereq chains stay deterministic.
+    // ================================================================
+    // Era 2: Medieval
+    techs.push_back({TechId{51}, "Machinery", EraId{2}, 200,
+        {{TechId{37}, TechId{6}}}, {}, {}, {}});  // Iron Working + Engineering
+    techs.push_back({TechId{52}, "Stirrups", EraId{2}, 180,
+        {{TechId{40}, TechId{37}}}, {}, {}, {}});  // Horseback Riding + Iron
+    techs.push_back({TechId{53}, "Military Tactics", EraId{2}, 200,
+        {{TechId{38}}}, {}, {}, {}});  // Mathematics
+    techs.push_back({TechId{54}, "Castles", EraId{2}, 230,
+        {{TechId{39}, TechId{53}}}, {}, {}, {}});  // Construction + MilTac
+    // Era 3: Renaissance
+    techs.push_back({TechId{55}, "Printing", EraId{3}, 320,
+        {{TechId{44}}}, {}, {}, {}});  // Education
+    techs.push_back({TechId{56}, "Cartography", EraId{3}, 320,
+        {{TechId{30}}}, {}, {}, {}});  // Navigation
+    techs.push_back({TechId{57}, "Siege Tactics", EraId{3}, 380,
+        {{TechId{53}, TechId{54}}}, {}, {}, {}});  // MilTac + Castles
+    techs.push_back({TechId{58}, "Metal Casting", EraId{3}, 360,
+        {{TechId{37}, TechId{10}}}, {}, {}, {}});  // Iron + Gunpowder
+    // Era 4: Industrial
+    techs.push_back({TechId{59}, "Scientific Theory", EraId{4}, 950,
+        {{TechId{45}}}, {}, {}, {}});  // Astronomy
+    techs.push_back({TechId{60}, "Ballistics", EraId{4}, 1020,
+        {{TechId{58}}}, {}, {}, {}});  // Metal Casting
+    techs.push_back({TechId{61}, "Steam Power", EraId{4}, 1100,
+        {{TechId{11}}}, {}, {}, {}});  // Industrialization
+    techs.push_back({TechId{62}, "Sanitation", EraId{4}, 980,
+        {{TechId{59}}}, {}, {}, {}});  // Scientific Theory
+    techs.push_back({TechId{63}, "Rifling", EraId{4}, 1050,
+        {{TechId{60}, TechId{10}}}, {}, {}, {}});  // Ballistics + Gunpowder
+    // Era 5: Modern
+    techs.push_back({TechId{64}, "Flight", EraId{5}, 1700,
+        {{TechId{61}, TechId{59}}}, {}, {}, {}});  // SteamPower + SciTheory
+    techs.push_back({TechId{65}, "Chemistry", EraId{5}, 1600,
+        {{TechId{62}}}, {}, {}, {}});  // Sanitation
+    techs.push_back({TechId{66}, "Combustion", EraId{5}, 1700,
+        {{TechId{12}, TechId{65}}}, {}, {}, {}});  // Refining + Chemistry
+    // Era 6: Atomic / Information
+    techs.push_back({TechId{67}, "Plastics", EraId{6}, 2400,
+        {{TechId{12}}}, {}, {}, {}});  // Refining
+    techs.push_back({TechId{68}, "Synthetic Materials", EraId{6}, 2600,
+        {{TechId{67}}}, {}, {}, {}});  // Plastics
+    techs.push_back({TechId{69}, "Combined Arms", EraId{6}, 2700,
+        {{TechId{47}, TechId{66}}}, {}, {}, {}});  // Steel + Combustion
+    techs.push_back({TechId{70}, "Robotics", EraId{6}, 2800,
+        {{TechId{16}, TechId{68}}}, {}, {}, {}});  // Computers + SyntMat
+    techs.push_back({TechId{71}, "Satellites", EraId{6}, 2700,
+        {{TechId{64}}}, {}, {}, {}});  // Flight
+
+    // ================================================================
+    // Future-era techs (IDs 72-76). 2026-05-03.
+    // Concepts with no clean Civ6 analogue, gating advanced production
+    // chains beyond the standard tree.
+    // ================================================================
+    techs.push_back({TechId{72}, "Bioengineering", EraId{7}, 3500,
+        {{TechId{65}}}, {}, {}, {}});  // Chemistry
+    techs.push_back({TechId{73}, "Cybernetics", EraId{7}, 3600,
+        {{TechId{70}}}, {}, {}, {}});  // Robotics
+    techs.push_back({TechId{74}, "Quantum Computing", EraId{7}, 3800,
+        {{TechId{16}, TechId{49}}}, {}, {}, {}});  // Computers + Lasers
+    techs.push_back({TechId{75}, "Genetic Engineering", EraId{7}, 3500,
+        {{TechId{72}}}, {}, {}, {}});  // Bioengineering
+    techs.push_back({TechId{76}, "Smart Materials", EraId{7}, 3700,
+        {{TechId{50}, TechId{68}}}, {}, {}, {}});  // Composites + SyntMat
+
+    // ================================================================
+    // 2026-05-03: chain-step unlock additions to existing techs
+    // (Option B from sweep design discussion). Existing techs absorb
+    // good-unlocks rather than creating dedicated chain techs. Keeps the
+    // tree at ~80 techs instead of 110+.
+    // ================================================================
+    // Pottery → Glass + Clay (kiln tech historically does both).
+    {
+        for (TechDef& t : techs) {
+            if (t.id.value == 2) {  // Pottery
+                t.unlockedGoods.push_back(76);  // GLASS
+                t.unlockedGoods.push_back(47);  // CLAY
+                break;
+            }
+        }
+    }
+    // Mining → Charcoal (kiln burning charcoal from wood).
+    {
+        for (TechDef& t : techs) {
+            if (t.id.value == 0) {  // Mining
+                t.unlockedGoods.push_back(79);  // CHARCOAL
+                break;
+            }
+        }
+    }
+    // Bronze Working → Lumber (better tools = sawn lumber not just wood).
+    {
+        for (TechDef& t : techs) {
+            if (t.id.value == 4) {  // Bronze Working
+                t.unlockedGoods.push_back(62);  // LUMBER
+                break;
+            }
+        }
+    }
+    // Ecology → Biofuel.
+    {
+        for (TechDef& t : techs) {
+            if (t.id.value == 29) {  // Ecology
+                t.unlockedGoods.push_back(81);  // BIOFUEL
+                break;
+            }
+        }
+    }
 
     // Append expanded techs (only IDs > max base ID to avoid overlap).
     // H3.1: expanded techs reference prereqs by their *original* expanded IDs,

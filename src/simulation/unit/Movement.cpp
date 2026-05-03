@@ -121,17 +121,30 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
         const int32_t tileIndex = grid.toIndex(nextTile);
         int32_t cost = 0;
         if (unit.isNaval()) {
-            cost = grid.navalMovementCost(tileIndex);
+            // 2026-05-03: Navigation tech (id 30) gates Ocean for naval units
+            // too. Without it, ships are coast/shallow-water only — matches
+            // the same rule applied to embarked land units.
+            aoc::game::Player* navOwner = gameState.player(unit.owner());
+            const bool hasNavigation = navOwner != nullptr
+                && navOwner->tech().hasResearched(aoc::TechId{30});
+            cost = hasNavigation
+                ? grid.navalMovementCost(tileIndex)
+                : grid.shallowNavalMovementCost(tileIndex);
         } else if (unit.state() == aoc::sim::UnitState::Embarked) {
-            // Embarked land units may only traverse coast tiles. Any other
-            // water class (Ocean, Shallow, Lake) is impassable for embarked
-            // movement — the unit must wait for the carrying naval unit to
-            // ferry it. Explicit reject makes the guard unambiguous.
+            // 2026-05-03: embarked land units traverse Coast and ShallowWater
+            // freely (canoes, coastal sailing). Ocean tiles require Navigation
+            // tech (TechId 30). Lakes / impassable still blocked.
             const aoc::map::TerrainType terrain = grid.terrain(tileIndex);
-            if (terrain == aoc::map::TerrainType::Coast) {
+            if (terrain == aoc::map::TerrainType::Coast
+                || terrain == aoc::map::TerrainType::ShallowWater) {
                 cost = 2;
+            } else if (terrain == aoc::map::TerrainType::Ocean) {
+                aoc::game::Player* navOwner = gameState.player(unit.owner());
+                const bool hasNavigation = navOwner != nullptr
+                    && navOwner->tech().hasResearched(aoc::TechId{30});
+                cost = hasNavigation ? 3 : 0;
             } else {
-                cost = 0;  // explicit: anything else blocks the step
+                cost = 0;  // Lakes / other water types still blocked
             }
         } else {
             cost = grid.movementCost(tileIndex);

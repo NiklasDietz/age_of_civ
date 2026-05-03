@@ -31,7 +31,11 @@ bool tryEmbark(aoc::game::Unit& unit,
         return false;
     }
     const int32_t targetIndex = grid.toIndex(coastTile);
-    if (grid.terrain(targetIndex) != aoc::map::TerrainType::Coast) {
+    // 2026-05-03: embark allowed on Coast OR ShallowWater (canoes, rafts).
+    // Open Ocean still requires Navigation tech, gated in Movement.cpp.
+    const aoc::map::TerrainType terr = grid.terrain(targetIndex);
+    if (terr != aoc::map::TerrainType::Coast
+        && terr != aoc::map::TerrainType::ShallowWater) {
         return false;
     }
     if (grid.distance(unit.position(), coastTile) != 1) {
