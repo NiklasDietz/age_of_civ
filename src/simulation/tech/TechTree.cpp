@@ -90,9 +90,8 @@ std::vector<TechDef> buildTechDefs() {
         {}, {BuildingId{9}}, {}});  // Unlocks Food Processing Plant
 
     // Era 5: Modern -- precision instruments.
-    // 2026-05-02: cost 1850 → 1300 → 900. Electric-Age rev gate retains
-    // all three tech reqs; cheaper to actually reach the 2nd revolution.
-    techs.push_back({TechId{22}, "Precision Instruments", EraId{5}, 900,
+    // 2026-05-03: 1850 → 900 → 600. Audit showed only 46% civs reached it.
+    techs.push_back({TechId{22}, "Precision Instruments", EraId{5}, 600,
         {{TechId{19}, TechId{14}}},  // Interchangeable Parts + Electricity
         {}, {}, {}});
 
@@ -108,10 +107,9 @@ std::vector<TechDef> buildTechDefs() {
         {}, {}, {}});
 
     // Era 5: Modern -- telecommunications. Civ6 puts this in Information era
-    // (telegraph→radio→TV→internet bundled), but our game gates the Electric
-    // Age Industrial Revolution on it, so Modern-era is the correct slot.
-    // Real-history radio + telephone are 19th-century inventions = Modern era.
-    techs.push_back({TechId{25}, "Telecommunications", EraId{5}, 1850,
+    // but our game gates the Electric Age IR on it.
+    // 2026-05-03: 1850 → 1100 to clear the IR #2 bottleneck (was 22% reach).
+    techs.push_back({TechId{25}, "Telecommunications", EraId{5}, 1100,
         {{TechId{14}}},  // Electricity
         {}, {BuildingId{13}}, {}});  // Unlocks Telecom Hub
 

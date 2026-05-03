@@ -341,8 +341,8 @@ CurrencyAmount computeCargoValue(const std::vector<TradeCargo>& cargo, const Mar
 ///   - +2 per Stock Exchange (21)
 ///   - +1 per Trading Post improvement on any owned tile
 ///   - +greatPeople.extraTradeSlots (Merchant GP)
-int32_t computeTotalTradeSlots(const aoc::game::Player& player,
-                                const aoc::map::HexGrid& grid) {
+static int32_t computeTotalTradeSlotsImpl(const aoc::game::Player& player,
+                                           const aoc::map::HexGrid& grid) {
     int32_t total = player.monetary().maxTradeRoutes()
                   + player.greatPeople().extraTradeSlots;
     for (const std::unique_ptr<aoc::game::City>& cityPtr : player.cities()) {
@@ -472,6 +472,11 @@ bool areInFreeTradeAgreement(const aoc::game::Player& territoryOwner, PlayerId t
 
 } // anonymous namespace
 
+int32_t computeTotalTradeSlots(const aoc::game::Player& player,
+                                const aoc::map::HexGrid& grid) {
+    return computeTotalTradeSlotsImpl(player, grid);
+}
+
 ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
                                aoc::map::HexGrid& grid,
                                const Market& market,
@@ -534,7 +539,7 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     // baseline + Markets/Banks/Stock Exchanges anywhere in the civ +
     // Trading Posts on owned tiles + Merchant GP slots.
     {
-        const int32_t cap = computeTotalTradeSlots(*ownerPlayer, grid);
+        const int32_t cap = computeTotalTradeSlotsImpl(*ownerPlayer, grid);
         // 2026-05-02: only count traders that already have an assigned route.
         // Previously every idle Trader unit (default trader.owner=INVALID)
         // was counted, so a civ with 5 idle Caravans waiting for civics

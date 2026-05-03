@@ -107,9 +107,15 @@ inline constexpr std::array<RevolutionDef, 5> REVOLUTION_DEFS = {{
       {rev_goods::CHARCOAL, rev_goods::IRON_ORE, rev_goods::NONE}, 1},
      {1.50f, 1.0f, 1.0f, 0.5f, 1.15f, 1.5f, true, false, false, false}},
 
-    // 2nd: Electric Age -- Electricity(14) + Precision Instruments(22) + Telecommunications(25).
+    // 2nd: Electric Age -- Electricity(14) + Precision Instruments(22) + Steel(47).
+    // 2026-05-03: replaced Telecommunications(25) requirement. Telecom is
+    // DOWNSTREAM of electricity historically (telegraph 1840s, telephone
+    // 1876, radio 1890s — all post-electrification). Steel(47) is the right
+    // companion gate: Bessemer process + electric arc furnace are the
+    // hallmark Electric Age technologies. Civ6 doesn't bundle Telecom
+    // into Electric Age either.
     {IndustrialRevolutionId::Second, "Electric Age",
-     {{TechId{14}, TechId{22}, TechId{25}},
+     {{TechId{14}, TechId{22}, TechId{47}},
       {rev_goods::OIL, rev_goods::STEEL_GOOD, rev_goods::NONE}, 2},
      {1.25f, 1.5f, 1.10f, 1.0f, 1.10f, 1.3f, true, false, false, false}},
 

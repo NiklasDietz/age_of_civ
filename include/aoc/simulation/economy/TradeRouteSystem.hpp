@@ -42,7 +42,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace aoc::game { class GameState; class Unit; class City; }
+namespace aoc::game { class GameState; class Unit; class City; class Player; }
 namespace aoc::map { class HexGrid; }
 namespace aoc::sim { class Market; class DiplomacyManager; }
 
@@ -201,6 +201,11 @@ struct TraderComponent {
                                              const DiplomacyManager* diplomacy,
                                              aoc::game::Unit& traderUnit,
                                              aoc::game::City& destCity);
+
+/// Civ-wide trade slot pool (monetary tier + Markets/Banks/Stock Exchanges
+/// + Trading Posts + Merchant GP slots + great-people bonuses).
+[[nodiscard]] int32_t computeTotalTradeSlots(const aoc::game::Player& player,
+                                              const aoc::map::HexGrid& grid);
 
 /**
  * @brief Process all active trade routes for one turn.

@@ -501,6 +501,14 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
                         placed = ResourceId{aoc::sim::goods::WOOD};
                     } else if (resRng.chance(0.04f)) {
                         placed = ResourceId{aoc::sim::goods::CATTLE};
+                    } else if (resRng.chance(0.04f)
+                               && (terrain == TerrainType::Grassland
+                                   || terrain == TerrainType::Plains)) {
+                        // 2026-05-03: HORSES placement was missing entirely
+                        // from geology pass — Knights/Cavalry/Cuirassier
+                        // need {4 (Horses), …} resource and audit showed 0
+                        // horse tiles on Continents maps.
+                        placed = ResourceId{aoc::sim::goods::HORSES};
                     } else if (resRng.chance(0.03f)) {
                         placed = ResourceId{aoc::sim::goods::SALT};
                     } else if (resRng.chance(0.03f)) {

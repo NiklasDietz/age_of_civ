@@ -698,6 +698,19 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 }
 
                 int32_t robotSlots = city->automation().bonusRecipeSlots();
+                // 2026-05-03: Industrial Revolution tier grants free robot
+                // capacity. Singapore model — a tech-rich small civ can
+                // out-produce a populous low-tech one without needing to
+                // mass-produce Robot Worker goods first.
+                //   IR #3 Digital Age: +3 free slots per city
+                //   IR #4 Information Age: +6 (cumulative)
+                //   IR #5 Post-Industrial: +10
+                {
+                    const auto rev = playerPtr->industrial().currentRevolution;
+                    if (rev >= IndustrialRevolutionId::Third)        { robotSlots += 3; }
+                    if (rev >= IndustrialRevolutionId::Fourth)       { robotSlots += 3; }
+                    if (rev >= IndustrialRevolutionId::Fifth)        { robotSlots += 4; }
+                }
                 const int32_t maxSlots = totalWorkerCapacity(city->population(), robotSlots);
                 // Each recipe consumes workerSlots (1 for basic, 2-3 for advanced).
                 // A city can only run recipes whose total slots fit within capacity.

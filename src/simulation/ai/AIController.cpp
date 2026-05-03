@@ -2791,6 +2791,22 @@ void AIController::manageTradeRoutes(aoc::game::GameState& gameState, aoc::map::
 
     if (idleTraders.empty()) { return; }
 
+    // 2026-05-03: skip the whole scoring loop when civ already saturated
+    // its trade-route cap. Audit showed 82k "at cap" rejection logs per
+    // 72-sim run because every idle trader probed every turn. Cheap up-front
+    // check avoids the expensive city-scan + establishTradeRoute call.
+    {
+        const int32_t cap = computeTotalTradeSlots(*gsPlayer, grid);
+        int32_t activeRoutes = 0;
+        for (const std::unique_ptr<aoc::game::Unit>& u : gsPlayer->units()) {
+            if (u == nullptr) { continue; }
+            if (u->typeDef().unitClass != UnitClass::Trader) { continue; }
+            if (u->trader().owner == INVALID_PLAYER) { continue; }
+            ++activeRoutes;
+        }
+        if (activeRoutes >= cap) { return; }
+    }
+
     const aoc::sim::PlayerEconomyComponent& myEcon = gsPlayer->economy();
 
     for (aoc::game::Unit* traderUnit : idleTraders) {

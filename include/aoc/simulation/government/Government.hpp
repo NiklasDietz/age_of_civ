@@ -114,7 +114,7 @@ inline constexpr std::array<GovernmentDef, GOVERNMENT_COUNT> GOVERNMENT_DEFS = {
 // Policy card definitions -- ALL 22 with real modifiers
 // ============================================================================
 
-inline constexpr uint8_t POLICY_CARD_COUNT = 22;
+inline constexpr uint8_t POLICY_CARD_COUNT = 36;
 
 struct PolicyCardDef {
     uint8_t            id;
@@ -173,6 +173,26 @@ inline constexpr std::array<PolicyCardDef, POLICY_CARD_COUNT> POLICY_CARD_DEFS =
                                                                0.0f, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.0f, 10.0f, 0.0f, 0.0f, -0.30f, 1.0f}}, // +10 loyalty, -30% war weariness
     {21, "Laissez-Faire",    PolicySlotType::Wildcard,     8, {1.0f, 1.15f, 0.0f, 1.0f, 1.0f,
                                                                0.0f, 0.0f, 0.0f, 0, 0.0f, -0.02f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.10f}}, // +15% gold, -2% corruption red (more corruption), +10% growth
+
+    // === 2026-05-03: 14 new policy cards tied to expanded civics (14-46) ===
+    {22, "Logistics",        PolicySlotType::Economic,    14, {1.05f, 1.0f, 0.0f, 1.0f, 1.0f}}, // State Workforce: +5% prod
+    {23, "Imperialism",      PolicySlotType::Military,    15, {1.0f, 1.0f, 4.0f, 1.0f, 1.0f}}, // Early Empire: +4 combat
+    {24, "Religious Order",  PolicySlotType::Wildcard,    16, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+                                                               0.0f, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.15f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // Mysticism: +15% faith
+    {25, "Drama Festivals",  PolicySlotType::Wildcard,    17, {1.0f, 1.0f, 0.0f, 1.0f, 1.10f}}, // Drama: +10% culture
+    {26, "Naval Patrols",    PolicySlotType::Military,    22, {1.0f, 1.0f, 3.0f, 1.0f, 1.0f}}, // Naval Tradition: +3 combat
+    {27, "Bureaucracy",      PolicySlotType::Economic,    23, {1.0f, 1.05f, 0.0f, 1.0f, 1.0f}}, // Civil Service: +5% gold
+    {28, "Dual Monarchy",    PolicySlotType::Diplomatic,  24, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+                                                               0.0f, 0.0f, 0.0f, 0, 0.0f, 0.0f, 1.0f, 2.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // Divine Right: +2 loyalty
+    {29, "Public Schools",   PolicySlotType::Wildcard,    27, {1.0f, 1.0f, 0.0f, 1.10f, 1.0f}}, // Humanism: +10% science
+    {30, "International Law",PolicySlotType::Diplomatic,  28, {1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+                                                               0.0f, 0.0f, 0.0f, 1, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // Dipl Service: +1 trade route, +1 dipl
+    {31, "Total War",        PolicySlotType::Military,    37, {1.05f, 1.0f, 5.0f, 1.0f, 1.0f}}, // Mobilization: +5% prod, +5 combat
+    {32, "Five-Year Plan",   PolicySlotType::Economic,    38, {1.15f, 1.0f, 0.0f, 1.0f, 1.0f}}, // Ideology: +15% prod
+    {33, "Space Cooperation",PolicySlotType::Diplomatic,  42, {1.0f, 1.0f, 0.0f, 1.05f, 1.0f,
+                                                               0.0f, 0.0f, 0.0f, 1, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f}}, // Space Race: +5% science, +1 trade route
+    {34, "New Deal",         PolicySlotType::Economic,    35, {1.0f, 1.05f, 0.0f, 1.0f, 1.0f}}, // Conservation: +5% gold
+    {35, "Information Society",PolicySlotType::Wildcard,  43, {1.0f, 1.0f, 0.0f, 1.05f, 1.05f}}, // Social Media: +5% sci, +5% culture
 }};
 
 [[nodiscard]] inline constexpr const PolicyCardDef& policyCardDef(uint8_t id) {
