@@ -1051,6 +1051,28 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
                     (cityPtr->population() - 10) / 3 + 1);
             }
 
+            // 2026-05-03: industrial-good demand from active recipe inputs.
+            // Civs running a downstream recipe report demand for its inputs;
+            // missing inputs report demand even when output recipe can't
+            // fire, creating real chain pull. Without this, advanced goods
+            // (Steel, Semi, Microchips) had near-zero demand → low market
+            // price → recipe ranker deprioritised them → chain attrition.
+            const aoc::sim::CityDistrictsComponent& cdists = cityPtr->districts();
+            for (const ProductionRecipe& rcp : allRecipes()) {
+                if (!cdists.hasBuilding(rcp.requiredBuilding)) { continue; }
+                if (rcp.requiredTech.isValid()
+                    && !playerPtr->tech().hasResearched(rcp.requiredTech)) {
+                    continue;
+                }
+                // Each recipe a city CAN run reports demand for its inputs.
+                // Demand scaled to output value so high-tier chains generate
+                // proportional pull on intermediates.
+                for (const RecipeInput& in : rcp.inputs) {
+                    if (!in.consumed) { continue; }
+                    this->m_market.reportDemand(in.goodId, in.amount);
+                }
+            }
+
             // Actual consumption drain: convert population demand into real
             // stockpile depletion so there is pull on the production chain.
             // Without this, reporting demand to the market did nothing —

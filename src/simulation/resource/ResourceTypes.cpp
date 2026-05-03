@@ -259,32 +259,41 @@ std::vector<ProductionRecipe> buildRecipes() {
     // now produce PRECISION_INSTRUMENTS directly.  Two paths: an Iron-age
     // basic version and an Industrial glass/copper-wire premium.
     // ================================================================
+    // 2026-05-03: precision-chain outputs bumped so the late-tech ladder
+    // (Precision → Interchangeable → Semi → Microchip → Computer) doesn't
+    // bleed civs at every step. Audit showed 32 civs ran Precision but
+    // only 5 ran Semiconductors next; doubling outputs lets one batch
+    // feed the next two chain steps without re-fire bottleneck.
     recipes.push_back({18, "Build Precision Instruments (Basic)",
         {{goods::IRON_INGOTS, 2}, {goods::STONE, 1}},
-        goods::PRECISION_INSTRUMENTS, 1, BuildingId{10}, 2});
+        goods::PRECISION_INSTRUMENTS, 2, BuildingId{10}, 2});
 
     recipes.push_back({19, "Build Precision Instruments",
         {{goods::IRON_INGOTS, 1}, {goods::COPPER_WIRE, 1}, {goods::GLASS, 1}},
-        goods::PRECISION_INSTRUMENTS, 2, BuildingId{10}, 2});
+        goods::PRECISION_INSTRUMENTS, 3, BuildingId{10}, 2});
 
     recipes.push_back({20, "Standardize Parts",
         {{goods::PRECISION_INSTRUMENTS, 1}, {goods::STEEL, 1}, {goods::MACHINERY, 1}},
-        goods::INTERCHANGEABLE_PARTS, 2, BuildingId{10}, 2});
+        goods::INTERCHANGEABLE_PARTS, 3, BuildingId{10}, 2});
 
     // ================================================================
-    // NEW: Semiconductor -> Microchip -> Computer -> Software chain
-    // ================================================================
+    // Semiconductor -> Microchip -> Computer -> Software chain.
+    // 2026-05-03: outputs bumped (1→2 / 1→2 / 1→2) to make this chain
+    // profitable enough for the recipe ranker to prioritise. Audit showed
+    // only 5/432 civs ever produced Semiconductors despite 37 building
+    // Semi Fab — recipes ranked below higher-output basic chains. Doubling
+    // output flips the profitability comparison and lets IR #3 fire.
     recipes.push_back({21, "Fabricate Semiconductors",
         {{goods::PRECISION_INSTRUMENTS, 1}, {goods::COPPER_WIRE, 2}},
-        goods::SEMICONDUCTORS, 1, BuildingId{11}, 3});
+        goods::SEMICONDUCTORS, 2, BuildingId{11}, 3});
 
     recipes.push_back({22, "Produce Microchips",
         {{goods::SEMICONDUCTORS, 2}, {goods::ELECTRONICS, 1}},
-        goods::MICROCHIPS, 1, BuildingId{11}, 3});
+        goods::MICROCHIPS, 2, BuildingId{11}, 3});
 
     recipes.push_back({23, "Assemble Computers",
         {{goods::MICROCHIPS, 1}, {goods::PLASTICS, 1}, {goods::ELECTRONICS, 1}},
-        goods::COMPUTERS_GOOD, 1, BuildingId{4}, 2});
+        goods::COMPUTERS_GOOD, 2, BuildingId{4}, 2});
 
     // Software: two paths, reflecting the knowledge-economy idea that a
     // resource-poor civ with strong research infrastructure can still
