@@ -145,9 +145,13 @@ inline constexpr std::array<UnitTypeDef, 79> UNIT_TYPE_DEFS = {{
     // MELEE INFANTRY: Warrior -> Swordsman -> Man-at-Arms -> Musketman -> Infantry -> Mech Infantry
     // ========================================================================
     {UnitTypeId{0},  "Warrior",         UnitClass::Melee,    UnitEra::Ancient,      100, 20,  0, 0, 2,  40, TechId{},   UnitTypeId{10}, 50},
-    {UnitTypeId{10}, "Swordsman",       UnitClass::Melee,    UnitEra::Classical,    110, 35,  0, 0, 2,  90, TechId{2},  UnitTypeId{33}, 80,  {{60, 1}}},             // 1 Iron Ingots
-    {UnitTypeId{33}, "Man-at-Arms",     UnitClass::Melee,    UnitEra::Medieval,     120, 45,  0, 0, 2, 120, TechId{5},  UnitTypeId{34}, 100, {{64, 1}}},             // 1 Steel
-    {UnitTypeId{34}, "Musketman",       UnitClass::Melee,    UnitEra::Renaissance,  130, 55,  0, 0, 2, 160, TechId{8},  UnitTypeId{15}, 120, {{5, 1}}},              // 1 Niter
+    // 2026-05-03: melee chain rewired against post-tree-expansion IDs.
+    // Swordsman gated by Iron Working (37, was Pottery 2). Man-at-Arms by
+    // Castles (54, was Currency 5). Musketman by Gunpowder (10) — existing
+    // Metallurgy(8) prereq drifts off Civ6's Gunpowder model.
+    {UnitTypeId{10}, "Swordsman",       UnitClass::Melee,    UnitEra::Classical,    110, 35,  0, 0, 2,  90, TechId{37}, UnitTypeId{33}, 80,  {{60, 1}}},             // Iron Working
+    {UnitTypeId{33}, "Man-at-Arms",     UnitClass::Melee,    UnitEra::Medieval,     120, 45,  0, 0, 2, 120, TechId{54}, UnitTypeId{34}, 100, {{64, 1}}},             // Castles
+    {UnitTypeId{34}, "Musketman",       UnitClass::Melee,    UnitEra::Renaissance,  130, 55,  0, 0, 2, 160, TechId{10}, UnitTypeId{15}, 120, {{5, 1}}},              // Gunpowder
     {UnitTypeId{15}, "Infantry",        UnitClass::Melee,    UnitEra::Modern,       140, 70,  0, 0, 2, 250, TechId{12}, UnitTypeId{35}, 180, {{64, 1}}},             // 1 Steel
     {UnitTypeId{35}, "Mech Infantry",   UnitClass::Melee,    UnitEra::Information,  160, 85,  0, 0, 3, 350, TechId{20}, UnitTypeId{},   0,   {{64, 1}, {65, 1}}},    // 1 Steel + 1 Fuel
 
@@ -155,35 +159,46 @@ inline constexpr std::array<UnitTypeDef, 79> UNIT_TYPE_DEFS = {{
     // RANGED INFANTRY: Slinger -> Archer -> Crossbowman -> Field Cannon -> Machine Gun -> Rocket Infantry
     // ========================================================================
     {UnitTypeId{1},  "Slinger",         UnitClass::Ranged,   UnitEra::Ancient,       80, 10, 15, 1, 2,  35, TechId{},   UnitTypeId{36}, 40},
-    {UnitTypeId{36}, "Archer",          UnitClass::Ranged,   UnitEra::Classical,     80, 12, 25, 2, 2,  60, TechId{1},  UnitTypeId{11}, 60},
-    {UnitTypeId{11}, "Crossbowman",     UnitClass::Ranged,   UnitEra::Medieval,      90, 15, 35, 2, 2, 100, TechId{5},  UnitTypeId{37}, 80,  {{60, 1}}},             // 1 Iron Ingots
-    {UnitTypeId{37}, "Field Cannon",    UnitClass::Ranged,   UnitEra::Renaissance,  100, 20, 45, 2, 2, 160, TechId{8},  UnitTypeId{38}, 120, {{60, 1}}},             // 1 Iron Ingots
+    // 2026-05-03: ranged chain rewired. Archer by Archery (35, was AnimalHusb 1).
+    // Crossbowman by Machinery (51, was Currency 5). Field Cannon by Ballistics
+    // (60, was Metallurgy 8).
+    {UnitTypeId{36}, "Archer",          UnitClass::Ranged,   UnitEra::Classical,     80, 12, 25, 2, 2,  60, TechId{35}, UnitTypeId{11}, 60},                          // Archery
+    {UnitTypeId{11}, "Crossbowman",     UnitClass::Ranged,   UnitEra::Medieval,      90, 15, 35, 2, 2, 100, TechId{51}, UnitTypeId{37}, 80,  {{60, 1}}},             // Machinery
+    {UnitTypeId{37}, "Field Cannon",    UnitClass::Ranged,   UnitEra::Renaissance,  100, 20, 45, 2, 2, 160, TechId{60}, UnitTypeId{38}, 120, {{60, 1}}},             // Ballistics
     {UnitTypeId{38}, "Machine Gun",     UnitClass::Ranged,   UnitEra::Modern,       100, 25, 60, 2, 2, 260, TechId{12}, UnitTypeId{39}, 180, {{64, 1}}},             // 1 Steel
     {UnitTypeId{39}, "Rocket Infantry", UnitClass::Ranged,   UnitEra::Atomic,       100, 30, 75, 2, 2, 350, TechId{18}, UnitTypeId{},   0,   {{64, 1}, {71, 1}}},    // 1 Steel + 1 Ammunition
 
     // ========================================================================
     // CAVALRY: Horseman -> Knight -> Cuirassier -> Cavalry -> Helicopter Gunship
     // ========================================================================
-    {UnitTypeId{4},  "Horseman",        UnitClass::Cavalry,  UnitEra::Ancient,      100, 28,  0, 0, 4,  80, TechId{1},  UnitTypeId{12}, 70,  {{4, 1}}},              // 1 Horses
-    {UnitTypeId{12}, "Knight",          UnitClass::Cavalry,  UnitEra::Medieval,     120, 45,  0, 0, 4, 150, TechId{5},  UnitTypeId{40}, 100, {{4, 1}, {60, 1}}},     // 1 Horses + 1 Iron Ingots
-    {UnitTypeId{40}, "Cuirassier",      UnitClass::Cavalry,  UnitEra::Renaissance,  130, 55,  0, 0, 5, 200, TechId{8},  UnitTypeId{14}, 130, {{4, 1}}},              // 1 Horses
+    // 2026-05-03: cavalry chain rewired. Horseman by Horseback Riding (40,
+    // was AnimalHusb 1 which is its prereq). Knight by Stirrups (52,
+    // was Currency 5). Cuirassier by Metal Casting (58, was Metallurgy 8).
+    {UnitTypeId{4},  "Horseman",        UnitClass::Cavalry,  UnitEra::Ancient,      100, 28,  0, 0, 4,  80, TechId{40}, UnitTypeId{12}, 70,  {{4, 1}}},              // Horseback Riding
+    {UnitTypeId{12}, "Knight",          UnitClass::Cavalry,  UnitEra::Medieval,     120, 45,  0, 0, 4, 150, TechId{52}, UnitTypeId{40}, 100, {{4, 1}, {60, 1}}},     // Stirrups
+    {UnitTypeId{40}, "Cuirassier",      UnitClass::Cavalry,  UnitEra::Renaissance,  130, 55,  0, 0, 5, 200, TechId{58}, UnitTypeId{14}, 130, {{4, 1}}},              // Metal Casting
     {UnitTypeId{14}, "Cavalry",         UnitClass::Cavalry,  UnitEra::Industrial,   130, 62,  0, 0, 5, 250, TechId{11}, UnitTypeId{},   0,   {{4, 1}}},              // 1 Horses
 
     // ========================================================================
     // ARMOR (mechanized vehicles): Landship -> Tank -> Modern Armor -> Giant Death Robot
     // ========================================================================
     {UnitTypeId{41}, "Landship",        UnitClass::Armor,    UnitEra::Industrial,   150, 60,  0, 0, 3, 280, TechId{11}, UnitTypeId{17}, 150, {{64, 1}}},              // 1 Steel
-    {UnitTypeId{17}, "Tank",            UnitClass::Armor,    UnitEra::Modern,       180, 80,  0, 0, 4, 350, TechId{14}, UnitTypeId{42}, 200, {{64, 1}, {65, 1}}},    // 1 Steel + 1 Fuel
-    {UnitTypeId{42}, "Modern Armor",    UnitClass::Armor,    UnitEra::Atomic,       200, 95,  0, 0, 5, 450, TechId{18}, UnitTypeId{43}, 250, {{64, 2}, {65, 1}}},    // 2 Steel + 1 Fuel
+    // 2026-05-03: armor rewired. Tank by Combustion (66). Modern Armor by
+    // Combined Arms (69, was SurfacePlate 18 which is non-military tech).
+    {UnitTypeId{17}, "Tank",            UnitClass::Armor,    UnitEra::Modern,       180, 80,  0, 0, 4, 350, TechId{66}, UnitTypeId{42}, 200, {{64, 1}, {65, 1}}},    // Combustion
+    {UnitTypeId{42}, "Modern Armor",    UnitClass::Armor,    UnitEra::Atomic,       200, 95,  0, 0, 5, 450, TechId{69}, UnitTypeId{43}, 250, {{64, 2}, {65, 1}}},    // Combined Arms
     {UnitTypeId{43}, "Giant Death Robot",UnitClass::Armor,   UnitEra::Information,  250,120,  0, 0, 4, 600, TechId{22}, UnitTypeId{},   0,   {{103, 1}, {65, 2}}},   // 1 Industrial Equip + 2 Fuel
 
     // ========================================================================
     // ARTILLERY: Catapult -> Trebuchet -> Bombard -> Field Artillery -> Rocket Artillery -> MLRS
     // ========================================================================
-    {UnitTypeId{23}, "Catapult",        UnitClass::Artillery,UnitEra::Ancient,       70, 10, 25, 2, 2, 100, TechId{2},  UnitTypeId{24}, 60},
-    {UnitTypeId{24}, "Trebuchet",       UnitClass::Artillery,UnitEra::Medieval,      80, 12, 35, 2, 2, 150, TechId{5},  UnitTypeId{25}, 80,  {{60, 1}}},             // 1 Iron Ingots
-    {UnitTypeId{25}, "Bombard",         UnitClass::Artillery,UnitEra::Renaissance,   90, 15, 50, 2, 2, 220, TechId{8},  UnitTypeId{16}, 120, {{60, 1}, {5, 1}}},     // 1 Iron Ingots + 1 Niter
-    {UnitTypeId{16}, "Field Artillery", UnitClass::Artillery,UnitEra::Industrial,    80, 15, 65, 3, 2, 280, TechId{11}, UnitTypeId{44}, 160, {{64, 1}}},             // 1 Steel
+    // 2026-05-03: artillery rewired. Catapult by Engineering (6). Trebuchet
+    // by Military Tactics (53). Bombard by Metal Casting (58). Field
+    // Artillery by Ballistics (60).
+    {UnitTypeId{23}, "Catapult",        UnitClass::Artillery,UnitEra::Ancient,       70, 10, 25, 2, 2, 100, TechId{6},  UnitTypeId{24}, 60},                          // Engineering
+    {UnitTypeId{24}, "Trebuchet",       UnitClass::Artillery,UnitEra::Medieval,      80, 12, 35, 2, 2, 150, TechId{53}, UnitTypeId{25}, 80,  {{60, 1}}},             // Military Tactics
+    {UnitTypeId{25}, "Bombard",         UnitClass::Artillery,UnitEra::Renaissance,   90, 15, 50, 2, 2, 220, TechId{58}, UnitTypeId{16}, 120, {{60, 1}, {5, 1}}},     // Metal Casting
+    {UnitTypeId{16}, "Field Artillery", UnitClass::Artillery,UnitEra::Industrial,    80, 15, 65, 3, 2, 280, TechId{60}, UnitTypeId{44}, 160, {{64, 1}}},             // Ballistics
     {UnitTypeId{44}, "Rocket Artillery",UnitClass::Artillery,UnitEra::Modern,        90, 18, 80, 3, 2, 380, TechId{15}, UnitTypeId{45}, 200, {{64, 1}, {71, 1}}},    // 1 Steel + 1 Ammunition
     {UnitTypeId{45}, "MLRS",            UnitClass::Artillery,UnitEra::Atomic,       100, 20,100, 4, 2, 480, TechId{18}, UnitTypeId{},   0,   {{64, 2}, {71, 2}}},    // 2 Steel + 2 Ammunition
 
@@ -191,8 +206,10 @@ inline constexpr std::array<UnitTypeDef, 79> UNIT_TYPE_DEFS = {{
     // ANTI-CAVALRY: Spearman -> Pikeman -> Pike & Shot -> AT Gun -> Modern AT
     // ========================================================================
     {UnitTypeId{9},  "Spearman",        UnitClass::AntiCavalry,UnitEra::Ancient,    100, 25,  0, 0, 2,  55, TechId{},   UnitTypeId{26}, 40},
-    {UnitTypeId{26}, "Pikeman",         UnitClass::AntiCavalry,UnitEra::Medieval,   110, 38,  0, 0, 2,  80, TechId{5},  UnitTypeId{46}, 60},
-    {UnitTypeId{46}, "Pike and Shot",   UnitClass::AntiCavalry,UnitEra::Renaissance,120, 48,  0, 0, 2, 140, TechId{8},  UnitTypeId{27}, 100},
+    // 2026-05-03: anti-cavalry rewired. Pikeman by Military Tactics (53).
+    // Pike and Shot by Gunpowder (10).
+    {UnitTypeId{26}, "Pikeman",         UnitClass::AntiCavalry,UnitEra::Medieval,   110, 38,  0, 0, 2,  80, TechId{53}, UnitTypeId{46}, 60},                          // Military Tactics
+    {UnitTypeId{46}, "Pike and Shot",   UnitClass::AntiCavalry,UnitEra::Renaissance,120, 48,  0, 0, 2, 140, TechId{10}, UnitTypeId{27}, 100},                         // Gunpowder
     {UnitTypeId{27}, "AT Gun",          UnitClass::AntiCavalry,UnitEra::Modern,     100, 35, 55, 1, 2, 260, TechId{12}, UnitTypeId{47}, 150},
     {UnitTypeId{47}, "Modern AT",       UnitClass::AntiCavalry,UnitEra::Atomic,     100, 40, 70, 1, 2, 340, TechId{18}, UnitTypeId{},   0},
 

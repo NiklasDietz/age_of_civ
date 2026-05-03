@@ -635,10 +635,10 @@ struct MonetaryStateComponent {
                 return 8;
             case MonetarySystemType::FiatMoney:
                 if (this->moneySupply < MONEY_SUPPLY_FLOOR) { return 2; }
-                return 12;
+                return 16;
             case MonetarySystemType::Digital:
                 if (this->moneySupply < MONEY_SUPPLY_FLOOR) { return 2; }
-                return 16;
+                return 22;
             default:                                 return 1;
         }
     }

@@ -166,15 +166,15 @@ std::vector<TechDef> buildTechDefs() {
     // Era 0: Ancient -- wheel / chariots
     techs.push_back({TechId{34}, "The Wheel", EraId{0}, 35,
         {{TechId{0}}}, {}, {}, {}});  // Mining
-    // Era 0: Ancient -- archery
+    // Era 0: Ancient -- archery (unlocks Archer 36)
     techs.push_back({TechId{35}, "Archery", EraId{0}, 30,
-        {{TechId{1}}}, {}, {}, {}});  // Animal Husbandry
+        {{TechId{1}}}, {}, {}, {UnitTypeId{36}}});
     // Era 0: Ancient -- plantation / irrigation
     techs.push_back({TechId{36}, "Irrigation", EraId{0}, 30,
         {{TechId{2}}}, {}, {}, {}});  // Pottery
-    // Era 0: Ancient -- iron-grade swords
+    // Era 0: Ancient -- iron-grade swords (unlocks Swordsman 10)
     techs.push_back({TechId{37}, "Iron Working", EraId{0}, 40,
-        {{TechId{4}}}, {}, {}, {}});  // Bronze Working
+        {{TechId{4}}}, {}, {}, {UnitTypeId{10}}});
 
     // Era 1: Classical -- math
     techs.push_back({TechId{38}, "Mathematics", EraId{1}, 70,
@@ -182,9 +182,9 @@ std::vector<TechDef> buildTechDefs() {
     // Era 1: Classical -- construction
     techs.push_back({TechId{39}, "Construction", EraId{1}, 75,
         {{TechId{33}}}, {}, {}, {}});  // Masonry
-    // Era 1: Classical -- mounted units
+    // Era 1: Classical -- mounted units (unlocks Horseman 4)
     techs.push_back({TechId{40}, "Horseback Riding", EraId{1}, 60,
-        {{TechId{1}}}, {}, {}, {}});  // Animal Husbandry
+        {{TechId{1}}}, {}, {}, {UnitTypeId{4}}});
     // Era 1: Classical -- celestial nav (Galley range bump in Civ6)
     techs.push_back({TechId{41}, "Celestial Navigation", EraId{1}, 70,
         {{TechId{31}}}, {}, {}, {}});  // Sailing
@@ -222,15 +222,15 @@ std::vector<TechDef> buildTechDefs() {
     // when maxBaseId rose past 30. Defining explicitly so AI can research
     // and prereq chains stay deterministic.
     // ================================================================
-    // Era 2: Medieval
+    // Era 2: Medieval (with unit unlocks)
     techs.push_back({TechId{51}, "Machinery", EraId{2}, 200,
-        {{TechId{37}, TechId{6}}}, {}, {}, {}});  // Iron Working + Engineering
+        {{TechId{37}, TechId{6}}}, {}, {}, {UnitTypeId{11}}});  // Crossbowman
     techs.push_back({TechId{52}, "Stirrups", EraId{2}, 180,
-        {{TechId{40}, TechId{37}}}, {}, {}, {}});  // Horseback Riding + Iron
+        {{TechId{40}, TechId{37}}}, {}, {}, {UnitTypeId{12}}});  // Knight
     techs.push_back({TechId{53}, "Military Tactics", EraId{2}, 200,
-        {{TechId{38}}}, {}, {}, {}});  // Mathematics
+        {{TechId{38}}}, {}, {}, {UnitTypeId{26}, UnitTypeId{24}}});  // Pikeman, Trebuchet
     techs.push_back({TechId{54}, "Castles", EraId{2}, 230,
-        {{TechId{39}, TechId{53}}}, {}, {}, {}});  // Construction + MilTac
+        {{TechId{39}, TechId{53}}}, {}, {}, {UnitTypeId{33}}});  // Man-at-Arms
     // Era 3: Renaissance
     techs.push_back({TechId{55}, "Printing", EraId{3}, 320,
         {{TechId{44}}}, {}, {}, {}});  // Education
@@ -239,12 +239,12 @@ std::vector<TechDef> buildTechDefs() {
     techs.push_back({TechId{57}, "Siege Tactics", EraId{3}, 380,
         {{TechId{53}, TechId{54}}}, {}, {}, {}});  // MilTac + Castles
     techs.push_back({TechId{58}, "Metal Casting", EraId{3}, 360,
-        {{TechId{37}, TechId{10}}}, {}, {}, {}});  // Iron + Gunpowder
+        {{TechId{37}, TechId{10}}}, {}, {}, {UnitTypeId{25}, UnitTypeId{40}}});  // Bombard, Cuirassier
     // Era 4: Industrial
     techs.push_back({TechId{59}, "Scientific Theory", EraId{4}, 950,
         {{TechId{45}}}, {}, {}, {}});  // Astronomy
     techs.push_back({TechId{60}, "Ballistics", EraId{4}, 1020,
-        {{TechId{58}}}, {}, {}, {}});  // Metal Casting
+        {{TechId{58}}}, {}, {}, {UnitTypeId{37}, UnitTypeId{16}}});  // Field Cannon, Field Artillery
     techs.push_back({TechId{61}, "Steam Power", EraId{4}, 1100,
         {{TechId{11}}}, {}, {}, {}});  // Industrialization
     techs.push_back({TechId{62}, "Sanitation", EraId{4}, 980,
@@ -257,14 +257,14 @@ std::vector<TechDef> buildTechDefs() {
     techs.push_back({TechId{65}, "Chemistry", EraId{5}, 1600,
         {{TechId{62}}}, {}, {}, {}});  // Sanitation
     techs.push_back({TechId{66}, "Combustion", EraId{5}, 1700,
-        {{TechId{12}, TechId{65}}}, {}, {}, {}});  // Refining + Chemistry
+        {{TechId{12}, TechId{65}}}, {}, {}, {UnitTypeId{17}}});  // Tank
     // Era 6: Atomic / Information
     techs.push_back({TechId{67}, "Plastics", EraId{6}, 2400,
         {{TechId{12}}}, {}, {}, {}});  // Refining
     techs.push_back({TechId{68}, "Synthetic Materials", EraId{6}, 2600,
         {{TechId{67}}}, {}, {}, {}});  // Plastics
     techs.push_back({TechId{69}, "Combined Arms", EraId{6}, 2700,
-        {{TechId{47}, TechId{66}}}, {}, {}, {}});  // Steel + Combustion
+        {{TechId{47}, TechId{66}}}, {}, {}, {UnitTypeId{42}}});  // Modern Armor
     techs.push_back({TechId{70}, "Robotics", EraId{6}, 2800,
         {{TechId{16}, TechId{68}}}, {}, {}, {}});  // Computers + SyntMat
     techs.push_back({TechId{71}, "Satellites", EraId{6}, 2700,
