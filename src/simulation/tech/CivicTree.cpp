@@ -49,6 +49,60 @@ std::vector<CivicDef> buildCivicDefs() {
     civics.push_back({CivicId{12}, "Suffrage", EraId{5}, 380, {{CivicId{10}}}, {4}, {}});
     civics.push_back({CivicId{13}, "Globalization", EraId{5}, 400, {{CivicId{10}, CivicId{9}}}, {}, {}});
 
+    // ================================================================
+    // Civ6 parity additions (IDs 14-43). 2026-05-03.
+    // Mirrors Civ6 civic tree across all eras. Costs scale per-era.
+    // ================================================================
+
+    // Era 0: Ancient — three more civics (Civ6 has 6 total Ancient).
+    civics.push_back({CivicId{14}, "State Workforce", EraId{0}, 35, {{CivicId{0}}}, {}, {}});
+    civics.push_back({CivicId{15}, "Early Empire", EraId{0}, 40, {{CivicId{0}}}, {}, {}});
+    civics.push_back({CivicId{16}, "Mysticism", EraId{0}, 35, {{CivicId{1}}}, {}, {}});
+
+    // Era 1: Classical
+    civics.push_back({CivicId{17}, "Drama and Poetry", EraId{1}, 60, {{CivicId{15}}}, {}, {}});
+    civics.push_back({CivicId{18}, "Recorded History", EraId{1}, 70, {{CivicId{17}, CivicId{3}}}, {}, {}});
+    civics.push_back({CivicId{19}, "Defensive Tactics", EraId{1}, 70, {{CivicId{5}}}, {}, {}});
+    civics.push_back({CivicId{20}, "Games and Recreation", EraId{1}, 60, {{CivicId{14}}}, {}, {}});
+    civics.push_back({CivicId{21}, "Theology", EraId{1}, 70, {{CivicId{16}, CivicId{17}}}, {}, {}});
+    civics.push_back({CivicId{22}, "Naval Tradition", EraId{1}, 50, {{CivicId{2}}}, {}, {}});
+
+    // Era 2: Medieval
+    civics.push_back({CivicId{23}, "Civil Service", EraId{2}, 130, {{CivicId{3}}}, {}, {}});
+    civics.push_back({CivicId{24}, "Divine Right", EraId{2}, 140, {{CivicId{21}}}, {}, {}});
+    civics.push_back({CivicId{25}, "Mercenaries", EraId{2}, 130, {{CivicId{19}, CivicId{6}}}, {}, {}});
+    civics.push_back({CivicId{26}, "Medieval Faires", EraId{2}, 120, {{CivicId{7}}}, {}, {}});
+
+    // Era 3: Renaissance
+    civics.push_back({CivicId{27}, "Humanism", EraId{3}, 200, {{CivicId{18}}}, {}, {}});
+    civics.push_back({CivicId{28}, "Diplomatic Service", EraId{3}, 220, {{CivicId{23}}}, {}, {}});
+    civics.push_back({CivicId{29}, "Reformed Church", EraId{3}, 200, {{CivicId{24}}}, {}, {}});
+    civics.push_back({CivicId{30}, "Enlightenment", EraId{3}, 240, {{CivicId{27}, CivicId{29}}}, {}, {}});
+
+    // Era 4: Industrial
+    civics.push_back({CivicId{31}, "Civil Engineering", EraId{4}, 280, {{CivicId{30}, CivicId{26}}}, {}, {}});
+    civics.push_back({CivicId{32}, "Colonialism", EraId{4}, 270, {{CivicId{9}}}, {}, {}});
+    civics.push_back({CivicId{33}, "Operations Research", EraId{4}, 290, {{CivicId{31}, CivicId{25}}}, {}, {}});
+    civics.push_back({CivicId{34}, "Urbanization", EraId{4}, 280, {{CivicId{31}}}, {}, {}});
+
+    // Era 5: Modern
+    civics.push_back({CivicId{35}, "Conservation", EraId{5}, 380, {{CivicId{34}}}, {}, {}});
+    civics.push_back({CivicId{36}, "Mass Media", EraId{5}, 390, {{CivicId{34}}}, {}, {}});
+    civics.push_back({CivicId{37}, "Mobilization", EraId{5}, 400, {{CivicId{11}, CivicId{33}}}, {}, {}});
+    civics.push_back({CivicId{38}, "Ideology", EraId{5}, 410, {{CivicId{36}}}, {}, {}});
+
+    // Era 6: Atomic
+    civics.push_back({CivicId{39}, "Cultural Heritage", EraId{6}, 500, {{CivicId{35}}}, {}, {}});
+    civics.push_back({CivicId{40}, "Cold War", EraId{6}, 520, {{CivicId{38}}}, {}, {}});
+    civics.push_back({CivicId{41}, "Rapid Deployment", EraId{6}, 510, {{CivicId{37}}}, {}, {}});
+    civics.push_back({CivicId{42}, "Space Race", EraId{6}, 530, {{CivicId{40}}}, {}, {}});
+
+    // Era 7: Information
+    civics.push_back({CivicId{43}, "Social Media", EraId{7}, 660, {{CivicId{36}}}, {}, {}});
+    civics.push_back({CivicId{44}, "Environmentalism", EraId{7}, 680, {{CivicId{35}}}, {}, {}});
+    civics.push_back({CivicId{45}, "Cultural Hegemony", EraId{7}, 700, {{CivicId{39}, CivicId{13}}}, {}, {}});
+    civics.push_back({CivicId{46}, "Information Warfare", EraId{7}, 720, {{CivicId{40}, CivicId{43}}}, {}, {}});
+
     return civics;
 }
 
