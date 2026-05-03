@@ -13,6 +13,7 @@
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/city/CityComponent.hpp"
 #include "aoc/simulation/city/District.hpp"
+#include "aoc/simulation/unit/UnitTypes.hpp"
 #include "aoc/simulation/economy/TradeRoute.hpp"
 #include "aoc/simulation/economy/ResourceCurse.hpp"
 #include "aoc/simulation/economy/InternalTrade.hpp"
@@ -1070,6 +1071,22 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
                 for (const RecipeInput& in : rcp.inputs) {
                     if (!in.consumed) { continue; }
                     this->m_market.reportDemand(in.goodId, in.amount);
+                }
+            }
+
+            // 2026-05-03: also report demand from UNIT production requirements.
+            // Late-game units (Stealth Fighter, Modern Armor, Nuclear Sub etc.)
+            // need Microchips/Software/Steel — each civ that has the tech to
+            // build those units pulls on the corresponding chain. Drives
+            // Computers/Software demand into the market.
+            for (const aoc::sim::UnitTypeDef& udef : aoc::sim::UNIT_TYPE_DEFS) {
+                if (udef.requiredTech.isValid()
+                    && !playerPtr->tech().hasResearched(udef.requiredTech)) {
+                    continue;
+                }
+                for (const aoc::sim::UnitResourceReq& req : udef.resourceReqs) {
+                    if (!req.isValid()) { continue; }
+                    this->m_market.reportDemand(req.goodId, req.amount);
                 }
             }
 

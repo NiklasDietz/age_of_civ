@@ -81,8 +81,9 @@ struct UnitTypeDef {
     int32_t         upgradeCost;      ///< Gold cost to upgrade an existing unit
 
     /// Strategic resources consumed when producing this unit.
-    /// Up to 2 different resource requirements (e.g., Tank: Steel + Fuel).
-    UnitResourceReq resourceReqs[2] = {};
+    /// 2026-05-03: bumped 2 → 4 so late-game units can require Steel +
+    /// Fuel + Microchips + Software simultaneously (GDR-tier equipment).
+    UnitResourceReq resourceReqs[4] = {};
 
     /// Optional civic prereq. Default-invalid = no civic gate. Examples:
     /// Mercenary units (post-Mercenaries civic), Spy (post-Cryptography),
@@ -104,7 +105,8 @@ struct UnitTypeDef {
 
     /// Whether this unit requires any strategic resources to produce.
     [[nodiscard]] constexpr bool hasResourceRequirement() const {
-        return this->resourceReqs[0].isValid() || this->resourceReqs[1].isValid();
+        return this->resourceReqs[0].isValid() || this->resourceReqs[1].isValid()
+            || this->resourceReqs[2].isValid() || this->resourceReqs[3].isValid();
     }
 
     /// WP-P1: per-turn food cost for military units. Civilian/trader/scout
@@ -153,7 +155,7 @@ inline constexpr std::array<UnitTypeDef, 79> UNIT_TYPE_DEFS = {{
     {UnitTypeId{33}, "Man-at-Arms",     UnitClass::Melee,    UnitEra::Medieval,     120, 45,  0, 0, 2, 120, TechId{54}, UnitTypeId{34}, 100, {{64, 1}}},             // Castles
     {UnitTypeId{34}, "Musketman",       UnitClass::Melee,    UnitEra::Renaissance,  130, 55,  0, 0, 2, 160, TechId{10}, UnitTypeId{15}, 120, {{5, 1}}},              // Gunpowder
     {UnitTypeId{15}, "Infantry",        UnitClass::Melee,    UnitEra::Modern,       140, 70,  0, 0, 2, 250, TechId{12}, UnitTypeId{35}, 180, {{64, 1}}},             // 1 Steel
-    {UnitTypeId{35}, "Mech Infantry",   UnitClass::Melee,    UnitEra::Information,  160, 85,  0, 0, 3, 350, TechId{20}, UnitTypeId{},   0,   {{64, 1}, {65, 1}}},    // 1 Steel + 1 Fuel
+    {UnitTypeId{35}, "Mech Infantry",   UnitClass::Melee,    UnitEra::Information,  160, 85,  0, 0, 3, 350, TechId{20}, UnitTypeId{},   0,   {{64, 1}, {65, 1}, {106, 1}}},    // +Microchip
 
     // ========================================================================
     // RANGED INFANTRY: Slinger -> Archer -> Crossbowman -> Field Cannon -> Machine Gun -> Rocket Infantry
@@ -186,8 +188,10 @@ inline constexpr std::array<UnitTypeDef, 79> UNIT_TYPE_DEFS = {{
     // 2026-05-03: armor rewired. Tank by Combustion (66). Modern Armor by
     // Combined Arms (69, was SurfacePlate 18 which is non-military tech).
     {UnitTypeId{17}, "Tank",            UnitClass::Armor,    UnitEra::Modern,       180, 80,  0, 0, 4, 350, TechId{66}, UnitTypeId{42}, 200, {{64, 1}, {65, 1}}},    // Combustion
-    {UnitTypeId{42}, "Modern Armor",    UnitClass::Armor,    UnitEra::Atomic,       200, 95,  0, 0, 5, 450, TechId{69}, UnitTypeId{43}, 250, {{64, 2}, {65, 1}}},    // Combined Arms
-    {UnitTypeId{43}, "Giant Death Robot",UnitClass::Armor,   UnitEra::Information,  250,120,  0, 0, 4, 600, TechId{22}, UnitTypeId{},   0,   {{103, 1}, {65, 2}}},   // 1 Industrial Equip + 2 Fuel
+    // 2026-05-03: Modern+ armor needs Microchips (fire control, optics).
+    // GDR needs Software + Computers (autonomous targeting).
+    {UnitTypeId{42}, "Modern Armor",    UnitClass::Armor,    UnitEra::Atomic,       200, 95,  0, 0, 5, 450, TechId{69}, UnitTypeId{43}, 250, {{64, 2}, {65, 1}, {106, 1}}},     // +Microchip
+    {UnitTypeId{43}, "Giant Death Robot",UnitClass::Armor,   UnitEra::Information,  250,120,  0, 0, 4, 600, TechId{22}, UnitTypeId{},   0,   {{103, 1}, {65, 2}, {107, 1}, {108, 1}}},  // +Computer +Software
 
     // ========================================================================
     // ARTILLERY: Catapult -> Trebuchet -> Bombard -> Field Artillery -> Rocket Artillery -> MLRS
@@ -200,7 +204,7 @@ inline constexpr std::array<UnitTypeDef, 79> UNIT_TYPE_DEFS = {{
     {UnitTypeId{25}, "Bombard",         UnitClass::Artillery,UnitEra::Renaissance,   90, 15, 50, 2, 2, 220, TechId{58}, UnitTypeId{16}, 120, {{60, 1}, {5, 1}}},     // Metal Casting
     {UnitTypeId{16}, "Field Artillery", UnitClass::Artillery,UnitEra::Industrial,    80, 15, 65, 3, 2, 280, TechId{60}, UnitTypeId{44}, 160, {{64, 1}}},             // Ballistics
     {UnitTypeId{44}, "Rocket Artillery",UnitClass::Artillery,UnitEra::Modern,        90, 18, 80, 3, 2, 380, TechId{15}, UnitTypeId{45}, 200, {{64, 1}, {71, 1}}},    // 1 Steel + 1 Ammunition
-    {UnitTypeId{45}, "MLRS",            UnitClass::Artillery,UnitEra::Atomic,       100, 20,100, 4, 2, 480, TechId{18}, UnitTypeId{},   0,   {{64, 2}, {71, 2}}},    // 2 Steel + 2 Ammunition
+    {UnitTypeId{45}, "MLRS",            UnitClass::Artillery,UnitEra::Atomic,       100, 20,100, 4, 2, 480, TechId{18}, UnitTypeId{},   0,   {{64, 2}, {71, 2}, {106, 1}}},   // +Microchip (guidance)
 
     // ========================================================================
     // ANTI-CAVALRY: Spearman -> Pikeman -> Pike & Shot -> AT Gun -> Modern AT
@@ -219,16 +223,18 @@ inline constexpr std::array<UnitTypeDef, 79> UNIT_TYPE_DEFS = {{
     // ========================================================================
     {UnitTypeId{48}, "Biplane",         UnitClass::Air,      UnitEra::Industrial,   80, 20, 40, 3, 5, 200, TechId{11}, UnitTypeId{18}, 120, {{60, 1}}},             // 1 Iron Ingots
     {UnitTypeId{18}, "Fighter",         UnitClass::Air,      UnitEra::Modern,      100, 25, 65, 4, 6, 350, TechId{15}, UnitTypeId{49}, 200, {{109, 1}, {65, 1}}},   // 1 Aircraft Components + 1 Fuel
-    {UnitTypeId{49}, "Jet Fighter",     UnitClass::Air,      UnitEra::Atomic,      120, 30, 85, 5, 8, 450, TechId{18}, UnitTypeId{50}, 250, {{109, 1}, {65, 1}}},   // 1 Aircraft Components + 1 Fuel
-    {UnitTypeId{50}, "Stealth Fighter", UnitClass::Air,      UnitEra::Information,  120, 35,100, 5, 8, 550, TechId{22}, UnitTypeId{},   0,   {{109, 2}, {65, 1}}},   // 2 Aircraft Components + 1 Fuel
-    {UnitTypeId{51}, "Bomber",          UnitClass::Air,      UnitEra::Modern,       80, 10, 80, 5, 6, 400, TechId{15}, UnitTypeId{52}, 220, {{109, 1}, {65, 1}}},   // 1 Aircraft Components + 1 Fuel
-    {UnitTypeId{52}, "Stealth Bomber",  UnitClass::Air,      UnitEra::Information,  80, 12,110, 6, 8, 600, TechId{22}, UnitTypeId{},   0,   {{109, 2}, {65, 2}}},   // 2 Aircraft Components + 2 Fuel
+    // 2026-05-03: jet+stealth aircraft need Microchips (avionics).
+    // Stealth tier needs Software too (signal processing / radar evasion).
+    {UnitTypeId{49}, "Jet Fighter",     UnitClass::Air,      UnitEra::Atomic,      120, 30, 85, 5, 8, 450, TechId{18}, UnitTypeId{50}, 250, {{109, 1}, {65, 1}, {106, 1}}},
+    {UnitTypeId{50}, "Stealth Fighter", UnitClass::Air,      UnitEra::Information,  120, 35,100, 5, 8, 550, TechId{22}, UnitTypeId{},   0,   {{109, 2}, {65, 1}, {106, 1}, {108, 1}}},
+    {UnitTypeId{51}, "Bomber",          UnitClass::Air,      UnitEra::Modern,       80, 10, 80, 5, 6, 400, TechId{15}, UnitTypeId{52}, 220, {{109, 1}, {65, 1}}},
+    {UnitTypeId{52}, "Stealth Bomber",  UnitClass::Air,      UnitEra::Information,  80, 12,110, 6, 8, 600, TechId{22}, UnitTypeId{},   0,   {{109, 2}, {65, 2}, {106, 1}, {108, 1}}},
 
     // ========================================================================
     // HELICOPTER: Attack Helicopter -> Gunship
     // ========================================================================
-    {UnitTypeId{53}, "Attack Helicopter",UnitClass::Helicopter,UnitEra::Atomic,     100, 40, 50, 2, 5, 380, TechId{18}, UnitTypeId{54}, 200, {{109, 1}, {65, 1}}},  // 1 Aircraft Components + 1 Fuel
-    {UnitTypeId{54}, "Gunship",         UnitClass::Helicopter,UnitEra::Information, 120, 50, 65, 2, 6, 480, TechId{22}, UnitTypeId{},   0,   {{109, 1}, {65, 1}}},  // 1 Aircraft Components + 1 Fuel
+    {UnitTypeId{53}, "Attack Helicopter",UnitClass::Helicopter,UnitEra::Atomic,     100, 40, 50, 2, 5, 380, TechId{18}, UnitTypeId{54}, 200, {{109, 1}, {65, 1}, {106, 1}}},  // +Microchip
+    {UnitTypeId{54}, "Gunship",         UnitClass::Helicopter,UnitEra::Information, 120, 50, 65, 2, 6, 480, TechId{22}, UnitTypeId{},   0,   {{109, 1}, {65, 1}, {106, 1}}},  // +Microchip
 
     // ========================================================================
     // NAVAL: Galley -> Caravel -> Frigate -> Ironclad -> Destroyer -> Missile Cruiser
@@ -241,10 +247,10 @@ inline constexpr std::array<UnitTypeDef, 79> UNIT_TYPE_DEFS = {{
     {UnitTypeId{56}, "Ironclad",        UnitClass::Naval,    UnitEra::Industrial,   160, 55, 40, 2, 4, 260, TechId{11}, UnitTypeId{57}, 150, {{64, 2}}},             // 2 Steel
     {UnitTypeId{57}, "Destroyer",       UnitClass::Naval,    UnitEra::Modern,       150, 60, 55, 2, 5, 340, TechId{14}, UnitTypeId{8},  200, {{64, 2}}},             // 2 Steel
     {UnitTypeId{8},  "Battleship",      UnitClass::Naval,    UnitEra::Modern,       200, 70, 65, 3, 4, 400, TechId{14}, UnitTypeId{58}, 250, {{64, 3}}},             // 3 Steel
-    {UnitTypeId{58}, "Missile Cruiser", UnitClass::Naval,    UnitEra::Atomic,       180, 60, 90, 4, 5, 500, TechId{18}, UnitTypeId{},   0,   {{64, 2}, {65, 1}}},    // 2 Steel + 1 Fuel
+    {UnitTypeId{58}, "Missile Cruiser", UnitClass::Naval,    UnitEra::Atomic,       180, 60, 90, 4, 5, 500, TechId{18}, UnitTypeId{},   0,   {{64, 2}, {65, 1}, {106, 1}}},    // +Microchip (missile guidance)
     {UnitTypeId{59}, "Submarine",       UnitClass::Naval,    UnitEra::Modern,       120, 55, 60, 2, 4, 350, TechId{14}, UnitTypeId{60}, 200, {{64, 1}}},             // 1 Steel
-    {UnitTypeId{60}, "Nuclear Sub",     UnitClass::Naval,    UnitEra::Atomic,       150, 65, 80, 3, 5, 480, TechId{18}, UnitTypeId{},   0,   {{64, 1}, {6, 1}}},     // 1 Steel + 1 Uranium
-    {UnitTypeId{61}, "Carrier",         UnitClass::Naval,    UnitEra::Atomic,       250, 20,  0, 0, 4, 550, TechId{18}, UnitTypeId{},   0,   {{64, 3}, {65, 1}}},    // 3 Steel + 1 Fuel
+    {UnitTypeId{60}, "Nuclear Sub",     UnitClass::Naval,    UnitEra::Atomic,       150, 65, 80, 3, 5, 480, TechId{18}, UnitTypeId{},   0,   {{64, 1}, {6, 1}, {106, 1}, {108, 1}}},     // +Microchip +Software (sonar+nav)
+    {UnitTypeId{61}, "Carrier",         UnitClass::Naval,    UnitEra::Atomic,       250, 20,  0, 0, 4, 550, TechId{18}, UnitTypeId{},   0,   {{64, 3}, {65, 1}, {106, 1}}},    // +Microchip (CIWS + radar)
 
     // ========================================================================
     // CIVILIAN / SUPPORT / SPECIAL

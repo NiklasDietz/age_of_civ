@@ -201,13 +201,16 @@ std::vector<ProductionRecipe> buildRecipes() {
     // ================================================================
     // Tier 3: Machinery / Electronics / Consumer Goods
     // ================================================================
+    // 2026-05-03: Machinery and Electronics outputs bumped so chain pull
+    // continues all the way through to IR#5 (Microchip/Computer/Software
+    // depend on these).
     recipes.push_back({9, "Build Machinery",
         {{goods::TOOLS, 1}, {goods::STEEL, 1}},
-        goods::MACHINERY, 1, BuildingId{3}, 2});
+        goods::MACHINERY, 2, BuildingId{3}, 2});
 
     recipes.push_back({10, "Produce Electronics",
         {{goods::COPPER_WIRE, 2}, {goods::PLASTICS, 1}},
-        goods::ELECTRONICS, 2, BuildingId{4}, 2});
+        goods::ELECTRONICS, 3, BuildingId{4}, 2});
 
     recipes.push_back({11, "Consumer Goods",
         {{goods::PLASTICS, 1}, {goods::LUMBER, 1}},
@@ -304,13 +307,16 @@ std::vector<ProductionRecipe> buildRecipes() {
     //             → Software 1 per batch, Research Lab.  Lets a civ start
     //             a digital economy as soon as Microchips are available,
     //             without the full assembly chain.
+    // 2026-05-03: Software outputs bumped. IR#5 needs Software good in
+    // stockpile/totalSupply; doubling output ensures the chain produces
+    // enough to satisfy demand reporting + IR check.
     recipes.push_back({24, "Develop Software (Platform)",
         {{goods::COMPUTERS_GOOD, 1, false}},
-        goods::SOFTWARE, 2, BuildingId{12}, 1});
+        goods::SOFTWARE, 4, BuildingId{12}, 1});
 
     recipes.push_back({60, "Develop Software (Bootstrap)",
         {{goods::MICROCHIPS, 1}},
-        goods::SOFTWARE, 1, BuildingId{12}, 1});
+        goods::SOFTWARE, 2, BuildingId{12}, 1});
 
     // ================================================================
     // NEW: Aviation chain (keeps Aluminum relevant)
