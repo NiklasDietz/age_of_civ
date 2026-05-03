@@ -1374,7 +1374,20 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 const char* name;
                 float totalCost;
             };
-            const std::array<ChainPriority, 7> chain = {{
+            // 2026-05-03: Forge/Workshop/Factory added at the top. The
+            // Phase-2 diag sweep showed 97.6% of IR#1-blocked civs had no
+            // Charcoal in `totalSupply` even after the demand-pull fix —
+            // generic scorer was leaving Forge unbuilt because higher-tier
+            // industrial buildings (Refinery+) still won the score race once
+            // their tech unlocked. Putting Forge/Workshop/Factory ahead in
+            // this list with the same force-priority 5.0 + early `break`
+            // guarantees the upstream chain enabler is queued first whenever
+            // missing. Tier ordering: 0 (Forge) → 1 (Workshop) → 3 (Factory)
+            // → existing late-tier list.
+            const std::array<ChainPriority, 10> chain = {{
+                {0u,  "Forge",               60.0f},
+                {1u,  "Workshop",            40.0f},
+                {3u,  "Factory",            120.0f},
                 {2u,  "Refinery",           100.0f},
                 {4u,  "Electronics Plant",  180.0f},
                 {9u,  "Food Proc. Plant",    90.0f},

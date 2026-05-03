@@ -265,18 +265,19 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
 
 namespace {
 [[nodiscard]] aoc::map::MapType parseMapTypeCli(std::string_view s) {
+    // 2026-05-03: only Continents is supported. All other strings remap to
+    // Continents with a warning so existing scripts (audit_matrix.sh,
+    // ml/cpp/...) keep running without changes.
     std::string lower(s);
     for (char& c : lower) { c = static_cast<char>(std::tolower(c)); }
-    if (lower == "continents")              { return aoc::map::MapType::Continents; }
-    if (lower == "islands")                 { return aoc::map::MapType::Islands; }
-    if (lower == "continentsplusislands"
-        || lower == "continents+islands")   { return aoc::map::MapType::ContinentsPlusIslands; }
-    if (lower == "landonly"
-        || lower == "land_only")            { return aoc::map::MapType::LandOnly; }
-    if (lower == "landwithseas"
-        || lower == "land_with_seas")       { return aoc::map::MapType::LandWithSeas; }
-    if (lower == "fractal")                 { return aoc::map::MapType::Fractal; }
-    return aoc::map::MapType::LandWithSeas;
+    if (lower == "continents") { return aoc::map::MapType::Continents; }
+    if (!lower.empty() && lower != "continents") {
+        std::fprintf(stderr,
+            "warning: --map-type '%.*s' is no longer supported; "
+            "using 'continents'.\n",
+            static_cast<int>(s.size()), s.data());
+    }
+    return aoc::map::MapType::Continents;
 }
 [[nodiscard]] aoc::map::ResourcePlacementMode parsePlacementCli(std::string_view s) {
     std::string lower(s);
@@ -295,12 +296,7 @@ namespace {
 }
 [[nodiscard]] const char* mapTypeLabel(aoc::map::MapType m) {
     switch (m) {
-        case aoc::map::MapType::Continents:             return "Continents";
-        case aoc::map::MapType::Islands:                return "Islands";
-        case aoc::map::MapType::ContinentsPlusIslands:  return "Continents+Islands";
-        case aoc::map::MapType::LandOnly:               return "LandOnly";
-        case aoc::map::MapType::LandWithSeas:           return "LandWithSeas";
-        case aoc::map::MapType::Fractal:                return "Fractal";
+        case aoc::map::MapType::Continents: return "Continents";
     }
     return "?";
 }
@@ -1146,7 +1142,7 @@ int main(int argc, char* argv[]) {
     int32_t players = 4;
     std::string outputPath = "simulation_log.csv";
     std::string tracePath;
-    aoc::map::MapType mapType = aoc::map::MapType::LandWithSeas;
+    aoc::map::MapType mapType = aoc::map::MapType::Continents;  // 2026-05-03: was LandWithSeas (removed).
     aoc::map::ResourcePlacementMode placement = aoc::map::ResourcePlacementMode::Realistic;
 
     // Simulations default to Prestige+Score+LastStanding so tests always

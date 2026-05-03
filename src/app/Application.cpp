@@ -386,11 +386,9 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
         this->m_turnManager.setTurnMode(aoc::sim::TurnMode::Simultaneous);
     }
     this->m_turnManager.beginNewTurn();
-    if (config.mapType != aoc::map::MapType::LandWithSeas) {
-        this->placeMapResources();
-    } else {
-        LOG_INFO("Skipping random resource placement (LandWithSeas uses geology-based placement)");
-    }
+    // 2026-05-03: LandWithSeas removed; only Continents remains, which has
+    // its own geology-driven resource placement inside the generator.
+    // The legacy random-resource fallback is no longer reached.
     this->m_economy.initialize();
     this->m_fogOfWar.initialize(this->m_hexGrid.tileCount(), MAX_PLAYERS);
     this->m_diplomacy.initialize(config.playerCount);

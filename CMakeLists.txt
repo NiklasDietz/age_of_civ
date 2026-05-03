@@ -74,6 +74,15 @@ endif()
 # servers, CI, and GA training on machines without a GPU / Vulkan SDK.
 option(AOC_HEADLESS "Build without Vulkan/GLFW (sim + GA tools only)" OFF)
 
+# Phase 1 diagnostic instrumentation. When ON, IndustrialRevolution.cpp emits
+# throttled "IR_BLOCKED player=... ir=... reason=... detail=... turn=..."
+# lines through LOG_INFO. Throttle window is 50 turns per (player, ir, reason,
+# detail) tuple. Off in production -- compiled out entirely.
+option(AOC_DIAG_IR "Enable IR-blocker diagnostic logging (Phase 1 only)" OFF)
+if(AOC_DIAG_IR)
+    add_compile_definitions(AOC_DIAG_IR=1)
+endif()
+
 # --------------------------------------------------------------------------
 # Dependencies
 # --------------------------------------------------------------------------
@@ -212,6 +221,28 @@ set(AOC_LIB_SOURCES
     # Map
     src/map/HexGrid.cpp
     src/map/MapGenerator.cpp
+    src/map/gen/Biogeography.cpp
+    src/map/gen/ClimateBiome.cpp
+    src/map/gen/CliffCoast.cpp
+    src/map/gen/CoastalErosion.cpp
+    src/map/gen/EarthSystem.cpp
+    src/map/gen/HexNeighbors.cpp
+    src/map/gen/IceAndRock.cpp
+    src/map/gen/LakePurge.cpp
+    src/map/gen/Mappability.cpp
+    src/map/gen/PlateIdStash.cpp
+    src/map/gen/PostSim.cpp
+    src/map/gen/Session3.cpp
+    src/map/gen/Session4.cpp
+    src/map/gen/Session9.cpp
+    src/map/gen/Session10.cpp
+    src/map/gen/Session12.cpp
+    src/map/gen/Session13.cpp
+    src/map/gen/Session14.cpp
+    src/map/gen/Session15.cpp
+    src/map/gen/Session16.cpp
+    src/map/gen/Session17.cpp
+    src/map/gen/Thresholds.cpp
     src/map/gen/Noise.cpp
     src/map/gen/Resources.cpp
     src/map/gen/Features.cpp
@@ -722,6 +753,14 @@ target_compile_definitions(aoc_simulate PRIVATE AOC_HEADLESS_MAIN)
 
 add_executable(aoc_trace_dump src/tools/TraceDump.cpp)
 target_link_libraries(aoc_trace_dump PRIVATE aoc_lib)
+
+# --------------------------------------------------------------------------
+# Standalone map generator (Continents pipeline only). Writes ASCII / CSV
+# dumps for offline review without launching the full simulation. 2026-05-03.
+# --------------------------------------------------------------------------
+
+add_executable(aoc_mapgen src/tools/MapGenCli.cpp)
+target_link_libraries(aoc_mapgen PRIVATE aoc_lib)
 
 # --------------------------------------------------------------------------
 # C++ Genetic Algorithm for Utility AI optimization

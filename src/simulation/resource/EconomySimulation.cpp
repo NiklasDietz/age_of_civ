@@ -890,6 +890,15 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                     * chainMult * datacenterMult));
                 stockpile.addGoods(recipe->outputGoodId, boostedOutput);
 
+                // Phase-2 fix (2026-05-03): record cumulative-ever supply on
+                // the player econ component. PlayerEconomyComponent::totalSupply
+                // had three readers (IndustrialRevolution Path B, ResourceCurse,
+                // ComparativeAdvantage) but no writer, so manufactured goods
+                // produced and consumed the same turn never registered. The
+                // diag sweep showed Charcoal blocking 98% of IR#1 attempts and
+                // every IR#3+ goods check failing despite recipes firing.
+                playerPtr->economy().totalSupply[recipe->outputGoodId] += boostedOutput;
+
                 // Recipe-fire audit: per-game counter + milestone log
                 // (first-fire per recipe per game). WP-C8: counter lives on
                 // `this` so ml/headless runs don't leak counts across games.
@@ -1058,6 +1067,16 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
             // fire, creating real chain pull. Without this, advanced goods
             // (Steel, Semi, Microchips) had near-zero demand → low market
             // price → recipe ranker deprioritised them → chain attrition.
+            //
+            // 2026-05-03 (option-1 fix): demand magnitude was only `in.amount`
+            // (typically 1-3), which moved prices ~+20% — not enough to make
+            // anti-profitable upstream recipes (Wood→Charcoal at 10/(7·3)≈0.48)
+            // viable. Scale demand by the downstream output's base price so
+            // high-tier chains pull harder on intermediates: the Charcoal-Steel
+            // recipe (output Steel basePrice 25) now reports Charcoal demand =
+            // input.amount × max(1, outBase/5). This raises Charcoal price
+            // toward the 5× maxPriceRatio clamp when Factories exist, making
+            // recipe 38 profitable enough for the ranker to schedule it.
             const aoc::sim::CityDistrictsComponent& cdists = cityPtr->districts();
             for (const ProductionRecipe& rcp : allRecipes()) {
                 if (!cdists.hasBuilding(rcp.requiredBuilding)) { continue; }
@@ -1065,12 +1084,12 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
                     && !playerPtr->tech().hasResearched(rcp.requiredTech)) {
                     continue;
                 }
-                // Each recipe a city CAN run reports demand for its inputs.
-                // Demand scaled to output value so high-tier chains generate
-                // proportional pull on intermediates.
+                const int32_t outBase = goodDef(rcp.outputGoodId).basePrice;
+                const int32_t demandScaleRecipe = std::max(1, outBase / 5);
                 for (const RecipeInput& in : rcp.inputs) {
                     if (!in.consumed) { continue; }
-                    this->m_market.reportDemand(in.goodId, in.amount);
+                    this->m_market.reportDemand(
+                        in.goodId, in.amount * demandScaleRecipe);
                 }
             }
 

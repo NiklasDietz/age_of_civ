@@ -17,13 +17,20 @@
 namespace aoc::map {
 
 /// Map generation type controlling landmass shape.
+///
+/// 2026-05-03: per user direction, only `Continents` is supported. All other
+/// map types are commented-out below so the enum value range stays stable for
+/// any save-game blob that still serializes a non-zero value (it will be
+/// remapped to Continents at load time). The generator code paths for the
+/// removed types remain in `src/map/MapGenerator.cpp` under `#if 0` blocks
+/// for reference only -- they are not built and not selectable.
 enum class MapType : uint8_t {
-    Continents,             ///< 2-4 separate continents (randomized per seed).
-    Islands,                ///< Many small islands scattered across ocean.
-    ContinentsPlusIslands,  ///< Large continents with island chains between them.
-    LandOnly,               ///< Mostly land with tiny isolated lakes.
-    LandWithSeas,           ///< Large landmass with internal seas (tectonic generator).
-    Fractal,                ///< Pure noise, random landmass shapes.
+    Continents = 0,         ///< Tectonic-plate-simulated continents. Only supported type.
+    // Islands,                ///< [removed 2026-05-03]
+    // ContinentsPlusIslands,  ///< [removed 2026-05-03]
+    // LandOnly,               ///< [removed 2026-05-03] (was "pangaea" CLI alias)
+    // LandWithSeas,           ///< [removed 2026-05-03]
+    // Fractal,                ///< [removed 2026-05-03]
 };
 
 /// Predefined map sizes.
@@ -145,8 +152,9 @@ private:
     static void smoothCoastlines(HexGrid& grid);
     static void placeNaturalWonders(HexGrid& grid, aoc::Random& rng);
 
-    /// Generate terrain using tectonic plate simulation (Realistic map type).
-    static void generateRealisticTerrain(const Config& config, HexGrid& grid, aoc::Random& rng);
+    // 2026-05-03: generateRealisticTerrain removed (was the LandWithSeas
+    // entry point; LandWithSeas is gone). Definition wrapped in #if 0
+    // inside MapGenerator.cpp for reference only.
 
     /// Place resources based on geology zones (Realistic map type).
     static void placeGeologyResources(const Config& config, HexGrid& grid, aoc::Random& rng);

@@ -529,6 +529,31 @@ public:
     void setPlateLandFrac(std::vector<float> v) {
         this->m_plateLandFrac = std::move(v);
     }
+    /// Per-plate crust age in My. Cached so biogeographic-realm and
+    /// metamorphic-shoulder passes can read it without keeping the Plate
+    /// struct (assignTerrain-local) alive.
+    [[nodiscard]] const std::vector<float>& plateCrustAge() const {
+        return this->m_plateCrustAge;
+    }
+    void setPlateCrustAge(std::vector<float> v) {
+        this->m_plateCrustAge = std::move(v);
+    }
+    /// Per-plate count of merger events absorbed (Wilson-cycle history).
+    /// Plates with mergesAbsorbed == 0 stayed isolated and seed
+    /// biogeographic realms (Madagascar, Australia, Antarctica).
+    [[nodiscard]] const std::vector<int32_t>& plateMergesAbsorbed() const {
+        return this->m_plateMergesAbsorbed;
+    }
+    void setPlateMergesAbsorbed(std::vector<int32_t> v) {
+        this->m_plateMergesAbsorbed = std::move(v);
+    }
+    /// Per-plate polar-cap flag. Polar plates seed the ice-sheet pass.
+    [[nodiscard]] const std::vector<uint8_t>& plateIsPolar() const {
+        return this->m_plateIsPolar;
+    }
+    void setPlateIsPolar(std::vector<uint8_t> v) {
+        this->m_plateIsPolar = std::move(v);
+    }
 
     [[nodiscard]] uint8_t plateId(int32_t index) const {
         const int32_t total = this->tileCount();
@@ -1971,6 +1996,9 @@ private:
     std::vector<std::pair<float, float>> m_plateMotion;
     std::vector<std::pair<float, float>> m_plateCenter;
     std::vector<float>                   m_plateLandFrac;
+    std::vector<float>                   m_plateCrustAge;
+    std::vector<int32_t>                 m_plateMergesAbsorbed;
+    std::vector<uint8_t>                 m_plateIsPolar;
     std::vector<float>                   m_crustAgeTile;
     std::vector<float>                   m_sedimentDepth;
     std::vector<uint8_t>                 m_rockType;

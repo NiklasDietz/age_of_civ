@@ -409,95 +409,12 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
     }
 
-    // Islands
-    {
-        ButtonData btn;
-        btn.label        = "Islands";
-        btn.fontSize     = 12.0f;
-        btn.normalColor  = BTN_NORMAL;
-        btn.hoverColor   = BTN_HOVER;
-        btn.pressedColor = BTN_PRESSED;
-        btn.labelColor   = WHITE_TEXT;
-        btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_config.mapType = aoc::map::MapType::Islands;
-            this->updateMapTypeButtons(ui);
-        };
-        this->m_btnIslands = ui.createButton(
-            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
-    }
-
-    // Continents + Islands
-    {
-        ButtonData btn;
-        btn.label        = "Cont+Isl";
-        btn.fontSize     = 12.0f;
-        btn.normalColor  = BTN_NORMAL;
-        btn.hoverColor   = BTN_HOVER;
-        btn.pressedColor = BTN_PRESSED;
-        btn.labelColor   = WHITE_TEXT;
-        btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_config.mapType = aoc::map::MapType::ContinentsPlusIslands;
-            this->updateMapTypeButtons(ui);
-        };
-        this->m_btnContinentsPlusIslands = ui.createButton(
-            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
-    }
-
-    // Land Only
-    {
-        ButtonData btn;
-        btn.label        = "Land Only";
-        btn.fontSize     = 12.0f;
-        btn.normalColor  = BTN_NORMAL;
-        btn.hoverColor   = BTN_HOVER;
-        btn.pressedColor = BTN_PRESSED;
-        btn.labelColor   = WHITE_TEXT;
-        btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_config.mapType = aoc::map::MapType::LandOnly;
-            this->updateMapTypeButtons(ui);
-        };
-        this->m_btnLandOnly = ui.createButton(
-            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
-    }
-
-    // Land With Seas
-    {
-        ButtonData btn;
-        btn.label        = "LandWSeas";
-        btn.fontSize     = 12.0f;
-        btn.normalColor  = BTN_NORMAL;
-        btn.hoverColor   = BTN_HOVER;
-        btn.pressedColor = BTN_PRESSED;
-        btn.labelColor   = WHITE_TEXT;
-        btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_config.mapType = aoc::map::MapType::LandWithSeas;
-            this->updateMapTypeButtons(ui);
-        };
-        this->m_btnLandWithSeas = ui.createButton(
-            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
-    }
-
-    // Fractal
-    {
-        ButtonData btn;
-        btn.label        = "Fractal";
-        btn.fontSize     = 12.0f;
-        btn.normalColor  = BTN_NORMAL;
-        btn.hoverColor   = BTN_HOVER;
-        btn.pressedColor = BTN_PRESSED;
-        btn.labelColor   = WHITE_TEXT;
-        btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_config.mapType = aoc::map::MapType::Fractal;
-            this->updateMapTypeButtons(ui);
-        };
-        this->m_btnFractal = ui.createButton(
-            mapTypeRow, {0.0f, 0.0f, MAP_TYPE_BTN_W, MAP_TYPE_BTN_H}, std::move(btn));
-    }
+    // 2026-05-03: only Continents map type retained. Buttons for Islands /
+    // Cont+Isl / Land Only / LandWSeas / Fractal removed; their member ids
+    // (m_btnIslands, m_btnContinentsPlusIslands, m_btnLandOnly,
+    // m_btnLandWithSeas, m_btnFractal) are still declared on MainMenu but
+    // left invalid here. updateMapTypeButtons() guards against invalid
+    // widget ids so this is safe.
 
     // ---- Map Size section ----
     [[maybe_unused]] WidgetId mapSizeLabel = ui.createLabel(
@@ -1282,18 +1199,9 @@ void GameSetupScreen::refresh(UIManager& ui) {
 }
 
 void GameSetupScreen::updateMapTypeButtons(UIManager& ui) {
+    // 2026-05-03: only Continents button retained.
     setButtonSelected(ui, this->m_btnContinents,
                       this->m_config.mapType == aoc::map::MapType::Continents);
-    setButtonSelected(ui, this->m_btnIslands,
-                      this->m_config.mapType == aoc::map::MapType::Islands);
-    setButtonSelected(ui, this->m_btnContinentsPlusIslands,
-                      this->m_config.mapType == aoc::map::MapType::ContinentsPlusIslands);
-    setButtonSelected(ui, this->m_btnLandOnly,
-                      this->m_config.mapType == aoc::map::MapType::LandOnly);
-    setButtonSelected(ui, this->m_btnLandWithSeas,
-                      this->m_config.mapType == aoc::map::MapType::LandWithSeas);
-    setButtonSelected(ui, this->m_btnFractal,
-                      this->m_config.mapType == aoc::map::MapType::Fractal);
 }
 
 void GameSetupScreen::updateMapSizeButtons(UIManager& ui) {
