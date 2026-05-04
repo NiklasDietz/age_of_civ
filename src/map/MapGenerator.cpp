@@ -293,16 +293,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // North/South American, Pacific, Antarctic, Indo-Australian)
             // plus ~8 minor ones. Default 7 gives realistic continent
             // sizing; user can push to 14 via setup screen.
+            // 2026-05-04: lowered land 6-8 -> 3-5 and bumped ocean 4-6
+            // -> 5-7 to match Earth's actual plate distribution. Earth
+            // has ~6 visible continents and ~7 major plates -- roughly
+            // 1:1 land plate per continent. With landFraction now 0.35-
+            // 0.55 every land plate carries a continent-shaped land
+            // patch, so 3-5 land plates produce 3-5 continents naturally.
+            // Old 6-8 land plates over-counted, packing two land plates
+            // into one visible continent so internal plate boundaries
+            // produced mountain ranges in the middle of continents
+            // instead of at coastal subduction zones.
             const int32_t landCountTarget = (config.landPlateCount > 0)
                 ? std::max(1, config.landPlateCount)
-                : centerRng.nextInt(6, 8);
-            // More ocean plates = tighter Voronoi cells around land =
-            // narrower continental shelves, more separated landmasses.
-            // Real Earth: 7 major + 8 minor = ~15 plates total. With
-            // ~7 land seeds + ~5 ocean + 6 forced polar = 18 plates,
-            // close to Earth's count. Earlier 12-16 produced 25-29
-            // initial plates → too many small territories.
-            const int32_t oceanCountTarget = centerRng.nextInt(4, 6);
+                : centerRng.nextInt(3, 5);
+            const int32_t oceanCountTarget = centerRng.nextInt(5, 7);
             // Tighter land gap lets 7-14 seeds fit on the unit square.
             // 0.42 was fine for 3-4 plates but rejects half the targets
             // when landCountTarget ≥ 6.

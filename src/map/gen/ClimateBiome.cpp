@@ -185,7 +185,17 @@ void runClimateBiomePass(HexGrid& grid,
             }
 
             const float oroAt = orogeny[static_cast<std::size_t>(index)];
-            constexpr float MOUNTAIN_OROGENY_THRESHOLD = 0.20f;
+            // 2026-05-04: lowered 0.20 -> 0.08. The orogeny scatter at
+            // plate boundaries accumulates ~0.011 per epoch for
+            // subduction zones; over a default 15-epoch sim that caps at
+            // ~0.165, never reaching the old 0.20 threshold. Result was
+            // that subduction-zone (coastal) mountains never spawned and
+            // only continent-continent sutures (which stack faster)
+            // crossed the cutoff. The 94th-percentile gate below already
+            // limits absolute mountain count, so a lower minimum cutoff
+            // simply lets coastal subduction tiles enter the mountain
+            // pool and compete with collision sutures naturally.
+            constexpr float MOUNTAIN_OROGENY_THRESHOLD = 0.08f;
             if (oroAt >= MOUNTAIN_OROGENY_THRESHOLD
                 && oroAt >= mountainOrogenyPercentile) {
                 grid.setTerrain(index, TerrainType::Mountain);
