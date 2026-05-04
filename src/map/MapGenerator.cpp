@@ -754,12 +754,16 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         const int32_t EPOCHS = (config.runEpochsLimit > 0)
             ? std::min(requestedEpochs, config.runEpochsLimit)
             : requestedEpochs;
-        // 2026-05-04: rift cycle dropped 8 -> 4. With CYCLE=8 and default
-        // EPOCHS 10-18, sims fired only 1-2 rift events vs 10-18 merge
-        // windows -- mergers always won, producing Pangaea. CYCLE=4 yields
-        // ~3-4 rifts per default sim, balancing the merge cadence and
-        // letting Wilson breakups produce multi-fragment continents.
-        const int32_t CYCLE = 4;
+        // 2026-05-04: cycle bumped 4 -> 6. CYCLE=4 (the previous Pangaea-
+        // bias remediation) over-shot: combined with microplate spawn
+        // (5%/epoch) and triple-junction rifts (30% -> 2 children),
+        // plate count grew from ~12 (start) to ~22 (end of 16-epoch sim),
+        // packing microplates into single visible continents. CYCLE=6
+        // halves rift cadence; later changes also cap microplate spawn
+        // rate and triple-junction frequency. Combined effect: ~3 rifts
+        // per default sim, ~1 microplate, total plate count stays near
+        // initial ~12 throughout the sim (Earth-like net plate balance).
+        const int32_t CYCLE = 6;
         // DT derived from EPOCHS and the user-configurable total drift
         // budget. Default drift = 0.6 map widths. Larger drift = bigger
         // plate motion = more dramatic continental shuffle. Smaller =
@@ -1489,7 +1493,13 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // Triple junctions (Afar, where African+Arabian+
                     // Somalian plates meet) form when three rifts meet
                     // at one point at roughly 120° to each other.
-                    const bool tripleSplit = (centerRng.nextFloat(0.0f, 1.0f) < 0.30f);
+                    // 2026-05-04: triple-junction rate dropped 30% -> 5%.
+                    // Real triple-junction events (Afar-style RRR) are
+                    // rare: only a handful in Earth's geologic record.
+                    // Old 30%-per-rift firing produced 2 children per
+                    // rift in nearly every cycle, doubling plate
+                    // proliferation rate.
+                    const bool tripleSplit = (centerRng.nextFloat(0.0f, 1.0f) < 0.05f);
                     const int32_t childCount = tripleSplit ? 2 : 1;
 
                     // The rift LINE is at angle `faultAxis`. Children
@@ -1674,9 +1684,22 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // between two adjacent major plates. Gives world a more
                 // realistic "messy" plate distribution rather than only
                 // major plates.
+                // 2026-05-04: spawn rate cut 5% -> 1.5% per rift epoch
+                // and capped at MICROPLATE_CAP=3 active. Old 5%/epoch
+                // produced 4-6 microplates per 16-epoch sim, packing
+                // microplates inside visible continents and producing
+                // mountain ranges at internal microplate boundaries.
+                // Earth has ~10 microplates total accumulated over 4.5By,
+                // so on a single-sim timescale 1-3 is realistic.
+                constexpr int32_t MICROPLATE_CAP = 3;
+                int32_t microplateCount = 0;
+                for (const Plate& mp : plates) {
+                    if (mp.isMicroplate) { ++microplateCount; }
+                }
                 if (plates.size() < maxPlates
                     && plates.size() >= 4
-                    && centerRng.nextFloat(0.0f, 1.0f) < 0.05f) {
+                    && microplateCount < MICROPLATE_CAP
+                    && centerRng.nextFloat(0.0f, 1.0f) < 0.015f) {
                     // Pick two random plates that are close to each other.
                     const std::size_t pa = static_cast<std::size_t>(
                         centerRng.nextInt(0, static_cast<int32_t>(plates.size()) - 1));
@@ -1695,6 +1718,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     }
                     if (pb != pa && bestD < 0.30f) {
                         Plate micro;
+                        micro.isMicroplate = true;
                         micro.cx = (plates[pa].cx + plates[pb].cx) * 0.5f
                                  + centerRng.nextFloat(-0.04f, 0.04f);
                         micro.cy = (plates[pa].cy + plates[pb].cy) * 0.5f

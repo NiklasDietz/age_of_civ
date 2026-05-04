@@ -51,6 +51,11 @@ struct Plate {
     float eulerPoleX  = 0.0f;
     float eulerPoleY  = 0.0f;
     float angularRate = 0.0f;
+    // Marks plates spawned via the mid-sim microplate path (Caribbean /
+    // Anatolian / Adria style). Used to cap the active microplate
+    // population separately from the global plate cap so microplates
+    // do not crowd inside visible continents.
+    bool  isMicroplate = false;
 };
 
 struct SutureSeam {
