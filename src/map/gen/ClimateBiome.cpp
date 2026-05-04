@@ -372,13 +372,52 @@ void runClimateBiomePass(HexGrid& grid,
             grid.setElevation(index, static_cast<int8_t>(
                 std::clamp(static_cast<int>(elev * 4.0f), 0, 2)));
 
+            // 2026-05-04: hills require MOUNTAIN PROXIMITY. Old code
+            // placed Hills on any tile with orogeny > 0.06 -- which
+            // included broad plateau / far-field uplift regions far
+            // from any mountain, so user reported "always hilly area
+            // after mountains, never just flatland". Real Earth:
+            // foothills hug actual mountain belts (Bavarian Alpine
+            // foreland, Andean Sub-Andean Sierras), then transition
+            // to flatland (North German Plain, Pampas). We require:
+            //   - Strong local orogeny (> 0.10) -> hill regardless
+            //   - Moderate orogeny (0.06-0.10) -> hill only if any
+            //     neighbor has orogeny > 0.12 (= within ~1 hex of
+            //     a likely-mountain tile)
+            // Tiles with moderate orogeny but no neighbor peak stay
+            // flat. Produces narrow foothill belts around ranges +
+            // genuine flatland inland.
             const float oroValue = orogeny[
                 static_cast<std::size_t>(row * width + col)];
-            if (terrain != TerrainType::Mountain
+            const bool isFlatBiome = terrain != TerrainType::Mountain
                 && terrain != TerrainType::Snow
-                && terrain != TerrainType::Tundra
-                && oroValue > 0.06f) {
-                grid.setFeature(index, FeatureType::Hills);
+                && terrain != TerrainType::Tundra;
+            if (isFlatBiome && oroValue > 0.06f) {
+                bool placeHill = false;
+                if (oroValue > 0.10f) {
+                    placeHill = true;
+                } else {
+                    // Check 6 hex neighbors (offset coords)
+                    const int32_t dr_even[6] = {0, 0, -1, -1, +1, +1};
+                    const int32_t dc_even[6] = {-1, +1, -1,  0, -1,  0};
+                    const int32_t dc_odd[6]  = {-1, +1,  0, +1,  0, +1};
+                    const bool evenRow = ((row & 1) == 0);
+                    for (int32_t k = 0; k < 6; ++k) {
+                        const int32_t nr = row + dr_even[k];
+                        const int32_t nc = col +
+                            (evenRow ? dc_even[k] : dc_odd[k]);
+                        if (nr < 0 || nr >= height
+                            || nc < 0 || nc >= width) { continue; }
+                        if (orogeny[static_cast<std::size_t>(
+                                nr * width + nc)] > 0.12f) {
+                            placeHill = true;
+                            break;
+                        }
+                    }
+                }
+                if (placeHill) {
+                    grid.setFeature(index, FeatureType::Hills);
+                }
             }
         }
     }

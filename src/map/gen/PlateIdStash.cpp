@@ -26,6 +26,29 @@
 
 namespace aoc::map::gen {
 
+// 2026-05-04: point-in-polygon test (ray casting). Polygon is a list
+// of (x, y) world-coord vertices forming a closed ring. Returns true
+// if (px, py) is inside the polygon. O(n) per call where n = vertex
+// count.
+[[nodiscard]] static bool pointInPolygon(
+    float px, float py,
+    const std::vector<std::pair<float, float>>& poly) {
+    const std::size_t n = poly.size();
+    if (n < 3) { return false; }
+    bool inside = false;
+    for (std::size_t i = 0, j = n - 1; i < n; j = i++) {
+        const float xi = poly[i].first;
+        const float yi = poly[i].second;
+        const float xj = poly[j].first;
+        const float yj = poly[j].second;
+        if (((yi > py) != (yj > py))
+            && (px < (xj - xi) * (py - yi) / (yj - yi + 1e-9f) + xi)) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
 void runPlateIdStash(HexGrid& grid, bool cylindrical,
                      const std::vector<Plate>& plates,
                      aoc::Random& noiseRng) {
@@ -33,6 +56,25 @@ void runPlateIdStash(HexGrid& grid, bool cylindrical,
     const int32_t height = grid.height();
     const bool cylSim    = cylindrical;
     if (plates.empty()) { return; }
+
+    // 2026-05-04: pre-compute world-space polygon vertices for each
+    // plate. Done once outside the per-tile loop. Each plate's
+    // boundaryVertices are in plate-local frame; transform via
+    // plate.rot + plate.cx to world coords.
+    const std::size_t nPlates = plates.size();
+    std::vector<std::vector<std::pair<float, float>>> worldPolys(nPlates);
+    for (std::size_t pi = 0; pi < nPlates; ++pi) {
+        const Plate& p = plates[pi];
+        if (p.boundaryVertices.empty()) { continue; }
+        worldPolys[pi].reserve(p.boundaryVertices.size());
+        const float cs = std::cos(p.rot);
+        const float sn = std::sin(p.rot);
+        for (const std::pair<float, float>& v : p.boundaryVertices) {
+            const float wx = p.cx + v.first * cs - v.second * sn;
+            const float wy = p.cy + v.first * sn + v.second * cs;
+            worldPolys[pi].emplace_back(wx, wy);
+        }
+    }
 
     aoc::Random plateWarpRng(noiseRng);
     // 2026-05-04: warp constants aligned with the elevation-pass +
@@ -57,6 +99,37 @@ void runPlateIdStash(HexGrid& grid, bool cylindrical,
                 (fractalNoise(nx * 3.5f + 9.0f, ny * 3.5f + 21.0f, 2, 2.0f, 0.5f, plateWarpRng) - 0.5f) * 0.06f;
             const float pwx = nx + pwX1 + pwX2;
             const float pwy = ny + pwY1 + pwY2;
+            // 2026-05-04: POLYGON-BASED ownership. For each plate
+            // whose polygon contains the warped tile point, record a
+            // candidate. If exactly one polygon claims the tile,
+            // assigned. If multiple (overlap from independent polygon
+            // construction), pick the one whose centroid is closest.
+            // If no polygon claims (gap), fall through to Voronoi
+            // nearest-center as fallback.
+            int32_t polyOwner = -1;
+            float bestPolyCenterDsq = 1e9f;
+            for (std::size_t pi = 0; pi < nPlates; ++pi) {
+                if (worldPolys[pi].empty()) { continue; }
+                if (!pointInPolygon(pwx, pwy, worldPolys[pi])) { continue; }
+                float cdx = pwx - plates[pi].cx;
+                float cdy = pwy - plates[pi].cy;
+                if (cylSim) {
+                    if (cdx >  0.5f) { cdx -= 1.0f; }
+                    if (cdx < -0.5f) { cdx += 1.0f; }
+                }
+                const float cdsq = cdx * cdx + cdy * cdy;
+                if (cdsq < bestPolyCenterDsq) {
+                    bestPolyCenterDsq = cdsq;
+                    polyOwner = static_cast<int32_t>(pi);
+                }
+            }
+            if (polyOwner >= 0 && polyOwner < 255) {
+                grid.setPlateId(row * width + col,
+                    static_cast<uint8_t>(polyOwner));
+                continue;
+            }
+            // Fallback: Voronoi nearest-center for tiles outside all
+            // polygons (gaps from polygon under-reach).
             float d1Sq = 1e9f;
             int32_t nearest = -1;
             for (std::size_t pi = 0; pi < plates.size(); ++pi) {

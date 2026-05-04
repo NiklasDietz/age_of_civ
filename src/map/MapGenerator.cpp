@@ -856,119 +856,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // 2026-05-04: wilsonPhaseOffset removed along with Wilson cycle
         // assembly force. Cycle now emerges from slab pull + rifts.
 
-        // 2026-05-04: POLYGON BOUNDARY construction. Build a polygon
-        // ring per plate by polar sweep: cast 16 rays from the plate
-        // centre and binary-search along each ray for the Voronoi
-        // boundary. Resulting vertices are in plate-LOCAL frame so
-        // they ride with the plate's Euler-pole rotation
-        // automatically (plate.rot tracks the local-frame rotation).
-        // Polygon is currently used for visualization and per-edge
-        // type classification; tile-ownership still uses Voronoi.
-        // Full polygon-based ownership migration would require
-        // rewriting the assignTerrain Voronoi block as point-in-
-        // polygon (~3000 lines affected, multi-day).
-        {
-            constexpr int32_t POLY_VERTICES   = 16;
-            constexpr int32_t BIN_SEARCH_STEPS = 12;
-            const float aspectFix = static_cast<float>(width)
-                / static_cast<float>(height);
-            for (std::size_t targetIdx = 0;
-                 targetIdx < plates.size(); ++targetIdx) {
-                Plate& target = plates[targetIdx];
-                target.boundaryVertices.clear();
-                target.boundaryVertices.reserve(POLY_VERTICES);
-                target.boundaryEdgeTypes.clear();
-                target.boundaryEdgeTypes.reserve(POLY_VERTICES);
-                for (int32_t v = 0; v < POLY_VERTICES; ++v) {
-                    const float angle =
-                        (static_cast<float>(v)
-                         / static_cast<float>(POLY_VERTICES))
-                        * 6.2832f;
-                    const float dirX = std::cos(angle);
-                    const float dirY = std::sin(angle);
-                    float lo = 0.0f;
-                    float hi = 0.50f;
-                    int32_t neighborIdx = -1;
-                    for (int32_t step = 0; step < BIN_SEARCH_STEPS;
-                         ++step) {
-                        const float r = 0.5f * (lo + hi);
-                        const float wx = target.cx + dirX * r;
-                        const float wy = target.cy + dirY * r;
-                        // Find nearest plate at (wx, wy) using same
-                        // anisotropic Voronoi the elevation pass uses.
-                        int32_t nearest = -1;
-                        float bestSq = 1e9f;
-                        for (std::size_t pi = 0; pi < plates.size(); ++pi) {
-                            float dx = wx - plates[pi].cx;
-                            float dy = wy - plates[pi].cy;
-                            if (cylSim) {
-                                if (dx >  0.5f) { dx -= 1.0f; }
-                                if (dx < -0.5f) { dx += 1.0f; }
-                            }
-                            dx *= aspectFix;
-                            const float cs = std::cos(plates[pi].rot);
-                            const float sn = std::sin(plates[pi].rot);
-                            const float lxw =
-                                (dx * cs + dy * sn) / plates[pi].aspect;
-                            const float lyw =
-                                (-dx * sn + dy * cs) * plates[pi].aspect;
-                            const float dsq = (lxw * lxw + lyw * lyw)
-                                / (plates[pi].weight * plates[pi].weight);
-                            if (dsq < bestSq) {
-                                bestSq = dsq;
-                                nearest = static_cast<int32_t>(pi);
-                            }
-                        }
-                        if (nearest == static_cast<int32_t>(targetIdx)) {
-                            lo = r;
-                        } else {
-                            hi = r;
-                            neighborIdx = nearest;
-                        }
-                    }
-                    const float r = 0.5f * (lo + hi);
-                    // Convert world ray direction -> plate-local frame
-                    // by inverse rotating by plate.rot.
-                    const float lxLocal =
-                        dirX * std::cos(-target.rot)
-                            + dirY * std::sin(-target.rot);
-                    const float lyLocal =
-                        -dirX * std::sin(-target.rot)
-                            + dirY * std::cos(-target.rot);
-                    target.boundaryVertices.emplace_back(
-                        lxLocal * r, lyLocal * r);
-                    // Classify edge by neighbor type. Stored as
-                    // approximate type at vertex (refine later).
-                    uint8_t edgeType = 0;
-                    if (neighborIdx >= 0) {
-                        const Plate& nbr = plates[
-                            static_cast<std::size_t>(neighborIdx)];
-                        // Convergent vs divergent inferred from
-                        // velocity-along-normal between centroids.
-                        float bnx = nbr.cx - target.cx;
-                        float bny = nbr.cy - target.cy;
-                        const float bnLen =
-                            std::sqrt(bnx * bnx + bny * bny);
-                        if (bnLen > 0.0001f) {
-                            bnx /= bnLen; bny /= bnLen;
-                            const float relVx = target.vx - nbr.vx;
-                            const float relVy = target.vy - nbr.vy;
-                            const float dotN =
-                                relVx * bnx + relVy * bny;
-                            if (dotN > 0.04f) {
-                                edgeType = (target.isLand && nbr.isLand)
-                                    ? 4 : 2;  // collision or trench
-                            } else if (dotN < -0.04f) {
-                                edgeType = 1;  // spreading ridge
-                            } else {
-                                edgeType = 3;  // transform
-                            }
-                        }
-                    }
-                    target.boundaryEdgeTypes.push_back(edgeType);
-                }
-            }
-        }
+        // 2026-05-04: polygon construction LIFTED to post-sim (after
+        // epoch loop) so vertices reflect FINAL plate positions, not
+        // initial. Vertices stored in plate-local frame so consumers
+        // that apply (cx, cy, rot) get correct world coords.
 
         // Snapshot starting positions so we can restore the final ones
         // for the rendering pass below — stress accumulates across the
@@ -3818,10 +3709,103 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         grid.setPlateCrustAge(std::move(crustAges));
         grid.setPlateMergesAbsorbed(std::move(mergesAbsorbed));
         grid.setPlateIsPolar(std::move(isPolar));
-        // 2026-05-04: persist polygon boundary rings + edge types for
-        // renderer / overlay consumers. Each plate's polygon is a flat
-        // (x,y) ring in plate-local frame; consumer must apply
-        // plate.cx + rotation by plate.rot to get world coords.
+        // 2026-05-04: POST-SIM polygon boundary construction. Polar
+        // sweep with binary search per ray finds the Voronoi
+        // boundary using the FINAL plate positions (post-sim).
+        // 16 vertices per plate stored in plate-LOCAL frame.
+        // Per-edge type classified from current relative-velocity
+        // dot-product between target and neighbor centroids:
+        //   0=unknown, 1=spreading-ridge, 2=subduction-trench,
+        //   3=transform-fault, 4=collision-suture.
+        {
+            constexpr int32_t POLY_VERTICES   = 32;
+            constexpr int32_t BIN_SEARCH_STEPS = 14;
+            const float aspectFix = static_cast<float>(width)
+                / static_cast<float>(height);
+            for (std::size_t targetIdx = 0;
+                 targetIdx < plates.size(); ++targetIdx) {
+                Plate& target = plates[targetIdx];
+                target.boundaryVertices.clear();
+                target.boundaryVertices.reserve(POLY_VERTICES);
+                target.boundaryEdgeTypes.clear();
+                target.boundaryEdgeTypes.reserve(POLY_VERTICES);
+                for (int32_t v = 0; v < POLY_VERTICES; ++v) {
+                    const float angle =
+                        (static_cast<float>(v)
+                         / static_cast<float>(POLY_VERTICES))
+                        * 6.2832f;
+                    const float dirX = std::cos(angle);
+                    const float dirY = std::sin(angle);
+                    float lo = 0.0f;
+                    float hi = 0.50f;
+                    int32_t neighborIdx = -1;
+                    for (int32_t step = 0; step < BIN_SEARCH_STEPS; ++step) {
+                        const float r = 0.5f * (lo + hi);
+                        const float wx = target.cx + dirX * r;
+                        const float wy = target.cy + dirY * r;
+                        int32_t nearest = -1;
+                        float bestSq = 1e9f;
+                        for (std::size_t pi = 0; pi < plates.size(); ++pi) {
+                            float dx = wx - plates[pi].cx;
+                            float dy = wy - plates[pi].cy;
+                            if (cylSim) {
+                                if (dx >  0.5f) { dx -= 1.0f; }
+                                if (dx < -0.5f) { dx += 1.0f; }
+                            }
+                            dx *= aspectFix;
+                            const float cs = std::cos(plates[pi].rot);
+                            const float sn = std::sin(plates[pi].rot);
+                            const float lxw = (dx * cs + dy * sn) / plates[pi].aspect;
+                            const float lyw = (-dx * sn + dy * cs) * plates[pi].aspect;
+                            const float dsq = (lxw * lxw + lyw * lyw)
+                                / (plates[pi].weight * plates[pi].weight);
+                            if (dsq < bestSq) {
+                                bestSq = dsq;
+                                nearest = static_cast<int32_t>(pi);
+                            }
+                        }
+                        if (nearest == static_cast<int32_t>(targetIdx)) {
+                            lo = r;
+                        } else {
+                            hi = r;
+                            neighborIdx = nearest;
+                        }
+                    }
+                    const float r = 0.5f * (lo + hi);
+                    const float lxLocal =
+                        dirX * std::cos(-target.rot)
+                        + dirY * std::sin(-target.rot);
+                    const float lyLocal =
+                        -dirX * std::sin(-target.rot)
+                        + dirY * std::cos(-target.rot);
+                    target.boundaryVertices.emplace_back(
+                        lxLocal * r, lyLocal * r);
+                    uint8_t edgeType = 0;
+                    if (neighborIdx >= 0) {
+                        const Plate& nbr = plates[
+                            static_cast<std::size_t>(neighborIdx)];
+                        float bnx = nbr.cx - target.cx;
+                        float bny = nbr.cy - target.cy;
+                        const float bnLen = std::sqrt(bnx * bnx + bny * bny);
+                        if (bnLen > 0.0001f) {
+                            bnx /= bnLen; bny /= bnLen;
+                            const float relVx = target.vx - nbr.vx;
+                            const float relVy = target.vy - nbr.vy;
+                            const float dotN = relVx * bnx + relVy * bny;
+                            if (dotN > 0.04f) {
+                                edgeType = (target.isLand && nbr.isLand) ? 4 : 2;
+                            } else if (dotN < -0.04f) {
+                                edgeType = 1;
+                            } else {
+                                edgeType = 3;
+                            }
+                        }
+                    }
+                    target.boundaryEdgeTypes.push_back(edgeType);
+                }
+            }
+        }
+
         std::vector<std::vector<std::pair<float, float>>> polygonsLocal;
         std::vector<std::vector<uint8_t>>                 polygonEdgeTypes;
         polygonsLocal.reserve(plates.size());
