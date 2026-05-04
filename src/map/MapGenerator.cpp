@@ -237,11 +237,13 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // Plate struct moved to include/aoc/map/gen/Plate.hpp on 2026-05-03 so
     // extracted post-sim / elevation passes can construct it directly.
     using Plate = aoc::map::gen::Plate;
-    // Per-plate orogeny grid resolution. Default 64×64, scaled by
-    // config.superSampleFactor (1 = default, 2 = 128×128, 4 = 256×256).
-    // Higher resolution = sharper boundary precision + sub-hex detail
-    // at cost of memory/compute. Was constexpr; now driven by config.
-    const int32_t OROGENY_GRID = 64 * std::max(1, config.superSampleFactor);
+    // 2026-05-04: bumped 64 -> 96 (2.25x memory, ~1.5x finer per axis).
+    // At 64 each plate-local cell covered ~1.3 hex tiles at 280-wide map
+    // and bilinear render expanded that to 2-3 hex per cell -- single
+    // boundary scatter became a 5+ hex mountain block. With 96 cells per
+    // plate-local span, single scatter covers ~1 hex; mountain ranges
+    // render as narrow chains rather than chunky blobs.
+    const int32_t OROGENY_GRID = 96 * std::max(1, config.superSampleFactor);
     constexpr float   OROGENY_HALF = 2.0f; // local-frame half-extent
     std::vector<Plate> plates;
     struct Hotspot {
@@ -1247,11 +1249,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         for (float v : plates[b].orogenyLocal) {
                             if (v > 0.0f) { terraneMass += v; }
                         }
-                        // Spread over a small disc (~0.25 plate-local
-                        // radius) at the seam location.
-                        constexpr float TERRANE_RADIUS = 0.25f;
-                        // Rough normalisation: total mass / area = uniform height.
-                        const float depositHeight = std::min(0.18f,
+                        // 2026-05-04: terrane disc radius cut 0.25 -> 0.16
+                        // and height cap 0.18 -> 0.06. Old values stamped
+                        // a circular mountain blob at every plate-merger
+                        // seam. Real accreted terranes (Cordilleran,
+                        // Avalonia) are elongated chains, not round
+                        // discs, and most are eroded down to hill-tier
+                        // by present day. Below mountain threshold (0.08)
+                        // so terranes register as Hills/elevated terrain
+                        // rather than blob mountains; the genuine
+                        // continent-continent suture stress along the
+                        // boundary stays untouched and still produces
+                        // linear mountain ranges where it accumulated.
+                        constexpr float TERRANE_RADIUS = 0.16f;
+                        const float depositHeight = std::min(0.06f,
                             terraneMass * 0.001f);
                         for (int32_t gy = 0; gy < OROGENY_GRID; ++gy) {
                             for (int32_t gx = 0; gx < OROGENY_GRID; ++gx) {
@@ -2088,6 +2099,71 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         scatterPL(Bw, orLx, orLy,
                                   0.018f * bandWeight * effectiveStress);
                     }
+
+                    // 2026-05-04: three additional Earth-natural mountain
+                    // mechanisms.
+                    //
+                    // (1) RIFT SHOULDERS. Continental rifts (East African
+                    // Rift, Red Sea margins) lift the FLANKS of the rift
+                    // valley by 2-3 km via thermal upwelling. The trough
+                    // itself is handled above; here we add positive
+                    // orogeny ~0.06 plate-local INWARD from the boundary
+                    // on A's side. The mirror-image shoulder on B's side
+                    // fires when the same boundary tile is processed
+                    // with B as nearest plate (the outer Voronoi loop
+                    // visits each boundary from both sides).
+                    //
+                    // (2) HIGH PLATEAU. Continent-continent collision
+                    // (Himalayas/Tibet) builds not only a sharp boundary
+                    // ridge but a BROAD plateau behind it (Tibet is
+                    // ~1000 km wide, ~5 km tall). Add positive orogeny
+                    // ~0.18 plate-local inland.
+                    //
+                    // (3) FAR-FIELD INTRAPLATE COMPRESSION. Active
+                    // collisions transmit stress THROUGH continental
+                    // crust producing fold-thrust belts 1000-2000 km
+                    // from the actual plate boundary (Atlas, Tian Shan,
+                    // Caucasus). Add a small positive orogeny ~0.40
+                    // plate-local INWARD on A's side whenever A is land
+                    // and the boundary is convergent (regardless of B's
+                    // type). Magnitude is small so far-field uplift
+                    // alone is hill-tier, only crossing mountain
+                    // threshold where it overlaps long-running stress.
+                    {
+                        const float csA = std::cos(A.rot);
+                        const float snA = std::sin(A.rot);
+                        const float inwardX = -bnx;
+                        const float inwardY = -bny;
+                        const float inwardLx =
+                            (inwardX * csA + inwardY * snA);
+                        const float inwardLy =
+                            (-inwardX * snA + inwardY * csA);
+                        if (stress < -STRESS_GATE && A_land && B_land) {
+                            constexpr float SHOULDER_OFFSET = 0.06f;
+                            constexpr float SHOULDER_GAIN   = 0.018f;
+                            scatterPL(Aw,
+                                lxNearest + inwardLx * SHOULDER_OFFSET,
+                                lyNearest + inwardLy * SHOULDER_OFFSET,
+                                SHOULDER_GAIN * bandWeight
+                                    * (-effectiveStress));
+                        }
+                        if (stress > STRESS_GATE && A_land && B_land) {
+                            constexpr float PLATEAU_OFFSET = 0.18f;
+                            constexpr float PLATEAU_GAIN   = 0.006f;
+                            scatterPL(Aw,
+                                lxNearest + inwardLx * PLATEAU_OFFSET,
+                                lyNearest + inwardLy * PLATEAU_OFFSET,
+                                PLATEAU_GAIN * bandWeight * effectiveStress);
+                        }
+                        if (stress > STRESS_GATE && A_land) {
+                            constexpr float FARFIELD_OFFSET = 0.40f;
+                            constexpr float FARFIELD_GAIN   = 0.0035f;
+                            scatterPL(Aw,
+                                lxNearest + inwardLx * FARFIELD_OFFSET,
+                                lyNearest + inwardLy * FARFIELD_OFFSET,
+                                FARFIELD_GAIN * bandWeight * effectiveStress);
+                        }
+                    }
                     (void)idx;
                 }
             }
@@ -2553,10 +2629,19 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 Plate& p = plates[pi];
                 const float lipLx = postRng.nextFloat(-1.2f, 1.2f);
                 const float lipLy = postRng.nextFloat(-1.2f, 1.2f);
-                // LIPs were also too big — covered substantial fraction
-                // of plates which then crossed mountain threshold.
-                constexpr float LIP_RADIUS = 0.14f;
-                constexpr float LIP_HEIGHT = 0.08f;
+                // 2026-05-04: LIPs are flat basalt plateaus on real Earth
+                // (Deccan Traps, Siberian Traps, Columbia River Basalt
+                // Group), NOT mountain ranges. Old LIP_HEIGHT 0.08 sat
+                // exactly at the mountain threshold so every LIP became a
+                // round mountain blob in the middle of a plate -- the
+                // user-reported "rectangular mountain blobs spread across
+                // the globe" came from these. Drop to 0.04 so they raise
+                // local elevation (above sea level, plateau-tier hills)
+                // but stay clear of the 0.08 mountain cutoff. Also
+                // tightened radius 0.14 -> 0.10 so plateau footprint is
+                // proportionally smaller.
+                constexpr float LIP_RADIUS = 0.10f;
+                constexpr float LIP_HEIGHT = 0.04f;
                 for (int32_t gy = 0; gy < OROGENY_GRID; ++gy) {
                     for (int32_t gx = 0; gx < OROGENY_GRID; ++gx) {
                         const float lx = (static_cast<float>(gx) + 0.5f)
@@ -2587,11 +2672,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             }
         }
 
-        // No blur. Nearest-cell scatter keeps orogeny pinned to the
-        // exact boundary cells — sharp mountain RIDGES, not blobs.
-        // Foothill apron will come from a separate ONE-tile dilation
-        // below targeted at Hills-tier (avoids inflating mountains).
-        const int32_t erosionPasses = 0;
+        // 2026-05-04: re-enabled single erosion pass (was 0, now 1) to
+        // soften the rectangular blob shape that nearest-cell scatter
+        // + multiple stacked stamps (boundary + plateau + far-field)
+        // produced. One pass of 3x3 box blur smooths cell-aligned
+        // peaks into surrounding cells -> mountain RANGES taper to
+        // foothills naturally instead of cutting off as sharp blocks.
+        // Two passes were too aggressive (rounded ranges into hills).
+        const int32_t erosionPasses = 1;
         for (Plate& p : plates) {
             std::vector<float> tmp(p.orogenyLocal.size(), 0.0f);
             for (int32_t passN = 0; passN < erosionPasses; ++passN) {
