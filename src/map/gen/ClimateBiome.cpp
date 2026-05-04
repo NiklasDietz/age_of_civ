@@ -38,6 +38,48 @@ void runClimateBiomePass(HexGrid& grid,
         maxCoastDist = std::max(maxCoastDist, distFromCoast[static_cast<std::size_t>(i)]);
     }
 
+    // 2026-05-04: precompute mountain tile set BEFORE wind loop. Wind
+    // orographic effects (rain shadow + windward precipitation boost)
+    // need to know where actual mountains are. Old code checked
+    // `mountainElev[i] >= mountainThreshold` -- an elevation-based
+    // proxy that diverges from the rank-based orogeny quota used to
+    // PLACE mountains. Result: wind ignored real mountains and
+    // applied rain shadows behind elevation-only "false mountains".
+    std::vector<uint8_t> isMountainTile(
+        static_cast<std::size_t>(totalTiles), 0u);
+    {
+        std::vector<std::pair<float, int32_t>> landOroIdx;
+        landOroIdx.reserve(static_cast<std::size_t>(totalTiles));
+        for (int32_t i = 0; i < totalTiles; ++i) {
+            if (elevationMap[static_cast<std::size_t>(i)] >= waterThreshold) {
+                landOroIdx.emplace_back(
+                    orogeny[static_cast<std::size_t>(i)], i);
+            }
+        }
+        if (!landOroIdx.empty()) {
+            const std::size_t n = landOroIdx.size();
+            const std::size_t mountainQuota =
+                static_cast<std::size_t>(static_cast<double>(n) * 0.05);
+            if (mountainQuota > 0 && mountainQuota < n) {
+                std::nth_element(
+                    landOroIdx.begin(),
+                    landOroIdx.begin()
+                        + static_cast<std::ptrdiff_t>(mountainQuota),
+                    landOroIdx.end(),
+                    [](const std::pair<float, int32_t>& a,
+                       const std::pair<float, int32_t>& b) {
+                        return a.first > b.first;
+                    });
+                for (std::size_t i = 0; i < mountainQuota; ++i) {
+                    if (landOroIdx[i].first >= 0.08f) {
+                        isMountainTile[static_cast<std::size_t>(
+                            landOroIdx[i].second)] = 1u;
+                    }
+                }
+            }
+        }
+    }
+
     constexpr int32_t WIND_WALK_RANGE = 14;
     std::vector<float> windMoist(static_cast<std::size_t>(totalTiles), 0.0f);
     const bool cylClim = (grid.topology() == aoc::map::MapTopology::Cylindrical);
@@ -73,7 +115,7 @@ void runClimateBiomePass(HexGrid& grid,
                     reachedOcean = true;
                     break;
                 }
-                if (mountainElev[static_cast<std::size_t>(uidx)] >= mountainThreshold) {
+                if (isMountainTile[static_cast<std::size_t>(uidx)]) {
                     ++mountainCount;
                     if (firstMountainDist < 0) { firstMountainDist = s; }
                 }
@@ -94,7 +136,7 @@ void runClimateBiomePass(HexGrid& grid,
                 if (elevationMap[static_cast<std::size_t>(didx)] < waterThreshold) {
                     break;
                 }
-                if (mountainElev[static_cast<std::size_t>(didx)] >= mountainThreshold) {
+                if (isMountainTile[static_cast<std::size_t>(didx)]) {
                     carry += 0.30f - 0.10f * static_cast<float>(s - 1);
                     break;
                 }
@@ -148,44 +190,9 @@ void runClimateBiomePass(HexGrid& grid,
         }
     }
 
-    // 2026-05-04: hard top-5 %-by-rank mountain quota. Pre-compute the
-    // set of land-tile indices whose orogeny is in the top 5 %; loop
-    // below checks set membership instead of value comparison. This
-    // is robust against saturation: when many cells clamp at 0.22, a
-    // value-based percentile collapses (everyone at clamp passes the
-    // threshold), giving 30-45 % mountain coverage. Rank-based always
-    // picks exactly N tiles regardless of value distribution.
-    std::vector<uint8_t> isMountainTile(static_cast<std::size_t>(totalTiles), 0u);
-    {
-        std::vector<std::pair<float, int32_t>> landOroIdx;
-        landOroIdx.reserve(static_cast<std::size_t>(totalTiles));
-        for (int32_t i = 0; i < totalTiles; ++i) {
-            if (elevationMap[static_cast<std::size_t>(i)] >= waterThreshold) {
-                landOroIdx.emplace_back(
-                    orogeny[static_cast<std::size_t>(i)], i);
-            }
-        }
-        if (!landOroIdx.empty()) {
-            const std::size_t n = landOroIdx.size();
-            const std::size_t mountainQuota =
-                static_cast<std::size_t>(static_cast<double>(n) * 0.05);
-            if (mountainQuota > 0 && mountainQuota < n) {
-                std::nth_element(
-                    landOroIdx.begin(),
-                    landOroIdx.begin()
-                        + static_cast<std::ptrdiff_t>(mountainQuota),
-                    landOroIdx.end(),
-                    [](const std::pair<float, int32_t>& a,
-                       const std::pair<float, int32_t>& b) {
-                        return a.first > b.first;
-                    });
-                for (std::size_t i = 0; i < mountainQuota; ++i) {
-                    isMountainTile[static_cast<std::size_t>(
-                        landOroIdx[i].second)] = 1u;
-                }
-            }
-        }
-    }
+    // Mountain quota set was lifted above the wind block (line ~50)
+    // so wind orographic effects can use the same set as mountain
+    // placement. No second computation needed here.
 
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {

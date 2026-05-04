@@ -263,6 +263,19 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // stacks on top.
     if (config.climatePhase == 1)      { effectiveWaterRatio += 0.04f; }
     else if (config.climatePhase == 2) { effectiveWaterRatio -= 0.06f; }
+    // 2026-05-04: EUSTATIC SEA-LEVEL CYCLES. Real Earth sea level
+    // varies cyclically over ~30-100 My periods driven by total
+    // mid-ocean-ridge volume (more spreading = more displaced water
+    // = higher seas). Cretaceous high stand was +200 m above modern;
+    // Pleistocene glacials dropped seas -120 m. The seed-derived
+    // sine offset gives each generated world a different point in
+    // its cycle (ranges +/- 0.06 of waterRatio = roughly +/- 200 m).
+    {
+        aoc::Random eustaticRng(config.seed ^ 0x45555354u); // "EUST"
+        const float cyclePhase =
+            eustaticRng.nextFloat(0.0f, 6.2832f);
+        effectiveWaterRatio += std::sin(cyclePhase) * 0.06f;
+    }
     effectiveWaterRatio = std::clamp(
         effectiveWaterRatio + config.seaLevelDelta, 0.05f, 0.85f);
 
@@ -975,6 +988,21 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     p.oceanWedgeWidth = std::min(0.40f,
                         p.oceanWedgeWidth + vMag * DT * 0.40f);
                 }
+                // 2026-05-04: STICK-SLIP intra-plate stress release.
+                // Plate accumulates stress proportional to its current
+                // speed (proxy for boundary-friction loading). When
+                // accumulator crosses threshold, plate releases stress
+                // as a small velocity perturbation (sudden motion =
+                // earthquake-cluster analog) and resets accumulator.
+                p.stressAccum += std::sqrt(p.vx * p.vx + p.vy * p.vy)
+                                * DT * 0.5f;
+                if (p.stressAccum > 0.20f) {
+                    const float dirAng = centerRng.nextFloat(0.0f, 6.2832f);
+                    const float kick = p.stressAccum * 0.15f;
+                    p.vx += std::cos(dirAng) * kick;
+                    p.vy += std::sin(dirAng) * kick;
+                    p.stressAccum = 0.0f;
+                }
             }
 
             // 2026-05-04: GLOBAL PLATE REORGANIZATION event. Earth
@@ -1293,11 +1321,28 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // size. Used post-sim to mark ophiolite tiles
                         // along the fossil collision boundary (Indus-
                         // Tsangpo Suture, Iapetus Suture, etc).
-                        sutureSeams.push_back({
-                            (plates[a].cx + plates[b].cx) * 0.5f,
-                            (plates[a].cy + plates[b].cy) * 0.5f,
-                            std::min(plates[a].weight, plates[b].weight) * 0.18f
-                        });
+                        {
+                            // Tangent perpendicular to A-B collision
+                            // normal: real ophiolites lie ALONG the
+                            // suture line (perpendicular to closing
+                            // direction).
+                            float nx = plates[b].cx - plates[a].cx;
+                            float ny = plates[b].cy - plates[a].cy;
+                            const float nLen =
+                                std::sqrt(nx * nx + ny * ny);
+                            float tx = 1.0f, ty = 0.0f;
+                            if (nLen > 0.0001f) {
+                                nx /= nLen; ny /= nLen;
+                                tx = -ny; ty = nx;
+                            }
+                            sutureSeams.push_back({
+                                (plates[a].cx + plates[b].cx) * 0.5f,
+                                (plates[a].cy + plates[b].cy) * 0.5f,
+                                std::min(plates[a].weight,
+                                         plates[b].weight) * 0.18f,
+                                tx, ty
+                            });
+                        }
                         plates[a].cx = (plates[a].cx + plates[b].cx) * 0.5f;
                         plates[a].cy = (plates[a].cy + plates[b].cy) * 0.5f;
                         plates[a].vx = (plates[a].vx + plates[b].vx) * 0.5f;
@@ -2107,6 +2152,19 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                     lxNearest + bnx * 0.10f,
                                     lyNearest + bny * 0.10f,
                                     0.06f * bandWeight);
+                                // 2026-05-04: MOUNTAIN BELT COLLAPSE.
+                                // When a slab tears, the overriding
+                                // mountain belt loses its compression
+                                // load and partially relaxes downward.
+                                // Erode existing orogeny in a small
+                                // band along the boundary on A's side
+                                // (negative scatter). Real example:
+                                // post-tearing collapse of Mediterranean
+                                // mountain belts (Apennines, Carpathians).
+                                scatterPL(Aw,
+                                    lxNearest + bnx * 0.04f,
+                                    lyNearest + bny * 0.04f,
+                                    -0.05f * bandWeight);
                             }
                             // 2026-05-04: SUBDUCTION POLARITY REVERSAL.
                             // Rare event (Solomon arc, Banda arc) where

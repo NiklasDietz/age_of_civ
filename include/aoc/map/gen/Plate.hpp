@@ -69,12 +69,26 @@ struct Plate {
     float oceanWedgeNy     = 0.0f;
     float oceanWedgeWidth  = 0.0f;  // 0 = no rift wedge
     int32_t oceanWedgeBornEpoch = -1;
+    // 2026-05-04: intra-plate stress accumulator. Real plates store
+    // elastic strain over many epochs and periodically release it as
+    // earthquakes / sudden velocity bursts (stick-slip behaviour).
+    // When stressAccum exceeds threshold, plate gets a velocity
+    // perturbation + accumulator resets.
+    float stressAccum = 0.0f;
 };
 
 struct SutureSeam {
     float x;
     float y;
     float r;
+    // 2026-05-04: along-seam unit tangent (perpendicular to the
+    // collision normal between the two merged plates). Used by the
+    // ophiolite mask pass to draw a NARROW BAND along the suture
+    // line instead of a circular DISC -- real ophiolite exposures
+    // are linear (Indus-Tsangpo Suture, Iapetus Suture, Atlas Belt),
+    // not round patches.
+    float tangentX = 1.0f;
+    float tangentY = 0.0f;
 };
 
 } // namespace aoc::map::gen

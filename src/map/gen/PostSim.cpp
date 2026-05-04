@@ -87,8 +87,20 @@ void runPostSimPasses(MapGenContext& ctx) {
                     if (ddx >  0.5f) { ddx -= 1.0f; }
                     if (ddx < -0.5f) { ddx += 1.0f; }
                 }
-                const float dd = std::sqrt(ddx * ddx + ddy * ddy);
-                if (dd < s.r * 0.45f) {
+                // 2026-05-04: NARROW BAND ophiolite. Project the offset
+                // (ddx, ddy) onto the seam tangent (ALONG seam) and
+                // perpendicular (NORMAL to seam). Mark only tiles
+                // within: |along| < seamHalfLen AND |perp| < bandWidth.
+                // Real ophiolite belts are 10-50 km wide × hundreds of
+                // km long. Old code used radial distance < r * 0.45 =
+                // a circular DISC, producing the round "oval-shaped"
+                // patches the user noticed.
+                const float along = ddx * s.tangentX + ddy * s.tangentY;
+                const float perp  = ddx * (-s.tangentY) + ddy * s.tangentX;
+                const float seamHalfLen = s.r * 0.80f;
+                const float bandWidth   = s.r * 0.10f;
+                if (std::fabs(along) < seamHalfLen
+                    && std::fabs(perp) < bandWidth) {
                     ophioliteMask[static_cast<std::size_t>(idx)] = 1;
                     break;
                 }
