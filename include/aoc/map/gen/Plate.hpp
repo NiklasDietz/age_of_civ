@@ -75,6 +75,20 @@ struct Plate {
     // When stressAccum exceeds threshold, plate gets a velocity
     // perturbation + accumulator resets.
     float stressAccum = 0.0f;
+    // 2026-05-04: POLYGON BOUNDARY representation. Real plates are
+    // bounded by polygons of edges (spreading ridges, subduction
+    // trenches, transform faults) -- not Voronoi cells. We store a
+    // ring of plate-local boundary vertices sampled at sim-init from
+    // the Voronoi cell. Vertices ride with the plate's Euler-pole
+    // rotation each epoch so the polygon stays attached. Polygon is
+    // currently used for: visualization overlay (renderer can draw
+    // boundary lines) and per-edge type classification. Tile-
+    // ownership still uses Voronoi for performance; full migration
+    // to polygon-based ownership would be a multi-day rewrite.
+    std::vector<std::pair<float, float>> boundaryVertices;
+    // Per-edge boundary type: 0=unknown, 1=spreading-ridge,
+    // 2=subduction-trench, 3=transform-fault, 4=collision-suture.
+    std::vector<uint8_t>                 boundaryEdgeTypes;
 };
 
 struct SutureSeam {

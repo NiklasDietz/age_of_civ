@@ -60,6 +60,18 @@ void runRockTypeAssignment(HexGrid& grid,
                 && sediment[static_cast<std::size_t>(i)] < 0.04f) {
                 rt = 1;
             }
+            // 2026-05-04: CARBONATE COMPENSATION DEPTH. Below ~4500 m
+            // (in our normalised system: deep ocean = elevation
+            // < 0.05) seawater dissolves carbonate-shell debris before
+            // it can settle. Only insoluble red clay + biogenic
+            // silica accumulate -- no chalk/limestone forms. Rock
+            // type 4 = abyssal red clay. Detect via tile elevation
+            // (deep ocean) AND low sediment (no continental input).
+            const int32_t elev = grid.elevation(i);
+            if (t == TerrainType::Ocean && elev < -1
+                && sediment[static_cast<std::size_t>(i)] < 0.02f) {
+                rt = 4;
+            }
         }
         rockTypeTile[static_cast<std::size_t>(i)] = rt;
     }

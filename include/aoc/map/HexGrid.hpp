@@ -555,6 +555,29 @@ public:
         this->m_plateIsPolar = std::move(v);
     }
 
+    /// 2026-05-04: per-plate POLYGON BOUNDARY ring + per-edge types.
+    /// Vertices are in plate-LOCAL frame; consumer applies
+    /// plateCenter + rotation by plate.rot to get world coords.
+    /// Edge types: 0=unknown, 1=spreading-ridge, 2=subduction-trench,
+    /// 3=transform-fault, 4=collision-suture. Used by renderer to
+    /// draw boundary lines colored by type. Voronoi tile-ownership
+    /// continues to be authoritative for terrain assignment.
+    [[nodiscard]] const std::vector<std::vector<std::pair<float, float>>>&
+    platePolygons() const {
+        return this->m_platePolygons;
+    }
+    void setPlatePolygons(
+        std::vector<std::vector<std::pair<float, float>>> v) {
+        this->m_platePolygons = std::move(v);
+    }
+    [[nodiscard]] const std::vector<std::vector<uint8_t>>&
+    platePolygonEdgeTypes() const {
+        return this->m_platePolygonEdgeTypes;
+    }
+    void setPlatePolygonEdgeTypes(std::vector<std::vector<uint8_t>> v) {
+        this->m_platePolygonEdgeTypes = std::move(v);
+    }
+
     [[nodiscard]] uint8_t plateId(int32_t index) const {
         const int32_t total = this->tileCount();
         if (index < 0 || index >= total) { return 0xFFu; }
@@ -579,6 +602,19 @@ public:
     }
     void setCrustAgeTile(std::vector<float> v) {
         this->m_crustAgeTile = std::move(v);
+    }
+
+    /// 2026-05-04: per-tile geomagnetic polarity (+1 normal, -1 reversed).
+    /// Derived from crust formation age + the ~0.5 My geomagnetic
+    /// reversal cycle. Drives optional magnetic-stripe overlay
+    /// matching real-Earth seafloor anomaly maps -- the alternating
+    /// linear bands parallel to mid-ocean ridges that record plate
+    /// motion history.
+    [[nodiscard]] const std::vector<int8_t>& magneticPolarity() const {
+        return this->m_magneticPolarity;
+    }
+    void setMagneticPolarity(std::vector<int8_t> v) {
+        this->m_magneticPolarity = std::move(v);
     }
 
     /// Per-tile sediment depth in normalised orogeny units. Built up by
@@ -1999,7 +2035,11 @@ private:
     std::vector<float>                   m_plateCrustAge;
     std::vector<int32_t>                 m_plateMergesAbsorbed;
     std::vector<uint8_t>                 m_plateIsPolar;
+    std::vector<std::vector<std::pair<float, float>>>
+                                         m_platePolygons;
+    std::vector<std::vector<uint8_t>>    m_platePolygonEdgeTypes;
     std::vector<float>                   m_crustAgeTile;
+    std::vector<int8_t>                  m_magneticPolarity;
     std::vector<float>                   m_sedimentDepth;
     std::vector<uint8_t>                 m_rockType;
     std::vector<uint8_t>                 m_marginType;

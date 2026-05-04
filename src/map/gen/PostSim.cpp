@@ -368,8 +368,34 @@ void runPostSimPasses(MapGenContext& ctx) {
         }
     }
 
+    // 2026-05-04: GEOMAGNETIC ANOMALY STRIPES. Earth's magnetic field
+    // reverses every ~250-500 ky. New oceanic crust freezes the
+    // current polarity in remanent magnetism as it cools at mid-ocean
+    // ridges. Result: alternating positive/negative magnetic stripes
+    // parallel to spreading axes. We approximate by quantising
+    // crustAgeTile by a "reversal period" and assigning alternating
+    // polarity per band. Works on ANY tile (oceanic or continental)
+    // but stripes only visible on oceanic crust where age varies
+    // smoothly along plate-motion direction. Cost: 1 byte per tile.
+    std::vector<int8_t> magneticPolarity(
+        static_cast<std::size_t>(width * height), 0);
+    {
+        // Reversal period in our age-time-units. Earth: ~0.5 My; sim:
+        // each epoch ~10 My, so a stripe per ~0.05 epochs would be too
+        // fine. Use 1.0 unit period -> ~5 stripes per 5-My segment.
+        constexpr float REVERSAL_PERIOD = 1.0f;
+        for (std::size_t i = 0; i < magneticPolarity.size(); ++i) {
+            const float age = crustAgeTile[i];
+            if (age <= 0.0f) { continue; }
+            const int32_t band = static_cast<int32_t>(
+                std::floor(age / REVERSAL_PERIOD));
+            magneticPolarity[i] = (band & 1) ? -1 : 1;
+        }
+    }
+
     // Persist tile-level fields onto the grid.
     grid.setCrustAgeTile(crustAgeTile);
+    grid.setMagneticPolarity(std::move(magneticPolarity));
     grid.setSedimentDepth(sediment);
     grid.setMarginType(marginTypeTile);
 }
