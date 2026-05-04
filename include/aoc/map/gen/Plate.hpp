@@ -43,6 +43,14 @@ struct Plate {
     int32_t mergesAbsorbed = 0;
     int8_t  slabTornThisEpoch = 0;
     float crustAge         = 0.0f;
+    // 2026-05-03: Euler-pole rotation. Each plate spins around a fixed
+    // axis (eulerPoleX, eulerPoleY) at angularRate rad/epoch. Real plates
+    // rotate as well as translate -- pure translation produces unrealistically
+    // straight hotspot trails and parallel margins. The hybrid model keeps
+    // linear (vx,vy) drift and adds a small rotational component on top.
+    float eulerPoleX  = 0.0f;
+    float eulerPoleY  = 0.0f;
+    float angularRate = 0.0f;
 };
 
 struct SutureSeam {

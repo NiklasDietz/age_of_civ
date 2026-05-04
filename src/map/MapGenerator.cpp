@@ -317,6 +317,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 p.isLand = isLand;
                 p.vx = centerRng.nextFloat(-0.70f, 0.70f);
                 p.vy = centerRng.nextFloat(-0.70f, 0.70f);
+                // 2026-05-04: radial outward bias. Counteracts the
+                // Wilson-cycle assembly pull that always fires every epoch
+                // by giving each plate an initial velocity component
+                // pointing AWAY from the map centroid (0.5, 0.5). Magnitude
+                // 0.30 matches the typical assembly-pull magnitude over
+                // the first few epochs, so the two roughly cancel and
+                // plates dispersed by initial conditions can stay
+                // dispersed. Real plates have post-rift outward momentum
+                // (e.g. South America moving WNW after Atlantic opening).
+                p.vx += (cx - 0.5f) * 0.30f;
+                p.vy += (cy - 0.5f) * 0.30f;
                 // Wide aspect range: real Earth plates are 1:1 (Pacific)
                 // to 4:1 (Andean Plate). Old 0.95-1.10 → all near-circle
                 // → all continents looked uniform. Now 0.50-2.20.
@@ -329,6 +340,27 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // through the whole sim — pattern travels with the plate.
                 p.seedX = centerRng.nextFloat(0.0f, 1000.0f);
                 p.seedY = centerRng.nextFloat(0.0f, 1000.0f);
+                // 2026-05-03: Euler-pole rotation. Pole is a random point
+                // outside the unit square (radius 1.5..3.5 from origin so
+                // the rotation arc across the map is gentle and roughly
+                // straight, like real plates over geologic timescales).
+                // angularRate magnitude ~0.012 rad/epoch -> ~0.7 deg per
+                // epoch; combined with linear vx/vy this curves hotspot
+                // trails and rotates plate boundaries instead of dragging
+                // them as parallel lines. Sign random so plates rotate
+                // both ways. Cratons (isLand) rotate slower since old
+                // continental crust is more stable.
+                {
+                    const float poleAng    = centerRng.nextFloat(0.0f, 6.2832f);
+                    const float poleRadius = centerRng.nextFloat(1.5f, 3.5f);
+                    p.eulerPoleX  = 0.5f + std::cos(poleAng) * poleRadius;
+                    p.eulerPoleY  = 0.5f + std::sin(poleAng) * poleRadius;
+                    const float rateMag = isLand
+                        ? centerRng.nextFloat(0.004f, 0.014f)
+                        : centerRng.nextFloat(0.008f, 0.020f);
+                    p.angularRate = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f)
+                        ? -rateMag : rateMag;
+                }
                 // landFraction: continental plates are mostly land but
                 // not entirely (Eurasian has plenty of seas); oceanic
                 // plates have small islands and seamount chains. Adds
@@ -346,13 +378,19 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // Net effect over 100+ epochs: cratons → full continents
                 // (matches Earth's progression from Archean nuclei to
                 // present continents through ~2.5 Ga of accretion).
-                // Bimodal: continental plates ARE the continent (Africa
-                // ≈ African plate). Push to 0.85-0.95 so plate identity
-                // and continent identity overlap. Oceanic plates 0.02-
-                // 0.08 — almost pure ocean, occasional volcanic island
-                // along hotspot trail.
+                // 2026-05-04: dropped from 0.85-0.95 to 0.35-0.55. Real
+                // tectonic plates are mostly OCEAN even when they carry a
+                // continent: African plate is ~32% land, Indian ~36%,
+                // Eurasian ~40%, North American ~45%, Pacific ~0%. The
+                // old 0.85-0.95 range made every "land" plate read as a
+                // near-continuous continent, so adjacent land plates
+                // formed a Pangaea even when their centroids drifted
+                // apart. With 0.35-0.55 each plate carries a continent-
+                // sized landmass surrounded by intra-plate ocean, and
+                // adjacent land plates produce two SEPARATE continents
+                // separated by ocean rather than a fused supercontinent.
                 p.landFraction = isLand
-                    ? centerRng.nextFloat(0.85f, 0.95f)
+                    ? centerRng.nextFloat(0.35f, 0.55f)
                     : centerRng.nextFloat(0.02f, 0.08f);
                 p.orogenyLocal.assign(
                     static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
@@ -537,6 +575,16 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 p.crustAreaInitial = p.crustArea;
                 p.crustAge = centerRng.nextFloat(80.0f, 160.0f); // polar = old, stable
                 p.isPolar = true;
+                // Polar plates: tiny Euler rotation only (cap-like).
+                {
+                    const float poleAng    = centerRng.nextFloat(0.0f, 6.2832f);
+                    const float poleRadius = centerRng.nextFloat(2.0f, 4.0f);
+                    p.eulerPoleX  = 0.5f + std::cos(poleAng) * poleRadius;
+                    p.eulerPoleY  = 0.5f + std::sin(poleAng) * poleRadius;
+                    const float rateMag = centerRng.nextFloat(0.001f, 0.004f);
+                    p.angularRate = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f)
+                        ? -rateMag : rateMag;
+                }
                 p.extraSeeds.emplace_back(0.15f, cy0);
                 p.extraSeeds.emplace_back(0.35f, cy0);
                 p.extraSeeds.emplace_back(0.65f, cy0);
@@ -600,7 +648,15 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     ++placed;
                 }
             }
-            effectiveWaterRatio = std::clamp(config.waterRatio, 0.40f, 0.55f);
+            // 2026-05-04: bumped clamp 0.40-0.55 -> 0.60-0.72 to match
+            // Earth's actual water coverage (~71%). Old 40-55% global
+            // water meant midlatitudes ended up 70-80% land, which fused
+            // every continent into a Pangaea-shaped megablob even when
+            // tectonic-sim plates remained physically separate. With the
+            // higher cutoff, landmass/total-land fraction realistically
+            // peaks around 0.40-0.55 and adjacent plates produce
+            // genuinely separated continents.
+            effectiveWaterRatio = std::clamp(config.waterRatio, 0.60f, 0.72f);
             break;
         }
         // (continents tectonic-sim runs after the switch — see below)
@@ -694,10 +750,12 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         const int32_t EPOCHS = (config.runEpochsLimit > 0)
             ? std::min(requestedEpochs, config.runEpochsLimit)
             : requestedEpochs;
-        // Slower rift cycle (8 epochs) so plate count grows less over
-        // a sim. Real Wilson-cycle rifting events are rare (~once per
-        // 100 My); over 40 epochs we want maybe 4-5 rifts.
-        const int32_t CYCLE = 8;
+        // 2026-05-04: rift cycle dropped 8 -> 4. With CYCLE=8 and default
+        // EPOCHS 10-18, sims fired only 1-2 rift events vs 10-18 merge
+        // windows -- mergers always won, producing Pangaea. CYCLE=4 yields
+        // ~3-4 rifts per default sim, balancing the merge cadence and
+        // letting Wilson breakups produce multi-fragment continents.
+        const int32_t CYCLE = 4;
         // DT derived from EPOCHS and the user-configurable total drift
         // budget. Default drift = 0.6 map widths. Larger drift = bigger
         // plate motion = more dramatic continental shuffle. Smaller =
@@ -715,6 +773,16 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // epoch contribution) — produces a gradient: weak boundaries
         // equilibrate around Hills, strongest reach Mountain.
         constexpr float   STRESS_GATE = 0.40f;
+
+        // 2026-05-04: Wilson-cycle phase offset, biased toward DISPERSAL
+        // half. cos(pi + x) = -cos(x), so centring offset on pi means
+        // every sim opens with a dispersal pull (negative assemblyForce)
+        // and ends with one too in default 10-18-epoch sims. The original
+        // phase=0 default opened on full assembly => Pangaea bias.
+        // Random spread of +/- pi/2 around pi keeps variation across
+        // seeds: some sims start at full dispersal, some at zero-crossing.
+        const float wilsonPhaseOffset = 3.14159f
+            + centerRng.nextFloat(-1.5708f, 1.5708f);
 
         // Snapshot starting positions so we can restore the final ones
         // for the rendering pass below — stress accumulates across the
@@ -840,6 +908,39 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 }
                 p.cx += p.vx * DT * motionScale;
                 p.cy += p.vy * DT * motionScale;
+                // 2026-05-03: Euler-pole rotation. After linear drift,
+                // rotate the plate (cx,cy + extraSeeds + hotspot trails)
+                // by `angularRate * DT * motionScale` around its pole.
+                // Combined with linear translation this curves trajectories
+                // -- straight (vx,vy) drift produces unrealistically
+                // parallel margins and dead-straight hotspot trails. Real
+                // plates rotate as well as translate; the Hawaii-Emperor
+                // bend is the canonical signature of this on Earth.
+                {
+                    const float dTheta = p.angularRate * DT * motionScale;
+                    if (std::fabs(dTheta) > 1e-7f) {
+                        const float cs = std::cos(dTheta);
+                        const float sn = std::sin(dTheta);
+                        auto rotateAroundPole = [&](float& x, float& y) {
+                            float dx = x - p.eulerPoleX;
+                            float dy = y - p.eulerPoleY;
+                            const float nx = dx * cs - dy * sn;
+                            const float ny = dx * sn + dy * cs;
+                            x = p.eulerPoleX + nx;
+                            y = p.eulerPoleY + ny;
+                        };
+                        rotateAroundPole(p.cx, p.cy);
+                        for (std::pair<float, float>& es : p.extraSeeds) {
+                            rotateAroundPole(es.first, es.second);
+                        }
+                        for (std::pair<float, float>& hs : p.hotspotTrail) {
+                            rotateAroundPole(hs.first, hs.second);
+                        }
+                        // Also rotate plate's local-frame orientation so
+                        // crust-mask noise sample frame tracks the spin.
+                        p.rot += dTheta;
+                    }
+                }
                 if (cylSim) {
                     if (p.cx < 0.0f) { p.cx += 1.0f; }
                     if (p.cx > 1.0f) { p.cx -= 1.0f; }
@@ -867,7 +968,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     static_cast<int32_t>(static_cast<float>(EPOCHS) / 2.5f));
                 const float phase = 6.2832f
                     * static_cast<float>(epoch)
-                    / static_cast<float>(WILSON_PERIOD);
+                    / static_cast<float>(WILSON_PERIOD)
+                    + wilsonPhaseOffset;
                 // Positive sign = assembly (pull toward centroid).
                 const float assemblyForce = std::cos(phase);
                 // Centroid of land plates (excluding polar — they
@@ -989,9 +1091,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // are still moving relative to each other (~5 cm/yr)
                     // — they aren't yet fully merged. Our simulation
                     // mirrors this: long collision phase, then merge.
-                    constexpr float MERGE_DIST   = 0.10f;
+                    // 2026-05-04: tightened merge gates to combat Pangaea
+                    // bias. Old MERGE_DIST=0.10 + SLOW_V=0.08 fired
+                    // mergers aggressively because Wilson + plate-pair
+                    // coupling damped relative velocity below 0.08 within
+                    // a few epochs of contact, fusing every adjacent
+                    // pair. Halving both thresholds requires plates to be
+                    // physically much closer AND moving very slowly
+                    // relative to each other before fusing -- matches
+                    // real Earth where India-Eurasia have been in contact
+                    // 50 My without fully merging. Audit shows this is
+                    // the dominant lever for landmass-count distribution.
+                    constexpr float MERGE_DIST   = 0.05f;
                     constexpr float CONTACT_DIST = 0.16f;
-                    constexpr float SLOW_V       = 0.08f;
+                    constexpr float SLOW_V       = 0.04f;
                     constexpr float COLLISION_DAMP = 0.93f; // 7% energy loss/epoch in contact
 
                     bool inContact = false;
@@ -1536,6 +1649,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         child.crustArea = child.weight * child.weight;
                         child.crustAreaInitial = child.crustArea;
                         child.crustAge = 0.0f;
+                        // Children inherit parent's Euler pole but with
+                        // slight perturbation (rifted fragments diverge
+                        // from a common kinematic origin -- South America
+                        // and Africa once shared parent rotation, then
+                        // drifted to nearby but distinct poles).
+                        child.eulerPoleX = parent.eulerPoleX
+                                         + centerRng.nextFloat(-0.4f, 0.4f);
+                        child.eulerPoleY = parent.eulerPoleY
+                                         + centerRng.nextFloat(-0.4f, 0.4f);
+                        child.angularRate = parent.angularRate
+                                          * centerRng.nextFloat(0.7f, 1.3f);
                         plates.push_back(child);
                     }
                 }
@@ -1631,6 +1755,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         micro.crustArea = micro.weight * micro.weight;
                         micro.crustAreaInitial = micro.crustArea;
                         micro.crustAge = 0.0f;
+                        // Microplates spin fast (Anatolian, Adria rotate
+                        // measurably faster than majors over Quaternary).
+                        {
+                            const float poleAng    = centerRng.nextFloat(0.0f, 6.2832f);
+                            const float poleRadius = centerRng.nextFloat(1.0f, 2.5f);
+                            micro.eulerPoleX = 0.5f + std::cos(poleAng) * poleRadius;
+                            micro.eulerPoleY = 0.5f + std::sin(poleAng) * poleRadius;
+                            const float rateMag = centerRng.nextFloat(0.018f, 0.040f);
+                            micro.angularRate = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f)
+                                ? -rateMag : rateMag;
+                        }
                         plates.push_back(micro);
                     }
                 }
@@ -2220,6 +2355,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         fresh.orogenyLocal.assign(
                             static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID),
                             0.0f);
+                        // Fresh ridge-spawn plate: random pole, oceanic
+                        // rotation magnitude (faster than continental).
+                        {
+                            const float poleAng    = centerRng.nextFloat(0.0f, 6.2832f);
+                            const float poleRadius = centerRng.nextFloat(1.5f, 3.5f);
+                            fresh.eulerPoleX = 0.5f + std::cos(poleAng) * poleRadius;
+                            fresh.eulerPoleY = 0.5f + std::sin(poleAng) * poleRadius;
+                            const float rateMag = centerRng.nextFloat(0.008f, 0.020f);
+                            fresh.angularRate = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f)
+                                ? -rateMag : rateMag;
+                        }
                         plates.push_back(fresh);
                     }
                 }
@@ -2887,12 +3033,46 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             nearestHeight = oceanBase;
                         }
 
-                        // Second-nearest blend at boundary uses a flat
-                        // estimate; doesn't need its own crust mask
-                        // since the warp + blend already smooths the seam.
-                        const bool secondIsLand =
-                            (second >= 0) && plates[static_cast<std::size_t>(second)].isLand;
-                        const float secondHeight = secondIsLand ? 0.55f : oceanBase;
+                        // 2026-05-04: second-nearest crust-mask sampling.
+                        // Old code used a flat 0.55 elevation when the
+                        // second plate's `isLand` flag was true, which
+                        // BRIDGED every adjacent land-plate pair: the
+                        // entire boundary stayed above sea level even
+                        // when the second plate's local crust mask said
+                        // "ocean here". Audit traced this as the dominant
+                        // source of Pangaea bias -- two land plates with
+                        // 90% landFraction each could never have an
+                        // ocean lane between them. Now we sample the
+                        // second plate's own crust mask at this world
+                        // coord, so ocean-mask tiles produce ocean
+                        // boundaries even when both plates are continental.
+                        float secondHeight = oceanBase;
+                        if (second >= 0) {
+                            const Plate& pSecond =
+                                plates[static_cast<std::size_t>(second)];
+                            float dx2 = wx - pSecond.cx;
+                            float dy2 = wy - pSecond.cy;
+                            if (cylSim) {
+                                if (dx2 >  0.5f) { dx2 -= 1.0f; }
+                                if (dx2 < -0.5f) { dx2 += 1.0f; }
+                            }
+                            const float cs2 = std::cos(pSecond.rot);
+                            const float sn2 = std::sin(pSecond.rot);
+                            const float lx2 = (dx2 * cs2 + dy2 * sn2) / pSecond.aspect;
+                            const float ly2 = (-dx2 * sn2 + dy2 * cs2) * pSecond.aspect;
+                            aoc::Random crust2Rng(noiseRng);
+                            const float crust2 = fractalNoise(
+                                lx2 * 2.0f + pSecond.seedX,
+                                ly2 * 2.0f + pSecond.seedY,
+                                4, 2.0f, 0.55f, crust2Rng);
+                            const float thresh2 = 1.0f - pSecond.landFraction;
+                            const float t2 = std::clamp(
+                                (crust2 - thresh2 + 0.025f) / 0.05f,
+                                0.0f, 1.0f);
+                            if (pSecond.isLand && t2 > 0.5f) {
+                                secondHeight = 0.55f;
+                            }
+                        }
                         edgeFalloff = nearestHeight * (1.0f - boundary)
                                     + secondHeight * boundary;
 
