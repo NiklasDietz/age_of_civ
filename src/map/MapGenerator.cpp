@@ -321,19 +321,27 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 p.cx = cx;
                 p.cy = cy;
                 p.isLand = isLand;
-                p.vx = centerRng.nextFloat(-0.70f, 0.70f);
-                p.vy = centerRng.nextFloat(-0.70f, 0.70f);
-                // 2026-05-04: radial outward bias. Counteracts the
-                // Wilson-cycle assembly pull that always fires every epoch
-                // by giving each plate an initial velocity component
-                // pointing AWAY from the map centroid (0.5, 0.5). Magnitude
-                // 0.30 matches the typical assembly-pull magnitude over
-                // the first few epochs, so the two roughly cancel and
-                // plates dispersed by initial conditions can stay
-                // dispersed. Real plates have post-rift outward momentum
-                // (e.g. South America moving WNW after Atlantic opening).
-                p.vx += (cx - 0.5f) * 0.30f;
-                p.vy += (cy - 0.5f) * 0.30f;
+                // 2026-05-04: log-normal speed buckets matching Earth's
+                // real Phanerozoic distribution (Pacific 10 cm/yr,
+                // Eurasian 2 cm/yr, Antarctic 0.1 cm/yr -- 100x range).
+                // Old uniform [-0.70, 0.70] gave only ~10x speed
+                // variance; analyze.py showed real Earth has 13700x
+                // max/median ratio. Three buckets: 60% slow plates
+                // (cratons + slow oceanic), 30% medium, 10% fast.
+                {
+                    const float speedRoll = centerRng.nextFloat(0.0f, 1.0f);
+                    float vMax;
+                    if (speedRoll < 0.60f)      { vMax = 0.10f; }
+                    else if (speedRoll < 0.90f) { vMax = 0.30f; }
+                    else                        { vMax = 0.80f; }
+                    p.vx = centerRng.nextFloat(-vMax, vMax);
+                    p.vy = centerRng.nextFloat(-vMax, vMax);
+                }
+                // 2026-05-04: removed radial outward bias hack (was
+                // counteracting Wilson cycle assembly force which is
+                // also being removed). With slab pull as primary
+                // velocity driver and no centroid-pull, no need for
+                // artificial outward bias.
                 // Wide aspect range: real Earth plates are 1:1 (Pacific)
                 // to 4:1 (Andean Plate). Old 0.95-1.10 → all near-circle
                 // → all continents looked uniform. Now 0.50-2.20.
@@ -832,15 +840,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // equilibrate around Hills, strongest reach Mountain.
         constexpr float   STRESS_GATE = 0.40f;
 
-        // 2026-05-04: Wilson-cycle phase offset, biased toward DISPERSAL
-        // half. cos(pi + x) = -cos(x), so centring offset on pi means
-        // every sim opens with a dispersal pull (negative assemblyForce)
-        // and ends with one too in default 10-18-epoch sims. The original
-        // phase=0 default opened on full assembly => Pangaea bias.
-        // Random spread of +/- pi/2 around pi keeps variation across
-        // seeds: some sims start at full dispersal, some at zero-crossing.
-        const float wilsonPhaseOffset = 3.14159f
-            + centerRng.nextFloat(-1.5708f, 1.5708f);
+        // 2026-05-04: wilsonPhaseOffset removed along with Wilson cycle
+        // assembly force. Cycle now emerges from slab pull + rifts.
 
         // Snapshot starting positions so we can restore the final ones
         // for the rendering pass below — stress accumulates across the
@@ -874,78 +875,38 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                  + v11 *        fx  *        fy;
         };
 
-        for (int32_t epoch = 0; epoch < EPOCHS; ++epoch) {
-            // 2026-05-04: plate-pair velocity coupling via mantle drag.
-            // For each plate, find the 2 nearest non-polar neighbours
-            // and add a small fraction (3%) of their average velocity
-            // difference. Result: clusters of plates that drift roughly
-            // together (continent + surrounding ocean), matching the
-            // observation that the African plate's neighbours mostly
-            // drift northward with it. Computed before the mantle-flow
-            // application so the two effects compose, not amplify.
-            {
-                std::vector<std::pair<float, float>> couplingDelta(
-                    plates.size(), {0.0f, 0.0f});
-                for (std::size_t i = 0; i < plates.size(); ++i) {
-                    if (plates[i].isPolar) { continue; }
-                    int32_t n1 = -1, n2 = -1;
-                    float d1 = 1e9f, d2 = 1e9f;
-                    for (std::size_t j = 0; j < plates.size(); ++j) {
-                        if (j == i || plates[j].isPolar) { continue; }
-                        float dx = plates[j].cx - plates[i].cx;
-                        float dy = plates[j].cy - plates[i].cy;
-                        if (cylSim) {
-                            if (dx >  0.5f) { dx -= 1.0f; }
-                            if (dx < -0.5f) { dx += 1.0f; }
-                        }
-                        const float ds = dx * dx + dy * dy;
-                        if (ds < d1) {
-                            d2 = d1; n2 = n1;
-                            d1 = ds; n1 = static_cast<int32_t>(j);
-                        } else if (ds < d2) {
-                            d2 = ds; n2 = static_cast<int32_t>(j);
-                        }
-                    }
-                    if (n1 < 0 || n2 < 0) { continue; }
-                    const std::size_t sn1 = static_cast<std::size_t>(n1);
-                    const std::size_t sn2 = static_cast<std::size_t>(n2);
-                    const float avgVx =
-                        (plates[sn1].vx + plates[sn2].vx) * 0.5f;
-                    const float avgVy =
-                        (plates[sn1].vy + plates[sn2].vy) * 0.5f;
-                    couplingDelta[i].first  =
-                        (avgVx - plates[i].vx) * 0.03f;
-                    couplingDelta[i].second =
-                        (avgVy - plates[i].vy) * 0.03f;
-                }
-                for (std::size_t i = 0; i < plates.size(); ++i) {
-                    plates[i].vx += couplingDelta[i].first;
-                    plates[i].vy += couplingDelta[i].second;
-                }
+        // 2026-05-04: rift-burst scheduling. Earth's Phanerozoic shows
+        // 4 major reorganization bursts (Pangaea breakup at 250 Ma:
+        // 290 plate births in 5 Ma; smaller bursts at 100, 65, 50 Ma).
+        // Old `epoch % CYCLE == 0` fired uniformly. We schedule
+        // bursts: each burst spawns 2-3 rifts within 1-2 epochs, then
+        // waits 12-25 epochs for the next. Plus a global plate
+        // reorganization event randomly placed mid-sim.
+        std::vector<int32_t> riftBurstEpochs;
+        {
+            int32_t e = centerRng.nextInt(3, 8);
+            while (e < EPOCHS) {
+                riftBurstEpochs.push_back(e);
+                e += centerRng.nextInt(12, 25);
             }
+        }
+        const int32_t reorgEpoch = static_cast<int32_t>(
+            static_cast<float>(EPOCHS) * centerRng.nextFloat(0.30f, 0.70f));
+        for (int32_t epoch = 0; epoch < EPOCHS; ++epoch) {
+            // 2026-05-04: plate-pair velocity coupling REMOVED. Old
+            // code averaged each plate's velocity 3 % toward its two
+            // nearest non-polar neighbours. This was an artificial
+            // smoothing that homogenised plate motion and was an
+            // attempt to fake mantle convection coupling. Real plates
+            // interact at boundaries (collision dynamics, ridge push)
+            // not via free-space velocity averaging.
 
-            // 2026-05-04: mantle-flow global bias field. Real Earth
-            // plate motion is partially correlated by mantle convection
-            // currents -- adjacent plates drift in similar directions
-            // because they ride the same convection cells. The field
-            // here is a slowly-rotating 2D vector pattern (one cell pair
-            // per hemisphere); each plate's velocity gets +5% of the
-            // local field nudged in each epoch so the world develops
-            // coherent plate clusters rather than independent random
-            // walks. Phase shifts slowly across epochs to mimic the
-            // ~100 My turnover time of mantle plumes.
-            const float mantlePhase =
-                static_cast<float>(epoch) / static_cast<float>(EPOCHS)
-                * 6.28318f;
-            auto mantleFlowAt = [&](float x, float y) -> std::pair<float, float> {
-                const float fx = std::sin((x - 0.5f) * 6.28318f
-                                           + mantlePhase * 0.3f)
-                               * std::cos((y - 0.5f) * 3.14159f);
-                const float fy = std::cos((x - 0.5f) * 6.28318f
-                                           + mantlePhase * 0.3f)
-                               * std::sin((y - 0.5f) * 3.14159f);
-                return {fx, fy};
-            };
+            // 2026-05-04: mantle-flow bias field REMOVED. Old code
+            // added a 5%/epoch sin/cos pattern to all non-polar plate
+            // velocities -- abstract substitute for real mantle
+            // convection. Convection effects now come from slab pull
+            // (which biases plates toward subduction) and the natural
+            // ridge-push from divergent boundaries.
 
             // Advance every plate by (vx, vy) * DT. Cylindrical maps WRAP
             // around the X axis (no east/west edge — like a globe band);
@@ -956,14 +917,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // stationary on geological timescales. Apply 0.3× DT
                 // to keep them anchored at the poles.
                 const float motionScale = p.isPolar ? 0.3f : 1.0f;
-                // Mantle bias: 5% nudge of the local flow field added to
-                // the plate's velocity. Polar plates feel less drag.
-                if (!p.isPolar) {
-                    const std::pair<float, float> mflow =
-                        mantleFlowAt(p.cx, p.cy);
-                    p.vx += mflow.first  * 0.05f;
-                    p.vy += mflow.second * 0.05f;
-                }
                 p.cx += p.vx * DT * motionScale;
                 p.cy += p.vy * DT * motionScale;
                 // 2026-05-03: Euler-pole rotation. After linear drift,
@@ -1024,57 +977,42 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 }
             }
 
-            // WILSON SUPERCONTINENT CYCLE. Real Earth alternates
-            // between supercontinent assembly (Pangea, Rodinia, ...)
-            // and dispersal over ~400-600 My. We approximate by
-            // applying a periodic radial force on land plates around
-            // their collective centroid: cos(phase) > 0 pulls plates
-            // toward the centroid (assembly), cos(phase) < 0 pushes
-            // them outward (dispersal). One Wilson period spans
-            // EPOCHS/2.5 ≈ 48 epochs at default 120 → ~3 cycles per
-            // sim. Without this, plates set their initial velocity
-            // and never reverse → no Pangea cycle is visible.
-            {
-                const int32_t WILSON_PERIOD = std::max(20,
-                    static_cast<int32_t>(static_cast<float>(EPOCHS) / 2.5f));
-                const float phase = 6.2832f
-                    * static_cast<float>(epoch)
-                    / static_cast<float>(WILSON_PERIOD)
-                    + wilsonPhaseOffset;
-                // Positive sign = assembly (pull toward centroid).
-                const float assemblyForce = std::cos(phase);
-                // Centroid of land plates (excluding polar — they
-                // don't participate in supercontinent cycles).
-                float ccx = 0.0f;
-                float ccy = 0.0f;
-                int32_t nLand = 0;
-                for (const Plate& p : plates) {
-                    if (p.isLand && !p.isPolar) {
-                        ccx += p.cx;
-                        ccy += p.cy;
-                        ++nLand;
-                    }
-                }
-                if (nLand >= 2) {
-                    ccx /= static_cast<float>(nLand);
-                    ccy /= static_cast<float>(nLand);
-                    constexpr float WILSON_AMP = 0.012f;
-                    for (Plate& p : plates) {
-                        if (!p.isLand || p.isPolar) { continue; }
-                        float dxC = ccx - p.cx;
-                        float dyC = ccy - p.cy;
-                        if (cylSim) {
-                            if (dxC >  0.5f) { dxC -= 1.0f; }
-                            if (dxC < -0.5f) { dxC += 1.0f; }
-                        }
-                        // Toward centroid when assembling, away when
-                        // dispersing. Magnitude proportional to dist
-                        // so distant plates feel a stronger pull.
-                        p.vx += WILSON_AMP * assemblyForce * dxC;
-                        p.vy += WILSON_AMP * assemblyForce * dyC;
-                    }
+            // 2026-05-04: GLOBAL PLATE REORGANIZATION event. Earth
+            // experiences periodic mantle-driven reorganizations every
+            // ~100 Ma where plate velocities globally reset (e.g. the
+            // 50-Ma Hawaii-Emperor bend records one). Sim plates set
+            // their initial velocity once and never re-randomize.
+            // Fires once per sim at a random mid-sim epoch: each non-
+            // polar plate gets a fresh velocity (drawn from the same
+            // log-normal speed buckets as init) plus a 50 % magnitude
+            // damping (post-reorg slowdown is observed in real plate
+            // models).
+            if (epoch == reorgEpoch) {
+                for (Plate& p : plates) {
+                    if (p.isPolar) { continue; }
+                    const float speedRoll =
+                        centerRng.nextFloat(0.0f, 1.0f);
+                    float vMax;
+                    if (speedRoll < 0.60f)      { vMax = 0.10f; }
+                    else if (speedRoll < 0.90f) { vMax = 0.30f; }
+                    else                        { vMax = 0.80f; }
+                    p.vx = centerRng.nextFloat(-vMax, vMax) * 0.5f;
+                    p.vy = centerRng.nextFloat(-vMax, vMax) * 0.5f;
                 }
             }
+
+            // 2026-05-04: WILSON CYCLE force REMOVED. Old code applied
+            // a periodic centroid-attractive/repulsive pulse to all
+            // land plates, simulating supercontinent assembly /
+            // dispersal. This was an abstract hack; real Wilson cycles
+            // emerge naturally from slab pull + ridge push + mantle
+            // convection patterns -- they don't require an explicit
+            // centroid force. Slab pull (computed below per-plate
+            // from accumulated subduction stress) drives plates
+            // toward subduction zones, producing convergence; ridge
+            // push at divergent boundaries opens rifts. The two
+            // forces alternate dominance over geological timescales,
+            // producing the cycle organically.
 
             // (rotation/aspect drift moved further down — seeded by a
             // SEPARATE RNG independent of epoch count so scrubber
@@ -1173,9 +1111,16 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // real Earth where India-Eurasia have been in contact
                     // 50 My without fully merging. Audit shows this is
                     // the dominant lever for landmass-count distribution.
-                    constexpr float MERGE_DIST   = 0.05f;
+                    // 2026-05-04: relaxed gates (0.05 -> 0.07, 0.04 -> 0.06).
+                    // Earth Phanerozoic median plate lifetime is 250 Ma
+                    // (~half of plates die per supercontinent cycle);
+                    // sim's tightened 0.05/0.04 fired ~0 mergers per
+                    // 40-epoch sim. Looser gate combined with the new
+                    // log-normal slow-plate bucket lets converging slow
+                    // plates fuse, matching Earth's plate-recycle rate.
+                    constexpr float MERGE_DIST   = 0.07f;
                     constexpr float CONTACT_DIST = 0.16f;
-                    constexpr float SLOW_V       = 0.04f;
+                    constexpr float SLOW_V       = 0.06f;
                     constexpr float COLLISION_DAMP = 0.93f; // 7% energy loss/epoch in contact
 
                     bool inContact = false;
@@ -1484,7 +1429,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // a velocity rotated by a small angle from the parent —
             // models how Pangaea broke into Africa, S America, India, etc.
             // along irregular non-orthogonal fault systems.
-            const bool isRiftEpoch = (epoch > 0) && ((epoch % CYCLE) == 0);
+            // 2026-05-04: rift bursts (Pangaea-style breakup events).
+            // Earth: 290 plate births in 5 Ma at 250 Ma. Sim now fires
+            // 2-3 rifts per burst event scheduled in riftBurstEpochs.
+            const bool isRiftEpoch = std::find(
+                riftBurstEpochs.begin(), riftBurstEpochs.end(), epoch)
+                != riftBurstEpochs.end();
+            const int32_t riftsPerBurst = isRiftEpoch ? 3 : 0;
+            (void)CYCLE;
             if (isRiftEpoch) {
                 std::vector<std::size_t> landIdx;
                 for (std::size_t i = 0; i < plates.size(); ++i) {
@@ -1511,10 +1463,13 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // Multiple simultaneous rifts produced abrupt visual
                 // jumps — real Wilson-cycle rifting happens piecemeal
                 // over millions of years, not all at once.
+                // 2026-05-04: rift bursts use riftsPerBurst (3 per
+                // burst event) instead of 1-per-cycle.
                 const int32_t splitsThisEpoch =
                     (plates.size() >= maxPlates)
                         ? 0
-                        : std::min(1, static_cast<int32_t>(landIdx.size()));
+                        : std::min(riftsPerBurst,
+                                   static_cast<int32_t>(landIdx.size()));
                 for (int32_t s = 0; s < splitsThisEpoch; ++s) {
                     if (landIdx.empty()) { break; }
                     // PLUME-INDUCED RIFTING. Prefer plates near a
@@ -2131,6 +2086,51 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             const float wedgeLy = lyNearest + bny * wedgeOffset;
                             scatterPL(Aw, wedgeLx, wedgeLy,
                                       0.04f * bandWeight * effectiveStress);
+                            // 2026-05-04: SLAB TEARING. Old dense oceanic
+                            // crust (B.crustAge > 100 Ma) under high
+                            // stress can tear from its trailing plate;
+                            // the detached slab sinks rapidly into the
+                            // mantle and triggers a brief volcanic
+                            // pulse on the overriding plate (Italian
+                            // Apennines volcanism, Aegean uplift).
+                            // Probability per epoch is small (1 % per
+                            // qualifying tile) so events are rare.
+                            if (B.crustAge > 100.0f
+                                && effectiveStress > 1.0f
+                                && centerRng.nextFloat(0.0f, 1.0f) < 0.01f) {
+                                Plate& Bw = plates[
+                                    static_cast<std::size_t>(second)];
+                                Bw.slabTornThisEpoch = 1;
+                                // Volcanic pulse on overriding plate
+                                // ~0.10 plate-local inland.
+                                scatterPL(Aw,
+                                    lxNearest + bnx * 0.10f,
+                                    lyNearest + bny * 0.10f,
+                                    0.06f * bandWeight);
+                            }
+                            // 2026-05-04: SUBDUCTION POLARITY REVERSAL.
+                            // Rare event (Solomon arc, Banda arc) where
+                            // subduction direction flips. Trigger when
+                            // both plates are very old AND stress
+                            // sustained at near-max. Probability tiny
+                            // (0.2 % per qualifying tile per epoch).
+                            // Effect: swap relative velocity components
+                            // along boundary normal -> what was
+                            // subducting now overrides + brief pulse.
+                            if (A.crustAge > 80.0f && B.crustAge > 120.0f
+                                && effectiveStress > 1.4f
+                                && centerRng.nextFloat(0.0f, 1.0f) < 0.002f) {
+                                Plate& Bw = plates[
+                                    static_cast<std::size_t>(second)];
+                                // Flip relative motion along boundary
+                                // normal: subtract 2x normal-component
+                                // from B's velocity.
+                                const float bDot = Bw.vx * bnx + Bw.vy * bny;
+                                Bw.vx -= 2.0f * bDot * bnx;
+                                Bw.vy -= 2.0f * bDot * bny;
+                                // Volcanic flare on (now overriding) B.
+                                scatterPL(Bw, 0.0f, 0.0f, 0.04f * bandWeight);
+                            }
                         } else if (!A_land && B_land) {
                             contrib = -0.07f * bandWeight * effectiveStress;
                         } else {
@@ -2450,9 +2450,22 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // plates still pulled at 70%, which is unphysical.
                 const float age01 = std::clamp(
                     plates[pi].crustAge / 60.0f, 0.0f, 1.0f);
-                const float ageScale = age01
+                float ageScale = age01
                     + std::clamp((plates[pi].crustAge - 60.0f) / 90.0f,
                                   0.0f, 1.0f) * 0.5f;
+                // 2026-05-04: ECLOGITE ACCELERATION. Subducting old
+                // oceanic crust phase-transitions to dense eclogite at
+                // ~50 km depth, increasing slab density by ~10 %.
+                // This dense eclogite pulls harder than the original
+                // basaltic slab. Real Pacific Plate (~150 Ma old crust)
+                // moves 10 cm/yr partly because of eclogitised slab
+                // edges. For plates with crustAge > 80 Ma, multiply
+                // slab pull by 1.0-1.4x scaled by age above 80 Ma.
+                if (plates[pi].crustAge > 80.0f) {
+                    const float eclogiteFactor = 1.0f + 0.4f * std::clamp(
+                        (plates[pi].crustAge - 80.0f) / 100.0f, 0.0f, 1.0f);
+                    ageScale *= eclogiteFactor;
+                }
                 const float gain = SLAB_PULL_GAIN * ageScale;
                 plates[pi].vx += (slabPullX[pi] / pullLen) * gain;
                 plates[pi].vy += (slabPullY[pi] / pullLen) * gain;
@@ -2668,14 +2681,38 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     }
                 }
             }
-            // Mantle drag — gentle damping per epoch. Was 0.995 → with
-            // 120-epoch sims that decays motion to 55 % of initial,
-            // killing the second + third Wilson cycles. 0.997 holds
-            // 70 % at epoch 120 → plates keep moving across multi-
-            // cycle simulations.
+            // 2026-05-04: AREA-PROPORTIONAL mantle drag + cratonic
+            // stability damping. Real Earth: large plates feel more
+            // viscous resistance from the underlying mantle (drag
+            // proportional to base area = weight^2). Cratons (old
+            // continental cores, crustAge > 100 Ma + landFraction
+            // > 0.4) have thick rigid roots that resist motion --
+            // African Plate moves slowly partly because of its
+            // multiple cratons. Drag formula: base 0.997 * area^0.25
+            // factor + extra craton damping. Ensures Pacific (large
+            // oceanic, no craton) drifts faster than African (large
+            // with cratons) -- naturally producing Earth's speed
+            // distribution.
             for (Plate& p : plates) {
-                p.vx *= 0.997f;
-                p.vy *= 0.997f;
+                // Base drag scales gently with sqrt of area. Weight^2 =
+                // area; weight^0.5 (sqrt of weight) is plate "size"
+                // factor. Larger plates lose 0.3-1% extra per epoch.
+                const float areaFactor = std::clamp(
+                    std::sqrt(p.weight), 0.7f, 1.8f);
+                const float baseDrag =
+                    1.0f - (1.0f - 0.997f) * areaFactor;
+                float drag = baseDrag;
+                // Cratonic damping: stable old continental cores resist
+                // motion. Effect scales with craton age (older = more
+                // root depth = more resistance).
+                if (p.isLand && p.landFraction > 0.4f
+                    && p.crustAge > 100.0f) {
+                    const float cratonAge = std::clamp(
+                        (p.crustAge - 100.0f) / 100.0f, 0.0f, 1.0f);
+                    drag -= 0.005f * cratonAge;
+                }
+                p.vx *= drag;
+                p.vy *= drag;
             }
 
             // Hotspot trails. For each hotspot, find the plate above
@@ -2863,6 +2900,34 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         for (Plate& p : plates) {
             for (float& v : p.orogenyLocal) {
                 v = std::clamp(v, -0.15f, 0.22f);
+            }
+        }
+
+        // 2026-05-04: CONTINENTAL DELAMINATION. Over-thickened
+        // continental crust (Tibetan Plateau, Sierra Nevada) develops a
+        // dense lower-crustal root that eventually drops into the
+        // mantle (delaminates). The unburdened crust then rebounds
+        // BROADLY, raising a wide region by ~1-2 km. Detect plates
+        // whose orogenyLocal grid has > 8 % of cells with v > 0.16
+        // (mature plateau). Apply small bonus +0.03 to ALL cells
+        // currently > 0.10 -- broad uplift across plateau, not just
+        // peaks.
+        for (Plate& p : plates) {
+            const std::size_t total = p.orogenyLocal.size();
+            if (total == 0) { continue; }
+            std::size_t plateauCells = 0;
+            for (float v : p.orogenyLocal) {
+                if (v > 0.16f) { ++plateauCells; }
+            }
+            const float plateauFrac =
+                static_cast<float>(plateauCells) /
+                static_cast<float>(total);
+            if (plateauFrac > 0.08f) {
+                for (float& v : p.orogenyLocal) {
+                    if (v > 0.10f) {
+                        v = std::min(0.22f, v + 0.03f);
+                    }
+                }
             }
         }
 
@@ -3427,7 +3492,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         const float hRadius = 0.04f;
                         if (hdist < hRadius) {
                             const float t = 1.0f - hdist / hRadius;
-                            edgeFalloff += h.strength * t * t;
+                            // 2026-05-04: HOTSPOT-ON-RIDGE BOOST. Real
+                            // Iceland is anomalously elevated because a
+                            // mantle plume sits directly under the
+                            // Mid-Atlantic Ridge -- two uplift
+                            // mechanisms stack. Detect: hotspot tile
+                            // close to a plate boundary (boundary > 0.7
+                            // means within outermost 30% of d1/d2
+                            // ratio). Double the contribution there.
+                            const float ridgeBoost =
+                                (boundary > 0.7f) ? 2.0f : 1.0f;
+                            edgeFalloff += h.strength * t * t * ridgeBoost;
                         }
                     }
                     // Hotspot TRAIL: each owning plate carries a list

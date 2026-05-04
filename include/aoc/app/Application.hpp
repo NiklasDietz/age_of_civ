@@ -430,7 +430,13 @@ private:
     /// 1 = 0.1x map width total drift, 60 = 6x. Default 12 = 1.2 of
     /// map width — plates traverse the map ≥ once during the sim,
     /// enabling multi-cycle Pangea assembly/dispersal.
-    int32_t  m_creatorDriftPct = 12;
+    // 2026-05-04: dropped 12 -> 8 (0.6 -> 0.4 map widths total drift).
+    // Earth's continents drifted ~12 % of equator-circumference over
+    // 400 My; sim was 3x faster. With slower drift, plate boundaries
+    // remain coherent longer and Wilson-cycle dynamics play out at a
+    // pace closer to real Earth. User-adjustable via creator slider
+    // (range 1-20 = 0.1-2.0 map widths).
+    int32_t  m_creatorDriftPct = 8;
     /// Lazy snapshot cache: maps epoch → HexGrid copy. Populated on
     /// first visit to each epoch; subsequent scrubs to that epoch
     /// blit from cache instead of re-running MapGenerator. Cleared
