@@ -99,6 +99,48 @@ void writeAscii(const aoc::map::HexGrid& grid, const std::string& path) {
     }
 }
 
+/// Glyph that encodes both plate ownership (lower-cased letter cycling A-Z
+/// per plate id) and water/land/mountain status (uppercase = land, lowercase
+/// = ocean, '^' = mountain). Renders the tectonic-sim plate distribution
+/// alongside the resulting terrain so the viewer can correlate plate
+/// boundaries with mountain ranges and ocean lanes.
+[[nodiscard]] char plateGlyph(uint8_t plateId, aoc::map::TerrainType t,
+                              bool isMountain) {
+    if (isMountain) { return '^'; }
+    if (plateId == 0xFFu) { return '?'; }
+    const char base = static_cast<char>('A' + (plateId % 26));
+    if (aoc::map::isWater(t)) {
+        return static_cast<char>(base + ('a' - 'A'));
+    }
+    return base;
+}
+
+void writeFrame(const aoc::map::HexGrid& grid, const std::string& path,
+                int32_t epochK, int32_t epochsTotal) {
+    std::ofstream out(path);
+    if (!out.is_open()) {
+        std::fprintf(stderr, "error: cannot open '%s' for writing\n", path.c_str());
+        return;
+    }
+    out << "# Frame epoch=" << epochK << "/" << epochsTotal
+        << "  Width=" << grid.width() << " Height=" << grid.height() << "\n";
+    out << "# Uppercase = land, lowercase = ocean, ^ = mountain;"
+        << " letter = plate id mod 26\n";
+    const int32_t width  = grid.width();
+    const int32_t height = grid.height();
+    for (int32_t row = 0; row < height; ++row) {
+        if ((row & 1) == 1) { out << ' '; }
+        for (int32_t col = 0; col < width; ++col) {
+            const int32_t idx = row * width + col;
+            const aoc::map::TerrainType t = grid.terrain(idx);
+            const bool isMtn = (t == aoc::map::TerrainType::Mountain);
+            const uint8_t pid = grid.plateId(idx);
+            out << plateGlyph(pid, t, isMtn);
+        }
+        out << '\n';
+    }
+}
+
 void writeCsv(const aoc::map::HexGrid& grid, const std::string& path) {
     std::ofstream out(path);
     if (!out.is_open()) {
@@ -156,6 +198,7 @@ int main(int argc, char* argv[]) {
 
     std::string outputBase = "/tmp/map";
     OutputFormat format    = OutputFormat::Ascii;
+    bool         frameMode = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -177,6 +220,8 @@ int main(int argc, char* argv[]) {
             config.tectonicEpochs = std::atoi(argv[++i]);
         } else if (arg == "--super-sample" && i + 1 < argc) {
             config.superSampleFactor = std::atoi(argv[++i]);
+        } else if (arg == "--frames") {
+            frameMode = true;
         } else {
             std::fprintf(stderr, "error: unknown argument '%s'\n", arg.c_str());
             usage(argv[0]);
@@ -187,6 +232,58 @@ int main(int argc, char* argv[]) {
     if (config.width <= 0 || config.height <= 0) {
         std::fprintf(stderr, "error: width and height must be positive\n");
         return 2;
+    }
+
+    if (frameMode) {
+        // Frame mode: re-run generate() once per epoch K=1..EPOCHS with
+        // runEpochsLimit=K so each invocation halts the tectonic sim mid-
+        // flight at epoch K. Determinism on a fixed seed makes the
+        // sequence coherent: frame K+1 = frame K state plus one more sim
+        // step. Writes both per-frame plate-glyph files and a
+        // concatenated multiframe.txt suitable for `cat` playback with
+        // ANSI clear escapes between frames.
+        const int32_t requestedEpochs = (config.tectonicEpochs > 0)
+            ? config.tectonicEpochs : 40;
+        const std::string multiPath = outputBase + ".frames.txt";
+        std::ofstream multi(multiPath);
+        if (!multi.is_open()) {
+            std::fprintf(stderr, "error: cannot open '%s' for writing\n",
+                         multiPath.c_str());
+            return 1;
+        }
+        for (int32_t k = 1; k <= requestedEpochs; ++k) {
+            aoc::map::MapGenerator::Config frameConfig = config;
+            frameConfig.tectonicEpochs = requestedEpochs;
+            frameConfig.runEpochsLimit = k;
+            aoc::map::HexGrid frameGrid;
+            aoc::map::MapGenerator::generate(frameConfig, frameGrid);
+            char buf[64];
+            std::snprintf(buf, sizeof(buf), "%s.frame%03d.txt",
+                          outputBase.c_str(), k);
+            writeFrame(frameGrid, buf, k, requestedEpochs);
+            // ANSI clear screen + cursor home, then frame.
+            multi << "\x1b[2J\x1b[H";
+            multi << "# Frame " << k << "/" << requestedEpochs
+                  << "  (seed=" << config.seed
+                  << " size=" << config.width << "x" << config.height << ")\n";
+            const int32_t width  = frameGrid.width();
+            const int32_t height = frameGrid.height();
+            for (int32_t row = 0; row < height; ++row) {
+                if ((row & 1) == 1) { multi << ' '; }
+                for (int32_t col = 0; col < width; ++col) {
+                    const int32_t idx = row * width + col;
+                    const aoc::map::TerrainType t = frameGrid.terrain(idx);
+                    const bool isMtn = (t == aoc::map::TerrainType::Mountain);
+                    const uint8_t pid = frameGrid.plateId(idx);
+                    multi << plateGlyph(pid, t, isMtn);
+                }
+                multi << '\n';
+            }
+            std::printf("frame %d/%d -> %s\n", k, requestedEpochs, buf);
+        }
+        std::printf("wrote %s (animated playback: cat %s)\n",
+                    multiPath.c_str(), multiPath.c_str());
+        return 0;
     }
 
     aoc::map::HexGrid grid;
