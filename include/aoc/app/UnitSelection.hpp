@@ -126,6 +126,12 @@ void setRallyPoint(aoc::game::GameState& gameState, EntityId cityEntity, hex::Ax
 void clearRallyPoint(aoc::game::GameState& gameState, EntityId cityEntity);
 
 /**
+ * @brief Wipe the global rally-point map. Call from Application::startGame()
+ *        so a new game does not inherit rally points from the previous one.
+ */
+void clearAllRallyPoints();
+
+/**
  * @brief Process rally points: move newly produced units toward their city's rally point.
  *
  * Called after production completes. Any unit at a city center that has

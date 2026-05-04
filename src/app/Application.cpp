@@ -50,7 +50,7 @@
 #include "aoc/save/Serializer.hpp"
 #include "aoc/ui/BitmapFont.hpp"
 #include "aoc/ui/SpectatorHUD.hpp"
-#include "aoc/ui/GameNotifications.hpp"
+#include "aoc/simulation/event/GameNotifications.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <renderer/GraphicsDevice.hpp>
@@ -254,6 +254,12 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     this->m_spectatorTurnAccumulator = 0.0f;
     this->m_spectatorFollowPlayer = -1;
     this->m_victoryResult = {};
+
+    // 2026-05-03: rally-point map is a function-local static in
+    // UnitSelection.cpp. Without this clear, a new game inherits rally
+    // points from the previous game, so AxialCoord keys may now point at
+    // empty / enemy territory.
+    aoc::sim::clearAllRallyPoints();
 
     // Apply user-selected turn limit. Used by Score victory + spectator HUD.
     this->m_spectatorMaxTurns = config.maxTurns;
@@ -4255,22 +4261,22 @@ void Application::handleEndTurn() {
         {
             const PlayerId humanId = (humanPost != nullptr)
                 ? humanPost->id() : INVALID_PLAYER;
-            std::vector<aoc::ui::GameNotification> drained =
-                aoc::ui::drainNotifications(humanId);
-            for (const aoc::ui::GameNotification& note : drained) {
+            std::vector<aoc::sim::event::GameNotification> drained =
+                aoc::sim::event::drainNotifications(humanId);
+            for (const aoc::sim::event::GameNotification& note : drained) {
                 const std::string formatted = note.title + ": " + note.body;
                 this->m_eventLog.addEvent(formatted);
                 // Colour by category: diplomacy red, economy yellow, military
                 // orange, city cyan, everything else white.
                 float cr = 1.0f, cg = 1.0f, cb = 1.0f;
                 switch (note.category) {
-                    case aoc::ui::NotificationCategory::Diplomacy:
+                    case aoc::sim::event::NotificationCategory::Diplomacy:
                         cr = 1.0f; cg = 0.4f; cb = 0.4f; break;
-                    case aoc::ui::NotificationCategory::Economy:
+                    case aoc::sim::event::NotificationCategory::Economy:
                         cr = 1.0f; cg = 0.9f; cb = 0.3f; break;
-                    case aoc::ui::NotificationCategory::Military:
+                    case aoc::sim::event::NotificationCategory::Military:
                         cr = 1.0f; cg = 0.6f; cb = 0.2f; break;
-                    case aoc::ui::NotificationCategory::City:
+                    case aoc::sim::event::NotificationCategory::City:
                         cr = 0.4f; cg = 0.9f; cb = 1.0f; break;
                     default: break;
                 }

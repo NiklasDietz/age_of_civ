@@ -18,7 +18,7 @@ class HexGrid;
 namespace gen {
 
 /// Run SESSION 13 analytics. `axialTilt` in degrees (Earth = 23.5).
-void runSession13(HexGrid& grid, bool cylindrical, float axialTilt);
+void runInsolationSlope(HexGrid& grid, bool cylindrical, float axialTilt);
 
 } // namespace gen
 } // namespace aoc::map

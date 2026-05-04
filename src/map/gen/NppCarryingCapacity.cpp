@@ -3,7 +3,7 @@
  * @brief SESSION 15 implementation.
  */
 
-#include "aoc/map/gen/Session15.hpp"
+#include "aoc/map/gen/NppCarryingCapacity.hpp"
 
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -23,7 +23,7 @@
 
 namespace aoc::map::gen {
 
-void runSession15(HexGrid& grid, bool cylindrical,
+void runNppCarryingCapacity(HexGrid& grid, bool cylindrical,
                   const std::vector<float>& soilFert) {
     const int32_t width  = grid.width();
     const int32_t height = grid.height();

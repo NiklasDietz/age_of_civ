@@ -6,7 +6,7 @@
  *        wildlife / disease / energy potentials / atmospheric extras /
  *        hydrological extras / event markers.
  *
- * Outputs returned via Session4Outputs so MapGenerator.cpp can keep setter
+ * Outputs returned via BiomeSubtypesOutputs so MapGenerator.cpp can keep setter
  * calls inline at the original location (preserves setter ORDER).
  *
  * Behaviour-preserving extraction from src/map/MapGenerator.cpp on 2026-05-03.
@@ -23,7 +23,7 @@ class HexGrid;
 
 namespace gen {
 
-struct Session4Inputs {
+struct BiomeSubtypesInputs {
     bool                          cylindrical;
     uint64_t                      seed;
     const std::vector<float>*     sediment;
@@ -37,7 +37,7 @@ struct Session4Inputs {
     const std::vector<float>*     cloudCover;
 };
 
-struct Session4Outputs {
+struct BiomeSubtypesOutputs {
     std::vector<uint16_t> natHazard;
     std::vector<uint8_t>  bSub;
     std::vector<uint8_t>  marineD;
@@ -54,8 +54,8 @@ struct Session4Outputs {
     std::vector<uint8_t>  eventMrk;
 };
 
-void runSession4(const HexGrid& grid, const Session4Inputs& in,
-                 Session4Outputs& out);
+void runBiomeSubtypes(const HexGrid& grid, const BiomeSubtypesInputs& in,
+                 BiomeSubtypesOutputs& out);
 
 } // namespace gen
 } // namespace aoc::map

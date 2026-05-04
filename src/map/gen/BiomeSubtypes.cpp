@@ -3,7 +3,7 @@
  * @brief SESSION 4 implementation.
  */
 
-#include "aoc/map/gen/Session4.hpp"
+#include "aoc/map/gen/BiomeSubtypes.hpp"
 
 #include "aoc/core/Random.hpp"
 #include "aoc/map/HexGrid.hpp"
@@ -24,8 +24,8 @@
 
 namespace aoc::map::gen {
 
-void runSession4(const HexGrid& grid, const Session4Inputs& in,
-                 Session4Outputs& out) {
+void runBiomeSubtypes(const HexGrid& grid, const BiomeSubtypesInputs& in,
+                 BiomeSubtypesOutputs& out) {
     const int32_t width  = grid.width();
     const int32_t height = grid.height();
     const int32_t totalT = width * height;

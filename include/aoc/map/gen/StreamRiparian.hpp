@@ -21,7 +21,7 @@ class HexGrid;
 namespace gen {
 
 /// Run SESSION 14 analytics.
-void runSession14(HexGrid& grid, bool cylindrical,
+void runStreamRiparian(HexGrid& grid, bool cylindrical,
                   const std::vector<float>& soilFert,
                   const std::vector<float>& orogeny);
 

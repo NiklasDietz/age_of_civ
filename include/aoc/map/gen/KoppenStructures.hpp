@@ -7,7 +7,7 @@
  *        submarine vent / volcanic profile / karst subtype / desert subtype /
  *        mass wasting / named winds / forest age / soil moisture.
  *
- * Outputs returned via Session9Outputs struct so MapGenerator.cpp can keep
+ * Outputs returned via KoppenStructuresOutputs struct so MapGenerator.cpp can keep
  * the setter calls inline at the original location (preserves setter ORDER).
  *
  * Behaviour-preserving extraction from src/map/MapGenerator.cpp on 2026-05-03.
@@ -22,7 +22,7 @@ class HexGrid;
 
 namespace gen {
 
-struct Session9Outputs {
+struct KoppenStructuresOutputs {
     std::vector<uint8_t> kop;
     std::vector<uint8_t> mtnS;
     std::vector<uint8_t> oreG;
@@ -41,12 +41,12 @@ struct Session9Outputs {
     std::vector<uint8_t> soilM;
 };
 
-void runSession9(const HexGrid& grid, bool cylindrical,
+void runKoppenStructures(const HexGrid& grid, bool cylindrical,
                  const std::vector<float>& orogeny,
                  const std::vector<uint8_t>& lakeFlag,
                  const std::vector<float>& sediment,
                  const std::vector<uint8_t>& eventMrk,
-                 Session9Outputs& out);
+                 KoppenStructuresOutputs& out);
 
 } // namespace gen
 } // namespace aoc::map

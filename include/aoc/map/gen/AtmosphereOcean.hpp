@@ -5,7 +5,7 @@
  * @brief SESSION 3 -- atmospheric hazards / glacial features / ocean zones /
  *        cloud cover / drainage flow direction.
  *
- * Outputs returned via Session3Outputs so MapGenerator.cpp can keep setter
+ * Outputs returned via AtmosphereOceanOutputs so MapGenerator.cpp can keep setter
  * calls inline and preserve original setter ORDER.
  *
  * Behaviour-preserving extraction from src/map/MapGenerator.cpp on 2026-05-03.
@@ -20,7 +20,7 @@ class HexGrid;
 
 namespace gen {
 
-struct Session3Outputs {
+struct AtmosphereOceanOutputs {
     std::vector<uint8_t> climateHazard;
     std::vector<uint8_t> glacialFeat;
     std::vector<uint8_t> oceanZone;
@@ -28,10 +28,10 @@ struct Session3Outputs {
     std::vector<uint8_t> flowDir;
 };
 
-void runSession3(const HexGrid& grid, bool cylindrical,
+void runAtmosphereOcean(const HexGrid& grid, bool cylindrical,
                  const std::vector<float>& sediment,
                  const std::vector<uint8_t>& lakeFlag,
-                 Session3Outputs& out);
+                 AtmosphereOceanOutputs& out);
 
 } // namespace gen
 } // namespace aoc::map

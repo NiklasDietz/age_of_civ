@@ -1808,8 +1808,8 @@ void EconomyScreen::open(UIManager& ui) {
         info.demand = 0;
         if (playerEcon != nullptr) {
             {
-                std::unordered_map<uint16_t, int32_t>::const_iterator it = playerEcon->totalSupply.find(goodId);
-                if (it != playerEcon->totalSupply.end()) {
+                std::unordered_map<uint16_t, int32_t>::const_iterator it = playerEcon->lastTurnProduction.find(goodId);
+                if (it != playerEcon->lastTurnProduction.end()) {
                     info.supply = it->second;
                 }
             }

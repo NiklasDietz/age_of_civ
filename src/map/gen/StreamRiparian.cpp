@@ -3,7 +3,7 @@
  * @brief SESSION 14 implementation.
  */
 
-#include "aoc/map/gen/Session14.hpp"
+#include "aoc/map/gen/StreamRiparian.hpp"
 
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -24,7 +24,7 @@
 
 namespace aoc::map::gen {
 
-void runSession14(HexGrid& grid, bool cylindrical,
+void runStreamRiparian(HexGrid& grid, bool cylindrical,
                   const std::vector<float>& soilFert,
                   const std::vector<float>& orogeny) {
     const int32_t width  = grid.width();

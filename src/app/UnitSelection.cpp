@@ -189,6 +189,10 @@ void clearRallyPoint(aoc::game::GameState& gameState, EntityId /*cityEntity*/) {
     }
 }
 
+void clearAllRallyPoints() {
+    rallyPointMap().clear();
+}
+
 void processRallyPoints(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid) {
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {

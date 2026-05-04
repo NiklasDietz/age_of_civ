@@ -17,16 +17,16 @@
 #include "aoc/map/gen/Mappability.hpp"
 #include "aoc/map/gen/PostSim.hpp"
 #include "aoc/map/gen/Thresholds.hpp"
-#include "aoc/map/gen/Session3.hpp"
-#include "aoc/map/gen/Session4.hpp"
-#include "aoc/map/gen/Session9.hpp"
-#include "aoc/map/gen/Session10.hpp"
-#include "aoc/map/gen/Session12.hpp"
-#include "aoc/map/gen/Session13.hpp"
-#include "aoc/map/gen/Session14.hpp"
-#include "aoc/map/gen/Session15.hpp"
-#include "aoc/map/gen/Session16.hpp"
-#include "aoc/map/gen/Session17.hpp"
+#include "aoc/map/gen/AtmosphereOcean.hpp"
+#include "aoc/map/gen/BiomeSubtypes.hpp"
+#include "aoc/map/gen/KoppenStructures.hpp"
+#include "aoc/map/gen/Lithology.hpp"
+#include "aoc/map/gen/CoastalLandforms.hpp"
+#include "aoc/map/gen/InsolationSlope.hpp"
+#include "aoc/map/gen/StreamRiparian.hpp"
+#include "aoc/map/gen/NppCarryingCapacity.hpp"
+#include "aoc/map/gen/DrainageLivestock.hpp"
+#include "aoc/map/gen/EcoAnalytics.hpp"
 #include "aoc/map/gen/Noise.hpp"
 #include "aoc/map/gen/Plate.hpp"
 #include "aoc/map/gen/PlateBoundary.hpp"
@@ -3032,8 +3032,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         aoc::map::gen::runMetamorphicCoreComplex(grid, cylSim);
 
         // 2026-05-03: SESSION 3 extracted to gen/Session3.cpp.
-        aoc::map::gen::Session3Outputs s3out;
-        aoc::map::gen::runSession3(grid, cylSim, sediment, lakeFlag, s3out);
+        aoc::map::gen::AtmosphereOceanOutputs s3out;
+        aoc::map::gen::runAtmosphereOcean(grid, cylSim, sediment, lakeFlag, s3out);
         std::vector<uint8_t>& climateHazard = s3out.climateHazard;
         std::vector<uint8_t>& glacialFeat   = s3out.glacialFeat;
         std::vector<uint8_t>& oceanZone     = s3out.oceanZone;
@@ -3041,7 +3041,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         std::vector<uint8_t>& flowDir       = s3out.flowDir;
 
         // 2026-05-03: SESSION 4 extracted to gen/Session4.cpp.
-        aoc::map::gen::Session4Inputs s4in;
+        aoc::map::gen::BiomeSubtypesInputs s4in;
         s4in.cylindrical   = cylSim;
         s4in.seed          = config.seed;
         s4in.sediment      = &sediment;
@@ -3053,8 +3053,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         s4in.climateHazard = &climateHazard;
         s4in.oceanZone     = &oceanZone;
         s4in.cloudCover    = &cloudCover;
-        aoc::map::gen::Session4Outputs s4out;
-        aoc::map::gen::runSession4(grid, s4in, s4out);
+        aoc::map::gen::BiomeSubtypesOutputs s4out;
+        aoc::map::gen::runBiomeSubtypes(grid, s4in, s4out);
         std::vector<uint16_t>& natHazard = s4out.natHazard;
         std::vector<uint8_t>&  bSub      = s4out.bSub;
         std::vector<uint8_t>&  marineD   = s4out.marineD;
@@ -3083,8 +3083,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         aoc::map::gen::runCoralReef(grid, bSub);
 
         // 2026-05-03: SESSION 9 compute body extracted to gen/Session9.cpp.
-        aoc::map::gen::Session9Outputs s9out;
-        aoc::map::gen::runSession9(grid, cylSim, orogeny, lakeFlag, sediment,
+        aoc::map::gen::KoppenStructuresOutputs s9out;
+        aoc::map::gen::runKoppenStructures(grid, cylSim, orogeny, lakeFlag, sediment,
                                    eventMrk, s9out);
         std::vector<uint8_t>& kop    = s9out.kop;
         std::vector<uint8_t>& mtnS   = s9out.mtnS;
@@ -3104,11 +3104,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         std::vector<uint8_t>& soilM  = s9out.soilM;
 
         // 2026-05-03: SESSION 10 compute body extracted to gen/Session10.cpp.
-        // Outputs are passed back via Session10Outputs struct; setter calls
+        // Outputs are passed back via LithologyOutputs struct; setter calls
         // remain inline below to preserve the original setter ORDER (other
         // sessions may read these via grid getters).
-        aoc::map::gen::Session10Outputs s10out;
-        aoc::map::gen::runSession10(grid, cylSim, permafrost, s10out);
+        aoc::map::gen::LithologyOutputs s10out;
+        aoc::map::gen::runLithology(grid, cylSim, permafrost, s10out);
         std::vector<uint8_t>& litho    = s10out.litho;
         std::vector<uint8_t>& bedrock  = s10out.bedrock;
         std::vector<uint8_t>& sOrder   = s10out.sOrder;
@@ -3126,22 +3126,22 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         aoc::map::gen::runCliffCoast(grid, cylSim);
 
         // 2026-05-03: SESSION 12 extracted to gen/Session12.cpp.
-        aoc::map::gen::runSession12(grid, cylSim, lakeFlag, orogeny);
+        aoc::map::gen::runCoastalLandforms(grid, cylSim, lakeFlag, orogeny);
 
         // 2026-05-03: SESSION 13 extracted to gen/Session13.cpp.
-        aoc::map::gen::runSession13(grid, cylSim, config.axialTilt);
+        aoc::map::gen::runInsolationSlope(grid, cylSim, config.axialTilt);
 
         // 2026-05-03: SESSION 14 extracted to gen/Session14.cpp.
-        aoc::map::gen::runSession14(grid, cylSim, soilFert, orogeny);
+        aoc::map::gen::runStreamRiparian(grid, cylSim, soilFert, orogeny);
 
         // 2026-05-03: SESSION 15 extracted to gen/Session15.cpp.
-        aoc::map::gen::runSession15(grid, cylSim, soilFert);
+        aoc::map::gen::runNppCarryingCapacity(grid, cylSim, soilFert);
 
         // 2026-05-03: SESSION 16 extracted to gen/Session16.cpp.
-        aoc::map::gen::runSession16(grid, cylSim, soilFert, sediment, lakeFlag);
+        aoc::map::gen::runDrainageLivestock(grid, cylSim, soilFert, sediment, lakeFlag);
 
         // 2026-05-03: SESSION 17 extracted to gen/Session17.cpp.
-        aoc::map::gen::runSession17(grid);
+        aoc::map::gen::runEcoAnalytics(grid);
 
         grid.setLithology(std::move(litho));
         grid.setBedrockLithology(std::move(bedrock));

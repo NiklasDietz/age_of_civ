@@ -26,9 +26,12 @@
 #include <vector>
 
 namespace aoc::game { class GameState; }
-namespace aoc::ui { class UIManager; }
 
-namespace aoc::ui {
+// 2026-05-03: lifted out of aoc::ui because simulation subsystems push
+// notifications and headless aoc_simulate must link the queue without
+// pulling in any UI/Vulkan code. Render/UI side still consumes the
+// drained queue via aoc::sim::event::drainNotifications().
+namespace aoc::sim::event {
 
 enum class NotificationCategory : uint8_t {
     Economy,
@@ -85,4 +88,4 @@ void pushNotification(const GameNotification& notification);
  */
 void generateTurnNotifications(const aoc::game::GameState& gameState, PlayerId player);
 
-} // namespace aoc::ui
+} // namespace aoc::sim::event

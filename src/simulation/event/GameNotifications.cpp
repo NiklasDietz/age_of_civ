@@ -3,7 +3,7 @@
  * @brief Notification generation for all game systems.
  */
 
-#include "aoc/ui/GameNotifications.hpp"
+#include "aoc/simulation/event/GameNotifications.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
@@ -17,7 +17,7 @@
 
 #include <vector>
 
-namespace aoc::ui {
+namespace aoc::sim::event {
 
 namespace {
     /// Thread-local queue so parallel headless simulations (GA fitness eval)
@@ -145,4 +145,4 @@ void generateTurnNotifications(const aoc::game::GameState& gameState, PlayerId p
     }
 }
 
-} // namespace aoc::ui
+} // namespace aoc::sim::event

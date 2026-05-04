@@ -33,7 +33,7 @@ ResourceCurseModifiers computeResourceCurse(const aoc::game::GameState& gameStat
     float rawResourceValue = 0.0f;
     float totalValue       = 0.0f;
 
-    for (const std::pair<const uint16_t, int32_t>& entry : playerEcon.totalSupply) {
+    for (const std::pair<const uint16_t, int32_t>& entry : playerEcon.lastTurnProduction) {
         const GoodDef& def = goodDef(entry.first);
         float value        = static_cast<float>(entry.second) * static_cast<float>(def.basePrice);
         totalValue        += value;

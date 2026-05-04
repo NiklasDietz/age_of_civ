@@ -25,12 +25,15 @@ float playerProductionRate(const aoc::game::GameState& gameState,
 
     float totalRate = 0.0f;
 
-    // Sum this player's current supply of the good from the economy tracker.
-    // PlayerEconomyComponent::totalSupply is aggregated from all city stockpiles
-    // and tile yields each turn and is the canonical per-player production signal.
+    // Sum this player's last-turn production of the good. lastTurnProduction
+    // is cleared at the top of EconomySimulation::executeProduction and
+    // populated as recipes fire, so during this turn-step it holds the
+    // PREVIOUS turn's totals -- exactly the rate signal we want.
+    // (Renamed from totalSupply 2026-05-03; the old field accumulated
+    // forever and inflated rate readings after many turns.)
     const aoc::game::Player* playerObj = gameState.player(player);
     if (playerObj != nullptr) {
-        const std::unordered_map<uint16_t, int32_t>& supply = playerObj->economy().totalSupply;
+        const std::unordered_map<uint16_t, int32_t>& supply = playerObj->economy().lastTurnProduction;
         const std::unordered_map<uint16_t, int32_t>::const_iterator it = supply.find(goodId);
         if (it != supply.end() && it->second > 0) {
             totalRate += static_cast<float>(it->second);

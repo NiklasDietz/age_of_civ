@@ -27,7 +27,7 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Pathfinding.hpp"
-#include "aoc/ui/GameNotifications.hpp"
+#include "aoc/simulation/event/GameNotifications.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -988,8 +988,8 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                          static_cast<long long>(totalToll),
                          static_cast<unsigned>(te.owner));
 
-                aoc::ui::pushNotification({
-                    aoc::ui::NotificationCategory::Diplomacy,
+                aoc::sim::event::pushNotification({
+                    aoc::sim::event::NotificationCategory::Diplomacy,
                     "Toll Refused",
                     "A trade caravan from Player " + std::to_string(trader.owner)
                         + " refused your toll and passed through your territory.",

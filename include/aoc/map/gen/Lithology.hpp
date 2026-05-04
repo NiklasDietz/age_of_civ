@@ -25,7 +25,7 @@ namespace gen {
 
 /// Compute SESSION 10 outputs. `permafrost` is read-only input from the
 /// EARTH-SYSTEM POST-PASSES preamble.
-struct Session10Outputs {
+struct LithologyOutputs {
     std::vector<uint8_t> litho;
     std::vector<uint8_t> bedrock;
     std::vector<uint8_t> sOrder;
@@ -40,9 +40,9 @@ struct Session10Outputs {
     std::vector<uint8_t> permaD;
 };
 
-void runSession10(const HexGrid& grid, bool cylindrical,
+void runLithology(const HexGrid& grid, bool cylindrical,
                   const std::vector<uint8_t>& permafrost,
-                  Session10Outputs& out);
+                  LithologyOutputs& out);
 
 } // namespace gen
 } // namespace aoc::map

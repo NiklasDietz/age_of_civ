@@ -12,7 +12,7 @@
 #include "aoc/simulation/diplomacy/DiplomaticFavor.hpp"
 #include "aoc/simulation/diplomacy/Grievance.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
-#include "aoc/ui/GameNotifications.hpp"
+#include "aoc/simulation/event/GameNotifications.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -33,7 +33,7 @@ constexpr int32_t kCultureBoostTurns   = 10;
 constexpr int32_t kClimateAccordTurns  = 20;
 constexpr float   kBoostPrestige       = 30.0f;
 
-using aoc::ui::NotificationCategory;
+using aoc::sim::event::NotificationCategory;
 
 // ---------------------------------------------------------------------------
 // Favor accrual helpers
@@ -366,23 +366,23 @@ void tickActiveEffects(WorldCongressComponent& congress,
 
 void notifyBroadcast(NotificationCategory cat, std::string title, std::string body,
                       int32_t priority) {
-    aoc::ui::GameNotification n;
+    aoc::sim::event::GameNotification n;
     n.category = cat;
     n.title    = std::move(title);
     n.body     = std::move(body);
     n.priority = priority;
-    aoc::ui::pushNotification(n);
+    aoc::sim::event::pushNotification(n);
 }
 
 void notifyTargeted(NotificationCategory cat, PlayerId target, std::string title,
                      std::string body, int32_t priority) {
-    aoc::ui::GameNotification n;
+    aoc::sim::event::GameNotification n;
     n.category       = cat;
     n.title          = std::move(title);
     n.body           = std::move(body);
     n.relevantPlayer = target;
     n.priority       = priority;
-    aoc::ui::pushNotification(n);
+    aoc::sim::event::pushNotification(n);
 }
 
 } // namespace

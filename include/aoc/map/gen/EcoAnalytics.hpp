@@ -21,7 +21,7 @@ class HexGrid;
 namespace gen {
 
 /// Run SESSION 17 analytics. Mutates `grid` in place via grid.set* methods.
-void runSession17(HexGrid& grid);
+void runEcoAnalytics(HexGrid& grid);
 
 } // namespace gen
 } // namespace aoc::map

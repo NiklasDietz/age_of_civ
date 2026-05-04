@@ -3,7 +3,7 @@
  * @brief SESSION 13 implementation.
  */
 
-#include "aoc/map/gen/Session13.hpp"
+#include "aoc/map/gen/InsolationSlope.hpp"
 
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -23,7 +23,7 @@
 
 namespace aoc::map::gen {
 
-void runSession13(HexGrid& grid, bool cylindrical, float axialTilt) {
+void runInsolationSlope(HexGrid& grid, bool cylindrical, float axialTilt) {
     const int32_t width  = grid.width();
     const int32_t height = grid.height();
     const int32_t totalT = width * height;

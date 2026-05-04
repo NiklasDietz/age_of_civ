@@ -20,7 +20,7 @@ namespace gen {
 
 /// Run SESSION 15 analytics. `soilFert` carries soil-fertility per tile from
 /// the earlier EARTH-SYSTEM POST-PASSES preamble (used to scale NPP).
-void runSession15(HexGrid& grid, bool cylindrical,
+void runNppCarryingCapacity(HexGrid& grid, bool cylindrical,
                   const std::vector<float>& soilFert);
 
 } // namespace gen

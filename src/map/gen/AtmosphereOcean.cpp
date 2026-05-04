@@ -3,7 +3,7 @@
  * @brief SESSION 3 implementation.
  */
 
-#include "aoc/map/gen/Session3.hpp"
+#include "aoc/map/gen/AtmosphereOcean.hpp"
 
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -23,10 +23,10 @@
 
 namespace aoc::map::gen {
 
-void runSession3(const HexGrid& grid, bool cylindrical,
+void runAtmosphereOcean(const HexGrid& grid, bool cylindrical,
                  const std::vector<float>& sediment,
                  const std::vector<uint8_t>& lakeFlag,
-                 Session3Outputs& out) {
+                 AtmosphereOceanOutputs& out) {
     const int32_t width  = grid.width();
     const int32_t height = grid.height();
     const int32_t totalT = width * height;

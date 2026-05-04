@@ -594,6 +594,16 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
     // City is the authority for all subsystems: automation, quality, experience,
     // building levels, power, and strike are all owned by City objects.
 
+    // 2026-05-03: clear last-turn production map for every player. Recipes
+    // re-fill it as they fire. ResourceCurse + ComparativeAdvantage read this
+    // BEFORE production runs (so they see the previous turn's totals -- a
+    // one-turn-stale rate signal). The cumulative-ever boolean gate
+    // `everSupplied` is intentionally NOT cleared.
+    for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+        if (playerPtr == nullptr) { continue; }
+        playerPtr->economy().lastTurnProduction.clear();
+    }
+
     // --- Pass 1: per-city power + automation setup ---
     // Use a pointer-keyed map so we can correlate cities across both passes.
     std::unordered_map<aoc::game::City*, float> cityPowerEfficiency;
@@ -890,14 +900,16 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                     * chainMult * datacenterMult));
                 stockpile.addGoods(recipe->outputGoodId, boostedOutput);
 
-                // Phase-2 fix (2026-05-03): record cumulative-ever supply on
-                // the player econ component. PlayerEconomyComponent::totalSupply
-                // had three readers (IndustrialRevolution Path B, ResourceCurse,
-                // ComparativeAdvantage) but no writer, so manufactured goods
-                // produced and consumed the same turn never registered. The
-                // diag sweep showed Charcoal blocking 98% of IR#1 attempts and
-                // every IR#3+ goods check failing despite recipes firing.
-                playerPtr->economy().totalSupply[recipe->outputGoodId] += boostedOutput;
+                // Phase-2 fix (2026-05-03): record this turn's production on
+                // the player econ component. lastTurnProduction is cleared at
+                // the top of executeProduction below; readers (CA, RC, AI
+                // trade scoring, UI) see the previous turn's totals during
+                // any other phase. everSupplied is cumulative-ever so the
+                // Industrial Revolution Path B test still recognises goods
+                // produced and immediately consumed the same turn.
+                playerPtr->economy().lastTurnProduction[recipe->outputGoodId]
+                    += boostedOutput;
+                playerPtr->economy().everSupplied.insert(recipe->outputGoodId);
 
                 // Recipe-fire audit: per-game counter + milestone log
                 // (first-fire per recipe per game). WP-C8: counter lives on

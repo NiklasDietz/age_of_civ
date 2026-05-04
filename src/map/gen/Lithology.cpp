@@ -3,7 +3,7 @@
  * @brief SESSION 10 implementation.
  */
 
-#include "aoc/map/gen/Session10.hpp"
+#include "aoc/map/gen/Lithology.hpp"
 
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -23,9 +23,9 @@
 
 namespace aoc::map::gen {
 
-void runSession10(const HexGrid& grid, bool cylindrical,
+void runLithology(const HexGrid& grid, bool cylindrical,
                   const std::vector<uint8_t>& permafrost,
-                  Session10Outputs& out) {
+                  LithologyOutputs& out) {
     const int32_t width  = grid.width();
     const int32_t height = grid.height();
     const int32_t totalT = width * height;

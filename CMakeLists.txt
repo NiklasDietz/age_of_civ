@@ -232,16 +232,16 @@ set(AOC_LIB_SOURCES
     src/map/gen/Mappability.cpp
     src/map/gen/PlateIdStash.cpp
     src/map/gen/PostSim.cpp
-    src/map/gen/Session3.cpp
-    src/map/gen/Session4.cpp
-    src/map/gen/Session9.cpp
-    src/map/gen/Session10.cpp
-    src/map/gen/Session12.cpp
-    src/map/gen/Session13.cpp
-    src/map/gen/Session14.cpp
-    src/map/gen/Session15.cpp
-    src/map/gen/Session16.cpp
-    src/map/gen/Session17.cpp
+    src/map/gen/AtmosphereOcean.cpp
+    src/map/gen/BiomeSubtypes.cpp
+    src/map/gen/KoppenStructures.cpp
+    src/map/gen/Lithology.cpp
+    src/map/gen/CoastalLandforms.cpp
+    src/map/gen/InsolationSlope.cpp
+    src/map/gen/StreamRiparian.cpp
+    src/map/gen/NppCarryingCapacity.cpp
+    src/map/gen/DrainageLivestock.cpp
+    src/map/gen/EcoAnalytics.cpp
     src/map/gen/Thresholds.cpp
     src/map/gen/Noise.cpp
     src/map/gen/Resources.cpp
@@ -280,6 +280,7 @@ set(AOC_LIB_SOURCES
     src/simulation/unit/Promotion.cpp
     src/simulation/event/WorldEvents.cpp
     src/simulation/event/VisibilityEvents.cpp
+    src/simulation/event/GameNotifications.cpp
     src/simulation/barbarian/BarbarianController.cpp
     src/simulation/barbarian/BarbarianClans.cpp
     src/simulation/climate/NaturalDisasters.cpp
@@ -299,6 +300,9 @@ set(AOC_LIB_SOURCES
     src/simulation/victory/SpaceRace.cpp
     src/simulation/government/Government.cpp
     src/simulation/ai/AIController.cpp
+    src/simulation/ai/AIDiplomacyController.cpp
+    src/simulation/ai/AIGovernmentController.cpp
+    src/simulation/ai/AITradeRoutesController.cpp
     src/simulation/ai/AIResearchPlanner.cpp
     src/simulation/ai/AISettlerController.cpp
     src/simulation/ai/AIBuilderController.cpp
@@ -409,7 +413,6 @@ set(AOC_LIB_SOURCES
     src/ui/MapEditor.cpp
     src/ui/Tutorial.cpp
     src/ui/Encyclopedia.cpp
-    src/ui/GameNotifications.cpp
     src/ui/DebugConsole.cpp
     src/ui/SpectatorHUD.cpp
     src/ui/PauseMenu.cpp

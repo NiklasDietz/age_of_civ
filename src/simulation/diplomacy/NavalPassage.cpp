@@ -18,7 +18,7 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/Terrain.hpp"
-#include "aoc/ui/GameNotifications.hpp"
+#include "aoc/simulation/event/GameNotifications.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <cstdint>
@@ -137,8 +137,8 @@ void updateNavalPassageViolations(aoc::game::GameState& gameState,
                              static_cast<unsigned>(a), rel.navalUnitsInWaters,
                              static_cast<unsigned>(b));
 
-                    aoc::ui::pushNotification({
-                        aoc::ui::NotificationCategory::Diplomacy,
+                    aoc::sim::event::pushNotification({
+                        aoc::sim::event::NotificationCategory::Diplomacy,
                         "Naval Passage Violation",
                         "Player " + std::to_string(a)
                             + " has moved warships into your territorial waters without permission.",
@@ -159,8 +159,8 @@ void updateNavalPassageViolations(aoc::game::GameState& gameState,
                              "without diplomatic penalty (naval passage violation)",
                              static_cast<unsigned>(b), static_cast<unsigned>(a));
 
-                    aoc::ui::pushNotification({
-                        aoc::ui::NotificationCategory::Diplomacy,
+                    aoc::sim::event::pushNotification({
+                        aoc::sim::event::NotificationCategory::Diplomacy,
                         "Casus Belli Earned",
                         "Player " + std::to_string(a)
                             + "'s prolonged naval incursion grants you justification for war.",

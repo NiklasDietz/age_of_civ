@@ -3,7 +3,7 @@
  * @brief SESSION 12 implementation.
  */
 
-#include "aoc/map/gen/Session12.hpp"
+#include "aoc/map/gen/CoastalLandforms.hpp"
 
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -23,7 +23,7 @@
 
 namespace aoc::map::gen {
 
-void runSession12(HexGrid& grid, bool cylindrical,
+void runCoastalLandforms(HexGrid& grid, bool cylindrical,
                   const std::vector<uint8_t>& lakeFlag,
                   const std::vector<float>& orogeny) {
     const int32_t width  = grid.width();

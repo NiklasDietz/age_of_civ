@@ -6,7 +6,7 @@
 #include "aoc/simulation/diplomacy/DiplomacyState.hpp"
 #include "aoc/simulation/diplomacy/AllianceObligations.hpp"
 #include "aoc/simulation/economy/TradeAgreement.hpp"
-#include "aoc/ui/GameNotifications.hpp"
+#include "aoc/simulation/event/GameNotifications.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
@@ -131,15 +131,15 @@ void DiplomacyManager::declareWar(PlayerId aggressor, PlayerId target,
              static_cast<unsigned>(aggressor), static_cast<unsigned>(target));
 
     {
-        aoc::ui::GameNotification n;
-        n.category = aoc::ui::NotificationCategory::Diplomacy;
+        aoc::sim::event::GameNotification n;
+        n.category = aoc::sim::event::NotificationCategory::Diplomacy;
         n.title = "WAR DECLARED!";
         n.body = "Player " + std::to_string(aggressor)
                + " declared war on Player " + std::to_string(target) + ".";
         n.relevantPlayer = aggressor;
         n.otherPlayer    = target;
         n.priority = 10;
-        aoc::ui::pushNotification(n);
+        aoc::sim::event::pushNotification(n);
     }
 }
 
@@ -171,15 +171,15 @@ void DiplomacyManager::makePeace(PlayerId a, PlayerId b) {
              static_cast<unsigned>(a), static_cast<unsigned>(b));
 
     {
-        aoc::ui::GameNotification n;
-        n.category = aoc::ui::NotificationCategory::Diplomacy;
+        aoc::sim::event::GameNotification n;
+        n.category = aoc::sim::event::NotificationCategory::Diplomacy;
         n.title = "Peace Treaty";
         n.body = "Player " + std::to_string(a) + " and Player "
                + std::to_string(b) + " have made peace.";
         n.relevantPlayer = a;
         n.otherPlayer    = b;
         n.priority = 6;
-        aoc::ui::pushNotification(n);
+        aoc::sim::event::pushNotification(n);
     }
 }
 
@@ -189,14 +189,14 @@ void pushDiplomaticNotification(PlayerId a, PlayerId b,
                                  const std::string& title,
                                  const std::string& body,
                                  int32_t priority) {
-    aoc::ui::GameNotification n;
-    n.category = aoc::ui::NotificationCategory::Diplomacy;
+    aoc::sim::event::GameNotification n;
+    n.category = aoc::sim::event::NotificationCategory::Diplomacy;
     n.title = title;
     n.body = body;
     n.relevantPlayer = a;
     n.otherPlayer    = b;
     n.priority = priority;
-    aoc::ui::pushNotification(n);
+    aoc::sim::event::pushNotification(n);
 }
 
 } // namespace

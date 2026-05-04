@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace aoc::sim {
 
@@ -105,9 +106,21 @@ struct PlayerEconomyComponent {
     CurrencyAmount treasury = 100;          ///< Gold / currency on hand
     CurrencyAmount incomePerTurn = 0;       ///< Net income last turn (for display)
 
-    /// Player-wide resource totals (aggregated from all cities each turn).
-    std::unordered_map<uint16_t, int32_t> totalSupply;
+    /// Last-turn production volume per good. Cleared at the top of
+    /// EconomySimulation::executeProduction and populated as recipes fire,
+    /// so on any other turn-step it holds the PREVIOUS turn's totals (stale
+    /// by one tick). Used by ComparativeAdvantage and ResourceCurse as a
+    /// rate signal. Was named `totalSupply` -- the old semantics
+    /// accidentally accumulated forever and inflated rate readings after
+    /// many turns. Renamed 2026-05-03; the cumulative-ever boolean gate
+    /// moved to `everSupplied` below.
+    std::unordered_map<uint16_t, int32_t> lastTurnProduction;
     std::unordered_map<uint16_t, int32_t> totalDemand;
+    /// Set of good ids the civ has EVER produced. Cumulative, never
+    /// cleared. The Industrial Revolution Path B test reads this to confirm
+    /// the chain ran at least once -- Steel produced and consumed the same
+    /// turn still counts because the goodId stays in the set.
+    std::unordered_set<uint16_t> everSupplied;
 
     /// Per-good: resources the player needs but lacks (computed from recipe
     /// inputs, building fuel, unit requirements, missing luxuries).

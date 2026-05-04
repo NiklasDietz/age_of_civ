@@ -18,7 +18,7 @@ class HexGrid;
 
 namespace gen {
 
-void runSession12(HexGrid& grid, bool cylindrical,
+void runCoastalLandforms(HexGrid& grid, bool cylindrical,
                   const std::vector<uint8_t>& lakeFlag,
                   const std::vector<float>& orogeny);
 

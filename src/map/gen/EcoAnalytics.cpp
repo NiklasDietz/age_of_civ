@@ -3,7 +3,7 @@
  * @brief SESSION 17 implementation -- terminal Earth-system analytics.
  */
 
-#include "aoc/map/gen/Session17.hpp"
+#include "aoc/map/gen/EcoAnalytics.hpp"
 
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -22,7 +22,7 @@
 
 namespace aoc::map::gen {
 
-void runSession17(HexGrid& grid) {
+void runEcoAnalytics(HexGrid& grid) {
     const int32_t width  = grid.width();
     const int32_t height = grid.height();
     const int32_t totalT = width * height;

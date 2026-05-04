@@ -3,7 +3,7 @@
  * @brief SESSION 16 implementation.
  */
 
-#include "aoc/map/gen/Session16.hpp"
+#include "aoc/map/gen/DrainageLivestock.hpp"
 
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/Terrain.hpp"
@@ -25,7 +25,7 @@
 
 namespace aoc::map::gen {
 
-void runSession16(HexGrid& grid, bool cylindrical,
+void runDrainageLivestock(HexGrid& grid, bool cylindrical,
                   const std::vector<float>& soilFert,
                   const std::vector<float>& sediment,
                   const std::vector<uint8_t>& lakeFlag) {

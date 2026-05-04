@@ -8,6 +8,7 @@
  */
 
 #include "aoc/save/Serializer.hpp"
+#include "aoc/save/SaveVersioning.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -1391,7 +1392,15 @@ ErrorCode loadGame(const std::string& filepath,
         return ErrorCode::SaveCorrupted;
     }
     uint32_t version = buf.readU32();
+    if (!aoc::save::isVersionSupported(version)) {
+        return ErrorCode::SaveVersionMismatch;
+    }
     if (version != SAVE_VERSION) {
+        // 2026-05-04: older versions accepted only if loadable as-is. The
+        // SaveVersioning.hpp infrastructure exists but per-version migration
+        // hooks have NOT been written -- any v < CURRENT save will likely
+        // fail field-by-field. Future per-version migrate() entry-points
+        // should hook in here.
         return ErrorCode::SaveVersionMismatch;
     }
     [[maybe_unused]] uint32_t flags    = buf.readU32();

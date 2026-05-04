@@ -310,7 +310,8 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
                           aoc::map::ResourcePlacementMode placement
                               = aoc::map::ResourcePlacementMode::Realistic,
                           int32_t mapWidthOverride = 0,
-                          int32_t mapHeightOverride = 0) {
+                          int32_t mapHeightOverride = 0,
+                          uint32_t seedOverride = 0) {
     LOG_INFO("=== HEADLESS SIMULATION: %d turns, %d AI players, victoryMask=0x%x ===",
              maxTurns, playerCount, victoryMask);
 
@@ -335,8 +336,16 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         << "FoodPerTurn,FamineCities,ScienceDiffusion,CultureDiffusion\n";
 
     aoc::map::HexGrid grid;
+    // 2026-05-03: honour --seed CLI/yaml override so audit_matrix.sh sims are
+    // reproducible. Previously the seed argument was silently dropped and
+    // every run used random_device entropy, making the seed column in
+    // REPORT.md noise. Pass 0 to fall back to random_device.
     std::random_device rd;
-    aoc::Random rng(rd());
+    const uint32_t actualSeed = (seedOverride != 0) ? seedOverride : rd();
+    aoc::Random rng(actualSeed);
+    LOG_INFO("Headless RNG seed: %u (%s)",
+             actualSeed,
+             (seedOverride != 0) ? "from --seed override" : "from random_device");
 
     // Generate map. New default 140x90 (was 80x52) — bigger maps per
     // user request. --map-size W x H overrides.
@@ -1156,6 +1165,7 @@ int main(int argc, char* argv[]) {
     // which masked early-victory mechanics.
     uint32_t victoryMask = aoc::sim::VICTORY_MASK_ALL;
 
+    uint32_t seedArg = 0;   // 0 = random_device (non-deterministic)
     bool loadedConfig = false;
     if (argc >= 2) {
         std::string arg1(argv[1]);
@@ -1185,6 +1195,8 @@ int main(int argc, char* argv[]) {
                 if (!victoryTypesStr.empty()) {
                     victoryMask = aoc::sim::parseVictoryTypeMask(victoryTypesStr);
                 }
+
+                seedArg = static_cast<uint32_t>(config.getInt("seed", 0));
 
                 std::fprintf(stderr, "\n  === Age of Civilization: Headless Simulation ===\n\n");
                 std::fprintf(stderr, "  Config:  %s\n", arg1.c_str());
@@ -1238,7 +1250,7 @@ int main(int argc, char* argv[]) {
             } else if (arg == "--log-level" && i + 1 < argc) {
                 ++i;
             } else if (arg == "--seed" && i + 1 < argc) {
-                ++i;
+                seedArg = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
             } else {
                 int val = std::atoi(arg.c_str());
                 if (val > 0 && turns == 200) { turns = val; }
@@ -1279,7 +1291,7 @@ int main(int argc, char* argv[]) {
 
     std::fprintf(stderr, "  Map:     %s\n", mapTypeLabel(mapType));
     std::fprintf(stderr, "  Placement: %s\n", placementLabel(placement));
-    int result = runHeadlessSimulation(turns, players, outputPath, victoryMask, tracePath, mapType, placement, mapWidth, mapHeight);
+    int result = runHeadlessSimulation(turns, players, outputPath, victoryMask, tracePath, mapType, placement, mapWidth, mapHeight, seedArg);
 
     std::fprintf(stderr, "\n\n");
     return result;

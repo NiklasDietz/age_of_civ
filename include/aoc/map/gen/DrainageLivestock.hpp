@@ -21,7 +21,7 @@ namespace gen {
 /// Run SESSION 16 analytics. Inputs read from grid getters and from the
 /// outer-scope vectors `soilFert`, `sediment`, `lakeFlag` populated earlier
 /// in the pipeline. Outputs stored via grid.set* methods.
-void runSession16(HexGrid& grid, bool cylindrical,
+void runDrainageLivestock(HexGrid& grid, bool cylindrical,
                   const std::vector<float>& soilFert,
                   const std::vector<float>& sediment,
                   const std::vector<uint8_t>& lakeFlag);

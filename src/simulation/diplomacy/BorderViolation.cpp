@@ -14,7 +14,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
-#include "aoc/ui/GameNotifications.hpp"
+#include "aoc/simulation/event/GameNotifications.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <cstdint>
@@ -136,8 +136,8 @@ void updateBorderViolations(aoc::game::GameState& gameState,
                              static_cast<unsigned>(a), rel.unitsInTerritory,
                              static_cast<unsigned>(b));
 
-                    aoc::ui::pushNotification({
-                        aoc::ui::NotificationCategory::Diplomacy,
+                    aoc::sim::event::pushNotification({
+                        aoc::sim::event::NotificationCategory::Diplomacy,
                         "Border Violation",
                         "Player " + std::to_string(a)
                             + " has moved military units into your territory without permission.",
@@ -158,8 +158,8 @@ void updateBorderViolations(aoc::game::GameState& gameState,
                              "without diplomatic penalty (border violation)",
                              static_cast<unsigned>(b), static_cast<unsigned>(a));
 
-                    aoc::ui::pushNotification({
-                        aoc::ui::NotificationCategory::Diplomacy,
+                    aoc::sim::event::pushNotification({
+                        aoc::sim::event::NotificationCategory::Diplomacy,
                         "Casus Belli Earned",
                         "Player " + std::to_string(a)
                             + "'s prolonged border violation grants you justification for war.",

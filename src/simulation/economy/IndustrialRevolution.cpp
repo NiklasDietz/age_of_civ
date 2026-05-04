@@ -125,11 +125,14 @@ bool checkIndustrialRevolution(aoc::game::GameState& gameState, PlayerId player,
     }
 
     // Check resource requirements. 2026-05-03: also accept "ever supplied"
-    // via economy.totalSupply, not just current stockpile. Civs that produce
-    // a good and consume it the same turn (e.g. Steel feeding Tools/Tank
-    // production) used to fail the snapshot check despite having the
-    // manufacturing capability. Tech reach already gates capability; goods
-    // check now confirms the chain ran at least once.
+    // via economy.everSupplied (cumulative goodId set), not just current
+    // stockpile. Civs that produce a good and consume it the same turn
+    // (e.g. Steel feeding Tools/Tank production) used to fail the snapshot
+    // check despite having the manufacturing capability. Tech reach already
+    // gates capability; goods check now confirms the chain ran at least
+    // once. The boolean-set semantic replaces the older totalSupply integer
+    // map which accidentally accumulated forever and was renamed to
+    // lastTurnProduction for ComparativeAdvantage / ResourceCurse use.
     const aoc::sim::PlayerEconomyComponent& econ = playerObj->economy();
     for (int32_t i = 0; i < 3; ++i) {
         uint16_t reqGood = rev.requirements.requiredGoods[i];
@@ -144,13 +147,10 @@ bool checkIndustrialRevolution(aoc::game::GameState& gameState, PlayerId player,
                 break;
             }
         }
-        // Path B: or recently supplied at the player level (capture goods
+        // Path B: or ever supplied at the player level (capture goods
         // produced and immediately consumed).
-        if (!found) {
-            auto it = econ.totalSupply.find(reqGood);
-            if (it != econ.totalSupply.end() && it->second > 0) {
-                found = true;
-            }
+        if (!found && econ.everSupplied.count(reqGood) > 0) {
+            found = true;
         }
         if (!found) {
 #ifdef AOC_DIAG_IR

@@ -6,7 +6,7 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/simulation/ai/AIBlackboard.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
-#include "aoc/ui/GameNotifications.hpp"
+#include "aoc/simulation/event/GameNotifications.hpp"
 
 #include <algorithm>
 #include <string>
@@ -95,7 +95,7 @@ void processVisibilityEvents(aoc::game::GameState& gameState,
         const std::string locStr = "(" + std::to_string(event.location.q)
                                   + "," + std::to_string(event.location.r) + ")";
         const std::string actorStr = "Player " + std::to_string(event.actor);
-        aoc::ui::GameNotification note;
+        aoc::sim::event::GameNotification note;
         note.relevantPlayer = viewer;
         note.otherPlayer    = event.actor;
 
@@ -103,45 +103,45 @@ void processVisibilityEvents(aoc::game::GameState& gameState,
             case VisibilityEventType::EnemyUnitSpotted:
             case VisibilityEventType::BarbarianCampSighted:
                 pushUnique(bb.attackTargets, event.location);
-                note.category = aoc::ui::NotificationCategory::Military;
+                note.category = aoc::sim::event::NotificationCategory::Military;
                 note.title = (event.type == VisibilityEventType::BarbarianCampSighted)
                     ? "Barbarian Camp Sighted" : "Enemy Unit Spotted";
                 note.body = note.title + " at " + locStr + ".";
                 note.priority = 4;
-                aoc::ui::pushNotification(note);
+                aoc::sim::event::pushNotification(note);
                 break;
             case VisibilityEventType::CityFounded:
                 pushUnique(bb.bestCitySites, event.location);
-                note.category = aoc::ui::NotificationCategory::City;
+                note.category = aoc::sim::event::NotificationCategory::City;
                 note.title = "New City Discovered";
                 note.body = actorStr + " founded a new city at " + locStr + ".";
                 note.priority = 3;
-                aoc::ui::pushNotification(note);
+                aoc::sim::event::pushNotification(note);
                 break;
             case VisibilityEventType::ResourceRevealed: {
                 pushUnique(bb.bestCitySites, event.location);
-                note.category = aoc::ui::NotificationCategory::Economy;
+                note.category = aoc::sim::event::NotificationCategory::Economy;
                 note.title = "Resource Revealed";
                 const uint16_t gid = static_cast<uint16_t>(event.payload);
                 const std::string_view goodNameSv = aoc::sim::goodDef(gid).name;
                 note.body = std::string(goodNameSv) + " visible at " + locStr + ".";
                 note.priority = 3;
-                aoc::ui::pushNotification(note);
+                aoc::sim::event::pushNotification(note);
                 break;
             }
             case VisibilityEventType::WonderCompleted:
-                note.category = aoc::ui::NotificationCategory::City;
+                note.category = aoc::sim::event::NotificationCategory::City;
                 note.title = "Wonder Completed";
                 note.body = actorStr + " completed a wonder at " + locStr + ".";
                 note.priority = 6;
-                aoc::ui::pushNotification(note);
+                aoc::sim::event::pushNotification(note);
                 break;
             case VisibilityEventType::GreatPersonSpawned:
-                note.category = aoc::ui::NotificationCategory::City;
+                note.category = aoc::sim::event::NotificationCategory::City;
                 note.title = "Great Person Arrived";
                 note.body = actorStr + " recruited a Great Person at " + locStr + ".";
                 note.priority = 5;
-                aoc::ui::pushNotification(note);
+                aoc::sim::event::pushNotification(note);
                 break;
         }
     });
