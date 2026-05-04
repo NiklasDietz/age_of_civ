@@ -412,9 +412,18 @@ private:
     /// scrubber regenerates the map by re-running MapGenerator with
     /// these params and a varying runEpochsLimit.
     uint32_t m_creatorSeed = 0;
-    int32_t  m_creatorEpochsTotal = 120;
-    int32_t  m_creatorLandPlates  = 7;
-    int32_t  m_creatorEpochCurrent = 120;
+    // 2026-05-04: dropped 120 -> 40. Orogeny pipeline calibrated for
+    // ~40-epoch sims; 120 saturated subduction tiles to the orogeny
+    // clamp (0.22), producing wide mountain blobs rather than narrow
+    // ranges. Drift over 40 epochs at default driftFraction is still
+    // ~0.6 map widths -- enough for visible Wilson-cycle motion.
+    int32_t  m_creatorEpochsTotal = 40;
+    // 2026-05-04: dropped 7 -> 4 so game uses mapgen's Earth-calibrated
+    // count. 7 land plates packed too tightly so adjacent land plates
+    // produced fused Pangaea-style continents with mountain ranges
+    // running through their interiors.
+    int32_t  m_creatorLandPlates  = 4;
+    int32_t  m_creatorEpochCurrent = 40;
     int32_t  m_creatorWidth  = 400;
     int32_t  m_creatorHeight = 200;
     /// Total plate-drift budget for the sim, in 10ths of a map width.

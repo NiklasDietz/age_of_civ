@@ -3405,7 +3405,8 @@ void Application::buildMainMenu(float screenW, float screenH) {
             std::random_device rdc;
             this->m_creatorSeed         = rdc();
             this->m_creatorEpochsTotal  = 40;
-            this->m_creatorLandPlates   = 7;
+            // 2026-05-04: 7 -> 4 to match mapgen's Earth-calibrated count.
+            this->m_creatorLandPlates   = 4;
             this->m_creatorWidth        = 400;
             this->m_creatorHeight       = 200;
             this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;

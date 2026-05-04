@@ -1869,14 +1869,22 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     const float relVx = A.vx - B.vx;
                     const float relVy = A.vy - B.vy;
                     const float stress = relVx * bnx + relVy * bny;
-                    // Per-epoch orogeny scaling: total uplift over the
-                    // sim should be roughly invariant of epoch count.
-                    // Without this, longer sims stack so much orogeny
-                    // (capped at +0.32 each tile) that nearly every
-                    // boundary saturates → world becomes mostly land.
-                    // 40-epoch reference; longer sims dampen per-epoch.
+                    // Per-epoch orogeny scaling so total uplift over sim
+                    // hits a stable target regardless of EPOCHS choice.
+                    // 2026-05-04: reference epoch count 40 -> 10. Per-tile
+                    // per-epoch contribution can hit ~0.011 * stress(1.6)
+                    // = 0.018; at 40 epochs unscaled that totals ~0.70,
+                    // well past the orogeny clamp 0.22. Saturated tiles
+                    // collapse the 94th-percentile mountain gate
+                    // (percentile = clamp ceiling -> all saturated tiles
+                    // become mountain) so >18% of land became mountain
+                    // (Earth: 6-7%, audit varied 1.5-45%). With 10-epoch
+                    // reference, 40-epoch sims scale by 0.25 and even
+                    // stress=1.6 boundary tiles total ~0.18, leaving
+                    // headroom in [0.18, 0.22] for the percentile gate
+                    // to discriminate tall peaks from medium uplift.
                     const float epochScale = std::clamp(
-                        40.0f / static_cast<float>(EPOCHS), 0.50f, 1.0f);
+                        6.0f / static_cast<float>(EPOCHS), 0.05f, 1.0f);
                     const float bandWeight = boundary * (1.0f - boundary) * 4.0f * epochScale;
                     const std::size_t idx = static_cast<std::size_t>(
                         row * width + col);
@@ -2148,16 +2156,27 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                     * (-effectiveStress));
                         }
                         if (stress > STRESS_GATE && A_land && B_land) {
+                            // 2026-05-04: gain dropped 0.006 -> 0.0020.
+                            // Multiple boundary tiles around the same
+                            // collision seam all stamp at the same
+                            // inland offset point, stacking orogeny
+                            // into one cell. With 0.006 each, total
+                            // pushed past mountain threshold and the
+                            // accumulated saturated cell collapsed the
+                            // percentile gate, producing 30-45 % mountain
+                            // coverage on collision-heavy sims. Lower
+                            // gain -> stamp stays in plateau/hill range.
                             constexpr float PLATEAU_OFFSET = 0.18f;
-                            constexpr float PLATEAU_GAIN   = 0.006f;
+                            constexpr float PLATEAU_GAIN   = 0.0020f;
                             scatterPL(Aw,
                                 lxNearest + inwardLx * PLATEAU_OFFSET,
                                 lyNearest + inwardLy * PLATEAU_OFFSET,
                                 PLATEAU_GAIN * bandWeight * effectiveStress);
                         }
                         if (stress > STRESS_GATE && A_land) {
+                            // Same stacking issue: dropped 0.0035 -> 0.0010.
                             constexpr float FARFIELD_OFFSET = 0.40f;
-                            constexpr float FARFIELD_GAIN   = 0.0035f;
+                            constexpr float FARFIELD_GAIN   = 0.0010f;
                             scatterPL(Aw,
                                 lxNearest + inwardLx * FARFIELD_OFFSET,
                                 lyNearest + inwardLy * FARFIELD_OFFSET,
@@ -2663,9 +2682,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             }
         }
 
-        // Cap orogeny tighter — 0.22 max. With mountain threshold at
-        // 0.18, only the actively-stressed boundary tiles cross. Earth
-        // ratio: ~7 % land has Himalayan-class elevation.
+        // Clamp restored to 0.22. Mountain gate now uses hard top-N%
+        // quota in ClimateBiome (rank-based, not threshold-based), so
+        // saturation no longer collapses the gate.
         for (Plate& p : plates) {
             for (float& v : p.orogenyLocal) {
                 v = std::clamp(v, -0.15f, 0.22f);

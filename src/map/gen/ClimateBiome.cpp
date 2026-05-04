@@ -148,28 +148,42 @@ void runClimateBiomePass(HexGrid& grid,
         }
     }
 
-    float mountainOrogenyPercentile = 1.0e9f;
+    // 2026-05-04: hard top-5 %-by-rank mountain quota. Pre-compute the
+    // set of land-tile indices whose orogeny is in the top 5 %; loop
+    // below checks set membership instead of value comparison. This
+    // is robust against saturation: when many cells clamp at 0.22, a
+    // value-based percentile collapses (everyone at clamp passes the
+    // threshold), giving 30-45 % mountain coverage. Rank-based always
+    // picks exactly N tiles regardless of value distribution.
+    std::vector<uint8_t> isMountainTile(static_cast<std::size_t>(totalTiles), 0u);
     {
-        std::vector<float> landOro;
-        landOro.reserve(static_cast<std::size_t>(totalTiles));
+        std::vector<std::pair<float, int32_t>> landOroIdx;
+        landOroIdx.reserve(static_cast<std::size_t>(totalTiles));
         for (int32_t i = 0; i < totalTiles; ++i) {
             if (elevationMap[static_cast<std::size_t>(i)] >= waterThreshold) {
-                const float v = orogeny[static_cast<std::size_t>(i)];
-                if (v > 0.0f) {
-                    landOro.push_back(v);
-                }
+                landOroIdx.emplace_back(
+                    orogeny[static_cast<std::size_t>(i)], i);
             }
         }
-        if (!landOro.empty()) {
-            const std::size_t n = landOro.size();
-            const std::size_t k = static_cast<std::size_t>(
-                static_cast<double>(n) * 0.94);
-            const std::size_t kClamped = std::min(k, n - 1);
-            std::nth_element(landOro.begin(),
-                             landOro.begin()
-                                 + static_cast<std::ptrdiff_t>(kClamped),
-                             landOro.end());
-            mountainOrogenyPercentile = landOro[kClamped];
+        if (!landOroIdx.empty()) {
+            const std::size_t n = landOroIdx.size();
+            const std::size_t mountainQuota =
+                static_cast<std::size_t>(static_cast<double>(n) * 0.05);
+            if (mountainQuota > 0 && mountainQuota < n) {
+                std::nth_element(
+                    landOroIdx.begin(),
+                    landOroIdx.begin()
+                        + static_cast<std::ptrdiff_t>(mountainQuota),
+                    landOroIdx.end(),
+                    [](const std::pair<float, int32_t>& a,
+                       const std::pair<float, int32_t>& b) {
+                        return a.first > b.first;
+                    });
+                for (std::size_t i = 0; i < mountainQuota; ++i) {
+                    isMountainTile[static_cast<std::size_t>(
+                        landOroIdx[i].second)] = 1u;
+                }
+            }
         }
     }
 
@@ -195,14 +209,20 @@ void runClimateBiomePass(HexGrid& grid,
             // limits absolute mountain count, so a lower minimum cutoff
             // simply lets coastal subduction tiles enter the mountain
             // pool and compete with collision sutures naturally.
+            // Mountain check: rank-based top-5 % set membership.
+            // Static threshold also enforced so genuinely flat tiles
+            // (e.g. ocean islands accidentally above water threshold)
+            // never become mountain even if they fall in the top
+            // quota due to small map sizes.
             constexpr float MOUNTAIN_OROGENY_THRESHOLD = 0.08f;
             if (oroAt >= MOUNTAIN_OROGENY_THRESHOLD
-                && oroAt >= mountainOrogenyPercentile) {
+                && isMountainTile[static_cast<std::size_t>(index)]) {
                 grid.setTerrain(index, TerrainType::Mountain);
                 grid.setElevation(index, 3);
                 continue;
             }
             (void)mountainThreshold;
+            (void)oroAt;
 
             float nx = static_cast<float>(col) / static_cast<float>(width);
             float ny = static_cast<float>(row) / static_cast<float>(height);
