@@ -56,6 +56,19 @@ struct Plate {
     // population separately from the global plate cap so microplates
     // do not crowd inside visible continents.
     bool  isMicroplate = false;
+    // 2026-05-04: rift trailing-edge oceanic crust. When a plate
+    // participates in a continental rift, both pieces (parent + child)
+    // grow new oceanic crust at the trailing edge facing the rift line.
+    // The Atlantic between South America and Africa is on BOTH plates --
+    // each carries its continent + new oceanic crust accreted at the
+    // mid-Atlantic ridge. Stored in plate-local coords so it tracks the
+    // plate as it drifts. Length determines how wide the oceanic wedge
+    // is; (oceanWedgeNx, oceanWedgeNy) is the unit vector pointing FROM
+    // continental interior TOWARD the rift edge.
+    float oceanWedgeNx     = 0.0f;
+    float oceanWedgeNy     = 0.0f;
+    float oceanWedgeWidth  = 0.0f;  // 0 = no rift wedge
+    int32_t oceanWedgeBornEpoch = -1;
 };
 
 struct SutureSeam {

@@ -1009,6 +1009,19 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 if (p.cy < 0.05f) { p.cy = 0.05f; p.vy = -p.vy; }
                 if (p.cy > 0.95f) { p.cy = 0.95f; p.vy = -p.vy; }
                 ++p.ageEpochs;
+                // 2026-05-04: oceanic wedge accretion. Each epoch the
+                // post-rift plate adds new oceanic crust at its trailing
+                // edge facing the rift line. Earth Atlantic: widens
+                // ~2 cm/yr -> over 100 My ridge accretes ~2000 km of
+                // crust on each side. We grow the wedge proportionally
+                // to plate motion magnitude so fast-drifting plates
+                // open wider basins. Cap at 0.40 plate-local units to
+                // prevent the wedge eating the whole plate.
+                if (p.oceanWedgeWidth > 0.0f && p.oceanWedgeWidth < 0.40f) {
+                    const float vMag = std::sqrt(p.vx * p.vx + p.vy * p.vy);
+                    p.oceanWedgeWidth = std::min(0.40f,
+                        p.oceanWedgeWidth + vMag * DT * 0.40f);
+                }
             }
 
             // WILSON SUPERCONTINENT CYCLE. Real Earth alternates
@@ -1703,33 +1716,66 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                            + centerRng.nextFloat(-2.0f, 2.0f);
                         child.seedY        = parent.seedY
                                            + centerRng.nextFloat(-2.0f, 2.0f);
-                        // 2026-05-04: rifted children are now OCEANIC
-                        // (low landFraction). Earth's Atlantic-opening
-                        // analogue: when Pangaea rifted, the parent
-                        // CONTINENT remained, and a NEW oceanic plate
-                        // formed in the rift -- new mid-ocean ridge,
-                        // new oceanic crust. Old code gave children
-                        // 0.30-0.85 land which placed each rifted
-                        // child's land patch right next to the parent's
-                        // land patch; visually the two patches fused
-                        // into one continent with an "internal plate
-                        // boundary". With low landFraction, the child's
-                        // Voronoi territory renders as ocean and
-                        // visually SPLITS the parent's old territory
-                        // into two distinct continents separated by
-                        // the new ocean basin.
-                        child.isLand = false;
-                        // 2026-05-04: child landFraction 0.05-0.15 still
-                        // leaked land tiles via crust mask noise; even
-                        // ~5 % land per rifted child placed isolated
-                        // land tiles inside parent's territory that
-                        // counted toward "internal plates inside one
-                        // continent". Set to 0 -- rift child is the
-                        // ocean basin opening up, not a continental
-                        // fragment. Visible effect: rift child's
-                        // Voronoi cell renders as pure ocean, cleanly
-                        // splitting parent's continent.
-                        child.landFraction = 0.0f;
+                        // 2026-05-04 (rev 2): rifted children are CONTINENTAL
+                        // fragments (chunks of original continent) like
+                        // S. America breaking off Pangaea. Earth model:
+                        // BOTH halves carry continent + new oceanic
+                        // crust accreted at the trailing edge facing
+                        // the rift line. There is NO new third plate
+                        // for the ocean basin -- the basin is split
+                        // between the two existing plates' trailing
+                        // edges. We mark each plate's rift-facing side
+                        // via oceanWedge fields; crust-mask sampling
+                        // overrides those tiles to ocean, and the wedge
+                        // widens with each subsequent epoch as the
+                        // plates drift apart and accrete new oceanic
+                        // crust at the spreading ridge.
+                        child.isLand = true;
+                        child.landFraction = std::clamp(
+                            parent.landFraction *
+                                centerRng.nextFloat(0.85f, 1.00f),
+                            0.30f, 0.55f);
+                        // Oceanic wedge points FROM child centroid TOWARD
+                        // parent (rift line is between them). In plate-
+                        // local frame: convert world-space (parent.cx -
+                        // child.cx, parent.cy - child.cy) via child.rot.
+                        {
+                            float wnx = parent.cx - child.cx;
+                            float wny = parent.cy - child.cy;
+                            const float wnLen = std::sqrt(wnx*wnx + wny*wny);
+                            if (wnLen > 0.0001f) {
+                                wnx /= wnLen; wny /= wnLen;
+                                const float csC = std::cos(child.rot);
+                                const float snC = std::sin(child.rot);
+                                child.oceanWedgeNx =
+                                    (wnx * csC + wny * snC);
+                                child.oceanWedgeNy =
+                                    (-wnx * snC + wny * csC);
+                                child.oceanWedgeWidth = 0.05f;
+                                child.oceanWedgeBornEpoch = epoch;
+                            }
+                        }
+                        // Mirror wedge on the parent (its trailing edge
+                        // also accretes new ocean crust). Parent's
+                        // wedge points FROM parent TOWARD child.
+                        {
+                            Plate& parentWritable =
+                                plates[static_cast<std::size_t>(pi)];
+                            float wnx = child.cx - parentWritable.cx;
+                            float wny = child.cy - parentWritable.cy;
+                            const float wnLen = std::sqrt(wnx*wnx + wny*wny);
+                            if (wnLen > 0.0001f) {
+                                wnx /= wnLen; wny /= wnLen;
+                                const float csP = std::cos(parentWritable.rot);
+                                const float snP = std::sin(parentWritable.rot);
+                                parentWritable.oceanWedgeNx =
+                                    (wnx * csP + wny * snP);
+                                parentWritable.oceanWedgeNy =
+                                    (-wnx * snP + wny * csP);
+                                parentWritable.oceanWedgeWidth = 0.05f;
+                                parentWritable.oceanWedgeBornEpoch = epoch;
+                            }
+                        }
                         // Children get a fresh empty orogeny grid —
                         // they're "new crust" formed at the rift, not
                         // Hotspot trails reset (each fragment has its
@@ -2001,6 +2047,21 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             lxp * 2.0f + p.seedX,
                             lyp * 2.0f + p.seedY,
                             4, 2.0f, 0.55f, crustRng);
+                        // 2026-05-04: post-rift oceanic-wedge override.
+                        // If tile is on the trailing-edge side of a
+                        // recently-rifted plate (within wedgeWidth
+                        // plate-local units of the rift edge in the
+                        // wedge normal direction), force ocean. Models
+                        // new ocean crust accreted at the spreading
+                        // ridge -- the Atlantic seafloor on each side
+                        // of the Mid-Atlantic Ridge.
+                        if (p.oceanWedgeWidth > 0.0f) {
+                            const float dot = lxp * p.oceanWedgeNx
+                                            + lyp * p.oceanWedgeNy;
+                            if (dot > 0.0f && dot < p.oceanWedgeWidth) {
+                                return false;
+                            }
+                        }
                         return c > (1.0f - p.landFraction);
                     };
                     const bool A_land = sampleCrustLand(A, nx, ny);
@@ -2262,6 +2323,35 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                 lxNearest + inwardLx * FARFIELD_OFFSET,
                                 lyNearest + inwardLy * FARFIELD_OFFSET,
                                 FARFIELD_GAIN * bandWeight * effectiveStress);
+                        }
+                    }
+
+                    // 2026-05-04: TRANSFORM FAULTS. When relative plate
+                    // motion is dominantly TANGENTIAL to the boundary
+                    // (parallel slip, not closing or opening), the
+                    // boundary is a transform fault: San Andreas, North
+                    // Anatolian Fault, Alpine Fault NZ, Dead Sea
+                    // Transform, Queen Charlotte Fault. Real transforms
+                    // produce: linear fault valley (small negative
+                    // orogeny along boundary), offset coastlines,
+                    // intense seismicity. We add a small negative
+                    // orogeny stamp at the boundary scaled by
+                    // tangential stress and gated to fire only when
+                    // the normal component is small (otherwise this is
+                    // an oblique convergent or divergent boundary
+                    // already handled above).
+                    {
+                        const float tangentialStress =
+                            relVx * (-bny) + relVy * bnx;
+                        const float absStress  = std::fabs(stress);
+                        const float absTanStr  = std::fabs(tangentialStress);
+                        if (absTanStr > STRESS_GATE
+                            && absStress < 0.5f * absTanStr) {
+                            const float effTanStr =
+                                std::min(absTanStr, 1.6f);
+                            constexpr float TRANSFORM_GAIN = -0.005f;
+                            scatterPL(Aw, lxNearest, lyNearest,
+                                TRANSFORM_GAIN * bandWeight * effTanStr);
                         }
                     }
                     (void)idx;
@@ -3218,8 +3308,18 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // — wide bands produce too many half-elevation
                         // tiles that fluctuate around the water cutoff
                         // and fragment continents into archipelagos.
-                        const float t = std::clamp(
+                        float t = std::clamp(
                             (crust - landThresh + 0.025f) / 0.05f, 0.0f, 1.0f);
+                        // 2026-05-04: oceanic-wedge override at trailing
+                        // rift edge -- new oceanic crust accreted at
+                        // mid-ocean ridge.
+                        if (pNearest.oceanWedgeWidth > 0.0f) {
+                            const float dot = lxNearest * pNearest.oceanWedgeNx
+                                            + lyNearest * pNearest.oceanWedgeNy;
+                            if (dot > 0.0f && dot < pNearest.oceanWedgeWidth) {
+                                t = 0.0f;
+                            }
+                        }
                         const float localLandness = t; // 0 = ocean, 1 = land
                         nearestIsLand = (localLandness > 0.5f);
 
@@ -3286,9 +3386,18 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                 ly2 * 2.0f + pSecond.seedY,
                                 4, 2.0f, 0.55f, crust2Rng);
                             const float thresh2 = 1.0f - pSecond.landFraction;
-                            const float t2 = std::clamp(
+                            float t2 = std::clamp(
                                 (crust2 - thresh2 + 0.025f) / 0.05f,
                                 0.0f, 1.0f);
+                            // Wedge override on second plate too.
+                            if (pSecond.oceanWedgeWidth > 0.0f) {
+                                const float dot2 = lx2 * pSecond.oceanWedgeNx
+                                                 + ly2 * pSecond.oceanWedgeNy;
+                                if (dot2 > 0.0f
+                                    && dot2 < pSecond.oceanWedgeWidth) {
+                                    t2 = 0.0f;
+                                }
+                            }
                             if (pSecond.isLand && t2 > 0.5f) {
                                 secondHeight = 0.55f;
                             }
