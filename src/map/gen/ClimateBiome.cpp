@@ -32,6 +32,11 @@ void runClimateBiomePass(HexGrid& grid,
 
     aoc::Random tempRng(rng.next());
     aoc::Random moiRng(rng.next());
+    // 2026-05-04: dedicated RNG stream for the multi-source hill placement
+    // (foothill belt + suture remnants + cratonic shield + glacial moraine).
+    // Drawn from the same parent rng so output is deterministic w.r.t.
+    // config.seed but doesn't disturb the temperature/moisture streams.
+    aoc::Random hillRng(rng.next());
 
     int32_t maxCoastDist = 1;
     for (int32_t i = 0; i < totalTiles; ++i) {
@@ -193,6 +198,104 @@ void runClimateBiomePass(HexGrid& grid,
     // Mountain quota set was lifted above the wind block (line ~50)
     // so wind orographic effects can use the same set as mountain
     // placement. No second computation needed here.
+
+    // 2026-05-04: SUTURE-DISTANCE BFS for "eroded orogen remnant" hills.
+    // Tiles within 5 hex of any suture seam (= boundary between two
+    // continental plates, both with landFrac > 0.4) get a probabilistic
+    // hill draw later. Models eroded ancient orogens like the Urals,
+    // Appalachians, Scottish Highlands -- crust that was once a young
+    // mountain belt and survives as rolling hill country once the
+    // peaks have weathered down. Identification rule: a tile is a
+    // "seam tile" iff its plate is continental AND any 4-neighbour
+    // (offset-coords) has a different, continental plate id. We then
+    // multi-source BFS to a max depth of 5.
+    constexpr int32_t SUTURE_BAND_RADIUS = 5;
+    std::vector<int32_t> sutureDist(
+        static_cast<std::size_t>(totalTiles), SUTURE_BAND_RADIUS + 1);
+    {
+        const auto& plateLandFrac    = grid.plateLandFrac();
+        const auto& plateMergesAbsor = grid.plateMergesAbsorbed();
+        const bool platesAvailable =
+            !plateLandFrac.empty() && !plateMergesAbsor.empty();
+        if (platesAvailable) {
+            // Seed BFS with seam tiles (continent-continent boundary).
+            std::vector<int32_t> frontier;
+            frontier.reserve(static_cast<std::size_t>(totalTiles) / 8u);
+            auto isContinentalPlate = [&](uint8_t pid) -> bool {
+                if (pid == 0xFFu
+                    || pid >= plateLandFrac.size()) { return false; }
+                return plateLandFrac[pid] > 0.40f;
+            };
+            const int32_t dr_even_n[6] = {0, 0, -1, -1, +1, +1};
+            const int32_t dc_even_n[6] = {-1, +1, -1,  0, -1,  0};
+            const int32_t dc_odd_n[6]  = {-1, +1,  0, +1,  0, +1};
+            for (int32_t row = 0; row < height; ++row) {
+                const bool evenRow = ((row & 1) == 0);
+                for (int32_t col = 0; col < width; ++col) {
+                    const int32_t idx = row * width + col;
+                    const uint8_t pid = grid.plateId(idx);
+                    if (!isContinentalPlate(pid)) { continue; }
+                    bool seam = false;
+                    for (int32_t k = 0; k < 6 && !seam; ++k) {
+                        int32_t nr = row + dr_even_n[k];
+                        int32_t nc = col +
+                            (evenRow ? dc_even_n[k] : dc_odd_n[k]);
+                        if (nr < 0 || nr >= height) { continue; }
+                        if (cylClim) {
+                            nc = ((nc % width) + width) % width;
+                        } else if (nc < 0 || nc >= width) {
+                            continue;
+                        }
+                        const int32_t nidx = nr * width + nc;
+                        const uint8_t npid = grid.plateId(nidx);
+                        if (npid == pid) { continue; }
+                        if (!isContinentalPlate(npid)) { continue; }
+                        // At least one of the two plates must have
+                        // absorbed a merger -- screens out trivial
+                        // (non-collisional) Voronoi neighbours.
+                        const bool merged =
+                            (pid < plateMergesAbsor.size()
+                             && plateMergesAbsor[pid] > 0)
+                            || (npid < plateMergesAbsor.size()
+                                && plateMergesAbsor[npid] > 0);
+                        if (merged) { seam = true; }
+                    }
+                    if (seam) {
+                        sutureDist[static_cast<std::size_t>(idx)] = 0;
+                        frontier.push_back(idx);
+                    }
+                }
+            }
+            // BFS up to SUTURE_BAND_RADIUS rings outward.
+            for (int32_t depth = 0; depth < SUTURE_BAND_RADIUS; ++depth) {
+                std::vector<int32_t> nextFrontier;
+                nextFrontier.reserve(frontier.size() * 2u);
+                for (int32_t fIdx : frontier) {
+                    const int32_t fr = fIdx / width;
+                    const int32_t fc = fIdx % width;
+                    const bool evenRow = ((fr & 1) == 0);
+                    for (int32_t k = 0; k < 6; ++k) {
+                        int32_t nr = fr + dr_even_n[k];
+                        int32_t nc = fc +
+                            (evenRow ? dc_even_n[k] : dc_odd_n[k]);
+                        if (nr < 0 || nr >= height) { continue; }
+                        if (cylClim) {
+                            nc = ((nc % width) + width) % width;
+                        } else if (nc < 0 || nc >= width) {
+                            continue;
+                        }
+                        const int32_t nidx = nr * width + nc;
+                        if (sutureDist[static_cast<std::size_t>(nidx)]
+                                <= depth + 1) { continue; }
+                        sutureDist[static_cast<std::size_t>(nidx)] = depth + 1;
+                        nextFrontier.push_back(nidx);
+                    }
+                }
+                frontier = std::move(nextFrontier);
+                if (frontier.empty()) { break; }
+            }
+        }
+    }
 
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
@@ -372,49 +475,125 @@ void runClimateBiomePass(HexGrid& grid,
             grid.setElevation(index, static_cast<int8_t>(
                 std::clamp(static_cast<int>(elev * 4.0f), 0, 2)));
 
-            // 2026-05-04: hills require MOUNTAIN PROXIMITY. Old code
-            // placed Hills on any tile with orogeny > 0.06 -- which
-            // included broad plateau / far-field uplift regions far
-            // from any mountain, so user reported "always hilly area
-            // after mountains, never just flatland". Real Earth:
-            // foothills hug actual mountain belts (Bavarian Alpine
-            // foreland, Andean Sub-Andean Sierras), then transition
-            // to flatland (North German Plain, Pampas). We require:
-            //   - Strong local orogeny (> 0.10) -> hill regardless
-            //   - Moderate orogeny (0.06-0.10) -> hill only if any
-            //     neighbor has orogeny > 0.12 (= within ~1 hex of
-            //     a likely-mountain tile)
-            // Tiles with moderate orogeny but no neighbor peak stay
-            // flat. Produces narrow foothill belts around ranges +
-            // genuine flatland inland.
-            const float oroValue = orogeny[
-                static_cast<std::size_t>(row * width + col)];
+            // 2026-05-04: MULTI-SOURCE HILL PLACEMENT. Real Earth has
+            // hills in four distinct geological settings, not just
+            // around active mountain belts. Old code only modeled the
+            // first source (foothill belt) and produced rolling-hill
+            // dead zones across cratons and glacial lowlands.
+            //
+            //  (1) FOOTHILL BELT -- tile sits on (or right next to)
+            //      a strong-orogeny tile, i.e. an active mountain
+            //      belt's outer apron (Sub-Andean Sierras, Bavarian
+            //      Alpine foreland).
+            //  (2) ERODED OROGEN REMNANTS -- tile is within 5 hex of
+            //      a continent-continent suture seam, even if local
+            //      orogeny has decayed. Models the Urals, Appalachians,
+            //      Scottish Highlands. Probability ~30 % within band.
+            //  (3) CRATONIC SHIELD HILLS -- tile is on an old
+            //      continental plate (crustAge > 150 My) with high
+            //      landFraction (> 0.4). Probability ~12 % via
+            //      fractal noise. Models Canadian Shield ridges,
+            //      Brazilian Highlands, Ethiopian/Deccan basaltic
+            //      uplands.
+            //  (4) GLACIAL MORAINE HILLS -- high latitudes
+            //      (|ny - 0.5| > 0.30). Probability ~6 % via fractal
+            //      noise. Models North German Plain drumlin fields,
+            //      Finnish moraine ridges, Patagonian ice-margin
+            //      hills.
+            //
+            // Order: foothill belt wins outright; otherwise the first
+            // matching source places the hill. Existing features
+            // (Forest, Jungle, Marsh, etc.) are NEVER overridden --
+            // hills only land on tiles whose feature is currently
+            // None. Mountain/Snow/Tundra/Ocean/Coast/ShallowWater
+            // remain off-limits per the prior rule.
+            const std::size_t indexU = static_cast<std::size_t>(index);
+            const float oroValue = orogeny[indexU];
             const bool isFlatBiome = terrain != TerrainType::Mountain
                 && terrain != TerrainType::Snow
-                && terrain != TerrainType::Tundra;
-            if (isFlatBiome && oroValue > 0.06f) {
+                && terrain != TerrainType::Tundra
+                && terrain != TerrainType::Ocean
+                && terrain != TerrainType::Coast
+                && terrain != TerrainType::ShallowWater;
+            const bool featureSlotFree =
+                grid.feature(index) == FeatureType::None;
+            if (isFlatBiome && featureSlotFree) {
                 bool placeHill = false;
-                if (oroValue > 0.10f) {
-                    placeHill = true;
-                } else {
-                    // Check 6 hex neighbors (offset coords)
-                    const int32_t dr_even[6] = {0, 0, -1, -1, +1, +1};
-                    const int32_t dc_even[6] = {-1, +1, -1,  0, -1,  0};
-                    const int32_t dc_odd[6]  = {-1, +1,  0, +1,  0, +1};
-                    const bool evenRow = ((row & 1) == 0);
-                    for (int32_t k = 0; k < 6; ++k) {
-                        const int32_t nr = row + dr_even[k];
-                        const int32_t nc = col +
-                            (evenRow ? dc_even[k] : dc_odd[k]);
-                        if (nr < 0 || nr >= height
-                            || nc < 0 || nc >= width) { continue; }
-                        if (orogeny[static_cast<std::size_t>(
-                                nr * width + nc)] > 0.12f) {
-                            placeHill = true;
-                            break;
+
+                // (1) Foothill belt: same rule as before -- orogeny
+                // > 0.10, OR moderate orogeny with a neighbour > 0.12.
+                if (oroValue > 0.06f) {
+                    if (oroValue > 0.10f) {
+                        placeHill = true;
+                    } else {
+                        const int32_t dr_even[6] = {0, 0, -1, -1, +1, +1};
+                        const int32_t dc_even[6] = {-1, +1, -1,  0, -1,  0};
+                        const int32_t dc_odd[6]  = {-1, +1,  0, +1,  0, +1};
+                        const bool evenRow = ((row & 1) == 0);
+                        for (int32_t k = 0; k < 6; ++k) {
+                            int32_t nr = row + dr_even[k];
+                            int32_t nc = col +
+                                (evenRow ? dc_even[k] : dc_odd[k]);
+                            if (nr < 0 || nr >= height) { continue; }
+                            if (cylClim) {
+                                nc = ((nc % width) + width) % width;
+                            } else if (nc < 0 || nc >= width) {
+                                continue;
+                            }
+                            if (orogeny[static_cast<std::size_t>(
+                                    nr * width + nc)] > 0.12f) {
+                                placeHill = true;
+                                break;
+                            }
                         }
                     }
                 }
+
+                // (2) Eroded orogen remnant -- within 5 hex of a
+                // continent-continent suture. ~30 % probability via
+                // hashNoise so that unmodified seeds remain
+                // reproducible run-to-run.
+                if (!placeHill
+                    && sutureDist[indexU] <= SUTURE_BAND_RADIUS) {
+                    if (hillRng.nextFloat() < 0.30f) {
+                        placeHill = true;
+                    }
+                }
+
+                // (3) Cratonic shield hills -- old, predominantly-
+                // continental plate. Use fractal noise on a coarser
+                // scale so hill clusters form (not isolated pixels).
+                if (!placeHill) {
+                    const uint8_t pid = grid.plateId(index);
+                    const auto& plateAge      = grid.plateCrustAge();
+                    const auto& plateLandFrac = grid.plateLandFrac();
+                    if (pid != 0xFFu
+                        && pid < plateAge.size()
+                        && pid < plateLandFrac.size()
+                        && plateAge[pid]      > 150.0f
+                        && plateLandFrac[pid] >   0.40f) {
+                        const float n = fractalNoise(nx * 4.0f,
+                            ny * 4.0f + 11.7f, 4, 2.0f, 0.5f, hillRng);
+                        if (n > 0.88f) {  // ~12 % of tiles in band
+                            placeHill = true;
+                        }
+                    }
+                }
+
+                // (4) Glacial moraine hills -- high latitude lowlands
+                // that were under continental ice sheets (North
+                // German Plain, Finnish Lake Plateau, Patagonian
+                // pampas margins). ~6 % of tiles in the band.
+                if (!placeHill) {
+                    if (std::abs(ny - 0.5f) > 0.30f) {
+                        const float n = fractalNoise(nx * 5.0f,
+                            ny * 5.0f + 23.1f, 4, 2.0f, 0.5f, hillRng);
+                        if (n > 0.94f) {  // ~6 % of tiles in band
+                            placeHill = true;
+                        }
+                    }
+                }
+
                 if (placeHill) {
                     grid.setFeature(index, FeatureType::Hills);
                 }

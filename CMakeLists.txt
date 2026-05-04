@@ -244,6 +244,7 @@ set(AOC_LIB_SOURCES
     src/map/gen/EcoAnalytics.cpp
     src/map/gen/Thresholds.cpp
     src/map/gen/Noise.cpp
+    src/map/gen/PolygonClipping.cpp
     src/map/gen/Resources.cpp
     src/map/gen/Features.cpp
     src/map/gen/Rivers.cpp

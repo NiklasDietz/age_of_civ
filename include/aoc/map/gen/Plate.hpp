@@ -88,7 +88,20 @@ struct Plate {
     std::vector<std::pair<float, float>> boundaryVertices;
     // Per-edge boundary type: 0=unknown, 1=spreading-ridge,
     // 2=subduction-trench, 3=transform-fault, 4=collision-suture.
+    // boundaryEdgeTypes[i] describes the edge from vertex[i] to
+    // vertex[(i+1) % N].
     std::vector<uint8_t>                 boundaryEdgeTypes;
+    // Per-edge neighbor plate id (which plate is on the OTHER side of
+    // edge[i]). 0xFF = no neighbor / map edge. Used by clipping +
+    // evolution to know which plates interact across each edge.
+    std::vector<uint8_t>                 boundaryNeighborIds;
+    // World-space axis-aligned bounding box, recomputed each epoch
+    // from the world-transformed polygon vertices. Used by point-in-
+    // polygon fast-reject (skip PIP if tile outside AABB).
+    float polygonMinX = 0.0f;
+    float polygonMinY = 0.0f;
+    float polygonMaxX = 0.0f;
+    float polygonMaxY = 0.0f;
 };
 
 struct SutureSeam {
