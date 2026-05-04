@@ -36,6 +36,40 @@ inline float lerp(float a, float b, float t) {
     return a + (b - a) * t;
 }
 
+/// Splitmix64 finalisation. Use to mix a poorly-distributed seed (e.g.
+/// `static_cast<uint64_t>(plate.seedX * 1e6f)` which clusters in low bits
+/// for nearby plates) into a well-spread 64-bit value before passing to
+/// `hashNoise`. Plates with similar input seeds produced correlated jitter
+/// before this mix was added (2026-05-04 fix).
+inline uint64_t mixSeed(uint64_t s) {
+    s ^= s >> 30;
+    s *= 0xbf58476d1ce4e5b9ULL;
+    s ^= s >> 27;
+    s *= 0x94d049bb133111ebULL;
+    s ^= s >> 31;
+    return s;
+}
+
+/// Smooth (bilinearly-interpolated) hash-based value noise sampled at
+/// continuous (x, y). Eliminates the piecewise-constant stair steps that
+/// plain `hashNoise(floor(x), floor(y), seed)` produces -- boundaries
+/// derived from this drift smoothly across cell edges instead of snapping.
+inline float smoothHashNoise(float x, float y, uint64_t seed) {
+    const float fx = std::floor(x);
+    const float fy = std::floor(y);
+    const int32_t ix = static_cast<int32_t>(fx);
+    const int32_t iy = static_cast<int32_t>(fy);
+    const float tx = smoothstep(x - fx);
+    const float ty = smoothstep(y - fy);
+    const float v00 = hashNoise(ix,     iy,     seed);
+    const float v10 = hashNoise(ix + 1, iy,     seed);
+    const float v01 = hashNoise(ix,     iy + 1, seed);
+    const float v11 = hashNoise(ix + 1, iy + 1, seed);
+    return lerp(lerp(v00, v10, tx),
+                lerp(v01, v11, tx),
+                ty);
+}
+
 /// Bilinearly-interpolated value noise sampled at (x,y). Uses rng.next()
 /// as the per-generation seed so output is deterministic per generate() call.
 [[nodiscard]] float noise2D(float x, float y, float frequency, aoc::Random& rng);

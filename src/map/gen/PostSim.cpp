@@ -191,6 +191,56 @@ void runPostSimPasses(MapGenContext& ctx) {
         }
     }
 
+    // 2026-05-04: passive-margin sediment transport. Real Earth: rivers
+    // drain the continental interior toward the coast, depositing 5-15
+    // km of sediment in passive-margin shelf prisms (Atlantic, Gulf of
+    // Mexico). We approximate by collecting orogen sediment seaward
+    // along passive-margin tiles -- each passive-margin tile receives a
+    // bonus proportional to the average orogeny within 5 hex inland.
+    // Only fires after pass 3+4 so `sediment` already has yield from
+    // mountains; pass 6 (run after this) lifts the elevation by sediment.
+    {
+        const int32_t totalT = width * height;
+        std::vector<float> shelfBonus(static_cast<std::size_t>(totalT), 0.0f);
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t idx = row * width + col;
+                const std::size_t si = static_cast<std::size_t>(idx);
+                // Only continental tiles flagged as passive margin
+                // accumulate the sediment prism. They feed neighbouring
+                // ocean tiles in pass-6 via the shelf-widening pass --
+                // but the prism itself raises the LAND tile so coastal
+                // plains stand a few metres above sea level.
+                if (marginTypeTile[si] != 2) { continue; }
+                // Walk 5 hex inland toward higher orogeny, summing
+                // contribution. Inland distance approximated by sweeping
+                // outward in 6 hex directions and averaging the highest
+                // orogeny seen.
+                float maxOroNearby = 0.0f;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t cc = col, rr = row;
+                    for (int32_t step = 1; step <= 5; ++step) {
+                        int32_t nIdx;
+                        if (!neighbourIdx(cc, rr, d, nIdx)) { break; }
+                        cc = nIdx % width;
+                        rr = nIdx / width;
+                        const float nOro = orogeny[
+                            static_cast<std::size_t>(nIdx)];
+                        if (nOro > maxOroNearby) {
+                            maxOroNearby = nOro;
+                        }
+                    }
+                }
+                if (maxOroNearby > 0.04f) {
+                    shelfBonus[si] = 0.06f * maxOroNearby;
+                }
+            }
+        }
+        for (std::size_t i = 0; i < sediment.size(); ++i) {
+            sediment[i] += shelfBonus[i];
+        }
+    }
+
     // Pass 5: active vs passive margin classification.
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
@@ -242,10 +292,67 @@ void runPostSimPasses(MapGenContext& ctx) {
     }
 
     // Pass 6: apply sediment + ophiolite uplift onto elevationMap.
+    // 2026-05-04: also apply margin-type elevation modifier so passive
+    // margins (Atlantic-style) develop wide shallow shelves and active
+    // margins (Pacific-style) develop narrow shelves with trench depth
+    // offshore. marginTypeTile values: 0 interior, 1 active, 2 passive.
     for (std::size_t i = 0; i < elevationMap.size(); ++i) {
         elevationMap[i] += sediment[i] * 0.55f;
         if (ophioliteMask[i] != 0) {
             elevationMap[i] += 0.06f;
+        }
+        const uint8_t m = marginTypeTile[i];
+        if (m == 2) {
+            // Passive margin: thicken sediment prism, raise shelf so
+            // tiles seaward of the coast stay slightly above water for a
+            // few hexes (continental shelf ~50-200 km on Earth).
+            elevationMap[i] += 0.025f;
+        } else if (m == 1) {
+            // Active margin: trench cut along the subduction front. The
+            // overrider's coast itself stays high (already orogeny-fed),
+            // but adjacent ocean tile drops as a trench. We can only
+            // touch land tiles here; depress *toward* the threshold so
+            // the next-out hex tends to fall below it.
+            elevationMap[i] -= 0.015f;
+        }
+    }
+
+    // 2026-05-04: shelf widening pass for passive margins. Land tiles
+    // marked passive (m == 2) sit on the EDGE of the continent; we want
+    // ocean tiles within 2 hexes seaward of those tiles to be raised
+    // toward the water threshold so they read as ShallowWater shelf, not
+    // deep Ocean. Active-margin (m == 1) coasts get the opposite: a
+    // small extra depression on the seaward neighbour to deepen the
+    // trench. Done as a single neighbour-sweep so we touch each tile at
+    // most once per role.
+    {
+        const int32_t totalT = width * height;
+        std::vector<float> elevDelta(static_cast<std::size_t>(totalT), 0.0f);
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t idx = row * width + col;
+                const uint8_t m = marginTypeTile[
+                    static_cast<std::size_t>(idx)];
+                if (m == 0) { continue; }
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx;
+                    if (!neighbourIdx(col, row, d, nIdx)) { continue; }
+                    if (elevationMap[
+                            static_cast<std::size_t>(nIdx)] >= 0.0f) {
+                        // Only modify ocean-side neighbours (negative
+                        // pre-threshold elevation).
+                        continue;
+                    }
+                    if (m == 2) {
+                        elevDelta[static_cast<std::size_t>(nIdx)] += 0.04f;
+                    } else if (m == 1) {
+                        elevDelta[static_cast<std::size_t>(nIdx)] -= 0.03f;
+                    }
+                }
+            }
+        }
+        for (std::size_t i = 0; i < elevationMap.size(); ++i) {
+            elevationMap[i] += elevDelta[i];
         }
     }
 

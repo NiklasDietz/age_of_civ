@@ -721,7 +721,106 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // whole sim regardless of which positions render.
         const std::vector<Plate> startPlates = plates;
 
+        // Bilinear sample of a plate's local orogeny grid. Lifted above
+        // the epoch loop on 2026-05-04 so the slab-pull / Wilson-cycle
+        // scan can read live per-plate stress (the world-frame `orogeny[]`
+        // stays zero during the loop -- it's only rebuilt post-loop in
+        // the elevation pass). Without this lift, slab pull and Wilson
+        // crust accounting were dead code reading an always-zero array.
+        auto samplePlateOrogeny = [&](const Plate& p, float lx, float ly) -> float {
+            const float gx = (lx + OROGENY_HALF) / (2.0f * OROGENY_HALF)
+                           * static_cast<float>(OROGENY_GRID);
+            const float gy = (ly + OROGENY_HALF) / (2.0f * OROGENY_HALF)
+                           * static_cast<float>(OROGENY_GRID);
+            const int32_t ix = static_cast<int32_t>(std::floor(gx));
+            const int32_t iy = static_cast<int32_t>(std::floor(gy));
+            if (ix < 0 || ix >= OROGENY_GRID - 1
+                || iy < 0 || iy >= OROGENY_GRID - 1) { return 0.0f; }
+            const float fx = gx - static_cast<float>(ix);
+            const float fy = gy - static_cast<float>(iy);
+            const float v00 = p.orogenyLocal[static_cast<std::size_t>(iy * OROGENY_GRID + ix)];
+            const float v10 = p.orogenyLocal[static_cast<std::size_t>(iy * OROGENY_GRID + ix + 1)];
+            const float v01 = p.orogenyLocal[static_cast<std::size_t>((iy + 1) * OROGENY_GRID + ix)];
+            const float v11 = p.orogenyLocal[static_cast<std::size_t>((iy + 1) * OROGENY_GRID + ix + 1)];
+            return v00 * (1.0f - fx) * (1.0f - fy)
+                 + v10 *        fx  * (1.0f - fy)
+                 + v01 * (1.0f - fx) *        fy
+                 + v11 *        fx  *        fy;
+        };
+
         for (int32_t epoch = 0; epoch < EPOCHS; ++epoch) {
+            // 2026-05-04: plate-pair velocity coupling via mantle drag.
+            // For each plate, find the 2 nearest non-polar neighbours
+            // and add a small fraction (3%) of their average velocity
+            // difference. Result: clusters of plates that drift roughly
+            // together (continent + surrounding ocean), matching the
+            // observation that the African plate's neighbours mostly
+            // drift northward with it. Computed before the mantle-flow
+            // application so the two effects compose, not amplify.
+            {
+                std::vector<std::pair<float, float>> couplingDelta(
+                    plates.size(), {0.0f, 0.0f});
+                for (std::size_t i = 0; i < plates.size(); ++i) {
+                    if (plates[i].isPolar) { continue; }
+                    int32_t n1 = -1, n2 = -1;
+                    float d1 = 1e9f, d2 = 1e9f;
+                    for (std::size_t j = 0; j < plates.size(); ++j) {
+                        if (j == i || plates[j].isPolar) { continue; }
+                        float dx = plates[j].cx - plates[i].cx;
+                        float dy = plates[j].cy - plates[i].cy;
+                        if (cylSim) {
+                            if (dx >  0.5f) { dx -= 1.0f; }
+                            if (dx < -0.5f) { dx += 1.0f; }
+                        }
+                        const float ds = dx * dx + dy * dy;
+                        if (ds < d1) {
+                            d2 = d1; n2 = n1;
+                            d1 = ds; n1 = static_cast<int32_t>(j);
+                        } else if (ds < d2) {
+                            d2 = ds; n2 = static_cast<int32_t>(j);
+                        }
+                    }
+                    if (n1 < 0 || n2 < 0) { continue; }
+                    const std::size_t sn1 = static_cast<std::size_t>(n1);
+                    const std::size_t sn2 = static_cast<std::size_t>(n2);
+                    const float avgVx =
+                        (plates[sn1].vx + plates[sn2].vx) * 0.5f;
+                    const float avgVy =
+                        (plates[sn1].vy + plates[sn2].vy) * 0.5f;
+                    couplingDelta[i].first  =
+                        (avgVx - plates[i].vx) * 0.03f;
+                    couplingDelta[i].second =
+                        (avgVy - plates[i].vy) * 0.03f;
+                }
+                for (std::size_t i = 0; i < plates.size(); ++i) {
+                    plates[i].vx += couplingDelta[i].first;
+                    plates[i].vy += couplingDelta[i].second;
+                }
+            }
+
+            // 2026-05-04: mantle-flow global bias field. Real Earth
+            // plate motion is partially correlated by mantle convection
+            // currents -- adjacent plates drift in similar directions
+            // because they ride the same convection cells. The field
+            // here is a slowly-rotating 2D vector pattern (one cell pair
+            // per hemisphere); each plate's velocity gets +5% of the
+            // local field nudged in each epoch so the world develops
+            // coherent plate clusters rather than independent random
+            // walks. Phase shifts slowly across epochs to mimic the
+            // ~100 My turnover time of mantle plumes.
+            const float mantlePhase =
+                static_cast<float>(epoch) / static_cast<float>(EPOCHS)
+                * 6.28318f;
+            auto mantleFlowAt = [&](float x, float y) -> std::pair<float, float> {
+                const float fx = std::sin((x - 0.5f) * 6.28318f
+                                           + mantlePhase * 0.3f)
+                               * std::cos((y - 0.5f) * 3.14159f);
+                const float fy = std::cos((x - 0.5f) * 6.28318f
+                                           + mantlePhase * 0.3f)
+                               * std::sin((y - 0.5f) * 3.14159f);
+                return {fx, fy};
+            };
+
             // Advance every plate by (vx, vy) * DT. Cylindrical maps WRAP
             // around the X axis (no east/west edge — like a globe band);
             // flat maps BOUNCE so plates stay on the rectangle.
@@ -731,6 +830,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // stationary on geological timescales. Apply 0.3× DT
                 // to keep them anchored at the poles.
                 const float motionScale = p.isPolar ? 0.3f : 1.0f;
+                // Mantle bias: 5% nudge of the local flow field added to
+                // the plate's velocity. Polar plates feel less drag.
+                if (!p.isPolar) {
+                    const std::pair<float, float> mflow =
+                        mantleFlowAt(p.cx, p.cy);
+                    p.vx += mflow.first  * 0.05f;
+                    p.vy += mflow.second * 0.05f;
+                }
                 p.cx += p.vx * DT * motionScale;
                 p.cy += p.vy * DT * motionScale;
                 if (cylSim) {
@@ -1155,15 +1262,26 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // (landFraction > 0.40) get an extra steady drift on
                 // top of the standard oscillation.
                 if (p.weight < 0.85f && p.landFraction > 0.40f) {
+                    // 2026-05-04: was `epoch * 0.0025` which grew
+                    // linearly to ±17° at epoch 120 -- far above the
+                    // ~5°/My realistic max for microplates. Bounded
+                    // sinusoid stays within ±0.20 rad regardless of
+                    // epoch count.
                     const float blockDrift =
-                        static_cast<float>(epoch) * 0.0025f
-                        * std::sin(p.seedX * 0.007f);
+                        std::sin(static_cast<float>(epoch) * 0.05f
+                                 + p.seedX * 0.007f) * 0.20f;
                     rotOffset += blockDrift;
                 }
                 p.rot = p.baseRot + rotOffset;
                 // Aspect oscillates ±0.08 around baseAspect.
+                // 2026-05-04: clamp range follows baseAspect (was hard
+                // [0.7, 1.4] which pinned every plate inside that window
+                // regardless of initial value 0.50-2.20). The most elongated
+                // plates lost their shape after epoch 1; now they keep it.
                 const float aspectOsc = std::cos(phase * 0.7f + p.seedX * 0.002f) * 0.08f;
-                p.aspect = std::clamp(p.baseAspect + aspectOsc, 0.7f, 1.40f);
+                p.aspect = std::clamp(p.baseAspect + aspectOsc,
+                                      p.baseAspect * 0.9f,
+                                      p.baseAspect * 1.1f);
             }
 
             // Periodic rift events. Picks 1-3 land plates per CYCLE epochs
@@ -1341,14 +1459,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
 
                     for (int32_t c = 0; c < childCount; ++c) {
                         Plate child = parent;
-                        // First child: opposite side of the rift line
-                        // from the parent (i.e., along -pushAxis).
-                        // Second child (triple junction): rotated by
-                        // 120° from parent's pushAxis to form the third
-                        // arm of an Afar-style triple junction.
+                        // 2026-05-04: triple-junction arms are 0°/120°/240°
+                        // apart (Afar-style RRR junction). Was 0°/180°/120°,
+                        // which made the 0/180 pair collinear -- not a
+                        // genuine triple junction. Parent keeps original
+                        // pushAxis; child 0 rotated +120°, child 1 +240°.
                         const float childPushAngle = (c == 0)
-                            ? (pushAxis + 3.14159f)        // -pushAxis
-                            : (pushAxis + 2.0944f);        // +120°
+                            ? (pushAxis + 2.0944f)         // +120°
+                            : (pushAxis + 4.18879f);       // +240°
                         child.cx = std::clamp(parent.cx
                             + std::cos(childPushAngle) * offsetMag * 0.5f, 0.05f, 0.95f);
                         child.cy = std::clamp(parent.cy
@@ -1852,38 +1970,33 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         if (dsq < bestSq) { bestSq = dsq; bestPi = static_cast<int32_t>(pi); }
                     }
                     if (bestPi < 0) { continue; }
-                    const std::size_t idx = static_cast<std::size_t>(row * width + col);
-                    // Negative orogeny indicates active subduction
-                    // trench at this tile. Pull the OWNING plate toward
-                    // the trench (i.e., toward the second-nearest plate
-                    // which is the overriding side).
-                    if (orogeny[idx] < -0.05f) {
-                        // Direction: from this tile toward the plate
-                        // overrider (we don't store second-nearest here;
-                        // approximate by pulling toward map regions of
-                        // higher orogeny).
-                        const Plate& pp = plates[static_cast<std::size_t>(bestPi)];
-                        float dx = nxs - pp.cx;
-                        float dy = nys - pp.cy;
-                        if (cylSim) {
-                            if (dx > 0.5f) { dx -= 1.0f; }
-                            if (dx < -0.5f) { dx += 1.0f; }
-                        }
+                    // 2026-05-04: sample live per-plate orogenyLocal, not
+                    // the world-frame `orogeny[]` (which stays zero
+                    // during the epoch loop -- only rebuilt post-loop).
+                    // Without this fix slab pull and Wilson cycle were
+                    // both dead code, leaving ridge push as the only
+                    // active per-epoch force.
+                    const Plate& pp = plates[static_cast<std::size_t>(bestPi)];
+                    float dx = nxs - pp.cx;
+                    float dy = nys - pp.cy;
+                    if (cylSim) {
+                        if (dx > 0.5f) { dx -= 1.0f; }
+                        if (dx < -0.5f) { dx += 1.0f; }
+                    }
+                    const float csR = std::cos(pp.rot);
+                    const float snR = std::sin(pp.rot);
+                    const float lxLocal = (dx * csR + dy * snR) / pp.aspect;
+                    const float lyLocal = (-dx * snR + dy * csR) * pp.aspect;
+                    const float oroSample =
+                        samplePlateOrogeny(pp, lxLocal, lyLocal);
+                    if (oroSample < -0.05f) {
                         const float L = std::max(1e-4f,
                             std::sqrt(dx * dx + dy * dy));
                         slabPullX[static_cast<std::size_t>(bestPi)] += dx / L;
                         slabPullY[static_cast<std::size_t>(bestPi)] += dy / L;
-                        // Trench tile → crust on the SUBDUCTING plate
-                        // is being consumed at the trench. Tally it.
                         ++trenchTilesPerPlate[static_cast<std::size_t>(bestPi)];
-                    }
-                    // Mid-ocean ridge tile: small POSITIVE orogeny on
-                    // ocean tiles (set by the divergent-boundary code
-                    // earlier). Marks where new oceanic crust is being
-                    // accreted at the spreading centre. Used to credit
-                    // young crust to adjacent plates.
-                    else if (orogeny[idx] > 0.005f && orogeny[idx] < 0.06f
-                             && plates[static_cast<std::size_t>(bestPi)].landFraction < 0.40f) {
+                    } else if (oroSample > 0.005f && oroSample < 0.06f
+                               && pp.landFraction < 0.40f) {
                         ++ridgeTilesPerPlate[static_cast<std::size_t>(bestPi)];
                     }
                 }
@@ -1898,11 +2011,19 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     slabPullX[pi] * slabPullX[pi] + slabPullY[pi] * slabPullY[pi]);
                 if (pullLen < 1.0f) { continue; }
                 constexpr float SLAB_PULL_GAIN = 0.012f;
-                // Crust-age scale: factor 0.7 → 1.5 across age range
-                // [0, 150]. Young rifted plates pull weakly; old Pacific-
-                // class plates pull strongly.
-                const float ageScale = std::clamp(
-                    0.7f + plates[pi].crustAge / 150.0f * 0.8f, 0.7f, 1.5f);
+                // Crust-age scale: 0 -> 1.0 across age range [0, 60],
+                // then 1.0 -> 1.5 across [60, 150]. Young rifted plates
+                // (< 30 epochs) pull at near-zero force because the slab
+                // hasn't cooled enough to be denser than mantle. Plates
+                // older than 60 epochs pull at full strength; ancient
+                // Pacific-class plates (~150) overshoot to 1.5x.
+                // 2026-05-04: was clamped at 0.7 floor so freshly-rifted
+                // plates still pulled at 70%, which is unphysical.
+                const float age01 = std::clamp(
+                    plates[pi].crustAge / 60.0f, 0.0f, 1.0f);
+                const float ageScale = age01
+                    + std::clamp((plates[pi].crustAge - 60.0f) / 90.0f,
+                                  0.0f, 1.0f) * 0.5f;
                 const float gain = SLAB_PULL_GAIN * ageScale;
                 plates[pi].vx += (slabPullX[pi] / pullLen) * gain;
                 plates[pi].vy += (slabPullY[pi] / pullLen) * gain;
@@ -2377,19 +2498,21 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     float lx = (dx * cs + dy * sn) / plates[pi].aspect;
                     float ly = (-dx * sn + dy * cs) * plates[pi].aspect;
                     // Plate-local boundary jitter — perturb the sample
-                    // point with a per-plate hash-noise so the Voronoi
-                    // boundary develops organic non-circular shape.
-                    // Travels with plate (deterministic from seedX).
+                    // point with continuous per-plate noise so the
+                    // Voronoi boundary develops organic non-circular
+                    // shape. Travels with plate (deterministic from
+                    // seedX). 2026-05-04: switched from
+                    // hashNoise(floor(lx*5), ...) (which produced
+                    // 0.2-unit stair-step kinks) to bilinear
+                    // smoothHashNoise. mixSeed() decorrelates plates
+                    // with similar seedX values.
                     {
-                        const uint64_t pseed =
-                            static_cast<uint64_t>(plates[pi].seedX * 1.0e6f);
-                        const int32_t ix1 = static_cast<int32_t>(
-                            std::floor(lx * 5.0f));
-                        const int32_t iy1 = static_cast<int32_t>(
-                            std::floor(ly * 5.0f));
-                        const float n1 = hashNoise(ix1, iy1, pseed);
-                        const float n2 = hashNoise(
-                            ix1, iy1, pseed ^ 0xA5A5ULL);
+                        const uint64_t pseed = aoc::map::gen::mixSeed(
+                            static_cast<uint64_t>(plates[pi].seedX * 1.0e6f));
+                        const float n1 = aoc::map::gen::smoothHashNoise(
+                            lx * 4.0f, ly * 4.0f, pseed);
+                        const float n2 = aoc::map::gen::smoothHashNoise(
+                            lx * 4.0f, ly * 4.0f, pseed ^ 0xA5A5ULL);
                         lx += (n1 - 0.5f) * 0.18f;
                         ly += (n2 - 0.5f) * 0.18f;
                     }
@@ -2506,8 +2629,25 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     }
                     const float cs = std::cos(plates[pi].rot);
                     const float sn = std::sin(plates[pi].rot);
-                    const float lx = (dx * cs + dy * sn) / plates[pi].aspect;
-                    const float ly = (-dx * sn + dy * cs) * plates[pi].aspect;
+                    float lx = (dx * cs + dy * sn) / plates[pi].aspect;
+                    float ly = (-dx * sn + dy * cs) * plates[pi].aspect;
+                    // 2026-05-04: same per-plate continuous boundary
+                    // jitter the elevation pass + PlateIdStash apply, so
+                    // the side-check resolves to the same plate the
+                    // renderer does. Without this jitter the
+                    // side-correctness pass treats boundaries as straight
+                    // Voronoi edges and erases legitimate orogeny along
+                    // domain-warped coastlines.
+                    {
+                        const uint64_t pseed = aoc::map::gen::mixSeed(
+                            static_cast<uint64_t>(plates[pi].seedX * 1.0e6f));
+                        const float n1 = aoc::map::gen::smoothHashNoise(
+                            lx * 4.0f, ly * 4.0f, pseed);
+                        const float n2 = aoc::map::gen::smoothHashNoise(
+                            lx * 4.0f, ly * 4.0f, pseed ^ 0xA5A5ULL);
+                        lx += (n1 - 0.5f) * 0.18f;
+                        ly += (n2 - 0.5f) * 0.18f;
+                    }
                     const float dsq = (lx * lx + ly * ly) / (plates[pi].weight * plates[pi].weight);
                     if (dsq < d1Sq) {
                         d1Sq = dsq;
