@@ -31,11 +31,14 @@
 #include "aoc/map/gen/Plate.hpp"
 #include "aoc/map/gen/PlateBoundary.hpp"
 #include "aoc/map/gen/PlateIdStash.hpp"
+#include "aoc/map/gen/PolygonClipping.hpp"
+#include "aoc/map/gen/PolygonSpatialIndex.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/map/Chokepoint.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <vector>
@@ -811,6 +814,29 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // SutureSeam moved to include/aoc/map/gen/Plate.hpp.
     using SutureSeam = aoc::map::gen::SutureSeam;
     std::vector<SutureSeam> sutureSeams;
+    // 2026-05-04: spatial-hash index over plate AABBs. Declared here so
+    // both the in-loop orogeny-scatter pass and the post-loop elevation
+    // pass can share it (latter lives outside the tectonic-sim block).
+    // Rebuilt every time AABBs are refreshed (per-epoch Phase C, plus
+    // the intermediate Phase B clipping recompute, plus the final
+    // post-loop state).
+    aoc::map::gen::PolygonSpatialIndex polySpatialIndex;
+    std::vector<std::array<float, 4>> polyAabbScratch;
+    auto rebuildPolygonSpatialIndex = [&]() {
+        polyAabbScratch.clear();
+        polyAabbScratch.reserve(plates.size());
+        for (const Plate& p : plates) {
+            if (p.boundaryVertices.empty()) {
+                // Sentinel: min > max marks "skip" inside the index.
+                polyAabbScratch.push_back({1.0f, 1.0f, -1.0f, -1.0f});
+                continue;
+            }
+            polyAabbScratch.push_back(
+                {p.polygonMinX, p.polygonMinY,
+                 p.polygonMaxX, p.polygonMaxY});
+        }
+        polySpatialIndex.rebuild(polyAabbScratch);
+    };
     if (config.mapType == MapType::Continents && !plates.empty()) {
         // Multi-cycle plate-tectonic sim. EPOCHS scales the simulated
         // geological age — more epochs = more cycles of drift, collide,
@@ -1039,8 +1065,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         };
 
         // Build initial polygons + AABBs from initial Voronoi state.
+        // Spatial-hash index (declared in outer scope) is rebuilt here
+        // and at every Phase C / clipping-recompute downstream.
         rebuildPolygonsFromVoronoi();
         recomputePolygonAABBs();
+        rebuildPolygonSpatialIndex();
 
         for (int32_t epoch = 0; epoch < EPOCHS; ++epoch) {
             // 2026-05-04: plate-pair velocity coupling REMOVED. Old
@@ -1389,10 +1418,35 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     }
 
                     const float relVMag = std::sqrt(relVx * relVx + relVy * relVy);
+                    // 2026-05-04: WP2 - merger trigger via polygon-
+                    // edge adjacency. In addition to center-distance,
+                    // accept merger if plate A has a polygon edge
+                    // with neighbor=B classified as type 4 (collision
+                    // suture). Edge-adjacency is a more physically
+                    // grounded merge condition than center-distance --
+                    // plates fuse at SHARED EDGES, not at proximity
+                    // of their centroids. Center-distance retained as
+                    // a fallback for when polygons haven't formed
+                    // (e.g. just-spawned plates) or are degenerate.
+                    bool sharedSutureEdge = false;
+                    if (a < plates.size() && b < plates.size()) {
+                        const Plate& pa = plates[a];
+                        const std::size_t ne =
+                            std::min(pa.boundaryEdgeTypes.size(),
+                                     pa.boundaryNeighborIds.size());
+                        for (std::size_t ei = 0; ei < ne; ++ei) {
+                            if (pa.boundaryNeighborIds[ei] == b
+                                && pa.boundaryEdgeTypes[ei] == 4u) {
+                                sharedSutureEdge = true;
+                                break;
+                            }
+                        }
+                    }
                     // STAGE 3: full merge. Distance close + collision
                     // velocity nearly zero → plates have welded.
                     const bool readyToMerge = (plates[a].isLand && plates[b].isLand
-                                                && d < MERGE_DIST
+                                                && (d < MERGE_DIST
+                                                    || sharedSutureEdge)
                                                 && relVMag < SLOW_V);
                     if (readyToMerge) {
                         // Continental collision: fuse plates.
@@ -2120,10 +2174,19 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // owner). Boundary stress then operates between
                     // the polygon owner and the polygon-second-nearest
                     // (= what was Voronoi nearest).
+                    // Spatial-hash candidate filter: only iterate plates
+                    // whose AABB shares this tile's grid cell. Empty
+                    // bucket -> no polygon claim, polyOwner stays -1
+                    // (Voronoi result preserved).
                     {
                         int32_t polyOwner = -1;
                         float polyOwnerDsq = 1e9f;
-                        for (std::size_t pi = 0; pi < plates.size(); ++pi) {
+                        const std::vector<std::uint8_t>& candidates =
+                            polySpatialIndex.candidatesAt(nx, ny);
+                        for (const uint8_t cid : candidates) {
+                            const std::size_t pi =
+                                static_cast<std::size_t>(cid);
+                            if (pi >= plates.size()) { continue; }
                             const Plate& p = plates[pi];
                             if (p.boundaryVertices.empty()) { continue; }
                             if (nx < p.polygonMinX || nx > p.polygonMaxX
@@ -3201,8 +3264,205 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     p.boundaryVertices[i].second += disp[i].second * 0.5f;
                 }
             }
+            // 2026-05-04: WP1 - subduction clipping. After vertex
+            // motion, any plate pair whose AABBs overlap may have
+            // overlapping polygons (= subduction event). For each
+            // such pair: identify subducting plate (lower
+            // landFraction OR younger crust); for each subducting
+            // vertex inside the overriding polygon, pull it 30 %
+            // toward subducting centroid. Approximates polygon
+            // difference without full Boolean polygon ops --
+            // subducting plate gradually shrinks at the convergent
+            // edge across many epochs (Earth: oceanic crust destroyed
+            // at trenches over ~100 My).
+            // Continental-continental pairs SKIP clipping (suture
+            // lock; both polygons stay; collision-edge stress is
+            // handled separately via Phase B's edge-type 4).
+            recomputePolygonAABBs();  // intermediate AABB for the
+                                       // pair-wise overlap test below
+            {
+                const std::size_t M = plates.size();
+                for (std::size_t i = 0; i < M; ++i) {
+                    Plate& a = plates[i];
+                    if (a.boundaryVertices.size() < 3) { continue; }
+                    for (std::size_t j = i + 1; j < M; ++j) {
+                        Plate& b = plates[j];
+                        if (b.boundaryVertices.size() < 3) { continue; }
+                        if (a.polygonMaxX < b.polygonMinX
+                            || b.polygonMaxX < a.polygonMinX
+                            || a.polygonMaxY < b.polygonMinY
+                            || b.polygonMaxY < a.polygonMinY) {
+                            continue;
+                        }
+                        const bool bothContinental =
+                            a.isLand && b.isLand
+                            && a.landFraction > 0.40f
+                            && b.landFraction > 0.40f;
+                        if (bothContinental) { continue; }
+                        Plate* subducting = (&a);
+                        Plate* overriding = (&b);
+                        if (a.landFraction > b.landFraction
+                            || (std::fabs(a.landFraction - b.landFraction)
+                                < 0.05f && a.crustAge > b.crustAge)) {
+                            subducting = &b;
+                            overriding = &a;
+                        }
+                        const float csO = std::cos(overriding->rot);
+                        const float snO = std::sin(overriding->rot);
+                        aoc::map::gen::PolygonRing overWorld;
+                        overWorld.reserve(overriding->boundaryVertices.size());
+                        for (const std::pair<float, float>& v
+                                : overriding->boundaryVertices) {
+                            overWorld.emplace_back(
+                                overriding->cx + v.first * csO - v.second * snO,
+                                overriding->cy + v.first * snO + v.second * csO);
+                        }
+                        const aoc::map::gen::AABB overBox{
+                            overriding->polygonMinX,
+                            overriding->polygonMinY,
+                            overriding->polygonMaxX,
+                            overriding->polygonMaxY};
+                        const float csS = std::cos(subducting->rot);
+                        const float snS = std::sin(subducting->rot);
+                        const std::size_t Ns =
+                            subducting->boundaryVertices.size();
+                        bool anyClipped = false;
+                        for (std::size_t vi = 0; vi < Ns; ++vi) {
+                            const float lx = subducting->boundaryVertices[vi].first;
+                            const float ly = subducting->boundaryVertices[vi].second;
+                            const float wx = subducting->cx + lx * csS - ly * snS;
+                            const float wy = subducting->cy + lx * snS + ly * csS;
+                            if (!aoc::map::gen::pointInPolygon(
+                                    wx, wy, overWorld, overBox)) {
+                                continue;
+                            }
+                            // 2026-05-04: pull rate dropped 0.30 -> 0.05.
+                            // Over 40 epochs, 0.30 collapsed polygons
+                            // to centroid -> no convergent contact ->
+                            // mountain count fell to 0% across most
+                            // seeds. 0.05 retains 13 % of overlap
+                            // distance after 40 epochs (slow steady
+                            // shrinkage matching Earth's ~1-2 cm/yr
+                            // subduction rate over geologic time).
+                            constexpr float SUBDUCT_PULL = 0.05f;
+                            subducting->boundaryVertices[vi].first =
+                                lx * (1.0f - SUBDUCT_PULL);
+                            subducting->boundaryVertices[vi].second =
+                                ly * (1.0f - SUBDUCT_PULL);
+                            anyClipped = true;
+                        }
+                        if (anyClipped) {
+                            const float csR = std::cos(subducting->rot);
+                            const float snR = std::sin(subducting->rot);
+                            float mnx =  1e9f, mny =  1e9f;
+                            float mxx = -1e9f, mxy = -1e9f;
+                            for (const std::pair<float, float>& v
+                                    : subducting->boundaryVertices) {
+                                const float wx = subducting->cx
+                                    + v.first * csR - v.second * snR;
+                                const float wy = subducting->cy
+                                    + v.first * snR + v.second * csR;
+                                if (wx < mnx) mnx = wx;
+                                if (wy < mny) mny = wy;
+                                if (wx > mxx) mxx = wx;
+                                if (wy > mxy) mxy = wy;
+                            }
+                            subducting->polygonMinX = mnx;
+                            subducting->polygonMinY = mny;
+                            subducting->polygonMaxX = mxx;
+                            subducting->polygonMaxY = mxy;
+                        }
+                    }
+                }
+            }
             // Phase C: recompute AABBs for next epoch's PIP fast-reject.
             recomputePolygonAABBs();
+            // Mirror the AABB refresh into the spatial-hash index so the
+            // next epoch's orogeny scatter pass reads fresh buckets.
+            rebuildPolygonSpatialIndex();
+
+            // 2026-05-04: WP3 - Phase D - polygon validity sweep + auto-
+            // repair. Extreme vertex motion (fast plate convergence +
+            // ridge spreading on the same plate) can fold the polygon
+            // boundary onto itself (bowtie) or collapse it below 3
+            // vertices via simplification. Detect + repair to keep the
+            // PIP rasteriser and downstream consumers honest.
+            //   Step 1: simplifyPolygon() removes near-duplicate /
+            //           collinear vertices in place (winding preserved).
+            //   Step 2: if any plate is still self-intersecting OR has
+            //           <3 vertices, rebuild ALL polygons from the
+            //           current Voronoi state (single shared lambda).
+            //           Per-plate rebuild is not exposed and the all-
+            //           plate rebuild is cheap relative to one epoch.
+            // Cost: O(N^2) per polygon for self-intersect, N=32, ~12
+            // plates -> ~384 cycles/epoch. Negligible.
+            {
+                bool needRebuildAll = false;
+                for (Plate& p : plates) {
+                    if (p.boundaryVertices.size() < 3) {
+                        needRebuildAll = true;
+                        continue;
+                    }
+                    aoc::map::gen::simplifyPolygon(p.boundaryVertices,
+                                                   1e-5f);
+                    if (p.boundaryVertices.size() < 3
+                        || aoc::map::gen::isSelfIntersecting(
+                                p.boundaryVertices)) {
+                        needRebuildAll = true;
+                    }
+                }
+                if (needRebuildAll) {
+                    rebuildPolygonsFromVoronoi();
+                    recomputePolygonAABBs();
+                    rebuildPolygonSpatialIndex();
+                }
+            }
+            // 2026-05-04: WP2 - Phase E - per-edge orogeny stress.
+            // Walk each plate's polygon edges; fire orogeny stress at
+            // edge midpoint based on edge type. Supplements per-tile
+            // Voronoi-pair scatter (which still runs); edge-based
+            // contribution scales with edge length and is anchored to
+            // physically meaningful boundary positions rather than
+            // Voronoi seams. Magnitudes intentionally small so this
+            // doesn't overwhelm calibrated tile-scatter mountain
+            // budget.
+            for (Plate& p : plates) {
+                const std::size_t N = p.boundaryVertices.size();
+                if (N < 3) { continue; }
+                if (p.boundaryEdgeTypes.size() != N) { continue; }
+                for (std::size_t i = 0; i < N; ++i) {
+                    const uint8_t et = p.boundaryEdgeTypes[i];
+                    if (et == 0u) { continue; }
+                    const std::size_t i1 = (i + 1) % N;
+                    const float lmx = (p.boundaryVertices[i].first
+                        + p.boundaryVertices[i1].first) * 0.5f;
+                    const float lmy = (p.boundaryVertices[i].second
+                        + p.boundaryVertices[i1].second) * 0.5f;
+                    float stressContrib = 0.0f;
+                    if (et == 2u) {
+                        stressContrib = 0.004f;  // trench: arc uplift
+                    } else if (et == 4u) {
+                        stressContrib = 0.006f;  // suture: collision
+                    } else if (et == 1u) {
+                        stressContrib = -0.001f; // ridge: depression
+                    }
+                    if (stressContrib == 0.0f) { continue; }
+                    // Inline scatter: write to plate's local orogeny
+                    // grid at midpoint location.
+                    const float gx = (lmx + OROGENY_HALF)
+                        / (2.0f * OROGENY_HALF)
+                        * static_cast<float>(OROGENY_GRID);
+                    const float gy = (lmy + OROGENY_HALF)
+                        / (2.0f * OROGENY_HALF)
+                        * static_cast<float>(OROGENY_GRID);
+                    const int32_t ix = static_cast<int32_t>(std::floor(gx));
+                    const int32_t iy = static_cast<int32_t>(std::floor(gy));
+                    if (ix < 0 || ix >= OROGENY_GRID
+                        || iy < 0 || iy >= OROGENY_GRID) { continue; }
+                    p.orogenyLocal[static_cast<std::size_t>(
+                        iy * OROGENY_GRID + ix)] += stressContrib;
+                }
+            }
         }
 
         // Cap orogeny so a tile that sat in a hot zone every epoch
@@ -3703,10 +3963,19 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // polygon owner (closest centroid among polygon
                     // claimers). Voronoi data still drives boundary
                     // blend (d1/d2 ratio); polygon drives ownership.
+                    // Spatial-hash candidate filter: only iterate plates
+                    // whose AABB shares this tile's grid cell. Empty
+                    // bucket -> no polygon claim, skip the override
+                    // block entirely (fall back to pure Voronoi).
                     {
                         int32_t polyOwner = -1;
                         float polyOwnerDsq = 1e9f;
-                        for (std::size_t pi = 0; pi < plates.size(); ++pi) {
+                        const std::vector<std::uint8_t>& candidates =
+                            polySpatialIndex.candidatesAt(wx, wy);
+                        for (const uint8_t cid : candidates) {
+                            const std::size_t pi =
+                                static_cast<std::size_t>(cid);
+                            if (pi >= plates.size()) { continue; }
                             const Plate& p = plates[pi];
                             if (p.boundaryVertices.empty()) { continue; }
                             if (wx < p.polygonMinX || wx > p.polygonMaxX
