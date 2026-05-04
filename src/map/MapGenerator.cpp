@@ -295,20 +295,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // North/South American, Pacific, Antarctic, Indo-Australian)
             // plus ~8 minor ones. Default 7 gives realistic continent
             // sizing; user can push to 14 via setup screen.
-            // 2026-05-04: lowered land 6-8 -> 3-5 and bumped ocean 4-6
-            // -> 5-7 to match Earth's actual plate distribution. Earth
-            // has ~6 visible continents and ~7 major plates -- roughly
-            // 1:1 land plate per continent. With landFraction now 0.35-
-            // 0.55 every land plate carries a continent-shaped land
-            // patch, so 3-5 land plates produce 3-5 continents naturally.
-            // Old 6-8 land plates over-counted, packing two land plates
-            // into one visible continent so internal plate boundaries
-            // produced mountain ranges in the middle of continents
-            // instead of at coastal subduction zones.
+            // 2026-05-04: ocean plate count dropped 7-10 -> 3-4 to match
+            // Earth's actual distribution: ~7 major plates total of
+            // which only ~2-3 are mostly oceanic (Pacific, Nazca,
+            // Cocos), and ONE of those (Pacific) covers ~30 % of the
+            // surface alone. Old 7-10 ocean plates fragmented the
+            // ocean into many similar-sized cells; combined with rift
+            // children + microplates the total plate count hit 20+
+            // and visible plate territories were all small/uniform
+            // rather than the giant-Pacific + a-few-medium pattern of
+            // real Earth.
             const int32_t landCountTarget = (config.landPlateCount > 0)
                 ? std::max(1, config.landPlateCount)
                 : centerRng.nextInt(3, 5);
-            const int32_t oceanCountTarget = centerRng.nextInt(5, 7);
+            const int32_t oceanCountTarget = centerRng.nextInt(3, 4);
             // Tighter land gap lets 7-14 seeds fit on the unit square.
             // 0.42 was fine for 3-4 plates but rejects half the targets
             // when landCountTarget ≥ 6.
@@ -395,9 +395,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // sized landmass surrounded by intra-plate ocean, and
                 // adjacent land plates produce two SEPARATE continents
                 // separated by ocean rather than a fused supercontinent.
+                // 2026-05-04: ocean-plate landFraction dropped 0.02-0.08
+                // -> 0.005-0.02. With 5-7% land randomly scattered,
+                // ocean plates produced isolated land tiles that
+                // bordered neighbouring continental land tiles and
+                // counted toward "internal plates inside one
+                // continent" -- the largest visible continent showed
+                // 8-12 plate ids contributing land. Real Pacific plate
+                // is ~99 % oceanic; volcanic islands are rare and
+                // distant. With 0.5-2 % crust mask above threshold,
+                // ocean plates contribute essentially zero stray land
+                // tiles to neighbouring continents.
                 p.landFraction = isLand
                     ? centerRng.nextFloat(0.35f, 0.55f)
-                    : centerRng.nextFloat(0.02f, 0.08f);
+                    : centerRng.nextFloat(0.005f, 0.02f);
                 p.orogenyLocal.assign(
                     static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
                 // Earth plate-size distribution: a couple of giants
@@ -432,16 +443,24 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // Real Earth plates almost never have clean Voronoi
                 // shapes; they have arms and bays from accretion +
                 // partial mergers.
-                // Every plate gets 3-6 extra seeds for genuinely
-                // multi-lobed territory. Old 0-2 was too rare → most
-                // plates were single-blob Voronoi cells. Real Earth
-                // plates are ALL multi-lobed (Eurasian arms, African
-                // L, Indo-Australian fork, North American spread).
-                const int32_t extras = centerRng.nextInt(3, 6);
+                // 2026-05-04: dropped extras 3-6 -> 0-2, offset 0.10-0.22
+                // -> 0.04-0.10. With 3-6 extra seeds spread 0.10-0.22
+                // away from primary, plate territories became multi-
+                // lobed AND the lobes interleaved with neighbouring
+                // plates' lobes -- one plate ended up surrounded by
+                // (or surrounding) another, producing the "weirdly
+                // shaped plates embedded inside a bigger plate" pattern
+                // the user reported. Real Earth plates ARE irregular
+                // (Eurasian arms, African L) but each plate is a
+                // CONTIGUOUS region. Few extras at small offset keeps
+                // territory contiguous while preserving the irregular
+                // outline. Plates that get 0 extras render as clean
+                // single-blob Voronoi cells.
+                const int32_t extras = centerRng.nextInt(0, 2);
                 const bool cylC = (config.topology == MapTopology::Cylindrical);
                 for (int32_t e = 0; e < extras; ++e) {
                     const float ang = centerRng.nextFloat(0.0f, 6.2832f);
-                    const float off = centerRng.nextFloat(0.10f, 0.22f) * p.weight;
+                    const float off = centerRng.nextFloat(0.04f, 0.10f) * p.weight;
                     float sx = cx + std::cos(ang) * off;
                     float sy = cy + std::sin(ang) * off;
                     if (cylC) {
@@ -569,7 +588,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 p.baseAspect = p.aspect;
                 p.seedX = centerRng.nextFloat(0.0f, 1000.0f);
                 p.seedY = centerRng.nextFloat(0.0f, 1000.0f);
-                p.landFraction = centerRng.nextFloat(0.02f, 0.08f);
+                // 2026-05-04: matched ocean-plate landFraction reduction
+                // (0.02-0.08 -> 0.005-0.02). Polar-band oceanic plates
+                // would otherwise leak land tiles into mid-latitude
+                // continents.
+                p.landFraction = centerRng.nextFloat(0.005f, 0.02f);
                 p.orogenyLocal.assign(
                     static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
                 // Modest weight + many extra seeds = thin band coverage.
@@ -618,6 +641,34 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 if (tooClose) { continue; }
                 pushPlate(cx, cy, false);
                 ++oceanPlaced;
+            }
+            // 2026-05-04: Pacific-analog giant ocean plate. Earth's
+            // Pacific Plate covers ~30 % of the surface alone --
+            // 2-3x larger than the next biggest plate (Antarctic) and
+            // ~5x the smallest majors. Without an explicit giant the
+            // sim's plates are all roughly similar in size, producing
+            // a fragmented Voronoi map rather than the giant-Pacific
+            // + few-medium-continents pattern of real Earth. Pick one
+            // ocean plate (skipping forced polar) and triple its
+            // weight; Voronoi cell area scales with weight^2 so this
+            // makes its territory ~9x larger than nominal -- roughly
+            // matching the Pacific's share.
+            {
+                std::vector<std::size_t> oceanIdx;
+                for (std::size_t i = 0; i < plates.size(); ++i) {
+                    if (!plates[i].isLand && !plates[i].isPolar) {
+                        oceanIdx.push_back(i);
+                    }
+                }
+                if (!oceanIdx.empty()) {
+                    const std::size_t pick = oceanIdx[
+                        static_cast<std::size_t>(centerRng.nextInt(
+                            0, static_cast<int32_t>(oceanIdx.size()) - 1))];
+                    plates[pick].weight = centerRng.nextFloat(2.5f, 3.5f);
+                    plates[pick].crustArea = plates[pick].weight
+                                           * plates[pick].weight;
+                    plates[pick].crustAreaInitial = plates[pick].crustArea;
+                }
             }
             // Hotspots: 5-8 mantle-plume volcanic island chains placed
             // INSIDE ocean territory (not near continents, where they
@@ -756,16 +807,13 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         const int32_t EPOCHS = (config.runEpochsLimit > 0)
             ? std::min(requestedEpochs, config.runEpochsLimit)
             : requestedEpochs;
-        // 2026-05-04: cycle bumped 4 -> 6. CYCLE=4 (the previous Pangaea-
-        // bias remediation) over-shot: combined with microplate spawn
-        // (5%/epoch) and triple-junction rifts (30% -> 2 children),
-        // plate count grew from ~12 (start) to ~22 (end of 16-epoch sim),
-        // packing microplates into single visible continents. CYCLE=6
-        // halves rift cadence; later changes also cap microplate spawn
-        // rate and triple-junction frequency. Combined effect: ~3 rifts
-        // per default sim, ~1 microplate, total plate count stays near
-        // initial ~12 throughout the sim (Earth-like net plate balance).
-        const int32_t CYCLE = 6;
+        // 2026-05-04: cycle bumped 6 -> 10. With CYCLE=6 and 40-epoch
+        // game-default sims, ~6 rift events fired per sim; even though
+        // children are now oceanic they still consume Voronoi cells
+        // (fragmenting the map). Earth has roughly 1 rift event per
+        // 100 My; over a 40-epoch (~400 My) sim that's ~4 events.
+        // CYCLE=10 yields ~4 rifts -- closer to Earth-historical rate.
+        const int32_t CYCLE = 10;
         // DT derived from EPOCHS and the user-configurable total drift
         // budget. Default drift = 0.6 map widths. Larger drift = bigger
         // plate motion = more dramatic continental shuffle. Smaller =
@@ -1436,11 +1484,16 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // world fills up with land plates → land-only map.
                 // Real-world Pangaea cycle has CONSTANT net plate count:
                 // mergers balance rifts.
-                // Tight cap: 18-22 plates total max. Earth has ~15.
-                // Earlier 2× allowed 36+ plates → fragmented appearance.
+                // 2026-05-04: cap dropped 18 -> 13 to match Earth's
+                // ~15-plate total when accounting for ID-mod-26 letter
+                // collisions. Old 18 + start ~13 + child/microplate
+                // growth let plate count run to 20-22 distinct ids.
+                // Earth has ~7 major + ~8 minor = 15 plates total;
+                // capping at 13 leaves headroom for occasional
+                // microplate spawns without runaway proliferation.
                 const std::size_t maxPlates = std::max(
-                    static_cast<std::size_t>(18),
-                    startPlates.size() + static_cast<std::size_t>(4));
+                    static_cast<std::size_t>(13),
+                    startPlates.size() + static_cast<std::size_t>(2));
                 // Only ONE rift per CYCLE epochs (was up to 3).
                 // Multiple simultaneous rifts produced abrupt visual
                 // jumps — real Wilson-cycle rifting happens piecemeal
@@ -1650,13 +1703,33 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                            + centerRng.nextFloat(-2.0f, 2.0f);
                         child.seedY        = parent.seedY
                                            + centerRng.nextFloat(-2.0f, 2.0f);
-                        // Children inherit most of parent's landFraction
-                        // — a child plate is a chunk of the original
-                        // continent and stays mostly land. Mild reduction
-                        // represents the smaller area covered.
-                        child.landFraction = std::clamp(
-                            parent.landFraction * centerRng.nextFloat(0.80f, 1.00f),
-                            0.30f, 0.85f);
+                        // 2026-05-04: rifted children are now OCEANIC
+                        // (low landFraction). Earth's Atlantic-opening
+                        // analogue: when Pangaea rifted, the parent
+                        // CONTINENT remained, and a NEW oceanic plate
+                        // formed in the rift -- new mid-ocean ridge,
+                        // new oceanic crust. Old code gave children
+                        // 0.30-0.85 land which placed each rifted
+                        // child's land patch right next to the parent's
+                        // land patch; visually the two patches fused
+                        // into one continent with an "internal plate
+                        // boundary". With low landFraction, the child's
+                        // Voronoi territory renders as ocean and
+                        // visually SPLITS the parent's old territory
+                        // into two distinct continents separated by
+                        // the new ocean basin.
+                        child.isLand = false;
+                        // 2026-05-04: child landFraction 0.05-0.15 still
+                        // leaked land tiles via crust mask noise; even
+                        // ~5 % land per rifted child placed isolated
+                        // land tiles inside parent's territory that
+                        // counted toward "internal plates inside one
+                        // continent". Set to 0 -- rift child is the
+                        // ocean basin opening up, not a continental
+                        // fragment. Visible effect: rift child's
+                        // Voronoi cell renders as pure ocean, cleanly
+                        // splitting parent's continent.
+                        child.landFraction = 0.0f;
                         // Children get a fresh empty orogeny grid —
                         // they're "new crust" formed at the rift, not
                         // Hotspot trails reset (each fragment has its
@@ -1702,7 +1775,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // mountain ranges at internal microplate boundaries.
                 // Earth has ~10 microplates total accumulated over 4.5By,
                 // so on a single-sim timescale 1-3 is realistic.
-                constexpr int32_t MICROPLATE_CAP = 3;
+                // 2026-05-04: cap dropped 3 -> 2 to match Earth's
+                // typical microplate count (Caribbean, Cocos, Scotia,
+                // Anatolian etc -- few active per geological era).
+                constexpr int32_t MICROPLATE_CAP = 2;
                 int32_t microplateCount = 0;
                 for (const Plate& mp : plates) {
                     if (mp.isMicroplate) { ++microplateCount; }
@@ -1777,13 +1853,18 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         micro.seedX  = centerRng.nextFloat(0.0f, 1000.0f);
                         micro.seedY  = centerRng.nextFloat(0.0f, 1000.0f);
                         // Mixed land/ocean character — typical for
-                        // microplates (Caribbean has both).
-                        // Bimodal microplates too: either land (Caribbean
-                        // arc, Anatolia) or ocean (Cocos, Juan de Fuca).
-                        micro.isLand = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f);
-                        micro.landFraction = micro.isLand
-                            ? centerRng.nextFloat(0.75f, 0.90f)
-                            : centerRng.nextFloat(0.05f, 0.12f);
+                        // 2026-05-04: microplates are now always oceanic
+                        // with near-zero landFraction. Real microplates
+                        // (Cocos, Juan de Fuca, Scotia, Anatolian) are
+                        // mostly oceanic. Land-microplate option
+                        // produced 0.75-0.90 landFraction patches that
+                        // packed into existing continents and inflated
+                        // the per-continent plate count. Like rifted
+                        // children, microplates now exist only as
+                        // boundary-stress sources and small island arcs.
+                        micro.isLand = false;
+                        micro.landFraction =
+                            centerRng.nextFloat(0.005f, 0.02f);
                         micro.ageEpochs = 0;
                         micro.orogenyLocal.assign(
                             static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
@@ -2469,7 +2550,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         fresh.baseAspect = fresh.aspect;
                         fresh.seedX = centerRng.nextFloat(0.0f, 1000.0f);
                         fresh.seedY = centerRng.nextFloat(0.0f, 1000.0f);
-                        fresh.landFraction = centerRng.nextFloat(0.02f, 0.08f);
+                        // 2026-05-04: matched ocean-plate landFraction
+                        // reduction. Fresh ridge-spawn ocean plates are
+                        // brand new oceanic crust -- effectively 100 %
+                        // ocean.
+                        fresh.landFraction = centerRng.nextFloat(0.005f, 0.02f);
                         fresh.weight = centerRng.nextFloat(0.7f, 1.05f);
                         fresh.crustArea = fresh.weight * fresh.weight;
                         fresh.crustAreaInitial = fresh.crustArea;
