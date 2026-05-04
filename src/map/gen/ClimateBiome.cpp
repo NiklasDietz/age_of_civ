@@ -297,6 +297,59 @@ void runClimateBiomePass(HexGrid& grid,
         }
     }
 
+    // 2026-05-04: MOUNTAIN-DISTANCE BFS for foothill-belt hill placement.
+    // Old foothill rule was a 1-hex orogeny-neighbour check, which made
+    // every foothill tile sit immediately adjacent to a peak. Real
+    // foothills extend several rings outward with falling probability
+    // (Sub-Andean Sierras, Bavarian Alpine foreland, Appalachian
+    // piedmont). We BFS from every mountain tile up to MAX_DIST rings,
+    // propagating only over land tiles so foothill apron doesn't leak
+    // across ocean. Sentinel 0xFF means "out of foothill influence".
+    constexpr uint8_t MOUNTAIN_MAX_DIST = 5;
+    std::vector<uint8_t> mountainDist(
+        static_cast<std::size_t>(totalTiles), 0xFFu);
+    {
+        std::vector<int32_t> bfsQueue;
+        bfsQueue.reserve(static_cast<std::size_t>(totalTiles));
+        for (int32_t i = 0; i < totalTiles; ++i) {
+            if (isMountainTile[static_cast<std::size_t>(i)]) {
+                mountainDist[static_cast<std::size_t>(i)] = 0;
+                bfsQueue.push_back(i);
+            }
+        }
+        constexpr int32_t dr_even_m[6] = {0, 0, -1, -1, +1, +1};
+        constexpr int32_t dc_even_m[6] = {-1, +1, -1,  0, -1,  0};
+        constexpr int32_t dc_odd_m[6]  = {-1, +1,  0, +1,  0, +1};
+        for (std::size_t qh = 0; qh < bfsQueue.size(); ++qh) {
+            const int32_t idx = bfsQueue[qh];
+            const uint8_t d = mountainDist[static_cast<std::size_t>(idx)];
+            if (d >= MOUNTAIN_MAX_DIST) { continue; }
+            const int32_t bcol = idx % width;
+            const int32_t brow = idx / width;
+            const bool evenRow = ((brow & 1) == 0);
+            for (int32_t k = 0; k < 6; ++k) {
+                int32_t nr = brow + dr_even_m[k];
+                int32_t nc = bcol +
+                    (evenRow ? dc_even_m[k] : dc_odd_m[k]);
+                if (nr < 0 || nr >= height) { continue; }
+                if (cylClim) {
+                    nc = ((nc % width) + width) % width;
+                } else if (nc < 0 || nc >= width) {
+                    continue;
+                }
+                const int32_t ni = nr * width + nc;
+                const std::size_t niU = static_cast<std::size_t>(ni);
+                if (mountainDist[niU] != 0xFFu) { continue; }
+                // Don't BFS over ocean -- foothill apron is a land
+                // phenomenon. Terrain isn't set yet at this point, so
+                // gate on raw elevation versus the water threshold.
+                if (elevationMap[niU] < waterThreshold) { continue; }
+                mountainDist[niU] = static_cast<uint8_t>(d + 1);
+                bfsQueue.push_back(ni);
+            }
+        }
+    }
+
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
             int32_t index = row * width + col;
@@ -508,7 +561,6 @@ void runClimateBiomePass(HexGrid& grid,
             // None. Mountain/Snow/Tundra/Ocean/Coast/ShallowWater
             // remain off-limits per the prior rule.
             const std::size_t indexU = static_cast<std::size_t>(index);
-            const float oroValue = orogeny[indexU];
             const bool isFlatBiome = terrain != TerrainType::Mountain
                 && terrain != TerrainType::Snow
                 && terrain != TerrainType::Tundra
@@ -520,33 +572,19 @@ void runClimateBiomePass(HexGrid& grid,
             if (isFlatBiome && featureSlotFree) {
                 bool placeHill = false;
 
-                // (1) Foothill belt: same rule as before -- orogeny
-                // > 0.10, OR moderate orogeny with a neighbour > 0.12.
-                if (oroValue > 0.06f) {
-                    if (oroValue > 0.10f) {
-                        placeHill = true;
-                    } else {
-                        const int32_t dr_even[6] = {0, 0, -1, -1, +1, +1};
-                        const int32_t dc_even[6] = {-1, +1, -1,  0, -1,  0};
-                        const int32_t dc_odd[6]  = {-1, +1,  0, +1,  0, +1};
-                        const bool evenRow = ((row & 1) == 0);
-                        for (int32_t k = 0; k < 6; ++k) {
-                            int32_t nr = row + dr_even[k];
-                            int32_t nc = col +
-                                (evenRow ? dc_even[k] : dc_odd[k]);
-                            if (nr < 0 || nr >= height) { continue; }
-                            if (cylClim) {
-                                nc = ((nc % width) + width) % width;
-                            } else if (nc < 0 || nc >= width) {
-                                continue;
-                            }
-                            if (orogeny[static_cast<std::size_t>(
-                                    nr * width + nc)] > 0.12f) {
-                                placeHill = true;
-                                break;
-                            }
-                        }
-                    }
+                // (1) Foothill belt: BFS distance from any mountain tile
+                // gives a falling-probability gradient. Replaces the old
+                // immediate-neighbour orogeny rule, which produced an
+                // unrealistic single-ring foothill apron.
+                const uint8_t mDist = mountainDist[indexU];
+                float hillChance = 0.0f;
+                if      (mDist == 1) { hillChance = 0.80f; }
+                else if (mDist == 2) { hillChance = 0.50f; }
+                else if (mDist == 3) { hillChance = 0.20f; }
+                else if (mDist == 4) { hillChance = 0.05f; }
+                if (hillChance > 0.0f
+                    && hillRng.nextFloat(0.0f, 1.0f) < hillChance) {
+                    placeHill = true;
                 }
 
                 // (2) Eroded orogen remnant -- within 5 hex of a

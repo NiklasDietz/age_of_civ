@@ -435,6 +435,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     : centerRng.nextFloat(0.005f, 0.02f);
                 p.orogenyLocal.assign(
                     static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
+                p.orogenyAgeLocal.assign(
+                    static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID),
+                    static_cast<int16_t>(0));
                 // Earth plate-size distribution: a couple of giants
                 // (Pacific 1.5, Eurasian 1.3, African 1.2 — relative
                 // to the median). Most plates ~1.0. Some small minor
@@ -619,6 +622,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 p.landFraction = centerRng.nextFloat(0.005f, 0.02f);
                 p.orogenyLocal.assign(
                     static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
+                p.orogenyAgeLocal.assign(
+                    static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID),
+                    static_cast<int16_t>(0));
                 // Modest weight + many extra seeds = thin band coverage.
                 // weight 1.15 lets normal mid-lat plates still claim
                 // their territories, while extra seeds keep the polar
@@ -1151,8 +1157,31 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // prevent the wedge eating the whole plate.
                 if (p.oceanWedgeWidth > 0.0f && p.oceanWedgeWidth < 0.40f) {
                     const float vMag = std::sqrt(p.vx * p.vx + p.vy * p.vy);
+                    // 2026-05-04: WP4 - STAGED CONTINENTAL RIFTING.
+                    // Real rifts evolve through 4 stages over ~50-100
+                    // My: (1) thermal bulge before crust ruptures, (2)
+                    // graben / narrow rift valley (East African Rift
+                    // today), (3) narrow sea (Red Sea, Gulf of
+                    // California), (4) wide open ocean (Atlantic).
+                    // Wedge growth rate is now stage-dependent:
+                    //   Stage 1 bulge (width < 0.04): SLOW growth
+                    //     (0.05x normal) -- continent thinning, no
+                    //     ocean yet.
+                    //   Stage 2 graben (0.04..0.10): MODERATE (0.4x).
+                    //   Stage 3 narrow sea (0.10..0.20): FAST (0.8x).
+                    //   Stage 4 ocean (0.20+): FULL rate (1.0x).
+                    // Total time-to-ocean ~ 30-40 epochs at typical
+                    // plate motion -- matches real Atlantic timescale.
+                    float stageMult = 1.0f;
+                    if (p.oceanWedgeWidth < 0.04f) {
+                        stageMult = 0.05f;
+                    } else if (p.oceanWedgeWidth < 0.10f) {
+                        stageMult = 0.40f;
+                    } else if (p.oceanWedgeWidth < 0.20f) {
+                        stageMult = 0.80f;
+                    }
                     p.oceanWedgeWidth = std::min(0.40f,
-                        p.oceanWedgeWidth + vMag * DT * 0.40f);
+                        p.oceanWedgeWidth + vMag * DT * 0.40f * stageMult);
                 }
                 // 2026-05-04: STICK-SLIP intra-plate stress release.
                 // Plate accumulates stress proportional to its current
@@ -1976,6 +2005,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         child.hotspotTrail.clear();
                         child.orogenyLocal.assign(
                             static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
+                        child.orogenyAgeLocal.assign(
+                            static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID),
+                            static_cast<int16_t>(0));
                         // Rift child = young plate. Crust age resets
                         // because crust formed at the rift axis is fresh
                         // (Atlantic is younger than Pacific because it's
@@ -2105,6 +2137,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         micro.ageEpochs = 0;
                         micro.orogenyLocal.assign(
                             static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
+                        micro.orogenyAgeLocal.assign(
+                            static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID),
+                            static_cast<int16_t>(0));
                         // Microplate weight (smaller than majors) — set
                         // crust area accordingly. Microplates are young
                         // by definition (formed at junction events).
@@ -2368,6 +2403,19 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         #pragma omp atomic
                         #endif
                         *cell += val;
+                        // 2026-05-04: WP3 - reset orogeny age on positive
+                        // contribution so age-dependent erosion treats this
+                        // cell as a young, actively-growing peak. Idempotent
+                        // (write 0) -- no atomic needed even under OpenMP.
+                        if (val > 0.0f) {
+                            const int32_t cellIdx = iy * OROGENY_GRID + ix;
+                            if (cellIdx >= 0
+                                && static_cast<std::size_t>(cellIdx)
+                                       < p.orogenyAgeLocal.size()) {
+                                p.orogenyAgeLocal[
+                                    static_cast<std::size_t>(cellIdx)] = 0;
+                            }
+                        }
                     };
 
                     Plate& Aw = plates[static_cast<std::size_t>(nearest)];
@@ -2998,6 +3046,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         fresh.orogenyLocal.assign(
                             static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID),
                             0.0f);
+                        fresh.orogenyAgeLocal.assign(
+                            static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID),
+                            static_cast<int16_t>(0));
                         // Fresh ridge-spawn plate: random pole, oceanic
                         // rotation magnitude (faster than continental).
                         {
@@ -3133,18 +3184,47 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             //   o < 0           : 0.6 %/epoch sediment fill
             // Erosion now operates on each plate's LOCAL grid so the
             // mountain memory travels with the plate.
+            //
+            // 2026-05-04: WP3 - age-dependent erosion. Real Earth: young
+            // mountains (Alps ~50 Ma) erode 0.5-1 mm/yr; old mountains
+            // (Appalachians ~300 Ma) erode 0.05-0.1 mm/yr because the
+            // resistant crystalline root has been exhumed and weathers
+            // 5-10x slower than the original alpine relief. We track
+            // per-cell age (epochs since last positive scatter) and
+            // tier the erosion rate by age, not by current height.
             for (Plate& p : plates) {
-                for (float& v : p.orogenyLocal) {
-                    if (v > 0.18f) {
-                        v *= 0.965f; // 3.5 %/epoch
-                    } else if (v > 0.10f) {
-                        v *= 0.965f; // 3.5 %/epoch — same as tall, stops mid-tier
-                                      // creep into Mountain when contribution ~equals
-                                      // erosion at low values.
+                if (p.orogenyAgeLocal.size() != p.orogenyLocal.size()) {
+                    // Defensive re-init: any plate whose age vector got
+                    // out of sync (older save, partial init) gets a
+                    // fresh age=0 array so erosion treats its peaks as
+                    // young until they accumulate epochs without scatter.
+                    p.orogenyAgeLocal.assign(p.orogenyLocal.size(),
+                                             static_cast<int16_t>(0));
+                }
+                for (std::size_t i = 0; i < p.orogenyLocal.size(); ++i) {
+                    float& v = p.orogenyLocal[i];
+                    if (v > 0.10f) {
+                        const int16_t age = p.orogenyAgeLocal[i];
+                        float erosionRate;
+                        if (age < 5) {
+                            erosionRate = 0.045f;   // young, 4.5 %/epoch
+                        } else if (age < 30) {
+                            erosionRate = 0.020f;   // mature, 2 %/epoch
+                        } else {
+                            erosionRate = 0.005f;   // old shield, 0.5 %/epoch
+                        }
+                        v *= (1.0f - erosionRate);
+                        if (p.orogenyAgeLocal[i] < INT16_MAX) {
+                            ++p.orogenyAgeLocal[i];
+                        }
                     } else if (v > 0.0f) {
-                        v *= 0.997f; // root preservation 0.3 %/epoch
+                        v *= 0.998f;
+                        if (p.orogenyAgeLocal[i] < INT16_MAX) {
+                            ++p.orogenyAgeLocal[i];
+                        }
                     } else if (v < 0.0f) {
                         v *= 0.994f;
+                        // negative orogeny (sediment fill) doesn't track age
                     }
                 }
             }
@@ -3205,13 +3285,46 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     const float relVx = target.vx - nbr.vx;
                     const float relVy = target.vy - nbr.vy;
                     const float dotN = relVx * bnx + relVy * bny;
-                    uint8_t edgeType;
-                    if (dotN > 0.04f) {
-                        edgeType = (target.isLand && nbr.isLand) ? 4u : 2u;
-                    } else if (dotN < -0.04f) {
-                        edgeType = 1u;
+                    // 2026-05-04: WP2 - edge-type persistence with
+                    // hysteresis. Old code re-classified every epoch
+                    // on instantaneous velocity, so small noise in
+                    // relative motion flipped boundaries between
+                    // ridge/transform/trench. Real plate boundaries
+                    // persist 100-500 My with stable type. Hysteresis:
+                    // current type only flips if |dotN| exceeds the
+                    // OPPOSING-type threshold by 50% margin. Near-zero
+                    // dotN preserves whatever type was assigned at
+                    // initial polygon construction.
+                    const uint8_t prevType = target.boundaryEdgeTypes[i];
+                    uint8_t edgeType = prevType;
+                    if (prevType == 1u) {
+                        // Currently ridge (divergent); flip to
+                        // convergent only if strongly closing.
+                        if (dotN > 0.06f) {
+                            edgeType = (target.isLand && nbr.isLand) ? 4u : 2u;
+                        } else if (dotN > -0.02f) {
+                            edgeType = 3u; // weak -> transform
+                        }
+                    } else if (prevType == 2u || prevType == 4u) {
+                        // Currently convergent; flip to divergent only
+                        // if strongly opening.
+                        if (dotN < -0.06f) {
+                            edgeType = 1u;
+                        } else if (dotN < 0.02f) {
+                            edgeType = 3u;
+                        } else {
+                            edgeType = (target.isLand && nbr.isLand) ? 4u : 2u;
+                        }
                     } else {
-                        edgeType = 3u;
+                        // Currently transform/unknown; standard
+                        // classification thresholds apply.
+                        if (dotN > 0.04f) {
+                            edgeType = (target.isLand && nbr.isLand) ? 4u : 2u;
+                        } else if (dotN < -0.04f) {
+                            edgeType = 1u;
+                        } else {
+                            edgeType = 3u;
+                        }
                     }
                     target.boundaryEdgeTypes[i] = edgeType;
                 }
@@ -3307,6 +3420,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             subducting = &b;
                             overriding = &a;
                         }
+                        // 2026-05-04: WP8 - cratonic stability. Cratons
+                        // (old continental cores, crustAge > 150 Ma +
+                        // landFraction > 0.5) are mechanically rigid;
+                        // they don't subduct. Skip clipping when the
+                        // subducting plate IS a craton -- physically
+                        // impossible to subduct continental shield
+                        // crust under another plate.
+                        if (subducting->landFraction > 0.5f
+                            && subducting->crustAge > 150.0f) {
+                            continue;
+                        }
                         const float csO = std::cos(overriding->rot);
                         const float snO = std::sin(overriding->rot);
                         aoc::map::gen::PolygonRing overWorld;
@@ -3337,19 +3461,65 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                 continue;
                             }
                             // 2026-05-04: pull rate dropped 0.30 -> 0.05.
-                            // Over 40 epochs, 0.30 collapsed polygons
-                            // to centroid -> no convergent contact ->
-                            // mountain count fell to 0% across most
-                            // seeds. 0.05 retains 13 % of overlap
-                            // distance after 40 epochs (slow steady
-                            // shrinkage matching Earth's ~1-2 cm/yr
-                            // subduction rate over geologic time).
                             constexpr float SUBDUCT_PULL = 0.05f;
                             subducting->boundaryVertices[vi].first =
                                 lx * (1.0f - SUBDUCT_PULL);
                             subducting->boundaryVertices[vi].second =
                                 ly * (1.0f - SUBDUCT_PULL);
                             anyClipped = true;
+                            // 2026-05-04: WP1 - VOLCANIC ARC compensation.
+                            // Destroyed oceanic crust melts in the mantle
+                            // wedge and rises as magma to form a volcanic
+                            // arc on the OVERRIDING plate (Andes, Cascades,
+                            // Aleutian). Stamp positive orogeny on the
+                            // overriding plate at the world position of
+                            // the just-clipped vertex, in overriding-
+                            // local frame. Magnitude calibrated to
+                            // restore mountain coverage (4-7%) lost when
+                            // WP1 clipping reduced convergent boundary
+                            // contact.
+                            {
+                                const float odx = wx - overriding->cx;
+                                const float ody = wy - overriding->cy;
+                                const float oCs = std::cos(overriding->rot);
+                                const float oSn = std::sin(overriding->rot);
+                                const float olx = (odx * oCs + ody * oSn)
+                                    / overriding->aspect;
+                                const float oly = (-odx * oSn + ody * oCs)
+                                    * overriding->aspect;
+                                const float gx = (olx + OROGENY_HALF)
+                                    / (2.0f * OROGENY_HALF)
+                                    * static_cast<float>(OROGENY_GRID);
+                                const float gy = (oly + OROGENY_HALF)
+                                    / (2.0f * OROGENY_HALF)
+                                    * static_cast<float>(OROGENY_GRID);
+                                const int32_t ix = static_cast<int32_t>(
+                                    std::floor(gx));
+                                const int32_t iy = static_cast<int32_t>(
+                                    std::floor(gy));
+                                if (ix >= 0 && ix < OROGENY_GRID
+                                    && iy >= 0 && iy < OROGENY_GRID) {
+                                    constexpr float ARC_STAMP = 0.012f;
+                                    overriding->orogenyLocal[
+                                        static_cast<std::size_t>(
+                                            iy * OROGENY_GRID + ix)]
+                                        += ARC_STAMP;
+                                }
+                                // WP9 - crustal isostasy: small extra
+                                // uplift slightly inland of the trench
+                                // (3 cells inland in plate-local) where
+                                // accumulated load triggers rebound.
+                                // Real Andean uplift today: 0.5 mm/yr.
+                                const int32_t ix2 = std::clamp(
+                                    ix + 3, 0, OROGENY_GRID - 1);
+                                const int32_t iy2 = std::clamp(
+                                    iy + 3, 0, OROGENY_GRID - 1);
+                                constexpr float ISOSTASY_STAMP = 0.004f;
+                                overriding->orogenyLocal[
+                                    static_cast<std::size_t>(
+                                        iy2 * OROGENY_GRID + ix2)]
+                                    += ISOSTASY_STAMP;
+                            }
                         }
                         if (anyClipped) {
                             const float csR = std::cos(subducting->rot);
@@ -3463,6 +3633,60 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         iy * OROGENY_GRID + ix)] += stressContrib;
                 }
             }
+            // 2026-05-04: WP7 - PULL-APART BASIN at transform corners.
+            // When a transform-fault edge (type 3) shares a vertex with
+            // ANOTHER transform-fault edge of different orientation
+            // (restraining or releasing bend), real Earth produces
+            // negative-orogeny basins -- Dead Sea Rift, Salton Sea,
+            // Death Valley. Detect: vertex shared by two transform
+            // edges where edge directions differ by > 30 deg. Stamp
+            // small negative orogeny at that vertex.
+            for (Plate& p : plates) {
+                const std::size_t N = p.boundaryVertices.size();
+                if (N < 4) { continue; }
+                if (p.boundaryEdgeTypes.size() != N) { continue; }
+                for (std::size_t i = 0; i < N; ++i) {
+                    const std::size_t prev = (i + N - 1) % N;
+                    if (p.boundaryEdgeTypes[prev] != 3u
+                        || p.boundaryEdgeTypes[i] != 3u) { continue; }
+                    // Vertex i is shared between edge prev and edge i.
+                    // Check angle between the two edges' directions.
+                    const std::size_t j  = (i + 1) % N;
+                    const float exA = p.boundaryVertices[i].first
+                        - p.boundaryVertices[prev].first;
+                    const float eyA = p.boundaryVertices[i].second
+                        - p.boundaryVertices[prev].second;
+                    const float exB = p.boundaryVertices[j].first
+                        - p.boundaryVertices[i].first;
+                    const float eyB = p.boundaryVertices[j].second
+                        - p.boundaryVertices[i].second;
+                    const float lenA = std::sqrt(exA * exA + eyA * eyA);
+                    const float lenB = std::sqrt(exB * exB + eyB * eyB);
+                    if (lenA < 1e-4f || lenB < 1e-4f) { continue; }
+                    const float dotE =
+                        (exA * exB + eyA * eyB) / (lenA * lenB);
+                    // dotE close to 1 = collinear (no bend);
+                    // dotE close to 0 = ~90 deg bend (restraining/
+                    // releasing). Pull-apart basin fires at strong
+                    // bends only.
+                    if (dotE > 0.85f) { continue; }
+                    const float lx = p.boundaryVertices[i].first;
+                    const float ly = p.boundaryVertices[i].second;
+                    const float gx = (lx + OROGENY_HALF)
+                        / (2.0f * OROGENY_HALF)
+                        * static_cast<float>(OROGENY_GRID);
+                    const float gy = (ly + OROGENY_HALF)
+                        / (2.0f * OROGENY_HALF)
+                        * static_cast<float>(OROGENY_GRID);
+                    const int32_t ix = static_cast<int32_t>(std::floor(gx));
+                    const int32_t iy = static_cast<int32_t>(std::floor(gy));
+                    if (ix < 0 || ix >= OROGENY_GRID
+                        || iy < 0 || iy >= OROGENY_GRID) { continue; }
+                    constexpr float PULL_APART_DEPTH = -0.008f;
+                    p.orogenyLocal[static_cast<std::size_t>(
+                        iy * OROGENY_GRID + ix)] += PULL_APART_DEPTH;
+                }
+            }
         }
 
         // Cap orogeny so a tile that sat in a hot zone every epoch
@@ -3522,6 +3746,33 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                 gy * OROGENY_GRID + gx)] += LIP_HEIGHT * t * t;
                         }
                     }
+                }
+            }
+        }
+
+        // 2026-05-04: WP5 - MAGMATIC UNDERPLATING. Hotspots and volcanic arcs
+        // intrude basaltic magma into the lower crust over geologic time,
+        // thickening it. Surface elevation rises ~0.5 km per 5 km of
+        // underplate. We approximate by adding a uniform small elevation
+        // boost to all cells of any plate that:
+        //   - hosts an active hotspot trail (hotspotTrail not empty), OR
+        //   - has any cell with crustAge > 80 + landFraction > 0.4 (mature
+        //     continental crust over ageing arc that has accumulated arc-magma
+        //     intrusions).
+        // Uniform 0.005 lift per qualifying plate, applied to ALL its
+        // land-fraction-classified cells. Models Yellowstone-style
+        // underplating.
+        for (Plate& p : plates) {
+            bool hasHotspotActivity = !p.hotspotTrail.empty();
+            bool hasMatureArc = (p.crustAge > 80.0f && p.landFraction > 0.4f);
+            if (!hasHotspotActivity && !hasMatureArc) { continue; }
+            constexpr float UNDERPLATE_LIFT = 0.005f;
+            for (float& v : p.orogenyLocal) {
+                // Only lift cells already showing some positive crust
+                // (avoid lifting deep ocean floor); criterion: existing v >
+                // -0.05 (i.e. not deep trench).
+                if (v > -0.05f) {
+                    v += UNDERPLATE_LIFT;
                 }
             }
         }

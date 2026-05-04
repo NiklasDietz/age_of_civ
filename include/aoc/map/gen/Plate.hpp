@@ -38,6 +38,10 @@ struct Plate {
     bool isPolar = false;
     std::vector<std::pair<float, float>> hotspotTrail;
     std::vector<float> orogenyLocal;
+    // 2026-05-04: WP3 - per-cell orogeny age (epochs since last positive
+    // contribution). Drives age-dependent erosion: young peaks erode
+    // fast (high relief), old peaks survive as eroded shields.
+    std::vector<int16_t> orogenyAgeLocal;
     float crustArea        = 1.0f;
     float crustAreaInitial = 1.0f;
     int32_t mergesAbsorbed = 0;
