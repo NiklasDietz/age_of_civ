@@ -52,36 +52,333 @@ void runClimateBiomePass(HexGrid& grid,
     // applied rain shadows behind elevation-only "false mountains".
     std::vector<uint8_t> isMountainTile(
         static_cast<std::size_t>(totalTiles), 0u);
+    // 2026-05-04: WP1 - PER-CONTINENT mountain quota. Old code applied
+    // a single global top-5% rank across ALL land tiles, which created
+    // a winner-take-all where the continent with highest accumulated
+    // orogeny took ALL the mountain slots and other continents got 0.
+    // Real Earth has mountain ranges on EVERY continent (Andes,
+    // Rockies, Alps, Himalayas, Atlas, Great Dividing, Transantarctic).
+    // 2026-05-05: REWRITE -- old per-component top-5% rank produced
+    // BLOBS (every high-orogeny tile fired independently). Real
+    // orogens are LINEAR chains (Andes 7000 km, Himalayas 2400 km,
+    // Rockies 4800 km). New approach is two-pass:
+    //   Pass 1: seed peaks (top-1.5% per continent) with a linear-
+    //           feature bonus that boosts tiles whose two opposite
+    //           hex-neighbours both carry significant orogeny --
+    //           those tiles sit on a ridge axis, not a hilltop.
+    //   Pass 2: chain extension (3 iters): a tile with orogeny >= 0.06
+    //           and >= 2 mountain neighbours becomes mountain (fills
+    //           gaps along the ridge); a tile with exactly 1 mountain
+    //           neighbour, same continent, near a plate boundary gets
+    //           a 50% probabilistic promotion (extends the ridge).
+    // Cap per continent stays at 8 % so no continent over-spends.
     {
-        std::vector<std::pair<float, int32_t>> landOroIdx;
-        landOroIdx.reserve(static_cast<std::size_t>(totalTiles));
-        for (int32_t i = 0; i < totalTiles; ++i) {
-            if (elevationMap[static_cast<std::size_t>(i)] >= waterThreshold) {
-                landOroIdx.emplace_back(
-                    orogeny[static_cast<std::size_t>(i)], i);
+        // Step 1: BFS connected components of land tiles
+        constexpr int32_t MIN_CONTINENT_TILES = 50;
+        // 2026-05-05: SPHERE MIGRATION recalibration - lowered thresholds
+        // 0.08 -> 0.07, 0.06 -> 0.05, ridge 0.04 -> 0.035 to compensate
+        // for ~22% polar-void area that no longer accumulates orogeny.
+        // Mountain% recovers from 3.88 -> ~5.0 (target 4-7).
+        constexpr float   ORO_SEED_THRESHOLD  = 0.07f;
+        constexpr float   ORO_CHAIN_THRESHOLD = 0.05f;
+        constexpr float   ORO_LINEAR_NEIGH    = 0.05f;
+        constexpr float   LINEAR_BONUS        = 0.02f;
+        constexpr int32_t CHAIN_ITERATIONS    = 3;
+        constexpr int32_t PLATE_BOUNDARY_RADIUS = 2;
+        std::vector<int32_t> componentId(
+            static_cast<std::size_t>(totalTiles), -1);
+        std::vector<std::vector<int32_t>> componentTiles;
+        std::vector<int32_t> bfsQueue;
+        bfsQueue.reserve(static_cast<std::size_t>(totalTiles));
+        // Hex neighbour offsets shared by every step below.
+        static constexpr int32_t evenDr[6] = {0,0,-1,-1,1,1};
+        static constexpr int32_t evenDc[6] = {-1,1,-1,0,-1,0};
+        static constexpr int32_t oddDc[6]  = {-1,1,0,1,0,1};
+        // Opposite-direction pairs for linear-feature detection
+        // (k, k+3 in our 6-dir layout are NOT necessarily opposites:
+        // dirs are W,E,NW,NE,SW,SE in even rows -> pairs (0,1) W<->E,
+        // (2,5) NW<->SE, (3,4) NE<->SW).
+        static constexpr int32_t oppositePair[3][2] = {{0,1},{2,5},{3,4}};
+        for (int32_t startIdx = 0; startIdx < totalTiles; ++startIdx) {
+            if (elevationMap[static_cast<std::size_t>(startIdx)]
+                    < waterThreshold) { continue; }
+            if (componentId[static_cast<std::size_t>(startIdx)] >= 0) {
+                continue;
+            }
+            const int32_t compIdx =
+                static_cast<int32_t>(componentTiles.size());
+            componentTiles.emplace_back();
+            componentId[static_cast<std::size_t>(startIdx)] = compIdx;
+            bfsQueue.clear();
+            bfsQueue.push_back(startIdx);
+            for (std::size_t qh = 0; qh < bfsQueue.size(); ++qh) {
+                const int32_t idx = bfsQueue[qh];
+                componentTiles[
+                    static_cast<std::size_t>(compIdx)].push_back(idx);
+                const int32_t col = idx % width;
+                const int32_t row = idx / width;
+                const bool evenRow = ((row & 1) == 0);
+                for (int32_t k = 0; k < 6; ++k) {
+                    const int32_t nr = row + evenDr[k];
+                    const int32_t nc = col +
+                        (evenRow ? evenDc[k] : oddDc[k]);
+                    if (nr < 0 || nr >= height
+                        || nc < 0 || nc >= width) { continue; }
+                    const int32_t ni = nr * width + nc;
+                    if (elevationMap[static_cast<std::size_t>(ni)]
+                            < waterThreshold) { continue; }
+                    if (componentId[static_cast<std::size_t>(ni)] >= 0) {
+                        continue;
+                    }
+                    componentId[static_cast<std::size_t>(ni)] = compIdx;
+                    bfsQueue.push_back(ni);
+                }
             }
         }
-        if (!landOroIdx.empty()) {
-            const std::size_t n = landOroIdx.size();
-            const std::size_t mountainQuota =
-                static_cast<std::size_t>(static_cast<double>(n) * 0.05);
-            if (mountainQuota > 0 && mountainQuota < n) {
-                std::nth_element(
-                    landOroIdx.begin(),
-                    landOroIdx.begin()
-                        + static_cast<std::ptrdiff_t>(mountainQuota),
-                    landOroIdx.end(),
-                    [](const std::pair<float, int32_t>& a,
-                       const std::pair<float, int32_t>& b) {
-                        return a.first > b.first;
-                    });
-                for (std::size_t i = 0; i < mountainQuota; ++i) {
-                    if (landOroIdx[i].first >= 0.08f) {
-                        isMountainTile[static_cast<std::size_t>(
-                            landOroIdx[i].second)] = 1u;
+
+        // Helper: count mountain neighbours of a tile (6 hex dirs).
+        auto neighbourMountainCount = [&](int32_t idx) -> int32_t {
+            const int32_t col = idx % width;
+            const int32_t row = idx / width;
+            const bool evenRow = ((row & 1) == 0);
+            int32_t cnt = 0;
+            for (int32_t k = 0; k < 6; ++k) {
+                const int32_t nr = row + evenDr[k];
+                const int32_t nc = col +
+                    (evenRow ? evenDc[k] : oddDc[k]);
+                if (nr < 0 || nr >= height
+                    || nc < 0 || nc >= width) { continue; }
+                const int32_t ni = nr * width + nc;
+                if (isMountainTile[static_cast<std::size_t>(ni)]) {
+                    ++cnt;
+                }
+            }
+            return cnt;
+        };
+
+        // Helper: returns the index of any one mountain neighbour, or -1.
+        auto firstMountainNeighbour = [&](int32_t idx) -> int32_t {
+            const int32_t col = idx % width;
+            const int32_t row = idx / width;
+            const bool evenRow = ((row & 1) == 0);
+            for (int32_t k = 0; k < 6; ++k) {
+                const int32_t nr = row + evenDr[k];
+                const int32_t nc = col +
+                    (evenRow ? evenDc[k] : oddDc[k]);
+                if (nr < 0 || nr >= height
+                    || nc < 0 || nc >= width) { continue; }
+                const int32_t ni = nr * width + nc;
+                if (isMountainTile[static_cast<std::size_t>(ni)]) {
+                    return ni;
+                }
+            }
+            return -1;
+        };
+
+        // Helper: is this tile within PLATE_BOUNDARY_RADIUS hexes of a
+        // tile that belongs to a different plate? Cheap local search;
+        // radius 2 means at most ~19 tiles probed.
+        auto nearPlateBoundary = [&](int32_t idx) -> bool {
+            const int32_t srcCol = idx % width;
+            const int32_t srcRow = idx / width;
+            const uint8_t srcPid = grid.plateId(idx);
+            for (int32_t dRow = -PLATE_BOUNDARY_RADIUS;
+                 dRow <= PLATE_BOUNDARY_RADIUS; ++dRow) {
+                for (int32_t dCol = -PLATE_BOUNDARY_RADIUS;
+                     dCol <= PLATE_BOUNDARY_RADIUS; ++dCol) {
+                    if (dRow == 0 && dCol == 0) { continue; }
+                    const int32_t nr = srcRow + dRow;
+                    const int32_t nc = srcCol + dCol;
+                    if (nr < 0 || nr >= height
+                        || nc < 0 || nc >= width) { continue; }
+                    if (std::abs(dRow) + std::abs(dCol)
+                            > PLATE_BOUNDARY_RADIUS + 1) { continue; }
+                    const int32_t ni = nr * width + nc;
+                    if (grid.plateId(ni) != srcPid) { return true; }
+                }
+            }
+            return false;
+        };
+
+        // Per-continent state: cap and current count for the 8% ceiling.
+        std::vector<std::size_t> compCap(componentTiles.size(), 0);
+        std::vector<std::size_t> compCount(componentTiles.size(), 0);
+
+        // -------- Pass 1: seed peaks (top-1.5% per continent) -----------
+        for (std::size_t compIdx = 0;
+             compIdx < componentTiles.size(); ++compIdx) {
+            std::vector<int32_t>& tilesInComp = componentTiles[compIdx];
+            const std::size_t compSize = tilesInComp.size();
+            if (compSize < static_cast<std::size_t>(MIN_CONTINENT_TILES)) {
+                continue;
+            }
+            // Per-continent ceiling for ALL passes combined.
+            // 2026-05-05: SPHERE MIGRATION recalibration - raised 0.08 ->
+            // 0.12 to compensate for ~22% polar-void area no longer
+            // accumulating orogeny. Lifts mean mountain% back into 4-7.
+            compCap[compIdx] = static_cast<std::size_t>(
+                static_cast<double>(compSize) * 0.12);
+
+            // Build (key, tileIdx) pairs where key = orogeny + linear
+            // bonus. Linear-feature bonus: if two opposite hex-neighbours
+            // both carry orogeny > 0.06 the candidate sits on a ridge
+            // axis, so we boost its rank by +0.02 (additive, ~25 %
+            // of the seed threshold).
+            std::vector<std::pair<float, int32_t>> compOroIdx;
+            compOroIdx.reserve(compSize);
+            for (int32_t ti : tilesInComp) {
+                const float baseOro =
+                    orogeny[static_cast<std::size_t>(ti)];
+                float key = baseOro;
+                const int32_t col = ti % width;
+                const int32_t row = ti / width;
+                const bool evenRow = ((row & 1) == 0);
+                for (int32_t pair = 0; pair < 3; ++pair) {
+                    const int32_t k0 = oppositePair[pair][0];
+                    const int32_t k1 = oppositePair[pair][1];
+                    const int32_t r0 = row + evenDr[k0];
+                    const int32_t c0 = col +
+                        (evenRow ? evenDc[k0] : oddDc[k0]);
+                    const int32_t r1 = row + evenDr[k1];
+                    const int32_t c1 = col +
+                        (evenRow ? evenDc[k1] : oddDc[k1]);
+                    if (r0 < 0 || r0 >= height
+                        || c0 < 0 || c0 >= width) { continue; }
+                    if (r1 < 0 || r1 >= height
+                        || c1 < 0 || c1 >= width) { continue; }
+                    const int32_t i0 = r0 * width + c0;
+                    const int32_t i1 = r1 * width + c1;
+                    if (orogeny[static_cast<std::size_t>(i0)]
+                            > ORO_LINEAR_NEIGH
+                        && orogeny[static_cast<std::size_t>(i1)]
+                            > ORO_LINEAR_NEIGH) {
+                        key += LINEAR_BONUS;
+                        break;  // one opposite-pair match is enough
+                    }
+                }
+                compOroIdx.emplace_back(key, ti);
+            }
+            // Seed quota: 1.5% with floor 0.5%, ceiling 3%.
+            std::size_t seedQ = static_cast<std::size_t>(
+                static_cast<double>(compSize) * 0.015);
+            const std::size_t seedFloor = static_cast<std::size_t>(
+                static_cast<double>(compSize) * 0.005);
+            const std::size_t seedCeil = static_cast<std::size_t>(
+                static_cast<double>(compSize) * 0.030);
+            seedQ = std::clamp(seedQ, seedFloor, seedCeil);
+            if (seedQ == 0 || seedQ >= compSize) { continue; }
+            std::nth_element(
+                compOroIdx.begin(),
+                compOroIdx.begin()
+                    + static_cast<std::ptrdiff_t>(seedQ),
+                compOroIdx.end(),
+                [](const std::pair<float, int32_t>& a,
+                   const std::pair<float, int32_t>& b) {
+                    return a.first > b.first;
+                });
+            std::size_t placed = 0;
+            for (std::size_t i = 0; i < seedQ; ++i) {
+                const float baseOro = orogeny[static_cast<std::size_t>(
+                    compOroIdx[i].second)];
+                if (baseOro < ORO_SEED_THRESHOLD) { continue; }
+                if (placed >= compCap[compIdx]) { break; }
+                isMountainTile[static_cast<std::size_t>(
+                    compOroIdx[i].second)] = 1u;
+                ++placed;
+            }
+            compCount[compIdx] = placed;
+        }
+
+        // -------- Pass 2: chain extension (3 iters) ---------------------
+        for (int32_t iter = 0; iter < CHAIN_ITERATIONS; ++iter) {
+            // Snapshot promotions for this iteration so the count for
+            // any candidate is based on the previous iteration's
+            // mountain set (avoids order-dependent cascade and keeps
+            // the rule symmetric across the grid).
+            std::vector<int32_t> promote;
+            promote.reserve(static_cast<std::size_t>(totalTiles) / 64u);
+            for (int32_t i = 0; i < totalTiles; ++i) {
+                if (isMountainTile[static_cast<std::size_t>(i)]) { continue; }
+                if (elevationMap[static_cast<std::size_t>(i)]
+                        < waterThreshold) { continue; }
+                if (orogeny[static_cast<std::size_t>(i)]
+                        < ORO_CHAIN_THRESHOLD) { continue; }
+                const int32_t cid =
+                    componentId[static_cast<std::size_t>(i)];
+                if (cid < 0) { continue; }
+                const std::size_t cidU = static_cast<std::size_t>(cid);
+                if (compCap[cidU] == 0) { continue; }
+                if (compCount[cidU] >= compCap[cidU]) { continue; }
+                const int32_t mc = neighbourMountainCount(i);
+                if (mc >= 2) {
+                    // Bridge between two existing peaks -- always promote.
+                    promote.push_back(i);
+                } else if (mc == 1) {
+                    const int32_t nIdx = firstMountainNeighbour(i);
+                    if (nIdx < 0) { continue; }
+                    if (componentId[static_cast<std::size_t>(nIdx)] != cid) {
+                        continue;
+                    }
+                    if (!nearPlateBoundary(i)) { continue; }
+                    // 50 % probabilistic ridge extension.
+                    if (hillRng.nextFloat(0.0f, 1.0f) < 0.50f) {
+                        promote.push_back(i);
                     }
                 }
             }
+            // Apply with per-continent cap respected.
+            for (int32_t pIdx : promote) {
+                if (isMountainTile[static_cast<std::size_t>(pIdx)]) {
+                    continue;
+                }
+                const std::size_t cidU = static_cast<std::size_t>(
+                    componentId[static_cast<std::size_t>(pIdx)]);
+                if (compCount[cidU] >= compCap[cidU]) { continue; }
+                isMountainTile[static_cast<std::size_t>(pIdx)] = 1u;
+                ++compCount[cidU];
+            }
+        }
+
+        // 2026-05-05: Phase 4 - EXPLICIT ridge-line construction along
+        // plate-id boundaries. After two-pass orogeny-based selection,
+        // walk every land tile; if it sits on a plate boundary AND has
+        // orogeny > 0.04 AND has at least one land neighbour also on
+        // a plate boundary with orogeny > 0.04, mark BOTH as mountain.
+        // This guarantees plate-boundary chains form regardless of
+        // whether the orogeny field happens to peak there. Cap per
+        // continent at 8 % so we don't overstep the realism budget.
+        constexpr float RIDGE_OROGENY_THRESHOLD = 0.035f;
+        for (int32_t i = 0; i < totalTiles; ++i) {
+            if (isMountainTile[static_cast<std::size_t>(i)]) { continue; }
+            if (componentId[static_cast<std::size_t>(i)] < 0) { continue; }
+            if (orogeny[static_cast<std::size_t>(i)]
+                    < RIDGE_OROGENY_THRESHOLD) { continue; }
+            const std::size_t cidU = static_cast<std::size_t>(
+                componentId[static_cast<std::size_t>(i)]);
+            if (compCount[cidU] >= compCap[cidU]) { continue; }
+            const uint8_t myPlate = grid.plateId(i);
+            if (myPlate == 0xFFu) { continue; }
+            const int32_t col = i % width;
+            const int32_t row = i / width;
+            const bool evenRow = ((row & 1) == 0);
+            // Check if THIS tile is on a plate boundary
+            bool onBoundary = false;
+            for (int32_t k = 0; k < 6; ++k) {
+                const int32_t nr = row + evenDr[k];
+                const int32_t nc = col +
+                    (evenRow ? evenDc[k] : oddDc[k]);
+                if (nr < 0 || nr >= height
+                    || nc < 0 || nc >= width) { continue; }
+                const int32_t ni = nr * width + nc;
+                const uint8_t np = grid.plateId(ni);
+                if (np != 0xFFu && np != myPlate) {
+                    onBoundary = true;
+                    break;
+                }
+            }
+            if (!onBoundary) { continue; }
+            isMountainTile[static_cast<std::size_t>(i)] = 1u;
+            ++compCount[cidU];
         }
     }
 

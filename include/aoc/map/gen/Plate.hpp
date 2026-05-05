@@ -20,6 +20,26 @@
 namespace aoc::map::gen {
 
 struct Plate {
+    // 2026-05-05: SPHERE MIGRATION - lat/lon are the AUTHORITATIVE
+    // plate position. The legacy (cx, cy) unit-square coords are
+    // computed from (latDeg, lonDeg) via Mollweide projection at
+    // sim init and after every motion step. Sphere-aware code paths
+    // (haversine Voronoi in elevation/orogeny passes + PlateIdStash)
+    // read latDeg/lonDeg directly; legacy 2D code paths (polygon
+    // vertices, extraSeeds, hotspot trails, cylindrical wrap) read
+    // (cx, cy) and rotate by p.rot. p.rot is now updated each epoch
+    // by the Euler-pole local-vertical projection so plate-local 2D
+    // features ride with true sphere orientation. See
+    // docs/SPHERE_MIGRATION.md for the full migration scope.
+    float latDeg = 0.0f;       // [-90, 90]
+    float lonDeg = 0.0f;       // [-180, 180]
+    // Euler-pole axis (for sphere-based motion). Plate rotates around
+    // this point on the sphere by `angularVelDeg` per epoch.
+    float eulerPoleLatDeg = 0.0f;
+    float eulerPoleLonDeg = 0.0f;
+    float angularVelDeg   = 0.0f;
+    // Derived 2D fields -- reprojected from (latDeg, lonDeg) via
+    // Mollweide forward each motion step. Kept for legacy 2D consumers:
     float cx;
     float cy;
     bool  isLand;

@@ -249,6 +249,7 @@ set(AOC_LIB_SOURCES
     src/map/gen/Resources.cpp
     src/map/gen/Features.cpp
     src/map/gen/Rivers.cpp
+    src/map/gen/SphereGeometry.cpp
     src/map/Pathfinding.cpp
     src/map/FogOfWar.cpp
     src/map/RiverGameplay.cpp

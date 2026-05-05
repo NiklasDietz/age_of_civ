@@ -29,6 +29,7 @@
 #include "aoc/map/gen/EcoAnalytics.hpp"
 #include "aoc/map/gen/Noise.hpp"
 #include "aoc/map/gen/Plate.hpp"
+#include "aoc/map/gen/SphereGeometry.hpp"
 #include "aoc/map/gen/PlateBoundary.hpp"
 #include "aoc/map/gen/PlateIdStash.hpp"
 #include "aoc/map/gen/PolygonClipping.hpp"
@@ -337,6 +338,34 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 p.cx = cx;
                 p.cy = cy;
                 p.isLand = isLand;
+                // 2026-05-05: SPHERE MIGRATION - derive lat/lon from
+                // legacy (cx, cy) via Mollweide inverse. Calls that
+                // pass (cx, cy) outside the Mollweide ellipse get
+                // clamped: lat from y assuming valid ellipse interior,
+                // lon scaled by ellipse fill ratio. Plates initialised
+                // here will have authoritative lat/lon for sphere
+                // motion in Phase 2; legacy cx/cy retained until full
+                // Phase 6 cleanup.
+                {
+                    aoc::map::gen::MollweideInverseResult mw =
+                        aoc::map::gen::mollweideInverse(cx, cy);
+                    if (!mw.valid) {
+                        // Out of ellipse: nearest valid (lat, lon) is
+                        // along the ellipse boundary closest to (cx,cy).
+                        // Approximate by clamping y -> sphere bounds.
+                        const float yClip = std::clamp(cy, 0.02f, 0.98f);
+                        const float xClip = std::clamp(cx, 0.02f, 0.98f);
+                        mw = aoc::map::gen::mollweideInverse(xClip, yClip);
+                        if (!mw.valid) {
+                            mw.coord = {0.0f, 0.0f};
+                        }
+                    }
+                    p.latDeg = mw.coord.latDeg;
+                    p.lonDeg = mw.coord.lonDeg;
+                }
+                // Euler pole + angular velocity will be initialised
+                // alongside the existing eulerPoleX/eulerPoleY block
+                // below (Phase 2 wires them to actually drive motion).
                 // 2026-05-04: log-normal speed buckets matching Earth's
                 // real Phanerozoic distribution (Pacific 10 cm/yr,
                 // Eurasian 2 cm/yr, Antarctic 0.1 cm/yr -- 100x range).
@@ -390,6 +419,23 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         : centerRng.nextFloat(0.008f, 0.020f);
                     p.angularRate = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f)
                         ? -rateMag : rateMag;
+                }
+                // 2026-05-05: SPHERE - random Euler pole on the unit
+                // sphere + angular velocity in deg/epoch. Real Earth
+                // plates: 0.05 to 1.0 deg/Ma; sim ~10 Ma per epoch
+                // gives 0.5-10 deg/epoch. Continental plates rotate
+                // slower (cratonic stability) -- 0.5-3 deg/epoch.
+                // Oceanic 1-6 deg/epoch.
+                {
+                    const float poleLat = centerRng.nextFloat(-85.0f, 85.0f);
+                    const float poleLon = centerRng.nextFloat(-180.0f, 180.0f);
+                    p.eulerPoleLatDeg = poleLat;
+                    p.eulerPoleLonDeg = poleLon;
+                    const float angVelMag = isLand
+                        ? centerRng.nextFloat(0.5f, 3.0f)
+                        : centerRng.nextFloat(1.0f, 6.0f);
+                    p.angularVelDeg = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f)
+                        ? -angVelMag : angVelMag;
                 }
                 // landFraction: continental plates are mostly land but
                 // not entirely (Eurasian has plenty of seas); oceanic
@@ -963,6 +1009,18 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 target.boundaryEdgeTypes.reserve(POLY_VERTICES);
                 target.boundaryNeighborIds.clear();
                 target.boundaryNeighborIds.reserve(POLY_VERTICES);
+                // 2026-05-05: FULL SPHERE SWITCH attempt - tried sphere-
+                // Voronoi (haversine + greatCircleWalk) for polygon
+                // construction. Lost plate elliptical shape parameter
+                // (p.aspect, 1:1..4:1 elongation) which old 2D code applied
+                // via plate-local coord scaling. Without aspect, plates
+                // become circular, plate boundaries shift, mountain%
+                // dropped 4.37 -> 3.56 + worst-case dominance 0.834 ->
+                // 0.990. Reverted -- polygon construction stays 2D-Voronoi
+                // because it relies on plate-local 2D shape parameters
+                // (aspect, rot) which have no natural sphere equivalent.
+                // The polygons themselves still ride the sphere via
+                // p.rot's Euler-pole local-vertical update each epoch.
                 for (int32_t v = 0; v < POLY_VERTICES; ++v) {
                     const float angle =
                         (static_cast<float>(v)
@@ -1102,8 +1160,69 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // stationary on geological timescales. Apply 0.3× DT
                 // to keep them anchored at the poles.
                 const float motionScale = p.isPolar ? 0.3f : 1.0f;
-                p.cx += p.vx * DT * motionScale;
-                p.cy += p.vy * DT * motionScale;
+                // 2026-05-05: SPHERE MIGRATION - motion is now Euler-
+                // pole rotation on the sphere. Each plate rotates
+                // around (eulerPoleLatDeg, eulerPoleLonDeg) by
+                // (angularVelDeg * DT * motionScale) per epoch.
+                // Legacy (cx, cy) re-projected via Mollweide forward
+                // each epoch so 2D-only consumer code (Voronoi,
+                // tile-id stash etc) still works during migration.
+                if (p.eulerPoleLatDeg != 0.0f
+                    || p.eulerPoleLonDeg != 0.0f
+                    || p.angularVelDeg != 0.0f) {
+                    aoc::map::gen::LatLon current{p.latDeg, p.lonDeg};
+                    aoc::map::gen::LatLon pole{
+                        p.eulerPoleLatDeg, p.eulerPoleLonDeg};
+                    const float stepDeg =
+                        p.angularVelDeg * DT * motionScale;
+                    aoc::map::gen::LatLon next =
+                        aoc::map::gen::rotateAroundEulerPole(
+                            current, pole, stepDeg);
+                    p.latDeg = next.latDeg;
+                    p.lonDeg = next.lonDeg;
+                    aoc::map::gen::MollweidePoint mw =
+                        aoc::map::gen::mollweideForward(next);
+                    p.cx = mw.mapX;
+                    p.cy = mw.mapY;
+                    // 2026-05-05: PHASE 3 - propagate the Euler rotation's
+                    // local-vertical component into p.rot so polygon
+                    // vertices, extraSeeds, and hotspot trails (all stored
+                    // in plate-local 2D frame and rotated by p.rot at
+                    // consumer sites) ride with the plate's true on-sphere
+                    // orientation. The local-vertical projection equals
+                    // stepRad * cos(haversine_to_pole) -- the component of
+                    // the Euler rotation vector aligned with the plate
+                    // centre's local up-axis. Angular distance to pole
+                    // close to 0 (rotating around itself) -> full rate;
+                    // 90 deg away (orthogonal pole) -> zero spin
+                    // contribution, only translation.
+                    const float angDistRad =
+                        aoc::map::gen::haversineRadians(next, pole);
+                    p.rot += stepDeg * 0.01745329252f
+                        * std::cos(angDistRad);
+                    // 2026-05-05: FULL SPHERE SWITCH attempt - tried setting
+                    // vx/vy = eulerVelocityAt(plate, pole, angVelDeg). Each
+                    // epoch the legacy heuristic mutations (slab pull,
+                    // collision bounce, rift impulse) that write to vx/vy
+                    // were getting overwritten by the recomputed Euler
+                    // velocity, removing all dynamic perturbation. Audit
+                    // showed continent diversity collapsing (mean continents
+                    // 8 -> 5.5, largest/total 0.575 -> 0.733, single-
+                    // continent worst case). Reverted -- vx/vy stays as the
+                    // perturbable dynamics field; Euler-pole rotation drives
+                    // POSITION but velocity dynamics retain their heuristic
+                    // mutations. To do a proper migration we would need to
+                    // split vx/vy into base + perturbation and route every
+                    // mutation through the perturbation channel; that is
+                    // multi-day surgery across ~70 sites and is deferred.
+                } else {
+                    // Pre-Euler-pole-init plate (legacy linear motion).
+                    // Will be migrated when initialization sets pole +
+                    // angularVel from the existing log-normal speed
+                    // bucket.
+                    p.cx += p.vx * DT * motionScale;
+                    p.cy += p.vy * DT * motionScale;
+                }
                 // 2026-05-03: Euler-pole rotation. After linear drift,
                 // rotate the plate (cx,cy + extraSeeds + hotspot trails)
                 // by `angularRate * DT * motionScale` around its pole.
@@ -2178,21 +2297,47 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                     / static_cast<float>(width);
                     const float ny = static_cast<float>(row)
                                     / static_cast<float>(height);
+                    // 2026-05-05: SPHERE MIGRATION - per-tile Voronoi
+                    // ranking now uses haversine on the unit sphere.
+                    // Tiles outside the Mollweide ellipse (polar voids)
+                    // have no meaningful sphere position; skip them so
+                    // they keep their default elevation/biome.
+                    const aoc::map::gen::MollweideInverseResult tileLL =
+                        aoc::map::gen::tileToLatLon(col, row, width, height);
+                    if (!tileLL.valid) { continue; }
+                    const aoc::map::gen::LatLon tileLatLon = tileLL.coord;
+                    const float tileLatRad =
+                        tileLatLon.latDeg * 0.01745329252f;
                     float d1Sq = 1e9f, d2Sq = 1e9f;
                     int32_t nearest = -1, second = -1;
                     float lxNearest = 0.0f, lyNearest = 0.0f;
                     for (std::size_t pi = 0; pi < plates.size(); ++pi) {
-                        float dx = nx - plates[pi].cx;
-                        float dy = ny - plates[pi].cy;
-                        if (cylSim) {
-                            if (dx >  0.5f) { dx -= 1.0f; }
-                            if (dx < -0.5f) { dx += 1.0f; }
-                        }
-                        const float cs = std::cos(plates[pi].rot);
-                        const float sn = std::sin(plates[pi].rot);
-                        const float lx = (dx * cs + dy * sn) / plates[pi].aspect;
-                        const float ly = (-dx * sn + dy * cs) * plates[pi].aspect;
-                        const float dsq = (lx * lx + ly * ly) / (plates[pi].weight * plates[pi].weight);
+                        const aoc::map::gen::LatLon plateLL{
+                            plates[pi].latDeg, plates[pi].lonDeg};
+                        // Great-circle angular distance (radians).
+                        // Anisotropy / rotation handled implicitly by
+                        // sphere geometry; per-plate weight still scales
+                        // the squared distance so heavier plates expand.
+                        const float h = aoc::map::gen::haversineRadians(
+                            tileLatLon, plateLL);
+                        const float dsq =
+                            (h * h) / (plates[pi].weight * plates[pi].weight);
+                        // Plate-local tangent-plane coords used by
+                        // scatterPL / samplePlateOrogeny. Small-angle
+                        // approximation: lx = dLon * cos(plateLat),
+                        // ly = dLat (both radians). Longitude wrap
+                        // normalised to (-pi, pi].
+                        const float plateLatRad =
+                            plates[pi].latDeg * 0.01745329252f;
+                        float dLonDeg = tileLatLon.lonDeg - plates[pi].lonDeg;
+                        if (dLonDeg >  180.0f) { dLonDeg -= 360.0f; }
+                        if (dLonDeg < -180.0f) { dLonDeg += 360.0f; }
+                        const float dLatDeg = tileLatLon.latDeg - plates[pi].latDeg;
+                        const float dLonRad = dLonDeg * 0.01745329252f;
+                        const float dLatRad = dLatDeg * 0.01745329252f;
+                        const float lx = dLonRad
+                            * std::cos(0.5f * (tileLatRad + plateLatRad));
+                        const float ly = dLatRad;
                         if (dsq < d1Sq) {
                             d2Sq = d1Sq; second = nearest;
                             d1Sq = dsq;  nearest = static_cast<int32_t>(pi);
@@ -2270,19 +2415,25 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             nearest = polyOwner;
                             const Plate& po = plates[
                                 static_cast<std::size_t>(nearest)];
-                            float dx = nx - po.cx;
-                            float dy = ny - po.cy;
-                            if (cylSim) {
-                                if (dx >  0.5f) { dx -= 1.0f; }
-                                if (dx < -0.5f) { dx += 1.0f; }
-                            }
-                            const float cs = std::cos(po.rot);
-                            const float sn = std::sin(po.rot);
-                            lxNearest = (dx * cs + dy * sn) / po.aspect;
-                            lyNearest = (-dx * sn + dy * cs) * po.aspect;
-                            d1Sq = (lxNearest * lxNearest
-                                    + lyNearest * lyNearest)
-                                / (po.weight * po.weight);
+                            // 2026-05-05: SPHERE MIGRATION - recompute
+                            // plate-local tangent-plane coords + d1Sq
+                            // using sphere geometry to match the main
+                            // Voronoi loop above.
+                            const aoc::map::gen::LatLon plateLL{
+                                po.latDeg, po.lonDeg};
+                            const float h = aoc::map::gen::haversineRadians(
+                                tileLatLon, plateLL);
+                            d1Sq = (h * h) / (po.weight * po.weight);
+                            const float poLatRad =
+                                po.latDeg * 0.01745329252f;
+                            float dLonDeg = tileLatLon.lonDeg - po.lonDeg;
+                            if (dLonDeg >  180.0f) { dLonDeg -= 360.0f; }
+                            if (dLonDeg < -180.0f) { dLonDeg += 360.0f; }
+                            const float dLatDeg =
+                                tileLatLon.latDeg - po.latDeg;
+                            lxNearest = (dLonDeg * 0.01745329252f)
+                                * std::cos(0.5f * (tileLatRad + poLatRad));
+                            lyNearest = dLatDeg * 0.01745329252f;
                         }
                     }
                     if (nearest < 0 || second < 0) { continue; }
@@ -2386,6 +2537,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // wide areas. Real orogeny is sharp along the
                     // boundary line — single-cell deposits keep it tight.
                     auto scatterPL = [&](Plate& p, float lx, float ly, float val) {
+                        // 2026-05-04: WP2 - cap per-call val to prevent
+                        // single high-stress event saturating a cell in
+                        // one scatter. Combined with the post-loop
+                        // clamp [-0.15, +0.22], this spreads
+                        // accumulation across more cells via WP3
+                        // diffusion + multi-call summing.
+                        if (val >  0.04f) { val =  0.04f; }
+                        if (val < -0.04f) { val = -0.04f; }
                         const float gx = (lx + OROGENY_HALF) / (2.0f * OROGENY_HALF)
                                        * static_cast<float>(OROGENY_GRID);
                         const float gy = (ly + OROGENY_HALF) / (2.0f * OROGENY_HALF)
@@ -3487,23 +3646,65 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                     / overriding->aspect;
                                 const float oly = (-odx * oSn + ody * oCs)
                                     * overriding->aspect;
-                                const float gx = (olx + OROGENY_HALF)
-                                    / (2.0f * OROGENY_HALF)
-                                    * static_cast<float>(OROGENY_GRID);
-                                const float gy = (oly + OROGENY_HALF)
-                                    / (2.0f * OROGENY_HALF)
-                                    * static_cast<float>(OROGENY_GRID);
-                                const int32_t ix = static_cast<int32_t>(
-                                    std::floor(gx));
-                                const int32_t iy = static_cast<int32_t>(
-                                    std::floor(gy));
-                                if (ix >= 0 && ix < OROGENY_GRID
-                                    && iy >= 0 && iy < OROGENY_GRID) {
-                                    constexpr float ARC_STAMP = 0.012f;
+                                // 2026-05-05: edge-WALK arc stamp.
+                                // Compute boundary tangent in overriding-
+                                // local frame: radial direction (from
+                                // overriding centroid to clipped vertex
+                                // in local frame) approximates the
+                                // outward boundary normal; perpendicular
+                                // gives an arc-parallel tangent. Walk 4
+                                // stamps spanning ARC_TOTAL_LENGTH along
+                                // it; per-step magnitude = ARC_STAMP / 4
+                                // to preserve total budget.
+                                constexpr int32_t ARC_WALK_STEPS = 4;
+                                constexpr float ARC_TOTAL_LENGTH = 0.10f;
+                                constexpr float ARC_STAMP_PER = 0.012f
+                                    / static_cast<float>(ARC_WALK_STEPS);
+                                const float radLen = std::sqrt(
+                                    olx * olx + oly * oly);
+                                float bnxL = (radLen > 1e-6f)
+                                    ? (olx / radLen) : 1.0f;
+                                float bnyL = (radLen > 1e-6f)
+                                    ? (oly / radLen) : 0.0f;
+                                const float tangentX = -bnyL;
+                                const float tangentY =  bnxL;
+                                int32_t ix = 0;
+                                int32_t iy = 0;
+                                for (int32_t step = 0;
+                                     step < ARC_WALK_STEPS; ++step) {
+                                    const float tStep =
+                                        (static_cast<float>(step) - 1.5f)
+                                        / static_cast<float>(
+                                            ARC_WALK_STEPS - 1)
+                                        * ARC_TOTAL_LENGTH;
+                                    const float walkLx = olx
+                                        + tangentX * tStep;
+                                    const float walkLy = oly
+                                        + tangentY * tStep;
+                                    const float gx = (walkLx + OROGENY_HALF)
+                                        / (2.0f * OROGENY_HALF)
+                                        * static_cast<float>(OROGENY_GRID);
+                                    const float gy = (walkLy + OROGENY_HALF)
+                                        / (2.0f * OROGENY_HALF)
+                                        * static_cast<float>(OROGENY_GRID);
+                                    const int32_t wix = static_cast<int32_t>(
+                                        std::floor(gx));
+                                    const int32_t wiy = static_cast<int32_t>(
+                                        std::floor(gy));
+                                    if (wix < 0 || wix >= OROGENY_GRID
+                                        || wiy < 0 || wiy >= OROGENY_GRID) {
+                                        continue;
+                                    }
                                     overriding->orogenyLocal[
                                         static_cast<std::size_t>(
-                                            iy * OROGENY_GRID + ix)]
-                                        += ARC_STAMP;
+                                            wiy * OROGENY_GRID + wix)]
+                                        += ARC_STAMP_PER;
+                                    // Track the central arc stamp index
+                                    // for the isostasy offset below.
+                                    if (step == ARC_WALK_STEPS / 2) {
+                                        ix = wix;
+                                        iy = wiy;
+                                    }
                                 }
                                 // WP9 - crustal isostasy: small extra
                                 // uplift slightly inland of the trench
@@ -3604,10 +3805,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     const uint8_t et = p.boundaryEdgeTypes[i];
                     if (et == 0u) { continue; }
                     const std::size_t i1 = (i + 1) % N;
-                    const float lmx = (p.boundaryVertices[i].first
-                        + p.boundaryVertices[i1].first) * 0.5f;
-                    const float lmy = (p.boundaryVertices[i].second
-                        + p.boundaryVertices[i1].second) * 0.5f;
                     float stressContrib = 0.0f;
                     if (et == 2u) {
                         stressContrib = 0.004f;  // trench: arc uplift
@@ -3617,20 +3814,141 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         stressContrib = -0.001f; // ridge: depression
                     }
                     if (stressContrib == 0.0f) { continue; }
-                    // Inline scatter: write to plate's local orogeny
-                    // grid at midpoint location.
-                    const float gx = (lmx + OROGENY_HALF)
-                        / (2.0f * OROGENY_HALF)
-                        * static_cast<float>(OROGENY_GRID);
-                    const float gy = (lmy + OROGENY_HALF)
-                        / (2.0f * OROGENY_HALF)
-                        * static_cast<float>(OROGENY_GRID);
-                    const int32_t ix = static_cast<int32_t>(std::floor(gx));
-                    const int32_t iy = static_cast<int32_t>(std::floor(gy));
-                    if (ix < 0 || ix >= OROGENY_GRID
-                        || iy < 0 || iy >= OROGENY_GRID) { continue; }
-                    p.orogenyLocal[static_cast<std::size_t>(
-                        iy * OROGENY_GRID + ix)] += stressContrib;
+                    // 2026-05-05: edge-WALK instead of midpoint stamp --
+                    // produces linear orogeny chain along the edge
+                    // tangent, matching real Earth orogen shape. Per-call
+                    // magnitude reduced 8x to keep budget constant.
+                    constexpr int32_t EDGE_WALK_STEPS = 8;
+                    const float perStepMag = stressContrib
+                        / static_cast<float>(EDGE_WALK_STEPS);
+                    for (int32_t step = 0; step < EDGE_WALK_STEPS; ++step) {
+                        const float t = (static_cast<float>(step) + 0.5f)
+                            / static_cast<float>(EDGE_WALK_STEPS);
+                        const float lx = p.boundaryVertices[i].first
+                            + t * (p.boundaryVertices[i1].first
+                                - p.boundaryVertices[i].first);
+                        const float ly = p.boundaryVertices[i].second
+                            + t * (p.boundaryVertices[i1].second
+                                - p.boundaryVertices[i].second);
+                        // Inline scatter: cap, find cell, increment.
+                        float val = perStepMag;
+                        if (val > 0.04f) val = 0.04f;
+                        if (val < -0.04f) val = -0.04f;
+                        const float gx = (lx + OROGENY_HALF)
+                            / (2.0f * OROGENY_HALF)
+                            * static_cast<float>(OROGENY_GRID);
+                        const float gy = (ly + OROGENY_HALF)
+                            / (2.0f * OROGENY_HALF)
+                            * static_cast<float>(OROGENY_GRID);
+                        const int32_t ix = static_cast<int32_t>(
+                            std::floor(gx));
+                        const int32_t iy = static_cast<int32_t>(
+                            std::floor(gy));
+                        if (ix < 0 || ix >= OROGENY_GRID
+                            || iy < 0 || iy >= OROGENY_GRID) { continue; }
+                        p.orogenyLocal[static_cast<std::size_t>(
+                            iy * OROGENY_GRID + ix)] += val;
+                    }
+                }
+            }
+            // 2026-05-04 (rev 2): Phase F - ANISOTROPIC orogeny diffusion.
+            // Old isotropic 3x3 box-blur (alpha=0.15) actively rounded
+            // chains into blobs -- bad for mountain-belt realism (real
+            // Earth orogens are 5-15 aspect-ratio chains, not blobs).
+            // New: compute local gradient via finite-difference; diffuse
+            // PERPENDICULAR to gradient (= along ridge / orogen axis)
+            // and SUPPRESS diffusion ALONG gradient (preserves sharp
+            // perpendicular-to-belt fall-off). Result: chains stay
+            // narrow but extend lengthwise, matching real ranges.
+            // alpha 0.15 -> 0.05 to halve overall smoothing magnitude.
+            {
+                constexpr float DIFFUSION_ALPHA_TANGENT = 0.10f;
+                constexpr float DIFFUSION_ALPHA_NORMAL  = 0.01f;
+                for (Plate& p : plates) {
+                    const std::size_t total = p.orogenyLocal.size();
+                    if (total == 0) continue;
+                    std::vector<float> next(total);
+                    const int32_t W = OROGENY_GRID;
+                    for (int32_t r = 0; r < W; ++r) {
+                        for (int32_t c = 0; c < W; ++c) {
+                            const std::size_t idx = static_cast<std::size_t>(r * W + c);
+                            const float vC = p.orogenyLocal[idx];
+                            // Compute gradient via central differences.
+                            float gradX = 0.0f;
+                            float gradY = 0.0f;
+                            if (c > 0 && c < W - 1) {
+                                gradX = p.orogenyLocal[
+                                    static_cast<std::size_t>(r * W + c + 1)]
+                                    - p.orogenyLocal[
+                                        static_cast<std::size_t>(r * W + c - 1)];
+                            }
+                            if (r > 0 && r < W - 1) {
+                                gradY = p.orogenyLocal[
+                                    static_cast<std::size_t>((r + 1) * W + c)]
+                                    - p.orogenyLocal[
+                                        static_cast<std::size_t>((r - 1) * W + c)];
+                            }
+                            const float gradMag = std::sqrt(
+                                gradX * gradX + gradY * gradY);
+                            // Tangent direction = perpendicular to gradient.
+                            // For low-gradient (uniform) cells, use isotropic
+                            // small alpha. For high-gradient cells, diffuse
+                            // strongly tangent, weakly normal.
+                            float alphaTangent;
+                            float alphaNormal;
+                            if (gradMag < 1e-4f) {
+                                alphaTangent = 0.05f;
+                                alphaNormal  = 0.05f;
+                            } else {
+                                alphaTangent = DIFFUSION_ALPHA_TANGENT;
+                                alphaNormal  = DIFFUSION_ALPHA_NORMAL;
+                            }
+                            // Sample 4 axis-neighbors (skip diagonals to keep
+                            // it cheap). Decompose each neighbor's contribution
+                            // along tangent vs normal direction.
+                            float weightedSum = 0.0f;
+                            float weightAccum = 0.0f;
+                            const int32_t neighbors[4][2] = {
+                                {-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+                            for (const auto& nb : neighbors) {
+                                const int32_t nr = r + nb[1];
+                                const int32_t nc = c + nb[0];
+                                if (nr < 0 || nr >= W || nc < 0 || nc >= W) continue;
+                                // Direction to neighbor (in cell units)
+                                const float dx = static_cast<float>(nb[0]);
+                                const float dy = static_cast<float>(nb[1]);
+                                // Decompose: how much is tangent vs normal?
+                                // Tangent unit = (-gradY, gradX) / gradMag
+                                // Normal unit  = (gradX, gradY) / gradMag
+                                float tangentComp;
+                                float normalComp;
+                                if (gradMag > 1e-4f) {
+                                    tangentComp = std::fabs(
+                                        (-gradY * dx + gradX * dy) / gradMag);
+                                    normalComp = std::fabs(
+                                        (gradX * dx + gradY * dy) / gradMag);
+                                } else {
+                                    tangentComp = 0.5f;
+                                    normalComp  = 0.5f;
+                                }
+                                const float w = alphaTangent * tangentComp
+                                                + alphaNormal * normalComp;
+                                const float nv = p.orogenyLocal[
+                                    static_cast<std::size_t>(nr * W + nc)];
+                                weightedSum += w * nv;
+                                weightAccum += w;
+                            }
+                            if (weightAccum > 0.0f) {
+                                const float blendVal = weightedSum / weightAccum;
+                                const float effAlpha = std::min(
+                                    weightAccum, 0.20f);
+                                next[idx] = vC + effAlpha * (blendVal - vC);
+                            } else {
+                                next[idx] = vC;
+                            }
+                        }
+                    }
+                    p.orogenyLocal.swap(next);
                 }
             }
             // 2026-05-04: WP7 - PULL-APART BASIN at transform corners.
@@ -4180,30 +4498,48 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // wildly between epochs).
                     float lxNearest = 0.0f;
                     float lyNearest = 0.0f;
-                    for (std::size_t pi = 0; pi < plates.size(); ++pi) {
-                        // Anisotropic distance: rotate sample point
-                        // into plate-local frame, scale x by aspect.
-                        float dx = wx - plates[pi].cx;
-                        float dy = wy - plates[pi].cy;
-                        if (cylSim) {
-                            if (dx >  0.5f) { dx -= 1.0f; }
-                            if (dx < -0.5f) { dx += 1.0f; }
-                        }
-                        const float cs = std::cos(plates[pi].rot);
-                        const float sn = std::sin(plates[pi].rot);
-                        const float lx = (dx * cs + dy * sn) / plates[pi].aspect;
-                        const float ly = (-dx * sn + dy * cs) * plates[pi].aspect;
-                        const float dsq = (lx * lx + ly * ly) / (plates[pi].weight * plates[pi].weight);
-                        if (dsq < d1Sq) {
-                            d2Sq    = d1Sq;
-                            second  = nearest;
-                            d1Sq    = dsq;
-                            nearest = static_cast<int32_t>(pi);
-                            lxNearest = lx;
-                            lyNearest = ly;
-                        } else if (dsq < d2Sq) {
-                            d2Sq   = dsq;
-                            second = static_cast<int32_t>(pi);
+                    // 2026-05-05: SPHERE MIGRATION - convert the warped
+                    // unit-square position back to lat/lon via Mollweide
+                    // inverse, then rank plates by haversine distance.
+                    // Tiles whose warped position falls outside the
+                    // ellipse (polar voids) skip the plate ranking and
+                    // keep their default ocean elevation.
+                    const aoc::map::gen::MollweideInverseResult wTileLL =
+                        aoc::map::gen::mollweideInverse(wx, wy);
+                    aoc::map::gen::LatLon tileLatLon{0.0f, 0.0f};
+                    float tileLatRad = 0.0f;
+                    if (wTileLL.valid) {
+                        tileLatLon = wTileLL.coord;
+                        tileLatRad = tileLatLon.latDeg * 0.01745329252f;
+                        for (std::size_t pi = 0; pi < plates.size(); ++pi) {
+                            const aoc::map::gen::LatLon plateLL{
+                                plates[pi].latDeg, plates[pi].lonDeg};
+                            const float h = aoc::map::gen::haversineRadians(
+                                tileLatLon, plateLL);
+                            const float dsq = (h * h)
+                                / (plates[pi].weight * plates[pi].weight);
+                            const float plateLatRad =
+                                plates[pi].latDeg * 0.01745329252f;
+                            float dLonDeg =
+                                tileLatLon.lonDeg - plates[pi].lonDeg;
+                            if (dLonDeg >  180.0f) { dLonDeg -= 360.0f; }
+                            if (dLonDeg < -180.0f) { dLonDeg += 360.0f; }
+                            const float dLatDeg =
+                                tileLatLon.latDeg - plates[pi].latDeg;
+                            const float lx = (dLonDeg * 0.01745329252f)
+                                * std::cos(0.5f * (tileLatRad + plateLatRad));
+                            const float ly = dLatDeg * 0.01745329252f;
+                            if (dsq < d1Sq) {
+                                d2Sq    = d1Sq;
+                                second  = nearest;
+                                d1Sq    = dsq;
+                                nearest = static_cast<int32_t>(pi);
+                                lxNearest = lx;
+                                lyNearest = ly;
+                            } else if (dsq < d2Sq) {
+                                d2Sq   = dsq;
+                                second = static_cast<int32_t>(pi);
+                            }
                         }
                     }
                     // 2026-05-04: WP4 - polygon-based ownership override.
@@ -4269,28 +4605,34 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                 polyOwner = static_cast<int32_t>(pi);
                             }
                         }
-                        if (polyOwner >= 0 && polyOwner != nearest) {
+                        if (polyOwner >= 0 && polyOwner != nearest
+                            && wTileLL.valid) {
                             // Push old nearest to second, install polygon
                             // owner as new nearest. Recompute its
                             // plate-local coords.
+                            // 2026-05-05: SPHERE MIGRATION - sphere-based
+                            // distance + tangent-plane local coords.
                             second = nearest;
                             d2Sq = d1Sq;
                             nearest = polyOwner;
                             const Plate& po = plates[
                                 static_cast<std::size_t>(nearest)];
-                            float dx = wx - po.cx;
-                            float dy = wy - po.cy;
-                            if (cylSim) {
-                                if (dx >  0.5f) { dx -= 1.0f; }
-                                if (dx < -0.5f) { dx += 1.0f; }
-                            }
-                            const float cs = std::cos(po.rot);
-                            const float sn = std::sin(po.rot);
-                            lxNearest = (dx * cs + dy * sn) / po.aspect;
-                            lyNearest = (-dx * sn + dy * cs) * po.aspect;
-                            d1Sq = (lxNearest * lxNearest
-                                    + lyNearest * lyNearest)
-                                / (po.weight * po.weight);
+                            const aoc::map::gen::LatLon plateLL{
+                                po.latDeg, po.lonDeg};
+                            const float h = aoc::map::gen::haversineRadians(
+                                tileLatLon, plateLL);
+                            d1Sq = (h * h) / (po.weight * po.weight);
+                            const float poLatRad =
+                                po.latDeg * 0.01745329252f;
+                            float dLonDeg =
+                                tileLatLon.lonDeg - po.lonDeg;
+                            if (dLonDeg >  180.0f) { dLonDeg -= 360.0f; }
+                            if (dLonDeg < -180.0f) { dLonDeg += 360.0f; }
+                            const float dLatDeg =
+                                tileLatLon.latDeg - po.latDeg;
+                            lxNearest = (dLonDeg * 0.01745329252f)
+                                * std::cos(0.5f * (tileLatRad + poLatRad));
+                            lyNearest = dLatDeg * 0.01745329252f;
                         }
                     }
                     if (nearest < 0) { edgeFalloff = 0.0f; }
@@ -4483,7 +4825,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // bumps (eroded). This creates the Hawaiian-Emperor
                     // chain pattern — a line of decreasing-elevation
                     // islands trailing back along the plate's path.
-                    {
+                    if (nearest >= 0) {
                         const Plate& tp = plates[static_cast<std::size_t>(nearest)];
                         const std::size_t trailLen = tp.hotspotTrail.size();
                         for (std::size_t k = 0; k < trailLen; ++k) {

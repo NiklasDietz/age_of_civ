@@ -9,6 +9,7 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/gen/Noise.hpp"
 #include "aoc/map/gen/Plate.hpp"
+#include "aoc/map/gen/SphereGeometry.hpp"
 
 #include <algorithm>
 #include <array>
@@ -130,44 +131,54 @@ void runPlateIdStash(HexGrid& grid, bool cylindrical,
             }
             // Fallback: Voronoi nearest-center for tiles outside all
             // polygons (gaps from polygon under-reach).
+            // 2026-05-05: SPHERE MIGRATION - rank plates by haversine
+            // distance on the unit sphere. Tiles whose warped position
+            // falls outside the Mollweide ellipse (polar voids) keep
+            // the default plateId (0xFF unowned); downstream renders
+            // them as polar ocean.
+            const aoc::map::gen::MollweideInverseResult tileLL =
+                aoc::map::gen::mollweideInverse(pwx, pwy);
+            if (!tileLL.valid) { continue; }
+            const aoc::map::gen::LatLon tileLatLon = tileLL.coord;
             float d1Sq = 1e9f;
             int32_t nearest = -1;
             for (std::size_t pi = 0; pi < plates.size(); ++pi) {
                 const Plate& p = plates[pi];
-                const float cs = std::cos(p.rot);
-                const float sn = std::sin(p.rot);
-                const float aspectFix = static_cast<float>(width)
-                    / static_cast<float>(height);
-                auto seedDsq = [&](float sx, float sy) {
-                    float dx = pwx - sx;
-                    float dy = pwy - sy;
-                    if (cylSim) {
-                        if (dx >  0.5f) { dx -= 1.0f; }
-                        if (dx < -0.5f) { dx += 1.0f; }
-                    }
-                    dx *= aspectFix;
-                    float lx = (dx * cs + dy * sn) / p.aspect;
-                    float ly = (-dx * sn + dy * cs) * p.aspect;
-                    // 2026-05-04: continuous bilinearly-interpolated
-                    // noise instead of piecewise-constant
-                    // hashNoise(floor(lx*5), ...). Old version produced
-                    // visible 0.2-unit stair-step kinks in plate
-                    // boundaries -- the "rectangle/triangle with a bit
-                    // of noise" symptom. mixSeed() finalises seedX so
-                    // plates with nearby seedX values no longer produce
-                    // correlated jitter.
+                auto seedHavSq = [&](float plateLatDeg, float plateLonDeg) {
+                    // Tangent-plane local coords (radians) for noise
+                    // jitter -- matches the old plate-local lx/ly the
+                    // boundary-noise pass operated on.
+                    const float plateLatRad = plateLatDeg * 0.01745329252f;
+                    const float tileLatRad  = tileLatLon.latDeg
+                        * 0.01745329252f;
+                    float dLonDeg = tileLatLon.lonDeg - plateLonDeg;
+                    if (dLonDeg >  180.0f) { dLonDeg -= 360.0f; }
+                    if (dLonDeg < -180.0f) { dLonDeg += 360.0f; }
+                    const float dLatDeg = tileLatLon.latDeg - plateLatDeg;
+                    float lx = (dLonDeg * 0.01745329252f)
+                        * std::cos(0.5f * (tileLatRad + plateLatRad));
+                    float ly = dLatDeg * 0.01745329252f;
                     const uint64_t pseed = mixSeed(
                         static_cast<uint64_t>(p.seedX * 1.0e6f));
-                    const float n1 = smoothHashNoise(lx * 4.0f, ly * 4.0f, pseed);
-                    const float n2 = smoothHashNoise(lx * 4.0f, ly * 4.0f,
-                                                     pseed ^ 0xA5A5ULL);
+                    const float n1 = smoothHashNoise(
+                        lx * 4.0f, ly * 4.0f, pseed);
+                    const float n2 = smoothHashNoise(
+                        lx * 4.0f, ly * 4.0f, pseed ^ 0xA5A5ULL);
                     lx += (n1 - 0.5f) * 0.18f;
                     ly += (n2 - 0.5f) * 0.18f;
                     return lx * lx + ly * ly;
                 };
-                float minDsq = seedDsq(p.cx, p.cy);
+                // Nearest of plate centroid + extra seeds. extraSeeds
+                // are stored in legacy (cx, cy) unit-square coords --
+                // convert each via mollweideInverse to lat/lon before
+                // ranking.
+                float minDsq = seedHavSq(p.latDeg, p.lonDeg);
                 for (const std::pair<float, float>& es : p.extraSeeds) {
-                    const float d = seedDsq(es.first, es.second);
+                    const aoc::map::gen::MollweideInverseResult esLL =
+                        aoc::map::gen::mollweideInverse(es.first, es.second);
+                    if (!esLL.valid) { continue; }
+                    const float d = seedHavSq(esLL.coord.latDeg,
+                                              esLL.coord.lonDeg);
                     if (d < minDsq) { minDsq = d; }
                 }
                 const float dsq = minDsq / (p.weight * p.weight);
