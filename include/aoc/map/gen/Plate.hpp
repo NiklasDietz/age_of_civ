@@ -13,6 +13,8 @@
  * uses to mark suture rock type.
  */
 
+#include "aoc/map/gen/PlatePhysics.hpp"
+
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -20,6 +22,12 @@
 namespace aoc::map::gen {
 
 struct Plate {
+    // 2026-05-05: PHYSICS-FIRST REWRITE - per-plate Lagrangian state
+    // grid (10 km cells, holds crust thickness + composition + age +
+    // strain + sediment + derived elevation). Replaces orogenyLocal
+    // in later phases; coexists during the migration. See PlatePhysics.hpp.
+    PhysicsGrid grid;
+
     // 2026-05-05: SPHERE MIGRATION - lat/lon are the AUTHORITATIVE
     // plate position. The legacy (cx, cy) unit-square coords are
     // computed from (latDeg, lonDeg) via Mollweide projection at

@@ -74,13 +74,23 @@ void runClimateBiomePass(HexGrid& grid,
     // Cap per continent stays at 8 % so no continent over-spends.
     {
         // Step 1: BFS connected components of land tiles
-        constexpr int32_t MIN_CONTINENT_TILES = 50;
+        // 2026-05-05 Phase 8: 50 -> 20 to admit smaller continent
+        // components into the mountain-pass pool. Stuck-zero seeds
+        // (s99) had real-physics peaks on continents below the 50
+        // threshold so all peaks were excluded.
+        constexpr int32_t MIN_CONTINENT_TILES = 20;
         // 2026-05-05: SPHERE MIGRATION recalibration - lowered thresholds
         // 0.08 -> 0.07, 0.06 -> 0.05, ridge 0.04 -> 0.035 to compensate
         // for ~22% polar-void area that no longer accumulates orogeny.
         // Mountain% recovers from 3.88 -> ~5.0 (target 4-7).
-        constexpr float   ORO_SEED_THRESHOLD  = 0.07f;
-        constexpr float   ORO_CHAIN_THRESHOLD = 0.05f;
+        // 2026-05-05 Phase 9: 0.07 -> 0.05 (seed) and 0.05 -> 0.04
+        // (chain) to lift marginal-physics seeds whose peaks barely
+        // cross the 4500 m biome floor. With remap z=4500 -> oro=0,
+        // 0.05 corresponds to z=4650 m (alpine baseline) -- still
+        // physically a mountain. Boosts non-zero-seed count and
+        // lifts mean mtn_pct closer to Earth-target band.
+        constexpr float   ORO_SEED_THRESHOLD  = 0.05f;
+        constexpr float   ORO_CHAIN_THRESHOLD = 0.04f;
         constexpr float   ORO_LINEAR_NEIGH    = 0.05f;
         constexpr float   LINEAR_BONUS        = 0.02f;
         constexpr int32_t CHAIN_ITERATIONS    = 3;
@@ -218,6 +228,11 @@ void runClimateBiomePass(HexGrid& grid,
             // accumulating orogeny. Lifts mean mountain% back into 4-7.
             compCap[compIdx] = static_cast<std::size_t>(
                 static_cast<double>(compSize) * 0.12);
+            // 2026-05-05 Phase 8: floor compCap at 1 so small
+            // continents can host at least one mountain.
+            if (compCap[compIdx] == 0u && compSize > 0u) {
+                compCap[compIdx] = 1u;
+            }
 
             // Build (key, tileIdx) pairs where key = orogeny + linear
             // bonus. Linear-feature bonus: if two opposite hex-neighbours
@@ -266,6 +281,13 @@ void runClimateBiomePass(HexGrid& grid,
             const std::size_t seedCeil = static_cast<std::size_t>(
                 static_cast<double>(compSize) * 0.030);
             seedQ = std::clamp(seedQ, seedFloor, seedCeil);
+            // 2026-05-05 Phase 8: floor seedQ at 1 for any qualifying
+            // continent (compSize >= MIN_CONTINENT_TILES). Without
+            // this, components below ~67 tiles get seedQ=0 (since
+            // 0.015 * 66 = 0.99 floors to 0). Stuck-zero seeds (s99)
+            // had real-physics peaks on small continents that never
+            // got a single seed mountain.
+            if (seedQ == 0u && compSize > 0u) { seedQ = 1u; }
             if (seedQ == 0 || seedQ >= compSize) { continue; }
             std::nth_element(
                 compOroIdx.begin(),
