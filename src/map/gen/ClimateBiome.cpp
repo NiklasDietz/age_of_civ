@@ -292,17 +292,9 @@ void runClimateBiomePass(HexGrid& grid,
             // crossed the cutoff. The 94th-percentile gate below already
             // limits absolute mountain count, so a lower minimum cutoff
             // simply lets coastal subduction tiles enter the mountain
-            // pool and compete with collision sutures naturally.
-            // Mountain check: rank-based top-5 % set membership.
-            // Static threshold also enforced so genuinely flat tiles
-            // (e.g. ocean islands accidentally above water threshold)
-            // never become mountain even if they fall in the top
-            // quota due to small map sizes.
-            // 2026-05-06 P5.2/P5.3: mountain status is single physical
-            // threshold. Upstream (MapGenerator world-frame elevation
-            // pass) writes orogeny[]=1.0f iff SphereField surface
-            // elevation > MOUNTAIN_THRESHOLD_M=4000m, else 0. Tile
-            // becomes Mountain whenever orogeny is set.
+            // Mountain assignment: orogeny[]==1.0f iff SphereField
+            // surface elevation > MOUNTAIN_THRESHOLD_M (4000 m), set
+            // upstream by the world-frame elevation pass.
             if (oroAt > 0.5f) {
                 grid.setTerrain(index, TerrainType::Mountain);
                 grid.setElevation(index, 3);

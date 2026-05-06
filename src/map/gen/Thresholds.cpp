@@ -82,9 +82,8 @@ void runThresholdComputation(HexGrid& grid, MapType mapType,
         }
     }
 
-    // 2026-05-06 P5.1: percentile mountainCutoff deleted; mountain
-    // status now decided by SphereField bilinearSample > 4000m
-    // (P5.2/P5.3 wires).
+    // Mountain status decided downstream by SphereField bilinearSample
+    // > 4000 m (MOUNTAIN_THRESHOLD_M); legacy percentile cutoff dead.
     out.mountainThreshold = 0.0f;
 }
 
