@@ -52,16 +52,16 @@ struct PhysicsConstants {
     static constexpr float rhoOceanicKgM3     = 2900.0f;
     /// Mantle (peridotite) density (Turcotte & Schubert 2014, table 2.1).
     static constexpr float rhoMantleKgM3      = 3300.0f;
-    /// Mantle reference depth datum (m below sea level). Origin-of-
-    /// magnitude: with 7 km basaltic oceanic crust + rho_o/rho_m =
-    /// 2900/3300, Airy gives z_rock = 7000 * (1 - 2900/3300) = 849 m,
-    /// so cell elevation = 849 - 2900 = -2051 m. Real Earth mid-ocean
-    /// is -2500 to -2800 m; current datum produces ~20 % shallower
-    /// abyssal plain. Datum was historically labelled "tuned for
-    /// -2500 m" but math doesn't hit -2500 (would need datum=2350).
-    /// Left at 2900 because audit baseline locked here; Phase 13b
-    /// only corrected the comment, did not retune.
-    static constexpr float mantleDatumM       = 2900.0f;
+    /// Mantle reference depth datum (m below sea level).
+    /// 2026-05-06 P6.2 rederivation:
+    ///   Airy isostasy: surface elevation above datum
+    ///       = h_crust * (1 - rho_crust / rho_mantle)
+    ///   Oceanic: 7000 * (1 - 2900/3300) = 849 m above datum.
+    ///   Real Earth mid-ocean depth (Turcotte & Schubert 2014, ch. 2):
+    ///       z_ocean = -2700 m below sea level.
+    ///   Datum = 849 - (-2700) = 3549 m.
+    /// Replaces legacy 2900.0f (admitted off by ~700 m).
+    static constexpr float mantleDatumM       = 3549.0f;
     /// Initial continental crust thickness (km). Earth-mean is ~35 km.
     static constexpr float initialContinentalThicknessKm = 35.0f;
     /// Initial oceanic crust thickness (km). Earth-mean is ~7 km.

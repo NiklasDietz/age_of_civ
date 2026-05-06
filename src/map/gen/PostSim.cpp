@@ -59,15 +59,11 @@ void runPostSimPasses(MapGenContext& ctx) {
                 if (dx >  0.5f) { dx -= 1.0f; }
                 if (dx < -0.5f) { dx += 1.0f; }
             }
-            const float dist = std::sqrt(dx * dx + dy * dy);
-            const float radial = std::clamp(dist / 0.40f, 0.0f, 1.0f);
-            float age;
-            if (p.landFraction > 0.40f) {
-                age = p.crustAge * (1.0f - radial * 0.30f);
-            } else {
-                age = p.crustAge * (1.0f - radial * 0.60f);
-            }
-            crustAgeTile[static_cast<std::size_t>(idx)] = std::max(0.0f, age);
+            // 2026-05-06 P4.3h-c-5: crustAge field deleted; per-tile
+            // crust age unsupported by legacy 2D state. Default to 0.
+            // P6 will recompute from SphereField crustAgeMy.
+            (void)dx; (void)dy; (void)p;
+            crustAgeTile[static_cast<std::size_t>(idx)] = 0.0f;
         }
     }
 
@@ -263,14 +259,12 @@ void runPostSimPasses(MapGenContext& ctx) {
             const float bnLen = std::sqrt(bx * bx + by * by);
             if (bnLen < 1e-4f) { continue; }
             bx /= bnLen; by /= bnLen;
-            const float relVx = A.vx - B.vx;
-            const float relVy = A.vy - B.vy;
-            const float closingRate = relVx * bx + relVy * by;
-            if (closingRate > 0.04f) {
-                marginTypeTile[static_cast<std::size_t>(idx)] = 1;
-            } else {
-                marginTypeTile[static_cast<std::size_t>(idx)] = 2;
-            }
+            // 2026-05-06 P4.3h-a: vx/vy deleted; closingRate from
+            // legacy 2D motion no longer available. Default margin
+            // type to 2 (passive). Phase 6 will recompute from
+            // SphereField convergenceRateRadPerMy.
+            (void)bx; (void)by;
+            marginTypeTile[static_cast<std::size_t>(idx)] = 2;
         }
     }
 

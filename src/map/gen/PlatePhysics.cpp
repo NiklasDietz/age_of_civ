@@ -180,8 +180,9 @@ void initialisePlatePhysicsGrid(Plate& plate, std::uint64_t seed) {
             // Sample the same crust-mask noise the legacy code used so
             // continental shapes match the existing aesthetic. Replace
             // when a more principled crust composition model lands.
-            const float lxField = lxRad * 5.0f + plate.seedX;
-            const float lyField = lyRad * 5.0f + plate.seedY;
+            // 2026-05-06 P4.3g-b: seedX/seedY replaced by lat/lon-derived offset.
+            const float lxField = lxRad * 5.0f + plate.latDeg * 137.0f;
+            const float lyField = lyRad * 5.0f + plate.lonDeg * 137.0f;
             aoc::Random crustRng(static_cast<std::uint32_t>(rng));
             const float crustValue = fractalNoise(
                 lxField, lyField, 4, 2.0f, 0.55f, crustRng);

@@ -17,7 +17,7 @@
 namespace aoc::map::gen {
 
 void runThresholdComputation(HexGrid& grid, MapType mapType,
-                             float effectiveWaterRatio, float mountainRatio,
+                             float effectiveWaterRatio,
                              const std::vector<float>& elevationMap,
                              ThresholdResult& out) {
     const int32_t width  = grid.width();
@@ -82,13 +82,10 @@ void runThresholdComputation(HexGrid& grid, MapType mapType,
         }
     }
 
-    std::vector<float> sortedMountainElev(out.mountainElev);
-    std::sort(sortedMountainElev.begin(), sortedMountainElev.end());
-    std::size_t mountainCutoff = sortedMountainElev.size() -
-        static_cast<std::size_t>(
-            mountainRatio * static_cast<float>(sortedMountainElev.size()));
-    out.mountainThreshold = sortedMountainElev[
-        std::min(mountainCutoff, sortedMountainElev.size() - 1)];
+    // 2026-05-06 P5.1: percentile mountainCutoff deleted; mountain
+    // status now decided by SphereField bilinearSample > 4000m
+    // (P5.2/P5.3 wires).
+    out.mountainThreshold = 0.0f;
 }
 
 } // namespace aoc::map::gen

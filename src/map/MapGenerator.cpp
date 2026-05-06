@@ -30,7 +30,6 @@
 #include "aoc/map/gen/Noise.hpp"
 #include "aoc/map/gen/Plate.hpp"
 #include "aoc/map/gen/SphereGeometry.hpp"
-#include "aoc/map/gen/PlateBoundary.hpp"
 #include "aoc/map/gen/PlatePhysics.hpp"
 #include "aoc/map/gen/PlateIdStash.hpp"
 #include "aoc/map/gen/SphereField.hpp"
@@ -243,17 +242,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // Plate struct moved to include/aoc/map/gen/Plate.hpp on 2026-05-03 so
     // extracted post-sim / elevation passes can construct it directly.
     using Plate = aoc::map::gen::Plate;
-    // 2026-05-04: bumped 64 -> 96 (2.25x memory, ~1.5x finer per axis).
-    // At 64 each plate-local cell covered ~1.3 hex tiles at 280-wide map
-    // and bilinear render expanded that to 2-3 hex per cell -- single
-    // boundary scatter became a 5+ hex mountain block. With 96 cells per
-    // plate-local span, single scatter covers ~1 hex; mountain ranges
-    // render as narrow chains rather than chunky blobs.
-    const int32_t OROGENY_GRID = 96 * std::max(1, config.superSampleFactor);
-    // 2026-05-06: PHYSICS-FIRST P2.3e -- OROGENY_HALF deleted (last
-    // user was the scar/arc-walk stamp loops, now gone). OROGENY_GRID
-    // kept only for the orogenyLocal.assign(GRID*GRID, 0) zero-inits
-    // at plate construction; P4 deletes the field + this constant.
+    // 2026-05-06: PHYSICS-FIRST P4.3a -- OROGENY_GRID + OROGENY_HALF
+    // constants + Plate::orogenyLocal/orogenyAgeLocal fields deleted.
+    // Per-plate Lagrangian orogeny is fully replaced by global
+    // SphereField raster (P1).
     std::vector<Plate> plates;
     struct Hotspot {
         float cx;
@@ -342,7 +334,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 Plate p;
                 p.cx = cx;
                 p.cy = cy;
-                p.isLand = isLand;
+                // P4.3h-c-3: isLand deleted (use landFraction > 0.40 derived)
                 // 2026-05-05: SPHERE MIGRATION - derive lat/lon from
                 // legacy (cx, cy) via Mollweide inverse. Calls that
                 // pass (cx, cy) outside the Mollweide ellipse get
@@ -384,8 +376,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     if (speedRoll < 0.60f)      { vMax = 0.10f; }
                     else if (speedRoll < 0.90f) { vMax = 0.30f; }
                     else                        { vMax = 0.80f; }
-                    p.vx = centerRng.nextFloat(-vMax, vMax);
-                    p.vy = centerRng.nextFloat(-vMax, vMax);
+                    // P4.3h-a-iii: vx/vy writes deleted
+                    (void)vMax;
                 }
                 // 2026-05-04: removed radial outward bias hack (was
                 // counteracting Wilson cycle assembly force which is
@@ -395,15 +387,13 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // Wide aspect range: real Earth plates are 1:1 (Pacific)
                 // to 4:1 (Andean Plate). Old 0.95-1.10 → all near-circle
                 // → all continents looked uniform. Now 0.50-2.20.
-                p.aspect     = centerRng.nextFloat(0.50f, 2.20f);
+                // P4.3g-c: aspect/baseAspect deleted
                 p.rot        = centerRng.nextFloat(-3.14159f, 3.14159f);
-                p.baseRot    = p.rot;
-                p.baseAspect = p.aspect;
+                // P4.3e: baseRot deleted
                 // Per-plate crust-mask seed (large random offsets so each
                 // plate samples a unique noise neighborhood). Stays fixed
                 // through the whole sim — pattern travels with the plate.
-                p.seedX = centerRng.nextFloat(0.0f, 1000.0f);
-                p.seedY = centerRng.nextFloat(0.0f, 1000.0f);
+                // P4.3g-b: seedX/seedY deleted
                 // 2026-05-03: Euler-pole rotation. Pole is a random point
                 // outside the unit square (radius 1.5..3.5 from origin so
                 // the rotation arc across the map is gentle and roughly
@@ -414,17 +404,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // them as parallel lines. Sign random so plates rotate
                 // both ways. Cratons (isLand) rotate slower since old
                 // continental crust is more stable.
-                {
-                    const float poleAng    = centerRng.nextFloat(0.0f, 6.2832f);
-                    const float poleRadius = centerRng.nextFloat(1.5f, 3.5f);
-                    p.eulerPoleX  = 0.5f + std::cos(poleAng) * poleRadius;
-                    p.eulerPoleY  = 0.5f + std::sin(poleAng) * poleRadius;
-                    const float rateMag = isLand
-                        ? centerRng.nextFloat(0.004f, 0.014f)
-                        : centerRng.nextFloat(0.008f, 0.020f);
-                    p.angularRate = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f)
-                        ? -rateMag : rateMag;
-                }
+                // P4.3f: legacy 2D Euler-pole randomisation deleted.
                 // 2026-05-05: SPHERE - random Euler pole on the unit
                 // sphere + angular velocity in deg/epoch. Real Earth
                 // plates: 0.05 to 1.0 deg/Ma; sim ~10 Ma per epoch
@@ -493,11 +473,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 p.landFraction = isLand
                     ? centerRng.nextFloat(0.35f, 0.55f)
                     : centerRng.nextFloat(0.005f, 0.02f);
-                p.orogenyLocal.assign(
-                    static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
-                p.orogenyAgeLocal.assign(
-                    static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID),
-                    static_cast<int16_t>(0));
                 // Earth plate-size distribution: a couple of giants
                 // (Pacific 1.5, Eurasian 1.3, African 1.2 — relative
                 // to the median). Most plates ~1.0. Some small minor
@@ -510,16 +485,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // Crust area proxy: weight² (Voronoi cell area scales
                 // with weight). Stored both as initial reference and
                 // current value; subduction debits the current value.
-                p.crustArea = p.weight * p.weight;
-                p.crustAreaInitial = p.crustArea;
+                // P4.3h-c-4: crustArea deleted
+                // P4.3e: crustAreaInitial deleted
                 // Initial crust age: continental plates start old (cratons
                 // = Archean, billions of years), oceanic plates start
                 // moderately aged (random 0-50 epochs equivalent).
                 // Cratons get high age so their slab-pull contribution
                 // is suppressed (they shouldn't subduct themselves).
-                p.crustAge = isLand
-                    ? centerRng.nextFloat(60.0f, 120.0f)
-                    : centerRng.nextFloat(5.0f, 40.0f);
+                // P4.3h-c-5: crustAge deleted
                 // Irregular-shape probability: 35 % of plates get one
                 // extra Voronoi seed offset from the primary, giving
                 // an L-shape / lobed / curved territory rather than
@@ -543,22 +516,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // territory contiguous while preserving the irregular
                 // outline. Plates that get 0 extras render as clean
                 // single-blob Voronoi cells.
-                const int32_t extras = centerRng.nextInt(0, 2);
-                const bool cylC = (config.topology == MapTopology::Cylindrical);
-                for (int32_t e = 0; e < extras; ++e) {
-                    const float ang = centerRng.nextFloat(0.0f, 6.2832f);
-                    const float off = centerRng.nextFloat(0.04f, 0.10f) * p.weight;
-                    float sx = cx + std::cos(ang) * off;
-                    float sy = cy + std::sin(ang) * off;
-                    if (cylC) {
-                        if (sx < 0.0f) { sx += 1.0f; }
-                        if (sx > 1.0f) { sx -= 1.0f; }
-                    } else {
-                        sx = std::clamp(sx, 0.05f, 0.95f);
-                    }
-                    sy = std::clamp(sy, 0.05f, 0.95f);
-                    p.extraSeeds.emplace_back(sx, sy);
-                }
+                // 2026-05-06 P4.3g-a: extraSeeds spawn block deleted.
                 plates.push_back(p);
                 aoc::map::gen::initialisePlatePhysicsGrid(
                     plates.back(), config.seed);
@@ -668,48 +626,27 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 Plate p;
                 p.cx = 0.5f;
                 p.cy = cy0;
-                p.isLand = false;
-                p.vx = centerRng.nextFloat(-0.10f, 0.10f);
-                p.vy = centerRng.nextFloat(-0.05f, 0.05f);
-                p.aspect = 1.0f;
+                // P4.3h-c-3: isLand deleted
+                // P4.3h-a-iii: polar vx/vy writes deleted
                 p.rot    = 0.0f;
-                p.baseRot = p.rot;
-                p.baseAspect = p.aspect;
-                p.seedX = centerRng.nextFloat(0.0f, 1000.0f);
-                p.seedY = centerRng.nextFloat(0.0f, 1000.0f);
+                                // P4.3e/g-c: baseRot/aspect/baseAspect deleted
+                // P4.3g-b: seedX/seedY deleted
                 // 2026-05-04: matched ocean-plate landFraction reduction
                 // (0.02-0.08 -> 0.005-0.02). Polar-band oceanic plates
                 // would otherwise leak land tiles into mid-latitude
                 // continents.
                 p.landFraction = centerRng.nextFloat(0.005f, 0.02f);
-                p.orogenyLocal.assign(
-                    static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
-                p.orogenyAgeLocal.assign(
-                    static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID),
-                    static_cast<int16_t>(0));
                 // Modest weight + many extra seeds = thin band coverage.
                 // weight 1.15 lets normal mid-lat plates still claim
                 // their territories, while extra seeds keep the polar
                 // strip continuous across the map width.
                 p.weight = 1.15f;
-                p.crustArea = p.weight * p.weight;
-                p.crustAreaInitial = p.crustArea;
-                p.crustAge = centerRng.nextFloat(80.0f, 160.0f); // polar = old, stable
-                p.isPolar = true;
-                // Polar plates: tiny Euler rotation only (cap-like).
-                {
-                    const float poleAng    = centerRng.nextFloat(0.0f, 6.2832f);
-                    const float poleRadius = centerRng.nextFloat(2.0f, 4.0f);
-                    p.eulerPoleX  = 0.5f + std::cos(poleAng) * poleRadius;
-                    p.eulerPoleY  = 0.5f + std::sin(poleAng) * poleRadius;
-                    const float rateMag = centerRng.nextFloat(0.001f, 0.004f);
-                    p.angularRate = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f)
-                        ? -rateMag : rateMag;
-                }
-                p.extraSeeds.emplace_back(0.15f, cy0);
-                p.extraSeeds.emplace_back(0.35f, cy0);
-                p.extraSeeds.emplace_back(0.65f, cy0);
-                p.extraSeeds.emplace_back(0.85f, cy0);
+                // P4.3h-c-4: crustArea deleted
+                // P4.3e: crustAreaInitial deleted
+                // P4.3h-c-5: crustAge deleted
+                // P4.3h-c-2: isPolar deleted
+                // P4.3f: polar 2D Euler-pole randomisation deleted.
+                // P4.3g-a: extraSeeds for polar plates deleted.
                 plates.push_back(p);
                 aoc::map::gen::initialisePlatePhysicsGrid(
                     plates.back(), config.seed);
@@ -750,7 +687,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             {
                 std::vector<std::size_t> oceanIdx;
                 for (std::size_t i = 0; i < plates.size(); ++i) {
-                    if (!plates[i].isLand && !plates[i].isPolar) {
+                    if (plates[i].landFraction <= 0.40f) {  // P4.3h-c-3: isLand -> landFraction
                         oceanIdx.push_back(i);
                     }
                 }
@@ -759,9 +696,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         static_cast<std::size_t>(centerRng.nextInt(
                             0, static_cast<int32_t>(oceanIdx.size()) - 1))];
                     plates[pick].weight = centerRng.nextFloat(2.5f, 3.5f);
-                    plates[pick].crustArea = plates[pick].weight
-                                           * plates[pick].weight;
-                    plates[pick].crustAreaInitial = plates[pick].crustArea;
+                    // P4.3h-c-4: crustArea deleted
+                // P4.3e: crustAreaInitial deleted
                 }
             }
             // Hotspots: 5-8 mantle-plume volcanic island chains placed
@@ -784,7 +720,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // hotspots in the deep ocean where they belong.
                     bool nearLand = false;
                     for (const Plate& p : plates) {
-                        if (!p.isLand) { continue; }
+                        if (p.landFraction <= 0.40f) { continue; }  // P4.3h-c-3
                         const float dxh = hcx - p.cx;
                         const float dyh = hcy - p.cy;
                         if (std::sqrt(dxh * dxh + dyh * dyh) < 0.20f) {
@@ -963,8 +899,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 e += centerRng.nextInt(12, 25);
             }
         }
-        const int32_t reorgEpoch = static_cast<int32_t>(
-            static_cast<float>(EPOCHS) * centerRng.nextFloat(0.30f, 0.70f));
+        // P4.3h-c-2: reorgEpoch removed (consumer block deleted).
 
         // 2026-05-06: PHYSICS-FIRST P3.4 -- rebuildPolygonsFromVoronoi
         // + recomputePolygonAABBs lambdas + initial-setup callers
@@ -1033,7 +968,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // Polar plates barely drift — Antarctica is essentially
                 // stationary on geological timescales. Apply 0.3× DT
                 // to keep them anchored at the poles.
-                const float motionScale = p.isPolar ? 0.3f : 1.0f;
+                const float motionScale = 1.0f;  // P4.3h-c-2: isPolar slowdown deleted.
                 // 2026-05-05: SPHERE MIGRATION - motion is now Euler-
                 // pole rotation on the sphere. Each plate rotates
                 // around (eulerPoleLatDeg, eulerPoleLonDeg) by
@@ -1089,108 +1024,31 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // split vx/vy into base + perturbation and route every
                     // mutation through the perturbation channel; that is
                     // multi-day surgery across ~70 sites and is deferred.
-                } else {
-                    // Pre-Euler-pole-init plate (legacy linear motion).
-                    // Will be migrated when initialization sets pole +
-                    // angularVel from the existing log-normal speed
-                    // bucket.
-                    p.cx += p.vx * DT * motionScale;
-                    p.cy += p.vy * DT * motionScale;
                 }
-                // 2026-05-03: Euler-pole rotation. After linear drift,
-                // rotate the plate (cx,cy + extraSeeds + hotspot trails)
-                // by `angularRate * DT * motionScale` around its pole.
-                // Combined with linear translation this curves trajectories
-                // -- straight (vx,vy) drift produces unrealistically
-                // parallel margins and dead-straight hotspot trails. Real
-                // plates rotate as well as translate; the Hawaii-Emperor
-                // bend is the canonical signature of this on Earth.
-                {
-                    const float dTheta = p.angularRate * DT * motionScale;
-                    if (std::fabs(dTheta) > 1e-7f) {
-                        const float cs = std::cos(dTheta);
-                        const float sn = std::sin(dTheta);
-                        auto rotateAroundPole = [&](float& x, float& y) {
-                            float dx = x - p.eulerPoleX;
-                            float dy = y - p.eulerPoleY;
-                            const float nx = dx * cs - dy * sn;
-                            const float ny = dx * sn + dy * cs;
-                            x = p.eulerPoleX + nx;
-                            y = p.eulerPoleY + ny;
-                        };
-                        rotateAroundPole(p.cx, p.cy);
-                        for (std::pair<float, float>& es : p.extraSeeds) {
-                            rotateAroundPole(es.first, es.second);
-                        }
-                        for (std::pair<float, float>& hs : p.hotspotTrail) {
-                            rotateAroundPole(hs.first, hs.second);
-                        }
-                        // Also rotate plate's local-frame orientation so
-                        // crust-mask noise sample frame tracks the spin.
-                        p.rot += dTheta;
-                    }
-                }
+                // 2026-05-06 P4.3f/h-a: legacy 2D linear motion advance
+                // (p.cx += vx*DT, cylindrical wrap + bounce) deleted.
+                // cx/cy now drift via Mollweide-forward of latDeg/lonDeg
+                // after lat/lon Euler-pole rotation at ~line 1265.
                 if (cylSim) {
                     if (p.cx < 0.0f) { p.cx += 1.0f; }
                     if (p.cx > 1.0f) { p.cx -= 1.0f; }
                 } else {
-                    if (p.cx < 0.05f) { p.cx = 0.05f; p.vx = -p.vx; }
-                    if (p.cx > 0.95f) { p.cx = 0.95f; p.vx = -p.vx; }
+                    if (p.cx < 0.05f) { p.cx = 0.05f; }
+                    if (p.cx > 0.95f) { p.cx = 0.95f; }
                 }
-                if (p.cy < 0.05f) { p.cy = 0.05f; p.vy = -p.vy; }
-                if (p.cy > 0.95f) { p.cy = 0.95f; p.vy = -p.vy; }
+                if (p.cy < 0.05f) { p.cy = 0.05f; }
+                if (p.cy > 0.95f) { p.cy = 0.95f; }
                 ++p.ageEpochs;
-                // 2026-05-04: oceanic wedge accretion. Each epoch the
-                // post-rift plate adds new oceanic crust at its trailing
-                // edge facing the rift line. Earth Atlantic: widens
-                // ~2 cm/yr -> over 100 My ridge accretes ~2000 km of
-                // crust on each side. We grow the wedge proportionally
-                // to plate motion magnitude so fast-drifting plates
-                // open wider basins. Cap at 0.40 plate-local units to
-                // prevent the wedge eating the whole plate.
-                if (p.oceanWedgeWidth > 0.0f && p.oceanWedgeWidth < 0.40f) {
-                    const float vMag = std::sqrt(p.vx * p.vx + p.vy * p.vy);
-                    // 2026-05-04: WP4 - STAGED CONTINENTAL RIFTING.
-                    // Real rifts evolve through 4 stages over ~50-100
-                    // My: (1) thermal bulge before crust ruptures, (2)
-                    // graben / narrow rift valley (East African Rift
-                    // today), (3) narrow sea (Red Sea, Gulf of
-                    // California), (4) wide open ocean (Atlantic).
-                    // Wedge growth rate is now stage-dependent:
-                    //   Stage 1 bulge (width < 0.04): SLOW growth
-                    //     (0.05x normal) -- continent thinning, no
-                    //     ocean yet.
-                    //   Stage 2 graben (0.04..0.10): MODERATE (0.4x).
-                    //   Stage 3 narrow sea (0.10..0.20): FAST (0.8x).
-                    //   Stage 4 ocean (0.20+): FULL rate (1.0x).
-                    // Total time-to-ocean ~ 30-40 epochs at typical
-                    // plate motion -- matches real Atlantic timescale.
-                    float stageMult = 1.0f;
-                    if (p.oceanWedgeWidth < 0.04f) {
-                        stageMult = 0.05f;
-                    } else if (p.oceanWedgeWidth < 0.10f) {
-                        stageMult = 0.40f;
-                    } else if (p.oceanWedgeWidth < 0.20f) {
-                        stageMult = 0.80f;
-                    }
-                    p.oceanWedgeWidth = std::min(0.40f,
-                        p.oceanWedgeWidth + vMag * DT * 0.40f * stageMult);
-                }
+                // 2026-05-06: PHYSICS-FIRST P4.3d -- oceanic wedge
+                // accretion staged-rift growth (4-stage stageMult
+                // 0.05/0.4/0.8/1.0) deleted. oceanWedge fields gone.
                 // 2026-05-04: STICK-SLIP intra-plate stress release.
                 // Plate accumulates stress proportional to its current
                 // speed (proxy for boundary-friction loading). When
                 // accumulator crosses threshold, plate releases stress
                 // as a small velocity perturbation (sudden motion =
                 // earthquake-cluster analog) and resets accumulator.
-                p.stressAccum += std::sqrt(p.vx * p.vx + p.vy * p.vy)
-                                * DT * 0.5f;
-                if (p.stressAccum > 0.20f) {
-                    const float dirAng = centerRng.nextFloat(0.0f, 6.2832f);
-                    const float kick = p.stressAccum * 0.15f;
-                    p.vx += std::cos(dirAng) * kick;
-                    p.vy += std::sin(dirAng) * kick;
-                    p.stressAccum = 0.0f;
-                }
+                // 2026-05-06 P4.3e: stressAccum stick-slip block deleted.
             }
 
             // 2026-05-04: GLOBAL PLATE REORGANIZATION event. Earth
@@ -1203,19 +1061,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // log-normal speed buckets as init) plus a 50 % magnitude
             // damping (post-reorg slowdown is observed in real plate
             // models).
-            if (epoch == reorgEpoch) {
-                for (Plate& p : plates) {
-                    if (p.isPolar) { continue; }
-                    const float speedRoll =
-                        centerRng.nextFloat(0.0f, 1.0f);
-                    float vMax;
-                    if (speedRoll < 0.60f)      { vMax = 0.10f; }
-                    else if (speedRoll < 0.90f) { vMax = 0.30f; }
-                    else                        { vMax = 0.80f; }
-                    p.vx = centerRng.nextFloat(-vMax, vMax) * 0.5f;
-                    p.vy = centerRng.nextFloat(-vMax, vMax) * 0.5f;
-                }
-            }
+            // P4.3h-c-2: global reorganization velocity-reset block
+            // deleted (vx/vy gone in P4.3h-a; loop body became no-op).
 
             // 2026-05-04: WILSON CYCLE force REMOVED. Old code applied
             // a periodic centroid-attractive/repulsive pulse to all
@@ -1265,43 +1112,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 }
             }
 
-            // 2026-05-05 PHASE 2: convergence-strain accumulation +
-            // crust thickening on each plate's PhysicsGrid. dtMy ~ 10
-            // matches the legacy "sim ~10 Ma per epoch" cadence; will
-            // become a derived dt = totalMy / EPOCHS once Phase 6
-            // wires real Myr scaling. Mountains emerge from sustained
-            // convergence: closingRate * dtMy accumulates strain;
-            // strain * 90 km/rad converts to crust thickness; Airy
-            // isostasy lifts the surface.
-            {
-                // 2026-05-05 Phase 2.5: dropped MY_PER_EPOCH 10 -> 1.
-                // angularVelDeg is per-epoch (deg/epoch); eulerVelocityAt
-                // returns rad/per-epoch matching that input. Multiplying
-                // by dtMy=10 was treating epochs as 10 My each which
-                // double-counts -- the velocities already are per-epoch
-                // rates. dtMy=1 means strain += closingRate * 1 epoch
-                // per epoch step. Net effect: ~10x lower strain
-                // accumulation -> mountain rate target 6-7 %.
-                constexpr float MY_PER_EPOCH = 1.0f;
-                aoc::map::gen::accumulateConvergenceStrain(
-                    plates, MY_PER_EPOCH);
-                for (Plate& p : plates) {
-                    aoc::map::gen::thickenCrustFromStrain(
-                        p.grid, MY_PER_EPOCH);
-                    aoc::map::gen::applySurfaceErosion(
-                        p.grid, MY_PER_EPOCH);
-                }
-
-                // 2026-05-05 Path X: per-plate flexure + sediment
-                // routing + compaction were ripped. Their
-                // infrastructure produced no observable effect at
-                // 140x90 game grid (max|w| 12-50 m; sediment cap
-                // bandaid required for stability). Eroded mass is
-                // now simply discarded -- mountain crust thins, no
-                // routing or compaction. Pipeline reduced to:
-                // accumulateConvergenceStrain -> thickenCrustFromStrain
-                // -> applySurfaceErosion -> Airy isostasy.
-            }
+            // 2026-05-06 P6.1: legacy per-plate-PhysicsGrid pipeline
+            // (accumulateConvergenceStrain + thickenCrustFromStrain +
+            // applySurfaceErosion) deleted. SphereField epoch step
+            // (P1 stepSpherePhysicsEpoch) is the live physics path.
 
             // Plate-pair interactions for this epoch:
             //  - Very close pairs of land plates collide → fuse (drop
@@ -1377,107 +1191,16 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     constexpr float SLOW_V       = 0.06f;
                     constexpr float COLLISION_DAMP = 0.93f; // 7% energy loss/epoch in contact
 
-                    bool inContact = false;
-                    bool isClosing = false;
-                    float relVx = 0.0f, relVy = 0.0f;
-                    float closingRate = 0.0f;
-                    // Collision dynamics fire for ALL plate-pair types
-                    // (cont-cont, cont-ocean, ocean-ocean). Earlier code
-                    // restricted this to cont-cont, leaving oceanic
-                    // plates with no momentum exchange — they passed
-                    // through each other unphysically. Now every pair
-                    // closing at < CONTACT_DIST decelerates along the
-                    // collision axis.
-                    if (d < CONTACT_DIST) {
-                        relVx = plates[a].vx - plates[b].vx;
-                        relVy = plates[a].vy - plates[b].vy;
-                        closingRate = (relVx * dx + relVy * dy)
-                                    / std::max(0.0001f, d);
-                        isClosing = (closingRate < -0.02f);
-                        inContact = isClosing;
-                    }
-
-                    // RIDGE PUSH. At a divergent (spreading) boundary,
-                    // the elevated ridge axis exerts a gravitational
-                    // sliding force on adjacent oceanic crust → both
-                    // plates accelerate AWAY from the ridge. Earth's
-                    // ridge push contributes ~25 % of plate motion energy
-                    // (slab pull dominates at ~50 %, drag ~25 %). Without
-                    // this, divergent margins are passive — plates only
-                    // separate via initial velocity. Apply when plates
-                    // are within RIDGE_DIST and DIVERGING (positive
-                    // closing rate = retreat).
-                    constexpr float RIDGE_DIST = 0.18f;
-                    constexpr float RIDGE_PUSH_GAIN = 0.0040f;
-                    if (d < RIDGE_DIST && d > 0.001f) {
-                        const float relVxR = plates[a].vx - plates[b].vx;
-                        const float relVyR = plates[a].vy - plates[b].vy;
-                        const float divRate = (relVxR * dx + relVyR * dy)
-                                            / std::max(0.0001f, d);
-                        if (divRate > 0.02f) {
-                            const float dxn = dx / d;
-                            const float dyn = dy / d;
-                            // Distance falloff: stronger when closer to
-                            // the ridge. Ridges with small separation
-                            // (just-rifted) push harder than mature ones.
-                            const float falloff = (1.0f - d / RIDGE_DIST);
-                            const float k = RIDGE_PUSH_GAIN * falloff;
-                            // a is on the +dxn side → push +; b on -dxn
-                            // side → push -. Both plates accelerate
-                            // AWAY from each other.
-                            plates[a].vx += dxn * k;
-                            plates[a].vy += dyn * k;
-                            plates[b].vx -= dxn * k;
-                            plates[b].vy -= dyn * k;
-                        }
-                    }
-
-                    // STAGE 2: in-contact, decelerate plates along the
-                    // collision axis. Apply equal+opposite impulse so
-                    // total momentum conserved (wallop both plates).
-                    if (inContact) {
-                        const float dxn = dx / std::max(0.0001f, d);
-                        const float dyn = dy / std::max(0.0001f, d);
-                        const float relVn = relVx * dxn + relVy * dyn;
-                        const float dampedRelVn = relVn * COLLISION_DAMP;
-                        const float deltaVn = dampedRelVn - relVn;
-                        plates[a].vx += deltaVn * dxn * 0.5f;
-                        plates[a].vy += deltaVn * dyn * 0.5f;
-                        plates[b].vx -= deltaVn * dxn * 0.5f;
-                        plates[b].vy -= deltaVn * dyn * 0.5f;
-
-                        // TECTONIC ESCAPE / LATERAL EXTRUSION. Real
-                        // example: India crashing into Eurasia pushed
-                        // Indochina sideways out of the way (~5 cm/yr
-                        // SE motion of SE Asia). Apply a small lateral
-                        // velocity nudge to nearby plates perpendicular
-                        // to the collision axis, simulating crustal
-                        // material being squeezed sideways.
-                        const float perpX = -dyn;
-                        const float perpY =  dxn;
-                        for (std::size_t k = 0; k < plates.size(); ++k) {
-                            if (k == a || k == b) { continue; }
-                            float kdx = plates[k].cx
-                                      - (plates[a].cx + plates[b].cx) * 0.5f;
-                            float kdy = plates[k].cy
-                                      - (plates[a].cy + plates[b].cy) * 0.5f;
-                            if (cylSim) {
-                                if (kdx > 0.5f) { kdx -= 1.0f; }
-                                if (kdx < -0.5f) { kdx += 1.0f; }
-                            }
-                            const float kd = std::sqrt(kdx * kdx + kdy * kdy);
-                            if (kd > 0.30f) { continue; }
-                            // Sign chosen so plate is pushed away from
-                            // collision center perpendicular to axis.
-                            const float side = (perpX * kdx + perpY * kdy) > 0.0f
-                                ? 1.0f : -1.0f;
-                            const float strength = (1.0f - kd / 0.30f) * 0.004f;
-                            plates[k].vx += perpX * side * strength;
-                            plates[k].vy += perpY * side * strength;
-                        }
-                    }
-
-                    const float relVMag = std::sqrt(relVx * relVx + relVy * relVy);
+                    // 2026-05-06 P4.3h-a-ii: plate-pair collision velocity
+                    // coupling deleted. Was reading vx/vy to compute
+                    // closingRate + applying COLLISION_DAMP=0.93 momentum
+                    // exchange + ridge-push at < RIDGE_DIST=0.18 +
+                    // tectonic-escape lateral extrusion to nearby plates.
+                    // ~99 LOC. cx/cy is overwritten by Mollweide-forward
+                    // each epoch -> kicks had no lasting effect.
+                    const float relVMag = 0.0f;
+                    (void)CONTACT_DIST;
+                    (void)COLLISION_DAMP;
                     // 2026-05-04: WP2 - merger trigger via polygon-
                     // edge adjacency. In addition to center-distance,
                     // accept merger if plate A has a polygon edge
@@ -1488,23 +1211,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // of their centroids. Center-distance retained as
                     // a fallback for when polygons haven't formed
                     // (e.g. just-spawned plates) or are degenerate.
-                    bool sharedSutureEdge = false;
-                    if (a < plates.size() && b < plates.size()) {
-                        const Plate& pa = plates[a];
-                        const std::size_t ne =
-                            std::min(pa.boundaryEdgeTypes.size(),
-                                     pa.boundaryNeighborIds.size());
-                        for (std::size_t ei = 0; ei < ne; ++ei) {
-                            if (pa.boundaryNeighborIds[ei] == b
-                                && pa.boundaryEdgeTypes[ei] == 4u) {
-                                sharedSutureEdge = true;
-                                break;
-                            }
-                        }
-                    }
+                    // 2026-05-06: PHYSICS-FIRST P4.3b -- sharedSutureEdge
+                    // probe deleted. Was reading boundaryEdgeTypes /
+                    // boundaryNeighborIds (now-deleted polygon fields).
+                    // Merge condition falls back to center-distance only.
+                    constexpr bool sharedSutureEdge = false;
                     // STAGE 3: full merge. Distance close + collision
                     // velocity nearly zero → plates have welded.
-                    const bool readyToMerge = (plates[a].isLand && plates[b].isLand
+                    const bool readyToMerge = (plates[a].landFraction > 0.40f && plates[b].landFraction > 0.40f
                                                 && (d < MERGE_DIST
                                                     || sharedSutureEdge)
                                                 && relVMag < SLOW_V);
@@ -1528,8 +1242,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // along plate-merger fossil seams (also deleted).
                         plates[a].cx = (plates[a].cx + plates[b].cx) * 0.5f;
                         plates[a].cy = (plates[a].cy + plates[b].cy) * 0.5f;
-                        plates[a].vx = (plates[a].vx + plates[b].vx) * 0.5f;
-                        plates[a].vy = (plates[a].vy + plates[b].vy) * 0.5f;
+                        // P4.3h-a-iii: plate-pair merger vx/vy averaging deleted
                         plates[a].ageEpochs = std::max(
                             plates[a].ageEpochs, plates[b].ageEpochs);
                         // Plate-ID consolidation: merged plate must
@@ -1549,25 +1262,18 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // Merge crust accounting: areas combine, age
                         // takes the older value (cratonic basement of
                         // the merged continent dominates the mean age).
-                        plates[a].crustArea
-                            += plates[b].crustArea;
-                        plates[a].crustAreaInitial
-                            += plates[b].crustAreaInitial;
-                        plates[a].crustAge = std::max(
-                            plates[a].crustAge, plates[b].crustAge);
+                        // P4.3h-c-4: crustArea merger combine deleted.
+                        // P4.3h-c-5: crustAge merger combine deleted
                         // Track merge participation for biogeographic-
                         // realm classification. Plates that never merge
                         // are isolated continents (Australia analog).
-                        plates[a].mergesAbsorbed += 1
-                            + plates[b].mergesAbsorbed;
+                        // P4.3h-c-1: mergesAbsorbed deleted
                         // Inherit B's extra Voronoi seeds (translated
                         // into A's local frame) so A's cell takes on
                         // B's lobed shape — preserves the merged
                         // territory's geometry instead of collapsing
                         // back to a clean Voronoi blob.
-                        for (const auto& es : plates[b].extraSeeds) {
-                            plates[a].extraSeeds.push_back(es);
-                        }
+                        // P4.3g-a: extraSeeds merge inheritance deleted.
 
                         // SLAB BREAK-OFF. After continental collision
                         // shuts off subduction, the trailing oceanic
@@ -1587,47 +1293,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     }
                 }
             }
-            // Per-epoch plate deformation. Use DETERMINISTIC per-plate-
-            // per-epoch noise (not centerRng) so scrubbing back/forth
-            // through epoch N always shows the same plate state. Each
-            // plate's rotation = base + sin(plate_seed + epoch*freq)
-            // for a smooth slow oscillation. Magnitude tiny so plate-
-            // local crust mask samples don't shift much per epoch.
-            for (std::size_t pi = 0; pi < plates.size(); ++pi) {
-                Plate& p = plates[pi];
-                const float phase = static_cast<float>(epoch) * 0.04f
-                                  + p.seedX * 0.001f;
-                // ±0.04 rad oscillation (~2.3°) on top of fixed baseRot.
-                float rotOffset = std::sin(phase) * 0.04f;
-                // CONTINENTAL BLOCK ROTATION. Small continental
-                // fragments rotate independently of larger neighbours
-                // (Iberia rotated ~35° during the Atlantic opening,
-                // Italian peninsula rotated CCW during Africa-Eurasia
-                // closure). Small plates (weight < 0.85) AND continental
-                // (landFraction > 0.40) get an extra steady drift on
-                // top of the standard oscillation.
-                if (p.weight < 0.85f && p.landFraction > 0.40f) {
-                    // 2026-05-04: was `epoch * 0.0025` which grew
-                    // linearly to ±17° at epoch 120 -- far above the
-                    // ~5°/My realistic max for microplates. Bounded
-                    // sinusoid stays within ±0.20 rad regardless of
-                    // epoch count.
-                    const float blockDrift =
-                        std::sin(static_cast<float>(epoch) * 0.05f
-                                 + p.seedX * 0.007f) * 0.20f;
-                    rotOffset += blockDrift;
-                }
-                p.rot = p.baseRot + rotOffset;
-                // Aspect oscillates ±0.08 around baseAspect.
-                // 2026-05-04: clamp range follows baseAspect (was hard
-                // [0.7, 1.4] which pinned every plate inside that window
-                // regardless of initial value 0.50-2.20). The most elongated
-                // plates lost their shape after epoch 1; now they keep it.
-                const float aspectOsc = std::cos(phase * 0.7f + p.seedX * 0.002f) * 0.08f;
-                p.aspect = std::clamp(p.baseAspect + aspectOsc,
-                                      p.baseAspect * 0.9f,
-                                      p.baseAspect * 1.1f);
-            }
+            // 2026-05-06 P4.3e: per-epoch plate-deformation oscillation
+            // (rot = baseRot + sin(phase)*0.04 + continental-block-drift,
+            // aspect = baseAspect + cos*0.08 clamp 0.9..1.1) deleted.
+            // baseRot/baseAspect aspect oscillation gone; rot is now
+            // updated only by the Euler-pole motion path (line ~1265
+            // approx) which writes p.rot directly. aspect stays at
+            // initial value (set in plate spawn; aspect field still alive
+            // but no longer oscillates).
 
             // Periodic rift events. Picks 1-3 land plates per CYCLE epochs
             // and splits each one in 1-2 ways, sometimes producing a
@@ -1647,7 +1320,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             if (isRiftEpoch) {
                 std::vector<std::size_t> landIdx;
                 for (std::size_t i = 0; i < plates.size(); ++i) {
-                    if (plates[i].isLand) { landIdx.push_back(i); }
+                    if (plates[i].landFraction > 0.40f) { landIdx.push_back(i); }  // P4.3h-c-3
                 }
                 // Cap total plate count. Earth has ~15 plates (7 major +
                 // 8 minor) — let the world grow up to ~2x the initial
@@ -1791,13 +1464,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // continuing on. Velocity tilts toward +pushAxis
                     // (it's the side moving in that direction).
                     {
-                        const float ang = centerRng.nextFloat(-0.4f, 0.4f);
-                        const float cs = std::cos(ang);
-                        const float sn = std::sin(ang);
-                        const float vx = parent.vx * cs - parent.vy * sn;
-                        const float vy = parent.vx * sn + parent.vy * cs;
-                        plates[pi].vx = vx + std::cos(pushAxis) * 0.30f;
-                        plates[pi].vy = vy + std::sin(pushAxis) * 0.30f;
+                        // P4.3h-a-iii: parent vx/vy push deleted
                         plates[pi].landFraction = std::clamp(
                             parent.landFraction * centerRng.nextFloat(0.85f, 0.97f),
                             0.30f, 0.85f);
@@ -1817,16 +1484,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             + std::cos(childPushAngle) * offsetMag * 0.5f, 0.05f, 0.95f);
                         child.cy = std::clamp(parent.cy
                             + std::sin(childPushAngle) * offsetMag * 0.5f, 0.05f, 0.95f);
-                        const float ang = centerRng.nextFloat(-0.4f, 0.4f);
-                        const float cs = std::cos(ang);
-                        const float sn = std::sin(ang);
-                        const float vx = parent.vx * cs - parent.vy * sn;
-                        const float vy = parent.vx * sn + parent.vy * cs;
-                        // Strong push perpendicular to the rift line —
-                        // ridge-push is the dominant force in early
-                        // rifting (Atlantic opening at ~2 cm/yr).
-                        child.vx = vx + std::cos(childPushAngle) * 0.30f;
-                        child.vy = vy + std::sin(childPushAngle) * 0.30f;
+                        // P4.3h-a-iii: child vx/vy rift-push deleted
                         // Children get fresh rotation, aspect, AND crust
                         // seed. A child plate carries a different chunk
                         // of the original landmass — its own crust
@@ -1847,17 +1505,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // interior but a matching coastline.
                         child.rot          = parent.rot
                                            + centerRng.nextFloat(-0.30f, 0.30f);
-                        child.aspect       = parent.aspect
-                                           * centerRng.nextFloat(0.92f, 1.08f);
-                        child.baseRot      = child.rot;
-                        child.baseAspect   = child.aspect;
+                                // P4.3e/g-c: baseRot/aspect/baseAspect deleted
                         // Inherit parent crust seed → conjugate margin
                         // shape match. Tiny offset prevents identical
                         // copy across the rift.
-                        child.seedX        = parent.seedX
-                                           + centerRng.nextFloat(-2.0f, 2.0f);
-                        child.seedY        = parent.seedY
-                                           + centerRng.nextFloat(-2.0f, 2.0f);
+                        // P4.3g-b: child seedX/Y inheritance deleted
                         // 2026-05-04 (rev 2): rifted children are CONTINENTAL
                         // fragments (chunks of original continent) like
                         // S. America breaking off Pangaea. Earth model:
@@ -1872,83 +1524,36 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // widens with each subsequent epoch as the
                         // plates drift apart and accrete new oceanic
                         // crust at the spreading ridge.
-                        child.isLand = true;
+                        // P4.3h-c-3: isLand deleted
                         child.landFraction = std::clamp(
                             parent.landFraction *
                                 centerRng.nextFloat(0.85f, 1.00f),
                             0.30f, 0.55f);
-                        // Oceanic wedge points FROM child centroid TOWARD
-                        // parent (rift line is between them). In plate-
-                        // local frame: convert world-space (parent.cx -
-                        // child.cx, parent.cy - child.cy) via child.rot.
-                        {
-                            float wnx = parent.cx - child.cx;
-                            float wny = parent.cy - child.cy;
-                            const float wnLen = std::sqrt(wnx*wnx + wny*wny);
-                            if (wnLen > 0.0001f) {
-                                wnx /= wnLen; wny /= wnLen;
-                                const float csC = std::cos(child.rot);
-                                const float snC = std::sin(child.rot);
-                                child.oceanWedgeNx =
-                                    (wnx * csC + wny * snC);
-                                child.oceanWedgeNy =
-                                    (-wnx * snC + wny * csC);
-                                child.oceanWedgeWidth = 0.05f;
-                                child.oceanWedgeBornEpoch = epoch;
-                            }
-                        }
-                        // Mirror wedge on the parent (its trailing edge
-                        // also accretes new ocean crust). Parent's
-                        // wedge points FROM parent TOWARD child.
-                        {
-                            Plate& parentWritable =
-                                plates[static_cast<std::size_t>(pi)];
-                            float wnx = child.cx - parentWritable.cx;
-                            float wny = child.cy - parentWritable.cy;
-                            const float wnLen = std::sqrt(wnx*wnx + wny*wny);
-                            if (wnLen > 0.0001f) {
-                                wnx /= wnLen; wny /= wnLen;
-                                const float csP = std::cos(parentWritable.rot);
-                                const float snP = std::sin(parentWritable.rot);
-                                parentWritable.oceanWedgeNx =
-                                    (wnx * csP + wny * snP);
-                                parentWritable.oceanWedgeNy =
-                                    (-wnx * snP + wny * csP);
-                                parentWritable.oceanWedgeWidth = 0.05f;
-                                parentWritable.oceanWedgeBornEpoch = epoch;
-                            }
-                        }
+                        // 2026-05-06 P4.3d: oceanWedge initialiser block
+                        // (child + parent wedge Nx/Ny/Width writes at
+                        // rift birth) deleted along with the fields.
+
                         // Children get a fresh empty orogeny grid —
                         // they're "new crust" formed at the rift, not
                         // Hotspot trails reset (each fragment has its
                         // own future trail). Orogeny grid also reset:
                         // child is "new crust" formed at the rift,
                         // not carrying parent's mountain memory.
-                        child.hotspotTrail.clear();
-                        child.orogenyLocal.assign(
-                            static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
-                        child.orogenyAgeLocal.assign(
-                            static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID),
-                            static_cast<int16_t>(0));
+                        // P4.3e: hotspotTrail deleted
                         // Rift child = young plate. Crust age resets
                         // because crust formed at the rift axis is fresh
                         // (Atlantic is younger than Pacific because it's
                         // post-Pangea). Crust area scales with new
                         // weight squared.
-                        child.crustArea = child.weight * child.weight;
-                        child.crustAreaInitial = child.crustArea;
-                        child.crustAge = 0.0f;
+                        // P4.3h-c-4: crustArea deleted
+                        // P4.3e: crustAreaInitial deleted
+                        // P4.3h-c-5: crustAge deleted
                         // Children inherit parent's Euler pole but with
                         // slight perturbation (rifted fragments diverge
                         // from a common kinematic origin -- South America
                         // and Africa once shared parent rotation, then
                         // drifted to nearby but distinct poles).
-                        child.eulerPoleX = parent.eulerPoleX
-                                         + centerRng.nextFloat(-0.4f, 0.4f);
-                        child.eulerPoleY = parent.eulerPoleY
-                                         + centerRng.nextFloat(-0.4f, 0.4f);
-                        child.angularRate = parent.angularRate
-                                          * centerRng.nextFloat(0.7f, 1.3f);
+                        // P4.3f: child eulerPoleX/Y/angularRate inheritance deleted.
                         plates.push_back(child);
                         aoc::map::gen::initialisePlatePhysicsGrid(
                             plates.back(), config.seed);
@@ -1968,17 +1573,13 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // mountain ranges at internal microplate boundaries.
                 // Earth has ~10 microplates total accumulated over 4.5By,
                 // so on a single-sim timescale 1-3 is realistic.
-                // 2026-05-04: cap dropped 3 -> 2 to match Earth's
-                // typical microplate count (Caribbean, Cocos, Scotia,
-                // Anatolian etc -- few active per geological era).
-                constexpr int32_t MICROPLATE_CAP = 2;
-                int32_t microplateCount = 0;
-                for (const Plate& mp : plates) {
-                    if (mp.isMicroplate) { ++microplateCount; }
-                }
+                // 2026-05-06: PHYSICS-FIRST P4.3c -- microplateCount cap
+                // (MICROPLATE_CAP=2) deleted along with `isMicroplate`
+                // field. Spawn already gated by maxPlates + 4-plate
+                // floor + 1.5% per-epoch chance; in practice that
+                // produces ~1-2 microplates per sim without the cap.
                 if (plates.size() < maxPlates
                     && plates.size() >= 4
-                    && microplateCount < MICROPLATE_CAP
                     && centerRng.nextFloat(0.0f, 1.0f) < 0.015f) {
                     // Pick two random plates that are close to each other.
                     const std::size_t pa = static_cast<std::size_t>(
@@ -1998,7 +1599,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     }
                     if (pb != pa && bestD < 0.30f) {
                         Plate micro;
-                        micro.isMicroplate = true;
                         micro.cx = (plates[pa].cx + plates[pb].cx) * 0.5f
                                  + centerRng.nextFloat(-0.04f, 0.04f);
                         micro.cy = (plates[pa].cy + plates[pb].cy) * 0.5f
@@ -2037,14 +1637,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             }
                         }
                         // Small random velocity (microplates have erratic motion).
-                        micro.vx = centerRng.nextFloat(-0.5f, 0.5f);
-                        micro.vy = centerRng.nextFloat(-0.5f, 0.5f);
-                        micro.aspect = centerRng.nextFloat(0.85f, 1.20f);
+                        // P4.3h-a-iii: micro vx/vy deleted
                         micro.rot    = centerRng.nextFloat(-3.14f, 3.14f);
-                        micro.baseRot    = micro.rot;
-                        micro.baseAspect = micro.aspect;
-                        micro.seedX  = centerRng.nextFloat(0.0f, 1000.0f);
-                        micro.seedY  = centerRng.nextFloat(0.0f, 1000.0f);
+                                // P4.3e/g-c: baseRot/aspect/baseAspect deleted
+                        // P4.3g-b: micro seedX/Y deleted
                         // Mixed land/ocean character — typical for
                         // 2026-05-04: microplates are now always oceanic
                         // with near-zero landFraction. Real microplates
@@ -2055,33 +1651,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // the per-continent plate count. Like rifted
                         // children, microplates now exist only as
                         // boundary-stress sources and small island arcs.
-                        micro.isLand = false;
+                        // P4.3h-c-3: isLand deleted
                         micro.landFraction =
                             centerRng.nextFloat(0.005f, 0.02f);
                         micro.ageEpochs = 0;
-                        micro.orogenyLocal.assign(
-                            static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID), 0.0f);
-                        micro.orogenyAgeLocal.assign(
-                            static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID),
-                            static_cast<int16_t>(0));
                         // Microplate weight (smaller than majors) — set
                         // crust area accordingly. Microplates are young
                         // by definition (formed at junction events).
                         micro.weight = std::max(0.35f, micro.weight);
-                        micro.crustArea = micro.weight * micro.weight;
-                        micro.crustAreaInitial = micro.crustArea;
-                        micro.crustAge = 0.0f;
+                        // P4.3h-c-4: crustArea deleted
+                        // P4.3e: crustAreaInitial deleted
+                        // P4.3h-c-5: crustAge deleted
                         // Microplates spin fast (Anatolian, Adria rotate
                         // measurably faster than majors over Quaternary).
-                        {
-                            const float poleAng    = centerRng.nextFloat(0.0f, 6.2832f);
-                            const float poleRadius = centerRng.nextFloat(1.0f, 2.5f);
-                            micro.eulerPoleX = 0.5f + std::cos(poleAng) * poleRadius;
-                            micro.eulerPoleY = 0.5f + std::sin(poleAng) * poleRadius;
-                            const float rateMag = centerRng.nextFloat(0.018f, 0.040f);
-                            micro.angularRate = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f)
-                                ? -rateMag : rateMag;
-                        }
+                        // P4.3f: micro 2D Euler-pole randomisation deleted.
                         plates.push_back(micro);
                         aoc::map::gen::initialisePlatePhysicsGrid(
                             plates.back(), config.seed);
@@ -2096,13 +1679,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // already zero since P2.3d-1, so the area-balance and
             // crust-erase loops were no-ops. Active slab tearing gated
             // on trenchTiles<20 (always true) -> never fired.
-            // Two side effects must persist for downstream readers:
-            //   p.crustAge += 1.0f       (read at lines ~2406, 2528, 2618, 2668, 2984)
-            //   p.slabTornThisEpoch = 0  (read elsewhere)
-            for (std::size_t pi = 0; pi < plates.size(); ++pi) {
-                Plate& p = plates[pi];
-                p.crustAge += 1.0f;
-                p.slabTornThisEpoch = 0;
+            // 2026-05-06 P4.3c: `slabTornThisEpoch` deleted (no readers
+            // remain). Only `crustAge += 1` survives.
+            for (Plate& p : plates) {
+                // P4.3h-c-5: crustAge += 1 deleted
             }
             // ---- RIDGE SPAWNING: new oceanic plate at largest void ----
             // Wilson cycle balance: as oceanic plates subduct away, new
@@ -2116,7 +1696,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             {
                 int32_t oceanicCount = 0;
                 for (const Plate& p : plates) {
-                    if (p.landFraction < 0.40f && !p.isPolar) {
+                    if (p.landFraction < 0.40f) {  // P4.3h-c-2: isPolar gate dropped
                         ++oceanicCount;
                     }
                 }
@@ -2150,12 +1730,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                     }
                                     return ddx * ddx + ddy * ddy;
                                 };
-                                float dsq = seedDsq(p.cx, p.cy);
-                                for (const auto& es : p.extraSeeds) {
-                                    const float d2 = seedDsq(
-                                        es.first, es.second);
-                                    if (d2 < dsq) { dsq = d2; }
-                                }
+                                const float dsq = seedDsq(p.cx, p.cy);
                                 if (dsq < minSq) { minSq = dsq; }
                             }
                             if (minSq > bestDist) {
@@ -2169,45 +1744,27 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         Plate fresh;
                         fresh.cx = bestSx;
                         fresh.cy = bestSy;
-                        fresh.isLand = false;
+                        // P4.3h-c-3: isLand deleted
                         // Inherit a slow drift in the direction AWAY
                         // from the nearest plate (ridge-push starting
                         // condition).
-                        fresh.vx = centerRng.nextFloat(-0.30f, 0.30f);
-                        fresh.vy = centerRng.nextFloat(-0.30f, 0.30f);
-                        fresh.aspect = centerRng.nextFloat(0.85f, 1.20f);
+                        // P4.3h-a-iii: fresh vx/vy deleted
                         fresh.rot    = centerRng.nextFloat(-3.14f, 3.14f);
-                        fresh.baseRot    = fresh.rot;
-                        fresh.baseAspect = fresh.aspect;
-                        fresh.seedX = centerRng.nextFloat(0.0f, 1000.0f);
-                        fresh.seedY = centerRng.nextFloat(0.0f, 1000.0f);
+                                // P4.3e/g-c: baseRot/aspect/baseAspect deleted
+                        // P4.3g-b: fresh seedX/Y deleted
                         // 2026-05-04: matched ocean-plate landFraction
                         // reduction. Fresh ridge-spawn ocean plates are
                         // brand new oceanic crust -- effectively 100 %
                         // ocean.
                         fresh.landFraction = centerRng.nextFloat(0.005f, 0.02f);
                         fresh.weight = centerRng.nextFloat(0.7f, 1.05f);
-                        fresh.crustArea = fresh.weight * fresh.weight;
-                        fresh.crustAreaInitial = fresh.crustArea;
-                        fresh.crustAge = 0.0f;  // ridge-fresh
+                        // P4.3h-c-4: crustArea deleted
+                        // P4.3e: crustAreaInitial deleted
+                        // P4.3h-c-5: crustAge deleted
                         fresh.ageEpochs = 0;
-                        fresh.orogenyLocal.assign(
-                            static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID),
-                            0.0f);
-                        fresh.orogenyAgeLocal.assign(
-                            static_cast<std::size_t>(OROGENY_GRID * OROGENY_GRID),
-                            static_cast<int16_t>(0));
                         // Fresh ridge-spawn plate: random pole, oceanic
                         // rotation magnitude (faster than continental).
-                        {
-                            const float poleAng    = centerRng.nextFloat(0.0f, 6.2832f);
-                            const float poleRadius = centerRng.nextFloat(1.5f, 3.5f);
-                            fresh.eulerPoleX = 0.5f + std::cos(poleAng) * poleRadius;
-                            fresh.eulerPoleY = 0.5f + std::sin(poleAng) * poleRadius;
-                            const float rateMag = centerRng.nextFloat(0.008f, 0.020f);
-                            fresh.angularRate = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f)
-                                ? -rateMag : rateMag;
-                        }
+                        // P4.3f: fresh 2D Euler-pole randomisation deleted.
                         plates.push_back(fresh);
                         aoc::map::gen::initialisePlatePhysicsGrid(
                             plates.back(), config.seed);
@@ -2226,27 +1783,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // oceanic, no craton) drifts faster than African (large
             // with cratons) -- naturally producing Earth's speed
             // distribution.
-            for (Plate& p : plates) {
-                // Base drag scales gently with sqrt of area. Weight^2 =
-                // area; weight^0.5 (sqrt of weight) is plate "size"
-                // factor. Larger plates lose 0.3-1% extra per epoch.
-                const float areaFactor = std::clamp(
-                    std::sqrt(p.weight), 0.7f, 1.8f);
-                const float baseDrag =
-                    1.0f - (1.0f - 0.997f) * areaFactor;
-                float drag = baseDrag;
-                // Cratonic damping: stable old continental cores resist
-                // motion. Effect scales with craton age (older = more
-                // root depth = more resistance).
-                if (p.isLand && p.landFraction > 0.4f
-                    && p.crustAge > 100.0f) {
-                    const float cratonAge = std::clamp(
-                        (p.crustAge - 100.0f) / 100.0f, 0.0f, 1.0f);
-                    drag -= 0.005f * cratonAge;
-                }
-                p.vx *= drag;
-                p.vy *= drag;
-            }
+            // P4.3h-a-iii: per-plate drag loop deleted entirely.
 
             // Hotspot trails. For each hotspot, find the plate above
             // it RIGHT NOW and record the hotspot's position in that
@@ -2290,23 +1827,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 }
                 if (bestPi < 0) { continue; }
                 Plate& owner = plates[static_cast<std::size_t>(bestPi)];
-                float dx = h.cx - owner.cx;
-                float dy = h.cy - owner.cy;
-                if (cylSim) {
-                    if (dx > 0.5f) { dx -= 1.0f; }
-                    if (dx < -0.5f) { dx += 1.0f; }
-                }
-                const float cs = std::cos(owner.rot);
-                const float sn = std::sin(owner.rot);
-                const float lx = (dx * cs + dy * sn) / owner.aspect;
-                const float ly = (-dx * sn + dy * cs) * owner.aspect;
-                owner.hotspotTrail.emplace_back(lx, ly);
-                // Cap trail length to prevent unbounded growth on long
-                // sims. ~40 trail points = chain spanning ~1500 km of
-                // plate motion at Earth scales (Hawaii-Emperor chain).
-                if (owner.hotspotTrail.size() > 40) {
-                    owner.hotspotTrail.erase(owner.hotspotTrail.begin());
-                }
+                // 2026-05-06 P4.3e: hotspotTrail accumulation deleted
+                // (was building per-plate trail of plate-local positions
+                // capped at 40 points; consumed by elevation-pass trail
+                // bonus, also deleted).
+                (void)owner;
             }
 
             // Per-epoch EROSION: decay positive orogeny by a small
@@ -2348,174 +1873,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // edges pull inward (subducting crust destroyed),
             // transform/suture edges hold static. Phase C: recompute
             // AABBs for next epoch's tile-ownership fast-reject.
-            for (std::size_t targetIdx = 0;
-                 targetIdx < plates.size(); ++targetIdx) {
-                Plate& target = plates[targetIdx];
-                const std::size_t N = target.boundaryVertices.size();
-                if (N < 3) { continue; }
-                if (target.boundaryNeighborIds.size() != N
-                    || target.boundaryEdgeTypes.size() != N) { continue; }
-                const float csT = std::cos(target.rot);
-                const float snT = std::sin(target.rot);
-                // Phase 13d-A3 step 2 WP2 instrumentation counters,
-                // hoisted to enclose the entire per-edge body so skip
-                // paths bump them correctly. Behaviour-neutral.
-                static thread_local int64_t s_wp2Total          = 0;
-                static thread_local int64_t s_wp2NoNbr          = 0;
-                static thread_local int64_t s_wp2ZeroBn         = 0;
-                static thread_local int64_t s_wp2Trans[5][5]    = {};
-                for (std::size_t i = 0; i < N; ++i) {
-                    ++s_wp2Total;
-                    const uint8_t nbrId = target.boundaryNeighborIds[i];
-                    if (nbrId == 0xFFu
-                        || nbrId >= plates.size()) {
-                        ++s_wp2NoNbr;
-                        continue;
-                    }
-                    const Plate& nbr = plates[nbrId];
-                    const std::size_t i1 = (i + 1) % N;
-                    const float lmx = (target.boundaryVertices[i].first
-                        + target.boundaryVertices[i1].first) * 0.5f;
-                    const float lmy = (target.boundaryVertices[i].second
-                        + target.boundaryVertices[i1].second) * 0.5f;
-                    const float wmx = target.cx + lmx * csT - lmy * snT;
-                    const float wmy = target.cy + lmx * snT + lmy * csT;
-                    float bnx = nbr.cx - wmx;
-                    float bny = nbr.cy - wmy;
-                    if (cylSim) {
-                        if (bnx >  0.5f) { bnx -= 1.0f; }
-                        if (bnx < -0.5f) { bnx += 1.0f; }
-                    }
-                    const float bnLen = std::sqrt(bnx * bnx + bny * bny);
-                    if (bnLen < 0.0001f) {
-                        ++s_wp2ZeroBn;
-                        continue;
-                    }
-                    bnx /= bnLen; bny /= bnLen;
-                    const float relVx = target.vx - nbr.vx;
-                    const float relVy = target.vy - nbr.vy;
-                    const float dotN = relVx * bnx + relVy * bny;
-                    // 2026-05-04: WP2 - edge-type persistence with
-                    // hysteresis. Old code re-classified every epoch
-                    // on instantaneous velocity, so small noise in
-                    // relative motion flipped boundaries between
-                    // ridge/transform/trench. Real plate boundaries
-                    // persist 100-500 My with stable type. Hysteresis:
-                    // current type only flips if |dotN| exceeds the
-                    // OPPOSING-type threshold by 50% margin. Near-zero
-                    // dotN preserves whatever type was assigned at
-                    // initial polygon construction.
-                    const uint8_t prevType = target.boundaryEdgeTypes[i];
-                    uint8_t edgeType = prevType;
-                    if (prevType == 1u) {
-                        // Currently ridge (divergent); flip to
-                        // convergent only if strongly closing.
-                        if (dotN > 0.06f) {
-                            edgeType = (target.isLand && nbr.isLand) ? 4u : 2u;
-                        } else if (dotN > -0.02f) {
-                            edgeType = 3u; // weak -> transform
-                        }
-                    } else if (prevType == 2u || prevType == 4u) {
-                        // Currently convergent; flip to divergent only
-                        // if strongly opening.
-                        if (dotN < -0.06f) {
-                            edgeType = 1u;
-                        } else if (dotN < 0.02f) {
-                            edgeType = 3u;
-                        } else {
-                            edgeType = (target.isLand && nbr.isLand) ? 4u : 2u;
-                        }
-                    } else {
-                        // Currently transform/unknown; standard
-                        // classification thresholds apply.
-                        if (dotN > 0.04f) {
-                            edgeType = (target.isLand && nbr.isLand) ? 4u : 2u;
-                        } else if (dotN < -0.04f) {
-                            edgeType = 1u;
-                        } else {
-                            edgeType = 3u;
-                        }
-                    }
-                    // 2026-05-05 Phase 13d-A3 step 2: WP2 reclassifier
-                    // instrumentation. Behaviour identical; counters
-                    // dump under AOC_EDGE_CLASS_DEBUG=1. Counters are
-                    // declared above the per-edge loop so skip paths
-                    // bump them correctly; this block records the
-                    // (prev, new) transition + emits a periodic dump.
-                    if (prevType < 5u && edgeType < 5u) {
-                        ++s_wp2Trans[prevType][edgeType];
-                    }
-                    if (std::getenv("AOC_EDGE_CLASS_DEBUG") != nullptr
-                        && (s_wp2Total & 0x3FF) == 0) {
-                        std::fprintf(stderr,
-                            "[wp2] total=%ld no_nbr=%ld zero_bn=%ld\n",
-                            static_cast<long>(s_wp2Total),
-                            static_cast<long>(s_wp2NoNbr),
-                            static_cast<long>(s_wp2ZeroBn));
-                        std::fprintf(stderr,
-                            "[wp2-trans] (rows=prev cols=new):\n");
-                        for (int p = 0; p < 5; ++p) {
-                            std::fprintf(stderr,
-                                "  prev=%d ->", p);
-                            for (int n = 0; n < 5; ++n) {
-                                std::fprintf(stderr, " n%d=%-5ld",
-                                    n,
-                                    static_cast<long>(s_wp2Trans[p][n]));
-                            }
-                            std::fprintf(stderr, "\n");
-                        }
-                    }
-                    target.boundaryEdgeTypes[i] = edgeType;
-                }
-            }
-            // Phase B: per-edge vertex motion. Each edge contributes a
-            // displacement vector (perpendicular outward for ridge,
-            // inward for trench) to its two endpoint vertices.
-            // Vertices accumulate from both adjacent edges, then are
-            // displaced. Magnitudes scaled by DT so total displacement
-            // over a sim ~ Earth-realistic (Atlantic opens ~2 cm/yr).
-            for (Plate& p : plates) {
-                const std::size_t N = p.boundaryVertices.size();
-                if (N < 3) { continue; }
-                if (p.boundaryEdgeTypes.size() != N) { continue; }
-                std::vector<std::pair<float, float>> disp(
-                    N, {0.0f, 0.0f});
-                for (std::size_t i = 0; i < N; ++i) {
-                    const std::size_t i1 = (i + 1) % N;
-                    float ex = p.boundaryVertices[i1].first
-                        - p.boundaryVertices[i].first;
-                    float ey = p.boundaryVertices[i1].second
-                        - p.boundaryVertices[i].second;
-                    const float eLen = std::sqrt(ex * ex + ey * ey);
-                    if (eLen < 0.0001f) { continue; }
-                    ex /= eLen; ey /= eLen;
-                    // Outward normal for CCW polygon: (ey, -ex). Note
-                    // the polar-sweep build order is CCW (angle 0->2pi)
-                    // when viewed in plate-local frame. Verify if
-                    // polygon area becomes negative -> negate normal.
-                    const float nx = ey;
-                    const float ny = -ex;
-                    float dispMag = 0.0f;
-                    const uint8_t et = p.boundaryEdgeTypes[i];
-                    if (et == 1u) {
-                        dispMag = +0.020f;  // ridge: outward push
-                    } else if (et == 2u) {
-                        dispMag = -0.025f;  // trench: inward pull
-                    }
-                    // suture (4) and transform (3) and unknown (0): 0
-                    const float ddx = nx * dispMag * DT;
-                    const float ddy = ny * dispMag * DT;
-                    disp[i].first  += ddx;
-                    disp[i].second += ddy;
-                    disp[i1].first  += ddx;
-                    disp[i1].second += ddy;
-                }
-                // Each vertex collected from 2 adjacent edges -> halve.
-                for (std::size_t i = 0; i < N; ++i) {
-                    p.boundaryVertices[i].first  += disp[i].first  * 0.5f;
-                    p.boundaryVertices[i].second += disp[i].second * 0.5f;
-                }
-            }
+            // 2026-05-06: PHYSICS-FIRST P4.3b -- WP2 Phase A
+            // (boundary-edge classification by relative velocity,
+            // writes boundaryEdgeTypes ~120 LOC) + WP2 Phase B
+            // (per-edge vertex motion ridge=+0.020 trench=-0.025
+            // ~42 LOC) deleted. All consumers of boundary fields
+            // were tombstoned in P3 / earlier P4 sub-steps; the
+            // remaining loops were no-ops over empty
+            // boundaryVertices vectors.
             // 2026-05-06: PHYSICS-FIRST P3.3 -- polygon construction
             // Phase A (intermediate AABB recompute), Phase B (subduction
             // clipping using PolygonRing/AABB/pointInPolygon to mutate
@@ -2593,8 +1958,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     dx *= aspectFix;
                     const float cs = std::cos(plates[pi].rot);
                     const float sn = std::sin(plates[pi].rot);
-                    float lx = (dx * cs + dy * sn) / plates[pi].aspect;
-                    float ly = (-dx * sn + dy * cs) * plates[pi].aspect;
+                    // P4.3g-c: aspect division/multiplication deleted (was 0.5..2.2)
+                    float lx = (dx * cs + dy * sn);
+                    float ly = (-dx * sn + dy * cs);
                     // Plate-local boundary jitter — perturb the sample
                     // point with continuous per-plate noise so the
                     // Voronoi boundary develops organic non-circular
@@ -2606,7 +1972,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // with similar seedX values.
                     {
                         const uint64_t pseed = aoc::map::gen::mixSeed(
-                            static_cast<uint64_t>(plates[pi].seedX * 1.0e6f));
+                            static_cast<uint64_t>(plates[pi].latDeg * 137000.0f
+                                                  + plates[pi].lonDeg * 53000.0f));
                         const float n1 = aoc::map::gen::smoothHashNoise(
                             lx * 4.0f, ly * 4.0f, pseed);
                         const float n2 = aoc::map::gen::smoothHashNoise(
@@ -2634,38 +2001,16 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     aoc::map::gen::MollweideInverseResult mw =
                         aoc::map::gen::mollweideInverse(nx, ny);
                     if (mw.valid) {
-                        // 2026-05-05 Phase 2.5: raised base 4000 -> 5500
-                        // and scale 2000 -> 3500. With 8-seed audit at
-                        // 140x90 producing 30-50 % mountain rate (Earth
-                        // target ~6-7 %), the linear oro-from-elevation
-                        // remap was too generous. New values: 5500 m
-                        // baseline (Andes-tall), 3500 m to reach oro=1
-                        // (Himalaya-tall).
-                        // 2026-05-05 Phase 6 sub-step 6c: 5500 ->
-                        // 4500, 3500 -> 3000. Drops biome threshold
-                        // to Andean-foothills bar (4500 m = low-lat
-                        // snowline). oro=1 still hits at 7500 m
-                        // (4500 + 3000) ≈ Himalaya summit. Earth's
-                        // 6-7 % "mountainous terrain" UN definition
-                        // includes hills + alpine; our 5500 m bar
-                        // captured only Tibet/Andes/Himalaya peaks
-                        // (~0.5 % of land), too narrow.
-                        constexpr float MOUNTAIN_BASE_M  = 4500.0f;
-                        constexpr float MOUNTAIN_SCALE_M = 3000.0f;
-                        // 2026-05-06: PHYSICS-FIRST P2.2. Tile elevation
-                        // sourced from the global SphereField raster
-                        // (720x360 lat/lon at 0.5 deg) via bilinearSample
-                        // at the tile's Mollweide-inverse lat/lon. The
-                        // per-plate PhysicsGrid peakSample loop was
-                        // dependent on each plate's tangent-plane half-
-                        // extent and the now-defunct legacy aspect/rot
-                        // parameters; the raster covers the whole sphere
-                        // unconditionally and removes that bookkeeping.
+                        // 2026-05-06 P5.3: MOUNTAIN_BASE_M=4500 /
+                        // MOUNTAIN_SCALE_M=3000 linear remap deleted.
+                        // Mountain assignment is now single physical
+                        // threshold via MOUNTAIN_THRESHOLD_M=4000m.
+                        // oroSampled becomes binary 0/1 (above/below).
                         const float zM = sphereField.bilinearSample(
                             sphereField.surfaceElevationM,
                             mw.coord.latDeg, mw.coord.lonDeg);
-                        oroSampled = std::max(0.0f,
-                            (zM - MOUNTAIN_BASE_M) / MOUNTAIN_SCALE_M);
+                        oroSampled = (zM > aoc::map::gen::MOUNTAIN_THRESHOLD_M)
+                            ? 1.0f : 0.0f;
                     }
                 }
                 // Mask gate. Cap positive orogeny on ocean-tile-of-
@@ -2681,8 +2026,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // Ocean plate. Cap positive orogeny at Hills tier.
                         aoc::Random crustRng(0u);
                         const float crust = fractalNoise(
-                            bestLx * 2.0f + owner.seedX,
-                            bestLy * 2.0f + owner.seedY,
+                            bestLx * 2.0f + owner.latDeg * 137.0f,
+                            bestLy * 2.0f + owner.lonDeg * 137.0f,
                             4, 2.0f, 0.55f, crustRng);
                         const bool ownerSaysLand = crust > (1.0f - owner.landFraction);
                         if (!ownerSaysLand && oroSampled > 0.10f) {
@@ -3009,8 +2354,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // to its present collision with Eurasia).
                         aoc::Random crustRng(noiseRng);
                         const float crust = fractalNoise(
-                            lxNearest * 2.0f + pNearest.seedX,
-                            lyNearest * 2.0f + pNearest.seedY,
+                            lxNearest * 2.0f + pNearest.latDeg * 137.0f,
+                            lyNearest * 2.0f + pNearest.lonDeg * 137.0f,
                             4, 2.0f, 0.55f, crustRng);
                         // Threshold: high landFraction → low threshold
                         // → most of the plate is land. landFraction
@@ -3023,16 +2368,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // and fragment continents into archipelagos.
                         float t = std::clamp(
                             (crust - landThresh + 0.025f) / 0.05f, 0.0f, 1.0f);
-                        // 2026-05-04: oceanic-wedge override at trailing
-                        // rift edge -- new oceanic crust accreted at
-                        // mid-ocean ridge.
-                        if (pNearest.oceanWedgeWidth > 0.0f) {
-                            const float dot = lxNearest * pNearest.oceanWedgeNx
-                                            + lyNearest * pNearest.oceanWedgeNy;
-                            if (dot > 0.0f && dot < pNearest.oceanWedgeWidth) {
-                                t = 0.0f;
-                            }
-                        }
+                        // 2026-05-06 P4.3d: oceanic-wedge override deleted.
                         const float localLandness = t; // 0 = ocean, 1 = land
                         nearestIsLand = (localLandness > 0.5f);
 
@@ -3045,14 +2381,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             const float dcx = wx - pNearest.cx;
                             const float dcy = wy - pNearest.cy;
                             const float dist_from_center = std::sqrt(dcx * dcx + dcy * dcy);
-                            const float vLen = std::sqrt(pNearest.vx * pNearest.vx
-                                                         + pNearest.vy * pNearest.vy);
-                            float leading_factor = 0.0f;
-                            if (vLen > 1e-5f) {
-                                leading_factor = std::clamp(
-                                    (dcx * pNearest.vx + dcy * pNearest.vy) / vLen,
-                                    -1.0f, 1.0f);
-                            }
+                            // P4.3h-a-iii: leading-margin factor (vx/vy
+                            // dot product) deleted; legacy bias dropped.
+                            const float leading_factor = 0.0f;
                             const float craton_core   = 0.78f * std::exp(
                                 -dist_from_center * dist_from_center * 8.0f);
                             const float craton_margin = 0.58f + leading_factor * 0.08f;
@@ -3091,27 +2422,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             }
                             const float cs2 = std::cos(pSecond.rot);
                             const float sn2 = std::sin(pSecond.rot);
-                            const float lx2 = (dx2 * cs2 + dy2 * sn2) / pSecond.aspect;
-                            const float ly2 = (-dx2 * sn2 + dy2 * cs2) * pSecond.aspect;
+                            // P4.3g-c: aspect division/multiplication deleted
+                            const float lx2 = (dx2 * cs2 + dy2 * sn2);
+                            const float ly2 = (-dx2 * sn2 + dy2 * cs2);
                             aoc::Random crust2Rng(noiseRng);
                             const float crust2 = fractalNoise(
-                                lx2 * 2.0f + pSecond.seedX,
-                                ly2 * 2.0f + pSecond.seedY,
+                                lx2 * 2.0f + pSecond.latDeg * 137.0f,
+                                ly2 * 2.0f + pSecond.lonDeg * 137.0f,
                                 4, 2.0f, 0.55f, crust2Rng);
                             const float thresh2 = 1.0f - pSecond.landFraction;
                             float t2 = std::clamp(
                                 (crust2 - thresh2 + 0.025f) / 0.05f,
                                 0.0f, 1.0f);
-                            // Wedge override on second plate too.
-                            if (pSecond.oceanWedgeWidth > 0.0f) {
-                                const float dot2 = lx2 * pSecond.oceanWedgeNx
-                                                 + ly2 * pSecond.oceanWedgeNy;
-                                if (dot2 > 0.0f
-                                    && dot2 < pSecond.oceanWedgeWidth) {
-                                    t2 = 0.0f;
-                                }
-                            }
-                            if (pSecond.isLand && t2 > 0.5f) {
+                            // 2026-05-06 P4.3d: oceanWedge override (second plate) deleted.
+                            if (pSecond.landFraction > 0.40f && t2 > 0.5f) {  // P4.3h-c-3
                                 secondHeight = 0.55f;
                             }
                         }
@@ -3161,37 +2485,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // bumps (eroded). This creates the Hawaiian-Emperor
                     // chain pattern — a line of decreasing-elevation
                     // islands trailing back along the plate's path.
-                    if (nearest >= 0) {
-                        const Plate& tp = plates[static_cast<std::size_t>(nearest)];
-                        const std::size_t trailLen = tp.hotspotTrail.size();
-                        for (std::size_t k = 0; k < trailLen; ++k) {
-                            const std::pair<float, float>& tp_pt = tp.hotspotTrail[k];
-                            // tp_pt is in plate-local frame; lxNearest/
-                            // lyNearest is too. Direct distance.
-                            const float trdx = lxNearest - tp_pt.first;
-                            const float trdy = lyNearest - tp_pt.second;
-                            const float trdist = std::sqrt(trdx * trdx + trdy * trdy);
-                            constexpr float TR_RADIUS = 0.025f;
-                            if (trdist < TR_RADIUS) {
-                                // Atoll → guyot lifecycle: oldest trail
-                                // points (k=0) have eroded flat AND
-                                // sunk below water as the plate cooled
-                                // and subsided. They contribute no
-                                // elevation but the underwater seamount
-                                // remains. Quadratic age decay: only
-                                // the most recent ~40 % of the trail
-                                // breaks the surface. Real Hawaiian-
-                                // Emperor: only the youngest 5-6
-                                // islands are subaerial; the rest are
-                                // guyots / drowned seamounts.
-                                const float ageT = static_cast<float>(k + 1)
-                                                 / static_cast<float>(trailLen);
-                                const float t = 1.0f - trdist / TR_RADIUS;
-                                const float ageBoost = ageT * ageT;
-                                edgeFalloff += 0.18f * t * t * ageBoost;
-                            }
-                        }
-                    }
+                    // 2026-05-06 P4.3e: hotspot-trail elevation bonus
+                    // (atoll/guyot lifecycle, TR_RADIUS=0.025, 0.18 * t^2
+                    // * ageT^2 stamp) deleted along with hotspotTrail field.
                     // Narrow hard floor: only the deep interior
                     // (boundary < 0.15, i.e. >85% of the way from
                     // the plate edge to its centre) is protected from
@@ -3201,83 +2497,12 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     if (nearest >= 0 && nearestIsLand && boundary < 0.15f) {
                         edgeFalloff = std::max(edgeFalloff, 0.55f);
                     }
-                    // 2026-05-05 Phase 13d-1: mid-ocean ridge bathymetry.
-                    // Real Earth divergent boundaries (Mid-Atlantic Ridge,
-                    // East Pacific Rise) sit ~3000 m above the abyssal
-                    // plain because newly-formed crust is hot and thermally
-                    // buoyant. We don't track crust age in PhysicsGrid
-                    // post-Phase-13a, so use distance-from-edge as a
-                    // proxy: ridge axis = youngest = shallowest. Ocean-
-                    // only -- continental rifts (e.g. East African Rift)
-                    // are handled separately by oceanWedge logic.
-                    if (nearest >= 0 && !nearestIsLand) {
-                        const Plate& pr = plates[
-                            static_cast<std::size_t>(nearest)];
-                        const std::size_t Nb = pr.boundaryVertices.size();
-                        if (Nb >= 3 && pr.boundaryEdgeTypes.size() == Nb) {
-                            const float csP = std::cos(pr.rot);
-                            const float snP = std::sin(pr.rot);
-                            float minDsq = 1e9f;
-                            for (std::size_t bi = 0; bi < Nb; ++bi) {
-                                if (pr.boundaryEdgeTypes[bi] != 1u) {
-                                    continue;
-                                }
-                                const std::size_t bj = (bi + 1) % Nb;
-                                const float ax = pr.cx
-                                    + pr.boundaryVertices[bi].first  * csP
-                                    - pr.boundaryVertices[bi].second * snP;
-                                const float ay = pr.cy
-                                    + pr.boundaryVertices[bi].first  * snP
-                                    + pr.boundaryVertices[bi].second * csP;
-                                const float bx = pr.cx
-                                    + pr.boundaryVertices[bj].first  * csP
-                                    - pr.boundaryVertices[bj].second * snP;
-                                const float by = pr.cy
-                                    + pr.boundaryVertices[bj].first  * snP
-                                    + pr.boundaryVertices[bj].second * csP;
-                                float ex = bx - ax;
-                                float ey = by - ay;
-                                float px = wx - ax;
-                                float py = wy - ay;
-                                if (cylSim) {
-                                    if (ex >  0.5f) { ex -= 1.0f; }
-                                    if (ex < -0.5f) { ex += 1.0f; }
-                                    if (px >  0.5f) { px -= 1.0f; }
-                                    if (px < -0.5f) { px += 1.0f; }
-                                }
-                                const float eLenSq = ex * ex + ey * ey;
-                                float t = 0.0f;
-                                if (eLenSq > 1e-9f) {
-                                    t = std::clamp(
-                                        (px * ex + py * ey) / eLenSq,
-                                        0.0f, 1.0f);
-                                }
-                                const float qx = ax + t * ex;
-                                const float qy = ay + t * ey;
-                                float dx = wx - qx;
-                                float dy = wy - qy;
-                                if (cylSim) {
-                                    if (dx >  0.5f) { dx -= 1.0f; }
-                                    if (dx < -0.5f) { dx += 1.0f; }
-                                }
-                                const float dsq = dx * dx + dy * dy;
-                                if (dsq < minDsq) { minDsq = dsq; }
-                            }
-                            // RIDGE_RANGE 0.015 ~= 2 tiles at 140-col
-                            // grid; a ~430 km flank matches Mid-Atlantic
-                            // Ridge axial-band width. RIDGE_MAX_BONUS
-                            // 0.04 in unit-elev space (oceanBase 0.10 ->
-                            // ridge crest 0.14), still well below 0.50
-                            // land threshold so ridges remain ocean.
-                            constexpr float RIDGE_RANGE      = 0.015f;
-                            constexpr float RIDGE_MAX_BONUS  = 0.04f;
-                            if (minDsq < RIDGE_RANGE * RIDGE_RANGE) {
-                                const float dist = std::sqrt(minDsq);
-                                const float k = 1.0f - dist / RIDGE_RANGE;
-                                ridgeBonus = RIDGE_MAX_BONUS * k * k;
-                            }
-                        }
-                    }
+                    // 2026-05-06: PHYSICS-FIRST P4.3b -- mid-ocean ridge
+                    // bathymetry block deleted. Was a +0.04 elev bonus
+                    // along boundaryEdgeTypes==1u (ridge) edges within
+                    // RIDGE_RANGE=0.015. Polygon fields no longer
+                    // populated (P3.4); block was a no-op against empty
+                    // boundaryVertices.
                 } else {
                     for (const LandCenter& center : landCenters) {
                         float dx = (wx - center.cx) * 2.0f;
@@ -3308,20 +2533,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // stress model.
                 const float noiseCentred = elev - 0.5f;
                 const float oro = orogeny[static_cast<std::size_t>(row * width + col)];
-                // GLACIAL ISOSTATIC REBOUND. Polar regions that were
-                // covered by ice sheets during the last glacial maximum
-                // are still rising as the crust rebounds (Scandinavia
-                // rises ~1 cm/yr, Hudson Bay similar). Add a small
-                // elevation boost to high-latitude tiles. Strongest
-                // at the poles, falls off into mid-lat.
-                const float latFromEq = 2.0f * std::abs(ny - 0.5f);
-                float reboundBoost = 0.0f;
-                if (latFromEq > 0.55f) {
-                    const float t = (latFromEq - 0.55f) / 0.45f;
-                    reboundBoost = 0.03f * t;
-                }
-                elev = edgeFalloff + noiseCentred * 0.16f + oro + reboundBoost
-                     + ridgeBonus;
+                // 2026-05-06 P5.4: glacial isostatic rebound bonus
+                // (+0.03f * t for latFromEq > 0.55) deleted. Tuned
+                // aesthetic uplift; not physics.
+                elev = edgeFalloff + noiseCentred * 0.16f + oro + ridgeBonus;
             } else {
                 elev = elev * 0.55f + edgeFalloff * 0.45f;
             }
@@ -3371,9 +2586,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         rots.reserve(plates.size());
         for (const Plate& p : plates) {
             landFracs.push_back(p.landFraction);
-            crustAges.push_back(p.crustAge);
-            mergesAbsorbed.push_back(p.mergesAbsorbed);
-            isPolar.push_back(p.isPolar ? 1u : 0u);
+            crustAges.push_back(0.0f);  // P4.3h-c-5: field deleted; HexGrid setter still consumes vector.
+            mergesAbsorbed.push_back(0);  // P4.3h-c-1: field deleted; HexGrid setter still consumes vector.
+            isPolar.push_back(0u);  // P4.3h-c-2: field deleted; HexGrid setter still consumes vector.
             latLons.emplace_back(p.latDeg, p.lonDeg);
             weights.push_back(p.weight);
             eulerPoles.emplace_back(p.eulerPoleLatDeg, p.eulerPoleLonDeg);
@@ -3413,7 +2628,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // gen/Thresholds.cpp.
     aoc::map::gen::ThresholdResult thresholds;
     aoc::map::gen::runThresholdComputation(
-        grid, config.mapType, effectiveWaterRatio, config.mountainRatio,
+        grid, config.mapType, effectiveWaterRatio,
         elevationMap, thresholds);
     std::vector<float>&   mountainElev      = thresholds.mountainElev;
     std::vector<int32_t>& distFromCoast     = thresholds.distFromCoast;

@@ -32,7 +32,7 @@ struct ThresholdResult {
 /// adjustment applied so the mountain percentile picks belt-tiles instead
 /// of arbitrary peaks.
 void runThresholdComputation(HexGrid& grid, MapType mapType,
-                             float effectiveWaterRatio, float mountainRatio,
+                             float effectiveWaterRatio,
                              const std::vector<float>& elevationMap,
                              ThresholdResult& out);
 
