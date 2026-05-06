@@ -136,18 +136,7 @@ struct Plate {
     float polygonMaxY = 0.0f;
 };
 
-struct SutureSeam {
-    float x;
-    float y;
-    float r;
-    // 2026-05-04: along-seam unit tangent (perpendicular to the
-    // collision normal between the two merged plates). Used by the
-    // ophiolite mask pass to draw a NARROW BAND along the suture
-    // line instead of a circular DISC -- real ophiolite exposures
-    // are linear (Indus-Tsangpo Suture, Iapetus Suture, Atlas Belt),
-    // not round patches.
-    float tangentX = 1.0f;
-    float tangentY = 0.0f;
-};
+// 2026-05-06: PHYSICS-FIRST P4.1 -- struct SutureSeam deleted along
+// with the ophiolite suture pass that consumed it (see PostSim.cpp).
 
 } // namespace aoc::map::gen

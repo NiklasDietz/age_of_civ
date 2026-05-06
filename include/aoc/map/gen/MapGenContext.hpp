@@ -32,9 +32,8 @@ struct MapGenContext {
     int32_t  height        = 0;
     bool     cylindrical   = false;
 
-    // Plates + post-sim seam record.
+    // Plates.
     std::vector<Plate>*      plates       = nullptr;
-    std::vector<SutureSeam>* sutureSeams  = nullptr;
 
     // Per-tile intermediate arrays populated during the tectonic sim and
     // consumed by post-sim / elevation / EARTH-SYSTEM passes.

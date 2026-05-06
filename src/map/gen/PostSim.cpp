@@ -31,7 +31,6 @@ void runPostSimPasses(MapGenContext& ctx) {
     const int32_t height                       = ctx.height;
     const bool cylSim                          = ctx.cylindrical;
     const std::vector<Plate>& plates           = *ctx.plates;
-    const std::vector<SutureSeam>& sutureSeams = *ctx.sutureSeams;
     std::vector<float>& elevationMap           = *ctx.elevationMap;
     std::vector<float>& orogeny                = *ctx.orogeny;
     std::vector<float>& sediment               = *ctx.sediment;
@@ -72,41 +71,13 @@ void runPostSimPasses(MapGenContext& ctx) {
         }
     }
 
-    // Pass 2: ophiolite suture marking.
-    for (int32_t row = 0; row < height; ++row) {
-        for (int32_t col = 0; col < width; ++col) {
-            const int32_t idx = row * width + col;
-            const float wx = (static_cast<float>(col) + 0.5f)
-                             / static_cast<float>(width);
-            const float wy = (static_cast<float>(row) + 0.5f)
-                             / static_cast<float>(height);
-            for (const SutureSeam& s : sutureSeams) {
-                float ddx = wx - s.x;
-                float ddy = wy - s.y;
-                if (cylSim) {
-                    if (ddx >  0.5f) { ddx -= 1.0f; }
-                    if (ddx < -0.5f) { ddx += 1.0f; }
-                }
-                // 2026-05-04: NARROW BAND ophiolite. Project the offset
-                // (ddx, ddy) onto the seam tangent (ALONG seam) and
-                // perpendicular (NORMAL to seam). Mark only tiles
-                // within: |along| < seamHalfLen AND |perp| < bandWidth.
-                // Real ophiolite belts are 10-50 km wide × hundreds of
-                // km long. Old code used radial distance < r * 0.45 =
-                // a circular DISC, producing the round "oval-shaped"
-                // patches the user noticed.
-                const float along = ddx * s.tangentX + ddy * s.tangentY;
-                const float perp  = ddx * (-s.tangentY) + ddy * s.tangentX;
-                const float seamHalfLen = s.r * 0.80f;
-                const float bandWidth   = s.r * 0.10f;
-                if (std::fabs(along) < seamHalfLen
-                    && std::fabs(perp) < bandWidth) {
-                    ophioliteMask[static_cast<std::size_t>(idx)] = 1;
-                    break;
-                }
-            }
-        }
-    }
+    // 2026-05-06: PHYSICS-FIRST P4.1 -- ophiolite suture marking pass
+    // deleted. Was iterating SutureSeam events to stamp ophiolite-mask
+    // bits along narrow bands (seamHalfLen=r*0.80, bandWidth=r*0.10).
+    // sutureSeams was populated by polygon-merger events that no longer
+    // fire (Phase B clipping deleted in P3.3); pass ran as no-op
+    // anyway. Mask stays zero.
+    (void)ophioliteMask;
 
     // Pass 3: sediment yield + downhill deposition (2 passes).
     for (int32_t pass = 0; pass < 2; ++pass) {
