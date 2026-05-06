@@ -40,15 +40,17 @@ void runRockTypeAssignment(HexGrid& grid,
                            const std::vector<uint8_t>& ophioliteMask,
                            const std::vector<float>& sediment,
                            std::vector<uint8_t>& rockTypeTile) {
+    // 2026-05-06 cleanup: ophiolite (rt=3) branch deleted (suture
+    // stamping pass gone in P4.1 -> mask permanently zero). Param
+    // retained to keep MapGenContext layout stable.
+    (void)ophioliteMask;
     const int32_t totalT = grid.tileCount();
     const auto& landFrac = grid.plateLandFrac();
     for (int32_t i = 0; i < totalT; ++i) {
         const TerrainType t = grid.terrain(i);
         const FeatureType f = grid.feature(i);
         uint8_t rt = 0;
-        if (ophioliteMask[static_cast<std::size_t>(i)] != 0) {
-            rt = 3;
-        } else if (t == TerrainType::Mountain) {
+        if (t == TerrainType::Mountain) {
             rt = 2;
         } else if (f == FeatureType::Hills) {
             rt = 1;

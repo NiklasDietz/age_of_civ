@@ -243,11 +243,11 @@ void runPostSimPasses(MapGenContext& ctx) {
     // margins (Atlantic-style) develop wide shallow shelves and active
     // margins (Pacific-style) develop narrow shelves with trench depth
     // offshore. marginTypeTile values: 0 interior, 1 active, 2 passive.
+    // 2026-05-06 cleanup: ophiolite-uplift branch deleted (suture
+    // stamping pass gone in P4.1 -> ophioliteMask permanently zero).
+    (void)ophioliteMask;
     for (std::size_t i = 0; i < elevationMap.size(); ++i) {
         elevationMap[i] += sediment[i] * 0.55f;
-        if (ophioliteMask[i] != 0) {
-            elevationMap[i] += 0.06f;
-        }
         const uint8_t m = marginTypeTile[i];
         if (m == 2) {
             // Passive margin: thicken sediment prism, raise shelf so
