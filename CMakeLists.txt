@@ -242,7 +242,6 @@ set(AOC_LIB_SOURCES
     src/map/gen/LakePurge.cpp
     src/map/gen/Mappability.cpp
     src/map/gen/PlateIdStash.cpp
-    src/map/gen/PlatePhysics.cpp
     src/map/gen/PostSim.cpp
     src/map/gen/AtmosphereOcean.cpp
     src/map/gen/BiomeSubtypes.cpp

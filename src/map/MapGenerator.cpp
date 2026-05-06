@@ -522,9 +522,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // outline. Plates that get 0 extras render as clean
                 // single-blob Voronoi cells.
                 // 2026-05-06 P4.3g-a: extraSeeds spawn block deleted.
+                // 2026-05-06 cleanup: initialisePlatePhysicsGrid call
+                // deleted; per-plate PhysicsGrid no longer allocated.
                 plates.push_back(p);
-                aoc::map::gen::initialisePlatePhysicsGrid(
-                    plates.back(), config.seed);
             };
 
             // ---- Pass 1: land seeds, stratified by latitude band ----
@@ -653,8 +653,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // P4.3f: polar 2D Euler-pole randomisation deleted.
                 // P4.3g-a: extraSeeds for polar plates deleted.
                 plates.push_back(p);
-                aoc::map::gen::initialisePlatePhysicsGrid(
-                    plates.back(), config.seed);
             };
             pushPolarPlate(centerRng.nextFloat(0.03f, 0.10f));      // Arctic
             pushPolarPlate(centerRng.nextFloat(0.90f, 0.97f));      // Antarctic
@@ -1060,19 +1058,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // mutation through the perturbation channel; that is
                     // multi-day surgery across ~70 sites and is deferred.
                 }
-                // 2026-05-06 P4.3f/h-a: legacy 2D linear motion advance
-                // (p.cx += vx*DT, cylindrical wrap + bounce) deleted.
-                // cx/cy now drift via Mollweide-forward of latDeg/lonDeg
-                // after lat/lon Euler-pole rotation at ~line 1265.
-                if (cylSim) {
-                    if (p.cx < 0.0f) { p.cx += 1.0f; }
-                    if (p.cx > 1.0f) { p.cx -= 1.0f; }
-                } else {
-                    if (p.cx < 0.05f) { p.cx = 0.05f; }
-                    if (p.cx > 0.95f) { p.cx = 0.95f; }
-                }
-                if (p.cy < 0.05f) { p.cy = 0.05f; }
-                if (p.cy > 0.95f) { p.cy = 0.95f; }
+                // 2026-05-06 cleanup: legacy cx/cy wrap/clamp deleted.
+                // cx/cy is overwritten by Mollweide-forward of (latDeg,
+                // lonDeg) just above, so the wrap/clamp pass was a
+                // no-op. lat/lon already canonicalised by
+                // rotateAroundEulerPole.
                 ++p.ageEpochs;
                 // 2026-05-06: PHYSICS-FIRST P4.3d -- oceanic wedge
                 // accretion staged-rift growth (4-stage stageMult
@@ -1117,35 +1107,12 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // positions render the same per-plate state and don't
             // jump randomly between adjacent epochs.)
 
-            // POLAR WANDERING. Real Earth: the entire plate-mantle
-            // system slowly rotates relative to the rotational axis
-            // (~10° over 500 My). Every plate's centre rotates by a
-            // tiny angle per epoch about the map's central pole. Net
-            // effect over a long sim: continents shift around the
-            // map even without plate-relative motion, mimicking the
-            // True Polar Wander of Earth's history.
-            {
-                constexpr float POLE_X = 0.5f;
-                constexpr float POLE_Y = 0.5f;
-                // ~0.05° per epoch — yields ~2° over 40 epochs,
-                // ~10° over 200 epochs (matches Earth-scale TPW).
-                constexpr float POLE_RAD = 0.00087f;
-                const float cw = std::cos(POLE_RAD);
-                const float sw = std::sin(POLE_RAD);
-                for (Plate& p : plates) {
-                    const float rx = p.cx - POLE_X;
-                    const float ry = p.cy - POLE_Y;
-                    p.cx = POLE_X + rx * cw - ry * sw;
-                    p.cy = POLE_Y + rx * sw + ry * cw;
-                    if (cylSim) {
-                        if (p.cx < 0.0f) { p.cx += 1.0f; }
-                        if (p.cx > 1.0f) { p.cx -= 1.0f; }
-                    } else {
-                        p.cx = std::clamp(p.cx, 0.05f, 0.95f);
-                    }
-                    p.cy = std::clamp(p.cy, 0.05f, 0.95f);
-                }
-            }
+            // 2026-05-06 cleanup: legacy 2D polar-wandering rotation
+            // deleted. The block rotated cx/cy around (0.5, 0.5) but
+            // never updated latDeg/lonDeg, so the next Mollweide
+            // forward inside the motion loop overwrote cx/cy and
+            // wiped the rotation entirely. P6.10 stochastic Euler-
+            // pole jitter now models true polar wander on the sphere.
 
             // 2026-05-06 P6.1: legacy per-plate-PhysicsGrid pipeline
             // (accumulateConvergenceStrain + thickenCrustFromStrain +
@@ -1590,8 +1557,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // drifted to nearby but distinct poles).
                         // P4.3f: child eulerPoleX/Y/angularRate inheritance deleted.
                         plates.push_back(child);
-                        aoc::map::gen::initialisePlatePhysicsGrid(
-                            plates.back(), config.seed);
                     }
                 }
                 // MICROPLATES. Between major plates, smaller fragments
@@ -1701,8 +1666,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // measurably faster than majors over Quaternary).
                         // P4.3f: micro 2D Euler-pole randomisation deleted.
                         plates.push_back(micro);
-                        aoc::map::gen::initialisePlatePhysicsGrid(
-                            plates.back(), config.seed);
                     }
                 }
             }
@@ -1714,11 +1677,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // already zero since P2.3d-1, so the area-balance and
             // crust-erase loops were no-ops. Active slab tearing gated
             // on trenchTiles<20 (always true) -> never fired.
-            // 2026-05-06 P4.3c: `slabTornThisEpoch` deleted (no readers
-            // remain). Only `crustAge += 1` survives.
-            for (Plate& p : plates) {
-                // P4.3h-c-5: crustAge += 1 deleted
-            }
+            // 2026-05-06 cleanup: legacy `slabTornThisEpoch` +
+            // `crustAge += 1` per-epoch loop deleted (both fields
+            // already gone in P4.3c/h-c-5; loop body was empty).
             // ---- RIDGE SPAWNING: new oceanic plate at largest void ----
             // Wilson cycle balance: as oceanic plates subduct away, new
             // ones must form at spreading centres so the ocean basins
@@ -1801,8 +1762,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // rotation magnitude (faster than continental).
                         // P4.3f: fresh 2D Euler-pole randomisation deleted.
                         plates.push_back(fresh);
-                        aoc::map::gen::initialisePlatePhysicsGrid(
-                            plates.back(), config.seed);
                     }
                 }
             }
@@ -2074,132 +2033,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             }
         }
 
-        // 2026-05-05 PHASE 6 sub-step 6d: per-plate diagnostic dump
-        // gated by AOC_PHYSICS_DEBUG env var. Off by default; flip
-        // env var to investigate stuck-zero-mountain seeds.
-        if (std::getenv("AOC_PHYSICS_DEBUG") != nullptr) {
-            std::fprintf(stderr,
-                "[phys-debug] seed=%u plate_count=%zu\n",
-                static_cast<unsigned>(config.seed), plates.size());
-            for (std::size_t pi = 0; pi < plates.size(); ++pi) {
-                const Plate& p = plates[pi];
-                const aoc::map::gen::PhysicsGrid& g = p.grid;
-                if (g.cellsX <= 0 || g.cellsY <= 0) { continue; }
-                float maxCrustKm = 0.0f;
-                float maxStrain  = 0.0f;
-                float maxZ       = -1e9f;
-                for (std::size_t i = 0; i < g.crustThicknessKm.size(); ++i) {
-                    if (g.cellActive[i] == 0u) { continue; }
-                    if (g.crustThicknessKm[i] > maxCrustKm) {
-                        maxCrustKm = g.crustThicknessKm[i];
-                    }
-                    if (g.cumulativeStrain[i] > maxStrain) {
-                        maxStrain = g.cumulativeStrain[i];
-                    }
-                    if (g.surfaceElevationM[i] > maxZ) {
-                        maxZ = g.surfaceElevationM[i];
-                    }
-                }
-                std::fprintf(stderr,
-                    "  pi=%-3zu lat=%+6.1f lon=%+7.1f w=%.2f "
-                    "maxCrustKm=%5.1f maxStrain=%6.3f maxZ=%6.0f\n",
-                    pi,
-                    static_cast<double>(p.latDeg),
-                    static_cast<double>(p.lonDeg),
-                    static_cast<double>(p.weight),
-                    static_cast<double>(maxCrustKm),
-                    static_cast<double>(maxStrain),
-                    static_cast<double>(maxZ));
-            }
-            // 2026-05-05 PHASE 7 sub-step 7b: world-frame orogeny[]
-            // stats. Probes whether stuck-zero seeds have empty
-            // orogeny field (= world-frame elevation pass missed
-            // the plate's high-z cells) or non-empty but small
-            // (= ClimateBiome compCap rejection).
-            float oroMax = 0.0f;
-            int32_t countOro007 = 0;
-            int32_t countOro080 = 0;
-            for (std::size_t i = 0; i < orogeny.size(); ++i) {
-                const float o = orogeny[i];
-                if (o > oroMax) { oroMax = o; }
-                if (o >= 0.07f) { ++countOro007; }
-                if (o >= 0.80f) { ++countOro080; }
-            }
-            std::fprintf(stderr,
-                "  orogeny: max=%.3f  ge_0.07=%d  ge_0.80=%d  total=%zu\n",
-                static_cast<double>(oroMax),
-                countOro007, countOro080, orogeny.size());
-        }
-
-        // 2026-05-05 Phase 13d-A1 step 4: per-plate PhysicsGrid CSV
-        // dump for offline diagnostic scripts. Plates are local to
-        // assignTerrain so this hook must run before they go out of
-        // scope. Output path is `<base>.plate<id>.csv` -- one file per
-        // plate keeps each manageable for spreadsheet inspection.
-        if (!config.physicsCellDumpPath.empty()) {
-            constexpr float DEG2RAD = 3.14159265f / 180.0f;
-            constexpr float RAD2DEG = 180.0f / 3.14159265f;
-            for (std::size_t pi = 0; pi < plates.size(); ++pi) {
-                const Plate& p = plates[pi];
-                const aoc::map::gen::PhysicsGrid& g = p.grid;
-                if (g.cellsX <= 0 || g.cellsY <= 0) { continue; }
-                char pathBuf[1024];
-                std::snprintf(pathBuf, sizeof(pathBuf),
-                              "%s.plate%03zu.csv",
-                              config.physicsCellDumpPath.c_str(), pi);
-                std::FILE* fp = std::fopen(pathBuf, "w");
-                if (fp == nullptr) {
-                    std::fprintf(stderr,
-                        "%s:%d error: cannot open '%s' for writing "
-                        "(--dump-physics-cells)\n",
-                        __FILE__, __LINE__, pathBuf);
-                    continue;
-                }
-                std::fprintf(fp,
-                    "plate_id,cell_ix,cell_iy,lat,lon,"
-                    "crust_thickness_km,surface_elevation_m,"
-                    "continental_fraction,cumulative_strain,active\n");
-                const float cellSizeRadX = (g.cellsX > 0)
-                    ? (2.0f * g.halfExtentRadX
-                       / static_cast<float>(g.cellsX))
-                    : 0.0f;
-                const float cellSizeRadY = (g.cellsY > 0)
-                    ? (2.0f * g.halfExtentRadY
-                       / static_cast<float>(g.cellsY))
-                    : 0.0f;
-                const float cosLat = std::cos(p.latDeg * DEG2RAD);
-                const float invCosLatDeg = (std::fabs(cosLat) > 1e-4f)
-                    ? (RAD2DEG / cosLat) : 0.0f;
-                for (int32_t iy = 0; iy < g.cellsY; ++iy) {
-                    for (int32_t ix = 0; ix < g.cellsX; ++ix) {
-                        const std::size_t idx = g.cellIndex(ix, iy);
-                        const float lxRad = -g.halfExtentRadX
-                            + (static_cast<float>(ix) + 0.5f)
-                              * cellSizeRadX;
-                        const float lyRad = -g.halfExtentRadY
-                            + (static_cast<float>(iy) + 0.5f)
-                              * cellSizeRadY;
-                        const float dLatDeg = lyRad * RAD2DEG;
-                        const float dLonDeg = lxRad * invCosLatDeg;
-                        float cellLat = p.latDeg + dLatDeg;
-                        float cellLon = p.lonDeg + dLonDeg;
-                        if (cellLon >  180.0f) { cellLon -= 360.0f; }
-                        if (cellLon < -180.0f) { cellLon += 360.0f; }
-                        std::fprintf(fp,
-                            "%zu,%d,%d,%.4f,%.4f,%.3f,%.1f,%.4f,%.5f,%d\n",
-                            pi, ix, iy,
-                            static_cast<double>(cellLat),
-                            static_cast<double>(cellLon),
-                            static_cast<double>(g.crustThicknessKm[idx]),
-                            static_cast<double>(g.surfaceElevationM[idx]),
-                            static_cast<double>(g.continentalFraction[idx]),
-                            static_cast<double>(g.cumulativeStrain[idx]),
-                            static_cast<int>(g.cellActive[idx]));
-                    }
-                }
-                std::fclose(fp);
-            }
-        }
+        // 2026-05-06 cleanup: AOC_PHYSICS_DEBUG diagnostic dump +
+        // --dump-physics-cells CSV writer deleted. Both consumed the
+        // per-plate PhysicsGrid which is now removed (SphereField is
+        // sole authoritative state).
 
         // Restore initial plate positions only when the user prefers
         // fixed-start visuals; we KEEP the moved positions because
@@ -2593,52 +2430,38 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             hsCopy.emplace_back(h.cx, h.cy);
         }
         grid.setHotspots(std::move(hsCopy));
-        // 2026-05-06: PHYSICS-FIRST P4.2 -- HexGrid polygon-overlay
-        // setter calls deleted (`setPlateMotions`, `setPlateCenters`,
-        // `setPlatePolygons`, `setPlatePolygonEdgeTypes`,
-        // `setPlatePolygonNeighborIds`). Renderer/save consumes
-        // `HexGrid::sphereFieldElevationSnapshot()` (P1). Other plate-
-        // setter calls (LandFrac/CrustAge/MergesAbsorbed/IsPolar/
-        // LatLon/Weight/EulerPole/AngularVelDeg/Rot) preserved -- they
-        // drive the plate-overlay HUD which still runs.
+        // 2026-05-06 cleanup: dead setter calls (LatLon/Weight/
+        // EulerPole/AngularVelDeg/Rot/Polygons/PolygonEdgeTypes/
+        // PolygonNeighborIds) deleted; live setters preserved below
+        // (Motions/Centers/LandFrac/CrustAge/MergesAbsorbed/IsPolar
+        // — IceAndRock + Biogeography + EarthSystem + ClimateBiome
+        // read these getters).
+        std::vector<std::pair<float, float>> motions;
+        std::vector<std::pair<float, float>> centers;
         std::vector<float>                   landFracs;
         std::vector<float>                   crustAges;
         std::vector<int32_t>                 mergesAbsorbed;
         std::vector<uint8_t>                 isPolar;
-        std::vector<std::pair<float, float>> latLons;
-        std::vector<float>                   weights;
-        std::vector<std::pair<float, float>> eulerPoles;
-        std::vector<float>                   angularVelDegs;
-        std::vector<float>                   rots;
+        motions.reserve(plates.size());
+        centers.reserve(plates.size());
         landFracs.reserve(plates.size());
         crustAges.reserve(plates.size());
         mergesAbsorbed.reserve(plates.size());
         isPolar.reserve(plates.size());
-        latLons.reserve(plates.size());
-        weights.reserve(plates.size());
-        eulerPoles.reserve(plates.size());
-        angularVelDegs.reserve(plates.size());
-        rots.reserve(plates.size());
         for (const Plate& p : plates) {
+            motions.emplace_back(0.0f, 0.0f);  // legacy vx/vy deleted; consumers tolerate zero motion.
+            centers.emplace_back(p.cx, p.cy);
             landFracs.push_back(p.landFraction);
-            crustAges.push_back(0.0f);  // P4.3h-c-5: field deleted; HexGrid setter still consumes vector.
-            mergesAbsorbed.push_back(0);  // P4.3h-c-1: field deleted; HexGrid setter still consumes vector.
-            isPolar.push_back(0u);  // P4.3h-c-2: field deleted; HexGrid setter still consumes vector.
-            latLons.emplace_back(p.latDeg, p.lonDeg);
-            weights.push_back(p.weight);
-            eulerPoles.emplace_back(p.eulerPoleLatDeg, p.eulerPoleLonDeg);
-            angularVelDegs.push_back(p.angularVelDeg);
-            rots.push_back(p.rot);
+            crustAges.push_back(0.0f);
+            mergesAbsorbed.push_back(0);
+            isPolar.push_back(0u);
         }
+        grid.setPlateMotions(std::move(motions));
+        grid.setPlateCenters(std::move(centers));
         grid.setPlateLandFrac(std::move(landFracs));
         grid.setPlateCrustAge(std::move(crustAges));
         grid.setPlateMergesAbsorbed(std::move(mergesAbsorbed));
         grid.setPlateIsPolar(std::move(isPolar));
-        grid.setPlateLatLon(std::move(latLons));
-        grid.setPlateWeight(std::move(weights));
-        grid.setPlateEulerPole(std::move(eulerPoles));
-        grid.setPlateAngularVelDeg(std::move(angularVelDegs));
-        grid.setPlateRot(std::move(rots));
 
         // 2026-05-03: POST-SIM GEOLOGICAL PASSES extracted to gen/PostSim.cpp.
         {

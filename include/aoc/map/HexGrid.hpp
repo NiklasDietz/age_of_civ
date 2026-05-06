@@ -520,18 +520,14 @@ public:
     void setPlateCenters(std::vector<std::pair<float, float>> c) {
         this->m_plateCenter = std::move(c);
     }
-    /// Per-plate landFraction (0 = oceanic, 1 = continental). Used by
-    /// the plate overlay to distinguish ocean-cont subduction from
-    /// continental collision when classifying convergent boundaries.
+    /// Per-plate landFraction (0 = oceanic, 1 = continental).
     [[nodiscard]] const std::vector<float>& plateLandFrac() const {
         return this->m_plateLandFrac;
     }
     void setPlateLandFrac(std::vector<float> v) {
         this->m_plateLandFrac = std::move(v);
     }
-    /// Per-plate crust age in My. Cached so biogeographic-realm and
-    /// metamorphic-shoulder passes can read it without keeping the Plate
-    /// struct (assignTerrain-local) alive.
+    /// Per-plate crust age in My.
     [[nodiscard]] const std::vector<float>& plateCrustAge() const {
         return this->m_plateCrustAge;
     }
@@ -539,15 +535,13 @@ public:
         this->m_plateCrustAge = std::move(v);
     }
     /// Per-plate count of merger events absorbed (Wilson-cycle history).
-    /// Plates with mergesAbsorbed == 0 stayed isolated and seed
-    /// biogeographic realms (Madagascar, Australia, Antarctica).
     [[nodiscard]] const std::vector<int32_t>& plateMergesAbsorbed() const {
         return this->m_plateMergesAbsorbed;
     }
     void setPlateMergesAbsorbed(std::vector<int32_t> v) {
         this->m_plateMergesAbsorbed = std::move(v);
     }
-    /// Per-plate polar-cap flag. Polar plates seed the ice-sheet pass.
+    /// Per-plate polar-cap flag.
     [[nodiscard]] const std::vector<uint8_t>& plateIsPolar() const {
         return this->m_plateIsPolar;
     }
@@ -555,77 +549,10 @@ public:
         this->m_plateIsPolar = std::move(v);
     }
 
-    /// 2026-05-04: per-plate POLYGON BOUNDARY ring + per-edge types.
-    /// Vertices are in plate-LOCAL frame; consumer applies
-    /// plateCenter + rotation by plate.rot to get world coords.
-    /// Edge types: 0=unknown, 1=spreading-ridge, 2=subduction-trench,
-    /// 3=transform-fault, 4=collision-suture. Used by renderer to
-    /// draw boundary lines colored by type. Voronoi tile-ownership
-    /// continues to be authoritative for terrain assignment.
-    [[nodiscard]] const std::vector<std::vector<std::pair<float, float>>>&
-    platePolygons() const {
-        return this->m_platePolygons;
-    }
-    void setPlatePolygons(
-        std::vector<std::vector<std::pair<float, float>>> v) {
-        this->m_platePolygons = std::move(v);
-    }
-    [[nodiscard]] const std::vector<std::vector<uint8_t>>&
-    platePolygonEdgeTypes() const {
-        return this->m_platePolygonEdgeTypes;
-    }
-    void setPlatePolygonEdgeTypes(std::vector<std::vector<uint8_t>> v) {
-        this->m_platePolygonEdgeTypes = std::move(v);
-    }
-    /// 2026-05-05 Phase 13d-A1 step 2: parallel to platePolygonEdgeTypes.
-    /// Per-edge neighbour plate id (0xFF = unknown / open boundary).
-    /// Lets diagnostic dumps recover (plate_a, plate_b, edge_type) tuples
-    /// without re-running Voronoi.
-    [[nodiscard]] const std::vector<std::vector<uint8_t>>&
-    platePolygonNeighborIds() const {
-        return this->m_platePolygonNeighborIds;
-    }
-    void setPlatePolygonNeighborIds(
-        std::vector<std::vector<uint8_t>> v) {
-        this->m_platePolygonNeighborIds = std::move(v);
-    }
-
-    /// 2026-05-05 Phase 13d-A1: extended plate metadata persisted post-
-    /// gen so external diagnostics (tools/diagnose_*.py) can recover the
-    /// full plate state without keeping the Plate vector alive past
-    /// MapGenerator::generate(). Latitude / longitude are the sphere-
-    /// authoritative position; eulerPole + angularVelDeg drive plate
-    /// motion; weight scales haversine Voronoi distances; rot is the
-    /// plate-local frame rotation needed to transform polygon vertices
-    /// (m_platePolygons stored in plate-LOCAL coords) into world space.
-    [[nodiscard]] const std::vector<std::pair<float, float>>&
-    plateLatLon() const { return this->m_plateLatLon; }
-    void setPlateLatLon(std::vector<std::pair<float, float>> v) {
-        this->m_plateLatLon = std::move(v);
-    }
-    [[nodiscard]] const std::vector<float>& plateWeight() const {
-        return this->m_plateWeight;
-    }
-    void setPlateWeight(std::vector<float> v) {
-        this->m_plateWeight = std::move(v);
-    }
-    [[nodiscard]] const std::vector<std::pair<float, float>>&
-    plateEulerPole() const { return this->m_plateEulerPole; }
-    void setPlateEulerPole(std::vector<std::pair<float, float>> v) {
-        this->m_plateEulerPole = std::move(v);
-    }
-    [[nodiscard]] const std::vector<float>& plateAngularVelDeg() const {
-        return this->m_plateAngularVelDeg;
-    }
-    void setPlateAngularVelDeg(std::vector<float> v) {
-        this->m_plateAngularVelDeg = std::move(v);
-    }
-    [[nodiscard]] const std::vector<float>& plateRot() const {
-        return this->m_plateRot;
-    }
-    void setPlateRot(std::vector<float> v) {
-        this->m_plateRot = std::move(v);
-    }
+    // 2026-05-06 cleanup: dead per-plate accessor pairs deleted
+    // (platePolygons / platePolygonEdgeTypes / platePolygonNeighborIds
+    // / plateLatLon / plateWeight / plateEulerPole / plateAngularVelDeg
+    // / plateRot) — none had a live getter consumer.
 
     /// Snapshot of the authoritative `SphereField::surfaceElevationM`
     /// raster (720 lon * 360 lat, row-major, latitude is the slow axis)
@@ -2096,15 +2023,9 @@ private:
     std::vector<float>                   m_plateCrustAge;
     std::vector<int32_t>                 m_plateMergesAbsorbed;
     std::vector<uint8_t>                 m_plateIsPolar;
-    std::vector<std::vector<std::pair<float, float>>>
-                                         m_platePolygons;
-    std::vector<std::vector<uint8_t>>    m_platePolygonEdgeTypes;
-    std::vector<std::vector<uint8_t>>    m_platePolygonNeighborIds;
-    std::vector<std::pair<float, float>> m_plateLatLon;
-    std::vector<float>                   m_plateWeight;
-    std::vector<std::pair<float, float>> m_plateEulerPole;
-    std::vector<float>                   m_plateAngularVelDeg;
-    std::vector<float>                   m_plateRot;
+    // 2026-05-06 cleanup: m_platePolygons + per-edge types/neighbours
+    // + m_plateLatLon/Weight/EulerPole/AngularVelDeg/Rot deleted —
+    // setters were called but no consumer ever read the getters back.
     /// 2026-05-06: SphereField surfaceElevationM snapshot
     /// (720 lon * 360 lat, row-major). Phase 0 plumbing.
     std::vector<float>                   m_sphereFieldElevationSnapshot;

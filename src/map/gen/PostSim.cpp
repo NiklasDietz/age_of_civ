@@ -43,29 +43,10 @@ void runPostSimPasses(MapGenContext& ctx) {
         return hexNeighbor(width, height, cylSim, col, row, dir, outIdx);
     };
 
-    // Pass 1: per-tile crust age.
-    for (int32_t row = 0; row < height; ++row) {
-        for (int32_t col = 0; col < width; ++col) {
-            const int32_t idx = row * width + col;
-            const uint8_t pid = grid.plateId(idx);
-            if (pid == 0xFFu) { continue; }
-            if (pid >= plates.size()) { continue; }
-            const Plate& p = plates[pid];
-            float dx = (static_cast<float>(col) + 0.5f)
-                       / static_cast<float>(width)  - p.cx;
-            float dy = (static_cast<float>(row) + 0.5f)
-                       / static_cast<float>(height) - p.cy;
-            if (cylSim) {
-                if (dx >  0.5f) { dx -= 1.0f; }
-                if (dx < -0.5f) { dx += 1.0f; }
-            }
-            // 2026-05-06 P4.3h-c-5: crustAge field deleted; per-tile
-            // crust age unsupported by legacy 2D state. Default to 0.
-            // P6 will recompute from SphereField crustAgeMy.
-            (void)dx; (void)dy; (void)p;
-            crustAgeTile[static_cast<std::size_t>(idx)] = 0.0f;
-        }
-    }
+    // 2026-05-06 cleanup: per-tile crust-age dx/dy distance pass
+    // deleted (output unconditionally zero post-P4.3h-c-5). P6 path
+    // populates crustAgeMy directly on SphereField.
+    std::fill(crustAgeTile.begin(), crustAgeTile.end(), 0.0f);
 
     // 2026-05-06: PHYSICS-FIRST P4.1 -- ophiolite suture marking pass
     // deleted. Was iterating SutureSeam events to stamp ophiolite-mask
@@ -248,22 +229,11 @@ void runPostSimPasses(MapGenContext& ctx) {
                 marginTypeTile[static_cast<std::size_t>(idx)] = 2;
                 continue;
             }
-            const Plate& A = plates[myPid];
-            const Plate& B = plates[static_cast<std::size_t>(otherPid)];
-            float bx = B.cx - A.cx;
-            float by = B.cy - A.cy;
-            if (cylSim) {
-                if (bx >  0.5f) { bx -= 1.0f; }
-                if (bx < -0.5f) { bx += 1.0f; }
-            }
-            const float bnLen = std::sqrt(bx * bx + by * by);
-            if (bnLen < 1e-4f) { continue; }
-            bx /= bnLen; by /= bnLen;
-            // 2026-05-06 P4.3h-a: vx/vy deleted; closingRate from
-            // legacy 2D motion no longer available. Default margin
-            // type to 2 (passive). Phase 6 will recompute from
-            // SphereField convergenceRateRadPerMy.
-            (void)bx; (void)by;
+            // 2026-05-06 cleanup: cx/cy boundary-normal computation
+            // deleted; result was unused (vx/vy gone in P4.3h-a).
+            // Margin defaults to passive (2). P6+ should recompute
+            // from SphereField convergenceRateRadPerMy.
+            (void)otherPid;
             marginTypeTile[static_cast<std::size_t>(idx)] = 2;
         }
     }

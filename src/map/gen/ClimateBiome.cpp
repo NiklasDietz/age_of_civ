@@ -43,25 +43,12 @@ void runClimateBiomePass(HexGrid& grid,
         maxCoastDist = std::max(maxCoastDist, distFromCoast[static_cast<std::size_t>(i)]);
     }
 
-    // 2026-05-04: precompute mountain tile set BEFORE wind loop. Wind
-    // orographic effects (rain shadow + windward precipitation boost)
-    // need to know where actual mountains are. Old code checked
-    // `mountainElev[i] >= mountainThreshold` -- an elevation-based
-    // proxy that diverges from the rank-based orogeny quota used to
-    // PLACE mountains. Result: wind ignored real mountains and
-    // applied rain shadows behind elevation-only "false mountains".
-    std::vector<uint8_t> isMountainTile(
-        static_cast<std::size_t>(totalTiles), 0u);
-    // 2026-05-06: PHYSICS-FIRST P5.2 -- ClimateBiome shaping layer
-    // deleted (~330 LOC). Was running BFS connected-components, two-
-    // pass seed/chain mountain selection with per-continent 12% cap +
-    // ridge-line construction along plate-id boundaries. Pure quota
-    // shaper. Mountain status is now decided downstream solely by
-    // `oroAt >= MOUNTAIN_OROGENY_THRESHOLD` (single bilinear sample
-    // of SphereField surfaceElevationM via legacy MOUNTAIN_BASE_M
-    // remap; P5.3 collapses to `> 4000.0f` directly). isMountainTile
-    // stays zero-initialised; the && gate at biome assignment is
-    // dropped.
+    // 2026-05-06 cleanup: isMountainTile vector deleted. P5.2 removed
+    // its pre-population code, leaving the vector permanently zero.
+    // Mountain assignment now happens downstream in assignTerrain via
+    // the SphereField z>4000 m gate; ClimateBiome no longer pre-knows
+    // mountain locations, so wind-orographic + foothill-BFS branches
+    // collapse to no-ops (deleted below).
 
     constexpr int32_t WIND_WALK_RANGE = 14;
     std::vector<float> windMoist(static_cast<std::size_t>(totalTiles), 0.0f);
@@ -98,10 +85,9 @@ void runClimateBiomePass(HexGrid& grid,
                     reachedOcean = true;
                     break;
                 }
-                if (isMountainTile[static_cast<std::size_t>(uidx)]) {
-                    ++mountainCount;
-                    if (firstMountainDist < 0) { firstMountainDist = s; }
-                }
+                // 2026-05-06 cleanup: isMountainTile-keyed orographic
+                // counter deleted (vector was permanently zero post-P5.2).
+                (void)uidx;
             }
             if (!reachedOcean) { carry = -0.10f; }
             if (firstMountainDist > 0 && firstMountainDist <= 3) {
@@ -119,10 +105,9 @@ void runClimateBiomePass(HexGrid& grid,
                 if (elevationMap[static_cast<std::size_t>(didx)] < waterThreshold) {
                     break;
                 }
-                if (isMountainTile[static_cast<std::size_t>(didx)]) {
-                    carry += 0.30f - 0.10f * static_cast<float>(s - 1);
-                    break;
-                }
+                // 2026-05-06 cleanup: windward-mountain rain boost
+                // deleted (isMountainTile permanently zero post-P5.2).
+                (void)didx;
             }
             windMoist[static_cast<std::size_t>(idx)] = std::clamp(carry, -0.50f, 0.50f);
         }
@@ -275,58 +260,16 @@ void runClimateBiomePass(HexGrid& grid,
         }
     }
 
-    // 2026-05-04: MOUNTAIN-DISTANCE BFS for foothill-belt hill placement.
-    // Old foothill rule was a 1-hex orogeny-neighbour check, which made
-    // every foothill tile sit immediately adjacent to a peak. Real
-    // foothills extend several rings outward with falling probability
-    // (Sub-Andean Sierras, Bavarian Alpine foreland, Appalachian
-    // piedmont). We BFS from every mountain tile up to MAX_DIST rings,
-    // propagating only over land tiles so foothill apron doesn't leak
-    // across ocean. Sentinel 0xFF means "out of foothill influence".
+    // 2026-05-06 cleanup: foothill-belt mountain-distance BFS deleted.
+    // BFS depended on isMountainTile (now zero-vector post-P5.2) so
+    // mountainDist would always be 0xFF -- foothill placement was
+    // already a no-op. Vector kept (sentinel-filled) so the downstream
+    // foothill-belt hillChance branch keeps compiling; collapses to
+    // hillChance == 0 every cell.
     constexpr uint8_t MOUNTAIN_MAX_DIST = 5;
+    (void)MOUNTAIN_MAX_DIST;
     std::vector<uint8_t> mountainDist(
         static_cast<std::size_t>(totalTiles), 0xFFu);
-    {
-        std::vector<int32_t> bfsQueue;
-        bfsQueue.reserve(static_cast<std::size_t>(totalTiles));
-        for (int32_t i = 0; i < totalTiles; ++i) {
-            if (isMountainTile[static_cast<std::size_t>(i)]) {
-                mountainDist[static_cast<std::size_t>(i)] = 0;
-                bfsQueue.push_back(i);
-            }
-        }
-        constexpr int32_t dr_even_m[6] = {0, 0, -1, -1, +1, +1};
-        constexpr int32_t dc_even_m[6] = {-1, +1, -1,  0, -1,  0};
-        constexpr int32_t dc_odd_m[6]  = {-1, +1,  0, +1,  0, +1};
-        for (std::size_t qh = 0; qh < bfsQueue.size(); ++qh) {
-            const int32_t idx = bfsQueue[qh];
-            const uint8_t d = mountainDist[static_cast<std::size_t>(idx)];
-            if (d >= MOUNTAIN_MAX_DIST) { continue; }
-            const int32_t bcol = idx % width;
-            const int32_t brow = idx / width;
-            const bool evenRow = ((brow & 1) == 0);
-            for (int32_t k = 0; k < 6; ++k) {
-                int32_t nr = brow + dr_even_m[k];
-                int32_t nc = bcol +
-                    (evenRow ? dc_even_m[k] : dc_odd_m[k]);
-                if (nr < 0 || nr >= height) { continue; }
-                if (cylClim) {
-                    nc = ((nc % width) + width) % width;
-                } else if (nc < 0 || nc >= width) {
-                    continue;
-                }
-                const int32_t ni = nr * width + nc;
-                const std::size_t niU = static_cast<std::size_t>(ni);
-                if (mountainDist[niU] != 0xFFu) { continue; }
-                // Don't BFS over ocean -- foothill apron is a land
-                // phenomenon. Terrain isn't set yet at this point, so
-                // gate on raw elevation versus the water threshold.
-                if (elevationMap[niU] < waterThreshold) { continue; }
-                mountainDist[niU] = static_cast<uint8_t>(d + 1);
-                bfsQueue.push_back(ni);
-            }
-        }
-    }
 
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {

@@ -131,15 +131,6 @@ public:
         // 1 = default (64×64), 2 = high (128×128), 4 = ultra (256×256).
         int32_t  superSampleFactor = 1;
 
-        // ----- DIAGNOSTIC HOOKS (Phase 13d-A1 step 4) -----
-        /// When non-empty, MapGenerator writes one CSV per plate to
-        /// `<physicsCellDumpPath>.plate<id>.csv` containing the full
-        /// PhysicsGrid SoA per active cell (lat, lon, crust thickness,
-        /// surface elevation, strain) right before the local plate
-        /// vector goes out of scope. Path is treated as a base; the
-        /// generator appends `.plateNNN.csv` per plate. Empty = no
-        /// dump (default).
-        std::string physicsCellDumpPath;
     };
 
     /**
