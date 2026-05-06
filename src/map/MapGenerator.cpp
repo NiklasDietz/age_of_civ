@@ -416,18 +416,23 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     const float poleLon = centerRng.nextFloat(-180.0f, 180.0f);
                     p.eulerPoleLatDeg = poleLat;
                     p.eulerPoleLonDeg = poleLon;
-                    // 2026-05-05 Phase 7 sub-step 7a: bump floors
-                    // 0.5 -> 1.0 (land) and 1.0 -> 2.0 (ocean) so
-                    // even slow-spawn plates have enough relative
-                    // motion to produce measurable convergence.
-                    // Stuck-zero-mountain seeds (99/256/31337) had
-                    // active strain (0.16-0.20 rad) but apparently
-                    // not enough sustained convergence in mountain-
-                    // biome-eligible regions to surface in the
-                    // world-frame orogeny[] field.
+                    // 2026-05-06 P6.9: Phase-7 stuck-mountain floors
+                    // (1.0-3.0 land / 2.0-6.0 ocean deg/Ma) deleted.
+                    // Earth Euler-pole catalog HS3-NUVEL-1A (Gripp &
+                    // Gordon 2002, Geophys. J. Int. 150) gives:
+                    //   continental plates: 0.05 - 0.7 deg/Ma
+                    //     (Eurasian 0.14, African 0.18, North American
+                    //      0.21, South American 0.32, Australian 0.66)
+                    //   oceanic plates: 0.3 - 1.1 deg/Ma
+                    //     (Pacific 0.96, Nazca 0.79, Cocos 1.42)
+                    // Prior 5-6x inflation was a fudge to force
+                    // mountains via stronger closing rates; mountain
+                    // formation now relies on physics-correct K_THICKEN
+                    // and 4000 m threshold, not artificially boosted
+                    // angular velocities.
                     const float angVelMag = isLand
-                        ? centerRng.nextFloat(1.0f, 3.0f)
-                        : centerRng.nextFloat(2.0f, 6.0f);
+                        ? centerRng.nextFloat(0.10f, 0.70f)
+                        : centerRng.nextFloat(0.30f, 1.10f);
                     p.angularVelDeg = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f)
                         ? -angVelMag : angVelMag;
                 }
@@ -914,10 +919,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // sources tile elevation from this raster via bilinearSample.
         // The flag AOC_PHYSICS_ON_SPHEREFIELD now only gates the per-
         // epoch step + snapshot setter (default ON since P2.1).
-        // Seeding: each cell inherits continental fraction from the
-        // nearest Bird (2003) reference plate at the cell's lat/lon
-        // (Continental=1, Mixed=0.5, Oceanic=0). Crust thickness is the
-        // linear blend of initial continental/oceanic thickness.
+        // Seeding: 2026-05-06 P6.5 -- each cell gets continental fraction
+        // from inverse-radius-weighted blend of all Bird (2003) reference
+        // plates within 0.55 rad (~31°). Smooth float in [0,1] replaces
+        // the hard step function (Continental=1 / Mixed=0.5 / Oceanic=0)
+        // -- avoids 0->1 cliffs at plate-centroid Voronoi boundaries
+        // that produced single-cell continent shards in the seed map.
+        // Crust thickness is the linear blend of initial continental /
+        // oceanic thickness.
         aoc::map::gen::SphereField sphereField;
         sphereField.resize();
         std::vector<uint8_t> sphereBoundaryScratch;
@@ -925,14 +934,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             for (int32_t lonIdx = 0; lonIdx < aoc::map::gen::SphereField::LON_CELLS; ++lonIdx) {
                 const aoc::map::gen::LatLon p =
                     aoc::map::gen::SphereField::cellCenter(lonIdx, latIdx);
-                const aoc::map::gen::PlateCompositionType t =
-                    aoc::map::gen::classifyByNearestReference(p);
-                float frac = 0.0f;
-                switch (t) {
-                    case aoc::map::gen::PlateCompositionType::Continental: frac = 1.0f; break;
-                    case aoc::map::gen::PlateCompositionType::Mixed:       frac = 0.5f; break;
-                    case aoc::map::gen::PlateCompositionType::Oceanic:     frac = 0.0f; break;
-                }
+                const float frac =
+                    aoc::map::gen::continentalFractionByReferenceFalloff(p);
                 const std::size_t idx =
                     aoc::map::gen::SphereField::cellIndex(lonIdx, latIdx);
                 sphereField.continentalFraction[idx] = frac;
@@ -960,6 +963,27 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // (which biases plates toward subduction) and the natural
             // ridge-push from divergent boundaries.
 
+            // 2026-05-06 P6.10: stochastic Euler-pole jitter. GPlates
+            // analysis of Cenozoic plate reconstructions (Müller et al.
+            // 2008, Tetley et al. 2019) shows individual plate motion
+            // vectors change by ~10%/Myr (1-σ fractional change in
+            // angular velocity) and Euler poles drift ~1°/Myr from
+            // mantle re-organisation, slab-pull re-balancing, and
+            // collision-induced rotation. Random-walk std grows as
+            // √dt, so per-epoch sigmas scale with √MY_PER_EPOCH.
+            // Adds physical realism: without jitter every plate's
+            // motion is locked at sim-init, leaving uniform "boring"
+            // boundaries that never reorganise.
+            const float jitterScale = std::sqrt(std::max(1.0f, MY_PER_EPOCH_P1));
+            const float velFracSigma = 0.10f * jitterScale;
+            const float poleSigmaDeg = 1.0f  * jitterScale;
+            auto gaussianFromUniform = [&]() {
+                // Sum of 3 U[-1,1] approximates N(0,1) (CLT, σ=1).
+                return centerRng.nextFloat(-1.0f, 1.0f)
+                     + centerRng.nextFloat(-1.0f, 1.0f)
+                     + centerRng.nextFloat(-1.0f, 1.0f);
+            };
+
             // Advance every plate by (vx, vy) * DT. Cylindrical maps WRAP
             // around the X axis (no east/west edge — like a globe band);
             // flat maps BOUNCE so plates stay on the rectangle.
@@ -979,6 +1003,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 if (p.eulerPoleLatDeg != 0.0f
                     || p.eulerPoleLonDeg != 0.0f
                     || p.angularVelDeg != 0.0f) {
+                    // P6.10 jitter: drift Euler pole + perturb angular
+                    // velocity before applying motion this epoch.
+                    p.eulerPoleLatDeg = std::clamp(
+                        p.eulerPoleLatDeg
+                            + gaussianFromUniform() * poleSigmaDeg,
+                        -89.0f, 89.0f);
+                    p.eulerPoleLonDeg += gaussianFromUniform() * poleSigmaDeg;
+                    while (p.eulerPoleLonDeg >  180.0f) p.eulerPoleLonDeg -= 360.0f;
+                    while (p.eulerPoleLonDeg < -180.0f) p.eulerPoleLonDeg += 360.0f;
+                    p.angularVelDeg *= 1.0f + gaussianFromUniform() * velFracSigma;
+
                     aoc::map::gen::LatLon current{p.latDeg, p.lonDeg};
                     aoc::map::gen::LatLon pole{
                         p.eulerPoleLatDeg, p.eulerPoleLonDeg};

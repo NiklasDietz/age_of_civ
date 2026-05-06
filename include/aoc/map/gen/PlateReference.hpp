@@ -55,4 +55,20 @@ struct ReferencePlate {
 [[nodiscard]] PlateCompositionType classifyByNearestReference(
     LatLon centroid) noexcept;
 
+/// 2026-05-06 P6.5: linear-falloff continental fraction. Returns a
+/// smooth float in [0,1] formed by inverse-radius-weighted blend of
+/// reference-plate composition values (Continental=1.0, Mixed=0.5,
+/// Oceanic=0.0) over all Bird (2003) plates whose haversine distance
+/// is below `falloffRadiusRad`. Weight = max(0, 1 - d/R) so contribution
+/// drops linearly to zero at the radius boundary.
+///
+/// Replaces the hard step function (`classifyByNearestReference`) at
+/// SphereField seeding. The default radius (0.55 rad ~ 31°) is the
+/// mean angular plate radius for 52 plates over a unit sphere
+/// (sqrt(4*pi / (52*pi)) = 0.277 rad → doubled for soft-overlap),
+/// giving smooth transitions at plate boundaries instead of 0->1
+/// jumps that produce single-cell continent shards in the seed map.
+[[nodiscard]] float continentalFractionByReferenceFalloff(
+    LatLon point, float falloffRadiusRad = 0.55f) noexcept;
+
 } // namespace aoc::map::gen

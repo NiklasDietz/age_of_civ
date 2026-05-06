@@ -99,4 +99,41 @@ PlateCompositionType classifyByNearestReference(LatLon centroid) noexcept {
     return nearestType;
 }
 
+float continentalFractionByReferenceFalloff(LatLon point,
+                                            float falloffRadiusRad) noexcept {
+    auto typeValue = [](PlateCompositionType t) -> float {
+        switch (t) {
+            case PlateCompositionType::Continental: return 1.0f;
+            case PlateCompositionType::Mixed:       return 0.5f;
+            case PlateCompositionType::Oceanic:     return 0.0f;
+        }
+        return 0.0f;
+    };
+
+    float weightSum = 0.0f;
+    float valueSum  = 0.0f;
+    float nearestDist = 1e9f;
+    PlateCompositionType nearestType = PlateCompositionType::Oceanic;
+
+    for (std::size_t i = 0; i < kBirdPlateCatalogSize; ++i) {
+        const float d = haversineRadians(point, kBirdPlateCatalog[i].centroid);
+        if (d < nearestDist) {
+            nearestDist = d;
+            nearestType = kBirdPlateCatalog[i].type;
+        }
+        if (d >= falloffRadiusRad) { continue; }
+        const float w = 1.0f - d / falloffRadiusRad; // linear falloff
+        weightSum += w;
+        valueSum  += w * typeValue(kBirdPlateCatalog[i].type);
+    }
+
+    // Fallback: no plate within radius -> use nearest. Cannot happen for
+    // the 52-plate catalog at R=0.55 rad (max gap ~0.4 rad) but kept for
+    // robustness if catalog or radius shrinks.
+    if (weightSum <= 0.0f) {
+        return typeValue(nearestType);
+    }
+    return valueSum / weightSum;
+}
+
 } // namespace aoc::map::gen

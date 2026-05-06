@@ -14,10 +14,35 @@ namespace aoc::map::gen {
 // reference Turcotte & Schubert 2014 ch. 6 + DeCelles et al. 2002.
 inline constexpr float K_THICKEN_KM_PER_RADMY = 76.5f;
 
-// Erosion-rate placeholder. Phase 6 step 2 replaces this with the
-// Whipple & Tucker 1999 stream-power coefficient (derivation TBD).
-// Units: per My, applied as dh = -K * (z above sea level) * dtMy.
-inline constexpr float K_EROSION_PER_MY = 0.05f;
+// Bulk erosion coefficient per My per metre of elevation above sea
+// level. Derived from the stream-power incision model (Whipple &
+// Tucker 1999, J. Geophys. Res.) calibrated to the global mean
+// denudation rate of ~50 m/My at mean continental elevation ~840 m
+// (Wilkinson & McElroy 2007, J. Geophys. Res. 112, F02017):
+//   K = E_mean / z_mean = 50 m/My / 840 m ≈ 0.060 /My.
+// Each 0.5° cell (~55 km) averages many drainage basins; using the
+// global mean K avoids per-basin drainage-area assumptions. Active-
+// orogen end-member (Himalaya, orographic enhancement) is ~0.4/My —
+// captured indirectly by higher convergence-driven uplift rates in
+// those cells. 2026-05-06 P6.4.
+inline constexpr float K_EROSION_PER_MY = 0.06f;
+
+// 2026-05-06 P6.6 plate-extent gate. Real plates have finite size:
+// the Pacific (largest) spans ~1.5 rad, microplates ~0.2 rad. A
+// centroid-Voronoi assignment grants every cell to its nearest plate
+// regardless of actual extent, so a microplate sandwiched between
+// giants ends up "owning" a thin sliver far from its centroid where
+// the giants physically dominate.
+//
+// Calibration: 50-plate sphere has mean plate area 4π/50 = 0.25 sr,
+// mean angular radius sqrt(0.25/π) = 0.282 rad. With weight = 1.0
+// representing a mean-area plate, plate angular reach scales as
+// sqrt(weight) (area ~ weight, so radius ~ sqrt(weight)). The
+// constant 0.6 rad is the per-sqrt(weight) reach with a generous
+// 2x margin so most cells inside the Voronoi cell still pass the
+// gate; only far-side antipodal artefacts and large/microplate
+// sandwich slivers are filtered.
+inline constexpr float PLATE_REACH_RAD_PER_SQRT_WEIGHT = 0.6f;
 
 // Effective subduction-zone width in kilometres. A cell is consumed by
 // subduction when (closing rate * dtMy * R_earth) exceeds this width.
@@ -126,6 +151,20 @@ void accumulateClosingRate(SphereField& field,
             const Plate& A = plates[static_cast<std::size_t>(selfId)];
             const Plate& B = plates[static_cast<std::size_t>(otherId)];
             const LatLon p = SphereField::cellCenter(lonIdx, latIdx);
+
+            // P6.6 plate-extent gate: skip closing-rate accumulation if
+            // either plate's centroid is beyond its sqrt(weight)-scaled
+            // angular reach. Filters microplate-sliver artefacts where
+            // centroid-Voronoi grants ownership across an unrealistic
+            // distance.
+            const float reachA = std::sqrt(std::max(0.1f, A.weight))
+                                * PLATE_REACH_RAD_PER_SQRT_WEIGHT;
+            const float reachB = std::sqrt(std::max(0.1f, B.weight))
+                                * PLATE_REACH_RAD_PER_SQRT_WEIGHT;
+            const float dA = haversineRadians(p, {A.latDeg, A.lonDeg});
+            const float dB = haversineRadians(p, {B.latDeg, B.lonDeg});
+            if (dA > reachA || dB > reachB) continue;
+
             const TangentVelocity vA = eulerVelocityAt(
                 p, {A.eulerPoleLatDeg, A.eulerPoleLonDeg}, A.angularVelDeg);
             const TangentVelocity vB = eulerVelocityAt(

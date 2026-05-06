@@ -67,13 +67,11 @@ struct PhysicsConstants {
     /// Initial oceanic crust thickness (km). Earth-mean is ~7 km.
     static constexpr float initialOceanicThicknessKm = 7.0f;
     /// Maximum sustainable crust thickness (km). Beyond this the lower
-    /// crust delaminates into the mantle. 2026-05-05 Phase 3.5: lowered
-    /// 75 -> 65. Tibet's 70-75 km is the OBSERVED ceiling AFTER active
-    /// convergence; the steady-state mean continental crust over time
-    /// is 30-50 km because delamination + erosion peel the cap.
-    /// Without a delamination event in the sim yet, the cap doubles as
-    /// the steady-state ceiling.
-    static constexpr float maxCrustThicknessKm = 65.0f;
+    /// crust delaminates into the mantle. 2026-05-06 P6.3: raised 65->70.
+    /// Tibet observed steady-state ceiling 70-75 km (Turcotte & Schubert
+    /// 2014, ch. 4). Without delamination simulation the cap is the
+    /// physical ceiling, not the steady-state mean.
+    static constexpr float maxCrustThicknessKm = 70.0f;
     /// Earth radius in km, used by lat/lon -> km conversions.
     static constexpr float earthRadiusKm = 6371.0f;
 };
