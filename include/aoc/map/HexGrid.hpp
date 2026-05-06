@@ -577,6 +577,67 @@ public:
     void setPlatePolygonEdgeTypes(std::vector<std::vector<uint8_t>> v) {
         this->m_platePolygonEdgeTypes = std::move(v);
     }
+    /// 2026-05-05 Phase 13d-A1 step 2: parallel to platePolygonEdgeTypes.
+    /// Per-edge neighbour plate id (0xFF = unknown / open boundary).
+    /// Lets diagnostic dumps recover (plate_a, plate_b, edge_type) tuples
+    /// without re-running Voronoi.
+    [[nodiscard]] const std::vector<std::vector<uint8_t>>&
+    platePolygonNeighborIds() const {
+        return this->m_platePolygonNeighborIds;
+    }
+    void setPlatePolygonNeighborIds(
+        std::vector<std::vector<uint8_t>> v) {
+        this->m_platePolygonNeighborIds = std::move(v);
+    }
+
+    /// 2026-05-05 Phase 13d-A1: extended plate metadata persisted post-
+    /// gen so external diagnostics (tools/diagnose_*.py) can recover the
+    /// full plate state without keeping the Plate vector alive past
+    /// MapGenerator::generate(). Latitude / longitude are the sphere-
+    /// authoritative position; eulerPole + angularVelDeg drive plate
+    /// motion; weight scales haversine Voronoi distances; rot is the
+    /// plate-local frame rotation needed to transform polygon vertices
+    /// (m_platePolygons stored in plate-LOCAL coords) into world space.
+    [[nodiscard]] const std::vector<std::pair<float, float>>&
+    plateLatLon() const { return this->m_plateLatLon; }
+    void setPlateLatLon(std::vector<std::pair<float, float>> v) {
+        this->m_plateLatLon = std::move(v);
+    }
+    [[nodiscard]] const std::vector<float>& plateWeight() const {
+        return this->m_plateWeight;
+    }
+    void setPlateWeight(std::vector<float> v) {
+        this->m_plateWeight = std::move(v);
+    }
+    [[nodiscard]] const std::vector<std::pair<float, float>>&
+    plateEulerPole() const { return this->m_plateEulerPole; }
+    void setPlateEulerPole(std::vector<std::pair<float, float>> v) {
+        this->m_plateEulerPole = std::move(v);
+    }
+    [[nodiscard]] const std::vector<float>& plateAngularVelDeg() const {
+        return this->m_plateAngularVelDeg;
+    }
+    void setPlateAngularVelDeg(std::vector<float> v) {
+        this->m_plateAngularVelDeg = std::move(v);
+    }
+    [[nodiscard]] const std::vector<float>& plateRot() const {
+        return this->m_plateRot;
+    }
+    void setPlateRot(std::vector<float> v) {
+        this->m_plateRot = std::move(v);
+    }
+
+    /// Snapshot of the authoritative `SphereField::surfaceElevationM`
+    /// raster (720 lon * 360 lat, row-major, latitude is the slow axis)
+    /// captured at the end of map generation. Renderer/overlay code
+    /// reads this in lieu of the deleted Voronoi plate-polygon setters.
+    /// 2026-05-06: physics-first rewrite, Phase 0 plumbing.
+    [[nodiscard]] const std::vector<float>& sphereFieldElevationSnapshot() const {
+        return this->m_sphereFieldElevationSnapshot;
+    }
+    void setSphereFieldElevationSnapshot(std::vector<float> v) {
+        this->m_sphereFieldElevationSnapshot = std::move(v);
+    }
 
     [[nodiscard]] uint8_t plateId(int32_t index) const {
         const int32_t total = this->tileCount();
@@ -2038,6 +2099,15 @@ private:
     std::vector<std::vector<std::pair<float, float>>>
                                          m_platePolygons;
     std::vector<std::vector<uint8_t>>    m_platePolygonEdgeTypes;
+    std::vector<std::vector<uint8_t>>    m_platePolygonNeighborIds;
+    std::vector<std::pair<float, float>> m_plateLatLon;
+    std::vector<float>                   m_plateWeight;
+    std::vector<std::pair<float, float>> m_plateEulerPole;
+    std::vector<float>                   m_plateAngularVelDeg;
+    std::vector<float>                   m_plateRot;
+    /// 2026-05-06: SphereField surfaceElevationM snapshot
+    /// (720 lon * 360 lat, row-major). Phase 0 plumbing.
+    std::vector<float>                   m_sphereFieldElevationSnapshot;
     std::vector<float>                   m_crustAgeTile;
     std::vector<int8_t>                  m_magneticPolarity;
     std::vector<float>                   m_sedimentDepth;

@@ -83,6 +83,17 @@ if(AOC_DIAG_IR)
     add_compile_definitions(AOC_DIAG_IR=1)
 endif()
 
+# Physics-first plate-tectonic rewrite: default flipped ON 2026-05-06.
+# SphereField (720x360 lat/lon) physics runs every build alongside the
+# legacy per-plate pipeline. World-frame elevation still sources from
+# legacy `orogenyLocal` until Phase 2 step 2 deletes the scatter passes;
+# SphereField is a passenger in P2 step 1.
+option(AOC_PHYSICS_ON_SPHEREFIELD
+       "Run the SphereField physics-first epoch loop" ON)
+if(AOC_PHYSICS_ON_SPHEREFIELD)
+    add_compile_definitions(AOC_PHYSICS_ON_SPHEREFIELD=1)
+endif()
+
 # --------------------------------------------------------------------------
 # Dependencies
 # --------------------------------------------------------------------------
@@ -250,7 +261,10 @@ set(AOC_LIB_SOURCES
     src/map/gen/Resources.cpp
     src/map/gen/Features.cpp
     src/map/gen/Rivers.cpp
+    src/map/gen/SphereField.cpp
+    src/map/gen/SphereFieldPhysics.cpp
     src/map/gen/SphereGeometry.cpp
+    src/map/gen/PlateReference.cpp
     src/map/Pathfinding.cpp
     src/map/FogOfWar.cpp
     src/map/RiverGameplay.cpp

@@ -15,7 +15,9 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/MapGenerator.hpp"
 #include "aoc/map/Terrain.hpp"
+#include "aoc/map/gen/SphereGeometry.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -141,6 +143,246 @@ void writeFrame(const aoc::map::HexGrid& grid, const std::string& path,
     }
 }
 
+/// 2026-05-05 Phase 13d-A1: per-plate state dump for offline diagnostics.
+/// Columns mirror the ground-truth Plate struct fields persisted on
+/// HexGrid in MapGenerator.cpp. Consumers live under tools/ (Python
+/// scripts) and recover sphere positions, motion, polygon vertex count,
+/// and rotation needed to reproject local-frame polygons into world
+/// coordinates.
+void writePlateDump(const aoc::map::HexGrid& grid, const std::string& path) {
+    std::ofstream out(path);
+    if (!out.is_open()) {
+        std::fprintf(stderr,
+            "%s:%d error: cannot open '%s' for writing (--dump-plates)\n",
+            __FILE__, __LINE__, path.c_str());
+        return;
+    }
+    out << "plate_id,latDeg,lonDeg,weight,landFraction,crustAge,"
+           "isPolar,mergesAbsorbed,vx,vy,eulerPoleLatDeg,eulerPoleLonDeg,"
+           "angularVelDeg,cx,cy,rot,polygon_vertex_count\n";
+    const auto& latLons       = grid.plateLatLon();
+    const auto& weights       = grid.plateWeight();
+    const auto& landFracs     = grid.plateLandFrac();
+    const auto& crustAges     = grid.plateCrustAge();
+    const auto& isPolars      = grid.plateIsPolar();
+    const auto& mergesAbs     = grid.plateMergesAbsorbed();
+    const auto& motions       = grid.plateMotions();
+    const auto& eulerPoles    = grid.plateEulerPole();
+    const auto& angularVels   = grid.plateAngularVelDeg();
+    const auto& centers       = grid.plateCenters();
+    const auto& rots          = grid.plateRot();
+    const auto& polys         = grid.platePolygons();
+    const std::size_t n = latLons.size();
+    if (weights.size() != n || landFracs.size() != n
+        || crustAges.size() != n || isPolars.size() != n
+        || mergesAbs.size() != n || motions.size() != n
+        || eulerPoles.size() != n || angularVels.size() != n
+        || centers.size() != n || rots.size() != n
+        || polys.size() != n) {
+        std::fprintf(stderr,
+            "%s:%d error: plate metadata vectors have inconsistent "
+            "sizes (latLon=%zu motions=%zu polys=%zu)\n",
+            __FILE__, __LINE__, n, motions.size(), polys.size());
+        return;
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+        out << i << ','
+            << latLons[i].first      << ',' << latLons[i].second   << ','
+            << weights[i]            << ','
+            << landFracs[i]          << ','
+            << crustAges[i]          << ','
+            << static_cast<int>(isPolars[i]) << ','
+            << mergesAbs[i]          << ','
+            << motions[i].first      << ',' << motions[i].second   << ','
+            << eulerPoles[i].first   << ',' << eulerPoles[i].second << ','
+            << angularVels[i]        << ','
+            << centers[i].first      << ',' << centers[i].second   << ','
+            << rots[i]               << ','
+            << polys[i].size()       << '\n';
+    }
+}
+
+/// 2026-05-05 Phase 13d-A1 step 2: per-boundary-edge dump for offline
+/// diagnostics. Polygon vertices are stored on HexGrid in plate-LOCAL
+/// frame; this writer applies (cx, cy) + 2D rotation by plateRot to
+/// emit edge endpoints in world-space normalized [0,1]^2 coords. Lets
+/// tools/diagnose_mountain_edges.py answer "how far is each mountain
+/// tile from the nearest type-2/4 edge?". Per-edge schema:
+///   plate_id, edge_index, ax, ay, bx, by, edge_type, neighbor_plate_id
+void writeEdgeDump(const aoc::map::HexGrid& grid, const std::string& path) {
+    std::ofstream out(path);
+    if (!out.is_open()) {
+        std::fprintf(stderr,
+            "%s:%d error: cannot open '%s' for writing (--dump-edges)\n",
+            __FILE__, __LINE__, path.c_str());
+        return;
+    }
+    out << "plate_id,edge_index,ax,ay,bx,by,edge_type,neighbor_plate_id\n";
+    const auto& polys     = grid.platePolygons();
+    const auto& edgeTypes = grid.platePolygonEdgeTypes();
+    const auto& nbrIds    = grid.platePolygonNeighborIds();
+    const auto& centers   = grid.plateCenters();
+    const auto& rots      = grid.plateRot();
+    const std::size_t n = polys.size();
+    if (edgeTypes.size() != n || nbrIds.size() != n
+        || centers.size() != n || rots.size() != n) {
+        std::fprintf(stderr,
+            "%s:%d error: polygon/center/rot vectors mismatched "
+            "(polys=%zu types=%zu nbrs=%zu centers=%zu rots=%zu)\n",
+            __FILE__, __LINE__, n, edgeTypes.size(), nbrIds.size(),
+            centers.size(), rots.size());
+        return;
+    }
+    for (std::size_t pi = 0; pi < n; ++pi) {
+        const auto& ring = polys[pi];
+        const auto& types = edgeTypes[pi];
+        const auto& nbrs  = nbrIds[pi];
+        const std::size_t Nv = ring.size();
+        if (Nv < 3) { continue; }
+        // Edge-type / neighbor-id arrays may legitimately differ in
+        // length when an older HexGrid was loaded; skip mismatches
+        // rather than emitting garbage.
+        const bool typesOk = (types.size() == Nv);
+        const bool nbrsOk  = (nbrs.size()  == Nv);
+        const float cs = std::cos(rots[pi]);
+        const float sn = std::sin(rots[pi]);
+        const float cx = centers[pi].first;
+        const float cy = centers[pi].second;
+        for (std::size_t i = 0; i < Nv; ++i) {
+            const std::size_t j = (i + 1) % Nv;
+            const float ax = cx + ring[i].first  * cs - ring[i].second * sn;
+            const float ay = cy + ring[i].first  * sn + ring[i].second * cs;
+            const float bx = cx + ring[j].first  * cs - ring[j].second * sn;
+            const float by = cy + ring[j].first  * sn + ring[j].second * cs;
+            const int et  = typesOk ? static_cast<int>(types[i]) : 0;
+            const int nbr = nbrsOk  ? static_cast<int>(nbrs[i])  : 0xFF;
+            out << pi << ',' << i << ','
+                << ax << ',' << ay << ',' << bx << ',' << by << ','
+                << et << ',' << nbr << '\n';
+        }
+    }
+}
+
+/// 2026-05-05 Phase 13d-A1 step 3: per-mountain-tile -> nearest-boundary
+/// dump for offline diagnostics. For each Mountain-terrain tile the writer
+/// computes the tile lat/lon (Mollweide inverse) and walks every persisted
+/// boundary edge, sampling N points along the edge in normalised world
+/// coords + projecting each to lat/lon, taking the minimum haversine
+/// distance. Resulting CSV answers "are mountains co-located with the
+/// expected convergent (type-2/4) edges, or do they cluster on type-1/3
+/// edges (which would prove peakSample window leak)?".
+///
+/// Schema: tile_index, col, row, lat, lon, owner_plate_id,
+///         nearest_edge_owner, nearest_edge_type, nearest_edge_distance_km
+void writeMountainEdgeDump(const aoc::map::HexGrid& grid,
+                           const std::string& path) {
+    std::ofstream out(path);
+    if (!out.is_open()) {
+        std::fprintf(stderr,
+            "%s:%d error: cannot open '%s' for writing "
+            "(--dump-mountain-edges)\n",
+            __FILE__, __LINE__, path.c_str());
+        return;
+    }
+    out << "tile_index,col,row,lat,lon,owner_plate_id,"
+           "nearest_edge_owner,nearest_edge_type,"
+           "nearest_edge_distance_km\n";
+    const int32_t width  = grid.width();
+    const int32_t height = grid.height();
+    const auto& polys     = grid.platePolygons();
+    const auto& edgeTypes = grid.platePolygonEdgeTypes();
+    const auto& centers   = grid.plateCenters();
+    const auto& rots      = grid.plateRot();
+    const std::size_t Np = polys.size();
+    if (edgeTypes.size() != Np || centers.size() != Np
+        || rots.size() != Np) {
+        std::fprintf(stderr,
+            "%s:%d error: polygon metadata vectors mismatched\n",
+            __FILE__, __LINE__);
+        return;
+    }
+    // Pre-rotate polygon vertices into world frame once. Avoids
+    // O(M*E) trig in the inner loop.
+    struct WorldEdge {
+        float ax;
+        float ay;
+        float bx;
+        float by;
+        uint8_t edgeType;
+        uint8_t plateId;
+    };
+    std::vector<WorldEdge> edges;
+    {
+        std::size_t totalEdges = 0;
+        for (std::size_t pi = 0; pi < Np; ++pi) {
+            if (polys[pi].size() >= 3) { totalEdges += polys[pi].size(); }
+        }
+        edges.reserve(totalEdges);
+    }
+    for (std::size_t pi = 0; pi < Np; ++pi) {
+        const auto& ring  = polys[pi];
+        const auto& types = edgeTypes[pi];
+        const std::size_t Nv = ring.size();
+        if (Nv < 3) { continue; }
+        const float cs = std::cos(rots[pi]);
+        const float sn = std::sin(rots[pi]);
+        const float cx = centers[pi].first;
+        const float cy = centers[pi].second;
+        const bool typesOk = (types.size() == Nv);
+        for (std::size_t i = 0; i < Nv; ++i) {
+            const std::size_t j = (i + 1) % Nv;
+            WorldEdge e{};
+            e.ax = cx + ring[i].first * cs - ring[i].second * sn;
+            e.ay = cy + ring[i].first * sn + ring[i].second * cs;
+            e.bx = cx + ring[j].first * cs - ring[j].second * sn;
+            e.by = cy + ring[j].first * sn + ring[j].second * cs;
+            e.edgeType = typesOk ? types[i] : 0u;
+            e.plateId  = static_cast<uint8_t>(pi);
+            edges.push_back(e);
+        }
+    }
+    // Inner sample count: 8 points/edge. Polygon edges span at most a
+    // few degrees so 8 samples bound the great-circle distance error
+    // below ~50 km on Earth scale -- ample for ranking.
+    constexpr int32_t SAMPLES_PER_EDGE = 8;
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            const int32_t idx = row * width + col;
+            if (grid.terrain(idx) != aoc::map::TerrainType::Mountain) {
+                continue;
+            }
+            const auto tileLL =
+                aoc::map::gen::tileToLatLon(col, row, width, height);
+            if (!tileLL.valid) { continue; } // polar void
+            const aoc::map::gen::LatLon tilePos = tileLL.coord;
+            float minKm = 1e9f;
+            std::size_t bestEdge = 0;
+            for (std::size_t e = 0; e < edges.size(); ++e) {
+                const WorldEdge& we = edges[e];
+                for (int32_t s = 0; s < SAMPLES_PER_EDGE; ++s) {
+                    const float t = (static_cast<float>(s) + 0.5f)
+                        / static_cast<float>(SAMPLES_PER_EDGE);
+                    const float sx = we.ax + t * (we.bx - we.ax);
+                    const float sy = we.ay + t * (we.by - we.ay);
+                    const auto sLL =
+                        aoc::map::gen::mollweideInverse(sx, sy);
+                    if (!sLL.valid) { continue; }
+                    const float km = aoc::map::gen::haversineKm(
+                        tilePos, sLL.coord);
+                    if (km < minKm) { minKm = km; bestEdge = e; }
+                }
+            }
+            const WorldEdge* best = edges.empty() ? nullptr : &edges[bestEdge];
+            out << idx << ',' << col << ',' << row << ','
+                << tilePos.latDeg << ',' << tilePos.lonDeg << ','
+                << static_cast<int>(grid.plateId(idx)) << ','
+                << (best ? static_cast<int>(best->plateId)  : 0xFF) << ','
+                << (best ? static_cast<int>(best->edgeType) : 0)    << ','
+                << ((minKm < 9e8f) ? minKm : -1.0f) << '\n';
+        }
+    }
+}
+
 void writeCsv(const aoc::map::HexGrid& grid, const std::string& path) {
     std::ofstream out(path);
     if (!out.is_open()) {
@@ -168,10 +410,27 @@ void usage(const char* prog) {
     std::fprintf(stderr,
         "Usage: %s [--seed N] [--width W] [--height H] [--output PATH]\n"
         "          [--format ascii|csv|both] [--epochs N] [--super-sample N]\n"
+        "          [--dump-plates PATH] [--dump-edges PATH]\n"
+        "          [--dump-mountain-edges PATH] [--dump-physics-cells PATH]\n"
         "\n"
         "Generates a single Continents map and writes it to disk for review.\n"
         "Defaults: --seed 42 --width 140 --height 90 --output /tmp/map\n"
-        "          --format ascii\n",
+        "          --format ascii\n"
+        "\n"
+        "Diagnostic flags (Phase 13d-A1):\n"
+        "  --dump-plates PATH   write per-plate CSV (sphere position, motion,\n"
+        "                       Euler pole, polygon size) to PATH for offline\n"
+        "                       analysis by tools/diagnose_plate_shapes.py.\n"
+        "  --dump-edges PATH    write per-boundary-edge CSV in world frame\n"
+        "                       (rotated polygon vertices) with edge_type and\n"
+        "                       neighbor_plate_id, for diagnose_mountain_edges.py.\n"
+        "  --dump-mountain-edges PATH  write per-mountain-tile CSV with the\n"
+        "                       nearest boundary edge (owner, type, distance_km)\n"
+        "                       for diagnose_mountain_edges.py.\n"
+        "  --dump-physics-cells PATH  write one CSV per plate at\n"
+        "                       PATH.plate<id>.csv with full PhysicsGrid SoA\n"
+        "                       (lat, lon, crust km, surface elev, strain,\n"
+        "                       active) for diagnose_peak_sample_leak.py.\n",
         prog);
 }
 
@@ -196,7 +455,11 @@ int main(int argc, char* argv[]) {
     config.height  = 90;
     config.seed    = 42;
 
-    std::string outputBase = "/tmp/map";
+    std::string outputBase     = "/tmp/map";
+    std::string dumpPlatesPath;
+    std::string dumpEdgesPath;
+    std::string dumpMountainEdgesPath;
+    std::string dumpPhysicsCellsPath;
     OutputFormat format    = OutputFormat::Ascii;
     bool         frameMode = false;
 
@@ -222,6 +485,14 @@ int main(int argc, char* argv[]) {
             config.superSampleFactor = std::atoi(argv[++i]);
         } else if (arg == "--frames") {
             frameMode = true;
+        } else if (arg == "--dump-plates" && i + 1 < argc) {
+            dumpPlatesPath = argv[++i];
+        } else if (arg == "--dump-edges" && i + 1 < argc) {
+            dumpEdgesPath = argv[++i];
+        } else if (arg == "--dump-mountain-edges" && i + 1 < argc) {
+            dumpMountainEdgesPath = argv[++i];
+        } else if (arg == "--dump-physics-cells" && i + 1 < argc) {
+            dumpPhysicsCellsPath = argv[++i];
         } else {
             std::fprintf(stderr, "error: unknown argument '%s'\n", arg.c_str());
             usage(argv[0]);
@@ -286,6 +557,11 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
+    // Phase 13d-A1 step 4: physics-cell dump runs INSIDE
+    // MapGenerator::generate() (plates are local-scope), gated by a
+    // non-empty config string.
+    config.physicsCellDumpPath = dumpPhysicsCellsPath;
+
     aoc::map::HexGrid grid;
     aoc::map::MapGenerator::generate(config, grid);
 
@@ -298,6 +574,38 @@ int main(int argc, char* argv[]) {
         const std::string path = outputBase + ".csv";
         writeCsv(grid, path);
         std::printf("wrote %s (per-tile CSV)\n", path.c_str());
+    }
+    if (!dumpPlatesPath.empty()) {
+        writePlateDump(grid, dumpPlatesPath);
+        std::printf("wrote %s (per-plate CSV, %zu plates)\n",
+                    dumpPlatesPath.c_str(), grid.plateLatLon().size());
+    }
+    if (!dumpEdgesPath.empty()) {
+        writeEdgeDump(grid, dumpEdgesPath);
+        std::size_t edgeCount = 0;
+        for (const auto& ring : grid.platePolygons()) {
+            if (ring.size() >= 3) { edgeCount += ring.size(); }
+        }
+        std::printf("wrote %s (per-edge CSV, %zu edges)\n",
+                    dumpEdgesPath.c_str(), edgeCount);
+    }
+    if (!dumpMountainEdgesPath.empty()) {
+        writeMountainEdgeDump(grid, dumpMountainEdgesPath);
+        std::size_t mtnCount = 0;
+        const int32_t total = grid.tileCount();
+        for (int32_t i = 0; i < total; ++i) {
+            if (grid.terrain(i) == aoc::map::TerrainType::Mountain) {
+                ++mtnCount;
+            }
+        }
+        std::printf("wrote %s (mountain-edge CSV, %zu mountain tiles)\n",
+                    dumpMountainEdgesPath.c_str(), mtnCount);
+    }
+    if (!dumpPhysicsCellsPath.empty()) {
+        std::printf("wrote %s.plateNNN.csv (per-plate PhysicsGrid CSVs, "
+                    "%zu plates)\n",
+                    dumpPhysicsCellsPath.c_str(),
+                    grid.plateLatLon().size());
     }
     return 0;
 }

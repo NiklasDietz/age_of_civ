@@ -35,6 +35,9 @@
 #include "aoc/map/gen/PlateIdStash.hpp"
 #include "aoc/map/gen/PolygonClipping.hpp"
 #include "aoc/map/gen/PolygonSpatialIndex.hpp"
+#include "aoc/map/gen/SphereField.hpp"
+#include "aoc/map/gen/SphereFieldPhysics.hpp"
+#include "aoc/map/gen/PlateReference.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/map/Chokepoint.hpp"
@@ -1078,6 +1081,23 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     target.boundaryVertices.emplace_back(
                         lxLocal * r, lyLocal * r);
                     uint8_t edgeType = 0;
+                    // 2026-05-05 Phase 13d-A3 step 1: instrumented
+                    // edge classifier. Behaviour identical to prior
+                    // version; AOC_EDGE_CLASS_DEBUG=1 emits a per-edge
+                    // failure-mode tally to stderr at sim end so we
+                    // can attribute the 83 % type-0 anomaly to the
+                    // right gate. Counters are static-local so the
+                    // tally accumulates across the multiple
+                    // rebuildPolygonsFromVoronoi() calls that fire
+                    // through the sim.
+                    static thread_local int64_t s_edgeClassTotal       = 0;
+                    static thread_local int64_t s_edgeClassNoNeighbor  = 0;
+                    static thread_local int64_t s_edgeClassZeroBnLen   = 0;
+                    static thread_local int64_t s_edgeClassConvergent  = 0;
+                    static thread_local int64_t s_edgeClassDivergent   = 0;
+                    static thread_local int64_t s_edgeClassTransform   = 0;
+                    static thread_local int64_t s_edgeClassCollision   = 0;
+                    ++s_edgeClassTotal;
                     if (neighborIdx >= 0) {
                         const Plate& nbr = plates[
                             static_cast<std::size_t>(neighborIdx)];
@@ -1090,13 +1110,41 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             const float relVy = target.vy - nbr.vy;
                             const float dotN = relVx * bnx + relVy * bny;
                             if (dotN > 0.04f) {
-                                edgeType = (target.isLand && nbr.isLand) ? 4 : 2;
+                                if (target.isLand && nbr.isLand) {
+                                    edgeType = 4;
+                                    ++s_edgeClassCollision;
+                                } else {
+                                    edgeType = 2;
+                                    ++s_edgeClassConvergent;
+                                }
                             } else if (dotN < -0.04f) {
                                 edgeType = 1;
+                                ++s_edgeClassDivergent;
                             } else {
                                 edgeType = 3;
+                                ++s_edgeClassTransform;
                             }
+                        } else {
+                            ++s_edgeClassZeroBnLen;
                         }
+                    } else {
+                        ++s_edgeClassNoNeighbor;
+                    }
+                    // Periodically dump the tally so the user can read
+                    // it at the end of the sim. The check fires every
+                    // 4096th edge to keep cost negligible.
+                    if (std::getenv("AOC_EDGE_CLASS_DEBUG") != nullptr
+                        && (s_edgeClassTotal & 0xFF) == 0) {
+                        std::fprintf(stderr,
+                            "[edge-cls] total=%ld no_nbr=%ld zero_bn=%ld "
+                            "t1_div=%ld t2_subd=%ld t3_xform=%ld t4_coll=%ld\n",
+                            static_cast<long>(s_edgeClassTotal),
+                            static_cast<long>(s_edgeClassNoNeighbor),
+                            static_cast<long>(s_edgeClassZeroBnLen),
+                            static_cast<long>(s_edgeClassDivergent),
+                            static_cast<long>(s_edgeClassConvergent),
+                            static_cast<long>(s_edgeClassTransform),
+                            static_cast<long>(s_edgeClassCollision));
                     }
                     target.boundaryEdgeTypes.push_back(edgeType);
                     target.boundaryNeighborIds.push_back(
@@ -1139,6 +1187,40 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         rebuildPolygonsFromVoronoi();
         recomputePolygonAABBs();
         rebuildPolygonSpatialIndex();
+
+#if defined(AOC_PHYSICS_ON_SPHEREFIELD)
+        // 2026-05-06: PHYSICS-FIRST P1. Allocate the global lat/lon
+        // raster and seed it from Bird (2003) plate composition. Each
+        // cell inherits continental fraction from the nearest reference
+        // plate at the cell's lat/lon (Continental=1, Mixed=0.5,
+        // Oceanic=0). Crust thickness is the linear blend of initial
+        // continental/oceanic thickness.
+        aoc::map::gen::SphereField sphereField;
+        sphereField.resize();
+        std::vector<uint8_t> sphereBoundaryScratch;
+        for (int32_t latIdx = 0; latIdx < aoc::map::gen::SphereField::LAT_CELLS; ++latIdx) {
+            for (int32_t lonIdx = 0; lonIdx < aoc::map::gen::SphereField::LON_CELLS; ++lonIdx) {
+                const aoc::map::gen::LatLon p =
+                    aoc::map::gen::SphereField::cellCenter(lonIdx, latIdx);
+                const aoc::map::gen::PlateCompositionType t =
+                    aoc::map::gen::classifyByNearestReference(p);
+                float frac = 0.0f;
+                switch (t) {
+                    case aoc::map::gen::PlateCompositionType::Continental: frac = 1.0f; break;
+                    case aoc::map::gen::PlateCompositionType::Mixed:       frac = 0.5f; break;
+                    case aoc::map::gen::PlateCompositionType::Oceanic:     frac = 0.0f; break;
+                }
+                const std::size_t idx =
+                    aoc::map::gen::SphereField::cellIndex(lonIdx, latIdx);
+                sphereField.continentalFraction[idx] = frac;
+                sphereField.crustThicknessKm[idx] =
+                      frac  * aoc::map::gen::PhysicsConstants::initialContinentalThicknessKm
+                    + (1.0f - frac) * aoc::map::gen::PhysicsConstants::initialOceanicThicknessKm;
+            }
+        }
+        aoc::map::gen::recomputeIsostaticElevationOnRaster(sphereField);
+        const float MY_PER_EPOCH_P1 = 250.0f / static_cast<float>(EPOCHS);
+#endif
 
         for (int32_t epoch = 0; epoch < EPOCHS; ++epoch) {
             // 2026-05-04: plate-pair velocity coupling REMOVED. Old
@@ -2735,10 +2817,21 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     || target.boundaryEdgeTypes.size() != N) { continue; }
                 const float csT = std::cos(target.rot);
                 const float snT = std::sin(target.rot);
+                // Phase 13d-A3 step 2 WP2 instrumentation counters,
+                // hoisted to enclose the entire per-edge body so skip
+                // paths bump them correctly. Behaviour-neutral.
+                static thread_local int64_t s_wp2Total          = 0;
+                static thread_local int64_t s_wp2NoNbr          = 0;
+                static thread_local int64_t s_wp2ZeroBn         = 0;
+                static thread_local int64_t s_wp2Trans[5][5]    = {};
                 for (std::size_t i = 0; i < N; ++i) {
+                    ++s_wp2Total;
                     const uint8_t nbrId = target.boundaryNeighborIds[i];
                     if (nbrId == 0xFFu
-                        || nbrId >= plates.size()) { continue; }
+                        || nbrId >= plates.size()) {
+                        ++s_wp2NoNbr;
+                        continue;
+                    }
                     const Plate& nbr = plates[nbrId];
                     const std::size_t i1 = (i + 1) % N;
                     const float lmx = (target.boundaryVertices[i].first
@@ -2754,7 +2847,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         if (bnx < -0.5f) { bnx += 1.0f; }
                     }
                     const float bnLen = std::sqrt(bnx * bnx + bny * bny);
-                    if (bnLen < 0.0001f) { continue; }
+                    if (bnLen < 0.0001f) {
+                        ++s_wp2ZeroBn;
+                        continue;
+                    }
                     bnx /= bnLen; bny /= bnLen;
                     const float relVx = target.vx - nbr.vx;
                     const float relVy = target.vy - nbr.vy;
@@ -2798,6 +2894,35 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             edgeType = 1u;
                         } else {
                             edgeType = 3u;
+                        }
+                    }
+                    // 2026-05-05 Phase 13d-A3 step 2: WP2 reclassifier
+                    // instrumentation. Behaviour identical; counters
+                    // dump under AOC_EDGE_CLASS_DEBUG=1. Counters are
+                    // declared above the per-edge loop so skip paths
+                    // bump them correctly; this block records the
+                    // (prev, new) transition + emits a periodic dump.
+                    if (prevType < 5u && edgeType < 5u) {
+                        ++s_wp2Trans[prevType][edgeType];
+                    }
+                    if (std::getenv("AOC_EDGE_CLASS_DEBUG") != nullptr
+                        && (s_wp2Total & 0x3FF) == 0) {
+                        std::fprintf(stderr,
+                            "[wp2] total=%ld no_nbr=%ld zero_bn=%ld\n",
+                            static_cast<long>(s_wp2Total),
+                            static_cast<long>(s_wp2NoNbr),
+                            static_cast<long>(s_wp2ZeroBn));
+                        std::fprintf(stderr,
+                            "[wp2-trans] (rows=prev cols=new):\n");
+                        for (int p = 0; p < 5; ++p) {
+                            std::fprintf(stderr,
+                                "  prev=%d ->", p);
+                            for (int n = 0; n < 5; ++n) {
+                                std::fprintf(stderr, " n%d=%-5ld",
+                                    n,
+                                    static_cast<long>(s_wp2Trans[p][n]));
+                            }
+                            std::fprintf(stderr, "\n");
                         }
                     }
                     target.boundaryEdgeTypes[i] = edgeType;
@@ -3098,6 +3223,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     }
                 }
                 if (needRebuildAll) {
+                    static thread_local int64_t s_rebuildFires = 0;
+                    ++s_rebuildFires;
+                    if (std::getenv("AOC_EDGE_CLASS_DEBUG") != nullptr) {
+                        std::fprintf(stderr,
+                            "[rebuild] mid-sim polygon rebuild fired "
+                            "(total=%ld)\n",
+                            static_cast<long>(s_rebuildFires));
+                    }
                     rebuildPolygonsFromVoronoi();
                     recomputePolygonAABBs();
                     rebuildPolygonSpatialIndex();
@@ -3320,7 +3453,23 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         iy * OROGENY_GRID + ix)] += PULL_APART_DEPTH;
                 }
             }
+#if defined(AOC_PHYSICS_ON_SPHEREFIELD)
+            // 2026-05-06: PHYSICS-FIRST P1. Run the SphereField epoch
+            // step alongside the legacy per-plate pipeline. Plate
+            // positions have already been advanced this epoch above.
+            aoc::map::gen::stepSpherePhysicsEpoch(
+                sphereField, plates, sphereBoundaryScratch,
+                MY_PER_EPOCH_P1);
+#endif
         }
+#if defined(AOC_PHYSICS_ON_SPHEREFIELD)
+        // 2026-05-06: PHYSICS-FIRST P1. Hand the SphereField surface-
+        // elevation snapshot to the HexGrid for the renderer/save path.
+        // P1 only writes the snapshot; tile elevation is still consumed
+        // from the legacy world-frame `orogeny[]` array. Phase 2 will
+        // route tile elevation through bilinearSample on this snapshot.
+        grid.setSphereFieldElevationSnapshot(sphereField.surfaceElevationM);
+#endif
 
         // Rebuild world-frame `orogeny[]` array by sampling each tile
         // from its owning plate's local grid. Existing elevation pass
@@ -3540,6 +3689,76 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 "  orogeny: max=%.3f  ge_0.07=%d  ge_0.80=%d  total=%zu\n",
                 static_cast<double>(oroMax),
                 countOro007, countOro080, orogeny.size());
+        }
+
+        // 2026-05-05 Phase 13d-A1 step 4: per-plate PhysicsGrid CSV
+        // dump for offline diagnostic scripts. Plates are local to
+        // assignTerrain so this hook must run before they go out of
+        // scope. Output path is `<base>.plate<id>.csv` -- one file per
+        // plate keeps each manageable for spreadsheet inspection.
+        if (!config.physicsCellDumpPath.empty()) {
+            constexpr float DEG2RAD = 3.14159265f / 180.0f;
+            constexpr float RAD2DEG = 180.0f / 3.14159265f;
+            for (std::size_t pi = 0; pi < plates.size(); ++pi) {
+                const Plate& p = plates[pi];
+                const aoc::map::gen::PhysicsGrid& g = p.grid;
+                if (g.cellsX <= 0 || g.cellsY <= 0) { continue; }
+                char pathBuf[1024];
+                std::snprintf(pathBuf, sizeof(pathBuf),
+                              "%s.plate%03zu.csv",
+                              config.physicsCellDumpPath.c_str(), pi);
+                std::FILE* fp = std::fopen(pathBuf, "w");
+                if (fp == nullptr) {
+                    std::fprintf(stderr,
+                        "%s:%d error: cannot open '%s' for writing "
+                        "(--dump-physics-cells)\n",
+                        __FILE__, __LINE__, pathBuf);
+                    continue;
+                }
+                std::fprintf(fp,
+                    "plate_id,cell_ix,cell_iy,lat,lon,"
+                    "crust_thickness_km,surface_elevation_m,"
+                    "continental_fraction,cumulative_strain,active\n");
+                const float cellSizeRadX = (g.cellsX > 0)
+                    ? (2.0f * g.halfExtentRadX
+                       / static_cast<float>(g.cellsX))
+                    : 0.0f;
+                const float cellSizeRadY = (g.cellsY > 0)
+                    ? (2.0f * g.halfExtentRadY
+                       / static_cast<float>(g.cellsY))
+                    : 0.0f;
+                const float cosLat = std::cos(p.latDeg * DEG2RAD);
+                const float invCosLatDeg = (std::fabs(cosLat) > 1e-4f)
+                    ? (RAD2DEG / cosLat) : 0.0f;
+                for (int32_t iy = 0; iy < g.cellsY; ++iy) {
+                    for (int32_t ix = 0; ix < g.cellsX; ++ix) {
+                        const std::size_t idx = g.cellIndex(ix, iy);
+                        const float lxRad = -g.halfExtentRadX
+                            + (static_cast<float>(ix) + 0.5f)
+                              * cellSizeRadX;
+                        const float lyRad = -g.halfExtentRadY
+                            + (static_cast<float>(iy) + 0.5f)
+                              * cellSizeRadY;
+                        const float dLatDeg = lyRad * RAD2DEG;
+                        const float dLonDeg = lxRad * invCosLatDeg;
+                        float cellLat = p.latDeg + dLatDeg;
+                        float cellLon = p.lonDeg + dLonDeg;
+                        if (cellLon >  180.0f) { cellLon -= 360.0f; }
+                        if (cellLon < -180.0f) { cellLon += 360.0f; }
+                        std::fprintf(fp,
+                            "%zu,%d,%d,%.4f,%.4f,%.3f,%.1f,%.4f,%.5f,%d\n",
+                            pi, ix, iy,
+                            static_cast<double>(cellLat),
+                            static_cast<double>(cellLon),
+                            static_cast<double>(g.crustThicknessKm[idx]),
+                            static_cast<double>(g.surfaceElevationM[idx]),
+                            static_cast<double>(g.continentalFraction[idx]),
+                            static_cast<double>(g.cumulativeStrain[idx]),
+                            static_cast<int>(g.cellActive[idx]));
+                    }
+                }
+                std::fclose(fp);
+            }
         }
 
         // Restore initial plate positions only when the user prefers
@@ -4151,12 +4370,22 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         std::vector<float>                   crustAges;
         std::vector<int32_t>                 mergesAbsorbed;
         std::vector<uint8_t>                 isPolar;
+        std::vector<std::pair<float, float>> latLons;
+        std::vector<float>                   weights;
+        std::vector<std::pair<float, float>> eulerPoles;
+        std::vector<float>                   angularVelDegs;
+        std::vector<float>                   rots;
         motions.reserve(plates.size());
         centers.reserve(plates.size());
         landFracs.reserve(plates.size());
         crustAges.reserve(plates.size());
         mergesAbsorbed.reserve(plates.size());
         isPolar.reserve(plates.size());
+        latLons.reserve(plates.size());
+        weights.reserve(plates.size());
+        eulerPoles.reserve(plates.size());
+        angularVelDegs.reserve(plates.size());
+        rots.reserve(plates.size());
         for (const Plate& p : plates) {
             motions.emplace_back(p.vx, p.vy);
             centers.emplace_back(p.cx, p.cy);
@@ -4164,6 +4393,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             crustAges.push_back(p.crustAge);
             mergesAbsorbed.push_back(p.mergesAbsorbed);
             isPolar.push_back(p.isPolar ? 1u : 0u);
+            latLons.emplace_back(p.latDeg, p.lonDeg);
+            weights.push_back(p.weight);
+            eulerPoles.emplace_back(p.eulerPoleLatDeg, p.eulerPoleLonDeg);
+            angularVelDegs.push_back(p.angularVelDeg);
+            rots.push_back(p.rot);
         }
         grid.setPlateMotions(std::move(motions));
         grid.setPlateCenters(std::move(centers));
@@ -4171,6 +4405,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         grid.setPlateCrustAge(std::move(crustAges));
         grid.setPlateMergesAbsorbed(std::move(mergesAbsorbed));
         grid.setPlateIsPolar(std::move(isPolar));
+        grid.setPlateLatLon(std::move(latLons));
+        grid.setPlateWeight(std::move(weights));
+        grid.setPlateEulerPole(std::move(eulerPoles));
+        grid.setPlateAngularVelDeg(std::move(angularVelDegs));
+        grid.setPlateRot(std::move(rots));
         // 2026-05-04: WP1 - polygon construction lifted to sim start
         // (above epoch loop). Polygons are evolved through the sim by
         // WP2 edge-motion; their final state is what the renderer
@@ -4178,14 +4417,18 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
 
         std::vector<std::vector<std::pair<float, float>>> polygonsLocal;
         std::vector<std::vector<uint8_t>>                 polygonEdgeTypes;
+        std::vector<std::vector<uint8_t>>                 polygonNeighborIds;
         polygonsLocal.reserve(plates.size());
         polygonEdgeTypes.reserve(plates.size());
+        polygonNeighborIds.reserve(plates.size());
         for (const Plate& p : plates) {
             polygonsLocal.push_back(p.boundaryVertices);
             polygonEdgeTypes.push_back(p.boundaryEdgeTypes);
+            polygonNeighborIds.push_back(p.boundaryNeighborIds);
         }
         grid.setPlatePolygons(std::move(polygonsLocal));
         grid.setPlatePolygonEdgeTypes(std::move(polygonEdgeTypes));
+        grid.setPlatePolygonNeighborIds(std::move(polygonNeighborIds));
 
         // 2026-05-03: POST-SIM GEOLOGICAL PASSES extracted to gen/PostSim.cpp.
         {
