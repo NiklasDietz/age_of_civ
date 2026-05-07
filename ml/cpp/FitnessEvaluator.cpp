@@ -641,7 +641,7 @@ GameScore scoreOneGame(std::span<const Individual* const> overrides,
         : config.playersList[static_cast<std::size_t>(game)
                               % config.playersList.size()];
     const aoc::map::MapType mapType = config.mapsList.empty()
-        ? aoc::map::MapType::LandWithSeas
+        ? aoc::map::MapType::Continents
         : config.mapsList[static_cast<std::size_t>(game)
                            % config.mapsList.size()];
 

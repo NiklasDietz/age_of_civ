@@ -172,7 +172,7 @@ GameSpec pickGameSpec(int32_t k, const BalanceGAConfig& cfg, uint64_t baseSeed) 
               : cfg.turnsList[static_cast<std::size_t>(k) % cfg.turnsList.size()];
     s.players = cfg.playersList.empty() ? cfg.playerCount
               : cfg.playersList[static_cast<std::size_t>(k) % cfg.playersList.size()];
-    s.map     = cfg.mapsList.empty() ? aoc::map::MapType::LandWithSeas
+    s.map     = cfg.mapsList.empty() ? aoc::map::MapType::Continents
               : cfg.mapsList[static_cast<std::size_t>(k) % cfg.mapsList.size()];
     s.seed    = baseSeed + static_cast<uint64_t>(k) * 0x9E3779B97F4A7C15ull;
     return s;

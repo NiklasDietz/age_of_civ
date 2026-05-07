@@ -40,31 +40,22 @@ const char* opponentModeName(OpponentMode mode) {
 }
 
 bool parseMapType(std::string_view s, aoc::map::MapType& out) {
+    // 2026-05-03: only Continents supported. Other strings remap to Continents
+    // so existing GA configs (maps:[islands,fractal]) keep parsing.
     std::string lower;
     lower.reserve(s.size());
     for (char c : s) {
         lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
     }
-    if (lower == "continents")              { out = aoc::map::MapType::Continents;            return true; }
-    if (lower == "islands")                 { out = aoc::map::MapType::Islands;               return true; }
-    if (lower == "continentsplusislands"
-        || lower == "continents+islands")   { out = aoc::map::MapType::ContinentsPlusIslands; return true; }
-    if (lower == "landonly"
-        || lower == "land_only")            { out = aoc::map::MapType::LandOnly;              return true; }
-    if (lower == "landwithseas"
-        || lower == "land_with_seas")       { out = aoc::map::MapType::LandWithSeas;          return true; }
-    if (lower == "fractal")                 { out = aoc::map::MapType::Fractal;               return true; }
-    return false;
+    if (lower == "continents") { out = aoc::map::MapType::Continents; return true; }
+    if (lower.empty()) { return false; }
+    out = aoc::map::MapType::Continents;
+    return true;
 }
 
 const char* mapTypeName(aoc::map::MapType type) {
     switch (type) {
-        case aoc::map::MapType::Continents:             return "continents";
-        case aoc::map::MapType::Islands:                return "islands";
-        case aoc::map::MapType::ContinentsPlusIslands:  return "continents+islands";
-        case aoc::map::MapType::LandOnly:               return "landonly";
-        case aoc::map::MapType::LandWithSeas:           return "landwithseas";
-        case aoc::map::MapType::Fractal:                return "fractal";
+        case aoc::map::MapType::Continents: return "continents";
     }
     return "?";
 }
