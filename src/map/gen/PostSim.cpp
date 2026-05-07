@@ -43,17 +43,9 @@ void runPostSimPasses(MapGenContext& ctx) {
         return hexNeighbor(width, height, cylSim, col, row, dir, outIdx);
     };
 
-    // 2026-05-06 cleanup: per-tile crust-age dx/dy distance pass
-    // deleted (output unconditionally zero post-P4.3h-c-5). P6 path
-    // populates crustAgeMy directly on SphereField.
+    // Per-tile crust age unsupported in legacy 2D state; SphereField
+    // crustAgeMy is the live source. Tile output stays zero.
     std::fill(crustAgeTile.begin(), crustAgeTile.end(), 0.0f);
-
-    // 2026-05-06: PHYSICS-FIRST P4.1 -- ophiolite suture marking pass
-    // deleted. Was iterating SutureSeam events to stamp ophiolite-mask
-    // bits along narrow bands (seamHalfLen=r*0.80, bandWidth=r*0.10).
-    // sutureSeams was populated by polygon-merger events that no longer
-    // fire (Phase B clipping deleted in P3.3); pass ran as no-op
-    // anyway. Mask stays zero.
     (void)ophioliteMask;
 
     // Pass 3: sediment yield + downhill deposition (2 passes).
@@ -225,26 +217,16 @@ void runPostSimPasses(MapGenContext& ctx) {
                 if (pid == 0xFFu) { continue; }
                 if (pid != myPid) { otherPid = pid; break; }
             }
-            if (otherPid < 0) {
-                marginTypeTile[static_cast<std::size_t>(idx)] = 2;
-                continue;
-            }
-            // 2026-05-06 cleanup: cx/cy boundary-normal computation
-            // deleted; result was unused (vx/vy gone in P4.3h-a).
-            // Margin defaults to passive (2). P6+ should recompute
-            // from SphereField convergenceRateRadPerMy.
+            // Boundary-normal-based active/passive classification needs
+            // SphereField convergenceRateRadPerMy (TODO). For now every
+            // coast tile is passive.
             (void)otherPid;
             marginTypeTile[static_cast<std::size_t>(idx)] = 2;
         }
     }
 
-    // Pass 6: apply sediment + ophiolite uplift onto elevationMap.
-    // 2026-05-04: also apply margin-type elevation modifier so passive
-    // margins (Atlantic-style) develop wide shallow shelves and active
-    // margins (Pacific-style) develop narrow shelves with trench depth
-    // offshore. marginTypeTile values: 0 interior, 1 active, 2 passive.
-    // 2026-05-06 cleanup: ophiolite-uplift branch deleted (suture
-    // stamping pass gone in P4.1 -> ophioliteMask permanently zero).
+    // Pass 6: apply sediment + margin-type elevation modifier.
+    // marginTypeTile values: 0 interior, 1 active, 2 passive.
     (void)ophioliteMask;
     for (std::size_t i = 0; i < elevationMap.size(); ++i) {
         elevationMap[i] += sediment[i] * 0.55f;

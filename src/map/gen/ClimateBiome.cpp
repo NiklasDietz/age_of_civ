@@ -43,13 +43,6 @@ void runClimateBiomePass(HexGrid& grid,
         maxCoastDist = std::max(maxCoastDist, distFromCoast[static_cast<std::size_t>(i)]);
     }
 
-    // 2026-05-06 cleanup: isMountainTile vector deleted. P5.2 removed
-    // its pre-population code, leaving the vector permanently zero.
-    // Mountain assignment now happens downstream in assignTerrain via
-    // the SphereField z>4000 m gate; ClimateBiome no longer pre-knows
-    // mountain locations, so wind-orographic + foothill-BFS branches
-    // collapse to no-ops (deleted below).
-
     constexpr int32_t WIND_WALK_RANGE = 14;
     std::vector<float> windMoist(static_cast<std::size_t>(totalTiles), 0.0f);
     const bool cylClim = (grid.topology() == aoc::map::MapTopology::Cylindrical);
@@ -67,8 +60,6 @@ void runClimateBiomePass(HexGrid& grid,
                 continue;
             }
             float carry = 0.0f;
-            int32_t mountainCount = 0;
-            int32_t firstMountainDist = -1;
             bool reachedOcean = false;
             for (int32_t s = 1; s <= WIND_WALK_RANGE; ++s) {
                 int32_t uc = col + step * s;
@@ -79,36 +70,13 @@ void runClimateBiomePass(HexGrid& grid,
                 }
                 const int32_t uidx = row * width + uc;
                 if (elevationMap[static_cast<std::size_t>(uidx)] < waterThreshold) {
-                    const float distAtten = 1.0f - static_cast<float>(s)
-                        / static_cast<float>(WIND_WALK_RANGE);
-                    carry = distAtten - 0.30f * static_cast<float>(mountainCount);
+                    carry = 1.0f - static_cast<float>(s)
+                          / static_cast<float>(WIND_WALK_RANGE);
                     reachedOcean = true;
                     break;
                 }
-                // 2026-05-06 cleanup: isMountainTile-keyed orographic
-                // counter deleted (vector was permanently zero post-P5.2).
-                (void)uidx;
             }
             if (!reachedOcean) { carry = -0.10f; }
-            if (firstMountainDist > 0 && firstMountainDist <= 3) {
-                carry -= 0.25f;
-            }
-            constexpr int32_t WINDWARD_RANGE = 3;
-            for (int32_t s = 1; s <= WINDWARD_RANGE; ++s) {
-                int32_t dc = col - step * s;
-                if (cylClim) {
-                    dc = ((dc % width) + width) % width;
-                } else if (dc < 0 || dc >= width) {
-                    break;
-                }
-                const int32_t didx = row * width + dc;
-                if (elevationMap[static_cast<std::size_t>(didx)] < waterThreshold) {
-                    break;
-                }
-                // 2026-05-06 cleanup: windward-mountain rain boost
-                // deleted (isMountainTile permanently zero post-P5.2).
-                (void)didx;
-            }
             windMoist[static_cast<std::size_t>(idx)] = std::clamp(carry, -0.50f, 0.50f);
         }
     }
@@ -260,14 +228,10 @@ void runClimateBiomePass(HexGrid& grid,
         }
     }
 
-    // 2026-05-06 cleanup: foothill-belt mountain-distance BFS deleted.
-    // BFS depended on isMountainTile (now zero-vector post-P5.2) so
-    // mountainDist would always be 0xFF -- foothill placement was
-    // already a no-op. Vector kept (sentinel-filled) so the downstream
-    // foothill-belt hillChance branch keeps compiling; collapses to
-    // hillChance == 0 every cell.
-    constexpr uint8_t MOUNTAIN_MAX_DIST = 5;
-    (void)MOUNTAIN_MAX_DIST;
+    // mountainDist sentinel-filled (foothill BFS no-op without mountain
+    // pre-population). Downstream hillChance branch reads 0xFF → no hills
+    // placed via this path; mountains/hills come from the SphereField
+    // > 4000 m gate plus other foothill rules.
     std::vector<uint8_t> mountainDist(
         static_cast<std::size_t>(totalTiles), 0xFFu);
 

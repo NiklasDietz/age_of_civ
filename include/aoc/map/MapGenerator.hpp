@@ -72,8 +72,7 @@ public:
         int32_t  width     = 140;
         int32_t  height    = 90;
         uint64_t seed      = 42;
-        float    waterRatio    = 0.25f;  ///< Reduced from 0.35 — too much ocean killed land games
-        // 2026-05-06 P5.1: mountainRatio quota deleted; mountain status now SphereField bilinearSample > 4000m.
+        float    waterRatio    = 0.25f;
         float    forestRatio   = 0.25f;
         float    hillRatio     = 0.18f;
         MapType     mapType   = MapType::Continents;  ///< Landmass generation style

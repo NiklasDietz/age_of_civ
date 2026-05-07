@@ -34,9 +34,7 @@ namespace aoc::map::gen {
 
 /// Mountain biome threshold in metres above sea level.
 /// Alpine / nival biome floor (~4 km treeline at low latitudes,
-/// Tibet / Andes high-alpine zone). 2026-05-06 P5.3: replaces legacy
-/// two-stage `MOUNTAIN_BASE_M = 4500 / MOUNTAIN_SCALE_M = 3000` remap +
-/// `0.08` orogeny threshold. Single physical threshold, no quota.
+/// Tibet / Andes high-alpine zone).
 inline constexpr float MOUNTAIN_THRESHOLD_M = 4000.0f;
 
 struct SphereField {

@@ -36,11 +36,9 @@ inline float lerp(float a, float b, float t) {
     return a + (b - a) * t;
 }
 
-/// Splitmix64 finalisation. Use to mix a poorly-distributed seed (e.g.
-/// `static_cast<uint64_t>(plate.seedX * 1e6f)` which clusters in low bits
-/// for nearby plates) into a well-spread 64-bit value before passing to
-/// `hashNoise`. Plates with similar input seeds produced correlated jitter
-/// before this mix was added (2026-05-04 fix).
+/// Splitmix64 finalisation. Mixes a poorly-distributed seed into a
+/// well-spread 64-bit value before passing to `hashNoise`. Required
+/// when seeds cluster in low bits (nearby plate coords used as input).
 inline uint64_t mixSeed(uint64_t s) {
     s ^= s >> 30;
     s *= 0xbf58476d1ce4e5b9ULL;

@@ -549,16 +549,10 @@ public:
         this->m_plateIsPolar = std::move(v);
     }
 
-    // 2026-05-06 cleanup: dead per-plate accessor pairs deleted
-    // (platePolygons / platePolygonEdgeTypes / platePolygonNeighborIds
-    // / plateLatLon / plateWeight / plateEulerPole / plateAngularVelDeg
-    // / plateRot) — none had a live getter consumer.
-
     /// Snapshot of the authoritative `SphereField::surfaceElevationM`
     /// raster (720 lon * 360 lat, row-major, latitude is the slow axis)
-    /// captured at the end of map generation. Renderer/overlay code
-    /// reads this in lieu of the deleted Voronoi plate-polygon setters.
-    /// 2026-05-06: physics-first rewrite, Phase 0 plumbing.
+    /// captured at the end of map generation. Renderer reads this for
+    /// the elevation overlay.
     [[nodiscard]] const std::vector<float>& sphereFieldElevationSnapshot() const {
         return this->m_sphereFieldElevationSnapshot;
     }
@@ -2023,11 +2017,7 @@ private:
     std::vector<float>                   m_plateCrustAge;
     std::vector<int32_t>                 m_plateMergesAbsorbed;
     std::vector<uint8_t>                 m_plateIsPolar;
-    // 2026-05-06 cleanup: m_platePolygons + per-edge types/neighbours
-    // + m_plateLatLon/Weight/EulerPole/AngularVelDeg/Rot deleted —
-    // setters were called but no consumer ever read the getters back.
-    /// 2026-05-06: SphereField surfaceElevationM snapshot
-    /// (720 lon * 360 lat, row-major). Phase 0 plumbing.
+    /// SphereField surfaceElevationM snapshot (720 x 360, row-major).
     std::vector<float>                   m_sphereFieldElevationSnapshot;
     std::vector<float>                   m_crustAgeTile;
     std::vector<int8_t>                  m_magneticPolarity;
