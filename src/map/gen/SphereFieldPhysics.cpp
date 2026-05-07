@@ -597,6 +597,235 @@ int32_t compactPlateList(SphereField& field, std::vector<Plate>& plates) {
     return removed;
 }
 
+// ---------------------------------------------------------------------------
+// Plate-cell advection (Lagrangian transport)
+// ---------------------------------------------------------------------------
+//
+// Real plates carry their crust as they rotate about their Euler poles
+// (Cox & Hart 1986 ch. 4). On a fixed lat/lon raster this means each
+// epoch's owning-plate map must be REWRITTEN: the cell currently at
+// position p, owned by plate P with rotation rate omega about pole e,
+// will after dt have moved to p' = R(e, omega*dt) * p. The cell at p'
+// inherits ownership and crust state from the old cell at p.
+//
+// Implementation is backward (departure-point) semi-Lagrangian: for
+// each destination cell D and each plate P, the cell at the
+// backward-rotated point dep_P(D) = R(-omega_P*dt, e_P) * D would
+// rotate forward to D under P's motion. If the field currently owns
+// dep_P(D) with plate P, then P's cell will arrive at D and P claims
+// D. Multiple plates may claim D simultaneously (geometric signature
+// of convergence): resolve with continental-over-oceanic priority,
+// ties broken by older crust age. Cells that no plate claims are
+// wakes left at divergent boundaries; they fill with fresh oceanic
+// crust (Turcotte & Schubert 2014 ch. 2 mid-ocean-ridge basalt:
+// 7 km thickness, age 0, continental fraction 0) and inherit
+// ownership from any 4-neighbour.
+//
+// Backward sampling is preferred over forward push because rotation
+// is a continuous map: nearby destinations have nearby departure
+// points, so plate footprints stay connected -- no salt-and-pepper
+// ownership artefacts. Forward push aliases at the destination (two
+// neighbouring source cells can map to disjoint dest cells when the
+// rotation angle approaches the cell pitch).
+//
+// This is the missing transport step that was hidden by the
+// "Lagrangian cell tracking" comment elsewhere -- ownership persisted
+// across epochs but never advected. Plate motion was visible only in
+// boundary-cell flips from subduction. Adding true advection makes
+// continents drift across the map as their plates rotate.
+void advectPlateOwnership(SphereField& field,
+                          const std::vector<Plate>& plates,
+                          float dtMy) {
+    if (plates.empty() || dtMy <= 0.0f) return;
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    constexpr double DEG2RAD = 0.01745329252;
+    constexpr double RAD2DEG = 57.29577951;
+
+    const std::size_t N = SphereField::CELL_COUNT;
+
+    // Per-plate BACKWARD-rotation parameters cached up front so the
+    // hot inner loop does not call sin/cos per cell. Backward rotation:
+    // negate the angle so that R(-omega*dt) maps the destination point
+    // to its departure point under the plate's forward motion.
+    struct PlateRot {
+        double axX;
+        double axY;
+        double axZ;
+        double cosT;
+        double sinT;
+        double oneMc;
+    };
+    const std::size_t P = plates.size();
+    std::vector<PlateRot> rot(P);
+    for (std::size_t i = 0; i < P; ++i) {
+        const double poleLatR = static_cast<double>(plates[i].eulerPoleLatDeg) * DEG2RAD;
+        const double poleLonR = static_cast<double>(plates[i].eulerPoleLonDeg) * DEG2RAD;
+        const double thetaR   = -static_cast<double>(plates[i].angularVelDeg)
+                              * DEG2RAD * static_cast<double>(dtMy);
+        const double cosLat = std::cos(poleLatR);
+        rot[i].axX   = cosLat * std::cos(poleLonR);
+        rot[i].axY   = cosLat * std::sin(poleLonR);
+        rot[i].axZ   = std::sin(poleLatR);
+        rot[i].cosT  = std::cos(thetaR);
+        rot[i].sinT  = std::sin(thetaR);
+        rot[i].oneMc = 1.0 - rot[i].cosT;
+    }
+
+    std::vector<int16_t> newOwner(N, static_cast<int16_t>(-1));
+    std::vector<float>   newCrust(N, 0.0f);
+    std::vector<float>   newContFrac(N, 0.0f);
+    std::vector<float>   newAge(N, 0.0f);
+    std::vector<float>   newSurface(N, 0.0f);
+    std::vector<float>   newThermal(N, 0.0f);
+
+    // Backward sweep. For each destination D, evaluate the departure
+    // point under each plate's forward motion. If the field currently
+    // owns dep_P(D) with plate P, then P's cell at dep_P(D) will land
+    // at D this epoch -- P claims D. Conflicts at D resolve by
+    // continental-over-oceanic priority, ties by older crust age.
+#if defined(AOC_HAS_OPENMP)
+    #pragma omp parallel for schedule(static)
+#endif
+    for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+        for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
+            const std::size_t destIdx = SphereField::cellIndex(lonIdx, latIdx);
+
+            const LatLon p = SphereField::cellCenter(lonIdx, latIdx);
+            const double latR = static_cast<double>(p.latDeg) * DEG2RAD;
+            const double lonR = static_cast<double>(p.lonDeg) * DEG2RAD;
+            const double cosLat = std::cos(latR);
+            const double cx = cosLat * std::cos(lonR);
+            const double cy = cosLat * std::sin(lonR);
+            const double cz = std::sin(latR);
+
+            int16_t bestPid       = -1;
+            float   bestContFrac  = 0.0f;
+            float   bestAge       = -1.0f;
+            float   bestCrust     = 0.0f;
+            float   bestSurface   = 0.0f;
+            float   bestThermal   = 0.0f;
+
+            for (std::size_t pIdx = 0; pIdx < P; ++pIdx) {
+                const PlateRot& R = rot[pIdx];
+                // Rodrigues' rotation: v' = v cosT + (k x v) sinT + k (k.v) (1-cosT)
+                const double dot = R.axX * cx + R.axY * cy + R.axZ * cz;
+                const double crossX = R.axY * cz - R.axZ * cy;
+                const double crossY = R.axZ * cx - R.axX * cz;
+                const double crossZ = R.axX * cy - R.axY * cx;
+                const double nX = cx * R.cosT + crossX * R.sinT + R.axX * dot * R.oneMc;
+                const double nY = cy * R.cosT + crossY * R.sinT + R.axY * dot * R.oneMc;
+                const double nZ = cz * R.cosT + crossZ * R.sinT + R.axZ * dot * R.oneMc;
+
+                const double clampedZ = std::clamp(nZ, -1.0, 1.0);
+                const double depLatDeg = std::asin(clampedZ) * RAD2DEG;
+                const double depLonDeg = std::atan2(nY, nX) * RAD2DEG;
+                const SphereField::CellCoord dep = SphereField::locate(
+                    static_cast<float>(depLatDeg), static_cast<float>(depLonDeg));
+                const std::size_t depIdx = SphereField::cellIndex(dep.lonIdx, dep.latIdx);
+
+                if (field.plateId[depIdx] != static_cast<int16_t>(pIdx)) continue;
+                // Plate pIdx claims D. Conflict-resolve against any
+                // prior claimant.
+                const float depContFrac = field.continentalFraction[depIdx];
+                const float depAge      = field.crustAgeMy[depIdx];
+
+                bool takeIt = (bestPid < 0);
+                if (!takeIt) {
+                    if (depContFrac > 0.5f && bestContFrac <= 0.5f) {
+                        takeIt = true;
+                    } else if (depContFrac <= 0.5f && bestContFrac > 0.5f) {
+                        takeIt = false;
+                    } else if (depAge > bestAge) {
+                        takeIt = true;
+                    }
+                }
+                if (takeIt) {
+                    bestPid      = static_cast<int16_t>(pIdx);
+                    bestContFrac = depContFrac;
+                    bestAge      = depAge;
+                    bestCrust    = field.crustThicknessKm[depIdx];
+                    bestSurface  = field.surfaceElevationM[depIdx];
+                    bestThermal  = field.thermalAgeMy[depIdx];
+                }
+            }
+
+            if (bestPid >= 0) {
+                newOwner[destIdx]    = bestPid;
+                newCrust[destIdx]    = bestCrust;
+                newContFrac[destIdx] = bestContFrac;
+                newAge[destIdx]      = bestAge;
+                newSurface[destIdx]  = bestSurface;
+                newThermal[destIdx]  = bestThermal;
+            }
+        }
+    }
+
+    // Wake fill. Cells that no source landed on lie in divergent gaps
+    // (rift opening, trailing edges of plates moving apart). Pick any
+    // already-claimed 4-neighbour as the new owner and stamp fresh
+    // mid-ocean-ridge basalt: 7 km thickness, age 0, continental
+    // fraction 0. Iterate twice in case the first pass leaves cells
+    // surrounded by other unclaimed wake cells.
+    for (int32_t pass = 0; pass < 4; ++pass) {
+        bool anyFilled = false;
+        for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+            for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
+                const std::size_t idx = SphereField::cellIndex(lonIdx, latIdx);
+                if (newOwner[idx] >= 0) continue;
+                const int32_t lonW = (lonIdx == 0)       ? LON - 1 : lonIdx - 1;
+                const int32_t lonE = (lonIdx == LON - 1) ? 0       : lonIdx + 1;
+                const int32_t latS = (latIdx == 0)       ? 0       : latIdx - 1;
+                const int32_t latN = (latIdx == LAT - 1) ? LAT - 1 : latIdx + 1;
+                const int16_t cands[4] = {
+                    newOwner[SphereField::cellIndex(lonW, latIdx)],
+                    newOwner[SphereField::cellIndex(lonE, latIdx)],
+                    newOwner[SphereField::cellIndex(lonIdx, latS)],
+                    newOwner[SphereField::cellIndex(lonIdx, latN)],
+                };
+                int16_t pick = -1;
+                for (int32_t k = 0; k < 4; ++k) {
+                    if (cands[k] >= 0) { pick = cands[k]; break; }
+                }
+                if (pick < 0) continue;
+                newOwner[idx]    = pick;
+                newCrust[idx]    = PhysicsConstants::initialOceanicThicknessKm;
+                newContFrac[idx] = 0.0f;
+                newAge[idx]      = 0.0f;
+                newThermal[idx]  = 0.0f;
+                // Surface elevation will be recomputed by the isostasy
+                // pass downstream; leave at the prior cell's value as a
+                // smooth seed (avoids a 0 m discontinuity that would
+                // briefly jump above sea level).
+                newSurface[idx]  = field.surfaceElevationM[idx];
+                anyFilled = true;
+            }
+        }
+        if (!anyFilled) break;
+    }
+
+    // Final fallback: if any cell still has no owner (entire patch with
+    // no claimed neighbour anywhere), assign to plate 0. Should not
+    // happen with sane inputs but keeps the field invariant strict.
+    for (std::size_t i = 0; i < N; ++i) {
+        if (newOwner[i] < 0) {
+            newOwner[i]    = 0;
+            newCrust[i]    = PhysicsConstants::initialOceanicThicknessKm;
+            newContFrac[i] = 0.0f;
+            newAge[i]      = 0.0f;
+            newThermal[i]  = 0.0f;
+            newSurface[i]  = field.surfaceElevationM[i];
+        }
+    }
+
+    field.plateId             = std::move(newOwner);
+    field.crustThicknessKm    = std::move(newCrust);
+    field.continentalFraction = std::move(newContFrac);
+    field.crustAgeMy          = std::move(newAge);
+    field.surfaceElevationM   = std::move(newSurface);
+    field.thermalAgeMy        = std::move(newThermal);
+}
+
 void markBoundaryCells(const SphereField& field,
                        std::vector<uint8_t>& isBoundary) {
     isBoundary.assign(SphereField::CELL_COUNT, 0u);
@@ -932,6 +1161,8 @@ void stepSpherePhysicsEpoch(SphereField& field,
                             uint32_t& rngState,
                             float dtMy) {
     // Per-epoch passes in physical order:
+    //   0. plate-cell advection — rotate every owned cell about its
+    //      plate's Euler pole by omega*dt (Lagrangian transport).
     //   1. ownership refresh — centroid Voronoi (init + each epoch).
     //   2. boundary detection.
     //   3. instantaneous closing rate from Euler-pole velocities.
@@ -949,6 +1180,7 @@ void stepSpherePhysicsEpoch(SphereField& field,
     // mechanism passes (subduction flip, ridge accretion, docking
     // merge, Wilson split). This is the no-Voronoi rule from
     // CLAUDE.md "World-generation physics requirements".
+    advectPlateOwnership(field, plates, dtMy);
     markBoundaryCells(field, boundaryScratch);
     accumulateClosingRate(field, plates, boundaryScratch);
     thickenFromClosingRate(field, dtMy);

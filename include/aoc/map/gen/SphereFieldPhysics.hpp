@@ -146,6 +146,26 @@ int32_t applyWilsonRifting(SphereField& field,
                            uint32_t& rngState,
                            float dtMy);
 
+/// Plate-cell advection. Each owned cell rotates about its plate's
+/// Euler pole by omega*dt (Rodrigues rotation on the unit sphere) and
+/// pushes its crust state (thickness, continental fraction, age,
+/// surface elevation, thermal age) to the destination cell. Conflicts
+/// at a destination resolve by continental-over-oceanic priority with
+/// older crust as a tie-break (older = more buoyant after thickening,
+/// physical surrogate for collisional stacking). Cells that nothing
+/// claims are wakes left at divergent boundaries; they fill with fresh
+/// 7 km oceanic crust (Turcotte & Schubert 2014 mid-ocean-ridge
+/// basalt) and inherit ownership from any 4-neighbour.
+///
+/// This is the Lagrangian transport step. Without it plates would
+/// only "move" via boundary-cell flips from subduction; with it the
+/// continents drift visibly across the map as their plates rotate.
+/// Runs first in `stepSpherePhysicsEpoch` so the boundary network and
+/// closing-rate calculation see the freshly transported field.
+void advectPlateOwnership(SphereField& field,
+                          const std::vector<Plate>& plates,
+                          float dtMy);
+
 /// Phase 1.2: flag every cell whose 4-connected neighbourhood (N/S/E/W
 /// with longitude wrap, latitude clamp) contains a different plate id.
 /// `isBoundary` is sized to `SphereField::CELL_COUNT` and overwritten.
