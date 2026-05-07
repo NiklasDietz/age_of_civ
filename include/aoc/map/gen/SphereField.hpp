@@ -89,6 +89,18 @@ struct SphereField {
     /// latitude clamps at +/-90.
     [[nodiscard]] float bilinearSample(
         const std::vector<float>& field, float latDeg, float lonDeg) const noexcept;
+
+    /// Peak (max) sample of `field` over a (2*halfSearchCells+1)^2 cell
+    /// window centred on the cell containing (latDeg, lonDeg).
+    /// Required for mountain detection by hex-tile assignment: hex tiles
+    /// (~3° at standard size) span many SphereField cells, and bilinear
+    /// averaging dilutes narrow mountain belts (e.g. Andes 200 km wide
+    /// = 4 cells) below the visibility threshold. Peak sampling captures
+    /// the local maximum so any 4 km+ peak inside the tile flags it.
+    /// Longitude wraps; latitude clamps.
+    [[nodiscard]] float peakSample(
+        const std::vector<float>& field, float latDeg, float lonDeg,
+        int32_t halfSearchCells) const noexcept;
 };
 
 } // namespace aoc::map::gen

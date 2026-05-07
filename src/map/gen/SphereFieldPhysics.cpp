@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 
 namespace aoc::map::gen {
 
@@ -16,16 +18,20 @@ inline constexpr float K_THICKEN_KM_PER_RADMY = 76.5f;
 
 // Bulk erosion coefficient per My per metre of elevation above sea
 // level. Derived from the stream-power incision model (Whipple &
-// Tucker 1999, J. Geophys. Res.) calibrated to the global mean
-// denudation rate of ~50 m/My at mean continental elevation ~840 m
-// (Wilkinson & McElroy 2007, J. Geophys. Res. 112, F02017):
-//   K = E_mean / z_mean = 50 m/My / 840 m ≈ 0.060 /My.
-// Each 0.5° cell (~55 km) averages many drainage basins; using the
-// global mean K avoids per-basin drainage-area assumptions. Active-
-// orogen end-member (Himalaya, orographic enhancement) is ~0.4/My —
-// captured indirectly by higher convergence-driven uplift rates in
-// those cells. 2026-05-06 P6.4.
-inline constexpr float K_EROSION_PER_MY = 0.06f;
+// Tucker 1999) calibrated to the global continental denudation
+// median from Portenga & Bierman 2011 ("Understanding Earth's
+// eroding surface with 10Be", GSA Today 21, 8) — a compilation of
+// 1599 published basin-scale 10Be cosmogenic erosion rates spanning
+// all continents and elevation classes:
+//   median basin denudation 17 m/My at median basin elevation 500 m
+//   → K = E / z = 17 / 500 ≈ 0.034 /My.
+// Wilkinson & McElroy 2007 reported 60 m/My but for "uplifted
+// continental regions" only, biased toward active orogens; Portenga
+// & Bierman captures the full continent average (cratons + uplands).
+// Each 0.5° cell (~55 km) averages many basins, so the global K is
+// the right scale.
+// 2026-05-07 P6.4 recalibration: 0.06 → 0.034.
+inline constexpr float K_EROSION_PER_MY = 0.034f;
 
 // 2026-05-06 P6.6 plate-extent gate. Real plates have finite size:
 // the Pacific (largest) spans ~1.5 rad, microplates ~0.2 rad. A
@@ -305,13 +311,22 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy) {
     const float rhoO = PhysicsConstants::rhoOceanicKgM3;
     const float airyRatio_cont = rhoM / (rhoM - rhoC); // ~5.5 m crust per m relief
     const float airyRatio_oce  = rhoM / (rhoM - rhoO); // ~8.25 m crust per m relief
+    // Exact integration of dz/dt = -K*z over interval dtMy:
+    //   z(t+dt) = z(t) * exp(-K*dt)  =>  dz_fraction = 1 - exp(-K*dt)
+    // Forward-Euler (`dz = K*z*dt`) is unstable when K*dt >= 1 — at
+    // dtMy=25 My with K=0.06/My (K*dt=1.5) the explicit step over-
+    // shoots and wipes out all elevation in a single epoch. The
+    // exponential form is the closed-form solution of the linear
+    // decay ODE, unconditionally stable, and approaches the explicit
+    // form K*z*dt for small K*dt. No fudge — textbook fix.
+    const float erosionFraction = 1.0f - std::exp(-K_EROSION_PER_MY * dtMy);
 #if defined(AOC_HAS_OPENMP)
     #pragma omp parallel for schedule(static)
 #endif
     for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
         const float z = field.surfaceElevationM[i];
         if (z <= 0.0f) continue;
-        const float dz = K_EROSION_PER_MY * z * dtMy; // metres surface lowering
+        const float dz = z * erosionFraction; // metres surface lowering
         const float c  = field.continentalFraction[i];
         const float airy = c * airyRatio_cont + (1.0f - c) * airyRatio_oce;
         const float dCrustKm = (dz * airy) * 1e-3f;
@@ -337,6 +352,32 @@ void stepSpherePhysicsEpoch(SphereField& field,
     // ownership in the subduction pass (those were reset to 0 already).
     for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
         field.crustAgeMy[i] += dtMy;
+    }
+
+    // Env-gated diagnostic dump (AOC_SPHEREPHYS_TRACE=1) reports
+    // per-epoch maxRate/maxCrust/maxZ/mountainCellCount on stderr.
+    // Useful for diagnosing balance of thicken vs erosion when
+    // calibrating constants; off by default.
+    if (std::getenv("AOC_SPHEREPHYS_TRACE") != nullptr) {
+        float maxRate = 0.0f, maxCrust = 0.0f, maxZ = -1e9f;
+        std::size_t mountainCells = 0;
+        for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
+            const float r = field.convergenceRateRadPerMy[i];
+            const float h = field.crustThicknessKm[i];
+            const float z = field.surfaceElevationM[i];
+            if (r > maxRate)  maxRate  = r;
+            if (h > maxCrust) maxCrust = h;
+            if (z > maxZ)     maxZ     = z;
+            if (z > 4000.0f) ++mountainCells;
+        }
+        std::fprintf(stderr,
+            "[sphere] dt=%.1fMy maxRate=%.5frad/My maxCrust=%5.1fkm "
+            "maxZ=%6.0fm mtn>4km=%zu\n",
+            static_cast<double>(dtMy),
+            static_cast<double>(maxRate),
+            static_cast<double>(maxCrust),
+            static_cast<double>(maxZ),
+            mountainCells);
     }
 }
 

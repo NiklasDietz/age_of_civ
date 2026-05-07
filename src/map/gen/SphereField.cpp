@@ -84,4 +84,30 @@ float SphereField::bilinearSample(
     return a * (1.0f - ty) + b * ty;
 }
 
+float SphereField::peakSample(
+    const std::vector<float>& field, float latDeg, float lonDeg,
+    int32_t halfSearchCells) const noexcept {
+    const CellCoord c = locate(latDeg, lonDeg);
+    auto wrapLon = [](int32_t i) noexcept -> int32_t {
+        i %= LON_CELLS;
+        if (i < 0) i += LON_CELLS;
+        return i;
+    };
+    auto clampLat = [](int32_t j) noexcept -> int32_t {
+        if (j < 0) return 0;
+        if (j >= LAT_CELLS) return LAT_CELLS - 1;
+        return j;
+    };
+    float peak = -1e30f;
+    for (int32_t dj = -halfSearchCells; dj <= halfSearchCells; ++dj) {
+        const int32_t jj = clampLat(c.latIdx + dj);
+        for (int32_t di = -halfSearchCells; di <= halfSearchCells; ++di) {
+            const int32_t ii = wrapLon(c.lonIdx + di);
+            const float v = field[cellIndex(ii, jj)];
+            if (v > peak) peak = v;
+        }
+    }
+    return peak;
+}
+
 } // namespace aoc::map::gen

@@ -808,20 +808,24 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         const float MY_PER_EPOCH_P1 = 250.0f / static_cast<float>(EPOCHS);
 
         for (int32_t epoch = 0; epoch < EPOCHS; ++epoch) {
-            // 2026-05-06 P6.10: stochastic Euler-pole jitter. GPlates
-            // analysis of Cenozoic plate reconstructions (Müller et al.
-            // 2008, Tetley et al. 2019) shows individual plate motion
-            // vectors change by ~10%/Myr (1-σ fractional change in
-            // angular velocity) and Euler poles drift ~1°/Myr from
-            // mantle re-organisation, slab-pull re-balancing, and
-            // collision-induced rotation. Random-walk std grows as
-            // √dt, so per-epoch sigmas scale with √MY_PER_EPOCH.
-            // Adds physical realism: without jitter every plate's
-            // motion is locked at sim-init, leaving uniform "boring"
-            // boundaries that never reorganise.
+            // 2026-05-07 P6.10 recalibration: Stochastic Euler-pole jitter
+            // for the 25-Myr-per-epoch tectonic timescale. Müller et al.
+            // 2008 / Tetley et al. 2019 report ~10%/Myr fractional change
+            // in plate-motion vectors at the Quaternary (sub-Myr) scale,
+            // dominated by mantle micro-reorganisations; on the 25-Myr
+            // tectonic-epoch scale relative to which our model integrates,
+            // plate motions are far more stable (Pacific plate sustained
+            // ~10 cm/yr across the 80-Myr Hawaiian-Emperor chain; Indian
+            // plate sustained 5 cm/yr northward through the 50-Myr Tibet
+            // collision). Use a long-term σ = 1%/Myr fractional change in
+            // |ω| and 0.1°/Myr Euler-pole drift, scaled as √dt for
+            // random-walk variance. Without this calibration mountains
+            // never reach steady state because the rate at any boundary
+            // resets faster than the K_EROSION decay constant
+            // (1/K = 16.7 Myr).
             const float jitterScale = std::sqrt(std::max(1.0f, MY_PER_EPOCH_P1));
-            const float velFracSigma = 0.10f * jitterScale;
-            const float poleSigmaDeg = 1.0f  * jitterScale;
+            const float velFracSigma = 0.01f * jitterScale;
+            const float poleSigmaDeg = 0.10f * jitterScale;
             auto gaussianFromUniform = [&]() {
                 // Sum of 3 U[-1,1] approximates N(0,1) (CLT, σ=1).
                 return centerRng.nextFloat(-1.0f, 1.0f)
@@ -1414,7 +1418,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 const float nx = static_cast<float>(col) / static_cast<float>(width);
                 const float ny = static_cast<float>(row) / static_cast<float>(height);
                 float bestSq = 1e9f; int32_t bestPi = -1;
-                float bestLx = 0.0f, bestLy = 0.0f;
                 for (std::size_t pi = 0; pi < plates.size(); ++pi) {
                     float dx = nx - plates[pi].cx;
                     float dy = ny - plates[pi].cy;
@@ -1444,45 +1447,51 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     const float dsq = (lx * lx + ly * ly) / (plates[pi].weight * plates[pi].weight);
                     if (dsq < bestSq) {
                         bestSq = dsq; bestPi = static_cast<int32_t>(pi);
-                        bestLx = lx; bestLy = ly;
                     }
                 }
                 if (bestPi < 0) { continue; }
-                // Sample SphereField surface elevation for this tile.
-                // Orogeny here is binary {0, 1}: above MOUNTAIN_THRESHOLD_M
-                // == mountain tier.
+                // Sample SphereField surface elevation for this hex tile.
+                // Orogeny is binary {0, 1}: tile flagged as mountain when
+                // any SphereField cell within the tile footprint exceeds
+                // MOUNTAIN_THRESHOLD_M. Peak (max) sampling, not bilinear,
+                // because mountain belts are narrow (Andes ~200 km = 4
+                // cells; Himalaya ~150 km = 3 cells) and bilinear averaging
+                // dilutes them below the threshold.
+                //
+                // Hex-tile footprint in SphereField cells: at the standard
+                // 140x90 grid the tile is ~2.6° wide; at 80x52 it is ~4.5°.
+                // halfSearch = 3 → 7x7 = 49 cells covers the worst case
+                // and still keeps the search local.
                 float oroSampled = 0.0f;
                 {
                     aoc::map::gen::MollweideInverseResult mw =
                         aoc::map::gen::mollweideInverse(nx, ny);
                     if (mw.valid) {
-                        // Binary mountain gate: oroSampled = 1 if SphereField
-                        // surface elevation exceeds MOUNTAIN_THRESHOLD_M (4000m).
-                        const float zM = sphereField.bilinearSample(
+                        const float zM = sphereField.peakSample(
                             sphereField.surfaceElevationM,
-                            mw.coord.latDeg, mw.coord.lonDeg);
+                            mw.coord.latDeg, mw.coord.lonDeg,
+                            /*halfSearchCells=*/3);
                         oroSampled = (zM > aoc::map::gen::MOUNTAIN_THRESHOLD_M)
                             ? 1.0f : 0.0f;
                     }
                 }
-                // Mask gate. Cap positive orogeny on ocean-tile-of-
-                // ocean-plate (prevents "ocean-ocean merger turns into
-                // land bridge" artefact). On a CONTINENTAL plate's
-                // ocean-mask tile, allow full orogeny — this is the
-                // mechanism by which subduction arcs CRATONICALLY
-                // GROW continents, lifting marginal seafloor into
-                // new land along the coast.
+                // Mask gate: only continental SphereField cells can be
+                // mountain. The in-sim Plate's landFraction is a random
+                // spawn attribute uncorrelated with the Bird-2003-seeded
+                // SphereField continental distribution, so a mountain cell
+                // that gates on owner.landFraction can be suppressed
+                // even when its SphereField crust is fully continental.
+                // Sample SphereField continentalFraction at the same
+                // (lat, lon) as oroSampled and treat frac > 0.5 as
+                // continental.
                 {
-                    const Plate& owner = plates[static_cast<std::size_t>(bestPi)];
-                    if (owner.landFraction < 0.40f) {
-                        // Ocean plate. Cap positive orogeny at Hills tier.
-                        aoc::Random crustRng(0u);
-                        const float crust = fractalNoise(
-                            bestLx * 2.0f + owner.latDeg * 137.0f,
-                            bestLy * 2.0f + owner.lonDeg * 137.0f,
-                            4, 2.0f, 0.55f, crustRng);
-                        const bool ownerSaysLand = crust > (1.0f - owner.landFraction);
-                        if (!ownerSaysLand && oroSampled > 0.10f) {
+                    aoc::map::gen::MollweideInverseResult mw =
+                        aoc::map::gen::mollweideInverse(nx, ny);
+                    if (mw.valid) {
+                        const float frac = sphereField.bilinearSample(
+                            sphereField.continentalFraction,
+                            mw.coord.latDeg, mw.coord.lonDeg);
+                        if (frac < 0.5f && oroSampled > 0.10f) {
                             oroSampled = 0.10f;
                         }
                     }
