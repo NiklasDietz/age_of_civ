@@ -264,6 +264,8 @@ int main(int argc, char* argv[]) {
             }
         } else if (arg == "--super-sample" && i + 1 < argc) {
             config.superSampleFactor = std::atoi(argv[++i]);
+        } else if (arg == "--cylindrical") {
+            config.topology = aoc::map::MapTopology::Cylindrical;
         } else if (arg == "--frames") {
             frameMode = true;
         } else if (arg == "--dump-plates" && i + 1 < argc) {

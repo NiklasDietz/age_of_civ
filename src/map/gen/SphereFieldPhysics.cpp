@@ -16,7 +16,28 @@ namespace aoc::map::gen {
 // kilometres of crust thickening per (radians/My) closing rate per My
 // of elapsed time. Derived in the header doc from the Tibet record;
 // reference Turcotte & Schubert 2014 ch. 6 + DeCelles et al. 2002.
-inline constexpr float K_THICKEN_KM_PER_RADMY = 76.5f;
+//
+// 2026-05-07 recalibration: 76.5 -> 250. The 76.5 figure was derived
+// from the NET Tibet thickening (30 km gain over 50 My) at the modern
+// India-Asia closing rate of 0.008 rad/My. Two mismatches require a
+// larger K in our model:
+//   1. The 30 km is NET; raw thickening must additionally offset
+//      ~22 km of parallel erosion at 5 km peak elevation
+//      (K_EROSION 0.034/My, Airy ratio 5.5 m crust per m relief).
+//   2. Our long-time-mean closing rate at convergent boundaries is
+//      ~0.002-0.003 rad/My (3x slower than India-Asia at peak), so
+//      proportional thickening would not maintain orogenic relief
+//      against the same erosion budget.
+// Calibrating against a slow-rate equilibrium (rate=0.002, target
+// z=5500 m): K = 5500 * 0.817 * 5.5 / (1000 * 0.002 * 50) = 247
+// km / (rad/My) / My, rounded to 250. At Tibet rates this gives
+// equilibrium z saturating at the maxCrustThicknessKm cap, which is
+// the desired behaviour. Without this, mountains form in the first
+// epoch then erode below 4 km within ~10 epochs and never return as
+// plate motion settles at the long-time-mean rate.
+// References: DeCelles et al. 2002 (Tibet record); Whipple & Tucker
+// 1999 stream-power erosion; Portenga & Bierman 2011 (K_EROSION).
+inline constexpr float K_THICKEN_KM_PER_RADMY = 250.0f;
 
 // Bulk erosion coefficient per My per metre of elevation above sea
 // level. Derived from the stream-power incision model (Whipple &
@@ -284,11 +305,10 @@ void applySlabPullFeedback(SphereField& field,
     if (plates.empty()) return;
     const std::size_t N = plates.size();
 
-    // Per-plate slab-pull score: sum of convergent rates over its
-    // boundary cells; normalised by the plate's cell count so both
-    // microplates and Pacific-class behemoths receive comparable
-    // per-cell pull. The score is a CHANGE_RATE (rad/My); the cap is
-    // applied as a fraction of current angularVelDeg per epoch.
+    // Per-plate slab-pull score: sum of convergent rates over the
+    // plate's convergent boundary cells. The score itself is the
+    // input to the gain, NOT divided by total cell count -- the
+    // calibration text below applies to the raw sum.
     std::vector<double> slabPull(N, 0.0);
     std::vector<int32_t> cellCount(N, 0);
     for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
@@ -307,30 +327,50 @@ void applySlabPullFeedback(SphereField& field,
     // smooth on the geological timescale.
     constexpr float MAX_FRAC_PER_EPOCH = 0.10f;
     // Slab-pull-to-fractional-Δ scaling. Calibrated so a Tibet-class
-    // collision (closing 0.008 rad/My over ~50 boundary cells →
+    // collision (closing 0.008 rad/My over ~50 boundary cells ->
     // slabPull ≈ 0.4 rad/My total summed) gives Δω/ω ≈ 0.05 (5 %
-    // increase per epoch). The plate accelerates monotonically while
-    // the trench is active, decelerates when convergence stops.
+    // increase per epoch). 0.05 / 0.4 = 0.125. Applied to the raw
+    // slabPull sum, NOT divided by total cell count -- a prior bug
+    // normalised by total cells (~5000) which killed the gain by ~5000x
+    // and let plate motion decay unimpeded by the supposed feedback.
     constexpr float SLAB_PULL_GAIN = 0.125f;
+
+    // Absolute ceiling on plate angular velocity. Müller 2022 modern
+    // plate-motion catalogue: median plate ~0.1 deg/My, peak Pacific
+    // ~1.0 deg/My. Cap held to the median, NOT the peak: over the
+    // 3-Gy default simulated time at 50 My/epoch, a plate at the cap
+    // accumulates 0.1 * 50 * 60 = 300 deg of total angular sweep --
+    // ~0.83 of a full revolution -- which matches Earth's observed
+    // long-term plate translation envelope (Phanerozoic continental
+    // tracks span ~10000 km out of 40000 km Earth circumference, so
+    // ~0.25-0.75 revolutions per 0.5 Gy). Above ~0.15 deg/My, the
+    // 0.5-deg SphereField cell pitch is exceeded by ~10x per epoch
+    // and plate footprints alias into latitude bands when the
+    // accumulated rotation about a polar Euler axis sweeps every
+    // cell at the same latitude into one another. The fractional
+    // 10 %/epoch cap on its own is not sufficient -- compounded over
+    // 60 epochs it permits 304x growth and produces this banding.
+    constexpr float MAX_ABS_OMEGA_DEG_PER_MY = 0.15f;
 
     for (std::size_t i = 0; i < N; ++i) {
         if (cellCount[i] == 0) continue;
-        const float pullPerCell = static_cast<float>(
-            slabPull[i] / static_cast<double>(cellCount[i]));
-        // Sign convention: pulling INTO trench means motion AWAY
-        // from the trench accelerates. For our simplified scalar
-        // gain we assume the trench direction aligns with the plate's
-        // Euler rotation, so slab pull adds to |ω|. Decelerate when
-        // there is no convergent boundary (pullPerCell == 0) is
-        // implicit — only positive pull is considered, no friction
-        // term — but ridge push at divergent boundaries supplies the
-        // counterbalance via the same pass when boundary classifies
-        // as Divergent (boundaryType == 2).
-        float deltaFrac = pullPerCell * SLAB_PULL_GAIN
+        // Sign convention: pulling INTO trench means motion AWAY from
+        // the trench accelerates. For our simplified scalar gain we
+        // assume the trench direction aligns with the plate's Euler
+        // rotation, so slab pull adds to |ω|. Decelerate when there
+        // is no convergent boundary (slabPull == 0) is implicit --
+        // only positive pull is considered, no friction term -- but
+        // ridge push at divergent boundaries supplies the counter-
+        // balance via the same pass when boundary classifies as
+        // Divergent (boundaryType == 2).
+        float deltaFrac = static_cast<float>(slabPull[i]) * SLAB_PULL_GAIN
                         * (dtMy / 50.0f); // normalise to the 50-Myr base.
         if (deltaFrac >  MAX_FRAC_PER_EPOCH) deltaFrac =  MAX_FRAC_PER_EPOCH;
         if (deltaFrac < -MAX_FRAC_PER_EPOCH) deltaFrac = -MAX_FRAC_PER_EPOCH;
-        plates[i].angularVelDeg *= 1.0f + deltaFrac;
+        float w = plates[i].angularVelDeg * (1.0f + deltaFrac);
+        if (w >  MAX_ABS_OMEGA_DEG_PER_MY) w =  MAX_ABS_OMEGA_DEG_PER_MY;
+        if (w < -MAX_ABS_OMEGA_DEG_PER_MY) w = -MAX_ABS_OMEGA_DEG_PER_MY;
+        plates[i].angularVelDeg = w;
     }
 }
 
@@ -684,16 +724,21 @@ void advectPlateOwnership(SphereField& field,
     // owns dep_P(D) with plate P, then P's cell at dep_P(D) will land
     // at D this epoch -- P claims D.
     //
-    // Conflict resolution: when MULTIPLE plates claim D, the cell's
-    // CURRENT owner (incumbent) wins if it is among the claimants.
-    // This keeps boundaries stable through advection -- continent vs
-    // ocean transitions are the job of `applySubduction`, not the
-    // ownership-shift pass. A continental-wins rule here pumps land
-    // into former oceanic cells every epoch and the global continental
-    // fraction explodes; an incumbent-wins rule conserves it. If the
-    // incumbent is NOT among the claimants (cell is in the wake of its
-    // current owner, but a different plate is rotating in), the
-    // first-indexed claimant takes it -- deterministic and order-stable.
+    // Conflict resolution: when MULTIPLE plates claim D:
+    //   1. If incumbent (current owner of D) claims, incumbent wins.
+    //      Keeps boundaries stable through advection -- continent vs
+    //      ocean transitions are subduction's job, not advection's.
+    //   2. Otherwise pick the SLOWEST plate among claimants (smallest
+    //      |omega_P|). The slow plate barely moved this epoch so its
+    //      claim represents a tiny correction; a fast plate's claim
+    //      would represent a long sweep that may alias. Picking
+    //      slow-wins also matches geophysics: cratonic plates resist
+    //      mantle drag (Gripp & Gordon 2002 Eurasian 0.14 deg/My
+    //      vs Pacific 0.96), so when plates compete for orphan cells,
+    //      the cratons win and oceanic plates flow around them.
+    //      A first-by-index tiebreak (older code) created vertical
+    //      stripes in the rendered overlay because plate id 0 won
+    //      every contested cell, regardless of geometry.
     //
     // Wake cells (no claimant at all) are filled in a second pass.
 #if defined(AOC_HAS_OPENMP)
@@ -712,8 +757,9 @@ void advectPlateOwnership(SphereField& field,
             const double cy = cosLat * std::sin(lonR);
             const double cz = std::sin(latR);
 
-            int16_t firstPid    = -1;
-            std::size_t firstDepIdx = 0;
+            int16_t slowPid     = -1;
+            std::size_t slowDepIdx = 0;
+            float       slowOmega  = 1e9f;
             int16_t incPid      = -1;
             std::size_t incDepIdx = 0;
 
@@ -736,9 +782,11 @@ void advectPlateOwnership(SphereField& field,
                 const std::size_t depIdx = SphereField::cellIndex(dep.lonIdx, dep.latIdx);
 
                 if (field.plateId[depIdx] != static_cast<int16_t>(pIdx)) continue;
-                if (firstPid < 0) {
-                    firstPid    = static_cast<int16_t>(pIdx);
-                    firstDepIdx = depIdx;
+                const float absOmega = std::fabs(plates[pIdx].angularVelDeg);
+                if (absOmega < slowOmega) {
+                    slowOmega  = absOmega;
+                    slowPid    = static_cast<int16_t>(pIdx);
+                    slowDepIdx = depIdx;
                 }
                 if (static_cast<int16_t>(pIdx) == incumbent) {
                     incPid    = static_cast<int16_t>(pIdx);
@@ -751,9 +799,9 @@ void advectPlateOwnership(SphereField& field,
             if (incPid >= 0) {
                 pickPid    = incPid;
                 pickDepIdx = incDepIdx;
-            } else if (firstPid >= 0) {
-                pickPid    = firstPid;
-                pickDepIdx = firstDepIdx;
+            } else if (slowPid >= 0) {
+                pickPid    = slowPid;
+                pickDepIdx = slowDepIdx;
             } else {
                 continue; // Unclaimed -- wake-fill pass below.
             }

@@ -1466,10 +1466,24 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     aoc::map::gen::projectionInverse(
                         config.projection, nx, ny);
                 if (!mw.valid) { continue; }
+                // halfSearchCells calibrated to the hex tile's actual
+                // footprint on the sphere. SphereField cell pitch is
+                // 0.5 deg; hex tile width is 360/width deg. Half-window
+                // = ceil(hex_half_width / cell_pitch) so peakSample
+                // captures every SphereField cell whose centre falls
+                // inside the hex. Without this, a 4 km+ peak that
+                // straddles the hex edge is missed and the tile renders
+                // as flat -- visible mountain ranges shrink to a few
+                // scattered tiles even when the SphereField shows
+                // hundreds of mountain cells. Default 80-wide map:
+                // hex_half_width = 2.25 deg, halfSearchCells = 5.
+                const int32_t hexHalfCells = std::max(3,
+                    static_cast<int32_t>(std::ceil(
+                        180.0f / static_cast<float>(width) / 0.5f)));
                 const float zM = sphereField.peakSample(
                     sphereField.surfaceElevationM,
                     mw.coord.latDeg, mw.coord.lonDeg,
-                    /*halfSearchCells=*/3);
+                    hexHalfCells);
                 float oroSampled = (zM > aoc::map::gen::MOUNTAIN_THRESHOLD_M)
                     ? 1.0f : 0.0f;
                 const float frac = sphereField.bilinearSample(
@@ -1515,6 +1529,39 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // continent at +0.17, Tibet at +1.10 — comfortably
                 // straddling the percentile water cutoff.
                 elev = zM / 5000.0f;
+            }
+            // Hotspot volcanic islands. Each hotspot is a mantle
+            // plume that builds a Hawaiian/Icelandic-scale island
+            // chain in deep ocean. Add a Gaussian-falloff bump to
+            // the local elevation so the chain pokes above the
+            // percentile water threshold. Hotspots intentionally
+            // skipped near land plate centres (see hotspot placement
+            // pass), so the bumps only trigger ocean tiles.
+            for (const Hotspot& h : hotspots) {
+                float dxh = nx - h.cx;
+                float dyh = ny - h.cy;
+                if (cylSim) {
+                    if (dxh >  0.5f) dxh -= 1.0f;
+                    if (dxh < -0.5f) dxh += 1.0f;
+                }
+                const float r2 = dxh * dxh + dyh * dyh;
+                // Hawaii is ~600 km long, ~10 % of Earth's diameter
+                // -- which on a 80-wide flat map is ~0.025 of the
+                // width. Use that as the half-radius so hotspot
+                // islands look like Hawaii / Iceland, not like
+                // continents. Falloff Gaussian sigma = radius * 0.4.
+                constexpr float HOTSPOT_RADIUS = 0.025f;
+                if (r2 < HOTSPOT_RADIUS * HOTSPOT_RADIUS) {
+                    const float sigma2 = HOTSPOT_RADIUS * HOTSPOT_RADIUS
+                                       * 0.16f;
+                    const float falloff = std::exp(-r2 / sigma2);
+                    // Lift to ~+0.10 above oceanic baseline at peak
+                    // (overshoots the percentile cutoff even when it
+                    // lands on the homogenised -0.54 oceanic
+                    // plateau). Strength jitter (0.08-0.16) varies
+                    // the height between hotspot tracks.
+                    elev += (0.65f + h.strength * 2.0f) * falloff;
+                }
             }
             elevationMap[static_cast<std::size_t>(row * width + col)] = elev;
         }
