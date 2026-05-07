@@ -9,6 +9,7 @@
  */
 
 #include "aoc/map/HexGrid.hpp"
+#include "aoc/map/gen/SphereGeometry.hpp"
 #include "aoc/core/Random.hpp"
 
 #include <cstdint>
@@ -78,6 +79,13 @@ public:
         MapType     mapType   = MapType::Continents;  ///< Landmass generation style
         MapSize     mapSize   = MapSize::Standard;     ///< Preset size (overrides width/height when applied)
         MapTopology topology  = MapTopology::Flat;     ///< Grid topology (Flat or Cylindrical)
+        /// Sphere → rectangle projection used to map hex tiles back to
+        /// lat/lon when sampling SphereField state. Default Mollweide
+        /// (equal-area, ellipse footprint, polar voids in corners).
+        /// See `aoc::map::gen::MapProjection` for alternatives
+        /// (Equirectangular, Mercator, Robinson) — selectable from
+        /// the Continent Creator UI.
+        gen::MapProjection projection = gen::MapProjection::Mollweide;
         ResourcePlacementMode placement = ResourcePlacementMode::Realistic;
         /// Continents-only knobs.
         ///

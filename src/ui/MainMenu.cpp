@@ -703,7 +703,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         this->m_config.mapSeed = rdSeed();
     }
 
-    // -- Tectonic epochs row --
+    // -- Tectonic age row (total simulated geological time in My/Gy) --
     {
         WidgetId row = ui.createPanel(contentPanel,
             {0.0f, 0.0f, innerW, 28.0f},

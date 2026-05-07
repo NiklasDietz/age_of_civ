@@ -172,6 +172,7 @@ void usage(const char* prog) {
         "Usage: %s [--seed N] [--width W] [--height H] [--output PATH]\n"
         "          [--format ascii|csv|both]\n"
         "          [--tectonic-time-my N | --tectonic-time-gy N | --epochs N]\n"
+        "          [--projection mollweide|equirect|mercator|robinson]\n"
         "          [--super-sample N]\n"
         "          [--dump-plates PATH] [--dump-edges PATH]\n"
         "          [--dump-mountain-edges PATH]\n"
@@ -247,6 +248,20 @@ int main(int argc, char* argv[]) {
             // Convenience: same as --tectonic-time-my but in Gy.
             const float gy = static_cast<float>(std::atof(argv[++i]));
             config.tectonicTotalMy = static_cast<int32_t>(gy * 1000.0f + 0.5f);
+        } else if (arg == "--projection" && i + 1 < argc) {
+            // Sphere → rectangle projection: mollweide, equirect,
+            // mercator, or robinson. Defaults to mollweide.
+            const std::string p = argv[++i];
+            if      (p == "mollweide") config.projection = aoc::map::gen::MapProjection::Mollweide;
+            else if (p == "equirect")  config.projection = aoc::map::gen::MapProjection::Equirectangular;
+            else if (p == "mercator")  config.projection = aoc::map::gen::MapProjection::Mercator;
+            else if (p == "robinson")  config.projection = aoc::map::gen::MapProjection::Robinson;
+            else {
+                std::fprintf(stderr, "error: unknown --projection '%s' "
+                    "(expected mollweide|equirect|mercator|robinson)\n",
+                    p.c_str());
+                return 2;
+            }
         } else if (arg == "--super-sample" && i + 1 < argc) {
             config.superSampleFactor = std::atoi(argv[++i]);
         } else if (arg == "--frames") {

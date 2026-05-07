@@ -1463,7 +1463,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 const float nx = static_cast<float>(col) / static_cast<float>(width);
                 const float ny = static_cast<float>(row) / static_cast<float>(height);
                 aoc::map::gen::MollweideInverseResult mw =
-                    aoc::map::gen::mollweideInverse(nx, ny);
+                    aoc::map::gen::projectionInverse(
+                        config.projection, nx, ny);
                 if (!mw.valid) { continue; }
                 const float zM = sphereField.peakSample(
                     sphereField.surfaceElevationM,
@@ -1482,25 +1483,26 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         }
 
     // World-frame elevation pass. NO Voronoi: tile (col, row) maps to
-    // lat/lon via Mollweide inverse; elevation comes from the
-    // SphereField surfaceElevationM raster (the authoritative state
+    // lat/lon via the user-selected projection; elevation comes from
+    // the SphereField surfaceElevationM raster (authoritative state
     // produced by 3 Gy of mechanism physics — subduction trims,
     // ridges accrete, continents dock, Wilson cycles rift).
     //
-    // Tiles outside the Mollweide ellipse (polar voids) get a deep
-    // ocean elevation so the rendering still draws them as water.
-    // The output is a percentile-rank map: ClimateBiome.cpp picks the
-    // ocean / shore / land tiers via Thresholds.cpp on a sorted view
-    // of this array, so the absolute scale only needs to be
-    // monotonic, not calibrated to a specific unit.
+    // Tiles outside the projection's valid range (Mollweide ellipse
+    // corners, Mercator polar clip) get a deep ocean elevation so
+    // the rendering still draws them as water. Output is a
+    // percentile-rank map: ClimateBiome.cpp picks ocean / shore /
+    // land tiers via Thresholds.cpp on a sorted view of this array,
+    // so the absolute scale only needs to be monotonic.
     AOC_PARALLEL_FOR_ROWS
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
             const float nx = static_cast<float>(col) / static_cast<float>(width);
             const float ny = static_cast<float>(row) / static_cast<float>(height);
             const aoc::map::gen::MollweideInverseResult mw =
-                aoc::map::gen::mollweideInverse(nx, ny);
-            float elev = -1.0f; // Polar void / outside ellipse → ocean.
+                aoc::map::gen::projectionInverse(
+                    config.projection, nx, ny);
+            float elev = -1.0f; // Out of projection range → ocean.
             if (mw.valid) {
                 const float zM = sphereField.bilinearSample(
                     sphereField.surfaceElevationM,
@@ -1518,16 +1520,16 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         }
     }
 
-    // Per-hex-tile plate id, projected from the SphereField raster.
-    // No Voronoi: each hex tile maps via Mollweide inverse to a
-    // lat/lon, then `SphereField::locate` returns the raster cell
-    // whose plateId is authoritative.
+    // Per-hex-tile plate id, projected from the SphereField raster
+    // through the user-selected projection. `SphereField::locate`
+    // returns the authoritative raster cell.
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
             const float nx = static_cast<float>(col) / static_cast<float>(width);
             const float ny = static_cast<float>(row) / static_cast<float>(height);
             const aoc::map::gen::MollweideInverseResult mw =
-                aoc::map::gen::mollweideInverse(nx, ny);
+                aoc::map::gen::projectionInverse(
+                    config.projection, nx, ny);
             if (!mw.valid) { continue; }
             const aoc::map::gen::SphereField::CellCoord c =
                 aoc::map::gen::SphereField::locate(

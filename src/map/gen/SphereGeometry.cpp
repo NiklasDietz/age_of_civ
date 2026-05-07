@@ -297,6 +297,159 @@ MollweideInverseResult tileToLatLon(
     return mollweideInverse(mapX, mapY);
 }
 
+// ---------------------------------------------------------------------------
+// Equirectangular (Plate Carrée)
+// ---------------------------------------------------------------------------
+//
+// nx = (lon + 180) / 360, ny = (90 - lat) / 180. Trivial inverse. The
+// rectangle is fully populated — no polar void corners — but areas
+// near the poles are stretched horizontally by 1/cos(lat). Useful as
+// a "show me the whole sphere flat" mode and matches how most game
+// world maps render lat/lon textures.
+static MollweidePoint equirectangularForward(LatLon p) {
+    MollweidePoint r;
+    r.mapX = (p.lonDeg + 180.0f) / 360.0f;
+    r.mapY = (90.0f - p.latDeg) / 180.0f;
+    r.inEllipse = (r.mapX >= 0.0f && r.mapX <= 1.0f
+                && r.mapY >= 0.0f && r.mapY <= 1.0f);
+    return r;
+}
+
+static MollweideInverseResult equirectangularInverse(float mapX, float mapY) {
+    MollweideInverseResult r;
+    r.coord.lonDeg = mapX * 360.0f - 180.0f;
+    r.coord.latDeg = 90.0f - mapY * 180.0f;
+    r.valid        = (mapX >= 0.0f && mapX <= 1.0f
+                  && mapY >= 0.0f && mapY <= 1.0f);
+    return r;
+}
+
+// ---------------------------------------------------------------------------
+// Mercator (clipped at ±MERCATOR_LAT_LIMIT_DEG)
+// ---------------------------------------------------------------------------
+//
+// Conformal: y = ln(tan(pi/4 + lat/2)). Polar latitudes stretch to
+// infinity; clip at ±85.05113° (the standard Web Mercator bound) so
+// the inverse maps a finite ny range back to a finite latitude range.
+// Tiles outside the clip bound get the limit latitude flagged invalid.
+static constexpr float MERCATOR_LAT_LIMIT_DEG = 85.05113f;
+
+// ln(tan(pi/4 + 85.05113°/2)) ≈ 2.436246, halved here so the
+// unit-square mapY = 0.5 ± 0.5 * y / kMercatorYHalfLimit lands the
+// equator at 0.5 and the clip latitudes at 0 / 1.
+static constexpr float kMercatorYHalfLimit = 1.2181232f;
+
+static MollweidePoint mercatorForward(LatLon p) {
+    MollweidePoint r;
+    r.mapX = (p.lonDeg + 180.0f) / 360.0f;
+    const float clampedLat = std::clamp(p.latDeg,
+        -MERCATOR_LAT_LIMIT_DEG, MERCATOR_LAT_LIMIT_DEG);
+    const float latR = clampedLat * kDegToRad;
+    const float y = std::log(std::tan(0.785398163f + 0.5f * latR));
+    r.mapY = 0.5f - 0.5f * y / kMercatorYHalfLimit;
+    r.inEllipse = (std::fabs(p.latDeg) <= MERCATOR_LAT_LIMIT_DEG);
+    return r;
+}
+
+static MollweideInverseResult mercatorInverse(float mapX, float mapY) {
+    MollweideInverseResult r;
+    r.coord.lonDeg = mapX * 360.0f - 180.0f;
+    const float y = (0.5f - mapY) * 2.0f * kMercatorYHalfLimit;
+    const float latR = 2.0f * (std::atan(std::exp(y)) - 0.785398163f);
+    r.coord.latDeg = latR * kRadToDeg;
+    r.valid = (mapX >= 0.0f && mapX <= 1.0f
+            && mapY >= 0.0f && mapY <= 1.0f);
+    return r;
+}
+
+// ---------------------------------------------------------------------------
+// Robinson
+// ---------------------------------------------------------------------------
+//
+// Tabulated pseudocylindrical (Robinson 1974). The standard table
+// gives X(lat) and Y(lat) at every 5° of latitude; we interpolate
+// linearly between table entries. A common atlas projection — areas
+// and shapes are both moderately preserved (no exact equal-area, no
+// exact conformal, but the global look is "natural").
+static const float kRobinsonX[19] = {
+    1.0000f, 0.9986f, 0.9954f, 0.9900f, 0.9822f, 0.9730f, 0.9600f,
+    0.9427f, 0.9216f, 0.8962f, 0.8679f, 0.8350f, 0.7986f, 0.7597f,
+    0.7186f, 0.6732f, 0.6213f, 0.5722f, 0.5322f
+};
+static const float kRobinsonY[19] = {
+    0.0000f, 0.0620f, 0.1240f, 0.1860f, 0.2480f, 0.3100f, 0.3720f,
+    0.4340f, 0.4958f, 0.5571f, 0.6176f, 0.6769f, 0.7346f, 0.7903f,
+    0.8435f, 0.8936f, 0.9394f, 0.9761f, 1.0000f
+};
+
+static MollweidePoint robinsonForward(LatLon p) {
+    MollweidePoint r;
+    const float absLat = std::fabs(p.latDeg);
+    const float idxF = absLat / 5.0f;
+    const int32_t idx = std::min(17, static_cast<int32_t>(idxF));
+    const float t = idxF - static_cast<float>(idx);
+    const float X = kRobinsonX[idx] * (1.0f - t) + kRobinsonX[idx + 1] * t;
+    const float Y = kRobinsonY[idx] * (1.0f - t) + kRobinsonY[idx + 1] * t;
+    const float xRaw = X * (p.lonDeg / 180.0f);
+    const float yRaw = (p.latDeg < 0.0f) ? -Y : Y;
+    r.mapX = 0.5f + 0.5f * xRaw;
+    r.mapY = 0.5f - 0.5f * yRaw;
+    r.inEllipse = (r.mapX >= 0.0f && r.mapX <= 1.0f
+                && r.mapY >= 0.0f && r.mapY <= 1.0f);
+    return r;
+}
+
+static MollweideInverseResult robinsonInverse(float mapX, float mapY) {
+    // Numerical inverse: lat from y via reverse table lookup, lon
+    // from x divided by X(lat).
+    MollweideInverseResult r;
+    const float yRaw = (0.5f - mapY) * 2.0f;
+    const float absY = std::fabs(yRaw);
+    int32_t idx = 0;
+    for (; idx < 17; ++idx) {
+        if (kRobinsonY[idx + 1] >= absY) break;
+    }
+    const float yLo = kRobinsonY[idx];
+    const float yHi = kRobinsonY[idx + 1];
+    const float t = (yHi > yLo) ? (absY - yLo) / (yHi - yLo) : 0.0f;
+    const float absLat = (static_cast<float>(idx) + t) * 5.0f;
+    const float lat = (yRaw < 0.0f) ? -absLat : absLat;
+    const float X = kRobinsonX[idx] * (1.0f - t) + kRobinsonX[idx + 1] * t;
+    const float xRaw = (mapX - 0.5f) * 2.0f;
+    const float lon = (X > 1e-6f) ? (xRaw / X) * 180.0f : 0.0f;
+    r.coord.latDeg = lat;
+    r.coord.lonDeg = lon;
+    r.valid = (lat >= -90.0f && lat <= 90.0f
+            && lon >= -180.0f && lon <= 180.0f
+            && std::fabs(xRaw) <= X + 1e-3f);
+    return r;
+}
+
+// ---------------------------------------------------------------------------
+// Dispatcher
+// ---------------------------------------------------------------------------
+
+MollweidePoint projectionForward(MapProjection proj, LatLon p) {
+    switch (proj) {
+        case MapProjection::Equirectangular: return equirectangularForward(p);
+        case MapProjection::Mercator:        return mercatorForward(p);
+        case MapProjection::Robinson:        return robinsonForward(p);
+        case MapProjection::Mollweide:
+        default:                             return mollweideForward(p);
+    }
+}
+
+MollweideInverseResult projectionInverse(
+    MapProjection proj, float mapX, float mapY) {
+    switch (proj) {
+        case MapProjection::Equirectangular: return equirectangularInverse(mapX, mapY);
+        case MapProjection::Mercator:        return mercatorInverse(mapX, mapY);
+        case MapProjection::Robinson:        return robinsonInverse(mapX, mapY);
+        case MapProjection::Mollweide:
+        default:                             return mollweideInverse(mapX, mapY);
+    }
+}
+
 } // namespace aoc::map::gen
 
 

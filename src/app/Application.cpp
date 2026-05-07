@@ -4,6 +4,7 @@
  */
 
 #include "aoc/app/Application.hpp"
+#include "aoc/app/UnitSelection.hpp"
 #include "aoc/ui/Theme.hpp"
 #include "aoc/ui/IconAtlas.hpp"
 #include "aoc/data/DataLoader.hpp"
@@ -885,6 +886,8 @@ void Application::regenerateContinentPreview(int32_t timeMy) {
     cfg.topology = aoc::map::MapTopology::Cylindrical;
     cfg.tectonicTotalMy = this->m_creatorTotalMy;
     cfg.landPlateCount = this->m_creatorLandPlates;
+    cfg.projection = static_cast<aoc::map::gen::MapProjection>(
+        std::clamp(this->m_creatorProjection, 0, 3));
     cfg.runEpochsLimit = epochLimit;
     cfg.driftFraction  = static_cast<float>(this->m_creatorDriftPct) * 0.1f;
     // Advanced config from top panel.
@@ -986,6 +989,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         this->m_creatorAxialTiltLabel    = aoc::ui::INVALID_WIDGET;
         this->m_creatorEnsoLabel         = aoc::ui::INVALID_WIDGET;
         this->m_creatorMilanLabel        = aoc::ui::INVALID_WIDGET;
+        this->m_creatorProjectionLabel   = aoc::ui::INVALID_WIDGET;
     }
     constexpr float PANEL_H = 200.0f; // multi-row HorizontalWrap container
     constexpr float PANEL_PAD = 8.0f;
@@ -1061,6 +1065,40 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             &this->m_creatorEnsoLabel, 88.0f);
         addCycler("Milan:",  &this->m_creatorMilanTenths,    0,  10,   1,
             &this->m_creatorMilanLabel, 88.0f);
+
+        // Map projection cycler — labels with the projection NAME so
+        // it's clear which one is active. Cycles 0=Mollweide,
+        // 1=Equirectangular, 2=Mercator, 3=Robinson.
+        {
+            static constexpr const char* PROJ_NAMES[4] = {
+                "Mollweide", "Equirect", "Mercator", "Robinson"
+            };
+            auto labelFor = [](int32_t v) {
+                const int32_t i = std::clamp(v, 0, 3);
+                return std::string("Proj: ") + PROJ_NAMES[i];
+            };
+            aoc::ui::ButtonData btn;
+            btn.label        = labelFor(this->m_creatorProjection);
+            btn.fontSize     = 14.0f;
+            btn.normalColor  = aoc::ui::tokens::BRONZE_BASE;
+            btn.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+            btn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+            btn.onClick = [this, labelFor]() {
+                this->m_creatorProjection =
+                    (this->m_creatorProjection + 1) % 4;
+                if (this->m_creatorProjectionLabel != aoc::ui::INVALID_WIDGET) {
+                    this->m_uiManager.setLabelText(
+                        this->m_creatorProjectionLabel,
+                        labelFor(this->m_creatorProjection));
+                }
+                this->m_creatorEpochCache.clear();
+                this->regenerateContinentPreview(
+                    this->m_creatorTimeCurrentMy);
+            };
+            this->m_creatorProjectionLabel =
+                this->m_uiManager.createButton(this->m_creatorAdvPanelId,
+                    {0.0f, 0.0f, 140.0f, 36.0f}, std::move(btn));
+        }
     }
 
     constexpr int32_t MY_PER_EPOCH = aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
@@ -3422,9 +3460,10 @@ void Application::buildMainMenu(float screenW, float screenH) {
 
             std::random_device rdc;
             this->m_creatorSeed         = rdc();
-            this->m_creatorTotalMy  = 40;
-            // 2026-05-04: 7 -> 4 to match mapgen's Earth-calibrated count.
-            this->m_creatorLandPlates   = 4;
+            // Default 3 Gy = ~5 Wilson supercontinent cycles
+            // (Anderson 2007). Matches MapGenerator default.
+            this->m_creatorTotalMy = aoc::map::MapGenerator::DEFAULT_TECTONIC_TOTAL_MY;
+            this->m_creatorLandPlates   = 7;
             this->m_creatorWidth        = 400;
             this->m_creatorHeight       = 200;
             this->m_creatorTimeCurrentMy = this->m_creatorTotalMy;

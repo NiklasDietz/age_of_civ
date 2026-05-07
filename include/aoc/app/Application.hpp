@@ -462,6 +462,7 @@ private:
     aoc::ui::WidgetId m_creatorAxialTiltLabel   = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorEnsoLabel        = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorMilanLabel       = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_creatorProjectionLabel  = aoc::ui::INVALID_WIDGET;
     /// Backing values for advanced config (mirror MapGenerator::Config
     /// flags). Updated by UI buttons / text inputs and pushed to the
     /// generator on regenerate.
@@ -471,6 +472,10 @@ private:
     int32_t m_creatorAxialTiltTenths = 235; ///< 0..400 (= 0.0..40.0°), Earth=235
     int32_t m_creatorEnsoState    = 0;     ///< 0/1/2
     int32_t m_creatorMilanTenths  = 0;     ///< 0..10 (= 0.0..1.0)
+    /// Sphere → rectangle projection used to render hex tiles.
+    /// 0 Mollweide, 1 Equirectangular, 2 Mercator, 3 Robinson.
+    /// Cycler in continent creator advanced row.
+    int32_t m_creatorProjection   = 0;
     /// Deferred-regen flag. Setup-knob changes (W/H/Plates/EpochsTotal/
     /// text-input typing) only set this to true; the explicit "Generate"
     /// button consumes it and runs MapGenerator. Without this each

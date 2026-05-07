@@ -156,4 +156,48 @@ struct MollweideInverseResult {
 [[nodiscard]] MollweideInverseResult tileToLatLon(
     int32_t col, int32_t row, int32_t width, int32_t height);
 
+// ---------------------------------------------------------------------------
+// Projection dispatcher
+// ---------------------------------------------------------------------------
+//
+// The world-generation pipeline projects between the spherical
+// authoritative state (lat/lon) and the rectangular hex-tile grid
+// (col/row → nx/ny) once per tile. A hex tile at (col, row) hits
+// the projection inverse with (nx, ny) = ((col + 0.5) / W,
+// (row + 0.5) / H) and gets back its lat/lon. Different projections
+// distribute area, distort shapes, and handle the polar voids
+// differently — letting the player pick is a UI feature.
+
+enum class MapProjection : uint8_t {
+    /// Equal-area pseudocylindrical (default). Earth surface fills a
+    /// 2:1 ellipse; corners are masked out. Polar areas are
+    /// compressed but areas are preserved.
+    Mollweide        = 0,
+    /// Lat = ny linear; lon = nx linear. Simplest possible, fills the
+    /// rectangle, distorts polar regions massively (Greenland twice
+    /// real area at ±60° latitude). Equivalent to "Plate Carrée".
+    Equirectangular  = 1,
+    /// Conformal projection used by web maps. Preserves angles
+    /// locally; massively inflates polar areas (Antarctica appears
+    /// infinite at the bottom row). Polar latitudes clipped at ±85°
+    /// to keep the grid finite.
+    Mercator         = 2,
+    /// Pseudocylindrical compromise projection used in the National
+    /// Geographic and Times atlases until 1998. Areas, shapes, and
+    /// distances are all moderately preserved.
+    Robinson         = 3,
+};
+
+/// Forward projection lat/lon → unit-square (mapX, mapY) for the given
+/// projection. The result `inEllipse` is true for points inside the
+/// projection's valid domain (Mollweide ellipse, Mercator clipped band,
+/// Robinson curved boundary, Equirectangular always-true).
+[[nodiscard]] MollweidePoint projectionForward(MapProjection proj, LatLon p);
+
+/// Inverse projection unit-square (mapX, mapY) → lat/lon for the given
+/// projection. `valid = false` when the input falls outside the
+/// projection's valid range.
+[[nodiscard]] MollweideInverseResult projectionInverse(
+    MapProjection proj, float mapX, float mapY);
+
 } // namespace aoc::map::gen
