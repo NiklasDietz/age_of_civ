@@ -165,6 +165,7 @@ set(AOC_GFX_ONLY_SOURCES
     src/render/CombatAnimation.cpp
     src/render/DrawCommandBuffer.cpp
     src/render/GameRenderer.cpp
+    src/render/GlobeRenderer.cpp
     src/render/MapOverlays.cpp
     src/render/MapRenderer.cpp
     src/render/Minimap.cpp
@@ -456,6 +457,7 @@ set(AOC_LIB_SOURCES
     src/render/MapOverlays.cpp
     src/render/DrawCommandBuffer.cpp
     src/render/GameRenderer.cpp
+    src/render/GlobeRenderer.cpp
     src/render/MapRenderer.cpp
     src/render/UnitRenderer.cpp
     src/render/Minimap.cpp

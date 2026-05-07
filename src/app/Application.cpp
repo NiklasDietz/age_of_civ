@@ -161,6 +161,16 @@ ErrorCode Application::initialize(const Config& config) {
     // -- Game renderer (needed for both menu and in-game rendering) --
     this->m_gameRenderer.initialize(*this->m_renderPipeline, *this->m_renderer2d);
 
+    // -- 3D globe renderer (Continent Creator only). Allocated up
+    // front because Vulkan device + render pass are stable for the
+    // application lifetime; toggling globe mode just gates the draw
+    // call and grid-update at frame time, not the resource lifecycle.
+    this->m_globeRenderer = std::make_unique<aoc::render::GlobeRenderer>();
+    this->m_globeRenderer->initialize(
+        this->m_graphicsDevice->device(),
+        this->m_renderPipeline->renderPass(),
+        extent);
+
     // -- Resize --
     this->m_window.setResizeCallback([this](uint32_t width, uint32_t height) {
         this->onResize(width, height);
@@ -907,6 +917,9 @@ void Application::regenerateContinentPreview(int32_t timeMy) {
         // Populate cache for instant scrubback to this epoch.
         this->m_creatorEpochCache.emplace(epochLimit, this->m_hexGrid);
     }
+    if (this->m_globeRenderer) {
+        this->m_globeRenderer->markGridDirty();
+    }
     // Resize fog-of-war to match the new tile count. Without this, the
     // FogOfWar bounds-check rejects any tile index past the OLD count
     // and returns Unseen → renderer skips those tiles, so the world
@@ -1098,6 +1111,39 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             this->m_creatorProjectionLabel =
                 this->m_uiManager.createButton(this->m_creatorAdvPanelId,
                     {0.0f, 0.0f, 140.0f, 36.0f}, std::move(btn));
+        }
+
+        // Globe toggle. Flips between flat hex map and 3D textured
+        // sphere. The projection cycler above stays visible but only
+        // affects the flat view -- the sphere uses no projection.
+        {
+            auto globeLabel = [](bool on) {
+                return std::string("View: ") + (on ? "Globe" : "Flat");
+            };
+            aoc::ui::ButtonData gb;
+            gb.label        = globeLabel(this->m_creatorGlobe);
+            gb.fontSize     = 14.0f;
+            gb.normalColor  = aoc::ui::tokens::BRONZE_BASE;
+            gb.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+            gb.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+            gb.onClick = [this, globeLabel]() {
+                this->m_creatorGlobe = !this->m_creatorGlobe;
+                if (this->m_creatorGlobeBtnId != aoc::ui::INVALID_WIDGET) {
+                    this->m_uiManager.setLabelText(
+                        this->m_creatorGlobeBtnId,
+                        globeLabel(this->m_creatorGlobe));
+                }
+                // Force a fresh sub-mesh build the next render() so
+                // the sphere reflects the current grid state. Without
+                // this the previous run's stale mesh handles point at
+                // freed GPU memory and we crash on first draw.
+                if (this->m_creatorGlobe && this->m_globeRenderer) {
+                    this->m_globeRenderer->markGridDirty();
+                }
+            };
+            this->m_creatorGlobeBtnId = this->m_uiManager.createButton(
+                this->m_creatorAdvPanelId,
+                {0.0f, 0.0f, 120.0f, 36.0f}, std::move(gb));
         }
     }
 
@@ -2798,6 +2844,48 @@ void Application::run() {
                 rightPressed, rightReleased);
         }
 
+        // -- 3D globe orbit input (creator + globe-mode only). Left
+        // press/drag/release rotates the sphere (Google-Maps style);
+        // wheel zooms. Gated on UI not having consumed the input so
+        // clicking creator panel buttons doesn't also yank the globe.
+        if (this->m_continentCreatorMode && this->m_creatorGlobe
+            && !this->m_uiConsumedInput
+            && !this->m_debugConsole.isOpen()) {
+            const double mx = this->m_inputManager.mouseX();
+            const double my = this->m_inputManager.mouseY();
+            const bool leftHeld = this->m_inputManager.isMouseButtonHeld(
+                GLFW_MOUSE_BUTTON_LEFT);
+            const bool leftPressed = this->m_inputManager.isMouseButtonPressed(
+                GLFW_MOUSE_BUTTON_LEFT);
+            const bool leftReleased = this->m_inputManager.isMouseButtonReleased(
+                GLFW_MOUSE_BUTTON_LEFT);
+            if (leftPressed) {
+                this->m_globeDragActive = true;
+                this->m_globeLastMouseX = mx;
+                this->m_globeLastMouseY = my;
+            } else if (leftReleased || !leftHeld) {
+                this->m_globeDragActive = false;
+            }
+            if (this->m_globeDragActive && leftHeld) {
+                const double dx = mx - this->m_globeLastMouseX;
+                const double dy = my - this->m_globeLastMouseY;
+                this->m_globeYawDeg   += static_cast<float>(dx) * 0.4f;
+                this->m_globePitchDeg = std::clamp(
+                    this->m_globePitchDeg - static_cast<float>(dy) * 0.4f,
+                    -89.0f, 89.0f);
+                this->m_globeLastMouseX = mx;
+                this->m_globeLastMouseY = my;
+            }
+            const float scroll = static_cast<float>(
+                this->m_inputManager.scrollDelta());
+            if (scroll != 0.0f) {
+                this->m_globeZoom = std::clamp(
+                    this->m_globeZoom * (1.0f - scroll * 0.10f),
+                    1.5f, 8.0f);
+                this->m_inputManager.consumeScroll();
+            }
+        }
+
         // -- Camera update (after UI so scroll doesn't zoom when scrolling menus) --
         if (this->m_uiConsumedInput || this->m_debugConsole.isOpen()) {
             this->m_inputManager.consumeScroll();
@@ -3113,6 +3201,75 @@ void Application::run() {
         this->m_gameRenderer.m_minimapBottomOffset =
             this->m_continentCreatorMode ? CREATOR_PANEL_H
             : (this->m_mapEditorMode ? SINGLE_PANEL_H : 0.0f);
+
+        // 3D globe pass. Runs BEFORE the 2D pass inside the same
+        // render pass, writes into the same colour attachment. The
+        // 2D pass is gated to skip the flat hex map when globe is
+        // active so the sphere stays visible underneath the UI
+        // overlays (panels, minimap, etc.).
+        const bool globeActive =
+            this->m_continentCreatorMode && this->m_creatorGlobe
+            && this->m_globeRenderer != nullptr;
+        this->m_gameRenderer.skipFlatMap = globeActive;
+        this->m_gameRenderer.globeViewActive = globeActive;
+        this->m_gameRenderer.globeYawDeg     = this->m_globeYawDeg;
+        this->m_gameRenderer.globePitchDeg   = this->m_globePitchDeg;
+        this->m_gameRenderer.globeZoom       = this->m_globeZoom;
+        if (globeActive) {
+            // Space backdrop: dark navy fill + deterministic starfield
+            // + sun disc. Drawn via Renderer2D before the 3D globe so
+            // depth-tested sphere paints on top. Screen-space coords;
+            // camera is identity here. Star positions derive from a
+            // multiplicative hash so they stay fixed across frames.
+            this->m_renderer2d->resetCamera();
+            this->m_renderer2d->setZoom(1.0f);
+            this->m_renderer2d->beginFrame(frame.frameIndex);
+            this->m_renderer2d->begin();
+            const float fw = static_cast<float>(frame.extent.width);
+            const float fh = static_cast<float>(frame.extent.height);
+            this->m_renderer2d->drawFilledRect(
+                0.0f, 0.0f, fw, fh,
+                0.020f, 0.025f, 0.055f, 1.0f); // deep space navy
+            constexpr int32_t kStarCount = 500;
+            for (int32_t i = 0; i < kStarCount; ++i) {
+                const uint32_t h0 = static_cast<uint32_t>(i) * 2654435761u
+                                  + 0x9E3779B1u;
+                const uint32_t h1 = static_cast<uint32_t>(i) * 40503u
+                                  + 0x12345678u;
+                const uint32_t h2 = static_cast<uint32_t>(i) * 1664525u
+                                  + 1013904223u;
+                const float sx = static_cast<float>(h0 % 10000u) / 10000.0f * fw;
+                const float sy = static_cast<float>(h1 % 10000u) / 10000.0f * fh;
+                const float sz = static_cast<float>(h2 % 10000u) / 10000.0f;
+                const float radius = 0.5f + sz * 1.8f;
+                const float bright = 0.55f + sz * 0.45f;
+                this->m_renderer2d->drawFilledCircle(
+                    sx, sy, radius, bright, bright, bright * 0.95f, 1.0f);
+            }
+            // Sun: large disc top-right with soft halo. Position picked
+            // so it does not overlap the creator's bottom panel; halo
+            // built from concentric circles for a quick glow.
+            const float sunCx = fw * 0.82f;
+            const float sunCy = fh * 0.18f;
+            for (int32_t halo = 6; halo >= 1; --halo) {
+                const float rr = 28.0f + static_cast<float>(halo) * 14.0f;
+                const float a  = 0.10f / static_cast<float>(halo);
+                this->m_renderer2d->drawFilledCircle(
+                    sunCx, sunCy, rr, 1.0f, 0.95f, 0.65f, a);
+            }
+            this->m_renderer2d->drawFilledCircle(
+                sunCx, sunCy, 36.0f, 1.0f, 0.97f, 0.78f, 1.0f);
+            this->m_renderer2d->end(frame.commandBuffer);
+
+            this->m_globeRenderer->setExtent(frame.extent);
+            const float aspect = static_cast<float>(frame.extent.width)
+                               / static_cast<float>(std::max(1u, frame.extent.height));
+            this->m_globeRenderer->render(
+                frame.commandBuffer, frame.frameIndex,
+                this->m_hexGrid,
+                this->m_globeYawDeg, this->m_globePitchDeg,
+                this->m_globeZoom, aspect);
+        }
         this->m_gameRenderer.render(
             *this->m_renderer2d,
             frame.commandBuffer,
@@ -3605,6 +3762,11 @@ void Application::shutdown() {
         this->m_graphicsDevice->waitIdle();
     }
 
+    // GlobeRenderer holds a Renderer3D that owns Vulkan resources and a
+    // dangling-friendly device handle for waitIdle. Drop it BEFORE the
+    // RenderPipeline / GraphicsDevice tear down so destructors can
+    // still call vkDeviceWaitIdle / vkDestroy* on a live VkDevice.
+    this->m_globeRenderer.reset();
     this->m_renderer2d.reset();
     this->m_renderPipeline.reset();
     this->m_graphicsDevice.reset();

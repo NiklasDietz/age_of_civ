@@ -73,6 +73,23 @@ public:
     /// Whether to show yield labels on all visible tiles.
     bool showTileYields = true;
 
+    /// When true, the 2D hex map and its overlays are skipped --
+    /// caller is rendering the world via an alternative path (e.g.
+    /// the 3D globe). UI / minimap / overlays-that-belong-to-screen-
+    /// space still render. Used by the Continent Creator's globe
+    /// toggle so the flat map doesn't paint over the 3D sphere.
+    bool skipFlatMap = false;
+
+    /// Globe-view minimap indicator. When `globeViewActive` is true,
+    /// the minimap draws an ellipse marking the lat/lon footprint of
+    /// the visible hemisphere on the 3D sphere instead of the flat
+    /// camera viewport rect. (yawDeg, pitchDeg) = orbit camera
+    /// orientation; zoom = camera radius in unit-sphere multiples.
+    bool  globeViewActive = false;
+    float globeYawDeg     = 0.0f;
+    float globePitchDeg   = 0.0f;
+    float globeZoom       = 2.5f;
+
     /// When true, the world minimap overlay is hidden. Set by
     /// Application while a modal screen (tech tree, diplomacy, etc.)
     /// is open so the world overview doesn't peek through.

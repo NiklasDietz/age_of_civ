@@ -74,6 +74,15 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     renderer2d.beginFrame(frameIndex);
     renderer2d.begin();
 
+    // When the caller is rendering the world via an alternative path
+    // (e.g. the Continent Creator's 3D globe), skip every world-space
+    // layer below and jump straight to the UI overlay so panels,
+    // tooltips, event-log, etc. still render on top of the alt-path
+    // output.
+    if (this->skipFlatMap) {
+        goto skip_to_ui_layer;
+    }
+
     // Layer 1: Map tiles (world coordinates -- shader transforms via camera)
     this->m_mapRenderer.draw(renderer2d, grid, fog, viewingPlayer, camera,
                               screenWidth, screenHeight);
@@ -1544,6 +1553,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
         }
     }
 
+skip_to_ui_layer:
     // Layer 4: UI overlay (single batch - transform UI to world-space so the
     // camera shader maps it back to screen-space correctly).
     float invZoom = 1.0f / camera.zoom();
@@ -1598,6 +1608,49 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                              screenWidth, screenHeight,
                              platesOnMinimap,
                              static_cast<int32_t>(this->overlayMode));
+
+        // Globe-mode overlay: draw an ellipse marking the visible
+        // hemisphere of the 3D sphere on the (flat equirect) minimap.
+        // The orbit camera at (yaw, pitch, zoom) sees a circular cap
+        // on the sphere whose centre maps to (lon = 90 - yaw,
+        // lat = pitch) and whose half-angle is acos(1/zoom). Equirect
+        // -> minimap stretches longitude by cos(lat), so we draw an
+        // ellipse stretched horizontally near the equator and very
+        // wide near the poles, approximating that distortion.
+        if (this->globeViewActive) {
+            float lonC = 90.0f - this->globeYawDeg;
+            while (lonC >  180.0f) lonC -= 360.0f;
+            while (lonC < -180.0f) lonC += 360.0f;
+            const float latC = std::clamp(this->globePitchDeg, -89.0f, 89.0f);
+            const float capR = std::acos(std::clamp(1.0f / this->globeZoom,
+                                                    0.0f, 0.999f));
+            const float halfDeg = capR * 180.0f / 3.14159265358979f;
+            const float cosLatC = std::cos(latC * 3.14159265358979f / 180.0f);
+            const float ellW = halfDeg / std::max(0.05f, cosLatC) * 2.0f;
+            const float ellH = halfDeg * 2.0f;
+            const float mmW2 = mmRect.w * invZoom;
+            const float mmH2 = mmRect.h * invZoom;
+            const float cx = mmWorldX
+                           + ((lonC + 180.0f) / 360.0f) * mmW2;
+            const float cy = mmWorldY
+                           + ((latC + 90.0f) / 180.0f) * mmH2;
+            const float pxPerDegX = mmW2 / 360.0f;
+            const float pxPerDegY = mmH2 / 180.0f;
+            const float ellPxW = ellW * pxPerDegX;
+            const float ellPxH = ellH * pxPerDegY;
+            // Approximate ellipse via a filled rect outline ring.
+            // Renderer2D has drawRect (outline) only -- lacking
+            // ellipse, we fall back to a rectangle of the ellipse's
+            // bounding box, which still conveys "you are here" + size.
+            const float rx = cx - ellPxW * 0.5f;
+            const float ry = cy - ellPxH * 0.5f;
+            renderer2d.drawRect(
+                std::max(mmWorldX, rx),
+                std::max(mmWorldY, ry),
+                std::min(ellPxW, mmW2),
+                std::min(ellPxH, mmH2),
+                1.0f, 1.0f, 0.6f, 0.85f, 1.5f);
+        }
     }
 
     // Notifications (transformed to world-space)

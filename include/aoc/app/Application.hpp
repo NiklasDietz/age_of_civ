@@ -9,6 +9,7 @@
 #include "aoc/app/InputManager.hpp"
 #include "aoc/render/CameraController.hpp"
 #include "aoc/render/GameRenderer.hpp"
+#include "aoc/render/GlobeRenderer.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/FogOfWar.hpp"
 #include "aoc/simulation/turn/TurnManager.hpp"
@@ -148,6 +149,10 @@ private:
     // Game rendering
     aoc::render::CameraController m_cameraController;
     aoc::render::GameRenderer     m_gameRenderer;
+    /// 3D globe renderer for the Continent Creator. Held as
+    /// pointer-to-impl so we don't drag Renderer3D into the public
+    /// Application header (Vulkan types stay confined to .cpp).
+    std::unique_ptr<aoc::render::GlobeRenderer> m_globeRenderer;
 
     // Game state
     aoc::game::GameState         m_gameState;
@@ -476,6 +481,25 @@ private:
     /// 0 Mollweide, 1 Equirectangular, 2 Mercator, 3 Robinson.
     /// Cycler in continent creator advanced row.
     int32_t m_creatorProjection   = 0;
+    /// 3D globe view toggle. When true, the continent creator preview
+    /// renders a textured sphere instead of the flat hex map; left-
+    /// drag rotates the sphere (Google-Maps style), scroll zooms.
+    /// Existing time-scrubber, projection cycler, play/pause keep
+    /// working -- the projection cycler is greyed out while globe is
+    /// active because the sphere itself is the projection.
+    bool    m_creatorGlobe        = false;
+    aoc::ui::WidgetId m_creatorGlobeBtnId = aoc::ui::INVALID_WIDGET;
+    /// Orbit camera state for the 3D globe view. Yaw/pitch in degrees,
+    /// zoom = camera radius in unit-sphere multiples (1.0 = touching
+    /// the surface, larger = further away).
+    float   m_globeYawDeg         = 0.0f;
+    float   m_globePitchDeg       = 0.0f;
+    float   m_globeZoom           = 4.0f;
+    /// Drag-rotate state. Set on left-button press over a non-widget
+    /// region while the globe is active; cleared on release.
+    bool    m_globeDragActive     = false;
+    double  m_globeLastMouseX     = 0.0;
+    double  m_globeLastMouseY     = 0.0;
     /// Deferred-regen flag. Setup-knob changes (W/H/Plates/EpochsTotal/
     /// text-input typing) only set this to true; the explicit "Generate"
     /// button consumes it and runs MapGenerator. Without this each
