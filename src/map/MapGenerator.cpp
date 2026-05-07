@@ -742,9 +742,18 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // epochs which scatters land plates outward. Erosion intensity
         // scales with EPOCHS so older simulated worlds have softer
         // mountains.
+        // Resolve total simulated time in millions of years, then
+        // derive the epoch count. Caller may set tectonicTotalMy
+        // (preferred) or tectonicEpochs (legacy direct override).
+        const int32_t totalMy = (config.tectonicTotalMy > 0)
+            ? config.tectonicTotalMy
+            : MapGenerator::DEFAULT_TECTONIC_TOTAL_MY;
+        int32_t epochsFromTime = std::max(3, static_cast<int32_t>(
+            (totalMy + MapGenerator::MY_PER_EPOCH_TARGET / 2)
+            / MapGenerator::MY_PER_EPOCH_TARGET));
         const int32_t requestedEpochs = (config.tectonicEpochs > 0)
             ? std::max(3, config.tectonicEpochs)
-            : std::max(6, static_cast<int32_t>(centerRng.nextInt(10, 18)));
+            : epochsFromTime;
         // Stepper hook: scrubber callers pass runEpochsLimit to halt
         // the sim mid-flight at a specific epoch and view that state.
         const int32_t EPOCHS = (config.runEpochsLimit > 0)
@@ -790,6 +799,15 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         aoc::map::gen::SphereField sphereField;
         sphereField.resize();
         std::vector<uint8_t> sphereBoundaryScratch;
+        // Plate-pair docking-age tracker, persistent across epochs.
+        // Stein & Stein 1992 give a few-tens-of-Myr accretion timescale
+        // (DOCKING_MY_THRESHOLD = 30 My in SphereFieldPhysics).
+        std::vector<float> contactAgeByPlatePair;
+        // Wilson-rifting RNG: deterministic per map seed so the same
+        // seed always reproduces the same supercontinent breakup
+        // sequence.
+        uint32_t physicsRngState = static_cast<uint32_t>(config.seed) ^ 0xDEADBEEFu;
+        if (physicsRngState == 0u) physicsRngState = 0x12345678u;
         for (int32_t latIdx = 0; latIdx < aoc::map::gen::SphereField::LAT_CELLS; ++latIdx) {
             for (int32_t lonIdx = 0; lonIdx < aoc::map::gen::SphereField::LON_CELLS; ++lonIdx) {
                 const aoc::map::gen::LatLon p =
@@ -804,8 +822,16 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     + (1.0f - frac) * aoc::map::gen::PhysicsConstants::initialOceanicThicknessKm;
             }
         }
+        // Lagrangian initial cut: the only nearest-centroid pass in
+        // the entire sim. From here on, cells carry their plateId and
+        // ownership changes only through real boundary physics.
+        aoc::map::gen::assignPlateOwnershipInitial(sphereField, plates);
         aoc::map::gen::recomputeIsostaticElevationOnRaster(sphereField);
-        const float MY_PER_EPOCH_P1 = 250.0f / static_cast<float>(EPOCHS);
+        // Per-epoch substep duration in My. Derived from total simulated
+        // time so the physics integrates at a fixed cadence regardless
+        // of caller-requested epoch count.
+        const float MY_PER_EPOCH_P1 = static_cast<float>(totalMy)
+            / static_cast<float>(requestedEpochs);
 
         for (int32_t epoch = 0; epoch < EPOCHS; ++epoch) {
             // 2026-05-07 P6.10 recalibration: Stochastic Euler-pole jitter
@@ -1386,6 +1412,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
 #if defined(AOC_PHYSICS_ON_SPHEREFIELD)
             aoc::map::gen::stepSpherePhysicsEpoch(
                 sphereField, plates, sphereBoundaryScratch,
+                contactAgeByPlatePair, physicsRngState,
                 MY_PER_EPOCH_P1);
 #endif
         }
@@ -2218,17 +2245,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     {
         // Island purge threshold scales with simulated age. Real ocean
         // plates carry hotspot island chains that get DRAGGED into
-        // subduction trenches as the plate slides under continents
-        // (Hawaii→Aleutian, Emperor seamounts). Over geological time
-        // the entire chain gets recycled into the mantle. We mirror
-        // this by drowning more small islands on long sims:
-        //   40 epochs  → threshold 14 (Sicily, Iceland survive)
-        //   100 epochs → threshold 22
-        //   200 epochs → threshold 32 (only proper continents survive)
-        const int32_t simEpochs = (config.tectonicEpochs > 0)
-            ? config.tectonicEpochs : 40;
+        // subduction trenches over geological time (Hawaii→Aleutian
+        // recycle). Longer sims drown more small islands. Threshold
+        // grows linearly with totalMy (12 at 1 Gy → 50 at 4 Gy).
+        const int32_t totalMyForIslands = (config.tectonicTotalMy > 0)
+            ? config.tectonicTotalMy
+            : MapGenerator::DEFAULT_TECTONIC_TOTAL_MY;
         const int32_t MIN_ISLAND_SIZE = std::clamp(
-            12 + simEpochs / 10, 12, 50);
+            12 + totalMyForIslands / 200, 12, 50);
         std::vector<int32_t> compId(static_cast<std::size_t>(width * height), -1);
         std::vector<int32_t> bfs;
         bfs.reserve(static_cast<std::size_t>(width * height));

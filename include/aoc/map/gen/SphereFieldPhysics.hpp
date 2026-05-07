@@ -38,12 +38,69 @@
 
 namespace aoc::map::gen {
 
-/// Phase 1.1: per-cell nearest-plate ownership via haversine distance to
-/// each plate's (latDeg, lonDeg) centroid. Writes `field.plateId`. The
-/// inner loop is O(N_cells * N_plates); at 259200 cells * 80 plates this
-/// is ~20 M haversine ops -- single-pass, parallelisable across rows.
-void assignPlateOwnership(SphereField& field,
-                          const std::vector<Plate>& plates);
+/// Initial Lagrangian ownership assignment. Runs ONCE at sim init: each
+/// cell binds to the plate whose centroid is haversine-closest. After
+/// the initial cut, plate boundaries evolve through physics only —
+/// subduction, ridge accretion, continental docking — never via
+/// re-Voronoi. This is the polygon-physics path the project switched to
+/// after deleting the per-epoch centroid Voronoi: cells carry plate
+/// identity, plates drift via centroid-of-cells, and shapes are
+/// non-convex from the start because they emerge from boundary dynamics
+/// rather than from nearest-centroid mathematics.
+void assignPlateOwnershipInitial(SphereField& field,
+                                 const std::vector<Plate>& plates);
+
+/// Recompute every plate's centroid (`Plate.latDeg`, `Plate.lonDeg`) as
+/// the area-weighted mean of the cells currently assigned to it. Run
+/// once per epoch, after subduction and ridge accretion have rewritten
+/// `field.plateId`. With Lagrangian cell tracking the plate "drifts"
+/// because its cell set changes — boundary cells flip to neighbours
+/// (subduction) or new oceanic cells appear at ridges, and the
+/// centroid moves to follow.
+void recomputePlateCentroidsFromCells(SphereField& field,
+                                      std::vector<Plate>& plates);
+
+/// Compact the plate list: any plate with zero cells (last cell
+/// consumed by subduction or merger) is removed from `plates`, and the
+/// surviving plates' indices are remapped in `field.plateId`. Returns
+/// the number of plates removed.
+int32_t compactPlateList(SphereField& field, std::vector<Plate>& plates);
+
+/// Continental docking. When two continental plates remain in mutual
+/// convergence over many epochs without subduction (continental crust
+/// is too buoyant to subduct), the smaller plate accretes into the
+/// larger one — terrane accretion in real Earth (e.g. India docking
+/// into Asia). This pass scans plate-pair convergent boundaries and
+/// merges plate pairs where:
+///   - both sides have continentalFraction > 0.5 along the contact,
+///   - the contact has been stable (closing) for >= dockingMyThreshold,
+///   - the smaller plate's continental area is below the larger's.
+/// The smaller plate's cells inherit the larger plate's plateId and
+/// the smaller plate is dropped by the next compactPlateList pass.
+/// `boundaryEpochsContact` is per-plate-pair age tracking; the caller
+/// owns it and passes it back each epoch.
+void applyContinentalDocking(SphereField& field,
+                             std::vector<Plate>& plates,
+                             std::vector<float>& contactAgeByPlatePair,
+                             float dtMy);
+
+/// Wilson-cycle continental rifting. Mantle thermal blanketing under a
+/// supercontinent (Anderson 1982; Stein & Stein 1992) accumulates
+/// stress over ~150-200 My, eventually exceeding the lithospheric
+/// breakup threshold and splitting the plate. This pass:
+///   1. Advances `thermalAgeMy` for every cell whose owning plate is
+///      classified as supercontinent (continental area >= threshold
+///      fraction of the globe).
+///   2. For any plate whose mean thermalAgeMy exceeds a stochastic
+///      breakup threshold, splits the plate along the longest interior
+///      principal axis (PCA on cell positions), assigns half the cells
+///      to a fresh plate id, and gives the new plate a perturbed
+///      Euler pole so the two halves diverge.
+/// Returns the number of new plates created.
+int32_t applyWilsonRifting(SphereField& field,
+                           std::vector<Plate>& plates,
+                           uint32_t& rngState,
+                           float dtMy);
 
 /// Phase 1.2: flag every cell whose 4-connected neighbourhood (N/S/E/W
 /// with longitude wrap, latitude clamp) contains a different plate id.
@@ -113,12 +170,19 @@ void recomputeIsostaticElevationOnRaster(SphereField& field);
 /// placeholder calibrated to keep peaks below 8 km at steady state.
 void applySurfaceErosionOnRaster(SphereField& field, float dtMy);
 
-/// Single-step Phase 1 epoch driver. Sequences the seven passes in the
-/// order documented in the file header. Used by MapGenerator under the
-/// AOC_PHYSICS_ON_SPHEREFIELD compile flag.
+/// Single-step epoch driver. Sequences ownership / boundary /
+/// closing-rate / thicken / subduct / docking / Wilson rifting /
+/// isostasy / erosion. The two state vectors carried across epochs
+/// are `boundaryScratch` (re-allocated per call but reused for size)
+/// and `contactAgeByPlatePair` (per-plate-pair docking timer). The
+/// `rngState` is a single uint32_t XorShift seed advanced by Wilson
+/// rifting each epoch — kept outside the call so it remains
+/// deterministic across runs with the same map seed.
 void stepSpherePhysicsEpoch(SphereField& field,
                             std::vector<Plate>& plates,
                             std::vector<uint8_t>& boundaryScratch,
+                            std::vector<float>& contactAgeByPlatePair,
+                            uint32_t& rngState,
                             float dtMy);
 
 } // namespace aoc::map::gen

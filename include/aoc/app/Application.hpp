@@ -412,18 +412,15 @@ private:
     /// scrubber regenerates the map by re-running MapGenerator with
     /// these params and a varying runEpochsLimit.
     uint32_t m_creatorSeed = 0;
-    // 2026-05-04: dropped 120 -> 40. Orogeny pipeline calibrated for
-    // ~40-epoch sims; 120 saturated subduction tiles to the orogeny
-    // clamp (0.22), producing wide mountain blobs rather than narrow
-    // ranges. Drift over 40 epochs at default driftFraction is still
-    // ~0.6 map widths -- enough for visible Wilson-cycle motion.
-    int32_t  m_creatorEpochsTotal = 40;
-    // 2026-05-04: dropped 7 -> 4 so game uses mapgen's Earth-calibrated
-    // count. 7 land plates packed too tightly so adjacent land plates
-    // produced fused Pangaea-style continents with mountain ranges
-    // running through their interiors.
+    /// Total simulated geological time in millions of years. Default
+    /// 3000 My (3 Gy) covers ~5 Wilson supercontinent cycles. The
+    /// generator translates internally to its physics-epoch count via
+    /// `MapGenerator::MY_PER_EPOCH_TARGET`. The continent-creator
+    /// scrubber tracks `m_creatorTimeCurrentMy` for the on-screen
+    /// "Now: 1.5 / 3.0 Gy" readout.
+    int32_t  m_creatorTotalMy = 3000;
     int32_t  m_creatorLandPlates  = 4;
-    int32_t  m_creatorEpochCurrent = 40;
+    int32_t  m_creatorTimeCurrentMy = 3000;
     int32_t  m_creatorWidth  = 400;
     int32_t  m_creatorHeight = 200;
     /// Total plate-drift budget for the sim, in 10ths of a map width.
@@ -442,8 +439,9 @@ private:
     /// blit from cache instead of re-running MapGenerator. Cleared
     /// on parameter changes (Generate / Re-roll / W/H/Plates/Drift edits).
     std::unordered_map<int32_t, aoc::map::HexGrid> m_creatorEpochCache;
-    /// Play state — when true, m_creatorEpochCurrent advances by 1
-    /// every PLAY_INTERVAL seconds, looping at m_creatorEpochsTotal.
+    /// Play state — when true, m_creatorTimeCurrentMy advances by one
+    /// physics epoch (MY_PER_EPOCH_TARGET My) every PLAY_INTERVAL
+    /// seconds, looping at m_creatorTotalMy.
     bool   m_creatorPlaying    = false;
     float  m_creatorPlayAccum  = 0.0f;
     aoc::ui::WidgetId m_creatorPlayBtnId = aoc::ui::INVALID_WIDGET;

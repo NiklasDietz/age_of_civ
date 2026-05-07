@@ -11,6 +11,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <fstream>
 #include <random>
 #include <string>
@@ -24,6 +25,19 @@ namespace aoc::ui {
 
 // Palette now lives in MainMenuTheme.hpp so SettingsMenu (split into its
 // own translation unit) can share it without duplication.
+
+/// Format a tectonic-time value (in millions of years) for the
+/// continent-generation UI. Uses Gy when the value is >= 1000 My
+/// (e.g. "3.0 Gy"); falls back to "N My" for sub-Gy values.
+static std::string formatTectonicTimeLabel(int32_t totalMy) {
+    if (totalMy >= 1000) {
+        char buf[24];
+        std::snprintf(buf, sizeof(buf), "%.1f Gy",
+                      static_cast<double>(totalMy) / 1000.0);
+        return std::string(buf);
+    }
+    return std::to_string(totalMy) + " My";
+}
 
 // ============================================================================
 // Helper to set button colors for selected/unselected state
@@ -700,7 +714,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             r->childSpacing = 6.0f;
         }
         (void)ui.createLabel(row, {0.0f, 0.0f, 110.0f, 24.0f},
-            LabelData{"Sim time:", WHITE_TEXT, 12.0f});
+            LabelData{"Tectonic age:", WHITE_TEXT, 12.0f});
         // Minus
         ButtonData minus;
         minus.label        = "-";
@@ -712,18 +726,21 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         minus.cornerRadius = 3.0f;
         minus.repeatDelaySec = 0.35f;
         minus.repeatRateHz   = 12.0f;
+        // Step in 100 My increments (game-meaningful resolution; 50 My
+        // chunks correspond to one internal physics epoch). Floor at
+        // 100 My so the sim still has at least 2 epochs to integrate.
         minus.onClick = [this, &ui]() {
-            if (this->m_config.tectonicEpochs > 3) {
-                --this->m_config.tectonicEpochs;
+            if (this->m_config.tectonicTotalMy > 100) {
+                this->m_config.tectonicTotalMy -= 100;
                 this->refresh(ui);
             }
         };
         (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(minus));
 
         this->m_epochsLabel = ui.createLabel(row,
-            {0.0f, 0.0f, 70.0f, 24.0f},
-            LabelData{std::to_string(this->m_config.tectonicEpochs)
-                + " epochs", WHITE_TEXT, 12.0f});
+            {0.0f, 0.0f, 90.0f, 24.0f},
+            LabelData{formatTectonicTimeLabel(this->m_config.tectonicTotalMy),
+                WHITE_TEXT, 12.0f});
 
         ButtonData plus;
         plus.label        = "+";
@@ -738,7 +755,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         plus.onClick = [this, &ui]() {
             // No upper cap — user-decided value, generator clamps the
             // lower bound (3) and runs whatever the user picks above it.
-            ++this->m_config.tectonicEpochs;
+            this->m_config.tectonicTotalMy += 100;
             this->refresh(ui);
         };
         (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(plus));
@@ -1147,7 +1164,7 @@ void GameSetupScreen::refresh(UIManager& ui) {
     // Continent generation knobs.
     if (this->m_epochsLabel != INVALID_WIDGET) {
         ui.setLabelText(this->m_epochsLabel,
-            std::to_string(this->m_config.tectonicEpochs) + " epochs");
+            formatTectonicTimeLabel(this->m_config.tectonicTotalMy));
     }
     if (this->m_landCountLabel != INVALID_WIDGET) {
         ui.setLabelText(this->m_landCountLabel,

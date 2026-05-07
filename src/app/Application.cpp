@@ -297,7 +297,7 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     mapConfig.mapType = config.mapType;
     mapConfig.mapSize = config.mapSize;
     mapConfig.placement = config.placement;
-    mapConfig.tectonicEpochs = config.tectonicEpochs;
+    mapConfig.tectonicTotalMy = config.tectonicTotalMy;
     mapConfig.landPlateCount = config.landPlateCount;
     // Continents wrap horizontally (cylindrical topology) so scrolling
     // east past the right edge re-enters from the west — the world has
@@ -849,12 +849,20 @@ void Application::numInputTick() {
     if (this->m_numInputOnChange) { this->m_numInputOnChange(); }
 }
 
-void Application::regenerateContinentPreview(int32_t epochLimit) {
-    if (epochLimit < 1) { epochLimit = 1; }
-    if (epochLimit > this->m_creatorEpochsTotal) {
-        epochLimit = this->m_creatorEpochsTotal;
+void Application::regenerateContinentPreview(int32_t timeMy) {
+    // Clamp the requested age to a single physics epoch on the floor
+    // (one substep is the smallest meaningful preview) and to the
+    // configured total simulated time on the ceiling.
+    constexpr int32_t MY_PER_EPOCH = aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
+    if (timeMy < MY_PER_EPOCH) { timeMy = MY_PER_EPOCH; }
+    if (timeMy > this->m_creatorTotalMy) {
+        timeMy = this->m_creatorTotalMy;
     }
-    this->m_creatorEpochCurrent = epochLimit;
+    // Snap to nearest physics-epoch boundary so the cache key is
+    // stable as the user scrubs.
+    const int32_t epochLimit = std::max(1, timeMy / MY_PER_EPOCH);
+    timeMy = epochLimit * MY_PER_EPOCH;
+    this->m_creatorTimeCurrentMy = timeMy;
 
     aoc::map::MapGenerator::Config cfg{};
     cfg.width  = std::max(20, this->m_creatorWidth);
@@ -863,7 +871,7 @@ void Application::regenerateContinentPreview(int32_t epochLimit) {
     cfg.mapType = aoc::map::MapType::Continents;
     cfg.mapSize = aoc::map::MapSize::Standard;
     cfg.topology = aoc::map::MapTopology::Cylindrical;
-    cfg.tectonicEpochs = this->m_creatorEpochsTotal;
+    cfg.tectonicTotalMy = this->m_creatorTotalMy;
     cfg.landPlateCount = this->m_creatorLandPlates;
     cfg.runEpochsLimit = epochLimit;
     cfg.driftFraction  = static_cast<float>(this->m_creatorDriftPct) * 0.1f;
@@ -946,8 +954,8 @@ void Application::regenerateContinentPreview(int32_t epochLimit) {
     }
 
     this->spectatorRevealAll();
-    LOG_INFO("Creator: regenerated at epoch %d/%d (%dx%d)",
-             epochLimit, this->m_creatorEpochsTotal,
+    LOG_INFO("Creator: regenerated at %d/%d My (%dx%d)",
+             timeMy, this->m_creatorTotalMy,
              this->m_hexGrid.width(), this->m_hexGrid.height());
 }
 
@@ -1020,7 +1028,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                 }
                 this->m_creatorEpochCache.clear();
                 this->regenerateContinentPreview(
-                    this->m_creatorEpochCurrent);
+                    this->m_creatorTimeCurrentMy);
             };
             const aoc::ui::WidgetId id = this->m_uiManager.createButton(
                 this->m_creatorAdvPanelId,
@@ -1043,7 +1051,20 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             &this->m_creatorMilanLabel, 88.0f);
     }
 
-    // Epoch − button
+    constexpr int32_t MY_PER_EPOCH = aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
+    auto formatAge = [](int32_t cur, int32_t total) {
+        char buf[64];
+        if (total >= 1000) {
+            std::snprintf(buf, sizeof(buf), "Age %.2f / %.2f Gy",
+                          static_cast<double>(cur)   / 1000.0,
+                          static_cast<double>(total) / 1000.0);
+        } else {
+            std::snprintf(buf, sizeof(buf), "Age %d / %d My", cur, total);
+        }
+        return std::string(buf);
+    };
+
+    // Step − button (one physics epoch back, MY_PER_EPOCH My).
     {
         aoc::ui::ButtonData minus;
         minus.label        = "<<";
@@ -1055,54 +1076,54 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         minus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         minus.repeatDelaySec = 0.35f;
         minus.repeatRateHz   = 8.0f;
-        minus.onClick = [this]() {
-            this->regenerateContinentPreview(this->m_creatorEpochCurrent - 1);
+        minus.onClick = [this, formatAge]() {
+            this->regenerateContinentPreview(
+                this->m_creatorTimeCurrentMy - MY_PER_EPOCH);
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
-                    "Epoch " + std::to_string(this->m_creatorEpochCurrent)
-                    + "/" + std::to_string(this->m_creatorEpochsTotal));
+                    formatAge(this->m_creatorTimeCurrentMy,
+                              this->m_creatorTotalMy));
             }
         };
         (void)this->m_uiManager.createButton(this->m_creatorPanelId,
             {0.0f, 0.0f, 56.0f, 36.0f}, std::move(minus));
     }
 
-    // Epoch button — click to type total sim length directly.
+    // Age button — click to type total sim length directly.
     {
         aoc::ui::ButtonData epoch;
-        epoch.label        = "Epoch " + std::to_string(this->m_creatorEpochCurrent)
-                           + "/" + std::to_string(this->m_creatorEpochsTotal);
+        epoch.label        = formatAge(this->m_creatorTimeCurrentMy,
+                                        this->m_creatorTotalMy);
         epoch.fontSize     = 14.0f;
         epoch.normalColor  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
         epoch.hoverColor   = aoc::ui::tokens::SURFACE_PARCHMENT;
         epoch.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         epoch.labelColor   = aoc::ui::tokens::TEXT_HEADER;
         epoch.cornerRadius = 3.0f;
-        // Click focuses the TOTAL field (the user-tweakable sim length).
-        // Display formatter rebuilds "Epoch cur/total" each keystroke.
-        epoch.onClick = [this]() {
+        // Click focuses the total-time field (millions of years).
+        // Display formatter rebuilds "Age cur / total Gy/My" live.
+        epoch.onClick = [this, formatAge]() {
             this->numInputDefocus();
-            this->numInputFocus(&this->m_creatorEpochsTotal, 3,
+            this->numInputFocus(&this->m_creatorTotalMy, MY_PER_EPOCH,
                 this->m_creatorEpochLabelId,
                 [this]() {
-                    if (this->m_creatorEpochCurrent > this->m_creatorEpochsTotal) {
-                        this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
+                    if (this->m_creatorTimeCurrentMy > this->m_creatorTotalMy) {
+                        this->m_creatorTimeCurrentMy = this->m_creatorTotalMy;
                     }
                     // Defer regen: typing each digit shouldn't hang.
                     this->m_creatorDirty = true;
                 },
-                [this]() {
-                    return std::string("Epoch ")
-                         + std::to_string(this->m_creatorEpochCurrent)
-                         + "/" + std::to_string(this->m_creatorEpochsTotal);
+                [this, formatAge]() {
+                    return formatAge(this->m_creatorTimeCurrentMy,
+                                      this->m_creatorTotalMy);
                 });
         };
         this->m_creatorEpochLabelId = this->m_uiManager.createButton(
-            this->m_creatorPanelId, {0.0f, 0.0f, 160.0f, 36.0f},
+            this->m_creatorPanelId, {0.0f, 0.0f, 180.0f, 36.0f},
             std::move(epoch));
     }
 
-    // Epoch + button
+    // Step + button (one physics epoch forward, MY_PER_EPOCH My).
     {
         aoc::ui::ButtonData plus;
         plus.label        = ">>";
@@ -1114,21 +1135,40 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         plus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         plus.repeatDelaySec = 0.35f;
         plus.repeatRateHz   = 8.0f;
-        plus.onClick = [this]() {
-            this->regenerateContinentPreview(this->m_creatorEpochCurrent + 1);
+        plus.onClick = [this, formatAge]() {
+            this->regenerateContinentPreview(
+                this->m_creatorTimeCurrentMy + MY_PER_EPOCH);
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
-                    "Epoch " + std::to_string(this->m_creatorEpochCurrent)
-                    + "/" + std::to_string(this->m_creatorEpochsTotal));
+                    formatAge(this->m_creatorTimeCurrentMy,
+                              this->m_creatorTotalMy));
             }
         };
         (void)this->m_uiManager.createButton(this->m_creatorPanelId,
             {0.0f, 0.0f, 56.0f, 36.0f}, std::move(plus));
     }
 
-    // Sim-length adjuster: changes the TOTAL epoch count, regenerates
-    // at full length so user can see effect of older / younger world.
+    // Total-time adjuster: increments the simulated geological time
+    // span. Defer regen to Generate (long sims would hang on each
+    // click). One click = one physics epoch (50 My).
     {
+        constexpr int32_t MIN_TOTAL_MY = aoc::map::MapGenerator::MY_PER_EPOCH_TARGET * 3;
+        auto totalDelta = [this, formatAge](int32_t deltaMy) {
+            int32_t newTotal = this->m_creatorTotalMy + deltaMy;
+            if (newTotal < MIN_TOTAL_MY) { newTotal = MIN_TOTAL_MY; }
+            if (newTotal == this->m_creatorTotalMy) { return; }
+            this->m_creatorTotalMy = newTotal;
+            if (this->m_creatorTimeCurrentMy > this->m_creatorTotalMy) {
+                this->m_creatorTimeCurrentMy = this->m_creatorTotalMy;
+            }
+            this->m_creatorDirty = true;
+            if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
+                    formatAge(this->m_creatorTimeCurrentMy,
+                              this->m_creatorTotalMy));
+            }
+        };
+
         aoc::ui::ButtonData lessEp;
         lessEp.label        = "Sim-";
         lessEp.fontSize     = 12.0f;
@@ -1139,25 +1179,10 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         lessEp.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         lessEp.repeatDelaySec = 0.35f;
         lessEp.repeatRateHz   = 8.0f;
-        // EpochsTotal (sim length) is a generator parameter, not a
-        // playback control — defer regen to the Generate button.
-        auto epochDelta = [this](int32_t d) {
-            int32_t newTotal = this->m_creatorEpochsTotal + d;
-            if (newTotal < 3) { newTotal = 3; }
-            if (newTotal == this->m_creatorEpochsTotal) { return; }
-            this->m_creatorEpochsTotal = newTotal;
-            if (this->m_creatorEpochCurrent > this->m_creatorEpochsTotal) {
-                this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
-            }
-            this->m_creatorDirty = true;
-            if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
-                this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
-                    "Epoch " + std::to_string(this->m_creatorEpochCurrent)
-                    + "/" + std::to_string(this->m_creatorEpochsTotal));
-            }
+        lessEp.onClick  = [totalDelta]() { totalDelta(-MY_PER_EPOCH); };
+        lessEp.onScroll = [totalDelta](float dy) {
+            totalDelta(dy > 0.0f ? -MY_PER_EPOCH : MY_PER_EPOCH);
         };
-        lessEp.onClick  = [epochDelta]() { epochDelta(-1); };
-        lessEp.onScroll = [epochDelta](float dy) { epochDelta(dy > 0.0f ? -1 : 1); };
         (void)this->m_uiManager.createButton(this->m_creatorPanelId,
             {0.0f, 0.0f, 56.0f, 36.0f}, std::move(lessEp));
 
@@ -1171,23 +1196,10 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         moreEp.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         moreEp.repeatDelaySec = 0.35f;
         moreEp.repeatRateHz   = 8.0f;
-        auto epochDeltaP = [this](int32_t d) {
-            int32_t newTotal = this->m_creatorEpochsTotal + d;
-            if (newTotal < 3) { newTotal = 3; }
-            if (newTotal == this->m_creatorEpochsTotal) { return; }
-            this->m_creatorEpochsTotal = newTotal;
-            if (this->m_creatorEpochCurrent > this->m_creatorEpochsTotal) {
-                this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
-            }
-            this->m_creatorDirty = true;
-            if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
-                this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
-                    "Epoch " + std::to_string(this->m_creatorEpochCurrent)
-                    + "/" + std::to_string(this->m_creatorEpochsTotal));
-            }
+        moreEp.onClick  = [totalDelta]() { totalDelta(MY_PER_EPOCH); };
+        moreEp.onScroll = [totalDelta](float dy) {
+            totalDelta(dy > 0.0f ? MY_PER_EPOCH : -MY_PER_EPOCH);
         };
-        moreEp.onClick  = [epochDeltaP]() { epochDeltaP(1); };
-        moreEp.onScroll = [epochDeltaP](float dy) { epochDeltaP(dy > 0.0f ? 1 : -1); };
         (void)this->m_uiManager.createButton(this->m_creatorPanelId,
             {0.0f, 0.0f, 56.0f, 36.0f}, std::move(moreEp));
     }
@@ -1472,13 +1484,13 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             this->numInputDefocus();
             // Clear epoch cache — config changed, old snapshots are stale.
             this->m_creatorEpochCache.clear();
-            this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
-            this->regenerateContinentPreview(this->m_creatorEpochsTotal);
+            this->m_creatorTimeCurrentMy = this->m_creatorTotalMy;
+            this->regenerateContinentPreview(this->m_creatorTotalMy);
             this->m_creatorDirty = false;
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
-                    "Epoch " + std::to_string(this->m_creatorEpochCurrent)
-                    + "/" + std::to_string(this->m_creatorEpochsTotal));
+                    "Epoch " + std::to_string(this->m_creatorTimeCurrentMy)
+                    + "/" + std::to_string(this->m_creatorTotalMy));
             }
         };
         (void)this->m_uiManager.createButton(this->m_creatorPanelId,
@@ -1504,8 +1516,8 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             // Otherwise the play tick immediately hits the end and
             // stops, making the button bounce back to "Play".
             if (!this->m_creatorPlaying
-                && this->m_creatorEpochCurrent >= this->m_creatorEpochsTotal) {
-                this->m_creatorEpochCurrent = 1;
+                && this->m_creatorTimeCurrentMy >= this->m_creatorTotalMy) {
+                this->m_creatorTimeCurrentMy = 1;
                 this->regenerateContinentPreview(1);
             }
             this->m_creatorPlaying = !this->m_creatorPlaying;
@@ -1538,14 +1550,14 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             // continue from the current epoch on the new seed and
             // walk forward to the endpoint naturally.
             if (!this->m_creatorPlaying) {
-                this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
+                this->m_creatorTimeCurrentMy = this->m_creatorTotalMy;
             }
-            this->regenerateContinentPreview(this->m_creatorEpochCurrent);
+            this->regenerateContinentPreview(this->m_creatorTimeCurrentMy);
             this->m_creatorDirty = false;
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
-                    "Epoch " + std::to_string(this->m_creatorEpochCurrent)
-                    + "/" + std::to_string(this->m_creatorEpochsTotal));
+                    "Epoch " + std::to_string(this->m_creatorTimeCurrentMy)
+                    + "/" + std::to_string(this->m_creatorTotalMy));
             }
         };
         (void)this->m_uiManager.createButton(this->m_creatorPanelId,
@@ -1564,7 +1576,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         use.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         use.onClick = [this, screenW, screenH]() {
             const uint32_t seed = this->m_creatorSeed;
-            const int32_t epochs = this->m_creatorEpochsTotal;
+            const int32_t epochs = this->m_creatorTotalMy;
             const int32_t plates = this->m_creatorLandPlates;
             // Tear down preview state.
             if (this->m_creatorPanelId != aoc::ui::INVALID_WIDGET) {
@@ -2207,7 +2219,7 @@ void Application::run() {
             this->m_creatorPlayAccum += deltaTime;
             while (this->m_creatorPlayAccum >= PLAY_INTERVAL) {
                 this->m_creatorPlayAccum -= PLAY_INTERVAL;
-                if (this->m_creatorEpochCurrent >= this->m_creatorEpochsTotal) {
+                if (this->m_creatorTimeCurrentMy >= this->m_creatorTotalMy) {
                     // Reached endpoint — stop play.
                     this->m_creatorPlaying = false;
                     this->m_creatorPlayAccum = 0.0f;
@@ -2217,12 +2229,12 @@ void Application::run() {
                     }
                     break;
                 }
-                ++this->m_creatorEpochCurrent;
-                this->regenerateContinentPreview(this->m_creatorEpochCurrent);
+                ++this->m_creatorTimeCurrentMy;
+                this->regenerateContinentPreview(this->m_creatorTimeCurrentMy);
                 if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
                     this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
-                        "Epoch " + std::to_string(this->m_creatorEpochCurrent)
-                        + "/" + std::to_string(this->m_creatorEpochsTotal));
+                        "Epoch " + std::to_string(this->m_creatorTimeCurrentMy)
+                        + "/" + std::to_string(this->m_creatorTotalMy));
                 }
             }
         }
@@ -3404,12 +3416,12 @@ void Application::buildMainMenu(float screenW, float screenH) {
 
             std::random_device rdc;
             this->m_creatorSeed         = rdc();
-            this->m_creatorEpochsTotal  = 40;
+            this->m_creatorTotalMy  = 40;
             // 2026-05-04: 7 -> 4 to match mapgen's Earth-calibrated count.
             this->m_creatorLandPlates   = 4;
             this->m_creatorWidth        = 400;
             this->m_creatorHeight       = 200;
-            this->m_creatorEpochCurrent = this->m_creatorEpochsTotal;
+            this->m_creatorTimeCurrentMy = this->m_creatorTotalMy;
             this->m_continentCreatorMode = true;
             this->m_creatorEpochCache.clear();
             this->m_creatorPlaying = false;
@@ -3429,7 +3441,7 @@ void Application::buildMainMenu(float screenW, float screenH) {
             ccConfig.players[1].isHuman  = false;
             ccConfig.players[1].civId    = 1;
             ccConfig.mapSeed = this->m_creatorSeed;
-            ccConfig.tectonicEpochs = this->m_creatorEpochsTotal;
+            ccConfig.tectonicTotalMy = this->m_creatorTotalMy;
             ccConfig.landPlateCount = this->m_creatorLandPlates;
             this->startGame(ccConfig);
             aoc::game::Player* slot0 = this->m_gameState.player(0);
@@ -3460,8 +3472,8 @@ void Application::buildMainMenu(float screenW, float screenH) {
             this->buildContinentCreatorControls(screenW, screenH);
             LOG_INFO("Continent Creator opened (seed=%u epochs=%d/%d)",
                      this->m_creatorSeed,
-                     this->m_creatorEpochCurrent,
-                     this->m_creatorEpochsTotal);
+                     this->m_creatorTimeCurrentMy,
+                     this->m_creatorTotalMy);
         },
         [this, screenW, screenH]() {
             // Map Editor: launches a quick AI-only sandbox so the

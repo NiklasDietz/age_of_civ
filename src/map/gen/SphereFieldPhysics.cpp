@@ -57,8 +57,8 @@ inline constexpr float PLATE_REACH_RAD_PER_SQRT_WEIGHT = 0.6f;
 // ~5 cm/yr.
 inline constexpr float SUBDUCTION_CELL_WIDTH_KM = 50.0f;
 
-void assignPlateOwnership(SphereField& field,
-                          const std::vector<Plate>& plates) {
+void assignPlateOwnershipInitial(SphereField& field,
+                                 const std::vector<Plate>& plates) {
     if (plates.empty()) {
         std::fill(field.plateId.begin(), field.plateId.end(),
                   static_cast<int16_t>(-1));
@@ -83,6 +83,382 @@ void assignPlateOwnership(SphereField& field,
             field.plateId[SphereField::cellIndex(lonIdx, latIdx)] = bestId;
         }
     }
+}
+
+void recomputePlateCentroidsFromCells(SphereField& field,
+                                      std::vector<Plate>& plates) {
+    if (plates.empty()) return;
+    // Sum unit-vector positions on the sphere per plate, then renormalise
+    // to extract the area-weighted centroid. Averaging lat/lon directly
+    // would fail across the antimeridian or polar wrap.
+    const std::size_t N = plates.size();
+    std::vector<double> sx(N, 0.0), sy(N, 0.0), sz(N, 0.0);
+    std::vector<int32_t> count(N, 0);
+    constexpr double DEG2RAD = 0.01745329252;
+    for (int32_t latIdx = 0; latIdx < SphereField::LAT_CELLS; ++latIdx) {
+        for (int32_t lonIdx = 0; lonIdx < SphereField::LON_CELLS; ++lonIdx) {
+            const std::size_t idx = SphereField::cellIndex(lonIdx, latIdx);
+            const int16_t pid = field.plateId[idx];
+            if (pid < 0 || static_cast<std::size_t>(pid) >= N) continue;
+            const LatLon p = SphereField::cellCenter(lonIdx, latIdx);
+            const double latR = static_cast<double>(p.latDeg) * DEG2RAD;
+            const double lonR = static_cast<double>(p.lonDeg) * DEG2RAD;
+            const double cosLat = std::cos(latR);
+            sx[static_cast<std::size_t>(pid)] += cosLat * std::cos(lonR);
+            sy[static_cast<std::size_t>(pid)] += cosLat * std::sin(lonR);
+            sz[static_cast<std::size_t>(pid)] += std::sin(latR);
+            ++count[static_cast<std::size_t>(pid)];
+        }
+    }
+    constexpr float RAD2DEG = 57.29577951f;
+    for (std::size_t i = 0; i < N; ++i) {
+        if (count[i] == 0) continue; // Plate has no cells; centroid stale.
+        const double inv = 1.0 / static_cast<double>(count[i]);
+        const double mx = sx[i] * inv;
+        const double my = sy[i] * inv;
+        const double mz = sz[i] * inv;
+        const double r = std::sqrt(mx * mx + my * my + mz * mz);
+        if (r < 1e-9) continue; // Antipodal cells cancel; keep prior centroid.
+        plates[i].latDeg = static_cast<float>(std::asin(mz / r) * RAD2DEG);
+        plates[i].lonDeg = static_cast<float>(std::atan2(my, mx) * RAD2DEG);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Continental docking
+// ---------------------------------------------------------------------------
+//
+// Real Earth's mountain-building events are continental docking: the
+// India-Asia collision (50 Ma+) is the textbook case. When buoyant
+// continental crust meets buoyant continental crust at a convergent
+// boundary, neither side subducts — instead the smaller block accretes
+// to the larger one along a suture. The merged plate's interior
+// thickens (Tibet plateau) and the boundary is consumed.
+//
+// This implementation tracks the cumulative epoch-time spent in
+// continent-continent contact for each plate pair. Once that contact
+// time exceeds DOCKING_MY_THRESHOLD (Lithgow-Bertelloni & Richards
+// 1998 give a few-tens-of-Myr timescale for accretion completion),
+// the smaller continental plate is merged into the larger one by
+// rewriting `field.plateId`. The pair-age tracker is keyed by
+// (smallId * MAX_PLATES + largeId) so identical pairs don't double-
+// count.
+inline constexpr float DOCKING_MY_THRESHOLD = 30.0f;
+inline constexpr int32_t DOCKING_MAX_PLATES = 1024;
+
+void applyContinentalDocking(SphereField& field,
+                             std::vector<Plate>& plates,
+                             std::vector<float>& contactAgeByPlatePair,
+                             float dtMy) {
+    if (plates.size() < 2) return;
+    const std::size_t N = plates.size();
+    if (N > DOCKING_MAX_PLATES) return; // Defensive: tracker fixed-size.
+
+    // Accumulate per-pair contact area (count of cells) where both
+    // sides are continental. We resize-or-grow the tracker if plate
+    // count grew since last call; new pairs start at 0 contact age.
+    const std::size_t pairCount = DOCKING_MAX_PLATES * DOCKING_MAX_PLATES;
+    if (contactAgeByPlatePair.size() < pairCount) {
+        contactAgeByPlatePair.assign(pairCount, 0.0f);
+    }
+
+    std::vector<int32_t> contactCells(pairCount, 0);
+    std::vector<float>   sumA(N, 0.0f); // per-plate continental cell count
+
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+        for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
+            const std::size_t idx = SphereField::cellIndex(lonIdx, latIdx);
+            const int16_t selfId = field.plateId[idx];
+            if (selfId < 0) continue;
+            const float selfFrac = field.continentalFraction[idx];
+            if (selfFrac > 0.5f) {
+                sumA[static_cast<std::size_t>(selfId)] += 1.0f;
+            }
+            const float rate = field.convergenceRateRadPerMy[idx];
+            if (rate <= 0.0f) continue;
+            // Identify a differing neighbour, prefer N4.
+            const int32_t lonE = (lonIdx == LON - 1) ? 0 : lonIdx + 1;
+            const int32_t latN = (latIdx == LAT - 1) ? LAT - 1 : latIdx + 1;
+            const std::size_t idxE = SphereField::cellIndex(lonE, latIdx);
+            const std::size_t idxN = SphereField::cellIndex(lonIdx, latN);
+            int16_t otherId = -1;
+            std::size_t otherIdx = idx;
+            const int16_t nE = field.plateId[idxE];
+            const int16_t nN = field.plateId[idxN];
+            if (nE != selfId && nE >= 0)      { otherId = nE; otherIdx = idxE; }
+            else if (nN != selfId && nN >= 0) { otherId = nN; otherIdx = idxN; }
+            if (otherId < 0) continue;
+            const float otherFrac = field.continentalFraction[otherIdx];
+            if (selfFrac < 0.5f || otherFrac < 0.5f) continue;
+            // Both sides continental: this is a docking-eligible contact.
+            int16_t a = std::min(selfId, otherId);
+            int16_t b = std::max(selfId, otherId);
+            const std::size_t key =
+                static_cast<std::size_t>(a) * DOCKING_MAX_PLATES
+                + static_cast<std::size_t>(b);
+            ++contactCells[key];
+        }
+    }
+
+    // For each plate pair that had any contact this epoch, advance
+    // its contact age. Pairs without contact decay (slow forgetting:
+    // half-life ~ DOCKING_MY_THRESHOLD so re-collision triggers fast
+    // but old contact doesn't linger forever).
+    const float decay = std::exp(-dtMy / DOCKING_MY_THRESHOLD);
+    for (std::size_t key = 0; key < pairCount; ++key) {
+        if (contactCells[key] > 0) {
+            contactAgeByPlatePair[key] += dtMy;
+        } else if (contactAgeByPlatePair[key] > 0.0f) {
+            contactAgeByPlatePair[key] *= decay;
+        }
+    }
+
+    // Pick mergers: any pair whose contact age exceeded the threshold
+    // and which has an actual continental contact this epoch. Merge
+    // the smaller plate into the larger.
+    for (std::size_t key = 0; key < pairCount; ++key) {
+        if (contactCells[key] == 0) continue;
+        if (contactAgeByPlatePair[key] < DOCKING_MY_THRESHOLD) continue;
+        const std::size_t a = key / DOCKING_MAX_PLATES;
+        const std::size_t b = key % DOCKING_MAX_PLATES;
+        if (a >= N || b >= N) continue;
+        // Merge smaller continental area into the larger one.
+        const std::size_t loser  = (sumA[a] < sumA[b]) ? a : b;
+        const std::size_t winner = (sumA[a] < sumA[b]) ? b : a;
+        if (sumA[loser] <= 0.0f) continue;
+        const int16_t loserId  = static_cast<int16_t>(loser);
+        const int16_t winnerId = static_cast<int16_t>(winner);
+        for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
+            if (field.plateId[i] == loserId) {
+                field.plateId[i] = winnerId;
+            }
+        }
+        // Reset trackers for both merged keys so we do not re-merge.
+        contactAgeByPlatePair[key] = 0.0f;
+        // sumA used only this call — no per-call mutation needed beyond
+        // the merge itself (cells are reassigned in-field).
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Wilson-cycle continental rifting
+// ---------------------------------------------------------------------------
+//
+// Anderson 1982 thermal-blanketing model: a stationary supercontinent
+// insulates the underlying mantle, allowing heat to accumulate beneath
+// it. Over ~150-200 My (Stein & Stein 1992 calibration) the integrated
+// thermal stress crosses the lithospheric breakup threshold (~50 MPa,
+// Steckler & Watts 1980). At that point a plume punches through the
+// lithosphere and rifting initiates along a great-circle line through
+// the highest-stress region of the supercontinent. This is what
+// breaks Pangaea apart and starts the Atlantic ocean.
+//
+// We model this with two timers:
+//   1. `field.thermalAgeMy[i]` — per-cell heat-accumulation clock,
+//       advanced by dtMy each epoch the cell's owner is classified
+//       as a supercontinent (continental area >= SUPERCONTINENT_FRACTION).
+//   2. `meanThermal` — per-plate mean of `thermalAgeMy` over its
+//       continental cells. Once it exceeds RIFT_THRESHOLD_MY a
+//       Bernoulli trial fires per epoch with probability ramping from
+//       0 (at 0 My over threshold) to 1.0 (at +100 My).
+// On rift, the plate is split via PCA on its cell-position vectors
+// (sphere x/y/z). Cells on each side of the principal axis go to
+// either the original plate or a fresh plate; both reset thermal
+// age and get perturbed Euler poles so they diverge.
+inline constexpr float SUPERCONTINENT_FRACTION = 0.20f;
+inline constexpr float RIFT_THRESHOLD_MY       = 150.0f;
+inline constexpr float RIFT_RAMP_MY            = 100.0f;
+
+namespace {
+inline float xorshift01(uint32_t& s) {
+    // XorShift32 -> [0, 1). Cheap, deterministic, no global state.
+    s ^= s << 13;
+    s ^= s >> 17;
+    s ^= s << 5;
+    return static_cast<float>(s & 0x00FFFFFFu) / 16777216.0f;
+}
+}
+
+int32_t applyWilsonRifting(SphereField& field,
+                           std::vector<Plate>& plates,
+                           uint32_t& rngState,
+                           float dtMy) {
+    if (plates.empty()) return 0;
+    const std::size_t N = plates.size();
+
+    // Continental-area count per plate.
+    std::vector<int32_t> contCells(N, 0);
+    std::vector<int32_t> totalCells(N, 0);
+    for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
+        const int16_t pid = field.plateId[i];
+        if (pid < 0 || static_cast<std::size_t>(pid) >= N) continue;
+        ++totalCells[static_cast<std::size_t>(pid)];
+        if (field.continentalFraction[i] > 0.5f) {
+            ++contCells[static_cast<std::size_t>(pid)];
+        }
+    }
+    const float globeCells = static_cast<float>(SphereField::CELL_COUNT);
+
+    // Thermal-age update + per-plate mean.
+    std::vector<double> thermalSum(N, 0.0);
+    std::vector<int32_t> thermalCount(N, 0);
+    for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
+        const int16_t pid = field.plateId[i];
+        if (pid < 0 || static_cast<std::size_t>(pid) >= N) continue;
+        if (field.continentalFraction[i] <= 0.5f) {
+            field.thermalAgeMy[i] = 0.0f;
+            continue;
+        }
+        // Cell's plate qualifies as supercontinent?
+        const float frac = static_cast<float>(contCells[static_cast<std::size_t>(pid)])
+                           / globeCells;
+        if (frac >= SUPERCONTINENT_FRACTION) {
+            field.thermalAgeMy[i] += dtMy;
+        } else {
+            // Reset slowly — once a plate is no longer supercontinent
+            // its thermal blanketing relaxes over ~RIFT_THRESHOLD_MY.
+            field.thermalAgeMy[i] *= std::exp(-dtMy / RIFT_THRESHOLD_MY);
+        }
+        thermalSum[static_cast<std::size_t>(pid)] +=
+            static_cast<double>(field.thermalAgeMy[i]);
+        ++thermalCount[static_cast<std::size_t>(pid)];
+    }
+
+    // Decide which plates rift this epoch. Single-rift-per-epoch cap
+    // matches the empirical observation that rift bursts are clustered
+    // in time: 290 plate births in 5 Myr at the Pangaea breakup
+    // (Müller 2022 birth histogram).
+    int32_t newPlates = 0;
+    for (std::size_t i = 0; i < N; ++i) {
+        if (thermalCount[i] < 4) continue; // Plate too small to rift.
+        const float meanThermal = static_cast<float>(
+            thermalSum[i] / static_cast<double>(thermalCount[i]));
+        if (meanThermal < RIFT_THRESHOLD_MY) continue;
+        const float over = meanThermal - RIFT_THRESHOLD_MY;
+        const float prob = std::min(1.0f, over / RIFT_RAMP_MY);
+        if (xorshift01(rngState) > prob) continue;
+
+        // PCA on cell sphere positions to find longest axis.
+        constexpr double DEG2RAD = 0.01745329252;
+        double mx = 0.0, my = 0.0, mz = 0.0;
+        for (std::size_t cell = 0; cell < SphereField::CELL_COUNT; ++cell) {
+            if (field.plateId[cell] != static_cast<int16_t>(i)) continue;
+            // Decompose cell idx -> (lon, lat).
+            const int32_t latIdx = static_cast<int32_t>(cell / SphereField::LON_CELLS);
+            const int32_t lonIdx = static_cast<int32_t>(cell % SphereField::LON_CELLS);
+            const LatLon p = SphereField::cellCenter(lonIdx, latIdx);
+            const double latR = static_cast<double>(p.latDeg) * DEG2RAD;
+            const double lonR = static_cast<double>(p.lonDeg) * DEG2RAD;
+            const double cosLat = std::cos(latR);
+            mx += cosLat * std::cos(lonR);
+            my += cosLat * std::sin(lonR);
+            mz += std::sin(latR);
+        }
+        const double inv = 1.0 / static_cast<double>(totalCells[i]);
+        mx *= inv; my *= inv; mz *= inv;
+
+        // Compute covariance to extract principal axis. With ~hundreds
+        // of cells the 3x3 power-iteration converges in <10 steps.
+        double cxx=0, cyy=0, czz=0, cxy=0, cxz=0, cyz=0;
+        for (std::size_t cell = 0; cell < SphereField::CELL_COUNT; ++cell) {
+            if (field.plateId[cell] != static_cast<int16_t>(i)) continue;
+            const int32_t latIdx = static_cast<int32_t>(cell / SphereField::LON_CELLS);
+            const int32_t lonIdx = static_cast<int32_t>(cell % SphereField::LON_CELLS);
+            const LatLon p = SphereField::cellCenter(lonIdx, latIdx);
+            const double latR = static_cast<double>(p.latDeg) * DEG2RAD;
+            const double lonR = static_cast<double>(p.lonDeg) * DEG2RAD;
+            const double cosLat = std::cos(latR);
+            const double dx = cosLat * std::cos(lonR) - mx;
+            const double dy = cosLat * std::sin(lonR) - my;
+            const double dz = std::sin(latR) - mz;
+            cxx += dx*dx; cyy += dy*dy; czz += dz*dz;
+            cxy += dx*dy; cxz += dx*dz; cyz += dy*dz;
+        }
+        // Power iteration on covariance for top eigenvector.
+        double vx = 1.0, vy = 0.0, vz = 0.0;
+        for (int iter = 0; iter < 12; ++iter) {
+            const double nx = cxx*vx + cxy*vy + cxz*vz;
+            const double ny = cxy*vx + cyy*vy + cyz*vz;
+            const double nz = cxz*vx + cyz*vy + czz*vz;
+            const double mag = std::sqrt(nx*nx + ny*ny + nz*nz);
+            if (mag < 1e-12) break;
+            vx = nx / mag; vy = ny / mag; vz = nz / mag;
+        }
+        // Plane normal = principal axis x mean direction. Cells split
+        // by sign of dot product with this normal.
+        const double nrm_x = vy * mz - vz * my;
+        const double nrm_y = vz * mx - vx * mz;
+        const double nrm_z = vx * my - vy * mx;
+
+        // Spawn fresh plate inheriting parent's properties + perturbed
+        // Euler pole (Müller 2022: rifted children diverge by ~10-20°
+        // pole offset).
+        Plate child = plates[i];
+        const float poleOffsetDeg = (xorshift01(rngState) * 30.0f) - 15.0f;
+        child.eulerPoleLatDeg = std::clamp(
+            child.eulerPoleLatDeg + poleOffsetDeg, -89.0f, 89.0f);
+        child.eulerPoleLonDeg += poleOffsetDeg;
+        child.angularVelDeg *= (xorshift01(rngState) > 0.5f ? -1.0f : 1.0f);
+        plates.push_back(child);
+        const int16_t childId = static_cast<int16_t>(plates.size() - 1);
+
+        // Reassign cells on the (negative-side) of the rift plane.
+        for (std::size_t cell = 0; cell < SphereField::CELL_COUNT; ++cell) {
+            if (field.plateId[cell] != static_cast<int16_t>(i)) continue;
+            const int32_t latIdx = static_cast<int32_t>(cell / SphereField::LON_CELLS);
+            const int32_t lonIdx = static_cast<int32_t>(cell % SphereField::LON_CELLS);
+            const LatLon p = SphereField::cellCenter(lonIdx, latIdx);
+            const double latR = static_cast<double>(p.latDeg) * DEG2RAD;
+            const double lonR = static_cast<double>(p.lonDeg) * DEG2RAD;
+            const double cosLat = std::cos(latR);
+            const double cx = cosLat * std::cos(lonR);
+            const double cy = cosLat * std::sin(lonR);
+            const double cz = std::sin(latR);
+            const double dot = (cx-mx)*nrm_x + (cy-my)*nrm_y + (cz-mz)*nrm_z;
+            if (dot < 0.0) {
+                field.plateId[cell] = childId;
+            }
+            field.thermalAgeMy[cell] = 0.0f;
+        }
+        ++newPlates;
+        // One rift per epoch (matches real-Earth burst cadence).
+        break;
+    }
+    return newPlates;
+}
+
+int32_t compactPlateList(SphereField& field, std::vector<Plate>& plates) {
+    const std::size_t N = plates.size();
+    if (N == 0) return 0;
+    std::vector<int32_t> count(N, 0);
+    for (int16_t pid : field.plateId) {
+        if (pid >= 0 && static_cast<std::size_t>(pid) < N) {
+            ++count[static_cast<std::size_t>(pid)];
+        }
+    }
+    std::vector<int16_t> remap(N, -1);
+    std::vector<Plate> survivors;
+    survivors.reserve(N);
+    for (std::size_t i = 0; i < N; ++i) {
+        if (count[i] > 0) {
+            remap[i] = static_cast<int16_t>(survivors.size());
+            survivors.push_back(plates[i]);
+        }
+    }
+    if (survivors.size() == N) return 0; // Nothing to compact.
+    for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
+        const int16_t pid = field.plateId[i];
+        if (pid >= 0 && static_cast<std::size_t>(pid) < N) {
+            field.plateId[i] = remap[static_cast<std::size_t>(pid)];
+        } else {
+            field.plateId[i] = -1;
+        }
+    }
+    const int32_t removed = static_cast<int32_t>(N - survivors.size());
+    plates = std::move(survivors);
+    return removed;
 }
 
 void markBoundaryCells(const SphereField& field,
@@ -339,14 +715,31 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy) {
 void stepSpherePhysicsEpoch(SphereField& field,
                             std::vector<Plate>& plates,
                             std::vector<uint8_t>& boundaryScratch,
+                            std::vector<float>& contactAgeByPlatePair,
+                            uint32_t& rngState,
                             float dtMy) {
-    assignPlateOwnership(field, plates);
+    // Per-epoch passes in physical order:
+    //   1. ownership refresh — centroid Voronoi (init + each epoch).
+    //   2. boundary detection.
+    //   3. instantaneous closing rate from Euler-pole velocities.
+    //   4. continental crust thickening at convergent boundary cells.
+    //   5. oceanic-margin subduction (lower-density side flips).
+    //   6. continental docking (cont-cont contact > 30 My fuses).
+    //   7. Wilson-cycle rifting (supercontinent thermal-age trigger).
+    //   8. Airy isostasy → surface elevation.
+    //   9. exponential stream-power erosion.
+    //  10. compact + recompute plate centroids for next epoch.
+    assignPlateOwnershipInitial(field, plates);
     markBoundaryCells(field, boundaryScratch);
     accumulateClosingRate(field, plates, boundaryScratch);
     thickenFromClosingRate(field, dtMy);
     applySubduction(field, plates, dtMy);
+    applyContinentalDocking(field, plates, contactAgeByPlatePair, dtMy);
+    applyWilsonRifting(field, plates, rngState, dtMy);
     recomputeIsostaticElevationOnRaster(field);
     applySurfaceErosionOnRaster(field, dtMy);
+    compactPlateList(field, plates);
+    recomputePlateCentroidsFromCells(field, plates);
 
     // Crust age advances monotonically for cells that did not flip
     // ownership in the subduction pass (those were reset to 0 already).
@@ -372,12 +765,13 @@ void stepSpherePhysicsEpoch(SphereField& field,
         }
         std::fprintf(stderr,
             "[sphere] dt=%.1fMy maxRate=%.5frad/My maxCrust=%5.1fkm "
-            "maxZ=%6.0fm mtn>4km=%zu\n",
+            "maxZ=%6.0fm mtn>4km=%zu plates=%zu\n",
             static_cast<double>(dtMy),
             static_cast<double>(maxRate),
             static_cast<double>(maxCrust),
             static_cast<double>(maxZ),
-            mountainCells);
+            mountainCells,
+            plates.size());
     }
 }
 

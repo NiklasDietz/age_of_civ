@@ -60,14 +60,19 @@ struct GameSetupConfig {
     AIDifficulty aiDifficulty = AIDifficulty::Normal; ///< AI difficulty level
     VictoryMode victoryMode = VictoryMode::Default;   ///< Victory condition mode
     int32_t maxTurns = 1000;                          ///< User-selectable turn limit
-    /// Continents-only generation knobs. tectonicEpochs controls how
-    /// long the plate sim runs (more = older, more eroded world,
-    /// Pangaea cycles get more chances to play out). landPlateCount
-    /// caps how many continent seeds are placed before ocean fills
-    /// the rest. mapSeed is the deterministic RNG seed; same seed +
-    /// same parameters → same world. mapSeed = 0 means "auto" (the
-    /// app picks a fresh random seed at game start).
-    int32_t tectonicEpochs = 40;
+    /// Continents-only generation knobs.
+    ///
+    /// `tectonicTotalMy` is the total simulated geological time in
+    /// millions of years. Default 3000 My (3 Gy) covers ~5 Wilson
+    /// supercontinent cycles (Anderson 2007). The generator converts
+    /// internally to an epoch count using
+    /// `MapGenerator::MY_PER_EPOCH_TARGET`.
+    ///
+    /// `landPlateCount` caps how many continental plates seed the
+    /// initial state. `mapSeed` is the deterministic RNG seed; same
+    /// seed + same parameters → same world. `mapSeed == 0` means
+    /// "auto" (a fresh random seed is picked at game start).
+    int32_t tectonicTotalMy = 3000;
     int32_t landPlateCount = 7;    ///< Earth has ~7 major plates
     uint32_t mapSeed = 0;
 };
@@ -128,15 +133,15 @@ public:
     /// the Continent Creator's "Use This Map" handoff so the chosen
     /// seed + tectonic params survive into the actual game launch.
     /// Caller passes a partial config; only the continent-gen knobs
-    /// (mapType / seed / tectonicEpochs / landPlateCount) are
+    /// (mapType / seed / tectonicTotalMy / landPlateCount) are
     /// adopted — player slots and the rest stay at defaults.
     void setContinentPreset(aoc::map::MapType mapType,
                              uint32_t seed,
-                             int32_t tectonicEpochs,
+                             int32_t tectonicTotalMy,
                              int32_t landPlateCount) {
         this->m_config.mapType = mapType;
         this->m_config.mapSeed = seed;
-        this->m_config.tectonicEpochs = tectonicEpochs;
+        this->m_config.tectonicTotalMy = tectonicTotalMy;
         this->m_config.landPlateCount = landPlateCount;
     }
 

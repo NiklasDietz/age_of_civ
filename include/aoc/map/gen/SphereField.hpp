@@ -63,6 +63,15 @@ struct SphereField {
     std::vector<float>   convergenceRateRadPerMy;
     // Crust age in My since last creation (ridge spawn / accretion).
     std::vector<float>   crustAgeMy;
+    // Wilson-cycle thermal-blanketing age, in My. Counter advanced
+    // each epoch for every continental cell that sits inside a plate
+    // currently classified as a "supercontinent fragment" (continental
+    // area above SUPERCONTINENT_FRACTION of the globe). Reset to 0 at
+    // ridge accretion or when the cell flips to oceanic via
+    // subduction. Continental rifting probability ramps in once the
+    // mean of this counter for a plate exceeds the Stein & Stein 1992
+    // breakup threshold (~150 My).
+    std::vector<float>   thermalAgeMy;
 
     /// Allocate all SoA fields to CELL_COUNT and zero-initialise them.
     /// plateId is set to -1 (unowned). Idempotent.

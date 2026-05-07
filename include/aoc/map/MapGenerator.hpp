@@ -79,16 +79,27 @@ public:
         MapSize     mapSize   = MapSize::Standard;     ///< Preset size (overrides width/height when applied)
         MapTopology topology  = MapTopology::Flat;     ///< Grid topology (Flat or Cylindrical)
         ResourcePlacementMode placement = ResourcePlacementMode::Realistic;
-        /// Continents-only knobs. tectonicEpochs controls how long the
-        /// plate-tectonic sim runs; landPlateCount caps the initial
-        /// continent seeds (the rest fill as ocean). 0 = use built-in
-        /// defaults / random in-range.
+        /// Continents-only knobs.
+        ///
+        /// `tectonicTotalMy` sets the total simulated geological time
+        /// in millions of years. Default 3000 My (3 Gy) covers ~5
+        /// Wilson supercontinent cycles (Anderson 2007 estimates the
+        /// average cycle period at ~500-700 My). 0 = use built-in
+        /// default. The generator converts internally:
+        ///   EPOCHS = round(tectonicTotalMy / MY_PER_EPOCH_TARGET)
+        /// where MY_PER_EPOCH_TARGET = 50 My (substep size; large enough
+        /// to keep sim fast, small enough that exponential erosion stays
+        /// well-conditioned at K_EROSION = 0.034 / My).
+        int32_t  tectonicTotalMy = 0;
+        /// Internal: epoch count derived from `tectonicTotalMy`. Set
+        /// only if you need to override directly (legacy paths).
         int32_t  tectonicEpochs = 0;
+        /// `landPlateCount` caps the initial continental plate seeds.
+        /// 0 = use Müller 2022-derived statistics-driven count.
         int32_t  landPlateCount = 0;
         /// Stepper hook: if >0, the sim halts after this many epochs
         /// have run. Used by the Continent Creator scrubber to render
-        /// intermediate states. 0 = run the full requested
-        /// `tectonicEpochs` (default game-launch behaviour).
+        /// intermediate states. 0 = run the full sim.
         int32_t  runEpochsLimit = 0;
         /// Total plate-drift budget over the sim, in fraction of map width.
         /// 0 = use default 0.6. Larger = plates traverse more of the world
@@ -131,6 +142,14 @@ public:
         int32_t  superSampleFactor = 1;
 
     };
+
+    /// Substep size in millions of years per simulation epoch. Total
+    /// sim time = MY_PER_EPOCH_TARGET * tectonicEpochs. Picked so that
+    /// K_EROSION_PER_MY * MY_PER_EPOCH_TARGET = 0.034 * 50 = 1.7 (still
+    /// a stable exponential erosion step) and so that 60 epochs covers
+    /// ~3 Gy of geological time (default supercontinent-cycle target).
+    inline static constexpr int32_t MY_PER_EPOCH_TARGET = 50;
+    inline static constexpr int32_t DEFAULT_TECTONIC_TOTAL_MY = 3000;
 
     /**
      * @brief Generate a complete hex map.

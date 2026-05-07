@@ -170,7 +170,9 @@ void writeCsv(const aoc::map::HexGrid& grid, const std::string& path) {
 void usage(const char* prog) {
     std::fprintf(stderr,
         "Usage: %s [--seed N] [--width W] [--height H] [--output PATH]\n"
-        "          [--format ascii|csv|both] [--epochs N] [--super-sample N]\n"
+        "          [--format ascii|csv|both]\n"
+        "          [--tectonic-time-my N | --tectonic-time-gy N | --epochs N]\n"
+        "          [--super-sample N]\n"
         "          [--dump-plates PATH] [--dump-edges PATH]\n"
         "          [--dump-mountain-edges PATH]\n"
         "\n"
@@ -236,7 +238,15 @@ int main(int argc, char* argv[]) {
         } else if (arg == "--format" && i + 1 < argc) {
             format = parseFormat(argv[++i]);
         } else if (arg == "--epochs" && i + 1 < argc) {
+            // Legacy direct epoch override.
             config.tectonicEpochs = std::atoi(argv[++i]);
+        } else if (arg == "--tectonic-time-my" && i + 1 < argc) {
+            // Total simulated geological time in millions of years.
+            config.tectonicTotalMy = std::atoi(argv[++i]);
+        } else if (arg == "--tectonic-time-gy" && i + 1 < argc) {
+            // Convenience: same as --tectonic-time-my but in Gy.
+            const float gy = static_cast<float>(std::atof(argv[++i]));
+            config.tectonicTotalMy = static_cast<int32_t>(gy * 1000.0f + 0.5f);
         } else if (arg == "--super-sample" && i + 1 < argc) {
             config.superSampleFactor = std::atoi(argv[++i]);
         } else if (arg == "--frames") {
@@ -267,8 +277,18 @@ int main(int argc, char* argv[]) {
         // step. Writes both per-frame plate-glyph files and a
         // concatenated multiframe.txt suitable for `cat` playback with
         // ANSI clear escapes between frames.
-        const int32_t requestedEpochs = (config.tectonicEpochs > 0)
-            ? config.tectonicEpochs : 40;
+        // Resolve epoch count from either explicit override or total time.
+        int32_t requestedEpochs;
+        if (config.tectonicEpochs > 0) {
+            requestedEpochs = config.tectonicEpochs;
+        } else {
+            const int32_t totalMy = (config.tectonicTotalMy > 0)
+                ? config.tectonicTotalMy
+                : aoc::map::MapGenerator::DEFAULT_TECTONIC_TOTAL_MY;
+            requestedEpochs = std::max(3, (totalMy
+                + aoc::map::MapGenerator::MY_PER_EPOCH_TARGET / 2)
+                / aoc::map::MapGenerator::MY_PER_EPOCH_TARGET);
+        }
         const std::string multiPath = outputBase + ".frames.txt";
         std::ofstream multi(multiPath);
         if (!multi.is_open()) {
