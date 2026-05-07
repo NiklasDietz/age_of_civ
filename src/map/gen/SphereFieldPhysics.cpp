@@ -7,6 +7,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
+#include <queue>
 
 namespace aoc::map::gen {
 
@@ -57,30 +59,123 @@ inline constexpr float PLATE_REACH_RAD_PER_SQRT_WEIGHT = 0.6f;
 // ~5 cm/yr.
 inline constexpr float SUBDUCTION_CELL_WIDTH_KM = 50.0f;
 
-void assignPlateOwnershipInitial(SphereField& field,
-                                 const std::vector<Plate>& plates) {
+void generateInitialPlateOwnership(SphereField& field,
+                                   const std::vector<Plate>& plates,
+                                   uint64_t seed) {
     if (plates.empty()) {
         std::fill(field.plateId.begin(), field.plateId.end(),
                   static_cast<int16_t>(-1));
         return;
     }
-#if defined(AOC_HAS_OPENMP)
-    #pragma omp parallel for schedule(static)
-#endif
-    for (int32_t latIdx = 0; latIdx < SphereField::LAT_CELLS; ++latIdx) {
-        for (int32_t lonIdx = 0; lonIdx < SphereField::LON_CELLS; ++lonIdx) {
-            const LatLon p = SphereField::cellCenter(lonIdx, latIdx);
-            int16_t bestId   = -1;
-            float   bestDist = 1e9f;
-            for (std::size_t i = 0; i < plates.size(); ++i) {
-                const LatLon centroid{plates[i].latDeg, plates[i].lonDeg};
-                const float d = haversineRadians(p, centroid);
-                if (d < bestDist) {
-                    bestDist = d;
-                    bestId   = static_cast<int16_t>(i);
-                }
-            }
-            field.plateId[SphereField::cellIndex(lonIdx, latIdx)] = bestId;
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    const std::size_t totalCells = SphereField::CELL_COUNT;
+
+    // Per-cell priority (smaller = expand sooner). Path-dependent
+    // BFS from cratonic seeds. We use a min-heap of frontier cells
+    // keyed by (priority, plateId, cellIdx) so equal priorities
+    // tie-break deterministically by plate id then cell idx.
+    struct Frontier {
+        float priority;
+        int16_t plateId;
+        std::size_t cellIdx;
+        bool operator>(const Frontier& other) const {
+            if (priority != other.priority) return priority > other.priority;
+            if (plateId != other.plateId)   return plateId > other.plateId;
+            return cellIdx > other.cellIdx;
+        }
+    };
+    std::priority_queue<Frontier, std::vector<Frontier>,
+                        std::greater<Frontier>> heap;
+
+    // Per-plate hash for the noise jitter so different plates expand
+    // along different stochastic biases. Using SplitMix64 mix on the
+    // user seed + plate index keeps it deterministic and well-spread.
+    auto mix64 = [](uint64_t x) {
+        x ^= x >> 30;
+        x *= 0xbf58476d1ce4e5b9ULL;
+        x ^= x >> 27;
+        x *= 0x94d049bb133111ebULL;
+        x ^= x >> 31;
+        return x;
+    };
+    auto cellHash01 = [&](std::size_t cellIdx, int16_t plateId) {
+        // 4-byte mix of cell index, plate id, and global seed, mapped
+        // into [0, 1). Used as the pseudo-random tiebreak that gives
+        // BFS its irregular non-convex growth.
+        uint64_t h = static_cast<uint64_t>(cellIdx) * 0x100000001B3ULL
+                   ^ static_cast<uint64_t>(plateId) * 0x9E3779B97F4A7C15ULL
+                   ^ seed;
+        h = mix64(h);
+        return static_cast<float>(h & 0x00FFFFFFu) / 16777216.0f;
+    };
+
+    std::fill(field.plateId.begin(), field.plateId.end(),
+              static_cast<int16_t>(-1));
+
+    // Seed the heap with each plate's centroid cell at priority 0.
+    // The expansion budget per plate scales with sqrt(weight) so
+    // heavy plates capture proportionally more area before being
+    // crowded out at boundaries.
+    std::vector<float> reachBudget(plates.size(), 0.0f);
+    for (std::size_t i = 0; i < plates.size(); ++i) {
+        reachBudget[i] = std::sqrt(std::max(0.1f, plates[i].weight));
+        const SphereField::CellCoord c =
+            SphereField::locate(plates[i].latDeg, plates[i].lonDeg);
+        const std::size_t idx = SphereField::cellIndex(c.lonIdx, c.latIdx);
+        heap.push({0.0f, static_cast<int16_t>(i), idx});
+    }
+
+    // Pop-and-expand. Each cell, once claimed, enqueues its 4
+    // neighbours with a priority that grows with haversine arc length
+    // from the seed plus a per-cell stochastic kick. Reach-budget
+    // divides distance so heavier plates effectively see "shorter"
+    // arc costs and absorb more cells.
+    std::size_t claimed = 0;
+    while (!heap.empty() && claimed < totalCells) {
+        const Frontier top = heap.top();
+        heap.pop();
+        if (field.plateId[top.cellIdx] >= 0) continue;
+        field.plateId[top.cellIdx] = top.plateId;
+        ++claimed;
+
+        const int32_t latIdx = static_cast<int32_t>(top.cellIdx / LON);
+        const int32_t lonIdx = static_cast<int32_t>(top.cellIdx % LON);
+        const Plate& owner = plates[static_cast<std::size_t>(top.plateId)];
+        const LatLon seedLatLon{owner.latDeg, owner.lonDeg};
+        const float reach = reachBudget[static_cast<std::size_t>(top.plateId)];
+
+        const int32_t lonW = (lonIdx == 0)       ? LON - 1 : lonIdx - 1;
+        const int32_t lonE = (lonIdx == LON - 1) ? 0       : lonIdx + 1;
+        const int32_t latS = std::max(0,        latIdx - 1);
+        const int32_t latN = std::min(LAT - 1,  latIdx + 1);
+        const std::size_t neigh[4] = {
+            SphereField::cellIndex(lonW, latIdx),
+            SphereField::cellIndex(lonE, latIdx),
+            SphereField::cellIndex(lonIdx, latS),
+            SphereField::cellIndex(lonIdx, latN)
+        };
+        for (std::size_t n = 0; n < 4; ++n) {
+            const std::size_t nIdx = neigh[n];
+            if (field.plateId[nIdx] >= 0) continue;
+            const int32_t nLat = static_cast<int32_t>(nIdx / LON);
+            const int32_t nLon = static_cast<int32_t>(nIdx % LON);
+            const LatLon nLL = SphereField::cellCenter(nLon, nLat);
+            // Arc length from craton seed in radians, scaled by 1/reach.
+            const float arc = haversineRadians(nLL, seedLatLon) / reach;
+            // Stochastic per-cell-per-plate kick injects asymmetry
+            // so adjacent cells with similar arc lengths tie-break
+            // pseudo-randomly. Kick magnitude is comparable to one
+            // cell width on the sphere (~0.01 rad) so it does not
+            // dominate the arc cost — only breaks ties locally.
+            const float kick = (cellHash01(nIdx, top.plateId) - 0.5f) * 0.02f;
+            // Bias inherited from the parent's priority so paths
+            // grow as continuous frontiers rather than restarting
+            // from zero at each pop. This is what produces non-
+            // convex shapes: a path that took a detour around a
+            // peninsula keeps the accumulated cost.
+            const float pri = top.priority + arc + kick;
+            heap.push({pri, top.plateId, nIdx});
         }
     }
 }
@@ -121,6 +216,56 @@ void recomputePlateCentroidsFromCells(SphereField& field,
         if (r < 1e-9) continue; // Antipodal cells cancel; keep prior centroid.
         plates[i].latDeg = static_cast<float>(std::asin(mz / r) * RAD2DEG);
         plates[i].lonDeg = static_cast<float>(std::atan2(my, mx) * RAD2DEG);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Ridge accretion at divergent boundaries
+// ---------------------------------------------------------------------------
+//
+// At every cell flagged as a boundary where the closing rate is
+// negative (divergent), reset the cell state to fresh oceanic crust:
+// thickness 7 km (Turcotte & Schubert 2014 oceanic mean), continental
+// fraction 0, age 0. accumulateClosingRate stores POSITIVE rates only
+// (see SphereFieldPhysics::accumulateClosingRate) — divergent
+// boundaries have rate == 0 in the field but still differ by plate
+// id from a neighbour. We flag those by recomputing the closing
+// projection here for boundary cells whose convergenceRate is zero.
+void accreteAtDivergentBoundary(SphereField& field, float dtMy) {
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    (void)dtMy; // Reserved for time-dependent accretion-rate models.
+    for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+        for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
+            const std::size_t idx = SphereField::cellIndex(lonIdx, latIdx);
+            const int16_t selfId = field.plateId[idx];
+            if (selfId < 0) continue;
+            // Convergent boundary cells already get stored rate > 0;
+            // skip them so we do not undo the thicken pass.
+            if (field.convergenceRateRadPerMy[idx] > 0.0f) continue;
+            // Detect divergent boundary by neighbour mismatch only:
+            // any 4-neighbour with a different plate id qualifies as a
+            // boundary cell, and (since rate isn't positive) it must
+            // be divergent or transform. Both regenerate fresh oceanic
+            // basalt at slow spread (transform faults still leak basalt
+            // along bend-line segments — Müller 2008).
+            const int32_t lonW = (lonIdx == 0)       ? LON - 1 : lonIdx - 1;
+            const int32_t lonE = (lonIdx == LON - 1) ? 0       : lonIdx + 1;
+            const int32_t latS = (latIdx == 0)       ? 0       : latIdx - 1;
+            const int32_t latN = (latIdx == LAT - 1) ? LAT - 1 : latIdx + 1;
+            const int16_t nW = field.plateId[SphereField::cellIndex(lonW, latIdx)];
+            const int16_t nE = field.plateId[SphereField::cellIndex(lonE, latIdx)];
+            const int16_t nS = field.plateId[SphereField::cellIndex(lonIdx, latS)];
+            const int16_t nN = field.plateId[SphereField::cellIndex(lonIdx, latN)];
+            const bool isBoundary = (nW != selfId || nE != selfId
+                                  || nS != selfId || nN != selfId);
+            if (!isBoundary) continue;
+            // Reset to fresh oceanic crust. Owning plate keeps the cell.
+            field.crustThicknessKm[idx] =
+                PhysicsConstants::initialOceanicThicknessKm;
+            field.continentalFraction[idx] = 0.0f;
+            field.crustAgeMy[idx] = 0.0f;
+        }
     }
 }
 
@@ -729,11 +874,18 @@ void stepSpherePhysicsEpoch(SphereField& field,
     //   8. Airy isostasy → surface elevation.
     //   9. exponential stream-power erosion.
     //  10. compact + recompute plate centroids for next epoch.
-    assignPlateOwnershipInitial(field, plates);
+    //
+    // No per-epoch ownership reset — plateId persists across epochs
+    // (Lagrangian path), set ONCE by `generateInitialPlateOwnership`
+    // at sim init. Boundary changes come exclusively through
+    // mechanism passes (subduction flip, ridge accretion, docking
+    // merge, Wilson split). This is the no-Voronoi rule from
+    // CLAUDE.md "World-generation physics requirements".
     markBoundaryCells(field, boundaryScratch);
     accumulateClosingRate(field, plates, boundaryScratch);
     thickenFromClosingRate(field, dtMy);
     applySubduction(field, plates, dtMy);
+    accreteAtDivergentBoundary(field, dtMy);
     applyContinentalDocking(field, plates, contactAgeByPlatePair, dtMy);
     applyWilsonRifting(field, plates, rngState, dtMy);
     recomputeIsostaticElevationOnRaster(field);

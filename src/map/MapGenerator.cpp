@@ -315,16 +315,22 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // and visible plate territories were all small/uniform
             // rather than the giant-Pacific + a-few-medium pattern of
             // real Earth.
+            // Many-proto-plates initialisation. Archean Earth (Müller
+            // 2022 PB2002 reconstruction; Bird 2003 catalog) carried
+            // 50+ small terranes that fused over ~2-3 Gy into the
+            // ~7-15 modern major plates via continental docking.
+            // Spawning many small plates AT INIT lets Wilson-cycle
+            // physics (subduction + docking + rifting + ridge
+            // accretion) reshape them across 3 Gy of sim time —
+            // initial centroid-Voronoi shapes are overwritten by
+            // mechanism history, not preserved as final state.
             const int32_t landCountTarget = (config.landPlateCount > 0)
                 ? std::max(1, config.landPlateCount)
-                : centerRng.nextInt(3, 5);
-            const int32_t oceanCountTarget = centerRng.nextInt(3, 4);
-            // Tighter land gap lets 7-14 seeds fit on the unit square.
-            // 0.42 was fine for 3-4 plates but rejects half the targets
-            // when landCountTarget ≥ 6.
-            const float LAND_MIN_GAP  = std::max(0.18f,
-                0.70f / static_cast<float>(landCountTarget + 1));
-            constexpr float OCEAN_MIN_GAP = 0.09f;
+                : centerRng.nextInt(12, 18);
+            const int32_t oceanCountTarget = centerRng.nextInt(20, 30);
+            const float LAND_MIN_GAP  = std::max(0.10f,
+                0.50f / static_cast<float>(landCountTarget + 1));
+            constexpr float OCEAN_MIN_GAP = 0.05f;
 
             const auto pushPlate = [&](float cx, float cy, bool isLand) {
                 Plate p;
@@ -360,19 +366,39 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // stable so seed-replay matches earlier audits).
                 (void)centerRng.nextFloat(0.0f, 1.0f);
                 p.rot        = centerRng.nextFloat(-3.14159f, 3.14159f);
-                // Random Euler pole on sphere + angular velocity in
-                // deg/Ma (HS3-NUVEL-1A scale). Sign random.
+                // Random Euler pole on sphere + log-normal angular
+                // velocity. Distribution parameters derive from the
+                // Müller 2022 1000-Ma reconstruction filtered to
+                // major plates (README findings: median 0.1 deg/Ma,
+                // p95 1.0 deg/Ma) which gives μ=-2.30, σ=1.40 in
+                // ln(deg/Ma) — see `data/plate_statistics.csv` and
+                // `tools/plate_data/extract_statistics.py`. Box-Muller
+                // for Gaussian sampling so a single deterministic RNG
+                // call drives the whole draw. Continental plates are
+                // shifted slightly slower (Δμ = -0.4) per HS3-NUVEL-1A
+                // observation that cratonic plates resist mantle drag
+                // more than oceanic ones (Gripp & Gordon 2002 Pacific
+                // 0.96 vs Eurasian 0.14).
                 {
                     const float poleLat = centerRng.nextFloat(-85.0f, 85.0f);
                     const float poleLon = centerRng.nextFloat(-180.0f, 180.0f);
                     p.eulerPoleLatDeg = poleLat;
                     p.eulerPoleLonDeg = poleLon;
-                    // Earth Euler-pole catalog HS3-NUVEL-1A (Gripp &
-                    // Gordon 2002): continental 0.05-0.7 deg/Ma,
-                    // oceanic 0.3-1.1 deg/Ma.
-                    const float angVelMag = isLand
-                        ? centerRng.nextFloat(0.10f, 0.70f)
-                        : centerRng.nextFloat(0.30f, 1.10f);
+                    constexpr float MAJOR_MOTION_LN_MU    = -2.30f;
+                    constexpr float MAJOR_MOTION_LN_SIGMA =  1.40f;
+                    const float u1 = std::max(1e-6f,
+                        centerRng.nextFloat(0.0f, 1.0f));
+                    const float u2 = centerRng.nextFloat(0.0f, 1.0f);
+                    const float gaussian = std::sqrt(-2.0f * std::log(u1))
+                                          * std::cos(6.28318530718f * u2);
+                    const float continentalShift = isLand ? -0.40f : 0.0f;
+                    const float lnSpeed = MAJOR_MOTION_LN_MU
+                                        + continentalShift
+                                        + MAJOR_MOTION_LN_SIGMA * gaussian;
+                    // Clamp to physical envelope (subduction below 0.005
+                    // never fires; faster than 5 deg/Ma is super-Pacific).
+                    const float angVelMag =
+                        std::clamp(std::exp(lnSpeed), 0.005f, 5.0f);
                     p.angularVelDeg = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f)
                         ? -angVelMag : angVelMag;
                 }
@@ -822,10 +848,15 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     + (1.0f - frac) * aoc::map::gen::PhysicsConstants::initialOceanicThicknessKm;
             }
         }
-        // Lagrangian initial cut: the only nearest-centroid pass in
-        // the entire sim. From here on, cells carry their plateId and
-        // ownership changes only through real boundary physics.
-        aoc::map::gen::assignPlateOwnershipInitial(sphereField, plates);
+        // Procedural initial plate-ownership assignment via stochastic
+        // region growing from cratonic seeds. NO Voronoi (per CLAUDE.md
+        // "World-generation physics requirements"): cells claim plate
+        // identity by path-dependent BFS expansion, producing
+        // non-convex peninsulas + bays + lobed shapes. From this
+        // initial cut onwards plateId persists; only mechanism passes
+        // (subduction, ridge accretion, docking, rifting) rewrite it.
+        aoc::map::gen::generateInitialPlateOwnership(
+            sphereField, plates, static_cast<uint64_t>(config.seed));
         aoc::map::gen::recomputeIsostaticElevationOnRaster(sphereField);
         // Per-epoch substep duration in My. Derived from total simulated
         // time so the physics integrates at a fixed cadence regardless

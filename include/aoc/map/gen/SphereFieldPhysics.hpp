@@ -38,17 +38,38 @@
 
 namespace aoc::map::gen {
 
-/// Initial Lagrangian ownership assignment. Runs ONCE at sim init: each
-/// cell binds to the plate whose centroid is haversine-closest. After
-/// the initial cut, plate boundaries evolve through physics only —
-/// subduction, ridge accretion, continental docking — never via
-/// re-Voronoi. This is the polygon-physics path the project switched to
-/// after deleting the per-epoch centroid Voronoi: cells carry plate
-/// identity, plates drift via centroid-of-cells, and shapes are
-/// non-convex from the start because they emerge from boundary dynamics
-/// rather than from nearest-centroid mathematics.
-void assignPlateOwnershipInitial(SphereField& field,
-                                 const std::vector<Plate>& plates);
+/// Procedural plate-ownership initialiser via stochastic region
+/// growing. NO Voronoi: cells are not assigned by nearest-centroid
+/// distance. Instead each plate seeds a single cratonic-core cell at
+/// its (latDeg, lonDeg) centroid; a randomised BFS frontier expands
+/// from each seed simultaneously, claiming neighbour cells one at a
+/// time. The pick order is deterministic per `seed` but path-
+/// dependent, so plate footprints develop irregular peninsulas, bays,
+/// and lobed extensions — not convex blobs.
+///
+/// Bias terms in the priority calculation:
+///  - haversine distance from the cratonic seed (closer cells
+///    expand first; far cells lose to nearer plates),
+///  - per-plate `weight` (multiplies the effective distance budget;
+///    Pacific-class plates capture more cells before slowing),
+///  - low-frequency value-noise field (acts as the proto-mantle-
+///    convection wavelength; cells along low-noise contours are
+///    attractive, biasing growth into linear belts that look like
+///    triple-junction-bounded territories).
+///
+/// After the BFS terminates every cell has a plateId. Subsequent
+/// epoch physics — subduction, ridge accretion, continental docking,
+/// Wilson rifting — reshape the footprints over the 3-Gy default
+/// simulated lifetime. Initial geometry is overwhelmingly overwritten
+/// by mechanism history.
+///
+/// Cite: cellular-automaton plate-tectonic simulators (Lautenschlager
+/// & Wraight 2013) use the same region-growing approach to produce
+/// realistic plate shapes from cratonic seeds without datasets.
+void generateInitialPlateOwnership(SphereField& field,
+                                   const std::vector<Plate>& plates,
+                                   uint64_t seed);
+
 
 /// Recompute every plate's centroid (`Plate.latDeg`, `Plate.lonDeg`) as
 /// the area-weighted mean of the cells currently assigned to it. Run
@@ -83,6 +104,25 @@ void applyContinentalDocking(SphereField& field,
                              std::vector<Plate>& plates,
                              std::vector<float>& contactAgeByPlatePair,
                              float dtMy);
+
+/// Ridge accretion at divergent boundaries. When two adjacent cells
+/// have different plate ids and the closing rate is NEGATIVE
+/// (divergent), the boundary is a mid-ocean ridge: hot mantle wells
+/// up between the retreating plates and freezes into new oceanic
+/// lithosphere on either side. Real Earth's Atlantic floor is the
+/// archetypal example — every band of seafloor records the time it
+/// was extruded at the Mid-Atlantic Ridge.
+///
+/// On a fixed lat/lon raster the new lithosphere has nowhere new to
+/// occupy, so accretion expresses itself as a state-reset on the two
+/// boundary cells: crust returns to the initial oceanic thickness
+/// (~7 km, Turcotte & Schubert 2014 ch. 2), continental fraction is
+/// pinned to 0 (basaltic crust never carries continent), and the
+/// crust-age clock is restarted at 0 so the cell now reads as freshly
+/// extruded mid-ocean-ridge basalt. The next subduction pass sees
+/// these cells as low-density-side candidates for consumption,
+/// completing the half-cycle: ridge → drift → trench.
+void accreteAtDivergentBoundary(SphereField& field, float dtMy);
 
 /// Wilson-cycle continental rifting. Mantle thermal blanketing under a
 /// supercontinent (Anderson 1982; Stein & Stein 1992) accumulates

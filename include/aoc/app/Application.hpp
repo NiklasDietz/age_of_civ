@@ -500,9 +500,17 @@ private:
     /// Per-frame keystroke routing while focused.
     void numInputTick();
 
-    /// Re-run MapGenerator with the stored creator config + a custom
-    /// epoch limit, replacing m_hexGrid in place. Used by the scrubber.
-    void regenerateContinentPreview(int32_t epochLimit);
+    /// Re-run MapGenerator with the stored creator config, halting
+    /// the tectonic sim at `timeMy` millions of years simulated. The
+    /// caller passes simulated geological age, not an epoch index;
+    /// the regenerator snaps to the nearest physics-epoch boundary.
+    void regenerateContinentPreview(int32_t timeMy);
+
+    /// Format a creator age label as "Age <cur> / <total> Gy" when
+    /// either value crosses 1000 My, otherwise "Age <cur> / <total> My".
+    /// Used by the scrubber readout, the focus-input live formatter,
+    /// and the play / step / total-time delta callbacks.
+    static std::string formatCreatorAgeLabel(int32_t curMy, int32_t totalMy);
     /// Build the creator overlay (slider + Use This Map button) along
     /// the bottom of the screen.
     void buildContinentCreatorControls(float screenW, float screenH);
