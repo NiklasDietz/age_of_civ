@@ -682,14 +682,27 @@ void advectPlateOwnership(SphereField& field,
     // Backward sweep. For each destination D, evaluate the departure
     // point under each plate's forward motion. If the field currently
     // owns dep_P(D) with plate P, then P's cell at dep_P(D) will land
-    // at D this epoch -- P claims D. Conflicts at D resolve by
-    // continental-over-oceanic priority, ties by older crust age.
+    // at D this epoch -- P claims D.
+    //
+    // Conflict resolution: when MULTIPLE plates claim D, the cell's
+    // CURRENT owner (incumbent) wins if it is among the claimants.
+    // This keeps boundaries stable through advection -- continent vs
+    // ocean transitions are the job of `applySubduction`, not the
+    // ownership-shift pass. A continental-wins rule here pumps land
+    // into former oceanic cells every epoch and the global continental
+    // fraction explodes; an incumbent-wins rule conserves it. If the
+    // incumbent is NOT among the claimants (cell is in the wake of its
+    // current owner, but a different plate is rotating in), the
+    // first-indexed claimant takes it -- deterministic and order-stable.
+    //
+    // Wake cells (no claimant at all) are filled in a second pass.
 #if defined(AOC_HAS_OPENMP)
     #pragma omp parallel for schedule(static)
 #endif
     for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
         for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
             const std::size_t destIdx = SphereField::cellIndex(lonIdx, latIdx);
+            const int16_t incumbent = field.plateId[destIdx];
 
             const LatLon p = SphereField::cellCenter(lonIdx, latIdx);
             const double latR = static_cast<double>(p.latDeg) * DEG2RAD;
@@ -699,12 +712,10 @@ void advectPlateOwnership(SphereField& field,
             const double cy = cosLat * std::sin(lonR);
             const double cz = std::sin(latR);
 
-            int16_t bestPid       = -1;
-            float   bestContFrac  = 0.0f;
-            float   bestAge       = -1.0f;
-            float   bestCrust     = 0.0f;
-            float   bestSurface   = 0.0f;
-            float   bestThermal   = 0.0f;
+            int16_t firstPid    = -1;
+            std::size_t firstDepIdx = 0;
+            int16_t incPid      = -1;
+            std::size_t incDepIdx = 0;
 
             for (std::size_t pIdx = 0; pIdx < P; ++pIdx) {
                 const PlateRot& R = rot[pIdx];
@@ -725,39 +736,34 @@ void advectPlateOwnership(SphereField& field,
                 const std::size_t depIdx = SphereField::cellIndex(dep.lonIdx, dep.latIdx);
 
                 if (field.plateId[depIdx] != static_cast<int16_t>(pIdx)) continue;
-                // Plate pIdx claims D. Conflict-resolve against any
-                // prior claimant.
-                const float depContFrac = field.continentalFraction[depIdx];
-                const float depAge      = field.crustAgeMy[depIdx];
-
-                bool takeIt = (bestPid < 0);
-                if (!takeIt) {
-                    if (depContFrac > 0.5f && bestContFrac <= 0.5f) {
-                        takeIt = true;
-                    } else if (depContFrac <= 0.5f && bestContFrac > 0.5f) {
-                        takeIt = false;
-                    } else if (depAge > bestAge) {
-                        takeIt = true;
-                    }
+                if (firstPid < 0) {
+                    firstPid    = static_cast<int16_t>(pIdx);
+                    firstDepIdx = depIdx;
                 }
-                if (takeIt) {
-                    bestPid      = static_cast<int16_t>(pIdx);
-                    bestContFrac = depContFrac;
-                    bestAge      = depAge;
-                    bestCrust    = field.crustThicknessKm[depIdx];
-                    bestSurface  = field.surfaceElevationM[depIdx];
-                    bestThermal  = field.thermalAgeMy[depIdx];
+                if (static_cast<int16_t>(pIdx) == incumbent) {
+                    incPid    = static_cast<int16_t>(pIdx);
+                    incDepIdx = depIdx;
                 }
             }
 
-            if (bestPid >= 0) {
-                newOwner[destIdx]    = bestPid;
-                newCrust[destIdx]    = bestCrust;
-                newContFrac[destIdx] = bestContFrac;
-                newAge[destIdx]      = bestAge;
-                newSurface[destIdx]  = bestSurface;
-                newThermal[destIdx]  = bestThermal;
+            int16_t pickPid;
+            std::size_t pickDepIdx;
+            if (incPid >= 0) {
+                pickPid    = incPid;
+                pickDepIdx = incDepIdx;
+            } else if (firstPid >= 0) {
+                pickPid    = firstPid;
+                pickDepIdx = firstDepIdx;
+            } else {
+                continue; // Unclaimed -- wake-fill pass below.
             }
+
+            newOwner[destIdx]    = pickPid;
+            newCrust[destIdx]    = field.crustThicknessKm[pickDepIdx];
+            newContFrac[destIdx] = field.continentalFraction[pickDepIdx];
+            newAge[destIdx]      = field.crustAgeMy[pickDepIdx];
+            newSurface[destIdx]  = field.surfaceElevationM[pickDepIdx];
+            newThermal[destIdx]  = field.thermalAgeMy[pickDepIdx];
         }
     }
 

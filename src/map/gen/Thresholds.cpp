@@ -27,9 +27,37 @@ void runThresholdComputation(HexGrid& grid, MapType mapType,
     std::sort(sortedElevations.begin(), sortedElevations.end());
     std::size_t waterCutoff = static_cast<std::size_t>(
         effectiveWaterRatio * static_cast<float>(sortedElevations.size()));
-    out.waterThreshold =
-        sortedElevations[std::min(waterCutoff, sortedElevations.size() - 1)];
+    waterCutoff = std::min(waterCutoff, sortedElevations.size() - 1);
+    const float thresholdAtCutoff = sortedElevations[waterCutoff];
 
+    // 2026-05-07: nudge threshold past any equal-value plateau. After
+    // plate-cell advection homogenises wake cells to mid-ocean-ridge
+    // basalt elevation (h=7 km Turcotte & Schubert 2014 -> -2701 m via
+    // Airy isostasy), thousands of cells share that exact value. The
+    // raw percentile lands ON the plateau and downstream strict-less-
+    // than tests classify the entire plateau as land -- maps flip to
+    // ~87 % land at long simulated times. Advance the threshold to the
+    // next strictly-greater elevation so strict-< below catches every
+    // plateau cell.
+    out.waterThreshold = thresholdAtCutoff;
+    for (std::size_t k = waterCutoff + 1; k < sortedElevations.size(); ++k) {
+        if (sortedElevations[k] > thresholdAtCutoff) {
+            out.waterThreshold = sortedElevations[k];
+            break;
+        }
+    }
+    if (std::getenv("AOC_DUMP_THRESHOLD") != nullptr) {
+        std::size_t below = 0;
+        for (float e : elevationMap) if (e < out.waterThreshold) ++below;
+        std::fprintf(stderr,
+            "[thresh] cutoff=%zu/%zu raw=%.4f thresh=%.4f below=%zu min=%.4f max=%.4f\n",
+            waterCutoff, sortedElevations.size(),
+            static_cast<double>(thresholdAtCutoff),
+            static_cast<double>(out.waterThreshold),
+            below,
+            static_cast<double>(sortedElevations.front()),
+            static_cast<double>(sortedElevations.back()));
+    }
     out.distFromCoast.assign(static_cast<std::size_t>(totalTiles), -1);
     std::vector<int32_t> coastQ;
     coastQ.reserve(static_cast<std::size_t>(totalTiles));
