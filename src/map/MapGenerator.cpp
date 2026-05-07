@@ -31,7 +31,6 @@
 #include "aoc/map/gen/Plate.hpp"
 #include "aoc/map/gen/SphereGeometry.hpp"
 #include "aoc/map/gen/PlatePhysics.hpp"
-#include "aoc/map/gen/PlateIdStash.hpp"
 #include "aoc/map/gen/SphereField.hpp"
 #include "aoc/map/gen/SphereFieldPhysics.hpp"
 #include "aoc/map/gen/PlateReference.hpp"
@@ -315,22 +314,21 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // and visible plate territories were all small/uniform
             // rather than the giant-Pacific + a-few-medium pattern of
             // real Earth.
-            // Many-proto-plates initialisation. Archean Earth (Müller
-            // 2022 PB2002 reconstruction; Bird 2003 catalog) carried
-            // 50+ small terranes that fused over ~2-3 Gy into the
-            // ~7-15 modern major plates via continental docking.
-            // Spawning many small plates AT INIT lets Wilson-cycle
-            // physics (subduction + docking + rifting + ridge
-            // accretion) reshape them across 3 Gy of sim time —
-            // initial centroid-Voronoi shapes are overwritten by
-            // mechanism history, not preserved as final state.
+            // Initial plate population matches Müller 2022 modern-Earth
+            // major-plate count (~7-15 active throughout Phanerozoic).
+            // Spawning more than this floods the world with boundary
+            // cells; ridge-accretion and subduction passes then erode
+            // continental crust faster than docking can preserve it.
+            // Wilson-cycle dynamics expand and contract the count
+            // naturally over the 3-Gy default sim, so init does not
+            // need to over-seed.
             const int32_t landCountTarget = (config.landPlateCount > 0)
                 ? std::max(1, config.landPlateCount)
-                : centerRng.nextInt(12, 18);
-            const int32_t oceanCountTarget = centerRng.nextInt(20, 30);
-            const float LAND_MIN_GAP  = std::max(0.10f,
-                0.50f / static_cast<float>(landCountTarget + 1));
-            constexpr float OCEAN_MIN_GAP = 0.05f;
+                : centerRng.nextInt(5, 8);
+            const int32_t oceanCountTarget = centerRng.nextInt(4, 7);
+            const float LAND_MIN_GAP  = std::max(0.18f,
+                0.70f / static_cast<float>(landCountTarget + 1));
+            constexpr float OCEAN_MIN_GAP = 0.09f;
 
             const auto pushPlate = [&](float cx, float cy, bool isLand) {
                 Plate p;
@@ -825,10 +823,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         aoc::map::gen::SphereField sphereField;
         sphereField.resize();
         std::vector<uint8_t> sphereBoundaryScratch;
-        // Plate-pair docking-age tracker, persistent across epochs.
-        // Stein & Stein 1992 give a few-tens-of-Myr accretion timescale
-        // (DOCKING_MY_THRESHOLD = 30 My in SphereFieldPhysics).
-        std::vector<float> contactAgeByPlatePair;
         // Wilson-rifting RNG: deterministic per map seed so the same
         // seed always reproduces the same supercontinent breakup
         // sequence.
@@ -1443,8 +1437,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
 #if defined(AOC_PHYSICS_ON_SPHEREFIELD)
             aoc::map::gen::stepSpherePhysicsEpoch(
                 sphereField, plates, sphereBoundaryScratch,
-                contactAgeByPlatePair, physicsRngState,
-                MY_PER_EPOCH_P1);
+                physicsRngState, MY_PER_EPOCH_P1);
 #endif
         }
 #if defined(AOC_PHYSICS_ON_SPHEREFIELD)
@@ -1456,446 +1449,99 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         grid.setSphereFieldElevationSnapshot(sphereField.surfaceElevationM);
 #endif
 
-        // Rebuild world-frame `orogeny[]` array by sampling each tile
-        // from its owning plate's local grid. Existing elevation pass
-        // and side-correctness consume the world-frame array unchanged.
-        // Sampling is bilinear so transitions across the plate-local
-        // grid are smooth.
-        // Pixel-anisotropic Voronoi: scale dx by W/H so plate cells
-        // appear roughly isotropic in pixel space. World map is W>H
-        // (typically 2:1) so without this fix all cells are E-W
-        // stretched and continents look horizontal.
-        const float aspectFix = static_cast<float>(width)
-            / static_cast<float>(height);
-        // Parallel: world-frame elevation pass — each iteration writes
-        // only elevationMap[i]. Hot path (heavy per-tile work: nearest-
-        // plate Voronoi + samplePL bilinear + crust mask sample).
+        // Per-hex-tile orogeny lookup. NO Voronoi: tile (col, row) →
+        // Mollweide-inverse → lat/lon → SphereField peakSample for
+        // mountain detection (peak captures narrow Andean / Himalayan
+        // belts that bilinear averaging would dilute below threshold)
+        // and bilinearSample of continentalFraction for the
+        // continental-only mountain gate. Tiles with ocean SphereField
+        // mass are clamped to a low orogeny tier to prevent oceanic
+        // cells with random elevation noise registering as mountains.
         AOC_PARALLEL_FOR_ROWS
         for (int32_t row = 0; row < height; ++row) {
             for (int32_t col = 0; col < width; ++col) {
                 const float nx = static_cast<float>(col) / static_cast<float>(width);
                 const float ny = static_cast<float>(row) / static_cast<float>(height);
-                float bestSq = 1e9f; int32_t bestPi = -1;
-                for (std::size_t pi = 0; pi < plates.size(); ++pi) {
-                    float dx = nx - plates[pi].cx;
-                    float dy = ny - plates[pi].cy;
-                    if (cylSim) {
-                        if (dx >  0.5f) { dx -= 1.0f; }
-                        if (dx < -0.5f) { dx += 1.0f; }
-                    }
-                    dx *= aspectFix;
-                    const float cs = std::cos(plates[pi].rot);
-                    const float sn = std::sin(plates[pi].rot);
-                    float lx = (dx * cs + dy * sn);
-                    float ly = (-dx * sn + dy * cs);
-                    // Plate-local boundary jitter (organic non-circular
-                    // Voronoi shape). Smooth bilinear hash noise; seed
-                    // mixed via splitmix to decorrelate nearby plates.
-                    {
-                        const uint64_t pseed = aoc::map::gen::mixSeed(
-                            static_cast<uint64_t>(plates[pi].latDeg * 137000.0f
-                                                  + plates[pi].lonDeg * 53000.0f));
-                        const float n1 = aoc::map::gen::smoothHashNoise(
-                            lx * 4.0f, ly * 4.0f, pseed);
-                        const float n2 = aoc::map::gen::smoothHashNoise(
-                            lx * 4.0f, ly * 4.0f, pseed ^ 0xA5A5ULL);
-                        lx += (n1 - 0.5f) * 0.18f;
-                        ly += (n2 - 0.5f) * 0.18f;
-                    }
-                    const float dsq = (lx * lx + ly * ly) / (plates[pi].weight * plates[pi].weight);
-                    if (dsq < bestSq) {
-                        bestSq = dsq; bestPi = static_cast<int32_t>(pi);
-                    }
-                }
-                if (bestPi < 0) { continue; }
-                // Sample SphereField surface elevation for this hex tile.
-                // Orogeny is binary {0, 1}: tile flagged as mountain when
-                // any SphereField cell within the tile footprint exceeds
-                // MOUNTAIN_THRESHOLD_M. Peak (max) sampling, not bilinear,
-                // because mountain belts are narrow (Andes ~200 km = 4
-                // cells; Himalaya ~150 km = 3 cells) and bilinear averaging
-                // dilutes them below the threshold.
-                //
-                // Hex-tile footprint in SphereField cells: at the standard
-                // 140x90 grid the tile is ~2.6° wide; at 80x52 it is ~4.5°.
-                // halfSearch = 3 → 7x7 = 49 cells covers the worst case
-                // and still keeps the search local.
-                float oroSampled = 0.0f;
-                {
-                    aoc::map::gen::MollweideInverseResult mw =
-                        aoc::map::gen::mollweideInverse(nx, ny);
-                    if (mw.valid) {
-                        const float zM = sphereField.peakSample(
-                            sphereField.surfaceElevationM,
-                            mw.coord.latDeg, mw.coord.lonDeg,
-                            /*halfSearchCells=*/3);
-                        oroSampled = (zM > aoc::map::gen::MOUNTAIN_THRESHOLD_M)
-                            ? 1.0f : 0.0f;
-                    }
-                }
-                // Mask gate: only continental SphereField cells can be
-                // mountain. The in-sim Plate's landFraction is a random
-                // spawn attribute uncorrelated with the Bird-2003-seeded
-                // SphereField continental distribution, so a mountain cell
-                // that gates on owner.landFraction can be suppressed
-                // even when its SphereField crust is fully continental.
-                // Sample SphereField continentalFraction at the same
-                // (lat, lon) as oroSampled and treat frac > 0.5 as
-                // continental.
-                {
-                    aoc::map::gen::MollweideInverseResult mw =
-                        aoc::map::gen::mollweideInverse(nx, ny);
-                    if (mw.valid) {
-                        const float frac = sphereField.bilinearSample(
-                            sphereField.continentalFraction,
-                            mw.coord.latDeg, mw.coord.lonDeg);
-                        if (frac < 0.5f && oroSampled > 0.10f) {
-                            oroSampled = 0.10f;
-                        }
-                    }
+                aoc::map::gen::MollweideInverseResult mw =
+                    aoc::map::gen::mollweideInverse(nx, ny);
+                if (!mw.valid) { continue; }
+                const float zM = sphereField.peakSample(
+                    sphereField.surfaceElevationM,
+                    mw.coord.latDeg, mw.coord.lonDeg,
+                    /*halfSearchCells=*/3);
+                float oroSampled = (zM > aoc::map::gen::MOUNTAIN_THRESHOLD_M)
+                    ? 1.0f : 0.0f;
+                const float frac = sphereField.bilinearSample(
+                    sphereField.continentalFraction,
+                    mw.coord.latDeg, mw.coord.lonDeg);
+                if (frac < 0.5f && oroSampled > 0.10f) {
+                    oroSampled = 0.10f;
                 }
                 orogeny[static_cast<std::size_t>(row * width + col)] = oroSampled;
             }
         }
 
-    }
-
+    // World-frame elevation pass. NO Voronoi: tile (col, row) maps to
+    // lat/lon via Mollweide inverse; elevation comes from the
+    // SphereField surfaceElevationM raster (the authoritative state
+    // produced by 3 Gy of mechanism physics — subduction trims,
+    // ridges accrete, continents dock, Wilson cycles rift).
+    //
+    // Tiles outside the Mollweide ellipse (polar voids) get a deep
+    // ocean elevation so the rendering still draws them as water.
+    // The output is a percentile-rank map: ClimateBiome.cpp picks the
+    // ocean / shore / land tiers via Thresholds.cpp on a sorted view
+    // of this array, so the absolute scale only needs to be
+    // monotonic, not calibrated to a specific unit.
+    AOC_PARALLEL_FOR_ROWS
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
-            float nx = static_cast<float>(col) / static_cast<float>(width);
-            float ny = static_cast<float>(row) / static_cast<float>(height);
-
-            float elev = fractalNoise(nx, ny, 6, 3.0f, 0.5f, noiseRng);
-
-            float edgeFalloff = 0.0f;
-
-            // 2026-05-05 Phase 13d-1: mid-ocean ridge bathymetry.
-            // Populated by the ridge-distance block below if the tile
-            // is ocean and within RIDGE_RANGE of a type-1 (divergent)
-            // boundary edge of its owning plate. Lifts seafloor toward
-            // shallower bathymetry around the ridge axis (real Earth:
-            // -2500 m vs -5500 m abyssal).
-            float ridgeBonus = 0.0f;
-
-            // 2026-05-03: Fractal removed; original branch retained under #if 0.
-            {
-                // Domain-warp the sample position with low-frequency noise so
-                // the radial falloff becomes irregular (bays, peninsulas,
-                // inland seas) instead of perfect discs.  Previous version
-                // produced circular continents with mountains piled at the
-                // geometric centre — no trace of actual continental drift.
-                // Two-octave domain warp (large-scale displacement +
-                // smaller-scale ripple) so coastlines fjord, peninsulate,
-                // and curve in plausible ways instead of reading as a
-                // distorted disc. Magnitudes inspired by Wang/Voronoi-
-                // plate plus FBM warping techniques used in procedural
-                // continent generators (Inigo Quilez "domain warping").
-                // Domain warp tuned WAY down — earlier 0.85+0.20+0.06
-                // amplitudes scrambled the Voronoi plate assignment so
-                // adjacent tiles landed in different plates and the map
-                // looked like noise. Total warp now ≤0.18 so plate
-                // cells stay coherent while coastlines retain modest
-                // irregularity from a single wide-band octave.
-                // Three-octave domain warp. Wider amplitude on the
-                // low-frequency band gives plate boundaries an organic
-                // curve (estuaries, gulfs, peninsulas), the mid band
-                // adds medium-scale wiggles, and the high band breaks
-                // perfectly straight Voronoi seams into ragged edges
-                // where adjacent tiles can flip plate ownership across
-                // the warp.
-                // Two-octave domain warp at LOW frequency only. Bends
-                // plate cells into smooth S-curves and meanders without
-                // fragmenting the seam into noisy tile-by-tile flips.
-                // High-frequency warp octaves were producing tiny
-                // arm-like protrusions (each pixel pushed to a different
-                // plate) — removed. Result: smoothly curved boundaries
-                // with gentle bays and peninsulas, no jaggy edge.
-                aoc::Random warpRng(noiseRng);
-                const float warpX1 =
-                    (fractalNoise(nx * 1.3f, ny * 1.3f, 4, 2.0f, 0.55f, warpRng) - 0.5f) * 0.24f;
-                const float warpY1 =
-                    (fractalNoise(nx * 1.3f + 17.0f, ny * 1.3f + 31.0f, 4, 2.0f, 0.55f, warpRng) - 0.5f) * 0.24f;
-                const float warpX2 =
-                    (fractalNoise(nx * 3.5f, ny * 3.5f, 2, 2.0f, 0.5f, warpRng) - 0.5f) * 0.06f;
-                const float warpY2 =
-                    (fractalNoise(nx * 3.5f + 9.0f, ny * 3.5f + 21.0f, 2, 2.0f, 0.5f, warpRng) - 0.5f) * 0.06f;
-                const float warpX = warpX1 + warpX2;
-                const float warpY = warpY1 + warpY2;
-                const float wx = nx + warpX;
-                const float wy = ny + warpY;
-
-                if (!plates.empty()) {
-                    // Voronoi plate lookup. Track first and second
-                    // closest seeds so we can softly blend across the
-                    // plate boundary rather than producing knife-edge
-                    // straight Voronoi lines.
-                    float d1Sq = 1e9f, d2Sq = 1e9f;
-                    int32_t nearest = -1;
-                    int32_t second  = -1;
-                    // Outer-scope so the post-stress hard-floor pass
-                    // (below) can read whether the tile sits on a land
-                    // plate and how close it is to the boundary.
-                    bool  nearestIsLand = false;
-                    float boundary      = 0.0f;
-                    // Plate-local coords for the nearest plate. Used
-                    // below to sample a per-plate crust mask that is
-                    // FIXED in plate-local space and travels with the
-                    // plate as it drifts (so coastlines don't reshape
-                    // wildly between epochs).
-                    float lxNearest = 0.0f;
-                    float lyNearest = 0.0f;
-                    // 2026-05-05: SPHERE MIGRATION - convert the warped
-                    // unit-square position back to lat/lon via Mollweide
-                    // inverse, then rank plates by haversine distance.
-                    // Tiles whose warped position falls outside the
-                    // ellipse (polar voids) skip the plate ranking and
-                    // keep their default ocean elevation.
-                    const aoc::map::gen::MollweideInverseResult wTileLL =
-                        aoc::map::gen::mollweideInverse(wx, wy);
-                    aoc::map::gen::LatLon tileLatLon{0.0f, 0.0f};
-                    float tileLatRad = 0.0f;
-                    if (wTileLL.valid) {
-                        tileLatLon = wTileLL.coord;
-                        tileLatRad = tileLatLon.latDeg * 0.01745329252f;
-                        for (std::size_t pi = 0; pi < plates.size(); ++pi) {
-                            const aoc::map::gen::LatLon plateLL{
-                                plates[pi].latDeg, plates[pi].lonDeg};
-                            const float h = aoc::map::gen::haversineRadians(
-                                tileLatLon, plateLL);
-                            const float dsq = (h * h)
-                                / (plates[pi].weight * plates[pi].weight);
-                            const float plateLatRad =
-                                plates[pi].latDeg * 0.01745329252f;
-                            float dLonDeg =
-                                tileLatLon.lonDeg - plates[pi].lonDeg;
-                            if (dLonDeg >  180.0f) { dLonDeg -= 360.0f; }
-                            if (dLonDeg < -180.0f) { dLonDeg += 360.0f; }
-                            const float dLatDeg =
-                                tileLatLon.latDeg - plates[pi].latDeg;
-                            const float lx = (dLonDeg * 0.01745329252f)
-                                * std::cos(0.5f * (tileLatRad + plateLatRad));
-                            const float ly = dLatDeg * 0.01745329252f;
-                            if (dsq < d1Sq) {
-                                d2Sq    = d1Sq;
-                                second  = nearest;
-                                d1Sq    = dsq;
-                                nearest = static_cast<int32_t>(pi);
-                                lxNearest = lx;
-                                lyNearest = ly;
-                            } else if (dsq < d2Sq) {
-                                d2Sq   = dsq;
-                                second = static_cast<int32_t>(pi);
-                            }
-                        }
-                    }
-                    // 2026-05-04: WP4 - polygon-based ownership override.
-                    // After Voronoi computes nearest/second/d1Sq/d2Sq,
-                    if (nearest < 0) { edgeFalloff = 0.0f; }
-                    else {
-                        const float d1 = std::sqrt(d1Sq);
-                        const float d2 = std::sqrt(d2Sq);
-                        // Blend factor: 0 deep inside the nearest plate,
-                        // ramping toward 1 right on the boundary. Thin
-                        // band so plates look distinct but aren't razor-
-                        // sharp.
-                        // Narrow boundary window — only the outermost
-                        // 8% of d1/d2 ratio blends across the seam.
-                        // Wider windows (≥15%) bled coastal water into
-                        // the land plate's interior; user reported
-                        // "too many inland lakes". Keep boundaries
-                        // sharp; the tile-level domain warp already
-                        // makes coastlines irregular without needing
-                        // a wide blend band.
-                        boundary = (d2 > 0.0001f)
-                            ? std::clamp((d1 / d2 - 0.92f) / 0.08f, 0.0f, 1.0f)
-                            : 0.0f;
-                        // Lower land base lets noise amplitude bite into
-                        // the continent, carving bays, gulfs, and inland
-                        // seas — Earth-like irregular coasts instead of
-                        // convex blobs. The hard floor below prevents
-                        // deep-interior swiss-cheese lakes while still
-                        // letting edge tiles become ocean.
-                        const float oceanBase = 0.10f;
-                        const Plate& pNearest = plates[static_cast<std::size_t>(nearest)];
-
-                        // PER-PLATE crust mask. Sample plate-local noise
-                        // using the plate's own seed, so the same point
-                        // on the plate's surface always returns the same
-                        // crust value — even as the plate drifts to a
-                        // new world position. This makes land/ocean
-                        // patches travel WITH the plate (like India's
-                        // landmass riding the Indian plate from Africa
-                        // to its present collision with Eurasia).
-                        aoc::Random crustRng(noiseRng);
-                        const float crust = fractalNoise(
-                            lxNearest * 2.0f + pNearest.latDeg * 137.0f,
-                            lyNearest * 2.0f + pNearest.lonDeg * 137.0f,
-                            4, 2.0f, 0.55f, crustRng);
-                        // Threshold: high landFraction → low threshold
-                        // → most of the plate is land. landFraction
-                        // [0..1] maps the plate from pure-ocean (Pacific)
-                        // to pure-continental (Eurasian).
-                        const float landThresh = 1.0f - pNearest.landFraction;
-                        // Narrow smooth band (0.025) around the threshold
-                        // — wide bands produce too many half-elevation
-                        // tiles that fluctuate around the water cutoff
-                        // and fragment continents into archipelagos.
-                        const float localLandness = std::clamp(
-                            (crust - landThresh + 0.025f) / 0.05f, 0.0f, 1.0f);
-                        nearestIsLand = (localLandness > 0.5f);
-
-                        // Land elevation curve: shield-like Gaussian peak
-                        // near plate center + flat margin shelf. Combined
-                        // with the crust mask so only "land" parts of the
-                        // plate get the curve.
-                        float nearestHeight;
-                        if (localLandness > 0.0f) {
-                            const float dcx = wx - pNearest.cx;
-                            const float dcy = wy - pNearest.cy;
-                            const float dist_from_center = std::sqrt(dcx * dcx + dcy * dcy);
-                            const float craton_core   = 0.78f * std::exp(
-                                -dist_from_center * dist_from_center * 8.0f);
-                            constexpr float craton_margin = 0.58f;
-                            const float landH = std::clamp(
-                                std::max(craton_core, craton_margin), 0.48f, 0.82f);
-                            // Lerp ocean → land based on smooth crust mask
-                            // so coastlines follow the noise, not the cell edge.
-                            nearestHeight = oceanBase
-                                + (landH - oceanBase) * localLandness;
-                        } else {
-                            nearestHeight = oceanBase;
-                        }
-
-                        // Second-nearest crust-mask sampling: ocean-mask
-                        // tiles produce ocean boundaries even between two
-                        // continental plates (prevents Pangaea bias from
-                        // bridging adjacent land plates).
-                        float secondHeight = oceanBase;
-                        if (second >= 0) {
-                            const Plate& pSecond =
-                                plates[static_cast<std::size_t>(second)];
-                            float dx2 = wx - pSecond.cx;
-                            float dy2 = wy - pSecond.cy;
-                            if (cylSim) {
-                                if (dx2 >  0.5f) { dx2 -= 1.0f; }
-                                if (dx2 < -0.5f) { dx2 += 1.0f; }
-                            }
-                            const float cs2 = std::cos(pSecond.rot);
-                            const float sn2 = std::sin(pSecond.rot);
-                            const float lx2 = (dx2 * cs2 + dy2 * sn2);
-                            const float ly2 = (-dx2 * sn2 + dy2 * cs2);
-                            aoc::Random crust2Rng(noiseRng);
-                            const float crust2 = fractalNoise(
-                                lx2 * 2.0f + pSecond.latDeg * 137.0f,
-                                ly2 * 2.0f + pSecond.lonDeg * 137.0f,
-                                4, 2.0f, 0.55f, crust2Rng);
-                            const float thresh2 = 1.0f - pSecond.landFraction;
-                            float t2 = std::clamp(
-                                (crust2 - thresh2 + 0.025f) / 0.05f,
-                                0.0f, 1.0f);
-                            if (pSecond.landFraction > 0.40f && t2 > 0.5f) {
-                                secondHeight = 0.55f;
-                            }
-                        }
-                        edgeFalloff = nearestHeight * (1.0f - boundary)
-                                    + secondHeight * boundary;
-
-                        // Per-tile plate-motion stress block removed —
-                        // the orogeny field computed in the multi-epoch
-                        // tectonic-sim phase above already encodes
-                        // accumulated subduction / collision uplift and
-                        // is added below.
-                    }
-
-                    // Hotspot plumes: distance-falloff bump regardless
-                    // of plate boundary. Stacks above plate elevation,
-                    // so a plume in an ocean cell becomes a volcanic
-                    // island; on land it forms an isolated highland.
-                    // Smaller radius (0.07) and weaker falloff so
-                    // plumes don't double-stack with subduction trench
-                    // subtractions and create the "ring with water in
-                    // the middle" artefact the user reported.
-                    for (const Hotspot& h : hotspots) {
-                        const float hdx = wx - h.cx;
-                        const float hdy = wy - h.cy;
-                        const float hdist = std::sqrt(hdx * hdx + hdy * hdy);
-                        const float hRadius = 0.04f;
-                        if (hdist < hRadius) {
-                            const float t = 1.0f - hdist / hRadius;
-                            // 2026-05-04: HOTSPOT-ON-RIDGE BOOST. Real
-                            // Iceland is anomalously elevated because a
-                            // mantle plume sits directly under the
-                            // Mid-Atlantic Ridge -- two uplift
-                            // mechanisms stack. Detect: hotspot tile
-                            // close to a plate boundary (boundary > 0.7
-                            // means within outermost 30% of d1/d2
-                            // ratio). Double the contribution there.
-                            const float ridgeBoost =
-                                (boundary > 0.7f) ? 2.0f : 1.0f;
-                            edgeFalloff += h.strength * t * t * ridgeBoost;
-                        }
-                    }
-                    // Hotspot TRAIL: each owning plate carries a list
-                    // of plate-local positions where a hotspot has sat
-                    // in past epochs. Sample tile's plate-local coords
-                    // against the trail; nearby trail points produce
-                    // a small island bump. Older points produce smaller
-                    // bumps (eroded). This creates the Hawaiian-Emperor
-                    // chain pattern — a line of decreasing-elevation
-                    // islands trailing back along the plate's path.
-                    // Narrow hard floor: only the deep interior
-                    // (boundary < 0.15, i.e. >85% of the way from
-                    // the plate edge to its centre) is protected from
-                    // going below water. The wider 0.40 floor was
-                    // blocking the noise from carving coastal features
-                    // (bays, peninsulas, gulfs) into land plates.
-                    if (nearest >= 0 && nearestIsLand && boundary < 0.15f) {
-                        edgeFalloff = std::max(edgeFalloff, 0.55f);
-                    }
-                } else {
-                    for (const LandCenter& center : landCenters) {
-                        float dx = (wx - center.cx) * 2.0f;
-                        float dy = (wy - center.cy) * 2.0f;
-                        float distFromCenter = std::sqrt(dx * dx + dy * dy);
-                        float falloff = 1.0f - std::clamp(distFromCenter * center.strength, 0.0f, 1.0f);
-                        falloff = smoothstep(falloff);
-                        edgeFalloff = std::max(edgeFalloff, falloff);
-                    }
-                }
+            const float nx = static_cast<float>(col) / static_cast<float>(width);
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const aoc::map::gen::MollweideInverseResult mw =
+                aoc::map::gen::mollweideInverse(nx, ny);
+            float elev = -1.0f; // Polar void / outside ellipse → ocean.
+            if (mw.valid) {
+                const float zM = sphereField.bilinearSample(
+                    sphereField.surfaceElevationM,
+                    mw.coord.latDeg, mw.coord.lonDeg);
+                // Map metres above mantle datum to a unitless
+                // elevation suitable for the percentile threshold.
+                // Real-Earth oceanic basement sits ~-2700 m, mean
+                // continental at ~840 m, peaks at ~5500 m. A linear
+                // mapping by 5000 m places oceans at -0.54, mean
+                // continent at +0.17, Tibet at +1.10 — comfortably
+                // straddling the percentile water cutoff.
+                elev = zM / 5000.0f;
             }
-
-            // Blend noise + plate/falloff. Continents use a
-            // plate-base + small-amplitude noise model so deep inland
-            // tiles can't dip below the water threshold from noise
-            // alone — eliminates the "swiss cheese" inland-lake
-            // problem. Noise still varies the surface (mountain bands,
-            // hill swells) but its excursion is bounded so neither side
-            // of the threshold flips spuriously.
-            // 2026-05-03: Fractal removed; only Continents branch remains.
-            if (config.mapType == MapType::Continents) {
-                // Continents: plate-anchored base + integrated orogeny
-                // from the multi-epoch tectonic-sim phase + small noise
-                // ripple. Mountains appear ONLY where stress accumulated
-                // (real subduction zones / collision belts), so passive
-                // coasts stay flat — fixes the "every coast has a
-                // mountain range" artefact from the older per-tile
-                // stress model.
-                const float noiseCentred = elev - 0.5f;
-                const float oro = orogeny[static_cast<std::size_t>(row * width + col)];
-                elev = edgeFalloff + noiseCentred * 0.16f + oro + ridgeBonus;
-            } else {
-                elev = elev * 0.55f + edgeFalloff * 0.45f;
-            }
-
             elevationMap[static_cast<std::size_t>(row * width + col)] = elev;
         }
     }
 
-    // 2026-05-03: plate-id stash + Voronoi smoothing extracted to
-    // gen/PlateIdStash.cpp.
-    if (config.mapType == MapType::Continents && !plates.empty()) {
-        aoc::map::gen::runPlateIdStash(grid, cylSim, plates, noiseRng);
+    // Per-hex-tile plate id, projected from the SphereField raster.
+    // No Voronoi: each hex tile maps via Mollweide inverse to a
+    // lat/lon, then `SphereField::locate` returns the raster cell
+    // whose plateId is authoritative.
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            const float nx = static_cast<float>(col) / static_cast<float>(width);
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const aoc::map::gen::MollweideInverseResult mw =
+                aoc::map::gen::mollweideInverse(nx, ny);
+            if (!mw.valid) { continue; }
+            const aoc::map::gen::SphereField::CellCoord c =
+                aoc::map::gen::SphereField::locate(
+                    mw.coord.latDeg, mw.coord.lonDeg);
+            const std::size_t idx = aoc::map::gen::SphereField::cellIndex(
+                c.lonIdx, c.latIdx);
+            const int16_t pid = sphereField.plateId[idx];
+            if (pid >= 0 && pid < 255) {
+                grid.setPlateId(row * width + col,
+                    static_cast<uint8_t>(pid));
+            }
+        }
     }
+    } // end if (config.mapType == MapType::Continents && !plates.empty())
     if (config.mapType == MapType::Continents && !plates.empty()) {
         // Persist hotspot positions for the overlay.
         std::vector<std::pair<float, float>> hsCopy;

@@ -13,6 +13,7 @@ void SphereField::resize() {
     convergenceRateRadPerMy.assign(CELL_COUNT, 0.0f);
     crustAgeMy.assign(CELL_COUNT, 0.0f);
     thermalAgeMy.assign(CELL_COUNT, 0.0f);
+    boundaryType.assign(CELL_COUNT, static_cast<uint8_t>(0));
 }
 
 LatLon SphereField::cellCenter(int32_t lonIdx, int32_t latIdx) noexcept {

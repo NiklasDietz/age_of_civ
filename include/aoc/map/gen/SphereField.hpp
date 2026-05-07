@@ -72,6 +72,15 @@ struct SphereField {
     // mean of this counter for a plate exceeds the Stein & Stein 1992
     // breakup threshold (~150 My).
     std::vector<float>   thermalAgeMy;
+    // Boundary-type classification per cell. Updated each epoch by
+    // accumulateClosingRate alongside the magnitude. Values:
+    //   0 NotBoundary      cell sits in plate interior
+    //   1 Convergent       closing rate dominates over shear
+    //   2 Divergent        closing rate dominates with negative sign
+    //   3 Transform        |shear| > |closing| (strike-slip motion)
+    // Downstream passes (subduction / accretion / thicken / Wilson)
+    // gate on this field instead of inferring from the signed rate.
+    std::vector<uint8_t> boundaryType;
 
     /// Allocate all SoA fields to CELL_COUNT and zero-initialise them.
     /// plateId is set to -1 (unowned). Idempotent.

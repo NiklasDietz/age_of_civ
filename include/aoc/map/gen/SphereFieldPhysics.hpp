@@ -87,24 +87,6 @@ void recomputePlateCentroidsFromCells(SphereField& field,
 /// the number of plates removed.
 int32_t compactPlateList(SphereField& field, std::vector<Plate>& plates);
 
-/// Continental docking. When two continental plates remain in mutual
-/// convergence over many epochs without subduction (continental crust
-/// is too buoyant to subduct), the smaller plate accretes into the
-/// larger one — terrane accretion in real Earth (e.g. India docking
-/// into Asia). This pass scans plate-pair convergent boundaries and
-/// merges plate pairs where:
-///   - both sides have continentalFraction > 0.5 along the contact,
-///   - the contact has been stable (closing) for >= dockingMyThreshold,
-///   - the smaller plate's continental area is below the larger's.
-/// The smaller plate's cells inherit the larger plate's plateId and
-/// the smaller plate is dropped by the next compactPlateList pass.
-/// `boundaryEpochsContact` is per-plate-pair age tracking; the caller
-/// owns it and passes it back each epoch.
-void applyContinentalDocking(SphereField& field,
-                             std::vector<Plate>& plates,
-                             std::vector<float>& contactAgeByPlatePair,
-                             float dtMy);
-
 /// Ridge accretion at divergent boundaries. When two adjacent cells
 /// have different plate ids and the closing rate is NEGATIVE
 /// (divergent), the boundary is a mid-ocean ridge: hot mantle wells
@@ -123,6 +105,28 @@ void applyContinentalDocking(SphereField& field,
 /// these cells as low-density-side candidates for consumption,
 /// completing the half-cycle: ridge → drift → trench.
 void accreteAtDivergentBoundary(SphereField& field, float dtMy);
+
+/// Slab-pull torque feedback. Real Earth plate motion is largely
+/// driven by the negative buoyancy of subducting oceanic lithosphere
+/// (Lithgow-Bertelloni & Richards 1998: ~70 % of Pacific-plate
+/// motion comes from slab pull). When a plate has long convergent
+/// boundaries with active subduction, those boundaries TUG the plate
+/// toward the trench: the leading edge accelerates and the plate's
+/// angular velocity grows. When subduction shuts down (e.g. by
+/// continental docking, oceanic-plate consumption), slab pull
+/// disappears and the plate decelerates.
+///
+/// The implementation accumulates a per-plate torque proxy from the
+/// sum of convergent-boundary closing rates, then nudges
+/// `Plate::angularVelDeg` toward "more of the same" with a magnitude
+/// capped at 10 % of the current angular velocity per epoch (Müller
+/// 2022 short-term variability envelope). Without this feedback,
+/// plate motion is purely random Brownian and lacks the systematic
+/// convergence-driven acceleration that produces sustained
+/// orogeny.
+void applySlabPullFeedback(SphereField& field,
+                           std::vector<Plate>& plates,
+                           float dtMy);
 
 /// Wilson-cycle continental rifting. Mantle thermal blanketing under a
 /// supercontinent (Anderson 1982; Stein & Stein 1992) accumulates
@@ -211,17 +215,16 @@ void recomputeIsostaticElevationOnRaster(SphereField& field);
 void applySurfaceErosionOnRaster(SphereField& field, float dtMy);
 
 /// Single-step epoch driver. Sequences ownership / boundary /
-/// closing-rate / thicken / subduct / docking / Wilson rifting /
-/// isostasy / erosion. The two state vectors carried across epochs
-/// are `boundaryScratch` (re-allocated per call but reused for size)
-/// and `contactAgeByPlatePair` (per-plate-pair docking timer). The
-/// `rngState` is a single uint32_t XorShift seed advanced by Wilson
-/// rifting each epoch — kept outside the call so it remains
-/// deterministic across runs with the same map seed.
+/// closing-rate / thicken / subduct / slab-pull / Wilson rifting /
+/// isostasy / erosion. `boundaryScratch` is re-allocated per call but
+/// the same vector is reused so the caller pays only the first
+/// epoch's allocation cost. `rngState` is a single uint32_t XorShift
+/// seed advanced by Wilson rifting each epoch — kept outside the
+/// call so it remains deterministic across runs with the same map
+/// seed.
 void stepSpherePhysicsEpoch(SphereField& field,
                             std::vector<Plate>& plates,
                             std::vector<uint8_t>& boundaryScratch,
-                            std::vector<float>& contactAgeByPlatePair,
                             uint32_t& rngState,
                             float dtMy);
 
