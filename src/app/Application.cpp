@@ -1171,7 +1171,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         };
 
         aoc::ui::ButtonData lessEp;
-        lessEp.label        = "Sim-";
+        lessEp.label        = "-50My";
         lessEp.fontSize     = 12.0f;
         lessEp.normalColor  = aoc::ui::tokens::BRONZE_DARK;
         lessEp.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
@@ -1188,7 +1188,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             {0.0f, 0.0f, 56.0f, 36.0f}, std::move(lessEp));
 
         aoc::ui::ButtonData moreEp;
-        moreEp.label        = "Sim+";
+        moreEp.label        = "+50My";
         moreEp.fontSize     = 12.0f;
         moreEp.normalColor  = aoc::ui::tokens::BRONZE_DARK;
         moreEp.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
@@ -1580,7 +1580,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         use.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         use.onClick = [this, screenW, screenH]() {
             const uint32_t seed = this->m_creatorSeed;
-            const int32_t epochs = this->m_creatorTotalMy;
+            const int32_t totalMy = this->m_creatorTotalMy;
             const int32_t plates = this->m_creatorLandPlates;
             // Tear down preview state.
             if (this->m_creatorPanelId != aoc::ui::INVALID_WIDGET) {
@@ -1596,7 +1596,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             this->m_mainMenu.destroy(this->m_uiManager);
             // Pre-fill the GameSetup with the chosen seed/tectonics.
             this->m_gameSetupScreen.setContinentPreset(
-                aoc::map::MapType::Continents, seed, epochs, plates);
+                aoc::map::MapType::Continents, seed, totalMy, plates);
             this->m_gameSetupScreen.build(
                 this->m_uiManager, screenW, screenH,
                 [this](const aoc::ui::GameSetupConfig& cfg) {
@@ -3476,7 +3476,7 @@ void Application::buildMainMenu(float screenW, float screenH) {
                 this->m_uiManager.setVisible(this->m_endTurnInnerBtn, false);
             }
             this->buildContinentCreatorControls(screenW, screenH);
-            LOG_INFO("Continent Creator opened (seed=%u epochs=%d/%d)",
+            LOG_INFO("Continent Creator opened (seed=%u age=%d/%d My)",
                      this->m_creatorSeed,
                      this->m_creatorTimeCurrentMy,
                      this->m_creatorTotalMy);
