@@ -1,0 +1,7 @@
+# Plate-tectonics datasets are 376 MB total. Excluded from git; download
+# via the URLs in README.md if needed for analysis.
+matthews2016/
+muller2022/
+muller2022_anim/
+scotese2016/
+*.zip

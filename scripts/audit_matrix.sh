@@ -4,20 +4,20 @@
 # config noise. Aggregates victory-mix totals across all configs.
 #
 # Default matrix:
-#   players: 4, 6, 8
+#   players: 2,4,6,8,10,12,14,16,18,20 (full range)
 #   turns:   500, 1000, 1500, 2000
-#   maps:    continents, islands, landwithseas, fractal, pangaea, archipelago, realistic
-#   seeds:   1, 2, 3
+#   maps:    continents (only -- 2026-05-03 other map types removed)
+#   seeds:   1..7 (was 1..3 across 7 maps; expanded to retain ~252-sim power)
 #
-# Total = 3 × 4 × 7 × 3 = 252 sims. Run in parallel batches (cap workers).
+# Total = 10 × 4 × 1 × 7 = 280 sims. Run in parallel batches (cap workers).
 #
 # Usage: scripts/audit_matrix.sh [PLAYERS_LIST] [TURNS_LIST] [MAPS_LIST] [SEEDS_LIST] [WORKERS]
 #   Each list is comma-separated. Workers default to nproc.
 #
 # Examples:
 #   scripts/audit_matrix.sh                               # full default matrix
-#   scripts/audit_matrix.sh "6" "1000,2000" "continents" # narrow sweep
-#   scripts/audit_matrix.sh "4,6,8" "1000" "continents,islands" "1,2,3,4,5"
+#   scripts/audit_matrix.sh "6" "1000,2000"               # narrow sweep
+#   scripts/audit_matrix.sh "4,6,8" "1000" "continents" "1,2,3,4,5"
 
 set -euo pipefail
 
@@ -28,8 +28,8 @@ REPORT="${AUDIT_DIR}/REPORT.md"
 
 PLAYERS_LIST="${1:-2,4,6,8,10,12,14,16,18,20}"
 TURNS_LIST="${2:-500,1000,1500,2000}"
-MAPS_LIST="${3:-continents,islands,landwithseas,fractal,pangaea,archipelago,realistic}"
-SEEDS_LIST="${4:-1,2,3}"
+MAPS_LIST="${3:-continents}"        # 2026-05-03: only Continents supported.
+SEEDS_LIST="${4:-1,2,3,4,5,6,7}"    # expanded from 1..3 to keep ~252-sim power.
 WORKERS="${5:-$(nproc)}"
 VICTORY_TYPES="${6:-all}"
 
@@ -39,6 +39,7 @@ if [[ ! -x "${BIN}" ]]; then
 fi
 
 mkdir -p "${AUDIT_DIR}"
+rm -rf "${AUDIT_DIR}"/scratch_*
 rm -f "${AUDIT_DIR}"/*.log "${REPORT}"
 
 # Build the full job list.
@@ -67,8 +68,20 @@ DONE=0
 for job in "${JOBS[@]}"; do
   read -r players turns map seed <<< "${job}"
   log="${AUDIT_DIR}/p${players}_t${turns}_${map}_s${seed}.log"
-  "${BIN}" --turns "${turns}" --players "${players}" --seed "${seed}" \
-           --map-type "${map}" --victory-types "${VICTORY_TYPES}" > "${log}" 2>&1 &
+  # 2026-05-02: each parallel job gets its own scratch cwd so the sim's
+  # hardcoded simulation_log.csv / simulation_log_tiles.csv writes don't
+  # collide and corrupt the heap on concurrent fopen/fwrite. Without this,
+  # ~30% of sims aborted with "double free or corruption (top)".
+  scratch="${AUDIT_DIR}/scratch_p${players}_t${turns}_${map}_s${seed}"
+  rm -rf "${scratch}"
+  mkdir -p "${scratch}"
+  # 2026-05-02: force OMP_NUM_THREADS=1 inside each worker. Letting the
+  # default (nproc) threading run on top of WORKERS-way parallelism trips
+  # heap-corruption aborts on this machine ("corrupted size vs prev_size"),
+  # losing 50%+ of sims at higher worker counts. Single-thread sim is still
+  # fast enough; parallelism comes from the worker pool.
+  ( cd "${scratch}" && OMP_NUM_THREADS=1 "${BIN}" --turns "${turns}" --players "${players}" --seed "${seed}" \
+           --map-type "${map}" --victory-types "${VICTORY_TYPES}" ) > "${log}" 2>&1 &
   RUNNING=$((RUNNING + 1))
   if (( RUNNING >= WORKERS )); then
     wait -n

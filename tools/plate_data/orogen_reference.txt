@@ -1,0 +1,10 @@
+=== Real-Earth orogen-proxy statistics (Müller 2022 plate boundaries) ===
+OrogenicBelt: count=12 length_km(min/median/max)=547/1943/6406 straightness(min/median/max)=0.51/0.95/1.00
+SubductionZone: count=792 length_km(min/median/max)=167/3617/13493 straightness(min/median/max)=0.46/0.95/1.00
+ALL: count=804
+Length_km percentiles: min=167 p25=2352 median=3604 p75=5397 p95=8835 max=13493
+Straightness percentiles: min=0.46 p25=0.90 median=0.95 p75=0.98 max=1.00
+Long polylines >=1000 km: 780 (97.0%)
+Very long >=2000 km: 666 (82.8%)
+Inferred typical orogen target: 200-300 km wide, 1500-3000 km long, straightness > 0.7
+sim frame /tmp/aoc_frames_s5_epoch_39.txt not present -- skipping sim-side comparison
