@@ -1532,35 +1532,45 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             }
             // Hotspot volcanic islands. Each hotspot is a mantle
             // plume that builds a Hawaiian/Icelandic-scale island
-            // chain in deep ocean. Add a Gaussian-falloff bump to
-            // the local elevation so the chain pokes above the
-            // percentile water threshold. Hotspots intentionally
-            // skipped near land plate centres (see hotspot placement
-            // pass), so the bumps only trigger ocean tiles.
-            for (const Hotspot& h : hotspots) {
-                float dxh = nx - h.cx;
-                float dyh = ny - h.cy;
-                if (cylSim) {
-                    if (dxh >  0.5f) dxh -= 1.0f;
-                    if (dxh < -0.5f) dxh += 1.0f;
-                }
-                const float r2 = dxh * dxh + dyh * dyh;
-                // Hawaii is ~600 km long, ~10 % of Earth's diameter
-                // -- which on a 80-wide flat map is ~0.025 of the
-                // width. Use that as the half-radius so hotspot
-                // islands look like Hawaii / Iceland, not like
-                // continents. Falloff Gaussian sigma = radius * 0.4.
-                constexpr float HOTSPOT_RADIUS = 0.025f;
-                if (r2 < HOTSPOT_RADIUS * HOTSPOT_RADIUS) {
-                    const float sigma2 = HOTSPOT_RADIUS * HOTSPOT_RADIUS
-                                       * 0.16f;
-                    const float falloff = std::exp(-r2 / sigma2);
-                    // Lift to ~+0.10 above oceanic baseline at peak
-                    // (overshoots the percentile cutoff even when it
-                    // lands on the homogenised -0.54 oceanic
-                    // plateau). Strength jitter (0.08-0.16) varies
-                    // the height between hotspot tracks.
-                    elev += (0.65f + h.strength * 2.0f) * falloff;
+            // in deep ocean. Distance test runs in lat/lon space so
+            // island size is independent of hex grid resolution: a
+            // 0.025 screen-space radius on a 400-wide map covered
+            // ~10 columns (~9 deg lon) -- continent-sized, not
+            // Hawaii. Lat/lon test gives the same ~1.5 deg footprint
+            // regardless of grid width.
+            if (mw.valid) {
+                for (const Hotspot& h : hotspots) {
+                    // Hotspot's stored (cx, cy) is screen-space; map
+                    // through the same projection inverse to get its
+                    // lat/lon. Cached per render would be better but
+                    // hotspot count is tiny (5-8).
+                    const aoc::map::gen::MollweideInverseResult hmw =
+                        aoc::map::gen::projectionInverse(
+                            config.projection, h.cx, h.cy);
+                    if (!hmw.valid) continue;
+                    float dLat = mw.coord.latDeg - hmw.coord.latDeg;
+                    float dLon = mw.coord.lonDeg - hmw.coord.lonDeg;
+                    if (dLon >  180.0f) dLon -= 360.0f;
+                    if (dLon < -180.0f) dLon += 360.0f;
+                    // Cosine-of-latitude factor so longitude arc length
+                    // shrinks toward poles (Hawaii at 20 deg N covers
+                    // the same arc as 1 deg of equatorial longitude
+                    // would).
+                    const float cosLat = std::cos(
+                        mw.coord.latDeg * 3.14159265f / 180.0f);
+                    dLon *= cosLat;
+                    const float r2deg = dLat * dLat + dLon * dLon;
+                    // Hawaii main island ~150 km long ~ 1.35 deg arc.
+                    // Use 1.5 deg half-radius for a comparable bump
+                    // footprint.
+                    constexpr float HOTSPOT_RADIUS_DEG = 1.5f;
+                    constexpr float HOTSPOT_R2_LIMIT =
+                        HOTSPOT_RADIUS_DEG * HOTSPOT_RADIUS_DEG;
+                    if (r2deg < HOTSPOT_R2_LIMIT) {
+                        const float sigma2 = HOTSPOT_R2_LIMIT * 0.16f;
+                        const float falloff = std::exp(-r2deg / sigma2);
+                        elev += (0.65f + h.strength * 2.0f) * falloff;
+                    }
                 }
             }
             elevationMap[static_cast<std::size_t>(row * width + col)] = elev;

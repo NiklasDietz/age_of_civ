@@ -815,12 +815,19 @@ void advectPlateOwnership(SphereField& field,
         }
     }
 
-    // Wake fill. Cells that no source landed on lie in divergent gaps
-    // (rift opening, trailing edges of plates moving apart). Pick any
-    // already-claimed 4-neighbour as the new owner and stamp fresh
-    // mid-ocean-ridge basalt: 7 km thickness, age 0, continental
-    // fraction 0. Iterate twice in case the first pass leaves cells
-    // surrounded by other unclaimed wake cells.
+    // Wake fill. Cells that no source landed on are mostly trailing
+    // edges of plates whose incumbent's depD has rotated outside the
+    // plate's footprint -- not real divergent rifts. Inherit crust
+    // state from the chosen 4-neighbour so a continental plate's
+    // trailing-edge cells stay continental as the plate drifts.
+    // Forcing fresh oceanic basalt here was the dominant continental-
+    // mass leak: every continental cell whose incumbent step left
+    // it un-claimed dropped to oceanic, costing 2-7 K continental
+    // cells per epoch.
+    //
+    // True divergent rifts (Wilson-cycle splits) are handled by
+    // `applyWilsonRifting`, which converts a narrow band along the
+    // rift axis to fresh oceanic explicitly.
     for (int32_t pass = 0; pass < 4; ++pass) {
         bool anyFilled = false;
         for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
@@ -831,27 +838,28 @@ void advectPlateOwnership(SphereField& field,
                 const int32_t lonE = (lonIdx == LON - 1) ? 0       : lonIdx + 1;
                 const int32_t latS = (latIdx == 0)       ? 0       : latIdx - 1;
                 const int32_t latN = (latIdx == LAT - 1) ? LAT - 1 : latIdx + 1;
-                const int16_t cands[4] = {
-                    newOwner[SphereField::cellIndex(lonW, latIdx)],
-                    newOwner[SphereField::cellIndex(lonE, latIdx)],
-                    newOwner[SphereField::cellIndex(lonIdx, latS)],
-                    newOwner[SphereField::cellIndex(lonIdx, latN)],
+                const std::size_t nIdx[4] = {
+                    SphereField::cellIndex(lonW, latIdx),
+                    SphereField::cellIndex(lonE, latIdx),
+                    SphereField::cellIndex(lonIdx, latS),
+                    SphereField::cellIndex(lonIdx, latN),
                 };
-                int16_t pick = -1;
+                std::size_t pickIdx = 0;
+                int16_t     pickPid = -1;
                 for (int32_t k = 0; k < 4; ++k) {
-                    if (cands[k] >= 0) { pick = cands[k]; break; }
+                    if (newOwner[nIdx[k]] >= 0) {
+                        pickIdx = nIdx[k];
+                        pickPid = newOwner[nIdx[k]];
+                        break;
+                    }
                 }
-                if (pick < 0) continue;
-                newOwner[idx]    = pick;
-                newCrust[idx]    = PhysicsConstants::initialOceanicThicknessKm;
-                newContFrac[idx] = 0.0f;
-                newAge[idx]      = 0.0f;
-                newThermal[idx]  = 0.0f;
-                // Surface elevation will be recomputed by the isostasy
-                // pass downstream; leave at the prior cell's value as a
-                // smooth seed (avoids a 0 m discontinuity that would
-                // briefly jump above sea level).
-                newSurface[idx]  = field.surfaceElevationM[idx];
+                if (pickPid < 0) continue;
+                newOwner[idx]    = pickPid;
+                newCrust[idx]    = newCrust[pickIdx];
+                newContFrac[idx] = newContFrac[pickIdx];
+                newAge[idx]      = newAge[pickIdx];
+                newThermal[idx]  = newThermal[pickIdx];
+                newSurface[idx]  = newSurface[pickIdx];
                 anyFilled = true;
             }
         }
