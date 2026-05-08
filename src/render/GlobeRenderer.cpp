@@ -47,51 +47,69 @@ constexpr float    PI_F           = 3.14159265358979323846f;
 /// Terrain ID set covered by the per-terrain sub-mesh palette. Keep
 /// in sync with `aoc::map::TerrainType` -- any unmapped terrain
 /// silently falls through to Plains in the lookup.
-/// Globe-only palette. Distinct from `TerrainType` because we want
-/// pre-tinted "feature" variants (Forest = Grassland + green tint,
-/// Jungle = saturated tropic green, etc.) without paying the
-/// runtime tint pass that the 2D MapRenderer does. Palette slots
-/// 0..8 mirror real `TerrainType` colours; 9..12 are synthetic
-/// composites that the flat hex map produces via FeatureType tints
-/// on top of base terrain.
-enum class PaletteSlot : uint8_t {
-    Ocean = 0,
-    Coast,
-    ShallowWater,
-    Desert,
-    Plains,
-    Grassland,
-    Tundra,
-    Snow,
-    Mountain,
-    Forest,        ///< Grassland + Forest tint
-    Jungle,        ///< Grassland + Jungle tint
-    Hills,         ///< Plains darker
-    Marsh,         ///< Grassland + Marsh tint
-};
-constexpr std::size_t kPaletteSize = 13;
+/// Topographic-relief palette. 32 tiers from deepest ocean to highest
+/// peak, plus 4 polar/cold tints. Each cell on the sphere maps to
+/// exactly one tier by its (elevation, latitude) coordinates. With a
+/// fine continuous gradient, biome transitions read as smooth shading
+/// rather than the chunky horizontal stripes a coarse-threshold scheme
+/// produces.
+constexpr std::size_t kPaletteSize = 32;
 
 struct GlobeColor { float r, g, b; };
 
-constexpr std::array<GlobeColor, kPaletteSize> kPaletteColors = {{
-    {0.06f, 0.16f, 0.50f},   // Ocean
-    {0.35f, 0.65f, 0.85f},   // Coast
-    {0.35f, 0.65f, 0.85f},   // ShallowWater
-    {0.82f, 0.75f, 0.50f},   // Desert
-    {0.65f, 0.70f, 0.35f},   // Plains
-    {0.30f, 0.65f, 0.30f},   // Grassland
-    {0.55f, 0.60f, 0.55f},   // Tundra
-    {0.85f, 0.88f, 0.90f},   // Snow
-    {0.45f, 0.40f, 0.35f},   // Mountain
-    {0.20f, 0.55f, 0.20f},   // Forest (Grassland + green tint)
-    {0.10f, 0.50f, 0.05f},   // Jungle (deep saturated)
-    {0.55f, 0.55f, 0.30f},   // Hills (Plains darker)
-    {0.30f, 0.60f, 0.40f},   // Marsh
-}};
-
-[[nodiscard]] inline std::size_t slotIndex(PaletteSlot s) noexcept {
-    return static_cast<std::size_t>(s);
+/// Lerp helper for compile-time gradient table.
+constexpr GlobeColor mix(GlobeColor a, GlobeColor b, float t) {
+    return {
+        a.r + (b.r - a.r) * t,
+        a.g + (b.g - a.g) * t,
+        a.b + (b.b - a.b) * t,
+    };
 }
+
+/// Build the 32-step gradient: ocean depths -> coast -> beach ->
+/// grassland -> forest -> hills -> mountain -> peak.
+[[nodiscard]] constexpr std::array<GlobeColor, kPaletteSize>
+buildPalette() {
+    std::array<GlobeColor, kPaletteSize> p{};
+    // 0..7  : ocean, deep -> shallow
+    const GlobeColor abyss = {0.020f, 0.060f, 0.220f};
+    const GlobeColor sea   = {0.130f, 0.310f, 0.620f};
+    const GlobeColor shelf = {0.350f, 0.650f, 0.850f};
+    for (std::size_t i = 0; i < 4; ++i) {
+        p[i] = mix(abyss, sea, static_cast<float>(i) / 3.0f);
+    }
+    for (std::size_t i = 0; i < 4; ++i) {
+        p[4 + i] = mix(sea, shelf, static_cast<float>(i) / 3.0f);
+    }
+    // 8..11 : beach + dry coast -> dark beach blend.
+    const GlobeColor beach = {0.880f, 0.830f, 0.620f};
+    const GlobeColor dryGrass = {0.700f, 0.730f, 0.420f};
+    for (std::size_t i = 0; i < 4; ++i) {
+        p[8 + i] = mix(beach, dryGrass, static_cast<float>(i) / 3.0f);
+    }
+    // 12..19 : grassland -> forest gradient.
+    const GlobeColor lightGrass = {0.420f, 0.700f, 0.350f};
+    const GlobeColor forest     = {0.180f, 0.520f, 0.220f};
+    for (std::size_t i = 0; i < 8; ++i) {
+        p[12 + i] = mix(lightGrass, forest, static_cast<float>(i) / 7.0f);
+    }
+    // 20..25 : highland transition into mountain.
+    const GlobeColor uplands  = {0.520f, 0.500f, 0.320f};
+    const GlobeColor mountain = {0.420f, 0.380f, 0.330f};
+    for (std::size_t i = 0; i < 6; ++i) {
+        p[20 + i] = mix(uplands, mountain, static_cast<float>(i) / 5.0f);
+    }
+    // 26..31 : peak / snow / ice.
+    const GlobeColor peakRock = {0.560f, 0.530f, 0.500f};
+    const GlobeColor snow     = {0.940f, 0.950f, 0.960f};
+    for (std::size_t i = 0; i < 6; ++i) {
+        p[26 + i] = mix(peakRock, snow, static_cast<float>(i) / 5.0f);
+    }
+    return p;
+}
+
+constexpr std::array<GlobeColor, kPaletteSize> kPaletteColors = buildPalette();
+
 
 /// Project (latRow, lonCol) on the SPHERE to a lat/lon pair.
 struct LatLonDeg { float latDeg; float lonDeg; };
@@ -156,27 +174,20 @@ constexpr int32_t SF_LAT_CELLS = 360;
 /// HexGrid's projection -- the snapshot is the un-projected truth,
 /// so cycling Mollweide / Equirect / Mercator / Robinson on the flat
 /// view leaves the globe unchanged.
-/// Deterministic per-cell wetness proxy in [0, 1] from a small noise
-/// pattern. Used to split same-elevation cells into Forest / Grassland
-/// / Desert variants so continents read with detail rather than as
-/// uniform monochrome slabs.
-[[nodiscard]] inline float wetnessAt(int32_t lonIdx, int32_t latIdx) noexcept {
-    uint32_t h = static_cast<uint32_t>(lonIdx) * 374761393u
-               + static_cast<uint32_t>(latIdx) * 668265263u;
-    h = (h ^ (h >> 13)) * 1274126177u;
-    h ^= (h >> 16);
-    const float u = static_cast<float>(h % 65537u) / 65536.0f;
-    // Layer a smooth lat-band (rain belts) on the noise so dry/wet
-    // bands look coherent at continental scale, not white-noise.
-    const float band = 0.5f + 0.5f * std::cos(static_cast<float>(latIdx)
-                                * 0.0349f);  // ~2 deg per cycle
-    return std::clamp(0.4f * u + 0.6f * band, 0.0f, 1.0f);
-}
-
-[[nodiscard]] PaletteSlot sampleGrid(
+/// Map elevation (metres above mantle datum, sea level ~ 0) to a
+/// palette slot index in [0, kPaletteSize). The mapping is a smooth
+/// piecewise-linear transfer:
+///   z < -3000 -> 0 (deep abyss)
+///   z = 0     -> 11 (beach)
+///   z = 1500  -> 17 (forest mid)
+///   z = 4000  -> 25 (mountain peak base)
+///   z > 5000  -> 31 (snow cap)
+/// Latitude shifts the upper tier into the snow band: at |lat| > 60,
+/// every continental cell tips up by ~6 slots (Tundra/Snow look).
+[[nodiscard]] std::size_t sampleGrid(
     const aoc::map::HexGrid& grid, float latDeg, float lonDeg) noexcept {
     const auto& snap = grid.sphereFieldElevationSnapshot();
-    if (snap.empty()) return PaletteSlot::Ocean;
+    if (snap.empty()) return 0;
     float lon = lonDeg;
     while (lon >  180.0f) lon -= 360.0f;
     while (lon < -180.0f) lon += 360.0f;
@@ -191,51 +202,34 @@ constexpr int32_t SF_LAT_CELLS = 360;
     const std::size_t idx = static_cast<std::size_t>(latIdx)
                           * static_cast<std::size_t>(SF_LON_CELLS)
                           + static_cast<std::size_t>(lonIdx);
-    if (idx >= snap.size()) return PaletteSlot::Ocean;
-    const float z = snap[idx]; // metres above mantle datum, sea level ~0
+    if (idx >= snap.size()) return 0;
+    const float z = snap[idx];
     const float absLat = std::fabs(latDeg);
 
-    // Ocean tiers.
-    if (z < -1500.0f) return PaletteSlot::Ocean;
-    if (z < -50.0f)   return PaletteSlot::ShallowWater;
-    if (z < 0.0f)     return PaletteSlot::Coast;
-
-    // Mountains by absolute elevation.
-    if (z > 4500.0f) return PaletteSlot::Mountain;
-    if (z > 3500.0f && absLat > 50.0f) return PaletteSlot::Snow;
-
-    // Polar bands.
-    if (absLat > 75.0f) return PaletteSlot::Snow;
-    if (absLat > 62.0f) return PaletteSlot::Tundra;
-
-    // Highland tier.
-    if (z > 2000.0f) return PaletteSlot::Hills;
-    if (z > 1200.0f) return PaletteSlot::Plains;
-
-    // Mid-elev / lowland: split by latitude + wetness.
-    const float w = wetnessAt(lonIdx, latIdx);
-    if (absLat < 22.0f) {
-        // Tropical band: jungle if wet, grassland mid, desert if dry.
-        if (w > 0.62f) return PaletteSlot::Jungle;
-        if (w < 0.30f) return PaletteSlot::Desert;
-        return PaletteSlot::Grassland;
+    float t;
+    if (z < 0.0f) {
+        // Ocean. -3000 m -> 0, 0 m -> 11. (Use 12 ocean+coast slots.)
+        t = (z + 3000.0f) / 3000.0f * 11.0f;
+    } else {
+        // Land. 0 m -> 11 (beach), 4000 m -> 25 (mountain peak base),
+        // 5000 m -> 31 (snow cap). 14 slots over 0..4000, 6 over rest.
+        if (z <= 4000.0f) {
+            t = 11.0f + z / 4000.0f * 14.0f;
+        } else {
+            t = 25.0f + std::min(z - 4000.0f, 1000.0f) / 1000.0f * 6.0f;
+        }
+        // Cold-latitude push: high-lat continental cells climb 4-8
+        // slots so polar regions go Tundra (~22) to Snow (~30) instead
+        // of grass.
+        const float coldShift = std::max(0.0f, (absLat - 50.0f) / 30.0f) * 8.0f;
+        t += coldShift;
     }
-    if (absLat < 35.0f) {
-        // Subtropical: desert if dry, forest if wet, plains otherwise.
-        if (w < 0.32f) return PaletteSlot::Desert;
-        if (w > 0.70f) return PaletteSlot::Forest;
-        return PaletteSlot::Plains;
+    int32_t s = static_cast<int32_t>(std::floor(t + 0.5f));
+    if (s < 0) s = 0;
+    if (s >= static_cast<int32_t>(kPaletteSize)) {
+        s = static_cast<int32_t>(kPaletteSize) - 1;
     }
-    if (absLat < 55.0f) {
-        // Temperate: forest if wet, grassland if mid, marsh if very wet
-        // and near sea level, plains if dry.
-        if (w > 0.78f && z < 400.0f) return PaletteSlot::Marsh;
-        if (w > 0.55f) return PaletteSlot::Forest;
-        if (w < 0.30f) return PaletteSlot::Plains;
-        return PaletteSlot::Grassland;
-    }
-    // Sub-arctic.
-    return PaletteSlot::Tundra;
+    return static_cast<std::size_t>(s);
 }
 
 } // namespace
@@ -327,8 +321,7 @@ void GlobeRenderer::updateFromGrid(const aoc::map::HexGrid& grid) {
     for (int32_t ring = 0; ring < GLOBE_RINGS; ++ring) {
         for (int32_t seg = 0; seg < GLOBE_SEGMENTS; ++seg) {
             const LatLonDeg c = cellCenterDeg(ring, seg);
-            const PaletteSlot t = sampleGrid(grid, c.latDeg, c.lonDeg);
-            const std::size_t pi = slotIndex(t);
+            const std::size_t pi = sampleGrid(grid, c.latDeg, c.lonDeg);
             const QuadVerts q = buildSphereQuad(ring, seg);
             auto& md = bins[pi];
             const uint32_t base = static_cast<uint32_t>(md.vertices.size());
