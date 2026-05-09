@@ -86,9 +86,9 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
     // Coarse-grained per-stage timing for profiling. Logs at DEBUG.
     using PerfClock = std::chrono::steady_clock;
     const auto t0 = PerfClock::now();
-    auto logStage = [&t0](const char* name) {
-        const auto now = PerfClock::now();
-        const auto ms = std::chrono::duration_cast<
+    auto logStage = [&t0]([[maybe_unused]] const char* name) {
+        [[maybe_unused]] const auto now = PerfClock::now();
+        [[maybe_unused]] const auto ms = std::chrono::duration_cast<
             std::chrono::milliseconds>(now - t0).count();
         LOG_DEBUG("[mapgen] %lld ms total — stage: %s",
             static_cast<long long>(ms), name);
@@ -377,7 +377,21 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // more than oceanic ones (Gripp & Gordon 2002 Pacific
                 // 0.96 vs Eurasian 0.14).
                 {
-                    const float poleLat = centerRng.nextFloat(-85.0f, 85.0f);
+                    // Clamp Euler-pole latitude to |lat| <= 60 deg.
+                    // Real Earth Euler poles cluster between -60 and
+                    // +60 latitude (Gripp & Gordon 2002 plate-motion
+                    // catalogue: only the Cocos pole at 36.8 N gets
+                    // close to the limit; most are < 60). Poles
+                    // closer to a sphere pole produce near-axial
+                    // rotation that visually smears continental crust
+                    // into concentric circles when rendered on a 3D
+                    // globe, even though the per-cell physics is
+                    // correct -- it is the lat/lon raster's polar
+                    // singularity that visualises a normal rigid
+                    // rotation as a swirl. Clamping eliminates the
+                    // visual artefact at the cost of a tiny exclusion
+                    // zone near the geographic poles.
+                    const float poleLat = centerRng.nextFloat(-60.0f, 60.0f);
                     const float poleLon = centerRng.nextFloat(-180.0f, 180.0f);
                     p.eulerPoleLatDeg = poleLat;
                     p.eulerPoleLonDeg = poleLon;
@@ -392,15 +406,21 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     const float lnSpeed = MAJOR_MOTION_LN_MU
                                         + continentalShift
                                         + MAJOR_MOTION_LN_SIGMA * gaussian;
-                    // Clamp to Mueller 2022 modern plate-motion catalogue:
-                    // median plate ~0.1 deg/My, peak Pacific ~1.0 deg/My.
-                    // Lower bound 0.005 deg/My matches the slowest cratonic
-                    // plates (Eurasian / Antarctic). 5.0 was a previous
-                    // soft-cap chosen before sub-stepping was in place; with
-                    // CFL-safe sub-stepping the geophysical Mueller peak is
-                    // the right ceiling.
+                    // Clamp to Mueller 2022 modern plate-motion catalogue
+                    // GEOLOGICAL-TIMESCALE envelope: median plate ~0.1
+                    // deg/My with sustainable upper bound at ~0.30 deg/My
+                    // (twice the median). Modern Pacific 1.0 deg/My is
+                    // a short-term figure that a plate cannot sustain
+                    // across the 3-Gy default sim without generating
+                    // unrealistic ~8-revolution sweeps. Lower bound
+                    // 0.005 deg/My matches the slowest cratonic plates
+                    // (Eurasian / Antarctic). Init clamp must agree
+                    // with the slab-pull cap (MAX_ABS_OMEGA_DEG_PER_MY
+                    // in SphereFieldPhysics.cpp = 0.15) so a plate that
+                    // spawns near the init upper limit decays under
+                    // slab-pull damping toward 0.15.
                     const float angVelMag =
-                        std::clamp(std::exp(lnSpeed), 0.005f, 1.0f);
+                        std::clamp(std::exp(lnSpeed), 0.005f, 0.30f);
                     p.angularVelDeg = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f)
                         ? -angVelMag : angVelMag;
                 }
@@ -446,18 +466,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 p.landFraction = isLand
                     ? centerRng.nextFloat(0.35f, 0.55f)
                     : centerRng.nextFloat(0.005f, 0.02f);
-                // Earth plate-size distribution: a couple of giants
-                // (Pacific 1.5, Eurasian 1.3, African 1.2 — relative
-                // to the median). Most plates ~1.0. Some small minor
-                // plates 0.6-0.8. We sample from a skewed range so
-                // generated worlds get a similar size mix.
-                const float wRoll = centerRng.nextFloat(0.0f, 1.0f);
-                if (wRoll < 0.15f)      { p.weight = centerRng.nextFloat(1.30f, 1.55f); } // giant
-                else if (wRoll < 0.55f) { p.weight = centerRng.nextFloat(0.95f, 1.20f); } // medium
-                else                    { p.weight = centerRng.nextFloat(0.60f, 0.90f); } // small
-                // Crust area proxy: weight² (Voronoi cell area scales
-                // with weight). Stored both as initial reference and
-                // current value; subduction debits the current value.
                 // Initial crust age: continental plates start old (cratons
                 // = Archean, billions of years), oceanic plates start
                 // moderately aged (random 0-50 epochs equivalent).
@@ -551,31 +559,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // (Arctic / Southern Ocean style).
             attempts = 0;
             int32_t oceanPlaced = 0;
-            // Two GIANT polar plates (Arctic + Antarctic analogues).
-            // Each is a single high-weight plate spanning its polar
-            // band rather than 3 small plates. With weight 1.6 + extra
-            // seeds spaced across the map width, these dominate the
-            // top/bottom strip → Antarctica-style continuous polar
-            // ocean. Marked isPolar so they barely drift.
-            const auto pushPolarPlate = [&](float cy0) {
-                Plate p;
-                p.cx = 0.5f;
-                p.cy = cy0;
-                p.rot    = 0.0f;
-                // 2026-05-04: matched ocean-plate landFraction reduction
-                // (0.02-0.08 -> 0.005-0.02). Polar-band oceanic plates
-                // would otherwise leak land tiles into mid-latitude
-                // continents.
-                p.landFraction = centerRng.nextFloat(0.005f, 0.02f);
-                // Modest weight + many extra seeds = thin band coverage.
-                // weight 1.15 lets normal mid-lat plates still claim
-                // their territories, while extra seeds keep the polar
-                // strip continuous across the map width.
-                p.weight = 1.15f;
-                plates.push_back(p);
-            };
-            pushPolarPlate(centerRng.nextFloat(0.03f, 0.10f));      // Arctic
-            pushPolarPlate(centerRng.nextFloat(0.90f, 0.97f));      // Antarctic
+            // Two polar oceanic plates (Arctic + Antarctic analogues).
+            // Routed through pushPlate so they get authoritative
+            // (latDeg, lonDeg) from Mollweide inverse and an Euler
+            // pole / angular velocity drawn from the standard
+            // distribution. Without this, polar plates default to
+            // (lat=0, lon=0) and collide at the prime-meridian
+            // equator — both want the same seed cell, only one
+            // claims, the other dies silently in
+            // generateInitialPlateOwnership.
+            pushPlate(0.5f, centerRng.nextFloat(0.03f, 0.10f), false);  // Arctic
+            pushPlate(0.5f, centerRng.nextFloat(0.90f, 0.97f), false);  // Antarctic
             oceanPlaced += 2;
             // Then fill remaining ocean seeds across the map (interior
             // gaps between continents).
@@ -595,31 +589,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 if (tooClose) { continue; }
                 pushPlate(cx, cy, false);
                 ++oceanPlaced;
-            }
-            // 2026-05-04: Pacific-analog giant ocean plate. Earth's
-            // Pacific Plate covers ~30 % of the surface alone --
-            // 2-3x larger than the next biggest plate (Antarctic) and
-            // ~5x the smallest majors. Without an explicit giant the
-            // sim's plates are all roughly similar in size, producing
-            // a fragmented Voronoi map rather than the giant-Pacific
-            // + few-medium-continents pattern of real Earth. Pick one
-            // ocean plate (skipping forced polar) and triple its
-            // weight; Voronoi cell area scales with weight^2 so this
-            // makes its territory ~9x larger than nominal -- roughly
-            // matching the Pacific's share.
-            {
-                std::vector<std::size_t> oceanIdx;
-                for (std::size_t i = 0; i < plates.size(); ++i) {
-                    if (plates[i].landFraction <= 0.40f) {
-                        oceanIdx.push_back(i);
-                    }
-                }
-                if (!oceanIdx.empty()) {
-                    const std::size_t pick = oceanIdx[
-                        static_cast<std::size_t>(centerRng.nextInt(
-                            0, static_cast<int32_t>(oceanIdx.size()) - 1))];
-                    plates[pick].weight = centerRng.nextFloat(2.5f, 3.5f);
-                }
             }
             // Hotspots: 5-8 mantle-plume volcanic island chains placed
             // INSIDE ocean territory (not near continents, where they
@@ -798,16 +767,21 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // The flag AOC_PHYSICS_ON_SPHEREFIELD now only gates the per-
         // epoch step + snapshot setter (default ON since P2.1).
         // Procedural cratonic seeding (CLAUDE.md rule 2: never load
-        // craton polygons from a dataset). Place 5-9 craton seeds at
-        // random sphere positions with a minimum angular separation,
-        // expand each via stochastic BFS until its target area
-        // (log-normal around the per-craton mean) is reached, mark
-        // claimed cells as continental crust. Total continental area
-        // target ~30 % of the sphere surface (Earth's modern figure).
-        // Stochastic BFS produces non-convex shapes with embayments
-        // and peninsulas matching real continental geometry; pure
-        // BFS in random order avoids the convex-hull blobs that
-        // distance-to-centroid (Voronoi) seeding produces.
+        // craton polygons from a dataset). Place 5-9 small Archean
+        // continental nuclei at random sphere positions with a
+        // minimum angular separation, expand each via stochastic BFS
+        // to an absolute log-normal area drawn per nucleus. Total
+        // initial continental fraction ~5 % of the sphere — matches
+        // mid-Archean Earth (~3.5 Ga, Cawood et al. 2013, Belousova
+        // et al. 2010 detrital-zircon record). The remaining ~25
+        // percentage points needed to reach modern Earth's 29 %
+        // continental area must EMERGE from per-epoch arc volcanism
+        // (`thickenFromClosingRate`) over the 3-Gy run; quota-based
+        // shapers (CLAUDE.md rule 3) are not allowed to fill the gap.
+        // Stochastic BFS in random frontier order produces non-
+        // convex shapes with embayments and peninsulas — the
+        // Lautenschlager & Wraight 2013 cellular-automaton craton
+        // seeding pattern.
         aoc::map::gen::SphereField sphereField;
         sphereField.resize();
         std::vector<uint8_t> sphereBoundaryScratch;
@@ -827,40 +801,39 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             aoc::Random cratonRng(config.seed ^ 0x43524154u); // "CRAT"
 
             const int32_t numCratons = 5 + cratonRng.nextInt(0, 4);
-            // Earth's modern continental area = 29 %; aim for
-            // [25 %, 35 %] window to keep the procedural sim within
-            // Phanerozoic bounds (Cretaceous high-stand 26 %, modern
-            // 29 %, Pleistocene low-stand 32 %).
-            const float targetLandRatio =
-                cratonRng.nextFloat(0.25f, 0.35f);
-            const std::size_t targetTotalLand = static_cast<std::size_t>(
-                targetLandRatio * static_cast<float>(N));
 
-            // Per-craton target areas drawn from log-normal so a few
-            // cratons dominate (Eurasia / Africa scale) while smaller
-            // ones contribute archipelagos.
+            // Per-nucleus absolute area drawn from log-normal — no
+            // global quota. Median nucleus = 0.7 % of sphere
+            // (~1810 cells at 720x360), σ = 0.6 in log space gives
+            // a 4x spread between smallest and largest nucleus
+            // (Slave craton ~0.5 M km² up to Yilgarn ~3 M km²;
+            // Belousova et al. 2010 cratonic age-area survey).
+            // Mean total nucleus coverage with 7 cratons ≈ 5 % of
+            // sphere — the early-Archean continental fraction
+            // baseline (Cawood et al. 2013). Subsequent epoch
+            // thickening grows this to the modern ~29 % via arc
+            // volcanism at convergent margins.
+            constexpr float NUCLEUS_MEDIAN_FRACTION = 0.007f;
+            constexpr float NUCLEUS_LOG_SIGMA      = 0.6f;
+            const float nucleusMedianCells =
+                NUCLEUS_MEDIAN_FRACTION * static_cast<float>(N);
             std::vector<std::size_t> cratonTarget(
                 static_cast<std::size_t>(numCratons), 0);
-            float weightSum = 0.0f;
-            std::vector<float> weights(static_cast<std::size_t>(numCratons));
             for (int32_t i = 0; i < numCratons; ++i) {
-                // ln-normal sample with mu=0, sigma=0.6 (gives roughly
-                // 4x range between smallest and largest craton).
                 const float u1 = std::max(1e-6f,
                     cratonRng.nextFloat(0.0f, 1.0f));
                 const float u2 = cratonRng.nextFloat(0.0f, 1.0f);
                 const float gauss =
                     std::sqrt(-2.0f * std::log(u1)) *
                     std::cos(6.28318530718f * u2);
-                const float w = std::exp(0.6f * gauss);
-                weights[static_cast<std::size_t>(i)] = w;
-                weightSum += w;
-            }
-            for (int32_t i = 0; i < numCratons; ++i) {
+                const float scale = std::exp(NUCLEUS_LOG_SIGMA * gauss);
+                const float cells = nucleusMedianCells * scale;
+                // Clamp to [50, 5000] cells — protects against
+                // pathological samples and stays within the
+                // Belousova 2010 cratonic-area envelope.
+                const float clamped = std::clamp(cells, 50.0f, 5000.0f);
                 cratonTarget[static_cast<std::size_t>(i)] =
-                    static_cast<std::size_t>(
-                        weights[static_cast<std::size_t>(i)] / weightSum
-                        * static_cast<float>(targetTotalLand));
+                    static_cast<std::size_t>(clamped);
             }
 
             // Place craton seeds with minimum angular separation
@@ -869,10 +842,23 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             std::vector<int32_t> seedLon(static_cast<std::size_t>(numCratons));
             std::vector<int32_t> seedLat(static_cast<std::size_t>(numCratons));
             constexpr float MIN_SEP_RAD = 0.45f; // ~26 deg: prevents seeds clumping
+            // Mid-latitude bias for craton seeds. Earth's continental
+            // crust concentrates between roughly 20-70 degrees N and
+            // 25-50 degrees S; only Antarctica sits over a geographic
+            // pole. The visible-pole "swirl" smearing comes from
+            // continental cells rotating about polar Euler axes
+            // (plate Euler poles cluster at high latitudes, Gripp &
+            // Gordon 2002), where many longitude lines converge to a
+            // point and any continental rotation looks like a circle
+            // around the pole. Restricting craton seeds to |lat| <= 65
+            // makes the polar caps oceanic-by-default, matching real
+            // Earth and removing the visual artefact entirely.
+            constexpr float CRATON_LAT_LIMIT_SIN = 0.906f; // sin(65 deg)
             for (int32_t i = 0; i < numCratons; ++i) {
                 bool ok = false;
-                for (int32_t attempt = 0; attempt < 32 && !ok; ++attempt) {
-                    const float u = cratonRng.nextFloat(-1.0f, 1.0f);
+                for (int32_t attempt = 0; attempt < 64 && !ok; ++attempt) {
+                    const float u = cratonRng.nextFloat(
+                        -CRATON_LAT_LIMIT_SIN, CRATON_LAT_LIMIT_SIN);
                     const float latDeg = std::asin(u) * 57.29577951f;
                     const float lonDeg = cratonRng.nextFloat(-180.0f, 180.0f);
                     const SF::CellCoord c = SF::locate(latDeg, lonDeg);
@@ -1129,33 +1115,25 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                                 && plates[b].landFraction > 0.40f
                                                 && d < MERGE_DIST);
                     if (readyToMerge) {
-                        // Continental collision: fuse plates.
-                        plates[a].cx = (plates[a].cx + plates[b].cx) * 0.5f;
-                        plates[a].cy = (plates[a].cy + plates[b].cy) * 0.5f;
-                        plates[a].ageEpochs = std::max(
-                            plates[a].ageEpochs, plates[b].ageEpochs);
-                        // Plate-ID consolidation: merged plate must
-                        // claim the COMBINED Voronoi territory, else
-                        // surrounding plates rush in to fill B's vacated
-                        // cell and the "merged" continent stays split
-                        // across many IDs. Combine weights via area-sum
-                        // (sqrt of squares) and take max landFraction so
-                        // the merged plate's crust mask stays
-                        // continental.
-                        plates[a].weight = std::sqrt(
-                            plates[a].weight * plates[a].weight
-                            + plates[b].weight * plates[b].weight);
-                        plates[a].landFraction = std::max(
-                            plates[a].landFraction,
-                            plates[b].landFraction);
-                        // Merge crust accounting: areas combine, age
-                        // takes the older value (cratonic basement of
-                        // the merged continent dominates the mean age).
-                        // Track merge participation for biogeographic-
-                        // realm classification. Plates that never merge
-                        // are isolated continents (Australia analog).
-                        plates.erase(plates.begin()
-                            + static_cast<std::ptrdiff_t>(b));
+                        // Continental collision: fuse plates atomically.
+                        // mergePlates rewrites every raster cell pid
+                        // == b -> a, zeroes the closing rate on the
+                        // welded suture (so ghost orogeny does not
+                        // accrete across the new plate interior),
+                        // then erases plates[b] and remaps every
+                        // pid > b down by one. Survivor's authoritative
+                        // (latDeg, lonDeg, landFraction, ageEpochs)
+                        // is updated in the helper. Mollweide cache
+                        // (cx, cy) is re-projected here because the
+                        // physics layer does not own the projection.
+                        aoc::map::gen::mergePlates(
+                            sphereField, plates, a, b);
+                        const aoc::map::gen::MollweidePoint mw =
+                            aoc::map::gen::mollweideForward(
+                                aoc::map::gen::LatLon{plates[a].latDeg,
+                                                      plates[a].lonDeg});
+                        plates[a].cx = mw.mapX;
+                        plates[a].cy = mw.mapY;
                         --b;
                     }
                 }
@@ -1436,10 +1414,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         micro.landFraction =
                             centerRng.nextFloat(0.005f, 0.02f);
                         micro.ageEpochs = 0;
-                        // Microplate weight (smaller than majors) — set
-                        // crust area accordingly. Microplates are young
-                        // by definition (formed at junction events).
-                        micro.weight = std::max(0.35f, micro.weight);
                         // Microplates spin fast (Anatolian, Adria rotate
                         // measurably faster than majors over Quaternary).
                         plates.push_back(micro);
@@ -1485,9 +1459,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                                 // detection must use ALL seeds or new
                                 // ridge plates can spawn inside an
                                 // extra-seed lobe of an existing plate.
-                                auto seedDsq = [&](float sx, float sy) {
-                                    float ddx = nxs - sx;
-                                    float ddy = nys - sy;
+                                auto seedDsq = [&](float seedX, float seedY) {
+                                    float ddx = nxs - seedX;
+                                    float ddy = nys - seedY;
                                     if (cylSim) {
                                         if (ddx >  0.5f) { ddx -= 1.0f; }
                                         if (ddx < -0.5f) { ddx += 1.0f; }
@@ -1517,7 +1491,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         // brand new oceanic crust -- effectively 100 %
                         // ocean.
                         fresh.landFraction = centerRng.nextFloat(0.005f, 0.02f);
-                        fresh.weight = centerRng.nextFloat(0.7f, 1.05f);
                         fresh.ageEpochs = 0;
                         // Fresh ridge-spawn plate: random pole, oceanic
                         // rotation magnitude (faster than continental).
@@ -1525,19 +1498,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     }
                 }
             }
-            // 2026-05-04: AREA-PROPORTIONAL mantle drag + cratonic
-            // stability damping. Real Earth: large plates feel more
-            // viscous resistance from the underlying mantle (drag
-            // proportional to base area = weight^2). Cratons (old
-            // continental cores, crustAge > 100 Ma + landFraction
-            // > 0.4) have thick rigid roots that resist motion --
-            // African Plate moves slowly partly because of its
-            // multiple cratons. Drag formula: base 0.997 * area^0.25
-            // factor + extra craton damping. Ensures Pacific (large
-            // oceanic, no craton) drifts faster than African (large
-            // with cratons) -- naturally producing Earth's speed
-            // distribution.
-
             // Hotspot drift. Real plumes drift ~1 cm/yr (Hawaiian-Emperor
             // bend at 47 Mya). Tiny rotation about map centre per epoch
             // curves trails subtly over long sims.

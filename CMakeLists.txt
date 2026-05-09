@@ -782,8 +782,12 @@ target_link_libraries(aoc_trace_dump PRIVATE aoc_lib)
 # dumps for offline review without launching the full simulation. 2026-05-03.
 # --------------------------------------------------------------------------
 
-add_executable(aoc_mapgen src/tools/MapGenCli.cpp)
+add_executable(aoc_mapgen
+    src/tools/MapGenCli.cpp
+    src/debug/DebugServer.cpp
+)
 target_link_libraries(aoc_mapgen PRIVATE aoc_lib)
+target_include_directories(aoc_mapgen PRIVATE third_party)
 
 # --------------------------------------------------------------------------
 # C++ Genetic Algorithm for Utility AI optimization

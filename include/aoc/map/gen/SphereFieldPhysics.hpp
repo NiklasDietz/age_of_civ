@@ -40,28 +40,21 @@ namespace aoc::map::gen {
 
 /// Procedural plate-ownership initialiser via stochastic region
 /// growing. NO Voronoi: cells are not assigned by nearest-centroid
-/// distance. Instead each plate seeds a single cratonic-core cell at
-/// its (latDeg, lonDeg) centroid; a randomised BFS frontier expands
-/// from each seed simultaneously, claiming neighbour cells one at a
-/// time. The pick order is deterministic per `seed` but path-
-/// dependent, so plate footprints develop irregular peninsulas, bays,
-/// and lobed extensions — not convex blobs.
+/// distance, no weighted-distance budget, no priority-queue keyed by
+/// arc length. Each plate seeds a single cratonic-core cell at its
+/// (latDeg, lonDeg) centroid; per round, every plate pops ONE random
+/// cell from its own frontier, claims it, and pushes the neighbours.
+/// Round order is reshuffled per round so no plate has a systematic
+/// ordering advantage. Plates expand at equal rates and their
+/// frontiers collide where they meet — boundaries are jagged by
+/// construction and depend on seed-position adjacency, not on
+/// distance to centroid.
 ///
-/// Bias terms in the priority calculation:
-///  - haversine distance from the cratonic seed (closer cells
-///    expand first; far cells lose to nearer plates),
-///  - per-plate `weight` (multiplies the effective distance budget;
-///    Pacific-class plates capture more cells before slowing),
-///  - low-frequency value-noise field (acts as the proto-mantle-
-///    convection wavelength; cells along low-noise contours are
-///    attractive, biasing growth into linear belts that look like
-///    triple-junction-bounded territories).
-///
-/// After the BFS terminates every cell has a plateId. Subsequent
-/// epoch physics — subduction, ridge accretion, continental docking,
-/// Wilson rifting — reshape the footprints over the 3-Gy default
-/// simulated lifetime. Initial geometry is overwhelmingly overwritten
-/// by mechanism history.
+/// After every cell is claimed every plate has an irregular
+/// non-convex footprint. Subsequent epoch physics — subduction, ridge
+/// accretion, Wilson rifting, continental docking — reshape the
+/// footprints over the simulated lifetime. Initial geometry is
+/// overwhelmingly overwritten by mechanism history.
 ///
 /// Cite: cellular-automaton plate-tectonic simulators (Lautenschlager
 /// & Wraight 2013) use the same region-growing approach to produce
@@ -69,6 +62,24 @@ namespace aoc::map::gen {
 void generateInitialPlateOwnership(SphereField& field,
                                    const std::vector<Plate>& plates,
                                    uint64_t seed);
+
+/// Atomic plate merge. Combines `absorbed` into `survivor`, rewrites
+/// every raster cell `pid == absorbed` to `survivor`, zeroes the
+/// instantaneous closing rate on the welded suture so the next
+/// boundary pass does not re-fire orogeny across the new plate
+/// interior, then erases `absorbed` from `plates` and remaps
+/// every raster `pid > absorbed` down by one. Performs the entire
+/// transform in one pass so no caller observes an inconsistent
+/// state where `field.plateId` references a stale plate index.
+///
+/// Survivor authoritative state (latDeg/lonDeg/landFraction/
+/// ageEpochs) is updated to reflect the union of the two plates.
+/// Mollweide projection cache (cx/cy) is the caller's responsibility
+/// — physics does not own the projection layer.
+void mergePlates(SphereField& field,
+                 std::vector<Plate>& plates,
+                 std::size_t survivor,
+                 std::size_t absorbed);
 
 
 /// Recompute every plate's centroid (`Plate.latDeg`, `Plate.lonDeg`) as
@@ -201,6 +212,26 @@ void accumulateClosingRate(SphereField& field,
 /// Reference: DeCelles, Robinson, Zandt 2002 (Tibet plateau growth);
 /// Turcotte & Schubert 2014 ch. 6 (mass-balance derivation).
 void thickenFromClosingRate(SphereField& field, float dtMy);
+
+/// Arc-volcanism continental crust growth at convergent boundaries.
+/// Overrides oceanic crust at the trench-arc boundary by incrementing
+/// continentalFraction (capped at 1.0) at a rate proportional to the
+/// instantaneous closing rate. This is the mechanism that converts
+/// oceanic plate margins into the andesitic-arc continental crust of
+/// the Andes, Cascades, and Aleutians over geological time.
+///
+/// Cite: Hawkesworth et al. 2010 (Geological Society of London Memoir
+/// 2010) estimate ~1 km³/yr continental-crust generation at modern
+/// arcs, with ~50 % accreted into stable continental crust (rest
+/// recycled). Over 3 Gy this matches the 5 % → ~29 % continental
+/// fraction growth implied by detrital-zircon Hf-isotope records
+/// (Belousova et al. 2010; Cawood et al. 2013).
+///
+/// Pairs with thickenFromClosingRate: this pass grows the SPATIAL
+/// extent of continental crust (continentalFraction); thicken grows
+/// the VERTICAL column. Both gate on convergent boundaryType so they
+/// fire only where active subduction is feeding the arc.
+void growContinentalFractionAtArcs(SphereField& field, float dtMy);
 
 /// Phase 1.5: subduction. At convergent boundary cells, the side with
 /// the lower continental fraction (denser oceanic crust) is consumed
