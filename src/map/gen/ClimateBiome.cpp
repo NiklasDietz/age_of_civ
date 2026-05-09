@@ -24,8 +24,12 @@ void runClimateBiomePass(HexGrid& grid,
                          const std::vector<float>& mountainElev,
                          const std::vector<int32_t>& distFromCoast,
                          const std::vector<float>& orogeny,
+                         const std::vector<uint8_t>& isWater,
                          float waterThreshold,
                          float mountainThreshold) {
+    auto isW = [&](std::size_t idx) -> bool {
+        return isWater[idx] != 0u;
+    };
     const int32_t width      = grid.width();
     const int32_t height     = grid.height();
     const int32_t totalTiles = grid.tileCount();
@@ -56,7 +60,7 @@ void runClimateBiomePass(HexGrid& grid,
         const int32_t step = upwindStep(ny);
         for (int32_t col = 0; col < width; ++col) {
             const int32_t idx = row * width + col;
-            if (elevationMap[static_cast<std::size_t>(idx)] < waterThreshold) {
+            if (isW(static_cast<std::size_t>(idx))) {
                 continue;
             }
             float carry = 0.0f;
@@ -69,7 +73,7 @@ void runClimateBiomePass(HexGrid& grid,
                     break;
                 }
                 const int32_t uidx = row * width + uc;
-                if (elevationMap[static_cast<std::size_t>(uidx)] < waterThreshold) {
+                if (isW(static_cast<std::size_t>(uidx))) {
                     carry = 1.0f - static_cast<float>(s)
                           / static_cast<float>(WIND_WALK_RANGE);
                     reachedOcean = true;
@@ -87,8 +91,7 @@ void runClimateBiomePass(HexGrid& grid,
         int32_t lastWaterCol = -width;
         if (cylClim) {
             for (int32_t col = 0; col < width; ++col) {
-                if (elevationMap[static_cast<std::size_t>(row * width + col)]
-                        < waterThreshold) {
+                if (isW(static_cast<std::size_t>(row * width + col))) {
                     lastWaterCol = col - width;
                     break;
                 }
@@ -96,7 +99,7 @@ void runClimateBiomePass(HexGrid& grid,
         }
         for (int32_t col = 0; col < width; ++col) {
             const int32_t idx = row * width + col;
-            if (elevationMap[static_cast<std::size_t>(idx)] < waterThreshold) {
+            if (isW(static_cast<std::size_t>(idx))) {
                 lastWaterCol = col;
                 westOceanDist[static_cast<std::size_t>(idx)] = 0;
             } else {
@@ -107,8 +110,7 @@ void runClimateBiomePass(HexGrid& grid,
         int32_t nextWaterCol = 2 * width;
         if (cylClim) {
             for (int32_t col = width - 1; col >= 0; --col) {
-                if (elevationMap[static_cast<std::size_t>(row * width + col)]
-                        < waterThreshold) {
+                if (isW(static_cast<std::size_t>(row * width + col))) {
                     nextWaterCol = col + width;
                     break;
                 }
@@ -116,7 +118,7 @@ void runClimateBiomePass(HexGrid& grid,
         }
         for (int32_t col = width - 1; col >= 0; --col) {
             const int32_t idx = row * width + col;
-            if (elevationMap[static_cast<std::size_t>(idx)] < waterThreshold) {
+            if (isW(static_cast<std::size_t>(idx))) {
                 nextWaterCol = col;
                 eastOceanDist[static_cast<std::size_t>(idx)] = 0;
             } else {
@@ -240,7 +242,7 @@ void runClimateBiomePass(HexGrid& grid,
             int32_t index = row * width + col;
             float elev = elevationMap[static_cast<std::size_t>(index)];
 
-            if (elev < waterThreshold) {
+            if (isW(static_cast<std::size_t>(index))) {
                 grid.setTerrain(index, TerrainType::Ocean);
                 grid.setElevation(index, -1);
                 continue;

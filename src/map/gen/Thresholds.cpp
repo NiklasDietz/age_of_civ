@@ -23,46 +23,42 @@ void runThresholdComputation(HexGrid& grid, MapType mapType,
     const int32_t width  = grid.width();
     const int32_t totalTiles = grid.tileCount();
 
-    std::vector<float> sortedElevations(elevationMap);
-    std::sort(sortedElevations.begin(), sortedElevations.end());
-    std::size_t waterCutoff = static_cast<std::size_t>(
-        effectiveWaterRatio * static_cast<float>(sortedElevations.size()));
-    waterCutoff = std::min(waterCutoff, sortedElevations.size() - 1);
-    const float thresholdAtCutoff = sortedElevations[waterCutoff];
-
-    // 2026-05-07: nudge threshold past any equal-value plateau. After
-    // plate-cell advection homogenises wake cells to mid-ocean-ridge
-    // basalt elevation (h=7 km Turcotte & Schubert 2014 -> -2701 m via
-    // Airy isostasy), thousands of cells share that exact value. The
-    // raw percentile lands ON the plateau and downstream strict-less-
-    // than tests classify the entire plateau as land -- maps flip to
-    // ~87 % land at long simulated times. Advance the threshold to the
-    // next strictly-greater elevation so strict-< below catches every
-    // plateau cell.
-    out.waterThreshold = thresholdAtCutoff;
-    for (std::size_t k = waterCutoff + 1; k < sortedElevations.size(); ++k) {
-        if (sortedElevations[k] > thresholdAtCutoff) {
-            out.waterThreshold = sortedElevations[k];
-            break;
+    // Direct sea-level cut. elev[i] is the unitless surface elevation
+    // produced by MapGenerator from SphereField surfaceElevationM /
+    // 5000 m: positive = above sea level, negative = below. With the
+    // slope-based erosion law (SphereFieldPhysics) preserving
+    // continental shields at their physical steady state and the
+    // rigid mantle-datum calibration in PhysicsConstants, sea level
+    // is at zero by construction. Cells with elev < 0 are water; all
+    // others land. No percentile cutoff (CLAUDE.md rule 3 forbids
+    // quota-based shapers); waterRatio config is now informational
+    // only -- the physical model produces whatever land/water ratio
+    // its constants demand.
+    const std::size_t N = elevationMap.size();
+    out.isWater.assign(N, 0u);
+    std::size_t waterCount = 0;
+    for (std::size_t i = 0; i < N; ++i) {
+        if (elevationMap[i] < 0.0f) {
+            out.isWater[i] = 1u;
+            ++waterCount;
         }
     }
+    out.waterThreshold = 0.0f;
+
+    (void)effectiveWaterRatio; // kept in signature for legacy callers
+
     if (std::getenv("AOC_DUMP_THRESHOLD") != nullptr) {
-        std::size_t below = 0;
-        for (float e : elevationMap) if (e < out.waterThreshold) ++below;
         std::fprintf(stderr,
-            "[thresh] cutoff=%zu/%zu raw=%.4f thresh=%.4f below=%zu min=%.4f max=%.4f\n",
-            waterCutoff, sortedElevations.size(),
-            static_cast<double>(thresholdAtCutoff),
-            static_cast<double>(out.waterThreshold),
-            below,
-            static_cast<double>(sortedElevations.front()),
-            static_cast<double>(sortedElevations.back()));
+            "[thresh] sea-level cut: water=%zu/%zu (%.1f%%)\n",
+            waterCount, N,
+            100.0 * static_cast<double>(waterCount)
+                  / static_cast<double>(N));
     }
     out.distFromCoast.assign(static_cast<std::size_t>(totalTiles), -1);
     std::vector<int32_t> coastQ;
     coastQ.reserve(static_cast<std::size_t>(totalTiles));
     for (int32_t i = 0; i < totalTiles; ++i) {
-        if (elevationMap[static_cast<std::size_t>(i)] < out.waterThreshold) {
+        if (out.isWater[static_cast<std::size_t>(i)]) {
             out.distFromCoast[static_cast<std::size_t>(i)] = 0;
             coastQ.push_back(i);
         }

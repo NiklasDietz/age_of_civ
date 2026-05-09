@@ -22,6 +22,13 @@ namespace gen {
 struct ThresholdResult {
     std::vector<float>   mountainElev;
     std::vector<int32_t> distFromCoast;
+    /// Per-cell binary water mask (1 = water, 0 = land). Computed by
+    /// ranking elevationMap and marking the bottom waterCutoff entries
+    /// as water; ties are broken by stable index. Use this for any
+    /// hard land/ocean decision -- a value-comparison against
+    /// `waterThreshold` mis-classifies cells that share the threshold
+    /// elevation (large continental plateau at z = 0 m + lift).
+    std::vector<uint8_t> isWater;
     float                waterThreshold    = 0.0f;
     float                mountainThreshold = 0.0f;
 };

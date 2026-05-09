@@ -7,6 +7,8 @@
 
 #include "aoc/app/Window.hpp"
 #include "aoc/app/InputManager.hpp"
+#include "aoc/app/DebugCommandFile.hpp"
+#include "aoc/debug/DebugServer.hpp"
 #include "aoc/render/CameraController.hpp"
 #include "aoc/render/GameRenderer.hpp"
 #include "aoc/render/GlobeRenderer.hpp"
@@ -153,6 +155,17 @@ private:
     /// pointer-to-impl so we don't drag Renderer3D into the public
     /// Application header (Vulkan types stay confined to .cpp).
     std::unique_ptr<aoc::render::GlobeRenderer> m_globeRenderer;
+    /// Live-debug hook. Polls /tmp/aoc_debug.cmd each frame; each
+    /// command runs synchronously on the main thread so handlers
+    /// can read/mutate any state without locking. Initialised + verbs
+    /// registered in `Application::initialize`.
+    aoc::app::DebugCommandFile m_debugCmdFile;
+    /// Localhost HTTP debug API. Listens on 127.0.0.1:9876 (default).
+    /// Routes registered in `Application::initialize`. Handlers run
+    /// on cpp-httplib worker threads; v1 routes are read-only against
+    /// game state (race tolerated, mutations come via mutation queue
+    /// in a later phase).
+    std::unique_ptr<aoc::debug::DebugServer> m_debugServer;
 
     // Game state
     aoc::game::GameState         m_gameState;

@@ -5,6 +5,9 @@
 
 #include "aoc/app/Application.hpp"
 #include "aoc/app/UnitSelection.hpp"
+
+#include <fstream>
+#include <sstream>
 #include "aoc/ui/Theme.hpp"
 #include "aoc/ui/IconAtlas.hpp"
 #include "aoc/data/DataLoader.hpp"
@@ -170,6 +173,569 @@ ErrorCode Application::initialize(const Config& config) {
         this->m_graphicsDevice->device(),
         this->m_renderPipeline->renderPass(),
         extent);
+
+    // -- Live-debug command file. Lambdas capture `this` so handlers
+    // can read game state directly. All run synchronously on the main
+    // thread inside the per-frame poll() call -- no locking.
+    this->m_debugCmdFile.registerHandler("info",
+        [this](const std::string&) -> std::string {
+            std::ostringstream o;
+            int32_t plates = 0;
+            int32_t mtnTiles = 0;
+            int32_t landTiles = 0;
+            int32_t oceanTiles = 0;
+            const int32_t total = this->m_hexGrid.tileCount();
+            for (int32_t i = 0; i < total; ++i) {
+                const aoc::map::TerrainType t = this->m_hexGrid.terrain(i);
+                if (t == aoc::map::TerrainType::Mountain) ++mtnTiles;
+                if (aoc::map::isWater(t)) ++oceanTiles;
+                else ++landTiles;
+            }
+            std::vector<bool> seenPlate(256, false);
+            for (int32_t i = 0; i < total; ++i) {
+                const uint8_t pid = this->m_hexGrid.plateId(i);
+                if (pid != 0xFFu) seenPlate[pid] = true;
+            }
+            for (bool s : seenPlate) if (s) ++plates;
+            o << "{\"creatorMode\":"
+              << (this->m_continentCreatorMode ? "true" : "false")
+              << ",\"creatorTime\":" << this->m_creatorTimeCurrentMy
+              << ",\"creatorTotal\":" << this->m_creatorTotalMy
+              << ",\"creatorSeed\":" << this->m_creatorSeed
+              << ",\"width\":"  << this->m_hexGrid.width()
+              << ",\"height\":" << this->m_hexGrid.height()
+              << ",\"plates\":" << plates
+              << ",\"mountainTiles\":" << mtnTiles
+              << ",\"landTiles\":"     << landTiles
+              << ",\"oceanTiles\":"    << oceanTiles
+              << ",\"globeView\":"
+              << (this->m_creatorGlobe ? "true" : "false")
+              << "}";
+            return o.str();
+        });
+
+    this->m_debugCmdFile.registerHandler("dump-plates",
+        [this](const std::string& path) -> std::string {
+            if (path.empty()) return "{\"error\":\"missing PATH arg\"}";
+            std::ofstream pf(path);
+            if (!pf.is_open()) {
+                std::ostringstream o;
+                o << "{\"error\":\"open failed\",\"path\":\""
+                  << path << "\"}";
+                return o.str();
+            }
+            const int32_t W = this->m_hexGrid.width();
+            const int32_t H = this->m_hexGrid.height();
+            std::array<int64_t, 256> cellCount{};
+            std::array<int64_t, 256> landCount{};
+            std::array<int64_t, 256> sumCol{};
+            std::array<int64_t, 256> sumRow{};
+            std::array<int32_t, 256> minCol{};
+            std::array<int32_t, 256> maxCol{};
+            std::array<int32_t, 256> minRow{};
+            std::array<int32_t, 256> maxRow{};
+            for (int32_t i = 0; i < 256; ++i) {
+                minCol[i] = W; maxCol[i] = -1;
+                minRow[i] = H; maxRow[i] = -1;
+            }
+            for (int32_t row = 0; row < H; ++row) {
+                for (int32_t col = 0; col < W; ++col) {
+                    const int32_t idx = row * W + col;
+                    const uint8_t pid = this->m_hexGrid.plateId(idx);
+                    if (pid == 0xFFu) continue;
+                    ++cellCount[pid];
+                    if (!aoc::map::isWater(this->m_hexGrid.terrain(idx))) {
+                        ++landCount[pid];
+                    }
+                    sumCol[pid] += col;
+                    sumRow[pid] += row;
+                    if (col < minCol[pid]) minCol[pid] = col;
+                    if (col > maxCol[pid]) maxCol[pid] = col;
+                    if (row < minRow[pid]) minRow[pid] = row;
+                    if (row > maxRow[pid]) maxRow[pid] = row;
+                }
+            }
+            pf << "plate_id,cell_count,land_frac,min_col,max_col,"
+                  "min_row,max_row,centroid_col,centroid_row\n";
+            int32_t emitted = 0;
+            for (int32_t pid = 0; pid < 256; ++pid) {
+                if (cellCount[pid] == 0) continue;
+                const float lf = static_cast<float>(landCount[pid])
+                               / static_cast<float>(cellCount[pid]);
+                const float ccol = static_cast<float>(sumCol[pid])
+                                 / static_cast<float>(cellCount[pid]);
+                const float crow = static_cast<float>(sumRow[pid])
+                                 / static_cast<float>(cellCount[pid]);
+                pf << pid << ',' << cellCount[pid] << ',' << lf << ','
+                   << minCol[pid] << ',' << maxCol[pid] << ','
+                   << minRow[pid] << ',' << maxRow[pid] << ','
+                   << ccol << ',' << crow << '\n';
+                ++emitted;
+            }
+            std::ostringstream o;
+            o << "{\"path\":\"" << path << "\",\"plates\":"
+              << emitted << "}";
+            return o.str();
+        });
+
+    this->m_debugCmdFile.registerHandler("dump-grid",
+        [this](const std::string& path) -> std::string {
+            if (path.empty()) return "{\"error\":\"missing PATH arg\"}";
+            std::ofstream gf(path);
+            if (!gf.is_open()) {
+                std::ostringstream o;
+                o << "{\"error\":\"open failed\",\"path\":\""
+                  << path << "\"}";
+                return o.str();
+            }
+            const int32_t W = this->m_hexGrid.width();
+            const int32_t H = this->m_hexGrid.height();
+            gf << "# debug dump-grid W=" << W << " H=" << H
+               << " creatorTime=" << this->m_creatorTimeCurrentMy << "\n";
+            for (int32_t row = 0; row < H; ++row) {
+                if ((row & 1) == 1) gf << ' ';
+                for (int32_t col = 0; col < W; ++col) {
+                    const int32_t idx = row * W + col;
+                    const aoc::map::TerrainType t =
+                        this->m_hexGrid.terrain(idx);
+                    char ch = '?';
+                    switch (t) {
+                        case aoc::map::TerrainType::Ocean:        ch = ':'; break;
+                        case aoc::map::TerrainType::Coast:        ch = ','; break;
+                        case aoc::map::TerrainType::ShallowWater: ch = '.'; break;
+                        case aoc::map::TerrainType::Desert:       ch = 'D'; break;
+                        case aoc::map::TerrainType::Plains:       ch = '-'; break;
+                        case aoc::map::TerrainType::Grassland:    ch = 'g'; break;
+                        case aoc::map::TerrainType::Tundra:       ch = 'T'; break;
+                        case aoc::map::TerrainType::Snow:         ch = '*'; break;
+                        case aoc::map::TerrainType::Mountain:     ch = '^'; break;
+                        default: ch = '?'; break;
+                    }
+                    gf << ch;
+                }
+                gf << '\n';
+            }
+            std::ostringstream o;
+            o << "{\"path\":\"" << path
+              << "\",\"width\":" << W << ",\"height\":" << H << "}";
+            return o.str();
+        });
+
+    this->m_debugCmdFile.registerHandler("set-creator-time",
+        [this](const std::string& args) -> std::string {
+            if (!this->m_continentCreatorMode) {
+                return "{\"error\":\"not in creator mode\"}";
+            }
+            if (args.empty()) return "{\"error\":\"missing MY arg\"}";
+            const int32_t my = std::atoi(args.c_str());
+            this->regenerateContinentPreview(my);
+            std::ostringstream o;
+            o << "{\"creatorTime\":" << this->m_creatorTimeCurrentMy << "}";
+            return o.str();
+        });
+
+    this->m_debugCmdFile.registerHandler("re-roll",
+        [this](const std::string& args) -> std::string {
+            if (!this->m_continentCreatorMode) {
+                return "{\"error\":\"not in creator mode\"}";
+            }
+            if (args.empty()) return "{\"error\":\"missing SEED arg\"}";
+            this->m_creatorSeed =
+                static_cast<uint32_t>(std::strtoul(args.c_str(), nullptr, 10));
+            this->m_creatorEpochCache.clear();
+            this->regenerateContinentPreview(this->m_creatorTotalMy);
+            std::ostringstream o;
+            o << "{\"creatorSeed\":" << this->m_creatorSeed << "}";
+            return o.str();
+        });
+
+    this->m_debugCmdFile.registerHandler("quit",
+        [this](const std::string&) -> std::string {
+            glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
+            return "{\"closing\":true}";
+        });
+
+    // -- HTTP debug API. Localhost-only, JSON over HTTP, same
+    // information surface as the file watcher above plus richer
+    // query routes (single plate, single tile, single SphereField
+    // cell). Reads happen on cpp-httplib worker threads with no
+    // synchronisation against the main thread; this is a deliberate
+    // race-tolerated read for v1 -- mutation queue and snapshot
+    // pattern arrive in a follow-up. --
+    using DSM = aoc::debug::DebugServer::Method;
+    this->m_debugServer = std::make_unique<aoc::debug::DebugServer>(9876);
+
+    auto buildInfoJson = [this]() -> std::string {
+        std::ostringstream o;
+        int32_t plates = 0;
+        int32_t mtnTiles = 0;
+        int32_t landTiles = 0;
+        int32_t oceanTiles = 0;
+        const int32_t total = this->m_hexGrid.tileCount();
+        for (int32_t i = 0; i < total; ++i) {
+            const aoc::map::TerrainType t = this->m_hexGrid.terrain(i);
+            if (t == aoc::map::TerrainType::Mountain) ++mtnTiles;
+            if (aoc::map::isWater(t)) ++oceanTiles;
+            else ++landTiles;
+        }
+        std::vector<bool> seenPlate(256, false);
+        for (int32_t i = 0; i < total; ++i) {
+            const uint8_t pid = this->m_hexGrid.plateId(i);
+            if (pid != 0xFFu) seenPlate[pid] = true;
+        }
+        for (bool s : seenPlate) if (s) ++plates;
+        o << "{\"creatorMode\":"
+          << (this->m_continentCreatorMode ? "true" : "false")
+          << ",\"creatorTime\":" << this->m_creatorTimeCurrentMy
+          << ",\"creatorTotal\":" << this->m_creatorTotalMy
+          << ",\"creatorSeed\":" << this->m_creatorSeed
+          << ",\"width\":"  << this->m_hexGrid.width()
+          << ",\"height\":" << this->m_hexGrid.height()
+          << ",\"plates\":" << plates
+          << ",\"mountainTiles\":" << mtnTiles
+          << ",\"landTiles\":"     << landTiles
+          << ",\"oceanTiles\":"    << oceanTiles
+          << ",\"globeView\":"
+          << (this->m_creatorGlobe ? "true" : "false")
+          << "}";
+        return o.str();
+    };
+
+    this->m_debugServer->routeJson(DSM::Get, "/ping",
+        [](const auto&, const auto&) {
+            return std::string("{\"ok\":true}");
+        });
+
+    this->m_debugServer->routeJson(DSM::Get, "/info",
+        [buildInfoJson](const auto&, const auto&) {
+            return buildInfoJson();
+        });
+
+    // GET /plates -- JSON array, one entry per plate present.
+    this->m_debugServer->routeJson(DSM::Get, "/plates",
+        [this](const auto&, const auto&) -> std::string {
+            const int32_t W = this->m_hexGrid.width();
+            const int32_t H = this->m_hexGrid.height();
+            std::array<int64_t, 256> cellCount{};
+            std::array<int64_t, 256> landCount{};
+            std::array<int64_t, 256> sumCol{};
+            std::array<int64_t, 256> sumRow{};
+            std::array<int32_t, 256> minCol{};
+            std::array<int32_t, 256> maxCol{};
+            std::array<int32_t, 256> minRow{};
+            std::array<int32_t, 256> maxRow{};
+            for (int32_t i = 0; i < 256; ++i) {
+                minCol[i] = W; maxCol[i] = -1;
+                minRow[i] = H; maxRow[i] = -1;
+            }
+            for (int32_t row = 0; row < H; ++row) {
+                for (int32_t col = 0; col < W; ++col) {
+                    const int32_t idx = row * W + col;
+                    const uint8_t pid = this->m_hexGrid.plateId(idx);
+                    if (pid == 0xFFu) continue;
+                    ++cellCount[pid];
+                    if (!aoc::map::isWater(this->m_hexGrid.terrain(idx))) {
+                        ++landCount[pid];
+                    }
+                    sumCol[pid] += col;
+                    sumRow[pid] += row;
+                    if (col < minCol[pid]) minCol[pid] = col;
+                    if (col > maxCol[pid]) maxCol[pid] = col;
+                    if (row < minRow[pid]) minRow[pid] = row;
+                    if (row > maxRow[pid]) maxRow[pid] = row;
+                }
+            }
+            std::ostringstream o;
+            o << "[";
+            bool first = true;
+            for (int32_t pid = 0; pid < 256; ++pid) {
+                if (cellCount[pid] == 0) continue;
+                if (!first) o << ',';
+                first = false;
+                const float lf = static_cast<float>(landCount[pid])
+                               / static_cast<float>(cellCount[pid]);
+                o << "{\"plate_id\":" << pid
+                  << ",\"cell_count\":" << cellCount[pid]
+                  << ",\"land_frac\":" << lf
+                  << ",\"min_col\":"   << minCol[pid]
+                  << ",\"max_col\":"   << maxCol[pid]
+                  << ",\"min_row\":"   << minRow[pid]
+                  << ",\"max_row\":"   << maxRow[pid]
+                  << ",\"centroid_col\":"
+                  << static_cast<float>(sumCol[pid])
+                       / static_cast<float>(cellCount[pid])
+                  << ",\"centroid_row\":"
+                  << static_cast<float>(sumRow[pid])
+                       / static_cast<float>(cellCount[pid])
+                  << "}";
+            }
+            o << "]";
+            return o.str();
+        });
+
+    // GET /tile?idx=N -- single tile detail.
+    this->m_debugServer->routeJson(DSM::Get, "/tile",
+        [this](const auto& q, const auto&) -> std::string {
+            auto it = q.find("idx");
+            if (it == q.end()) {
+                return std::string("{\"error\":\"missing idx\"}");
+            }
+            const int32_t idx = std::atoi(it->second.c_str());
+            const int32_t total = this->m_hexGrid.tileCount();
+            if (idx < 0 || idx >= total) {
+                return std::string("{\"error\":\"idx out of range\"}");
+            }
+            const int32_t W = this->m_hexGrid.width();
+            std::ostringstream o;
+            o << "{\"idx\":" << idx
+              << ",\"col\":" << (idx % W)
+              << ",\"row\":" << (idx / W)
+              << ",\"plate_id\":"
+              << static_cast<int32_t>(this->m_hexGrid.plateId(idx))
+              << ",\"terrain\":\""
+              << aoc::map::terrainName(this->m_hexGrid.terrain(idx))
+              << "\",\"feature\":\""
+              << aoc::map::featureName(this->m_hexGrid.feature(idx))
+              << "\",\"owner\":"
+              << static_cast<int32_t>(this->m_hexGrid.owner(idx))
+              << ",\"river_edges\":"
+              << static_cast<int32_t>(this->m_hexGrid.riverEdges(idx))
+              << "}";
+            return o.str();
+        });
+
+    // GET /constants -- current physics tunables snapshot. Read-only
+    // for v1; mutation arrives with /sim/set-constant in a later
+    // phase.
+    this->m_debugServer->routeJson(DSM::Get, "/constants",
+        [](const auto&, const auto&) -> std::string {
+            std::ostringstream o;
+            o << "{\"K_THICKEN\":250.0"
+              << ",\"K_EROSION\":0.034"
+              << ",\"MAX_OMEGA_DEG_PER_MY\":0.15"
+              << ",\"SLAB_PULL_GAIN\":0.125"
+              << ",\"MAX_FRAC_PER_EPOCH\":0.10"
+              << ",\"MY_PER_EPOCH_TARGET\":50"
+              << ",\"DEFAULT_TECTONIC_TOTAL_MY\":3000"
+              << ",\"HOTSPOT_RADIUS_DEG\":1.5"
+              << ",\"HOTSPOT_COUNT_RANGE\":[2,4]"
+              << ",\"_note\":\"v1 read-only mirror; live tuning in later phase\""
+              << "}";
+            return o.str();
+        });
+
+    // POST /dump/plates?path=PATH -- writes per-plate CSV to path.
+    this->m_debugServer->routeJson(DSM::Post, "/dump/plates",
+        [this](const auto& q, const auto&) -> std::string {
+            auto it = q.find("path");
+            if (it == q.end()) {
+                return std::string("{\"error\":\"missing path query\"}");
+            }
+            const std::string path = it->second;
+            std::ofstream pf(path);
+            if (!pf.is_open()) {
+                std::ostringstream o;
+                o << "{\"error\":\"open failed\",\"path\":\""
+                  << path << "\"}";
+                return o.str();
+            }
+            const int32_t W = this->m_hexGrid.width();
+            const int32_t H = this->m_hexGrid.height();
+            std::array<int64_t, 256> cellCount{};
+            std::array<int64_t, 256> landCount{};
+            std::array<int64_t, 256> sumCol{};
+            std::array<int64_t, 256> sumRow{};
+            std::array<int32_t, 256> minCol{};
+            std::array<int32_t, 256> maxCol{};
+            std::array<int32_t, 256> minRow{};
+            std::array<int32_t, 256> maxRow{};
+            for (int32_t i = 0; i < 256; ++i) {
+                minCol[i] = W; maxCol[i] = -1;
+                minRow[i] = H; maxRow[i] = -1;
+            }
+            for (int32_t row = 0; row < H; ++row) {
+                for (int32_t col = 0; col < W; ++col) {
+                    const int32_t idx = row * W + col;
+                    const uint8_t pid = this->m_hexGrid.plateId(idx);
+                    if (pid == 0xFFu) continue;
+                    ++cellCount[pid];
+                    if (!aoc::map::isWater(this->m_hexGrid.terrain(idx))) {
+                        ++landCount[pid];
+                    }
+                    sumCol[pid] += col;
+                    sumRow[pid] += row;
+                    if (col < minCol[pid]) minCol[pid] = col;
+                    if (col > maxCol[pid]) maxCol[pid] = col;
+                    if (row < minRow[pid]) minRow[pid] = row;
+                    if (row > maxRow[pid]) maxRow[pid] = row;
+                }
+            }
+            pf << "plate_id,cell_count,land_frac,min_col,max_col,"
+                  "min_row,max_row,centroid_col,centroid_row\n";
+            int32_t emitted = 0;
+            for (int32_t pid = 0; pid < 256; ++pid) {
+                if (cellCount[pid] == 0) continue;
+                const float lf = static_cast<float>(landCount[pid])
+                               / static_cast<float>(cellCount[pid]);
+                const float ccol = static_cast<float>(sumCol[pid])
+                                 / static_cast<float>(cellCount[pid]);
+                const float crow = static_cast<float>(sumRow[pid])
+                                 / static_cast<float>(cellCount[pid]);
+                pf << pid << ',' << cellCount[pid] << ',' << lf << ','
+                   << minCol[pid] << ',' << maxCol[pid] << ','
+                   << minRow[pid] << ',' << maxRow[pid] << ','
+                   << ccol << ',' << crow << '\n';
+                ++emitted;
+            }
+            std::ostringstream o;
+            o << "{\"path\":\"" << path << "\",\"plates\":"
+              << emitted << "}";
+            return o.str();
+        });
+
+    // POST /dump/grid?path=PATH -- ASCII map.
+    this->m_debugServer->routeJson(DSM::Post, "/dump/grid",
+        [this](const auto& q, const auto&) -> std::string {
+            auto it = q.find("path");
+            if (it == q.end()) {
+                return std::string("{\"error\":\"missing path query\"}");
+            }
+            const std::string path = it->second;
+            std::ofstream gf(path);
+            if (!gf.is_open()) {
+                std::ostringstream o;
+                o << "{\"error\":\"open failed\",\"path\":\""
+                  << path << "\"}";
+                return o.str();
+            }
+            const int32_t W = this->m_hexGrid.width();
+            const int32_t H = this->m_hexGrid.height();
+            gf << "# debug dump-grid W=" << W << " H=" << H
+               << " creatorTime=" << this->m_creatorTimeCurrentMy << "\n";
+            for (int32_t row = 0; row < H; ++row) {
+                if ((row & 1) == 1) gf << ' ';
+                for (int32_t col = 0; col < W; ++col) {
+                    const int32_t idx = row * W + col;
+                    const aoc::map::TerrainType t =
+                        this->m_hexGrid.terrain(idx);
+                    char ch = '?';
+                    switch (t) {
+                        case aoc::map::TerrainType::Ocean:        ch = ':'; break;
+                        case aoc::map::TerrainType::Coast:        ch = ','; break;
+                        case aoc::map::TerrainType::ShallowWater: ch = '.'; break;
+                        case aoc::map::TerrainType::Desert:       ch = 'D'; break;
+                        case aoc::map::TerrainType::Plains:       ch = '-'; break;
+                        case aoc::map::TerrainType::Grassland:    ch = 'g'; break;
+                        case aoc::map::TerrainType::Tundra:       ch = 'T'; break;
+                        case aoc::map::TerrainType::Snow:         ch = '*'; break;
+                        case aoc::map::TerrainType::Mountain:     ch = '^'; break;
+                        default: ch = '?'; break;
+                    }
+                    gf << ch;
+                }
+                gf << '\n';
+            }
+            std::ostringstream o;
+            o << "{\"path\":\"" << path
+              << "\",\"width\":" << W << ",\"height\":" << H << "}";
+            return o.str();
+        });
+
+    // POST /sim/set-creator-time?my=N -- jump scrub. Mutates main-
+    // thread state from worker thread; tolerated for v1 because
+    // regenerateContinentPreview is idempotent and the next frame
+    // re-snapshots fog/camera. Mutation queue follows in phase 5.
+    this->m_debugServer->routeJson(DSM::Post, "/sim/set-creator-time",
+        [this](const auto& q, const auto&) -> std::string {
+            if (!this->m_continentCreatorMode) {
+                return std::string("{\"error\":\"not in creator mode\"}");
+            }
+            auto it = q.find("my");
+            if (it == q.end()) {
+                return std::string("{\"error\":\"missing my\"}");
+            }
+            const int32_t my = std::atoi(it->second.c_str());
+            this->regenerateContinentPreview(my);
+            std::ostringstream o;
+            o << "{\"creatorTime\":" << this->m_creatorTimeCurrentMy << "}";
+            return o.str();
+        });
+
+    // POST /sim/step?dy=N -- advance scrub by N My from the current
+    // creator-time (default 50 = one physics epoch). Negative dy
+    // steps back; cache makes back-steps cheap, forward steps re-run
+    // sim from seed to the new epoch.
+    this->m_debugServer->routeJson(DSM::Post, "/sim/step",
+        [this](const auto& q, const auto&) -> std::string {
+            if (!this->m_continentCreatorMode) {
+                return std::string("{\"error\":\"not in creator mode\"}");
+            }
+            constexpr int32_t MY_PER_EPOCH =
+                aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
+            int32_t dy = MY_PER_EPOCH;
+            auto it = q.find("dy");
+            if (it != q.end()) dy = std::atoi(it->second.c_str());
+            const int32_t target = this->m_creatorTimeCurrentMy + dy;
+            this->regenerateContinentPreview(target);
+            std::ostringstream o;
+            o << "{\"creatorTime\":" << this->m_creatorTimeCurrentMy
+              << ",\"step\":" << dy << "}";
+            return o.str();
+        });
+
+    // POST /sim/re-roll?seed=N -- new seed + regen.
+    this->m_debugServer->routeJson(DSM::Post, "/sim/re-roll",
+        [this](const auto& q, const auto&) -> std::string {
+            if (!this->m_continentCreatorMode) {
+                return std::string("{\"error\":\"not in creator mode\"}");
+            }
+            auto it = q.find("seed");
+            if (it == q.end()) {
+                return std::string("{\"error\":\"missing seed\"}");
+            }
+            this->m_creatorSeed =
+                static_cast<uint32_t>(std::strtoul(it->second.c_str(),
+                                                    nullptr, 10));
+            this->m_creatorEpochCache.clear();
+            this->regenerateContinentPreview(this->m_creatorTotalMy);
+            std::ostringstream o;
+            o << "{\"creatorSeed\":" << this->m_creatorSeed << "}";
+            return o.str();
+        });
+
+    // POST /quit -- clean shutdown.
+    this->m_debugServer->routeJson(DSM::Post, "/quit",
+        [this](const auto&, const auto&) -> std::string {
+            glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
+            return std::string("{\"closing\":true}");
+        });
+
+    // GET /schema -- self-describing route catalogue.
+    this->m_debugServer->routeJson(DSM::Get, "/schema",
+        [](const auto&, const auto&) -> std::string {
+            return std::string(
+                "{"
+                "\"routes\":["
+                "{\"method\":\"GET\",\"path\":\"/ping\"},"
+                "{\"method\":\"GET\",\"path\":\"/info\"},"
+                "{\"method\":\"GET\",\"path\":\"/plates\"},"
+                "{\"method\":\"GET\",\"path\":\"/tile?idx=N\"},"
+                "{\"method\":\"GET\",\"path\":\"/constants\"},"
+                "{\"method\":\"GET\",\"path\":\"/schema\"},"
+                "{\"method\":\"POST\",\"path\":\"/dump/plates?path=PATH\"},"
+                "{\"method\":\"POST\",\"path\":\"/dump/grid?path=PATH\"},"
+                "{\"method\":\"POST\",\"path\":\"/sim/set-creator-time?my=N\"},"
+                "{\"method\":\"POST\",\"path\":\"/sim/step?dy=N\"},"
+                "{\"method\":\"POST\",\"path\":\"/sim/re-roll?seed=N\"},"
+                "{\"method\":\"POST\",\"path\":\"/quit\"}"
+                "]"
+                "}");
+        });
+
+    if (!this->m_debugServer->start()) {
+        LOG_WARN("DebugServer failed to start (port 9876 in use?). "
+                 "File-watcher /tmp/aoc_debug.cmd still works.");
+    }
 
     // -- Resize --
     this->m_window.setResizeCallback([this](uint32_t width, uint32_t height) {
@@ -2097,6 +2663,11 @@ void Application::run() {
     int32_t fpsFrameCount = 0;
 
     while (!this->m_window.shouldClose()) {
+        // Live-debug command file: poll once per frame at the very
+        // top of the loop so commands run before any per-frame
+        // simulation/render state is updated. Synchronous, no locks.
+        this->m_debugCmdFile.poll();
+
         std::chrono::steady_clock::time_point currentTime = std::chrono::steady_clock::now();
         float deltaTime = std::chrono::duration<float>(currentTime - previousTime).count();
         previousTime = currentTime;
@@ -3762,6 +4333,12 @@ void Application::shutdown() {
         this->m_graphicsDevice->waitIdle();
     }
 
+    // Stop debug server before render teardown so worker threads can
+    // no longer touch any state we are about to destroy.
+    if (this->m_debugServer) {
+        this->m_debugServer->stop();
+        this->m_debugServer.reset();
+    }
     // GlobeRenderer holds a Renderer3D that owns Vulkan resources and a
     // dangling-friendly device handle for waitIdle. Drop it BEFORE the
     // RenderPipeline / GraphicsDevice tear down so destructors can

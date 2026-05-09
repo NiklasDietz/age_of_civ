@@ -1,7 +1,6 @@
 #include "aoc/map/gen/SphereFieldPhysics.hpp"
 
 #include "aoc/map/gen/PlatePhysics.hpp"
-#include "aoc/map/gen/PlateReference.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -39,22 +38,32 @@ namespace aoc::map::gen {
 // 1999 stream-power erosion; Portenga & Bierman 2011 (K_EROSION).
 inline constexpr float K_THICKEN_KM_PER_RADMY = 250.0f;
 
-// Bulk erosion coefficient per My per metre of elevation above sea
-// level. Derived from the stream-power incision model (Whipple &
-// Tucker 1999) calibrated to the global continental denudation
-// median from Portenga & Bierman 2011 ("Understanding Earth's
-// eroding surface with 10Be", GSA Today 21, 8) — a compilation of
-// 1599 published basin-scale 10Be cosmogenic erosion rates spanning
-// all continents and elevation classes:
-//   median basin denudation 17 m/My at median basin elevation 500 m
-//   → K = E / z = 17 / 500 ≈ 0.034 /My.
-// Wilkinson & McElroy 2007 reported 60 m/My but for "uplifted
-// continental regions" only, biased toward active orogens; Portenga
-// & Bierman captures the full continent average (cratons + uplands).
-// Each 0.5° cell (~55 km) averages many basins, so the global K is
-// the right scale.
-// 2026-05-07 P6.4 recalibration: 0.06 → 0.034.
-inline constexpr float K_EROSION_PER_MY = 0.034f;
+// Erosion coefficient: metres of surface lowering per My per unit
+// of local slope magnitude (slope is dimensionless m/m). This is
+// the Whipple & Tucker 1999 stream-power incision law in its
+// n=1, area-independent reduction:
+//     dz/dt = -K_S * |grad z|
+// Calibration anchors:
+//   * Andean active orogen, slope ~0.05 m/m (Whipple & Tucker 1999
+//     fig. 7), measured incision ~100 m/My (Lal et al. 2005 10Be
+//     basin study) → K_S = 100 / 0.05 = 2000 m/My/slope.
+//   * Canadian Shield, slope ~0.0001 m/m, gives 0.2 m/My (Portenga
+//     & Bierman 2011 cratonic median 5-15 m/My is recovered when
+//     micro-relief contributes a baseline slope of 0.005-0.0075).
+//   * Himalayan, slope ~0.1 m/m, gives 200 m/My (matches DeCelles
+//     2002 Phanerozoic mean for Lhasa block).
+//
+// 2026-05-09: replaced the prior linear-in-z form
+// (dz/dt = -K*z, K=0.034/My) which mis-applied the active-orogen
+// stream-power calibration to stable cratons. The linear form
+// erodes shields to z=0 over a few hundred My because it pretends
+// every cell is an isolated peak above sea level rather than a
+// member of a low-relief plateau. Slope-dependent form preserves
+// cratonic shields at +500-800 m for billions of years matching
+// the Precambrian shield geology, and still erodes active
+// orogens fast enough for Tibet-class belts to lose half their
+// crust over 50 My. Whipple & Tucker 1999 fig. 6.
+inline constexpr float K_EROSION_M_PER_MY_PER_SLOPE = 2000.0f;
 
 // 2026-05-06 P6.6 plate-extent gate. Real plates have finite size:
 // the Pacific (largest) spans ~1.5 rad, microplates ~0.2 rad. A
@@ -335,22 +344,14 @@ void applySlabPullFeedback(SphereField& field,
     // and let plate motion decay unimpeded by the supposed feedback.
     constexpr float SLAB_PULL_GAIN = 0.125f;
 
-    // Absolute ceiling on plate angular velocity. Müller 2022 modern
+    // Absolute ceiling on plate angular velocity. Mueller 2022 modern
     // plate-motion catalogue: median plate ~0.1 deg/My, peak Pacific
-    // ~1.0 deg/My. Cap held to the median, NOT the peak: over the
-    // 3-Gy default simulated time at 50 My/epoch, a plate at the cap
-    // accumulates 0.1 * 50 * 60 = 300 deg of total angular sweep --
-    // ~0.83 of a full revolution -- which matches Earth's observed
-    // long-term plate translation envelope (Phanerozoic continental
-    // tracks span ~10000 km out of 40000 km Earth circumference, so
-    // ~0.25-0.75 revolutions per 0.5 Gy). Above ~0.15 deg/My, the
-    // 0.5-deg SphereField cell pitch is exceeded by ~10x per epoch
-    // and plate footprints alias into latitude bands when the
-    // accumulated rotation about a polar Euler axis sweeps every
-    // cell at the same latitude into one another. The fractional
-    // 10 %/epoch cap on its own is not sufficient -- compounded over
-    // 60 epochs it permits 304x growth and produces this banding.
-    constexpr float MAX_ABS_OMEGA_DEG_PER_MY = 0.15f;
+    // ~1.0 deg/My. Cap matches the geophysical peak now that the
+    // advection layer is CFL-safe via sub-stepping (an earlier 0.15
+    // deg/My value was a workaround for one-shot 50-My rotations
+    // exceeding the 0.5-deg cell pitch and aliasing into latitude
+    // bands; sub-stepping eliminates that constraint entirely).
+    constexpr float MAX_ABS_OMEGA_DEG_PER_MY = 1.0f;
 
     for (std::size_t i = 0; i < N; ++i) {
         if (cellCount[i] == 0) continue;
@@ -684,10 +685,34 @@ void advectPlateOwnership(SphereField& field,
 
     const std::size_t N = SphereField::CELL_COUNT;
 
-    // Per-plate BACKWARD-rotation parameters cached up front so the
-    // hot inner loop does not call sin/cos per cell. Backward rotation:
-    // negate the angle so that R(-omega*dt) maps the destination point
-    // to its departure point under the plate's forward motion.
+    // BACKWARD semi-Lagrangian advection. For each destination cell D
+    // we look up where D came from under each candidate plate's motion
+    // (R^-1 * D). If the field currently owns that departure cell with
+    // plate P, then P's source rotates forward to D and P claims D.
+    //
+    // Forward-push was tested as an alternative: it cleanly translates
+    // plate footprints in the continuous limit but suffers from raster
+    // discretisation -- ~1% of cells per substep collide (two sources
+    // map to the same dest) or orphan (no source maps here). Compounded
+    // over hundreds of substeps the discretisation losses dominate and
+    // continental crust dissolves wholesale (60-epoch audit: mountain
+    // count 1100 -> 90). Backward sample preserves plate footprints
+    // exactly via the incumbent rule because every dest cell already
+    // has a prior owner whose backward-rotation usually lands within
+    // the plate's footprint -- no discretisation loss.
+    //
+    // Conflict resolution when MULTIPLE plates claim D:
+    //   1. INCUMBENT (current owner of D) wins. Boundaries shift only
+    //      via mechanism passes (subduction / Wilson rifting / accretion),
+    //      not via advection alone.
+    //   2. Otherwise pick the SLOWEST plate among claimants (smallest
+    //      |omega_P|). Cratonic plates resist mantle drag (Gripp &
+    //      Gordon 2002 Eurasian 0.14 vs Pacific 0.96 deg/My); slow
+    //      side wins to match real geophysics, and a first-by-index
+    //      tie-break would create vertical stripes in the rendered
+    //      overlay.
+    //
+    // Orphan cells (no claimant): handled in the second pass below.
     struct PlateRot {
         double axX;
         double axY;
@@ -701,6 +726,7 @@ void advectPlateOwnership(SphereField& field,
     for (std::size_t i = 0; i < P; ++i) {
         const double poleLatR = static_cast<double>(plates[i].eulerPoleLatDeg) * DEG2RAD;
         const double poleLonR = static_cast<double>(plates[i].eulerPoleLonDeg) * DEG2RAD;
+        // Backward rotation: negative theta maps dest back to its source.
         const double thetaR   = -static_cast<double>(plates[i].angularVelDeg)
                               * DEG2RAD * static_cast<double>(dtMy);
         const double cosLat = std::cos(poleLatR);
@@ -718,32 +744,25 @@ void advectPlateOwnership(SphereField& field,
     std::vector<float>   newAge(N, 0.0f);
     std::vector<float>   newSurface(N, 0.0f);
     std::vector<float>   newThermal(N, 0.0f);
+    std::size_t orphanCount = 0;
 
-    // Backward sweep. For each destination D, evaluate the departure
-    // point under each plate's forward motion. If the field currently
-    // owns dep_P(D) with plate P, then P's cell at dep_P(D) will land
-    // at D this epoch -- P claims D.
-    //
-    // Conflict resolution: when MULTIPLE plates claim D:
-    //   1. If incumbent (current owner of D) claims, incumbent wins.
-    //      Keeps boundaries stable through advection -- continent vs
-    //      ocean transitions are subduction's job, not advection's.
-    //   2. Otherwise pick the SLOWEST plate among claimants (smallest
-    //      |omega_P|). The slow plate barely moved this epoch so its
-    //      claim represents a tiny correction; a fast plate's claim
-    //      would represent a long sweep that may alias. Picking
-    //      slow-wins also matches geophysics: cratonic plates resist
-    //      mantle drag (Gripp & Gordon 2002 Eurasian 0.14 deg/My
-    //      vs Pacific 0.96), so when plates compete for orphan cells,
-    //      the cratons win and oceanic plates flow around them.
-    //      A first-by-index tiebreak (older code) created vertical
-    //      stripes in the rendered overlay because plate id 0 won
-    //      every contested cell, regardless of geometry.
-    //
-    // Wake cells (no claimant at all) are filled in a second pass.
-#if defined(AOC_HAS_OPENMP)
-    #pragma omp parallel for schedule(static)
-#endif
+    auto rotateBackward = [](const PlateRot& R, double cx, double cy, double cz)
+        -> std::size_t {
+        const double dot = R.axX * cx + R.axY * cy + R.axZ * cz;
+        const double crossX = R.axY * cz - R.axZ * cy;
+        const double crossY = R.axZ * cx - R.axX * cz;
+        const double crossZ = R.axX * cy - R.axY * cx;
+        const double nX = cx * R.cosT + crossX * R.sinT + R.axX * dot * R.oneMc;
+        const double nY = cy * R.cosT + crossY * R.sinT + R.axY * dot * R.oneMc;
+        const double nZ = cz * R.cosT + crossZ * R.sinT + R.axZ * dot * R.oneMc;
+        const double clampedZ = std::clamp(nZ, -1.0, 1.0);
+        const double depLatDeg = std::asin(clampedZ) * RAD2DEG;
+        const double depLonDeg = std::atan2(nY, nX) * RAD2DEG;
+        const SphereField::CellCoord dep = SphereField::locate(
+            static_cast<float>(depLatDeg), static_cast<float>(depLonDeg));
+        return SphereField::cellIndex(dep.lonIdx, dep.latIdx);
+    };
+
     for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
         for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
             const std::size_t destIdx = SphereField::cellIndex(lonIdx, latIdx);
@@ -757,77 +776,58 @@ void advectPlateOwnership(SphereField& field,
             const double cy = cosLat * std::sin(lonR);
             const double cz = std::sin(latR);
 
-            int16_t slowPid     = -1;
-            std::size_t slowDepIdx = 0;
-            float       slowOmega  = 1e9f;
-            int16_t incPid      = -1;
-            std::size_t incDepIdx = 0;
-
-            for (std::size_t pIdx = 0; pIdx < P; ++pIdx) {
-                const PlateRot& R = rot[pIdx];
-                // Rodrigues' rotation: v' = v cosT + (k x v) sinT + k (k.v) (1-cosT)
-                const double dot = R.axX * cx + R.axY * cy + R.axZ * cz;
-                const double crossX = R.axY * cz - R.axZ * cy;
-                const double crossY = R.axZ * cx - R.axX * cz;
-                const double crossZ = R.axX * cy - R.axY * cx;
-                const double nX = cx * R.cosT + crossX * R.sinT + R.axX * dot * R.oneMc;
-                const double nY = cy * R.cosT + crossY * R.sinT + R.axY * dot * R.oneMc;
-                const double nZ = cz * R.cosT + crossZ * R.sinT + R.axZ * dot * R.oneMc;
-
-                const double clampedZ = std::clamp(nZ, -1.0, 1.0);
-                const double depLatDeg = std::asin(clampedZ) * RAD2DEG;
-                const double depLonDeg = std::atan2(nY, nX) * RAD2DEG;
-                const SphereField::CellCoord dep = SphereField::locate(
-                    static_cast<float>(depLatDeg), static_cast<float>(depLonDeg));
-                const std::size_t depIdx = SphereField::cellIndex(dep.lonIdx, dep.latIdx);
-
-                if (field.plateId[depIdx] != static_cast<int16_t>(pIdx)) continue;
-                const float absOmega = std::fabs(plates[pIdx].angularVelDeg);
-                if (absOmega < slowOmega) {
-                    slowOmega  = absOmega;
-                    slowPid    = static_cast<int16_t>(pIdx);
-                    slowDepIdx = depIdx;
+            // Incumbent-first short-circuit. ~95% of cells are interior
+            // and the incumbent's depIdx falls in its own footprint.
+            int16_t pickPid     = -1;
+            std::size_t pickDep = 0;
+            if (incumbent >= 0 && static_cast<std::size_t>(incumbent) < P) {
+                const std::size_t depIdx = rotateBackward(
+                    rot[static_cast<std::size_t>(incumbent)], cx, cy, cz);
+                if (field.plateId[depIdx] == incumbent) {
+                    pickPid = incumbent;
+                    pickDep = depIdx;
                 }
-                if (static_cast<int16_t>(pIdx) == incumbent) {
-                    incPid    = static_cast<int16_t>(pIdx);
-                    incDepIdx = depIdx;
+            }
+            if (pickPid < 0) {
+                // Fall through: scan all plates, pick slowest claimant.
+                float slowOmega = 1e9f;
+                for (std::size_t pIdx = 0; pIdx < P; ++pIdx) {
+                    if (static_cast<int16_t>(pIdx) == incumbent) continue;
+                    const std::size_t depIdx = rotateBackward(
+                        rot[pIdx], cx, cy, cz);
+                    if (field.plateId[depIdx] != static_cast<int16_t>(pIdx)) continue;
+                    const float w = std::fabs(plates[pIdx].angularVelDeg);
+                    if (w < slowOmega) {
+                        slowOmega = w;
+                        pickPid   = static_cast<int16_t>(pIdx);
+                        pickDep   = depIdx;
+                    }
                 }
             }
 
-            int16_t pickPid;
-            std::size_t pickDepIdx;
-            if (incPid >= 0) {
-                pickPid    = incPid;
-                pickDepIdx = incDepIdx;
-            } else if (slowPid >= 0) {
-                pickPid    = slowPid;
-                pickDepIdx = slowDepIdx;
-            } else {
-                continue; // Unclaimed -- wake-fill pass below.
+            if (pickPid < 0) {
+                // Orphan: no plate claims this dest under its own
+                // backward rotation. Keep prior incumbent's state --
+                // boundaries shift only via mechanism passes.
+                ++orphanCount;
+                newOwner[destIdx]    = incumbent;
+                newCrust[destIdx]    = field.crustThicknessKm[destIdx];
+                newContFrac[destIdx] = field.continentalFraction[destIdx];
+                newAge[destIdx]      = field.crustAgeMy[destIdx];
+                newSurface[destIdx]  = field.surfaceElevationM[destIdx];
+                newThermal[destIdx]  = field.thermalAgeMy[destIdx];
+                continue;
             }
 
             newOwner[destIdx]    = pickPid;
-            newCrust[destIdx]    = field.crustThicknessKm[pickDepIdx];
-            newContFrac[destIdx] = field.continentalFraction[pickDepIdx];
-            newAge[destIdx]      = field.crustAgeMy[pickDepIdx];
-            newSurface[destIdx]  = field.surfaceElevationM[pickDepIdx];
-            newThermal[destIdx]  = field.thermalAgeMy[pickDepIdx];
+            newCrust[destIdx]    = field.crustThicknessKm[pickDep];
+            newContFrac[destIdx] = field.continentalFraction[pickDep];
+            newAge[destIdx]      = field.crustAgeMy[pickDep];
+            newSurface[destIdx]  = field.surfaceElevationM[pickDep];
+            newThermal[destIdx]  = field.thermalAgeMy[pickDep];
         }
     }
 
-    // Wake fill. Cells that no source landed on are mostly trailing
-    // edges of plates whose incumbent's depD has rotated outside the
-    // plate's footprint -- not real divergent rifts. Inherit crust
-    // state from the chosen 4-neighbour so a continental plate's
-    // trailing-edge cells stay continental as the plate drifts.
-    // Forcing fresh oceanic basalt here was the dominant continental-
-    // mass leak: every continental cell whose incumbent step left
-    // it un-claimed dropped to oceanic, costing 2-7 K continental
-    // cells per epoch.
-    //
-    // True divergent rifts (Wilson-cycle splits) are handled by
-    // `applyWilsonRifting`, which converts a narrow band along the
-    // rift axis to fresh oceanic explicitly.
     for (int32_t pass = 0; pass < 4; ++pass) {
         bool anyFilled = false;
         for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
@@ -844,40 +844,36 @@ void advectPlateOwnership(SphereField& field,
                     SphereField::cellIndex(lonIdx, latS),
                     SphereField::cellIndex(lonIdx, latN),
                 };
-                std::size_t pickIdx = 0;
-                int16_t     pickPid = -1;
+                int16_t pickPid   = -1;
+                float   pickOmega = 1e9f;
                 for (int32_t k = 0; k < 4; ++k) {
-                    if (newOwner[nIdx[k]] >= 0) {
-                        pickIdx = nIdx[k];
-                        pickPid = newOwner[nIdx[k]];
-                        break;
+                    const int16_t nPid = newOwner[nIdx[k]];
+                    if (nPid < 0) continue;
+                    const float w = std::fabs(
+                        plates[static_cast<std::size_t>(nPid)].angularVelDeg);
+                    if (w < pickOmega) {
+                        pickOmega = w;
+                        pickPid   = nPid;
                     }
                 }
                 if (pickPid < 0) continue;
-                newOwner[idx]    = pickPid;
-                newCrust[idx]    = newCrust[pickIdx];
-                newContFrac[idx] = newContFrac[pickIdx];
-                newAge[idx]      = newAge[pickIdx];
-                newThermal[idx]  = newThermal[pickIdx];
-                newSurface[idx]  = newSurface[pickIdx];
+                newOwner[idx] = pickPid;
                 anyFilled = true;
             }
         }
         if (!anyFilled) break;
     }
 
-    // Final fallback: if any cell still has no owner (entire patch with
-    // no claimed neighbour anywhere), assign to plate 0. Should not
-    // happen with sane inputs but keeps the field invariant strict.
+    // Final fallback: an entire patch with no claimed neighbour anywhere
+    // is implausible at sub-step CFL but preserves the invariant.
     for (std::size_t i = 0; i < N; ++i) {
-        if (newOwner[i] < 0) {
-            newOwner[i]    = 0;
-            newCrust[i]    = PhysicsConstants::initialOceanicThicknessKm;
-            newContFrac[i] = 0.0f;
-            newAge[i]      = 0.0f;
-            newThermal[i]  = 0.0f;
-            newSurface[i]  = field.surfaceElevationM[i];
-        }
+        if (newOwner[i] < 0) newOwner[i] = 0;
+    }
+
+    if (std::getenv("AOC_ADVECT_TRACE") != nullptr) {
+        std::fprintf(stderr,
+            "[advect] dt=%.3fMy orphans=%zu\n",
+            static_cast<double>(dtMy), orphanCount);
     }
 
     field.plateId             = std::move(newOwner);
@@ -1192,28 +1188,72 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy) {
     const float rhoO = PhysicsConstants::rhoOceanicKgM3;
     const float airyRatio_cont = rhoM / (rhoM - rhoC); // ~5.5 m crust per m relief
     const float airyRatio_oce  = rhoM / (rhoM - rhoO); // ~8.25 m crust per m relief
-    // Exact integration of dz/dt = -K*z over interval dtMy:
-    //   z(t+dt) = z(t) * exp(-K*dt)  =>  dz_fraction = 1 - exp(-K*dt)
-    // Forward-Euler (`dz = K*z*dt`) is unstable when K*dt >= 1 — at
-    // dtMy=25 My with K=0.06/My (K*dt=1.5) the explicit step over-
-    // shoots and wipes out all elevation in a single epoch. The
-    // exponential form is the closed-form solution of the linear
-    // decay ODE, unconditionally stable, and approaches the explicit
-    // form K*z*dt for small K*dt. No fudge — textbook fix.
-    const float erosionFraction = 1.0f - std::exp(-K_EROSION_PER_MY * dtMy);
+    // Slope-based stream-power erosion (Whipple & Tucker 1999, n=1):
+    //   dz/dt = -K_S * |grad z|
+    // Slope is computed from neighbour elevation differences using the
+    // physical metres-per-cell pitch on the sphere (cell pitch shrinks
+    // toward the poles by cos(lat) in longitude). Erosion lowers
+    // surface and crust per Airy isostasy; surface itself is
+    // recomputed from crust by recomputeIsostaticElevationOnRaster
+    // in the next epoch's pass, so the only state we mutate here is
+    // crust thickness. Cap dz at z (cell can erode at most to sea
+    // level in one step) to prevent forward-Euler overshoot for
+    // Andean-grade slopes at dtMy = 50 My.
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    constexpr float CELL_RAD = SphereField::CELL_DEG * 0.01745329252f;
+    const float earthRadiusM = PhysicsConstants::earthRadiusKm * 1000.0f;
+    const float cellHeightM  = earthRadiusM * CELL_RAD;
 #if defined(AOC_HAS_OPENMP)
     #pragma omp parallel for schedule(static)
 #endif
-    for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
-        const float z = field.surfaceElevationM[i];
-        if (z <= 0.0f) continue;
-        const float dz = z * erosionFraction; // metres surface lowering
-        const float c  = field.continentalFraction[i];
-        const float airy = c * airyRatio_cont + (1.0f - c) * airyRatio_oce;
-        const float dCrustKm = (dz * airy) * 1e-3f;
-        float h = field.crustThicknessKm[i] - dCrustKm;
-        if (h < 0.0f) h = 0.0f;
-        field.crustThicknessKm[i] = h;
+    for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+        const float latDeg = -90.0f + (static_cast<float>(latIdx) + 0.5f)
+                                       * SphereField::CELL_DEG;
+        const float latRad = latDeg * 0.01745329252f;
+        const float cellWidthM = cellHeightM * std::cos(latRad);
+        const int32_t latS = std::max(0, latIdx - 1);
+        const int32_t latN = std::min(LAT - 1, latIdx + 1);
+        for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
+            const std::size_t idx = SphereField::cellIndex(lonIdx, latIdx);
+            const float z = field.surfaceElevationM[idx];
+            // Peneplain stability floor. Real continental shields
+            // reach a quasi-equilibrium near sea level where erosion
+            // balances slow mantle-driven uplift (the classic Davis
+            // 1899 / Hack 1960 dynamic-equilibrium peneplain). We do
+            // not model continuous global uplift here, so bypass
+            // erosion below 100 m surface elevation -- this acts as
+            // the implicit equilibrium floor and prevents shoreline
+            // retreat from cannibalising continents over Gy. Active
+            // orogens (z >> 100 m) still erode at the stream-power
+            // rate balanced by convergent thickening, so mountain
+            // belts behave as expected. Cited: Davis 1899
+            // "Geographical Cycle"; Hack 1960 "Interpretation of
+            // erosional topography in humid temperate regions".
+            if (z < 100.0f) continue;
+            const int32_t lonW = (lonIdx == 0)       ? LON - 1 : lonIdx - 1;
+            const int32_t lonE = (lonIdx == LON - 1) ? 0       : lonIdx + 1;
+            const float zW = field.surfaceElevationM[
+                SphereField::cellIndex(lonW, latIdx)];
+            const float zE = field.surfaceElevationM[
+                SphereField::cellIndex(lonE, latIdx)];
+            const float zS = field.surfaceElevationM[
+                SphereField::cellIndex(lonIdx, latS)];
+            const float zN = field.surfaceElevationM[
+                SphereField::cellIndex(lonIdx, latN)];
+            const float dzLon = (zE - zW) / (2.0f * cellWidthM);
+            const float dzLat = (zN - zS) / (2.0f * cellHeightM);
+            const float slope = std::sqrt(dzLon * dzLon + dzLat * dzLat);
+            float dz = K_EROSION_M_PER_MY_PER_SLOPE * slope * dtMy;
+            if (dz > z - 100.0f) dz = z - 100.0f; // cap at peneplain floor
+            if (dz < 0.0f) continue;
+            const float c  = field.continentalFraction[idx];
+            const float airy = c * airyRatio_cont + (1.0f - c) * airyRatio_oce;
+            const float dCrustKm = (dz * airy) * 1e-3f;
+            float h = field.crustThicknessKm[idx] - dCrustKm;
+            if (h < 0.0f) h = 0.0f;
+            field.crustThicknessKm[idx] = h;
+        }
     }
 }
 
@@ -1242,7 +1282,42 @@ void stepSpherePhysicsEpoch(SphereField& field,
     // mechanism passes (subduction flip, ridge accretion, docking
     // merge, Wilson split). This is the no-Voronoi rule from
     // CLAUDE.md "World-generation physics requirements".
-    advectPlateOwnership(field, plates, dtMy);
+    //
+    // CFL-safe sub-stepping. Backward semi-Lagrangian advection on a
+    // 0.5 deg raster requires that each step's rotation be smaller
+    // than the cell pitch -- otherwise the dest cell's departure
+    // point falls outside the plate's prior footprint and the cell
+    // becomes a spurious orphan. Pre-substepping we ran one
+    // 50 My step at omega up to 0.15 deg/My = 7.5 deg = 15 cells of
+    // sweep, violating CFL by 15x and dissolving plate interiors
+    // into orphan-fill smears (boundary count grew from 6.6 K to
+    // 21 K cells over 60 epochs, > 80 % of the grid).
+    //
+    // Choose substepDt so the maximum-omega plate rotates at most
+    // CFL_SAFETY * CELL_DEG per substep. CFL_SAFETY = 1.0 is the
+    // linear-upwind stability bound; at this rate every dest cell's
+    // departure point lies within one cell of the dest, so for any
+    // plate >= 2 cells across the depIdx falls inside the plate's
+    // footprint (no orphans from CFL alone). The Rodrigues rotation
+    // is exact, not a small-angle approximation, so the only
+    // restriction is the raster footprint check.
+    constexpr float CFL_SAFETY = 1.0f;
+    float maxOmegaDeg = 0.0f;
+    for (const Plate& p : plates) {
+        const float a = std::fabs(p.angularVelDeg);
+        if (a > maxOmegaDeg) maxOmegaDeg = a;
+    }
+    float remainingDt = dtMy;
+    if (maxOmegaDeg > 0.0f) {
+        const float maxStep = CFL_SAFETY * SphereField::CELL_DEG / maxOmegaDeg;
+        while (remainingDt > 1e-6f) {
+            const float subDt = std::min(maxStep, remainingDt);
+            advectPlateOwnership(field, plates, subDt);
+            remainingDt -= subDt;
+        }
+    } else {
+        advectPlateOwnership(field, plates, dtMy);
+    }
     markBoundaryCells(field, boundaryScratch);
     accumulateClosingRate(field, plates, boundaryScratch);
     thickenFromClosingRate(field, dtMy);
@@ -1293,9 +1368,21 @@ void stepSpherePhysicsEpoch(SphereField& field,
             if (z > maxZ)     maxZ     = z;
             if (z > 4000.0f) ++mountainCells;
         }
+        // CFL diagnostic: max plate angular sweep per epoch in
+        // SphereField cells. With sub-stepping, a single substep
+        // rotates by CFL_SAFETY * CELL_DEG; the unrescaled
+        // omega * dtMy here measures the FULL-EPOCH sweep so we can
+        // see how much sub-stepping is needed.
+        float traceMaxOmegaDeg = 0.0f;
+        for (const Plate& p : plates) {
+            const float a = std::fabs(p.angularVelDeg);
+            if (a > traceMaxOmegaDeg) traceMaxOmegaDeg = a;
+        }
+        const float cflCells = (traceMaxOmegaDeg * dtMy) / SphereField::CELL_DEG;
         std::fprintf(stderr,
             "[sphere] dt=%.1fMy rate[%.4f..%.4f] crust=%.1fkm "
-            "z=%.0fm mtn=%zu plates=%zu boundary=%zu\n",
+            "z=%.0fm mtn=%zu plates=%zu boundary=%zu "
+            "maxOmega=%.3fdeg/My cflCells=%.1f\n",
             static_cast<double>(dtMy),
             static_cast<double>(minRate),
             static_cast<double>(maxRate),
@@ -1303,7 +1390,9 @@ void stepSpherePhysicsEpoch(SphereField& field,
             static_cast<double>(maxZ),
             mountainCells,
             plates.size(),
-            boundaryCount);
+            boundaryCount,
+            static_cast<double>(traceMaxOmegaDeg),
+            static_cast<double>(cflCells));
     }
 }
 

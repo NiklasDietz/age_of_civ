@@ -174,6 +174,8 @@ set(AOC_GFX_ONLY_SOURCES
     src/render/TextureAtlas.cpp
     src/render/UnitRenderer.cpp
     src/app/Application.cpp
+    src/app/DebugCommandFile.cpp
+    src/debug/DebugServer.cpp
     src/app/Application_HUD.cpp
     src/app/Window.cpp
     src/app/InputManager.cpp
@@ -443,6 +445,8 @@ set(AOC_LIB_SOURCES
     src/app/UnitSelection.cpp
     src/app/HotkeyManager.cpp
     src/app/Application.cpp
+    src/app/DebugCommandFile.cpp
+    src/debug/DebugServer.cpp
     src/app/Application_HUD.cpp
     src/app/ScreenshotEncoder.cpp
 

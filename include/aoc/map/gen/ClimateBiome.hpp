@@ -31,6 +31,7 @@ void runClimateBiomePass(HexGrid& grid,
                          const std::vector<float>& mountainElev,
                          const std::vector<int32_t>& distFromCoast,
                          const std::vector<float>& orogeny,
+                         const std::vector<uint8_t>& isWater,
                          float waterThreshold,
                          float mountainThreshold);
 

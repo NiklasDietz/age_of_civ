@@ -33,7 +33,6 @@
 #include "aoc/map/gen/PlatePhysics.hpp"
 #include "aoc/map/gen/SphereField.hpp"
 #include "aoc/map/gen/SphereFieldPhysics.hpp"
-#include "aoc/map/gen/PlateReference.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/map/Chokepoint.hpp"
@@ -393,10 +392,15 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     const float lnSpeed = MAJOR_MOTION_LN_MU
                                         + continentalShift
                                         + MAJOR_MOTION_LN_SIGMA * gaussian;
-                    // Clamp to physical envelope (subduction below 0.005
-                    // never fires; faster than 5 deg/Ma is super-Pacific).
+                    // Clamp to Mueller 2022 modern plate-motion catalogue:
+                    // median plate ~0.1 deg/My, peak Pacific ~1.0 deg/My.
+                    // Lower bound 0.005 deg/My matches the slowest cratonic
+                    // plates (Eurasian / Antarctic). 5.0 was a previous
+                    // soft-cap chosen before sub-stepping was in place; with
+                    // CFL-safe sub-stepping the geophysical Mueller peak is
+                    // the right ceiling.
                     const float angVelMag =
-                        std::clamp(std::exp(lnSpeed), 0.005f, 5.0f);
+                        std::clamp(std::exp(lnSpeed), 0.005f, 1.0f);
                     p.angularVelDeg = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f)
                         ? -angVelMag : angVelMag;
                 }
@@ -506,45 +510,19 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 return d;
             };
 
-            const int32_t bands = std::max(2, std::min(landCountTarget, 7));
             int32_t landPlaced = 0;
             int32_t attempts = 0;
-            // Force land plate centres into the INTERIOR latitude band
-            // (0.22 - 0.78). Combined with forced ocean plates at the
-            // polar bands below, this lets continents form bounded
-            // landmasses (Australia / Americas style) rather than
-            // always extending all the way to the top or bottom edge.
+            // 2026-05-08: stratified-by-latitude placement removed.
+            // Splitting the land-lat range into N bands and forcing
+            // exactly one plate per band produced visible horizontal
+            // plate-id stripes after region growing -- each plate's
+            // BFS reach was already lat-skewed by its seed band, so
+            // the final ownership map looked like a layer cake.
+            // Uniform random sampling with rejection on minimum gap
+            // produces clustered + isolated continents alike, matching
+            // Earth's irregular plate distribution.
             constexpr float LAND_LAT_LO = 0.22f;
             constexpr float LAND_LAT_HI = 0.78f;
-            const float landLatRange = LAND_LAT_HI - LAND_LAT_LO;
-            for (int32_t b = 0; b < bands && landPlaced < landCountTarget; ++b) {
-                const float bandLo = LAND_LAT_LO
-                    + (landLatRange / static_cast<float>(bands)) * static_cast<float>(b);
-                const float bandHi = LAND_LAT_LO
-                    + (landLatRange / static_cast<float>(bands)) * static_cast<float>(b + 1);
-                int32_t bandAttempts = 0;
-                while (bandAttempts < 200) {
-                    ++bandAttempts;
-                    ++attempts;
-                    const float cx = centerRng.nextFloat(xLo, xHi);
-                    const float cy = centerRng.nextFloat(bandLo, bandHi);
-                    bool tooClose = false;
-                    for (const Plate& existing : plates) {
-                        const float dx = wrapDx(cx, existing.cx);
-                        const float dy = cy - existing.cy;
-                        if (std::sqrt(dx * dx + dy * dy) < LAND_MIN_GAP) {
-                            tooClose = true; break;
-                        }
-                    }
-                    if (tooClose) { continue; }
-                    pushPlate(cx, cy, true);
-                    ++landPlaced;
-                    break;
-                }
-            }
-            // If stratified pass left slots open, top up with general
-            // rejection-sampled placements anywhere INSIDE the land
-            // latitude band (no spillover into polar bands).
             while (landPlaced < landCountTarget && attempts < 800) {
                 ++attempts;
                 const float cx = centerRng.nextFloat(xLo, xHi);
@@ -652,7 +630,12 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // red and the user can correlate volcanic islands to
             // mantle activity.
             {
-                const int32_t hotspotTarget = centerRng.nextInt(5, 8);
+                // 5-8 was 5-11 % of total land per audit; Earth has
+                // ~10 currently-active mantle plumes but only 2-3 of
+                // them produce sub-aerial islands (Hawaii, Iceland,
+                // Galapagos). Drop count to 2-4 so hotspot land
+                // budget falls under 2 % of total.
+                const int32_t hotspotTarget = centerRng.nextInt(2, 4);
                 int32_t placed = 0;
                 int32_t htAttempts = 0;
                 while (placed < hotspotTarget && htAttempts < 300) {
@@ -677,6 +660,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     hotspots.push_back(h);
                     ++placed;
                 }
+                LOG_INFO("Hotspots placed: %d (target %d)",
+                         placed, hotspotTarget);
             }
             // 2026-05-04: bumped clamp 0.40-0.55 -> 0.60-0.72 to match
             // Earth's actual water coverage (~71%). Old 40-55% global
@@ -812,14 +797,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // sources tile elevation from this raster via bilinearSample.
         // The flag AOC_PHYSICS_ON_SPHEREFIELD now only gates the per-
         // epoch step + snapshot setter (default ON since P2.1).
-        // Seeding: 2026-05-06 P6.5 -- each cell gets continental fraction
-        // from inverse-radius-weighted blend of all Bird (2003) reference
-        // plates within 0.55 rad (~31°). Smooth float in [0,1] replaces
-        // the hard step function (Continental=1 / Mixed=0.5 / Oceanic=0)
-        // -- avoids 0->1 cliffs at plate-centroid Voronoi boundaries
-        // that produced single-cell continent shards in the seed map.
-        // Crust thickness is the linear blend of initial continental /
-        // oceanic thickness.
+        // Procedural cratonic seeding (CLAUDE.md rule 2: never load
+        // craton polygons from a dataset). Place 5-9 craton seeds at
+        // random sphere positions with a minimum angular separation,
+        // expand each via stochastic BFS until its target area
+        // (log-normal around the per-craton mean) is reached, mark
+        // claimed cells as continental crust. Total continental area
+        // target ~30 % of the sphere surface (Earth's modern figure).
+        // Stochastic BFS produces non-convex shapes with embayments
+        // and peninsulas matching real continental geometry; pure
+        // BFS in random order avoids the convex-hull blobs that
+        // distance-to-centroid (Voronoi) seeding produces.
         aoc::map::gen::SphereField sphereField;
         sphereField.resize();
         std::vector<uint8_t> sphereBoundaryScratch;
@@ -828,18 +816,165 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // sequence.
         uint32_t physicsRngState = static_cast<uint32_t>(config.seed) ^ 0xDEADBEEFu;
         if (physicsRngState == 0u) physicsRngState = 0x12345678u;
-        for (int32_t latIdx = 0; latIdx < aoc::map::gen::SphereField::LAT_CELLS; ++latIdx) {
-            for (int32_t lonIdx = 0; lonIdx < aoc::map::gen::SphereField::LON_CELLS; ++lonIdx) {
-                const aoc::map::gen::LatLon p =
-                    aoc::map::gen::SphereField::cellCenter(lonIdx, latIdx);
-                const float frac =
-                    aoc::map::gen::continentalFractionByReferenceFalloff(p);
-                const std::size_t idx =
-                    aoc::map::gen::SphereField::cellIndex(lonIdx, latIdx);
-                sphereField.continentalFraction[idx] = frac;
-                sphereField.crustThicknessKm[idx] =
-                      frac  * aoc::map::gen::PhysicsConstants::initialContinentalThicknessKm
-                    + (1.0f - frac) * aoc::map::gen::PhysicsConstants::initialOceanicThicknessKm;
+        {
+            using SF = aoc::map::gen::SphereField;
+            constexpr int32_t LON = SF::LON_CELLS;
+            constexpr int32_t LAT = SF::LAT_CELLS;
+            constexpr std::size_t N = SF::CELL_COUNT;
+            // Independent RNG for cratonic seeding -- distinct from
+            // physicsRngState so changes here do not perturb the
+            // Wilson rifting cadence.
+            aoc::Random cratonRng(config.seed ^ 0x43524154u); // "CRAT"
+
+            const int32_t numCratons = 5 + cratonRng.nextInt(0, 4);
+            // Earth's modern continental area = 29 %; aim for
+            // [25 %, 35 %] window to keep the procedural sim within
+            // Phanerozoic bounds (Cretaceous high-stand 26 %, modern
+            // 29 %, Pleistocene low-stand 32 %).
+            const float targetLandRatio =
+                cratonRng.nextFloat(0.25f, 0.35f);
+            const std::size_t targetTotalLand = static_cast<std::size_t>(
+                targetLandRatio * static_cast<float>(N));
+
+            // Per-craton target areas drawn from log-normal so a few
+            // cratons dominate (Eurasia / Africa scale) while smaller
+            // ones contribute archipelagos.
+            std::vector<std::size_t> cratonTarget(
+                static_cast<std::size_t>(numCratons), 0);
+            float weightSum = 0.0f;
+            std::vector<float> weights(static_cast<std::size_t>(numCratons));
+            for (int32_t i = 0; i < numCratons; ++i) {
+                // ln-normal sample with mu=0, sigma=0.6 (gives roughly
+                // 4x range between smallest and largest craton).
+                const float u1 = std::max(1e-6f,
+                    cratonRng.nextFloat(0.0f, 1.0f));
+                const float u2 = cratonRng.nextFloat(0.0f, 1.0f);
+                const float gauss =
+                    std::sqrt(-2.0f * std::log(u1)) *
+                    std::cos(6.28318530718f * u2);
+                const float w = std::exp(0.6f * gauss);
+                weights[static_cast<std::size_t>(i)] = w;
+                weightSum += w;
+            }
+            for (int32_t i = 0; i < numCratons; ++i) {
+                cratonTarget[static_cast<std::size_t>(i)] =
+                    static_cast<std::size_t>(
+                        weights[static_cast<std::size_t>(i)] / weightSum
+                        * static_cast<float>(targetTotalLand));
+            }
+
+            // Place craton seeds with minimum angular separation
+            // (Lambertian uniform on sphere via cos-lat sampling so
+            // tropical seeds are not over-represented).
+            std::vector<int32_t> seedLon(static_cast<std::size_t>(numCratons));
+            std::vector<int32_t> seedLat(static_cast<std::size_t>(numCratons));
+            constexpr float MIN_SEP_RAD = 0.45f; // ~26 deg: prevents seeds clumping
+            for (int32_t i = 0; i < numCratons; ++i) {
+                bool ok = false;
+                for (int32_t attempt = 0; attempt < 32 && !ok; ++attempt) {
+                    const float u = cratonRng.nextFloat(-1.0f, 1.0f);
+                    const float latDeg = std::asin(u) * 57.29577951f;
+                    const float lonDeg = cratonRng.nextFloat(-180.0f, 180.0f);
+                    const SF::CellCoord c = SF::locate(latDeg, lonDeg);
+                    ok = true;
+                    for (int32_t j = 0; j < i; ++j) {
+                        const aoc::map::gen::LatLon a = SF::cellCenter(
+                            c.lonIdx, c.latIdx);
+                        const aoc::map::gen::LatLon b = SF::cellCenter(
+                            seedLon[static_cast<std::size_t>(j)],
+                            seedLat[static_cast<std::size_t>(j)]);
+                        const float d = aoc::map::gen::haversineRadians(a, b);
+                        if (d < MIN_SEP_RAD) { ok = false; break; }
+                    }
+                    if (ok) {
+                        seedLon[static_cast<std::size_t>(i)] = c.lonIdx;
+                        seedLat[static_cast<std::size_t>(i)] = c.latIdx;
+                    }
+                }
+            }
+
+            // Stochastic BFS expansion. Each craton grows by repeatedly
+            // picking a random cell from its frontier and claiming it.
+            // Random selection (vs FIFO) produces non-convex shapes with
+            // peninsulas and bays.
+            std::vector<int8_t> claimed(N, 0); // 1 = continental
+            for (int32_t cidx = 0; cidx < numCratons; ++cidx) {
+                const std::size_t target =
+                    cratonTarget[static_cast<std::size_t>(cidx)];
+                if (target == 0) continue;
+                const std::size_t startIdx = SF::cellIndex(
+                    seedLon[static_cast<std::size_t>(cidx)],
+                    seedLat[static_cast<std::size_t>(cidx)]);
+                if (claimed[startIdx]) continue; // overlap with prior craton
+                claimed[startIdx] = 1;
+                std::size_t grown = 1;
+                std::vector<std::size_t> frontier;
+                frontier.reserve(target * 2);
+                auto pushNbrs = [&](int32_t lonI, int32_t latI) {
+                    const int32_t lonW = (lonI == 0)       ? LON - 1 : lonI - 1;
+                    const int32_t lonE = (lonI == LON - 1) ? 0       : lonI + 1;
+                    const int32_t latS = std::max(0, latI - 1);
+                    const int32_t latN = std::min(LAT - 1, latI + 1);
+                    const std::size_t nbrs[4] = {
+                        SF::cellIndex(lonW, latI),
+                        SF::cellIndex(lonE, latI),
+                        SF::cellIndex(lonI, latS),
+                        SF::cellIndex(lonI, latN),
+                    };
+                    for (int32_t k = 0; k < 4; ++k) {
+                        if (!claimed[nbrs[k]]) frontier.push_back(nbrs[k]);
+                    }
+                };
+                pushNbrs(seedLon[static_cast<std::size_t>(cidx)],
+                         seedLat[static_cast<std::size_t>(cidx)]);
+                while (grown < target && !frontier.empty()) {
+                    // Pick a random frontier cell. Swap-remove for O(1)
+                    // deletion.
+                    const std::size_t pick = static_cast<std::size_t>(
+                        cratonRng.nextInt(0,
+                            static_cast<int32_t>(frontier.size()) - 1));
+                    const std::size_t cellIdx = frontier[pick];
+                    frontier[pick] = frontier.back();
+                    frontier.pop_back();
+                    if (claimed[cellIdx]) continue;
+                    claimed[cellIdx] = 1;
+                    ++grown;
+                    const int32_t cellLon =
+                        static_cast<int32_t>(cellIdx % LON);
+                    const int32_t cellLat =
+                        static_cast<int32_t>(cellIdx / LON);
+                    pushNbrs(cellLon, cellLat);
+                }
+            }
+
+            // Claimed cells are continental crust; unclaimed are
+            // oceanic. A 1-pass 4-neighbour smoothing softens the
+            // 0->1 cliffs at coastlines so the SphereField bilinear
+            // sampler does not produce single-cell shards downstream
+            // (the same issue the Bird-falloff function was solving
+            // with its 0.55 rad blend, recovered procedurally here).
+            for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+                for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
+                    const std::size_t idx = SF::cellIndex(lonIdx, latIdx);
+                    const int32_t lonW = (lonIdx == 0)       ? LON - 1 : lonIdx - 1;
+                    const int32_t lonE = (lonIdx == LON - 1) ? 0       : lonIdx + 1;
+                    const int32_t latS = std::max(0, latIdx - 1);
+                    const int32_t latN = std::min(LAT - 1, latIdx + 1);
+                    const float self = static_cast<float>(claimed[idx]);
+                    const float fW = static_cast<float>(claimed[
+                        SF::cellIndex(lonW, latIdx)]);
+                    const float fE = static_cast<float>(claimed[
+                        SF::cellIndex(lonE, latIdx)]);
+                    const float fS = static_cast<float>(claimed[
+                        SF::cellIndex(lonIdx, latS)]);
+                    const float fN = static_cast<float>(claimed[
+                        SF::cellIndex(lonIdx, latN)]);
+                    const float frac = (self * 2.0f + fW + fE + fS + fN) / 6.0f;
+                    sphereField.continentalFraction[idx] = frac;
+                    sphereField.crustThicknessKm[idx] =
+                        frac  * aoc::map::gen::PhysicsConstants::initialContinentalThicknessKm
+                      + (1.0f - frac) * aoc::map::gen::PhysicsConstants::initialOceanicThicknessKm;
+                }
             }
         }
         // Procedural initial plate-ownership assignment via stochastic
@@ -1521,29 +1656,32 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 const float zM = sphereField.bilinearSample(
                     sphereField.surfaceElevationM,
                     mw.coord.latDeg, mw.coord.lonDeg);
-                // Map metres above mantle datum to a unitless
-                // elevation suitable for the percentile threshold.
-                // Real-Earth oceanic basement sits ~-2700 m, mean
-                // continental at ~840 m, peaks at ~5500 m. A linear
-                // mapping by 5000 m places oceans at -0.54, mean
-                // continent at +0.17, Tibet at +1.10 — comfortably
-                // straddling the percentile water cutoff.
+                const float contFracHere = sphereField.bilinearSample(
+                    sphereField.continentalFraction,
+                    mw.coord.latDeg, mw.coord.lonDeg);
+                // Map metres above mantle datum (zero = real sea level
+                // by Airy isostasy + datum calibration in
+                // PlatePhysics.hpp) to a unitless elevation. The
+                // 5000 m scale puts oceanic basement at ~-0.54 and
+                // continental highland at ~+0.56 -- the sign of the
+                // unitless value matches the sign of the physical
+                // value, so the binary water/land cut is simply
+                // elev < 0. No contFrac lift, no percentile cutoff:
+                // these were band-aids for a previous erosion law
+                // that drove continental cells to z=0; the slope-
+                // based stream-power erosion (SphereFieldPhysics
+                // applySurfaceErosionOnRaster) preserves shields at
+                // their cratonic +500-800 m steady state, so the
+                // physical sea-level cut suffices.
                 elev = zM / 5000.0f;
+                (void)contFracHere;
             }
             // Hotspot volcanic islands. Each hotspot is a mantle
             // plume that builds a Hawaiian/Icelandic-scale island
             // in deep ocean. Distance test runs in lat/lon space so
-            // island size is independent of hex grid resolution: a
-            // 0.025 screen-space radius on a 400-wide map covered
-            // ~10 columns (~9 deg lon) -- continent-sized, not
-            // Hawaii. Lat/lon test gives the same ~1.5 deg footprint
-            // regardless of grid width.
+            // island size is independent of hex grid resolution.
             if (mw.valid) {
                 for (const Hotspot& h : hotspots) {
-                    // Hotspot's stored (cx, cy) is screen-space; map
-                    // through the same projection inverse to get its
-                    // lat/lon. Cached per render would be better but
-                    // hotspot count is tiny (5-8).
                     const aoc::map::gen::MollweideInverseResult hmw =
                         aoc::map::gen::projectionInverse(
                             config.projection, h.cx, h.cy);
@@ -1552,24 +1690,24 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     float dLon = mw.coord.lonDeg - hmw.coord.lonDeg;
                     if (dLon >  180.0f) dLon -= 360.0f;
                     if (dLon < -180.0f) dLon += 360.0f;
-                    // Cosine-of-latitude factor so longitude arc length
-                    // shrinks toward poles (Hawaii at 20 deg N covers
-                    // the same arc as 1 deg of equatorial longitude
-                    // would).
                     const float cosLat = std::cos(
                         mw.coord.latDeg * 3.14159265f / 180.0f);
                     dLon *= cosLat;
                     const float r2deg = dLat * dLat + dLon * dLon;
-                    // Hawaii main island ~150 km long ~ 1.35 deg arc.
-                    // Use 1.5 deg half-radius for a comparable bump
-                    // footprint.
                     constexpr float HOTSPOT_RADIUS_DEG = 1.5f;
                     constexpr float HOTSPOT_R2_LIMIT =
                         HOTSPOT_RADIUS_DEG * HOTSPOT_RADIUS_DEG;
                     if (r2deg < HOTSPOT_R2_LIMIT) {
                         const float sigma2 = HOTSPOT_R2_LIMIT * 0.16f;
                         const float falloff = std::exp(-r2deg / sigma2);
-                        elev += (0.65f + h.strength * 2.0f) * falloff;
+                        // Was 0.65 + strength*2.0 = up to 0.97, which
+                        // lifted ~10 cells per hotspot above the
+                        // percentile water threshold. Drop to 0.40 +
+                        // strength*1.0 = up to 0.56 so only the centre
+                        // cell crests; falloff puts the next ring at
+                        // ~0.34, below threshold. Result: ~1-2 land
+                        // cells per hotspot, Hawaii-Big-Island scale.
+                        elev += (0.40f + h.strength * 1.0f) * falloff;
                     }
                 }
             }
@@ -1674,8 +1812,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // gen/ClimateBiome.cpp.
     aoc::map::gen::runClimateBiomePass(grid, config, rng, elevationMap,
                                         mountainElev, distFromCoast,
-                                        orogeny, waterThreshold,
-                                        mountainThreshold);
+                                        orogeny, thresholds.isWater,
+                                        waterThreshold, mountainThreshold);
 
     // Rain-shadow / wind conversion is now integrated into the
     // moisture computation above (windMoist field walks upwind across

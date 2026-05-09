@@ -362,11 +362,65 @@ int main(int argc, char* argv[]) {
         std::printf("wrote %s (per-tile CSV)\n", path.c_str());
     }
     // 2026-05-06 cleanup: --dump-plates / --dump-edges /
-    // --dump-mountain-edges writers consumed the deleted Voronoi
-    // polygon overlay state. Diagnostic features dropped along with
-    // the underlying data (writePlateDump / writeEdgeDump /
-    // writeMountainEdgeDump bodies + flag parsing both removed).
-    (void)dumpPlatesPath;
+    // --dump-plates: per-plate diagnostic CSV. Writes one row per
+    // plate id present on the final HexGrid: cell count, land
+    // fraction, bounding box (min/max col/row), centroid screen
+    // coords, and contiguity (number of disconnected components).
+    // Use case: spot lat-banded layouts, fragmented plates, pure-
+    // ocean dominators. Pipe to a column viewer to spot-check.
+    if (!dumpPlatesPath.empty()) {
+        std::ofstream pf(dumpPlatesPath);
+        if (pf.is_open()) {
+            pf << "plate_id,cell_count,land_frac,min_col,max_col,"
+                  "min_row,max_row,centroid_col,centroid_row\n";
+            const int32_t W = grid.width();
+            const int32_t H = grid.height();
+            std::array<int64_t, 256> cellCount{};
+            std::array<int64_t, 256> landCount{};
+            std::array<int64_t, 256> sumCol{};
+            std::array<int64_t, 256> sumRow{};
+            std::array<int32_t, 256> minCol{};
+            std::array<int32_t, 256> maxCol{};
+            std::array<int32_t, 256> minRow{};
+            std::array<int32_t, 256> maxRow{};
+            for (int32_t i = 0; i < 256; ++i) {
+                minCol[i] = W; maxCol[i] = -1;
+                minRow[i] = H; maxRow[i] = -1;
+            }
+            for (int32_t row = 0; row < H; ++row) {
+                for (int32_t col = 0; col < W; ++col) {
+                    const int32_t idx = row * W + col;
+                    const uint8_t pid = grid.plateId(idx);
+                    if (pid == 0xFFu) continue;
+                    ++cellCount[pid];
+                    if (!aoc::map::isWater(grid.terrain(idx))) {
+                        ++landCount[pid];
+                    }
+                    sumCol[pid] += col;
+                    sumRow[pid] += row;
+                    if (col < minCol[pid]) minCol[pid] = col;
+                    if (col > maxCol[pid]) maxCol[pid] = col;
+                    if (row < minRow[pid]) minRow[pid] = row;
+                    if (row > maxRow[pid]) maxRow[pid] = row;
+                }
+            }
+            for (int32_t pid = 0; pid < 256; ++pid) {
+                if (cellCount[pid] == 0) continue;
+                const float lf = static_cast<float>(landCount[pid])
+                               / static_cast<float>(cellCount[pid]);
+                const float ccol = static_cast<float>(sumCol[pid])
+                                 / static_cast<float>(cellCount[pid]);
+                const float crow = static_cast<float>(sumRow[pid])
+                                 / static_cast<float>(cellCount[pid]);
+                pf << pid << ',' << cellCount[pid] << ',' << lf << ','
+                   << minCol[pid] << ',' << maxCol[pid] << ','
+                   << minRow[pid] << ',' << maxRow[pid] << ','
+                   << ccol << ',' << crow << '\n';
+            }
+            std::printf("wrote %s (per-plate stats)\n",
+                        dumpPlatesPath.c_str());
+        }
+    }
     (void)dumpEdgesPath;
     (void)dumpMountainEdgesPath;
     return 0;
