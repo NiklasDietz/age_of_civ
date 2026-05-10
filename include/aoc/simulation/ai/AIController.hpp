@@ -13,9 +13,13 @@
 #include "aoc/simulation/ai/AISettlerController.hpp"
 #include "aoc/simulation/ai/AIBuilderController.hpp"
 #include "aoc/simulation/ai/AIMilitaryController.hpp"
+#include "aoc/simulation/city/ProductionQueue.hpp"
 #include "aoc/ui/MainMenu.hpp"
 #include "aoc/core/Types.hpp"
 #include "aoc/core/Random.hpp"
+
+#include <cstdint>
+#include <vector>
 
 namespace aoc::game {
 class GameState;
@@ -33,6 +37,14 @@ struct GlobalDealTracker;
 }
 
 namespace aoc::sim::ai {
+
+/// Scored production option considered for one city in one AI turn.
+/// Heap storage is reused across cities/turns through `AIController`'s
+/// `m_candidatesScratch` member to avoid repeated allocations.
+struct ProductionCandidate {
+    aoc::sim::ProductionQueueItem item;
+    float                         score = 0.0f;
+};
 
 class AIController {
 public:
@@ -60,12 +72,14 @@ public:
 
 private:
     void executeCityActions(aoc::game::GameState& gameState,
-                            aoc::map::HexGrid& grid);
+                            aoc::map::HexGrid& grid,
+                            const Market& market);
 
     void executeDiplomacyActions(aoc::game::GameState& gameState,
                                  aoc::map::HexGrid& grid,
                                  DiplomacyManager& diplomacy,
                                  const Market& market,
+                                 aoc::Random& rng,
                                  GlobalDealTracker* dealTracker);
 
     /// Evaluate market prices and manage surplus/deficit goods for trade.
@@ -104,6 +118,24 @@ private:
     AISettlerController   m_settlerController;
     AIBuilderController   m_builderController;
     AIMilitaryController  m_militaryController;
+
+    // -----------------------------------------------------------------------
+    // Per-call scratch buffers reused across cities/turns. Cleared at the
+    // start of each consumer; capacity is preserved so the per-turn 360+
+    // allocations spotted in the 2026-05-10 audit collapse to a constant
+    // setup cost. Storage is per-AIController so each player keeps its own
+    // buffer (no cross-controller aliasing).
+    // -----------------------------------------------------------------------
+
+    /// Candidate list scratch for executeCityActions.
+    std::vector<ProductionCandidate> m_candidatesScratch;
+
+    /// Per-good aggregated stockpile scratch for manageEconomy and
+    /// bestAvailableMilitaryUnit. Indexed by goodId; iteration order is
+    /// goodId-ordered, which makes economy decisions deterministic across
+    /// runs (the previous std::unordered_map iteration order varied between
+    /// hash seeds and hosts and broke seed reproducibility for the GA harness).
+    std::vector<int32_t> m_stockpileByGoodScratch;
 };
 
 } // namespace aoc::sim::ai

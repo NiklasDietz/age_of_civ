@@ -1081,6 +1081,9 @@ void Application::rebuildUnitActionPanel() {
                 if (gsFounder == nullptr) { return; }
 
                 const std::string cityName = aoc::sim::getNextCityName(this->m_gameState, cityOwner);
+                // cityCount() (raw vector size): pre-addCity check for
+                // first-ever founding. Founding-event semantics, not
+                // current-ownership.
                 const bool isFirstCity = (gsFounder->cityCount() == 0);
 
                 aoc::sim::claimInitialTerritory(this->m_hexGrid, cityPos, cityOwner);

@@ -66,7 +66,10 @@ AIMilitaryController::AIMilitaryController(PlayerId player, aoc::ui::AIDifficult
         return 0.0f;
     }
 
-    // Cache own city locations for distance queries.
+    // Cache own city locations for distance queries. `cityCount()` is fine
+    // here -- it's a `reserve()` upper bound for capacity; the loop over
+    // `cities()` does the actual ownership work and seceded cities still
+    // have valid locations to push.
     std::vector<aoc::hex::AxialCoord> ownCityLocs;
     ownCityLocs.reserve(static_cast<std::size_t>(gsPlayer->cityCount()));
     for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
@@ -77,6 +80,11 @@ AIMilitaryController::AIMilitaryController(PlayerId player, aoc::ui::AIDifficult
     float threatStrength = 0.0f;
     for (const std::unique_ptr<aoc::game::Player>& otherPlayer : gameState.players()) {
         if (otherPlayer->id() == player) {
+            continue;
+        }
+        // Skip eliminated civs: their unit list is frozen post-elimination
+        // and was inflating threat ratios indefinitely.
+        if (otherPlayer->victoryTracker().isEliminated) {
             continue;
         }
         for (const std::unique_ptr<aoc::game::Unit>& unitPtr : otherPlayer->units()) {
@@ -214,7 +222,9 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
     }
 
     // ----------------------------------------------------------------
-    // Cache own city locations
+    // Cache own city locations. `cityCount()` is fine here -- it's a
+    // `reserve()` upper bound for capacity; ownership filtering happens
+    // inside the loop body in callers that need it.
     // ----------------------------------------------------------------
     std::vector<aoc::hex::AxialCoord> ownCityLocs;
     ownCityLocs.reserve(static_cast<std::size_t>(gsPlayer->cityCount()));
@@ -921,7 +931,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
     // ----------------------------------------------------------------
     {
         const aoc::EraId currentEra = gsPlayer->era().currentEra;
-        const int32_t    cityCount  = gsPlayer->cityCount();
+        const int32_t    cityCount  = gsPlayer->ownedCityCount();
         const int32_t    desired    = desiredMilitaryUnits(currentEra, cityCount);
         const int32_t    actual     = gsPlayer->militaryUnitCount();
 

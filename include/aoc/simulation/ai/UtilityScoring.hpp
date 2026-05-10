@@ -13,22 +13,24 @@
 
 namespace aoc::sim {
 
-/// Score categories for production decisions.
+/// Score categories for production decisions. Defaults make every member
+/// well-defined for fresh-zeroed instances; without them, adding a new
+/// scorer that forgets to set one field would silently consume garbage.
 struct ProductionScores {
-    float settler;
-    float builder;
-    float military;
-    float navalMilitary;
-    float religious;
-    float wonder;
-    float scienceBuilding;
-    float economicBuilding;
-    float industrialBuilding;
-    float cultureBuilding;
-    float militaryBuilding;
-    float mintBuilding;
-    float powerPlant;
-    float district;
+    float settler            = 0.0f;
+    float builder            = 0.0f;
+    float military           = 0.0f;
+    float navalMilitary      = 0.0f;
+    float religious          = 0.0f;
+    float wonder             = 0.0f;
+    float scienceBuilding    = 0.0f;
+    float economicBuilding   = 0.0f;
+    float industrialBuilding = 0.0f;
+    float cultureBuilding    = 0.0f;
+    float militaryBuilding   = 0.0f;
+    float mintBuilding       = 0.0f;
+    float powerPlant         = 0.0f;
+    float district           = 0.0f;
 };
 
 /// Context that modifies base scores.

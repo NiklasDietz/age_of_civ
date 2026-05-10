@@ -11,12 +11,23 @@
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/core/Log.hpp"
 
+#include <iterator>
+
 #ifdef AOC_DIAG_IR
 #include <cstdint>
 #include <unordered_map>
 #endif
 
 namespace aoc::sim {
+
+// Audit Warning: turnAchieved is a fixed-size array indexed by the
+// (1-based) IndustrialRevolutionId. If a Sixth tier is ever added the
+// `nextRevId - 1` and `turnAchieved[nextRevId]` write below would walk
+// off the end. The static_assert keeps the array size in lockstep.
+static_assert(static_cast<std::size_t>(IndustrialRevolutionId::Fifth)
+                  < std::size(PlayerIndustrialComponent{}.turnAchieved),
+              "PlayerIndustrialComponent::turnAchieved must hold every IR tier "
+              "(extend the array if IndustrialRevolutionId::Sixth+ is added)");
 
 #ifdef AOC_DIAG_IR
 namespace {
@@ -107,8 +118,10 @@ bool checkIndustrialRevolution(aoc::game::GameState& gameState, PlayerId player,
         }
     }
 
-    // Check city count requirement
-    int32_t cityCount = static_cast<int32_t>(playerObj->cities().size());
+    // Check city count requirement. IR thresholds gate on cities the player
+    // currently controls, not the raw vector size -- a seceded city does not
+    // contribute its industrial base to the former owner.
+    int32_t cityCount = playerObj->ownedCityCount();
     if (cityCount < rev.requirements.minCityCount) {
 #ifdef AOC_DIAG_IR
         if (diagShouldEmit(static_cast<uint32_t>(player), nextRevId, 1,
@@ -148,8 +161,10 @@ bool checkIndustrialRevolution(aoc::game::GameState& gameState, PlayerId player,
             }
         }
         // Path B: or ever supplied at the player level (capture goods
-        // produced and immediately consumed).
-        if (!found && econ.everSupplied.count(reqGood) > 0) {
+        // produced and immediately consumed). std::unordered_set::contains
+        // (C++20) is the readable membership-check form; .count() on a
+        // set is also O(1) but reads as a counted-quantity query.
+        if (!found && econ.everSupplied.contains(reqGood)) {
             found = true;
         }
         if (!found) {

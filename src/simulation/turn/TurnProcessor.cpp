@@ -227,6 +227,8 @@ aoc::game::City& foundCity(aoc::game::GameState& gameState,
     // when the caller forgot the flag (AISettlerController::foundCity calls
     // omit it).  Without this the conquest-elimination check fires on turn 2
     // for every AI because cityCount == 1 && isOriginalCapital == false.
+    // cityCount() (raw vector size) is the right call here -- we want
+    // "have they ever founded anything", not "what do they currently own".
     const bool isFirstCity = (gsPlayer->cityCount() == 0);
     const bool markCapital = isOriginalCapital || isFirstCity;
 
@@ -351,6 +353,9 @@ std::string getNextCityName(const aoc::game::GameState& gameState, PlayerId play
     const aoc::game::Player* gsPlayer = gameState.player(player);
 
     // Determine how many cities this player already owns to pick the next name.
+    // cityCount() (raw vector size) is correct here: name selection indexes
+    // the civ's name list by founding order so we don't re-issue the same
+    // name when a city secedes and a new one is founded.
     int32_t cityCount = (gsPlayer != nullptr) ? gsPlayer->cityCount() : 0;
 
     // Find the player's civilization to get its city name list.
@@ -420,7 +425,9 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         }
     }
 
-    // Trigger FoundCity eureka once the player has 2 or more cities
+    // Trigger FoundCity eureka once the player has founded 2 or more cities.
+    // cityCount() (raw vector size) is the right gate: this is a one-shot
+    // milestone for the *act* of founding, not a current-ownership check.
     if (gsPlayer->cityCount() >= 2) {
         checkEurekaConditions(*gsPlayer, EurekaCondition::FoundCity);
     }
@@ -1199,6 +1206,9 @@ void processTurn(TurnContext& turnContext) {
         const aoc::game::Player* p = turnContext.gameState->player(turnContext.allPlayers[i]);
         if (p == nullptr) { continue; }
         preState[i].techs = static_cast<int32_t>(std::count(p->tech().completedTechs.begin(), p->tech().completedTechs.end(), true));
+        // cityCount() (raw vector size): this snapshot is diffed against
+        // post-turn vector size to detect *founding* events. A secession
+        // doesn't move the vector, so raw size is the right counter here.
         preState[i].cities = p->cityCount();
         preState[i].units = static_cast<int32_t>(p->units().size());
         preState[i].military = p->militaryUnitCount();
@@ -1266,6 +1276,8 @@ void processTurn(TurnContext& turnContext) {
                                  INVALID_PLAYER, newTechs, 0, "Tech completed");
             }
 
+            // Diff partner: must match the cityCount() above so the
+            // delta detects "founded a new city".
             const int32_t newCities = p->cityCount();
             if (newCities > preState[i].cities) {
                 eventLog->record(TurnEventType::CityFounded, pid,
@@ -1390,7 +1402,7 @@ void processTurn(TurnContext& turnContext) {
 
             aoc::core::TurnSummary s{};
             s.era = static_cast<uint8_t>(effectiveEraFromTech(*p).value);
-            s.cityCount = static_cast<uint16_t>(p->cityCount());
+            s.cityCount = static_cast<uint16_t>(p->ownedCityCount());
             s.unitCount = static_cast<uint16_t>(p->units().size());
             s.treasury = static_cast<int64_t>(p->treasury());
             s.science = computePlayerScience(*p, *turnContext.grid);

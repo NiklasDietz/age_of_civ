@@ -157,7 +157,7 @@ PlayerSnapshot snapshotPlayer(const aoc::game::GameState& gameState,
     snap.inflationRate = ms.inflationRate;
 
     // Cities and population
-    snap.cities = player->cityCount();
+    snap.cities = player->ownedCityCount();
     snap.population = player->totalPopulation();
 
     // Happiness: average across all cities with a happiness component
@@ -810,7 +810,7 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
 
                 LOG_INFO("  P%d: Pop=%d Cities=%d Treasury=%lld Science=%.1f Culture=%.1f "
                          "Tech=%s Civic=%s TradeRoutes=%d MonSys=%d",
-                         p, gsp->totalPopulation(), gsp->cityCount(),
+                         p, gsp->totalPopulation(), gsp->ownedCityCount(),
                          static_cast<long long>(gsp->treasury()),
                          static_cast<double>(science), static_cast<double>(culture),
                          techName, civicName, activeRoutes,

@@ -95,12 +95,22 @@ static std::unordered_map<PlayerId, PlayerRawStats> gatherPlayerStats(
         if (pid == INVALID_PLAYER || pid == BARBARIAN_PLAYER) {
             continue;
         }
+        // Eliminated civs must not pollute CSI denominators (avg cities,
+        // avg GDP, peer ranks). Their stats are frozen at zero post-
+        // elimination and they would otherwise drag every ratio down.
+        if (gsPlayer->victoryTracker().isEliminated) {
+            continue;
+        }
         PlayerRawStats& s = stats[pid];
         s.owner = pid;
 
-        // Cities: population, happiness, loyalty, wonders, tourism
+        // Cities: population, happiness, loyalty, wonders, tourism.
+        // Only currently-owned cities feed CSI -- a city this civ founded
+        // and then lost (secession, conquest) is now another civ's stat.
         int32_t theatreBuildings = 0;
         for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+            if (city == nullptr) { continue; }
+            if (city->owner() != pid) { continue; }
             ++s.cityCount;
             s.totalPopulation += city->population();
             s.avgHappiness += city->happiness().amenities - city->happiness().demand;
@@ -532,8 +542,13 @@ void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber current
         // That fired LastStanding on turn 1 against a 2-player setup.
         {
             bool hasCapital = false;
-            const int32_t cities = gsPlayer->cityCount();
+            // Conquest is "your capital fell and you currently own <=1 city".
+            // Use ownedCityCount: a city the player founded then lost via
+            // secession should not count toward the "still alive" bucket.
+            const int32_t cities = gsPlayer->ownedCityCount();
             for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+                if (city == nullptr) { continue; }
+                if (city->owner() != gsPlayer->id()) { continue; }
                 if (city->isOriginalCapital()) {
                     hasCapital = true;
                     break;
@@ -551,10 +566,22 @@ void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber current
             }
         }
 
-        // 4. Debt spiral: sovereign default + hyperinflation simultaneously
+        // 4. Debt spiral: sovereign default + hyperinflation co-occurrence.
+        //
+        // CurrencyCrisisComponent::activeCrisis only ever holds ONE crisis
+        // (CurrencyCrisis.cpp line 142 returns early while a crisis is
+        // active). The previous `inDefault && inHyper` check on the same
+        // enum was therefore vacuous and DebtSpiral never fired.
+        //
+        // `crisis.hasDefaulted` is the persistent default flag — it is set
+        // when sovereign default triggers and stays true through the
+        // 10-turn `defaultCooldown` window. Pairing it with a currently-
+        // active hyperinflation captures the real-world spiral: the civ
+        // already defaulted, then printed its way through the cooldown
+        // and tripped hyperinflation on top. That's the elimination case.
         {
             const aoc::sim::CurrencyCrisisComponent& crisis = gsPlayer->currencyCrisis();
-            const bool inDefault = (crisis.activeCrisis == CrisisType::SovereignDefault);
+            const bool inDefault = crisis.hasDefaulted;
             const bool inHyper   = (crisis.activeCrisis == CrisisType::Hyperinflation);
             if (inDefault && inHyper) {
                 tracker.activeCollapse = CollapseType::DebtSpiral;
@@ -776,8 +803,14 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
             }
         }
 
+        // Float epsilon: totalCultureAccumulated is float and accumulates
+        // across thousands of turn-tick increments. A naive `>=` against the
+        // GamePace-scaled threshold can deny a victory by < 1.0 due to
+        // accumulated rounding (e.g. 8999.94 vs 9000). 0.5f tolerance is
+        // smaller than any single per-turn culture grain.
+        constexpr float CULTURE_VICTORY_FLOAT_EPSILON = 0.5f;
         if (leader != INVALID_PLAYER
-            && bestCulture >= CULTURE_VICTORY_THRESHOLD
+            && bestCulture >= (CULTURE_VICTORY_THRESHOLD - CULTURE_VICTORY_FLOAT_EPSILON)
             && leaderWonders >= CULTURE_VICTORY_MIN_WONDERS) {
             bool clearLead = true;
             for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
@@ -961,12 +994,16 @@ void updateVictoryTrackers(aoc::game::GameState& gameState, const aoc::map::HexG
         tracker.totalCultureAccumulated +=
             computePlayerCulture(gameState, grid, gsPlayer->id());
 
-        // Basic score: population + science + cities + culture
+        // Basic score: population + science + cities + culture.
+        // Only currently-owned cities feed pop/score; otherwise a player
+        // keeps banking pop from cities they no longer control.
         int32_t pop = 0;
         for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+            if (city == nullptr) { continue; }
+            if (city->owner() != gsPlayer->id()) { continue; }
             pop += city->population();
         }
-        const int32_t cityCount = gsPlayer->cityCount();
+        const int32_t cityCount = gsPlayer->ownedCityCount();
         tracker.score = pop * 5 + tracker.scienceProgress * 10 + cityCount * 20
                       + static_cast<int32_t>(tracker.totalCultureAccumulated);
     }

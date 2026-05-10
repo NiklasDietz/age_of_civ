@@ -11,6 +11,7 @@
 #include "aoc/game/Player.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/game/Unit.hpp"
+#include "aoc/simulation/ai/AIConstants.hpp"
 #include "aoc/simulation/ai/AIController.hpp"
 #include "aoc/simulation/citystate/CityState.hpp"
 #include "aoc/simulation/ai/AIAdvisors.hpp"
@@ -97,6 +98,10 @@ static EnemyComposition analyzeEnemyComposition(const aoc::game::GameState& game
 
     for (const std::unique_ptr<aoc::game::Player>& other : gameState.players()) {
         if (other->id() == player) { continue; }
+        // Eliminated civs leave their unit list pinned (cannot move or
+        // fight) but it inflated threat counts forever and wasted per-turn
+        // CPU. Skip them.
+        if (other->victoryTracker().isEliminated) { continue; }
         for (const std::unique_ptr<aoc::game::Unit>& unitPtr : other->units()) {
             const UnitTypeDef& def = unitTypeDef(unitPtr->typeId());
             if (!isMilitary(def.unitClass)) { continue; }
@@ -141,21 +146,31 @@ static float counterUnitScore(UnitClass candidateClass, const EnemyComposition& 
  * This means a slightly weaker unit that hard-counters the enemy composition
  * can beat a stronger unit that has neutral matchups.
  */
+// `stockpileScratch` is a caller-owned vector indexed by goodId. The function
+// resizes/clears it and refills it from the player's cities. Indexing by
+// goodId (instead of std::unordered_map) keeps iteration order deterministic
+// across runs and hosts: libstdc++'s unordered_map rehash uses a per-process
+// hash seed, so the previous map could yield different best-unit choices
+// for the same simulation seed and break GA replay.
 static UnitTypeId bestAvailableMilitaryUnit(const aoc::game::GameState& gameState,
-                                            PlayerId player) {
+                                            PlayerId player,
+                                            std::vector<int32_t>& stockpileScratch) {
     const EnemyComposition enemyComp = analyzeEnemyComposition(gameState, player);
 
     // Aggregate player's city stockpiles so we can filter out units whose
     // resourceReqs we can't satisfy. Previously the AI enqueued Knights/Horsemen
     // the city lacked Horses/Iron for, production "completed" without output
     // (ProductionSystem drops stuck items silently), and the turn was wasted.
+    const std::size_t numGoods = static_cast<std::size_t>(aoc::sim::goodCount());
+    stockpileScratch.assign(numGoods, 0);
     const aoc::game::Player* gsPlayer = gameState.player(player);
-    std::unordered_map<uint16_t, int32_t> totalStockpile;
     if (gsPlayer != nullptr) {
         for (const std::unique_ptr<aoc::game::City>& cityPtr : gsPlayer->cities()) {
             for (const std::pair<const uint16_t, int32_t>& entry
                     : cityPtr->stockpile().goods) {
-                totalStockpile[entry.first] += entry.second;
+                if (entry.first < numGoods) {
+                    stockpileScratch[entry.first] += entry.second;
+                }
             }
         }
     }
@@ -174,8 +189,8 @@ static UnitTypeId bestAvailableMilitaryUnit(const aoc::game::GameState& gameStat
         bool haveResources = true;
         for (const UnitResourceReq& req : def.resourceReqs) {
             if (req.isValid()) {
-                auto it = totalStockpile.find(req.goodId);
-                if (it == totalStockpile.end() || it->second < req.amount) {
+                if (req.goodId >= numGoods
+                    || stockpileScratch[req.goodId] < req.amount) {
                     haveResources = false;
                     break;
                 }
@@ -222,7 +237,7 @@ static UnitCounts countPlayerUnits(const aoc::game::GameState& gameState, Player
         }
         // Only actual Builders (UnitTypeId{5}). Diplomat/Spy/Medic share
         // UnitClass::Civilian but do not improve tiles.
-        if (u->typeId().value == 5) {
+        if (u->typeId() == UNIT_BUILDER) {
             ++counts.builders;
         }
         if (def.unitClass == UnitClass::Settler) {
@@ -310,7 +325,7 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
 
     this->manageGovernment(gameState);
     this->m_researchPlanner.selectResearch(gameState);
-    this->executeCityActions(gameState, grid);
+    this->executeCityActions(gameState, grid, market);
     this->m_builderController.manageBuildersAndImprovements(gameState, grid);
     this->m_settlerController.executeSettlerActions(gameState, grid);
     this->m_militaryController.executeMilitaryActions(gameState, grid, rng, &diplomacy);
@@ -318,7 +333,7 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
     this->manageMonetarySystem(gameState, grid, diplomacy);
     aoc::sim::aiEconomicStrategy(gameState, grid, market, diplomacy, this->m_player,
                                   static_cast<int32_t>(this->m_difficulty));
-    this->executeDiplomacyActions(gameState, grid, diplomacy, market, dealTracker);
+    this->executeDiplomacyActions(gameState, grid, diplomacy, market, rng, dealTracker);
     this->manageTradeRoutes(gameState, grid, market, diplomacy);
     this->considerPurchases(gameState);
     this->considerCanalBuilding(gameState, grid, fogOfWar);
@@ -363,7 +378,12 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                 const float techGap = std::max(0.0f, bb.techGap);
                 const float threat  = std::max(0.0f, bb.threatLevel);
                 const float wealthProxy = std::min(bestEnemyWealth / 1000.0f, 3.0f);
-                const float bubble = 1.0f; // Placeholder: MarketManipulation likes bubbles
+                // MarketManipulation utility scales with the live bubble
+                // magnitude so the AI prefers it during inflation/euphoria
+                // and ignores it on a flat market. Clamped to [1.0, 3.0]
+                // so a 2.5x bubble never overwhelms the gene-weighted base.
+                const float bubble = std::clamp(
+                    spyPlayer->bubble().bubbleMagnitude, 1.0f, 3.0f);
 
                 // Target-context multipliers
                 PlayerId bestTargetId = INVALID_PLAYER;
@@ -663,14 +683,10 @@ void AIController::manageGreatPeople(aoc::game::GameState& gameState,
 // ============================================================================
 
 // -------------------------------------------------------------------------
-// Internal: scored production candidate
-// -------------------------------------------------------------------------
-
-struct ProductionCandidate {
-    ProductionQueueItem item;
-    float               score = 0.0f;
-};
-
+// `ProductionCandidate` is defined in AIController.hpp so the per-AIController
+// scratch buffer (`m_candidatesScratch`) can hold it directly. Keeping it in
+// the header is the cheapest way to avoid the per-city allocation flagged by
+// the 2026-05-10 audit.
 // -------------------------------------------------------------------------
 // Internal: count unimproved tiles owned by the player near a city
 // -------------------------------------------------------------------------
@@ -926,7 +942,8 @@ static float scoreBuildingCandidate(const LeaderBehavior& behavior,
 // -------------------------------------------------------------------------
 
 void AIController::executeCityActions(aoc::game::GameState& gameState,
-                                       aoc::map::HexGrid& grid) {
+                                       aoc::map::HexGrid& grid,
+                                       const Market& /*market*/) {
     aoc::game::Player* gsPlayer = gameState.player(this->m_player);
     if (gsPlayer == nullptr) {
         return;
@@ -941,7 +958,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
     const float bbTechGap                   = bb.techGap;
 
     const UnitCounts unitCounts = countPlayerUnits(gameState, this->m_player);
-    const int32_t ownedCityCount = gsPlayer->cityCount();
+    const int32_t ownedCityCount = gsPlayer->ownedCityCount();
 
     const aoc::sim::CivId myCivId = gsPlayer->civId();
     const LeaderPersonalityDef& personality = leaderPersonality(myCivId);
@@ -951,7 +968,8 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
     const bool hasForeignTrade = gsPlayer->civics().hasCompleted(CivicId{2});
     const bool playerHasCoins  = gsPlayer->monetary().totalCoinCount() > 0;
 
-    const UnitTypeId bestMilitaryId  = bestAvailableMilitaryUnit(gameState, this->m_player);
+    const UnitTypeId bestMilitaryId  = bestAvailableMilitaryUnit(
+        gameState, this->m_player, this->m_stockpileByGoodScratch);
     const UnitTypeDef& bestMilitaryDef = unitTypeDef(bestMilitaryId);
 
     const float treasuryFloat = static_cast<float>(gsPlayer->treasury());
@@ -1001,11 +1019,15 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
         constexpr int32_t RING1_TILES = 6;
 
         // ----------------------------------------------------------------
-        // Build the candidate list and score each option
+        // Build the candidate list and score each option. Reuse the
+        // per-AIController scratch vector — clear() preserves capacity, so
+        // the per-city ~32-entry allocation flagged in the 2026-05-10 audit
+        // collapses into one growth episode at startup.
         // ----------------------------------------------------------------
 
-        std::vector<ProductionCandidate> candidates;
-        candidates.reserve(32);
+        std::vector<ProductionCandidate>& candidates = this->m_candidatesScratch;
+        candidates.clear();
+        if (candidates.capacity() < 32) { candidates.reserve(32); }
 
         // --- Settler ---
         if (ownedCityCount < targets.maxCities) {
@@ -1026,7 +1048,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 candidate.item.itemId    = 3u;
                 candidate.item.name      = "Settler";
                 candidate.item.totalCost = static_cast<float>(
-                    unitTypeDef(UnitTypeId{3}).productionCost);
+                    unitTypeDef(UNIT_SETTLER).productionCost);
                 candidate.item.progress  = 0.0f;
                 candidate.score          = settlerScore
                     * postureMultiplier(currentPosture,
@@ -1088,7 +1110,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 candidate.item.itemId    = 5u;
                 candidate.item.name      = "Builder";
                 candidate.item.totalCost = static_cast<float>(
-                    unitTypeDef(UnitTypeId{5}).productionCost);
+                    unitTypeDef(UNIT_BUILDER).productionCost);
                 candidate.item.progress  = 0.0f;
                 candidate.score          = builderScore
                     * postureMultiplier(currentPosture,
@@ -1195,7 +1217,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             aiCtx.settlerUnits     = unitCounts.settlers;
             aiCtx.isThreatened     = unitCounts.military < 3;
             aiCtx.needsImprovements = (unimprovedTiles > 0 && unitCounts.builders == 0);
-            aiCtx.hasMint          = districts.hasBuilding(BuildingId{24});
+            aiCtx.hasMint          = districts.hasBuilding(BUILDING_MINT);
             aiCtx.hasCoins         = playerHasCoins;
             aiCtx.hasCampus        = districts.hasDistrict(DistrictType::Campus);
             aiCtx.hasCommercial    = districts.hasDistrict(DistrictType::Commercial);
@@ -1345,8 +1367,8 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
         // Score 4.0 ensures Mint is always first production in the capital.
         // BuildingId 24 = Mint. Only CityCenter district required (always present).
         if (city.isOriginalCapital()
-            && !city.hasBuilding(BuildingId{24})
-            && canBuildBuilding(gameState, this->m_player, city, BuildingId{24})
+            && !city.hasBuilding(BUILDING_MINT)
+            && canBuildBuilding(gameState, this->m_player, city, BUILDING_MINT)
             && gsPlayer->monetary().system == MonetarySystemType::Barter) {
             ProductionCandidate candidate{};
             candidate.item.type      = ProductionItemType::Building;
@@ -1670,10 +1692,18 @@ void AIController::manageEconomy(aoc::game::GameState& gameState,
         return;
     }
 
-    std::unordered_map<uint16_t, int32_t> totalStockpile;
+    // Reuse the goodId-indexed stockpile scratch (member cache). Iteration
+    // over a contiguous vector is deterministic across runs and hosts; the
+    // previous std::unordered_map iteration depended on libstdc++'s hash
+    // seed and broke seed reproducibility for the GA replay harness.
+    const uint16_t totalGoods = market.goodsCount();
+    std::vector<int32_t>& totalStockpile = this->m_stockpileByGoodScratch;
+    totalStockpile.assign(totalGoods, 0);
     for (const std::unique_ptr<aoc::game::City>& cityPtr : gsPlayer->cities()) {
         for (const std::pair<const uint16_t, int32_t>& entry : cityPtr->stockpile().goods) {
-            totalStockpile[entry.first] += entry.second;
+            if (entry.first < totalGoods) {
+                totalStockpile[entry.first] += entry.second;
+            }
         }
     }
 
@@ -1688,7 +1718,6 @@ void AIController::manageEconomy(aoc::game::GameState& gameState,
     };
     std::vector<TradeDesire> desires;
 
-    const uint16_t totalGoods = market.goodsCount();
     for (uint16_t g = 0; g < totalGoods; ++g) {
         const int32_t currentPrice = market.price(g);
         const GoodDef& def = goodDef(g);
@@ -1758,7 +1787,7 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
     if (gsPlayer == nullptr) { return; }
 
     aoc::sim::MonetaryStateComponent& myState = gsPlayer->monetary();
-    const int32_t cityCount = gsPlayer->cityCount();
+    const int32_t cityCount = gsPlayer->ownedCityCount();
     const int32_t playerCount = gameState.playerCount();
 
     // Dynamic gold allocation: raise goldAllocation when treasury is low,
@@ -1941,7 +1970,7 @@ void AIController::considerPurchases(aoc::game::GameState& gameState) {
     // Aggressive leaders (Montezuma: aggression=1.7) buy military more eagerly;
     // peaceful leaders (Gandhi: aggression=0.2) only buy when critically threatened.
     const int32_t milCount = gsPlayer->militaryUnitCount();
-    const int32_t cityCount = gsPlayer->cityCount();
+    const int32_t cityCount = gsPlayer->ownedCityCount();
     const int32_t desiredGarrison = static_cast<int32_t>(
         static_cast<float>(cityCount) * 2.0f * beh.militaryAggression);
     const bool needsMilitary = milCount < std::max(desiredGarrison, cityCount);
@@ -1993,7 +2022,7 @@ void AIController::considerPurchases(aoc::game::GameState& gameState) {
         }
         if (!hasSettler) {
             aoc::game::City& capital = *gsPlayer->cities().front();
-            const int32_t settlerCost = purchaseCost(static_cast<float>(unitTypeDef(UnitTypeId{3}).productionCost));
+            const int32_t settlerCost = purchaseCost(static_cast<float>(unitTypeDef(UNIT_SETTLER).productionCost));
             if (treasury >= static_cast<CurrencyAmount>(settlerCost)) {
                 const ErrorCode result = purchaseInCity(gameState, *gsPlayer, capital,
                                                          ProductionItemType::Unit, 3);

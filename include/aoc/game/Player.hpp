@@ -303,8 +303,18 @@ public:
     /// Add a new city. Returns a reference to the new city.
     City& addCity(aoc::hex::AxialCoord location, const std::string& name);
 
-    /// Number of cities.
+    /// Raw size of the player's `m_cities` vector. Includes any cities that
+    /// have seceded and now have a different `owner()` -- the City pointer
+    /// stays in the original player's vector even after secession (see
+    /// Secession.cpp). Use `ownedCityCount()` if you need "cities I currently
+    /// own"; reserve this for indexing / capacity / pre-add bookkeeping.
     [[nodiscard]] int32_t cityCount() const { return static_cast<int32_t>(this->m_cities.size()); }
+
+    /// Number of cities currently owned by this player. Filters out cities
+    /// whose `owner()` no longer matches `id()` (i.e. seceded). Prefer this
+    /// for game-logic decisions (corruption, IR thresholds, AI sizing,
+    /// happiness, score, victory checks, etc.).
+    [[nodiscard]] int32_t ownedCityCount() const;
 
     // ========================================================================
     // Per-tile city assignment

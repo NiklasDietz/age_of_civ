@@ -10,8 +10,30 @@
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <unordered_map>
 
 namespace aoc::sim {
+
+namespace {
+
+/// Monotonic counter for EquityInvestment ids. Fresh investments get a
+/// unique id; saved games reload with id=0 and are reassigned on first
+/// processStockMarket pass. Process-local scope is sufficient — ids are
+/// not persisted, only used for matching investor record <-> target
+/// mirror in memory. atomic_uint32_t makes the mint thread-safe even
+/// though the simulation is currently single-threaded.
+std::atomic<uint32_t>& nextInvestmentIdCounter() {
+    static std::atomic<uint32_t> s_next{1};
+    return s_next;
+}
+
+uint32_t mintInvestmentId() {
+    return nextInvestmentIdCounter().fetch_add(1, std::memory_order_relaxed);
+}
+
+} // namespace
 
 ErrorCode investInEconomy(aoc::game::GameState& gameState,
                            PlayerId investor, PlayerId target,
@@ -50,13 +72,18 @@ ErrorCode investInEconomy(aoc::game::GameState& gameState,
     targetState.treasury   += amount;
 
     EquityInvestment inv;
-    inv.investor         = investor;
-    inv.target           = target;
+    inv.investor          = investor;
+    inv.target            = target;
     inv.principalInvested = amount;
-    inv.currentValue     = amount;
-    inv.totalDividends   = 0;
-    inv.turnsHeld        = 0;
+    inv.currentValue      = amount;
+    inv.totalDividends    = 0;
+    inv.turnsHeld         = 0;
+    inv.id                = mintInvestmentId();
 
+    // Both vectors get the SAME id so processStockMarket can pair the
+    // investor's authoritative record with the target-side mirror via
+    // direct id comparison instead of the prior triple-field linear
+    // scan that used the mutable principalInvested as part of the key.
     investorPortfolio.investments.push_back(inv);
     targetPortfolio.foreignInvestments.push_back(inv);
 
@@ -119,6 +146,42 @@ ErrorCode divestFromEconomy(aoc::game::GameState& gameState,
 }
 
 void processStockMarket(aoc::game::GameState& gameState) {
+    // Audit Warning hot-path fix: build a single (target, investmentId)
+    // -> EquityInvestment* map across ALL players' foreignInvestments
+    // mirrors once per call. The previous code did a linear scan inside
+    // the inner loop using `principalInvested` as part of a triple-field
+    // identity match — both slow AND broken (principalInvested is
+    // mutable in some flows, so the key shifted).
+    //
+    // Pointer stability: foreignInvestments is a std::vector<EquityInvestment>;
+    // we do NOT push_back / erase to it during the loop below (only field
+    // mutations on existing entries), so the pointers stored in `mirror`
+    // stay valid for the entire processStockMarket call.
+    //
+    // Backfill: legacy saves load with id=0; assign fresh ids to such
+    // mirror entries before keying the map so each gets a unique slot.
+    using MirrorKey = uint64_t;
+    std::unordered_map<MirrorKey, EquityInvestment*> mirror;
+    {
+        std::size_t totalMirrors = 0;
+        for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+            if (playerPtr == nullptr) { continue; }
+            totalMirrors += playerPtr->stockPortfolio().foreignInvestments.size();
+        }
+        mirror.reserve(totalMirrors * 2);
+        for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
+            if (playerPtr == nullptr) { continue; }
+            std::vector<EquityInvestment>& fi = playerPtr->stockPortfolio().foreignInvestments;
+            for (EquityInvestment& m : fi) {
+                if (m.id == 0) { m.id = mintInvestmentId(); }
+                const MirrorKey key =
+                    (static_cast<uint64_t>(playerPtr->id()) << 32)
+                  | static_cast<uint64_t>(m.id);
+                mirror[key] = &m;
+            }
+        }
+    }
+
     for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
         if (playerPtr == nullptr) { continue; }
 
@@ -126,6 +189,11 @@ void processStockMarket(aoc::game::GameState& gameState) {
 
         for (EquityInvestment& inv : portfolio.investments) {
             ++inv.turnsHeld;
+
+            // Backfill investor-side id so the mirror lookup below can
+            // find a paired entry (some legacy saves loaded with id=0
+            // both sides).
+            if (inv.id == 0) { inv.id = mintInvestmentId(); }
 
             aoc::game::Player* targetPlayer = gameState.player(inv.target);
             CurrencyAmount targetGDP        = 0;
@@ -163,21 +231,22 @@ void processStockMarket(aoc::game::GameState& gameState) {
                 }
                 inv.totalDividends += actualDividend;
 
-                // Keep the target's foreignInvestments mirror in sync with the
-                // authoritative record held by the investor. Without this the
-                // mirror keeps its stale principalInvested values and the
-                // target's UI (and any downstream systems reading the mirror)
-                // sees frozen dividends/turnsHeld.
-                for (EquityInvestment& mirror
-                         : targetPlayer->stockPortfolio().foreignInvestments) {
-                    if (mirror.investor == playerPtr->id()
-                        && mirror.target == inv.target
-                        && mirror.principalInvested == inv.principalInvested) {
-                        mirror.currentValue   = inv.currentValue;
-                        mirror.totalDividends = inv.totalDividends;
-                        mirror.turnsHeld      = inv.turnsHeld;
-                        break;
-                    }
+                // Keep the target's foreignInvestments mirror in sync with
+                // the authoritative record held by the investor. Without
+                // this the mirror keeps stale principalInvested values and
+                // the target's UI (and downstream systems reading the
+                // mirror) sees frozen dividends/turnsHeld. O(1) lookup
+                // via the precomputed (targetPlayer, id) map.
+                const MirrorKey key =
+                    (static_cast<uint64_t>(inv.target) << 32)
+                  | static_cast<uint64_t>(inv.id);
+                std::unordered_map<MirrorKey, EquityInvestment*>::const_iterator mIt =
+                    mirror.find(key);
+                if (mIt != mirror.end() && mIt->second != nullptr) {
+                    EquityInvestment* m = mIt->second;
+                    m->currentValue   = inv.currentValue;
+                    m->totalDividends = inv.totalDividends;
+                    m->turnsHeld      = inv.turnsHeld;
                 }
             }
         }

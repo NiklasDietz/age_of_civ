@@ -51,19 +51,6 @@ void aiEconomicStrategy(aoc::game::GameState& gameState,
                         int32_t difficulty);
 
 /**
- * @brief AI decides which buildings to prioritize for power grid.
- *
- * Logic:
- *   - If energy demand > supply: build cheapest available power plant
- *   - Prefer clean energy if available (5th industrial revolution)
- *   - Prefer hydroelectric if city has river
- *   - Avoid nuclear unless AI is desperate for power (hard difficulty only)
- */
-void aiManagePowerGrid(aoc::game::GameState& gameState,
-                       const aoc::map::HexGrid& grid,
-                       PlayerId player);
-
-/**
  * @brief AI decides where to build railways and highways.
  *
  * Priority:

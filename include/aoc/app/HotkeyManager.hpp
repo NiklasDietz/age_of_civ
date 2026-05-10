@@ -64,7 +64,7 @@ inline constexpr int32_t ACTION_COUNT = static_cast<int32_t>(GameAction::Count);
 [[nodiscard]] const char* actionName(GameAction action);
 
 struct HotkeyBinding {
-    int32_t keyCode;      ///< GLFW key code
+    int32_t keyCode = 0;  ///< GLFW key code (0 = unbound)
     bool    ctrl  = false;
     bool    shift = false;
     bool    alt   = false;

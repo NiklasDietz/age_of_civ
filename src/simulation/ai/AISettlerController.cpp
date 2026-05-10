@@ -334,7 +334,7 @@ void AISettlerController::executeSettlerActions(aoc::game::GameState& gameState,
 
     LOG_INFO("AI %u executeSettlerActions: %d cities, %d units",
              static_cast<unsigned>(this->m_player),
-             gsPlayer->cityCount(),
+             gsPlayer->ownedCityCount(),
              gsPlayer->unitCount());
 
     // --- Snapshot settler units before iteration ---

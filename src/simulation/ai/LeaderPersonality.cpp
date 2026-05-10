@@ -111,8 +111,8 @@ static bool checkCondition(const aoc::game::GameState& gameState,
             int32_t leaderCities = 0;
             for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
                 if (playerPtr == nullptr) { continue; }
-                if (playerPtr->id() == target) { targetCities = playerPtr->cityCount(); }
-                if (playerPtr->id() == leader) { leaderCities = playerPtr->cityCount(); }
+                if (playerPtr->id() == target) { targetCities = playerPtr->ownedCityCount(); }
+                if (playerPtr->id() == leader) { leaderCities = playerPtr->ownedCityCount(); }
             }
             return targetCities > leaderCities;
         }

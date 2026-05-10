@@ -23,6 +23,12 @@ void processWarWeariness(aoc::game::Player& player,
         if (other == player.id()) {
             continue;
         }
+        // Barbarians are always at war with everyone (DiplomacyManager::isAtWar
+        // short-circuits on BARBARIAN_PLAYER), but they have no diplomacy state
+        // and shouldn't accumulate war weariness for the human/AI player. Skip.
+        if (other == BARBARIAN_PLAYER) {
+            continue;
+        }
 
         if (diplomacy.isAtWar(player.id(), other)) {
             atWarWithAnyone = true;

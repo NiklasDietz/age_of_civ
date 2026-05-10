@@ -1336,7 +1336,7 @@ void Application::spectatorUpdateFollowCamera() {
     }
     const aoc::game::Player* followed =
         this->m_gameState.player(static_cast<aoc::PlayerId>(this->m_spectatorFollowPlayer));
-    if (followed == nullptr || followed->cityCount() == 0) {
+    if (followed == nullptr || followed->ownedCityCount() == 0) {
         return;
     }
     // Pan to the first city (the capital).
@@ -4887,6 +4887,9 @@ void Application::handleContextAction() {
 
         aoc::game::Player* gsFounder = this->m_gameState.player(cityOwner);
         if (gsFounder != nullptr) {
+            // cityCount() (raw vector size): "have they ever founded
+            // anything before this addCity()". Founding-event semantics,
+            // not current-ownership.
             const bool isFirstCity = gsFounder->cityCount() == 0;
             aoc::game::City& gsCity = gsFounder->addCity(cityPos, cityName);
             gsCity.autoAssignWorkers(this->m_hexGrid, aoc::sim::WorkerFocus::Balanced, gsFounder);

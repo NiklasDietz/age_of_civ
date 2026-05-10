@@ -14,7 +14,27 @@
 
 namespace aoc::sim {
 
+namespace {
+
+/// Sentinel returned by relation() when given out-of-bounds or sentinel
+/// player IDs (INVALID_PLAYER, BARBARIAN_PLAYER, or any value >= playerCount).
+/// thread_local so concurrent callers do not clobber each other's reads.
+/// Reset on every access so stale writes from prior misuse don't leak.
+PairwiseRelation& invalidRelationSentinel() {
+    thread_local PairwiseRelation s_sentinel{};
+    s_sentinel = PairwiseRelation{};
+    return s_sentinel;
+}
+
+} // namespace
+
 void DiplomacyManager::initialize(uint8_t playerCount) {
+    // Invariant: m_relations.size() == playerCount * playerCount, with row-major
+    // index = a * playerCount + b. resize() both sizes and value-initialises so
+    // the matrix is immediately usable. MAX_PLAYERS = 20 -> max 400 entries.
+    static_assert(static_cast<std::size_t>(MAX_PLAYERS) * MAX_PLAYERS <=
+                      std::numeric_limits<std::size_t>::max(),
+                  "relation matrix size must fit in size_t");
     this->m_playerCount = playerCount;
     this->m_relations.resize(
         static_cast<std::size_t>(playerCount) * static_cast<std::size_t>(playerCount));
@@ -22,11 +42,25 @@ void DiplomacyManager::initialize(uint8_t playerCount) {
 
 PairwiseRelation& DiplomacyManager::relation(PlayerId a, PlayerId b) {
     assert(a < this->m_playerCount && b < this->m_playerCount);
+    if (a >= this->m_playerCount || b >= this->m_playerCount) {
+        // Catches INVALID_PLAYER (255) and BARBARIAN_PLAYER (255) which are
+        // unsigned and pass any < signed-bounds check at call sites.
+        LOG_ERROR("DiplomacyManager::relation invalid PlayerId: a=%u b=%u count=%u",
+                  static_cast<unsigned>(a), static_cast<unsigned>(b),
+                  static_cast<unsigned>(this->m_playerCount));
+        return invalidRelationSentinel();
+    }
     return this->m_relations[static_cast<std::size_t>(a) * this->m_playerCount + b];
 }
 
 const PairwiseRelation& DiplomacyManager::relation(PlayerId a, PlayerId b) const {
     assert(a < this->m_playerCount && b < this->m_playerCount);
+    if (a >= this->m_playerCount || b >= this->m_playerCount) {
+        LOG_ERROR("DiplomacyManager::relation invalid PlayerId: a=%u b=%u count=%u",
+                  static_cast<unsigned>(a), static_cast<unsigned>(b),
+                  static_cast<unsigned>(this->m_playerCount));
+        return invalidRelationSentinel();
+    }
     return this->m_relations[static_cast<std::size_t>(a) * this->m_playerCount + b];
 }
 

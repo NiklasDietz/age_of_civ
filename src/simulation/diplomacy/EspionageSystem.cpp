@@ -357,7 +357,16 @@ void processSpyMissions(aoc::game::GameState& gameState,
         }
     }
 
-    std::vector<aoc::game::Unit*> toRemove;
+    // WP8 — snapshot spy.owner alongside the doomed Unit*. The trailing
+    // removal pass must not re-deref `captured` to look up its owner, since
+    // a duplicate push (future-edit hazard) would deref freed memory on the
+    // second iteration. With (PlayerId, unit) pairs the lookup uses a
+    // value, not a deref.
+    struct PendingSpyKill {
+        PlayerId         ownerId;
+        aoc::game::Unit* unit;
+    };
+    std::vector<PendingSpyKill> toRemove;
 
     for (const SpyEntry& entry : spyUnits) {
         aoc::game::Unit* unitPtr = entry.unit;
@@ -400,7 +409,7 @@ void processSpyMissions(aoc::game::GameState& gameState,
                                     diplomacy->addModifier(
                                         defender->id(), spy.owner, mod);
                                 }
-                                toRemove.push_back(unitPtr);
+                                toRemove.push_back({spy.owner, unitPtr});
                             } else {
                                 spy.isRevealed = true;
                                 LOG_INFO("Passive spy (P%u) exposed by P%u counter-intel",
@@ -531,12 +540,12 @@ void processSpyMissions(aoc::game::GameState& gameState,
 
                 case SpyFailureOutcome::Captured:
                     applyFallout(-15, 40);
-                    toRemove.push_back(unitPtr);
+                    toRemove.push_back({spy.owner, unitPtr});
                     continue;
 
                 case SpyFailureOutcome::Killed:
                     applyFallout(-20, 40);
-                    toRemove.push_back(unitPtr);
+                    toRemove.push_back({spy.owner, unitPtr});
                     continue;
             }
         }
@@ -548,11 +557,13 @@ void processSpyMissions(aoc::game::GameState& gameState,
         }
     }
 
-    // Remove captured/killed spies
-    for (aoc::game::Unit* captured : toRemove) {
-        aoc::game::Player* ownerPlayer = gameState.player(captured->spy().owner);
+    // Remove captured/killed spies. Owner snapshotted as a PlayerId so we
+    // never deref `captured` to look up its owner — duplicate pushes
+    // (future-edit hazard) would otherwise UB on the second pass.
+    for (const PendingSpyKill& kill : toRemove) {
+        aoc::game::Player* ownerPlayer = gameState.player(kill.ownerId);
         if (ownerPlayer != nullptr) {
-            ownerPlayer->removeUnit(captured);
+            ownerPlayer->removeUnit(kill.unit);
         }
     }
 }

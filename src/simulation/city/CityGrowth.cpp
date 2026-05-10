@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <unordered_set>
 #include <vector>
 
 namespace aoc::sim {
@@ -424,6 +425,19 @@ static void processSingleCityGrowth(aoc::game::City& city,
         aoc::hex::AxialCoord bestTile = center;
         bool foundNew = false;
 
+        // Hoist the worked-tile lookup out of the per-tile inner loop.
+        // The previous O(workedTiles.size()) linear scan ran for every
+        // owned tile within GROWTH_SANITY_CAP -- O(N * W) per growth.
+        // One pass into a flat-index hash set turns the inner check into
+        // O(1) and drops the total to O(N + W).
+        std::unordered_set<int32_t> alreadyWorked;
+        alreadyWorked.reserve(city.workedTiles().size());
+        for (const aoc::hex::AxialCoord& worked : city.workedTiles()) {
+            if (grid.isValid(worked)) {
+                alreadyWorked.insert(grid.toIndex(worked));
+            }
+        }
+
         const int32_t totalTiles = grid.tileCount();
         for (int32_t idx = 0; idx < totalTiles; ++idx) {
             if (grid.owner(idx) != city.owner()) { continue; }
@@ -431,15 +445,7 @@ static void processSingleCityGrowth(aoc::game::City& city,
             if (tile == center) { continue; }
             if (grid.distance(tile, center) > GROWTH_SANITY_CAP) { continue; }
 
-            // Already worked?
-            bool alreadyWorked = false;
-            for (const aoc::hex::AxialCoord& worked : city.workedTiles()) {
-                if (worked == tile) {
-                    alreadyWorked = true;
-                    break;
-                }
-            }
-            if (alreadyWorked) { continue; }
+            if (alreadyWorked.count(idx) != 0) { continue; }
 
             // Terrain viability (matches the old check).
             const aoc::map::TerrainType nTerrain = grid.terrain(idx);

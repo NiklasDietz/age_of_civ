@@ -1152,7 +1152,7 @@ void CityDetailScreen::buildCouriersTab(UIManager& ui, WidgetId contentPanel) {
     (void)ui.createLabel(scrollArea, {0.0f, -19.0f, kListWidth, 16.0f},
         LabelData{"  Dispatch", kHeaderTextColor, 11.0f});
 
-    if (goods.empty() || playerPtr->cityCount() < 2) {
+    if (goods.empty() || playerPtr->ownedCityCount() < 2) {
         (void)ui.createLabel(scrollArea, {0.0f, 0.0f, kListWidth, 14.0f},
             LabelData{"  (need stockpile and 2+ cities)", kDimTextColor, 11.0f});
     }

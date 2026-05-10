@@ -74,15 +74,18 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
     renderer2d.beginFrame(frameIndex);
     renderer2d.begin();
 
-    // When the caller is rendering the world via an alternative path
-    // (e.g. the Continent Creator's 3D globe), skip every world-space
-    // layer below and jump straight to the UI overlay so panels,
-    // tooltips, event-log, etc. still render on top of the alt-path
-    // output.
-    if (this->skipFlatMap) {
-        goto skip_to_ui_layer;
-    }
-
+    // World-layer block: map tiles, overlays, units, cities, particles,
+    // selection highlights, ranged-range overlay, etc. Skipped entirely
+    // when the caller is driving the world via an alternative path
+    // (e.g. the Continent Creator's 3D globe); UI / minimap / tooltip
+    // still render in that mode and run after this block. The block
+    // is large (~1500 lines) because every layer ends up packed into
+    // one Renderer2D batch — extracting it into a separate helper would
+    // require lifting > 30 locals (hexSize, topLeftX/Y, invZoom, every
+    // layer-specific scratch) into a parameter struct, which we have
+    // deliberately deferred until the renderer's locals are factored
+    // into a per-frame context object.
+    if (!this->skipFlatMap) {
     // Layer 1: Map tiles (world coordinates -- shader transforms via camera)
     this->m_mapRenderer.draw(renderer2d, grid, fog, viewingPlayer, camera,
                               screenWidth, screenHeight);
@@ -1553,7 +1556,8 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
         }
     }
 
-skip_to_ui_layer:
+    } // end of if (!this->skipFlatMap) block above
+
     // Layer 4: UI overlay (single batch - transform UI to world-space so the
     // camera shader maps it back to screen-space correctly).
     float invZoom = 1.0f / camera.zoom();

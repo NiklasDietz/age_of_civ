@@ -110,15 +110,24 @@ static void aiSanctionStrategy(aoc::game::GameState& gameState,
                                 int32_t difficulty) {
     if (difficulty < 2) { return; }  // Only hard AI uses sanctions
 
+    GlobalSanctionTracker& tracker = gameState.sanctions();
+
     for (const std::unique_ptr<aoc::game::Player>& otherPtr : gameState.players()) {
         if (otherPtr == nullptr || otherPtr->id() == player) { continue; }
-        PlayerId other = otherPtr->id();
+        const PlayerId other = otherPtr->id();
 
-        if (diplomacy.isAtWar(player, other)) {
-            // Impose financial sanctions if we haven't already
-            // (would need access to the global sanction tracker from EconomySimulation)
-            LOG_INFO("AI player %u considering sanctions against player %u",
-                     static_cast<unsigned>(player), static_cast<unsigned>(other));
+        if (!diplomacy.isAtWar(player, other)) { continue; }
+
+        // Apply sanctions in escalating order. Each call no-ops if the
+        // sanction already exists, so we issue every relevant tier per
+        // turn while at war. TradeEmbargo is the cheapest signal; the
+        // financial / asset-freeze tiers compound the economic damage
+        // and only fire after the embargo is in place.
+        (void)imposeSanction(gameState, tracker, player, other,
+                             SanctionType::TradeEmbargo, false);
+        if (tracker.hasSanction(player, other, SanctionType::TradeEmbargo)) {
+            (void)imposeSanction(gameState, tracker, player, other,
+                                 SanctionType::FinancialSanction, false);
         }
     }
 }
@@ -154,7 +163,7 @@ static void aiImmigrationPolicy(aoc::game::GameState& gameState, PlayerId player
     aoc::game::Player* myPlayer = gameState.player(player);
     if (myPlayer == nullptr) { return; }
 
-    int32_t cityCount = myPlayer->cityCount();
+    int32_t cityCount = myPlayer->ownedCityCount();
     PlayerMigrationComponent& mig = myPlayer->migration();
 
     if (cityCount < 4) {
@@ -163,29 +172,6 @@ static void aiImmigrationPolicy(aoc::game::GameState& gameState, PlayerId player
         mig.policy = ImmigrationPolicy::Controlled;
     } else {
         mig.policy = ImmigrationPolicy::Closed;
-    }
-}
-
-// ============================================================================
-// Power grid management
-// ============================================================================
-
-void aiManagePowerGrid(aoc::game::GameState& gameState,
-                       const aoc::map::HexGrid& grid,
-                       PlayerId player) {
-    aoc::game::Player* myPlayer = gameState.player(player);
-    if (myPlayer == nullptr) { return; }
-
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : myPlayer->cities()) {
-        if (cityPtr == nullptr) { continue; }
-
-        // computeCityPower requires a legacy EntityId; defer to the legacy path
-        // via the CityComponent stored in the legacy world for now.
-        // The city location identifies the right CityComponent in the legacy pool.
-        (void)cityPtr;
-        (void)grid;
-        // NOTE: computeCityPower still takes an EntityId from the legacy world.
-        // When that function is migrated, pass the City* directly.
     }
 }
 
@@ -296,7 +282,6 @@ void aiEconomicStrategy(aoc::game::GameState& gameState,
     aiSanctionStrategy(gameState, diplomacy, player, difficulty);
     aiInsuranceStrategy(gameState, player);
     aiImmigrationPolicy(gameState, player);
-    aiManagePowerGrid(gameState, grid, player);
     aiManageInfrastructure(gameState, grid, player);
     aiCrisisResponse(gameState, player);
     aiSpendExcessGold(gameState, player);

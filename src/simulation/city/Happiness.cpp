@@ -58,7 +58,7 @@ void computeCityHappiness(aoc::game::Player& player) {
     }
     uniqueLuxuryCount += monopolyBonusCount;
 
-    int32_t playerCityCount = player.cityCount();
+    int32_t playerCityCount = player.ownedCityCount();
 
     // Each unique luxury provides +1 amenity to each city, up to 4 cities per luxury.
     float luxuryAmenityPerCity = 0.0f;

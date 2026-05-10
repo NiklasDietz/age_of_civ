@@ -122,34 +122,51 @@ void processAICommodityExchange(aoc::game::GameState& gameState,
         snapshots.push_back(std::move(snap));
     }
 
-    for (Snapshot& fromSnap : snapshots) {
+    // Audit Warning hot-path fix: precompute each snapshot's surplus
+    // good list once, then the inner search per (from, to) pair walks
+    // `from`'s surplus goods (typically << goodsCount) instead of
+    // iterating every good twice. A snapshot is rarely surplus on more
+    // than a handful of goods, so this collapses an O(snapshots² × goods²)
+    // worst case to O(snapshots × goods + snapshots² × |surplus|).
+    std::vector<std::vector<uint16_t>> surplusGoods(snapshots.size());
+    for (std::size_t i = 0; i < snapshots.size(); ++i) {
+        for (uint16_t g = 0; g < goodsCount; ++g) {
+            if (snapshots[i].stockpile[g] >= kSurplusThreshold) {
+                surplusGoods[i].push_back(g);
+            }
+        }
+    }
+
+    for (std::size_t fromIdx = 0; fromIdx < snapshots.size(); ++fromIdx) {
+        Snapshot& fromSnap = snapshots[fromIdx];
         if (fromSnap.economicFocus < 1.0f) { continue; }
-        for (Snapshot& toSnap : snapshots) {
-            if (toSnap.id == fromSnap.id) { continue; }
+        for (std::size_t toIdx = 0; toIdx < snapshots.size(); ++toIdx) {
+            if (toIdx == fromIdx) { continue; }
+            Snapshot& toSnap = snapshots[toIdx];
             const PairwiseRelation& rel = diplomacy->relation(fromSnap.id, toSnap.id);
             if (!rel.hasMet || rel.isAtWar) { continue; }
             if (rel.totalScore() < 0)       { continue; }
 
+            // offerGood: a good `from` has surplus on AND `to` is shortage on.
+            // Walk `from`'s precomputed surplus list (small) instead of
+            // re-scanning all `goodsCount` goods.
             int32_t offerGood = -1;
-            for (uint16_t g = 0; g < goodsCount; ++g) {
+            for (uint16_t g : surplusGoods[fromIdx]) {
                 if (rel.isGoodEmbargoed(g)) { continue; }
-                if (fromSnap.stockpile[g] >= kSurplusThreshold
-                    && toSnap.stockpile[g] <= kShortageThreshold) {
-                    offerGood = static_cast<int32_t>(g);
-                    break;
-                }
+                if (toSnap.stockpile[g] > kShortageThreshold) { continue; }
+                offerGood = static_cast<int32_t>(g);
+                break;
             }
             if (offerGood < 0) { continue; }
 
+            // requestGood: symmetric. Walk `to`'s surplus list.
             int32_t requestGood = -1;
-            for (uint16_t g = 0; g < goodsCount; ++g) {
+            for (uint16_t g : surplusGoods[toIdx]) {
                 if (static_cast<int32_t>(g) == offerGood) { continue; }
                 if (rel.isGoodEmbargoed(g)) { continue; }
-                if (toSnap.stockpile[g] >= kSurplusThreshold
-                    && fromSnap.stockpile[g] <= kShortageThreshold) {
-                    requestGood = static_cast<int32_t>(g);
-                    break;
-                }
+                if (fromSnap.stockpile[g] > kShortageThreshold) { continue; }
+                requestGood = static_cast<int32_t>(g);
+                break;
             }
             if (requestGood < 0) { continue; }
 

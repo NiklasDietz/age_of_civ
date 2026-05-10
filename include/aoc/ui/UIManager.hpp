@@ -11,6 +11,7 @@
 
 #include "aoc/ui/Widget.hpp"
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -187,7 +188,12 @@ public:
         float timestampSec = 0.0f;
     };
     void logEvent(WidgetEvent ev);
-    [[nodiscard]] const std::vector<WidgetEvent>& recentEvents() const { return this->m_eventLog; }
+
+    /// Snapshot of the recent-events ring in chronological order
+    /// (oldest first, newest last). Returned by value because the
+    /// underlying storage is a fixed-size circular buffer; the caller
+    /// rarely uses this (debug inspector only) so the copy is cheap.
+    [[nodiscard]] std::vector<WidgetEvent> recentEvents() const;
 
     // ========================================================================
     // Animation
@@ -355,6 +361,15 @@ private:
     /// and responds to Enter/Space via `activateFocused`.
     WidgetId m_focusedWidget = INVALID_WIDGET;
 
+    /// Cached list of focusable widgets, in creation order. Rebuilt
+    /// lazily inside focusNext/focusPrev when m_focusCacheDirty is
+    /// true — invalidation happens on add/remove/setVisible. Earlier
+    /// code rebuilt this every Tab keypress (O(N) per press).
+    mutable std::vector<WidgetId> m_focusableCache;
+    mutable bool m_focusCacheDirty = true;
+    void invalidateFocusCache() { this->m_focusCacheDirty = true; }
+    [[nodiscard]] const std::vector<WidgetId>& focusableList() const;
+
     /// Per-slot generation counters. Bumped on `removeWidget` so
     /// stale `WidgetHandle` instances compare unequal after reuse.
     std::vector<uint32_t> m_generations;
@@ -363,8 +378,15 @@ private:
     FrameTimings m_frameTimings;
 
     /// Bounded ring of recent widget events for the inspector.
-    std::vector<WidgetEvent> m_eventLog;
-    static constexpr std::size_t MAX_EVENT_LOG = 50;
+    /// 256 slots covers several seconds of UI activity even under
+    /// rapid keyboard navigation; bumped from the prior cap of 50
+    /// because the inspector now scrolls through the ring.
+    static constexpr std::size_t MAX_EVENT_LOG = 256;
+    std::array<WidgetEvent, MAX_EVENT_LOG> m_eventLog{};
+    /// Insertion head: next write goes here (modulo MAX_EVENT_LOG).
+    std::size_t m_eventLogHead = 0;
+    /// Live-element count up to MAX_EVENT_LOG; saturates at MAX.
+    std::size_t m_eventLogCount = 0;
 
     // Drag-drop runtime state.
     WidgetId m_dragSource = INVALID_WIDGET;

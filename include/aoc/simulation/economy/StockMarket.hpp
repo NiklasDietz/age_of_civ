@@ -39,6 +39,14 @@ struct EquityInvestment {
     CurrencyAmount currentValue = 0;        ///< Current market value (fluctuates with target GDP)
     CurrencyAmount totalDividends = 0;      ///< Cumulative dividends earned
     int32_t turnsHeld = 0;                  ///< How long the investment has been held
+
+    /// Stable monotonic id assigned at investInEconomy() time. Pairs the
+    /// investor-side record with the matching mirror entry in the target's
+    /// foreignInvestments. 0 = legacy / unset (older saves loaded before
+    /// the field existed). In-memory only — never written to disk; reload
+    /// reassigns ids in deserialization order so every loaded record gets
+    /// a unique runtime id.
+    uint32_t id = 0;
 };
 
 // ============================================================================

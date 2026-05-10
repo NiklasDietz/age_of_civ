@@ -14,6 +14,7 @@
 #include "aoc/map/HexCoord.hpp"
 
 #include <cstdint>
+#include <unordered_set>
 #include <vector>
 
 namespace aoc::sim::ai {
@@ -75,6 +76,12 @@ struct AIBlackboard {
     /// Top candidate city founding sites scored by ExpansionAdvisor.
     std::vector<aoc::hex::AxialCoord> bestCitySites;
 
+    /// Set of building IDs owned across all of this player's cities.
+    /// Populated by AIResearchPlanner; refreshed at most once per turn.
+    /// DEBT: when CityComponent grows an onBuildingCompleted hook, flip
+    /// this to invalidate-on-event so the cache is always exact.
+    std::unordered_set<uint16_t> ownedBuildingIds;
+
     // -----------------------------------------------------------------------
     // Domain assessments (0.0 = no concern, 1.0 = critical)
     // Posted by individual advisors; read by posture evaluator and scorers.
@@ -87,6 +94,10 @@ struct AIBlackboard {
     float expansionOpportunity   = 0.0f;
 
     /// How far behind the tech average this player is (ResearchAdvisor).
+    /// Sign convention: positive = behind average (deficit), negative =
+    /// ahead. Callers that want a deficit-only multiplier must clamp via
+    /// `std::max(0.0f, techGap)`; raw value preserves the lead/deficit
+    /// signal for symmetric consumers (e.g. spy mission scoring).
     float techGap                = 0.0f;
 
     /// How strained the gold budget is: maintenance vs income (EconomyAdvisor).
@@ -121,6 +132,9 @@ struct AIBlackboard {
     /// and purchase are blocked for EXPANSION_EXHAUSTED_COOLDOWN turns after
     /// this so the AI stops burning production on unfoundable cities.
     int32_t expansionExhaustedTurn = -1000;
+
+    /// Turn on which `ownedBuildingIds` was last rebuilt. -1 = never.
+    int32_t ownedBuildingsTurn = -1;
 
     /// True when ExpansionAdvisor's last scan found no viable city sites and
     /// the player already has at least one city.  Cleared once new sites

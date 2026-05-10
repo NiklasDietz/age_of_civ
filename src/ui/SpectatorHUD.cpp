@@ -126,7 +126,7 @@ void SpectatorHUD::drawScoreboard(vulkan_app::renderer::Renderer2D& renderer,
         PlayerRow row{};
         row.index      = p;
         row.civName    = aoc::sim::civDef(player->civId()).name;
-        row.cities     = player->cityCount();
+        row.cities     = player->ownedCityCount();
         row.population = player->totalPopulation();
         row.treasury   = static_cast<int64_t>(player->treasury());
         row.eraVP      = player->victoryTracker().eraVictoryPoints;

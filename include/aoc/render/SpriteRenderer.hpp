@@ -73,7 +73,17 @@ public:
         float _padding[3];
     };
 
+    /// Maximum sprites per single instanced draw call (one sub-batch).
     static constexpr uint32_t MAX_SPRITES = 16384;
+
+    /// Maximum sprites the per-frame instance buffer can hold across
+    /// every sub-batch in a single frame. The flush loop carves the
+    /// buffer into ring-style sub-ranges (one per sub-batch) so the
+    /// GPU never reads a region the CPU is overwriting. 4x MAX_SPRITES
+    /// gives 65 536 sprites per frame headroom which comfortably
+    /// covers the heaviest UI screen plus map sprites.
+    static constexpr uint32_t MAX_SPRITES_PER_FRAME = MAX_SPRITES * 4;
+
     static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
     /**
@@ -152,9 +162,15 @@ private:
     // Vertex buffer (unit quad)
     vkutils::BufferPtr m_vertexBuffer;
 
-    // Per-frame instance buffers
+    // Per-frame instance buffers. Each one is sized for the full
+    // MAX_SPRITES_PER_FRAME budget; flushBatch sub-divides the buffer
+    // into distinct offset regions so concurrent sub-batches recorded
+    // into the same command buffer never alias the same memory.
     std::vector<vkutils::BufferPtr> m_instanceBuffers;
     uint32_t m_currentFrameIndex = 0;
+    /// Byte offset of the next free slot in the active per-frame
+    /// buffer. Reset to zero in beginFrame; advanced by flushBatch.
+    VkDeviceSize m_frameWriteHead = 0;
 
     // Batched sprites for current frame
     std::vector<SpriteInstanceData> m_sprites;

@@ -70,8 +70,16 @@ void SpriteRenderer::cleanup() {
     this->m_pipelineLayout.reset();
 
     if (this->m_descriptorPool != VK_NULL_HANDLE) {
+        // Destroying the pool implicitly frees every descriptor set
+        // that was allocated from it. We deliberately do NOT call
+        // vkFreeDescriptorSets on m_descriptorSet — the pool was
+        // created without VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT
+        // so individual frees are not permitted. Letting the pool
+        // reclaim everything in one shot is the documented Vulkan
+        // pattern (VkSpec §14.2.3 "Allocation of Descriptor Sets").
         vkDestroyDescriptorPool(dev, this->m_descriptorPool, nullptr);
         this->m_descriptorPool = VK_NULL_HANDLE;
+        this->m_descriptorSet = VK_NULL_HANDLE;  // belongs to pool, now invalid
     }
 
     if (this->m_descriptorSetLayout != VK_NULL_HANDLE) {
@@ -185,7 +193,11 @@ void SpriteRenderer::createBuffers() {
     }
     this->m_vertexBuffer->copyFrom(quadVertices.data(), sizeof(quadVertices));
 
-    const VkDeviceSize instanceBufferSize = sizeof(SpriteInstanceData) * MAX_SPRITES;
+    // Size each per-frame buffer for the entire frame budget so that
+    // every sub-batch in flushBatch can claim its own non-overlapping
+    // slice without overwriting in-flight GPU reads.
+    const VkDeviceSize instanceBufferSize =
+        sizeof(SpriteInstanceData) * MAX_SPRITES_PER_FRAME;
     for (vkutils::BufferPtr& buf : this->m_instanceBuffers) {
         buf = vkutils::Buffer::create(
             this->m_device,
@@ -374,6 +386,10 @@ void SpriteRenderer::createPipeline(VkRenderPass renderPass) {
 void SpriteRenderer::beginFrame(uint32_t frameIndex) {
     this->m_currentFrameIndex =
         frameIndex % static_cast<uint32_t>(this->m_instanceBuffers.size());
+    // Reset the per-frame ring head. The buffer for this frame index
+    // is no longer in flight on the GPU (the caller has waited on its
+    // fence) so its entire range is safe to overwrite from byte 0.
+    this->m_frameWriteHead = 0;
 }
 
 void SpriteRenderer::begin() {
@@ -433,19 +449,47 @@ void SpriteRenderer::flushBatch(VkCommandBuffer cmdBuffer) {
     const VkDeviceSize vertOffsets[] = {0};
     vkCmdBindVertexBuffers(cmdBuffer, 0, 1, vertBuffers, vertOffsets);
 
-    // Draw in batches of MAX_SPRITES
+    // Draw in batches of MAX_SPRITES, carving the per-frame instance
+    // buffer into ring-style sub-ranges. Earlier code wrote every
+    // sub-batch to byte 0 of the same buffer; the GPU executes the
+    // recorded vkCmdDraw calls later so all sub-batches ended up
+    // reading whichever sub-batch was uploaded last (silent visual
+    // corruption for sprite counts > MAX_SPRITES). Distinct offsets
+    // remove the aliasing entirely.
+    const VkDeviceSize bufferCapacity = instanceBuffer->size();
     uint32_t offset = 0;
     while (offset < totalSprites) {
         const uint32_t batchSize = std::min(MAX_SPRITES, totalSprites - offset);
+        const VkDeviceSize bytes = sizeof(SpriteInstanceData) * batchSize;
+
+        if (this->m_frameWriteHead + bytes > bufferCapacity) {
+            // Frame budget exhausted. Skip the rest rather than
+            // wrapping (wrap = reintroduce the original aliasing bug).
+            // Bumping MAX_SPRITES_PER_FRAME is the supported fix.
+            VKLOG_WARN("SpriteRenderer: frame budget exhausted at %u/%u "
+                       "sprites (head=%llu, cap=%llu); dropping remainder",
+                       offset, totalSprites,
+                       static_cast<unsigned long long>(this->m_frameWriteHead),
+                       static_cast<unsigned long long>(bufferCapacity));
+            break;
+        }
 
         instanceBuffer->copyFrom(this->m_sprites.data() + offset,
-                                  sizeof(SpriteInstanceData) * batchSize);
+                                  bytes,
+                                  this->m_frameWriteHead);
+
+        // The buffer is HOST_COHERENT (createBuffers sets
+        // VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) so an explicit
+        // vkFlushMappedMemoryRanges is not required — coherent memory
+        // is implicitly visible to the GPU on queue submission.
 
         const VkBuffer instBuffers[] = {instanceBuffer->handle()};
-        const VkDeviceSize instOffsets[] = {0};
+        const VkDeviceSize instOffsets[] = {this->m_frameWriteHead};
         vkCmdBindVertexBuffers(cmdBuffer, 1, 1, instBuffers, instOffsets);
 
         vkCmdDraw(cmdBuffer, 6, batchSize, 0, 0);
+
+        this->m_frameWriteHead += bytes;
         offset += batchSize;
     }
 

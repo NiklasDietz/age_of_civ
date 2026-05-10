@@ -10,6 +10,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
+#include "aoc/simulation/ai/AIBlackboard.hpp"
 #include "aoc/simulation/ai/AIResearchPlanner.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/core/DecisionLog.hpp"
@@ -52,18 +53,32 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
     const int32_t militaryCount = myPlayer->militaryUnitCount();
     const bool threatened = militaryCount < 3;
 
-    const int32_t ownedCityCount = myPlayer->cityCount();
+    const int32_t ownedCityCount = myPlayer->ownedCityCount();
 
-    // Collect set of buildings already built across all cities
-    std::unordered_set<uint16_t> ownedBuildings;
-    for (const std::unique_ptr<aoc::game::City>& cityPtr : myPlayer->cities()) {
-        if (cityPtr == nullptr) { continue; }
-        for (const CityDistrictsComponent::PlacedDistrict& d : cityPtr->districts().districts) {
-            for (const BuildingId& bid : d.buildings) {
-                ownedBuildings.insert(bid.value);
+    // Owned-building cache lives on the AIBlackboard. Without an event-based
+    // invalidation hook (no CityComponent::onBuildingCompleted today) the
+    // cache is rebuilt at most once per turn for this player. Worst case the
+    // research planner sees a freshly-completed building one turn late, which
+    // is strictly better than the previous per-call O(cities * buildings)
+    // rescan that the 2026-05-10 audit flagged.
+    // DEBT: replace with event-driven invalidation when CityComponent grows
+    // an onBuildingCompleted hook.
+    AIBlackboard& bb = myPlayer->blackboard();
+    const int32_t currentTurn = gameState.currentTurn();
+    if (bb.ownedBuildingsTurn != currentTurn) {
+        bb.ownedBuildingIds.clear();
+        for (const std::unique_ptr<aoc::game::City>& cityPtr : myPlayer->cities()) {
+            if (cityPtr == nullptr) { continue; }
+            for (const CityDistrictsComponent::PlacedDistrict& d
+                    : cityPtr->districts().districts) {
+                for (const BuildingId& bid : d.buildings) {
+                    bb.ownedBuildingIds.insert(bid.value);
+                }
             }
         }
+        bb.ownedBuildingsTurn = currentTurn;
     }
+    const std::unordered_set<uint16_t>& ownedBuildings = bb.ownedBuildingIds;
 
     // Tech research selection
     PlayerTechComponent& tech = myPlayer->tech();
@@ -276,10 +291,13 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
 
             if (logActive) {
                 std::sort(scored.begin(), scored.end(),
-                          [](const auto& a, const auto& b) { return a.second > b.second; });
+                          [](const std::pair<TechId, int32_t>& a,
+                             const std::pair<TechId, int32_t>& b) {
+                              return a.second > b.second;
+                          });
                 std::vector<aoc::core::ResearchAlt> alts;
                 alts.reserve(3);
-                for (const auto& p : scored) {
+                for (const std::pair<TechId, int32_t>& p : scored) {
                     if (p.first.value == best.value) { continue; }
                     aoc::core::ResearchAlt a{};
                     a.techId = p.first.value;

@@ -12,16 +12,29 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_set>
+#include <vector>
 
 namespace aoc::sim {
 
-float playerProductionRate(const aoc::game::GameState& gameState,
-                            PlayerId player,
-                            uint16_t goodId) {
-    // Sum production from all cities owned by this player.
-    // For raw resources: count tile yields via the legacy TileResourceComponent pool
-    // (tile ownership is still tracked in the ECS).
-    // For processed goods: check if any city has the required building and inputs.
+namespace {
+
+/// Recursive helper. Tracks the goods currently being expanded on the
+/// call stack so we can detect (and break) recipe DAG cycles. Recycling
+/// recipes (melt-coins-back-to-ore, see ProductionChain.cpp) intentionally
+/// form cycles with forward recipes — without a `visited` guard they would
+/// blow the stack the moment one is added to the recipe table, which the
+/// audit flagged as a release-build crash hazard.
+float computeRate(const aoc::game::GameState& gameState,
+                  PlayerId player,
+                  uint16_t goodId,
+                  std::unordered_set<uint16_t>& visited) {
+    if (!visited.insert(goodId).second) {
+        // Already on the recursion stack (cycle through recycling recipes
+        // or a future configuration error). Treat as already-counted; the
+        // outer call already accumulated this good's lastTurnProduction.
+        return 0.0f;
+    }
 
     float totalRate = 0.0f;
 
@@ -43,10 +56,13 @@ float playerProductionRate(const aoc::game::GameState& gameState,
     const std::vector<ProductionRecipe>& recipes = allRecipes();
     for (const ProductionRecipe& recipe : recipes) {
         if (recipe.outputGoodId != goodId) { continue; }
+        // Skip recycling recipes: they form intentional cycles with forward
+        // recipes and would double-count via lastTurnProduction.
+        if (recipe.isRecycling) { continue; }
 
         float minInputRate = 1000.0f;
         for (const RecipeInput& input : recipe.inputs) {
-            float inputRate     = playerProductionRate(gameState, player, input.goodId);
+            float inputRate     = computeRate(gameState, player, input.goodId, visited);
             float neededPerUnit = static_cast<float>(input.amount);
             if (neededPerUnit > 0.0f) {
                 minInputRate = std::min(minInputRate, inputRate / neededPerUnit);
@@ -57,7 +73,34 @@ float playerProductionRate(const aoc::game::GameState& gameState,
         }
     }
 
+    visited.erase(goodId);
     return totalRate;
+}
+
+/// Fill `outRates` with this player's per-good production rate vector.
+/// Reuses one `visited` set across all goods so recursion-cycle detection
+/// is amortized; the set is cleared between top-level goods (each call to
+/// computeRate erases on exit, leaving it empty for the next entry).
+void fillPlayerRates(const aoc::game::GameState& gameState,
+                     PlayerId player,
+                     std::vector<float>& outRates) {
+    const uint16_t count = goodCount();
+    outRates.assign(count, 0.0f);
+    std::unordered_set<uint16_t> visited;
+    for (uint16_t g = 0; g < count; ++g) {
+        outRates[g] = computeRate(gameState, player, g, visited);
+    }
+}
+
+} // namespace
+
+float playerProductionRate(const aoc::game::GameState& gameState,
+                            PlayerId player,
+                            uint16_t goodId) {
+    // Public single-good wrapper. Pairwise comparisons use fillPlayerRates
+    // (single batched pass per player) — see computeComparativeAdvantage.
+    std::unordered_set<uint16_t> visited;
+    return computeRate(gameState, player, goodId, visited);
 }
 
 std::vector<TradeRecommendation> computeComparativeAdvantage(
@@ -67,18 +110,22 @@ std::vector<TradeRecommendation> computeComparativeAdvantage(
     PlayerId playerB) {
     std::vector<TradeRecommendation> recommendations;
 
+    // Single batched fill per player. Each fill amortizes the recipe-DAG
+    // walk over all goods, instead of restarting the recursion from scratch
+    // 2 * goodCount() times. Audit Warning: pairwise was O(n_civs² × goods
+    // × recipe_depth) per turn — caching the rate vectors per call collapses
+    // it to O(goods × recipe_depth) per civ.
     uint16_t count = goodCount();
-    std::vector<float> ratesA(count, 0.0f);
-    std::vector<float> ratesB(count, 0.0f);
+    std::vector<float> ratesA;
+    std::vector<float> ratesB;
+    fillPlayerRates(gameState, playerA, ratesA);
+    fillPlayerRates(gameState, playerB, ratesB);
 
     float totalA = 0.0f;
     float totalB = 0.0f;
-
     for (uint16_t g = 0; g < count; ++g) {
-        ratesA[g] = playerProductionRate(gameState, playerA, g);
-        ratesB[g] = playerProductionRate(gameState, playerB, g);
-        totalA   += ratesA[g] * static_cast<float>(market.price(g));
-        totalB   += ratesB[g] * static_cast<float>(market.price(g));
+        totalA += ratesA[g] * static_cast<float>(market.price(g));
+        totalB += ratesB[g] * static_cast<float>(market.price(g));
     }
 
     if (totalA < 0.01f || totalB < 0.01f) {

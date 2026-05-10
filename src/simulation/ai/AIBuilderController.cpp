@@ -68,6 +68,12 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
         }
     }
 
+    // WP8 — deferred removal. Calling removeUnit() inside the per-builder
+    // loop frees the unique_ptr storage and risks dangling raw Unit* in the
+    // builders snapshot. Collect exhausted builders here and process them in
+    // a single trailing pass.
+    std::vector<aoc::game::Unit*> exhaustedBuilders;
+
     // Tech bonus for prospecting: check if the player has researched TechId{10}
     const float prospectTechBonus = gsPlayer->hasResearched(TechId{10}) ? 0.15f : 0.0f;
 
@@ -93,7 +99,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                 grid.setImprovement(currentIdx, bestImpr);
                 builder.ptr->useCharge();
                 if (!builder.ptr->hasCharges()) {
-                    gsPlayer->removeUnit(builder.ptr);
+                    exhaustedBuilders.push_back(builder.ptr);
                     LOG_INFO("AI %u Builder exhausted after improving (%d,%d)",
                              static_cast<unsigned>(this->m_player),
                              builder.position.q, builder.position.r);
@@ -134,7 +140,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                          nbr.q, nbr.r);
                 builtMountainMine = true;
                 if (!builder.ptr->hasCharges()) {
-                    gsPlayer->removeUnit(builder.ptr);
+                    exhaustedBuilders.push_back(builder.ptr);
                 }
                 break;
             }
@@ -179,7 +185,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                          static_cast<unsigned>(this->m_player),
                          builder.position.q, builder.position.r);
                 if (!builder.ptr->hasCharges()) {
-                    gsPlayer->removeUnit(builder.ptr);
+                    exhaustedBuilders.push_back(builder.ptr);
                 }
                 continue;
             }
@@ -202,7 +208,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                      static_cast<unsigned>(this->m_player),
                      builder.position.q, builder.position.r);
             if (!builder.ptr->hasCharges()) {
-                gsPlayer->removeUnit(builder.ptr);
+                exhaustedBuilders.push_back(builder.ptr);
             }
             continue;
         }
@@ -237,7 +243,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                              static_cast<unsigned>(this->m_player),
                              static_cast<unsigned>(bestGood));
                     if (!builder.ptr->hasCharges()) {
-                        gsPlayer->removeUnit(builder.ptr);
+                        exhaustedBuilders.push_back(builder.ptr);
                     }
                     continue;
                 }
@@ -279,7 +285,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                          static_cast<unsigned>(this->m_player),
                          builder.position.q, builder.position.r);
                 if (!builder.ptr->hasCharges()) {
-                    gsPlayer->removeUnit(builder.ptr);
+                    exhaustedBuilders.push_back(builder.ptr);
                 }
                 continue;
             }
@@ -327,7 +333,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                                  static_cast<unsigned>(this->m_player),
                                  builder.position.q, builder.position.r);
                         if (!builder.ptr->hasCharges()) {
-                            gsPlayer->removeUnit(builder.ptr);
+                            exhaustedBuilders.push_back(builder.ptr);
                         }
                         continue;
                     }
@@ -373,7 +379,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                              static_cast<unsigned>(this->m_player),
                              builder.position.q, builder.position.r);
                     if (!builder.ptr->hasCharges()) {
-                        gsPlayer->removeUnit(builder.ptr);
+                        exhaustedBuilders.push_back(builder.ptr);
                     }
                     continue;
                 }
@@ -552,7 +558,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
             const bool found = prospectTile(grid, prospectIdx, prospectTechBonus, rngSeed);
             builder.ptr->useCharge();
             if (!builder.ptr->hasCharges()) {
-                gsPlayer->removeUnit(builder.ptr);
+                exhaustedBuilders.push_back(builder.ptr);
             }
             if (found) {
                 LOG_INFO("AI %u Builder prospected and found resource at (%d,%d)",
@@ -594,6 +600,15 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
             orderUnitMove(*builder.ptr, bestTarget, grid);
             moveUnitAlongPath(gameState, *builder.ptr, grid);
         }
+    }
+
+    // WP8 — trailing removal pass. Each branch that exhausted a builder
+    // pushes its pointer here and continues the outer loop, so by the time
+    // we reach this pass no later iteration still derefs the freed Unit.
+    // A single builder cannot be pushed twice because every push sits on a
+    // path that `continue`s before reaching another push.
+    for (aoc::game::Unit* exhausted : exhaustedBuilders) {
+        gsPlayer->removeUnit(exhausted);
     }
 }
 

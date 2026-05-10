@@ -368,6 +368,17 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
     const int32_t  defenderCargoQuantity = (defenderIsCourier && !defender.courier().delivered)
                                             ? defender.courier().quantity : 0;
 
+    // WP8 — unified deferred-removal list. All raw Unit* derefs above this
+    // block must be done with live pointers; removeUnit() invalidates the
+    // unique_ptr storage and yields dangling pointers. We collect every
+    // (Player*, Unit*) pair to remove and process them in a single trailing
+    // pass so no in-loop deref races a sibling removal.
+    struct PendingKill {
+        aoc::game::Player* owner;
+        aoc::game::Unit*   unit;
+    };
+    std::vector<PendingKill> pendingKills;
+
     // Clean up dead units: find the owning player and remove the unit
     if (result.defenderKilled) {
         aoc::game::Player* defPlayer = findOwningPlayer(gameState, &defender);
@@ -390,38 +401,36 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
                 // single logical force whose HP is what the defender already
                 // rolled, so removing its component units on an open-terrain
                 // stack-kill would double-punish the defender.
-                std::vector<aoc::game::Unit*> stackKill;
+                int32_t stackCount = 0;
                 for (const std::unique_ptr<aoc::game::Unit>& u : defPlayer->units()) {
                     if (u.get() == &defender) { continue; }
                     if (u->position() != defenderTile) { continue; }
                     if (u->formationLevel() != aoc::sim::FormationLevel::Single) { continue; }
-                    stackKill.push_back(u.get());
+                    pendingKills.push_back({defPlayer, u.get()});
+                    ++stackCount;
                 }
-                for (aoc::game::Unit* killed : stackKill) {
-                    defPlayer->removeUnit(killed);
-                }
-                if (!stackKill.empty()) {
+                if (stackCount > 0) {
                     LOG_INFO("Stack kill: %d units destroyed on open terrain at (%d,%d)",
-                             static_cast<int>(stackKill.size()),
-                             defenderTile.q, defenderTile.r);
+                             stackCount, defenderTile.q, defenderTile.r);
                 }
             }
 
-            defPlayer->removeUnit(&defender);
-            // defender reference is now DANGLING — do not use after this point
+            pendingKills.push_back({defPlayer, &defender});
         }
     }
     if (result.attackerKilled) {
         aoc::game::Player* atkPlayer = findOwningPlayer(gameState, &attacker);
         if (atkPlayer != nullptr) {
-            atkPlayer->removeUnit(&attacker);
-            // attacker reference is now DANGLING — do not use after this point
+            pendingKills.push_back({atkPlayer, &attacker});
         }
     }
+    // defender / attacker references are still LIVE here — they only become
+    // dangling after the trailing removal pass at the end of this function.
 
     // Military economic benefits when a unit is killed.
-    // Uses snapshotted values (defenderProductionCost, defenderName) because
-    // the defender Unit has already been freed by removeUnit above.
+    // Uses snapshotted values (defenderProductionCost, defenderName) so the
+    // block stays correct regardless of when the trailing removal pass
+    // actually frees the defender (currently after this block).
     if (result.defenderKilled && !result.attackerKilled) {
         aoc::game::Player* atkPlayer = gameState.player(attackerOwner);
 
@@ -511,6 +520,15 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
              result.attackerDamage, result.defenderDamage,
              result.attackerKilled ? " (attacker killed)" : "",
              result.defenderKilled ? " (defender killed)" : "");
+
+    // WP8 — trailing removal pass. All Unit* derefs are complete; safe to
+    // free now. Each kill is processed once (dedup via skip-if-already-gone
+    // would only matter on duplicate pushes, which the collection above does
+    // not produce: stack-kill skips &defender; defender / attacker are
+    // distinct).
+    for (const PendingKill& kill : pendingKills) {
+        kill.owner->removeUnit(kill.unit);
+    }
 
     return result;
 }

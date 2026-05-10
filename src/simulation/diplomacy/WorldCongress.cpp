@@ -404,6 +404,13 @@ void WorldCongressComponent::proposeResolution(Resolution res,
 }
 
 void WorldCongressComponent::castVote(PlayerId player, int16_t weight) {
+    // Reject sentinel IDs first: INVALID_PLAYER and BARBARIAN_PLAYER both equal
+    // 255 (uint8_t). 255 < votes.size() is false today, but a future enlargement
+    // of votes (>= 256) would silently let the sentinel index garbage. Guard
+    // explicitly so the invariant survives storage-size changes.
+    if (player == INVALID_PLAYER || player == BARBARIAN_PLAYER) {
+        return;
+    }
     if (player < this->votes.size()) {
         this->votes[player] = weight;
     }

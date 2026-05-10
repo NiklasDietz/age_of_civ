@@ -165,7 +165,7 @@ void updateMilitaryAssessment(const aoc::game::GameState& gameState,
     }
 
     // Desired military: at least 2 units per city, never less than 2 total.
-    bb.desiredMilitaryUnits = std::max(2, player.cityCount() * 3);
+    bb.desiredMilitaryUnits = std::max(2, player.ownedCityCount() * 3);
 
     // Mark own cities with nearby threats as defend priorities.
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
@@ -259,7 +259,7 @@ void updateExpansionAssessment(const aoc::game::GameState& gameState,
         aoc::sim::computeScaledTargets(personality.behavior);
 
     const int32_t targetCities = targets.maxCities;
-    const int32_t ownCities    = player.cityCount();
+    const int32_t ownCities    = player.ownedCityCount();
 
     // expansionOpportunity: fraction of desired empire still unfounded.
     const float ratio =

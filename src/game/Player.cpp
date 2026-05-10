@@ -103,6 +103,16 @@ const City* Player::cityAt(aoc::hex::AxialCoord location) const {
     return nullptr;
 }
 
+int32_t Player::ownedCityCount() const {
+    int32_t count = 0;
+    for (const std::unique_ptr<City>& city : this->m_cities) {
+        if (city != nullptr && city->owner() == this->m_id) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 City& Player::addCity(aoc::hex::AxialCoord location, const std::string& name) {
     this->m_cities.push_back(
         std::make_unique<City>(this->m_id, location, name));

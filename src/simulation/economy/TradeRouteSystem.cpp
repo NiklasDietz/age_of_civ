@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <unordered_map>
 
 namespace aoc::sim {
@@ -77,13 +78,13 @@ void selectTradeGoods(const CityStockpileComponent& originStock,
         candidates.push_back({gid, surplus, score});
     };
     std::unordered_map<uint16_t, int32_t> combined;
-    for (const auto& entry : originStock.goods) {
+    for (const std::pair<const uint16_t, int32_t>& entry : originStock.goods) {
         combined[entry.first] += entry.second;
     }
-    for (const auto& entry : originStock.exportBuffer) {
+    for (const std::pair<const uint16_t, int32_t>& entry : originStock.exportBuffer) {
         combined[entry.first] += entry.second;
     }
-    for (const auto& entry : combined) {
+    for (const std::pair<const uint16_t, int32_t>& entry : combined) {
         scoreCandidate(entry.first, entry.second);
     }
 
@@ -243,14 +244,53 @@ void commitPickupReservation(aoc::game::City& seller,
     trader.pickupCityLocation = seller.location();
 }
 
-/// Find a city by its location across all players.
+/// Map of city tile -> City* across all players. Built once per turn at
+/// the top of processTradeRoutes (or per call to establishTradeRoute) so
+/// every downstream lookup is O(1) instead of a fresh O(players × cities)
+/// scan. Audit Warning (TradeRouteSystem.cpp:247,263,436,1060,1326):
+/// findCityByLocation + longestRangeGap walked all players × cities per
+/// tile per trader per turn.
+using CityRelayMap = std::unordered_map<aoc::hex::AxialCoord, aoc::game::City*>;
+
+CityRelayMap buildCityRelay(aoc::game::GameState& gameState) {
+    CityRelayMap relay;
+    std::size_t totalCities = 0;
+    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+        if (p == nullptr) { continue; }
+        totalCities += p->cities().size();
+    }
+    relay.reserve(totalCities * 2);
+    for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+        if (p == nullptr) { continue; }
+        for (const std::unique_ptr<aoc::game::City>& c : p->cities()) {
+            if (c == nullptr) { continue; }
+            relay.emplace(c->location(), c.get());
+        }
+    }
+    return relay;
+}
+
+/// Find a city by its location across all players (fallback for cold
+/// paths). Hot paths under processTradeRoutes / establishTradeRoute go
+/// through the pre-built CityRelayMap directly; this helper exists only
+/// for the rare trader-death path (releasePickupReservation) where
+/// building the map would cost more than the single lookup.
 static aoc::game::City* findCityByLocation(aoc::game::GameState& gameState,
                                             aoc::hex::AxialCoord location) {
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
+        if (p == nullptr) { continue; }
         aoc::game::City* c = p->cityAt(location);
         if (c != nullptr) { return c; }
     }
     return nullptr;
+}
+
+/// Same lookup using the precomputed relay map. Returns nullptr if the
+/// location holds no city.
+static aoc::game::City* lookupCity(const CityRelayMap& relay,
+                                    aoc::hex::AxialCoord location) {
+    CityRelayMap::const_iterator it = relay.find(location);
+    return (it == relay.end()) ? nullptr : it->second;
 }
 
 /// WP-O: trader died/expired before picking up. Roll back the seller's
@@ -415,10 +455,12 @@ int32_t maxTradeRange(const aoc::game::Player& player, TradeRouteType type) {
 /// WP-K7: walk a path and find longest gap between relay nodes (cities or
 /// Trading Posts). Returns the longest segment length so the caller can
 /// compare against `maxTradeRange`. Origin / destination tiles are always
-/// considered relay points.
+/// considered relay points. Audit Warning hot-path fix: takes a precomputed
+/// CityRelayMap so the inner check is O(1) per tile instead of an O(players
+/// × cities) scan.
 int32_t longestRangeGap(const std::vector<aoc::hex::AxialCoord>& path,
                          const aoc::map::HexGrid& grid,
-                         const aoc::game::GameState& gameState) {
+                         const CityRelayMap& cityRelay) {
     if (path.size() < 2) { return 0; }
     int32_t longest = 0;
     int32_t segment = 0;
@@ -432,11 +474,8 @@ int32_t longestRangeGap(const std::vector<aoc::hex::AxialCoord>& path,
             isRelay = true;
         }
         // Any city on this tile (any owner) acts as a relay.
-        if (!isRelay) {
-            for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
-                if (p == nullptr) { continue; }
-                if (p->cityAt(next) != nullptr) { isRelay = true; break; }
-            }
+        if (!isRelay && cityRelay.find(next) != cityRelay.end()) {
+            isRelay = true;
         }
         if (isRelay) {
             if (segment > longest) { longest = segment; }
@@ -739,8 +778,13 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
     {
         const int32_t maxRange = maxTradeRange(*ownerPlayer, trader.routeType);
         if (maxRange > 0) {
+            // One-shot CityRelayMap for the range check. Establishing a
+            // trade route is rare (vs. processTradeRoutes per-trader-per-turn),
+            // so the per-call build is cheaper than threading the map in
+            // through the public API.
+            const CityRelayMap relay = buildCityRelay(gameState);
             const int32_t longestSegment = longestRangeGap(
-                trader.path, grid, gameState);
+                trader.path, grid, relay);
             if (longestSegment > maxRange) {
                 LOG_INFO("Trade route rejected: P%u %s longest segment %d > range %d "
                          "(build a Trading Post or extend tech)",
@@ -825,6 +869,11 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
 void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid,
                          const Market& market,
                          DiplomacyManager* diplomacy) {
+    // Audit hot-path fix: build the city relay map ONCE per turn and reuse
+    // it for every trader-arrival lookup below. The previous code did
+    // O(players × cities) per arrival per trader.
+    const CityRelayMap cityRelay = buildCityRelay(gameState);
+
     // Collect all active trader units across all players
     std::vector<aoc::game::Unit*> traderUnits;
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
@@ -970,15 +1019,17 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                 if (traderPlayer != nullptr) { traderPlayer->addGold(-totalToll); }
                 trader.tollPaidThisTurn += totalToll;
 
-                // Reputation: +1 for honoring toll
+                // Reputation: +1 for honoring toll. `diplomacy` is already
+                // a non-const pointer at the function signature; the prior
+                // const_cast was a stale leftover.
                 if (diplomacy != nullptr) {
-                    const_cast<DiplomacyManager*>(diplomacy)->addReputationModifier(
+                    diplomacy->addReputationModifier(
                         trader.owner, te.owner, 1, 20);
                 }
             } else {
                 // Refuse toll and pass through anyway: -5 reputation
                 if (diplomacy != nullptr) {
-                    const_cast<DiplomacyManager*>(diplomacy)->addReputationModifier(
+                    diplomacy->addReputationModifier(
                         trader.owner, te.owner, -5, 30);
                 }
 
@@ -988,11 +1039,18 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                          static_cast<long long>(totalToll),
                          static_cast<unsigned>(te.owner));
 
+                // Pre-format the notification body with snprintf so we don't
+                // pay for std::to_string + 3 std::string concatenations on
+                // every refused toll on the per-trader-per-turn hot path.
+                char notifBody[160];
+                std::snprintf(notifBody, sizeof(notifBody),
+                              "A trade caravan from Player %u refused your toll "
+                              "and passed through your territory.",
+                              static_cast<unsigned>(trader.owner));
                 aoc::sim::event::pushNotification({
                     aoc::sim::event::NotificationCategory::Diplomacy,
                     "Toll Refused",
-                    "A trade caravan from Player " + std::to_string(trader.owner)
-                        + " refused your toll and passed through your territory.",
+                    notifBody,
                     te.owner,
                     3
                 });
@@ -1057,7 +1115,7 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
 
         // Arrived at either destination or origin
         aoc::hex::AxialCoord targetLoc = trader.isReturning ? trader.originCityLocation : trader.destCityLocation;
-        aoc::game::City* targetCity = findCityByLocation(gameState, targetLoc);
+        aoc::game::City* targetCity = lookupCity(cityRelay, targetLoc);
 
         if (targetCity != nullptr) {
             CityStockpileComponent& targetStock = targetCity->stockpile();
@@ -1323,7 +1381,7 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         // transit). Picks up at next arrival via pendingPickupCargo.
         const aoc::hex::AxialCoord nextPickupLoc = trader.isReturning
             ? trader.originCityLocation : trader.destCityLocation;
-        aoc::game::City* nextPickup = findCityByLocation(gameState, nextPickupLoc);
+        aoc::game::City* nextPickup = lookupCity(cityRelay, nextPickupLoc);
         if (nextPickup != nullptr) {
             commitPickupReservation(*nextPickup, market, trader, grid);
         } else {
@@ -1612,7 +1670,7 @@ TradeRouteEstimate estimateTradeRouteIncome(
 
     // Find origin city (closest owned city to the Trader)
     const aoc::game::Player* ownerPlayer = gameState.player(traderUnit.owner());
-    if (ownerPlayer == nullptr || ownerPlayer->cityCount() == 0) {
+    if (ownerPlayer == nullptr || ownerPlayer->ownedCityCount() == 0) {
         return estimate;
     }
 

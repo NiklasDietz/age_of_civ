@@ -38,12 +38,16 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                                             aoc::map::HexGrid& grid,
                                             DiplomacyManager& diplomacy,
                                             const Market& market,
+                                            aoc::Random& rng,
                                             GlobalDealTracker* dealTracker) {
-    constexpr uint8_t MAX_PLAYER_COUNT = 16;
-    std::array<int32_t, MAX_PLAYER_COUNT> militaryCounts{};
+    // Use the project-wide MAX_PLAYERS (= 20) instead of a local 16 — see
+    // include/aoc/core/Types.hpp. The previous local cap silently dropped
+    // players 16-19's military counts, which produced stack-buffer-out-of
+    // bounds writes for 17- to 20-player games (audit 2026-05-10 #4).
+    std::array<int32_t, MAX_PLAYERS> militaryCounts{};
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
         const PlayerId pid = p->id();
-        if (pid < MAX_PLAYER_COUNT) {
+        if (pid < MAX_PLAYERS) {
             militaryCounts[static_cast<std::size_t>(pid)] =
                 static_cast<int32_t>(p->militaryUnitCount());
         }
@@ -175,11 +179,14 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                 static_cast<float>(ourMilitary) >
                     milRatioThreshold * static_cast<float>(std::max(1, theirMilitary)) &&
                 relationScore < relationThreshold) {
-                const int32_t warChance =
-                    ((ourMilitary * 7 + theirMilitary * 13 +
-                      static_cast<int32_t>(this->m_player) * 31 +
-                      gameState.currentTurn() * 53 +
-                      static_cast<int32_t>(other) * 71) % 100);
+                // Roll on the deterministic per-turn AI rng (see
+                // TurnProcessor::turnContext.rng -- xoshiro256**, seeded
+                // per game). The previous (military*weights)%100 hash had
+                // the side effect of being deterministic but its inputs
+                // varied with AI execution order, so it acted as a fragile
+                // pseudo-RNG that the GA harness could not reproduce
+                // across hosts (audit 2026-05-10 #WP11.3).
+                const int32_t warChance = rng.nextInt(0, 99);
                 if (warChance < warChanceThreshold) {
                     diplomacy.declareWar(this->m_player, other,
                                          rel.casusBelliGranted()
@@ -208,11 +215,10 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                 if (!easyAI && !rel.isAtWar && ourMilitary >= oppoMinUnits &&
                     static_cast<float>(ourMilitary) >=
                         oppoRatioThreshold * static_cast<float>(std::max(1, theirMilitary))) {
-                    const int32_t warChance =
-                        ((ourMilitary * 11 + theirMilitary * 17 +
-                          static_cast<int32_t>(this->m_player) * 37 +
-                          gameState.currentTurn() * 59 +
-                          static_cast<int32_t>(other) * 73) % 100);
+                    // Same rationale as the standard war-chance roll above:
+                    // use the deterministic AI rng so the GA harness can
+                    // reproduce identical event logs across runs and hosts.
+                    const int32_t warChance = rng.nextInt(0, 99);
                     const int32_t threshold = hardAI ? 3 : 2;
                     if (warChance < threshold) {
                         diplomacy.declareWar(this->m_player, other,
@@ -487,6 +493,13 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                             payment.goldLump   = price;
                             deal.terms.push_back(payment);
 
+                            // Capture log fields BEFORE acceptDeal: the deal
+                            // transfers the city to `other`, which can move it
+                            // out of `seller->cities()` and invalidate `victim`.
+                            // (Audit 2026-05-10 WP11.4 / Warning bullet
+                            // "victim->name() after acceptDeal may have
+                            // transferred city".)
+                            const std::string victimName(victim->name());
                             const std::size_t dealIdx = dealTracker->activeDeals.size();
                             ErrorCode rcP = aoc::sim::proposeDeal(gameState, *dealTracker, deal);
                             if (rcP == ErrorCode::Ok) {
@@ -496,7 +509,7 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                                 if (rcA == ErrorCode::Ok) {
                                     LOG_INFO("AI %u sold city %s to player %u for %d gold (relation %d)",
                                              static_cast<unsigned>(this->m_player),
-                                             victim->name().c_str(),
+                                             victimName.c_str(),
                                              static_cast<unsigned>(other),
                                              price, relationScore);
                                 }

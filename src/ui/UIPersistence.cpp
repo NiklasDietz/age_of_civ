@@ -31,13 +31,24 @@ int32_t hotReloadLayout(UIManager& ui, const std::string& path) {
         const std::size_t dot = key.find('.');
         if (dot == std::string::npos) { continue; }
         WidgetId id = INVALID_WIDGET;
-        try { id = static_cast<WidgetId>(std::stoul(key.substr(0, dot))); }
-        catch (...) { continue; }
+        try {
+            id = static_cast<WidgetId>(std::stoul(key.substr(0, dot)));
+        } catch (const std::exception& e) {
+            LOG_WARN("UI hot-reload: bad widget id in line '%s': %s",
+                     line.c_str(), e.what());
+            continue;
+        }
         Widget* w = ui.getWidget(id);
         if (w == nullptr) { continue; }
         const std::string axis = key.substr(dot + 1);
         float val = 0.0f;
-        try { val = std::stof(value); } catch (...) { continue; }
+        try {
+            val = std::stof(value);
+        } catch (const std::exception& e) {
+            LOG_WARN("UI hot-reload: bad numeric value in line '%s': %s",
+                     line.c_str(), e.what());
+            continue;
+        }
         if      (axis == "x") { w->requestedBounds.x = val; ++applied; }
         else if (axis == "y") { w->requestedBounds.y = val; ++applied; }
         else if (axis == "w") { w->requestedBounds.w = val; ++applied; }

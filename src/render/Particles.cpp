@@ -52,6 +52,15 @@ void ParticleSystem::emit(float x, float y, int32_t count,
 }
 
 void ParticleSystem::update(float deltaTime) {
+    // Frame-rate-independent exponential drag. Old code did
+    //   v *= (1 - 2*dt)
+    // which only matched the design at 60 FPS (where it factored
+    // 0.96667 per frame, i.e. v retained 0.1311 of its value over one
+    // second). Switching to v *= pow(c, dt) with c = 0.135 reproduces
+    // that 60 FPS rate exactly while staying correct at any dt.
+    constexpr float DAMPING_PER_SECOND = 0.135f;
+    const float dampingFactor = std::pow(DAMPING_PER_SECOND, deltaTime);
+
     for (Particle& p : this->m_particles) {
         p.x += p.vx * deltaTime;
         p.y += p.vy * deltaTime;
@@ -61,9 +70,9 @@ void ParticleSystem::update(float deltaTime) {
         const float lifeRatio = std::max(0.0f, p.life / p.maxLife);
         p.a = lifeRatio;
 
-        // Slow down over time
-        p.vx *= (1.0f - 2.0f * deltaTime);
-        p.vy *= (1.0f - 2.0f * deltaTime);
+        // Slow down over time (frame-rate independent)
+        p.vx *= dampingFactor;
+        p.vy *= dampingFactor;
     }
 
     // Remove dead particles

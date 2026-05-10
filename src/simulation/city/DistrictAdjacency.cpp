@@ -213,10 +213,13 @@ void completeCityProject(aoc::game::GameState& gameState,
             break;
         }
         case CityProjectType::IndustrialSurge: {
-            // Boost current production queue
+            // Boost current production queue. Completion bool is intentionally
+            // discarded -- the +50 burst is a one-shot boost; if it pushes the
+            // item over its cost threshold, the city's normal production tick
+            // will pop it on the next turn.
             ProductionQueueComponent& queue = city.production();
             if (!queue.isEmpty()) {
-                queue.addProgress(50.0f);
+                [[maybe_unused]] const bool completed = queue.addProgress(50.0f);
             }
             LOG_INFO("City %s: Industrial Surge completed (+50 production)", city.name().c_str());
             break;

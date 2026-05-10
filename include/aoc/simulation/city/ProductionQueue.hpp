@@ -104,7 +104,7 @@ struct ProductionQueueComponent {
      * Returns a bitmask of which slots completed (bit 0 = first item, etc.).
      * Caller should handle completion for each flagged slot.
      */
-    uint32_t addProgressMultiSlot(float totalProduction) {
+    [[nodiscard]] uint32_t addProgressMultiSlot(float totalProduction) {
         if (this->queue.empty()) {
             return 0;
         }
@@ -124,7 +124,7 @@ struct ProductionQueueComponent {
     }
 
     /// Legacy single-slot interface (for backward compatibility).
-    bool addProgress(float amount) {
+    [[nodiscard]] bool addProgress(float amount) {
         if (this->queue.empty()) {
             return false;
         }

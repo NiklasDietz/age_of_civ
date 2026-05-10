@@ -2017,6 +2017,9 @@ void EconomyScreen::buildTradeRoutePanel(UIManager& ui, WidgetId parentPanel) {
         if (srcPlayer == nullptr || dstPlayer == nullptr) {
             return;
         }
+        // cityCount() (raw vector size): bounds check for the indexed
+        // access into cities() below. Must match vector capacity, not
+        // currently-owned count.
         if (this->m_trSourceCityIdx >= srcPlayer->cityCount()
             || this->m_trDestCityIdx >= dstPlayer->cityCount()) {
             return;

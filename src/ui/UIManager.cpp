@@ -31,6 +31,10 @@ WidgetId UIManager::allocateWidget() {
         this->m_widgets.emplace_back();
     }
     this->m_widgets[id].id = id;
+    // Any new widget could be focusable. Invalidating here covers
+    // every creator path; individual factory methods do not need to
+    // remember to flag the cache themselves.
+    this->invalidateFocusCache();
     return id;
 }
 
@@ -199,10 +203,32 @@ bool UIManager::activateShortcut(int32_t key) {
 }
 
 void UIManager::logEvent(WidgetEvent ev) {
-    if (this->m_eventLog.size() >= MAX_EVENT_LOG) {
-        this->m_eventLog.erase(this->m_eventLog.begin());
+    // Fixed-size circular buffer: O(1) insert. Earlier code used
+    // vector::erase(begin()) on overflow which was O(N) every call.
+    this->m_eventLog[this->m_eventLogHead] = ev;
+    this->m_eventLogHead = (this->m_eventLogHead + 1) % MAX_EVENT_LOG;
+    if (this->m_eventLogCount < MAX_EVENT_LOG) {
+        ++this->m_eventLogCount;
     }
-    this->m_eventLog.push_back(ev);
+}
+
+std::vector<UIManager::WidgetEvent> UIManager::recentEvents() const {
+    std::vector<WidgetEvent> out;
+    out.reserve(this->m_eventLogCount);
+    if (this->m_eventLogCount < MAX_EVENT_LOG) {
+        // Buffer not yet wrapped: live entries are [0, m_eventLogHead).
+        for (std::size_t i = 0; i < this->m_eventLogCount; ++i) {
+            out.push_back(this->m_eventLog[i]);
+        }
+    } else {
+        // Wrapped: oldest entry sits at m_eventLogHead, newest at
+        // (m_eventLogHead + MAX - 1) % MAX. Walk forward from oldest.
+        for (std::size_t i = 0; i < MAX_EVENT_LOG; ++i) {
+            const std::size_t slot = (this->m_eventLogHead + i) % MAX_EVENT_LOG;
+            out.push_back(this->m_eventLog[slot]);
+        }
+    }
+    return out;
 }
 
 void UIManager::tweenAlpha(WidgetId id, float targetAlpha, float seconds) {
@@ -409,6 +435,7 @@ void UIManager::removeWidget(WidgetId id) {
 
     w.id = INVALID_WIDGET;
     this->m_freeList.push_back(id);
+    this->invalidateFocusCache();
 }
 
 WidgetHandle UIManager::toHandle(WidgetId id) const {
@@ -473,7 +500,10 @@ void UIManager::setButtonLabel(WidgetId id, std::string label) {
 void UIManager::setVisible(WidgetId id, bool visible) {
     Widget* w = this->getWidget(id);
     if (w != nullptr) {
-        w->isVisible = visible;
+        if (w->isVisible != visible) {
+            w->isVisible = visible;
+            this->invalidateFocusCache();
+        }
     }
 }
 
@@ -528,25 +558,27 @@ void UIManager::clearBindings(WidgetId id) {
 // Keyboard focus
 // --------------------------------------------------------------------------
 
-namespace {
-
-// Walk live widgets linearly. Returns in-id order; focus cycles wrap.
-std::vector<WidgetId> collectFocusable(const std::vector<Widget>& widgets) {
-    std::vector<WidgetId> out;
-    out.reserve(widgets.size());
-    for (const Widget& w : widgets) {
+const std::vector<WidgetId>& UIManager::focusableList() const {
+    if (!this->m_focusCacheDirty) {
+        return this->m_focusableCache;
+    }
+    // Rebuild: walk live widgets in id order. The cache is reused
+    // across consecutive Tab presses; earlier code rebuilt this every
+    // single keypress regardless.
+    this->m_focusableCache.clear();
+    this->m_focusableCache.reserve(this->m_widgets.size());
+    for (const Widget& w : this->m_widgets) {
         if (w.id == INVALID_WIDGET) { continue; }
         if (!w.isVisible) { continue; }
         if (!w.focusable) { continue; }
-        out.push_back(w.id);
+        this->m_focusableCache.push_back(w.id);
     }
-    return out;
+    this->m_focusCacheDirty = false;
+    return this->m_focusableCache;
 }
 
-} // namespace
-
 WidgetId UIManager::focusNext() {
-    std::vector<WidgetId> list = collectFocusable(this->m_widgets);
+    const std::vector<WidgetId>& list = this->focusableList();
     if (list.empty()) {
         this->m_focusedWidget = INVALID_WIDGET;
         return INVALID_WIDGET;
@@ -566,7 +598,7 @@ WidgetId UIManager::focusNext() {
 }
 
 WidgetId UIManager::focusPrev() {
-    std::vector<WidgetId> list = collectFocusable(this->m_widgets);
+    const std::vector<WidgetId>& list = this->focusableList();
     if (list.empty()) {
         this->m_focusedWidget = INVALID_WIDGET;
         return INVALID_WIDGET;

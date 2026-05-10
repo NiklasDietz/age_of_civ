@@ -68,7 +68,8 @@ void EconomySimulation::setRecipePreference(PlayerId owner, uint32_t cityLocHash
 uint16_t EconomySimulation::recipePreference(PlayerId owner, uint32_t cityLocHash,
                                               uint16_t buildingId) const {
     const uint64_t key = makePreferenceKey(owner, cityLocHash, buildingId);
-    const auto it = this->m_recipePreference.find(key);
+    const std::unordered_map<uint64_t, uint16_t>::const_iterator it =
+        this->m_recipePreference.find(key);
     return (it == this->m_recipePreference.end()) ? 0xFFFFu : it->second;
 }
 
@@ -120,7 +121,7 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
                 if (c == nullptr) { continue; }
                 CityStockpileComponent& sp = c->stockpile();
                 // Commit surplus to export buffer.
-                for (auto& kv : sp.goods) {
+                for (std::pair<const uint16_t, int32_t>& kv : sp.goods) {
                     if (kv.second <= cap) { continue; }
                     if (isExempt(kv.first)) { continue; }
                     const int32_t excess = kv.second - cap;
@@ -131,7 +132,7 @@ void EconomySimulation::executeTurn(aoc::game::GameState& gameState, aoc::map::H
                 // Tick idle counter for buffer entries that didn't move.
                 // Stale entries: spill back to stockpile (capped); lose excess.
                 std::vector<uint16_t> drained;
-                for (auto& kv : sp.exportBuffer) {
+                for (std::pair<const uint16_t, int32_t>& kv : sp.exportBuffer) {
                     sp.exportBufferIdleTurns[kv.first] += 1;
                     if (sp.exportBufferIdleTurns[kv.first] >= BUFFER_STALE_TURNS) {
                         const int32_t free = std::max(0, cap - sp.getAmount(kv.first));
@@ -717,7 +718,7 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 //   IR #4 Information Age: +6 (cumulative)
                 //   IR #5 Post-Industrial: +10
                 {
-                    const auto rev = playerPtr->industrial().currentRevolution;
+                    const IndustrialRevolutionId rev = playerPtr->industrial().currentRevolution;
                     if (rev >= IndustrialRevolutionId::Third)        { robotSlots += 3; }
                     if (rev >= IndustrialRevolutionId::Fourth)       { robotSlots += 3; }
                     if (rev >= IndustrialRevolutionId::Fifth)        { robotSlots += 4; }

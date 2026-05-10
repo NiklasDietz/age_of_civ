@@ -241,7 +241,7 @@ static float computeCityProductionGS(const aoc::game::Player& player,
 
     // Corruption
     float corruption = computeCorruption(player.government().government,
-                                          player.cityCount(), govMods.corruptionReduction);
+                                          player.ownedCityCount(), govMods.corruptionReduction);
     totalProduction *= (1.0f - corruption);
 
     // Inflation modifier
@@ -425,9 +425,12 @@ void processProductionQueues(aoc::game::GameState& gameState,
                                  static_cast<int>(item.name.size()),
                                  item.name.c_str(),
                                  city->name().c_str(), refund);
-                        // Pop from queue without granting wonder.
+                        // Pop from queue without granting wonder. Skip the
+                        // shared `popCompleted()` below — we already erased the
+                        // queue head here, and a second erase would drop the
+                        // *next* item the player just promoted into slot 0.
                         if (!queue.queue.empty()) { queue.queue.erase(queue.queue.begin()); }
-                        break;
+                        continue;
                     }
                     city->wonders().wonders.push_back(wonderId);
                     gameState.wonderTracker().markBuilt(wonderId, city->owner());

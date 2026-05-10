@@ -6,9 +6,18 @@
 #include "aoc/simulation/economy/Market.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
+#include <cstdint>
 
 namespace aoc::sim {
+
+// Storage assumption: Market::GoodMarketData lookups index by uint16_t
+// `goodId`, so the `goods::GOOD_COUNT` upper bound must remain
+// addressable in 16 bits. If GOOD_COUNT ever crosses 65535, the public
+// API (and savefile schema) needs to widen before this assert can drop.
+static_assert(goods::GOOD_COUNT <= UINT16_MAX,
+              "Market goodId is uint16_t; widen API + saves before exceeding UINT16_MAX goods");
 
 void Market::initialize() {
     uint16_t count = goodCount();
@@ -41,7 +50,10 @@ void Market::reportDemand(uint16_t goodId, int32_t amount) {
 }
 
 void Market::updatePrices() {
-    uint16_t goodIndex = 0;
+    // size_t goodIndex matches m_goods.size()'s type and avoids the
+    // signed/unsigned comparison + 16-bit wrap that the prior uint16_t
+    // counter would have introduced once GOOD_COUNT approached 65535.
+    std::size_t goodIndex = 0;
     for (GoodMarketData& data : this->m_goods) {
         // Avoid division by zero: if no supply or demand, price drifts toward base
         float supply = static_cast<float>(std::max(data.totalSupply, 1));
@@ -49,8 +61,8 @@ void Market::updatePrices() {
 
         // Use per-good elasticity if available, otherwise fall back to global
         float goodElasticity = this->elasticity;
-        if (goodIndex < goodCount()) {
-            goodElasticity = goodDef(goodIndex).priceElasticity;
+        if (goodIndex < static_cast<std::size_t>(goodCount())) {
+            goodElasticity = goodDef(static_cast<uint16_t>(goodIndex)).priceElasticity;
         }
 
         // Price = basePrice * (demand/supply)^elasticity
@@ -88,6 +100,15 @@ int32_t Market::price(uint16_t goodId) const {
 }
 
 const Market::GoodMarketData& Market::marketData(uint16_t goodId) const {
+    // Debug-build precondition: callers must pass a valid goodId. Release
+    // builds fall back to a static empty entry so a malformed save / mod
+    // load can't dereference past m_goods.end() (audit Critical: prior
+    // code returned m_goods[goodId] unchecked).
+    assert(goodId < this->m_goods.size() && "Market::marketData: goodId out of range");
+    if (goodId >= this->m_goods.size()) {
+        static const GoodMarketData kEmpty{};
+        return kEmpty;
+    }
     return this->m_goods[goodId];
 }
 
