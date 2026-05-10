@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 
 namespace aoc::map::gen {
 
@@ -101,16 +102,32 @@ void generateInitialPlateOwnership(SphereField& field,
         return static_cast<std::size_t>(next64() % static_cast<uint64_t>(n));
     };
 
-    // Per-plate frontier vectors. Round-robin region growing: every
-    // round, a shuffled iteration over plates pops one random cell
-    // from each plate's frontier, claims it, and pushes the four
-    // neighbours into that plate's frontier. Equal expansion rate per
-    // plate means boundaries are jagged by construction and depend on
-    // seed-position adjacency only — no distance-to-centroid bias, no
-    // weight-scaled reach budget. This is the rule-#1-compliant
-    // alternative to the old priority-queue BFS keyed by haversine
-    // distance, which was Voronoi-by-another-name.
+    // Per-plate frontier vectors. Area-balanced region growing: each
+    // round, the plate with the SMALLEST accumulated surface area
+    // (sum of cos(lat) over its claimed cells) pops one random cell
+    // from its frontier. This balances plates by SURFACE AREA on the
+    // sphere, not by raw cell count. Without the area weighting,
+    // polar-seeded plates sprawl east-west across the entire pole
+    // because each cell at lat 80° is geographically tiny (~10 km
+    // E-W) but counts the same as a mid-lat cell (~55 km E-W) in a
+    // pure round-robin scheme — producing latitudinal-band plate
+    // shapes (audit on seed 42 initial-cut grid showed clearly
+    // banded plates spanning all longitudes at high lat). With
+    // area-balancing, polar plates accumulate small per-cell area,
+    // so they pop more often (catching up by cell count) until
+    // their TOTAL surface area matches mid-lat plates — naturally
+    // pushing them out of the polar cap into mid-latitudes once the
+    // cap is filled.
     std::vector<std::vector<std::size_t>> frontiers(P);
+    std::vector<double> claimedArea(P, 0.0);
+
+    constexpr double DEG2RAD_D = 0.01745329252;
+    auto cellAreaWeight = [](int32_t latIdx) -> double {
+        const double latDeg =
+            (static_cast<double>(latIdx) + 0.5)
+            * static_cast<double>(SphereField::CELL_DEG) - 90.0;
+        return std::cos(latDeg * DEG2RAD_D);
+    };
 
     auto pushNeighbours = [&](std::size_t cellIdx, std::size_t plateIdx) {
         const int32_t latIdx = static_cast<int32_t>(
@@ -142,40 +159,43 @@ void generateInitialPlateOwnership(SphereField& field,
         const std::size_t idx = SphereField::cellIndex(c.lonIdx, c.latIdx);
         if (field.plateId[idx] >= 0) continue; // seed collided with prior
         field.plateId[idx] = static_cast<int16_t>(i);
+        claimedArea[i] = cellAreaWeight(c.latIdx);
         pushNeighbours(idx, i);
         ++claimed;
     }
 
-    // Round-iteration order, reshuffled each round.
-    std::vector<std::size_t> order(P);
-    for (std::size_t i = 0; i < P; ++i) order[i] = i;
-
     while (claimed < totalCells) {
-        // Fisher-Yates shuffle of round order.
-        for (std::size_t i = P; i > 1; --i) {
-            const std::size_t j = nextRange(i);
-            std::swap(order[i - 1], order[j]);
-        }
-        bool anyClaimedThisRound = false;
-        for (const std::size_t pi : order) {
-            std::vector<std::size_t>& f = frontiers[pi];
-            // Drain stale entries (cells already claimed by a
-            // neighbour plate this round) until we find one to claim
-            // or the frontier empties.
-            while (!f.empty()) {
-                const std::size_t pickPos = nextRange(f.size());
-                const std::size_t cellIdx = f[pickPos];
-                f[pickPos] = f.back();
-                f.pop_back();
-                if (field.plateId[cellIdx] >= 0) continue;
-                field.plateId[cellIdx] = static_cast<int16_t>(pi);
-                pushNeighbours(cellIdx, pi);
-                ++claimed;
-                anyClaimedThisRound = true;
-                break;
+        // Pick plate with smallest claimedArea AND non-empty frontier.
+        // Linear scan is O(P) — fine for P ~ 10-20 plates and
+        // amortised across 259200 cell claims (~2.5M scan ops total).
+        std::size_t pick = P;
+        double minArea = std::numeric_limits<double>::infinity();
+        for (std::size_t i = 0; i < P; ++i) {
+            if (frontiers[i].empty()) continue;
+            if (claimedArea[i] < minArea) {
+                minArea = claimedArea[i];
+                pick = i;
             }
         }
-        if (!anyClaimedThisRound) break; // every frontier empty; done
+        if (pick == P) break; // every frontier empty
+        // Pop random cell from picked plate's frontier; skip stale
+        // entries (cells already claimed by a neighbour) until claim
+        // or frontier empties.
+        std::vector<std::size_t>& f = frontiers[pick];
+        while (!f.empty()) {
+            const std::size_t pickPos = nextRange(f.size());
+            const std::size_t cellIdx = f[pickPos];
+            f[pickPos] = f.back();
+            f.pop_back();
+            if (field.plateId[cellIdx] >= 0) continue;
+            field.plateId[cellIdx] = static_cast<int16_t>(pick);
+            const int32_t latIdx = static_cast<int32_t>(
+                cellIdx / static_cast<std::size_t>(LON));
+            claimedArea[pick] += cellAreaWeight(latIdx);
+            pushNeighbours(cellIdx, pick);
+            ++claimed;
+            break;
+        }
     }
 }
 

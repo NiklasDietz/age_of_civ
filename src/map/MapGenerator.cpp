@@ -1762,7 +1762,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     aoc::map::gen::ThresholdResult thresholds;
     aoc::map::gen::runThresholdComputation(
         grid, config.mapType, effectiveWaterRatio,
-        elevationMap, thresholds);
+        config.seaLevelDelta, elevationMap, thresholds);
     std::vector<float>&   mountainElev      = thresholds.mountainElev;
     std::vector<int32_t>& distFromCoast     = thresholds.distFromCoast;
     const float           waterThreshold    = thresholds.waterThreshold;

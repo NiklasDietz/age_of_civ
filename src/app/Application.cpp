@@ -2262,6 +2262,40 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             {0.0f, 0.0f, 130.0f, 36.0f}, std::move(use));
     }
 
+    // Edit Map: hand the currently-previewed grid to the map editor
+    // so the user can paint terrain / features manually before
+    // committing. Editor's "Use This Map" then carries the edited
+    // grid into GameSetup via m_useExistingGridOnNextStart.
+    {
+        aoc::ui::ButtonData edit;
+        edit.label        = "Edit Map";
+        edit.fontSize     = 13.0f;
+        edit.normalColor  = aoc::ui::tokens::BRONZE_BASE;
+        edit.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
+        edit.pressedColor = aoc::ui::tokens::STATE_PRESSED;
+        edit.labelColor   = aoc::ui::tokens::TEXT_GILT;
+        edit.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        edit.onClick = [this, screenW, screenH]() {
+            // Tear down creator panels but KEEP m_hexGrid (editor
+            // brushes operate on it directly).
+            if (this->m_creatorPanelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.removeWidget(this->m_creatorPanelId);
+                this->m_creatorPanelId = aoc::ui::INVALID_WIDGET;
+            }
+            if (this->m_creatorAdvPanelId != aoc::ui::INVALID_WIDGET) {
+                this->m_uiManager.removeWidget(this->m_creatorAdvPanelId);
+                this->m_creatorAdvPanelId = aoc::ui::INVALID_WIDGET;
+            }
+            this->m_continentCreatorMode = false;
+            this->m_creatorPlaying = false;
+            this->m_mapEditorMode = true;
+            this->m_editorUndoStack.clear();
+            this->buildMapEditorControls(screenW, screenH);
+        };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
+            {0.0f, 0.0f, 80.0f, 36.0f}, std::move(edit));
+    }
+
     // Back to Main Menu
     {
         aoc::ui::ButtonData back;
@@ -2873,29 +2907,39 @@ void Application::run() {
         // Continent Creator: auto-advance scrubber when Play is on.
         // Stops at endpoint; user must explicitly press Play again
         // (or scrub) to continue. No auto-loop.
+        //
+        // 2026-05-10: switched accumulator drain from `while` to `if`.
+        // regenerateContinentPreview() takes hundreds of ms on a full-
+        // sim run; with `while`, a single laggy frame would compound
+        // make-up regens and freeze the UI for seconds. With `if`, at
+        // most ONE regen fires per frame — globe input + UI buttons
+        // stay responsive even if regens take longer than
+        // PLAY_INTERVAL. The play loop slips back proportionally to
+        // regen cost, which is the right behaviour: the user sees
+        // smooth animation rather than a hung frame followed by a
+        // burst of catch-up.
         if (this->m_continentCreatorMode && this->m_creatorPlaying) {
             constexpr float PLAY_INTERVAL = 0.25f;
             this->m_creatorPlayAccum += deltaTime;
-            while (this->m_creatorPlayAccum >= PLAY_INTERVAL) {
-                this->m_creatorPlayAccum -= PLAY_INTERVAL;
+            if (this->m_creatorPlayAccum >= PLAY_INTERVAL) {
+                this->m_creatorPlayAccum = 0.0f; // reset, do not accumulate make-up
                 if (this->m_creatorTimeCurrentMy >= this->m_creatorTotalMy) {
                     // Reached endpoint — stop play.
                     this->m_creatorPlaying = false;
-                    this->m_creatorPlayAccum = 0.0f;
                     if (this->m_creatorPlayBtnId != aoc::ui::INVALID_WIDGET) {
                         this->m_uiManager.setButtonLabel(
                             this->m_creatorPlayBtnId, "Play");
                     }
-                    break;
-                }
-                // Advance one physics-epoch (50 My) per play tick.
-                this->m_creatorTimeCurrentMy +=
-                    aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
-                this->regenerateContinentPreview(this->m_creatorTimeCurrentMy);
-                if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
-                    this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
-                        formatCreatorAgeLabel(this->m_creatorTimeCurrentMy,
-                                              this->m_creatorTotalMy));
+                } else {
+                    // Advance one physics-epoch (50 My) per play tick.
+                    this->m_creatorTimeCurrentMy +=
+                        aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
+                    this->regenerateContinentPreview(this->m_creatorTimeCurrentMy);
+                    if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
+                        this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
+                            formatCreatorAgeLabel(this->m_creatorTimeCurrentMy,
+                                                  this->m_creatorTotalMy));
+                    }
                 }
             }
         }

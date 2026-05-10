@@ -18,32 +18,39 @@ namespace aoc::map::gen {
 
 void runThresholdComputation(HexGrid& grid, MapType mapType,
                              float effectiveWaterRatio,
+                             float seaLevelDelta,
                              const std::vector<float>& elevationMap,
                              ThresholdResult& out) {
     const int32_t width  = grid.width();
     const int32_t totalTiles = grid.tileCount();
 
-    // Direct sea-level cut. elev[i] is the unitless surface elevation
-    // produced by MapGenerator from SphereField surfaceElevationM /
-    // 5000 m: positive = above sea level, negative = below. With the
-    // slope-based erosion law (SphereFieldPhysics) preserving
-    // continental shields at their physical steady state and the
-    // rigid mantle-datum calibration in PhysicsConstants, sea level
-    // is at zero by construction. Cells with elev < 0 are water; all
-    // others land. No percentile cutoff (CLAUDE.md rule 3 forbids
-    // quota-based shapers); waterRatio config is now informational
-    // only -- the physical model produces whatever land/water ratio
-    // its constants demand.
+    // Sea-level cut. elev[i] is the unitless surface elevation produced
+    // by MapGenerator from SphereField surfaceElevationM / 5000 m:
+    // positive = above sea level, negative = below. The slope-based
+    // erosion law (SphereFieldPhysics) preserves continental shields at
+    // their physical steady state and the rigid mantle-datum
+    // calibration in PhysicsConstants pins zero at the modern mean.
+    //
+    // `seaLevelDelta` (user-controllable creator slider) shifts the cut
+    // away from zero: + raises sea level (more water), - lowers (more
+    // land). One unit of seaLevelDelta = 0.20 in unitless elevation =
+    // 1000 m vertical (since elev = m/5000), bracketing the
+    // Cretaceous-to-Pleistocene eustatic envelope (~+200 m to -120 m
+    // around modern; user range is wider for creative latitude).
+    // No percentile cutoff (CLAUDE.md rule 3 forbids quota-based
+    // shapers).
+    constexpr float SEA_LEVEL_DELTA_TO_ELEV = 0.20f;
+    const float seaLevelCut = seaLevelDelta * SEA_LEVEL_DELTA_TO_ELEV;
     const std::size_t N = elevationMap.size();
     out.isWater.assign(N, 0u);
     std::size_t waterCount = 0;
     for (std::size_t i = 0; i < N; ++i) {
-        if (elevationMap[i] < 0.0f) {
+        if (elevationMap[i] < seaLevelCut) {
             out.isWater[i] = 1u;
             ++waterCount;
         }
     }
-    out.waterThreshold = 0.0f;
+    out.waterThreshold = seaLevelCut;
 
     (void)effectiveWaterRatio; // kept in signature for legacy callers
 

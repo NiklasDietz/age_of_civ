@@ -38,8 +38,14 @@ struct ThresholdResult {
 /// `mountainElev` (returned) is `elevationMap` with the coastal-ridge
 /// adjustment applied so the mountain percentile picks belt-tiles instead
 /// of arbitrary peaks.
+///
+/// `seaLevelDelta` shifts the sea-level cut. Positive raises sea level
+/// (more water), negative lowers (more land). Range conventionally
+/// [-1.0, +1.0]; one unit shifts the cut by 0.20 in unitless elevation
+/// = 1000 m of vertical sea-level change (mantle datum / 5000 m).
 void runThresholdComputation(HexGrid& grid, MapType mapType,
                              float effectiveWaterRatio,
+                             float seaLevelDelta,
                              const std::vector<float>& elevationMap,
                              ThresholdResult& out);
 
