@@ -7,20 +7,60 @@
 
 #include "aoc/core/Log.hpp"
 
-#define CPPHTTPLIB_THREAD_POOL_COUNT 4
+// CPPHTTPLIB_THREAD_POOL_COUNT is intentionally NOT defined here.
+// Defining it inside this single TU created an ODR risk: any other TU
+// that includes <cpp-httplib/httplib.h> with the default count would
+// see a different `httplib::ThreadPool::DEFAULT_POOL_COUNT` and the
+// inline functions in the header would emit conflicting definitions.
+// The thread-pool size is now configured globally via CMake's
+// `target_compile_definitions` (see workpackages 4 + 7); leave the
+// default if no definition is supplied.
 #include "cpp-httplib/httplib.h"
 
 #include <atomic>
+#include <string>
 #include <thread>
 #include <utility>
 
 namespace aoc::debug {
 
+namespace {
+
+/// Escape `"` and `\` for embedding inside a JSON string literal.
+/// We intentionally keep this minimal: cpp-httplib hands us the
+/// `std::exception::what()` C-string verbatim, so user/Lua-supplied
+/// payloads could contain quotes that would break the JSON envelope
+/// or, worse, allow attacker-controlled keys/values into the
+/// response. A small escape pass covers all printable cases we hand
+/// back today; control characters get passed through as-is and the
+/// caller's JSON parser is responsible for surfacing them.
+[[nodiscard]] std::string escapeJsonString(const char* raw) {
+    std::string out;
+    if (raw == nullptr) return out;
+    out.reserve(std::char_traits<char>::length(raw));
+    for (const char* p = raw; *p != '\0'; ++p) {
+        switch (*p) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            default:   out += *p;     break;
+        }
+    }
+    return out;
+}
+
+} // namespace
+
 struct DebugServer::Impl {
-    int32_t          port = 9876;
-    httplib::Server  server;
-    std::thread      listener;
-    std::atomic<bool> running{false};
+    int32_t            port = 9876;
+    httplib::Server    server;
+    /// `std::jthread` makes shutdown self-cleaning: the destructor
+    /// calls `request_stop()` (no-op for us, we do not pass a
+    /// `std::stop_token`) and then `join()`. We still call `stop()`
+    /// on the httplib::Server BEFORE the thread is destroyed so the
+    /// listener loop returns; `running.store(false)` happens earlier
+    /// still so any in-flight handler can short-circuit on the flag.
+    std::jthread       listener;
+    std::atomic<bool>  running{false};
 };
 
 DebugServer::DebugServer(int32_t port) : m_impl(std::make_unique<Impl>()) {
@@ -48,7 +88,7 @@ void DebugServer::routeJson(Method method, std::string path,
             } catch (const std::exception& e) {
                 res.status = 500;
                 std::string err = "{\"error\":\"handler threw\",\"what\":\"";
-                err += e.what();
+                err += escapeJsonString(e.what());
                 err += "\"}\n";
                 res.set_content(err, "application/json");
             }
@@ -80,7 +120,7 @@ bool DebugServer::start() {
         return false;
     }
     this->m_impl->running.store(true, std::memory_order_release);
-    this->m_impl->listener = std::thread([this]() {
+    this->m_impl->listener = std::jthread([this]() {
         LOG_INFO("DebugServer: listening on http://127.0.0.1:%d",
                  this->m_impl->port);
         this->m_impl->server.listen_after_bind();
@@ -92,11 +132,17 @@ bool DebugServer::start() {
 void DebugServer::stop() {
     if (!this->m_impl) return;
     if (!this->m_impl->running.load(std::memory_order_acquire)) return;
-    this->m_impl->server.stop();
-    if (this->m_impl->listener.joinable()) {
-        this->m_impl->listener.join();
-    }
+    // Drop the running flag FIRST so any concurrent handler that
+    // reads `isRunning()` sees the shutdown before we tear down the
+    // socket. Without this ordering, an in-flight handler might
+    // still observe `running == true` while the listener thread has
+    // already returned from `listen_after_bind()`.
     this->m_impl->running.store(false, std::memory_order_release);
+    this->m_impl->server.stop();
+    // `std::jthread` auto-joins on destruction or move-assignment;
+    // explicit join is unnecessary but harmless. We rely on the
+    // implicit join when the next start() reassigns the member or
+    // when ~Impl runs.
 }
 
 bool DebugServer::isRunning() const noexcept {

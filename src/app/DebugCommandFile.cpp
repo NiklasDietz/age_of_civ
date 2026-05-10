@@ -5,6 +5,8 @@
 
 #include "aoc/app/DebugCommandFile.hpp"
 
+#include "aoc/core/Log.hpp"
+
 #include <fstream>
 #include <sstream>
 #include <system_error>
@@ -21,8 +23,18 @@ void DebugCommandFile::registerHandler(std::string verb, Handler handler) {
 }
 
 void DebugCommandFile::poll() {
-    std::error_code ec;
-    if (!std::filesystem::exists(this->m_cmdPath, ec)) return;
+    // `exists` failure (permission error, dead mount) is not the same
+    // as "file is absent". Surface the failure with a single warning
+    // then bail; spamming every poll would drown the log. We only
+    // proceed when `exists` returns true AND `ec` is clear.
+    std::error_code existsEc;
+    const bool present = std::filesystem::exists(this->m_cmdPath, existsEc);
+    if (existsEc) {
+        LOG_WARN("DebugCommandFile: stat failed on %s: %s",
+                 this->m_cmdPath.c_str(), existsEc.message().c_str());
+        return;
+    }
+    if (!present) return;
 
     // Read whole file. Single line expected; tolerate trailing newline.
     std::ifstream in(this->m_cmdPath);
@@ -81,10 +93,35 @@ void DebugCommandFile::poll() {
         out << response;
         if (response.empty() || response.back() != '\n') out << '\n';
     }
-    std::filesystem::rename(tmp, this->m_outPath, ec);
+
+    // Rename failure means the caller will read a stale response
+    // file. We CANNOT safely re-dispatch: the handler may already
+    // have mutated game state (set-creator-time, re-roll). Removing
+    // the cmd file even on rename failure prevents a stuck cmd from
+    // re-executing on every subsequent poll. The caller sees no fresh
+    // response, which is strictly better than silent double-mutation.
+    std::error_code renameEc;
+    std::filesystem::rename(tmp, this->m_outPath, renameEc);
+    if (renameEc) {
+        LOG_WARN("DebugCommandFile: rename %s -> %s failed: %s "
+                 "(removing cmd file anyway to avoid re-dispatch)",
+                 tmp.c_str(),
+                 this->m_outPath.c_str(),
+                 renameEc.message().c_str());
+    }
 
     // Remove cmd file last so caller knows the round-trip is done.
-    std::filesystem::remove(this->m_cmdPath, ec);
+    // Failure here is non-fatal -- the caller already has a fresh
+    // response file -- but if the cmd file is still present on the
+    // next poll the verb runs again, which would silently re-execute
+    // mutating handlers. Log so a stuck cmd file is visible.
+    std::error_code removeEc;
+    std::filesystem::remove(this->m_cmdPath, removeEc);
+    if (removeEc) {
+        LOG_WARN("DebugCommandFile: remove %s failed: %s",
+                 this->m_cmdPath.c_str(),
+                 removeEc.message().c_str());
+    }
 }
 
 } // namespace aoc::app

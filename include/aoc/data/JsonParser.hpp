@@ -100,6 +100,12 @@ private:
     Value storage;
 };
 
+/// Maximum nesting depth for JSON arrays/objects. Bounds parser recursion to
+/// avoid stack exhaustion on hostile or malformed mod data. Real game data
+/// nests <10 levels; 64 leaves ample headroom while staying well under the
+/// platform stack budget. Audited 2026-05-10 (security).
+constexpr int JSON_MAX_NESTING_DEPTH = 64;
+
 /// Parse a JSON string into a JsonValue. Returns a null value on parse errors
 /// and logs the error with file/line context.
 [[nodiscard]] inline JsonValue parseJson(const std::string& input, const std::string& sourceFile = "<unknown>") {
@@ -134,18 +140,23 @@ private:
             return this->text[this->pos];
         }
 
-        JsonValue parseValue() {
+        JsonValue parseValue(int depth = 0) {
             this->skipWhitespace();
             if (this->pos >= this->text.size()) {
                 LOG_ERROR("JSON parse error in '%s': unexpected end of input at position %zu",
                           this->fileName.c_str(), this->pos);
                 return JsonValue{};
             }
+            if (depth > JSON_MAX_NESTING_DEPTH) {
+                LOG_ERROR("JSON parse error in '%s': nesting depth %d exceeds limit %d at position %zu",
+                          this->fileName.c_str(), depth, JSON_MAX_NESTING_DEPTH, this->pos);
+                return JsonValue{};
+            }
 
             char c = this->text[this->pos];
             if (c == '"') { return this->parseString(); }
-            if (c == '{') { return this->parseObject(); }
-            if (c == '[') { return this->parseArray(); }
+            if (c == '{') { return this->parseObject(depth + 1); }
+            if (c == '[') { return this->parseArray(depth + 1); }
             if (c == 't' || c == 'f') { return this->parseBool(); }
             if (c == 'n') { return this->parseNull(); }
             if (c == '-' || (c >= '0' && c <= '9')) { return this->parseNumber(); }
@@ -244,7 +255,7 @@ private:
             return JsonValue{};
         }
 
-        JsonValue parseArray() {
+        JsonValue parseArray(int depth = 1) {
             ++this->pos;  // skip [
             JsonValue::Array arr;
             this->skipWhitespace();
@@ -253,7 +264,7 @@ private:
                 return JsonValue{std::move(arr)};
             }
             while (true) {
-                arr.push_back(this->parseValue());
+                arr.push_back(this->parseValue(depth));
                 this->skipWhitespace();
                 if (this->expect(',')) { continue; }
                 if (this->expect(']')) { break; }
@@ -264,7 +275,7 @@ private:
             return JsonValue{std::move(arr)};
         }
 
-        JsonValue parseObject() {
+        JsonValue parseObject(int depth = 1) {
             ++this->pos;  // skip {
             JsonValue::Object obj;
             this->skipWhitespace();
@@ -287,7 +298,7 @@ private:
                               this->fileName.c_str(), key.c_str(), this->pos);
                     break;
                 }
-                obj[std::move(key)] = this->parseValue();
+                obj[std::move(key)] = this->parseValue(depth);
                 this->skipWhitespace();
                 if (this->expect(',')) { continue; }
                 if (this->expect('}')) { break; }

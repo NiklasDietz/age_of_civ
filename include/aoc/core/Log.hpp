@@ -59,6 +59,17 @@ inline void setMinSeverity(Severity s) noexcept {
 /// The fmt parameter is always a string literal when called via the LOG_* macros;
 /// the -Wformat-nonliteral warning is suppressed because the template indirection
 /// hides the literal from the compiler's format checker.
+///
+/// Atomicity: the previous implementation issued THREE separate
+/// `std::fprintf` calls (header, body, newline). When two threads
+/// log concurrently, the C runtime interleaves their writes and
+/// produces unreadable garbled lines. We now format the entire line
+/// into a stack buffer and emit it with a single `std::fprintf`,
+/// which the C runtime guarantees is atomic against other stdio
+/// calls on the same FILE* (POSIX `flockfile`/`funlockfile` per
+/// stream). The 1024-byte cap is the line ceiling; longer messages
+/// are truncated and a trailing `...` indicator is appended so the
+/// truncation is visible.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
 #pragma GCC diagnostic ignored "-Wdouble-promotion"
@@ -73,10 +84,39 @@ void logMessage(Severity severity, const char* file, int line,
     char timeBuf[20];
     std::strftime(timeBuf, sizeof(timeBuf), "%H:%M:%S", &tm);
 
+    constexpr std::size_t kLogBufSize = 1024;
+    char buf[kLogBufSize];
+    int prefixLen = std::snprintf(buf, kLogBufSize, "[%s][%s] %s:%d ",
+                                   timeBuf, severityTag(severity), file, line);
+    if (prefixLen < 0) prefixLen = 0;
+    if (static_cast<std::size_t>(prefixLen) >= kLogBufSize) {
+        // Prefix already filled the buffer; nothing to append.
+        prefixLen = static_cast<int>(kLogBufSize - 1);
+    }
+    int bodyLen = std::snprintf(buf + prefixLen, kLogBufSize - static_cast<std::size_t>(prefixLen),
+                                 fmt, args...);
+    if (bodyLen < 0) bodyLen = 0;
+    std::size_t total = static_cast<std::size_t>(prefixLen)
+                      + static_cast<std::size_t>(bodyLen);
+    if (total >= kLogBufSize) {
+        // Mark truncation and reserve room for "...\n\0".
+        constexpr std::size_t kTruncTail = 5; // "...\n" + NUL.
+        if (kLogBufSize > kTruncTail) {
+            std::snprintf(buf + (kLogBufSize - kTruncTail), kTruncTail,
+                          "...\n");
+        }
+        total = kLogBufSize - 1;
+    } else {
+        // Room for newline + NUL guaranteed (`total < kLogBufSize`).
+        buf[total] = '\n';
+        ++total;
+        buf[total] = '\0';
+    }
+
     std::FILE* stream = (severity >= Severity::Error) ? stderr : stdout;
-    std::fprintf(stream, "[%s][%s] %s:%d ", timeBuf, severityTag(severity), file, line);
-    std::fprintf(stream, fmt, args...);
-    std::fprintf(stream, "\n");
+    // Single fprintf: stdio guarantees per-call locking on the FILE*,
+    // so no other thread's logMessage can interleave with this line.
+    std::fprintf(stream, "%s", buf);
 
     if (severity == Severity::Fatal) {
         std::fflush(stderr);
@@ -96,8 +136,14 @@ inline void logMessage(Severity severity, const char* file, int line,
     char timeBuf[20];
     std::strftime(timeBuf, sizeof(timeBuf), "%H:%M:%S", &tm);
 
+    constexpr std::size_t kLogBufSize = 1024;
+    char buf[kLogBufSize];
+    int written = std::snprintf(buf, kLogBufSize, "[%s][%s] %s:%d %s\n",
+                                 timeBuf, severityTag(severity), file, line, msg);
+    (void)written;
+
     std::FILE* stream = (severity >= Severity::Error) ? stderr : stdout;
-    std::fprintf(stream, "[%s][%s] %s:%d %s\n", timeBuf, severityTag(severity), file, line, msg);
+    std::fprintf(stream, "%s", buf);
 
     if (severity == Severity::Fatal) {
         std::fflush(stderr);

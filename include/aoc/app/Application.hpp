@@ -52,8 +52,12 @@
 #include "aoc/map/MapGenerator.hpp"
 #include "aoc/ui/SpectatorHUD.hpp"
 
+#include <atomic>
 #include <cstdint>
+#include <deque>
+#include <limits>
 #include <map>
+#include <mutex>
 #include <unordered_map>
 #include <memory>
 
@@ -456,7 +460,45 @@ private:
     /// first visit to each epoch; subsequent scrubs to that epoch
     /// blit from cache instead of re-running MapGenerator. Cleared
     /// on parameter changes (Generate / Re-roll / W/H/Plates/Drift edits).
+    /// Bounded LRU: the `m_creatorEpochCacheLru` deque tracks insertion
+    /// order; oldest entries are evicted when size > CREATOR_CACHE_MAX.
     std::unordered_map<int32_t, aoc::map::HexGrid> m_creatorEpochCache;
+    std::deque<int32_t> m_creatorEpochCacheLru;
+    static constexpr std::size_t CREATOR_CACHE_MAX = 20;
+    /// Serialises access to `m_creatorEpochCache`/`m_creatorEpochCacheLru`.
+    /// Currently the cache is touched only from the main thread (via
+    /// `regenerateContinentPreview`) but the mutex keeps the invariant
+    /// explicit so a future helper that touches it from a worker thread
+    /// is forced to lock. Hold for the shortest possible window.
+    std::mutex m_creatorEpochCacheMutex;
+    /// Drop both the snapshot map and the LRU order under the
+    /// `m_creatorEpochCacheMutex`. Use this everywhere the cache
+    /// becomes stale (re-roll, parameter change, exit creator mode);
+    /// never call `m_creatorEpochCache.clear()` directly because that
+    /// would leave the LRU desynchronised.
+    void clearCreatorEpochCache();
+    /// HTTP-debug worker → main-thread mailbox. Worker handlers set
+    /// these flags and return immediately; the main loop drains them
+    /// at the top of each frame (before any sim/render state mutates)
+    /// so the actual work happens on the main thread.
+    ///
+    /// Sentinel choice for `m_pendingCreatorTime`: `std::atomic<int32_t>`
+    /// with `std::numeric_limits<int32_t>::min()` meaning "no pending
+    /// request". `std::atomic<std::optional<int32_t>>` is not lock-free
+    /// on most platforms because `std::optional` is not trivially
+    /// copyable in general, so we use a sentinel int instead. All real
+    /// creator times are positive (clamped to >=0 by the regenerator),
+    /// so the sentinel is unambiguous.
+    static constexpr int32_t PENDING_TIME_NONE =
+        std::numeric_limits<int32_t>::min();
+    std::atomic<int32_t> m_pendingCreatorTime{PENDING_TIME_NONE};
+    std::atomic<bool>    m_pendingReroll{false};
+    /// Seed associated with the pending re-roll. Read on the main
+    /// thread only after `m_pendingReroll` is observed true; the worker
+    /// writes this BEFORE setting the flag (release on the flag), so a
+    /// matching acquire on the flag synchronises this value.
+    std::atomic<uint32_t> m_pendingRerollSeed{0};
+    std::atomic<bool>    m_quitRequested{false};
     /// Play state — when true, m_creatorTimeCurrentMy advances by one
     /// physics epoch (MY_PER_EPOCH_TARGET My) every PLAY_INTERVAL
     /// seconds, looping at m_creatorTotalMy.

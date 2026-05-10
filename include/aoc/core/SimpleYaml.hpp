@@ -13,7 +13,11 @@
  * Does NOT support: nested objects, multi-line strings, anchors/aliases.
  */
 
+#include "aoc/core/Log.hpp"
+
+#include <cerrno>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -53,11 +57,28 @@ public:
         return (it != this->m_values.end()) ? it->second : defaultVal;
     }
 
-    /// Get an integer value.
+    /// Get an integer value. Returns defaultVal if the key is missing, or if
+    /// the value fails to parse / overflows int32_t. atoi() silently returns 0
+    /// on garbage and clamps without notice on overflow; strtol with endptr
+    /// and errno catches both. Audited 2026-05-10 (security).
     [[nodiscard]] int32_t getInt(const std::string& key, int32_t defaultVal = 0) const {
         std::unordered_map<std::string, std::string>::const_iterator it = this->m_values.find(key);
         if (it == this->m_values.end()) { return defaultVal; }
-        return std::atoi(it->second.c_str());
+        const char* str = it->second.c_str();
+        char* endPtr = nullptr;
+        errno = 0;
+        long parsed = std::strtol(str, &endPtr, 10);
+        if (endPtr == str) {
+            LOG_WARN("SimpleYaml::getInt: '%s' has non-numeric value '%s', using default %d",
+                     key.c_str(), str, defaultVal);
+            return defaultVal;
+        }
+        if (errno == ERANGE || parsed < INT32_MIN || parsed > INT32_MAX) {
+            LOG_WARN("SimpleYaml::getInt: '%s' value '%s' overflows int32, using default %d",
+                     key.c_str(), str, defaultVal);
+            return defaultVal;
+        }
+        return static_cast<int32_t>(parsed);
     }
 
     /// Get a float value.

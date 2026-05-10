@@ -21,6 +21,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <string>
 
 namespace aoc::net {
@@ -62,7 +63,12 @@ public:
 
 private:
     struct Impl;
-    Impl* m_impl = nullptr;
+    /// PIMPL holding the sd-bus connection, vtable slot, and pending
+    /// reply state. Impl's destructor releases the sd-bus resources
+    /// (`sd_bus_slot_unref` + `sd_bus_unref`) so `unique_ptr<Impl>`
+    /// with the default deleter is sufficient -- no custom deleter
+    /// needed. The `<memory>` include is required for this member.
+    std::unique_ptr<Impl> m_impl;
     std::atomic<bool> m_active{false};
 };
 

@@ -21,6 +21,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -449,6 +450,49 @@ int main(int argc, char* argv[]) {
         std::mutex gridMutex;
         aoc::map::MapGenerator::Config liveConfig = config;
         std::atomic<bool> shutdownRequested{false};
+
+        // /quit drain barrier. Each mutating HTTP handler increments
+        // `inFlight` on entry and decrements on exit (via RAII below).
+        // After the main thread receives the shutdown signal AND calls
+        // server.stop(), it blocks on `drainCv` until `inFlight` reaches
+        // zero. cpp-httplib's `task_queue->shutdown()` already drains
+        // queued tasks, but this barrier is belt-and-suspenders so the
+        // stack-allocated `grid`, `liveConfig`, `currentMy` cannot go
+        // out of scope while a handler still references them. C++20
+        // `std::latch` is single-shot with a fixed count -- the dynamic
+        // in-flight count here calls for atomic + condition_variable
+        // instead. (See WP6 hint: latch preferred over shared_ptr
+        // juggling, but the count is not knowable up front.)
+        std::atomic<int32_t> inFlight{0};
+        std::mutex            drainMutex;
+        std::condition_variable drainCv;
+
+        // RAII helper: increment inFlight on entry, decrement and
+        // notify on exit. Construct one at the top of every mutating
+        // handler. Read-only handlers do not need it -- their state
+        // accesses are guarded by gridMutex which already serialises
+        // against the regen path.
+        struct HandlerScope {
+            std::atomic<int32_t>&    counter;
+            std::condition_variable& cv;
+            std::mutex&              mtx;
+
+            HandlerScope(std::atomic<int32_t>& c,
+                         std::condition_variable& v,
+                         std::mutex& m) noexcept
+                : counter(c), cv(v), mtx(m) {
+                this->counter.fetch_add(1, std::memory_order_acq_rel);
+            }
+            ~HandlerScope() {
+                if (this->counter.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+                    // Last handler out: wake any drainer waiting.
+                    std::lock_guard<std::mutex> lock(this->mtx);
+                    this->cv.notify_all();
+                }
+            }
+            HandlerScope(const HandlerScope&)            = delete;
+            HandlerScope& operator=(const HandlerScope&) = delete;
+        };
         // Active total-My used for the LAST regen. Single source of
         // truth for /sim/step, /sim/set-creator-time, /info reporting.
         // Starts at the requested run's full duration; /sim/step
@@ -457,11 +501,15 @@ int main(int argc, char* argv[]) {
             ? liveConfig.tectonicTotalMy
             : aoc::map::MapGenerator::DEFAULT_TECTONIC_TOTAL_MY;
         const int32_t totalMy = currentMy;
-        // Regenerate the world at a specific total-My. Holds gridMutex
-        // so concurrent reads see the post-regen state. Runs full sim
+        // Regenerate the world at a specific total-My. Lock contract:
+        // the caller owns `gridMutex` for the entire call -- the
+        // `std::lock_guard&` parameter is unused at the call site but
+        // makes that requirement explicit and prevents a future
+        // refactor from forgetting to take the lock. Runs full sim
         // 0 -> targetMy each call (generate() is not resumable; its
         // determinism per seed makes this acceptable).
-        auto regenAtMy = [&](int32_t targetMy) {
+        auto regenAtMy = [&](std::lock_guard<std::mutex>& /*heldLock*/,
+                             int32_t targetMy) {
             if (targetMy < 0)        targetMy = 0;
             if (targetMy > totalMy)  targetMy = totalMy;
             currentMy = targetMy;
@@ -611,6 +659,7 @@ int main(int argc, char* argv[]) {
         server.routeJson(DSM::Post, "/dump/grid",
             [&](const std::unordered_map<std::string, std::string>& q,
                 const std::string&) -> std::string {
+                HandlerScope scope(inFlight, drainCv, drainMutex);
                 auto it = q.find("path");
                 if (it == q.end() || it->second.empty()) {
                     return "{\"error\":\"missing path\"}";
@@ -643,6 +692,7 @@ int main(int argc, char* argv[]) {
         server.routeJson(DSM::Post, "/dump/plates",
             [&](const std::unordered_map<std::string, std::string>& q,
                 const std::string&) -> std::string {
+                HandlerScope scope(inFlight, drainCv, drainMutex);
                 auto it = q.find("path");
                 if (it == q.end() || it->second.empty()) {
                     return "{\"error\":\"missing path\"}";
@@ -706,6 +756,7 @@ int main(int argc, char* argv[]) {
         server.routeJson(DSM::Post, "/sim/re-roll",
             [&](const std::unordered_map<std::string, std::string>& q,
                 const std::string&) -> std::string {
+                HandlerScope scope(inFlight, drainCv, drainMutex);
                 uint64_t newSeed = liveConfig.seed + 1;
                 auto it = q.find("seed");
                 if (it != q.end()) {
@@ -713,7 +764,7 @@ int main(int argc, char* argv[]) {
                 }
                 std::lock_guard<std::mutex> lock(gridMutex);
                 liveConfig.seed = newSeed;
-                regenAtMy(totalMy);
+                regenAtMy(lock, totalMy);
                 std::ostringstream o;
                 o << "{\"seed\":" << newSeed
                   << ",\"creatorTime\":" << currentMy
@@ -726,13 +777,14 @@ int main(int argc, char* argv[]) {
         server.routeJson(DSM::Post, "/sim/step",
             [&](const std::unordered_map<std::string, std::string>& q,
                 const std::string&) -> std::string {
+                HandlerScope scope(inFlight, drainCv, drainMutex);
                 int32_t dy = aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
                 auto it = q.find("dy");
                 if (it != q.end()) {
                     dy = std::atoi(it->second.c_str());
                 }
                 std::lock_guard<std::mutex> lock(gridMutex);
-                regenAtMy(currentMy + dy);
+                regenAtMy(lock, currentMy + dy);
                 std::ostringstream o;
                 o << "{\"creatorTime\":" << currentMy
                   << ",\"creatorTotal\":" << totalMy
@@ -743,13 +795,14 @@ int main(int argc, char* argv[]) {
         server.routeJson(DSM::Post, "/sim/set-creator-time",
             [&](const std::unordered_map<std::string, std::string>& q,
                 const std::string&) -> std::string {
+                HandlerScope scope(inFlight, drainCv, drainMutex);
                 auto it = q.find("my");
                 if (it == q.end()) {
                     return "{\"error\":\"missing my\"}";
                 }
                 const int32_t targetMy = std::atoi(it->second.c_str());
                 std::lock_guard<std::mutex> lock(gridMutex);
-                regenAtMy(targetMy);
+                regenAtMy(lock, targetMy);
                 std::ostringstream o;
                 o << "{\"creatorTime\":" << currentMy
                   << ",\"creatorTotal\":" << totalMy << "}";
@@ -759,6 +812,7 @@ int main(int argc, char* argv[]) {
         server.routeJson(DSM::Post, "/quit",
             [&](const std::unordered_map<std::string, std::string>&,
                 const std::string&) -> std::string {
+                HandlerScope scope(inFlight, drainCv, drainMutex);
                 shutdownRequested.store(true);
                 return "{\"ok\":true}";
             });
@@ -774,7 +828,28 @@ int main(int argc, char* argv[]) {
         while (!shutdownRequested.load()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
+        // Stop accepting new connections and drain queued tasks.
         server.stop();
+        // Defensive drain: cpp-httplib's `task_queue->shutdown()` has
+        // already waited for in-flight handlers, but a third-party
+        // refactor could change that. Block here until our own
+        // counter agrees -- the stack-allocated `grid`, `liveConfig`,
+        // and `currentMy` go out of scope at the closing brace below
+        // and we must not race that with a live handler. Bound the
+        // wait so a stuck handler shows up in CI rather than hanging.
+        {
+            std::unique_lock<std::mutex> lock(drainMutex);
+            const bool drained = drainCv.wait_for(
+                lock,
+                std::chrono::seconds(5),
+                [&]() { return inFlight.load(std::memory_order_acquire) == 0; });
+            if (!drained) {
+                std::fprintf(stderr,
+                    "warning: %d HTTP handler(s) still in flight after "
+                    "server.stop(); terminating anyway\n",
+                    inFlight.load(std::memory_order_acquire));
+            }
+        }
     }
     return 0;
 }

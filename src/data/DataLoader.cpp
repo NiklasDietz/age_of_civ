@@ -7,21 +7,35 @@
 #include "aoc/data/JsonParser.hpp"
 #include "aoc/core/Log.hpp"
 
+#include <cerrno>
+#include <cstring>
 #include <fstream>
+#include <optional>
 #include <sstream>
 
 namespace aoc::data {
 
 namespace {
 
-/// Read an entire file into a string. Returns empty string on failure.
-[[nodiscard]] std::string readFileContents(const std::string& path) {
+/// Read an entire file into a string.
+/// Returns std::nullopt on failure with a distinct log: WARN for missing /
+/// unopenable files (caller decides whether to fall back), ERROR with errno
+/// for read/IO failure (data on disk but unreadable -- silent fallback would
+/// hide a corrupt FS or permissions issue). Audited 2026-05-10.
+[[nodiscard]] std::optional<std::string> readFileContents(const std::string& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        return std::string{};
+        LOG_WARN("DataLoader: cannot open '%s' (errno=%d: %s)",
+                 path.c_str(), errno, std::strerror(errno));
+        return std::nullopt;
     }
     std::ostringstream buffer;
     buffer << file.rdbuf();
+    if (file.bad()) {
+        LOG_ERROR("DataLoader: read error on '%s' (errno=%d: %s)",
+                  path.c_str(), errno, std::strerror(errno));
+        return std::nullopt;
+    }
     return buffer.str();
 }
 
@@ -208,13 +222,12 @@ bool DataLoader::initialize(const std::string& dataDirectory) {
 // ============================================================================
 
 bool DataLoader::loadBuildings(const std::string& path) {
-    std::string content = readFileContents(path);
-    if (content.empty()) {
-        LOG_WARN("DataLoader::loadBuildings: could not read '%s'", path.c_str());
+    std::optional<std::string> content = readFileContents(path);
+    if (!content) {
         return false;
     }
 
-    JsonValue root = parseJson(content, path);
+    JsonValue root = parseJson(*content, path);
     if (!root.isArray()) {
         LOG_ERROR("DataLoader::loadBuildings: '%s' root is not an array", path.c_str());
         return false;
@@ -248,13 +261,12 @@ bool DataLoader::loadBuildings(const std::string& path) {
 }
 
 bool DataLoader::loadUnits(const std::string& path) {
-    std::string content = readFileContents(path);
-    if (content.empty()) {
-        LOG_WARN("DataLoader::loadUnits: could not read '%s'", path.c_str());
+    std::optional<std::string> content = readFileContents(path);
+    if (!content) {
         return false;
     }
 
-    JsonValue root = parseJson(content, path);
+    JsonValue root = parseJson(*content, path);
     if (!root.isArray()) {
         LOG_ERROR("DataLoader::loadUnits: '%s' root is not an array", path.c_str());
         return false;
@@ -288,13 +300,12 @@ bool DataLoader::loadUnits(const std::string& path) {
 }
 
 bool DataLoader::loadTechs(const std::string& path) {
-    std::string content = readFileContents(path);
-    if (content.empty()) {
-        LOG_WARN("DataLoader::loadTechs: could not read '%s'", path.c_str());
+    std::optional<std::string> content = readFileContents(path);
+    if (!content) {
         return false;
     }
 
-    JsonValue root = parseJson(content, path);
+    JsonValue root = parseJson(*content, path);
     if (!root.isArray()) {
         LOG_ERROR("DataLoader::loadTechs: '%s' root is not an array", path.c_str());
         return false;
@@ -352,13 +363,12 @@ bool DataLoader::loadTechs(const std::string& path) {
 }
 
 bool DataLoader::loadRecipes(const std::string& path) {
-    std::string content = readFileContents(path);
-    if (content.empty()) {
-        LOG_WARN("DataLoader::loadRecipes: could not read '%s'", path.c_str());
+    std::optional<std::string> content = readFileContents(path);
+    if (!content) {
         return false;
     }
 
-    JsonValue root = parseJson(content, path);
+    JsonValue root = parseJson(*content, path);
     if (!root.isArray()) {
         LOG_ERROR("DataLoader::loadRecipes: '%s' root is not an array", path.c_str());
         return false;
@@ -402,13 +412,12 @@ bool DataLoader::loadRecipes(const std::string& path) {
 }
 
 bool DataLoader::loadGoods(const std::string& path) {
-    std::string content = readFileContents(path);
-    if (content.empty()) {
-        LOG_WARN("DataLoader::loadGoods: could not read '%s'", path.c_str());
+    std::optional<std::string> content = readFileContents(path);
+    if (!content) {
         return false;
     }
 
-    JsonValue root = parseJson(content, path);
+    JsonValue root = parseJson(*content, path);
     if (!root.isArray()) {
         LOG_ERROR("DataLoader::loadGoods: '%s' root is not an array", path.c_str());
         return false;
@@ -439,13 +448,12 @@ bool DataLoader::loadGoods(const std::string& path) {
 }
 
 bool DataLoader::loadLeaders(const std::string& path) {
-    std::string content = readFileContents(path);
-    if (content.empty()) {
-        LOG_WARN("DataLoader::loadLeaders: could not read '%s'", path.c_str());
+    std::optional<std::string> content = readFileContents(path);
+    if (!content) {
         return false;
     }
 
-    JsonValue root = parseJson(content, path);
+    JsonValue root = parseJson(*content, path);
     if (!root.isArray()) {
         LOG_ERROR("DataLoader::loadLeaders: '%s' root is not an array", path.c_str());
         return false;
@@ -626,13 +634,12 @@ void DataLoader::fallbackLeaders() {
 // ============================================================================
 
 bool DataLoader::loadImprovements(const std::string& path) {
-    std::string content = readFileContents(path);
-    if (content.empty()) {
-        LOG_WARN("DataLoader::loadImprovements: could not read '%s'", path.c_str());
+    std::optional<std::string> content = readFileContents(path);
+    if (!content) {
         return false;
     }
 
-    JsonValue root = parseJson(content, path);
+    JsonValue root = parseJson(*content, path);
     if (!root.isArray()) {
         LOG_ERROR("DataLoader::loadImprovements: '%s' root is not an array", path.c_str());
         return false;

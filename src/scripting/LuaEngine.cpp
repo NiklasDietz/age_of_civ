@@ -56,7 +56,46 @@ bool LuaEngine::initialize(const std::string& scriptsPath) {
         return false;
     }
 
-    luaL_openlibs(this->m_impl->luaState);
+    // Sandbox: open ONLY the safe standard libraries (base, string, table,
+    // math, and utf8 where available). Mods are untrusted scripts that we
+    // load from data/scripts/ and data/mods/, so the full standard library
+    // would expose io.open / os.execute / package.loadlib / require /
+    // dofile / loadfile / debug.* — every one of these turns a malicious
+    // script into RCE on the host machine.
+    //
+    // LuaJIT 2.1 follows the Lua 5.1 C API and does NOT provide
+    // luaL_requiref (added in Lua 5.2) or luaopen_utf8 (added in Lua 5.3).
+    // For that path we replicate the Lua 5.1 idiom: push the loader,
+    // push the module name, call it, and discard the returned table —
+    // luaL_openlibs() does exactly this internally.
+    lua_State* L = this->m_impl->luaState;
+#if LUA_VERSION_NUM >= 502
+    luaL_requiref(L, "_G",     luaopen_base,   1); lua_pop(L, 1);
+    luaL_requiref(L, "string", luaopen_string, 1); lua_pop(L, 1);
+    luaL_requiref(L, "table",  luaopen_table,  1); lua_pop(L, 1);
+    luaL_requiref(L, "math",   luaopen_math,   1); lua_pop(L, 1);
+#if LUA_VERSION_NUM >= 503
+    luaL_requiref(L, "utf8",   luaopen_utf8,   1); lua_pop(L, 1);
+#endif
+#else
+    // LuaJIT / Lua 5.1 path: invoke each loader as a Lua function with
+    // its module name on the stack, mirroring lj_lib.c's openlib helper.
+    lua_pushcfunction(L, luaopen_base);   lua_pushstring(L, "");      lua_call(L, 1, 0);
+    lua_pushcfunction(L, luaopen_string); lua_pushstring(L, "string"); lua_call(L, 1, 0);
+    lua_pushcfunction(L, luaopen_table);  lua_pushstring(L, "table");  lua_call(L, 1, 0);
+    lua_pushcfunction(L, luaopen_math);   lua_pushstring(L, "math");   lua_call(L, 1, 0);
+    // utf8 lib is not shipped by LuaJIT 2.1 — skip on this path.
+#endif
+
+    // Defence in depth: nil out anything an attacker could reach via the
+    // base library or that a future luaL_openlibs change might re-expose.
+    static constexpr const char* kBlockedGlobals[] = {
+        "os", "io", "package", "require", "dofile", "loadfile", "debug",
+    };
+    for (const char* name : kBlockedGlobals) {
+        lua_pushnil(L);
+        lua_setglobal(L, name);
+    }
 
     // Load init script if it exists
     std::string initPath = scriptsPath + "/init.lua";
@@ -172,6 +211,9 @@ bool LuaEngine::callFunctionWithTurn(std::string_view funcName, int32_t turn) {
 
     lua_pushinteger(this->m_impl->luaState, static_cast<lua_Integer>(turn));
     if (lua_pcall(this->m_impl->luaState, 1, 1, 0) != LUA_OK) {
+        const char* err = lua_tostring(this->m_impl->luaState, -1);
+        LOG_ERROR("Lua call '%s(%d)' failed: %s", name.c_str(), turn,
+                  err != nullptr ? err : "unknown");
         lua_pop(this->m_impl->luaState, 1);
         return false;
     }

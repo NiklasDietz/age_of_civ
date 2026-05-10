@@ -81,6 +81,28 @@ void mergePlates(SphereField& field,
                  std::size_t survivor,
                  std::size_t absorbed);
 
+/// Batch plate merge. Performs the equivalent of N sequential `mergePlates`
+/// calls but with only ONE pass over `field.plateId` instead of one per
+/// pair. Each pair (survivor, absorbed) is treated as a request to
+/// fold `absorbed` into `survivor`. Transitive chains are resolved via
+/// union-find so callers may pass overlapping pairs without ordering
+/// assumptions: e.g. {(a,b),(c,a)} merges b and c into a.
+///
+/// Each absorbed plate's authoritative state is folded into its final
+/// root survivor (latDeg/lonDeg unit-vector mean over participating
+/// plates; landFraction = max; ageEpochs = max). Suture-cell
+/// convergence rates are zeroed for every pre-merge plate-plate
+/// boundary so ghost orogeny does not accrete on welded interiors.
+///
+/// Pair indices reference the pre-call `plates` vector positions.
+/// On return, every absorbed plate has been erased and remaining
+/// plates' indices have been compacted; `field.plateId` has been
+/// remapped to the post-erase indices in a single sweep.
+void mergePlatesBatch(SphereField& field,
+                      std::vector<Plate>& plates,
+                      const std::vector<std::pair<std::size_t,
+                                                  std::size_t>>& pairs);
+
 
 /// Recompute every plate's centroid (`Plate.latDeg`, `Plate.lonDeg`) as
 /// the area-weighted mean of the cells currently assigned to it. Run

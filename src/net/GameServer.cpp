@@ -210,8 +210,73 @@ bool GameServer::tick() {
     return true;
 }
 
-bool GameServer::validateCommand(PlayerId /*player*/, const GameCommand& /*command*/) const {
-    return true;
+bool GameServer::validateCommand(PlayerId player, const GameCommand& command) const {
+    // Per-command authority check. Rejects commands where the asserted
+    // actor differs from the player whose connection sent the command,
+    // and clamps numeric inputs to documented ranges. Unit-owner
+    // verification for MoveUnit / AttackUnit / FoundCity is enforced
+    // at dispatch time inside executeCommand against the resolved unit
+    // (`unit->owner() == player`) since EntityId-to-unit resolution
+    // is part of the ECS migration; once that is in place, hoist the
+    // check up here.
+    return std::visit([player](const auto& cmd) -> bool {
+        using T = std::decay_t<decltype(cmd)>;
+
+        if constexpr (std::is_same_v<T, SetTaxRateCommand>) {
+            // Reject commands that spoof a player id.
+            if (cmd.player != player) {
+                LOG_WARN("validateCommand: SetTaxRate rejected -- "
+                         "cmd.player=%d != connection player=%d",
+                         static_cast<int>(cmd.player),
+                         static_cast<int>(player));
+                return false;
+            }
+            // Tax rate is documented as Percentage in [0.0f, 1.0f].
+            // Reject any rate outside that range; clients that want a
+            // saturated rate must send a clamped value.
+            if (!(cmd.rate >= 0.0f && cmd.rate <= 1.0f)) {
+                LOG_WARN("validateCommand: SetTaxRate rejected -- "
+                         "rate=%.6f outside [0.0, 1.0]",
+                         static_cast<double>(cmd.rate));
+                return false;
+            }
+            return true;
+        }
+        else if constexpr (std::is_same_v<T, SetResearchCommand>) {
+            if (cmd.player != player) {
+                LOG_WARN("validateCommand: SetResearch rejected -- "
+                         "cmd.player=%d != connection player=%d",
+                         static_cast<int>(cmd.player),
+                         static_cast<int>(player));
+                return false;
+            }
+            return true;
+        }
+        else if constexpr (std::is_same_v<T, EndTurnCommand>) {
+            if (cmd.player != player) {
+                LOG_WARN("validateCommand: EndTurn rejected -- "
+                         "cmd.player=%d != connection player=%d",
+                         static_cast<int>(cmd.player),
+                         static_cast<int>(player));
+                return false;
+            }
+            return true;
+        }
+        else if constexpr (std::is_same_v<T, TransitionMonetaryCommand>) {
+            if (cmd.player != player) {
+                LOG_WARN("validateCommand: TransitionMonetary rejected -- "
+                         "cmd.player=%d != connection player=%d",
+                         static_cast<int>(cmd.player),
+                         static_cast<int>(player));
+                return false;
+            }
+            return true;
+        }
+        // Commands without an explicit `player` field (MoveUnit,
+        // AttackUnit, FoundCity, SetProduction) fall through to the
+        // unit/city owner check inside executeCommand.
+        return true;
+    }, command);
 }
 
 void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
@@ -372,10 +437,22 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
             }
         }
         else if constexpr (std::is_same_v<T, SetTaxRateCommand>) {
-            // Apply tax rate directly via the GameState Player monetary component
+            // Defence in depth: validateCommand already rejects rates
+            // outside [0.0f, 1.0f] and a spoofed cmd.player. Clamp here
+            // anyway so any future caller that bypasses validate cannot
+            // store an out-of-range tax rate. `cmd.player != player`
+            // is treated as a hard bug -- drop the command.
+            if (cmd.player != player) {
+                LOG_WARN("executeCommand: SetTaxRate dropped -- "
+                         "cmd.player=%d != connection player=%d",
+                         static_cast<int>(cmd.player),
+                         static_cast<int>(player));
+                return;
+            }
+            const float clampedRate = std::clamp(cmd.rate, 0.0f, 1.0f);
             aoc::game::Player* gsPlayer = this->m_gameState.player(cmd.player);
             if (gsPlayer != nullptr) {
-                gsPlayer->monetary().taxRate = cmd.rate;
+                gsPlayer->monetary().taxRate = clampedRate;
             }
         }
         else if constexpr (std::is_same_v<T, TransitionMonetaryCommand>) {

@@ -107,6 +107,13 @@ private:
 };
 
 /// Low-level binary read cursor.
+///
+/// Every primitive read is bounds-checked against the underlying buffer.
+/// On underflow the buffer transitions to a sticky corrupt state: subsequent
+/// reads return zero / empty without advancing m_offset, so callers can either
+/// short-circuit at section granularity or check isCorrupt() at the end. This
+/// blocks crafted save files from triggering OOB reads inside primitive
+/// decoders (audit 2026-05-10).
 class ReadBuffer {
 public:
     explicit ReadBuffer(const std::vector<uint8_t>& data);
@@ -125,9 +132,14 @@ public:
     [[nodiscard]] bool hasRemaining(std::size_t bytes) const;
     [[nodiscard]] std::size_t remaining() const;
 
+    /// True once any primitive read tripped a bounds check.
+    /// Once set, every subsequent read is a no-op returning zero / empty.
+    [[nodiscard]] bool isCorrupt() const { return this->m_corrupt; }
+
 private:
     const std::vector<uint8_t>& m_data;
     std::size_t m_offset = 0;
+    bool m_corrupt = false;
 };
 
 /**

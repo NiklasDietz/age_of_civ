@@ -1,12 +1,15 @@
 #include "aoc/map/gen/SphereFieldPhysics.hpp"
 
+#include "aoc/core/Log.hpp"
 #include "aoc/map/gen/PlatePhysics.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
+#include <utility>
 
 namespace aoc::map::gen {
 
@@ -75,6 +78,8 @@ void generateInitialPlateOwnership(SphereField& field,
                                    const std::vector<Plate>& plates,
                                    uint64_t seed) {
     if (plates.empty()) {
+        LOG_WARN("SphereFieldPhysics: %s called with empty plates -- skipping",
+                 __func__);
         std::fill(field.plateId.begin(), field.plateId.end(),
                   static_cast<int16_t>(-1));
         return;
@@ -201,7 +206,11 @@ void generateInitialPlateOwnership(SphereField& field,
 
 void recomputePlateCentroidsFromCells(SphereField& field,
                                       std::vector<Plate>& plates) {
-    if (plates.empty()) return;
+    if (plates.empty()) {
+        LOG_WARN("SphereFieldPhysics: %s called with empty plates -- skipping",
+                 __func__);
+        return;
+    }
     // Sum unit-vector positions on the sphere per plate, then renormalise
     // to extract the area-weighted centroid. Averaging lat/lon directly
     // would fail across the antimeridian or polar wrap.
@@ -311,7 +320,11 @@ void accreteAtDivergentBoundary(SphereField& field, float dtMy) {
 void applySlabPullFeedback(SphereField& field,
                            std::vector<Plate>& plates,
                            float dtMy) {
-    if (plates.empty()) return;
+    if (plates.empty()) {
+        LOG_WARN("SphereFieldPhysics: %s called with empty plates -- skipping",
+                 __func__);
+        return;
+    }
     const std::size_t N = plates.size();
 
     // Per-plate slab-pull score: sum of convergent rates over the
@@ -417,8 +430,21 @@ void applySlabPullFeedback(SphereField& field,
 // (sphere x/y/z). Cells on each side of the principal axis go to
 // either the original plate or a fresh plate; both reset thermal
 // age and get perturbed Euler poles so they diverge.
+
+// Areal-fraction threshold for "supercontinent" classification
+// (continental cells / global cells). Anderson 2007 "New Theory
+// of the Earth" Table 15.1 lists Pangaean-class assemblies at
+// ~25-30 % of total continental crust massed together — about
+// 19-22 % of the global surface area (continental crust covers
+// ~29 % of Earth's surface). 0.20 is the Pangaean-onset floor.
 inline constexpr float SUPERCONTINENT_FRACTION = 0.20f;
 inline constexpr float RIFT_THRESHOLD_MY       = 150.0f;
+// Probability ramp width above RIFT_THRESHOLD_MY: rift probability
+// reaches 1.0 at thermal age = threshold + RIFT_RAMP_MY. Vérard
+// et al. 2015 ("Geodynamics of the 3 Ga old lithosphere") report
+// ~80-150 My from rift initiation to full mantle-driven breakup
+// for an Archean-class supercontinent; 100 My sits at the centre
+// of that envelope.
 inline constexpr float RIFT_RAMP_MY            = 100.0f;
 
 namespace {
@@ -435,7 +461,11 @@ int32_t applyWilsonRifting(SphereField& field,
                            std::vector<Plate>& plates,
                            uint32_t& rngState,
                            float dtMy) {
-    if (plates.empty()) return 0;
+    if (plates.empty()) {
+        LOG_WARN("SphereFieldPhysics: %s called with empty plates -- skipping",
+                 __func__);
+        return 0;
+    }
     const std::size_t N = plates.size();
 
     // Continental-area count per plate.
@@ -451,7 +481,9 @@ int32_t applyWilsonRifting(SphereField& field,
     }
     const float globeCells = static_cast<float>(SphereField::CELL_COUNT);
 
-    // Thermal-age update + per-plate mean.
+    // Thermal-age update + per-plate mean. Decay factor is constant
+    // across all cells in this epoch; precompute outside the hot loop.
+    const float thermalDecayFactor = std::exp(-dtMy / RIFT_THRESHOLD_MY);
     std::vector<double> thermalSum(N, 0.0);
     std::vector<int32_t> thermalCount(N, 0);
     for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
@@ -469,7 +501,7 @@ int32_t applyWilsonRifting(SphereField& field,
         } else {
             // Reset slowly — once a plate is no longer supercontinent
             // its thermal blanketing relaxes over ~RIFT_THRESHOLD_MY.
-            field.thermalAgeMy[i] *= std::exp(-dtMy / RIFT_THRESHOLD_MY);
+            field.thermalAgeMy[i] *= thermalDecayFactor;
         }
         thermalSum[static_cast<std::size_t>(pid)] +=
             static_cast<double>(field.thermalAgeMy[i]);
@@ -490,39 +522,43 @@ int32_t applyWilsonRifting(SphereField& field,
         const float prob = std::min(1.0f, over / RIFT_RAMP_MY);
         if (xorshift01(rngState) > prob) continue;
 
-        // PCA on cell sphere positions to find longest axis.
+        // PCA on cell sphere positions to find longest axis. Single
+        // pass over the whole field collects the indices + unit
+        // vectors of plate i's cells; subsequent PCA covariance and
+        // reassign passes operate on the pre-collected vector only.
         constexpr double DEG2RAD = 0.01745329252;
+        struct CellVec {
+            std::size_t cellIdx;
+            double cx, cy, cz;
+        };
+        std::vector<CellVec> plateCells;
+        plateCells.reserve(static_cast<std::size_t>(totalCells[i]));
         double mx = 0.0, my = 0.0, mz = 0.0;
         for (std::size_t cell = 0; cell < SphereField::CELL_COUNT; ++cell) {
             if (field.plateId[cell] != static_cast<int16_t>(i)) continue;
-            // Decompose cell idx -> (lon, lat).
             const int32_t latIdx = static_cast<int32_t>(cell / SphereField::LON_CELLS);
             const int32_t lonIdx = static_cast<int32_t>(cell % SphereField::LON_CELLS);
             const LatLon p = SphereField::cellCenter(lonIdx, latIdx);
             const double latR = static_cast<double>(p.latDeg) * DEG2RAD;
             const double lonR = static_cast<double>(p.lonDeg) * DEG2RAD;
             const double cosLat = std::cos(latR);
-            mx += cosLat * std::cos(lonR);
-            my += cosLat * std::sin(lonR);
-            mz += std::sin(latR);
+            const double cxv = cosLat * std::cos(lonR);
+            const double cyv = cosLat * std::sin(lonR);
+            const double czv = std::sin(latR);
+            plateCells.push_back({cell, cxv, cyv, czv});
+            mx += cxv; my += cyv; mz += czv;
         }
-        const double inv = 1.0 / static_cast<double>(totalCells[i]);
+        if (plateCells.empty()) continue;
+        const double inv = 1.0 / static_cast<double>(plateCells.size());
         mx *= inv; my *= inv; mz *= inv;
 
         // Compute covariance to extract principal axis. With ~hundreds
         // of cells the 3x3 power-iteration converges in <10 steps.
         double cxx=0, cyy=0, czz=0, cxy=0, cxz=0, cyz=0;
-        for (std::size_t cell = 0; cell < SphereField::CELL_COUNT; ++cell) {
-            if (field.plateId[cell] != static_cast<int16_t>(i)) continue;
-            const int32_t latIdx = static_cast<int32_t>(cell / SphereField::LON_CELLS);
-            const int32_t lonIdx = static_cast<int32_t>(cell % SphereField::LON_CELLS);
-            const LatLon p = SphereField::cellCenter(lonIdx, latIdx);
-            const double latR = static_cast<double>(p.latDeg) * DEG2RAD;
-            const double lonR = static_cast<double>(p.lonDeg) * DEG2RAD;
-            const double cosLat = std::cos(latR);
-            const double dx = cosLat * std::cos(lonR) - mx;
-            const double dy = cosLat * std::sin(lonR) - my;
-            const double dz = std::sin(latR) - mz;
+        for (const CellVec& v : plateCells) {
+            const double dx = v.cx - mx;
+            const double dy = v.cy - my;
+            const double dz = v.cz - mz;
             cxx += dx*dx; cyy += dy*dy; czz += dz*dz;
             cxy += dx*dy; cxz += dx*dz; cyz += dy*dz;
         }
@@ -559,7 +595,15 @@ int32_t applyWilsonRifting(SphereField& field,
         // is what makes the rift OPEN.
         child.angularVelDeg = -child.angularVelDeg;
         plates.push_back(child);
-        const int16_t childId = static_cast<int16_t>(plates.size() - 1);
+        // The int16_t plateId storage caps total plates at INT16_MAX
+        // (32767). Plate count is bounded much lower in practice
+        // (MapGenerator MAX_PLATE_CAP < 255, see static_assert in
+        // MapGenerator.cpp) but the assert here documents the
+        // contract at the SphereField boundary.
+        assert(plates.size() <= 32767u
+               && "plate count exceeds int16_t capacity");
+        const int32_t childIdWide = static_cast<int32_t>(plates.size() - 1);
+        const int16_t childId     = static_cast<int16_t>(childIdWide);
 
         // Reassign cells on the (negative-side) of the rift plane,
         // and convert a narrow band around the rift axis to fresh
@@ -577,18 +621,12 @@ int32_t applyWilsonRifting(SphereField& field,
         // by an unknown factor; the unit-axis-projection test is
         // dimensionless.
         constexpr double RIFT_AXIS_OCEAN_SIN_HALF = 0.015;
-        for (std::size_t cell = 0; cell < SphereField::CELL_COUNT; ++cell) {
-            if (field.plateId[cell] != static_cast<int16_t>(i)) continue;
-            const int32_t latIdx = static_cast<int32_t>(cell / SphereField::LON_CELLS);
-            const int32_t lonIdx = static_cast<int32_t>(cell % SphereField::LON_CELLS);
-            const LatLon p = SphereField::cellCenter(lonIdx, latIdx);
-            const double latR = static_cast<double>(p.latDeg) * DEG2RAD;
-            const double lonR = static_cast<double>(p.lonDeg) * DEG2RAD;
-            const double cosLat = std::cos(latR);
-            const double cx = cosLat * std::cos(lonR);
-            const double cy = cosLat * std::sin(lonR);
-            const double cz = std::sin(latR);
-            const double dot = (cx-mx)*nrm_x + (cy-my)*nrm_y + (cz-mz)*nrm_z;
+        const double nrmMag = std::sqrt(
+            nrm_x * nrm_x + nrm_y * nrm_y + nrm_z * nrm_z);
+        const double invNrmMag = (nrmMag > 1e-9) ? 1.0 / nrmMag : 0.0;
+        for (const CellVec& v : plateCells) {
+            const std::size_t cell = v.cellIdx;
+            const double dot = (v.cx-mx)*nrm_x + (v.cy-my)*nrm_y + (v.cz-mz)*nrm_z;
             if (dot < 0.0) {
                 field.plateId[cell] = childId;
             }
@@ -603,11 +641,9 @@ int32_t applyWilsonRifting(SphereField& field,
             // halves are separated by a developing ocean basin.
             // Normalise nrm so the threshold is in actual radians of
             // angular distance.
-            const double nrmMag = std::sqrt(
-                nrm_x * nrm_x + nrm_y * nrm_y + nrm_z * nrm_z);
-            if (nrmMag > 1e-9) {
+            if (invNrmMag > 0.0) {
                 const double axisProj =
-                    (cx * nrm_x + cy * nrm_y + cz * nrm_z) / nrmMag;
+                    (v.cx * nrm_x + v.cy * nrm_y + v.cz * nrm_z) * invNrmMag;
                 if (std::fabs(axisProj) < RIFT_AXIS_OCEAN_SIN_HALF) {
                     field.crustThicknessKm[cell] =
                         PhysicsConstants::initialOceanicThicknessKm;
@@ -768,6 +804,150 @@ void mergePlates(SphereField& field,
     plates.erase(plates.begin() + static_cast<std::ptrdiff_t>(absorbed));
 }
 
+void mergePlatesBatch(SphereField& field,
+                      std::vector<Plate>& plates,
+                      const std::vector<std::pair<std::size_t,
+                                                  std::size_t>>& pairs) {
+    if (pairs.empty() || plates.empty()) return;
+    const std::size_t N = plates.size();
+
+    // Union-find over plate indices. Each request (survivor, absorbed)
+    // unions the two sets, with the survivor's chosen as the root so
+    // the caller's intent (which plate's metadata is authoritative) is
+    // respected when chains form.
+    std::vector<std::size_t> parent(N);
+    for (std::size_t i = 0; i < N; ++i) parent[i] = i;
+    auto findRoot = [&](std::size_t x) {
+        while (parent[x] != x) {
+            parent[x] = parent[parent[x]]; // path compression
+            x = parent[x];
+        }
+        return x;
+    };
+    for (const auto& pr : pairs) {
+        if (pr.first >= N || pr.second >= N || pr.first == pr.second) continue;
+        const std::size_t rs = findRoot(pr.first);
+        const std::size_t ra = findRoot(pr.second);
+        if (rs == ra) continue;
+        // Survivor (pr.first)'s root wins. If the absorbed root differs
+        // we point its parent at the survivor root.
+        parent[ra] = rs;
+    }
+
+    // Pass 1: zero closing rate on every pre-merge plate-plate suture
+    // that ends up inside a unioned plate. After remap those cells are
+    // interior — the convergent rate left over from this epoch's
+    // accumulateClosingRate is no longer physical.
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+        for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
+            const std::size_t idx = SphereField::cellIndex(lonIdx, latIdx);
+            const int16_t selfId = field.plateId[idx];
+            if (selfId < 0 || static_cast<std::size_t>(selfId) >= N) continue;
+            const std::size_t selfRoot = findRoot(static_cast<std::size_t>(selfId));
+            const int32_t lonW = (lonIdx == 0)       ? LON - 1 : lonIdx - 1;
+            const int32_t lonE = (lonIdx == LON - 1) ? 0       : lonIdx + 1;
+            const int32_t latS = std::max(0, latIdx - 1);
+            const int32_t latN = std::min(LAT - 1, latIdx + 1);
+            const std::size_t neigh[4] = {
+                SphereField::cellIndex(lonW, latIdx),
+                SphereField::cellIndex(lonE, latIdx),
+                SphereField::cellIndex(lonIdx, latS),
+                SphereField::cellIndex(lonIdx, latN),
+            };
+            for (int32_t k = 0; k < 4; ++k) {
+                const int16_t nPid = field.plateId[neigh[k]];
+                if (nPid < 0 || static_cast<std::size_t>(nPid) >= N) continue;
+                if (nPid == selfId) continue;
+                const std::size_t nRoot = findRoot(static_cast<std::size_t>(nPid));
+                if (nRoot == selfRoot) {
+                    field.convergenceRateRadPerMy[idx] = 0.0f;
+                    field.boundaryType[idx] = 0;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Fold absorbed plates' authoritative metadata into root survivor.
+    // Use a unit-vector running mean on the sphere (averaging lat/lon
+    // directly fails across antimeridian / poles).
+    constexpr double DEG2RAD = 0.01745329252;
+    constexpr double RAD2DEG = 57.29577951;
+    std::vector<double> rootSx(N, 0.0), rootSy(N, 0.0), rootSz(N, 0.0);
+    std::vector<int32_t> rootCount(N, 0);
+    for (std::size_t i = 0; i < N; ++i) {
+        const std::size_t r = findRoot(i);
+        const double latR = static_cast<double>(plates[i].latDeg) * DEG2RAD;
+        const double lonR = static_cast<double>(plates[i].lonDeg) * DEG2RAD;
+        const double cosLat = std::cos(latR);
+        rootSx[r] += cosLat * std::cos(lonR);
+        rootSy[r] += cosLat * std::sin(lonR);
+        rootSz[r] += std::sin(latR);
+        ++rootCount[r];
+    }
+    for (std::size_t r = 0; r < N; ++r) {
+        if (rootCount[r] <= 1) continue; // Not a merged root.
+        const double mag = std::sqrt(rootSx[r] * rootSx[r]
+                                   + rootSy[r] * rootSy[r]
+                                   + rootSz[r] * rootSz[r]);
+        if (mag < 1e-9) continue; // antipodal — keep prior centroid.
+        const double mx = rootSx[r] / mag;
+        const double my = rootSy[r] / mag;
+        const double mz = rootSz[r] / mag;
+        plates[r].latDeg = static_cast<float>(
+            std::asin(std::clamp(mz, -1.0, 1.0)) * RAD2DEG);
+        plates[r].lonDeg = static_cast<float>(std::atan2(my, mx) * RAD2DEG);
+    }
+    for (std::size_t i = 0; i < N; ++i) {
+        const std::size_t r = findRoot(i);
+        if (r == i) continue;
+        plates[r].landFraction = std::max(plates[r].landFraction,
+                                          plates[i].landFraction);
+        plates[r].ageEpochs    = std::max(plates[r].ageEpochs,
+                                          plates[i].ageEpochs);
+    }
+
+    // Pass 2: build remap from old -> new index, doing the compaction
+    // (erase non-roots) implicitly. Roots keep their original order
+    // among survivors.
+    std::vector<int16_t> remap(N, -1);
+    {
+        std::size_t newIdx = 0;
+        for (std::size_t i = 0; i < N; ++i) {
+            if (findRoot(i) == i) {
+                remap[i] = static_cast<int16_t>(newIdx++);
+            }
+        }
+        for (std::size_t i = 0; i < N; ++i) {
+            if (remap[i] < 0) {
+                remap[i] = remap[findRoot(i)];
+            }
+        }
+    }
+
+    // Single-sweep remap of every cell.
+    for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
+        const int16_t pid = field.plateId[i];
+        if (pid < 0) continue;
+        if (static_cast<std::size_t>(pid) >= N) {
+            field.plateId[i] = -1;
+            continue;
+        }
+        field.plateId[i] = remap[static_cast<std::size_t>(pid)];
+    }
+
+    // Compact plates vector. Roots are visited in original order so
+    // surviving plates retain their relative order.
+    std::vector<Plate> survivors;
+    survivors.reserve(N);
+    for (std::size_t i = 0; i < N; ++i) {
+        if (findRoot(i) == i) survivors.push_back(plates[i]);
+    }
+    plates = std::move(survivors);
+}
+
 // ---------------------------------------------------------------------------
 // Plate-cell advection (Lagrangian transport)
 // ---------------------------------------------------------------------------
@@ -807,7 +987,12 @@ void mergePlates(SphereField& field,
 void advectPlateOwnership(SphereField& field,
                           const std::vector<Plate>& plates,
                           float dtMy) {
-    if (plates.empty() || dtMy <= 0.0f) return;
+    if (plates.empty()) {
+        LOG_WARN("SphereFieldPhysics: %s called with empty plates -- skipping",
+                 __func__);
+        return;
+    }
+    if (dtMy <= 0.0f) return;
     constexpr int32_t LON = SphereField::LON_CELLS;
     constexpr int32_t LAT = SphereField::LAT_CELLS;
     constexpr double DEG2RAD = 0.01745329252;
@@ -1179,7 +1364,11 @@ void accumulateClosingRate(SphereField& field,
               field.convergenceRateRadPerMy.end(), 0.0f);
     std::fill(field.boundaryType.begin(),
               field.boundaryType.end(), static_cast<uint8_t>(0));
-    if (plates.empty()) return;
+    if (plates.empty()) {
+        LOG_WARN("SphereFieldPhysics: %s called with empty plates -- skipping",
+                 __func__);
+        return;
+    }
 #if defined(AOC_HAS_OPENMP)
     #pragma omp parallel for schedule(static)
 #endif
@@ -1411,7 +1600,11 @@ void growContinentalFractionAtArcs(SphereField& field, float dtMy) {
 void applySubduction(SphereField& field,
                      const std::vector<Plate>& plates,
                      float dtMy) {
-    if (plates.empty()) return;
+    if (plates.empty()) {
+        LOG_WARN("SphereFieldPhysics: %s called with empty plates -- skipping",
+                 __func__);
+        return;
+    }
     constexpr int32_t LON = SphereField::LON_CELLS;
     constexpr int32_t LAT = SphereField::LAT_CELLS;
     const float R = PhysicsConstants::earthRadiusKm;
@@ -1666,18 +1859,20 @@ void stepSpherePhysicsEpoch(SphereField& field,
                             uint32_t& rngState,
                             float dtMy) {
     // Per-epoch passes in physical order:
-    //   0. plate-cell advection — rotate every owned cell about its
-    //      plate's Euler pole by omega*dt (Lagrangian transport).
-    //   1. ownership refresh — centroid Voronoi (init + each epoch).
-    //   2. boundary detection.
-    //   3. instantaneous closing rate from Euler-pole velocities.
-    //   4. continental crust thickening at convergent boundary cells.
-    //   5. oceanic-margin subduction (lower-density side flips).
-    //   6. continental docking (cont-cont contact > 30 My fuses).
-    //   7. Wilson-cycle rifting (supercontinent thermal-age trigger).
-    //   8. Airy isostasy → surface elevation.
-    //   9. exponential stream-power erosion.
-    //  10. compact + recompute plate centroids for next epoch.
+    //   0. plate-cell advection — Lagrangian transport: each owned cell
+    //      rotates about its plate's Euler pole by omega*dt (Rodrigues
+    //      rotation, backward semi-Lagrangian sample with a vacated-cell
+    //      wake-fill pass for divergent boundaries). Replaces the legacy
+    //      centroid-Voronoi reassignment from the OLD pipeline.
+    //   1. boundary detection.
+    //   2. instantaneous closing rate from Euler-pole velocities.
+    //   3. continental crust thickening at convergent boundary cells.
+    //   4. oceanic-margin subduction (lower-density side flips).
+    //   5. continental docking (cont-cont contact > 30 My fuses).
+    //   6. Wilson-cycle rifting (supercontinent thermal-age trigger).
+    //   7. Airy isostasy → surface elevation.
+    //   8. stream-power surface erosion.
+    //   9. compact + recompute plate centroids for next epoch.
     //
     // No per-epoch ownership reset — plateId persists across epochs
     // (Lagrangian path), set ONCE by `generateInitialPlateOwnership`

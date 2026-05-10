@@ -20,10 +20,15 @@ struct Plate {
     float eulerPoleLatDeg = 0.0f;
     float eulerPoleLonDeg = 0.0f;
     float angularVelDeg   = 0.0f;
-    float cx;
-    float cy;
-    float rot;
-    float landFraction;
+    // LEGACY: Mollweide-projection cache. Authoritative position is
+    // (latDeg, lonDeg). cx/cy are recomputed each motion step from
+    // mollweideForward(latDeg, lonDeg) for surviving 2D consumers
+    // (hotspot/rift seeding, EarthSystem boundary normals). Removal
+    // is deferred per project_physics_first_rewrite memory (11 live refs).
+    float cx  = 0.0f;
+    float cy  = 0.0f;
+    float rot = 0.0f;
+    float landFraction = 0.0f;
     int32_t ageEpochs = 0;
 };
 

@@ -125,8 +125,11 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
                         if (bnx >  0.5f) { bnx -= 1.0f; }
                         if (bnx < -0.5f) { bnx += 1.0f; }
                     }
-                    const float bnLen = std::sqrt(bnx * bnx + bny * bny);
-                    if (bnLen < 1e-4f) { break; }
+                    // Cheap zero-vector guard in squared-magnitude (no
+                    // sqrt). Threshold 1e-8 == (1e-4)^2.
+                    const float bnLen2 = bnx * bnx + bny * bny;
+                    if (bnLen2 < 1e-8f) { break; }
+                    const float bnLen = std::sqrt(bnLen2);
                     bnx /= bnLen; bny /= bnLen;
                     const float relVx = mots[myPid].first - mots[nPid].first;
                     const float relVy = mots[myPid].second - mots[nPid].second;
@@ -162,8 +165,11 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
                     if (bnx >  0.5f) { bnx -= 1.0f; }
                     if (bnx < -0.5f) { bnx += 1.0f; }
                 }
-                const float bnLen = std::sqrt(bnx * bnx + bny * bny);
-                if (bnLen < 1e-4f) { continue; }
+                // Cheap zero-vector guard in squared-magnitude (no
+                // sqrt). Threshold 1e-8 == (1e-4)^2.
+                const float bnLen2 = bnx * bnx + bny * bny;
+                if (bnLen2 < 1e-8f) { continue; }
+                const float bnLen = std::sqrt(bnLen2);
                 bnx /= bnLen; bny /= bnLen;
                 const float relVx = mots[myPid].first - mots[nPid].first;
                 const float relVy = mots[myPid].second - mots[nPid].second;
@@ -413,6 +419,14 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
     }
 
     // ---- TSUNAMI ZONES ----
+    // Two-pass split: parallel READ-only pass populates a tsunamiMask
+    // from the seismic-hazard field, then a single-threaded merge
+    // pass ORs the 0x08 bit into hazard. This avoids the data race
+    // where the parallel form could observe a hazard byte that
+    // another thread had just written 0x08 into and re-classify
+    // neighbours as tsunami zones (0x08 == 8 satisfies the
+    // `>= 3` seismic test).
+    std::vector<uint8_t> tsunamiMask(static_cast<std::size_t>(totalT), 0u);
     AOC_ES_PARALLEL_FOR_ROWS
     for (int32_t i = 0; i < totalT; ++i) {
         const TerrainType t = grid.terrain(i);
@@ -443,7 +457,11 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
                 }
             }
         }
-        if (tsunami) {
+        tsunamiMask[static_cast<std::size_t>(i)] = tsunami ? 1u : 0u;
+    }
+    // Single-threaded merge so each hazard byte is written once.
+    for (int32_t i = 0; i < totalT; ++i) {
+        if (tsunamiMask[static_cast<std::size_t>(i)]) {
             hazard[static_cast<std::size_t>(i)] |= 0x08;
         }
     }

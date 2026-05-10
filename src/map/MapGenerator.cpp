@@ -57,6 +57,17 @@
 
 namespace aoc::map {
 
+// Hard upper bound on the plate count carried by the simulation.
+// HexGrid::setPlateId stores a uint8_t with 255 reserved as the
+// "unowned" sentinel, so any pid >= 255 cannot be persisted and would
+// be silently dropped. The runtime caps below (rift/microplate spawn
+// gates) are tuned well below this ceiling but the static_assert
+// documents the contract and trips at compile time if anyone raises
+// the soft cap past the hardware limit.
+inline constexpr std::size_t MAX_PLATE_CAP = 32;
+static_assert(MAX_PLATE_CAP < 255,
+              "plate count must fit in 0..254 with 255 as sentinel");
+
 // Noise utilities live in src/map/gen/Noise.{hpp,cpp}. The MapGenerator
 // member declarations stay in the header for callers that already use them
 // via class scope; they delegate to the gen:: free functions. File-local
@@ -737,13 +748,26 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         const int32_t EPOCHS = (config.runEpochsLimit > 0)
             ? std::min(requestedEpochs, config.runEpochsLimit)
             : requestedEpochs;
-        // DT derived from EPOCHS and the user-configurable total drift
-        // budget. Default drift = 0.6 map widths. Larger drift = bigger
-        // plate motion = more dramatic continental shuffle. Smaller =
-        // plates barely move, fine-grained evolution at small scale.
+        // DRIFT_DT_NORMALIZED derived from EPOCHS and the user-configurable
+        // total drift budget. Default drift = 0.6 map widths. Larger
+        // drift = bigger plate motion = more dramatic continental
+        // shuffle. Smaller = plates barely move, fine-grained evolution
+        // at small scale.
+        //
+        // NOTE: DRIFT_DT_NORMALIZED is a *normalised projection-space step* used by
+        // the legacy 2D motion path that advances `Plate::cx/cy` and
+        // `Plate::rot` each epoch. It is NOT the physical My-per-epoch
+        // timestep. The physical timestep is `MY_PER_EPOCH_TARGET = 50`
+        // (see SphereFieldPhysics call sites). This value is a tuned
+        // fraction of map width per epoch, calibrated empirically to
+        // produce visible-but-realistic plate drift on the Mollweide
+        // overlay; it has no direct geological meaning. Keeps existing
+        // 2D consumers (hotspot proximity, rift seeding, EarthSystem
+        // boundary normals) working until they are migrated to the
+        // sphere physics layer.
         const float driftFrac = (config.driftFraction > 0.0f)
             ? config.driftFraction : 0.6f;
-        const float DT = std::clamp(
+        const float DRIFT_DT_NORMALIZED = std::clamp(
             (driftFrac / 0.7f) / static_cast<float>(EPOCHS),
             0.001f, 0.040f);
 
@@ -855,14 +879,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // Earth and removing the visual artefact entirely.
             constexpr float CRATON_LAT_LIMIT_SIN = 0.906f; // sin(65 deg)
             for (int32_t i = 0; i < numCratons; ++i) {
+                // Two-tier rejection sampling: first 64 attempts use the
+                // strict separation MIN_SEP_RAD. On failure (high craton
+                // count + small sphere — the strict packing is
+                // infeasible) emit a warning and retry once with a
+                // relaxed 0.5x separation. The relaxed band still
+                // prevents craton overlap while admitting denser
+                // packings the original threshold would reject.
                 bool ok = false;
-                for (int32_t attempt = 0; attempt < 64 && !ok; ++attempt) {
+                auto tryPlace = [&](float minSep) -> bool {
                     const float u = cratonRng.nextFloat(
                         -CRATON_LAT_LIMIT_SIN, CRATON_LAT_LIMIT_SIN);
                     const float latDeg = std::asin(u) * 57.29577951f;
                     const float lonDeg = cratonRng.nextFloat(-180.0f, 180.0f);
                     const SF::CellCoord c = SF::locate(latDeg, lonDeg);
-                    ok = true;
                     for (int32_t j = 0; j < i; ++j) {
                         const aoc::map::gen::LatLon a = SF::cellCenter(
                             c.lonIdx, c.latIdx);
@@ -870,11 +900,23 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             seedLon[static_cast<std::size_t>(j)],
                             seedLat[static_cast<std::size_t>(j)]);
                         const float d = aoc::map::gen::haversineRadians(a, b);
-                        if (d < MIN_SEP_RAD) { ok = false; break; }
+                        if (d < minSep) { return false; }
                     }
-                    if (ok) {
-                        seedLon[static_cast<std::size_t>(i)] = c.lonIdx;
-                        seedLat[static_cast<std::size_t>(i)] = c.latIdx;
+                    seedLon[static_cast<std::size_t>(i)] = c.lonIdx;
+                    seedLat[static_cast<std::size_t>(i)] = c.latIdx;
+                    return true;
+                };
+                for (int32_t attempt = 0; attempt < 64 && !ok; ++attempt) {
+                    ok = tryPlace(MIN_SEP_RAD);
+                }
+                if (!ok) {
+                    LOG_WARN("MapGenerator: craton seed %d failed strict "
+                             "MIN_SEP_RAD=%.3f after 64 attempts -- "
+                             "retrying with relaxed 0.5x separation",
+                             i, static_cast<double>(MIN_SEP_RAD));
+                    constexpr float RELAXED = 0.5f * MIN_SEP_RAD;
+                    for (int32_t attempt = 0; attempt < 64 && !ok; ++attempt) {
+                        ok = tryPlace(RELAXED);
                     }
                 }
             }
@@ -1005,15 +1047,16 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                      + centerRng.nextFloat(-1.0f, 1.0f);
             };
 
-            // Advance every plate by (vx, vy) * DT. Cylindrical maps WRAP
-            // around the X axis (no east/west edge — like a globe band);
-            // flat maps BOUNCE so plates stay on the rectangle.
-            // Y always bounces (poles aren't wrap-connected).
+            // Advance every plate by (vx, vy) * DRIFT_DT_NORMALIZED.
+            // Cylindrical maps WRAP around the X axis (no east/west
+            // edge — like a globe band); flat maps BOUNCE so plates
+            // stay on the rectangle. Y always bounces (poles aren't
+            // wrap-connected).
             for (Plate& p : plates) {
                 // Plate rotates around (eulerPoleLatDeg, eulerPoleLonDeg)
-                // by (angularVelDeg * DT) per epoch. Legacy (cx, cy)
-                // re-projected via Mollweide forward each epoch for
-                // 2D-only consumers (Voronoi, tile-id stash).
+                // by (angularVelDeg * DRIFT_DT_NORMALIZED) per epoch.
+                // Legacy (cx, cy) re-projected via Mollweide forward
+                // each epoch for surviving 2D consumers.
                 constexpr float motionScale = 1.0f;
                 if (p.eulerPoleLatDeg != 0.0f
                     || p.eulerPoleLonDeg != 0.0f
@@ -1033,7 +1076,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     aoc::map::gen::LatLon pole{
                         p.eulerPoleLatDeg, p.eulerPoleLonDeg};
                     const float stepDeg =
-                        p.angularVelDeg * DT * motionScale;
+                        p.angularVelDeg * DRIFT_DT_NORMALIZED * motionScale;
                     aoc::map::gen::LatLon next =
                         aoc::map::gen::rotateAroundEulerPole(
                             current, pole, stepDeg);
@@ -1064,78 +1107,63 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // Stress integration handles the per-tile elevation effect
             // — these structural events only change which plates are
             // around in subsequent epochs.
+            // Continental collision (fusion). Two land plates fuse when
+            //   1. Centres are within MERGE_DIST_RAD on the sphere
+            //      (haversine distance — replaces the legacy Euclidean
+            //      Mollweide distance which was distorted at high
+            //      latitude and across the antimeridian).
+            //   2. Both plates carry > 40 % continental land fraction.
+            //
+            // CONTINENTAL COLLISION DYNAMICS (multi-stage):
+            //   1. Approach — plates close from afar at full velocity.
+            //   2. CONTACT: crust starts deforming. Mountain orogeny
+            //      accumulates via the convergent-stress code below.
+            //      Plates keep identities until SUTURING.
+            //   3. SUTURING (d < MERGE_DIST): collision energy mostly
+            //      dissipated, plates have welded along the boundary
+            //      → fuse atomically via mergePlatesBatch.
+            //
+            // Real-world: India-Eurasia has been actively colliding for
+            // ~50 My, building Himalayas. Plates are still moving
+            // relative to each other (~5 cm/yr) — they aren't yet fully
+            // merged. Our simulation mirrors this: long collision
+            // phase, then merge.
+            //
+            // MERGE_DIST_RAD = 0.22 radians ≈ 12.6° (~1400 km on the
+            // sphere). Calibrated to the legacy Mollweide threshold
+            // (0.07 normalised units across a Mollweide span of
+            // sqrt(2)/π = 0.45 width unit ≈ 12-13° at the equator
+            // depending on latitude — the haversine equivalent at the
+            // equator equals the Mollweide value times π/2 ≈ 1.57x
+            // because Mollweide x compresses east-west by 2/π).
+            constexpr float MERGE_DIST_RAD = 0.22f;
+            std::vector<std::pair<std::size_t, std::size_t>> mergePairs;
             for (std::size_t a = 0; a < plates.size(); ++a) {
+                if (plates[a].landFraction <= 0.40f) continue;
                 for (std::size_t b = a + 1; b < plates.size(); ++b) {
-                    float dx = plates[a].cx - plates[b].cx;
-                    float dy = plates[a].cy - plates[b].cy;
-                    // Cylindrical wrap on X: shortest separation goes
-                    // around the back of the world if that's closer.
-                    if (cylSim) {
-                        if (dx >  0.5f) { dx -= 1.0f; }
-                        if (dx < -0.5f) { dx += 1.0f; }
+                    if (plates[b].landFraction <= 0.40f) continue;
+                    const float d = aoc::map::gen::haversineRadians(
+                        aoc::map::gen::LatLon{plates[a].latDeg, plates[a].lonDeg},
+                        aoc::map::gen::LatLon{plates[b].latDeg, plates[b].lonDeg});
+                    if (d < MERGE_DIST_RAD) {
+                        mergePairs.emplace_back(a, b);
                     }
-                    const float d = std::sqrt(dx * dx + dy * dy);
-                    // Continental collision (fusion). Two land plates fuse
-                    // ONLY when both:
-                    //   1. Centres are close enough — fixed 0.13 unit
-                    //      threshold (about 1.5x the typical plate radius
-                    //      after Voronoi packing). This is independent
-                    //      of plate count — Earth's continents collide
-                    //      regardless of how many plates exist globally.
-                    //   2. Relative velocity points INWARD (closing).
-                    //      Glancing-pass plates that happen to be near
-                    //      but moving apart should not fuse — they're
-                    //      diverging, not colliding. Closing rate is
-                    //      v_rel · displacement / |displacement|;
-                    //      negative value = closing.
-                    // CONTINENTAL COLLISION DYNAMICS (multi-stage):
-                    //   1. Approach — plates close from afar at full velocity.
-                    //   2. CONTACT (d < CONTACT_DIST, closing): crust
-                    //      starts deforming. Relative velocity along the
-                    //      collision axis decays at COLLISION_DAMP per
-                    //      epoch (energy converts to crustal deformation
-                    //      → mountain orogeny accumulates separately via
-                    //      the convergent-stress code below). Plates
-                    //      keep their identities — no merge yet.
-                    //   3. SUTURING (d < MERGE_DIST AND |relV| < SLOW_V):
-                    //      collision energy mostly dissipated, plates
-                    //      have welded along the boundary → fuse.
-                    //
-                    // Real-world: India-Eurasia has been actively
-                    // colliding for ~50 My, building Himalayas. Plates
-                    // are still moving relative to each other (~5 cm/yr)
-                    // — they aren't yet fully merged. Our simulation
-                    // mirrors this: long collision phase, then merge.
-                    // Merge gate: center-distance only (vx/vy + polygon
-                    // adjacency probes deleted with their fields). 0.07
-                    // matches Earth Phanerozoic median plate lifetime
-                    // 250 Ma plate-recycle rate.
-                    constexpr float MERGE_DIST = 0.07f;
-                    const bool readyToMerge = (plates[a].landFraction > 0.40f
-                                                && plates[b].landFraction > 0.40f
-                                                && d < MERGE_DIST);
-                    if (readyToMerge) {
-                        // Continental collision: fuse plates atomically.
-                        // mergePlates rewrites every raster cell pid
-                        // == b -> a, zeroes the closing rate on the
-                        // welded suture (so ghost orogeny does not
-                        // accrete across the new plate interior),
-                        // then erases plates[b] and remaps every
-                        // pid > b down by one. Survivor's authoritative
-                        // (latDeg, lonDeg, landFraction, ageEpochs)
-                        // is updated in the helper. Mollweide cache
-                        // (cx, cy) is re-projected here because the
-                        // physics layer does not own the projection.
-                        aoc::map::gen::mergePlates(
-                            sphereField, plates, a, b);
-                        const aoc::map::gen::MollweidePoint mw =
-                            aoc::map::gen::mollweideForward(
-                                aoc::map::gen::LatLon{plates[a].latDeg,
-                                                      plates[a].lonDeg});
-                        plates[a].cx = mw.mapX;
-                        plates[a].cy = mw.mapY;
-                        --b;
-                    }
+                }
+            }
+            if (!mergePairs.empty()) {
+                // Single deferred sweep across field.plateId — replaces
+                // the previous N-pair sequential mergePlates loop where
+                // each call performed its own full grid sweep.
+                aoc::map::gen::mergePlatesBatch(
+                    sphereField, plates, mergePairs);
+                // Re-project Mollweide cache for survivors (physics
+                // does not own the projection layer).
+                for (Plate& p : plates) {
+                    const aoc::map::gen::MollweidePoint mw =
+                        aoc::map::gen::mollweideForward(
+                            aoc::map::gen::LatLon{p.latDeg, p.lonDeg});
+                    p.cx = mw.mapX;
+                    p.cy = mw.mapY;
                 }
             }
             // Rift events fire on scheduled burst epochs (3 rifts per
@@ -1373,28 +1401,34 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         micro.cx = std::clamp(micro.cx, 0.05f, 0.95f);
                         micro.cy = std::clamp(micro.cy, 0.10f, 0.90f);
                         // Reject if midpoint lands inside a THIRD plate's
-                        // Voronoi territory. Real Earth: microplates form
-                        // at junctions BETWEEN adjacent plates, never
+                        // territory. Real Earth: microplates form at
+                        // junctions BETWEEN adjacent plates, never
                         // embedded inside one plate's interior.
-                        // Verify nearest plate at midpoint is pa or pb.
+                        //
+                        // Use the authoritative sphereField.plateId for
+                        // the ownership query rather than Euclidean
+                        // nearest-centroid scan over the plates vector.
+                        // The legacy O(N) scan was a Voronoi proxy that
+                        // mis-identified ownership for non-convex /
+                        // multi-lobe plate footprints. The raster lookup
+                        // gives the actual physics-resolved owner.
                         {
-                            int32_t nearest = -1;
-                            float bestSq = 1e9f;
-                            for (std::size_t k = 0; k < plates.size(); ++k) {
-                                float ddx = micro.cx - plates[k].cx;
-                                float ddy = micro.cy - plates[k].cy;
-                                if (cylSim) {
-                                    if (ddx >  0.5f) { ddx -= 1.0f; }
-                                    if (ddx < -0.5f) { ddx += 1.0f; }
-                                }
-                                const float dsq = ddx * ddx + ddy * ddy;
-                                if (dsq < bestSq) {
-                                    bestSq = dsq;
-                                    nearest = static_cast<int32_t>(k);
-                                }
-                            }
-                            if (nearest != static_cast<int32_t>(pa)
-                                && nearest != static_cast<int32_t>(pb)) {
+                            // Recover lat/lon for the microplate centre
+                            // from its Mollweide cache (cx, cy).
+                            const auto inv = aoc::map::gen::mollweideInverse(
+                                micro.cx, micro.cy);
+                            if (!inv.valid) continue;
+                            micro.latDeg = inv.coord.latDeg;
+                            micro.lonDeg = inv.coord.lonDeg;
+                            const auto cell = aoc::map::gen::SphereField::locate(
+                                micro.latDeg, micro.lonDeg);
+                            const std::size_t cellIdx =
+                                aoc::map::gen::SphereField::cellIndex(
+                                    cell.lonIdx, cell.latIdx);
+                            const int16_t ownerId = sphereField.plateId[cellIdx];
+                            if (ownerId < 0
+                                || (static_cast<std::size_t>(ownerId) != pa
+                                 && static_cast<std::size_t>(ownerId) != pb)) {
                                 // Midpoint inside third plate — skip.
                                 continue;
                             }
@@ -1440,7 +1474,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 }
                 constexpr int32_t OCEANIC_FLOOR = 5;
                 if (oceanicCount < OCEANIC_FLOOR
-                    && plates.size() < static_cast<std::size_t>(22)) {
+                    && plates.size() < MAX_PLATE_CAP) {
                     // Scan a coarse grid for the void centre.
                     constexpr int32_t SCAN = 32;
                     float bestDist = -1.0f;

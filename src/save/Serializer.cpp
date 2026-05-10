@@ -57,10 +57,38 @@
 #include "aoc/simulation/economy/StockMarket.hpp"
 
 #include <cassert>
+#include <cerrno>
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 
+#if defined(__unix__) || defined(__APPLE__)
+#  include <fcntl.h>
+#  include <unistd.h>
+#endif
+
 namespace aoc::save {
+
+namespace {
+
+// Bounds caps applied before vector::reserve() on counts read from disk.
+// Without these a crafted save (count = 0xFFFFFFFF) triggers a multi-GB
+// allocation and OOM-kill (audit 2026-05-10, security-reviewer).
+//
+// Numbers are conservative upper bounds for any plausible game state:
+//   - MAX_PLAYERS is 20, max city count per player ~10-20 → 200 fits
+//   - max units per game empirically <2000 → 10000 fits
+//   - worked tiles per city are ring(3) ≈ 36 → 50 fits
+//   - longest astar path bound by map diagonal ≈ map perimeter → 1000 fits
+//   - production queue UI cap is well below 50
+constexpr std::size_t MAX_UNITS        = 10000;
+constexpr std::size_t MAX_CITIES       = 200;
+constexpr std::size_t MAX_WORKED_TILES = 50;
+constexpr std::size_t MAX_PATH         = 1000;
+constexpr std::size_t MAX_QUEUE        = 50;
+
+} // namespace
 
 // ============================================================================
 // WriteBuffer
@@ -104,8 +132,14 @@ void WriteBuffer::writeF32(float v) {
 }
 
 void WriteBuffer::writeString(std::string_view str) {
-    this->writeU16(static_cast<uint16_t>(str.size()));
-    this->writeBytes(str.data(), str.size());
+    // Save format restricts strings to a uint16 length prefix. A string
+    // longer than 65535 bytes would silently truncate via the cast and
+    // the resulting save would round-trip incorrectly. Assert in debug
+    // and defensively clamp in release.
+    assert(str.size() <= UINT16_MAX && "Serializer: writeString exceeds uint16 length");
+    const std::size_t len = (str.size() <= UINT16_MAX) ? str.size() : UINT16_MAX;
+    this->writeU16(static_cast<uint16_t>(len));
+    this->writeBytes(str.data(), len);
 }
 
 void WriteBuffer::writeBytes(const void* data, std::size_t size) {
@@ -119,13 +153,35 @@ void WriteBuffer::writeBytes(const void* data, std::size_t size) {
 
 ReadBuffer::ReadBuffer(const std::vector<uint8_t>& data) : m_data(data) {}
 
+// Every primitive read enforces the sticky-corrupt invariant: if the buffer
+// has already underflowed once, the read returns a zero-valued default
+// without advancing m_offset. New underflows latch m_corrupt = true and
+// log once (LOG_ERROR is throttled by the underlying logger). Callers that
+// need byte-exact round-trip must check isCorrupt() at the end.
+
 uint8_t ReadBuffer::readU8() {
+    if (this->m_corrupt || !this->hasRemaining(1)) {
+        if (!this->m_corrupt) {
+            this->m_corrupt = true;
+            LOG_ERROR("Serializer: readU8 underflow at offset %zu (size %zu)",
+                      this->m_offset, this->m_data.size());
+        }
+        return 0;
+    }
     uint8_t v = this->m_data[this->m_offset];
     ++this->m_offset;
     return v;
 }
 
 uint16_t ReadBuffer::readU16() {
+    if (this->m_corrupt || !this->hasRemaining(2)) {
+        if (!this->m_corrupt) {
+            this->m_corrupt = true;
+            LOG_ERROR("Serializer: readU16 underflow at offset %zu (size %zu)",
+                      this->m_offset, this->m_data.size());
+        }
+        return 0;
+    }
     uint16_t v = 0;
     v |= static_cast<uint16_t>(this->m_data[this->m_offset]);
     v |= static_cast<uint16_t>(static_cast<uint16_t>(this->m_data[this->m_offset + 1]) << 8);
@@ -134,6 +190,14 @@ uint16_t ReadBuffer::readU16() {
 }
 
 uint32_t ReadBuffer::readU32() {
+    if (this->m_corrupt || !this->hasRemaining(4)) {
+        if (!this->m_corrupt) {
+            this->m_corrupt = true;
+            LOG_ERROR("Serializer: readU32 underflow at offset %zu (size %zu)",
+                      this->m_offset, this->m_data.size());
+        }
+        return 0;
+    }
     uint32_t v = 0;
     for (int i = 0; i < 4; ++i) {
         v |= static_cast<uint32_t>(this->m_data[this->m_offset + static_cast<std::size_t>(i)]) << (i * 8);
@@ -143,6 +207,14 @@ uint32_t ReadBuffer::readU32() {
 }
 
 uint64_t ReadBuffer::readU64() {
+    if (this->m_corrupt || !this->hasRemaining(8)) {
+        if (!this->m_corrupt) {
+            this->m_corrupt = true;
+            LOG_ERROR("Serializer: readU64 underflow at offset %zu (size %zu)",
+                      this->m_offset, this->m_data.size());
+        }
+        return 0;
+    }
     uint64_t v = 0;
     for (int i = 0; i < 8; ++i) {
         v |= static_cast<uint64_t>(this->m_data[this->m_offset + static_cast<std::size_t>(i)]) << (i * 8);
@@ -174,6 +246,17 @@ float ReadBuffer::readF32() {
 
 std::string ReadBuffer::readString() {
     uint16_t len = this->readU16();
+    if (this->m_corrupt || len == 0) {
+        return std::string{};
+    }
+    // Guard m_offset + len against integer overflow before bounds check
+    // (audit 2026-05-10: prevents OOB string construction on crafted save).
+    if (len > this->m_data.size() - this->m_offset) {
+        this->m_corrupt = true;
+        LOG_ERROR("Serializer: readString underflow at offset %zu (len %u, size %zu)",
+                  this->m_offset, static_cast<unsigned>(len), this->m_data.size());
+        return std::string{};
+    }
     std::string str(this->m_data.begin() + static_cast<std::ptrdiff_t>(this->m_offset),
                     this->m_data.begin() + static_cast<std::ptrdiff_t>(this->m_offset + len));
     this->m_offset += len;
@@ -181,6 +264,15 @@ std::string ReadBuffer::readString() {
 }
 
 void ReadBuffer::readBytes(void* dst, std::size_t size) {
+    if (this->m_corrupt || !this->hasRemaining(size)) {
+        if (!this->m_corrupt) {
+            this->m_corrupt = true;
+            LOG_ERROR("Serializer: readBytes underflow at offset %zu (size %zu, want %zu)",
+                      this->m_offset, this->m_data.size(), size);
+        }
+        std::memset(dst, 0, size);
+        return;
+    }
     std::memcpy(dst, this->m_data.data() + this->m_offset, size);
     this->m_offset += size;
 }
@@ -1331,18 +1423,89 @@ ErrorCode saveGame(const std::string& filepath,
     writeStockPortfolioSection(buf, gameState);
     writeElectricityAgreementSection(buf, gameState);
 
-    // Write to file
-    std::ofstream file(filepath, std::ios::binary);
-    if (!file.is_open()) {
-        LOG_ERROR("Failed to open file for writing: %s", filepath.c_str());
-        return ErrorCode::SaveFailed;
+    // Atomic write: write to <path>.tmp, fsync the file, rename to <path>,
+    // then fsync the containing directory. A crash mid-write leaves the
+    // previous save intact rather than truncating it (audit 2026-05-10,
+    // silent-failure-hunter).
+    const std::string tmpPath = filepath + ".tmp";
+    {
+        std::ofstream file(tmpPath, std::ios::binary | std::ios::trunc);
+        if (!file.is_open()) {
+            LOG_ERROR("Serializer: failed to open temp file for writing: '%s'",
+                      tmpPath.c_str());
+            return ErrorCode::SaveFailed;
+        }
+
+        file.write(reinterpret_cast<const char*>(buf.data().data()),
+                   static_cast<std::streamsize>(buf.size()));
+        if (!file.good()) {
+            LOG_ERROR("Serializer: write failed for '%s' (%zu bytes)",
+                      tmpPath.c_str(), buf.size());
+            file.close();
+            std::error_code rmEc;
+            std::filesystem::remove(tmpPath, rmEc);
+            return ErrorCode::SaveFailed;
+        }
+        file.flush();
+        if (!file.good()) {
+            LOG_ERROR("Serializer: flush failed for '%s'", tmpPath.c_str());
+            file.close();
+            std::error_code rmEc;
+            std::filesystem::remove(tmpPath, rmEc);
+            return ErrorCode::SaveFailed;
+        }
+        file.close();
     }
 
-    file.write(reinterpret_cast<const char*>(buf.data().data()),
-               static_cast<std::streamsize>(buf.size()));
-    if (!file.good()) {
-        return ErrorCode::SaveFailed;
+#if defined(__unix__) || defined(__APPLE__)
+    // Force tmp file payload to disk before rename. Without fsync the
+    // rename can land before the data, leaving a zero-length save after
+    // a power loss.
+    {
+        int fd = ::open(tmpPath.c_str(), O_RDONLY);
+        if (fd >= 0) {
+            if (::fsync(fd) != 0) {
+                LOG_WARN("Serializer: fsync(file) failed for '%s' (errno %d)",
+                         tmpPath.c_str(), errno);
+            }
+            ::close(fd);
+        } else {
+            LOG_WARN("Serializer: open-for-fsync failed for '%s' (errno %d)",
+                     tmpPath.c_str(), errno);
+        }
     }
+#endif
+
+    {
+        std::error_code ec;
+        std::filesystem::rename(tmpPath, filepath, ec);
+        if (ec) {
+            LOG_ERROR("Serializer: rename '%s' -> '%s' failed: %s",
+                      tmpPath.c_str(), filepath.c_str(), ec.message().c_str());
+            std::error_code rmEc;
+            std::filesystem::remove(tmpPath, rmEc);
+            return ErrorCode::SaveFailed;
+        }
+    }
+
+#if defined(__unix__) || defined(__APPLE__)
+    // fsync the containing directory so the rename itself is durable.
+    {
+        std::filesystem::path parent = std::filesystem::path(filepath).parent_path();
+        const std::string dirPath = parent.empty() ? std::string(".") : parent.string();
+        int dirFd = ::open(dirPath.c_str(), O_RDONLY | O_DIRECTORY);
+        if (dirFd >= 0) {
+            if (::fsync(dirFd) != 0) {
+                LOG_WARN("Serializer: fsync(dir) failed for '%s' (errno %d)",
+                         dirPath.c_str(), errno);
+            }
+            ::close(dirFd);
+        } else {
+            LOG_WARN("Serializer: open-for-fsync(dir) failed for '%s' (errno %d)",
+                     dirPath.c_str(), errno);
+        }
+    }
+#endif
 
     LOG_INFO("Game saved to %s (%zu bytes)", filepath.c_str(), buf.size());
     return ErrorCode::Ok;
@@ -1447,6 +1610,11 @@ ErrorCode loadGame(const std::string& filepath,
             case SectionId::Entities: {
                 // Units
                 uint32_t unitCount = buf.readU32();
+                if (unitCount > MAX_UNITS) {
+                    LOG_ERROR("Serializer: unit count %u exceeds MAX_UNITS %zu",
+                              unitCount, MAX_UNITS);
+                    return ErrorCode::SaveCorrupted;
+                }
                 loadedUnits.reserve(unitCount);
 
                 // First pass: collect (owner, typeId, pos, ...) to build Player->Unit
@@ -1481,6 +1649,11 @@ ErrorCode loadGame(const std::string& filepath,
                     ud.charges = static_cast<int8_t>(buf.readU8());
                     [[maybe_unused]] uint8_t cargoCapacity = buf.readU8();
                     uint16_t pathSize = buf.readU16();
+                    if (pathSize > MAX_PATH) {
+                        LOG_ERROR("Serializer: path size %u exceeds MAX_PATH %zu",
+                                  static_cast<unsigned>(pathSize), MAX_PATH);
+                        return ErrorCode::SaveCorrupted;
+                    }
                     ud.pendingPath.reserve(pathSize);
                     for (uint16_t p = 0; p < pathSize; ++p) {
                         ud.pendingPath.push_back({buf.readI32(), buf.readI32()});
@@ -1491,6 +1664,11 @@ ErrorCode loadGame(const std::string& filepath,
 
                 // Cities
                 uint32_t cityCount = buf.readU32();
+                if (cityCount > MAX_CITIES) {
+                    LOG_ERROR("Serializer: city count %u exceeds MAX_CITIES %zu",
+                              cityCount, MAX_CITIES);
+                    return ErrorCode::SaveCorrupted;
+                }
 
                 struct CityData {
                     PlayerId owner;
@@ -1518,6 +1696,11 @@ ErrorCode loadGame(const std::string& filepath,
                     cd.productionProgress = buf.readF32();
 
                     uint32_t workedCount = buf.readU32();
+                    if (workedCount > MAX_WORKED_TILES) {
+                        LOG_ERROR("Serializer: worked-tile count %u exceeds MAX_WORKED_TILES %zu",
+                                  workedCount, MAX_WORKED_TILES);
+                        return ErrorCode::SaveCorrupted;
+                    }
                     cd.workedTiles.reserve(workedCount);
                     for (uint32_t j = 0; j < workedCount; ++j) {
                         cd.workedTiles.push_back({buf.readI32(), buf.readI32()});
@@ -1668,9 +1851,19 @@ ErrorCode loadGame(const std::string& filepath,
             }
             case SectionId::ProductionQueues: {
                 uint32_t count = buf.readU32();
+                if (count > MAX_CITIES) {
+                    LOG_ERROR("Serializer: production-queue city count %u exceeds MAX_CITIES %zu",
+                              count, MAX_CITIES);
+                    return ErrorCode::SaveCorrupted;
+                }
                 for (uint32_t i = 0; i < count; ++i) {
                     uint32_t cityIndex = buf.readU32();
                     uint32_t queueSize = buf.readU32();
+                    if (queueSize > MAX_QUEUE) {
+                        LOG_ERROR("Serializer: production queue size %u exceeds MAX_QUEUE %zu",
+                                  queueSize, MAX_QUEUE);
+                        return ErrorCode::SaveCorrupted;
+                    }
 
                     aoc::sim::ProductionQueueComponent queue{};
                     for (uint32_t j = 0; j < queueSize; ++j) {

@@ -75,6 +75,7 @@
 #include "aoc/simulation/diplomacy/WorldCongress.hpp"
 #include "aoc/simulation/climate/Climate.hpp"
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <random>
@@ -91,6 +92,110 @@ namespace aoc::app {
 // `turnToYear` now lives in ApplicationHelpers.hpp so the HUD
 // translation unit (Application_HUD.cpp) shares the same implementation.
 using aoc::app::detail::turnToYear;
+
+namespace {
+
+/// Aggregate counts for the `/info`-style debug payload. Walks every
+/// tile once, recording terrain category and the set of distinct
+/// `plateId` values seen.
+struct PlateInfoStats {
+    int32_t plates     = 0;
+    int32_t landTiles  = 0;
+    int32_t oceanTiles = 0;
+    int32_t mtnTiles   = 0;
+};
+
+[[nodiscard]] PlateInfoStats computePlateInfoStats(const aoc::map::HexGrid& grid) {
+    PlateInfoStats stats;
+    const int32_t total = grid.tileCount();
+    std::array<bool, 256> seenPlate{};
+    for (int32_t i = 0; i < total; ++i) {
+        const aoc::map::TerrainType t = grid.terrain(i);
+        if (t == aoc::map::TerrainType::Mountain) ++stats.mtnTiles;
+        if (aoc::map::isWater(t)) ++stats.oceanTiles;
+        else ++stats.landTiles;
+        const uint8_t pid = grid.plateId(i);
+        if (pid != 0xFFu) seenPlate[pid] = true;
+    }
+    for (bool s : seenPlate) if (s) ++stats.plates;
+    return stats;
+}
+
+/// Per-plate aggregate emitted by `/plates` and `/dump/plates`.
+/// Walks every tile once, accumulating cell count + land count +
+/// centroid sums + bounding box per `plateId` slot.
+struct PerPlateStats {
+    std::array<int64_t, 256> cellCount{};
+    std::array<int64_t, 256> landCount{};
+    std::array<int64_t, 256> sumCol{};
+    std::array<int64_t, 256> sumRow{};
+    std::array<int32_t, 256> minCol{};
+    std::array<int32_t, 256> maxCol{};
+    std::array<int32_t, 256> minRow{};
+    std::array<int32_t, 256> maxRow{};
+};
+
+[[nodiscard]] PerPlateStats computePerPlateStats(const aoc::map::HexGrid& grid) {
+    PerPlateStats s;
+    const int32_t W = grid.width();
+    const int32_t H = grid.height();
+    for (int32_t i = 0; i < 256; ++i) {
+        s.minCol[i] = W; s.maxCol[i] = -1;
+        s.minRow[i] = H; s.maxRow[i] = -1;
+    }
+    for (int32_t row = 0; row < H; ++row) {
+        for (int32_t col = 0; col < W; ++col) {
+            const int32_t idx = row * W + col;
+            const uint8_t pid = grid.plateId(idx);
+            if (pid == 0xFFu) continue;
+            ++s.cellCount[pid];
+            if (!aoc::map::isWater(grid.terrain(idx))) {
+                ++s.landCount[pid];
+            }
+            s.sumCol[pid] += col;
+            s.sumRow[pid] += row;
+            if (col < s.minCol[pid]) s.minCol[pid] = col;
+            if (col > s.maxCol[pid]) s.maxCol[pid] = col;
+            if (row < s.minRow[pid]) s.minRow[pid] = row;
+            if (row > s.maxRow[pid]) s.maxRow[pid] = row;
+        }
+    }
+    return s;
+}
+
+/// Emit the `[ {plate_id, cell_count, land_frac, ...}, ... ]` JSON
+/// array used by the `/plates` HTTP route.
+[[nodiscard]] std::string buildPlateStatsJson(const aoc::map::HexGrid& grid) {
+    const PerPlateStats s = computePerPlateStats(grid);
+    std::ostringstream o;
+    o << "[";
+    bool first = true;
+    for (int32_t pid = 0; pid < 256; ++pid) {
+        if (s.cellCount[pid] == 0) continue;
+        if (!first) o << ',';
+        first = false;
+        const float lf = static_cast<float>(s.landCount[pid])
+                       / static_cast<float>(s.cellCount[pid]);
+        o << "{\"plate_id\":" << pid
+          << ",\"cell_count\":" << s.cellCount[pid]
+          << ",\"land_frac\":" << lf
+          << ",\"min_col\":"   << s.minCol[pid]
+          << ",\"max_col\":"   << s.maxCol[pid]
+          << ",\"min_row\":"   << s.minRow[pid]
+          << ",\"max_row\":"   << s.maxRow[pid]
+          << ",\"centroid_col\":"
+          << static_cast<float>(s.sumCol[pid])
+               / static_cast<float>(s.cellCount[pid])
+          << ",\"centroid_row\":"
+          << static_cast<float>(s.sumRow[pid])
+               / static_cast<float>(s.cellCount[pid])
+          << "}";
+    }
+    o << "]";
+    return o.str();
+}
+
+} // namespace
 
 Application::Application() = default;
 
@@ -179,24 +284,8 @@ ErrorCode Application::initialize(const Config& config) {
     // thread inside the per-frame poll() call -- no locking.
     this->m_debugCmdFile.registerHandler("info",
         [this](const std::string&) -> std::string {
+            const PlateInfoStats stats = computePlateInfoStats(this->m_hexGrid);
             std::ostringstream o;
-            int32_t plates = 0;
-            int32_t mtnTiles = 0;
-            int32_t landTiles = 0;
-            int32_t oceanTiles = 0;
-            const int32_t total = this->m_hexGrid.tileCount();
-            for (int32_t i = 0; i < total; ++i) {
-                const aoc::map::TerrainType t = this->m_hexGrid.terrain(i);
-                if (t == aoc::map::TerrainType::Mountain) ++mtnTiles;
-                if (aoc::map::isWater(t)) ++oceanTiles;
-                else ++landTiles;
-            }
-            std::vector<bool> seenPlate(256, false);
-            for (int32_t i = 0; i < total; ++i) {
-                const uint8_t pid = this->m_hexGrid.plateId(i);
-                if (pid != 0xFFu) seenPlate[pid] = true;
-            }
-            for (bool s : seenPlate) if (s) ++plates;
             o << "{\"creatorMode\":"
               << (this->m_continentCreatorMode ? "true" : "false")
               << ",\"creatorTime\":" << this->m_creatorTimeCurrentMy
@@ -204,10 +293,10 @@ ErrorCode Application::initialize(const Config& config) {
               << ",\"creatorSeed\":" << this->m_creatorSeed
               << ",\"width\":"  << this->m_hexGrid.width()
               << ",\"height\":" << this->m_hexGrid.height()
-              << ",\"plates\":" << plates
-              << ",\"mountainTiles\":" << mtnTiles
-              << ",\"landTiles\":"     << landTiles
-              << ",\"oceanTiles\":"    << oceanTiles
+              << ",\"plates\":" << stats.plates
+              << ",\"mountainTiles\":" << stats.mtnTiles
+              << ",\"landTiles\":"     << stats.landTiles
+              << ",\"oceanTiles\":"    << stats.oceanTiles
               << ",\"globeView\":"
               << (this->m_creatorGlobe ? "true" : "false")
               << "}";
@@ -342,7 +431,7 @@ ErrorCode Application::initialize(const Config& config) {
             if (args.empty()) return "{\"error\":\"missing SEED arg\"}";
             this->m_creatorSeed =
                 static_cast<uint32_t>(std::strtoul(args.c_str(), nullptr, 10));
-            this->m_creatorEpochCache.clear();
+            this->clearCreatorEpochCache();
             this->regenerateContinentPreview(this->m_creatorTotalMy);
             std::ostringstream o;
             o << "{\"creatorSeed\":" << this->m_creatorSeed << "}";
@@ -366,24 +455,8 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_debugServer = std::make_unique<aoc::debug::DebugServer>(9876);
 
     auto buildInfoJson = [this]() -> std::string {
+        const PlateInfoStats stats = computePlateInfoStats(this->m_hexGrid);
         std::ostringstream o;
-        int32_t plates = 0;
-        int32_t mtnTiles = 0;
-        int32_t landTiles = 0;
-        int32_t oceanTiles = 0;
-        const int32_t total = this->m_hexGrid.tileCount();
-        for (int32_t i = 0; i < total; ++i) {
-            const aoc::map::TerrainType t = this->m_hexGrid.terrain(i);
-            if (t == aoc::map::TerrainType::Mountain) ++mtnTiles;
-            if (aoc::map::isWater(t)) ++oceanTiles;
-            else ++landTiles;
-        }
-        std::vector<bool> seenPlate(256, false);
-        for (int32_t i = 0; i < total; ++i) {
-            const uint8_t pid = this->m_hexGrid.plateId(i);
-            if (pid != 0xFFu) seenPlate[pid] = true;
-        }
-        for (bool s : seenPlate) if (s) ++plates;
         o << "{\"creatorMode\":"
           << (this->m_continentCreatorMode ? "true" : "false")
           << ",\"creatorTime\":" << this->m_creatorTimeCurrentMy
@@ -391,10 +464,10 @@ ErrorCode Application::initialize(const Config& config) {
           << ",\"creatorSeed\":" << this->m_creatorSeed
           << ",\"width\":"  << this->m_hexGrid.width()
           << ",\"height\":" << this->m_hexGrid.height()
-          << ",\"plates\":" << plates
-          << ",\"mountainTiles\":" << mtnTiles
-          << ",\"landTiles\":"     << landTiles
-          << ",\"oceanTiles\":"    << oceanTiles
+          << ",\"plates\":" << stats.plates
+          << ",\"mountainTiles\":" << stats.mtnTiles
+          << ",\"landTiles\":"     << stats.landTiles
+          << ",\"oceanTiles\":"    << stats.oceanTiles
           << ",\"globeView\":"
           << (this->m_creatorGlobe ? "true" : "false")
           << "}";
@@ -414,63 +487,7 @@ ErrorCode Application::initialize(const Config& config) {
     // GET /plates -- JSON array, one entry per plate present.
     this->m_debugServer->routeJson(DSM::Get, "/plates",
         [this](const auto&, const auto&) -> std::string {
-            const int32_t W = this->m_hexGrid.width();
-            const int32_t H = this->m_hexGrid.height();
-            std::array<int64_t, 256> cellCount{};
-            std::array<int64_t, 256> landCount{};
-            std::array<int64_t, 256> sumCol{};
-            std::array<int64_t, 256> sumRow{};
-            std::array<int32_t, 256> minCol{};
-            std::array<int32_t, 256> maxCol{};
-            std::array<int32_t, 256> minRow{};
-            std::array<int32_t, 256> maxRow{};
-            for (int32_t i = 0; i < 256; ++i) {
-                minCol[i] = W; maxCol[i] = -1;
-                minRow[i] = H; maxRow[i] = -1;
-            }
-            for (int32_t row = 0; row < H; ++row) {
-                for (int32_t col = 0; col < W; ++col) {
-                    const int32_t idx = row * W + col;
-                    const uint8_t pid = this->m_hexGrid.plateId(idx);
-                    if (pid == 0xFFu) continue;
-                    ++cellCount[pid];
-                    if (!aoc::map::isWater(this->m_hexGrid.terrain(idx))) {
-                        ++landCount[pid];
-                    }
-                    sumCol[pid] += col;
-                    sumRow[pid] += row;
-                    if (col < minCol[pid]) minCol[pid] = col;
-                    if (col > maxCol[pid]) maxCol[pid] = col;
-                    if (row < minRow[pid]) minRow[pid] = row;
-                    if (row > maxRow[pid]) maxRow[pid] = row;
-                }
-            }
-            std::ostringstream o;
-            o << "[";
-            bool first = true;
-            for (int32_t pid = 0; pid < 256; ++pid) {
-                if (cellCount[pid] == 0) continue;
-                if (!first) o << ',';
-                first = false;
-                const float lf = static_cast<float>(landCount[pid])
-                               / static_cast<float>(cellCount[pid]);
-                o << "{\"plate_id\":" << pid
-                  << ",\"cell_count\":" << cellCount[pid]
-                  << ",\"land_frac\":" << lf
-                  << ",\"min_col\":"   << minCol[pid]
-                  << ",\"max_col\":"   << maxCol[pid]
-                  << ",\"min_row\":"   << minRow[pid]
-                  << ",\"max_row\":"   << maxRow[pid]
-                  << ",\"centroid_col\":"
-                  << static_cast<float>(sumCol[pid])
-                       / static_cast<float>(cellCount[pid])
-                  << ",\"centroid_row\":"
-                  << static_cast<float>(sumRow[pid])
-                       / static_cast<float>(cellCount[pid])
-                  << "}";
-            }
-            o << "]";
-            return o.str();
+            return buildPlateStatsJson(this->m_hexGrid);
         });
 
     // GET /tile?idx=N -- single tile detail.
@@ -641,10 +658,16 @@ ErrorCode Application::initialize(const Config& config) {
             return o.str();
         });
 
-    // POST /sim/set-creator-time?my=N -- jump scrub. Mutates main-
-    // thread state from worker thread; tolerated for v1 because
-    // regenerateContinentPreview is idempotent and the next frame
-    // re-snapshots fog/camera. Mutation queue follows in phase 5.
+    // POST /sim/set-creator-time?my=N -- jump scrub.
+    //
+    // Concurrency: handler runs on a cpp-httplib worker thread; it must
+    // NOT mutate `m_hexGrid` / `m_creatorEpochCache` / GLFW state
+    // directly because those live on the main render thread and have
+    // no synchronisation. Worker handlers therefore set an atomic
+    // mailbox flag and return; the main loop drains the flag at the
+    // top of the next frame and runs the actual `regenerateContinentPreview`
+    // there. Last-writer-wins on the flag is intentional -- if two
+    // POSTs land in the same frame the most recent target is honoured.
     this->m_debugServer->routeJson(DSM::Post, "/sim/set-creator-time",
         [this](const auto& q, const auto&) -> std::string {
             if (!this->m_continentCreatorMode) {
@@ -655,9 +678,14 @@ ErrorCode Application::initialize(const Config& config) {
                 return std::string("{\"error\":\"missing my\"}");
             }
             const int32_t my = std::atoi(it->second.c_str());
-            this->regenerateContinentPreview(my);
+            // Reject the sentinel itself so the main-loop drain can use
+            // it unambiguously to mean "no pending request".
+            if (my == PENDING_TIME_NONE) {
+                return std::string("{\"error\":\"my too small\"}");
+            }
+            this->m_pendingCreatorTime.store(my, std::memory_order_release);
             std::ostringstream o;
-            o << "{\"creatorTime\":" << this->m_creatorTimeCurrentMy << "}";
+            o << "{\"queuedCreatorTime\":" << my << "}";
             return o.str();
         });
 
@@ -675,10 +703,18 @@ ErrorCode Application::initialize(const Config& config) {
             int32_t dy = MY_PER_EPOCH;
             auto it = q.find("dy");
             if (it != q.end()) dy = std::atoi(it->second.c_str());
+            // `m_creatorTimeCurrentMy` is read on the main thread but
+            // we read it here lock-free for a best-effort target. The
+            // race window is tiny (one frame) and the main-loop drain
+            // re-clamps via `regenerateContinentPreview`, so a stale
+            // base only shifts the user's step by one epoch at most.
             const int32_t target = this->m_creatorTimeCurrentMy + dy;
-            this->regenerateContinentPreview(target);
+            const int32_t safeTarget = (target == PENDING_TIME_NONE)
+                ? (PENDING_TIME_NONE + 1) : target;
+            this->m_pendingCreatorTime.store(safeTarget,
+                                              std::memory_order_release);
             std::ostringstream o;
-            o << "{\"creatorTime\":" << this->m_creatorTimeCurrentMy
+            o << "{\"queuedCreatorTime\":" << safeTarget
               << ",\"step\":" << dy << "}";
             return o.str();
         });
@@ -693,20 +729,26 @@ ErrorCode Application::initialize(const Config& config) {
             if (it == q.end()) {
                 return std::string("{\"error\":\"missing seed\"}");
             }
-            this->m_creatorSeed =
-                static_cast<uint32_t>(std::strtoul(it->second.c_str(),
-                                                    nullptr, 10));
-            this->m_creatorEpochCache.clear();
-            this->regenerateContinentPreview(this->m_creatorTotalMy);
+            const uint32_t seed = static_cast<uint32_t>(
+                std::strtoul(it->second.c_str(), nullptr, 10));
+            // Seed must be visible BEFORE the flag is observed true,
+            // hence release-write on the flag pairs with acquire on
+            // the drain side.
+            this->m_pendingRerollSeed.store(seed, std::memory_order_relaxed);
+            this->m_pendingReroll.store(true, std::memory_order_release);
             std::ostringstream o;
-            o << "{\"creatorSeed\":" << this->m_creatorSeed << "}";
+            o << "{\"queuedRerollSeed\":" << seed << "}";
             return o.str();
         });
 
     // POST /quit -- clean shutdown.
+    //
+    // GLFW is not thread-safe; the worker thread must not call
+    // `glfwSetWindowShouldClose`. Set the atomic flag and let the main
+    // loop call the GLFW API on the render thread.
     this->m_debugServer->routeJson(DSM::Post, "/quit",
         [this](const auto&, const auto&) -> std::string {
-            glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
+            this->m_quitRequested.store(true, std::memory_order_release);
             return std::string("{\"closing\":true}");
         });
 
@@ -1162,9 +1204,9 @@ void Application::startSpectate(int32_t playerCount, int32_t maxTurns) {
     }
 
     // Seek slider along the bottom of the screen.
-    int32_t w, h;
-    glfwGetFramebufferSize(this->m_window.handle(), &w, &h);
-    this->buildSpectatorSeekControls(static_cast<float>(w), static_cast<float>(h));
+    const std::pair<uint32_t, uint32_t> seekFb = this->m_window.framebufferSize();
+    this->buildSpectatorSeekControls(static_cast<float>(seekFb.first),
+                                      static_cast<float>(seekFb.second));
     this->m_spectatorTargetTurn = -1;
     this->m_spectatorSnapshots.clear();
 
@@ -1438,6 +1480,12 @@ std::string Application::formatCreatorAgeLabel(int32_t curMy, int32_t totalMy) {
     return std::string(buf);
 }
 
+void Application::clearCreatorEpochCache() {
+    std::lock_guard<std::mutex> guard(this->m_creatorEpochCacheMutex);
+    this->m_creatorEpochCache.clear();
+    this->m_creatorEpochCacheLru.clear();
+}
+
 void Application::regenerateContinentPreview(int32_t timeMy) {
     // Clamp the requested age to a single physics epoch on the floor
     // (one substep is the smallest meaningful preview) and to the
@@ -1475,13 +1523,41 @@ void Application::regenerateContinentPreview(int32_t timeMy) {
     cfg.milankovitchPhase  = static_cast<float>(this->m_creatorMilanTenths) * 0.10f;
 
     // Cache hit? Skip the slow MapGenerator pass and copy a snapshot.
-    auto cacheIt = this->m_creatorEpochCache.find(epochLimit);
-    if (cacheIt != this->m_creatorEpochCache.end()) {
-        this->m_hexGrid = cacheIt->second;
-    } else {
-        aoc::map::MapGenerator::generate(cfg, this->m_hexGrid);
-        // Populate cache for instant scrubback to this epoch.
-        this->m_creatorEpochCache.emplace(epochLimit, this->m_hexGrid);
+    // Bounded LRU: most-recently-used epoch lives at the back of
+    // `m_creatorEpochCacheLru`. Misses evict from the front when
+    // size > CREATOR_CACHE_MAX. The mutex guards both maps even
+    // though we only touch them here on the main thread, because the
+    // re-roll drain in run() also clears them and the contract is
+    // "cache is always accessed under the mutex".
+    {
+        std::lock_guard<std::mutex> guard(this->m_creatorEpochCacheMutex);
+        auto cacheIt = this->m_creatorEpochCache.find(epochLimit);
+        if (cacheIt != this->m_creatorEpochCache.end()) {
+            this->m_hexGrid = cacheIt->second;
+            // Promote to most-recently-used: O(N) erase by value, but
+            // N <= CREATOR_CACHE_MAX so this is bounded.
+            for (auto it = this->m_creatorEpochCacheLru.begin();
+                 it != this->m_creatorEpochCacheLru.end(); ++it) {
+                if (*it == epochLimit) {
+                    this->m_creatorEpochCacheLru.erase(it);
+                    break;
+                }
+            }
+            this->m_creatorEpochCacheLru.push_back(epochLimit);
+        } else {
+            // Generator runs OUTSIDE the lock would be ideal, but
+            // m_hexGrid itself is the destination so we'd need a
+            // staging copy. Profile first — generator dominates,
+            // mutex is uncontended.
+            aoc::map::MapGenerator::generate(cfg, this->m_hexGrid);
+            this->m_creatorEpochCache.emplace(epochLimit, this->m_hexGrid);
+            this->m_creatorEpochCacheLru.push_back(epochLimit);
+            while (this->m_creatorEpochCacheLru.size() > CREATOR_CACHE_MAX) {
+                const int32_t evictKey = this->m_creatorEpochCacheLru.front();
+                this->m_creatorEpochCacheLru.pop_front();
+                this->m_creatorEpochCache.erase(evictKey);
+            }
+        }
     }
     if (this->m_globeRenderer) {
         this->m_globeRenderer->markGridDirty();
@@ -1621,7 +1697,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                     this->m_uiManager.setLabelText(*labelOut,
                         prefix + std::to_string(nv));
                 }
-                this->m_creatorEpochCache.clear();
+                this->clearCreatorEpochCache();
                 this->regenerateContinentPreview(
                     this->m_creatorTimeCurrentMy);
             };
@@ -1670,7 +1746,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                         this->m_creatorProjectionLabel,
                         labelFor(this->m_creatorProjection));
                 }
-                this->m_creatorEpochCache.clear();
+                this->clearCreatorEpochCache();
                 this->regenerateContinentPreview(
                     this->m_creatorTimeCurrentMy);
             };
@@ -2134,7 +2210,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         gen.onClick = [this]() {
             this->numInputDefocus();
             // Clear epoch cache — config changed, old snapshots are stale.
-            this->m_creatorEpochCache.clear();
+            this->clearCreatorEpochCache();
             this->m_creatorTimeCurrentMy = this->m_creatorTotalMy;
             this->regenerateContinentPreview(this->m_creatorTotalMy);
             this->m_creatorDirty = false;
@@ -2197,7 +2273,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         reroll.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         reroll.onClick = [this]() {
             this->numInputDefocus();
-            this->m_creatorEpochCache.clear();
+            this->clearCreatorEpochCache();
             std::random_device rd;
             this->m_creatorSeed = rd();
             // Don't snap to total when Play is running — let it
@@ -2701,6 +2777,37 @@ void Application::run() {
         // top of the loop so commands run before any per-frame
         // simulation/render state is updated. Synchronous, no locks.
         this->m_debugCmdFile.poll();
+
+        // Drain HTTP debug-server mailboxes onto the main thread.
+        //
+        // Worker threads only set atomic flags; the actual mutation
+        // (regenerateContinentPreview, GLFW shutdown) runs here so
+        // none of those touch HexGrid / GLFW from a worker. Last
+        // writer wins -- if multiple POSTs arrive in the same frame
+        // we honour the most recent target. Re-roll takes precedence
+        // because it implies "rebuild from scratch".
+        if (this->m_pendingReroll.exchange(false, std::memory_order_acquire)) {
+            const uint32_t seed = this->m_pendingRerollSeed.load(
+                std::memory_order_relaxed);
+            this->m_creatorSeed = seed;
+            this->clearCreatorEpochCache();
+            // Drop any stale set-creator-time the worker queued before
+            // the re-roll; re-roll resets to total time anyway.
+            this->m_pendingCreatorTime.store(PENDING_TIME_NONE,
+                                              std::memory_order_relaxed);
+            this->regenerateContinentPreview(this->m_creatorTotalMy);
+        }
+        {
+            const int32_t pending = this->m_pendingCreatorTime.exchange(
+                PENDING_TIME_NONE, std::memory_order_acquire);
+            if (pending != PENDING_TIME_NONE
+                && this->m_continentCreatorMode) {
+                this->regenerateContinentPreview(pending);
+            }
+        }
+        if (this->m_quitRequested.exchange(false, std::memory_order_acquire)) {
+            glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
+        }
 
         std::chrono::steady_clock::time_point currentTime = std::chrono::steady_clock::now();
         float deltaTime = std::chrono::duration<float>(currentTime - previousTime).count();
@@ -4240,7 +4347,7 @@ void Application::buildMainMenu(float screenW, float screenH) {
             this->m_creatorHeight       = 200;
             this->m_creatorTimeCurrentMy = this->m_creatorTotalMy;
             this->m_continentCreatorMode = true;
-            this->m_creatorEpochCache.clear();
+            this->clearCreatorEpochCache();
             this->m_creatorPlaying = false;
             this->m_creatorPlayAccum = 0.0f;
 

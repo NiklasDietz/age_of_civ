@@ -263,7 +263,6 @@ set(AOC_LIB_SOURCES
     src/map/gen/SphereField.cpp
     src/map/gen/SphereFieldPhysics.cpp
     src/map/gen/SphereGeometry.cpp
-    src/map/gen/PlateReference.cpp
     src/map/Pathfinding.cpp
     src/map/FogOfWar.cpp
     src/map/RiverGameplay.cpp
@@ -481,6 +480,11 @@ if(AOC_HEADLESS)
 endif()
 
 add_library(aoc_lib STATIC ${AOC_LIB_SOURCES})
+
+# cpp-httplib worker threads. Audit WP7: define centrally so DebugServer.cpp
+# does not need a per-source `#define`. cpp-httplib defaults to 8/hwconc;
+# 4 is enough for the debug API surface (concurrent /sim/step + /tile reads).
+target_compile_definitions(aoc_lib PRIVATE CPPHTTPLIB_THREAD_POOL_COUNT=4)
 
 target_include_directories(aoc_lib
     PUBLIC
@@ -788,6 +792,8 @@ add_executable(aoc_mapgen
 )
 target_link_libraries(aoc_mapgen PRIVATE aoc_lib)
 target_include_directories(aoc_mapgen PRIVATE third_party)
+# Match aoc_lib: cpp-httplib pool size — see comment above on aoc_lib.
+target_compile_definitions(aoc_mapgen PRIVATE CPPHTTPLIB_THREAD_POOL_COUNT=4)
 
 # --------------------------------------------------------------------------
 # C++ Genetic Algorithm for Utility AI optimization
@@ -807,6 +813,7 @@ if(AOC_BUILD_TESTS)
         test_unemployment
         test_building_capacity
         test_production_efficiency
+        test_json_parser_depth
     )
 
     foreach(aoc_test ${AOC_SMOKE_TESTS})
