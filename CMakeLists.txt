@@ -94,6 +94,16 @@ if(AOC_PHYSICS_ON_SPHEREFIELD)
     add_compile_definitions(AOC_PHYSICS_ON_SPHEREFIELD=1)
 endif()
 
+# AddressSanitizer + LeakSanitizer for build_dbg. Gate via -DAOC_ENABLE_ASAN=ON
+# at configure time. Combine with `ASAN_OPTIONS=suppressions=$PWD/asan_suppressions.txt`
+# at runtime. Active across every target via CMAKE_*_FLAGS so static libs link in.
+option(AOC_ENABLE_ASAN "Enable AddressSanitizer + LeakSanitizer" OFF)
+if(AOC_ENABLE_ASAN)
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+    message(STATUS "AOC_ENABLE_ASAN=ON -- AddressSanitizer instrumentation enabled")
+endif()
+
 # --------------------------------------------------------------------------
 # Dependencies
 # --------------------------------------------------------------------------

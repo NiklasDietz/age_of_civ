@@ -113,6 +113,11 @@ constexpr int JSON_MAX_NESTING_DEPTH = 64;
         const std::string& text;
         std::size_t pos = 0;
         const std::string& fileName;
+        /// Sticky failure flag: any fatal parse error (depth-exceeded, malformed
+        /// structure) latches this. Container parsers stop iterating when set,
+        /// and the entry point returns a null root so callers see the failure
+        /// instead of a half-built tree.
+        bool failed = false;
 
         void skipWhitespace() {
             while (this->pos < this->text.size()) {
@@ -150,6 +155,7 @@ constexpr int JSON_MAX_NESTING_DEPTH = 64;
             if (depth > JSON_MAX_NESTING_DEPTH) {
                 LOG_ERROR("JSON parse error in '%s': nesting depth %d exceeds limit %d at position %zu",
                           this->fileName.c_str(), depth, JSON_MAX_NESTING_DEPTH, this->pos);
+                this->failed = true;
                 return JsonValue{};
             }
 
@@ -265,11 +271,13 @@ constexpr int JSON_MAX_NESTING_DEPTH = 64;
             }
             while (true) {
                 arr.push_back(this->parseValue(depth));
+                if (this->failed) { break; }
                 this->skipWhitespace();
                 if (this->expect(',')) { continue; }
                 if (this->expect(']')) { break; }
                 LOG_ERROR("JSON parse error in '%s': expected ',' or ']' at position %zu",
                           this->fileName.c_str(), this->pos);
+                this->failed = true;
                 break;
             }
             return JsonValue{std::move(arr)};
@@ -299,19 +307,25 @@ constexpr int JSON_MAX_NESTING_DEPTH = 64;
                     break;
                 }
                 obj[std::move(key)] = this->parseValue(depth);
+                if (this->failed) { break; }
                 this->skipWhitespace();
                 if (this->expect(',')) { continue; }
                 if (this->expect('}')) { break; }
                 LOG_ERROR("JSON parse error in '%s': expected ',' or '}' at position %zu",
                           this->fileName.c_str(), this->pos);
+                this->failed = true;
                 break;
             }
             return JsonValue{std::move(obj)};
         }
     };
 
-    Parser parser{input, 0, sourceFile};
-    return parser.parseValue();
+    Parser parser{input, 0, sourceFile, false};
+    JsonValue root = parser.parseValue();
+    if (parser.failed) {
+        return JsonValue{};
+    }
+    return root;
 }
 
 } // namespace aoc::data
