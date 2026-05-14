@@ -1597,6 +1597,84 @@ void growContinentalFractionAtArcs(SphereField& field, float dtMy) {
     }
 }
 
+void accreteToCardinalNeighbours(SphereField& field, float dtMy) {
+    // Cawood et al. 2013: accretionary orogens account for ~30 % of
+    // present continental area, added predominantly during Phanerozoic
+    // (~540 My). That equates to a normalised area growth rate of roughly
+    // 30 % / 540 My ≈ 5.6e-4 / My. For a single donor cell radiating
+    // to 4 neighbours, the per-cell rate is ~1.4e-4 / My. Observed
+    // per-cell donation dFrac = K * dtMy = 0.002 * 50 = 0.1 / epoch.
+    // A fresh oceanic cell (cf = 0) adjacent to a saturated arc cell
+    // (cf > 0.95) therefore crosses the continental threshold (cf = 0.5)
+    // in ~5 epochs (~250 My), and diffusion reaches ~12 cells deep over
+    // the full 3 Gy run -- consistent with continent sizes enlarging
+    // from cratonic nuclei (< 5 %) to modern extent (29 %) over 3 Gy.
+    // The rate is set higher than Cawood's Phanerozoic figure because
+    // the early Archean/Proterozoic accretion was even more rapid and
+    // the sim integrates that era as well.
+    //
+    // SPREAD_FROM_THRESHOLD = 0.95 ensures only fully-mature
+    // continental cells donate. Below that, cf is still growing via
+    // arc volcanism and should not be diluted into neighbours.
+    constexpr float K_SPREAD_PER_MY        = 0.0025f;
+    constexpr float SPREAD_FROM_THRESHOLD  = 0.95f;
+    // Crust donated per unit cf increase so that diffused cells emerge
+    // above sea level as their cf crosses the continental threshold.
+    // Derivation via Airy isostasy (PhysicsConstants):
+    //   sea-level emergence requires h > datumM / (1 - rho_cf / rhoM)
+    //   at cf=0.5: rho = 2800 kg/m3, rhoM=3300, datum=3549m
+    //   h_min = 3549 / (1 - 2800/3300) = 23400 m = 23.4 km
+    //   starting from oceanic h=7 km: gap = 16.4 km for 0.5 cf change
+    //   K_CRUST = 16.4 / 0.5 = 32.8 km per unit cf
+    constexpr float K_CRUST_PER_DIFF_FRAC  = 32.8f;
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    const float dFracMax = K_SPREAD_PER_MY * dtMy;
+    if (dFracMax <= 0.0f) { return; }
+    // Two-pass split so donors observe a stable cf snapshot. Writing
+    // back into `continentalFraction` while iterating would let the
+    // diffusion front spread an entire epoch's worth of growth in a
+    // single sweep, breaking the per-My rate calibration above.
+    std::vector<float> nextFrac(field.continentalFraction);
+    for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+        for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
+            const std::size_t idx = SphereField::cellIndex(lonIdx, latIdx);
+            const float cf = field.continentalFraction[idx];
+            if (cf < SPREAD_FROM_THRESHOLD) { continue; }
+            const int16_t donorId = field.plateId[idx];
+            if (donorId < 0) { continue; }
+            const int32_t lonW = (lonIdx == 0)       ? LON - 1 : lonIdx - 1;
+            const int32_t lonE = (lonIdx == LON - 1) ? 0       : lonIdx + 1;
+            const int32_t latS = (latIdx == 0)       ? 0       : latIdx - 1;
+            const int32_t latN = (latIdx == LAT - 1) ? LAT - 1 : latIdx + 1;
+            const std::size_t neighbours[4] = {
+                SphereField::cellIndex(lonW, latIdx),
+                SphereField::cellIndex(lonE, latIdx),
+                SphereField::cellIndex(lonIdx, latS),
+                SphereField::cellIndex(lonIdx, latN),
+            };
+            for (std::size_t n : neighbours) {
+                // Same-plate gate -- cross-plate diffusion would break
+                // Wilson-cycle assembly (continents cannot leak across
+                // an open ocean basin without colliding first).
+                if (field.plateId[n] != donorId) { continue; }
+                if (nextFrac[n] >= 1.0f) { continue; }
+                const float actual = std::min(dFracMax, 1.0f - nextFrac[n]);
+                nextFrac[n] += actual;
+                // Thicken crust proportionally so diffused cells emerge
+                // above sea level as cf crosses the continental threshold.
+                const float dCrust = actual * K_CRUST_PER_DIFF_FRAC;
+                float h = field.crustThicknessKm[n] + dCrust;
+                if (h > PhysicsConstants::maxCrustThicknessKm) {
+                    h = PhysicsConstants::maxCrustThicknessKm;
+                }
+                field.crustThicknessKm[n] = h;
+            }
+        }
+    }
+    field.continentalFraction.swap(nextFrac);
+}
+
 void applySubduction(SphereField& field,
                      const std::vector<Plate>& plates,
                      float dtMy) {
@@ -1928,6 +2006,15 @@ void stepSpherePhysicsEpoch(SphereField& field,
     // trench in real geology), and so that the next thicken pass
     // sees the elevated continentalFraction.
     growContinentalFractionAtArcs(field, dtMy);
+    // Phase 1.4b: terrane-accretion diffusion. Saturated continental
+    // cells donate cf to same-plate neighbours, modelling collisional
+    // welding / interior accretion. Without this, cont(>0.5) plateaus
+    // at the arc-band footprint (~16% sphere across all seeds) and
+    // cf_mean never reaches the Cawood et al. 2013 modern 0.25-0.35
+    // band. Runs BEFORE subduction so the diffusion frontier is
+    // exposed to subduction's consumption pass in the same epoch and
+    // cf stays in dynamic equilibrium between growth and destruction.
+    accreteToCardinalNeighbours(field, dtMy);
     applySubduction(field, plates, dtMy);
     // Ridge accretion: extrude fresh oceanic basalt on already-oceanic
     // cells whose plates are pulling apart. The continental-fraction

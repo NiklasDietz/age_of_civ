@@ -255,6 +255,24 @@ void thickenFromClosingRate(SphereField& field, float dtMy);
 /// fire only where active subduction is feeding the arc.
 void growContinentalFractionAtArcs(SphereField& field, float dtMy);
 
+/// Phase 1.4b: terrane accretion / interior welding. Saturated continental
+/// cells (cf > SPREAD_FROM_THRESHOLD) bleed continental character into
+/// cardinal neighbours that belong to the SAME plate. Models the
+/// post-arc welding pass where saturated arc terranes (oceanic plateaus,
+/// island-arc accretions, back-arc thickening) extend the basement
+/// outward via collisional sutures (Cawood et al. 2013 "Accretionary
+/// orogens through Earth history" -- accretionary growth rate ~30 % of
+/// continental area over the Phanerozoic).
+///
+/// Without this pass, `growContinentalFractionAtArcs` plateaus cont(>0.5)
+/// at ~16 % of the sphere because only the immediate inboard cell of
+/// each trench cell ever gains cf. Diffusion across plate boundaries
+/// is blocked to preserve the Wilson-cycle assembly/dispersal rhythm.
+///
+/// Cross-plate diffusion is INTENTIONALLY BLOCKED: spreading across
+/// plate boundaries would short-circuit subduction-driven assembly.
+void accreteToCardinalNeighbours(SphereField& field, float dtMy);
+
 /// Phase 1.5: subduction. At convergent boundary cells, the side with
 /// the lower continental fraction (denser oceanic crust) is consumed
 /// by the overriding plate. The consumed cell's plate id flips to the
