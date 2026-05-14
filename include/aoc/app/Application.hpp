@@ -53,13 +53,15 @@
 #include "aoc/ui/SpectatorHUD.hpp"
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <deque>
 #include <limits>
 #include <map>
-#include <mutex>
-#include <unordered_map>
 #include <memory>
+#include <mutex>
+#include <thread>
+#include <unordered_map>
 
 namespace vulkan_app {
 class GraphicsDevice;
@@ -499,6 +501,68 @@ private:
     /// matching acquire on the flag synchronises this value.
     std::atomic<uint32_t> m_pendingRerollSeed{0};
     std::atomic<bool>    m_quitRequested{false};
+
+    /// Off-main-thread map regeneration. The main thread enqueues a target
+    /// epoch via `enqueueRegen(my)`; the worker thread runs `MapGenerator::generate`
+    /// into the side buffer `m_pendingGrid`; the main thread picks up the result
+    /// in `consumeRegenResult()` at the top of each frame and swaps it into
+    /// `m_hexGrid` plus runs fix-ups (FogOfWar resize, renderer dirty flag).
+    ///
+    /// Why a side buffer instead of `std::atomic<std::shared_ptr<HexGrid>>`:
+    /// every reader of `m_hexGrid` today is on the main thread, and the swap
+    /// is exclusive (main thread is paused inside `consumeRegenResult` when it
+    /// runs). Adding a shared-pointer indirection would force ~200 reader
+    /// sites to load + dereference per frame; the simpler model owns the
+    /// invariant via mutex on the cache and a single owning swap on the main
+    /// thread. HexGrid is ~750 KB so the swap is a pointer-level operation
+    /// (std::swap on vectors).
+    aoc::map::HexGrid              m_pendingGrid;
+    /// CV wakes the worker when a new request lands. Lock guards
+    /// `m_regenRequestCfg` (non-trivially-copyable; cannot live in an atomic).
+    /// `m_regenRequestMy` + `m_regenRequestGeneration` are atomic so the
+    /// worker can observe cancellation without holding the lock.
+    std::condition_variable        m_regenCv;
+    std::mutex                     m_regenWakeMutex;
+    /// Configuration snapshot captured by the main thread at enqueue time.
+    /// The worker reads this once under `m_regenWakeMutex` then releases the
+    /// lock for the slow `MapGenerator::generate` call.
+    aoc::map::MapGenerator::Config m_regenRequestCfg{};
+    /// Latest requested target epoch, in My. PENDING_TIME_NONE = nothing
+    /// queued. Writers (HTTP handlers, main thread) increment
+    /// `m_regenRequestGeneration` AFTER writing this so the worker observes
+    /// the latest request via a single acquire on the generation counter.
+    std::atomic<int32_t>           m_regenRequestMy{PENDING_TIME_NONE};
+    /// Monotonic counter bumped on every `enqueueRegen` call. Worker snapshots
+    /// it at the start of a run; on completion, if the value has moved, the
+    /// result is stale and the worker discards it (single-flight semantics).
+    std::atomic<uint64_t>          m_regenRequestGeneration{0};
+    /// Worker → main signal. Set when `m_pendingGrid` holds a fresh result
+    /// AND the target epoch the worker computed is still current. Cleared by
+    /// the main thread inside `consumeRegenResult()` after the swap.
+    std::atomic<bool>              m_regenResultReady{false};
+    /// Snapshot of the epoch the worker computed `m_pendingGrid` for. Used by
+    /// `consumeRegenResult()` for cache-insert + epoch-current-state update.
+    std::atomic<int32_t>           m_regenResultEpochMy{PENDING_TIME_NONE};
+    /// Worker stop signal. Set by `~Application` (or explicit shutdown) before
+    /// destruction. The worker checks it on every CV wake and exits when set.
+    std::jthread                   m_regenWorker;
+
+    /// Enqueue a regen request. Sets the target and bumps the generation
+    /// counter so any in-flight worker pass is implicitly cancelled (its
+    /// result will be discarded). Returns immediately; the worker picks it
+    /// up asynchronously.
+    void enqueueRegen(int32_t timeMy);
+    /// Worker loop body. Sleeps on `m_regenCv` until either a new request
+    /// lands or the stop_token fires. Snapshots the request, runs the
+    /// generator into `m_pendingGrid`, and (if no superseding request
+    /// arrived) flips `m_regenResultReady` for the main thread.
+    void regenWorkerLoop(std::stop_token stopToken);
+    /// Main-thread drain. Checks `m_regenResultReady`; on hit, swaps
+    /// `m_pendingGrid` into `m_hexGrid`, runs FogOfWar resize + renderer
+    /// dirty flag + cache insert. Called at the top of every frame so the
+    /// UI thread never blocks on the generator.
+    void consumeRegenResult();
+
     /// Play state — when true, m_creatorTimeCurrentMy advances by one
     /// physics epoch (MY_PER_EPOCH_TARGET My) every PLAY_INTERVAL
     /// seconds, looping at m_creatorTotalMy.
@@ -588,7 +652,16 @@ private:
     /// the tectonic sim at `timeMy` millions of years simulated. The
     /// caller passes simulated geological age, not an epoch index;
     /// the regenerator snaps to the nearest physics-epoch boundary.
+    /// SYNCHRONOUS — blocks until the new grid is in `m_hexGrid`. Use
+    /// at startup or anywhere the caller must have the new grid before
+    /// the next instruction. For UI scrub paths, prefer `enqueueRegen`
+    /// which runs the generation on a worker thread so the UI stays
+    /// responsive.
     void regenerateContinentPreview(int32_t timeMy);
+    /// Post-swap fix-ups shared between the synchronous and async paths:
+    /// FogOfWar resize, renderer dirty flag, camera world bounds + minZoom +
+    /// re-fit, spectator reveal. Called after `m_hexGrid` is up-to-date.
+    void applyNewHexGridFixups(int32_t timeMy);
 
     /// Format a creator age label as "Age <cur> / <total> Gy" when
     /// either value crosses 1000 My, otherwise "Age <cur> / <total> My".

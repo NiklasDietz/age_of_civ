@@ -417,7 +417,7 @@ ErrorCode Application::initialize(const Config& config) {
             }
             if (args.empty()) return "{\"error\":\"missing MY arg\"}";
             const int32_t my = std::atoi(args.c_str());
-            this->regenerateContinentPreview(my);
+            this->enqueueRegen(my);
             std::ostringstream o;
             o << "{\"creatorTime\":" << this->m_creatorTimeCurrentMy << "}";
             return o.str();
@@ -432,7 +432,7 @@ ErrorCode Application::initialize(const Config& config) {
             this->m_creatorSeed =
                 static_cast<uint32_t>(std::strtoul(args.c_str(), nullptr, 10));
             this->clearCreatorEpochCache();
-            this->regenerateContinentPreview(this->m_creatorTotalMy);
+            this->enqueueRegen(this->m_creatorTotalMy);
             std::ostringstream o;
             o << "{\"creatorSeed\":" << this->m_creatorSeed << "}";
             return o.str();
@@ -851,6 +851,14 @@ ErrorCode Application::initialize(const Config& config) {
     if (!this->m_dbusService.start()) {
         LOG_INFO("DBus service not available; external automation disabled");
     }
+
+    // Spawn the off-thread regen worker. Lives until shutdown() requests stop.
+    // The worker idles on `m_regenCv` until `enqueueRegen` is called, so the
+    // up-front cost is negligible. Defer no work to ctor because earlier
+    // members must be fully initialized first (m_regenWakeMutex etc are
+    // member-default-constructed and need no further setup).
+    this->m_regenWorker = std::jthread(
+        [this](std::stop_token tok) { this->regenWorkerLoop(tok); });
 
     this->m_initialized = true;
     LOG_INFO("Initialized (%ux%u), showing main menu", fbWidth, fbHeight);
@@ -1559,6 +1567,10 @@ void Application::regenerateContinentPreview(int32_t timeMy) {
             }
         }
     }
+    this->applyNewHexGridFixups(timeMy);
+}
+
+void Application::applyNewHexGridFixups(int32_t timeMy) {
     if (this->m_globeRenderer) {
         this->m_globeRenderer->markGridDirty();
     }
@@ -1627,6 +1639,138 @@ void Application::regenerateContinentPreview(int32_t timeMy) {
     LOG_INFO("Creator: regenerated at %d/%d My (%dx%d)",
              timeMy, this->m_creatorTotalMy,
              this->m_hexGrid.width(), this->m_hexGrid.height());
+}
+
+// ----------------------------------------------------------------------------
+// Off-main-thread regeneration. The slow MapGenerator::generate call (100s of
+// ms on a full sim) used to block the UI thread for the entire duration of a
+// scrub or re-roll. Now the main thread enqueues a target epoch + a config
+// snapshot, the worker runs the generation into `m_pendingGrid`, and the main
+// thread picks up the result in `consumeRegenResult()` at the top of each
+// frame and swaps it into `m_hexGrid`. The UI keeps panning/zooming the
+// previous grid throughout.
+// ----------------------------------------------------------------------------
+
+void Application::enqueueRegen(int32_t timeMy) {
+    constexpr int32_t MY_PER_EPOCH = aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
+    if (timeMy < MY_PER_EPOCH) { timeMy = MY_PER_EPOCH; }
+    if (timeMy > this->m_creatorTotalMy) { timeMy = this->m_creatorTotalMy; }
+    const int32_t epochLimit = std::max(1, timeMy / MY_PER_EPOCH);
+    timeMy = epochLimit * MY_PER_EPOCH;
+    this->m_creatorTimeCurrentMy = timeMy;
+
+    // Cache hit -> deliver synchronously. The copy is ~1 ms and there is no
+    // reason to round-trip through the worker.
+    {
+        std::lock_guard<std::mutex> guard(this->m_creatorEpochCacheMutex);
+        auto cacheIt = this->m_creatorEpochCache.find(epochLimit);
+        if (cacheIt != this->m_creatorEpochCache.end()) {
+            this->m_hexGrid = cacheIt->second;
+            for (auto it = this->m_creatorEpochCacheLru.begin();
+                 it != this->m_creatorEpochCacheLru.end(); ++it) {
+                if (*it == epochLimit) {
+                    this->m_creatorEpochCacheLru.erase(it);
+                    break;
+                }
+            }
+            this->m_creatorEpochCacheLru.push_back(epochLimit);
+            this->applyNewHexGridFixups(timeMy);
+            return;
+        }
+    }
+
+    // Cache miss -> capture config snapshot on this thread, hand to worker.
+    aoc::map::MapGenerator::Config cfg{};
+    cfg.width             = std::max(20, this->m_creatorWidth);
+    cfg.height            = std::max(20, this->m_creatorHeight);
+    cfg.seed              = this->m_creatorSeed;
+    cfg.mapType           = aoc::map::MapType::Continents;
+    cfg.mapSize           = aoc::map::MapSize::Standard;
+    cfg.topology          = aoc::map::MapTopology::Cylindrical;
+    cfg.tectonicTotalMy   = this->m_creatorTotalMy;
+    cfg.landPlateCount    = this->m_creatorLandPlates;
+    cfg.projection        = static_cast<aoc::map::gen::MapProjection>(
+        std::clamp(this->m_creatorProjection, 0, 3));
+    cfg.runEpochsLimit    = epochLimit;
+    cfg.driftFraction     = static_cast<float>(this->m_creatorDriftPct) * 0.1f;
+    cfg.superSampleFactor = this->m_creatorSuperSample;
+    cfg.climatePhase      = this->m_creatorClimatePhase;
+    cfg.seaLevelDelta     = static_cast<float>(this->m_creatorSeaLevelTenths) * 0.10f;
+    cfg.axialTilt         = static_cast<float>(this->m_creatorAxialTiltTenths) * 0.10f;
+    cfg.ensoState         = this->m_creatorEnsoState;
+    cfg.milankovitchPhase = static_cast<float>(this->m_creatorMilanTenths) * 0.10f;
+    {
+        std::lock_guard<std::mutex> lk(this->m_regenWakeMutex);
+        this->m_regenRequestCfg = std::move(cfg);
+        this->m_regenRequestMy.store(timeMy, std::memory_order_release);
+        this->m_regenRequestGeneration.fetch_add(1, std::memory_order_release);
+    }
+    this->m_regenCv.notify_one();
+}
+
+void Application::regenWorkerLoop(std::stop_token stopToken) {
+    while (!stopToken.stop_requested()) {
+        aoc::map::MapGenerator::Config localCfg{};
+        int32_t targetMy = PENDING_TIME_NONE;
+        uint64_t genSnapshot = 0;
+        {
+            std::unique_lock<std::mutex> lk(this->m_regenWakeMutex);
+            this->m_regenCv.wait(lk, [this, &stopToken] {
+                return stopToken.stop_requested()
+                    || this->m_regenRequestMy.load(std::memory_order_acquire) != PENDING_TIME_NONE;
+            });
+            if (stopToken.stop_requested()) { return; }
+            targetMy = this->m_regenRequestMy.exchange(
+                PENDING_TIME_NONE, std::memory_order_acquire);
+            localCfg = this->m_regenRequestCfg;
+            genSnapshot = this->m_regenRequestGeneration.load(std::memory_order_acquire);
+        }
+        if (targetMy == PENDING_TIME_NONE) { continue; }
+        // Slow path runs outside the lock so additional enqueueRegen calls
+        // are non-blocking. The main thread is the only other writer of
+        // `m_pendingGrid` (it swaps after observing m_regenResultReady = true,
+        // and at that point the worker is back at the CV wait), so worker
+        // ownership of `m_pendingGrid` here is exclusive.
+        aoc::map::MapGenerator::generate(localCfg, this->m_pendingGrid);
+        // Single-flight cancellation: if a newer enqueueRegen landed during
+        // the slow gen, discard our result -- the worker will pick the latest
+        // request up on the next loop iteration. Stops "flicker" where a
+        // stale result is briefly shown before the freshest one lands.
+        if (this->m_regenRequestGeneration.load(std::memory_order_acquire)
+                != genSnapshot) {
+            continue;
+        }
+        this->m_regenResultEpochMy.store(targetMy, std::memory_order_release);
+        this->m_regenResultReady.store(true, std::memory_order_release);
+    }
+}
+
+void Application::consumeRegenResult() {
+    if (!this->m_regenResultReady.load(std::memory_order_acquire)) { return; }
+    // Worker is back at the CV wait until we clear `m_regenResultReady`
+    // (it never writes the flag again until released). Exclusive access
+    // to `m_pendingGrid` is therefore safe on this thread.
+    using std::swap;
+    swap(this->m_hexGrid, this->m_pendingGrid);
+    const int32_t epochMy = this->m_regenResultEpochMy.load(
+        std::memory_order_acquire);
+    constexpr int32_t MY_PER_EPOCH = aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
+    const int32_t epochLimit = std::max(1, epochMy / MY_PER_EPOCH);
+    {
+        std::lock_guard<std::mutex> guard(this->m_creatorEpochCacheMutex);
+        // Insert / refresh the cache entry. emplace is a no-op on duplicate
+        // keys, so explicit erase-then-insert keeps the LRU honest.
+        this->m_creatorEpochCache.erase(epochLimit);
+        this->m_creatorEpochCache.emplace(epochLimit, this->m_hexGrid);
+        this->m_creatorEpochCacheLru.push_back(epochLimit);
+        while (this->m_creatorEpochCacheLru.size() > CREATOR_CACHE_MAX) {
+            const int32_t evictKey = this->m_creatorEpochCacheLru.front();
+            this->m_creatorEpochCacheLru.pop_front();
+            this->m_creatorEpochCache.erase(evictKey);
+        }
+    }
+    this->m_regenResultReady.store(false, std::memory_order_release);
+    this->applyNewHexGridFixups(epochMy);
 }
 
 void Application::buildContinentCreatorControls(float screenW, float screenH) {
@@ -1698,7 +1842,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                         prefix + std::to_string(nv));
                 }
                 this->clearCreatorEpochCache();
-                this->regenerateContinentPreview(
+                this->enqueueRegen(
                     this->m_creatorTimeCurrentMy);
             };
             const aoc::ui::WidgetId id = this->m_uiManager.createButton(
@@ -1747,7 +1891,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                         labelFor(this->m_creatorProjection));
                 }
                 this->clearCreatorEpochCache();
-                this->regenerateContinentPreview(
+                this->enqueueRegen(
                     this->m_creatorTimeCurrentMy);
             };
             this->m_creatorProjectionLabel =
@@ -1804,7 +1948,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         minus.repeatDelaySec = 0.35f;
         minus.repeatRateHz   = 8.0f;
         minus.onClick = [this]() {
-            this->regenerateContinentPreview(
+            this->enqueueRegen(
                 this->m_creatorTimeCurrentMy - MY_PER_EPOCH);
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
@@ -1863,7 +2007,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         plus.repeatDelaySec = 0.35f;
         plus.repeatRateHz   = 8.0f;
         plus.onClick = [this]() {
-            this->regenerateContinentPreview(
+            this->enqueueRegen(
                 this->m_creatorTimeCurrentMy + MY_PER_EPOCH);
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
@@ -2212,7 +2356,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             // Clear epoch cache — config changed, old snapshots are stale.
             this->clearCreatorEpochCache();
             this->m_creatorTimeCurrentMy = this->m_creatorTotalMy;
-            this->regenerateContinentPreview(this->m_creatorTotalMy);
+            this->enqueueRegen(this->m_creatorTotalMy);
             this->m_creatorDirty = false;
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
@@ -2248,7 +2392,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                 const int32_t firstStep =
                     aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
                 this->m_creatorTimeCurrentMy = firstStep;
-                this->regenerateContinentPreview(firstStep);
+                this->enqueueRegen(firstStep);
             }
             this->m_creatorPlaying = !this->m_creatorPlaying;
             this->m_creatorPlayAccum = 0.0f;
@@ -2282,7 +2426,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             if (!this->m_creatorPlaying) {
                 this->m_creatorTimeCurrentMy = this->m_creatorTotalMy;
             }
-            this->regenerateContinentPreview(this->m_creatorTimeCurrentMy);
+            this->enqueueRegen(this->m_creatorTimeCurrentMy);
             this->m_creatorDirty = false;
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
@@ -2781,11 +2925,11 @@ void Application::run() {
         // Drain HTTP debug-server mailboxes onto the main thread.
         //
         // Worker threads only set atomic flags; the actual mutation
-        // (regenerateContinentPreview, GLFW shutdown) runs here so
-        // none of those touch HexGrid / GLFW from a worker. Last
-        // writer wins -- if multiple POSTs arrive in the same frame
-        // we honour the most recent target. Re-roll takes precedence
-        // because it implies "rebuild from scratch".
+        // (enqueueRegen + GLFW shutdown) runs here so none of those
+        // touch HexGrid / GLFW from a worker. Last writer wins -- if
+        // multiple POSTs arrive in the same frame we honour the most
+        // recent target. Re-roll takes precedence because it implies
+        // "rebuild from scratch".
         if (this->m_pendingReroll.exchange(false, std::memory_order_acquire)) {
             const uint32_t seed = this->m_pendingRerollSeed.load(
                 std::memory_order_relaxed);
@@ -2795,16 +2939,21 @@ void Application::run() {
             // the re-roll; re-roll resets to total time anyway.
             this->m_pendingCreatorTime.store(PENDING_TIME_NONE,
                                               std::memory_order_relaxed);
-            this->regenerateContinentPreview(this->m_creatorTotalMy);
+            this->enqueueRegen(this->m_creatorTotalMy);
         }
         {
             const int32_t pending = this->m_pendingCreatorTime.exchange(
                 PENDING_TIME_NONE, std::memory_order_acquire);
             if (pending != PENDING_TIME_NONE
                 && this->m_continentCreatorMode) {
-                this->regenerateContinentPreview(pending);
+                this->enqueueRegen(pending);
             }
         }
+        // Pick up any in-flight regen result -- the worker has been hammering
+        // `MapGenerator::generate` while the main loop kept rendering the
+        // current m_hexGrid. consumeRegenResult is no-op on miss; on hit it
+        // swaps the new grid in and runs fix-ups.
+        this->consumeRegenResult();
         if (this->m_quitRequested.exchange(false, std::memory_order_acquire)) {
             glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
         }
@@ -3041,7 +3190,7 @@ void Application::run() {
                     // Advance one physics-epoch (50 My) per play tick.
                     this->m_creatorTimeCurrentMy +=
                         aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
-                    this->regenerateContinentPreview(this->m_creatorTimeCurrentMy);
+                    this->enqueueRegen(this->m_creatorTimeCurrentMy);
                     if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
                         this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
                             formatCreatorAgeLabel(this->m_creatorTimeCurrentMy,
@@ -4479,6 +4628,18 @@ void Application::shutdown() {
     this->m_cursors.crossHair = nullptr;
 
     this->m_dbusService.stop();
+
+    // Stop the regen worker BEFORE the debug server -- the debug server
+    // schedules enqueueRegen calls onto the main thread, so killing it
+    // first prevents new requests from racing the worker stop. The worker
+    // observes the stop_token at every CV wake; if a slow generate is in
+    // flight, this waits one pass for it to finish (bounded by a single
+    // MapGenerator run).
+    if (this->m_regenWorker.joinable()) {
+        this->m_regenWorker.request_stop();
+        this->m_regenCv.notify_all();
+        this->m_regenWorker.join();
+    }
 
     if (this->m_graphicsDevice) {
         this->m_graphicsDevice->waitIdle();

@@ -28,9 +28,9 @@ void test_upgradeRaisesCapacity() {
     BuildingId factory{3};
     assert(buildingTierClass(factory) == BuildingTierClass::Mid);
     assert(c.capacity(factory) == 2);
-    assert(c.upgrade(factory) == aoc::sim::ErrorCode::Ok);
+    assert(c.upgrade(factory) == aoc::ErrorCode::Ok);
     assert(c.capacity(factory) == 4);
-    assert(c.upgrade(factory) == aoc::sim::ErrorCode::Ok);
+    assert(c.upgrade(factory) == aoc::ErrorCode::Ok);
     assert(c.capacity(factory) == 6);
 }
 
@@ -38,9 +38,9 @@ void test_upgradeBeyondMaxFails() {
     CityBuildingLevelsComponent c{};
     BuildingId researchLab{12};
     for (int i = 0; i < MAX_BUILDING_LEVEL - 1; ++i) {
-        assert(c.upgrade(researchLab) == aoc::sim::ErrorCode::Ok);
+        assert(c.upgrade(researchLab) == aoc::ErrorCode::Ok);
     }
-    assert(c.upgrade(researchLab) == aoc::sim::ErrorCode::InvalidArgument);
+    assert(c.upgrade(researchLab) == aoc::ErrorCode::InvalidArgument);
     assert(c.upgradeCost(researchLab) == 0);
 }
 
