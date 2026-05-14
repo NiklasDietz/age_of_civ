@@ -446,6 +446,15 @@ inline constexpr float RIFT_THRESHOLD_MY       = 150.0f;
 // for an Archean-class supercontinent; 100 My sits at the centre
 // of that envelope.
 inline constexpr float RIFT_RAMP_MY            = 100.0f;
+// Hard mechanical cap: no tectonic plate can physically span > 40 % of
+// a sphere — Earth's largest plate (Pacific) is ~20 %. Once a plate
+// exceeds this fraction of total sphere cells, rift is forced regardless
+// of thermal age. Models flexural / gravitational instability that
+// prevented any second Pangaea from ever forming.
+// Cite: Gurnis 1988 ("Large-scale mantle convection and the aggregation
+// and dispersal of supercontinents"); Jordan 1981 (mechanical
+// constraints on lithospheric plate sizes).
+inline constexpr float FORCE_RIFT_TOTAL_FRACTION = 0.40f;
 
 namespace {
 inline float xorshift01(uint32_t& s) {
@@ -514,13 +523,21 @@ int32_t applyWilsonRifting(SphereField& field,
     // (Müller 2022 birth histogram).
     int32_t newPlates = 0;
     for (std::size_t i = 0; i < N; ++i) {
-        if (thermalCount[i] < 4) continue; // Plate too small to rift.
-        const float meanThermal = static_cast<float>(
-            thermalSum[i] / static_cast<double>(thermalCount[i]));
-        if (meanThermal < RIFT_THRESHOLD_MY) continue;
-        const float over = meanThermal - RIFT_THRESHOLD_MY;
-        const float prob = std::min(1.0f, over / RIFT_RAMP_MY);
-        if (xorshift01(rngState) > prob) continue;
+        const float totalFrac = static_cast<float>(totalCells[i]) / globeCells;
+        const bool forceRift = (totalFrac >= FORCE_RIFT_TOTAL_FRACTION);
+        if (forceRift) {
+            // Forced split for over-large plates — bypass thermal age.
+            // Minimum cell count still needed to form a meaningful child.
+            if (totalCells[i] < 4) continue;
+        } else {
+            if (thermalCount[i] < 4) continue; // Plate too small to rift.
+            const float meanThermal = static_cast<float>(
+                thermalSum[i] / static_cast<double>(thermalCount[i]));
+            if (meanThermal < RIFT_THRESHOLD_MY) continue;
+            const float over = meanThermal - RIFT_THRESHOLD_MY;
+            const float prob = std::min(1.0f, over / RIFT_RAMP_MY);
+            if (xorshift01(rngState) > prob) continue;
+        }
 
         // PCA on cell sphere positions to find longest axis. Single
         // pass over the whole field collects the indices + unit

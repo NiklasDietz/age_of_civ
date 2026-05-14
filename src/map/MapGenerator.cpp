@@ -824,7 +824,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // Wilson rifting cadence.
             aoc::Random cratonRng(config.seed ^ 0x43524154u); // "CRAT"
 
-            const int32_t numCratons = 5 + cratonRng.nextInt(0, 4);
+            // 2026-05-14: bumped from 5-8 -> 7-11 cratons. The lower bound
+            // matters more than the upper for seeds with adverse plate
+            // geometries: seeds 100 and 200 produced only 3-5 % land in the
+            // 6-seed sweep at numCratons=5, because few cratons + small
+            // log-normal samples + few convergent boundaries starved the
+            // accreteToCardinalNeighbours diffusion pass of donor cells.
+            // Real Earth has ~12 stable cratons (Pilbara, Yilgarn, Slave,
+            // Kaapvaal, North Atlantic, Siberian, North China, Tarim,
+            // Indian, São Francisco, Amazonian, West African; Cawood et
+            // al. 2013, table 1). 7-11 brings the simulation in line.
+            const int32_t numCratons = 7 + cratonRng.nextInt(0, 4);
 
             // Per-nucleus absolute area drawn from log-normal — no
             // global quota. Median nucleus = 0.7 % of sphere
