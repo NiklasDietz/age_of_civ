@@ -714,8 +714,10 @@ ErrorCode establishTradeRoute(aoc::game::GameState& gameState,
                 constexpr float SEA_SPEED = 5.0f;
                 constexpr float ESTIMATED_CARGO_VALUE = 200.0f;  // Rough average
                 float savedTurns = static_cast<float>(savedTiles) / SEA_SPEED;
+                // Guard against a zero-length canal path producing Inf/NaN
+                // (savedTiles > 0 can hold while canalLen == 0).
                 float goldPerTurn = ESTIMATED_CARGO_VALUE
-                    / (static_cast<float>(canalLen) * 2.0f / SEA_SPEED);
+                    / (static_cast<float>(std::max(1, canalLen)) * 2.0f / SEA_SPEED);
                 float timeSavingsValue = goldPerTurn * savedTurns;
 
                 useCanal = timeSavingsValue > static_cast<float>(estimatedToll);
@@ -1373,8 +1375,7 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
 
         // Reverse direction: set up path for the next leg
         trader.isReturning = !trader.isReturning;
-        std::vector<aoc::hex::AxialCoord> reversedPath(trader.path.rbegin(), trader.path.rend());
-        trader.path = std::move(reversedPath);
+        std::reverse(trader.path.begin(), trader.path.end());
         trader.pathIndex = 0;
 
         // WP-O: reserve next-arrival city's goods now (during this leg's

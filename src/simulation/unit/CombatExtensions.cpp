@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_set>
 
 namespace aoc::sim {
 
@@ -115,41 +116,33 @@ ErrorCode launchNuclearStrike(aoc::game::GameState& gameState,
              targetTile.q, targetTile.r, blastRadius,
              static_cast<int>(populationDamage * 100.0f));
 
-    // Collect all tiles in blast radius
-    std::vector<hex::AxialCoord> blastTiles;
-    blastTiles.push_back(targetTile);
+    // Collect all tiles in blast radius. A set guarantees each tile appears
+    // exactly once so tile effects / damage are never applied twice (ring-2
+    // expansion previously appended duplicates).
+    std::unordered_set<hex::AxialCoord> blastSet;
+    blastSet.insert(targetTile);
     if (blastRadius >= 1) {
         std::array<hex::AxialCoord, 6> ring1 = hex::neighbors(targetTile);
         for (const hex::AxialCoord& t : ring1) {
             if (grid.isValid(t)) {
-                blastTiles.push_back(t);
+                blastSet.insert(t);
             }
         }
     }
     if (blastRadius >= 2) {
-        std::vector<hex::AxialCoord> ring2;
-        for (const hex::AxialCoord& r1 : blastTiles) {
+        // Snapshot the radius-1 tiles before expanding; iterating blastSet
+        // while inserting into it would be undefined.
+        std::vector<hex::AxialCoord> ring1Tiles(blastSet.begin(), blastSet.end());
+        for (const hex::AxialCoord& r1 : ring1Tiles) {
             std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(r1);
             for (const hex::AxialCoord& n : nbrs) {
-                if (!grid.isValid(n)) { continue; }
-                bool alreadyIncluded = false;
-                for (const hex::AxialCoord& existing : blastTiles) {
-                    if (existing == n) { alreadyIncluded = true; break; }
-                }
-                if (!alreadyIncluded) {
-                    for (const hex::AxialCoord& existing : ring2) {
-                        if (existing == n) { alreadyIncluded = true; break; }
-                    }
-                }
-                if (!alreadyIncluded) {
-                    ring2.push_back(n);
+                if (grid.isValid(n)) {
+                    blastSet.insert(n);
                 }
             }
         }
-        for (const hex::AxialCoord& t : ring2) {
-            blastTiles.push_back(t);
-        }
     }
+    std::vector<hex::AxialCoord> blastTiles(blastSet.begin(), blastSet.end());
 
     // Destroy all units in blast zone
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {

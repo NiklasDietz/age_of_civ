@@ -383,7 +383,7 @@ void computeCSI(aoc::game::GameState& gameState, const aoc::map::HexGrid& grid,
 
         // Track peak GDP for collapse detection
         if (s.gdp > tracker.peakGDP) {
-            tracker.peakGDP = static_cast<int32_t>(s.gdp);
+            tracker.peakGDP = s.gdp;
         }
     }
 }
@@ -503,10 +503,10 @@ void checkCollapseConditions(aoc::game::GameState& gameState, TurnNumber current
             tracker.activeCollapse = CollapseType::EconomicCollapse;
             tracker.isEliminated = true;
             LOG_INFO("Player %u ELIMINATED: economic collapse "
-                     "(GDP < 25%% of peak for %d turns, peak was %d)",
+                     "(GDP < 25%% of peak for %d turns, peak was %lld)",
                      static_cast<unsigned>(gsPlayer->id()),
                      COLLAPSE_TURNS_REQUIRED,
-                     tracker.peakGDP);
+                     static_cast<long long>(tracker.peakGDP));
             continue;
         }
 
@@ -869,6 +869,13 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
     // Tiebreaker: primary = eraVictoryPoints, secondary = compositeCSI,
     // tertiary = lowest playerId.
     if ((enabledTypes & VICTORY_MASK_SCORE) != 0u && currentTurn >= maxTurns) {
+        // All players eliminated at the turn limit: end the game as a draw
+        // (no winner) instead of returning {} and ticking forever.
+        if (alive == 0) {
+            LOG_INFO("Game ends at turn %d: all players eliminated (no winner)",
+                     static_cast<int>(currentTurn));
+            return {VictoryType::Score, INVALID_PLAYER};
+        }
         PlayerId bestPlayer = INVALID_PLAYER;
         int32_t bestVP = -1;
         float   bestCSI = -1.0f;
@@ -878,10 +885,11 @@ VictoryResult checkVictoryConditions(const aoc::game::GameState& gameState,
             const int32_t vp  = tracker.eraVictoryPoints;
             const float   csi = tracker.compositeCSI;
             const PlayerId id = gsPlayer->id();
+            const bool csiTied = std::abs(csi - bestCSI) < 1e-4f;
             const bool better =
                 (vp >  bestVP) ||
-                (vp == bestVP && csi >  bestCSI) ||
-                (vp == bestVP && csi == bestCSI && id < bestPlayer);
+                (vp == bestVP && !csiTied && csi > bestCSI) ||
+                (vp == bestVP && csiTied && id < bestPlayer);
             if (better) {
                 bestVP     = vp;
                 bestCSI    = csi;

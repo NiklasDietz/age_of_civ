@@ -28,7 +28,13 @@ void CombatAnimator::startAnimation(hex::AxialCoord attacker,
 
 void CombatAnimator::update(float deltaTime) {
     for (CombatAnimEvent& anim : this->m_animations) {
-        anim.progress += deltaTime / anim.duration;
+        if (anim.duration > 0.0f) {
+            anim.progress += deltaTime / anim.duration;
+        } else {
+            // Zero/negative duration: complete immediately rather than
+            // dividing by zero (NaN) or leaving the event stuck forever.
+            anim.progress = 1.0f;
+        }
     }
 
     // Remove completed animations

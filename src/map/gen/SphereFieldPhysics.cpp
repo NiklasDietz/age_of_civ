@@ -1080,6 +1080,19 @@ void advectPlateOwnership(SphereField& field,
     // a 4-neighbour whose forward rotation lands here; pass 3 fills
     // any remaining cells with fresh oceanic crust (mid-ocean ridge).
     constexpr int16_t VACATED = -2;
+    // DEBT(perf, WP-11): these six N-sized buffers (~5.4 MB total) are
+    // allocated every substep, then std::move'd into the field at the end --
+    // i.e. they BECOME the field's storage, and the field's old storage is
+    // freed with the moved-from locals. Promoting them to persistent
+    // SphereField members for reuse is not behaviour-preserving as a drop-in:
+    // because of the swap-by-move, the "scratch" and the "live field" are the
+    // same allocations rotated each call, so reuse needs an explicit
+    // double-buffer (ping/pong) on SphereField plus a guaranteed full
+    // overwrite (pass 1 writes incumbents, passes 2/3 cover vacated/orphan
+    // cells, final fallback covers the rest -- every cell is written, so a
+    // ping-pong is provably safe IF wired correctly). Deferred: touches the
+    // SphereField struct layout and all call sites; out of scope for a
+    // minimal correctness-focused WP. Reuse would save the per-substep alloc.
     std::vector<int16_t> newOwner(N, static_cast<int16_t>(-1));
     std::vector<float>   newCrust(N, 0.0f);
     std::vector<float>   newContFrac(N, 0.0f);
@@ -1902,6 +1915,15 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy) {
         const float latDeg = -90.0f + (static_cast<float>(latIdx) + 0.5f)
                                        * SphereField::CELL_DEG;
         const float latRad = latDeg * 0.01745329252f;
+        // CORRECTNESS FIX (changes generated maps): the longitudinal cell
+        // pitch shrinks as cos(lat), so the zonal slope (zE - zW) / (2*pitch)
+        // is amplified up to ~229x in the pole-most row (lat 89.75 deg,
+        // cos ~= 0.0044). That spurious "slope" erodes genuine polar
+        // highlands to the peneplain floor every epoch. Skip cells poleward
+        // of 87 deg, where the amplification (>=19x) is no longer physical;
+        // polar relief is preserved instead of being flattened each step.
+        constexpr float POLAR_EROSION_CUTOFF_DEG = 87.0f;
+        if (std::fabs(latDeg) > POLAR_EROSION_CUTOFF_DEG) continue;
         const float cellWidthM = cellHeightM * std::cos(latRad);
         const int32_t latS = std::max(0, latIdx - 1);
         const int32_t latN = std::min(LAT - 1, latIdx + 1);

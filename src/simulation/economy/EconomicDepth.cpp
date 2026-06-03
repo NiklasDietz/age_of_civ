@@ -36,7 +36,7 @@ ErrorCode buyFuture(aoc::game::GameState& gameState, const Market& market,
     }
 
     int32_t price = market.price(goodId);
-    CurrencyAmount totalCost = static_cast<CurrencyAmount>(price * amount);
+    CurrencyAmount totalCost = static_cast<CurrencyAmount>(price) * amount;
 
     aoc::game::Player* buyerPlayer = gameState.player(buyer);
     if (buyerPlayer == nullptr) {
@@ -70,7 +70,7 @@ ErrorCode sellFuture(aoc::game::GameState& gameState, const Market& market,
     }
 
     int32_t price    = market.price(goodId);
-    CurrencyAmount revenue = static_cast<CurrencyAmount>(price * amount);
+    CurrencyAmount revenue = static_cast<CurrencyAmount>(price) * amount;
 
     aoc::game::Player* sellerPlayer = gameState.player(seller);
     if (sellerPlayer == nullptr) {

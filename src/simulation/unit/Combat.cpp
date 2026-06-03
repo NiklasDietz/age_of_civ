@@ -454,7 +454,10 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
             }
 
             // Courier cargo loot: half basePrice * quantity of lost cargo.
-            if (defenderIsCourier && defenderCargoQuantity > 0) {
+            // Runtime bounds check: goodDef() only asserts in debug, so guard
+            // here to avoid OOB on a corrupt/out-of-range cargo good id in release.
+            if (defenderIsCourier && defenderCargoQuantity > 0
+                && defenderCargoGoodId < aoc::sim::goods::GOOD_COUNT) {
                 const aoc::sim::GoodDef& gd = aoc::sim::goodDef(defenderCargoGoodId);
                 const CurrencyAmount cargoGold =
                     static_cast<CurrencyAmount>((gd.basePrice * defenderCargoQuantity) / 2);
@@ -640,13 +643,21 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
     // from counter-fire (attackerDamage = 0 above) so always gets XP;
     // defender only gets XP if still alive.
     attacker.experience().addExperience(result.attackerXpGained);
+
+    // WP8 — deferred removal, matching resolveMeleeCombat. We resolve the
+    // owning player while &defender is still live but defer the removeUnit()
+    // call to a single trailing pass so removal is the last action in this
+    // function and never races a sibling deref above.
+    aoc::game::Player* defKillPlayer = nullptr;
     if (!result.defenderKilled) {
         defender.experience().addExperience(result.defenderXpGained);
     } else {
-        aoc::game::Player* defPlayer = findOwningPlayer(gameState, &defender);
-        if (defPlayer != nullptr) {
-            defPlayer->removeUnit(&defender);
-        }
+        defKillPlayer = findOwningPlayer(gameState, &defender);
+    }
+
+    // Trailing removal pass. All &defender derefs are complete; safe to free.
+    if (defKillPlayer != nullptr) {
+        defKillPlayer->removeUnit(&defender);
     }
 
     return result;

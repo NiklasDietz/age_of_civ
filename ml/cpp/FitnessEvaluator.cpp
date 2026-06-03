@@ -811,28 +811,49 @@ void evaluatePopulation(std::vector<Individual>& population,
         };
         std::vector<IndivFutures> perIndividual(toEvaluate.size());
 
-        for (std::size_t k = 0; k < toEvaluate.size(); ++k) {
-            const std::size_t idx = toEvaluate[k];
-            const uint64_t individualSeed = baseSeed + idx * 104729;
-            perIndividual[k].futures.reserve(
-                static_cast<std::size_t>(config.gamesPerEval));
-            for (int32_t g = 0; g < config.gamesPerEval; ++g) {
-                if (stopRequested()) { break; }
-                perIndividual[k].futures.push_back(
-                    pool->submit([&runTask, idx, g, individualSeed, &completed] {
-                        GameScore s = runTask(idx, g, individualSeed);
-                        completed.fetch_add(1, std::memory_order_release);
-                        return s;
-                    }));
+        // The task lambdas reference stack state: runTask (which itself captures
+        // population/config/hallOfFame by reference) and completed. A
+        // std::future destructor does NOT block on a still-running task, so an
+        // exception unwinding this scope while workers are in flight would let
+        // them dereference dangling references (use-after-free). Guard the whole
+        // submit+collect block: on any exception, drain every outstanding future
+        // (keeping the referenced stack state alive) before rethrowing.
+        try {
+            for (std::size_t k = 0; k < toEvaluate.size(); ++k) {
+                const std::size_t idx = toEvaluate[k];
+                const uint64_t individualSeed = baseSeed + idx * 104729;
+                perIndividual[k].futures.reserve(
+                    static_cast<std::size_t>(config.gamesPerEval));
+                for (int32_t g = 0; g < config.gamesPerEval; ++g) {
+                    if (stopRequested()) { break; }
+                    perIndividual[k].futures.push_back(
+                        pool->submit([&runTask, idx, g, individualSeed, &completed] {
+                            GameScore s = runTask(idx, g, individualSeed);
+                            completed.fetch_add(1, std::memory_order_release);
+                            return s;
+                        }));
+                }
             }
-        }
 
-        // Reduce per-individual: wait on that individual's game futures.
-        for (std::size_t k = 0; k < toEvaluate.size(); ++k) {
-            perIndividualScores[k].reserve(perIndividual[k].futures.size());
-            for (std::future<GameScore>& f : perIndividual[k].futures) {
-                perIndividualScores[k].push_back(f.get());
+            // Reduce per-individual: wait on that individual's game futures.
+            for (std::size_t k = 0; k < toEvaluate.size(); ++k) {
+                perIndividualScores[k].reserve(perIndividual[k].futures.size());
+                for (std::future<GameScore>& f : perIndividual[k].futures) {
+                    perIndividualScores[k].push_back(f.get());
+                }
             }
+        } catch (...) {
+            // Block until every submitted task has finished so no worker can
+            // touch runTask/completed after this frame unwinds, then rethrow.
+            for (IndivFutures& indiv : perIndividual) {
+                for (std::future<GameScore>& f : indiv.futures) {
+                    if (!f.valid()) { continue; }
+                    try { f.get(); } catch (...) { /* drain: ignore */ }
+                }
+            }
+            watcher.request_stop();
+            watcher.join();
+            throw;
         }
 
         watcher.request_stop();

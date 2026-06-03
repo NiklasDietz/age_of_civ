@@ -511,26 +511,22 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     // Golden/Dark age effects
     processAgeEffects(*gsPlayer);
 
+    // Resolve the accumulated era score into a Golden/Dark/Normal age once per
+    // age window. checkEraTransition resets the score and re-arms thresholds, so
+    // it must run on a cadence (AGE_DURATION = 10 turns), not every turn, or the
+    // score never accumulates. Without this call the Golden/Dark age system is
+    // inert (eraScore grows but never triggers an age).
+    if ((turnContext.currentTurn % 10) == 0) {
+        checkEraTransition(*gsPlayer);
+    }
+
     // City growth (climate food penalty applied at high CO2 levels).
     processCityGrowth(*gsPlayer, grid,
                       aoc::sim::climateFoodMultiplier(turnContext.gameState->climate()));
 
-    // Resource depletion: each worked finite-reserve tile consumes 1 unit
-    // per turn. Renewable (reserves == -1) never deplete. When reserves hit
-    // 0, the resource is removed (consumeReserve handles this).
-    {
-        for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
-            if (city == nullptr) { continue; }
-            for (const aoc::hex::AxialCoord& tile : city->workedTiles()) {
-                if (!grid.isValid(tile)) { continue; }
-                const int32_t idx = grid.toIndex(tile);
-                if (!grid.resource(idx).isValid()) { continue; }
-                if (grid.reserves(idx) > 0) {
-                    grid.consumeReserve(idx);
-                }
-            }
-        }
-    }
+    // Resource depletion is authoritative in EconomySimulation::harvestResources,
+    // which subtracts the actual extracted yield from tile reserves. Do not
+    // deplete again here or finite tiles drain at double the harvest rate.
 
     // Periodic worker re-assignment so cities pick up newly-revealed
     // strategic resources (Oil after Refining, Aluminium after Electricity,
@@ -645,6 +641,14 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
         // Catch-up bonus: players well behind the tech leader get a science
         // multiplier proportional to the gap. Keeps laggards in contention
         // and prevents runaway science snowball. Max +60% when 4+ techs behind.
+        //
+        // DEBT: this re-scans every player's full tech bitset for every player,
+        // i.e. O(players^2 * techs) per turn. A per-player count cache would cut
+        // it to O(players * techs), but the counts read here are LIVE within the
+        // per-player loop (players processed earlier this turn may have completed
+        // a tech via advanceResearch below), so a single start-of-turn snapshot
+        // would change the catch-up multiplier. Left as-is to preserve behavior;
+        // a correct fix needs an incrementally-maintained researched-count.
         {
             int32_t myTechs = 0;
             int32_t maxTechs = 0;
@@ -1200,8 +1204,15 @@ void processTurn(TurnContext& turnContext) {
         int32_t military = 0;
         bool atWar[MAX_PLAYERS] = {};
     };
+    // PlayerPre::atWar is a fixed [MAX_PLAYERS] array indexed by the allPlayers
+    // vector position, so the active player set must never exceed MAX_PLAYERS or
+    // the war/peace diff below writes/reads out of bounds.
+    assert(turnContext.allPlayers.size() <= MAX_PLAYERS
+           && "allPlayers exceeds MAX_PLAYERS; atWar[] would overflow");
     std::vector<PlayerPre> preState;
     preState.resize(turnContext.allPlayers.size());
+    const std::size_t atWarCount = std::min<std::size_t>(
+        turnContext.allPlayers.size(), MAX_PLAYERS);
     for (std::size_t i = 0; i < turnContext.allPlayers.size(); ++i) {
         const aoc::game::Player* p = turnContext.gameState->player(turnContext.allPlayers[i]);
         if (p == nullptr) { continue; }
@@ -1212,8 +1223,8 @@ void processTurn(TurnContext& turnContext) {
         preState[i].cities = p->cityCount();
         preState[i].units = static_cast<int32_t>(p->units().size());
         preState[i].military = p->militaryUnitCount();
-        if (turnContext.diplomacy != nullptr) {
-            for (std::size_t j = 0; j < turnContext.allPlayers.size(); ++j) {
+        if (turnContext.diplomacy != nullptr && i < atWarCount) {
+            for (std::size_t j = 0; j < atWarCount; ++j) {
                 if (i != j) {
                     preState[i].atWar[j] = turnContext.diplomacy->relation(
                         turnContext.allPlayers[i], turnContext.allPlayers[j]).isAtWar;
@@ -1313,9 +1324,10 @@ void processTurn(TurnContext& turnContext) {
                                  "Unit lost");
             }
 
-            // War state changes
-            if (turnContext.diplomacy != nullptr) {
-                for (std::size_t j = 0; j < turnContext.allPlayers.size(); ++j) {
+            // War state changes (atWar[] is only populated for the first
+            // atWarCount = min(allPlayers, MAX_PLAYERS) slots).
+            if (turnContext.diplomacy != nullptr && i < atWarCount) {
+                for (std::size_t j = 0; j < atWarCount; ++j) {
                     if (i == j) { continue; }
                     const bool nowAtWar = turnContext.diplomacy->relation(pid, turnContext.allPlayers[j]).isAtWar;
                     if (nowAtWar && !preState[i].atWar[j]) {

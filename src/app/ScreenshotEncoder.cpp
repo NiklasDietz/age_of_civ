@@ -12,8 +12,36 @@
 #include "stb_image_write.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <cstring>
+#include <unistd.h>
+#include <fcntl.h>
 
 namespace aoc::app {
+
+namespace {
+
+/// stb write callback: forwards each chunk to a file descriptor we opened
+/// ourselves (with O_NOFOLLOW). `context` is the fd boxed as an int*.
+/// Records failure by zeroing the fd box so the caller can detect it.
+void writeToFd(void* context, void* data, int size) {
+    int* fd = static_cast<int*>(context);
+    if (*fd < 0 || size <= 0) { return; }
+    const char* buf = static_cast<const char*>(data);
+    int remaining = size;
+    while (remaining > 0) {
+        ssize_t n = ::write(*fd, buf, static_cast<size_t>(remaining));
+        if (n < 0) {
+            if (errno == EINTR) { continue; }
+            *fd = -1; // mark stream as failed; subsequent calls no-op.
+            return;
+        }
+        buf += n;
+        remaining -= static_cast<int>(n);
+    }
+}
+
+} // namespace
 
 bool writeScreenshotPng(const std::string& path,
                          const std::vector<uint8_t>& pixels,
@@ -41,12 +69,28 @@ bool writeScreenshotPng(const std::string& path,
         data = rgba.data();
     }
 
+    // Open the target ourselves with O_NOFOLLOW so a symlink planted at the
+    // last path component (which weakly_canonical-based allowlisting in the
+    // DBus layer cannot catch -- the leaf does not exist at check time) is
+    // rejected here at write time with ELOOP, defeating the TOCTOU window.
+    // O_CLOEXEC keeps the fd from leaking across exec; 0600 matches the
+    // private-by-default policy for user data.
+    int fd = ::open(path.c_str(),
+                    O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC,
+                    0600);
+    if (fd < 0) {
+        return false;
+    }
+
     const int stride = static_cast<int>(width) * 4;
-    const int result = stbi_write_png(path.c_str(),
-                                       static_cast<int>(width),
-                                       static_cast<int>(height),
-                                       4, data, stride);
-    return result != 0;
+    int writeFd = fd;
+    const int result = stbi_write_png_to_func(&writeToFd, &writeFd,
+                                              static_cast<int>(width),
+                                              static_cast<int>(height),
+                                              4, data, stride);
+    const bool writeFailed = (writeFd < 0); // writeToFd zeroes box on error.
+    const bool closeOk = (::close(fd) == 0);
+    return result != 0 && !writeFailed && closeOk;
 }
 
 } // namespace aoc::app

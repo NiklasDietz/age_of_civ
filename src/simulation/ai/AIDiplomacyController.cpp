@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <limits>
 #include <unordered_map>
 
@@ -53,7 +54,14 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
         }
     }
 
-    const int32_t ourMilitary = militaryCounts[static_cast<std::size_t>(this->m_player)];
+    // The write loop above is guarded by `pid < MAX_PLAYERS`; guard the read the
+    // same way so an out-of-range m_player cannot index past the array (audit
+    // WP-10 #1). m_player is always a valid game player, so this preserves
+    // behavior (reads the same zero-initialised slot for in-range ids).
+    assert(this->m_player < MAX_PLAYERS && "m_player out of MAX_PLAYERS range");
+    const int32_t ourMilitary = (this->m_player < MAX_PLAYERS)
+        ? militaryCounts[static_cast<std::size_t>(this->m_player)]
+        : 0;
     const uint8_t playerCount = diplomacy.playerCount();
 
     // Leader personality drives war/peace thresholds.
@@ -161,6 +169,12 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                 if (ourPlayerPtr->cities().empty() || theirPlayerPtr->cities().empty()) {
                     continue;
                 }
+                // DEBT (audit WP-10): this O(ourCities * theirCities) closest-
+                // city-pair scan reruns for every `other` player each turn. A
+                // cached per-pair closest-distance would cut it, but the cache
+                // would need invalidation hooks on city found / razed / captured /
+                // relocated across the whole sim -- a cross-system change with
+                // real behaviour risk. Deferred per WP-10 scope.
                 int32_t closestCityDist = std::numeric_limits<int32_t>::max();
                 for (const std::unique_ptr<aoc::game::City>& ourCity : ourPlayerPtr->cities()) {
                     for (const std::unique_ptr<aoc::game::City>& theirCity : theirPlayerPtr->cities()) {

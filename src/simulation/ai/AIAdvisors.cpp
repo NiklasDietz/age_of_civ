@@ -278,6 +278,13 @@ void updateExpansionAssessment(const aoc::game::GameState& gameState,
         float                score;
     };
 
+    // DEBT (audit WP-10): this advisor allocates a fresh per-city `candidates`
+    // spiral (radius 22 ≈ 1500 tiles each) plus a `scored` buffer every run, and
+    // does a full std::sort where only TOP_N=3 are kept. A behaviour-preserving
+    // rewrite (reuse scratch buffers across cities/turns + std::partial_sort with
+    // a stable index tie-break, or an incremental dirty-tile site index) is a
+    // larger restructure with tie-order risk on the recommended sites. Runs only
+    // every 10 turns, so it is off the per-turn hot path. Deferred per WP-10 scope.
     std::vector<ScoredSite> scored;
     scored.reserve(200);
 

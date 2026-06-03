@@ -140,7 +140,10 @@ struct GameDBus::Impl {
         // allowlist. `weakly_canonical` follows symlinks on every
         // existing component so the prefix check is TOCTOU-resistant
         // for parent directories. The leaf file is the one we are
-        // about to write -- it does not exist yet.
+        // about to write -- it does not exist yet, so a last-component
+        // symlink cannot be caught here. That gap is closed at the
+        // write site (ScreenshotEncoder.cpp), which opens the target
+        // with O_NOFOLLOW and fails on a leaf symlink at write time.
         const std::vector<fs::path> roots = screenshotAllowlist();
         if (roots.empty()) {
             return sd_bus_error_set_const(error,
@@ -235,6 +238,16 @@ void GameDBus::stop() {
         {
             std::lock_guard<std::mutex> lock(this->m_impl->pendingMutex);
             if (this->m_impl->pendingCall != nullptr) {
+                // Reply with an error so the blocked client unblocks instead
+                // of hanging forever waiting for a return that never comes.
+                int r = sd_bus_reply_method_errorf(
+                    this->m_impl->pendingCall,
+                    "org.aoc.Game.Error.ShuttingDown",
+                    "server shutting down");
+                if (r < 0) {
+                    LOG_WARN("GameDBus: failed to send shutdown error reply: %s",
+                             std::strerror(-r));
+                }
                 sd_bus_message_unref(this->m_impl->pendingCall);
                 this->m_impl->pendingCall = nullptr;
             }
@@ -250,7 +263,11 @@ int32_t GameDBus::tick() {
     int32_t processed = 0;
     for (;;) {
         int r = sd_bus_process(this->m_impl->bus, nullptr);
-        if (r <= 0) { break; }
+        if (r < 0) {
+            LOG_WARN("sd_bus_process error: %s", std::strerror(-r));
+            break;
+        }
+        if (r == 0) { break; }
         ++processed;
     }
 

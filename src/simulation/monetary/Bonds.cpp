@@ -18,6 +18,13 @@ namespace aoc::sim {
 namespace {
 // Starts at 1 so id 0 remains an "uninitialized" sentinel.
 uint64_t g_nextBondId = 1;
+
+// Unique IOU contract id. Separate from bonds and process-local: IOUs are
+// not serialized, so ids only need to disambiguate equal-principal loans
+// between the same player pair within a session. Starts at 1 so 0 stays a
+// sentinel.
+uint64_t g_nextIouId = 1;
+uint64_t nextIouId() { return g_nextIouId++; }
 }
 
 uint64_t nextBondId()    { return g_nextBondId++; }
@@ -273,8 +280,12 @@ ErrorCode createIOU(aoc::game::GameState& gameState,
     creditorState.treasury -= principal;
     debtorState.treasury   += principal;
 
-    // Create the contract
+    // Create the contract. A unique id pairs the creditor's loansGiven copy
+    // with the debtor's loansReceived copy, so two equal-principal loans
+    // between the same pair stay distinct (matching on principal alone left
+    // a ghost entry accruing phantom interest).
     IOUContract contract;
+    contract.id             = nextIouId();
     contract.creditor       = creditor;
     contract.debtor         = debtor;
     contract.principal      = principal;
@@ -334,10 +345,10 @@ ErrorCode callInIOU(aoc::game::GameState& gameState,
             it->remaining -= payment;
             ++it;
         } else {
-            // Remove matching entry from debtor's loansReceived
+            // Remove matching entry from debtor's loansReceived by unique id.
             for (std::vector<IOUContract>::iterator dIt = debtorIOU.loansReceived.begin();
                  dIt != debtorIOU.loansReceived.end(); ++dIt) {
-                if (dIt->creditor == creditor && dIt->principal == it->principal) {
+                if (dIt->id == it->id) {
                     debtorIOU.loansReceived.erase(dIt);
                     break;
                 }
@@ -405,13 +416,12 @@ void processIOUPayments(aoc::game::GameState& gameState) {
 
             // Loan fully repaid or expired
             if (it->remaining <= 0) {
-                // Remove from debtor's loansReceived
+                // Remove from debtor's loansReceived by unique id.
                 if (debtorPlayer != nullptr) {
                     std::vector<IOUContract>& received = debtorPlayer->ious().loansReceived;
                     for (std::vector<IOUContract>::iterator rIt = received.begin();
                          rIt != received.end(); ++rIt) {
-                        if (rIt->creditor == creditorPtr->id()
-                            && rIt->principal == it->principal) {
+                        if (rIt->id == it->id) {
                             received.erase(rIt);
                             break;
                         }
@@ -419,11 +429,10 @@ void processIOUPayments(aoc::game::GameState& gameState) {
                 }
                 it = creditorIOU.loansGiven.erase(it);
             } else {
-                // Sync to debtor's copy
+                // Sync to debtor's copy by unique id.
                 if (debtorPlayer != nullptr) {
                     for (IOUContract& received : debtorPlayer->ious().loansReceived) {
-                        if (received.creditor == creditorPtr->id()
-                            && received.principal == it->principal) {
+                        if (received.id == it->id) {
                             received.remaining      = it->remaining;
                             received.turnsRemaining = it->turnsRemaining;
                             received.turnsActive    = it->turnsActive;

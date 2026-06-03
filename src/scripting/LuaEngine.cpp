@@ -20,9 +20,36 @@ extern "C" {
 #include <lualib.h>
 }
 
+// LuaJIT / Lua 5.1 predate LUA_OK (introduced in Lua 5.2); on those ABIs a
+// successful call simply returns 0. Define it so the status checks below work
+// uniformly across both interpreters.
+#ifndef LUA_OK
+#define LUA_OK 0
+#endif
+
 #include <string>
 
 namespace aoc::scripting {
+
+namespace {
+
+/// Instruction budget for a single Lua call before the watchdog hook aborts it.
+/// Untrusted mod scripts can otherwise spin in an infinite loop and hang the
+/// host. 10M instructions is generous for legitimate event/victory scripts yet
+/// trips in well under a second on a runaway loop.
+constexpr int LUA_INSTRUCTION_LIMIT = 10'000'000;
+
+/// LUA_MASKCOUNT hook: invoked every LUA_INSTRUCTION_LIMIT VM instructions.
+/// Raising a Lua error here unwinds back to the enclosing pcall, so a runaway
+/// script is reported as a failure rather than hanging the process. Memory
+/// bombs are not bounded by this hook -- a capped allocator was deemed
+/// higher-risk for the LuaJIT path and intentionally omitted (see WP-04 notes).
+void instructionLimitHook(lua_State* L, lua_Debug* /*ar*/) {
+    luaL_error(L, "script exceeded instruction limit (%d) -- possible infinite loop",
+               LUA_INSTRUCTION_LIMIT);
+}
+
+} // namespace
 
 struct LuaEngine::Impl {
     lua_State* luaState = nullptr;
@@ -50,6 +77,12 @@ LuaEngine& LuaEngine::operator=(LuaEngine&& other) noexcept {
 }
 
 bool LuaEngine::initialize(const std::string& scriptsPath) {
+    // Re-initialising must not leak the previous interpreter.
+    if (this->m_impl->luaState != nullptr) {
+        lua_close(this->m_impl->luaState);
+        this->m_impl->luaState = nullptr;
+    }
+
     this->m_impl->luaState = luaL_newstate();
     if (this->m_impl->luaState == nullptr) {
         LOG_ERROR("LuaEngine::initialize: failed to create Lua state");
@@ -89,12 +122,35 @@ bool LuaEngine::initialize(const std::string& scriptsPath) {
 
     // Defence in depth: nil out anything an attacker could reach via the
     // base library or that a future luaL_openlibs change might re-expose.
+    // load/loadstring compile arbitrary bytecode (a sandbox escape), coroutine
+    // can stall the scheduler, and jit.* (LuaJIT) exposes interpreter
+    // internals -- none are needed by mod scripts.
     static constexpr const char* kBlockedGlobals[] = {
         "os", "io", "package", "require", "dofile", "loadfile", "debug",
+        "load", "loadstring", "coroutine", "jit",
     };
     for (const char* name : kBlockedGlobals) {
         lua_pushnil(L);
         lua_setglobal(L, name);
+    }
+
+    // Resource limit: abort runaway scripts via an instruction-count watchdog.
+    // The hook fires every LUA_INSTRUCTION_LIMIT VM instructions and raises a
+    // Lua error, which unwinds back to the enclosing pcall.
+    lua_sethook(L, instructionLimitHook, LUA_MASKCOUNT, LUA_INSTRUCTION_LIMIT);
+
+    // Verify the sandbox holds after registering the approved API: any blocked
+    // global that is still non-nil here would be an escape hatch.
+    for (const char* name : kBlockedGlobals) {
+        lua_getglobal(L, name);
+        bool present = !lua_isnil(L, -1);
+        lua_pop(L, 1);
+        if (present) {
+            LOG_ERROR("LuaEngine::initialize: blocked global '%s' is still reachable -- sandbox compromised", name);
+            lua_close(L);
+            this->m_impl->luaState = nullptr;
+            return false;
+        }
     }
 
     // Load init script if it exists

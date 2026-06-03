@@ -80,6 +80,26 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
     // Track tiles already targeted so multiple builders don't converge on the same tile
     std::unordered_set<aoc::hex::AxialCoord> targetedTiles;
 
+    // WP-10 #5: the TradingPost-cap and Encampment-proximity checks below used
+    // to re-scan the whole map (grid.tileCount()) once per builder per turn.
+    // Scan ONCE here and keep the results live as builders place improvements,
+    // so behaviour is identical to the per-builder rescans (a builder still sees
+    // posts/encampments placed by earlier builders this turn) without the O(tiles)
+    // cost per builder.
+    int32_t existingPosts = 0;
+    std::vector<aoc::hex::AxialCoord> encampmentLocs;
+    {
+        const int32_t tilesN = grid.tileCount();
+        for (int32_t ti = 0; ti < tilesN; ++ti) {
+            const aoc::map::ImprovementType impr = grid.improvement(ti);
+            if (impr == aoc::map::ImprovementType::TradingPost) {
+                ++existingPosts;
+            } else if (impr == aoc::map::ImprovementType::Encampment) {
+                encampmentLocs.push_back(grid.toAxial(ti));
+            }
+        }
+    }
+
     for (const BuilderSnapshot& builder : builders) {
         if (builder.ptr->isDead()) {
             continue;
@@ -316,18 +336,13 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                 for (const aoc::hex::AxialCoord& c : cityLocations) {
                     closeOwn = std::min(closeOwn, grid.distance(builder.position, c));
                 }
-                int32_t existingPosts = 0;
-                const int32_t tilesN = grid.tileCount();
-                for (int32_t ti = 0; ti < tilesN; ++ti) {
-                    if (grid.improvement(ti) == aoc::map::ImprovementType::TradingPost) {
-                        ++existingPosts;
-                    }
-                }
+                // existingPosts is maintained across builders (see hoist above).
                 if (closeOwn <= 12 && closeOwn >= 2 && existingPosts < 8 + this->m_player) {
                     if (canPlaceImprovement(grid, currentIdx,
                                             aoc::map::ImprovementType::TradingPost)) {
                         grid.setImprovement(currentIdx,
                                             aoc::map::ImprovementType::TradingPost);
+                        ++existingPosts;  // keep the live count in sync for later builders
                         builder.ptr->useCharge();
                         LOG_INFO("AI %u Builder placed TradingPost relay at (%d,%d)",
                                  static_cast<unsigned>(this->m_player),
@@ -360,11 +375,10 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
             }
             if (nearBorder) {
                 // Avoid encampment spam: check 6-hex radius for existing depots.
+                // encampmentLocs is maintained across builders (see hoist above).
                 bool tooClose = false;
-                const int32_t tilesN = grid.tileCount();
-                for (int32_t ti = 0; ti < tilesN; ++ti) {
-                    if (grid.improvement(ti) != aoc::map::ImprovementType::Encampment) { continue; }
-                    if (grid.distance(builder.position, grid.toAxial(ti)) <= 6) {
+                for (const aoc::hex::AxialCoord& encLoc : encampmentLocs) {
+                    if (grid.distance(builder.position, encLoc) <= 6) {
                         tooClose = true;
                         break;
                     }
@@ -374,6 +388,7 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
                                         aoc::map::ImprovementType::Encampment)) {
                     grid.setImprovement(currentIdx,
                                         aoc::map::ImprovementType::Encampment);
+                    encampmentLocs.push_back(builder.position);  // keep live for later builders
                     builder.ptr->useCharge();
                     LOG_INFO("AI %u Builder placed Encampment at (%d,%d)",
                              static_cast<unsigned>(this->m_player),
@@ -448,13 +463,9 @@ void AIBuilderController::manageBuildersAndImprovements(aoc::game::GameState& ga
         // showed ~3k "longest segment > range" rejections; the prior
         // restrictive variant rarely placed enough relays to clear them.
         if (gsPlayer->hasResearched(TechId{5})) {
-            int32_t existingPosts = 0;
-            const int32_t tilesN = grid.tileCount();
-            for (int32_t ti = 0; ti < tilesN; ++ti) {
-                if (grid.improvement(ti) == aoc::map::ImprovementType::TradingPost) {
-                    ++existingPosts;
-                }
-            }
+            // Reuse the live existingPosts counter (see hoist above) instead of a
+            // second full-map rescan; it already reflects every post placed this
+            // turn, identical to what the rescan produced (audit WP-10 #5).
             const int32_t postCap = 8 + static_cast<int32_t>(this->m_player);
             if (existingPosts < postCap) {
                 std::vector<aoc::hex::AxialCoord> foreignCities;

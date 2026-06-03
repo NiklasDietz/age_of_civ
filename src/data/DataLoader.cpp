@@ -7,6 +7,7 @@
 #include "aoc/data/JsonParser.hpp"
 #include "aoc/core/Log.hpp"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <fstream>
@@ -16,6 +17,11 @@
 namespace aoc::data {
 
 namespace {
+
+/// Upper bound on the size of a single JSON data file. Untrusted mod data must
+/// not be able to exhaust memory by handing us a multi-gigabyte file; real game
+/// definition files are well under a megabyte, so 16 MiB leaves ample headroom.
+constexpr std::streamoff MAX_DATA_FILE_SIZE = 16 * 1024 * 1024;
 
 /// Read an entire file into a string.
 /// Returns std::nullopt on failure with a distinct log: WARN for missing /
@@ -27,6 +33,16 @@ namespace {
     if (!file.is_open()) {
         LOG_WARN("DataLoader: cannot open '%s' (errno=%d: %s)",
                  path.c_str(), errno, std::strerror(errno));
+        return std::nullopt;
+    }
+    // Reject oversized files before slurping them into memory.
+    file.seekg(0, std::ios::end);
+    std::streamoff fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+    if (fileSize > MAX_DATA_FILE_SIZE) {
+        LOG_ERROR("DataLoader: '%s' is %lld bytes, exceeds max %lld -- refusing to load",
+                  path.c_str(), static_cast<long long>(fileSize),
+                  static_cast<long long>(MAX_DATA_FILE_SIZE));
         return std::nullopt;
     }
     std::ostringstream buffer;
@@ -167,47 +183,33 @@ bool DataLoader::initialize(const std::string& dataDirectory) {
 
     LOG_INFO("DataLoader: loading game definitions from '%s'", defDir.c_str());
 
-    if (!this->loadBuildings(defDir + "/buildings.json")) {
-        LOG_WARN("DataLoader: buildings.json failed, using hardcoded fallback");
-        this->fallbackBuildings();
+    // Distinguish an absent file (expected; fall back to defaults quietly via
+    // WARN) from a file that exists on disk but failed to parse (a real
+    // problem -- corrupt/hostile data -- that warrants LOG_ERROR rather than a
+    // silent default). The loader itself already logs the specific parse
+    // failure; here we just escalate the summary line accordingly.
+    auto loadOrFallback = [&](const char* file,
+                              bool (DataLoader::*load)(const std::string&),
+                              void (DataLoader::*fallback)()) {
+        std::string path = defDir + "/" + file;
+        if ((this->*load)(path)) { return; }
+        std::ifstream probe(path, std::ios::binary);
+        if (probe.is_open()) {
+            LOG_ERROR("DataLoader: %s is present but failed to load, using hardcoded fallback", file);
+        } else {
+            LOG_WARN("DataLoader: %s absent, using hardcoded fallback", file);
+        }
+        (this->*fallback)();
         allSucceeded = false;
-    }
+    };
 
-    if (!this->loadUnits(defDir + "/units.json")) {
-        LOG_WARN("DataLoader: units.json failed, using hardcoded fallback");
-        this->fallbackUnits();
-        allSucceeded = false;
-    }
-
-    if (!this->loadTechs(defDir + "/techs.json")) {
-        LOG_WARN("DataLoader: techs.json failed, using hardcoded fallback");
-        this->fallbackTechs();
-        allSucceeded = false;
-    }
-
-    if (!this->loadRecipes(defDir + "/recipes.json")) {
-        LOG_WARN("DataLoader: recipes.json failed, using hardcoded fallback");
-        this->fallbackRecipes();
-        allSucceeded = false;
-    }
-
-    if (!this->loadGoods(defDir + "/goods.json")) {
-        LOG_WARN("DataLoader: goods.json failed, using hardcoded fallback");
-        this->fallbackGoods();
-        allSucceeded = false;
-    }
-
-    if (!this->loadLeaders(defDir + "/leaders.json")) {
-        LOG_WARN("DataLoader: leaders.json failed, using hardcoded fallback");
-        this->fallbackLeaders();
-        allSucceeded = false;
-    }
-
-    if (!this->loadImprovements(defDir + "/improvements.json")) {
-        LOG_WARN("DataLoader: improvements.json failed, using hardcoded fallback");
-        this->fallbackImprovements();
-        allSucceeded = false;
-    }
+    loadOrFallback("buildings.json",    &DataLoader::loadBuildings,    &DataLoader::fallbackBuildings);
+    loadOrFallback("units.json",        &DataLoader::loadUnits,        &DataLoader::fallbackUnits);
+    loadOrFallback("techs.json",        &DataLoader::loadTechs,        &DataLoader::fallbackTechs);
+    loadOrFallback("recipes.json",      &DataLoader::loadRecipes,      &DataLoader::fallbackRecipes);
+    loadOrFallback("goods.json",        &DataLoader::loadGoods,        &DataLoader::fallbackGoods);
+    loadOrFallback("leaders.json",      &DataLoader::loadLeaders,      &DataLoader::fallbackLeaders);
+    loadOrFallback("improvements.json", &DataLoader::loadImprovements, &DataLoader::fallbackImprovements);
 
     LOG_INFO("DataLoader: loaded %zu buildings, %zu units, %zu techs, %zu recipes, %zu goods, %zu leaders, %zu improvements",
              this->buildingDefs.size(), this->unitTypeDefs.size(), this->techDefs.size(),
@@ -657,12 +659,17 @@ bool DataLoader::loadImprovements(const std::string& path) {
         RuntimeImprovementDef def{};
         def.type = parseImprovementType(entry["type"].asString());
         def.name = entry["name"].asString();
-        def.yieldBonus.food       = static_cast<int8_t>(entry["food"].asInt32());
-        def.yieldBonus.production = static_cast<int8_t>(entry["production"].asInt32());
-        def.yieldBonus.gold       = static_cast<int8_t>(entry["gold"].asInt32());
-        def.yieldBonus.science    = static_cast<int8_t>(entry["science"].asInt32());
-        def.yieldBonus.culture    = static_cast<int8_t>(entry["culture"].asInt32());
-        def.yieldBonus.faith      = static_cast<int8_t>(entry["faith"].asInt32());
+        // Yields are int8_t; clamp into range before the narrowing cast since a
+        // direct cast of an out-of-range value is implementation-defined.
+        auto toYield = [](int32_t v) {
+            return static_cast<int8_t>(std::clamp(v, -128, 127));
+        };
+        def.yieldBonus.food       = toYield(entry["food"].asInt32());
+        def.yieldBonus.production = toYield(entry["production"].asInt32());
+        def.yieldBonus.gold       = toYield(entry["gold"].asInt32());
+        def.yieldBonus.science    = toYield(entry["science"].asInt32());
+        def.yieldBonus.culture    = toYield(entry["culture"].asInt32());
+        def.yieldBonus.faith      = toYield(entry["faith"].asInt32());
         def.requiredTech = aoc::TechId{entry["requiredTech"].asUint16()};
         def.buildTurns = entry["buildTurns"].asInt32();
         this->improvementDefs.push_back(std::move(def));

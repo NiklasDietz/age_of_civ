@@ -56,6 +56,13 @@ void renderInfrastructureOverlay(vulkan_app::renderer::Renderer2D& renderer,
                                  const aoc::map::HexGrid& grid,
                                  float cameraX, float cameraY, float zoom,
                                  PlayerId player) {
+    // DEBT: no viewport culling — iterates every tile each frame. The
+    // MapRenderer::drawToBuffer visible-range computation is NOT readily
+    // reusable here: this overlay uses a different hex layout (pointy-top,
+    // HEX_SIZE=32 in hexToScreen) vs MapRenderer's flat m_hexSize, and the
+    // function has no screen-dimension params to derive the visible bounds.
+    // Adding culling needs a signature change (screenWidth/Height). Deferred
+    // until this overlay (currently uncalled) gets a real call site.
     int32_t tileCount = grid.tileCount();
     for (int32_t i = 0; i < tileCount; ++i) {
         if (grid.owner(i) != player) { continue; }
@@ -144,7 +151,7 @@ void renderTradeRouteOverlay(vulkan_app::renderer::Renderer2D& renderer,
             hexToScreen(route.path[p], cameraX, cameraY, zoom, x1, y1);
             hexToScreen(route.path[p + 1], cameraX, cameraY, zoom, x2, y2);
 
-            renderer.drawLine(x1, y1, x2, y2, 0.9f, 0.8f, 0.2f, 0.6f);
+            renderer.drawLine(x1, y1, x2, y2, 1.5f, 0.9f, 0.8f, 0.2f, 0.6f);
         }
     }
 }
@@ -199,18 +206,18 @@ void renderAdjacencyArrowOverlay(vulkan_app::renderer::Renderer2D& renderer,
         const float ex = nx - ux * inset;
         const float ey = ny - uy * inset;
 
-        renderer.drawLine(sx, sy, ex, ey, rC, gC, bC, 0.9f);
+        renderer.drawLine(sx, sy, ex, ey, 1.5f, rC, gC, bC, 0.9f);
         const float head = 5.0f;
         const float perpX = -uy;
         const float perpY =  ux;
         renderer.drawLine(ex, ey,
                           ex - ux * head + perpX * head * 0.5f,
                           ey - uy * head + perpY * head * 0.5f,
-                          rC, gC, bC, 0.9f);
+                          1.5f, rC, gC, bC, 0.9f);
         renderer.drawLine(ex, ey,
                           ex - ux * head - perpX * head * 0.5f,
                           ey - uy * head - perpY * head * 0.5f,
-                          rC, gC, bC, 0.9f);
+                          1.5f, rC, gC, bC, 0.9f);
     }
 }
 

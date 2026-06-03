@@ -523,6 +523,11 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                         }
                     }
                     if (haveTarget && launcher != nullptr) {
+                        // Equip/log BEFORE the strike: launchNuclearStrike's blast
+                        // calls Player::removeUnit, which can free `launcher` (the
+                        // launcher may sit in the blast zone). Capture everything
+                        // we need from launcher now; never dereference it after the
+                        // call (latent use-after-free, audit WP-10 #2).
                         launcher->nuclear().equipped = true;
                         launcher->nuclear().type = NukeType::NuclearDevice;
                         LOG_INFO("AI %u NUCLEAR STRIKE decision: target p%u at (%d,%d) "
@@ -535,6 +540,7 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                         [[maybe_unused]] ErrorCode nec = launchNuclearStrike(
                             gameState, grid, this->m_player, targetLoc,
                             NukeType::NuclearDevice);
+                        launcher = nullptr;  // may dangle after the blast — do not reuse
                     }
                 }
             }
@@ -1046,7 +1052,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 ProductionCandidate candidate{};
                 candidate.item.type      = ProductionItemType::Unit;
                 candidate.item.itemId    = 3u;
-                candidate.item.name      = "Settler";
+                candidate.nameView       = "Settler";
                 candidate.item.totalCost = static_cast<float>(
                     unitTypeDef(UNIT_SETTLER).productionCost);
                 candidate.item.progress  = 0.0f;
@@ -1072,7 +1078,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 ProductionCandidate candidate{};
                 candidate.item.type      = ProductionItemType::Unit;
                 candidate.item.itemId    = bestMilitaryId.value;
-                candidate.item.name      = std::string(bestMilitaryDef.name);
+                candidate.nameView       = bestMilitaryDef.name;
                 candidate.item.totalCost = static_cast<float>(bestMilitaryDef.productionCost);
                 candidate.item.progress  = 0.0f;
                 candidate.score          = militaryScore
@@ -1108,7 +1114,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 ProductionCandidate candidate{};
                 candidate.item.type      = ProductionItemType::Unit;
                 candidate.item.itemId    = 5u;
-                candidate.item.name      = "Builder";
+                candidate.nameView       = "Builder";
                 candidate.item.totalCost = static_cast<float>(
                     unitTypeDef(UNIT_BUILDER).productionCost);
                 candidate.item.progress  = 0.0f;
@@ -1135,7 +1141,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 ProductionCandidate candidate{};
                 candidate.item.type      = ProductionItemType::Unit;
                 candidate.item.itemId    = 2u;
-                candidate.item.name      = "Scout";
+                candidate.nameView       = "Scout";
                 candidate.item.totalCost = static_cast<float>(
                     unitTypeDef(UnitTypeId{2}).productionCost);
                 candidate.item.progress  = 0.0f;
@@ -1162,7 +1168,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 ProductionCandidate candidate{};
                 candidate.item.type      = ProductionItemType::Unit;
                 candidate.item.itemId    = 30u;
-                candidate.item.name      = "Trader";
+                candidate.nameView       = "Trader";
                 candidate.item.totalCost = static_cast<float>(
                     unitTypeDef(UnitTypeId{30}).productionCost);
                 candidate.item.progress  = 0.0f;
@@ -1198,7 +1204,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 ProductionCandidate candidate{};
                 candidate.item.type      = ProductionItemType::Unit;
                 candidate.item.itemId    = 62u;
-                candidate.item.name      = "Supply Wagon";
+                candidate.nameView       = "Supply Wagon";
                 candidate.item.totalCost = static_cast<float>(
                     unitTypeDef(UnitTypeId{62}).productionCost);
                 candidate.item.progress  = 0.0f;
@@ -1252,7 +1258,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                     ProductionCandidate candidate{};
                     candidate.item.type      = ProductionItemType::Building;
                     candidate.item.itemId    = bdef.id.value;
-                    candidate.item.name      = std::string(bdef.name);
+                    candidate.nameView       = bdef.name;
                     candidate.item.totalCost = static_cast<float>(bdef.productionCost);
                     candidate.item.progress  = 0.0f;
                     candidate.score          = buildingScore * postureMult;
@@ -1353,7 +1359,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 ProductionCandidate candidate{};
                 candidate.item.type      = ProductionItemType::District;
                 candidate.item.itemId    = static_cast<uint16_t>(opt.type);
-                candidate.item.name      = std::string(districtTypeName(opt.type));
+                candidate.nameView       = districtTypeName(opt.type);
                 candidate.item.totalCost = opt.baseCost;
                 candidate.item.progress  = 0.0f;
                 candidate.score          = opt.utilityScore;
@@ -1373,7 +1379,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             ProductionCandidate candidate{};
             candidate.item.type      = ProductionItemType::Building;
             candidate.item.itemId    = 24u;
-            candidate.item.name      = "Mint";
+            candidate.nameView       = "Mint";
             candidate.item.totalCost = 70.0f;
             candidate.item.progress  = 0.0f;
             candidate.score          = 4.0f;  // Must beat settlers (~2.14) and military
@@ -1425,7 +1431,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 ProductionCandidate candidate{};
                 candidate.item.type      = ProductionItemType::Building;
                 candidate.item.itemId    = cp.buildingId;
-                candidate.item.name      = cp.name;
+                candidate.nameView       = cp.name;
                 candidate.item.totalCost = cp.totalCost;
                 candidate.item.progress  = 0.0f;
                 candidate.score          = 5.0f;  // beat all production scorers
@@ -1442,7 +1448,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             ProductionCandidate candidate{};
             candidate.item.type      = ProductionItemType::Building;
             candidate.item.itemId    = 17u;
-            candidate.item.name      = "Ancient Walls";
+            candidate.nameView       = "Ancient Walls";
             candidate.item.totalCost = 80.0f;
             candidate.item.progress  = 0.0f;
             candidate.score          = 0.9f * personality.behavior.militaryAggression;
@@ -1472,7 +1478,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                     ProductionCandidate candidate{};
                     candidate.item.type      = ProductionItemType::Unit;
                     candidate.item.itemId    = spyUnitId.value;
-                    candidate.item.name      = std::string(spyDef.name);
+                    candidate.nameView       = spyDef.name;
                     candidate.item.totalCost = static_cast<float>(spyDef.productionCost);
                     candidate.item.progress  = 0.0f;
                     // 3.5 gives spy parity with military (~3-6 post-posture)
@@ -1509,7 +1515,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                         ProductionCandidate candidate{};
                         candidate.item.type      = ProductionItemType::Unit;
                         candidate.item.itemId    = missionaryId.value;
-                        candidate.item.name      = std::string(mdef.name);
+                        candidate.nameView       = mdef.name;
                         candidate.item.totalCost = static_cast<float>(mdef.productionCost);
                         candidate.item.progress  = 0.0f;
                         candidate.score          = 2.8f
@@ -1559,7 +1565,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 ProductionCandidate candidate{};
                 candidate.item.type      = ProductionItemType::Wonder;
                 candidate.item.itemId    = static_cast<uint16_t>(wdef.id);
-                candidate.item.name      = std::string(wdef.name);
+                candidate.nameView       = wdef.name;
                 candidate.item.totalCost = static_cast<float>(wdef.productionCost);
                 candidate.item.progress  = 0.0f;
                 candidate.score          = wonderScore
@@ -1601,8 +1607,11 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
             if (c.score > topScore) { topScore = c.score; }
         }
 
-        // Gather all candidates within 10% of the top score
-        std::vector<std::size_t> topIndices;
+        // Gather all candidates within 10% of the top score. Reuse the
+        // per-AIController scratch (clear() preserves capacity) so this is not a
+        // fresh per-city allocation (audit WP-10 #6).
+        std::vector<std::size_t>& topIndices = this->m_topIndicesScratch;
+        topIndices.clear();
         topIndices.reserve(candidates.size());
         const float scoreFloor = topScore * 0.9f;
         for (std::size_t i = 0; i < candidates.size(); ++i) {
@@ -1620,6 +1629,9 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
         const std::size_t chosenIdx = topIndices[choiceHash % topIndices.size()];
 
         ProductionQueueItem chosen = candidates[chosenIdx].item;
+        // Materialise the owning name std::string only for the chosen candidate;
+        // candidates carry a non-owning nameView during scoring (audit WP-10 #6).
+        chosen.name.assign(candidates[chosenIdx].nameView);
         chosen.totalCost *= aoc::sim::GamePace::instance().costMultiplier;
 
         LOG_INFO("AI %u Enqueued %s in %s (utility %.3f)",
@@ -1641,6 +1653,14 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
                 return aoc::core::ProductionItemKind::Unknown;
             };
 
+            // DEBT (audit WP-10 #7): only the top 3 of `sorted` are read below,
+            // so std::partial_sort would suffice. NOT applied: neither std::sort
+            // nor std::partial_sort is stable, and they can order tied scores
+            // differently from each other. The logged alternates would then
+            // differ on ties, which a decision-log replay/diff harness compares.
+            // This whole block is also cold (only runs when the decision log is
+            // active). Switching requires a stable top-N (e.g. tie-break on index)
+            // to keep the logged order byte-identical -- deferred.
             std::vector<std::size_t> sorted(candidates.size());
             for (std::size_t i = 0; i < candidates.size(); ++i) { sorted[i] = i; }
             std::sort(sorted.begin(), sorted.end(),
@@ -1716,7 +1736,11 @@ void AIController::manageEconomy(aoc::game::GameState& gameState,
         int32_t  amount;
         bool     wantToSell;
     };
+    // Single allocation: at most one desire per good, so reserving up front
+    // removes the growth reallocations (audit WP-10 #6). Kept local (not a
+    // member) because TradeDesire is a function-local type.
     std::vector<TradeDesire> desires;
+    desires.reserve(totalGoods);
 
     for (uint16_t g = 0; g < totalGoods; ++g) {
         const int32_t currentPrice = market.price(g);
@@ -1817,21 +1841,28 @@ void AIController::manageMonetarySystem(aoc::game::GameState& gameState,
         myState.luxuryAllocation = std::max(myState.luxuryAllocation, 0.10f);
     }
 
-    // Count distinct trade partners from global trade routes
+    // Count distinct trade partners from global trade routes. PlayerId is a
+    // small bounded index, so a stack bitset replaces the per-call heap-backed
+    // unordered_set while producing the identical distinct count (audit WP-10 #6).
     int32_t tradePartnerCount = 0;
     {
-        std::unordered_set<PlayerId> partners;
+        std::array<bool, MAX_PLAYERS> partnerSeen{};
+        auto markPartner = [&](PlayerId pid) {
+            if (pid < MAX_PLAYERS && !partnerSeen[pid]) {
+                partnerSeen[pid] = true;
+                ++tradePartnerCount;
+            }
+        };
         for (const aoc::sim::TradeRouteComponent& route : gameState.tradeRoutes()) {
             if (route.sourcePlayer == this->m_player &&
                 route.destPlayer != this->m_player) {
-                partners.insert(route.destPlayer);
+                markPartner(route.destPlayer);
             }
             if (route.destPlayer == this->m_player &&
                 route.sourcePlayer != this->m_player) {
-                partners.insert(route.sourcePlayer);
+                markPartner(route.sourcePlayer);
             }
         }
-        tradePartnerCount = static_cast<int32_t>(partners.size());
     }
 
     // Compute GDP rank among all players

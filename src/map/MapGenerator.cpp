@@ -1596,15 +1596,36 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // continental-only mountain gate. Tiles with ocean SphereField
         // mass are clamped to a low orogeny tier to prevent oceanic
         // cells with random elevation noise registering as mountains.
-        AOC_PARALLEL_FOR_ROWS
-        for (int32_t row = 0; row < height; ++row) {
-            for (int32_t col = 0; col < width; ++col) {
-                const float nx = static_cast<float>(col) / static_cast<float>(width);
-                const float ny = static_cast<float>(row) / static_cast<float>(height);
-                aoc::map::gen::MollweideInverseResult mw =
-                    aoc::map::gen::projectionInverse(
-                        config.projection, nx, ny);
-                if (!mw.valid) { continue; }
+    // PERF: fused orogeny + elevation pass. Both passes iterate the same
+    // (row, col) grid, are row-parallel, and recompute the identical
+    // projectionInverse per cell; merging them computes that pure inverse
+    // once and writes the two disjoint output arrays (orogeny, elevationMap)
+    // in one sweep. orogeny is only written when the cell is in projection
+    // range (matching the old `continue`); out-of-range cells keep their
+    // pre-initialised 0.0f orogeny and get elevationMap = -1.0f exactly as
+    // before. Results are bit-identical -- one of three projectionInverse
+    // calls per cell is removed.
+    //
+    // World-frame elevation: tile (col, row) maps to lat/lon via the user-
+    // selected projection; elevation comes from the SphereField
+    // surfaceElevationM raster (authoritative state produced by 3 Gy of
+    // mechanism physics — subduction trims, ridges accrete, continents dock,
+    // Wilson cycles rift). Tiles outside the projection's valid range get a
+    // deep ocean elevation so the rendering still draws them as water. Output
+    // is a percentile-rank map: ClimateBiome.cpp picks ocean / shore / land
+    // tiers via Thresholds.cpp on a sorted view of this array, so the
+    // absolute scale only needs to be monotonic.
+    AOC_PARALLEL_FOR_ROWS
+    for (int32_t row = 0; row < height; ++row) {
+        for (int32_t col = 0; col < width; ++col) {
+            const float nx = static_cast<float>(col) / static_cast<float>(width);
+            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const aoc::map::gen::MollweideInverseResult mw =
+                aoc::map::gen::projectionInverse(
+                    config.projection, nx, ny);
+            float elev = -1.0f; // Out of projection range → ocean.
+            if (mw.valid) {
+                // --- orogeny (mountain) sample ---
                 // halfSearchCells calibrated to the hex tile's actual
                 // footprint on the sphere. SphereField cell pitch is
                 // 0.5 deg; hex tile width is 360/width deg. Half-window
@@ -1619,44 +1640,21 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 const int32_t hexHalfCells = std::max(3,
                     static_cast<int32_t>(std::ceil(
                         180.0f / static_cast<float>(width) / 0.5f)));
-                const float zM = sphereField.peakSample(
+                const float zMpeak = sphereField.peakSample(
                     sphereField.surfaceElevationM,
                     mw.coord.latDeg, mw.coord.lonDeg,
                     hexHalfCells);
-                float oroSampled = (zM > aoc::map::gen::MOUNTAIN_THRESHOLD_M)
+                float oroSampled = (zMpeak > aoc::map::gen::MOUNTAIN_THRESHOLD_M)
                     ? 1.0f : 0.0f;
-                const float frac = sphereField.bilinearSample(
+                const float fracPeak = sphereField.bilinearSample(
                     sphereField.continentalFraction,
                     mw.coord.latDeg, mw.coord.lonDeg);
-                if (frac < 0.5f && oroSampled > 0.10f) {
+                if (fracPeak < 0.5f && oroSampled > 0.10f) {
                     oroSampled = 0.10f;
                 }
                 orogeny[static_cast<std::size_t>(row * width + col)] = oroSampled;
-            }
-        }
 
-    // World-frame elevation pass. NO Voronoi: tile (col, row) maps to
-    // lat/lon via the user-selected projection; elevation comes from
-    // the SphereField surfaceElevationM raster (authoritative state
-    // produced by 3 Gy of mechanism physics — subduction trims,
-    // ridges accrete, continents dock, Wilson cycles rift).
-    //
-    // Tiles outside the projection's valid range (Mollweide ellipse
-    // corners, Mercator polar clip) get a deep ocean elevation so
-    // the rendering still draws them as water. Output is a
-    // percentile-rank map: ClimateBiome.cpp picks ocean / shore /
-    // land tiers via Thresholds.cpp on a sorted view of this array,
-    // so the absolute scale only needs to be monotonic.
-    AOC_PARALLEL_FOR_ROWS
-    for (int32_t row = 0; row < height; ++row) {
-        for (int32_t col = 0; col < width; ++col) {
-            const float nx = static_cast<float>(col) / static_cast<float>(width);
-            const float ny = static_cast<float>(row) / static_cast<float>(height);
-            const aoc::map::gen::MollweideInverseResult mw =
-                aoc::map::gen::projectionInverse(
-                    config.projection, nx, ny);
-            float elev = -1.0f; // Out of projection range → ocean.
-            if (mw.valid) {
+                // --- elevation sample ---
                 const float zM = sphereField.bilinearSample(
                     sphereField.surfaceElevationM,
                     mw.coord.latDeg, mw.coord.lonDeg);
@@ -1722,6 +1720,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // Per-hex-tile plate id, projected from the SphereField raster
     // through the user-selected projection. `SphereField::locate`
     // returns the authoritative raster cell.
+    //
+    // DEBT(perf, WP-11): this third full-grid pass recomputes the same
+    // projectionInverse per cell as the fused orogeny/elevation pass above.
+    // It is NOT fused in because it is intentionally serial -- grid.setPlateId
+    // lazy-allocates m_plateId on its first call (HexGrid.hpp), which is not
+    // thread-safe, so folding it into the row-parallel loop above would race.
+    // Fusing safely needs the m_plateId buffer pre-allocated before the loop;
+    // deferred to keep this WP's diff minimal and behaviour-identical.
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
             const float nx = static_cast<float>(col) / static_cast<float>(width);

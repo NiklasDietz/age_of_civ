@@ -26,23 +26,36 @@ namespace aoc::debug {
 
 namespace {
 
-/// Escape `"` and `\` for embedding inside a JSON string literal.
-/// We intentionally keep this minimal: cpp-httplib hands us the
-/// `std::exception::what()` C-string verbatim, so user/Lua-supplied
-/// payloads could contain quotes that would break the JSON envelope
-/// or, worse, allow attacker-controlled keys/values into the
-/// response. A small escape pass covers all printable cases we hand
-/// back today; control characters get passed through as-is and the
-/// caller's JSON parser is responsible for surfacing them.
+/// Escape `"`, `\`, and control characters for embedding inside a JSON
+/// string literal. cpp-httplib hands us the `std::exception::what()`
+/// C-string verbatim, so user/Lua-supplied payloads could contain
+/// quotes that would break the JSON envelope or, worse, allow
+/// attacker-controlled keys/values into the response. Control
+/// characters (0x00-0x1F) are illegal raw inside a JSON string, so we
+/// emit the standard short escapes for `\n \r \t` and `\u00XX` for the
+/// rest -- otherwise a strict parser would reject the whole response.
 [[nodiscard]] std::string escapeJsonString(const char* raw) {
     std::string out;
     if (raw == nullptr) return out;
     out.reserve(std::char_traits<char>::length(raw));
+    static constexpr char kHex[] = "0123456789abcdef";
     for (const char* p = raw; *p != '\0'; ++p) {
-        switch (*p) {
+        const unsigned char c = static_cast<unsigned char>(*p);
+        switch (c) {
             case '"':  out += "\\\""; break;
             case '\\': out += "\\\\"; break;
-            default:   out += *p;     break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            default:
+                if (c < 0x20) {
+                    out += "\\u00";
+                    out += kHex[(c >> 4) & 0x0F];
+                    out += kHex[c & 0x0F];
+                } else {
+                    out += static_cast<char>(c);
+                }
+                break;
         }
     }
     return out;
@@ -64,6 +77,13 @@ struct DebugServer::Impl {
 };
 
 DebugServer::DebugServer(int32_t port) : m_impl(std::make_unique<Impl>()) {
+    // Reject privileged (<1024) and out-of-range ports up front. A bad
+    // value would otherwise surface only as an opaque bind failure later.
+    if (port < 1024 || port > 65535) {
+        LOG_ERROR("DebugServer: port %d out of range [1024, 65535]; "
+                  "falling back to default %d", port, this->m_impl->port);
+        return;
+    }
     this->m_impl->port = port;
 }
 
@@ -91,6 +111,10 @@ void DebugServer::routeJson(Method method, std::string path,
                 err += escapeJsonString(e.what());
                 err += "\"}\n";
                 res.set_content(err, "application/json");
+            } catch (...) {
+                res.status = 500;
+                res.set_content("{\"error\":\"unknown exception\"}\n",
+                                "application/json");
             }
         });
 }
@@ -121,10 +145,21 @@ bool DebugServer::start() {
     }
     this->m_impl->running.store(true, std::memory_order_release);
     this->m_impl->listener = std::jthread([this]() {
-        LOG_INFO("DebugServer: listening on http://127.0.0.1:%d",
-                 this->m_impl->port);
-        this->m_impl->server.listen_after_bind();
-        LOG_INFO("DebugServer: listener exited");
+        // An exception escaping a jthread body calls std::terminate.
+        // Guard it: log, then drop `running` so the server is observably
+        // stopped instead of wedged with a dead listener but live flag.
+        try {
+            LOG_INFO("DebugServer: listening on http://127.0.0.1:%d",
+                     this->m_impl->port);
+            this->m_impl->server.listen_after_bind();
+            LOG_INFO("DebugServer: listener exited");
+        } catch (const std::exception& e) {
+            LOG_ERROR("DebugServer: listener thread threw: %s", e.what());
+            this->m_impl->running.store(false, std::memory_order_release);
+        } catch (...) {
+            LOG_ERROR("DebugServer: listener thread threw unknown exception");
+            this->m_impl->running.store(false, std::memory_order_release);
+        }
     });
     return true;
 }

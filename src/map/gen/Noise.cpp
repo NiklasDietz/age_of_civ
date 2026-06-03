@@ -34,6 +34,13 @@ float noise2D(float x, float y, float frequency, aoc::Random& rng) {
 
 float fractalNoise(float x, float y, int octaves, float frequency,
                     float persistence, aoc::Random& rng) {
+    // Guard against division by zero below: with octaves <= 0 the loop never
+    // runs, leaving maxValue == 0 and `value / maxValue` producing NaN that
+    // would poison downstream biome thresholds.
+    if (octaves <= 0) {
+        return 0.0f;
+    }
+
     float value     = 0.0f;
     float amplitude = 1.0f;
     float maxValue  = 0.0f;

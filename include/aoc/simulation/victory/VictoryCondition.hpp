@@ -149,7 +149,7 @@ struct VictoryTrackerComponent {
 
     // -- Collapse tracking --
     CollapseType activeCollapse = CollapseType::None;
-    int32_t peakGDP = 0;
+    CurrencyAmount peakGDP = 0;  ///< Full-width: GDP can exceed int32 range late-game.
     int32_t turnsGDPBelowHalf = 0;
     int32_t turnsLowLoyalty = 0;
     bool    isEliminated = false;

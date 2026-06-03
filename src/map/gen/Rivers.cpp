@@ -102,6 +102,22 @@ void MapGenerator::generateRivers(HexGrid& grid, aoc::Random& rng) {
 
     struct Step { int32_t tileIndex; int32_t direction; };
 
+    // PERF: hoist the per-river BFS scratch out of the findPath lambda. The
+    // (tile, prevDir) state-space has a fixed size (tileCount * 7) for the
+    // whole pass, so the four state arrays plus the frontier are allocated
+    // once here and reset (std::fill / clear) per river. The reset writes the
+    // exact same initial values the per-call constructors used, so results are
+    // identical -- only the O(7*tiles) allocation per river is removed.
+    constexpr int32_t DIR_SLOTS = 7;
+    const int32_t tc = grid.tileCount();
+    const size_t stateCount = static_cast<size_t>(tc) * DIR_SLOTS;
+    std::vector<int32_t> parentTile(stateCount, -1);
+    std::vector<int8_t>  parentSlot(stateCount, -1);
+    std::vector<int8_t>  incomingDir(stateCount, -1);
+    std::vector<uint8_t> visited(stateCount, 0);
+    std::vector<std::pair<int32_t, int32_t>> queue;  // (tileIdx, prevDir)
+    queue.reserve(static_cast<size_t>(tc));
+
     // BFS over (tile, prevDir) state-space with strict ±2 transitions.  Each
     // state represents "we are standing on `tile`, and the last step into
     // this tile used direction `prevDir` (from the previous tile to this
@@ -116,22 +132,19 @@ void MapGenerator::generateRivers(HexGrid& grid, aoc::Random& rng) {
     // to-water), so any geometrically valid ±2 path to water is accepted.
     auto findPath = [&](int32_t startIdx, std::vector<Step>& outPath) -> bool {
         outPath.clear();
-        const int32_t tc = grid.tileCount();
         // parent[tile * 7 + (prevDir+1)] = encoded prev state + incoming dir.
-        // We allocate 7 slots per tile (prevDir ∈ {-1, 0..5}).
-        constexpr int32_t DIR_SLOTS = 7;
-        const size_t stateCount = static_cast<size_t>(tc) * DIR_SLOTS;
-        std::vector<int32_t> parentTile(stateCount, -1);
-        std::vector<int8_t>  parentSlot(stateCount, -1);
-        std::vector<int8_t>  incomingDir(stateCount, -1);
-        std::vector<uint8_t> visited(stateCount, 0);
+        // 7 slots per tile (prevDir ∈ {-1, 0..5}). Reset the hoisted scratch
+        // to the same initial state the per-call vectors started from.
+        std::fill(parentTile.begin(),  parentTile.end(),  -1);
+        std::fill(parentSlot.begin(),  parentSlot.end(),  static_cast<int8_t>(-1));
+        std::fill(incomingDir.begin(), incomingDir.end(), static_cast<int8_t>(-1));
+        std::fill(visited.begin(),     visited.end(),     static_cast<uint8_t>(0));
+        queue.clear();
 
         auto slot = [](int32_t prevDir) -> int32_t {
             return prevDir + 1;  // -1 → 0, 0..5 → 1..6
         };
 
-        std::vector<std::pair<int32_t, int32_t>> queue;  // (tileIdx, prevDir)
-        queue.reserve(static_cast<size_t>(tc));
         const size_t startState = static_cast<size_t>(startIdx) * DIR_SLOTS + static_cast<size_t>(slot(-1));
         visited[startState] = 1;
         queue.emplace_back(startIdx, -1);

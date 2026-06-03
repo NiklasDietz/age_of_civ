@@ -71,9 +71,11 @@ void pushNotification(const GameNotification& notification);
  *        relevantPlayer or otherPlayer matches `viewer`, or that are broadcast
  *        (relevantPlayer == INVALID_PLAYER && otherPlayer == INVALID_PLAYER).
  *
- * The queue is cleared regardless of viewer match so each turn's events fire
- * exactly once. Callers (Application, headless sim) route the drained entries
- * to their preferred display sink (toast, event log, console).
+ * Only the entries delivered to `viewer` are removed from the queue; entries
+ * destined for other players remain so a subsequent drainNotifications() for a
+ * different viewer still receives them. Callers (Application, headless sim)
+ * route the drained entries to their preferred display sink (toast, event log,
+ * console).
  */
 [[nodiscard]] std::vector<GameNotification> drainNotifications(PlayerId viewer);
 

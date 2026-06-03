@@ -153,7 +153,7 @@ void processCityStateBonuses(aoc::game::GameState& gameState, PlayerId player) {
     PlayerEconomyComponent& econ = gsPlayer->economy();
 
     for (const CityStateComponent& cs : cityStates) {
-        if (player >= MAX_PLAYERS) {
+        if (player >= cs.envoys.size()) {
             continue;
         }
         const int8_t envoyCount = cs.envoys[player];

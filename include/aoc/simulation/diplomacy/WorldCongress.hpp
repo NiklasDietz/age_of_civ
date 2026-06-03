@@ -61,7 +61,7 @@ struct WorldCongressComponent {
     PlayerId   proposalTarget        = INVALID_PLAYER;     ///< Resolved at proposal time (Sanctions/Boost)
     /// Signed per-player vote weight cast this session (+yes, -no, 0 abstain).
     /// Magnitude = 1 + purchased extras (max 4).
-    std::array<int16_t, 16> votes{};
+    std::array<int16_t, MAX_PLAYERS> votes{};
     std::vector<Resolution>       passedResolutions;
     std::vector<ActiveResolution> activeEffects;
 

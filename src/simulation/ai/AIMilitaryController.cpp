@@ -172,6 +172,17 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
     // ----------------------------------------------------------------
     // Threat assessment
     // ----------------------------------------------------------------
+    // DEBT (audit WP-10 #4): this O(units*cities) scan duplicates the one in
+    // updateMilitaryAssessment (AIAdvisors.cpp), which already ran this turn and
+    // wrote player.blackboard().threatLevel. It cannot simply be replaced: the
+    // two values are NOT equivalent. bb.threatLevel = min(1, (enemy/own)*0.5) is
+    // clamped to [0,1], scaled by 0.5, and includes eliminated civs; threatRatio
+    // here is the raw unbounded ratio that excludes eliminated civs and returns
+    // 10.0 (not 1.0) when own strength is zero. The thresholds below (1.5/0.7)
+    // and threatGate at line ~696 are calibrated to the raw ratio, so reusing
+    // bb.threatLevel would change every comparison and thus AI decisions.
+    // Unifying the two requires reconciling the formulas in a behaviour-
+    // preserving way (e.g. store the raw ratio on the blackboard too) -- deferred.
     const float threatRatio = computeThreatRatio(gameState, this->m_player);
 
     if (threatRatio > 1.5f) {
@@ -286,6 +297,10 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
             aoc::hex::AxialCoord bestTarget = unit->position();
             int32_t              bestScore  = std::numeric_limits<int32_t>::max();
 
+            // Reused per candidate via clear() so the spiral scan is one
+            // allocation per scout instead of one per candidate (audit WP-10 #6).
+            std::vector<aoc::hex::AxialCoord> nearby;
+            nearby.reserve(37);
             for (const aoc::hex::AxialCoord& cand : candidates) {
                 if (!grid.isValid(cand)) { continue; }
                 const int32_t cIdx = grid.toIndex(cand);
@@ -294,8 +309,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                 // Score: count own-territory tiles in a 3-hex spiral.
                 // Lower = more frontier = preferred.
                 int32_t ownedNearby = 0;
-                std::vector<aoc::hex::AxialCoord> nearby;
-                nearby.reserve(37);
+                nearby.clear();
                 aoc::hex::spiral(cand, 3, std::back_inserter(nearby));
                 for (const aoc::hex::AxialCoord& nt : nearby) {
                     if (grid.isValid(nt) && grid.owner(grid.toIndex(nt)) == this->m_player) {
@@ -369,7 +383,13 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                     aoc::game::Unit* targetUnit = enemyPlayer->unitAt(bestTarget->position);
                     if (targetUnit != nullptr) {
                         aoc::sim::resolveRangedCombat(gameState, rng, grid, *unit, *targetUnit);
-                        // Re-look-up: our unit may have died from counter-fire.
+                        // Verified (audit WP-10 #3): resolveRangedCombat takes a
+                        // const grid, never moves the attacker, and inflicts zero
+                        // attacker damage (no counter-fire), so the attacker can
+                        // neither move nor die here -- it is still alive at
+                        // snap.position. The re-lookup is therefore a behaviour-
+                        // preserving no-op kept as a defensive guard should ranged
+                        // combat ever gain retaliation; `unit` stays valid.
                         unit = gsPlayer->unitAt(snap.position);
                         if (unit == nullptr) {
                             continue;

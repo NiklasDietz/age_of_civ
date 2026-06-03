@@ -85,7 +85,13 @@ private:
                 this->cv_.wait(lock, [this] {
                     return this->stopping_ || !this->tasks_.empty();
                 });
-                if (this->stopping_ && this->tasks_.empty()) { return; }
+                // Exit promptly on a stop request, discarding any still-queued
+                // tasks. The pool outlives all GA work (every future is awaited
+                // before ~ThreadPool runs), so a non-empty queue here only
+                // happens on an abort/exception path where the awaiting frames
+                // have already unwound and nobody is waiting on those results.
+                // Draining instead could block ~ThreadPool for minutes.
+                if (this->stopping_) { return; }
                 task = std::move(this->tasks_.front());
                 this->tasks_.pop();
             }
