@@ -1080,25 +1080,25 @@ void advectPlateOwnership(SphereField& field,
     // a 4-neighbour whose forward rotation lands here; pass 3 fills
     // any remaining cells with fresh oceanic crust (mid-ocean ridge).
     constexpr int16_t VACATED = -2;
-    // DEBT(perf, WP-11): these six N-sized buffers (~5.4 MB total) are
-    // allocated every substep, then std::move'd into the field at the end --
-    // i.e. they BECOME the field's storage, and the field's old storage is
-    // freed with the moved-from locals. Promoting them to persistent
-    // SphereField members for reuse is not behaviour-preserving as a drop-in:
-    // because of the swap-by-move, the "scratch" and the "live field" are the
-    // same allocations rotated each call, so reuse needs an explicit
-    // double-buffer (ping/pong) on SphereField plus a guaranteed full
-    // overwrite (pass 1 writes incumbents, passes 2/3 cover vacated/orphan
-    // cells, final fallback covers the rest -- every cell is written, so a
-    // ping-pong is provably safe IF wired correctly). Deferred: touches the
-    // SphereField struct layout and all call sites; out of scope for a
-    // minimal correctness-focused WP. Reuse would save the per-substep alloc.
-    std::vector<int16_t> newOwner(N, static_cast<int16_t>(-1));
-    std::vector<float>   newCrust(N, 0.0f);
-    std::vector<float>   newContFrac(N, 0.0f);
-    std::vector<float>   newAge(N, 0.0f);
-    std::vector<float>   newSurface(N, 0.0f);
-    std::vector<float>   newThermal(N, 0.0f);
+    // Persistent double-buffer (ping/pong) on the field: the six advected
+    // fields are rebuilt into these back-buffers and swapped with the live
+    // fields at the end, so after the first sub-step no per-sub-step allocation
+    // happens (~5.4 MB/sub-step saved). assign() restores the exact initial
+    // state the old fresh-vector construction provided (-1 owner, 0 floats);
+    // pass 1 writes incumbents, passes 2/3 cover vacated/orphan cells, and the
+    // final fallback covers the rest, so the swap is behaviour-identical.
+    std::vector<int16_t>& newOwner = field.advectScratchPlateId;
+    std::vector<float>&   newCrust = field.advectScratchCrustThicknessKm;
+    std::vector<float>&   newContFrac = field.advectScratchContinentalFraction;
+    std::vector<float>&   newAge = field.advectScratchCrustAgeMy;
+    std::vector<float>&   newSurface = field.advectScratchSurfaceElevationM;
+    std::vector<float>&   newThermal = field.advectScratchThermalAgeMy;
+    newOwner.assign(N, static_cast<int16_t>(-1));
+    newCrust.assign(N, 0.0f);
+    newContFrac.assign(N, 0.0f);
+    newAge.assign(N, 0.0f);
+    newSurface.assign(N, 0.0f);
+    newThermal.assign(N, 0.0f);
     std::size_t pass1Orphan = 0;
     std::size_t pass2Claim  = 0;
     std::size_t pass3Wake   = 0;
@@ -1350,12 +1350,15 @@ void advectPlateOwnership(SphereField& field,
             pass1Orphan, pass2Claim, pass3Wake);
     }
 
-    field.plateId             = std::move(newOwner);
-    field.crustThicknessKm    = std::move(newCrust);
-    field.continentalFraction = std::move(newContFrac);
-    field.crustAgeMy          = std::move(newAge);
-    field.surfaceElevationM   = std::move(newSurface);
-    field.thermalAgeMy        = std::move(newThermal);
+    // Swap (not move): the freshly built back-buffers become the live fields,
+    // and the previous live buffers become next sub-step's scratch (re-filled
+    // via assign above), so no allocation occurs after the first sub-step.
+    std::swap(field.plateId,             field.advectScratchPlateId);
+    std::swap(field.crustThicknessKm,    field.advectScratchCrustThicknessKm);
+    std::swap(field.continentalFraction, field.advectScratchContinentalFraction);
+    std::swap(field.crustAgeMy,          field.advectScratchCrustAgeMy);
+    std::swap(field.surfaceElevationM,   field.advectScratchSurfaceElevationM);
+    std::swap(field.thermalAgeMy,        field.advectScratchThermalAgeMy);
 }
 
 void markBoundaryCells(const SphereField& field,

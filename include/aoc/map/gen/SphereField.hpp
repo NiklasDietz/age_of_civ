@@ -82,6 +82,17 @@ struct SphereField {
     // gate on this field instead of inferring from the signed rate.
     std::vector<uint8_t> boundaryType;
 
+    // Advection double-buffers. advectPlateOwnership rebuilds the six advected
+    // fields each CFL sub-step; rather than allocate ~5.4 MB of scratch per
+    // sub-step it fills these back-buffers and swaps them with the live fields.
+    // Lazily sized (assigned on first use), so resize() leaves them empty.
+    std::vector<int16_t> advectScratchPlateId;
+    std::vector<float>   advectScratchCrustThicknessKm;
+    std::vector<float>   advectScratchContinentalFraction;
+    std::vector<float>   advectScratchCrustAgeMy;
+    std::vector<float>   advectScratchSurfaceElevationM;
+    std::vector<float>   advectScratchThermalAgeMy;
+
     /// Allocate all SoA fields to CELL_COUNT and zero-initialise them.
     /// plateId is set to -1 (unowned). Idempotent.
     void resize();
