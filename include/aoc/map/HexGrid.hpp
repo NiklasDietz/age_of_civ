@@ -954,94 +954,6 @@ public:
         this->m_reefTier = std::move(v);
     }
 
-    // ----- Dynamic per-tile game state (post-generation) -----
-    // These fields track world changes during play. Map-gen leaves
-    // them zero; gameplay systems read/write them.
-
-    /// Per-tile war-damage value 0-255 (pillage / scorched-earth /
-    /// fallout intensity). 0 = pristine, 255 = totally devastated.
-    /// Gameplay systems decay this slowly each turn.
-    [[nodiscard]] uint8_t warDamage(int32_t index) const {
-        if (this->m_warDamage.empty()) { return 0; }
-        if (index < 0 || index >= this->tileCount()) { return 0; }
-        return this->m_warDamage[static_cast<std::size_t>(index)];
-    }
-    void setWarDamage(int32_t index, uint8_t v) {
-        const int32_t total = this->tileCount();
-        if (this->m_warDamage.empty()) {
-            this->m_warDamage.assign(static_cast<std::size_t>(total), 0);
-        }
-        if (index >= 0 && index < total) {
-            this->m_warDamage[static_cast<std::size_t>(index)] = v;
-        }
-    }
-    [[nodiscard]] const std::vector<uint8_t>& warDamageAll() const {
-        return this->m_warDamage;
-    }
-
-    /// Per-tile anthropogenic-modification level 0-255.
-    /// Low = wild, mid = farmed/forest cleared, high = urban / heavy
-    /// industrialization. Updated by improvement build / city growth.
-    [[nodiscard]] uint8_t anthropogenic(int32_t index) const {
-        if (this->m_anthropogenic.empty()) { return 0; }
-        if (index < 0 || index >= this->tileCount()) { return 0; }
-        return this->m_anthropogenic[static_cast<std::size_t>(index)];
-    }
-    void setAnthropogenic(int32_t index, uint8_t v) {
-        const int32_t total = this->tileCount();
-        if (this->m_anthropogenic.empty()) {
-            this->m_anthropogenic.assign(static_cast<std::size_t>(total), 0);
-        }
-        if (index >= 0 && index < total) {
-            this->m_anthropogenic[static_cast<std::size_t>(index)] = v;
-        }
-    }
-    [[nodiscard]] const std::vector<uint8_t>& anthropogenicAll() const {
-        return this->m_anthropogenic;
-    }
-
-    /// Per-tile abandoned-settlement marker. 1 = ancient ruins from a
-    /// formerly-active city that fell. Decays slowly (centuries) back
-    /// to 0 as nature reclaims.
-    [[nodiscard]] uint8_t settlementRuin(int32_t index) const {
-        if (this->m_settlementRuin.empty()) { return 0; }
-        if (index < 0 || index >= this->tileCount()) { return 0; }
-        return this->m_settlementRuin[static_cast<std::size_t>(index)];
-    }
-    void setSettlementRuin(int32_t index, uint8_t v) {
-        const int32_t total = this->tileCount();
-        if (this->m_settlementRuin.empty()) {
-            this->m_settlementRuin.assign(static_cast<std::size_t>(total), 0);
-        }
-        if (index >= 0 && index < total) {
-            this->m_settlementRuin[static_cast<std::size_t>(index)] = v;
-        }
-    }
-    [[nodiscard]] const std::vector<uint8_t>& settlementRuinAll() const {
-        return this->m_settlementRuin;
-    }
-
-    /// Per-tile active trade-route flag. Bitfield where each bit
-    /// represents a trade-route lane (limited to 8 simultaneous routes
-    /// passing through any one tile). Game systems set/clear bits as
-    /// trade routes form / collapse.
-    [[nodiscard]] uint8_t activeTradeRoute(int32_t index) const {
-        if (this->m_activeTradeRoute.empty()) { return 0; }
-        if (index < 0 || index >= this->tileCount()) { return 0; }
-        return this->m_activeTradeRoute[static_cast<std::size_t>(index)];
-    }
-    void setActiveTradeRoute(int32_t index, uint8_t v) {
-        const int32_t total = this->tileCount();
-        if (this->m_activeTradeRoute.empty()) {
-            this->m_activeTradeRoute.assign(static_cast<std::size_t>(total), 0);
-        }
-        if (index >= 0 && index < total) {
-            this->m_activeTradeRoute[static_cast<std::size_t>(index)] = v;
-        }
-    }
-    [[nodiscard]] const std::vector<uint8_t>& activeTradeRouteAll() const {
-        return this->m_activeTradeRoute;
-    }
 
     /// Per-tile Köppen full classification (5 bits = 32 codes).
     /// 0 = unset, 1-30 = Köppen codes (Af, Am, Aw, BWh, BWk, BSh, BSk,
@@ -2059,10 +1971,6 @@ private:
     std::vector<uint8_t>                 m_habitability;
     std::vector<uint8_t>                 m_wetlandSubtype;
     std::vector<uint8_t>                 m_reefTier;
-    std::vector<uint8_t>                 m_warDamage;
-    std::vector<uint8_t>                 m_anthropogenic;
-    std::vector<uint8_t>                 m_settlementRuin;
-    std::vector<uint8_t>                 m_activeTradeRoute;
     std::vector<uint8_t>                 m_koppen;
     std::vector<uint8_t>                 m_mountainStructure;
     std::vector<uint8_t>                 m_oreGrade;
