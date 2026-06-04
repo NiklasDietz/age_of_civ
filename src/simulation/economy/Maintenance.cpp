@@ -213,6 +213,14 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
     // Get government corruption rates
     const aoc::sim::GovernmentDef& govDef = governmentDef(player.government().government);
 
+    // Phase B (money-supply tax) collection efficiency is accumulated inside the
+    // per-city gold walk below, so districts/buildings are traversed once per
+    // turn instead of twice. moneySupply is constant across the loop (no coin is
+    // minted/spent until addGold after it), so the accumulation order -- and
+    // thus the float result -- matches the old separate walk exactly.
+    const int32_t moneySupply = player.monetary().totalCoinValue();
+    float collectionEfficiency = 0.50f;
+
     for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
         CurrencyAmount cityGold = 0;
 
@@ -259,12 +267,20 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
         for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
             if (d.type == DistrictType::Commercial) {
                 cityGold += 3;  // Commercial district hub: tax on local trade
+                if (moneySupply > 0) { collectionEfficiency += 0.05f; }  // district hub
             }
             if (d.type == DistrictType::Harbor) {
                 cityGold += 2;  // Port fees
             }
             for (BuildingId bid : d.buildings) {
                 cityGold += static_cast<CurrencyAmount>(buildingDef(bid).goldBonus);
+                if (moneySupply > 0) {
+                    const uint16_t bv = bid.value;
+                    if (bv == 6u)  { collectionEfficiency += 0.08f; }   // Market
+                    if (bv == 20u) { collectionEfficiency += 0.12f; }   // Bank
+                    if (bv == 21u) { collectionEfficiency += 0.18f; }   // Stock Exchange
+                    if (bv == 13u) { collectionEfficiency += 0.10f; }   // Telecom Hub
+                }
             }
         }
 
@@ -365,26 +381,10 @@ CurrencyAmount processGoldIncome(aoc::game::Player& player,
     // Commercial buildings increase collection efficiency (base 0.50):
     //   Market +8%, Bank +12%, StockExchange +18%, Telecom Hub +10%, district hub +5%.
     {
-        const int32_t moneySupply = player.monetary().totalCoinValue();
         if (moneySupply > 0) {
             constexpr float MONEY_VELOCITY = 0.35f;  // 35% of supply transacts per turn
 
-            float collectionEfficiency = 0.50f;
-            for (const std::unique_ptr<aoc::game::City>& city : player.cities()) {
-                const CityDistrictsComponent& districts = city->districts();
-                for (const CityDistrictsComponent::PlacedDistrict& d : districts.districts) {
-                    if (d.type == DistrictType::Commercial) {
-                        collectionEfficiency += 0.05f;
-                    }
-                    for (BuildingId bid : d.buildings) {
-                        const uint16_t bv = bid.value;
-                        if (bv == 6u)  { collectionEfficiency += 0.08f; }   // Market
-                        if (bv == 20u) { collectionEfficiency += 0.12f; }   // Bank
-                        if (bv == 21u) { collectionEfficiency += 0.18f; }   // Stock Exchange
-                        if (bv == 13u) { collectionEfficiency += 0.10f; }   // Telecom Hub
-                    }
-                }
-            }
+            // collectionEfficiency was accumulated in the per-city gold walk above.
             collectionEfficiency = std::min(collectionEfficiency, 1.0f);
 
             const float taxRate = player.monetary().taxRate;
@@ -415,12 +415,17 @@ void processUnitMaintenance(aoc::game::Player& player) {
     // Strategic-resource upkeep (always runs regardless of monetary system).
     // Armor/Air/Naval units consume 1 FUEL per turn. Nuclear bombs do not
     // tick (one-shot). If stockpile empty, unit takes attrition damage.
+    // Military unit count, accumulated in the fuel-upkeep pass below (it scans
+    // every unit anyway). Counting before the barter early-return is harmless:
+    // the count is only consumed by the disband logic further down.
+    int32_t militaryCount = 0;
     {
         int32_t fuelCity = -1;  // first city found with FUEL stockpile
         // Units don't have direct stockpile — drain from any owned city.
         for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
             if (unit == nullptr) { continue; }
             const aoc::sim::UnitClass uc = unit->typeDef().unitClass;
+            if (isMilitary(uc)) { ++militaryCount; }
             const bool needsFuel = (uc == aoc::sim::UnitClass::Armor
                                  || uc == aoc::sim::UnitClass::Air
                                  || uc == aoc::sim::UnitClass::Helicopter
@@ -477,13 +482,7 @@ void processUnitMaintenance(aoc::game::Player& player) {
         }
     }
 
-    // Count military units before any potential disband.
-    int32_t militaryCount = 0;
-    for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
-        if (isMilitary(unit->typeDef().unitClass)) {
-            ++militaryCount;
-        }
-    }
+    // (militaryCount was tallied in the fuel-upkeep pass above.)
 
     // Aggressive disband at the hard floor: remove the most expensive military
     // unit immediately so the treasury stops bleeding.
