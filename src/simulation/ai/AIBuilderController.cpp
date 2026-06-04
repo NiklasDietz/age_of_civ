@@ -27,7 +27,7 @@ namespace aoc::sim::ai {
 // Constructor
 // ============================================================================
 
-AIBuilderController::AIBuilderController(PlayerId player, aoc::ui::AIDifficulty difficulty)
+AIBuilderController::AIBuilderController(PlayerId player, aoc::sim::ai::AIDifficulty difficulty)
     : m_player(player)
     , m_difficulty(difficulty)
 {

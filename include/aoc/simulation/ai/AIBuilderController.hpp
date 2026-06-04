@@ -6,7 +6,7 @@
  */
 
 #include "aoc/core/Types.hpp"
-#include "aoc/ui/MainMenu.hpp"
+#include "aoc/simulation/ai/AIDifficulty.hpp"
 
 namespace aoc::game {
 class GameState;
@@ -24,7 +24,7 @@ namespace aoc::sim::ai {
  */
 class AIBuilderController {
 public:
-    explicit AIBuilderController(PlayerId player, aoc::ui::AIDifficulty difficulty);
+    explicit AIBuilderController(PlayerId player, aoc::sim::ai::AIDifficulty difficulty);
 
     /**
      * @brief Process all builder units for this player.
@@ -41,7 +41,7 @@ public:
 
 private:
     PlayerId              m_player;
-    aoc::ui::AIDifficulty m_difficulty;
+    aoc::sim::ai::AIDifficulty m_difficulty;
 };
 
 } // namespace aoc::sim::ai

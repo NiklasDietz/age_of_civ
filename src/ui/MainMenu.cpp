@@ -19,6 +19,10 @@
 
 namespace aoc::ui {
 
+// AIDifficulty moved to the simulation/ai layer; pull the name in so the
+// unqualified uses below keep reading naturally.
+using aoc::sim::ai::AIDifficulty;
+
 // ============================================================================
 // Color constants
 // ============================================================================

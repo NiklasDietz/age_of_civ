@@ -121,8 +121,8 @@ void AIController::executeDiplomacyActions(aoc::game::GameState& gameState,
                          static_cast<double>(peaceThreshold));
             }
         } else {
-            const bool easyAI = (this->m_difficulty == aoc::ui::AIDifficulty::Easy);
-            const bool hardAI = (this->m_difficulty == aoc::ui::AIDifficulty::Hard);
+            const bool easyAI = (this->m_difficulty == aoc::sim::ai::AIDifficulty::Easy);
+            const bool hardAI = (this->m_difficulty == aoc::sim::ai::AIDifficulty::Hard);
 
             // War declaration threshold: personality-driven.
             // Low warDeclarationThreshold (Montezuma=1.0) = easy to trigger war.

@@ -6,7 +6,7 @@
  */
 
 #include "aoc/core/Types.hpp"
-#include "aoc/ui/MainMenu.hpp"
+#include "aoc/simulation/ai/AIDifficulty.hpp"
 
 namespace aoc::game {
 class GameState;
@@ -28,7 +28,7 @@ namespace aoc::sim::ai {
  */
 class AIResearchPlanner {
 public:
-    explicit AIResearchPlanner(PlayerId player, aoc::ui::AIDifficulty difficulty);
+    explicit AIResearchPlanner(PlayerId player, aoc::sim::ai::AIDifficulty difficulty);
 
     /**
      * @brief Select the next tech and civic research if none is active.
@@ -39,7 +39,7 @@ public:
 
 private:
     PlayerId              m_player;
-    aoc::ui::AIDifficulty m_difficulty;
+    aoc::sim::ai::AIDifficulty m_difficulty;
 };
 
 } // namespace aoc::sim::ai

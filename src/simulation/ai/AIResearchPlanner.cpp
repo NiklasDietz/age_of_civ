@@ -36,7 +36,7 @@ namespace aoc::sim::ai {
 // Constructor
 // ============================================================================
 
-AIResearchPlanner::AIResearchPlanner(PlayerId player, aoc::ui::AIDifficulty difficulty)
+AIResearchPlanner::AIResearchPlanner(PlayerId player, aoc::sim::ai::AIDifficulty difficulty)
     : m_player(player)
     , m_difficulty(difficulty)
 {
@@ -88,7 +88,7 @@ void AIResearchPlanner::selectResearch(aoc::game::GameState& gameState) {
             TechId best = available[0];
             int32_t bestScore = std::numeric_limits<int32_t>::min();
 
-            const bool hardAI = (this->m_difficulty == aoc::ui::AIDifficulty::Hard);
+            const bool hardAI = (this->m_difficulty == aoc::sim::ai::AIDifficulty::Hard);
             const CivId myCiv = myPlayer->civId();
             const LeaderBehavior& beh = leaderPersonality(myCiv).behavior;
 

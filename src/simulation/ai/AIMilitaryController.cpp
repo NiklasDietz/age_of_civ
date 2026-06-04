@@ -36,7 +36,7 @@ namespace aoc::sim::ai {
 // Constructor
 // ============================================================================
 
-AIMilitaryController::AIMilitaryController(PlayerId player, aoc::ui::AIDifficulty difficulty)
+AIMilitaryController::AIMilitaryController(PlayerId player, aoc::sim::ai::AIDifficulty difficulty)
     : m_player(player)
     , m_difficulty(difficulty)
 {
@@ -261,7 +261,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
         }
     }
 
-    const bool hardMode = (this->m_difficulty == aoc::ui::AIDifficulty::Hard);
+    const bool hardMode = (this->m_difficulty == aoc::sim::ai::AIDifficulty::Hard);
 
     // ----------------------------------------------------------------
     // Issue orders for each snapshotted unit

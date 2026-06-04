@@ -1166,7 +1166,7 @@ void Application::startSpectate(int32_t playerCount, int32_t maxTurns) {
     config.mapType    = aoc::map::MapType::Continents;
     config.mapSize    = aoc::map::MapSize::Standard;
     config.playerCount = static_cast<uint8_t>(playerCount);
-    config.aiDifficulty = aoc::ui::AIDifficulty::Normal;
+    config.aiDifficulty = aoc::sim::ai::AIDifficulty::Normal;
     config.sequentialTurnsInWar = false;
 
     for (int32_t i = 0; i < playerCount; ++i) {
@@ -2872,7 +2872,7 @@ bool Application::spectatorRestoreSnapshot(int32_t turn) {
     const int32_t pc = this->m_gameState.playerCount();
     for (int32_t p = 0; p < pc; ++p) {
         this->m_aiControllers.emplace_back(
-            static_cast<aoc::PlayerId>(p), aoc::ui::AIDifficulty::Normal);
+            static_cast<aoc::PlayerId>(p), aoc::sim::ai::AIDifficulty::Normal);
     }
     // In spectator mode no slot is human; controllers cover all players.
     // Reset turn-manager readiness so the next advance cycles cleanly.

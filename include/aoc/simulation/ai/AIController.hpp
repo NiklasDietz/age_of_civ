@@ -14,7 +14,7 @@
 #include "aoc/simulation/ai/AIBuilderController.hpp"
 #include "aoc/simulation/ai/AIMilitaryController.hpp"
 #include "aoc/simulation/city/ProductionQueue.hpp"
-#include "aoc/ui/MainMenu.hpp"
+#include "aoc/simulation/ai/AIDifficulty.hpp"
 #include "aoc/core/Types.hpp"
 #include "aoc/core/Random.hpp"
 
@@ -57,7 +57,7 @@ struct ProductionCandidate {
 class AIController {
 public:
     explicit AIController(PlayerId player,
-                         aoc::ui::AIDifficulty difficulty = aoc::ui::AIDifficulty::Normal);
+                         aoc::sim::ai::AIDifficulty difficulty = aoc::sim::ai::AIDifficulty::Normal);
 
     /**
      * @brief Execute one full AI turn: evaluate and act.
@@ -120,7 +120,7 @@ private:
                                const aoc::map::FogOfWar* fogOfWar);
 
     PlayerId              m_player;
-    aoc::ui::AIDifficulty m_difficulty;
+    aoc::sim::ai::AIDifficulty m_difficulty;
 
     AIResearchPlanner     m_researchPlanner;
     AISettlerController   m_settlerController;

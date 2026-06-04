@@ -7,7 +7,7 @@
 
 #include "aoc/core/Types.hpp"
 #include "aoc/core/Random.hpp"
-#include "aoc/ui/MainMenu.hpp"
+#include "aoc/simulation/ai/AIDifficulty.hpp"
 
 namespace aoc::game {
 class GameState;
@@ -29,7 +29,7 @@ namespace aoc::sim::ai {
  */
 class AIMilitaryController {
 public:
-    explicit AIMilitaryController(PlayerId player, aoc::ui::AIDifficulty difficulty);
+    explicit AIMilitaryController(PlayerId player, aoc::sim::ai::AIDifficulty difficulty);
 
     /**
      * @brief Process all military and scout units for this player.
@@ -49,7 +49,7 @@ public:
 
 private:
     PlayerId              m_player;
-    aoc::ui::AIDifficulty m_difficulty;
+    aoc::sim::ai::AIDifficulty m_difficulty;
 
     // WP-D3: persistent war target. Set when AI commits to a campaign;
     // reset when target eliminated or peace declared. Without persistence

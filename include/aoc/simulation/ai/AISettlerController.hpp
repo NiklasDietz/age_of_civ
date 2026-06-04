@@ -12,7 +12,7 @@
  */
 
 #include "aoc/core/Types.hpp"
-#include "aoc/ui/MainMenu.hpp"
+#include "aoc/simulation/ai/AIDifficulty.hpp"
 #include "aoc/map/HexCoord.hpp"
 
 #include <unordered_map>
@@ -39,7 +39,7 @@ namespace aoc::sim::ai {
  */
 class AISettlerController {
 public:
-    explicit AISettlerController(PlayerId player, aoc::ui::AIDifficulty difficulty);
+    explicit AISettlerController(PlayerId player, aoc::sim::ai::AIDifficulty difficulty);
 
     /**
      * @brief Process all settler units for this player for one turn.
@@ -58,7 +58,7 @@ public:
 
 private:
     PlayerId              m_player;
-    aoc::ui::AIDifficulty m_difficulty;
+    aoc::sim::ai::AIDifficulty m_difficulty;
 
     /// Number of consecutive turns each settler has remained at the same
     /// position without founding a city, keyed by tile coordinate.

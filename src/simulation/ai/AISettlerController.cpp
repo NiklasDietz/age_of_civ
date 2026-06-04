@@ -292,7 +292,7 @@ static constexpr uint16_t STRATEGIC_RESOURCE_ID_MAX = 12;
 // Constructor
 // ============================================================================
 
-AISettlerController::AISettlerController(PlayerId player, aoc::ui::AIDifficulty difficulty)
+AISettlerController::AISettlerController(PlayerId player, aoc::sim::ai::AIDifficulty difficulty)
     : m_player(player)
     , m_difficulty(difficulty)
 {

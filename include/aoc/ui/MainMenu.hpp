@@ -9,6 +9,7 @@
 #include "aoc/ui/IScreen.hpp"
 #include "aoc/map/MapGenerator.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
+#include "aoc/simulation/ai/AIDifficulty.hpp"
 
 #include <array>
 #include <functional>
@@ -31,13 +32,6 @@ struct PlayerSlotConfig {
     uint8_t  civId    = 0;
 };
 
-/// AI difficulty level affecting AI bonuses/penalties.
-enum class AIDifficulty : uint8_t {
-    Easy,
-    Normal,
-    Hard,
-};
-
 /// Victory mode selection. Default = CSI score system; Classic = traditional Civ win conditions.
 enum class VictoryMode : uint8_t {
     Default,   ///< CSI score + Era VP + Global Integration (the game's unique system)
@@ -57,7 +51,7 @@ struct GameSetupConfig {
     uint8_t           playerCount = 2;
     std::array<PlayerSlotConfig, 20> players;  ///< max 20 players
     bool sequentialTurnsInWar = false;        ///< Use sequential turns when at war
-    AIDifficulty aiDifficulty = AIDifficulty::Normal; ///< AI difficulty level
+    aoc::sim::ai::AIDifficulty aiDifficulty = aoc::sim::ai::AIDifficulty::Normal; ///< AI difficulty level
     VictoryMode victoryMode = VictoryMode::Default;   ///< Victory condition mode
     int32_t maxTurns = 1000;                          ///< User-selectable turn limit
     /// Continents-only generation knobs.

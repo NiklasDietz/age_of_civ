@@ -257,7 +257,7 @@ static UnitCounts countPlayerUnits(const aoc::game::GameState& gameState, Player
 // Constructor
 // ============================================================================
 
-AIController::AIController(PlayerId player, aoc::ui::AIDifficulty difficulty)
+AIController::AIController(PlayerId player, aoc::sim::ai::AIDifficulty difficulty)
     : m_player(player)
     , m_difficulty(difficulty)
     , m_researchPlanner(player, difficulty)
@@ -1002,7 +1002,7 @@ void AIController::executeCityActions(aoc::game::GameState& gameState,
         }
 
         // Easy AI: 30% chance to skip city action entirely
-        if (this->m_difficulty == aoc::ui::AIDifficulty::Easy) {
+        if (this->m_difficulty == aoc::sim::ai::AIDifficulty::Easy) {
             const uint32_t pseudoRand =
                 (static_cast<uint32_t>(cityIndex) * 7919u + 31u) % 100u;
             if (pseudoRand < 30u) {
