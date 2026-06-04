@@ -838,4 +838,24 @@ if(AOC_BUILD_TESTS)
         add_test(NAME test_turn_loop_smoke
                  COMMAND aoc_simulate --turns 5 --players 2 --output ${CMAKE_BINARY_DIR}/smoke.csv)
     endif()
+
+    # Golden regression: compare deterministic sim / map-gen output against
+    # committed baselines under tests/golden/. Registered only when baselines
+    # exist (generate them once with scripts/regression_*.sh --update). The
+    # exact tool binary is passed via the environment so the script does not
+    # have to guess which build tree it lives in.
+    if(TARGET aoc_simulate AND EXISTS ${CMAKE_SOURCE_DIR}/tests/golden/sim)
+        add_test(NAME regression_sim
+                 COMMAND ${CMAKE_SOURCE_DIR}/scripts/regression_sim.sh
+                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        set_tests_properties(regression_sim PROPERTIES
+                 ENVIRONMENT "AOC_SIMULATE=$<TARGET_FILE:aoc_simulate>")
+    endif()
+    if(TARGET aoc_mapgen AND EXISTS ${CMAKE_SOURCE_DIR}/tests/golden/mapgen)
+        add_test(NAME regression_mapgen
+                 COMMAND ${CMAKE_SOURCE_DIR}/scripts/regression_mapgen.sh
+                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        set_tests_properties(regression_mapgen PROPERTIES
+                 ENVIRONMENT "AOC_MAPGEN=$<TARGET_FILE:aoc_mapgen>")
+    endif()
 endif()
