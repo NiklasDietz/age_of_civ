@@ -1,0 +1,83 @@
+Turn,SubStep,EventType,Player,OtherPlayer,Value1,Value2,Detail
+1,0,UnitProduced,6,255,72,0,Unit produced
+2,0,TechResearched,0,255,2,0,Tech completed
+2,1,UnitProduced,0,255,72,0,Unit produced
+2,2,TechResearched,1,255,2,0,Tech completed
+2,3,TechResearched,2,255,2,0,Tech completed
+2,4,TechResearched,3,255,2,0,Tech completed
+2,5,TechResearched,4,255,2,0,Tech completed
+2,6,TechResearched,5,255,2,0,Tech completed
+2,7,UnitProduced,5,255,72,0,Unit produced
+2,8,TechResearched,6,255,2,0,Tech completed
+2,9,UnitProduced,6,255,5,0,Unit produced
+2,10,TechResearched,7,255,2,0,Tech completed
+2,11,UnitProduced,7,255,72,0,Unit produced
+3,0,TechResearched,1,255,3,0,Tech completed
+3,1,UnitProduced,1,255,72,0,Unit produced
+3,2,TechResearched,2,255,3,0,Tech completed
+3,3,TechResearched,3,255,3,0,Tech completed
+3,4,UnitProduced,3,255,72,0,Unit produced
+3,5,TechResearched,4,255,3,0,Tech completed
+3,6,UnitProduced,4,255,72,0,Unit produced
+3,7,TechResearched,5,255,3,0,Tech completed
+3,8,TechResearched,6,255,3,0,Tech completed
+3,9,UnitProduced,6,255,2,0,Unit produced
+3,10,TechResearched,7,255,3,0,Tech completed
+3,11,PlayersMet,0,1,0,0,First contact
+4,0,TechResearched,0,255,3,0,Tech completed
+4,1,UnitProduced,0,255,5,0,Unit produced
+4,2,UnitProduced,2,255,72,0,Unit produced
+4,3,UnitProduced,5,255,5,0,Unit produced
+5,0,TechResearched,1,255,4,0,Tech completed
+5,1,TechResearched,2,255,4,0,Tech completed
+5,2,TechResearched,3,255,4,0,Tech completed
+5,3,TechResearched,4,255,4,0,Tech completed
+5,4,TechResearched,5,255,4,0,Tech completed
+5,5,TechResearched,6,255,4,0,Tech completed
+5,6,TechResearched,7,255,4,0,Tech completed
+6,0,UnitProduced,0,255,72,0,Unit produced
+8,0,TechResearched,7,255,5,0,Tech completed
+9,0,UnitKilled,3,255,1,0,Unit lost
+9,1,CityFounded,2,255,3,0,Goody hut claimed
+9,2,CityFounded,3,255,1,0,Goody hut claimed
+10,0,UnitKilled,2,255,1,0,Unit lost
+10,1,TechResearched,3,255,5,0,Tech completed
+10,2,TechResearched,7,255,6,0,Tech completed
+12,0,TechResearched,7,255,7,0,Tech completed
+12,1,PlayersMet,4,5,0,0,First contact
+13,0,TechResearched,0,255,4,0,Tech completed
+13,1,TechResearched,1,255,5,0,Tech completed
+13,2,TechResearched,5,255,5,0,Tech completed
+13,3,CityFounded,7,255,1,0,Goody hut claimed
+14,0,TechResearched,4,255,5,0,Tech completed
+14,1,TechResearched,6,255,5,0,Tech completed
+14,2,TechResearched,7,255,8,0,Tech completed
+14,3,PlayersMet,4,6,0,0,First contact
+15,0,TechResearched,2,255,5,0,Tech completed
+15,1,CityFounded,6,255,0,0,Goody hut claimed
+16,0,UnitKilled,4,255,1,0,Unit lost
+16,1,CityFounded,3,255,4,0,Goody hut claimed
+17,0,CityFounded,1,255,4,0,Goody hut claimed
+18,0,UnitKilled,6,255,1,0,Unit lost
+19,0,TechResearched,7,255,9,0,Tech completed
+21,0,UnitKilled,1,255,1,0,Unit lost
+22,0,PlayersMet,3,7,0,0,First contact
+23,0,TechResearched,7,255,10,0,Tech completed
+24,0,UnitKilled,7,255,1,0,Unit lost
+29,0,TechResearched,7,255,11,0,Tech completed
+31,0,UnitProduced,5,255,30,0,Unit produced
+37,0,UnitProduced,5,255,30,0,Unit produced
+39,0,TechResearched,3,255,6,0,Tech completed
+43,0,TechResearched,7,255,12,0,Tech completed
+45,0,TechResearched,3,255,7,0,Tech completed
+46,0,TechResearched,3,255,8,0,Tech completed
+47,0,TechResearched,3,255,9,0,Tech completed
+48,0,TechResearched,3,255,10,0,Tech completed
+48,1,TechResearched,7,255,13,0,Tech completed
+49,0,TechResearched,3,255,11,0,Tech completed
+54,0,TechResearched,3,255,12,0,Tech completed
+54,1,TechResearched,7,255,14,0,Tech completed
+58,0,TechResearched,7,255,15,0,Tech completed
+61,0,TechResearched,5,255,6,0,Tech completed
+62,0,TechResearched,1,255,6,0,Tech completed
+63,0,UnitProduced,7,255,102,0,Unit produced

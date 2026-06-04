@@ -1,0 +1,37 @@
+Turn,SubStep,EventType,Player,OtherPlayer,Value1,Value2,Detail
+2,0,TechResearched,0,255,2,0,Tech completed
+2,1,TechResearched,1,255,2,0,Tech completed
+2,2,TechResearched,2,255,2,0,Tech completed
+2,3,TechResearched,3,255,2,0,Tech completed
+2,4,UnitProduced,3,255,72,0,Unit produced
+2,5,CityFounded,1,255,3,0,Goody hut claimed
+3,0,TechResearched,0,255,3,0,Tech completed
+3,1,UnitProduced,0,255,72,0,Unit produced
+3,2,TechResearched,1,255,3,0,Tech completed
+3,3,UnitProduced,1,255,72,0,Unit produced
+3,4,TechResearched,2,255,3,0,Tech completed
+3,5,TechResearched,3,255,3,0,Tech completed
+3,6,CityFounded,2,255,1,0,Goody hut claimed
+4,0,UnitProduced,2,255,72,0,Unit produced
+4,1,UnitProduced,3,255,5,0,Unit produced
+5,0,TechResearched,0,255,4,0,Tech completed
+5,1,TechResearched,1,255,4,0,Tech completed
+5,2,TechResearched,2,255,4,0,Tech completed
+5,3,TechResearched,3,255,4,0,Tech completed
+7,0,CityFounded,0,255,1,0,Goody hut claimed
+8,0,TechResearched,0,255,5,0,Tech completed
+9,0,UnitKilled,1,255,1,0,Unit lost
+9,1,UnitProduced,2,255,5,0,Unit produced
+15,0,TechResearched,2,255,5,0,Tech completed
+17,0,TechResearched,1,255,5,0,Tech completed
+17,1,UnitProduced,2,255,3,0,Unit produced
+17,2,TechResearched,3,255,5,0,Tech completed
+21,0,UnitKilled,0,255,1,0,Unit lost
+21,1,CityFounded,2,255,2,0,New city
+23,0,UnitProduced,2,255,3,0,Unit produced
+24,0,UnitProduced,2,255,5,0,Unit produced
+25,0,UnitProduced,2,255,5,0,Unit produced
+26,0,UnitProduced,2,255,5,0,Unit produced
+27,0,UnitProduced,2,255,5,0,Unit produced
+28,0,UnitProduced,2,255,3,0,Unit produced
+28,1,UnitProduced,2,255,2,0,Unit produced
