@@ -74,6 +74,14 @@ endif()
 # servers, CI, and GA training on machines without a GPU / Vulkan SDK.
 option(AOC_HEADLESS "Build without Vulkan/GLFW (sim + GA tools only)" OFF)
 
+# Lua scripting + mod loader. Currently has no callers anywhere in the tree, so
+# it is pure link-time weight; making it optional lets headless / CI machines
+# build the sim with no Lua toolchain. Headless builds force it off below.
+option(AOC_ENABLE_LUA "Build the Lua scripting engine and mod loader" ON)
+if(AOC_HEADLESS)
+    set(AOC_ENABLE_LUA OFF)
+endif()
+
 # Phase 1 diagnostic instrumentation. When ON, IndustrialRevolution.cpp emits
 # throttled "IR_BLOCKED player=... ir=... reason=... detail=... turn=..."
 # lines through LOG_INFO. Throttle window is 50 turns per (player, ir, reason,
@@ -489,6 +497,15 @@ if(AOC_HEADLESS)
     message(STATUS "Headless build: Vulkan/GLFW and ${_gfx_count} gfx sources excluded")
 endif()
 
+# Strip the Lua scripting + mod sources when Lua is disabled (default in
+# headless builds). They have no callers, so excluding them is behaviour-neutral.
+if(NOT AOC_ENABLE_LUA)
+    list(REMOVE_ITEM AOC_LIB_SOURCES
+        src/scripting/LuaEngine.cpp
+        src/mod/ModLoader.cpp)
+    message(STATUS "Lua disabled: scripting + mod loader sources excluded")
+endif()
+
 add_library(aoc_lib STATIC ${AOC_LIB_SOURCES})
 
 # cpp-httplib worker threads. Audit WP7: define centrally so DebugServer.cpp
@@ -550,7 +567,10 @@ endif()
 
 target_compile_features(aoc_lib PUBLIC cxx_std_20)
 
-# LuaJIT scripting (preferred, 10-50x faster), falls back to Lua 5.4
+# LuaJIT scripting (preferred, 10-50x faster), falls back to Lua 5.4.
+# Skipped entirely when AOC_ENABLE_LUA is OFF (e.g. headless builds), so no Lua
+# toolchain is required and AOC_HAS_LUA stays undefined.
+if(AOC_ENABLE_LUA)
 find_package(PkgConfig QUIET)
 
 # Try LuaJIT first
@@ -600,6 +620,9 @@ target_compile_definitions(aoc_lib PUBLIC AOC_HAS_LUA)
 target_include_directories(aoc_lib PUBLIC ${LUA_IMPL_DIRS})
 target_link_libraries(aoc_lib PUBLIC ${LUA_IMPL_LIBS})
 message(STATUS "Scripting: ${LUA_IMPL_NAME} (${LUA_IMPL_LIBS})")
+else()
+    message(STATUS "Scripting: disabled (AOC_ENABLE_LUA=OFF)")
+endif()
 
 # sd-bus (libsystemd) -- optional DBus service for screenshot/remote control.
 # Only enabled on Linux where libsystemd is present. On Windows/macOS the
