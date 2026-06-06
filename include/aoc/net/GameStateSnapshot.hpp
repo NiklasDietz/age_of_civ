@@ -5,7 +5,16 @@
  * @brief Per-player view of game state, sent from server to client each turn.
  *
  * Contains everything the client needs to render the game for one player.
- * Respects fog of war -- only includes visible information.
+ *
+ * Visibility contract: the snapshot must contain only what the requesting
+ * player is allowed to see. The intended end state is a per-player
+ * fog-of-war filter (own entities always; foreign entities only on
+ * currently-visible tiles). DEBT(net): the server has no FogOfWar instance
+ * wired in yet, so GameServer::generateSnapshot currently ships the
+ * requesting player's OWN units and cities only -- the safe subset. The
+ * `units`/`cities` "own + visible foreign" comments below describe the
+ * target behaviour, not today's; foreign entities are omitted until the
+ * fog query lands. See src/net/GameServer.cpp generateSnapshot().
  */
 
 #include "aoc/core/Types.hpp"

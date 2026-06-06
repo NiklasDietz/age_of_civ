@@ -141,9 +141,22 @@ struct GameDBus::Impl {
         // existing component so the prefix check is TOCTOU-resistant
         // for parent directories. The leaf file is the one we are
         // about to write -- it does not exist yet, so a last-component
-        // symlink cannot be caught here. That gap is closed at the
-        // write site (ScreenshotEncoder.cpp), which opens the target
-        // with O_NOFOLLOW and fails on a leaf symlink at write time.
+        // symlink cannot be caught here, and a symlink (or a directory
+        // rename) planted between this check and the write would redirect
+        // the write outside the allowlist.
+        //
+        // DEBT(net/security): the leaf TOCTOU gap is closed only because the
+        // write site (src/app/ScreenshotEncoder.cpp) opens the target with
+        // O_NOFOLLOW (alongside O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC) and so
+        // fails with ELOOP on a leaf symlink at write time. This is a BINDING
+        // CONTRACT:
+        // any code that consumes takePendingScreenshotPath() MUST open the
+        // path with O_NOFOLLOW. Closing the gap here instead (open the fd
+        // under O_CREAT|O_EXCL|O_NOFOLLOW in this check and pass the fd
+        // through to the write site) would require threading an fd across
+        // the async sd-bus reply boundary and into ScreenshotEncoder -- a
+        // cross-TU change out of scope for this net-only fix. Until then the
+        // contract above is the enforcement point.
         const std::vector<fs::path> roots = screenshotAllowlist();
         if (roots.empty()) {
             return sd_bus_error_set_const(error,

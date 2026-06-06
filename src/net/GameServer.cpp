@@ -31,8 +31,22 @@
 #include "aoc/game/Unit.hpp"
 
 #include <algorithm>
+#include <array>
 
 namespace aoc::net {
+
+// Upper bound on free-text command fields (city names, etc). The wire format
+// supplies these as untrusted std::string; without a cap a single command can
+// force an unbounded allocation (and is rebroadcast to every client, amplifying
+// it). 64 bytes comfortably fits any real city name.
+inline constexpr std::size_t MAX_COMMAND_TEXT_LEN = 64;
+
+// Upper bound on commands accepted from one player per turn. The transport
+// drains an unbounded queue each tick; a misbehaving or hostile client (over a
+// future NetworkTransport) could flood it. Excess commands past this cap are
+// dropped with a warning rather than processed. A legitimate turn issues only a
+// handful of commands, so 256 is generous headroom.
+inline constexpr std::size_t MAX_COMMANDS_PER_PLAYER_PER_TURN = 256;
 
 // Seed 42 is an intentional, fixed default for reproducible/test runs. The RNG
 // drives deterministic lockstep (identical map + simulation across peers), so a
@@ -184,7 +198,31 @@ bool GameServer::tick() {
     if (this->m_transport != nullptr) {
         std::vector<std::pair<PlayerId, GameCommand>> incoming =
             this->m_transport->receivePendingCommands();
+        // Per-player per-turn flood cap: the transport queue is unbounded, so
+        // count commands per player as we drain and drop any beyond the cap
+        // (LOG_WARN once per player on the first dropped command). Indexed by
+        // PlayerId; ids outside [0, MAX_PLAYERS) cannot index the array, so
+        // their commands are dropped here too (validateCommand would reject
+        // them anyway on the authority check).
+        std::array<std::size_t, MAX_PLAYERS> commandCount{};
         for (std::pair<PlayerId, GameCommand>& cmd : incoming) {
+            const std::size_t slot = static_cast<std::size_t>(cmd.first);
+            if (slot >= commandCount.size()) {
+                LOG_WARN("GameServer::tick: dropping command from out-of-range "
+                         "player id %d", static_cast<int>(cmd.first));
+                continue;
+            }
+            if (commandCount[slot] >= MAX_COMMANDS_PER_PLAYER_PER_TURN) {
+                if (commandCount[slot] == MAX_COMMANDS_PER_PLAYER_PER_TURN) {
+                    LOG_WARN("GameServer::tick: player %d exceeded %zu commands "
+                             "this turn -- dropping excess",
+                             static_cast<int>(cmd.first),
+                             MAX_COMMANDS_PER_PLAYER_PER_TURN);
+                    ++commandCount[slot];  // advance past the cap so we warn once
+                }
+                continue;
+            }
+            ++commandCount[slot];
             if (this->validateCommand(cmd.first, cmd.second)) {
                 this->executeCommand(cmd.first, cmd.second);
             }
@@ -306,11 +344,50 @@ bool GameServer::validateCommand(PlayerId player, const GameCommand& command) co
                          static_cast<unsigned>(aoc::sim::MonetarySystemType::Count));
                 return false;
             }
+            // executeCommand has no implementation for this command: applying
+            // the transition belongs to the monetary subsystem, which is not
+            // wired into the command path yet. Reject it here so the client
+            // gets an explicit failure instead of a "validated, then silently
+            // dropped" divergence between client and server state.
+            LOG_WARN("validateCommand: TransitionMonetary rejected -- "
+                     "not implemented (player %d, targetSystem=%u)",
+                     static_cast<int>(player),
+                     static_cast<unsigned>(cmd.targetSystem));
+            return false;
+        }
+        else if constexpr (std::is_same_v<T, FoundCityCommand>) {
+            // cityName is untrusted free text: reject empty or over-long names
+            // before they are stored / rebroadcast to every client.
+            if (cmd.cityName.empty() || cmd.cityName.size() > MAX_COMMAND_TEXT_LEN) {
+                LOG_WARN("validateCommand: FoundCity rejected -- cityName length "
+                         "%zu outside [1, %zu]",
+                         cmd.cityName.size(), MAX_COMMAND_TEXT_LEN);
+                return false;
+            }
+            // Owner check stays in executeCommand (settler resolution is part
+            // of the ECS migration); see the function-level comment above.
+            return true;
+        }
+        else if constexpr (std::is_same_v<T, SetProductionCommand>) {
+            // itemType is a ProductionItemType cast from untrusted wire data:
+            // reject values outside the enum before it is used as a discriminant.
+            if (cmd.itemType
+                > static_cast<uint8_t>(aoc::sim::ProductionItemType::Wonder)) {
+                LOG_WARN("validateCommand: SetProduction rejected -- itemType=%u "
+                         "out of range (max %u)",
+                         static_cast<unsigned>(cmd.itemType),
+                         static_cast<unsigned>(aoc::sim::ProductionItemType::Wonder));
+                return false;
+            }
+            // DEBT(net): itemId is a type-dependent index (UnitTypeId /
+            // BuildingId / DistrictType) and cannot be range-checked until the
+            // ECS production path resolves the city and its per-type tables.
+            // Owner/city resolution stays in executeCommand.
             return true;
         }
         // Commands without an explicit `player` field (MoveUnit,
-        // AttackUnit, FoundCity, SetProduction) fall through to the
-        // unit/city owner check inside executeCommand.
+        // AttackUnit) fall through to the unit owner check inside
+        // executeCommand.
         return true;
     }, command);
 }
@@ -519,7 +596,15 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
             }
         }
         else if constexpr (std::is_same_v<T, TransitionMonetaryCommand>) {
-            // Monetary transition -- validate and execute
+            // Unreachable: validateCommand rejects TransitionMonetary because
+            // there is no implementation yet (the transition belongs to the
+            // monetary subsystem, not the command path). Kept as an explicit
+            // arm so the std::visit is exhaustive and a future implementation
+            // has an obvious home. Drop without acting.
+            (void)cmd;
+            LOG_WARN("executeCommand: TransitionMonetary reached dispatch but "
+                     "is unimplemented -- dropping (player %d)",
+                     static_cast<int>(player));
         }
     }, command);
 }
@@ -543,34 +628,43 @@ GameStateSnapshot GameServer::generateSnapshot(PlayerId player) const {
     snapshot.economy.coinTier = static_cast<uint8_t>(ms.effectiveCoinTier);
     snapshot.economy.inflationRate = ms.inflationRate;
 
-    // Units: iterate all players (all units are visible in the snapshot for now)
-    for (const std::unique_ptr<aoc::game::Player>& p : this->m_gameState.players()) {
-        for (const std::unique_ptr<aoc::game::Unit>& unit : p->units()) {
-            VisibleUnit vu{};
-            // Network handle: use NULL_ENTITY during ECS migration
-            vu.entity = NULL_ENTITY;
-            vu.owner = unit->owner();
-            vu.unitTypeId = unit->typeId().value;
-            vu.position = unit->position();
-            vu.hitPoints = unit->hitPoints();
-            vu.maxHitPoints = unit->typeDef().maxHitPoints;
-            vu.movementRemaining = unit->movementRemaining();
-            snapshot.units.push_back(vu);
-        }
+    // Visibility filter: a snapshot must never leak entities the requesting
+    // player cannot see. The correct filter is a per-player fog-of-war query
+    // (own entities always included; foreign entities only on tiles the
+    // player currently sees). GameServer does not own a FogOfWar instance --
+    // m_turnCtx.fogOfWar is left null -- so that query is not available here.
+    //
+    // DEBT(net): until a FogOfWar instance is wired into GameServer, ship
+    // only the requesting player's OWN units and cities. This is the safe
+    // subset (a player may always see their own entities) and closes the
+    // full-board information-disclosure hole; the cost is that legitimately
+    // visible foreign entities are omitted until the fog query lands. See
+    // GameStateSnapshot.hpp and AUDIT_REPORT_2026-06-06.md (GameServer.cpp:546).
+
+    // Units: own player only (see DEBT note above).
+    for (const std::unique_ptr<aoc::game::Unit>& unit : gsPlayer->units()) {
+        VisibleUnit vu{};
+        // Network handle: use NULL_ENTITY during ECS migration
+        vu.entity = NULL_ENTITY;
+        vu.owner = unit->owner();
+        vu.unitTypeId = unit->typeId().value;
+        vu.position = unit->position();
+        vu.hitPoints = unit->hitPoints();
+        vu.maxHitPoints = unit->typeDef().maxHitPoints;
+        vu.movementRemaining = unit->movementRemaining();
+        snapshot.units.push_back(vu);
     }
 
-    // Cities: iterate all players
-    for (const std::unique_ptr<aoc::game::Player>& p : this->m_gameState.players()) {
-        for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
-            VisibleCity vc{};
-            vc.entity = NULL_ENTITY;
-            vc.owner = city->owner();
-            vc.name = city->name();
-            vc.location = city->location();
-            vc.population = city->population();
-            vc.isCapital = city->isOriginalCapital();
-            snapshot.cities.push_back(vc);
-        }
+    // Cities: own player only (see DEBT note above).
+    for (const std::unique_ptr<aoc::game::City>& city : gsPlayer->cities()) {
+        VisibleCity vc{};
+        vc.entity = NULL_ENTITY;
+        vc.owner = city->owner();
+        vc.name = city->name();
+        vc.location = city->location();
+        vc.population = city->population();
+        vc.isCapital = city->isOriginalCapital();
+        snapshot.cities.push_back(vc);
     }
 
     // Victory data from the GameState Player object
