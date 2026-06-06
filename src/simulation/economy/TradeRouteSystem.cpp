@@ -325,12 +325,23 @@ void releasePickupReservation(aoc::game::GameState& gameState,
 
 /// Find a Trader unit by EntityId across all players.
 /// EntityId.index is the unit's sequence number in the global unit list.
+///
+/// The positional scheme has no per-unit generation to compare against, so it
+/// can only resolve ids whose generation is the default (0). Audit 2026-06-06:
+/// a positional index alone can silently return the wrong unit after a removal
+/// shifts the sequence, so reject a non-zero generation outright and confirm
+/// the resolved unit is actually a Trader -- return nullptr rather than a wrong
+/// unit in either case.
 aoc::game::Unit* findTraderByEntityId(aoc::game::GameState& gameState, EntityId id) {
     if (!id.isValid()) { return nullptr; }
+    if (id.generation != 0) { return nullptr; }
     uint32_t remaining = id.index;
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
         for (const std::unique_ptr<aoc::game::Unit>& u : p->units()) {
-            if (remaining == 0) { return u.get(); }
+            if (remaining == 0) {
+                if (u->typeDef().unitClass != UnitClass::Trader) { return nullptr; }
+                return u.get();
+            }
             --remaining;
         }
     }
