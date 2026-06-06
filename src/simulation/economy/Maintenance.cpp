@@ -719,25 +719,55 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
     // WP-S: lazy-seed Encampment buffers for any owned encampment improvement
     // that has no buffer entry yet (100 food + 100 fuel seed). Also auto-
     // refill 5 food + 5 fuel per turn from owner's nearest city stockpile.
+    //
+    // Perf (audit 2026-06-06): the refill no longer runs the per-encampment
+    // nearest-city walk inside the all-tiles scan (was O(allTiles x cities)).
+    // The seed pass is a cheap improvement/owner check; the refill pass
+    // iterates the small per-tile encampment map. Both passes preserve the
+    // original semantics: a tile is only refilled when it is currently an
+    // owned Encampment with an existing buffer, just-seeded buffers (at cap)
+    // are no-ops, and refill draw order stays ascending-by-tile-index so the
+    // shared-city stockpile contention resolves identically.
     {
+        // Seed pass: discover owned encampment tiles with no buffer yet.
+        // DEBT(audit 2026-06-06): this discovery scan is still O(allTiles) per
+        // player per turn. Eliminating it would require seeding at improvement
+        // build time, but that would change WHEN/IF buffers appear (seeding is
+        // currently gated on the owner having expeditionary food demand and is
+        // observable to AIController/logistics readers) -- out of scope for a
+        // behavior-preserving fix.
         const int32_t tilesN = grid.tileCount();
         for (int32_t ti = 0; ti < tilesN; ++ti) {
             if (grid.improvement(ti) != aoc::map::ImprovementType::Encampment) { continue; }
             if (grid.owner(ti) != player.id()) { continue; }
-            std::unordered_map<int32_t, aoc::game::GameState::EncampmentBuffer>::iterator it =
-                gameState.encampments().find(ti);
-            if (it == gameState.encampments().end()) {
-                aoc::game::GameState::EncampmentBuffer buf;
-                buf.owner = player.id();
-                buf.food = 100;
-                buf.fuel = 100;
-                gameState.encampments().emplace(ti, buf);
-                continue;
-            }
-            // WP-S2 lite: auto-refill if buffers below cap (100/100).
-            // Drains 5 food + 5 fuel from nearest owned city's stockpile.
-            constexpr int32_t REFILL_RATE = 5;
-            constexpr int32_t CAP = 100;
+            if (gameState.encampments().find(ti) != gameState.encampments().end()) { continue; }
+            aoc::game::GameState::EncampmentBuffer buf;
+            buf.owner = player.id();
+            buf.food = 100;
+            buf.fuel = 100;
+            gameState.encampments().emplace(ti, buf);
+        }
+
+        // Refill pass: only tiles that are currently owned encampments. Order
+        // by ascending tile index to match the original tile-scan draw order
+        // when multiple depots share the same depleted city stockpile.
+        std::vector<int32_t> refillTiles;
+        refillTiles.reserve(gameState.encampments().size());
+        for (const std::pair<const int32_t, aoc::game::GameState::EncampmentBuffer>& kv
+                : gameState.encampments()) {
+            const int32_t ti = kv.first;
+            if (grid.improvement(ti) != aoc::map::ImprovementType::Encampment) { continue; }
+            if (grid.owner(ti) != player.id()) { continue; }
+            refillTiles.push_back(ti);
+        }
+        std::sort(refillTiles.begin(), refillTiles.end());
+
+        // WP-S2 lite: auto-refill if buffers below cap (100/100).
+        // Drains 5 food + 5 fuel from nearest owned city's stockpile.
+        constexpr int32_t REFILL_RATE = 5;
+        constexpr int32_t CAP = 100;
+        for (const int32_t ti : refillTiles) {
+            aoc::game::GameState::EncampmentBuffer& buf = gameState.encampments().at(ti);
             const aoc::hex::AxialCoord depot = grid.toAxial(ti);
             aoc::game::City* nearest = nullptr;
             int32_t bestDist = std::numeric_limits<int32_t>::max();
@@ -748,8 +778,8 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
             }
             if (nearest == nullptr) { continue; }
             CityStockpileComponent& sp = nearest->stockpile();
-            if (it->second.food < CAP) {
-                const int32_t want = std::min(REFILL_RATE, CAP - it->second.food);
+            if (buf.food < CAP) {
+                const int32_t want = std::min(REFILL_RATE, CAP - buf.food);
                 int32_t got = 0;
                 for (uint16_t gid : {goods::PROCESSED_FOOD, goods::WHEAT,
                                       goods::CATTLE, goods::FISH, goods::RICE}) {
@@ -759,10 +789,10 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
                     const int32_t take = std::min(avail, want - got);
                     if (sp.consumeGoods(gid, take)) { got += take; }
                 }
-                it->second.food += got;
+                buf.food += got;
             }
-            if (it->second.fuel < CAP) {
-                const int32_t want = std::min(REFILL_RATE, CAP - it->second.fuel);
+            if (buf.fuel < CAP) {
+                const int32_t want = std::min(REFILL_RATE, CAP - buf.fuel);
                 int32_t got = 0;
                 for (uint16_t gid : {goods::FUEL, goods::COAL}) {
                     if (got >= want) { break; }
@@ -771,25 +801,37 @@ void processMilitaryFoodConsumption(aoc::game::GameState& gameState,
                     const int32_t take = std::min(avail, want - got);
                     if (sp.consumeGoods(gid, take)) { got += take; }
                 }
-                it->second.fuel += got;
+                buf.fuel += got;
             }
         }
     }
 
     // WP-S: drain encampment buffers first for units within 5 hex.
+    // Perf (audit 2026-06-06): build the owned-depot index once instead of
+    // re-iterating the encampments map for every unit (was O(units x
+    // encampments)). The index preserves map (hash) iteration order so the
+    // first-match-then-break selection per unit is byte-for-byte identical.
     int32_t remaining = demand;
     {
+        struct OwnedDepot {
+            aoc::hex::AxialCoord depot;
+            aoc::game::GameState::EncampmentBuffer* buf;
+        };
+        std::vector<OwnedDepot> ownedDepots;
+        ownedDepots.reserve(gameState.encampments().size());
+        for (std::pair<const int32_t, aoc::game::GameState::EncampmentBuffer>& kv
+                : gameState.encampments()) {
+            if (kv.second.owner != player.id()) { continue; }
+            ownedDepots.push_back({grid.toAxial(kv.first), &kv.second});
+        }
         for (const std::unique_ptr<aoc::game::Unit>& unit : player.units()) {
             const int32_t cost = unit->typeDef().foodPerTurn();
             if (cost <= 0) { continue; }
-            for (std::pair<const int32_t, aoc::game::GameState::EncampmentBuffer>& kv
-                    : gameState.encampments()) {
-                if (kv.second.owner != player.id()) { continue; }
-                if (kv.second.food <= 0) { continue; }
-                const aoc::hex::AxialCoord depot = grid.toAxial(kv.first);
-                if (grid.distance(unit->position(), depot) > 5) { continue; }
-                const int32_t take = std::min(cost, kv.second.food);
-                kv.second.food -= take;
+            for (OwnedDepot& d : ownedDepots) {
+                if (d.buf->food <= 0) { continue; }
+                if (grid.distance(unit->position(), d.depot) > 5) { continue; }
+                const int32_t take = std::min(cost, d.buf->food);
+                d.buf->food -= take;
                 remaining -= take;
                 break;
             }
