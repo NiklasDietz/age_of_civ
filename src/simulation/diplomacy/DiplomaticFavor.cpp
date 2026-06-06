@@ -28,11 +28,14 @@ int32_t governmentBaseFavor(GovernmentType gov) {
 int32_t computeDiplomaticFavor(const aoc::game::Player& player,
                                 int32_t allianceCount,
                                 int32_t suzeraintyCount,
-                                int32_t totalGrievancesAgainst) {
+                                int32_t grievanceSeverityAgainst) {
     const int32_t base         = governmentBaseFavor(player.government().government);
     const int32_t allianceBonus = 2 * std::max(0, allianceCount);
     const int32_t suzeBonus     = 2 * std::max(0, suzeraintyCount);
-    const int32_t grievancePenalty = -std::clamp(totalGrievancesAgainst, 0, 10);
+    // grievanceSeverityAgainst is a positive magnitude of summed grievance
+    // severities (single grievances range ~5..100). Scale by 10 so the penalty
+    // keeps the original [-10, 0] range: ~100 total severity = full -10 penalty.
+    const int32_t grievancePenalty = -std::clamp(grievanceSeverityAgainst / 10, 0, 10);
     return base + allianceBonus + suzeBonus + grievancePenalty;
 }
 

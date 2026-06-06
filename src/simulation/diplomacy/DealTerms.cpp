@@ -45,6 +45,83 @@ ErrorCode acceptDeal(aoc::game::GameState& gameState,
     }
 
     DiplomaticDeal& deal = tracker.activeDeals[static_cast<std::size_t>(dealIndex)];
+
+    // First pass: validate every term's precondition. If any term cannot be
+    // honoured (missing city, insufficient treasury, non-bordering tile, ...),
+    // reject the whole deal and apply nothing -- a deal must be all-or-nothing
+    // so e.g. a CedeCity+GoldLump deal never moves the gold without the city.
+    for (const DealTerm& term : deal.terms) {
+        switch (term.type) {
+            case DealTermType::CedeCity: {
+                const aoc::game::Player* fromPlayer = gameState.player(term.fromPlayer);
+                if (fromPlayer == nullptr) {
+                    LOG_WARN("Deal rejected: CedeCity fromPlayer %u not found",
+                             static_cast<unsigned>(term.fromPlayer));
+                    return ErrorCode::InvalidArgument;
+                }
+                bool found = false;
+                for (const std::unique_ptr<aoc::game::City>& cityPtr : fromPlayer->cities()) {
+                    if (cityPtr->location() == term.tileCoord) { found = true; break; }
+                }
+                if (!found) {
+                    LOG_WARN("Deal rejected: CedeCity has no city at (%d,%d) owned by player %u",
+                             term.tileCoord.q, term.tileCoord.r,
+                             static_cast<unsigned>(term.fromPlayer));
+                    return ErrorCode::EntityNotFound;
+                }
+                break;
+            }
+            case DealTermType::CedeTile: {
+                const int32_t idx = grid.toIndex(term.tileCoord);
+                if (idx < 0 || grid.owner(idx) != term.fromPlayer) {
+                    LOG_WARN("Deal rejected: CedeTile (%d,%d) not owned by player %u",
+                             term.tileCoord.q, term.tileCoord.r,
+                             static_cast<unsigned>(term.fromPlayer));
+                    return ErrorCode::InvalidArgument;
+                }
+                bool touchesReceiver = false;
+                for (const hex::AxialCoord& n : hex::neighbors(term.tileCoord)) {
+                    const int32_t nIdx = grid.toIndex(n);
+                    if (nIdx >= 0 && grid.owner(nIdx) == term.toPlayer) {
+                        touchesReceiver = true;
+                        break;
+                    }
+                }
+                if (!touchesReceiver) {
+                    LOG_WARN("Deal rejected: CedeTile (%d,%d) does not border player %u",
+                             term.tileCoord.q, term.tileCoord.r,
+                             static_cast<unsigned>(term.toPlayer));
+                    return ErrorCode::InvalidArgument;
+                }
+                break;
+            }
+            case DealTermType::GoldLump: {
+                const aoc::game::Player* payer = gameState.player(term.fromPlayer);
+                const aoc::game::Player* receiver = gameState.player(term.toPlayer);
+                const CurrencyAmount amt = static_cast<CurrencyAmount>(term.goldLump);
+                if (payer == nullptr || receiver == nullptr || amt <= 0
+                    || payer->treasury() < amt) {
+                    LOG_WARN("Deal rejected: GoldLump player %u cannot pay %lld",
+                             static_cast<unsigned>(term.fromPlayer),
+                             static_cast<long long>(amt));
+                    return ErrorCode::InvalidArgument;
+                }
+                break;
+            }
+            case DealTermType::WarGuilt: {
+                if (gameState.player(term.fromPlayer) == nullptr) {
+                    LOG_WARN("Deal rejected: WarGuilt fromPlayer %u not found",
+                             static_cast<unsigned>(term.fromPlayer));
+                    return ErrorCode::InvalidArgument;
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    // All preconditions hold: commit the deal and apply every term.
     deal.isAccepted = true;
 
     for (const DealTerm& term : deal.terms) {
@@ -64,6 +141,19 @@ ErrorCode acceptDeal(aoc::game::GameState& gameState,
                                  cityPtr->name().c_str(),
                                  static_cast<unsigned>(term.toPlayer));
                         cityPtr->setOwner(term.toPlayer);
+                        // Reown the map tiles too, otherwise the seller keeps
+                        // owning the ground and processBorderExpansion keeps
+                        // claiming around the lost city. Mirrors Secession.cpp:
+                        // center hex + the six neighbours flip to the new owner.
+                        const aoc::hex::AxialCoord loc = cityPtr->location();
+                        if (grid.isValid(loc)) {
+                            grid.setOwner(grid.toIndex(loc), term.toPlayer);
+                        }
+                        for (const aoc::hex::AxialCoord& n : aoc::hex::neighbors(loc)) {
+                            if (grid.isValid(n)) {
+                                grid.setOwner(grid.toIndex(n), term.toPlayer);
+                            }
+                        }
                         break;
                     }
                 }
