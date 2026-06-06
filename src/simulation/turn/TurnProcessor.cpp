@@ -385,7 +385,22 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
 
     // Civilization meeting detection: check if any of our units/cities are
     // within 4 hexes of another player's entity. Triggers MeetCivilization eureka.
+    // The scan exists solely to fire the MeetCivilization eureka boosts; once
+    // every such boost is already triggered for this player the proximity scan
+    // (own x foreign entities) can only re-derive an outcome that is locked in,
+    // so skip the work entirely.
+    bool anyMeetCivPending = false;
     {
+        const PlayerEurekaComponent& eureka = gsPlayer->eureka();
+        for (const EurekaBoostDef& boost : getEurekaBoosts()) {
+            if (boost.condition == EurekaCondition::MeetCivilization
+                && !eureka.hasTriggered(boost.boostIndex)) {
+                anyMeetCivPending = true;
+                break;
+            }
+        }
+    }
+    if (anyMeetCivPending) {
         bool metAnotherCiv = false;
 
         // Check our units against all foreign cities
@@ -506,7 +521,9 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
     processAdvancedEconomics(*turnContext.gameState, grid, player, turnContext.economy->market());
 
     // War weariness
-    processWarWeariness(*gsPlayer, *turnContext.diplomacy);
+    if (turnContext.diplomacy != nullptr) {
+        processWarWeariness(*gsPlayer, *turnContext.diplomacy);
+    }
 
     // Golden/Dark age effects
     processAgeEffects(*gsPlayer);
@@ -822,9 +839,20 @@ void processGlobalSystems(TurnContext& turnContext) {
             return counts;
         };
 
-        for (const std::unique_ptr<aoc::game::Player>& a : gameState.players()) {
+        // Precompute each player's dominant-religion counts once, indexed
+        // parallel to gameState.players(). The nested P×P loop below would
+        // otherwise rebuild the inner player's map for every outer player.
+        const std::vector<std::unique_ptr<aoc::game::Player>>& players = gameState.players();
+        std::vector<std::unordered_map<ReligionId, int32_t>> playerCounts(players.size());
+        for (std::size_t i = 0; i < players.size(); ++i) {
+            if (players[i] == nullptr) { continue; }
+            playerCounts[i] = dominantReligionCities(*players[i]);
+        }
+
+        for (std::size_t ai = 0; ai < players.size(); ++ai) {
+            const std::unique_ptr<aoc::game::Player>& a = players[ai];
             if (a == nullptr) { continue; }
-            const auto aCounts = dominantReligionCities(*a);
+            const std::unordered_map<ReligionId, int32_t>& aCounts = playerCounts[ai];
             if (aCounts.empty()) { continue; }
             ReligionId aTop = NO_RELIGION;
             int32_t aTopN = 0;
@@ -833,9 +861,10 @@ void processGlobalSystems(TurnContext& turnContext) {
             }
             if (aTop == NO_RELIGION) { continue; }
 
-            for (const std::unique_ptr<aoc::game::Player>& b : gameState.players()) {
+            for (std::size_t bi = 0; bi < players.size(); ++bi) {
+                const std::unique_ptr<aoc::game::Player>& b = players[bi];
                 if (b == nullptr || b->id() == a->id()) { continue; }
-                const auto bCounts = dominantReligionCities(*b);
+                const std::unordered_map<ReligionId, int32_t>& bCounts = playerCounts[bi];
                 const auto it = bCounts.find(aTop);
                 if (it == bCounts.end()) { continue; }
                 // Shared religion modifier, scaled by overlap.  +2..+8 range
@@ -974,6 +1003,10 @@ void processGlobalSystems(TurnContext& turnContext) {
     // counts as a spring source, matching the user spec. The result
     // is stashed on City and consumed by per-turn housing logic.
     {
+        // One reusable visited buffer for all per-city BFS passes; reset
+        // per BFS via std::fill. tileCount() is fixed for the whole loop,
+        // so a single allocation replaces ~one-per-city-per-turn.
+        std::vector<uint8_t> visited(static_cast<std::size_t>(grid.tileCount()), 0);
         for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
             for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
                 aoc::game::City& city = *cityPtr;
@@ -1000,7 +1033,7 @@ void processGlobalSystems(TurnContext& turnContext) {
                     return false;
                 };
 
-                std::vector<uint8_t> visited(static_cast<std::size_t>(grid.tileCount()), 0);
+                std::fill(visited.begin(), visited.end(), static_cast<uint8_t>(0));
                 std::vector<int32_t> queue;
                 queue.reserve(64);
                 queue.push_back(startIdx);
