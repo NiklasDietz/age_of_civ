@@ -36,7 +36,6 @@
 #include "aoc/core/Random.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 
-#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -198,13 +197,26 @@ public:
 
     Status tick(Blackboard& bb) override {
         // If weight is below 0.3, almost never do this. Above 1.5, always do it.
-        // Between: use a deterministic check.
+        // Between: succeed with probability proportional to weight.
         if (this->m_weight < 0.3f) { return Status::Failure; }
         if (this->m_weight >= 1.0f) { return this->m_child->tick(bb); }
-        // Moderate weight: succeed with probability proportional to weight
-        float roll = bb.get("_tick_counter", 0.0f);
-        float threshold = this->m_weight;
-        if (std::fmod(roll, 1.0f) < threshold) {
+        // Moderate weight: draw a real pseudo-random value in [0, 1) and gate on
+        // it. Prefer the blackboard RNG for lockstep determinism; if it is not
+        // wired up, derive a deterministic roll from (player, tick) so the gate
+        // still varies per tick instead of firing unconditionally.
+        float roll = 0.0f;
+        if (bb.rng != nullptr) {
+            roll = bb.rng->nextFloat();
+        } else {
+            const uint64_t tick = static_cast<uint64_t>(bb.get("_tick_counter", 0.0f));
+            uint64_t h = (static_cast<uint64_t>(bb.player) << 32) ^ tick;
+            h += 0x9e3779b97f4a7c15ULL;
+            h = (h ^ (h >> 30)) * 0xbf58476d1ce4e5b9ULL;
+            h = (h ^ (h >> 27)) * 0x94d049bb133111ebULL;
+            h ^= h >> 31;
+            roll = static_cast<float>(h >> 40) * (1.0f / 16777216.0f);
+        }
+        if (roll < this->m_weight) {
             return this->m_child->tick(bb);
         }
         return Status::Failure;
