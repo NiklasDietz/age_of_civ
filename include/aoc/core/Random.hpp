@@ -10,6 +10,7 @@
  */
 
 #include <array>
+#include <cassert>
 #include <cstdint>
 
 namespace aoc {
@@ -41,8 +42,12 @@ public:
         return result;
     }
 
-    /// Uniform int32_t in [min, max] (inclusive).
+    /// Uniform int32_t in [min, max] (inclusive). Precondition: max >= min.
     [[nodiscard]] constexpr int32_t nextInt(int32_t min, int32_t max) {
+        assert(max >= min);
+        // Defensive guard: an empty-container idiom such as nextInt(0, size()-1)
+        // passes max < min, which would underflow the range and yield % 0 (UB).
+        if (max < min) { return min; }
         uint64_t range = static_cast<uint64_t>(max - min) + 1;
         return min + static_cast<int32_t>(this->next() % range);
     }
