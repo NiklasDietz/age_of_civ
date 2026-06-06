@@ -132,6 +132,17 @@ public:
     [[nodiscard]] bool hasRemaining(std::size_t bytes) const;
     [[nodiscard]] std::size_t remaining() const;
 
+    /// Current read cursor offset from the start of the buffer.
+    [[nodiscard]] std::size_t currentOffset() const { return this->m_offset; }
+
+    /// Reposition the read cursor to an absolute offset. Used by the section
+    /// loop to re-frame each known section to its declared end
+    /// (sectionStart + sectionSize), so a case that reads fewer bytes than
+    /// declared cannot desync the following section. The caller has already
+    /// verified the target is within bounds; this does not touch the
+    /// sticky-corrupt flag.
+    void seekTo(std::size_t offset);
+
     /// True once any primitive read tripped a bounds check.
     /// Once set, every subsequent read is a no-op returning zero / empty.
     [[nodiscard]] bool isCorrupt() const { return this->m_corrupt; }
