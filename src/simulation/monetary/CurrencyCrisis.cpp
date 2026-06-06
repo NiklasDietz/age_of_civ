@@ -79,8 +79,12 @@ bool processCurrencyCrisis(aoc::game::GameState& gameState,
                 state.goldBarReserves = std::max(0, state.goldBarReserves - drain);
                 state.updateCoinTier();
 
-                // If reserves hit zero: forced devaluation
+                // If reserves hit zero: forced devaluation. Gate on a still-
+                // positive backing ratio so this one-shot effect fires at most
+                // once per bank run; the block zeroes goldBackingRatio, so it
+                // self-disables on subsequent turns of the same crisis.
                 if (state.goldBarReserves <= 0
+                    && state.goldBackingRatio > 0.0f
                     && state.system == MonetarySystemType::GoldStandard) {
                     // Paper currency loses 50% of value
                     adjustMoneySupply(state, -state.moneySupply / 2,
@@ -119,13 +123,24 @@ bool processCurrencyCrisis(aoc::game::GameState& gameState,
                 aoc::game::Player* player = gameState.player(state.owner);
                 if (player != nullptr) {
                     aoc::sim::PlayerBondComponent& pb = player->bonds();
+                    // Only redenominate bonds this player ISSUED (denominated in
+                    // its own, now-redenominated fiat). heldBonds are foreign
+                    // assets in other currencies and must NOT be touched.
                     for (aoc::sim::BondIssue& b : pb.issuedBonds) {
                         b.principal /= 2;
                         b.accruedInterest /= 2;
-                    }
-                    for (aoc::sim::BondIssue& b : pb.heldBonds) {
-                        b.principal /= 2;
-                        b.accruedInterest /= 2;
+                        // Keep the holder's matching copy in lockstep so it is
+                        // paid the redenominated amount at maturity.
+                        aoc::game::Player* holderPlayer = gameState.player(b.holder);
+                        if (holderPlayer != nullptr) {
+                            for (aoc::sim::BondIssue& held : holderPlayer->bonds().heldBonds) {
+                                if (held.id == b.id) {
+                                    held.principal = b.principal;
+                                    held.accruedInterest = b.accruedInterest;
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
                 // Auto-execute currency reform at end of hyperinflation

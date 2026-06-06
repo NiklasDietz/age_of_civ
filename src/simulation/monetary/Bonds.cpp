@@ -228,6 +228,20 @@ void processBondPayments(aoc::game::GameState& gameState) {
                              static_cast<unsigned>(issuerPtr->id()),
                              static_cast<long long>(totalPayment),
                              static_cast<unsigned>(it->holder));
+
+                    // Remove the defaulted bond from the holder's portfolio by
+                    // unique bond id so it stops counting as a live asset.
+                    aoc::game::Player* holderPlayer = gameState.player(it->holder);
+                    if (holderPlayer != nullptr) {
+                        PlayerBondComponent& holderBonds = holderPlayer->bonds();
+                        for (std::vector<BondIssue>::iterator hIt = holderBonds.heldBonds.begin();
+                             hIt != holderBonds.heldBonds.end(); ++hIt) {
+                            if (hIt->id == it->id) {
+                                holderBonds.heldBonds.erase(hIt);
+                                break;
+                            }
+                        }
+                    }
                 }
 
                 it = portfolio.issuedBonds.erase(it);
@@ -291,6 +305,7 @@ ErrorCode createIOU(aoc::game::GameState& gameState,
     contract.principal      = principal;
     contract.remaining      = principal;
     contract.interestRate   = interestRate;
+    contract.originalTerm   = termTurns;
     contract.turnsRemaining = termTurns;
     contract.turnsActive    = 0;
     contract.inDefault      = false;
@@ -394,7 +409,8 @@ void processIOUPayments(aoc::game::GameState& gameState) {
             it->remaining += interest;
 
             // Scheduled payment: (principal / original_term) + interest per turn
-            CurrencyAmount scheduledPayment = it->principal / 20 + interest;
+            CurrencyAmount scheduledPayment =
+                it->principal / std::max(1, it->originalTerm) + interest;
             scheduledPayment = std::min(scheduledPayment, it->remaining);
 
             aoc::game::Player* debtorPlayer   = gameState.player(it->debtor);
@@ -418,6 +434,34 @@ void processIOUPayments(aoc::game::GameState& gameState) {
             if (it->remaining <= 0) {
                 // Remove from debtor's loansReceived by unique id.
                 if (debtorPlayer != nullptr) {
+                    std::vector<IOUContract>& received = debtorPlayer->ious().loansReceived;
+                    for (std::vector<IOUContract>::iterator rIt = received.begin();
+                         rIt != received.end(); ++rIt) {
+                        if (rIt->id == it->id) {
+                            received.erase(rIt);
+                            break;
+                        }
+                    }
+                }
+                it = creditorIOU.loansGiven.erase(it);
+            } else if (it->turnsRemaining <= 0) {
+                // Term expired with a balance still outstanding: force-close so
+                // it stops compounding interest forever. Collect what the debtor
+                // can pay (partial if short), mark default on a shortfall, then
+                // erase from both portfolios.
+                if (debtorPlayer != nullptr) {
+                    MonetaryStateComponent& debtorState   = debtorPlayer->monetary();
+                    MonetaryStateComponent& creditorState = creditorPtr->monetary();
+                    CurrencyAmount finalPayment = std::min(debtorState.treasury, it->remaining);
+                    debtorState.treasury   -= finalPayment;
+                    creditorState.treasury += finalPayment;
+                    if (finalPayment < it->remaining) {
+                        it->inDefault = true;
+                        CurrencyTrustComponent& trust = debtorPlayer->currencyTrust();
+                        trust.trustScore = std::max(0.0f, trust.trustScore - 0.10f);
+                    }
+
+                    // Remove from debtor's loansReceived by unique id.
                     std::vector<IOUContract>& received = debtorPlayer->ious().loansReceived;
                     for (std::vector<IOUContract>::iterator rIt = received.begin();
                          rIt != received.end(); ++rIt) {
