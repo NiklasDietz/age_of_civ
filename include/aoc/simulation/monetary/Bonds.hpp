@@ -185,6 +185,7 @@ struct IOUContract {
     CurrencyAmount principal = 0;           ///< Original loan amount
     CurrencyAmount remaining = 0;           ///< Outstanding balance
     float    interestRate = 0.05f;          ///< Per-turn interest rate
+    int32_t  originalTerm = 20;             ///< Loan term at creation (for amortization)
     int32_t  turnsRemaining = 20;           ///< Turns until full repayment due
     int32_t  turnsActive = 0;               ///< How long the loan has been active
     bool     inDefault = false;             ///< Debtor failed to make a payment
