@@ -141,7 +141,7 @@ struct UnitTypeDef {
 // Unit type IDs: keep stable for serialization. Gaps are fine.
 // Format: {id, name, class, era, hp, melee, ranged, range, move, cost, reqTech, upgradesTo, upgradeCost}
 
-inline constexpr int32_t UNIT_TYPE_COUNT = 68;
+inline constexpr int32_t UNIT_TYPE_COUNT = 79;
 inline constexpr std::array<UnitTypeDef, 79> UNIT_TYPE_DEFS = {{
     // ========================================================================
     // MELEE INFANTRY: Warrior -> Swordsman -> Man-at-Arms -> Musketman -> Infantry -> Mech Infantry
@@ -331,6 +331,9 @@ inline constexpr std::array<UnitTypeDef, 79> UNIT_TYPE_DEFS = {{
     // SUPERTANKER (super-heavy logistics, late game).
     {UnitTypeId{80}, "Supertanker",     UnitClass::Logistics,UnitEra::Atomic,        120, 0,  0, 0, 5, 280, TechId{18}, UnitTypeId{},   0,   {{64, 1}, {65, 2}}},
 }};
+
+static_assert(UNIT_TYPE_COUNT == static_cast<int32_t>(UNIT_TYPE_DEFS.size()),
+              "UNIT_TYPE_COUNT out of sync with UNIT_TYPE_DEFS");
 
 /// Lookup a unit type definition by ID. IDs are not contiguous so this
 /// searches the array. For hot paths, cache the result.
