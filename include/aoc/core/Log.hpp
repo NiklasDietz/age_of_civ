@@ -140,7 +140,16 @@ inline void logMessage(Severity severity, const char* file, int line,
     char buf[kLogBufSize];
     int written = std::snprintf(buf, kLogBufSize, "[%s][%s] %s:%d %s\n",
                                  timeBuf, severityTag(severity), file, line, msg);
-    (void)written;
+    if (written < 0) { written = 0; }
+    if (static_cast<std::size_t>(written) >= kLogBufSize) {
+        // Mark truncation, mirroring the variadic overload: reserve room for
+        // "...\n" + NUL in the last bytes of the buffer.
+        constexpr std::size_t kTruncTail = 5; // "...\n" + NUL.
+        if (kLogBufSize > kTruncTail) {
+            std::snprintf(buf + (kLogBufSize - kTruncTail), kTruncTail,
+                          "...\n");
+        }
+    }
 
     std::FILE* stream = (severity >= Severity::Error) ? stderr : stdout;
     std::fprintf(stream, "%s", buf);
