@@ -1950,22 +1950,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         aoc::map::gen::KoppenStructuresOutputs s9out;
         aoc::map::gen::runKoppenStructures(grid, cylSim, orogeny, lakeFlag, sediment,
                                    eventMrk, s9out);
-        std::vector<uint8_t>& kop    = s9out.kop;
         std::vector<uint8_t>& mtnS   = s9out.mtnS;
-        std::vector<uint8_t>& oreG   = s9out.oreG;
-        std::vector<uint8_t>& strait = s9out.strait;
-        std::vector<uint8_t>& harbor = s9out.harbor;
-        std::vector<uint8_t>& chanP  = s9out.chanP;
         std::vector<uint8_t>& vegD   = s9out.vegD;
-        std::vector<uint8_t>& coast  = s9out.coast;
-        std::vector<uint8_t>& subV   = s9out.subV;
-        std::vector<uint8_t>& volP   = s9out.volP;
-        std::vector<uint8_t>& karstS = s9out.karstS;
-        std::vector<uint8_t>& desS   = s9out.desS;
-        std::vector<uint8_t>& massW  = s9out.massW;
-        std::vector<uint8_t>& namedW = s9out.namedW;
-        std::vector<uint8_t>& forA   = s9out.forA;
-        std::vector<uint8_t>& soilM  = s9out.soilM;
 
         // 2026-05-03: SESSION 10 compute body extracted to gen/Session10.cpp.
         // Outputs are passed back via LithologyOutputs struct; setter calls
@@ -1973,18 +1959,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // sessions may read these via grid getters).
         aoc::map::gen::LithologyOutputs s10out;
         aoc::map::gen::runLithology(grid, cylSim, permafrost, s10out);
-        std::vector<uint8_t>& litho    = s10out.litho;
-        std::vector<uint8_t>& bedrock  = s10out.bedrock;
         std::vector<uint8_t>& sOrder   = s10out.sOrder;
         std::vector<uint8_t>& crustTh  = s10out.crustTh;
         std::vector<uint8_t>& geoGrad  = s10out.geoGrad;
-        std::vector<uint8_t>& albedo   = s10out.albedo;
-        std::vector<uint8_t>& vegType  = s10out.vegType;
-        std::vector<uint8_t>& atmRiv   = s10out.atmRiv;
-        std::vector<uint8_t>& cycBasin = s10out.cycBasin;
         std::vector<uint8_t>& sst      = s10out.sst;
-        std::vector<uint8_t>& iceShelf = s10out.iceShelf;
-        std::vector<uint8_t>& permaD   = s10out.permaD;
 
         // 2026-05-03: cliff-coast classification extracted to gen/CliffCoast.cpp.
         aoc::map::gen::runCliffCoast(grid, cylSim);
@@ -2007,35 +1985,13 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // 2026-05-03: SESSION 17 extracted to gen/Session17.cpp.
         aoc::map::gen::runEcoAnalytics(grid);
 
-        grid.setLithology(std::move(litho));
-        grid.setBedrockLithology(std::move(bedrock));
         grid.setSoilOrder(std::move(sOrder));
         grid.setCrustalThickness(std::move(crustTh));
         grid.setGeothermalGradient(std::move(geoGrad));
-        grid.setAlbedo(std::move(albedo));
-        grid.setVegetationType(std::move(vegType));
-        grid.setAtmosphericRiver(std::move(atmRiv));
-        grid.setCycloneBasin(std::move(cycBasin));
         grid.setSeaSurfaceTemp(std::move(sst));
-        grid.setIceShelfZone(std::move(iceShelf));
-        grid.setPermafrostDepth(std::move(permaD));
 
-        grid.setKoppen(std::move(kop));
         grid.setMountainStructure(std::move(mtnS));
-        grid.setOreGrade(std::move(oreG));
-        grid.setStrait(std::move(strait));
-        grid.setHarborScore(std::move(harbor));
-        grid.setChannelPattern(std::move(chanP));
         grid.setVegetationDensity(std::move(vegD));
-        grid.setCoastalFeature(std::move(coast));
-        grid.setSubmarineVent(std::move(subV));
-        grid.setVolcanicProfile(std::move(volP));
-        grid.setKarstSubtype(std::move(karstS));
-        grid.setDesertSubtype(std::move(desS));
-        grid.setMassWasting(std::move(massW));
-        grid.setNamedWind(std::move(namedW));
-        grid.setForestAgeClass(std::move(forA));
-        grid.setSoilMoistureRegime(std::move(soilM));
 
         // ---- CORAL REEF TIER CLASSIFICATION ----
         // Categorize each Reef-feature tile:
@@ -2115,7 +2071,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         grid.setSoilFertility(soilFert);
         grid.setVolcanism(volcanism);
         grid.setSeismicHazard(hazard);
-        grid.setPermafrost(permafrost);
         grid.setLakeFlag(lakeFlag);
         grid.setUpwelling(upwelling);
     }
