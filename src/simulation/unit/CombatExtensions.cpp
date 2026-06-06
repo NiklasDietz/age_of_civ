@@ -28,6 +28,12 @@ namespace aoc::sim {
 ErrorCode formCorps(aoc::game::GameState& gameState,
                      aoc::game::Unit& target,
                      aoc::game::Unit& source) {
+    // Reject self-aliasing: merging a unit into itself would destroy `source`
+    // (== `target`) and leave a dangling reference.
+    if (&target == &source) {
+        return ErrorCode::InvalidArgument;
+    }
+
     // Same type and owner
     if (target.typeId() != source.typeId() || target.owner() != source.owner()) {
         return ErrorCode::InvalidArgument;
@@ -68,6 +74,12 @@ ErrorCode formCorps(aoc::game::GameState& gameState,
 ErrorCode formArmy(aoc::game::GameState& gameState,
                     aoc::game::Unit& corps,
                     aoc::game::Unit& source) {
+    // Reject self-aliasing: merging a unit into itself would destroy `source`
+    // (== `corps`) and leave a dangling reference.
+    if (&corps == &source) {
+        return ErrorCode::InvalidArgument;
+    }
+
     if (corps.typeId() != source.typeId() || corps.owner() != source.owner()) {
         return ErrorCode::InvalidArgument;
     }
@@ -115,6 +127,13 @@ ErrorCode launchNuclearStrike(aoc::game::GameState& gameState,
     LOG_INFO("NUCLEAR STRIKE at (%d,%d)! Blast radius %d, %d%% population damage",
              targetTile.q, targetTile.r, blastRadius,
              static_cast<int>(populationDamage * 100.0f));
+
+    // The target tile feeds grid.toIndex() in the fallout loop without its own
+    // validity check (unlike the ring neighbours), so reject an off-map target
+    // up front to prevent an out-of-bounds write.
+    if (!grid.isValid(targetTile)) {
+        return ErrorCode::InvalidArgument;
+    }
 
     // Collect all tiles in blast radius. A set guarantees each tile appears
     // exactly once so tile effects / damage are never applied twice (ring-2
