@@ -60,4 +60,39 @@ bool shouldConsumeMovementByZoC(const aoc::game::Unit& unit,
     return isInEnemyZoC(gameState, targetTile, unit.owner(), diplomacy);
 }
 
+bool isInEnemyZoC(const aoc::game::GameState& gameState,
+                   aoc::hex::AxialCoord targetTile,
+                   PlayerId movingPlayer) {
+    const std::array<aoc::hex::AxialCoord, 6> neighbors = aoc::hex::neighbors(targetTile);
+
+    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
+        if (player->id() == movingPlayer) { continue; }
+
+        for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
+            if (!isMilitary(unit->typeDef().unitClass)) { continue; }
+
+            for (const aoc::hex::AxialCoord& nbr : neighbors) {
+                if (unit->position() == nbr) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+bool shouldConsumeMovementByZoC(const aoc::game::Unit& unit,
+                                 aoc::hex::AxialCoord targetTile,
+                                 const aoc::game::GameState& gameState) {
+    // Civilians bypass ZoC
+    const UnitTypeDef& def = unit.typeDef();
+    if (!isMilitary(def.unitClass)) { return false; }
+
+    // Embarked units bypass ZoC
+    if (unit.state() == UnitState::Embarked) { return false; }
+
+    return isInEnemyZoC(gameState, targetTile, unit.owner());
+}
+
 } // namespace aoc::sim

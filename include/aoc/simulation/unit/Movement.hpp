@@ -19,6 +19,8 @@ class HexGrid;
 
 namespace aoc::sim {
 
+class DiplomacyManager;
+
 /**
  * @brief Move a unit one step along its pending path.
  *
@@ -28,10 +30,14 @@ namespace aoc::sim {
  * @param gameState  Full game state (needed for stacking, ZoC, and city capture checks).
  * @param unit       The unit to move.
  * @param grid       Hex grid for terrain and movement costs.
+ * @param diplomacy  Optional diplomacy for ZoC open-borders awareness. When
+ *                   null, ZoC falls back to adjacency-only (any adjacent enemy
+ *                   military unit freezes movement).
  * @return true if the unit moved at least one tile, false if it could not move.
  */
 bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
-                       const aoc::map::HexGrid& grid);
+                       aoc::map::HexGrid& grid,
+                       const aoc::sim::DiplomacyManager* diplomacy = nullptr);
 
 /**
  * @brief Set a movement order for a unit (replaces any existing path).
@@ -61,11 +67,13 @@ void refreshMovement(aoc::game::GameState& gameState, PlayerId player);
  * Moves each unit along its stored path as far as its movement points allow.
  */
 void executeMovement(aoc::game::GameState& gameState, PlayerId player,
-                     const aoc::map::HexGrid& grid);
+                     aoc::map::HexGrid& grid,
+                     const aoc::sim::DiplomacyManager* diplomacy = nullptr);
 
 // Legacy EntityId overloads for callers not yet migrated to Unit&
 bool moveUnitAlongPath(aoc::game::GameState& gameState, EntityId unitEntity,
-                       const aoc::map::HexGrid& grid);
+                       aoc::map::HexGrid& grid,
+                       const aoc::sim::DiplomacyManager* diplomacy = nullptr);
 bool orderUnitMove(aoc::game::GameState& gameState, EntityId unitEntity,
                    aoc::hex::AxialCoord goal, const aoc::map::HexGrid& grid);
 

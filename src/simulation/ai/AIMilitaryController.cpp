@@ -352,7 +352,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
 
             if (bestTarget != unit->position()) {
                 aoc::sim::orderUnitMove(*unit, bestTarget, grid);
-                aoc::sim::moveUnitAlongPath(gameState, *unit, grid);
+                aoc::sim::moveUnitAlongPath(gameState, *unit, grid, diplomacy);
             }
             continue;
         }
@@ -470,7 +470,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
 
                 if (bestMove != unit->position()) {
                     aoc::sim::orderUnitMove(*unit, bestMove, grid);
-                    aoc::sim::moveUnitAlongPath(gameState, *unit, grid);
+                    aoc::sim::moveUnitAlongPath(gameState, *unit, grid, diplomacy);
                 }
                 continue;
             }
@@ -498,7 +498,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                 const int32_t distToCity = grid.distance(unit->position(), threatenedCityPos);
                 if (distToCity > 1) {
                     aoc::sim::orderUnitMove(*unit, threatenedCityPos, grid);
-                    aoc::sim::moveUnitAlongPath(gameState, *unit, grid);
+                    aoc::sim::moveUnitAlongPath(gameState, *unit, grid, diplomacy);
                 }
                 continue;
             }
@@ -555,7 +555,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
 
                 if (bestMove != unit->position()) {
                     aoc::sim::orderUnitMove(*unit, bestMove, grid);
-                    aoc::sim::moveUnitAlongPath(gameState, *unit, grid);
+                    aoc::sim::moveUnitAlongPath(gameState, *unit, grid, diplomacy);
                 }
                 continue;
             }
@@ -610,7 +610,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
 
             if (bestBorder != unit->position()) {
                 aoc::sim::orderUnitMove(*unit, bestBorder, grid);
-                aoc::sim::moveUnitAlongPath(gameState, *unit, grid);
+                aoc::sim::moveUnitAlongPath(gameState, *unit, grid, diplomacy);
             } else {
                 // Already at the best border tile -- fortify on defensive terrain
                 // or make a random patrol move to avoid idling in the open.
@@ -637,7 +637,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                         const int32_t idx = rng.nextInt(
                             0, static_cast<int32_t>(validMoves.size()) - 1);
                         aoc::sim::orderUnitMove(*unit, validMoves[static_cast<std::size_t>(idx)], grid);
-                        aoc::sim::moveUnitAlongPath(gameState, *unit, grid);
+                        aoc::sim::moveUnitAlongPath(gameState, *unit, grid, diplomacy);
                     }
                 }
             }
@@ -922,7 +922,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                         }
                         if (bestMove != unit->position()) {
                             aoc::sim::orderUnitMove(*unit, bestMove, grid);
-                            aoc::sim::moveUnitAlongPath(gameState, *unit, grid);
+                            aoc::sim::moveUnitAlongPath(gameState, *unit, grid, diplomacy);
                         }
                     } else if (bestDist == 1
                             && aoc::sim::isMilitary(unit->typeDef().unitClass)) {
@@ -930,7 +930,7 @@ void AIMilitaryController::executeMilitaryActions(aoc::game::GameState& gameStat
                         // tile triggers siege (walls) or capture (no walls)
                         // via Movement.cpp's capture handler.
                         aoc::sim::orderUnitMove(*unit, targetCity, grid);
-                        aoc::sim::moveUnitAlongPath(gameState, *unit, grid);
+                        aoc::sim::moveUnitAlongPath(gameState, *unit, grid, diplomacy);
                     }
                 }
 
