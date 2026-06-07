@@ -50,6 +50,22 @@ class DiplomacyManager;
                                  const DiplomacyManager& diplomacy);
 
 /**
+ * @brief Adjacency-only ZoC check (no diplomacy awareness).
+ *
+ * Returns true if any enemy military unit is adjacent to the target tile,
+ * regardless of open borders. Used as the single-source fallback when no
+ * DiplomacyManager is available to the caller.
+ *
+ * @param gameState     Game state to search for enemy units.
+ * @param targetTile    The tile being entered.
+ * @param movingPlayer  The player whose unit is moving.
+ * @return true if any enemy military unit is adjacent to the tile.
+ */
+[[nodiscard]] bool isInEnemyZoC(const aoc::game::GameState& gameState,
+                                 aoc::hex::AxialCoord targetTile,
+                                 PlayerId movingPlayer);
+
+/**
  * @brief Check if a unit should have its movement consumed after entering a tile.
  *
  * Civilians, embarked units, and units with open borders bypass ZoC.
@@ -64,5 +80,17 @@ class DiplomacyManager;
                                                aoc::hex::AxialCoord targetTile,
                                                const aoc::game::GameState& gameState,
                                                const DiplomacyManager& diplomacy);
+
+/**
+ * @brief Adjacency-only overload of shouldConsumeMovementByZoC.
+ *
+ * Applies the same civilian / embarked bypass gates as the diplomacy-aware
+ * version, but treats every adjacent enemy military unit as exerting ZoC
+ * (no open-borders exemption). This is the single-source fallback for callers
+ * with no DiplomacyManager.
+ */
+[[nodiscard]] bool shouldConsumeMovementByZoC(const aoc::game::Unit& unit,
+                                               aoc::hex::AxialCoord targetTile,
+                                               const aoc::game::GameState& gameState);
 
 } // namespace aoc::sim

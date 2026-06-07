@@ -1283,7 +1283,8 @@ void Application::spectatorAdvanceTurn() {
 
         // Execute AI movement after processTurn (AI decisions ran inside it).
         for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
-            aoc::sim::executeMovement(this->m_gameState, ai.player(), this->m_hexGrid);
+            aoc::sim::executeMovement(this->m_gameState, ai.player(), this->m_hexGrid,
+                                      &this->m_diplomacy);
         }
 
         // Diplomacy decay, espionage, grievance tick, world congress all run
@@ -5134,7 +5135,8 @@ void Application::handleContextAction() {
         const aoc::hex::AxialCoord posBefore = unit.position();
 
         // Execute movement immediately for this turn's remaining movement points
-        aoc::sim::moveUnitAlongPath(this->m_gameState, unit, this->m_hexGrid);
+        aoc::sim::moveUnitAlongPath(this->m_gameState, unit, this->m_hexGrid,
+                                    &this->m_diplomacy);
 
         // Only update fog if the unit actually moved (not just path set with 0 MP)
         if (unit.position() != posBefore) {
@@ -5223,7 +5225,8 @@ void Application::handleEndTurn() {
     }
 
     // Execute any remaining unit movement for the human player
-    aoc::sim::executeMovement(this->m_gameState, 0, this->m_hexGrid);
+    aoc::sim::executeMovement(this->m_gameState, 0, this->m_hexGrid,
+                              &this->m_diplomacy);
 
     // Simultaneous turns: human submits, AI auto-submits, then execute.
     // Sequential turns in war: if active, only allow the active player's turn
@@ -5280,7 +5283,8 @@ void Application::handleEndTurn() {
 
         // AI movement execution (after AI decisions ran inside processTurn)
         for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
-            aoc::sim::executeMovement(this->m_gameState, ai.player(), this->m_hexGrid);
+            aoc::sim::executeMovement(this->m_gameState, ai.player(), this->m_hexGrid,
+                                      &this->m_diplomacy);
         }
 
         // Diplomacy decay, espionage, grievance tick, world congress all run
@@ -5634,7 +5638,8 @@ void Application::handleEndTurn() {
                     }
                 }
                 for (aoc::game::Unit* unit : pendingUnits) {
-                    aoc::sim::moveUnitAlongPath(this->m_gameState, *unit, this->m_hexGrid);
+                    aoc::sim::moveUnitAlongPath(this->m_gameState, *unit, this->m_hexGrid,
+                                                &this->m_diplomacy);
                 }
             }
         }

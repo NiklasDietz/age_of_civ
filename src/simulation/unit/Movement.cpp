@@ -4,6 +4,7 @@
  */
 
 #include "aoc/simulation/unit/Movement.hpp"
+#include "aoc/simulation/unit/ZoneOfControl.hpp"
 #include "aoc/simulation/event/VisibilityEvents.hpp"
 #include "aoc/simulation/city/CityBombardment.hpp"
 #include "aoc/simulation/civilization/Civilization.hpp"
@@ -19,7 +20,6 @@
 #include "aoc/core/Log.hpp"
 
 #include <algorithm>
-#include <array>
 #include <optional>
 #include <vector>
 #include <memory>
@@ -63,44 +63,12 @@ static bool canOccupyTile(const aoc::game::GameState& gameState,
 }
 
 // ============================================================================
-// Zone of control helpers
-// ============================================================================
-
-/**
- * @brief Check if a tile is in an enemy military unit's zone of control.
- *
- * A tile is in enemy ZoC if any of its 6 hex neighbours is occupied by an
- * enemy military unit belonging to a player other than movingPlayer.
- */
-static bool isInEnemyZoneOfControl(const aoc::game::GameState& gameState,
-                                    aoc::hex::AxialCoord tile,
-                                    PlayerId movingPlayer) {
-    const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(tile);
-
-    for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
-        if (player->id() == movingPlayer) {
-            continue;
-        }
-        for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
-            if (!unit->isMilitary()) {
-                continue;
-            }
-            for (const aoc::hex::AxialCoord& nbr : nbrs) {
-                if (unit->position() == nbr) {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
-}
-
-// ============================================================================
 // Movement
 // ============================================================================
 
 bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
-                        const aoc::map::HexGrid& grid) {
+                        aoc::map::HexGrid& grid,
+                        const aoc::sim::DiplomacyManager* diplomacy) {
     if (unit.pendingPath().empty()) {
         return false;
     }
@@ -327,7 +295,7 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
                     if (grid.isValid(workedTile)) {
                         const int32_t wtIndex = grid.toIndex(workedTile);
                         if (grid.owner(wtIndex) == previousOwner) {
-                            const_cast<aoc::map::HexGrid&>(grid).setOwner(wtIndex, unit.owner());
+                            grid.setOwner(wtIndex, unit.owner());
                         }
                     }
                 }
@@ -348,14 +316,17 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
         // from open terrain. Blocking entry outright restores the screening
         // guarantee defensive ZoC is meant to provide.
         //
-        // Civilians (settlers, builders, traders) and embarked land units
-        // bypass ZoC — otherwise a non-hostile neighbour's patrol would
-        // freeze civilian travel across open terrain, which the dedicated
-        // shouldConsumeMovementByZoC() helper in ZoneOfControl.cpp already
-        // documents as the intended rule.
-        if (unitIsMilitary
-            && unit.state() != aoc::sim::UnitState::Embarked
-            && isInEnemyZoneOfControl(gameState, nextTile, unit.owner())) {
+        // The civilian / embarked bypass gates live inside
+        // shouldConsumeMovementByZoC(). When a DiplomacyManager is available we
+        // use the diplomacy-aware overload so open-borders neighbours (and
+        // non-warring players) do not freeze our movement; otherwise we fall
+        // back to the adjacency-only overload (any adjacent enemy military unit
+        // freezes), which preserves the prior behaviour for callers that have
+        // no diplomacy context.
+        const bool zocFreezes = diplomacy != nullptr
+            ? shouldConsumeMovementByZoC(unit, nextTile, gameState, *diplomacy)
+            : shouldConsumeMovementByZoC(unit, nextTile, gameState);
+        if (zocFreezes) {
             unit.setMovementRemaining(0);
             break;
         }
@@ -406,7 +377,8 @@ void refreshMovement(aoc::game::GameState& gameState, PlayerId player) {
 }
 
 void executeMovement(aoc::game::GameState& gameState, PlayerId player,
-                      const aoc::map::HexGrid& grid) {
+                      aoc::map::HexGrid& grid,
+                      const aoc::sim::DiplomacyManager* diplomacy) {
     aoc::game::Player* playerObj = gameState.player(player);
     if (playerObj == nullptr) {
         return;
@@ -422,7 +394,7 @@ void executeMovement(aoc::game::GameState& gameState, PlayerId player,
     }
 
     for (aoc::game::Unit* unit : pendingUnits) {
-        moveUnitAlongPath(gameState, *unit, grid);
+        moveUnitAlongPath(gameState, *unit, grid, diplomacy);
     }
 }
 
@@ -455,10 +427,11 @@ static aoc::game::Unit* findUnitByEntity(aoc::game::GameState& gameState, Entity
 }
 
 bool moveUnitAlongPath(aoc::game::GameState& gameState, EntityId unitEntity,
-                       const aoc::map::HexGrid& grid) {
+                       aoc::map::HexGrid& grid,
+                       const aoc::sim::DiplomacyManager* diplomacy) {
     aoc::game::Unit* unit = findUnitByEntity(gameState, unitEntity);
     if (unit == nullptr) { return false; }
-    return moveUnitAlongPath(gameState, *unit, grid);
+    return moveUnitAlongPath(gameState, *unit, grid, diplomacy);
 }
 
 bool orderUnitMove(aoc::game::GameState& gameState, EntityId unitEntity,
