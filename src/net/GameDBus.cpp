@@ -250,7 +250,15 @@ int32_t GameDBus::tick() {
     int32_t processed = 0;
     for (;;) {
         int r = sd_bus_process(this->m_impl->bus, nullptr);
-        if (r <= 0) { break; }
+        if (r < 0) {
+            // Genuine bus error (e.g. connection lost): surface it and
+            // stop the connection so tick() does not spin retrying a
+            // broken bus. r == 0 below is the benign "no more work" case.
+            LOG_ERROR("GameDBus: sd_bus_process failed: %s", std::strerror(-r));
+            this->m_active.store(false);
+            break;
+        }
+        if (r == 0) { break; }
         ++processed;
     }
 
