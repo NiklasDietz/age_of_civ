@@ -287,11 +287,13 @@ void BarbarianController::moveBarbarianUnits(aoc::game::GameState& gameState,
             int32_t dist = grid.distance(unit->position(), target->position());
 
             if (dist == 1) {
-                // Adjacent: resolve melee combat.
-                // Combat.hpp takes EntityId; a placeholder NULL_ENTITY is passed here
-                // until the combat subsystem is fully migrated to the object model.
-                // Combat API uses Unit& overloads.
-                resolveMeleeCombat(gameState, rng, grid, NULL_ENTITY, NULL_ENTITY);
+                // Adjacent: resolve melee combat. Use the Unit& overload —
+                // `unit` (barbarian attacker) and `target` (defender) are both
+                // live, non-null here (unit guarded by isDead() above; target
+                // by the `!= nullptr && !isDead()` check). The EntityId overload
+                // with NULL_ENTITY is a no-op and was silently dropping every
+                // barbarian melee attack.
+                resolveMeleeCombat(gameState, rng, grid, *unit, *target);
                 continue;
             }
 

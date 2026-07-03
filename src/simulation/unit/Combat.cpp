@@ -630,6 +630,9 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
 
     defender.setHitPoints(defender.hitPoints() - result.defenderDamage);
     result.defenderKilled = defender.isDead();
+    // Ranged attacker takes no counter-damage, so it can never die here.
+    // Set for CombatResult contract-consistency with the melee path.
+    result.attackerKilled = attacker.isDead();
 
     result.attackerXpGained = 3;
     result.defenderXpGained = 2;
@@ -642,11 +645,29 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
     attacker.experience().addExperience(result.attackerXpGained);
     if (!result.defenderKilled) {
         defender.experience().addExperience(result.defenderXpGained);
-    } else {
+    }
+
+    // WP8 — unified deferred-removal list (mirrors resolveMeleeCombat). The
+    // owning player's removeUnit() frees the unique_ptr that backs `defender`,
+    // dangling the caller's Unit&. We collect the (Player*, Unit*) pair while
+    // the reference is still live and drain it in a single trailing pass once
+    // all Unit derefs are complete.
+    struct PendingKill {
+        aoc::game::Player* owner;
+        aoc::game::Unit*   unit;
+    };
+    std::vector<PendingKill> pendingKills;
+    if (result.defenderKilled) {
         aoc::game::Player* defPlayer = findOwningPlayer(gameState, &defender);
         if (defPlayer != nullptr) {
-            defPlayer->removeUnit(&defender);
+            pendingKills.push_back({defPlayer, &defender});
         }
+    }
+
+    // WP8 — trailing removal pass. No Unit reference/pointer is touched after
+    // this point.
+    for (const PendingKill& kill : pendingKills) {
+        kill.owner->removeUnit(kill.unit);
     }
 
     return result;
