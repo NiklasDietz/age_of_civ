@@ -47,6 +47,7 @@ enum class StrategicPosture : uint8_t {
     Aggression,      ///< Active or imminent war -- maximize offensive units
     Defense,         ///< Under threat -- fortify and garrison
     Economic,        ///< Focus on gold and trade -- treasury pressure is critical
+    Count,           ///< Sentinel: number of postures (keep last). Not a real posture.
 };
 
 // ============================================================================

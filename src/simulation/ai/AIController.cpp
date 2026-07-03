@@ -316,6 +316,9 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                 "Expansion", "Development", "MilitaryBuildup",
                 "Aggression", "Defense", "Economic"
             };
+            static_assert(std::size(POSTURE_NAMES) ==
+                              static_cast<std::size_t>(StrategicPosture::Count),
+                          "POSTURE_NAMES must list every StrategicPosture");
             const char* postureName =
                 POSTURE_NAMES[static_cast<std::size_t>(bb.posture)];
             LOG_INFO("AI %u Strategic posture changed to: %s",
@@ -532,9 +535,18 @@ void AIController::executeTurn(aoc::game::GameState& gameState,
                                  targetLoc.q, targetLoc.r,
                                  static_cast<double>(launchScore),
                                  static_cast<double>(roll));
-                        [[maybe_unused]] ErrorCode nec = launchNuclearStrike(
+                        const ErrorCode nec = launchNuclearStrike(
                             gameState, grid, this->m_player, targetLoc,
                             NukeType::NuclearDevice);
+                        if (nec != ErrorCode::Ok) {
+                            // Strike failed: disarm so the armed flag does not
+                            // re-fire every turn and bypass the probability gate.
+                            launcher->nuclear().equipped = false;
+                            LOG_WARN("AI %u NUCLEAR STRIKE failed (err %d); "
+                                     "disarming launcher",
+                                     static_cast<unsigned>(this->m_player),
+                                     static_cast<int>(nec));
+                        }
                     }
                 }
             }
