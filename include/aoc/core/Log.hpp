@@ -98,7 +98,10 @@ void logMessage(Severity severity, const char* file, int line,
     if (bodyLen < 0) bodyLen = 0;
     std::size_t total = static_cast<std::size_t>(prefixLen)
                       + static_cast<std::size_t>(bodyLen);
-    if (total >= kLogBufSize) {
+    // Need room for BOTH the appended '\n' and the trailing '\0': the
+    // newline goes at buf[total] and the NUL at buf[total + 1], so the
+    // largest index written is total + 1, which must stay < kLogBufSize.
+    if (total + 1 >= kLogBufSize) {
         // Mark truncation and reserve room for "...\n\0".
         constexpr std::size_t kTruncTail = 5; // "...\n" + NUL.
         if (kLogBufSize > kTruncTail) {
@@ -107,7 +110,7 @@ void logMessage(Severity severity, const char* file, int line,
         }
         total = kLogBufSize - 1;
     } else {
-        // Room for newline + NUL guaranteed (`total < kLogBufSize`).
+        // Room for newline + NUL guaranteed (`total + 1 < kLogBufSize`).
         buf[total] = '\n';
         ++total;
         buf[total] = '\0';
