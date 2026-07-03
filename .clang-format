@@ -1,0 +1,19 @@
+# Matches the dominant existing style: 4-space indent, 100-col lines,
+# attached braces, pointer-left. Enforcement is changed-lines-only
+# (git clang-format) -- never reformat whole files wholesale.
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++20
+IndentWidth: 4
+ColumnLimit: 100
+PointerAlignment: Left
+DerivePointerAlignment: false
+AccessModifierOffset: -4
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+BreakBeforeBraces: Attach
+IncludeBlocks: Preserve
+SortIncludes: false
+AlignConsecutiveAssignments: Consecutive
+KeepEmptyLinesAtTheStartOfBlocks: false
