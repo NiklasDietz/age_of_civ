@@ -228,8 +228,8 @@ subject to change as GA-evolved personalities drift balance.
 - **Headless simulation** (`tools/HeadlessSimulation.cpp`):
   `aoc_simulate --turns N --players P --map-type T --victory-types V
   --output csv --trace-file aocl`.
-- **Sweep matrix** (`scripts/sweep_matrix.sh`): env-configurable cross
-  of maps × lengths × players with parallel workers; dumps all traces.
+- **Batch smoke runs** (`scripts/smoke_recipes.sh`): multi-seed 500-turn
+  regression harness with thresholds and exit codes.
 
 ## Barbarians
 

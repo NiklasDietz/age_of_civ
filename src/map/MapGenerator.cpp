@@ -107,9 +107,7 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
 
     // 2026-05-03: LandWithSeas removed. Only Continents path remains; it
     // runs the standard tectonic-plate pipeline (assignTerrain → coastline
-    // smoothing → features → rivers → wonders). The previous LandWithSeas
-    // early-return called generateRealisticTerrain() which is now dead code
-    // but kept under `#if 0` further down for reference.
+    // smoothing → features → rivers → wonders).
     assignTerrain(config, outGrid, rng);
     logStage("assign-terrain");
     smoothCoastlines(outGrid);
@@ -655,52 +653,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             break;
         }
         // (continents tectonic-sim runs after the switch — see below)
-#if 0   // 2026-05-03: Islands / ContinentsPlusIslands / LandOnly / Fractal /
-        // LandWithSeas removed by user direction. Code retained under #if 0
-        // for reference; the enum members are commented out in MapGenerator.hpp
-        // so these case labels would not compile. Restoring requires
-        // un-commenting the enum members AND this block.
-        case MapType::Islands: {
-            effectiveWaterRatio = std::max(config.waterRatio, 0.70f);
-            constexpr int32_t ISLAND_COUNT = 14;
-            for (int32_t i = 0; i < ISLAND_COUNT; ++i) {
-                float cx = centerRng.nextFloat(0.08f, 0.92f);
-                float cy = centerRng.nextFloat(0.08f, 0.92f);
-                landCenters.push_back({cx, cy, centerRng.nextFloat(2.8f, 4.0f)});
-            }
-            break;
-        }
-        case MapType::ContinentsPlusIslands: {
-            const int32_t contVariant = centerRng.nextInt(0, 1);
-            if (contVariant == 0) {
-                landCenters.push_back({0.22f, 0.40f, 1.9f});
-                landCenters.push_back({0.78f, 0.60f, 1.9f});
-            } else {
-                landCenters.push_back({0.22f, 0.30f, 2.0f});
-                landCenters.push_back({0.78f, 0.30f, 2.0f});
-                landCenters.push_back({0.50f, 0.80f, 2.0f});
-            }
-            constexpr int32_t ISLAND_COUNT = 7;
-            for (int32_t i = 0; i < ISLAND_COUNT; ++i) {
-                float cx = centerRng.nextFloat(0.10f, 0.90f);
-                float cy = centerRng.nextFloat(0.10f, 0.90f);
-                landCenters.push_back({cx, cy, centerRng.nextFloat(3.0f, 4.5f)});
-            }
-            effectiveWaterRatio = std::clamp(config.waterRatio + 0.05f, 0.3f, 0.55f);
-            break;
-        }
-        case MapType::LandOnly: {
-            landCenters.push_back({0.5f, 0.5f, 0.9f});
-            effectiveWaterRatio = std::min(config.waterRatio, 0.08f);
-            break;
-        }
-        case MapType::Fractal: {
-            break;
-        }
-        case MapType::LandWithSeas: {
-            break;
-        }
-#endif
     }
 
     // ========================================================================
@@ -2184,16 +2136,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
 // smoothCoastlines, assignFeatures, placeNaturalWonders moved to src/map/gen/Features.cpp.
 // generateRivers moved to src/map/gen/Rivers.cpp.
 
-
-// ============================================================================
-// 2026-05-03: generateRealisticTerrain (the LandWithSeas-only entry point)
-// is dead code. LandWithSeas was removed; the Continents path runs through
-// assignTerrain() above, which has its own tectonic-plate sim. Wrapped in
-// `#if 0` rather than deleted in case the user wants to recover it later.
-// The function uses Random& rng + HexGrid&; restoring requires un-commenting
-// the case in MapType (see MapGenerator.hpp) and the call site in
-// MapGenerator::generate (see line ~70).
-// ============================================================================
 
 // ============================================================================
 
