@@ -854,4 +854,26 @@ if(AOC_BUILD_TESTS)
                  COMMAND aoc_simulate --turns 5 --players 2 --output ${CMAKE_BINARY_DIR}/smoke.csv)
         set_tests_properties(test_turn_loop_smoke PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")
     endif()
+
+    # Sim behavior gates -- release builds only (under ASan these multi-run
+    # sims take many minutes and add no memory-safety value beyond the smoke).
+    #   test_determinism : same seed twice -> byte-identical CSVs. Never
+    #                      re-blessed; red always means hidden entropy.
+    #   test_golden_sim  : seed-42 500-turn run hashes to the blessed value
+    #                      in tests/golden/. Behavior-changing commits
+    #                      re-bless deliberately (script --bless) and say
+    #                      why. Excludable during a fix series via
+    #                      `ctest -LE golden`.
+    if(TARGET aoc_simulate AND CMAKE_BUILD_TYPE STREQUAL "Release")
+        add_test(NAME test_determinism
+                 COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_determinism.sh
+                         $<TARGET_FILE:aoc_simulate> ${CMAKE_BINARY_DIR}
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+        add_test(NAME test_golden_sim
+                 COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_golden_sim.sh
+                         $<TARGET_FILE:aoc_simulate> ${CMAKE_BINARY_DIR}
+                         ${CMAKE_SOURCE_DIR}/tests/golden/seed42_turns500.sha256
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+        set_tests_properties(test_golden_sim PROPERTIES LABELS "golden")
+    endif()
 endif()
