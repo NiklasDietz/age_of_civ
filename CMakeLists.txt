@@ -834,6 +834,9 @@ if(AOC_BUILD_TESTS)
     foreach(aoc_test ${AOC_SMOKE_TESTS})
         add_executable(${aoc_test} tests/${aoc_test}.cpp)
         target_link_libraries(${aoc_test} PRIVATE aoc_lib)
+        # doctest: header-only; CHECK() stays live under -DNDEBUG, unlike
+        # assert(), so release-preset test runs actually assert.
+        target_include_directories(${aoc_test} PRIVATE third_party/doctest)
         add_test(NAME ${aoc_test} COMMAND ${aoc_test})
         set_tests_properties(${aoc_test} PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")
     endforeach()

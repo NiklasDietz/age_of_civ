@@ -7,10 +7,11 @@
  * the stack. Real game data nests <10 levels; cap is 64.
  */
 
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "doctest.h"
+
 #include "aoc/data/JsonParser.hpp"
 
-#include <cassert>
-#include <cstdio>
 #include <string>
 
 using aoc::data::JSON_MAX_NESTING_DEPTH;
@@ -39,56 +40,43 @@ namespace {
     return s;
 }
 
-void test_shallowArrayParses() {
+} // namespace
+
+TEST_CASE("shallow array parses") {
     // 8 levels -- well under cap, must succeed and return an array root.
     std::string payload = makeNestedArray(8);
     JsonValue root = parseJson(payload, "shallow_array");
-    assert(root.isArray());
+    CHECK(root.isArray());
 }
 
-void test_atCapArrayParses() {
-    // Exactly cap levels -- must still succeed.
+TEST_CASE("array at exactly the cap parses") {
     std::string payload = makeNestedArray(JSON_MAX_NESTING_DEPTH);
     JsonValue root = parseJson(payload, "at_cap_array");
-    assert(root.isArray());
+    CHECK(root.isArray());
 }
 
-void test_overCapArrayRejected() {
+TEST_CASE("array one past the cap is rejected") {
     // Cap + 1 levels -- parser must bail with null root, not recurse.
     std::string payload = makeNestedArray(JSON_MAX_NESTING_DEPTH + 1);
     JsonValue root = parseJson(payload, "over_cap_array");
-    assert(root.isNull());
+    CHECK(root.isNull());
 }
 
-void test_pathologicalArrayRejected() {
-    // Far past the cap -- a malicious mod payload. Must not crash / recurse
-    // 10000 deep; must return null.
+TEST_CASE("pathological 10000-deep array is rejected") {
+    // A malicious mod payload. Must not crash / recurse 10000 deep.
     std::string payload = makeNestedArray(10000);
     JsonValue root = parseJson(payload, "pathological_array");
-    assert(root.isNull());
+    CHECK(root.isNull());
 }
 
-void test_overCapObjectRejected() {
+TEST_CASE("object one past the cap is rejected") {
     std::string payload = makeNestedObject(JSON_MAX_NESTING_DEPTH + 1);
     JsonValue root = parseJson(payload, "over_cap_object");
-    assert(root.isNull());
+    CHECK(root.isNull());
 }
 
-void test_atCapObjectParses() {
+TEST_CASE("object at exactly the cap parses") {
     std::string payload = makeNestedObject(JSON_MAX_NESTING_DEPTH);
     JsonValue root = parseJson(payload, "at_cap_object");
-    assert(root.isObject());
-}
-
-} // namespace
-
-int main() {
-    test_shallowArrayParses();
-    test_atCapArrayParses();
-    test_overCapArrayRejected();
-    test_pathologicalArrayRejected();
-    test_overCapObjectRejected();
-    test_atCapObjectParses();
-    std::printf("test_json_parser_depth: all passed\n");
-    return 0;
+    CHECK(root.isObject());
 }
