@@ -304,12 +304,14 @@ void processProductionQueues(aoc::game::GameState& gameState,
             // Check resource requirements
             CityStockpileComponent& stockpile = city->stockpile();
             bool resourcesAvailable = true;
+            uint16_t missingGoodId = 0xFFFF;
 
             if (item.type == ProductionItemType::Unit) {
                 const UnitTypeDef& udef = unitTypeDef(UnitTypeId{item.itemId});
                 for (const UnitResourceReq& req : udef.resourceReqs) {
                     if (req.isValid() && stockpile.getAmount(req.goodId) < req.amount) {
                         resourcesAvailable = false;
+                        missingGoodId = req.goodId;
                         break;
                     }
                 }
@@ -318,31 +320,60 @@ void processProductionQueues(aoc::game::GameState& gameState,
                 for (const BuildingResourceCost& cost : bdef.resourceCosts) {
                     if (cost.isValid() && stockpile.getAmount(cost.goodId) < cost.amount) {
                         resourcesAvailable = false;
+                        missingGoodId = cost.goodId;
                         break;
                     }
                 }
             }
 
             if (!resourcesAvailable) {
-                queue.queue.front().progress = queue.queue.front().totalCost;
+                // Item is production-complete but lacks the consumable goods to
+                // finish. Leave progress at its accumulated value (do NOT pin it
+                // to totalCost) so the queue head is not silently wedged at 100%
+                // forever — it retries next turn once the good arrives. Warn so
+                // the stall is diagnosable.
+                LOG_WARN("Production stalled in %s: %.*s needs good %u (insufficient stock)",
+                         city->name().c_str(),
+                         static_cast<int>(item.name.size()),
+                         item.name.c_str(),
+                         static_cast<unsigned>(missingGoodId));
                 continue;
             }
 
-            // Consume resources
+            // Consume resources. The pre-check above already guaranteed
+            // availability, so a false from consumeGoods means the stockpile
+            // underflowed unexpectedly (a real bug). Abort the completion for
+            // this item — do NOT produce a unit/building we could not pay for —
+            // and warn so the discrepancy is surfaced.
+            bool consumed = true;
+            uint16_t underflowGoodId = 0xFFFF;
             if (item.type == ProductionItemType::Unit) {
                 const UnitTypeDef& udef = unitTypeDef(UnitTypeId{item.itemId});
                 for (const UnitResourceReq& req : udef.resourceReqs) {
-                    if (req.isValid()) {
-                        [[maybe_unused]] bool ok = stockpile.consumeGoods(req.goodId, req.amount);
+                    if (req.isValid() && !stockpile.consumeGoods(req.goodId, req.amount)) {
+                        consumed = false;
+                        underflowGoodId = req.goodId;
+                        break;
                     }
                 }
             } else if (item.type == ProductionItemType::Building) {
                 const BuildingDef& bdef = buildingDef(BuildingId{item.itemId});
                 for (const BuildingResourceCost& cost : bdef.resourceCosts) {
-                    if (cost.isValid()) {
-                        [[maybe_unused]] bool ok = stockpile.consumeGoods(cost.goodId, cost.amount);
+                    if (cost.isValid() && !stockpile.consumeGoods(cost.goodId, cost.amount)) {
+                        consumed = false;
+                        underflowGoodId = cost.goodId;
+                        break;
                     }
                 }
+            }
+
+            if (!consumed) {
+                LOG_WARN("Stockpile underflow in %s producing %.*s: good %u consume failed after pre-check passed",
+                         city->name().c_str(),
+                         static_cast<int>(item.name.size()),
+                         item.name.c_str(),
+                         static_cast<unsigned>(underflowGoodId));
+                continue;
             }
 
             // Complete the item
