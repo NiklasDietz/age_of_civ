@@ -403,9 +403,12 @@ void UIManager::removeWidget(WidgetId id) {
         return;
     }
 
-    // Recursively remove children
+    // Recursively remove children. Copy the children vector first because the
+    // recursive removeWidget erases from this same vector (the child's parent
+    // is `id`), which would invalidate the range-for iterator mid-traversal.
     Widget& w = this->m_widgets[id];
-    for (WidgetId child : w.children) {
+    const std::vector<WidgetId> childrenToRemove = w.children;
+    for (WidgetId child : childrenToRemove) {
         this->removeWidget(child);
     }
 

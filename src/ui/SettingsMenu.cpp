@@ -11,12 +11,37 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cerrno>
+#include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 
 namespace aoc::ui {
 
 namespace {
+
+/// Parse a settings value to int32, returning defaultVal on garbage or
+/// overflow. Mirrors SimpleYaml::getInt: strtol with endptr + errno catches
+/// both failure modes; std::stoi would throw on bad input and terminate the
+/// program because loadSettings runs unconditionally at startup.
+int32_t parseInt(const std::string& value, int32_t defaultVal) {
+    const char* str = value.c_str();
+    char* endPtr = nullptr;
+    errno = 0;
+    const long parsed = std::strtol(str, &endPtr, 10);
+    if (endPtr == str) {
+        LOG_WARN("loadSettings: non-numeric value '%s', using default %d",
+                 str, defaultVal);
+        return defaultVal;
+    }
+    if (errno == ERANGE || parsed < INT32_MIN || parsed > INT32_MAX) {
+        LOG_WARN("loadSettings: value '%s' overflows int32, using default %d",
+                 str, defaultVal);
+        return defaultVal;
+    }
+    return static_cast<int32_t>(parsed);
+}
 
 /// Helper: create a volume row with label, -/+ buttons, and a value label.
 WidgetId createVolumeRow(UIManager& ui, WidgetId parent, float rowW,
@@ -427,11 +452,11 @@ GameSettings loadSettings(const std::string& filepath) {
         const std::string key   = line.substr(0, eq);
         const std::string value = line.substr(eq + 1);
         if (key == "masterVolume") {
-            settings.masterVolume = std::stoi(value);
+            settings.masterVolume = parseInt(value, settings.masterVolume);
         } else if (key == "sfxVolume") {
-            settings.sfxVolume = std::stoi(value);
+            settings.sfxVolume = parseInt(value, settings.sfxVolume);
         } else if (key == "musicVolume") {
-            settings.musicVolume = std::stoi(value);
+            settings.musicVolume = parseInt(value, settings.musicVolume);
         } else if (key == "vsync") {
             settings.vsync = (value == "1");
         } else if (key == "fullscreen") {

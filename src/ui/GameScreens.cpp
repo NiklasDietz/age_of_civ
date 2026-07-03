@@ -458,16 +458,26 @@ void ProductionScreen::open(UIManager& ui) {
                     rw->dragPayload = static_cast<uint32_t>(qi);
                     rw->acceptsDrop = true;
                 }
-                std::vector<aoc::sim::ProductionQueueItem>* qPtr = &queue;
                 const std::size_t targetIdx = qi;
-                ui.onDrop(rid, [qPtr, targetIdx](uint32_t fromIdx) {
+                aoc::game::GameState* const gs = this->m_gameState;
+                const PlayerId player = this->m_player;
+                const aoc::hex::AxialCoord loc = this->m_cityLocation;
+                ui.onDrop(rid, [gs, player, loc, targetIdx](uint32_t fromIdx) {
+                    // Re-resolve the city on every drop: the raw pointer into
+                    // the unique_ptr vector may dangle if the city was razed or
+                    // captured between building this row and the drop event.
+                    aoc::game::City* dropCity = resolveCityByLocation(gs, player, loc);
+                    if (dropCity == nullptr) { return; }
+                    std::vector<aoc::sim::ProductionQueueItem>& dropQueue =
+                        dropCity->production().queue;
                     // 2026-05-02: allow swapping with index 0 (active item).
                     // Each ProductionQueueItem carries its own progress field,
                     // so the old front keeps its accumulated progress when
                     // shifted to a different position.
-                    if (fromIdx >= qPtr->size()) { return; }
+                    if (fromIdx >= dropQueue.size()) { return; }
+                    if (targetIdx >= dropQueue.size()) { return; }
                     if (targetIdx == fromIdx) { return; }
-                    std::swap((*qPtr)[fromIdx], (*qPtr)[targetIdx]);
+                    std::swap(dropQueue[fromIdx], dropQueue[targetIdx]);
                 });
             }
         }
@@ -491,11 +501,11 @@ void ProductionScreen::open(UIManager& ui) {
     constexpr float CARD_W = 330.0f;
     constexpr float CARD_H = 78.0f;
 
-    aoc::game::City* cityPtr = city;
-    aoc::game::City* resolved = resolveCityByLocation(this->m_gameState, this->m_player, this->m_cityLocation);
-    if (resolved != nullptr) {
+    // `city` above was already resolved by the same lookup as
+    // resolveCityByLocation, so reuse it instead of a redundant second lookup.
+    if (city != nullptr) {
         const std::vector<aoc::sim::BuildableItem> buildableItems =
-            aoc::sim::getBuildableItems(*this->m_gameState, this->m_player, *resolved);
+            aoc::sim::getBuildableItems(*this->m_gameState, this->m_player, *city);
 
         for (const aoc::sim::BuildableItem& buildable : buildableItems) {
             const Color accent = buildableAccent(buildable.type);
@@ -585,6 +595,12 @@ void ProductionScreen::open(UIManager& ui) {
                 const uint16_t itemId = buildable.id;
                 const float itemCost = buildable.cost;
                 const std::string itemName(buildable.name);
+                // Capture the resolve inputs (cheap values), not a raw City*:
+                // the city may be razed/captured before the click fires, so the
+                // lambda re-resolves it via resolveCityByLocation each time.
+                aoc::game::GameState* const gs = this->m_gameState;
+                const PlayerId player = this->m_player;
+                const aoc::hex::AxialCoord loc = this->m_cityLocation;
                 ButtonData btn;
                 btn.label        = "Add to Queue";
                 btn.fontSize     = 11.0f;
@@ -593,15 +609,16 @@ void ProductionScreen::open(UIManager& ui) {
                 btn.pressedColor = tokens::STATE_PRESSED;
                 btn.labelColor   = tokens::TEXT_GILT;
                 btn.cornerRadius = tokens::CORNER_BUTTON;
-                btn.onClick = [cityPtr, itemType, itemId, itemCost, itemName]() {
-                    if (cityPtr == nullptr) { return; }
+                btn.onClick = [gs, player, loc, itemType, itemId, itemCost, itemName]() {
+                    aoc::game::City* clickCity = resolveCityByLocation(gs, player, loc);
+                    if (clickCity == nullptr) { return; }
                     aoc::sim::ProductionQueueItem item{};
                     item.type      = itemType;
                     item.itemId    = itemId;
                     item.name      = itemName;
                     item.totalCost = itemCost;
                     item.progress  = 0.0f;
-                    cityPtr->production().queue.push_back(std::move(item));
+                    clickCity->production().queue.push_back(std::move(item));
                     LOG_INFO("Enqueued: %s", itemName.c_str());
                 };
                 (void)ui.createButton(textCol,
@@ -618,8 +635,9 @@ void ProductionScreen::open(UIManager& ui) {
                 nowBtn.pressedColor = tokens::STATE_PRESSED;
                 nowBtn.labelColor   = tokens::TEXT_GILT;
                 nowBtn.cornerRadius = tokens::CORNER_BUTTON;
-                nowBtn.onClick = [cityPtr, itemType, itemId, itemCost, itemName]() {
-                    if (cityPtr == nullptr) { return; }
+                nowBtn.onClick = [gs, player, loc, itemType, itemId, itemCost, itemName]() {
+                    aoc::game::City* clickCity = resolveCityByLocation(gs, player, loc);
+                    if (clickCity == nullptr) { return; }
                     aoc::sim::ProductionQueueItem item{};
                     item.type      = itemType;
                     item.itemId    = itemId;
@@ -627,7 +645,7 @@ void ProductionScreen::open(UIManager& ui) {
                     item.totalCost = itemCost;
                     item.progress  = 0.0f;
                     std::vector<aoc::sim::ProductionQueueItem>& q =
-                        cityPtr->production().queue;
+                        clickCity->production().queue;
                     q.insert(q.begin(), std::move(item));
                     LOG_INFO("Interrupted production -- now building: %s",
                              itemName.c_str());
