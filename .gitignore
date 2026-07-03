@@ -7,3 +7,22 @@ ml/*.pt
 ml/*.npz
 ml/__pycache__/
 claude-code-tweaks
+
+# Build trees (CMake presets build into build/<preset>; legacy ad-hoc dirs also covered)
+/build*/
+/Testing/
+/.cache/
+
+# Tooling state
+/.claude/
+
+# Generated run output (headless sim, GA evolver, map statistics)
+/next.txt
+/economic_report.txt
+/evolved_balance.txt
+/evolved_summary.txt
+/ga_checkpoint.txt
+/simulation_log*.csv
+/data/plate_statistics.csv
+/matrix_logs/
+/matrix_summary.tsv

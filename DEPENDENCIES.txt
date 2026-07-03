@@ -1,0 +1,69 @@
+# Age of Civilization -- External Dependencies
+# ============================================================
+# Format:  <name>  [required|optional]  [headless|interactive|both]
+# Sources: CMakeLists.txt, third_party/vulkan_renderer/CMakeLists.txt,
+#          ml/cpp/CMakeLists.txt
+#
+# Headless build (-DAOC_HEADLESS=ON) needs only the "headless" and "both"
+# entries. Interactive build needs everything marked "interactive" or "both".
+
+# ---- Build tools (both) ----
+cmake            >= 3.20      required   both
+cpp-compiler     C++20        required   both   # gcc >= 10 or clang >= 12
+pkg-config                    optional   both   # preferred discovery path
+ccache                        optional   both   # auto-used if present
+git                           required   both   # submodules
+
+# ---- Runtime libraries (both) ----
+luajit           2.1+         preferred  both   # ~10-50x faster scripting
+lua              5.4          fallback   both   # used if luajit missing
+pthreads                      required   both   # system lib, usually built-in
+
+# ---- Interactive-only (windowing + rendering) ----
+vulkan-loader                 required   interactive   # libvulkan.so
+vulkan-headers                required   interactive
+glfw                 3.x      required   interactive
+
+# ---- Vendored (do NOT install) ----
+# stb_truetype              third_party/stb_truetype.h
+# vulkan_renderer           third_party/vulkan_renderer/ (git submodule)
+
+# ============================================================
+# Install commands per distro
+# ============================================================
+#
+# openSUSE (Tumbleweed / Leap):
+#   sudo zypper install cmake gcc-c++ pkgconf ccache git \
+#       luajit-devel pthread-stubs-devel \
+#       vulkan-devel glfw-devel
+#   # Headless only:
+#   sudo zypper install cmake gcc-c++ pkgconf git luajit-devel
+#
+# Debian / Ubuntu:
+#   sudo apt install cmake g++ pkg-config ccache git \
+#       libluajit-5.1-dev libvulkan-dev libglfw3-dev
+#   # Headless only:
+#   sudo apt install cmake g++ pkg-config git libluajit-5.1-dev
+#
+# Fedora / RHEL:
+#   sudo dnf install cmake gcc-c++ pkgconf-pkg-config ccache git \
+#       luajit-devel vulkan-loader-devel vulkan-headers glfw-devel
+#   # Headless only:
+#   sudo dnf install cmake gcc-c++ pkgconf-pkg-config git luajit-devel
+#
+# Arch:
+#   sudo pacman -S cmake gcc pkgconf ccache git \
+#       luajit vulkan-icd-loader vulkan-headers glfw
+#   # Headless only:
+#   sudo pacman -S cmake gcc pkgconf git luajit
+#
+# macOS (Homebrew):
+#   brew install cmake pkg-config ccache luajit glfw molten-vk vulkan-headers
+#   # Headless only:
+#   brew install cmake pkg-config luajit
+#
+# ============================================================
+# Submodule init
+# ============================================================
+# After `git clone`:
+#   git submodule update --init --recursive

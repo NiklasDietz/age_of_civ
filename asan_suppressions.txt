@@ -1,0 +1,16 @@
+# AddressSanitizer leak suppressions for Age of Civilization.
+# These are all from system libraries, not our code.
+
+# fontconfig library (font enumeration)
+leak:libfontconfig.so
+leak:FcValueSave
+
+# Wayland client library (display server)
+leak:libwayland-client.so
+
+# GLib library (used by GTK/system infrastructure)
+leak:g_malloc
+leak:libglib-2.0.so
+
+# Mesa/GPU driver allocations
+leak:<unknown module>
