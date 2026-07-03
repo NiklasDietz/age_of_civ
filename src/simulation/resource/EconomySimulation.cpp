@@ -622,9 +622,14 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
             cityPtr->power() = power;
 
             if (power.hasNuclear) {
-                // Use player id + city pointer address as a stable turn hash seed.
+                // Seed from the city's founding tile, not its heap address:
+                // pointer values vary per process (ASLR), which made
+                // same-seed runs diverge. Location is immutable and unique
+                // per city, so this hash is reproducible.
+                const aoc::hex::AxialCoord meltLoc = cityPtr->location();
                 uint32_t turnHash = this->m_depletionTurnCounter * 7919u
-                    + static_cast<uint32_t>(reinterpret_cast<uintptr_t>(cityPtr.get()));
+                    + static_cast<uint32_t>(meltLoc.q) * 73856093u
+                    + static_cast<uint32_t>(meltLoc.r) * 19349663u;
                 checkNuclearMeltdown(gameState, grid, *cityPtr, turnHash);
             }
 
@@ -930,8 +935,14 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 }
 
                 bool hasPrecisionInstr = stockpile.getAmount(goods::PRECISION_INSTRUMENTS) > 0;
+                // City founding tile instead of heap address (see the nuclear
+                // seed above): this hash fires for every recipe execution and
+                // was the dominant source of same-seed run divergence.
+                const aoc::hex::AxialCoord qLoc = city->location();
+                const uint32_t cityKey = static_cast<uint32_t>(qLoc.q) * 73856093u
+                    + static_cast<uint32_t>(qLoc.r) * 19349663u;
                 uint32_t qualityHash   = this->m_depletionTurnCounter * 2654435761u
-                    + static_cast<uint32_t>(reinterpret_cast<uintptr_t>(city)) * 2246822519u
+                    + cityKey * 2246822519u
                     + recipe->recipeId * 104729u;
                 QualityTier outputQuality = determineOutputQuality(
                     buildingLevel,
