@@ -826,10 +826,16 @@ if(AOC_BUILD_TESTS)
         test_json_parser_depth
     )
 
+    # The debug preset builds with ASan/LSan; known suppressions live in
+    # asan_suppressions.txt (same file run.sh uses).
+    set(AOC_TEST_ENV
+        "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/asan_suppressions.txt")
+
     foreach(aoc_test ${AOC_SMOKE_TESTS})
         add_executable(${aoc_test} tests/${aoc_test}.cpp)
         target_link_libraries(${aoc_test} PRIVATE aoc_lib)
         add_test(NAME ${aoc_test} COMMAND ${aoc_test})
+        set_tests_properties(${aoc_test} PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")
     endforeach()
 
     # Turn-loop smoke: drive aoc_simulate for a handful of turns. Non-zero
@@ -837,5 +843,6 @@ if(AOC_BUILD_TESTS)
     if(TARGET aoc_simulate)
         add_test(NAME test_turn_loop_smoke
                  COMMAND aoc_simulate --turns 5 --players 2 --output ${CMAKE_BINARY_DIR}/smoke.csv)
+        set_tests_properties(test_turn_loop_smoke PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")
     endif()
 endif()
