@@ -1395,6 +1395,10 @@ void accumulateClosingRate(SphereField& field,
             if (!isBoundary[idx]) continue;
             const int16_t selfId = field.plateId[idx];
             if (selfId < 0) continue;
+            // Stale plate ids in the raster can outrun plates.size()
+            // (microplate merges shrink the vector). Guard before
+            // indexing, matching applySlabPullFeedback's bounds check.
+            if (static_cast<std::size_t>(selfId) >= plates.size()) continue;
 
             // Find the dominant differing-id neighbour direction. Use
             // the four cardinal neighbours; the first one whose plate
@@ -1419,6 +1423,7 @@ void accumulateClosingRate(SphereField& field,
             else if (nS != selfId && nS >= 0) { otherId = nS; nLat = latS; }
             else if (nN != selfId && nN >= 0) { otherId = nN; nLat = latN; }
             if (otherId < 0) continue;
+            if (static_cast<std::size_t>(otherId) >= plates.size()) continue;
 
             const Plate& A = plates[static_cast<std::size_t>(selfId)];
             const Plate& B = plates[static_cast<std::size_t>(otherId)];
@@ -1653,6 +1658,12 @@ void accreteToCardinalNeighbours(SphereField& field, float dtMy) {
     // diffusion front spread an entire epoch's worth of growth in a
     // single sweep, breaking the per-My rate calibration above.
     std::vector<float> nextFrac(field.continentalFraction);
+    // Crust thickening must use the same snapshot discipline as cf:
+    // a cell can be a neighbour of several donors in one sweep, and
+    // reading+writing the LIVE crustThicknessKm would let earlier
+    // donations feed later ones, breaking the per-My rate calibration
+    // and making the result order-dependent.
+    std::vector<float> nextCrust(field.crustThicknessKm);
     for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
         for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
             const std::size_t idx = SphereField::cellIndex(lonIdx, latIdx);
@@ -1681,15 +1692,16 @@ void accreteToCardinalNeighbours(SphereField& field, float dtMy) {
                 // Thicken crust proportionally so diffused cells emerge
                 // above sea level as cf crosses the continental threshold.
                 const float dCrust = actual * K_CRUST_PER_DIFF_FRAC;
-                float h = field.crustThicknessKm[n] + dCrust;
+                float h = nextCrust[n] + dCrust;
                 if (h > PhysicsConstants::maxCrustThicknessKm) {
                     h = PhysicsConstants::maxCrustThicknessKm;
                 }
-                field.crustThicknessKm[n] = h;
+                nextCrust[n] = h;
             }
         }
     }
     field.continentalFraction.swap(nextFrac);
+    field.crustThicknessKm.swap(nextCrust);
 }
 
 void applySubduction(SphereField& field,
