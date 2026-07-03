@@ -434,7 +434,10 @@ void processAdvancedEconomics(aoc::game::GameState& gameState, const aoc::map::H
     if (playerObj != nullptr) {
         PlayerBankingComponent& bank = playerObj->banking();
         CurrencyAmount gdp           = playerObj->monetary().gdp;
-        bank.processPayments(playerObj->economy().treasury, gdp);
+        // monetary().treasury is the authoritative spending account; economy().
+        // treasury is a non-authoritative tracking field, so debiting it left
+        // loan interest invisible to the real treasury.
+        bank.processPayments(playerObj->monetary().treasury, gdp);
     }
 
     [[maybe_unused]] const bool inDebtCrisis = checkDebtCrisis(gameState, player);

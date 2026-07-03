@@ -221,6 +221,21 @@ void processBondPayments(aoc::game::GameState& gameState) {
                              static_cast<unsigned>(issuerPtr->id()),
                              static_cast<long long>(totalPayment),
                              static_cast<unsigned>(it->holder));
+
+                    // Remove the defaulted bond from the holder's portfolio too.
+                    // Otherwise it lingers in heldBonds and accrues phantom
+                    // interest forever even though the issuer record is erased.
+                    aoc::game::Player* holderPlayer = gameState.player(it->holder);
+                    if (holderPlayer != nullptr) {
+                        PlayerBondComponent& holderBonds = holderPlayer->bonds();
+                        for (std::vector<BondIssue>::iterator hIt = holderBonds.heldBonds.begin();
+                             hIt != holderBonds.heldBonds.end(); ++hIt) {
+                            if (hIt->id == it->id) {
+                                holderBonds.heldBonds.erase(hIt);
+                                break;
+                            }
+                        }
+                    }
                 }
 
                 it = portfolio.issuedBonds.erase(it);

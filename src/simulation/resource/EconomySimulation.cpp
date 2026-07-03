@@ -1362,15 +1362,23 @@ void EconomySimulation::settleTradeInCoins(aoc::game::GameState& gameState) {
 
         int32_t remaining = effectivePayment;
 
-        // Transfer highest-value coins first (gold bars > silver > copper)
+        // Transfer highest-value coins first (gold bars > silver > copper).
+        // Consume from the payer FIRST and credit the receiver only with what
+        // was actually removed: consumeGoods is all-or-nothing, so on a
+        // shortfall it removes zero — crediting the requested amount anyway
+        // would mint coins from nothing.
         if (remaining > 0) {
             int32_t payerGold = payerStock.getAmount(goods::GOLD_BARS);
             if (payerGold > 0) {
                 int32_t goldToTransfer = std::min(payerGold,
                     (remaining + GOLD_BAR_VALUE - 1) / GOLD_BAR_VALUE);
-                [[maybe_unused]] bool ok1 = payerStock.consumeGoods(goods::GOLD_BARS, goldToTransfer);
-                recvStock.addGoods(goods::GOLD_BARS, goldToTransfer);
-                remaining -= goldToTransfer * GOLD_BAR_VALUE;
+                if (payerStock.consumeGoods(goods::GOLD_BARS, goldToTransfer)) {
+                    recvStock.addGoods(goods::GOLD_BARS, goldToTransfer);
+                    remaining -= goldToTransfer * GOLD_BAR_VALUE;
+                } else {
+                    LOG_WARN("settleTradeInCoins: gold shortfall, payer had %d < %d requested",
+                             payerGold, goldToTransfer);
+                }
             }
         }
         if (remaining > 0) {
@@ -1378,17 +1386,25 @@ void EconomySimulation::settleTradeInCoins(aoc::game::GameState& gameState) {
             if (payerSilver > 0) {
                 int32_t silverToTransfer = std::min(payerSilver,
                     (remaining + SILVER_COIN_VALUE - 1) / SILVER_COIN_VALUE);
-                [[maybe_unused]] bool ok2 = payerStock.consumeGoods(goods::SILVER_COINS, silverToTransfer);
-                recvStock.addGoods(goods::SILVER_COINS, silverToTransfer);
-                remaining -= silverToTransfer * SILVER_COIN_VALUE;
+                if (payerStock.consumeGoods(goods::SILVER_COINS, silverToTransfer)) {
+                    recvStock.addGoods(goods::SILVER_COINS, silverToTransfer);
+                    remaining -= silverToTransfer * SILVER_COIN_VALUE;
+                } else {
+                    LOG_WARN("settleTradeInCoins: silver shortfall, payer had %d < %d requested",
+                             payerSilver, silverToTransfer);
+                }
             }
         }
         if (remaining > 0) {
             int32_t payerCopper = payerStock.getAmount(goods::COPPER_COINS);
             if (payerCopper > 0) {
                 int32_t copperToTransfer = std::min(payerCopper, remaining);
-                [[maybe_unused]] bool ok3 = payerStock.consumeGoods(goods::COPPER_COINS, copperToTransfer);
-                recvStock.addGoods(goods::COPPER_COINS, copperToTransfer);
+                if (payerStock.consumeGoods(goods::COPPER_COINS, copperToTransfer)) {
+                    recvStock.addGoods(goods::COPPER_COINS, copperToTransfer);
+                } else {
+                    LOG_WARN("settleTradeInCoins: copper shortfall, payer had %d < %d requested",
+                             payerCopper, copperToTransfer);
+                }
             }
         }
     }
