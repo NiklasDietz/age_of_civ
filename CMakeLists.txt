@@ -825,6 +825,8 @@ if(AOC_BUILD_TESTS)
         test_production_efficiency
         test_json_parser_depth
         test_save_roundtrip
+        test_combat_kills
+        test_economy_invariants
     )
 
     # The debug preset builds with ASan/LSan; known suppressions live in
