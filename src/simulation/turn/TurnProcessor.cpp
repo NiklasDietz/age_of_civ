@@ -44,6 +44,7 @@
 // Tech
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
+#include "aoc/simulation/tech/CivicEffects.hpp"
 #include "aoc/simulation/tech/EraScore.hpp"
 #include "aoc/simulation/tech/EurekaBoost.hpp"
 
@@ -147,6 +148,7 @@
 #include "aoc/core/DecisionLog.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <string>
 
 namespace aoc::sim {
@@ -735,7 +737,15 @@ void processPlayerTurn(TurnContext& turnContext, PlayerId player) {
             }
         }
         advanceResearch(gsPlayer->tech(), science);
-        advanceCivicResearch(gsPlayer->civics(), culture, &gsPlayer->government());
+        // Capture the civic-in-progress before advancing: advanceCivicResearch
+        // calls completeResearch() on completion, which clears currentResearch.
+        // Without capturing first, the just-completed civic id is unrecoverable.
+        const CivicId civicBeforeAdvance = gsPlayer->civics().currentResearch;
+        if (advanceCivicResearch(gsPlayer->civics(), culture, &gsPlayer->government())
+            && civicBeforeAdvance.isValid()) {
+            applyCivicEffect(*turnContext.gameState, player,
+                             static_cast<uint8_t>(civicBeforeAdvance.value));
+        }
     }
 
     // AI auto-upgrade: every 8 turns scan units, upgrade any obsolete
@@ -1192,7 +1202,9 @@ void processTurn(TurnContext& turnContext) {
 
     TurnEventLog* eventLog = turnContext.eventLog;
 
-    // Snapshot pre-turn state for event detection
+    // Snapshot pre-turn state for event detection.
+    // The atWar matrix is indexed by the opponent's slot, so its width must
+    // cover every player slot the engine can produce.
     struct PlayerPre {
         int32_t techs = 0;
         int32_t cities = 0;
@@ -1200,6 +1212,26 @@ void processTurn(TurnContext& turnContext) {
         int32_t military = 0;
         bool atWar[MAX_PLAYERS] = {};
     };
+    static_assert(sizeof(PlayerPre::atWar) / sizeof(PlayerPre::atWar[0]) == MAX_PLAYERS,
+                  "atWar must have exactly MAX_PLAYERS columns; war-state diff indexes it by slot");
+
+    // The atWar columns are fixed at MAX_PLAYERS, but allPlayers is sized by
+    // caller-supplied playerCount (HeadlessSimulation does not clamp). Indexing
+    // atWar with an opponent slot >= MAX_PLAYERS is a stack-buffer overflow, so
+    // bound the war-state snapshot/diff to MAX_PLAYERS. assert() catches the
+    // contract violation in debug; the clamp keeps release builds memory-safe.
+    assert(turnContext.allPlayers.size() <= MAX_PLAYERS
+           && "playerCount exceeds MAX_PLAYERS; war-state diff would overflow atWar");
+    if (turnContext.allPlayers.size() > MAX_PLAYERS) {
+        LOG_WARN("processTurn: playerCount %zu exceeds MAX_PLAYERS %u; "
+                 "war-state event diff clamped to first %u players",
+                 turnContext.allPlayers.size(),
+                 static_cast<unsigned>(MAX_PLAYERS),
+                 static_cast<unsigned>(MAX_PLAYERS));
+    }
+    const std::size_t warTrackCount =
+        std::min<std::size_t>(turnContext.allPlayers.size(), MAX_PLAYERS);
+
     std::vector<PlayerPre> preState;
     preState.resize(turnContext.allPlayers.size());
     for (std::size_t i = 0; i < turnContext.allPlayers.size(); ++i) {
@@ -1213,7 +1245,7 @@ void processTurn(TurnContext& turnContext) {
         preState[i].units = static_cast<int32_t>(p->units().size());
         preState[i].military = p->militaryUnitCount();
         if (turnContext.diplomacy != nullptr) {
-            for (std::size_t j = 0; j < turnContext.allPlayers.size(); ++j) {
+            for (std::size_t j = 0; j < warTrackCount; ++j) {
                 if (i != j) {
                     preState[i].atWar[j] = turnContext.diplomacy->relation(
                         turnContext.allPlayers[i], turnContext.allPlayers[j]).isAtWar;
@@ -1315,7 +1347,7 @@ void processTurn(TurnContext& turnContext) {
 
             // War state changes
             if (turnContext.diplomacy != nullptr) {
-                for (std::size_t j = 0; j < turnContext.allPlayers.size(); ++j) {
+                for (std::size_t j = 0; j < warTrackCount; ++j) {
                     if (i == j) { continue; }
                     const bool nowAtWar = turnContext.diplomacy->relation(pid, turnContext.allPlayers[j]).isAtWar;
                     if (nowAtWar && !preState[i].atWar[j]) {
