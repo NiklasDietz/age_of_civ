@@ -824,6 +824,7 @@ if(AOC_BUILD_TESTS)
         test_building_capacity
         test_production_efficiency
         test_json_parser_depth
+        test_save_roundtrip
     )
 
     # The debug preset builds with ASan/LSan; known suppressions live in
@@ -840,6 +841,11 @@ if(AOC_BUILD_TESTS)
         add_test(NAME ${aoc_test} COMMAND ${aoc_test})
         set_tests_properties(${aoc_test} PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")
     endforeach()
+
+    # Known-good save corpus lives in-tree; regenerate via AOC_WRITE_CORPUS
+    # after a deliberate format bump.
+    target_compile_definitions(test_save_roundtrip PRIVATE
+        AOC_TEST_CORPUS_DIR="${CMAKE_SOURCE_DIR}/tests/data/saves")
 
     # Turn-loop smoke: drive aoc_simulate for a handful of turns. Non-zero
     # exit means the headless loop crashed or asserted.

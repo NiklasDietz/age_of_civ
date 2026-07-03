@@ -57,11 +57,14 @@
 #include "aoc/simulation/economy/StockMarket.hpp"
 
 #include <cassert>
+#include <algorithm>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <utility>
+#include <vector>
 
 #if defined(__unix__) || defined(__APPLE__)
 #  include <fcntl.h>
@@ -71,6 +74,28 @@
 namespace aoc::save {
 
 namespace {
+
+// Snapshot an unordered_map's entries sorted by key. Hash-bucket iteration
+// order is unspecified and differs between a freshly-populated map and one
+// rebuilt by loadGame, so writing entries in iteration order made two saves
+// of identical state byte-different. Sorted writes keep the stream stable,
+// which the round-trip byte-compare test and any save-hash gate rely on.
+// Loads are unaffected (they re-insert key by key).
+template <typename Map>
+[[nodiscard]] std::vector<std::pair<typename Map::key_type,
+                                    typename Map::mapped_type>>
+sortedEntries(const Map& map) {
+    std::vector<std::pair<typename Map::key_type, typename Map::mapped_type>>
+        entries(map.begin(), map.end());
+    std::sort(entries.begin(), entries.end(),
+              [](const std::pair<typename Map::key_type,
+                                 typename Map::mapped_type>& a,
+                 const std::pair<typename Map::key_type,
+                                 typename Map::mapped_type>& b) {
+                  return a.first < b.first;
+              });
+    return entries;
+}
 
 // Bounds caps applied before vector::reserve() on counts read from disk.
 // Without these a crafted save (count = 0xFFFFFFFF) triggers a multi-GB
@@ -676,17 +701,20 @@ void writeStockpilesSection(WriteBuffer& out, const aoc::game::GameState& gameSt
             if (!stockpile.goods.empty() || !stockpile.exportBuffer.empty()) {
                 section.writeU32(cityIndex);
                 section.writeU32(static_cast<uint32_t>(stockpile.goods.size()));
-                for (const std::pair<const uint16_t, int32_t>& entry : stockpile.goods) {
+                for (const std::pair<uint16_t, int32_t>& entry
+                     : sortedEntries(stockpile.goods)) {
                     section.writeU16(entry.first);
                     section.writeI32(entry.second);
                 }
                 // WP-O export buffer + idle counters.
                 section.writeU32(static_cast<uint32_t>(stockpile.exportBuffer.size()));
-                for (const std::pair<const uint16_t, int32_t>& entry : stockpile.exportBuffer) {
+                for (const std::pair<uint16_t, int32_t>& entry
+                     : sortedEntries(stockpile.exportBuffer)) {
                     section.writeU16(entry.first);
                     section.writeI32(entry.second);
                     int32_t idle = 0;
-                    auto it = stockpile.exportBufferIdleTurns.find(entry.first);
+                    std::unordered_map<uint16_t, int32_t>::const_iterator it =
+                        stockpile.exportBufferIdleTurns.find(entry.first);
                     if (it != stockpile.exportBufferIdleTurns.end()) { idle = it->second; }
                     section.writeI32(idle);
                 }
@@ -1092,7 +1120,8 @@ void writeProductionExpSection(WriteBuffer& out, const aoc::game::GameState& gam
             if (!exp.recipeExperience.empty()) {
                 section.writeU32(cityIndex);
                 section.writeU32(static_cast<uint32_t>(exp.recipeExperience.size()));
-                for (const std::pair<const uint16_t, int32_t>& entry : exp.recipeExperience) {
+                for (const std::pair<uint16_t, int32_t>& entry
+                     : sortedEntries(exp.recipeExperience)) {
                     section.writeU16(entry.first);
                     section.writeI32(entry.second);
                 }
@@ -1126,7 +1155,8 @@ void writeBuildingLevelsSection(WriteBuffer& out, const aoc::game::GameState& ga
             if (!levels.levels.empty()) {
                 section.writeU32(cityIndex);
                 section.writeU32(static_cast<uint32_t>(levels.levels.size()));
-                for (const std::pair<const uint16_t, int32_t>& entry : levels.levels) {
+                for (const std::pair<uint16_t, int32_t>& entry
+                     : sortedEntries(levels.levels)) {
                     section.writeU16(entry.first);
                     section.writeI32(entry.second);
                 }
@@ -1306,7 +1336,8 @@ void writeWarWearinessSection(WriteBuffer& out, const aoc::game::GameState& game
         section.writeU8(static_cast<uint8_t>(player->id()));
         section.writeF32(w.weariness);
         section.writeU32(static_cast<uint32_t>(w.turnsAtWar.size()));
-        for (const std::pair<const PlayerId, int32_t>& kv : w.turnsAtWar) {
+        for (const std::pair<PlayerId, int32_t>& kv
+             : sortedEntries(w.turnsAtWar)) {
             section.writeU8(static_cast<uint8_t>(kv.first));
             section.writeI32(kv.second);
         }
@@ -2435,6 +2466,11 @@ ErrorCode loadGame(const std::string& filepath,
             }
             case SectionId::HoardState: {
                 uint32_t count = buf.readU32();
+                // gameState.initialize() (run earlier in this load) seeds one
+                // default hoard per player; without clearing, every load
+                // APPENDED the saved hoards to those, doubling the collection
+                // per save/load cycle. Replace, don't append.
+                gameState.commodityHoards().clear();
                 gameState.commodityHoards().reserve(count);
                 for (uint32_t i = 0; i < count; ++i) {
                     aoc::sim::CommodityHoardComponent h{};
