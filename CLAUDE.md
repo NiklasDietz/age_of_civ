@@ -1,31 +1,20 @@
 # Coding Standards
 
-Before starting any task, read `ai_command/router.txt`. It maps task types to the specific standard files you must load. Always load `ai_command/general/core.txt` as a baseline, then load the additional files router.txt specifies for the task at hand. Load only what is relevant -- do not load everything.
-
-For this project the typical set is:
-- `ai_command/general/core.txt` (always)
-- `ai_command/general/security.txt` (when touching security-relevant code)
-- `ai_command/general/testing.txt` (when writing or reviewing tests)
-- `ai_command/general/profiling.txt` (when optimizing performance)
-- `ai_command/general/data_structures.txt` (when choosing data structures / algorithms)
-- `ai_command/general/code_review.txt` (when reviewing code)
-- `ai_command/general/debugging.txt` (when debugging)
-- `ai_command/general/concurrency_pitfalls.txt` (when dealing with concurrency)
-- `ai_command/general/technical_debt.txt` (when refactoring)
-- `ai_command/languages/cpp/code_style.txt`
-- `ai_command/languages/cpp/memory_and_perf.txt`
-- `ai_command/languages/cpp/patterns.txt`
-- `ai_command/languages/cpp/build.txt`
-- `ai_command/languages/cpp/dependencies.txt`
-- `ai_command/languages/cpp/benchmarking.txt`
-- `ai_command/languages/cpp/cross_compilation.txt`
-- `ai_command/languages/cpp/documentation.txt`
-- `ai_command/languages/cpp/simd.txt`
-- `ai_command/languages/cpp/embedded.txt`
-- `ai_command/languages/cpp/testing.txt`
-- Use c++20 for all of the code
-These files contain binding architectural requirements. Follow them -- they are not suggestions.
+- C++20 for all code.
+- The claude-code-tweaks standards skills (core/cpp/testing/etc.) auto-load per task;
+  follow them.
 
 ## Project Context
 
-<!-- Fill in your project-specific details below: stack, architecture decisions, directory layout, build commands, constraints. -->
+- Civ-like 4X game: hex map, plate-tectonics worldgen, economy/AI sim, Vulkan + GLFW
+  renderer (headless build via `-DAOC_HEADLESS=ON`), LuaJIT scripting.
+- Layout: headers in `include/aoc/<subsystem>/`, sources mirrored in `src/<subsystem>/`.
+  One static lib `aoc_lib` + executables `age_of_civ`, `aoc_simulate`, `aoc_trace_dump`,
+  `aoc_mapgen`.
+- Build: CMake presets — `cmake --preset debug` (ASan/UBSan) or `release`, then
+  `cmake --build --preset <name>`. Binaries land in `build/<preset>/`.
+- Tests: `ctest --test-dir build/<preset> --output-on-failure`.
+- Headless smoke: `./build/release/aoc_simulate --turns 100 --players 4 --seed 42`.
+- Dependencies: see `DEPENDENCIES.txt`. Vendored: cpp-httplib (pinned deliberately),
+  stb_truetype (bundled fonts ONLY — unpatched CVE-2026-5314 OOB read on hostile
+  fonts), stb_image_write, vulkan_renderer (git submodule).
