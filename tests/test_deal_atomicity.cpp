@@ -1,13 +1,15 @@
 /**
  * @file test_deal_atomicity.cpp
- * @brief Pins the atomicity of acceptDeal (aoc::sim, DealTerms.hpp).
+ * @brief Pins acceptDeal (aoc::sim, DealTerms.hpp): atomicity + cession effects.
  *
  * A diplomatic deal used to apply its terms one at a time with no up-front
  * validation: a {CedeCity, GoldLump} deal transferred the city first, then
  * silently skipped the gold payment when the buyer was broke -- handing the
  * city away for free. These cases pin the fix: acceptDeal validates every
  * asset-transferring term first and applies nothing unless the whole deal
- * can execute, so a failed term leaves BOTH portfolios byte-unchanged.
+ * can execute, so a failed term leaves BOTH portfolios byte-unchanged. They
+ * also pin that a ceded city carries its grid footprint (center + 6 ring) to
+ * the buyer, without seizing tiles a third party owns.
  */
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
@@ -21,7 +23,9 @@
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/simulation/diplomacy/DealTerms.hpp"
 
+#include <algorithm>
 #include <array>
+#include <vector>
 
 namespace {
 
@@ -37,8 +41,8 @@ struct DealWorld {
     aoc::game::City* capital = nullptr;
     aoc::game::City* soldCity = nullptr;
 
-    DealWorld() {
-        gameState.initialize(2);
+    explicit DealWorld(int32_t playerCount = 2) {
+        gameState.initialize(playerCount);
         grid.initialize(12, 12);
         // City objects live on the heap (unique_ptr), so these pointers stay
         // valid across later addCity() vector reallocations.
@@ -147,6 +151,100 @@ TEST_CASE("acceptDeal applies every term when the deal is payable") {
     CHECK(w.buyer().treasury() == 700);
     REQUIRE(tracker.activeDeals.size() == 1);
     CHECK(tracker.activeDeals.at(0).isAccepted == true);
+}
+
+TEST_CASE("acceptDeal moves a ceded city's footprint but never a third party's land") {
+    DealWorld w(3);  // seller=0, buyer=1, third party=2
+    w.seller().setTreasury(0);
+    w.buyer().setTreasury(1000);
+    const aoc::PlayerId thirdId = w.gameState.players()[2]->id();
+
+    // Lay out the sold city's footprint on the grid.
+    const int32_t centerIdx = w.grid.toIndex(w.cityLoc);
+    REQUIRE(centerIdx >= 0);
+    w.grid.setOwner(centerIdx, w.seller().id());
+
+    std::vector<int32_t> ring;
+    for (const aoc::hex::AxialCoord& n : aoc::hex::neighbors(w.cityLoc)) {
+        const int32_t idx = w.grid.toIndex(n);
+        if (idx >= 0) { ring.push_back(idx); }
+    }
+    REQUIRE(ring.size() >= 3);
+    w.grid.setOwner(ring[0], w.seller().id());  // seller-owned -> should flip
+    w.grid.setOwner(ring[1], thirdId);          // third party  -> must NOT flip
+    // ring[2] left unowned (INVALID_PLAYER)    -> should be claimed
+    for (std::size_t i = 3; i < ring.size(); ++i) {
+        w.grid.setOwner(ring[i], w.seller().id());
+    }
+
+    aoc::sim::GlobalDealTracker tracker;
+    REQUIRE(aoc::sim::proposeDeal(w.gameState, tracker, w.citySaleDeal(300))
+            == aoc::ErrorCode::Ok);
+
+    const aoc::ErrorCode rc = aoc::sim::acceptDeal(w.gameState, w.grid, tracker, 0);
+
+    CHECK(rc == aoc::ErrorCode::Ok);
+    CHECK(w.soldCity->owner() == w.buyer().id());
+    CHECK(w.grid.owner(centerIdx) == w.buyer().id());   // center flipped
+    CHECK(w.grid.owner(ring[0]) == w.buyer().id());     // seller tile flipped
+    CHECK(w.grid.owner(ring[1]) == thirdId);            // third party untouched
+    CHECK(w.grid.owner(ring[2]) == w.buyer().id());     // unowned tile claimed
+    for (std::size_t i = 3; i < ring.size(); ++i) {
+        CHECK(w.grid.owner(ring[i]) == w.buyer().id());
+    }
+}
+
+TEST_CASE("acceptDeal cedes a map-edge city without touching off-map tiles") {
+    DealWorld w;
+    w.seller().setTreasury(0);
+    w.buyer().setTreasury(1000);
+
+    // A corner city: some hex-ring neighbours are off-map. toIndex() on those
+    // would abort (debug assert) or alias a wrapped tile (release), so the
+    // footprint reown must isValid-guard first. This case aborts under the
+    // debug/ASan preset with an unguarded reown.
+    const aoc::hex::AxialCoord edgeLoc{0, 0};
+    REQUIRE(w.grid.isValid(edgeLoc));
+    aoc::game::City& edgeCity = w.seller().addCity(edgeLoc, "Edgeton");
+    const int32_t centerIdx = w.grid.toIndex(edgeLoc);
+    w.grid.setOwner(centerIdx, w.seller().id());
+
+    aoc::sim::DiplomaticDeal deal;
+    deal.playerA = w.seller().id();
+    deal.playerB = w.buyer().id();
+    aoc::sim::DealTerm cede;
+    cede.type = aoc::sim::DealTermType::CedeCity;
+    cede.fromPlayer = w.seller().id();
+    cede.toPlayer = w.buyer().id();
+    cede.tileCoord = edgeLoc;
+    deal.terms.push_back(cede);
+    aoc::sim::DealTerm pay;
+    pay.type = aoc::sim::DealTermType::GoldLump;
+    pay.fromPlayer = w.buyer().id();
+    pay.toPlayer = w.seller().id();
+    pay.goldLump = 100;
+    deal.terms.push_back(pay);
+
+    aoc::sim::GlobalDealTracker tracker;
+    REQUIRE(aoc::sim::proposeDeal(w.gameState, tracker, deal) == aoc::ErrorCode::Ok);
+
+    const aoc::ErrorCode rc = aoc::sim::acceptDeal(w.gameState, w.grid, tracker, 0);
+
+    CHECK(rc == aoc::ErrorCode::Ok);
+    CHECK(edgeCity.owner() == w.buyer().id());
+    CHECK(w.grid.owner(centerIdx) == w.buyer().id());
+
+    // Every buyer-owned tile must lie within the edge city's real, in-bounds
+    // footprint -- no off-map neighbour may alias a distant tile to the buyer.
+    std::vector<int32_t> footprint{centerIdx};
+    for (const aoc::hex::AxialCoord& n : aoc::hex::neighbors(edgeLoc)) {
+        if (w.grid.isValid(n)) { footprint.push_back(w.grid.toIndex(n)); }
+    }
+    for (int32_t i = 0; i < w.grid.tileCount(); ++i) {
+        if (w.grid.owner(i) == w.buyer().id()) {
+            CHECK(std::find(footprint.begin(), footprint.end(), i) != footprint.end());
+        }
+    }
 }
 
 TEST_CASE("acceptDeal rejects when cumulative lump payments overdraw one payer") {

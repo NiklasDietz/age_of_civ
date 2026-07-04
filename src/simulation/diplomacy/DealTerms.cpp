@@ -28,6 +28,32 @@ namespace aoc::sim {
 
 namespace {
 
+/// Reown a single tile to `receiver`, but only if `giver` currently owns it or
+/// it is unowned -- a negotiated cession must never seize a third party's land.
+void reownTileIfGiverOrUnowned(aoc::map::HexGrid& grid, hex::AxialCoord coord,
+                               PlayerId giver, PlayerId receiver) {
+    // isValid before toIndex: toIndex only asserts bounds (a no-op under
+    // -DNDEBUG) and otherwise returns a wrapped/out-of-range index, so an
+    // edge city's off-map ring neighbour would abort or corrupt a stray tile.
+    if (!grid.isValid(coord)) { return; }
+    const int32_t idx = grid.toIndex(coord);
+    const PlayerId current = grid.owner(idx);
+    if (current == giver || current == INVALID_PLAYER) {
+        grid.setOwner(idx, receiver);
+    }
+}
+
+/// A ceded city brings its immediate territory (center + 6 ring tiles) with it.
+/// Unlike a revolt (Secession.cpp flips the ring unconditionally), a sale only
+/// moves tiles the giver actually held, so it cannot annex a neighbour's land.
+void reownCityFootprint(aoc::map::HexGrid& grid, hex::AxialCoord center,
+                        PlayerId giver, PlayerId receiver) {
+    reownTileIfGiverOrUnowned(grid, center, giver, receiver);
+    for (const hex::AxialCoord& n : hex::neighbors(center)) {
+        reownTileIfGiverOrUnowned(grid, n, giver, receiver);
+    }
+}
+
 /// Validate that every asset-transferring term of `deal` can execute against
 /// the current state, WITHOUT mutating anything. acceptDeal calls this first
 /// so a deal that cannot execute in full never half-applies -- the bug this
@@ -62,14 +88,15 @@ namespace {
                 break;
             }
             case DealTermType::CedeTile: {
+                if (!grid.isValid(term.tileCoord)) { return ErrorCode::InvalidState; }
                 const int32_t idx = grid.toIndex(term.tileCoord);
-                if (idx < 0 || grid.owner(idx) != term.fromPlayer) {
+                if (grid.owner(idx) != term.fromPlayer) {
                     return ErrorCode::InvalidState;
                 }
                 bool touchesReceiver = false;
                 for (const hex::AxialCoord& n : hex::neighbors(term.tileCoord)) {
-                    const int32_t nIdx = grid.toIndex(n);
-                    if (nIdx >= 0 && grid.owner(nIdx) == term.toPlayer) {
+                    if (!grid.isValid(n)) { continue; }
+                    if (grid.owner(grid.toIndex(n)) == term.toPlayer) {
                         touchesReceiver = true;
                         break;
                     }
@@ -161,6 +188,11 @@ ErrorCode acceptDeal(aoc::game::GameState& gameState,
                                  cityPtr->name().c_str(),
                                  static_cast<unsigned>(term.toPlayer));
                         cityPtr->setOwner(term.toPlayer);
+                        // Move the city's grid footprint to the new owner too;
+                        // otherwise the tiles stay with the giver and the buyer
+                        // owns a city surrounded by hostile territory.
+                        reownCityFootprint(grid, cityPtr->location(),
+                                           term.fromPlayer, term.toPlayer);
                         break;
                     }
                 }
@@ -187,8 +219,8 @@ ErrorCode acceptDeal(aoc::game::GameState& gameState,
                 // that the tile currently belongs to fromPlayer AND that at
                 // least one neighbour hex belongs to toPlayer (no teleporting
                 // tiles across the map).
+                if (!grid.isValid(term.tileCoord)) { break; }
                 const int32_t idx = grid.toIndex(term.tileCoord);
-                if (idx < 0) { break; }
                 if (grid.owner(idx) != term.fromPlayer) {
                     LOG_INFO("CedeTile aborted: tile (%d,%d) not owned by player %u",
                              term.tileCoord.q, term.tileCoord.r,
@@ -197,9 +229,8 @@ ErrorCode acceptDeal(aoc::game::GameState& gameState,
                 }
                 bool touchesReceiver = false;
                 for (const hex::AxialCoord& n : hex::neighbors(term.tileCoord)) {
-                    const int32_t nIdx = grid.toIndex(n);
-                    if (nIdx < 0) { continue; }
-                    if (grid.owner(nIdx) == term.toPlayer) {
+                    if (!grid.isValid(n)) { continue; }
+                    if (grid.owner(grid.toIndex(n)) == term.toPlayer) {
                         touchesReceiver = true;
                         break;
                     }
