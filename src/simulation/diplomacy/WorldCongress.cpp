@@ -58,15 +58,16 @@ int32_t countSuzeraintyFor(const aoc::game::GameState& gs, PlayerId pid) {
     return n;
 }
 
-int32_t grievancesAgainst(const aoc::game::GameState& gs, PlayerId pid) {
-    int32_t n = 0;
+// Sum the severities of every grievance held against `pid` (severities are
+// stored as negative values) and return them as a positive magnitude, so
+// favor accrual can weigh one harsh grievance above several mild ones.
+int32_t grievanceSeverityAgainst(const aoc::game::GameState& gs, PlayerId pid) {
+    int32_t severity = 0;
     for (const std::unique_ptr<aoc::game::Player>& other : gs.players()) {
         if (other == nullptr || other->id() == pid) { continue; }
-        for (const Grievance& g : other->grievances().grievances) {
-            if (g.against == pid) { ++n; }
-        }
+        severity += other->grievances().totalGrievanceAgainst(pid);  // <= 0
     }
-    return n;
+    return -severity;  // positive magnitude
 }
 
 void accruePerPlayerFavor(aoc::game::GameState& gs, const DiplomacyManager* diplomacy) {
@@ -76,7 +77,7 @@ void accruePerPlayerFavor(aoc::game::GameState& gs, const DiplomacyManager* dipl
         const int32_t alliances = (diplomacy != nullptr)
             ? countAlliances(*diplomacy, p->id(), playerCount) : 0;
         const int32_t suze  = countSuzeraintyFor(gs, p->id());
-        const int32_t griev = grievancesAgainst(gs, p->id());
+        const int32_t griev = grievanceSeverityAgainst(gs, p->id());
         const int32_t perTurn = computeDiplomaticFavor(*p, alliances, suze, griev);
         p->diplomaticFavor().owner = p->id();
         p->diplomaticFavor().favorPerTurn = perTurn;

@@ -28,11 +28,16 @@ int32_t governmentBaseFavor(GovernmentType gov) {
 int32_t computeDiplomaticFavor(const aoc::game::Player& player,
                                 int32_t allianceCount,
                                 int32_t suzeraintyCount,
-                                int32_t totalGrievancesAgainst) {
+                                int32_t grievanceSeverityAgainst) {
     const int32_t base         = governmentBaseFavor(player.government().government);
     const int32_t allianceBonus = 2 * std::max(0, allianceCount);
     const int32_t suzeBonus     = 2 * std::max(0, suzeraintyCount);
-    const int32_t grievancePenalty = -std::clamp(totalGrievancesAgainst, 0, 10);
+    // Severity-weighted: -1 favor per 10 points of accumulated grievance
+    // severity against this player, capped at -10/turn. One -50 WarGuilt thus
+    // hurts far more than five -10 border settles -- unlike the old flat
+    // -1-per-grievance count, which weighed every grievance the same.
+    const int32_t severityPoints   = std::max(0, grievanceSeverityAgainst) / 10;
+    const int32_t grievancePenalty = -std::clamp(severityPoints, 0, 10);
     return base + allianceBonus + suzeBonus + grievancePenalty;
 }
 

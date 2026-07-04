@@ -853,6 +853,7 @@ if(AOC_BUILD_TESTS)
         test_lua_sandbox
         test_behavior_tree
         test_deal_atomicity
+        test_diplomatic_favor
     )
 
     # The debug preset builds with ASan/LSan; known suppressions live in
