@@ -1,0 +1,3 @@
+# The build tree is host-specific and huge; the headless image rebuilds from
+# source. Everything else (including .git for any version stamping) is copied.
+build/

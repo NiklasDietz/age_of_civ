@@ -1,0 +1,49 @@
+# Headless build + simulation smoke image for age_of_civ.
+#
+# -DAOC_HEADLESS=ON compiles out Vulkan/GLFW/the renderer (and the vulkan_renderer
+# submodule), so this image needs no GPU, no Vulkan loader, and no mesa/lavapipe --
+# just the toolchain to build aoc_lib + aoc_simulate and run the seed-42 headless
+# smoke. Intended for CI on GPU-less runners.
+#
+# The release preset pins -march=native (machine-local, for the golden hash); this
+# image overrides that to a portable -O2 and drops LTO, so the image is portable
+# across runners and builds faster. It therefore runs the SMOKE and the
+# self-comparing DETERMINISM gate -- NOT the golden gate, whose blessed hash is
+# -march=native-specific until the portable-golden switch (WP-A2).
+#
+# Build:  docker build -f Dockerfile.headless -t aoc-headless .
+# Smoke:  docker run --rm aoc-headless
+# Gates:  docker run --rm aoc-headless ctest --test-dir build/release \
+#           --output-on-failure -R 'test_determinism|test_turn_loop_smoke'
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+# Ubuntu 24.04 ships cmake 3.28 (presets v6) and clang-18 as unversioned
+# clang/clang++, which is exactly what the `linux-base` preset expects.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        clang \
+        lld \
+        cmake \
+        ninja-build \
+        libluajit-5.1-dev \
+        libomp-dev \
+        pkg-config \
+        git \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY . .
+
+# Configure + build the headless release. -DAOC_HEADLESS=ON strips Vulkan/GLFW;
+# the flag overrides make the artifact portable (no -march=native) and cheaper
+# to build (no LTO) -- neither matters for the sim gates this image runs.
+RUN cmake --preset release \
+        -DAOC_HEADLESS=ON \
+        -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
+        -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG" \
+    && cmake --build --preset release
+
+# Default: the headless seed-42 smoke. Non-zero exit means the loop crashed or
+# asserted; a matching CLAUDE.md manual smoke command.
+CMD ["./build/release/aoc_simulate", "--turns", "100", "--players", "4", "--seed", "42"]
