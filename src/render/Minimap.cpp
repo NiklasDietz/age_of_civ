@@ -66,6 +66,7 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d,
                    const CameraController& camera,
                    float mapX, float mapY, float mapW, float mapH,
                    uint32_t screenWidth, uint32_t screenHeight,
+                   float hexSize,
                    bool platesOverlay,
                    int32_t overlayModeRaw) const {
     // Background
@@ -327,7 +328,9 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d,
     // Draw camera viewport rectangle
     // Compute the world-space bounds visible through the camera
     const float sqrt3 = 1.7320508075688772f;
-    const float hexSize = 30.0f;  // Default hex size (same as MapRenderer)
+    // hexSize is passed in from the caller (MapRenderer::hexSize) so the
+    // viewport rectangle matches the world even when the hex size differs
+    // from the 30.0f default.
     const float worldWidth = sqrt3 * hexSize * static_cast<float>(gridWidth);
     const float worldHeight = 1.5f * hexSize * static_cast<float>(gridHeight);
 

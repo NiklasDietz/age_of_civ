@@ -83,8 +83,12 @@ void SpriteRenderer::cleanup() {
     }
 
     if (this->m_descriptorSetLayout != VK_NULL_HANDLE) {
-        vkDestroyDescriptorSetLayout(dev, this->m_descriptorSetLayout, nullptr);
+        // Pre-null: snapshot the handle and clear the member *before*
+        // destroying, so a second cleanup() (e.g. explicit cleanup then
+        // ~SpriteRenderer) can't double-free this layout.
+        const VkDescriptorSetLayout layout = this->m_descriptorSetLayout;
         this->m_descriptorSetLayout = VK_NULL_HANDLE;
+        vkDestroyDescriptorSetLayout(dev, layout, nullptr);
     }
 
     this->m_vertexBuffer.reset();

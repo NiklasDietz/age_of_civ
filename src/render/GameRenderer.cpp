@@ -1505,8 +1505,16 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                 float cityCx = 0.0f, cityCy = 0.0f;
                 hex::axialToPixel(city.location(), hexSize, cityCx, cityCy);
 
-                const aoc::ui::Rect textBounds =
-                    aoc::ui::BitmapFont::measureText(city.name(), LABEL_FONT_SIZE);
+                // Memoize the measured label rect per city name. measureText
+                // walks every glyph; the label font size is constant, so the
+                // name string is a sufficient (auto-invalidating) cache key.
+                auto labelIt = this->m_cityLabelSizeCache.find(city.name());
+                if (labelIt == this->m_cityLabelSizeCache.end()) {
+                    labelIt = this->m_cityLabelSizeCache.emplace(
+                        city.name(),
+                        aoc::ui::BitmapFont::measureText(city.name(), LABEL_FONT_SIZE)).first;
+                }
+                const aoc::ui::Rect textBounds = labelIt->second;
                 const float textWorldW = textBounds.w * invZoomLabel;
                 const float textWorldH = textBounds.h * invZoomLabel;
                 const float textX = cityCx - textWorldW * 0.5f;
@@ -1610,6 +1618,7 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
         this->m_minimap.draw(renderer2d, grid, fog, viewingPlayer, camera,
                              mmWorldX, mmWorldY, mmRect.w * invZoom, mmRect.h * invZoom,
                              screenWidth, screenHeight,
+                             hexSize,
                              platesOnMinimap,
                              static_cast<int32_t>(this->overlayMode));
 

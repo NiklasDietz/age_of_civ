@@ -81,11 +81,27 @@ public:
         return static_cast<int32_t>(parsed);
     }
 
-    /// Get a float value.
+    /// Get a float value. Returns defaultVal if the key is missing, or if the
+    /// value fails to parse / overflows. strtof with endptr and errno catches
+    /// both garbage (silently 0) and out-of-range input, mirroring getInt.
     [[nodiscard]] float getFloat(const std::string& key, float defaultVal = 0.0f) const {
         std::unordered_map<std::string, std::string>::const_iterator it = this->m_values.find(key);
         if (it == this->m_values.end()) { return defaultVal; }
-        return std::strtof(it->second.c_str(), nullptr);
+        const char* str = it->second.c_str();
+        char* endPtr = nullptr;
+        errno = 0;
+        float parsed = std::strtof(str, &endPtr);
+        if (endPtr == str) {
+            LOG_WARN("SimpleYaml::getFloat: '%s' has non-numeric value '%s', using default %f",
+                     key.c_str(), str, static_cast<double>(defaultVal));
+            return defaultVal;
+        }
+        if (errno == ERANGE) {
+            LOG_WARN("SimpleYaml::getFloat: '%s' value '%s' overflows float, using default %f",
+                     key.c_str(), str, static_cast<double>(defaultVal));
+            return defaultVal;
+        }
+        return parsed;
     }
 
     /// Get a boolean value (true/false/yes/no/1/0).

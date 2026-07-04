@@ -124,7 +124,10 @@ ErrorCode divestFromEconomy(aoc::game::GameState& gameState,
     investorState.treasury += totalValue;
     if (targetPlayer != nullptr) {
         MonetaryStateComponent& targetState = targetPlayer->monetary();
-        targetState.treasury -= std::min(targetState.treasury, totalValue);
+        // Deduct only what the target actually has. A negative treasury would
+        // otherwise flip the std::min and MINT gold (treasury -= negative).
+        targetState.treasury -=
+            std::min(std::max<CurrencyAmount>(0, targetState.treasury), totalValue);
 
         std::vector<EquityInvestment>::iterator fIt =
             targetPlayer->stockPortfolio().foreignInvestments.begin();

@@ -80,21 +80,39 @@ std::optional<PathResult> findPath(const HexGrid& grid,
     struct Node {
         hex::AxialCoord coord;
         int32_t priority;  ///< f = g + h
+        int32_t cost;      ///< g recorded when this entry was queued
     };
 
     // auto required: lambda type is unnameable
     auto cmp = [](const Node& a, const Node& b) { return a.priority > b.priority; };
     std::priority_queue<Node, std::vector<Node>, decltype(cmp)> openSet(cmp);
 
+    // DEBT(perf, WP-11): costSoFar/cameFrom rehash per insert. Flat arrays
+    // indexed by grid.toIndex() would cut hashing, but each findPath call
+    // would then pay an O(tileCount) sentinel-fill up front -- a net loss for
+    // the common case (short unit moves on a large map) and a behaviour risk
+    // (must replicate the map's "absent vs present" distinction exactly).
+    // Deferred: needs a reusable thread-local scratch keyed by grid size, or
+    // a generation-counter trick, to be unconditionally faster AND identical.
     std::unordered_map<hex::AxialCoord, int32_t> costSoFar;
     std::unordered_map<hex::AxialCoord, hex::AxialCoord> cameFrom;
 
-    openSet.push({start, 0});
+    openSet.push({start, 0, 0});
     costSoFar[start] = 0;
 
     while (!openSet.empty()) {
-        hex::AxialCoord current = openSet.top().coord;
+        const Node top = openSet.top();
+        hex::AxialCoord current = top.coord;
         openSet.pop();
+
+        // Stale-entry skip: a cheaper path to `current` was found after this
+        // entry was queued, so a better entry has already been (or will be)
+        // expanded. Re-expanding this outdated copy cannot improve any
+        // neighbour (every relaxation gates on `newCost < best`), so the
+        // returned path is unchanged -- we only avoid redundant work.
+        if (top.cost > costSoFar[current]) {
+            continue;
+        }
 
         if (current == goal) {
             // Reconstruct path
@@ -110,7 +128,7 @@ std::optional<PathResult> findPath(const HexGrid& grid,
             return result;
         }
 
-        int32_t currentCost = costSoFar[current];
+        int32_t currentCost = top.cost;
 
         for (const hex::AxialCoord& neighbor : hex::neighbors(current)) {
             if (!grid.isValid(neighbor)) {
@@ -145,7 +163,7 @@ std::optional<PathResult> findPath(const HexGrid& grid,
             if (it == costSoFar.end() || newCost < it->second) {
                 costSoFar[neighbor] = newCost;
                 int32_t heuristic = grid.distance(neighbor, goal);
-                openSet.push({neighbor, newCost + heuristic});
+                openSet.push({neighbor, newCost + heuristic, newCost});
                 cameFrom[neighbor] = current;
             }
         }
@@ -172,10 +190,15 @@ std::vector<ReachableTile> findReachable(const HexGrid& grid,
 
     std::vector<ReachableTile> result;
     std::unordered_map<hex::AxialCoord, int32_t> visited;
+    // Maps each reported coord to its slot in `result` so a later, cheaper
+    // path updates that tile's remaining cost in place instead of appending
+    // a duplicate entry with a stale (lower) remaining-cost value.
+    std::unordered_map<hex::AxialCoord, std::size_t> resultIndex;
     std::queue<FrontierNode> frontier;
 
     frontier.push({start, 0});
     visited[start] = 0;
+    resultIndex[start] = result.size();
     result.push_back({start, maxCost});
 
     while (!frontier.empty()) {
@@ -198,10 +221,15 @@ std::vector<ReachableTile> findReachable(const HexGrid& grid,
             }
 
             std::unordered_map<hex::AxialCoord, int32_t>::iterator it = visited.find(neighbor);
-            if (it == visited.end() || newCost < it->second) {
+            if (it == visited.end()) {
                 visited[neighbor] = newCost;
                 frontier.push({neighbor, newCost});
+                resultIndex[neighbor] = result.size();
                 result.push_back({neighbor, maxCost - newCost});
+            } else if (newCost < it->second) {
+                it->second = newCost;
+                frontier.push({neighbor, newCost});
+                result[resultIndex[neighbor]].remainingCost = maxCost - newCost;
             }
         }
     }

@@ -270,7 +270,12 @@ void computeCityLoyalty(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
         // pressure keeps the city hovering in Unrest without hitting bottom.
         if (checkAndPerformSecession(gameState, grid, *city, loyalty, player,
                                      secededThisTurn)) {
+            // Single secession per call (matches the checkAndPerformSecession
+            // guard). The seceded city changes owner but stays in this
+            // vector, so continuing would recompute loyalty for the remaining
+            // cities against stale ownership/pressure. Stop the pass here.
             secededThisTurn = true;
+            break;
         }
     }
 }

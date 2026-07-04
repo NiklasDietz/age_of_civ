@@ -34,10 +34,23 @@
 
 namespace aoc::net {
 
+// Seed 42 is an intentional, fixed default for reproducible/test runs. The RNG
+// drives deterministic lockstep (identical map + simulation across peers), so a
+// CSPRNG-derived seed is deliberately NOT used here -- the seed is overwritten by
+// config.seed in initialize(), which is where any non-default seed is supplied.
 GameServer::GameServer() : m_rng(42) {}
 GameServer::~GameServer() = default;
 
 void GameServer::initialize(const GameConfig& config) {
+    // Treat the player count as untrusted: cap it before any resize / uint8_t
+    // cast so it cannot overflow MAX_PLAYERS-sized arrays.
+    const int32_t requestedPlayers = config.humanPlayerCount + config.aiPlayerCount;
+    if (requestedPlayers <= 0 || requestedPlayers > static_cast<int32_t>(MAX_PLAYERS)) {
+        LOG_ERROR("GameServer::initialize: invalid player count %d (must be 1..%d)",
+                  requestedPlayers, static_cast<int>(MAX_PLAYERS));
+        return;
+    }
+
     this->m_maxTurns = config.maxTurns;
     this->m_rng = aoc::Random(config.seed);
     this->m_gameOver = false;
@@ -54,7 +67,7 @@ void GameServer::initialize(const GameConfig& config) {
     // Initialize economy and diplomacy
     this->m_economy.initialize();
 
-    int32_t totalPlayers = config.humanPlayerCount + config.aiPlayerCount;
+    const int32_t totalPlayers = requestedPlayers;
     this->m_diplomacy.initialize(static_cast<uint8_t>(totalPlayers));
 
     this->m_turnManager.setPlayerCount(
@@ -181,6 +194,11 @@ bool GameServer::tick() {
     // 2. Check if all human players are ready
     bool allReady = true;
     for (PlayerId human : this->m_humanPlayers) {
+        if (static_cast<std::size_t>(human) >= this->m_playerReady.size()) {
+            LOG_WARN("GameServer::tick: player id %d out of range (size %zu)",
+                     static_cast<int>(human), this->m_playerReady.size());
+            return false;
+        }
         if (!this->m_playerReady[static_cast<std::size_t>(human)]) {
             allReady = false;
             break;
@@ -250,6 +268,14 @@ bool GameServer::validateCommand(PlayerId player, const GameCommand& command) co
                          static_cast<int>(player));
                 return false;
             }
+            // techId is untrusted wire data: reject ids outside the tech table.
+            if (!(cmd.techId.isValid() && cmd.techId.value < aoc::sim::techCount())) {
+                LOG_WARN("validateCommand: SetResearch rejected -- "
+                         "invalid techId %u (count %u)",
+                         static_cast<unsigned>(cmd.techId.value),
+                         static_cast<unsigned>(aoc::sim::techCount()));
+                return false;
+            }
             return true;
         }
         else if constexpr (std::is_same_v<T, EndTurnCommand>) {
@@ -270,6 +296,16 @@ bool GameServer::validateCommand(PlayerId player, const GameCommand& command) co
                          static_cast<int>(player));
                 return false;
             }
+            // targetSystem is cast to MonetarySystemType: reject values that
+            // fall outside the enum's valid range.
+            if (cmd.targetSystem
+                >= static_cast<uint8_t>(aoc::sim::MonetarySystemType::Count)) {
+                LOG_WARN("validateCommand: TransitionMonetary rejected -- "
+                         "targetSystem=%u out of range (count %u)",
+                         static_cast<unsigned>(cmd.targetSystem),
+                         static_cast<unsigned>(aoc::sim::MonetarySystemType::Count));
+                return false;
+            }
             return true;
         }
         // Commands without an explicit `player` field (MoveUnit,
@@ -285,6 +321,12 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
         using T = std::decay_t<decltype(cmd)>;
 
         if constexpr (std::is_same_v<T, EndTurnCommand>) {
+            if (static_cast<std::size_t>(player) >= this->m_playerReady.size()) {
+                LOG_WARN("executeCommand: EndTurn dropped -- player id %d out of "
+                         "range (size %zu)",
+                         static_cast<int>(player), this->m_playerReady.size());
+                return;
+            }
             this->m_playerReady[static_cast<std::size_t>(player)] = true;
             if (this->m_transport != nullptr) {
                 this->m_transport->broadcastUpdate(PlayerEndedTurnUpdate{player});
@@ -301,7 +343,12 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
             // For now we use the ECS unit as the authoritative source of position.
             aoc::sim::UnitComponent* ecsUnit =
                 static_cast<aoc::sim::UnitComponent*>(nullptr) /* network commands need position-based unit lookup */;
-            if (ecsUnit == nullptr || ecsUnit->owner != player) { return; }
+            if (ecsUnit == nullptr || ecsUnit->owner != player) {
+                LOG_WARN("executeCommand: MoveUnit dropped -- player %d, unit "
+                         "lookup unresolved (ECS path not implemented)",
+                         static_cast<int>(player));
+                return;
+            }
 
             // Mirror state into the GameState Unit object
             aoc::game::Unit* gsUnit = gsPlayer->unitAt(ecsUnit->position);
@@ -333,6 +380,17 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
             }
         }
         else if constexpr (std::is_same_v<T, SetResearchCommand>) {
+            // Reject an out-of-range tech id before writing it: cmd.techId is
+            // untrusted wire data and must not be stored unvalidated.
+            if (!(cmd.techId.isValid() && cmd.techId.value < aoc::sim::techCount())) {
+                LOG_WARN("executeCommand: SetResearch dropped -- player %d sent "
+                         "invalid techId %u (count %u)",
+                         static_cast<int>(player),
+                         static_cast<unsigned>(cmd.techId.value),
+                         static_cast<unsigned>(aoc::sim::techCount()));
+                return;
+            }
+
             // Set research directly on the GameState Player
             aoc::game::Player* gsPlayer = this->m_gameState.player(cmd.player);
             if (gsPlayer != nullptr) {
@@ -340,10 +398,7 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
             }
 
             if (this->m_transport != nullptr) {
-                std::string techName = "Unknown";
-                if (cmd.techId.isValid() && cmd.techId.value < aoc::sim::techCount()) {
-                    techName = std::string(aoc::sim::techDef(cmd.techId).name);
-                }
+                std::string techName = std::string(aoc::sim::techDef(cmd.techId).name);
                 this->m_transport->broadcastUpdate(
                     ResearchChangedUpdate{cmd.player, cmd.techId.value, techName});
             }
@@ -358,6 +413,9 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
                 static_cast<aoc::sim::UnitComponent*>(nullptr) /* network protocol migration pending */;
             if (settler == nullptr || settler->owner != player
                 || aoc::sim::unitTypeDef(settler->typeId).unitClass != aoc::sim::UnitClass::Settler) {
+                LOG_WARN("executeCommand: FoundCity dropped -- player %d, settler "
+                         "lookup unresolved (ECS path not implemented)",
+                         static_cast<int>(player));
                 return;
             }
             aoc::hex::AxialCoord pos = settler->position;
@@ -397,7 +455,12 @@ void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
                 static_cast<aoc::sim::UnitComponent*>(nullptr) /* network protocol migration pending */;
             aoc::sim::UnitComponent* defender =
                 static_cast<aoc::sim::UnitComponent*>(nullptr) /* network protocol migration pending */;
-            if (attacker == nullptr || defender == nullptr || attacker->owner != player) { return; }
+            if (attacker == nullptr || defender == nullptr || attacker->owner != player) {
+                LOG_WARN("executeCommand: AttackUnit dropped -- player %d, "
+                         "attacker/defender lookup unresolved (ECS path not implemented)",
+                         static_cast<int>(player));
+                return;
+            }
 
             aoc::hex::AxialCoord atkPos = attacker->position;
             aoc::hex::AxialCoord defPos = defender->position;

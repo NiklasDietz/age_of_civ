@@ -75,11 +75,20 @@ void ParticleSystem::update(float deltaTime) {
         p.vy *= dampingFactor;
     }
 
-    // Remove dead particles
-    this->m_particles.erase(
-        std::remove_if(this->m_particles.begin(), this->m_particles.end(),
-            [](const Particle& p) { return p.life <= 0.0f; }),
-        this->m_particles.end());
+    // Remove dead particles via swap-and-pop. Render order is
+    // irrelevant (each particle is an independent filled circle), so
+    // moving the tail particle into a dead slot is cheaper than the
+    // shifting that erase-remove_if performs.
+    std::size_t i = 0;
+    while (i < this->m_particles.size()) {
+        if (this->m_particles[i].life <= 0.0f) {
+            this->m_particles[i] = this->m_particles.back();
+            this->m_particles.pop_back();
+            // Do not advance: the swapped-in particle must be checked.
+        } else {
+            ++i;
+        }
+    }
 }
 
 void ParticleSystem::render(vulkan_app::renderer::Renderer2D& renderer2d) const {

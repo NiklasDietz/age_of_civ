@@ -112,6 +112,23 @@ constexpr std::size_t MAX_CITIES       = 200;
 constexpr std::size_t MAX_WORKED_TILES = 50;
 constexpr std::size_t MAX_PATH         = 1000;
 constexpr std::size_t MAX_QUEUE        = 50;
+// Additional caps for file-controlled counts reserved/looped on load
+// (audit 2026-05-10, WP-01). Conservative upper bounds:
+//   - map is at most MAX_MAP_DIM x MAX_MAP_DIM tiles
+//   - districts per city ~10, buildings per district ~10
+//   - relation/grievance modifiers and wonders are small per-pair/per-city
+//   - bonds/hoards/equity positions bounded by player/good counts
+constexpr std::size_t MAX_MAP_DIM      = 512;
+constexpr std::size_t MAX_DISTRICTS    = 64;
+constexpr std::size_t MAX_BUILDINGS    = 64;
+constexpr std::size_t MAX_MODIFIERS    = 1000;
+constexpr std::size_t MAX_WONDERS      = 256;
+constexpr std::size_t MAX_BONDS        = 10000;
+constexpr std::size_t MAX_HOARDS       = 200;
+constexpr std::size_t MAX_HOARD_POS    = 1000;
+constexpr std::size_t MAX_GRIEVANCES   = 1000;
+constexpr std::size_t MAX_INVESTMENTS  = 10000;
+constexpr std::size_t MAX_AGREEMENTS   = 1000;
 
 // Additional caps for the remaining unbounded reserve() sites and the map
 // dimensions (audit 2026-06-06). Same rationale as above: conservative
@@ -127,12 +144,10 @@ constexpr int32_t     MAX_MAP_DIMENSION          = 4096;
 constexpr std::size_t MAX_DISTRICT_BUILDINGS     = 100;
 constexpr std::size_t MAX_RELATION_MODIFIERS     = 1000;
 constexpr std::size_t MAX_CITY_WONDERS           = 256;
-constexpr std::size_t MAX_BONDS                  = 2000;
-constexpr std::size_t MAX_HOARDS                 = 256;
 constexpr std::size_t MAX_HOARD_POSITIONS        = 1000;
-constexpr std::size_t MAX_GRIEVANCES             = 1000;
-constexpr std::size_t MAX_INVESTMENTS            = 1000;
 constexpr std::size_t MAX_ELECTRICITY_AGREEMENTS = 1000;
+// MAX_BONDS, MAX_HOARDS, MAX_GRIEVANCES, MAX_INVESTMENTS are defined in the
+// 2026-05-10 cap block above (merged from the parallel fix pass); reused here.
 
 } // namespace
 
@@ -323,10 +338,20 @@ void ReadBuffer::readBytes(void* dst, std::size_t size) {
     this->m_offset += size;
 }
 
-void ReadBuffer::skip(std::size_t bytes) { this->m_offset += bytes; }
+void ReadBuffer::skip(std::size_t bytes) {
+    // Bounds-check before advancing: a crafted section size could otherwise
+    // push m_offset past the buffer end (audit 2026-05-10).
+    if (bytes > this->m_data.size() - this->m_offset) {
+        this->m_corrupt = true;
+        return;
+    }
+    this->m_offset += bytes;
+}
 
 bool ReadBuffer::hasRemaining(std::size_t bytes) const {
-    return this->m_offset + bytes <= this->m_data.size();
+    // Safe subtraction avoids the m_offset + bytes overflow wrap; the class
+    // invariant guarantees m_data.size() >= m_offset (audit 2026-05-10).
+    return bytes <= this->m_data.size() - this->m_offset;
 }
 
 std::size_t ReadBuffer::remaining() const {
@@ -699,7 +724,12 @@ void writeVictorySection(WriteBuffer& out, const aoc::game::GameState& gameState
         section.writeI32(0);
         section.writeU8(0);
         section.writeU8(static_cast<uint8_t>(v.activeCollapse));
-        section.writeI32(v.peakGDP);
+        // peakGDP is int64 in memory but the save field is 32-bit; clamp to
+        // avoid wraparound on the rare late-game value above the 32-bit range.
+        constexpr aoc::CurrencyAmount kPeakGDPSaveMax = 2147483647;  // INT32_MAX
+        const aoc::CurrencyAmount peakGDPClamped =
+            v.peakGDP > kPeakGDPSaveMax ? kPeakGDPSaveMax : v.peakGDP;
+        section.writeI32(static_cast<int32_t>(peakGDPClamped));
         section.writeI32(v.turnsGDPBelowHalf);
         section.writeI32(v.turnsLowLoyalty);
         section.writeU8(v.isEliminated ? 1 : 0);
@@ -715,7 +745,8 @@ void writeStockpilesSection(WriteBuffer& out, const aoc::game::GameState& gameSt
     uint32_t count = 0;
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
         for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
-            if (!city->stockpile().goods.empty()) {
+            const aoc::sim::CityStockpileComponent& stockpile = city->stockpile();
+            if (!stockpile.goods.empty() || !stockpile.exportBuffer.empty()) {
                 ++count;
             }
         }
@@ -1597,10 +1628,19 @@ ErrorCode loadGame(const std::string& filepath,
     }
 
     std::streamsize fileSize = file.tellg();
+    if (fileSize < 0) {
+        // tellg() returns -1 on failure; casting to size_t would request a
+        // multi-exabyte resize (audit 2026-05-10).
+        LOG_ERROR("Failed to determine size of file: %s", filepath.c_str());
+        return ErrorCode::LoadFailed;
+    }
     file.seekg(0, std::ios::beg);
     std::vector<uint8_t> fileData(static_cast<std::size_t>(fileSize));
     file.read(reinterpret_cast<char*>(fileData.data()), fileSize);
     if (!file.good()) {
+        LOG_ERROR("Failed to read file: %s (read %lld of %lld bytes)",
+                  filepath.c_str(), static_cast<long long>(file.gcount()),
+                  static_cast<long long>(fileSize));
         return ErrorCode::LoadFailed;
     }
 
@@ -1660,6 +1700,8 @@ ErrorCode loadGame(const std::string& filepath,
                 int32_t width  = buf.readI32();
                 int32_t height = buf.readI32();
                 aoc::map::MapTopology topology = static_cast<aoc::map::MapTopology>(buf.readU8());
+                // Reject hostile dimensions before they become a loop bound or
+                // allocation size (audit 2026-05-10 / 2026-06-06).
                 if (width <= 0 || height <= 0
                     || width > MAX_MAP_DIMENSION || height > MAX_MAP_DIMENSION) {
                     LOG_ERROR("Serializer: map dimensions %dx%d outside (0, %d]",
@@ -1973,6 +2015,11 @@ ErrorCode loadGame(const std::string& filepath,
                 for (uint32_t i = 0; i < count; ++i) {
                     uint32_t cityIndex = buf.readU32();
                     uint32_t districtCount = buf.readU32();
+                    if (districtCount > MAX_DISTRICTS) {
+                        LOG_ERROR("Serializer: district count %u exceeds MAX_DISTRICTS %zu",
+                                  districtCount, MAX_DISTRICTS);
+                        return ErrorCode::SaveCorrupted;
+                    }
 
                     aoc::sim::CityDistrictsComponent districts{};
                     for (uint32_t d = 0; d < districtCount; ++d) {
@@ -2347,7 +2394,11 @@ ErrorCode loadGame(const std::string& filepath,
                 for (uint16_t i = 0; i < count; ++i) {
                     int32_t currentPrice = buf.readI32();
                     [[maybe_unused]] int32_t basePrice = buf.readI32();
-                    market.setPrice(i, currentPrice);
+                    // File-controlled index: only apply to in-range goods
+                    // (audit 2026-05-10).
+                    if (i < market.goodsCount()) {
+                        market.setPrice(i, currentPrice);
+                    }
                 }
                 break;
             }

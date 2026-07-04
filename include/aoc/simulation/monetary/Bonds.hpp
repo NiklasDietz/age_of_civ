@@ -179,6 +179,7 @@ void processBondPayments(aoc::game::GameState& gameState);
 // ============================================================================
 
 struct IOUContract {
+    uint64_t  id = 0;                       ///< Unique IOU identity (matches given <-> received)
     PlayerId  creditor = INVALID_PLAYER;    ///< Who lent the money
     PlayerId  debtor   = INVALID_PLAYER;    ///< Who owes the money
     CurrencyAmount principal = 0;           ///< Original loan amount

@@ -18,7 +18,9 @@
 #include "aoc/core/Types.hpp"
 #include "aoc/core/Random.hpp"
 
+#include <cstddef>
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
 namespace aoc::game {
@@ -41,8 +43,14 @@ namespace aoc::sim::ai {
 /// Scored production option considered for one city in one AI turn.
 /// Heap storage is reused across cities/turns through `AIController`'s
 /// `m_candidatesScratch` member to avoid repeated allocations.
+///
+/// `nameView` holds the display name as a non-owning view (all sources are
+/// static `string_view` / string literals). The owning `item.name` std::string
+/// is materialised only for the single chosen candidate, avoiding a per-
+/// candidate heap allocation (audit WP-10 #6).
 struct ProductionCandidate {
     aoc::sim::ProductionQueueItem item;
+    std::string_view              nameView;
     float                         score = 0.0f;
 };
 
@@ -129,6 +137,10 @@ private:
 
     /// Candidate list scratch for executeCityActions.
     std::vector<ProductionCandidate> m_candidatesScratch;
+
+    /// Near-top candidate index scratch for executeCityActions' tie-break.
+    /// Reused per city via clear(); capacity preserved (audit WP-10 #6).
+    std::vector<std::size_t> m_topIndicesScratch;
 
     /// Per-good aggregated stockpile scratch for manageEconomy and
     /// bestAvailableMilitaryUnit. Indexed by goodId; iteration order is

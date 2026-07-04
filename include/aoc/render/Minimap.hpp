@@ -63,6 +63,8 @@ public:
      * @param mapH        Minimap height in pixels.
      * @param screenWidth  Current framebuffer width.
      * @param screenHeight Current framebuffer height.
+     * @param hexSize      Hex outer radius (must match MapRenderer::hexSize
+     *                     so the viewport rectangle lines up with the world).
      */
     void draw(vulkan_app::renderer::Renderer2D& renderer2d,
               const aoc::map::HexGrid& grid,
@@ -71,6 +73,7 @@ public:
               const CameraController& camera,
               float mapX, float mapY, float mapW, float mapH,
               uint32_t screenWidth, uint32_t screenHeight,
+              float hexSize,
               bool platesOverlay = false,
               int32_t overlayModeRaw = 0) const;
 

@@ -42,7 +42,15 @@ struct DrawCommand {
 /// Collects draw commands from game systems for deferred rendering.
 class DrawCommandBuffer {
 public:
-    void clear() { this->m_commands.clear(); }
+    /// Clear all commands but keep the prior-frame high-water mark
+    /// reserved so the next frame's pushes don't reallocate. clear()
+    /// preserves capacity, so this is a cheap floor that also survives
+    /// any future shrink of the backing storage.
+    void clear() {
+        const std::size_t highWater = this->m_commands.size();
+        this->m_commands.clear();
+        this->m_commands.reserve(highWater);
+    }
     void reserve(std::size_t count) { this->m_commands.reserve(count); }
 
     void pushHexagon(float cx, float cy, float radiusX, float radiusY,

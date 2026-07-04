@@ -18,6 +18,8 @@
 #include "aoc/core/Types.hpp"
 
 #include <cstdint>
+#include <string>
+#include <unordered_map>
 #include <vulkan/vulkan.h>
 
 namespace vulkan_app {
@@ -196,6 +198,13 @@ private:
     CombatAnimator           m_combatAnimator;
     ParticleSystem           m_particleSystem;
     aoc::ui::TooltipManager  m_tooltipManager;
+
+    /// Cache of measured city-name label rects, keyed by the name string.
+    /// measureText() rasterizes/looks up every glyph, so memoizing avoids
+    /// that work per city per frame. Keying on the name auto-invalidates on
+    /// rename (a renamed city becomes a different key). Font size for labels
+    /// is constant, so the name alone is a sufficient key.
+    std::unordered_map<std::string, aoc::ui::Rect> m_cityLabelSizeCache;
 };
 
 } // namespace aoc::render

@@ -143,43 +143,41 @@ bool hasRiverCorridor(const HexGrid& grid, int32_t fromIndex, int32_t toIndex) {
     frontier.push(fromIndex);
     visited.insert(fromIndex);
 
-    // Limit search depth to prevent infinite loops on large maps
-    constexpr int32_t MAX_SEARCH_DEPTH = 50;
-    int32_t depth = 0;
+    // Termination is bounded by the `visited` set: every tile is enqueued at
+    // most once, so the BFS visits each connected river tile a single time and
+    // terminates after at most tileCount() pops. The previous 50-tile depth
+    // cap silently reported long but genuinely connected rivers as
+    // unconnected; relying on `visited` keeps the search bounded without
+    // mislabelling them.
+    while (!frontier.empty()) {
+        int32_t current = frontier.front();
+        frontier.pop();
 
-    while (!frontier.empty() && depth < MAX_SEARCH_DEPTH) {
-        int32_t levelSize = static_cast<int32_t>(frontier.size());
-        for (int32_t l = 0; l < levelSize; ++l) {
-            int32_t current = frontier.front();
-            frontier.pop();
+        if (current == toIndex) {
+            return true;
+        }
 
-            if (current == toIndex) {
-                return true;
+        // Check all 6 neighbors for shared river edges
+        hex::AxialCoord currentAxial = grid.toAxial(current);
+        std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(currentAxial);
+        for (int dir = 0; dir < 6; ++dir) {
+            if (!grid.hasRiverOnEdge(current, dir)) {
+                continue;  // No river on this edge
             }
-
-            // Check all 6 neighbors for shared river edges
-            hex::AxialCoord currentAxial = grid.toAxial(current);
-            std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(currentAxial);
-            for (int dir = 0; dir < 6; ++dir) {
-                if (!grid.hasRiverOnEdge(current, dir)) {
-                    continue;  // No river on this edge
-                }
-                hex::AxialCoord nbrAxial = nbrs[static_cast<std::size_t>(dir)];
-                if (!grid.isValid(nbrAxial)) {
-                    continue;
-                }
-                int32_t nbrIndex = grid.toIndex(nbrAxial);
-                if (visited.count(nbrIndex) > 0) {
-                    continue;
-                }
-                // Neighbor must also have river edges to be part of the corridor
-                if (grid.riverEdges(nbrIndex) != 0) {
-                    visited.insert(nbrIndex);
-                    frontier.push(nbrIndex);
-                }
+            hex::AxialCoord nbrAxial = nbrs[static_cast<std::size_t>(dir)];
+            if (!grid.isValid(nbrAxial)) {
+                continue;
+            }
+            int32_t nbrIndex = grid.toIndex(nbrAxial);
+            if (visited.count(nbrIndex) > 0) {
+                continue;
+            }
+            // Neighbor must also have river edges to be part of the corridor
+            if (grid.riverEdges(nbrIndex) != 0) {
+                visited.insert(nbrIndex);
+                frontier.push(nbrIndex);
             }
         }
-        ++depth;
     }
 
     return false;

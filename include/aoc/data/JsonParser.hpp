@@ -49,17 +49,36 @@ public:
     /// Returns true if the value is a number (int or double).
     [[nodiscard]] bool isNumber() const { return this->isInt() || this->isDouble(); }
 
-    [[nodiscard]] bool asBool() const { return std::get<bool>(this->storage); }
-    [[nodiscard]] int64_t asInt() const { return std::get<int64_t>(this->storage); }
-    [[nodiscard]] double asDouble() const {
-        if (this->isInt()) { return static_cast<double>(std::get<int64_t>(this->storage)); }
-        return std::get<double>(this->storage);
+    // Accessors are type-checked and defaulting: data files are untrusted, so a
+    // missing or wrong-typed field returns the default rather than throwing
+    // std::bad_variant_access. Callers that need to distinguish absence use the
+    // is*()/hasKey() predicates.
+    [[nodiscard]] bool asBool(bool def = false) const {
+        return this->isBool() ? std::get<bool>(this->storage) : def;
     }
-    [[nodiscard]] float asFloat() const { return static_cast<float>(this->asDouble()); }
-    [[nodiscard]] int32_t asInt32() const { return static_cast<int32_t>(this->asInt()); }
-    [[nodiscard]] uint16_t asUint16() const { return static_cast<uint16_t>(this->asInt()); }
-    [[nodiscard]] uint8_t asUint8() const { return static_cast<uint8_t>(this->asInt()); }
-    [[nodiscard]] const std::string& asString() const { return std::get<std::string>(this->storage); }
+    [[nodiscard]] int64_t asInt(int64_t def = 0) const {
+        return this->isInt() ? std::get<int64_t>(this->storage) : def;
+    }
+    [[nodiscard]] double asDouble(double def = 0.0) const {
+        if (this->isInt()) { return static_cast<double>(std::get<int64_t>(this->storage)); }
+        return this->isDouble() ? std::get<double>(this->storage) : def;
+    }
+    [[nodiscard]] float asFloat(float def = 0.0f) const {
+        return static_cast<float>(this->asDouble(static_cast<double>(def)));
+    }
+    [[nodiscard]] int32_t asInt32(int32_t def = 0) const {
+        return static_cast<int32_t>(this->asInt(def));
+    }
+    [[nodiscard]] uint16_t asUint16(uint16_t def = 0) const {
+        return static_cast<uint16_t>(this->asInt(def));
+    }
+    [[nodiscard]] uint8_t asUint8(uint8_t def = 0) const {
+        return static_cast<uint8_t>(this->asInt(def));
+    }
+    [[nodiscard]] const std::string& asString() const {
+        static const std::string EMPTY;
+        return this->isString() ? std::get<std::string>(this->storage) : EMPTY;
+    }
     [[nodiscard]] const Array& asArray() const { return std::get<Array>(this->storage); }
     [[nodiscard]] const Object& asObject() const { return std::get<Object>(this->storage); }
 
@@ -296,6 +315,7 @@ constexpr int JSON_MAX_NESTING_DEPTH = 64;
                 if (this->pos >= this->text.size() || this->text[this->pos] != '"') {
                     LOG_ERROR("JSON parse error in '%s': expected string key at position %zu",
                               this->fileName.c_str(), this->pos);
+                    this->failed = true;
                     break;
                 }
                 JsonValue keyVal = this->parseString();
@@ -304,6 +324,7 @@ constexpr int JSON_MAX_NESTING_DEPTH = 64;
                 if (!this->expect(':')) {
                     LOG_ERROR("JSON parse error in '%s': expected ':' after key '%s' at position %zu",
                               this->fileName.c_str(), key.c_str(), this->pos);
+                    this->failed = true;
                     break;
                 }
                 obj[std::move(key)] = this->parseValue(depth);

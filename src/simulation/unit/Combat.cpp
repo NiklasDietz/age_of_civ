@@ -454,7 +454,10 @@ CombatResult resolveMeleeCombat(aoc::game::GameState& gameState,
             }
 
             // Courier cargo loot: half basePrice * quantity of lost cargo.
-            if (defenderIsCourier && defenderCargoQuantity > 0) {
+            // Runtime bounds check: goodDef() only asserts in debug, so guard
+            // here to avoid OOB on a corrupt/out-of-range cargo good id in release.
+            if (defenderIsCourier && defenderCargoQuantity > 0
+                && defenderCargoGoodId < aoc::sim::goods::GOOD_COUNT) {
                 const aoc::sim::GoodDef& gd = aoc::sim::goodDef(defenderCargoGoodId);
                 const CurrencyAmount cargoGold =
                     static_cast<CurrencyAmount>((gd.basePrice * defenderCargoQuantity) / 2);
@@ -643,6 +646,7 @@ CombatResult resolveRangedCombat(aoc::game::GameState& gameState,
     // from counter-fire (attackerDamage = 0 above) so always gets XP;
     // defender only gets XP if still alive.
     attacker.experience().addExperience(result.attackerXpGained);
+
     if (!result.defenderKilled) {
         defender.experience().addExperience(result.defenderXpGained);
     }

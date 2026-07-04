@@ -33,18 +33,24 @@ void pushNotification(const GameNotification& notification) {
 }
 
 std::vector<GameNotification> drainNotifications(PlayerId viewer) {
-    std::vector<GameNotification> out;
-    out.reserve(g_pendingNotifications.size());
-    for (const GameNotification& n : g_pendingNotifications) {
+    const auto isForViewer = [viewer](const GameNotification& n) {
         const bool isBroadcast = (n.relevantPlayer == INVALID_PLAYER
                                   && n.otherPlayer == INVALID_PLAYER);
         const bool matches = (n.relevantPlayer == viewer
                               || n.otherPlayer == viewer);
-        if (isBroadcast || matches) {
+        return isBroadcast || matches;
+    };
+
+    std::vector<GameNotification> out;
+    out.reserve(g_pendingNotifications.size());
+    for (const GameNotification& n : g_pendingNotifications) {
+        if (isForViewer(n)) {
             out.push_back(n);
         }
     }
-    g_pendingNotifications.clear();
+    // Only remove the entries this viewer consumed; entries for other players
+    // stay queued so a second drainNotifications(otherViewer) still sees them.
+    std::erase_if(g_pendingNotifications, isForViewer);
     return out;
 }
 

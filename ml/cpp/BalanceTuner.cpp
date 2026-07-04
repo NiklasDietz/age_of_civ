@@ -116,6 +116,9 @@ createInitialBalancePopulation(int32_t popSize, std::mt19937& rng,
 
 BalanceIndividual balanceTournamentSelect(const std::vector<BalanceIndividual>& pop,
                                           int32_t k, std::mt19937& rng) {
+    // Guard empty population: pop.size() - 1 would underflow std::size_t and
+    // make the distribution's range invalid (undefined behaviour).
+    if (pop.empty()) { return BalanceIndividual{}; }
     std::uniform_int_distribution<std::size_t> U(0, pop.size() - 1);
     BalanceIndividual best = pop[U(rng)];
     for (int32_t i = 1; i < k; ++i) {
@@ -185,8 +188,15 @@ void evaluateBalanceIndividual(BalanceIndividual& ind,
                                 uint64_t baseSeed,
                                 ThreadPool* pool) {
     // Snapshot current global params, install this individual's, restore on exit.
+    // RAII guard so the global is restored on EVERY exit path -- including an
+    // exception thrown by future.get() below -- otherwise the mutated global
+    // would leak into every later individual.
     aoc::balance::BalanceParams& live = aoc::balance::params();
-    const aoc::balance::BalanceParams savedParams = live;
+    struct ParamsRestoreGuard {
+        aoc::balance::BalanceParams& live;
+        aoc::balance::BalanceParams  savedParams;
+        ~ParamsRestoreGuard() { live = savedParams; }
+    } restoreGuard{live, live};
     live = ind.genome.toParams();
 
     // Run the N games (in parallel when a pool is available) under the
@@ -271,9 +281,9 @@ void evaluateBalanceIndividual(BalanceIndividual& ind,
     BalanceHealth h{};
     if (valid == 0) {
         // Every game aborted (likely stop-flag).  Leave fitness at 0.
+        // (restoreGuard restores the global params on return.)
         ind.fitness = 0.0f;
         ind.health = h;
-        live = savedParams;
         return;
     }
 
@@ -299,12 +309,21 @@ void evaluateBalanceIndividual(BalanceIndividual& ind,
     ind.health  = h;
     ind.gamesPlayed += valid;
 
-    // Restore the previous global params so the caller's state is unchanged.
-    live = savedParams;
+    // restoreGuard restores the previous global params on return so the
+    // caller's state is unchanged.
 }
 
 std::vector<BalanceIndividual>
 runBalanceGA(const BalanceGAConfig& cfg, uint64_t masterSeed, ThreadPool* pool) {
+    // A non-positive population is a misconfiguration: every downstream
+    // consumer (tournament selection, elitism) assumes a non-empty pop.
+    if (cfg.populationSize <= 0) {
+        std::fprintf(stderr,
+            "[Balance GA] populationSize must be > 0 (got %d); aborting.\n",
+            cfg.populationSize);
+        return {};
+    }
+
     std::mt19937 rng(masterSeed);
     const aoc::balance::BalanceBounds bounds = aoc::balance::defaultBalanceBounds();
 

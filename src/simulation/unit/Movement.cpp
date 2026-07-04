@@ -227,8 +227,8 @@ bool moveUnitAlongPath(aoc::game::GameState& gameState, aoc::game::Unit& unit,
                                 static_cast<int32_t>(city->walls().currentHP),
                                 m.combatBonusVsCities);
                             if (extra > 0) {
-                                city->walls().currentHP = static_cast<int16_t>(
-                                    city->walls().currentHP - extra);
+                                city->walls().currentHP =
+                                    city->walls().currentHP - extra;
                                 siegeDmg += extra;
                             }
                         }
