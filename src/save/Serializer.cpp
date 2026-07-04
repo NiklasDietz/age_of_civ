@@ -1615,15 +1615,25 @@ ErrorCode loadGame(const std::string& filepath,
         return ErrorCode::SaveCorrupted;
     }
     uint32_t version = buf.readU32();
-    if (!aoc::save::isVersionSupported(version)) {
+    if (version > aoc::save::CURRENT_SAVE_VERSION) {
+        LOG_ERROR("Save version %u is newer than this build supports (max %u); "
+                  "update the game to load it",
+                  version, aoc::save::CURRENT_SAVE_VERSION);
         return ErrorCode::SaveVersionMismatch;
     }
-    if (version != SAVE_VERSION) {
-        // 2026-05-04: older versions accepted only if loadable as-is. The
-        // SaveVersioning.hpp infrastructure exists but per-version migration
-        // hooks have NOT been written -- any v < CURRENT save will likely
-        // fail field-by-field. Future per-version migrate() entry-points
-        // should hook in here.
+    if (version < aoc::save::MIN_SUPPORTED_VERSION) {
+        LOG_ERROR("Save version %u is too old to load (minimum supported %u)",
+                  version, aoc::save::MIN_SUPPORTED_VERSION);
+        return ErrorCode::SaveVersionMismatch;
+    }
+    if (version != aoc::save::CURRENT_SAVE_VERSION) {
+        // Per-version migrate() hooks are declared in SaveVersioning.hpp but
+        // not implemented; an in-range older save is not field-compatible, so
+        // reject it explicitly rather than half-loading it. Hook migration in
+        // here when a real need to load an old save arises.
+        LOG_ERROR("Save version %u predates the current format %u and save "
+                  "migration is not implemented; cannot load",
+                  version, aoc::save::CURRENT_SAVE_VERSION);
         return ErrorCode::SaveVersionMismatch;
     }
     [[maybe_unused]] uint32_t flags    = buf.readU32();

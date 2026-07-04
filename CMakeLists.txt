@@ -903,3 +903,23 @@ if(AOC_BUILD_TESTS)
         set_tests_properties(test_golden_sim PROPERTIES LABELS "golden")
     endif()
 endif()
+
+# --------------------------------------------------------------------------
+# Fuzzers (opt-in, local; NOT part of CI or the normal build)
+# --------------------------------------------------------------------------
+# Requires a Clang toolchain with the libFuzzer runtime. Build with:
+#   cmake --preset debug -DAOC_BUILD_FUZZERS=ON && cmake --build --preset debug
+# Run (seeded from the in-tree corpus):
+#   ./build/debug/fuzz_save_loader -max_len=65536 tests/data/saves
+option(AOC_BUILD_FUZZERS "Build libFuzzer harnesses (Clang only)" OFF)
+if(AOC_BUILD_FUZZERS)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "AOC_BUILD_FUZZERS requires Clang (libFuzzer).")
+    endif()
+    add_executable(fuzz_save_loader tests/fuzz/fuzz_save_loader.cpp)
+    target_link_libraries(fuzz_save_loader PRIVATE aoc_lib)
+    target_compile_options(fuzz_save_loader PRIVATE
+        -fsanitize=fuzzer,address,undefined)
+    target_link_options(fuzz_save_loader PRIVATE
+        -fsanitize=fuzzer,address,undefined)
+endif()
