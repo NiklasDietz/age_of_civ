@@ -1330,7 +1330,11 @@ void advectPlateOwnership(SphereField& field,
         }
     }
 
-    if (std::getenv("AOC_ADVECT_TRACE") != nullptr) {
+    // Env var read once (it cannot change mid-run); this function runs
+    // every advection epoch, so a per-call getenv() walked the environment
+    // each epoch for a diagnostic that is off by default.
+    static const bool kAdvectTrace = std::getenv("AOC_ADVECT_TRACE") != nullptr;
+    if (kAdvectTrace) {
         std::fprintf(stderr,
             "[advect] dt=%.3fMy pass1Orphan=%zu pass2Claim=%zu pass3Wake=%zu\n",
             static_cast<double>(dtMy),
@@ -2073,7 +2077,9 @@ void stepSpherePhysicsEpoch(SphereField& field,
     // per-epoch maxRate/maxCrust/maxZ/mountainCellCount on stderr.
     // Useful for diagnosing balance of thicken vs erosion when
     // calibrating constants; off by default.
-    if (std::getenv("AOC_SPHEREPHYS_TRACE") != nullptr) {
+    static const bool kSpherePhysTrace =
+        std::getenv("AOC_SPHEREPHYS_TRACE") != nullptr;
+    if (kSpherePhysTrace) {
         float maxRate = 0.0f, minRate = 0.0f, maxCrust = 0.0f, maxZ = -1e9f;
         std::size_t mountainCells = 0;
         std::size_t boundaryCount = 0;
