@@ -11,8 +11,22 @@
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 
 #include <algorithm>
+#include <functional>
+#include <utility>
 
 namespace aoc::game {
+
+namespace {
+
+/// Process-wide hook fired just before a unit is erased. See
+/// Player::setUnitRemovalObserver.
+std::function<void(Unit*)> g_unitRemovalObserver;
+
+} // namespace
+
+void Player::setUnitRemovalObserver(std::function<void(Unit*)> observer) {
+    g_unitRemovalObserver = std::move(observer);
+}
 
 Player::Player(PlayerId id)
     : m_id(id)
@@ -164,6 +178,7 @@ void Player::removeUnit(Unit* unit) {
             return owned.get() == unit;
         });
     if (it != this->m_units.end()) {
+        if (g_unitRemovalObserver) { g_unitRemovalObserver(unit); }
         this->m_units.erase(it);
     }
 }

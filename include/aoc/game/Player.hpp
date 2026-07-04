@@ -54,6 +54,7 @@
 #include "aoc/simulation/ai/AIBlackboard.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -364,6 +365,14 @@ public:
 
     /// Remove a unit (destroyed, disbanded, etc.).
     void removeUnit(Unit* unit);
+
+    /// Register a process-wide observer invoked with the unit pointer
+    /// immediately before `removeUnit` destroys it, so caches of raw
+    /// `Unit*` (UI selection, undo state) can drop the pointer instead
+    /// of dangling. Pass an empty function to unregister.
+    /// @note Not synchronised -- register once at startup and call
+    ///       `removeUnit` only from the thread that owns game state.
+    static void setUnitRemovalObserver(std::function<void(Unit*)> observer);
 
     /// Number of units.
     [[nodiscard]] int32_t unitCount() const { return static_cast<int32_t>(this->m_units.size()); }

@@ -6,6 +6,8 @@
  *   --spectate            Start directly in spectator mode (all-AI game, renders live).
  *   --players <N>         Number of AI players for spectator mode (2-12, default 8).
  *   --turns <N>           Maximum turns for spectator mode (100-2000, default 500).
+ *   --enable-debug-server Start the localhost HTTP debug API on 127.0.0.1:9876.
+ *                         Off by default (exposes mutation + file-dump routes).
  */
 
 #include "aoc/app/Application.hpp"
@@ -37,6 +39,7 @@ int main(int argc, char* argv[]) {
     chdirToExecutableDirectory(argv[0]);
 
     bool spectateMode = false;
+    bool enableDebugServer = false;
     int32_t spectatePlayers = 8;
     int32_t spectateTurns   = 500;
 
@@ -44,6 +47,8 @@ int main(int argc, char* argv[]) {
         std::string arg(argv[i]);
         if (arg == "--spectate") {
             spectateMode = true;
+        } else if (arg == "--enable-debug-server") {
+            enableDebugServer = true;
         } else if (arg == "--players" && i + 1 < argc) {
             spectatePlayers = std::atoi(argv[++i]);
         } else if (arg == "--turns" && i + 1 < argc) {
@@ -62,6 +67,8 @@ int main(int argc, char* argv[]) {
     // Validation layers require the Vulkan SDK to be installed.
     // Default to off -- enable only if explicitly requested.
     config.enableValidation = false;
+
+    config.enableDebugServer = enableDebugServer;
 
     aoc::ErrorCode result = app.initialize(config);
     if (result != aoc::ErrorCode::Ok) {

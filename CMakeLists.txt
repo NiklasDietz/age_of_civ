@@ -231,6 +231,7 @@ set(AOC_LIB_SOURCES
     # Core
     src/core/DecisionLog.cpp
     src/core/ErrorCodes.cpp
+    src/core/PathGuard.cpp
     src/core/Selectable.cpp
 
     # Data loading
@@ -827,6 +828,7 @@ if(AOC_BUILD_TESTS)
         test_save_roundtrip
         test_combat_kills
         test_economy_invariants
+        test_path_guard
     )
 
     # The debug preset builds with ASan/LSan; known suppressions live in

@@ -5,6 +5,7 @@
 
 #include "aoc/net/GameDBus.hpp"
 #include "aoc/core/Log.hpp"
+#include "aoc/core/PathGuard.hpp"
 
 #include <cstdlib>
 #include <cstring>
@@ -52,27 +53,6 @@ namespace fs = std::filesystem;
     }
 
     return roots;
-}
-
-/// True iff `candidate` lies inside any allowlisted root after symlink
-/// resolution. Uses `weakly_canonical` so the file does not need to
-/// exist yet (TakeScreenshot writes to a fresh path). Equality of the
-/// canonical roots is by lexical-prefix comparison on path components.
-[[nodiscard]] bool isPathInsideAllowlist(const fs::path& candidate,
-                                         const std::vector<fs::path>& roots) {
-    std::error_code ec;
-    fs::path canonical = fs::weakly_canonical(candidate, ec);
-    if (ec) { return false; }
-    for (const fs::path& root : roots) {
-        // Compare component-by-component: candidate must start with the
-        // full root prefix. lexically_relative returns a path beginning
-        // with ".." when candidate is outside `root`.
-        fs::path rel = canonical.lexically_relative(root);
-        if (rel.empty()) { continue; }
-        if (rel.native().rfind("..", 0) == 0) { continue; }
-        return true;
-    }
-    return false;
 }
 
 } // namespace
@@ -147,7 +127,7 @@ struct GameDBus::Impl {
                 "org.aoc.Game.Error.PolicyDenied",
                 "no screenshot directory configured (set $XDG_DATA_HOME or $HOME)");
         }
-        if (!isPathInsideAllowlist(fs::path(path), roots)) {
+        if (!aoc::core::isPathInsideAllowlist(fs::path(path), roots)) {
             return sd_bus_error_set_const(error,
                 "org.aoc.Game.Error.PolicyDenied",
                 "path is outside the screenshot allowlist "
