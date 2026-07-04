@@ -852,6 +852,7 @@ if(AOC_BUILD_TESTS)
         test_save_hostile
         test_lua_sandbox
         test_behavior_tree
+        test_deal_atomicity
     )
 
     # The debug preset builds with ASan/LSan; known suppressions live in
