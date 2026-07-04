@@ -165,7 +165,7 @@ namespace aoc::sim {
 /// Minimum hex distance between any two cities (Civ 6 rule: 3 tiles apart).
 static constexpr int32_t MIN_CITY_DISTANCE = 3;
 
-aoc::game::City& foundCity(aoc::game::GameState& gameState,
+aoc::game::City* foundCity(aoc::game::GameState& gameState,
                             aoc::map::HexGrid& grid,
                             PlayerId owner,
                             aoc::hex::AxialCoord location,
@@ -218,6 +218,9 @@ aoc::game::City& foundCity(aoc::game::GameState& gameState,
                 aiBb.expansionExhausted = true;
                 aiBb.expansionExhaustedTurn = gameState.currentTurn();
                 aiBb.expansionOpportunity = 0.0f;
+                // No valid location honors the 3-tile spacing rule -- do not
+                // found at the original, too-close location.
+                return nullptr;
             }
             break;
         }
@@ -346,7 +349,7 @@ aoc::game::City& foundCity(aoc::game::GameState& gameState,
         gameState.visibilityBus().emit(ev);
     }
 
-    return city;
+    return &city;
 }
 
 std::string getNextCityName(const aoc::game::GameState& gameState, PlayerId player) {

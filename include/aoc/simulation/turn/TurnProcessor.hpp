@@ -138,9 +138,12 @@ struct TurnContext {
  * @param name       City name.
  * @param isOriginalCapital  True if this is the player's original capital.
  * @param startingPop  Starting population (default 1, capitals may receive more).
- * @return Reference to the newly created City owned by the player.
+ * @return Pointer to the newly created City owned by the player, or nullptr
+ *         if the requested location was too close to an existing city of the
+ *         same player and no valid relocation could be found (no city is
+ *         created in that case).
  */
-aoc::game::City& foundCity(aoc::game::GameState& gameState,
+aoc::game::City* foundCity(aoc::game::GameState& gameState,
                             aoc::map::HexGrid& grid,
                             PlayerId owner,
                             aoc::hex::AxialCoord location,
