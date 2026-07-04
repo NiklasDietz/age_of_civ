@@ -23,6 +23,7 @@
 #include "aoc/simulation/unit/Movement.hpp"
 #include "aoc/simulation/tech/TechTree.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
+#include "aoc/simulation/tech/CivicEffects.hpp"
 #include "aoc/simulation/government/Government.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
@@ -324,15 +325,25 @@ void releasePickupReservation(aoc::game::GameState& gameState,
 }
 
 /// Find a Trader unit by EntityId across all players.
-/// EntityId.index is the unit's sequence number in the global unit list.
+///
+/// EntityId is a legacy positional handle, not a stable slot+generation key:
+/// id.index is the unit's ordinal position when all players' unit vectors are
+/// concatenated in player order (the n-th unit overall maps to EntityId{n}),
+/// matching the same convention used by Combat.cpp's and Movement.cpp's
+/// findUnitByEntity. Each player's unit count is read individually via
+/// units.size() -- this must NOT assume every player holds the same number
+/// of units, since per-player unit counts differ and change every turn.
 aoc::game::Unit* findTraderByEntityId(aoc::game::GameState& gameState, EntityId id) {
     if (!id.isValid()) { return nullptr; }
     uint32_t remaining = id.index;
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
-        for (const std::unique_ptr<aoc::game::Unit>& u : p->units()) {
-            if (remaining == 0) { return u.get(); }
-            --remaining;
+        if (p == nullptr) { continue; }
+        const std::vector<std::unique_ptr<aoc::game::Unit>>& units = p->units();
+        const uint32_t count = static_cast<uint32_t>(units.size());
+        if (remaining < count) {
+            return units[static_cast<std::size_t>(remaining)].get();
         }
+        remaining -= count;
     }
     return nullptr;
 }
@@ -1324,7 +1335,17 @@ void processTradeRoutes(aoc::game::GameState& gameState, aoc::map::HexGrid& grid
                                  static_cast<unsigned>(traderOwner),
                                  static_cast<unsigned>(cityOwner),
                                  static_cast<double>(cBoost), civicGap);
-                        advanceCivicResearch(targetCivic, cBoost, &targetPlayer->government());
+                        // Capture the in-progress civic before advancing: once
+                        // completeResearch() runs inside advanceCivicResearch,
+                        // currentResearch no longer names the civic that just
+                        // finished, so the id must be read beforehand.
+                        const CivicId civicBeforeAdvance = targetCivic.currentResearch;
+                        const bool civicCompleted = advanceCivicResearch(
+                            targetCivic, cBoost, &targetPlayer->government());
+                        if (civicCompleted && civicBeforeAdvance.isValid()) {
+                            applyCivicEffect(gameState, cityOwner,
+                                              static_cast<uint8_t>(civicBeforeAdvance.value));
+                        }
                         trader.cultureSpread = 0.0f;
                     }
                 }

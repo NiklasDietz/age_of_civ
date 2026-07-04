@@ -208,9 +208,14 @@ ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, in
     // bump inflationRate so "free gold" events don't print currency into the
     // game without a counterparty. Negative gold passes through unchanged
     // because wealth destruction is a valid one-sided event outcome.
+    //
+    // Gold must go through Player::addGold (the authoritative treasury
+    // account), not monetary().treasury directly -- TurnProcessor overwrites
+    // monetary().treasury from treasury() every turn, so a direct write here
+    // would be silently discarded before it ever reached the player.
     if (chosen.goldChange > 0) {
         const int64_t gain = static_cast<int64_t>(chosen.goldChange) / 2;
-        playerObj->monetary().treasury += gain;
+        playerObj->addGold(gain);
         const float gdpRef = std::max(
             1.0f, static_cast<float>(playerObj->monetary().gdp));
         playerObj->monetary().inflationRate = std::clamp(
@@ -218,7 +223,7 @@ ErrorCode resolveWorldEvent(aoc::game::GameState& gameState, PlayerId player, in
                 + static_cast<float>(gain) / gdpRef * 0.02f,
             -0.20f, 0.50f);
     } else if (chosen.goldChange < 0) {
-        playerObj->monetary().treasury += chosen.goldChange;
+        playerObj->addGold(static_cast<CurrencyAmount>(chosen.goldChange));
     }
 
     // Apply population change to capital
