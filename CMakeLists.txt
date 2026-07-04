@@ -829,6 +829,7 @@ if(AOC_BUILD_TESTS)
         test_combat_kills
         test_economy_invariants
         test_path_guard
+        test_save_hostile
     )
 
     # The debug preset builds with ASan/LSan; known suppressions live in
