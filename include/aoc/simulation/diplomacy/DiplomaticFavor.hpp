@@ -47,10 +47,12 @@ struct PlayerDiplomaticFavorComponent {
 ///   - Government base: Democracy 4, Merchant Republic 3, Monarchy 2, others 1
 ///   - Active alliances (any type): +2 each
 ///   - City-state suzerainties: +2 each
-///   - Grievances against you: -1 each, clamped to [-10, 0]
+///   - Grievance severity against you: -1 per 10 accumulated severity points
+///     (positive magnitude), clamped to [-10, 0]. A harsh grievance weighs more
+///     than several mild ones -- previously it was a flat -1 per grievance.
 [[nodiscard]] int32_t computeDiplomaticFavor(const aoc::game::Player& player,
                                               int32_t allianceCount,
                                               int32_t suzeraintyCount,
-                                              int32_t totalGrievancesAgainst);
+                                              int32_t grievanceSeverityAgainst);
 
 } // namespace aoc::sim
