@@ -730,9 +730,10 @@ CombatPreview previewCombat(const aoc::game::GameState& gameState,
         atkStrength *= elevMod;
     }
 
-    // Flanking bonus for melee
+    // Flanking bonus for melee (capped at 3 adjacent, matching resolution).
     if (!isRanged) {
-        int32_t flanking = countAdjacentFriendlies(gameState, defender.position(), attacker.owner());
+        int32_t flanking = std::min(3,
+            countAdjacentFriendlies(gameState, defender.position(), attacker.owner()));
         atkStrength *= 1.0f + static_cast<float>(flanking) * 0.10f;
     }
 
