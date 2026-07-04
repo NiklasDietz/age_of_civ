@@ -58,6 +58,7 @@
 
 #include <cassert>
 #include <algorithm>
+#include <cmath>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -74,6 +75,14 @@
 namespace aoc::save {
 
 namespace {
+
+// Coerce a non-finite float to `fallback`. A NaN or infinity written into a
+// save poisons every later load: it survives the round-trip and then spreads
+// through the sim's comparisons and arithmetic. All floats are run through
+// this on the way out (see WriteBuffer::writeF32).
+[[nodiscard]] float finiteOr(float value, float fallback) {
+    return std::isfinite(value) ? value : fallback;
+}
 
 // Snapshot an unordered_map's entries sorted by key. Hash-bucket iteration
 // order is unspecified and differs between a freshly-populated map and one
@@ -187,6 +196,10 @@ void WriteBuffer::writeI64(int64_t v) {
 }
 
 void WriteBuffer::writeF32(float v) {
+    // Never persist NaN/Inf: a non-finite value in a save round-trips and then
+    // poisons the loaded sim. Store 0 instead. Finite values are unchanged, so
+    // the wire format and every existing save stay byte-identical.
+    v = finiteOr(v, 0.0f);
     uint32_t u;
     std::memcpy(&u, &v, sizeof(u));
     this->writeU32(u);

@@ -855,6 +855,7 @@ if(AOC_BUILD_TESTS)
         test_deal_atomicity
         test_diplomatic_favor
         test_iou_term_expiry
+        test_save_finite
     )
 
     # The debug preset builds with ASan/LSan; known suppressions live in
