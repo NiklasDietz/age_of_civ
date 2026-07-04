@@ -432,11 +432,16 @@ void processUnitMaintenance(aoc::game::Player& player) {
             for (const std::unique_ptr<aoc::game::City>& c : player.cities()) {
                 if (c == nullptr) { ++cityIdx; continue; }
                 if (c->stockpile().getAmount(aoc::sim::goods::FUEL) > 0) {
-                    [[maybe_unused]] bool ok = c->stockpile().consumeGoods(
-                        aoc::sim::goods::FUEL, 1);
-                    drained = true;
-                    fuelCity = cityIdx;
-                    break;
+                    if (c->stockpile().consumeGoods(aoc::sim::goods::FUEL, 1)) {
+                        drained = true;
+                        fuelCity = cityIdx;
+                        break;
+                    }
+                    LOG_WARN("Player %u [Maintenance.cpp:processUnitMaintenance] "
+                             "consumeGoods failed for good %u at city index %d "
+                             "despite prior availability check",
+                             static_cast<unsigned>(player.id()),
+                             static_cast<unsigned>(aoc::sim::goods::FUEL), cityIdx);
                 }
                 ++cityIdx;
             }

@@ -247,12 +247,17 @@ static void executeMissionSuccess(aoc::game::GameState& gameState,
         }
 
         case SpyMission::StealTradeSecrets: {
-            // If target has higher industrial revolution, gain 25% progress
+            // PlayerIndustrialComponent (IndustrialRevolution.hpp) tracks only
+            // the discrete currentRevolution tier and turnAchieved timestamps --
+            // there is no continuous "progress toward next revolution" field to
+            // credit, so the "gain 25% progress" effect this mission used to
+            // claim cannot be implemented without inventing a new mechanic.
             aoc::game::Player* target = findCityOwner(gameState, spy.owner, spy.location);
             if (target != nullptr
                 && static_cast<uint8_t>(target->industrial().currentRevolution)
                    > static_cast<uint8_t>(ownerPlayer.industrial().currentRevolution)) {
-                LOG_INFO("Spy (P%u) stole trade secrets from P%u (industrial advantage)",
+                LOG_WARN("Spy (P%u) StealTradeSecrets vs P%u: industrial advantage "
+                         "detected but no progress mechanic exists -- mission has no effect",
                          static_cast<unsigned>(spy.owner),
                          static_cast<unsigned>(target->id()));
             }

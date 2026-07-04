@@ -160,6 +160,7 @@ PlayerId checkCulturalVictory(const aoc::game::GameState& gameState) {
 
     for (const std::unique_ptr<aoc::game::Player>& p : gameState.players()) {
         if (p == nullptr) { continue; }
+        if (p->victoryTracker().isEliminated) { continue; }
         const PlayerTourismComponent& tp = p->tourism();
         if (tp.foreignTourists < CULTURAL_VICTORY_FOREIGN_FLOOR) { continue; }
 
@@ -167,6 +168,7 @@ PlayerId checkCulturalVictory(const aoc::game::GameState& gameState) {
         bool beatsAll = true;
         for (const std::unique_ptr<aoc::game::Player>& q : gameState.players()) {
             if (q == nullptr || q->id() == p->id()) { continue; }
+            if (q->victoryTracker().isEliminated) { continue; }
             if (tp.foreignTourists <= q->tourism().domesticTourists) {
                 beatsAll = false;
                 break;

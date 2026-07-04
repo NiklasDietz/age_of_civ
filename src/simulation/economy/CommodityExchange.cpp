@@ -40,8 +40,14 @@ void consumeAcrossCities(aoc::game::Player& player, uint16_t goodId, int32_t amo
         int32_t avail = stockpile.getAmount(goodId);
         int32_t take  = std::min(avail, remaining);
         if (take > 0) {
-            [[maybe_unused]] bool ok = stockpile.consumeGoods(goodId, take);
-            remaining -= take;
+            if (stockpile.consumeGoods(goodId, take)) {
+                remaining -= take;
+            } else {
+                LOG_WARN("CommodityExchange: consumeGoods failed for good %u "
+                         "(player %u) despite prior availability check",
+                         static_cast<unsigned>(goodId),
+                         static_cast<unsigned>(player.id()));
+            }
         }
     }
 }

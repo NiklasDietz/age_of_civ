@@ -71,7 +71,13 @@ CityPowerComponent computeCityPower(aoc::game::GameState& gameState,
             if (available < plantDef.fuelPerTurn) {
                 continue;
             }
-            [[maybe_unused]] bool ok = stockpile.consumeGoods(plantDef.fuelGoodId, plantDef.fuelPerTurn);
+            if (!stockpile.consumeGoods(plantDef.fuelGoodId, plantDef.fuelPerTurn)) {
+                LOG_WARN("%s: consumeGoods failed for good %u despite prior "
+                         "availability check; power plant offline this turn",
+                         city.name().c_str(),
+                         static_cast<unsigned>(plantDef.fuelGoodId));
+                continue;
+            }
         }
 
         result.energySupply += plantDef.energyOutput;

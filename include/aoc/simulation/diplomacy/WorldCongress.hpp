@@ -60,8 +60,11 @@ struct WorldCongressComponent {
     PlayerId   proposer              = INVALID_PLAYER;     ///< Who spent Favor to propose
     PlayerId   proposalTarget        = INVALID_PLAYER;     ///< Resolved at proposal time (Sanctions/Boost)
     /// Signed per-player vote weight cast this session (+yes, -no, 0 abstain).
-    /// Magnitude = 1 + purchased extras (max 4).
-    std::array<int16_t, 16> votes{};
+    /// Magnitude = 1 + purchased extras (max 4). Sized to MAX_PLAYERS so every
+    /// seat can vote; the static_assert below keeps the two in lockstep.
+    std::array<int16_t, MAX_PLAYERS> votes{};
+    static_assert(std::tuple_size_v<decltype(votes)> == MAX_PLAYERS,
+                  "votes must be sized to MAX_PLAYERS so every seat can vote");
     std::vector<Resolution>       passedResolutions;
     std::vector<ActiveResolution> activeEffects;
 

@@ -364,8 +364,14 @@ static void processSingleCityGrowth(aoc::game::City& city,
                 static_cast<int32_t>(deficit / fg.ratio) + 1);
             if (toConsume <= 0) { continue; }
             const float recovered = static_cast<float>(toConsume) * fg.ratio;
-            [[maybe_unused]] bool consumed = city.stockpile().consumeGoods(fg.id, toConsume);
-            surplus += recovered;
+            const bool consumed = city.stockpile().consumeGoods(fg.id, toConsume);
+            if (consumed) {
+                surplus += recovered;
+            } else {
+                LOG_WARN("%s: consumeGoods failed for good %u despite prior "
+                         "availability check", city.name().c_str(),
+                         static_cast<unsigned>(fg.id));
+            }
         }
     }
 
