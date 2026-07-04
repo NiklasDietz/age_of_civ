@@ -1034,6 +1034,16 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         }
     }
 
+    // Close the decision trace explicitly so a write failure (full disk, etc.)
+    // is surfaced here rather than swallowed by the destructor.
+    if (decisionLog.active()) {
+        decisionLog.close();
+        if (decisionLog.hasWriteError()) {
+            LOG_ERROR("Decision trace '%s' had write failures; the file may be "
+                      "truncated or corrupt", tracePath.c_str());
+        }
+    }
+
     LOG_INFO("Simulation complete. Data written to: %s", outputPath.c_str());
     return 0;
 }

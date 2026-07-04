@@ -119,6 +119,11 @@ public:
     /// alternates-array construction on this.
     [[nodiscard]] bool active() const { return this->m_file != nullptr; }
 
+    /// True if any write (header, record, or the final flush) failed this
+    /// session. Latched, so it stays true through close(). Lets callers report
+    /// a truncated/corrupt trace instead of assuming the log was written.
+    [[nodiscard]] bool hasWriteError() const { return this->m_writeError; }
+
     void logProduction(uint16_t turn, uint8_t player, uint16_t cityIdx,
                        ProductionItemKind chosenKind, uint32_t chosenId,
                        float chosenScore,
@@ -132,10 +137,13 @@ public:
 
 private:
     std::FILE* m_file = nullptr;
+    bool m_writeError = false;  ///< Latched on the first failed write this session.
 
     void writeRaw(const void* data, std::size_t bytes);
     void writeHeader(DecisionKind kind, uint16_t turn, uint8_t player,
                      uint16_t payloadBytes);
+    /// Latch m_writeError if the stream's error indicator is set.
+    void noteStreamError();
 };
 
 // ============================================================================
