@@ -74,6 +74,13 @@ endif()
 # servers, CI, and GA training on machines without a GPU / Vulkan SDK.
 option(AOC_HEADLESS "Build without Vulkan/GLFW (sim + GA tools only)" OFF)
 
+# Portable golden gate: enable the test_golden_sim CTest (which pins absolute
+# sim output to a blessed SHA-256). Only ON for the release-portable preset,
+# which uses -O2 without -march=native so the hash is reproducible across
+# machines and CI agents. The native release preset keeps only
+# test_determinism (self-comparing, never re-blessed).
+option(AOC_PORTABLE_GOLDEN "Enable test_golden_sim (release-portable preset only)" OFF)
+
 # Phase 1 diagnostic instrumentation. When ON, IndustrialRevolution.cpp emits
 # throttled "IR_BLOCKED player=... ir=... reason=... detail=... turn=..."
 # lines through LOG_INFO. Throttle window is 50 turns per (player, ir, reason,
@@ -891,22 +898,27 @@ if(AOC_BUILD_TESTS)
     # sims take many minutes and add no memory-safety value beyond the smoke).
     #   test_determinism : same seed twice -> byte-identical CSVs. Never
     #                      re-blessed; red always means hidden entropy.
+    #                      Runs for EVERY Release build (including native).
     #   test_golden_sim  : seed-42 500-turn run hashes to the blessed value
-    #                      in tests/golden/. Behavior-changing commits
-    #                      re-bless deliberately (script --bless) and say
-    #                      why. Excludable during a fix series via
-    #                      `ctest -LE golden`.
+    #                      in tests/golden/. Only enabled when
+    #                      AOC_PORTABLE_GOLDEN=ON (release-portable preset) so
+    #                      the hash is machine-independent. Re-bless with
+    #                      scripts/test_golden_sim.sh --bless and state the
+    #                      reason in the commit message. Excludable during a
+    #                      fix series via `ctest -LE golden`.
     if(TARGET aoc_simulate AND CMAKE_BUILD_TYPE STREQUAL "Release")
         add_test(NAME test_determinism
                  COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_determinism.sh
                          $<TARGET_FILE:aoc_simulate> ${CMAKE_BINARY_DIR}
                  WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-        add_test(NAME test_golden_sim
-                 COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_golden_sim.sh
-                         $<TARGET_FILE:aoc_simulate> ${CMAKE_BINARY_DIR}
-                         ${CMAKE_SOURCE_DIR}/tests/golden/seed42_turns500.sha256
-                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-        set_tests_properties(test_golden_sim PROPERTIES LABELS "golden")
+        if(AOC_PORTABLE_GOLDEN)
+            add_test(NAME test_golden_sim
+                     COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_golden_sim.sh
+                             $<TARGET_FILE:aoc_simulate> ${CMAKE_BINARY_DIR}
+                             ${CMAKE_SOURCE_DIR}/tests/golden/seed42_turns500.sha256
+                     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+            set_tests_properties(test_golden_sim PROPERTIES LABELS "golden")
+        endif()
     endif()
 endif()
 

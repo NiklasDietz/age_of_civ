@@ -1,7 +1,10 @@
 {
     "version": 6,
-    "cmakeMinimumRequired": { "major": 3, "minor": 20, "patch": 0 },
-
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 20,
+        "patch": 0
+    },
     "configurePresets": [
         {
             "name": "default",
@@ -11,14 +14,20 @@
             "cacheVariables": {
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
             },
-            "warnings": { "dev": true, "deprecated": true }
+            "warnings": {
+                "dev": true,
+                "deprecated": true
+            }
         },
-
         {
             "name": "linux-base",
             "hidden": true,
             "inherits": "default",
-            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            },
             "environment": {
                 "CC": "clang",
                 "CXX": "clang++"
@@ -28,17 +37,27 @@
             "name": "macos-base",
             "hidden": true,
             "inherits": "default",
-            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
         },
         {
             "name": "windows-base",
             "hidden": true,
             "inherits": "default",
-            "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            },
             "generator": "Visual Studio 17 2022",
-            "architecture": { "value": "x64", "strategy": "set" }
+            "architecture": {
+                "value": "x64",
+                "strategy": "set"
+            }
         },
-
         {
             "name": "debug",
             "displayName": "Debug (Linux: ASan + UBSan)",
@@ -63,6 +82,19 @@
             }
         },
         {
+            "name": "release-portable",
+            "displayName": "Release portable (Linux: -O2, no march=native, no LTO — golden gate preset)",
+            "inherits": "linux-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_CXX_FLAGS_RELEASE": "-O2 -DNDEBUG",
+                "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "OFF",
+                "CMAKE_EXE_LINKER_FLAGS_RELEASE": "-fuse-ld=lld -s",
+                "CMAKE_SHARED_LINKER_FLAGS_RELEASE": "-fuse-ld=lld -s",
+                "AOC_PORTABLE_GOLDEN": "ON"
+            }
+        },
+        {
             "name": "perf",
             "displayName": "High-Performance (Linux: Release + PGO-ready)",
             "inherits": "release",
@@ -82,7 +114,6 @@
                 "CMAKE_SHARED_LINKER_FLAGS_DEBUG": "-fsanitize=thread -fuse-ld=lld"
             }
         },
-
         {
             "name": "macos-debug",
             "displayName": "macOS Debug (ASan + UBSan, MoltenVK)",
@@ -105,7 +136,6 @@
                 "CMAKE_OSX_DEPLOYMENT_TARGET": "11.0"
             }
         },
-
         {
             "name": "windows-debug",
             "displayName": "Windows Debug (MSVC, Vulkan SDK)",
@@ -124,14 +154,42 @@
             }
         }
     ],
-
     "buildPresets": [
-        { "name": "debug",           "configurePreset": "debug",           "jobs": 0 },
-        { "name": "release",         "configurePreset": "release",         "jobs": 0 },
-        { "name": "perf",            "configurePreset": "perf",            "jobs": 0 },
-        { "name": "tsan",            "configurePreset": "tsan",            "jobs": 0 },
-        { "name": "macos-debug",     "configurePreset": "macos-debug",     "jobs": 0 },
-        { "name": "macos-release",   "configurePreset": "macos-release",   "jobs": 0 },
+        {
+            "name": "debug",
+            "configurePreset": "debug",
+            "jobs": 0
+        },
+        {
+            "name": "release",
+            "configurePreset": "release",
+            "jobs": 0
+        },
+        {
+            "name": "release-portable",
+            "configurePreset": "release-portable",
+            "jobs": 0
+        },
+        {
+            "name": "perf",
+            "configurePreset": "perf",
+            "jobs": 0
+        },
+        {
+            "name": "tsan",
+            "configurePreset": "tsan",
+            "jobs": 0
+        },
+        {
+            "name": "macos-debug",
+            "configurePreset": "macos-debug",
+            "jobs": 0
+        },
+        {
+            "name": "macos-release",
+            "configurePreset": "macos-release",
+            "jobs": 0
+        },
         {
             "name": "windows-debug",
             "configurePreset": "windows-debug",
