@@ -864,6 +864,7 @@ if(AOC_BUILD_TESTS)
         test_iou_term_expiry
         test_save_finite
         test_decision_log_io
+        test_deterministic_argmax
     )
 
     # The debug preset builds with ASan/LSan; known suppressions live in

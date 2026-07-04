@@ -147,6 +147,8 @@
 #include "aoc/core/Log.hpp"
 #include "aoc/core/DecisionLog.hpp"
 
+#include "aoc/core/Deterministic.hpp"
+
 #include <algorithm>
 #include <cassert>
 #include <string>
@@ -858,11 +860,10 @@ void processGlobalSystems(TurnContext& turnContext) {
             if (a == nullptr) { continue; }
             const ReligionCounts& aCounts = perPlayerCounts[ai];
             if (aCounts.empty()) { continue; }
-            ReligionId aTop = NO_RELIGION;
-            int32_t aTopN = 0;
-            for (const std::pair<const ReligionId, int32_t>& kv : aCounts) {
-                if (kv.second > aTopN) { aTopN = kv.second; aTop = kv.first; }
-            }
+            // aCounts is an unordered_map, so break count ties by lowest
+            // ReligionId to keep the dominant-religion pick order-independent.
+            const ReligionId aTop =
+                aoc::core::argMaxByValueLowestKey(aCounts, NO_RELIGION).first;
             if (aTop == NO_RELIGION) { continue; }
 
             for (std::size_t bi = 0; bi < players.size(); ++bi) {

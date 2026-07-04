@@ -1567,7 +1567,13 @@ void processLogisticsUnits(aoc::game::GameState& gameState,
                         if (kv.second.owner != player.id()) { continue; }
                         const int32_t need = (REFILL_THRESHOLD - kv.second.food)
                                            + (REFILL_THRESHOLD - kv.second.fuel);
-                        if (need > bestNeed) {
+                        // encampments() is an unordered_map, so break need ties
+                        // by lowest tile index for an order-independent depot
+                        // pick. bestIdx starts at -1 (below every real index),
+                        // so the tie branch can only fire once a real winner is
+                        // set -- matching the old strict-'>' idle behaviour.
+                        if (need > bestNeed
+                            || (need == bestNeed && kv.first < bestIdx)) {
                             bestNeed = need;
                             bestIdx = kv.first;
                         }
