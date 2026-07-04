@@ -27,6 +27,8 @@ extern "C" {
 #define LUA_OK 0
 #endif
 
+#include <cstddef>
+#include <cstdlib>
 #include <string>
 
 namespace aoc::scripting {
@@ -60,11 +62,61 @@ int textOnlyLoad(lua_State* L) {
 /// trips in well under a second on a runaway loop.
 constexpr int LUA_INSTRUCTION_LIMIT = 10'000'000;
 
+/// Hard cap on total memory the interpreter may hold at once. The instruction
+/// hook only counts VM opcodes, so a single CALL into a C library function
+/// (e.g. string.rep('A', 0x40000000)) can allocate gigabytes before the hook
+/// ever fires. Capping the allocator turns that memory bomb into a graceful
+/// Lua memory error that unwinds back to the enclosing pcall. 64 MiB is far
+/// above any legitimate event/victory/map-generation script footprint.
+constexpr std::size_t MAX_LUA_MEMORY_BYTES = 64u * 1024u * 1024u;
+
+/// Bookkeeping for the capped Lua allocator. Owned by LuaEngine::Impl so its
+/// lifetime strictly outlives the lua_State that points at it.
+struct LuaAllocState {
+    std::size_t totalAllocated = 0;
+};
+
+/// lua_Alloc implementation enforcing MAX_LUA_MEMORY_BYTES.
+///
+/// Contract (see lua_Alloc): @p ptr is the block being resized/freed, @p osize
+/// its old size (or a type tag when @p ptr is null), @p nsize the requested new
+/// size. nsize == 0 means free. Returning nullptr on a non-free request signals
+/// allocation failure, which Lua reports as a memory error.
+void* cappedLuaAlloc(void* ud, void* ptr, std::size_t osize, std::size_t nsize) {
+    auto* state = static_cast<LuaAllocState*>(ud);
+
+    if (nsize == 0) {
+        std::free(ptr);
+        // osize is the real block size only when ptr is non-null; for a null
+        // ptr it is a type tag, but Lua never frees a null pointer.
+        if (ptr != nullptr) {
+            state->totalAllocated -= osize;
+        }
+        return nullptr;
+    }
+
+    // osize is meaningful (the old block size) only when growing/shrinking an
+    // existing allocation; for a fresh allocation ptr is null and osize is a
+    // type tag, so treat the old footprint as zero.
+    const std::size_t oldSize = (ptr != nullptr) ? osize : 0;
+    const std::size_t projected = state->totalAllocated - oldSize + nsize;
+    if (projected > MAX_LUA_MEMORY_BYTES) {
+        return nullptr; // Over budget: signal failure, Lua raises a memory error.
+    }
+
+    void* result = std::realloc(ptr, nsize);
+    if (result == nullptr) {
+        return nullptr; // Genuine OOM: leave ptr intact, report failure.
+    }
+
+    state->totalAllocated = projected;
+    return result;
+}
+
 /// LUA_MASKCOUNT hook: invoked every LUA_INSTRUCTION_LIMIT VM instructions.
 /// Raising a Lua error here unwinds back to the enclosing pcall, so a runaway
 /// script is reported as a failure rather than hanging the process. Memory
-/// bombs are not bounded by this hook -- a capped allocator was deemed
-/// higher-risk for the LuaJIT path and intentionally omitted (see WP-04 notes).
+/// bombs are bounded separately by the capped allocator (cappedLuaAlloc).
 void instructionLimitHook(lua_State* L, lua_Debug* /*ar*/) {
     luaL_error(L, "script exceeded instruction limit (%d) -- possible infinite loop",
                LUA_INSTRUCTION_LIMIT);
@@ -76,6 +128,10 @@ struct LuaEngine::Impl {
     lua_State* luaState = nullptr;
     aoc::game::GameState* gameState = nullptr;
     aoc::map::HexGrid* grid = nullptr;
+    // Allocator bookkeeping for luaState; must outlive luaState (declared before
+    // it is destroyed -- lua_close happens explicitly in LuaEngine, and the Impl
+    // is freed only after that).
+    LuaAllocState allocState{};
 };
 
 LuaEngine::LuaEngine() : m_impl(std::make_unique<Impl>()) {}
@@ -104,7 +160,13 @@ bool LuaEngine::initialize(const std::string& scriptsPath) {
         this->m_impl->luaState = nullptr;
     }
 
-    this->m_impl->luaState = luaL_newstate();
+    // Create the state with a capped allocator (instead of luaL_newstate, which
+    // installs an uncapped default allocator) so an untrusted mod cannot OOM the
+    // host via a C-library memory bomb. allocState lives in m_impl and so
+    // outlives luaState. Reset its counter for this fresh interpreter.
+    this->m_impl->allocState.totalAllocated = 0;
+    this->m_impl->luaState =
+        lua_newstate(cappedLuaAlloc, &this->m_impl->allocState);
     if (this->m_impl->luaState == nullptr) {
         LOG_ERROR("LuaEngine::initialize: failed to create Lua state");
         return false;
