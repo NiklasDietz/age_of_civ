@@ -39,8 +39,14 @@ ErrorCode hoardCommodity(aoc::game::GameState& gameState,
         int32_t available = stockpile.getAmount(goodId);
         int32_t take      = std::min(available, remaining);
         if (take > 0) {
-            [[maybe_unused]] bool ok = stockpile.consumeGoods(goodId, take);
-            remaining -= take;
+            if (stockpile.consumeGoods(goodId, take)) {
+                remaining -= take;
+            } else {
+                LOG_WARN("hoardCommodity: consumeGoods failed for good %u "
+                         "(player %u) despite prior availability check",
+                         static_cast<unsigned>(goodId),
+                         static_cast<unsigned>(player));
+            }
         }
     }
 

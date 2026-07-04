@@ -170,7 +170,14 @@ void processInternalTrade(aoc::game::GameState& gameState,
             CityStockpileComponent& srcStockpile = cities[surplus.cityIndex]->stockpile();
             CityStockpileComponent& dstStockpile = cities[deficitCities[bestDeficitIdx].cityIndex]->stockpile();
 
-            [[maybe_unused]] bool consumed = srcStockpile.consumeGoods(goodId, transferAmount);
+            if (!srcStockpile.consumeGoods(goodId, transferAmount)) {
+                LOG_WARN("Internal trade: consumeGoods failed for good %u at (%d,%d) "
+                         "despite prior surplus check (player %u)",
+                         static_cast<unsigned>(goodId),
+                         surplusCity.location().q, surplusCity.location().r,
+                         static_cast<unsigned>(player));
+                continue;
+            }
             dstStockpile.addGoods(goodId, arrivedAmount);
 
             LOG_DEBUG("Internal trade: player %u, good %u, %d units from (%d,%d) to (%d,%d), "

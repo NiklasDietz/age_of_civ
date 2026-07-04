@@ -381,8 +381,11 @@ void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
                     const int32_t needed = bdef.ongoingFuelPerTurn;
                     const int32_t local  = stockpile.getAmount(bdef.ongoingFuelGoodId);
                     if (local >= needed) {
-                        [[maybe_unused]] bool ok =
-                            stockpile.consumeGoods(bdef.ongoingFuelGoodId, needed);
+                        if (!stockpile.consumeGoods(bdef.ongoingFuelGoodId, needed)) {
+                            LOG_WARN("%s: consumeGoods failed for good %u despite "
+                                     "prior availability check", cityPtr->name().c_str(),
+                                     static_cast<unsigned>(bdef.ongoingFuelGoodId));
+                        }
                         continue;
                     }
 
@@ -397,9 +400,11 @@ void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
                         sibling += donorPtr->stockpile().getAmount(bdef.ongoingFuelGoodId);
                     }
                     if (local + sibling >= needed) {
-                        if (local > 0) {
-                            [[maybe_unused]] bool ok =
-                                stockpile.consumeGoods(bdef.ongoingFuelGoodId, local);
+                        if (local > 0
+                            && !stockpile.consumeGoods(bdef.ongoingFuelGoodId, local)) {
+                            LOG_WARN("%s: consumeGoods failed for good %u despite "
+                                     "prior availability check", cityPtr->name().c_str(),
+                                     static_cast<unsigned>(bdef.ongoingFuelGoodId));
                         }
                         int32_t remaining = needed - local;
                         for (const std::unique_ptr<aoc::game::City>& donorPtr : playerPtr->cities()) {
@@ -412,9 +417,13 @@ void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
                                 donorStock.getAmount(bdef.ongoingFuelGoodId);
                             if (donorAvail <= 0) { continue; }
                             const int32_t take = std::min(donorAvail, remaining);
-                            [[maybe_unused]] bool ok =
-                                donorStock.consumeGoods(bdef.ongoingFuelGoodId, take);
-                            remaining -= take;
+                            if (donorStock.consumeGoods(bdef.ongoingFuelGoodId, take)) {
+                                remaining -= take;
+                            } else {
+                                LOG_WARN("%s: consumeGoods failed for good %u despite "
+                                         "prior availability check", donorPtr->name().c_str(),
+                                         static_cast<unsigned>(bdef.ongoingFuelGoodId));
+                            }
                         }
                         continue;
                     }
@@ -422,9 +431,11 @@ void EconomySimulation::consumeBuildingFuel(aoc::game::GameState& gameState,
                     // True shortage: apply the oil-shock coal substitute.
                     if (inShock && bdef.ongoingFuelGoodId == goods::OIL) {
                         const int32_t coalNeeded = (needed * 3 + 1) / 2;
-                        if (stockpile.getAmount(goods::COAL) >= coalNeeded) {
-                            [[maybe_unused]] bool ok =
-                                stockpile.consumeGoods(goods::COAL, coalNeeded);
+                        if (stockpile.getAmount(goods::COAL) >= coalNeeded
+                            && !stockpile.consumeGoods(goods::COAL, coalNeeded)) {
+                            LOG_WARN("%s: consumeGoods failed for good %u despite "
+                                     "prior availability check", cityPtr->name().c_str(),
+                                     static_cast<unsigned>(goods::COAL));
                         }
                     }
                 }
@@ -548,10 +559,17 @@ void EconomySimulation::computePlayerNeeds(aoc::game::GameState& gameState) {
                     if (want <= 0) { return 0; }
                     const int32_t have = stock.getAmount(gid);
                     const int32_t take = std::min(want, have);
+                    int32_t consumed = 0;
                     if (take > 0) {
-                        [[maybe_unused]] bool ok = stock.consumeGoods(gid, take);
+                        if (stock.consumeGoods(gid, take)) {
+                            consumed = take;
+                        } else {
+                            LOG_WARN("EconomySimulation: consumeGoods failed for good %u "
+                                     "despite prior availability check",
+                                     static_cast<unsigned>(gid));
+                        }
                     }
-                    return want - take;  // shortfall
+                    return want - consumed;  // shortfall
                 };
 
                 const int32_t wheatWant = cityPop / 3;
@@ -643,9 +661,14 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                 automation.robotWorkers = robotsAvailable;
                 ++automation.turnsSinceLastMaintenance;
                 if (automation.turnsSinceLastMaintenance >= ROBOT_MAINTENANCE_INTERVAL) {
-                    [[maybe_unused]] bool consumed = stockpile.consumeGoods(ROBOT_WORKERS_GOOD, 1);
-                    automation.turnsSinceLastMaintenance = 0;
-                    --automation.robotWorkers;
+                    if (stockpile.consumeGoods(ROBOT_WORKERS_GOOD, 1)) {
+                        automation.turnsSinceLastMaintenance = 0;
+                        --automation.robotWorkers;
+                    } else {
+                        LOG_WARN("%s: consumeGoods failed for good %u despite prior "
+                                 "availability check", cityPtr->name().c_str(),
+                                 static_cast<unsigned>(ROBOT_WORKERS_GOOD));
+                    }
                 }
             }
         }
@@ -789,7 +812,12 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
 
                 for (const RecipeInput& input : recipe->inputs) {
                     if (input.consumed) {
-                        [[maybe_unused]] bool ok = stockpile.consumeGoods(input.goodId, input.amount);
+                        if (!stockpile.consumeGoods(input.goodId, input.amount)) {
+                            LOG_WARN("%s: consumeGoods failed for good %u despite "
+                                     "prior availability check", city->name().c_str(),
+                                     static_cast<unsigned>(input.goodId));
+                            continue;
+                        }
                         float q = quality.consumeGoods(input.goodId, input.amount);
                         inputQualitySum += q;
                         ++inputCount;
@@ -859,9 +887,11 @@ void EconomySimulation::executeProduction(aoc::game::GameState& gameState,
                     constexpr uint16_t TOOLS_GOOD_ID = 63;
                     if (stockpile.getAmount(TOOLS_GOOD_ID) > 0) {
                         // Consume 1 tool per 3 recipe batches (tools wear out)
-                        if (state.totalRecipesExecuted % 3 == 0) {
-                            [[maybe_unused]] bool toolConsumed =
-                                stockpile.consumeGoods(TOOLS_GOOD_ID, 1);
+                        if (state.totalRecipesExecuted % 3 == 0
+                            && !stockpile.consumeGoods(TOOLS_GOOD_ID, 1)) {
+                            LOG_WARN("%s: consumeGoods failed for good %u despite "
+                                     "prior availability check", city->name().c_str(),
+                                     static_cast<unsigned>(TOOLS_GOOD_ID));
                         }
                     } else {
                         toolEff = 0.60f;  // No tools = 60% efficiency
@@ -1147,16 +1177,18 @@ void EconomySimulation::reportToMarket(aoc::game::GameState& gameState) {
             const int32_t avail = stockpileMut.getAmount(goods::CONSUMER_GOODS);
             const int32_t consumerTake = std::min(consumerDrain, avail);
             if (consumerTake > 0) {
-                [[maybe_unused]] const bool ok =
-                    stockpileMut.consumeGoods(goods::CONSUMER_GOODS, consumerTake);
+                // Best-effort drain: consumerTake is capped at `avail` above and no
+                // downstream effect reads the result -- missing goods simply don't
+                // drain this turn (see comment above), so failure needs no branch.
+                static_cast<void>(stockpileMut.consumeGoods(goods::CONSUMER_GOODS, consumerTake));
             }
             if (pop > 10) {
                 const int32_t advDrain = (pop - 10) / 3 + 1;
                 const int32_t advAvail = stockpileMut.getAmount(goods::ADV_CONSUMER_GOODS);
                 const int32_t advTake = std::min(advDrain, advAvail);
                 if (advTake > 0) {
-                    [[maybe_unused]] const bool ok =
-                        stockpileMut.consumeGoods(goods::ADV_CONSUMER_GOODS, advTake);
+                    // Best-effort drain, same reasoning as CONSUMER_GOODS above.
+                    static_cast<void>(stockpileMut.consumeGoods(goods::ADV_CONSUMER_GOODS, advTake));
                 }
             }
         }

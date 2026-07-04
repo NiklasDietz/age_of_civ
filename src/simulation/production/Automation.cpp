@@ -29,9 +29,14 @@ void updateCityAutomation(aoc::game::City& city) {
     ++automation.turnsSinceLastMaintenance;
     if (automation.turnsSinceLastMaintenance >= ROBOT_MAINTENANCE_INTERVAL
         && robotsAvailable > 0) {
-        [[maybe_unused]] bool ok = stockpile.consumeGoods(ROBOT_WORKERS_GOOD, 1);
-        automation.turnsSinceLastMaintenance = 0;
-        --automation.robotWorkers;
+        if (stockpile.consumeGoods(ROBOT_WORKERS_GOOD, 1)) {
+            automation.turnsSinceLastMaintenance = 0;
+            --automation.robotWorkers;
+        } else {
+            LOG_WARN("%s: consumeGoods failed for good %u despite prior "
+                     "availability check", city.name().c_str(),
+                     static_cast<unsigned>(ROBOT_WORKERS_GOOD));
+        }
     }
 }
 
