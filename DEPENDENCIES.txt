@@ -25,8 +25,19 @@ vulkan-headers                required   interactive
 glfw                 3.x      required   interactive
 
 # ---- Vendored (do NOT install) ----
-# stb_truetype              third_party/stb_truetype.h
-# vulkan_renderer           third_party/vulkan_renderer/ (git submodule)
+# stb_truetype   v1.26     third_party/stb_truetype.h
+#   SECURITY: unpatched OOB-read CVE-2026-5314 (no upstream fix). Only ever
+#   parse trusted/bundled system fonts with it -- never mod/user-supplied
+#   fonts. See src/ui/BitmapFont.cpp.
+# stb_image_write v1.16    third_party/stb_image_write.h (screenshot encode)
+# cpp-httplib    0.18.5    third_party/cpp-httplib/httplib.h
+#   Pinned deliberately. Newer releases (0.49.0, 2026-07) patch ~13
+#   server-side advisories, but the debug HTTP server binds 127.0.0.1 only
+#   and is off by default (--enable-debug-server) with a Host-header
+#   allowlist, so the CVEs (untrusted-network-client class) are out of
+#   reach. Revisit the pin only if the server is ever exposed off loopback.
+# doctest        v2.4.12   third_party/doctest/doctest.h (unit-test harness)
+# vulkan_renderer          third_party/vulkan_renderer/ (git submodule)
 
 # ============================================================
 # Install commands per distro

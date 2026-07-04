@@ -24,6 +24,31 @@ extern "C" {
 
 namespace aoc::scripting {
 
+namespace {
+
+// Sandbox replacement for load/loadstring: string chunks only, and the
+// chunk mode is forced to "t" (text). LuaJIT executes unverified bytecode
+// by design -- a crafted bytecode chunk is a VM escape (luajit.org FAQ) --
+// so the mode argument callers pass is deliberately ignored. Keeps the
+// common data-mod idiom load("return {...}") working.
+int textOnlyLoad(lua_State* L) {
+    if (lua_type(L, 1) != LUA_TSTRING) {
+        return luaL_error(L, "load: only text string chunks are allowed in the sandbox");
+    }
+    std::size_t len = 0;
+    const char* buf = lua_tolstring(L, 1, &len);
+    const char* name = luaL_optstring(L, 2, "=(load)");
+    if (luaL_loadbufferx(L, buf, len, name, "t") != 0) {
+        // load() contract on failure: return nil + error message.
+        lua_pushnil(L);
+        lua_insert(L, -2);
+        return 2;
+    }
+    return 1;
+}
+
+} // namespace
+
 struct LuaEngine::Impl {
     lua_State* luaState = nullptr;
     aoc::game::GameState* gameState = nullptr;
@@ -97,6 +122,15 @@ bool LuaEngine::initialize(const std::string& scriptsPath) {
         lua_setglobal(L, name);
     }
 
+    // load/loadstring stay usable (data mods rely on load("return {...}"))
+    // but are replaced with a wrapper that forces text-only chunks --
+    // LuaJIT has no bytecode verifier, so accepting bytecode here would be
+    // a sandbox escape regardless of the blocked globals above.
+    lua_pushcfunction(L, textOnlyLoad);
+    lua_setglobal(L, "load");
+    lua_pushcfunction(L, textOnlyLoad);
+    lua_setglobal(L, "loadstring");
+
     // Load init script if it exists
     std::string initPath = scriptsPath + "/init.lua";
     if (this->executeFile(initPath)) {
@@ -113,11 +147,17 @@ bool LuaEngine::isAvailable() const {
 bool LuaEngine::executeFile(const std::string& path) {
     if (!this->isAvailable()) { return false; }
 
-    int result = luaL_dofile(this->m_impl->luaState, path.c_str());
+    // Text-only ("t"): LuaJIT runs unverified bytecode, so a .lua file
+    // holding a crafted bytecode dump would escape the sandbox.
+    lua_State* L = this->m_impl->luaState;
+    int result = luaL_loadfilex(L, path.c_str(), "t");
+    if (result == LUA_OK) {
+        result = lua_pcall(L, 0, LUA_MULTRET, 0);
+    }
     if (result != LUA_OK) {
-        const char* err = lua_tostring(this->m_impl->luaState, -1);
+        const char* err = lua_tostring(L, -1);
         LOG_ERROR("Lua script error in %s: %s", path.c_str(), err != nullptr ? err : "unknown");
-        lua_pop(this->m_impl->luaState, 1);
+        lua_pop(L, 1);
         return false;
     }
     return true;
@@ -126,12 +166,16 @@ bool LuaEngine::executeFile(const std::string& path) {
 bool LuaEngine::executeString(std::string_view code) {
     if (!this->isAvailable()) { return false; }
 
-    std::string codeStr(code);
-    int result = luaL_dostring(this->m_impl->luaState, codeStr.c_str());
+    // Text-only ("t") for the same reason as executeFile.
+    lua_State* L = this->m_impl->luaState;
+    int result = luaL_loadbufferx(L, code.data(), code.size(), "=eval", "t");
+    if (result == LUA_OK) {
+        result = lua_pcall(L, 0, LUA_MULTRET, 0);
+    }
     if (result != LUA_OK) {
-        const char* err = lua_tostring(this->m_impl->luaState, -1);
+        const char* err = lua_tostring(L, -1);
         LOG_ERROR("Lua eval error: %s", err != nullptr ? err : "unknown");
-        lua_pop(this->m_impl->luaState, 1);
+        lua_pop(L, 1);
         return false;
     }
     return true;

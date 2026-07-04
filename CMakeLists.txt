@@ -830,6 +830,7 @@ if(AOC_BUILD_TESTS)
         test_economy_invariants
         test_path_guard
         test_save_hostile
+        test_lua_sandbox
     )
 
     # The debug preset builds with ASan/LSan; known suppressions live in

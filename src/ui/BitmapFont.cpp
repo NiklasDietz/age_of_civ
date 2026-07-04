@@ -110,7 +110,11 @@ bool BitmapFont::initialize() {
         return true;
     }
 
-    // Try several common font paths
+    // SECURITY CONSTRAINT: stb_truetype v1.26 has an unpatched OOB-read
+    // (CVE-2026-5314, no upstream fix) reachable through stbtt_InitFont on a
+    // malformed font. This list MUST stay a fixed set of trusted system font
+    // paths -- never load a font path that came from a mod, a save, or any
+    // other untrusted input without sandboxing the parse first.
     const char* fontPaths[] = {
         "/usr/share/fonts/truetype/DejaVuSans.ttf",
         "/usr/share/fonts/texlive-dejavu/DejaVuSans.ttf",
