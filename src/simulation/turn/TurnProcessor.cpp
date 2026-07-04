@@ -983,6 +983,15 @@ void processGlobalSystems(TurnContext& turnContext) {
     // counts as a spring source, matching the user spec. The result
     // is stashed on City and consumed by per-turn housing logic.
     {
+        // One reusable visited buffer for every city's BFS this turn. A
+        // per-city monotonic stamp marks visited tiles, so neither a
+        // per-city heap allocation nor a per-city full clear is needed
+        // (the old code allocated a tileCount-byte vector per city per
+        // turn). Stamp 0 means "never visited"; the counter starts at 1.
+        std::vector<uint32_t> visitedStamp(
+            static_cast<std::size_t>(grid.tileCount()), 0);
+        uint32_t bfsStamp = 0;
+
         for (const std::unique_ptr<aoc::game::Player>& playerPtr : gameState.players()) {
             for (const std::unique_ptr<aoc::game::City>& cityPtr : playerPtr->cities()) {
                 aoc::game::City& city = *cityPtr;
@@ -991,6 +1000,7 @@ void processGlobalSystems(TurnContext& turnContext) {
                     continue;
                 }
                 const int32_t startIdx = grid.toIndex(city.location());
+                ++bfsStamp;
 
                 // Helper: tile index touches fresh water (river edge, or
                 // any of the 6 neighbours is water/mountain).
@@ -1009,11 +1019,10 @@ void processGlobalSystems(TurnContext& turnContext) {
                     return false;
                 };
 
-                std::vector<uint8_t> visited(static_cast<std::size_t>(grid.tileCount()), 0);
                 std::vector<int32_t> queue;
                 queue.reserve(64);
                 queue.push_back(startIdx);
-                visited[static_cast<std::size_t>(startIdx)] = 1;
+                visitedStamp[static_cast<std::size_t>(startIdx)] = bfsStamp;
                 bool connected = false;
                 if (touchesWater(startIdx)) {
                     connected = true;
@@ -1026,10 +1035,10 @@ void processGlobalSystems(TurnContext& turnContext) {
                     for (const aoc::hex::AxialCoord& n : nbrs) {
                         if (!grid.isValid(n)) { continue; }
                         const int32_t ni = grid.toIndex(n);
-                        if (visited[static_cast<std::size_t>(ni)]) { continue; }
+                        if (visitedStamp[static_cast<std::size_t>(ni)] == bfsStamp) { continue; }
                         // BFS only walks across aqueduct-bearing tiles.
                         if (!grid.hasAqueduct(ni)) { continue; }
-                        visited[static_cast<std::size_t>(ni)] = 1;
+                        visitedStamp[static_cast<std::size_t>(ni)] = bfsStamp;
                         if (touchesWater(ni)) { connected = true; break; }
                         queue.push_back(ni);
                     }
