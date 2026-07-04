@@ -504,6 +504,26 @@ target_include_directories(aoc_lib
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 
+# Precompiled header: only ubiquitous, stable standard-library headers
+# (each included by dozens-to-hundreds of TUs; see the include census).
+# PRIVATE so consumers of aoc_lib are not forced to share it. Deliberately
+# excludes project headers -- those change often and would defeat the cache.
+option(AOC_ENABLE_PCH "Precompile common stdlib headers for aoc_lib" ON)
+if(AOC_ENABLE_PCH)
+    target_precompile_headers(aoc_lib PRIVATE
+        <cstdint>
+        <vector>
+        <string>
+        <string_view>
+        <array>
+        <algorithm>
+        <cmath>
+        <memory>
+        <unordered_map>
+        <utility>
+    )
+endif()
+
 if(NOT AOC_HEADLESS)
     target_link_libraries(aoc_lib
         PUBLIC
