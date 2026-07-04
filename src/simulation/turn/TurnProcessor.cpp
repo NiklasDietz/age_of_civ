@@ -835,21 +835,41 @@ void processGlobalSystems(TurnContext& turnContext) {
             return counts;
         };
 
-        for (const std::unique_ptr<aoc::game::Player>& a : gameState.players()) {
+        // Precompute each player's dominant-religion counts ONCE. The inner
+        // loop used to recompute the b-side counts for every (a,b) pair, making
+        // this O(P^2 * cities); it is now O(P * cities + P^2). No player's
+        // cities change during the loop, and the maps are MOVED into the vector
+        // (preserving each one's iteration order), so aTop tie-breaks and every
+        // addModifier call are byte-for-byte identical to the on-demand version.
+        // (A civ-meeting gate is deliberately NOT added here: addModifier stores
+        // a decaying modifier even for unmet pairs, which becomes live once they
+        // meet, so skipping unmet pairs would change behaviour, not just cost.)
+        using ReligionCounts = std::unordered_map<ReligionId, int32_t>;
+        const std::vector<std::unique_ptr<aoc::game::Player>>& players = gameState.players();
+        std::vector<ReligionCounts> perPlayerCounts;
+        perPlayerCounts.reserve(players.size());
+        for (const std::unique_ptr<aoc::game::Player>& p : players) {
+            perPlayerCounts.push_back(p != nullptr ? dominantReligionCities(*p)
+                                                   : ReligionCounts{});
+        }
+
+        for (std::size_t ai = 0; ai < players.size(); ++ai) {
+            const std::unique_ptr<aoc::game::Player>& a = players[ai];
             if (a == nullptr) { continue; }
-            const auto aCounts = dominantReligionCities(*a);
+            const ReligionCounts& aCounts = perPlayerCounts[ai];
             if (aCounts.empty()) { continue; }
             ReligionId aTop = NO_RELIGION;
             int32_t aTopN = 0;
-            for (const auto& kv : aCounts) {
+            for (const std::pair<const ReligionId, int32_t>& kv : aCounts) {
                 if (kv.second > aTopN) { aTopN = kv.second; aTop = kv.first; }
             }
             if (aTop == NO_RELIGION) { continue; }
 
-            for (const std::unique_ptr<aoc::game::Player>& b : gameState.players()) {
+            for (std::size_t bi = 0; bi < players.size(); ++bi) {
+                const std::unique_ptr<aoc::game::Player>& b = players[bi];
                 if (b == nullptr || b->id() == a->id()) { continue; }
-                const auto bCounts = dominantReligionCities(*b);
-                const auto it = bCounts.find(aTop);
+                const ReligionCounts& bCounts = perPlayerCounts[bi];
+                const ReligionCounts::const_iterator it = bCounts.find(aTop);
                 if (it == bCounts.end()) { continue; }
                 // Shared religion modifier, scaled by overlap.  +2..+8 range
                 // per 8-turn tick, decays in 30 turns so shifts are felt.
