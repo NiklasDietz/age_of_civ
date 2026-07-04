@@ -824,6 +824,7 @@ if(AOC_BUILD_TESTS)
         test_building_capacity
         test_production_efficiency
         test_json_parser_depth
+        test_save_hostile
     )
 
     foreach(aoc_test ${AOC_SMOKE_TESTS})

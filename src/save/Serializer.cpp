@@ -88,6 +88,27 @@ constexpr std::size_t MAX_WORKED_TILES = 50;
 constexpr std::size_t MAX_PATH         = 1000;
 constexpr std::size_t MAX_QUEUE        = 50;
 
+// Additional caps for the remaining unbounded reserve() sites and the map
+// dimensions (audit 2026-06-06). Same rationale as above: conservative
+// upper bounds well above any legitimate game state.
+//   - map generator presets top out at a few hundred tiles per axis
+//   - buildings per district are single digits in practice
+//   - relation/reputation modifiers accumulate to dozens per pair
+//   - wonders per city bounded by WONDER_COUNT (< 256)
+//   - bonds/investments/grievances/hoard positions/agreements are
+//     discrete per-player actions, at most hundreds per game
+//   - hoard components are per player (PlayerId is uint8)
+constexpr int32_t     MAX_MAP_DIMENSION          = 4096;
+constexpr std::size_t MAX_DISTRICT_BUILDINGS     = 100;
+constexpr std::size_t MAX_RELATION_MODIFIERS     = 1000;
+constexpr std::size_t MAX_CITY_WONDERS           = 256;
+constexpr std::size_t MAX_BONDS                  = 2000;
+constexpr std::size_t MAX_HOARDS                 = 256;
+constexpr std::size_t MAX_HOARD_POSITIONS        = 1000;
+constexpr std::size_t MAX_GRIEVANCES             = 1000;
+constexpr std::size_t MAX_INVESTMENTS            = 1000;
+constexpr std::size_t MAX_ELECTRICITY_AGREEMENTS = 1000;
+
 } // namespace
 
 // ============================================================================
@@ -285,6 +306,14 @@ bool ReadBuffer::hasRemaining(std::size_t bytes) const {
 
 std::size_t ReadBuffer::remaining() const {
     return this->m_data.size() - this->m_offset;
+}
+
+bool ReadBuffer::canReadRecords(std::size_t count, std::size_t minBytesPerRecord) const {
+    assert(minBytesPerRecord > 0 && "Serializer: canReadRecords requires a nonzero record size");
+    if (this->m_corrupt || minBytesPerRecord == 0) {
+        return false;
+    }
+    return count <= this->remaining() / minBytesPerRecord;
 }
 
 // ============================================================================
@@ -1574,8 +1603,10 @@ ErrorCode loadGame(const std::string& filepath,
     std::vector<aoc::game::City*> loadedCities;
     std::vector<aoc::game::Unit*> loadedUnits;
 
-    // Read sections (skip unknown ones)
-    while (buf.hasRemaining(6)) {
+    // Read sections (skip unknown ones). A corrupt read never advances the
+    // buffer offset, so the loop must also stop on isCorrupt() or a
+    // mid-section underflow would spin forever on the same offset.
+    while (!buf.isCorrupt() && buf.hasRemaining(6)) {
         uint16_t sectionId = buf.readU16();
         uint32_t sectionSize = buf.readU32();
 
@@ -1588,15 +1619,29 @@ ErrorCode loadGame(const std::string& filepath,
                 int32_t width  = buf.readI32();
                 int32_t height = buf.readI32();
                 aoc::map::MapTopology topology = static_cast<aoc::map::MapTopology>(buf.readU8());
+                if (width <= 0 || height <= 0
+                    || width > MAX_MAP_DIMENSION || height > MAX_MAP_DIMENSION) {
+                    LOG_ERROR("Serializer: map dimensions %dx%d outside (0, %d]",
+                              width, height, MAX_MAP_DIMENSION);
+                    return ErrorCode::SaveCorrupted;
+                }
+                const std::size_t count =
+                    static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+                // 7 bytes per tile: terrain, feature, elevation, riverEdges,
+                // resource (u16), owner.
+                if (!buf.canReadRecords(count, 7)) {
+                    LOG_ERROR("Serializer: tile count %zu exceeds file size", count);
+                    return ErrorCode::SaveCorrupted;
+                }
                 grid.initialize(width, height, topology);
-                int32_t count = width * height;
-                for (int32_t i = 0; i < count; ++i) {
-                    grid.setTerrain(i, static_cast<aoc::map::TerrainType>(buf.readU8()));
-                    grid.setFeature(i, static_cast<aoc::map::FeatureType>(buf.readU8()));
-                    grid.setElevation(i, static_cast<int8_t>(buf.readU8()));
-                    grid.setRiverEdges(i, buf.readU8());
-                    grid.setResource(i, ResourceId{buf.readU16()});
-                    grid.setOwner(i, buf.readU8());
+                for (std::size_t i = 0; i < count && !buf.isCorrupt(); ++i) {
+                    const int32_t idx = static_cast<int32_t>(i);
+                    grid.setTerrain(idx, static_cast<aoc::map::TerrainType>(buf.readU8()));
+                    grid.setFeature(idx, static_cast<aoc::map::FeatureType>(buf.readU8()));
+                    grid.setElevation(idx, static_cast<int8_t>(buf.readU8()));
+                    grid.setRiverEdges(idx, buf.readU8());
+                    grid.setResource(idx, ResourceId{buf.readU16()});
+                    grid.setOwner(idx, buf.readU8());
                 }
                 break;
             }
@@ -1895,8 +1940,14 @@ ErrorCode loadGame(const std::string& filepath,
                         dist.location.q = buf.readI32();
                         dist.location.r = buf.readI32();
                         uint32_t buildingCount = buf.readU32();
+                        if (buildingCount > MAX_DISTRICT_BUILDINGS
+                            || !buf.canReadRecords(buildingCount, 2)) {
+                            LOG_ERROR("Serializer: district building count %u exceeds MAX_DISTRICT_BUILDINGS %zu or file size",
+                                      buildingCount, MAX_DISTRICT_BUILDINGS);
+                            return ErrorCode::SaveCorrupted;
+                        }
                         dist.buildings.reserve(buildingCount);
-                        for (uint32_t b = 0; b < buildingCount; ++b) {
+                        for (uint32_t b = 0; b < buildingCount && !buf.isCorrupt(); ++b) {
                             dist.buildings.push_back(BuildingId{buf.readU16()});
                         }
                         districts.districts.push_back(std::move(dist));
@@ -2207,8 +2258,15 @@ ErrorCode loadGame(const std::string& filepath,
                         mirror.allianceBreakWarningTurns = rel.allianceBreakWarningTurns;
                         mirror.lastCasusBelli          = rel.lastCasusBelli;
                         uint32_t modCount = buf.readU32();
+                        // Min record: string length prefix (u16) + two i32.
+                        if (modCount > MAX_RELATION_MODIFIERS
+                            || !buf.canReadRecords(modCount, 10)) {
+                            LOG_ERROR("Serializer: relation modifier count %u exceeds MAX_RELATION_MODIFIERS %zu or file size",
+                                      modCount, MAX_RELATION_MODIFIERS);
+                            return ErrorCode::SaveCorrupted;
+                        }
                         rel.modifiers.reserve(modCount);
-                        for (uint32_t m = 0; m < modCount; ++m) {
+                        for (uint32_t m = 0; m < modCount && !buf.isCorrupt(); ++m) {
                             aoc::sim::RelationModifier mod{};
                             mod.reason = buf.readString();
                             mod.amount = buf.readI32();
@@ -2217,8 +2275,14 @@ ErrorCode loadGame(const std::string& filepath,
                         }
                         // Reputation modifiers (political reputation system)
                         uint32_t repModCount = buf.readU32();
+                        if (repModCount > MAX_RELATION_MODIFIERS
+                            || !buf.canReadRecords(repModCount, 8)) {
+                            LOG_ERROR("Serializer: reputation modifier count %u exceeds MAX_RELATION_MODIFIERS %zu or file size",
+                                      repModCount, MAX_RELATION_MODIFIERS);
+                            return ErrorCode::SaveCorrupted;
+                        }
                         rel.reputationModifiers.reserve(repModCount);
-                        for (uint32_t m = 0; m < repModCount; ++m) {
+                        for (uint32_t m = 0; m < repModCount && !buf.isCorrupt(); ++m) {
                             aoc::sim::ReputationModifier repMod{};
                             repMod.amount = buf.readI32();
                             repMod.turnsRemaining = buf.readI32();
@@ -2266,10 +2330,16 @@ ErrorCode loadGame(const std::string& filepath,
                 for (uint32_t i = 0; i < cityWonderCount; ++i) {
                     uint32_t cityIndex = buf.readU32();
                     uint32_t wonderCount = buf.readU32();
+                    if (wonderCount > MAX_CITY_WONDERS
+                        || !buf.canReadRecords(wonderCount, 1)) {
+                        LOG_ERROR("Serializer: city wonder count %u exceeds MAX_CITY_WONDERS %zu or file size",
+                                  wonderCount, MAX_CITY_WONDERS);
+                        return ErrorCode::SaveCorrupted;
+                    }
 
                     aoc::sim::CityWondersComponent wonders{};
                     wonders.wonders.reserve(wonderCount);
-                    for (uint32_t w = 0; w < wonderCount; ++w) {
+                    for (uint32_t w = 0; w < wonderCount && !buf.isCorrupt(); ++w) {
                         wonders.wonders.push_back(buf.readU8());
                     }
 
@@ -2382,8 +2452,13 @@ ErrorCode loadGame(const std::string& filepath,
                     aoc::sim::PlayerBondComponent pb{};
                     pb.owner = owner;
                     uint32_t issuedCount = buf.readU32();
+                    if (issuedCount > MAX_BONDS || !buf.canReadRecords(issuedCount, 34)) {
+                        LOG_ERROR("Serializer: issued bond count %u exceeds MAX_BONDS %zu or file size",
+                                  issuedCount, MAX_BONDS);
+                        return ErrorCode::SaveCorrupted;
+                    }
                     pb.issuedBonds.reserve(issuedCount);
-                    for (uint32_t j = 0; j < issuedCount; ++j) {
+                    for (uint32_t j = 0; j < issuedCount && !buf.isCorrupt(); ++j) {
                         aoc::sim::BondIssue b{};
                         b.id = buf.readU64();
                         b.issuer = buf.readU8();
@@ -2395,8 +2470,13 @@ ErrorCode loadGame(const std::string& filepath,
                         pb.issuedBonds.push_back(b);
                     }
                     uint32_t heldCount = buf.readU32();
+                    if (heldCount > MAX_BONDS || !buf.canReadRecords(heldCount, 34)) {
+                        LOG_ERROR("Serializer: held bond count %u exceeds MAX_BONDS %zu or file size",
+                                  heldCount, MAX_BONDS);
+                        return ErrorCode::SaveCorrupted;
+                    }
                     pb.heldBonds.reserve(heldCount);
-                    for (uint32_t j = 0; j < heldCount; ++j) {
+                    for (uint32_t j = 0; j < heldCount && !buf.isCorrupt(); ++j) {
                         aoc::sim::BondIssue b{};
                         b.id = buf.readU64();
                         b.issuer = buf.readU8();
@@ -2435,13 +2515,25 @@ ErrorCode loadGame(const std::string& filepath,
             }
             case SectionId::HoardState: {
                 uint32_t count = buf.readU32();
+                // Min record: owner (u8) + position count (u32).
+                if (count > MAX_HOARDS || !buf.canReadRecords(count, 5)) {
+                    LOG_ERROR("Serializer: hoard count %u exceeds MAX_HOARDS %zu or file size",
+                              count, MAX_HOARDS);
+                    return ErrorCode::SaveCorrupted;
+                }
                 gameState.commodityHoards().reserve(count);
-                for (uint32_t i = 0; i < count; ++i) {
+                for (uint32_t i = 0; i < count && !buf.isCorrupt(); ++i) {
                     aoc::sim::CommodityHoardComponent h{};
                     h.owner = buf.readU8();
                     uint32_t posCount = buf.readU32();
+                    if (posCount > MAX_HOARD_POSITIONS
+                        || !buf.canReadRecords(posCount, 10)) {
+                        LOG_ERROR("Serializer: hoard position count %u exceeds MAX_HOARD_POSITIONS %zu or file size",
+                                  posCount, MAX_HOARD_POSITIONS);
+                        return ErrorCode::SaveCorrupted;
+                    }
                     h.positions.reserve(posCount);
-                    for (uint32_t j = 0; j < posCount; ++j) {
+                    for (uint32_t j = 0; j < posCount && !buf.isCorrupt(); ++j) {
                         aoc::sim::CommodityHoardComponent::HoardPosition pos{};
                         pos.goodId = buf.readU16();
                         pos.amount = buf.readI32();
@@ -2597,10 +2689,15 @@ ErrorCode loadGame(const std::string& filepath,
                 for (uint32_t i = 0; i < count; ++i) {
                     PlayerId owner = buf.readU8();
                     uint32_t n = buf.readU32();
+                    if (n > MAX_GRIEVANCES || !buf.canReadRecords(n, 10)) {
+                        LOG_ERROR("Serializer: grievance count %u exceeds MAX_GRIEVANCES %zu or file size",
+                                  n, MAX_GRIEVANCES);
+                        return ErrorCode::SaveCorrupted;
+                    }
                     aoc::sim::PlayerGrievanceComponent g{};
                     g.owner = owner;
                     g.grievances.reserve(n);
-                    for (uint32_t j = 0; j < n; ++j) {
+                    for (uint32_t j = 0; j < n && !buf.isCorrupt(); ++j) {
                         aoc::sim::Grievance gr{};
                         gr.type            = static_cast<aoc::sim::GrievanceType>(buf.readU8());
                         gr.against         = buf.readU8();
@@ -2638,8 +2735,13 @@ ErrorCode loadGame(const std::string& filepath,
                     aoc::sim::PlayerStockPortfolioComponent p{};
                     p.owner = owner;
                     uint32_t invCount = buf.readU32();
+                    if (invCount > MAX_INVESTMENTS || !buf.canReadRecords(invCount, 30)) {
+                        LOG_ERROR("Serializer: investment count %u exceeds MAX_INVESTMENTS %zu or file size",
+                                  invCount, MAX_INVESTMENTS);
+                        return ErrorCode::SaveCorrupted;
+                    }
                     p.investments.reserve(invCount);
-                    for (uint32_t j = 0; j < invCount; ++j) {
+                    for (uint32_t j = 0; j < invCount && !buf.isCorrupt(); ++j) {
                         aoc::sim::EquityInvestment inv{};
                         inv.investor          = buf.readU8();
                         inv.target            = buf.readU8();
@@ -2650,8 +2752,14 @@ ErrorCode loadGame(const std::string& filepath,
                         p.investments.push_back(inv);
                     }
                     uint32_t foreignCount = buf.readU32();
+                    if (foreignCount > MAX_INVESTMENTS
+                        || !buf.canReadRecords(foreignCount, 30)) {
+                        LOG_ERROR("Serializer: foreign investment count %u exceeds MAX_INVESTMENTS %zu or file size",
+                                  foreignCount, MAX_INVESTMENTS);
+                        return ErrorCode::SaveCorrupted;
+                    }
                     p.foreignInvestments.reserve(foreignCount);
-                    for (uint32_t j = 0; j < foreignCount; ++j) {
+                    for (uint32_t j = 0; j < foreignCount && !buf.isCorrupt(); ++j) {
                         aoc::sim::EquityInvestment inv{};
                         inv.investor          = buf.readU8();
                         inv.target            = buf.readU8();
@@ -2684,11 +2792,17 @@ ErrorCode loadGame(const std::string& filepath,
             }
             case SectionId::ElectricityAgreementState: {
                 uint32_t count = buf.readU32();
+                if (count > MAX_ELECTRICITY_AGREEMENTS
+                    || !buf.canReadRecords(count, 27)) {
+                    LOG_ERROR("Serializer: electricity agreement count %u exceeds MAX_ELECTRICITY_AGREEMENTS %zu or file size",
+                              count, MAX_ELECTRICITY_AGREEMENTS);
+                    return ErrorCode::SaveCorrupted;
+                }
                 std::vector<aoc::sim::ElectricityAgreementComponent>& agrs =
                     gameState.electricityAgreements();
                 agrs.clear();
                 agrs.reserve(count);
-                for (uint32_t i = 0; i < count; ++i) {
+                for (uint32_t i = 0; i < count && !buf.isCorrupt(); ++i) {
                     aoc::sim::ElectricityAgreementComponent a{};
                     a.id                  = buf.readU32();
                     a.seller              = buf.readU8();
@@ -2708,6 +2822,11 @@ ErrorCode loadGame(const std::string& filepath,
                 buf.skip(sectionSize);
                 break;
         }
+    }
+
+    if (buf.isCorrupt()) {
+        LOG_ERROR("Serializer: read underflow while loading '%s'", filepath.c_str());
+        return ErrorCode::SaveCorrupted;
     }
 
     LOG_INFO("Game loaded from %s", filepath.c_str());

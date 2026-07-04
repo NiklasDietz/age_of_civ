@@ -132,6 +132,12 @@ public:
     [[nodiscard]] bool hasRemaining(std::size_t bytes) const;
     [[nodiscard]] std::size_t remaining() const;
 
+    /// True if `count` records of at least `minBytesPerRecord` bytes each
+    /// could physically fit in the unread bytes. Guards disk-read counts
+    /// before reserve()/loops: a hostile count larger than the file could
+    /// contain is rejected without allocating (audit 2026-06-06).
+    [[nodiscard]] bool canReadRecords(std::size_t count, std::size_t minBytesPerRecord) const;
+
     /// True once any primitive read tripped a bounds check.
     /// Once set, every subsequent read is a no-op returning zero / empty.
     [[nodiscard]] bool isCorrupt() const { return this->m_corrupt; }
