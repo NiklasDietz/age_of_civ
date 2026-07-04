@@ -36,7 +36,6 @@
 #include "aoc/core/Random.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
 
-#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -197,14 +196,14 @@ public:
         : m_weight(weight), m_child(std::move(child)) {}
 
     Status tick(Blackboard& bb) override {
-        // If weight is below 0.3, almost never do this. Above 1.5, always do it.
-        // Between: use a deterministic check.
-        if (this->m_weight < 0.3f) { return Status::Failure; }
+        // Weight below 0.3 (or NaN, which fails the >= comparison): never
+        // do this. At or above 1.0: always do it. Between: succeed with
+        // probability equal to the weight.
+        if (!(this->m_weight >= 0.3f)) { return Status::Failure; }
         if (this->m_weight >= 1.0f) { return this->m_child->tick(bb); }
-        // Moderate weight: succeed with probability proportional to weight
-        float roll = bb.get("_tick_counter", 0.0f);
-        float threshold = this->m_weight;
-        if (std::fmod(roll, 1.0f) < threshold) {
+        // Fail closed without an RNG rather than firing unconditionally.
+        if (bb.rng == nullptr) { return Status::Failure; }
+        if (bb.rng->chance(this->m_weight)) {
             return this->m_child->tick(bb);
         }
         return Status::Failure;

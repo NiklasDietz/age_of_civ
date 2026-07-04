@@ -851,6 +851,7 @@ if(AOC_BUILD_TESTS)
         test_path_guard
         test_save_hostile
         test_lua_sandbox
+        test_behavior_tree
     )
 
     # The debug preset builds with ASan/LSan; known suppressions live in

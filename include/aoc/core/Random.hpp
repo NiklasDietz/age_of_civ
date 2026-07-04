@@ -41,10 +41,16 @@ public:
         return result;
     }
 
-    /// Uniform int32_t in [min, max] (inclusive).
+    /// Uniform int32_t in [min, max] (inclusive). If min > max, returns min
+    /// without consuming a draw (the wrapped range would be 0 -> division by
+    /// zero). min == max still consumes a draw to keep the stream stable.
     [[nodiscard]] constexpr int32_t nextInt(int32_t min, int32_t max) {
-        uint64_t range = static_cast<uint64_t>(max - min) + 1;
-        return min + static_cast<int32_t>(this->next() % range);
+        if (min > max) { return min; }
+        // 64-bit range/offset math: max - min overflows int32 on the full
+        // span, and min + roll can overflow int32 at the extremes. Results
+        // are bit-identical to 32-bit math wherever that math was defined.
+        const uint64_t range = static_cast<uint64_t>(static_cast<int64_t>(max) - min) + 1;
+        return static_cast<int32_t>(static_cast<uint64_t>(min) + this->next() % range);
     }
 
     /// Uniform float in [0.0f, 1.0f).
