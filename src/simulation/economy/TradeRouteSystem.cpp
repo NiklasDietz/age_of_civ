@@ -89,8 +89,17 @@ void selectTradeGoods(const CityStockpileComponent& originStock,
         scoreCandidate(entry.first, entry.second);
     }
 
+    // Total order: goodId breaks score ties. `candidates` is built by
+    // iterating an unordered_map, so a score-only comparator left equal-score
+    // goods in hash-iteration order -- deterministic on one STL build but not
+    // portable, which the maxGoods cutoff below then turns into a
+    // platform-dependent choice of which goods trade. The tie-break makes the
+    // selected set independent of map iteration order.
     std::sort(candidates.begin(), candidates.end(),
-        [](const ScoredGood& a, const ScoredGood& b) { return a.score > b.score; });
+        [](const ScoredGood& a, const ScoredGood& b) {
+            if (a.score != b.score) { return a.score > b.score; }
+            return a.goodId < b.goodId;
+        });
 
     int32_t count = 0;
     for (const ScoredGood& c : candidates) {
@@ -1789,9 +1798,13 @@ TradeRouteEstimate estimateTradeRouteIncome(
         scoredGoods.push_back({entry.first, value});
     }
 
+    // goodId tie-break for the same reason as the scoreCandidate sort above:
+    // scoredGoods comes from unordered_map iteration, so a value-only
+    // comparator made equal-value ties resolve in non-portable hash order.
     std::sort(scoredGoods.begin(), scoredGoods.end(),
               [](const ScoredGood& a, const ScoredGood& b) {
-                  return a.value > b.value;
+                  if (a.value != b.value) { return a.value > b.value; }
+                  return a.goodId < b.goodId;
               });
 
     const MonetarySystemType estSys = ownerPlayer->monetary().system;
