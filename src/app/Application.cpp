@@ -5,7 +5,9 @@
 
 #include "aoc/app/Application.hpp"
 #include "aoc/app/UnitSelection.hpp"
+#include "aoc/core/PathGuard.hpp"
 
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include "aoc/ui/Theme.hpp"
@@ -193,6 +195,55 @@ struct PerPlateStats {
     }
     o << "]";
     return o.str();
+}
+
+/// Resolved output location for the HTTP `/dump/*` routes. `error` is
+/// non-empty when the requested path must be rejected.
+struct DumpTarget {
+    std::filesystem::path finalPath;
+    std::filesystem::path tempPath;
+    std::string error;
+};
+
+/// Confine an attacker-controllable `?path=` value to `<cwd>/dumps`
+/// (the binary chdirs next to itself at startup, so this is a fixed
+/// per-install directory). Relative paths resolve inside the dump
+/// root; anything canonicalising outside it is rejected. The caller
+/// writes `tempPath` and then renames onto `finalPath` -- the rename
+/// stays inside the validated directory, closing the check-to-open
+/// TOCTOU window on the final name.
+[[nodiscard]] DumpTarget resolveDumpTarget(const std::string& requested) {
+    DumpTarget target;
+    std::error_code ec;
+    const std::filesystem::path root = std::filesystem::weakly_canonical(
+        std::filesystem::current_path() / "dumps", ec);
+    if (ec) {
+        target.error = "dump root unavailable";
+        return target;
+    }
+    std::filesystem::path candidate(requested);
+    if (candidate.is_relative()) { candidate = root / candidate; }
+    if (!aoc::core::isPathInsideAllowlist(candidate, {root})) {
+        target.error = "path outside dump root";
+        return target;
+    }
+    std::filesystem::create_directories(candidate.parent_path(), ec);
+    if (ec) {
+        target.error = "cannot create dump directory";
+        return target;
+    }
+    target.finalPath = std::filesystem::weakly_canonical(candidate, ec);
+    if (ec) {
+        target.error = "cannot resolve dump path";
+        return target;
+    }
+    // Unique per-request temp name in the SAME directory so the final
+    // std::filesystem::rename is atomic (never crosses filesystems).
+    static std::atomic<uint64_t> dumpToken{0};
+    const uint64_t token = dumpToken.fetch_add(1, std::memory_order_relaxed);
+    target.tempPath = target.finalPath;
+    target.tempPath += ".tmp" + std::to_string(token);
+    return target;
 }
 
 } // namespace
@@ -447,23 +498,28 @@ ErrorCode Application::initialize(const Config& config) {
     // -- HTTP debug API. Localhost-only, JSON over HTTP, same
     // information surface as the file watcher above plus richer
     // query routes (single plate, single tile, single SphereField
-    // cell). Reads happen on cpp-httplib worker threads with no
-    // synchronisation against the main thread; this is a deliberate
-    // race-tolerated read for v1 -- mutation queue and snapshot
-    // pattern arrive in a follow-up. --
+    // cell). Handlers run on cpp-httplib worker threads; every grid
+    // read goes through the immutable snapshot published by the main
+    // thread (`debugGridSnapshot`), never through `m_hexGrid`, whose
+    // buffers are reallocated by regen/load/reset on the main thread. --
     using DSM = aoc::debug::DebugServer::Method;
     this->m_debugServer = std::make_unique<aoc::debug::DebugServer>(9876);
 
     auto buildInfoJson = [this]() -> std::string {
-        const PlateInfoStats stats = computePlateInfoStats(this->m_hexGrid);
+        const std::shared_ptr<const aoc::map::HexGrid> grid =
+            this->debugGridSnapshot();
+        if (grid == nullptr) {
+            throw aoc::debug::ServiceUnavailableError("no snapshot yet");
+        }
+        const PlateInfoStats stats = computePlateInfoStats(*grid);
         std::ostringstream o;
         o << "{\"creatorMode\":"
           << (this->m_continentCreatorMode ? "true" : "false")
           << ",\"creatorTime\":" << this->m_creatorTimeCurrentMy
           << ",\"creatorTotal\":" << this->m_creatorTotalMy
           << ",\"creatorSeed\":" << this->m_creatorSeed
-          << ",\"width\":"  << this->m_hexGrid.width()
-          << ",\"height\":" << this->m_hexGrid.height()
+          << ",\"width\":"  << grid->width()
+          << ",\"height\":" << grid->height()
           << ",\"plates\":" << stats.plates
           << ",\"mountainTiles\":" << stats.mtnTiles
           << ",\"landTiles\":"     << stats.landTiles
@@ -486,37 +542,50 @@ ErrorCode Application::initialize(const Config& config) {
 
     // GET /plates -- JSON array, one entry per plate present.
     this->m_debugServer->routeJson(DSM::Get, "/plates",
-        [this](const auto&, const auto&) -> std::string {
-            return buildPlateStatsJson(this->m_hexGrid);
+        [this](const std::unordered_map<std::string, std::string>&,
+               const std::string&) -> std::string {
+            const std::shared_ptr<const aoc::map::HexGrid> grid =
+                this->debugGridSnapshot();
+            if (grid == nullptr) {
+                throw aoc::debug::ServiceUnavailableError("no snapshot yet");
+            }
+            return buildPlateStatsJson(*grid);
         });
 
     // GET /tile?idx=N -- single tile detail.
     this->m_debugServer->routeJson(DSM::Get, "/tile",
-        [this](const auto& q, const auto&) -> std::string {
-            auto it = q.find("idx");
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            const std::unordered_map<std::string, std::string>::const_iterator
+                it = q.find("idx");
             if (it == q.end()) {
                 return std::string("{\"error\":\"missing idx\"}");
             }
+            const std::shared_ptr<const aoc::map::HexGrid> grid =
+                this->debugGridSnapshot();
+            if (grid == nullptr) {
+                throw aoc::debug::ServiceUnavailableError("no snapshot yet");
+            }
             const int32_t idx = std::atoi(it->second.c_str());
-            const int32_t total = this->m_hexGrid.tileCount();
+            const int32_t total = grid->tileCount();
             if (idx < 0 || idx >= total) {
                 return std::string("{\"error\":\"idx out of range\"}");
             }
-            const int32_t W = this->m_hexGrid.width();
+            const int32_t W = grid->width();
             std::ostringstream o;
             o << "{\"idx\":" << idx
               << ",\"col\":" << (idx % W)
               << ",\"row\":" << (idx / W)
               << ",\"plate_id\":"
-              << static_cast<int32_t>(this->m_hexGrid.plateId(idx))
+              << static_cast<int32_t>(grid->plateId(idx))
               << ",\"terrain\":\""
-              << aoc::map::terrainName(this->m_hexGrid.terrain(idx))
+              << aoc::map::terrainName(grid->terrain(idx))
               << "\",\"feature\":\""
-              << aoc::map::featureName(this->m_hexGrid.feature(idx))
+              << aoc::map::featureName(grid->feature(idx))
               << "\",\"owner\":"
-              << static_cast<int32_t>(this->m_hexGrid.owner(idx))
+              << static_cast<int32_t>(grid->owner(idx))
               << ",\"river_edges\":"
-              << static_cast<int32_t>(this->m_hexGrid.riverEdges(idx))
+              << static_cast<int32_t>(grid->riverEdges(idx))
               << "}";
             return o.str();
         });
@@ -541,100 +610,113 @@ ErrorCode Application::initialize(const Config& config) {
             return o.str();
         });
 
-    // POST /dump/plates?path=PATH -- writes per-plate CSV to path.
+    // POST /dump/plates?path=PATH -- writes per-plate CSV to path
+    // (confined to <cwd>/dumps; see resolveDumpTarget).
     this->m_debugServer->routeJson(DSM::Post, "/dump/plates",
-        [this](const auto& q, const auto&) -> std::string {
-            auto it = q.find("path");
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            const std::unordered_map<std::string, std::string>::const_iterator
+                it = q.find("path");
             if (it == q.end()) {
                 return std::string("{\"error\":\"missing path query\"}");
             }
-            const std::string path = it->second;
-            std::ofstream pf(path);
+            const std::shared_ptr<const aoc::map::HexGrid> grid =
+                this->debugGridSnapshot();
+            if (grid == nullptr) {
+                throw aoc::debug::ServiceUnavailableError("no snapshot yet");
+            }
+            const DumpTarget target = resolveDumpTarget(it->second);
+            if (!target.error.empty()) {
+                std::ostringstream o;
+                o << "{\"error\":\"" << target.error << "\",\"path\":\""
+                  << aoc::debug::escapeJsonString(it->second) << "\"}";
+                return o.str();
+            }
+            const std::string safePath =
+                aoc::debug::escapeJsonString(target.finalPath.string());
+            std::ofstream pf(target.tempPath);
             if (!pf.is_open()) {
                 std::ostringstream o;
                 o << "{\"error\":\"open failed\",\"path\":\""
-                  << path << "\"}";
+                  << safePath << "\"}";
                 return o.str();
             }
-            const int32_t W = this->m_hexGrid.width();
-            const int32_t H = this->m_hexGrid.height();
-            std::array<int64_t, 256> cellCount{};
-            std::array<int64_t, 256> landCount{};
-            std::array<int64_t, 256> sumCol{};
-            std::array<int64_t, 256> sumRow{};
-            std::array<int32_t, 256> minCol{};
-            std::array<int32_t, 256> maxCol{};
-            std::array<int32_t, 256> minRow{};
-            std::array<int32_t, 256> maxRow{};
-            for (int32_t i = 0; i < 256; ++i) {
-                minCol[i] = W; maxCol[i] = -1;
-                minRow[i] = H; maxRow[i] = -1;
-            }
-            for (int32_t row = 0; row < H; ++row) {
-                for (int32_t col = 0; col < W; ++col) {
-                    const int32_t idx = row * W + col;
-                    const uint8_t pid = this->m_hexGrid.plateId(idx);
-                    if (pid == 0xFFu) continue;
-                    ++cellCount[pid];
-                    if (!aoc::map::isWater(this->m_hexGrid.terrain(idx))) {
-                        ++landCount[pid];
-                    }
-                    sumCol[pid] += col;
-                    sumRow[pid] += row;
-                    if (col < minCol[pid]) minCol[pid] = col;
-                    if (col > maxCol[pid]) maxCol[pid] = col;
-                    if (row < minRow[pid]) minRow[pid] = row;
-                    if (row > maxRow[pid]) maxRow[pid] = row;
-                }
-            }
+            const PerPlateStats s = computePerPlateStats(*grid);
             pf << "plate_id,cell_count,land_frac,min_col,max_col,"
                   "min_row,max_row,centroid_col,centroid_row\n";
             int32_t emitted = 0;
             for (int32_t pid = 0; pid < 256; ++pid) {
-                if (cellCount[pid] == 0) continue;
-                const float lf = static_cast<float>(landCount[pid])
-                               / static_cast<float>(cellCount[pid]);
-                const float ccol = static_cast<float>(sumCol[pid])
-                                 / static_cast<float>(cellCount[pid]);
-                const float crow = static_cast<float>(sumRow[pid])
-                                 / static_cast<float>(cellCount[pid]);
-                pf << pid << ',' << cellCount[pid] << ',' << lf << ','
-                   << minCol[pid] << ',' << maxCol[pid] << ','
-                   << minRow[pid] << ',' << maxRow[pid] << ','
+                if (s.cellCount[pid] == 0) continue;
+                const float lf = static_cast<float>(s.landCount[pid])
+                               / static_cast<float>(s.cellCount[pid]);
+                const float ccol = static_cast<float>(s.sumCol[pid])
+                                 / static_cast<float>(s.cellCount[pid]);
+                const float crow = static_cast<float>(s.sumRow[pid])
+                                 / static_cast<float>(s.cellCount[pid]);
+                pf << pid << ',' << s.cellCount[pid] << ',' << lf << ','
+                   << s.minCol[pid] << ',' << s.maxCol[pid] << ','
+                   << s.minRow[pid] << ',' << s.maxRow[pid] << ','
                    << ccol << ',' << crow << '\n';
                 ++emitted;
             }
+            pf.close();
+            std::error_code renameEc;
+            std::filesystem::rename(target.tempPath, target.finalPath,
+                                    renameEc);
+            if (renameEc) {
+                std::error_code removeEc;
+                std::filesystem::remove(target.tempPath, removeEc);
+                std::ostringstream o;
+                o << "{\"error\":\"rename failed\",\"path\":\""
+                  << safePath << "\"}";
+                return o.str();
+            }
             std::ostringstream o;
-            o << "{\"path\":\"" << path << "\",\"plates\":"
+            o << "{\"path\":\"" << safePath << "\",\"plates\":"
               << emitted << "}";
             return o.str();
         });
 
-    // POST /dump/grid?path=PATH -- ASCII map.
+    // POST /dump/grid?path=PATH -- ASCII map (confined to <cwd>/dumps;
+    // see resolveDumpTarget).
     this->m_debugServer->routeJson(DSM::Post, "/dump/grid",
-        [this](const auto& q, const auto&) -> std::string {
-            auto it = q.find("path");
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            const std::unordered_map<std::string, std::string>::const_iterator
+                it = q.find("path");
             if (it == q.end()) {
                 return std::string("{\"error\":\"missing path query\"}");
             }
-            const std::string path = it->second;
-            std::ofstream gf(path);
+            const std::shared_ptr<const aoc::map::HexGrid> grid =
+                this->debugGridSnapshot();
+            if (grid == nullptr) {
+                throw aoc::debug::ServiceUnavailableError("no snapshot yet");
+            }
+            const DumpTarget target = resolveDumpTarget(it->second);
+            if (!target.error.empty()) {
+                std::ostringstream o;
+                o << "{\"error\":\"" << target.error << "\",\"path\":\""
+                  << aoc::debug::escapeJsonString(it->second) << "\"}";
+                return o.str();
+            }
+            const std::string safePath =
+                aoc::debug::escapeJsonString(target.finalPath.string());
+            std::ofstream gf(target.tempPath);
             if (!gf.is_open()) {
                 std::ostringstream o;
                 o << "{\"error\":\"open failed\",\"path\":\""
-                  << path << "\"}";
+                  << safePath << "\"}";
                 return o.str();
             }
-            const int32_t W = this->m_hexGrid.width();
-            const int32_t H = this->m_hexGrid.height();
+            const int32_t W = grid->width();
+            const int32_t H = grid->height();
             gf << "# debug dump-grid W=" << W << " H=" << H
                << " creatorTime=" << this->m_creatorTimeCurrentMy << "\n";
             for (int32_t row = 0; row < H; ++row) {
                 if ((row & 1) == 1) gf << ' ';
                 for (int32_t col = 0; col < W; ++col) {
                     const int32_t idx = row * W + col;
-                    const aoc::map::TerrainType t =
-                        this->m_hexGrid.terrain(idx);
+                    const aoc::map::TerrainType t = grid->terrain(idx);
                     char ch = '?';
                     switch (t) {
                         case aoc::map::TerrainType::Ocean:        ch = ':'; break;
@@ -652,8 +734,20 @@ ErrorCode Application::initialize(const Config& config) {
                 }
                 gf << '\n';
             }
+            gf.close();
+            std::error_code renameEc;
+            std::filesystem::rename(target.tempPath, target.finalPath,
+                                    renameEc);
+            if (renameEc) {
+                std::error_code removeEc;
+                std::filesystem::remove(target.tempPath, removeEc);
+                std::ostringstream o;
+                o << "{\"error\":\"rename failed\",\"path\":\""
+                  << safePath << "\"}";
+                return o.str();
+            }
             std::ostringstream o;
-            o << "{\"path\":\"" << path
+            o << "{\"path\":\"" << safePath
               << "\",\"width\":" << W << ",\"height\":" << H << "}";
             return o.str();
         });
@@ -774,9 +868,17 @@ ErrorCode Application::initialize(const Config& config) {
                 "}");
         });
 
-    if (!this->m_debugServer->start()) {
-        LOG_WARN("DebugServer failed to start (port 9876 in use?). "
-                 "File-watcher /tmp/aoc_debug.cmd still works.");
+    // Opt-in only: the routes above stay registered (cheap, no socket)
+    // but the listener never binds unless --enable-debug-server was
+    // passed on the command line.
+    if (config.enableDebugServer) {
+        if (this->m_debugServer->start()) {
+            LOG_INFO("Debug HTTP server enabled via --enable-debug-server "
+                     "(http://127.0.0.1:9876)");
+        } else {
+            LOG_WARN("DebugServer failed to start (port 9876 in use?). "
+                     "File-watcher /tmp/aoc_debug.cmd still works.");
+        }
     }
 
     // -- Resize --
@@ -860,6 +962,21 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_regenWorker = std::jthread(
         [this](std::stop_token tok) { this->regenWorkerLoop(tok); });
 
+    // Selection safety: units die inside turn processing while the UI
+    // still holds raw pointers to them. Player::removeUnit fires this
+    // observer just before the unique_ptr is erased, so the cached
+    // pointers can never dangle.
+    aoc::game::Player::setUnitRemovalObserver([this](aoc::game::Unit* unit) {
+        if (this->m_selectedUnit == unit)     { this->m_selectedUnit = nullptr; }
+        if (this->m_prevSelectedUnit == unit) { this->m_prevSelectedUnit = nullptr; }
+        if (this->m_actionPanelUnit == unit)  { this->m_actionPanelUnit = nullptr; }
+        if (this->m_undoState.unit == unit)   { this->m_undoState = UndoState{}; }
+    });
+
+    // First grid snapshot so read-only debug routes answer before any
+    // map exists (empty grid, matching pre-snapshot behaviour).
+    this->publishDebugGridSnapshot();
+
     this->m_initialized = true;
     LOG_INFO("Initialized (%ux%u), showing main menu", fbWidth, fbHeight);
     return ErrorCode::Ok;
@@ -873,9 +990,7 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     // not cleared between games when entering startGame directly.
     this->m_aiControllers.clear();
     this->m_gameOver = false;
-    this->m_selectedUnit = nullptr;
-    this->m_selectedCity = nullptr;
-    this->m_actionPanelUnit = nullptr;
+    this->clearEntitySelection();
     this->m_spectatorMode = false;
     this->m_spectatorPaused = false;
     this->m_spectatorTurnAccumulator = 0.0f;
@@ -945,6 +1060,7 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
         aoc::map::MapGenerator::generate(mapConfig, this->m_hexGrid);
         LOG_INFO("Map generated (%dx%d)", this->m_hexGrid.width(), this->m_hexGrid.height());
     }
+    this->publishDebugGridSnapshot();
 
     // Set camera world width for cylindrical wrapping + world height
     // for vertical pan clamp. Without setting these the camera can pan
@@ -1494,6 +1610,29 @@ void Application::clearCreatorEpochCache() {
     this->m_creatorEpochCacheLru.clear();
 }
 
+void Application::publishDebugGridSnapshot() {
+    // Copy OUTSIDE the lock: the grid copy is the expensive part and
+    // handlers only need the pointer swap to be exclusive.
+    std::shared_ptr<const aoc::map::HexGrid> snapshot =
+        std::make_shared<const aoc::map::HexGrid>(this->m_hexGrid);
+    std::lock_guard<std::mutex> guard(this->m_debugGridSnapshotMutex);
+    this->m_debugGridSnapshot = std::move(snapshot);
+}
+
+std::shared_ptr<const aoc::map::HexGrid> Application::debugGridSnapshot() const {
+    std::lock_guard<std::mutex> guard(this->m_debugGridSnapshotMutex);
+    return this->m_debugGridSnapshot;
+}
+
+void Application::clearEntitySelection() {
+    this->m_selectedUnit     = nullptr;
+    this->m_selectedCity     = nullptr;
+    this->m_prevSelectedUnit = nullptr;
+    this->m_prevSelectedCity = nullptr;
+    this->m_actionPanelUnit  = nullptr;
+    this->m_undoState        = UndoState{};
+}
+
 void Application::regenerateContinentPreview(int32_t timeMy) {
     // Clamp the requested age to a single physics epoch on the floor
     // (one substep is the smallest meaningful preview) and to the
@@ -1571,6 +1710,10 @@ void Application::regenerateContinentPreview(int32_t timeMy) {
 }
 
 void Application::applyNewHexGridFixups(int32_t timeMy) {
+    // Republish the debug-server snapshot first: `m_hexGrid` was just
+    // whole-object-assigned, so any HTTP handler still reading the old
+    // snapshot keeps a valid (stale) copy alive via its shared_ptr.
+    this->publishDebugGridSnapshot();
     if (this->m_globeRenderer) {
         this->m_globeRenderer->markGridDirty();
     }
@@ -1637,7 +1780,7 @@ void Application::applyNewHexGridFixups(int32_t timeMy) {
 
     this->spectatorRevealAll();
     LOG_INFO("Creator: regenerated at %d/%d My (%dx%d)",
-             timeMy, this->m_creatorTotalMy,
+             timeMy, this->m_creatorTotalMy.load(),
              this->m_hexGrid.width(), this->m_hexGrid.height());
 }
 
@@ -1975,11 +2118,17 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         // Display formatter rebuilds "Age cur / total Gy/My" live.
         epoch.onClick = [this]() {
             this->numInputDefocus();
-            this->numInputFocus(&this->m_creatorTotalMy, MY_PER_EPOCH,
+            // The text-input machinery edits through an int32_t*, which
+            // an atomic cannot hand out; stage into the plain mirror and
+            // commit to the atomic on every change (main thread only).
+            this->m_creatorTotalMyInput = this->m_creatorTotalMy.load();
+            this->numInputFocus(&this->m_creatorTotalMyInput, MY_PER_EPOCH,
                 this->m_creatorEpochLabelId,
                 [this]() {
+                    this->m_creatorTotalMy = this->m_creatorTotalMyInput;
                     if (this->m_creatorTimeCurrentMy > this->m_creatorTotalMy) {
-                        this->m_creatorTimeCurrentMy = this->m_creatorTotalMy;
+                        this->m_creatorTimeCurrentMy =
+                            this->m_creatorTotalMy.load();
                     }
                     // Defer regen: typing each digit shouldn't hang.
                     this->m_creatorDirty = true;
@@ -2030,7 +2179,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             if (newTotal == this->m_creatorTotalMy) { return; }
             this->m_creatorTotalMy = newTotal;
             if (this->m_creatorTimeCurrentMy > this->m_creatorTotalMy) {
-                this->m_creatorTimeCurrentMy = this->m_creatorTotalMy;
+                this->m_creatorTimeCurrentMy = this->m_creatorTotalMy.load();
             }
             this->m_creatorDirty = true;
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
@@ -2355,7 +2504,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             this->numInputDefocus();
             // Clear epoch cache — config changed, old snapshots are stale.
             this->clearCreatorEpochCache();
-            this->m_creatorTimeCurrentMy = this->m_creatorTotalMy;
+            this->m_creatorTimeCurrentMy = this->m_creatorTotalMy.load();
             this->enqueueRegen(this->m_creatorTotalMy);
             this->m_creatorDirty = false;
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
@@ -2424,7 +2573,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             // continue from the current epoch on the new seed and
             // walk forward to the endpoint naturally.
             if (!this->m_creatorPlaying) {
-                this->m_creatorTimeCurrentMy = this->m_creatorTotalMy;
+                this->m_creatorTimeCurrentMy = this->m_creatorTotalMy.load();
             }
             this->enqueueRegen(this->m_creatorTimeCurrentMy);
             this->m_creatorDirty = false;
@@ -2861,6 +3010,9 @@ bool Application::spectatorRestoreSnapshot(int32_t turn) {
         this->m_spectatorPaused = wasPaused;
         return false;
     }
+    // Load replaced the grid + every Player (and their units) wholesale.
+    this->publishDebugGridSnapshot();
+    this->clearEntitySelection();
 
     // Full post-load reinit: loadGame restores the GameState but Application
     // keeps several derived containers (AIControllers, BarbarianController,
@@ -3503,6 +3655,10 @@ void Application::run() {
                                 "Load failed (no save in slot?)",
                                 3.0f, 0.9f, 0.3f, 0.3f);
                         } else {
+                            // Load replaced the grid + every Player
+                            // (and their units) wholesale.
+                            this->publishDebugGridSnapshot();
+                            this->clearEntitySelection();
                             this->m_economy.initialize();
                             this->m_fogOfWar.initialize(
                                 this->m_hexGrid.tileCount(), MAX_PLAYERS);
@@ -3689,6 +3845,11 @@ void Application::run() {
                           static_cast<int>(describeError(loadResult).size()),
                           describeError(loadResult).data());
             } else {
+                // Load replaced the grid + every Player (and their
+                // units) wholesale.
+                this->publishDebugGridSnapshot();
+                this->clearEntitySelection();
+
                 // Re-initialize economy (rebuild production chain from loaded state)
                 this->m_economy.initialize();
 
@@ -4345,8 +4506,8 @@ void Application::returnToMainMenu() {
 
     // Reset game state
     this->m_hexGrid = aoc::map::HexGrid{};
-    this->m_selectedUnit = nullptr;
-    this->m_selectedCity = nullptr;
+    this->publishDebugGridSnapshot();
+    this->clearEntitySelection();
     this->m_gameOver = false;
     this->m_aiControllers.clear();
 
@@ -4494,7 +4655,7 @@ void Application::buildMainMenu(float screenW, float screenH) {
             this->m_creatorLandPlates   = 7;
             this->m_creatorWidth        = 400;
             this->m_creatorHeight       = 200;
-            this->m_creatorTimeCurrentMy = this->m_creatorTotalMy;
+            this->m_creatorTimeCurrentMy = this->m_creatorTotalMy.load();
             this->m_continentCreatorMode = true;
             this->clearCreatorEpochCache();
             this->m_creatorPlaying = false;
@@ -4544,9 +4705,9 @@ void Application::buildMainMenu(float screenW, float screenH) {
             }
             this->buildContinentCreatorControls(screenW, screenH);
             LOG_INFO("Continent Creator opened (seed=%u age=%d/%d My)",
-                     this->m_creatorSeed,
-                     this->m_creatorTimeCurrentMy,
-                     this->m_creatorTotalMy);
+                     this->m_creatorSeed.load(),
+                     this->m_creatorTimeCurrentMy.load(),
+                     this->m_creatorTotalMy.load());
         },
         [this, screenW, screenH]() {
             // Map Editor: launches a quick AI-only sandbox so the
@@ -4651,6 +4812,9 @@ void Application::shutdown() {
         this->m_debugServer->stop();
         this->m_debugServer.reset();
     }
+
+    // The observer captures `this`; drop it before members go away.
+    aoc::game::Player::setUnitRemovalObserver(nullptr);
     // GlobeRenderer holds a Renderer3D that owns Vulkan resources and a
     // dangling-friendly device handle for waitIdle. Drop it BEFORE the
     // RenderPipeline / GraphicsDevice tear down so destructors can

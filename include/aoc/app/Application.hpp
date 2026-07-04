@@ -84,6 +84,10 @@ public:
     struct Config {
         Window::Config window;
         bool enableValidation = true;
+        /// Opt-in localhost HTTP debug API (`--enable-debug-server`).
+        /// OFF by default: the server exposes mutation routes and file
+        /// dumps, so it must never listen unless explicitly requested.
+        bool enableDebugServer = false;
     };
 
     Application();
@@ -431,20 +435,28 @@ private:
 
     // ---- Continent Creator state ----
     /// True while the player is in continent-creator preview mode.
-    bool m_continentCreatorMode = false;
+    /// Atomic: HTTP debug handlers read it from worker threads while
+    /// the main thread flips it. Same for the seed / time scalars
+    /// below -- they are independent flags/counters, so plain atomic
+    /// loads/stores (no ordering relationship) are sufficient.
+    std::atomic<bool> m_continentCreatorMode{false};
     /// Frozen seed + parameters for the current preview. The epoch
     /// scrubber regenerates the map by re-running MapGenerator with
     /// these params and a varying runEpochsLimit.
-    uint32_t m_creatorSeed = 0;
+    std::atomic<uint32_t> m_creatorSeed{0};
     /// Total simulated geological time in millions of years. Default
     /// 3000 My (3 Gy) covers ~5 Wilson supercontinent cycles. The
     /// generator translates internally to its physics-epoch count via
     /// `MapGenerator::MY_PER_EPOCH_TARGET`. The continent-creator
     /// scrubber tracks `m_creatorTimeCurrentMy` for the on-screen
     /// "Now: 1.5 / 3.0 Gy" readout.
-    int32_t  m_creatorTotalMy = 3000;
+    std::atomic<int32_t> m_creatorTotalMy{3000};
+    /// Plain staging value for the numeric text-input widget, which
+    /// edits through an `int32_t*`. Synced from/to the atomic
+    /// `m_creatorTotalMy` around each focus/commit (main thread only).
+    int32_t  m_creatorTotalMyInput = 3000;
     int32_t  m_creatorLandPlates  = 4;
-    int32_t  m_creatorTimeCurrentMy = 3000;
+    std::atomic<int32_t> m_creatorTimeCurrentMy{3000};
     int32_t  m_creatorWidth  = 400;
     int32_t  m_creatorHeight = 200;
     /// Total plate-drift budget for the sim, in 10ths of a map width.
@@ -546,6 +558,30 @@ private:
     /// Worker stop signal. Set by `~Application` (or explicit shutdown) before
     /// destruction. The worker checks it on every CV wake and exits when set.
     std::jthread                   m_regenWorker;
+
+    /// Immutable grid snapshot for the HTTP debug handlers. The main
+    /// thread whole-object-assigns `m_hexGrid` (regen swap, map load,
+    /// reset), so worker threads must never read it directly -- that
+    /// is a heap use-after-free. Instead the main thread PUBLISHES a
+    /// copy after every grid rebuild via `publishDebugGridSnapshot()`
+    /// and handlers read only `debugGridSnapshot()` (null until the
+    /// first publish). shared_ptr keeps a superseded snapshot alive
+    /// until the last in-flight handler drops it; the mutex only spans
+    /// the pointer load/store, never a handler body.
+    mutable std::mutex m_debugGridSnapshotMutex;
+    std::shared_ptr<const aoc::map::HexGrid> m_debugGridSnapshot;
+    /// Main thread only: copy `m_hexGrid` into a fresh snapshot.
+    void publishDebugGridSnapshot();
+    /// Any thread: fetch the latest published snapshot (may be null).
+    [[nodiscard]] std::shared_ptr<const aoc::map::HexGrid>
+    debugGridSnapshot() const;
+
+    /// Drop every raw `Unit*` / `City*` the UI caches (selection,
+    /// previous-frame selection, action panel, movement undo). Call
+    /// whenever entities are destroyed wholesale (new game, load,
+    /// return to menu); per-unit death is handled by the
+    /// `Player::setUnitRemovalObserver` hook.
+    void clearEntitySelection();
 
     /// Enqueue a regen request. Sets the target and bumps the generation
     /// counter so any in-flight worker pass is implicitly cancelled (its

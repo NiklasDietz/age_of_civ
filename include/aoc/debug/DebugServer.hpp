@@ -42,12 +42,28 @@
 
 #include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace httplib { class Server; struct Request; struct Response; }
 
 namespace aoc::debug {
+
+/// Escape `"` and `\` for embedding untrusted text inside a JSON string
+/// literal. Route handlers MUST pass every reflected request value
+/// (paths, exception messages, query params) through this before
+/// splicing it into a hand-built JSON response.
+[[nodiscard]] std::string escapeJsonString(std::string_view raw);
+
+/// Thrown by a `JsonHandler` when the server cannot serve the request
+/// yet (e.g. no game-state snapshot has been published). `routeJson`
+/// maps it to HTTP 503 with the exception message as the error body.
+class ServiceUnavailableError : public std::runtime_error {
+public:
+    using std::runtime_error::runtime_error;
+};
 
 class DebugServer {
 public:

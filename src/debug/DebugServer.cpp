@@ -19,14 +19,12 @@
 
 #include <atomic>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 
 namespace aoc::debug {
 
-namespace {
-
-/// Escape `"` and `\` for embedding inside a JSON string literal.
 /// We intentionally keep this minimal: cpp-httplib hands us the
 /// `std::exception::what()` C-string verbatim, so user/Lua-supplied
 /// payloads could contain quotes that would break the JSON envelope
@@ -34,18 +32,36 @@ namespace {
 /// response. A small escape pass covers all printable cases we hand
 /// back today; control characters get passed through as-is and the
 /// caller's JSON parser is responsible for surfacing them.
-[[nodiscard]] std::string escapeJsonString(const char* raw) {
+std::string escapeJsonString(std::string_view raw) {
     std::string out;
-    if (raw == nullptr) return out;
-    out.reserve(std::char_traits<char>::length(raw));
-    for (const char* p = raw; *p != '\0'; ++p) {
-        switch (*p) {
+    out.reserve(raw.size());
+    for (const char c : raw) {
+        switch (c) {
             case '"':  out += "\\\""; break;
             case '\\': out += "\\\\"; break;
-            default:   out += *p;     break;
+            default:   out += c;      break;
         }
     }
     return out;
+}
+
+namespace {
+
+/// DNS-rebinding defense: a browser lured to an attacker domain that
+/// resolves to 127.0.0.1 still sends the ATTACKER's name in the Host
+/// header. Only "127.0.0.1" and "localhost", optionally followed by
+/// ":<digits>", may reach the loopback-bound listener.
+[[nodiscard]] bool isAllowedHostHeader(std::string_view host) {
+    const std::size_t colon = host.find(':');
+    const std::string_view name = host.substr(0, colon);
+    if (name != "127.0.0.1" && name != "localhost") { return false; }
+    if (colon == std::string_view::npos) { return true; }
+    const std::string_view port = host.substr(colon + 1);
+    if (port.empty()) { return false; }
+    for (const char c : port) {
+        if (c < '0' || c > '9') { return false; }
+    }
+    return true;
 }
 
 } // namespace
@@ -65,6 +81,19 @@ struct DebugServer::Impl {
 
 DebugServer::DebugServer(int32_t port) : m_impl(std::make_unique<Impl>()) {
     this->m_impl->port = port;
+    // Registered on the server (not per-route) so the Host check runs
+    // before dispatch for EVERY route, including ones added later.
+    this->m_impl->server.set_pre_routing_handler(
+        [](const httplib::Request& req, httplib::Response& res)
+            -> httplib::Server::HandlerResponse {
+            if (isAllowedHostHeader(req.get_header_value("Host"))) {
+                return httplib::Server::HandlerResponse::Unhandled;
+            }
+            res.status = 403;
+            res.set_content("{\"error\":\"forbidden host\"}\n",
+                            "application/json");
+            return httplib::Server::HandlerResponse::Handled;
+        });
 }
 
 DebugServer::~DebugServer() {
@@ -85,6 +114,12 @@ void DebugServer::routeJson(Method method, std::string path,
                 std::string body = h(q, req.body);
                 if (body.empty() || body.back() != '\n') body += '\n';
                 res.set_content(std::move(body), "application/json");
+            } catch (const ServiceUnavailableError& e) {
+                res.status = 503;
+                std::string err = "{\"error\":\"";
+                err += escapeJsonString(e.what());
+                err += "\"}\n";
+                res.set_content(err, "application/json");
             } catch (const std::exception& e) {
                 res.status = 500;
                 std::string err = "{\"error\":\"handler threw\",\"what\":\"";
