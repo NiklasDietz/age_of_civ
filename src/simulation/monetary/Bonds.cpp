@@ -389,6 +389,41 @@ ErrorCode callInIOU(aoc::game::GameState& gameState,
     return ErrorCode::Ok;
 }
 
+namespace {
+
+/// Settle an IOU whose term has expired: collect the full outstanding balance
+/// from the debtor, then write off (defaulting on) any shortfall, leaving
+/// `iou.remaining == 0` so the caller can close the contract. Safe when either
+/// player is null (a debtor that no longer exists) -- nothing is collected and
+/// the whole balance is written off. `creditorId` is only for the log line.
+void settleExpiredIOU(IOUContract& iou,
+                      aoc::game::Player* debtorPlayer,
+                      aoc::game::Player* creditorPlayer,
+                      PlayerId creditorId) {
+    if (debtorPlayer != nullptr && creditorPlayer != nullptr) {
+        MonetaryStateComponent& debtorState   = debtorPlayer->monetary();
+        MonetaryStateComponent& creditorState = creditorPlayer->monetary();
+        const CurrencyAmount settlement = std::min(debtorState.treasury, iou.remaining);
+        debtorState.treasury   -= settlement;
+        creditorState.treasury += settlement;
+        iou.remaining          -= settlement;
+    }
+    if (iou.remaining > 0) {
+        iou.inDefault = true;
+        if (debtorPlayer != nullptr) {
+            CurrencyTrustComponent& trust = debtorPlayer->currencyTrust();
+            trust.trustScore = std::max(0.0f, trust.trustScore - 0.10f);
+        }
+        LOG_INFO("IOU defaulted at term end: player %u wrote off %lld owed by player %u",
+                 static_cast<unsigned>(creditorId),
+                 static_cast<long long>(iou.remaining),
+                 static_cast<unsigned>(iou.debtor));
+        iou.remaining = 0;  // write off the unpaid balance; caller closes it
+    }
+}
+
+} // namespace
+
 void processIOUPayments(aoc::game::GameState& gameState) {
     for (const std::unique_ptr<aoc::game::Player>& creditorPtr : gameState.players()) {
         if (creditorPtr == nullptr) {
@@ -429,7 +464,15 @@ void processIOUPayments(aoc::game::GameState& gameState) {
                 }
             }
 
-            // Loan fully repaid or expired
+            // Term expired: settle the whole balance and close the contract
+            // (see settleExpiredIOU). Without this the loan would linger past
+            // its term forever, turnsRemaining running negative while interest
+            // compounds: an orphaned zombie IOU.
+            if (it->turnsRemaining <= 0 && it->remaining > 0) {
+                settleExpiredIOU(*it, debtorPlayer, creditorPlayer, creditorPtr->id());
+            }
+
+            // Loan fully repaid, or force-closed at term expiry above.
             if (it->remaining <= 0) {
                 // Remove from debtor's loansReceived by unique id.
                 if (debtorPlayer != nullptr) {

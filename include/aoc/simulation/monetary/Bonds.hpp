@@ -261,7 +261,9 @@ struct PlayerIOUComponent {
  * - Accrues interest on remaining balance.
  * - Debtor makes scheduled payment (principal / termTurns + interest).
  * - If debtor can't pay, marks IOU as in default.
- * - Expired IOUs (turnsRemaining <= 0) demand full repayment.
+ * - Expired IOUs (turnsRemaining <= 0) demand the full remaining balance and
+ *   are then closed. Any shortfall (or a debtor that no longer exists) is a
+ *   default: it damages the debtor's currency trust and is written off.
  *
  * @param world  ECS world.
  */
