@@ -35,6 +35,7 @@ DecisionLog::~DecisionLog() {
 
 bool DecisionLog::open(const std::string& path, const FileHeader& header) {
     if (this->m_file != nullptr) { this->close(); }
+    this->m_writeError = false;  // fresh session
     this->m_file = std::fopen(path.c_str(), "wb");
     if (this->m_file == nullptr) {
         LOG_ERROR("[DecisionLog.cpp:open] failed to open '%s' for write", path.c_str());
@@ -46,19 +47,45 @@ bool DecisionLog::open(const std::string& path, const FileHeader& header) {
     writeU8 (this->m_file, header.mapType);
     writeU32(this->m_file, header.numTurns);
     writeU64(this->m_file, header.seed);
+    // Flush the header now so a write failure (e.g. a full disk) is caught and
+    // reported here rather than silently producing an unreadable trace.
+    if (std::fflush(this->m_file) != 0) { this->m_writeError = true; }
+    this->noteStreamError();
+    if (this->m_writeError) {
+        this->close();  // logs the failure and drops the stream
+        return false;
+    }
     return true;
 }
 
 void DecisionLog::close() {
-    if (this->m_file != nullptr) {
-        std::fflush(this->m_file);
-        std::fclose(this->m_file);
-        this->m_file = nullptr;
+    if (this->m_file == nullptr) { return; }
+
+    if (std::fflush(this->m_file) != 0) { this->m_writeError = true; }
+    this->noteStreamError();
+    // fclose does its own final flush; on NFS/quota/full-disk mounts a deferred
+    // write error can surface only here, after ferror is no longer usable. A
+    // non-zero fclose is therefore also a write failure.
+    if (std::fclose(this->m_file) != 0) { this->m_writeError = true; }
+    this->m_file = nullptr;
+
+    if (this->m_writeError) {
+        LOG_ERROR("[DecisionLog.cpp:close] one or more writes failed; "
+                  "the trace file may be truncated or corrupt");
+    }
+}
+
+void DecisionLog::noteStreamError() {
+    if (this->m_file != nullptr && std::ferror(this->m_file) != 0) {
+        this->m_writeError = true;
     }
 }
 
 void DecisionLog::writeRaw(const void* data, std::size_t bytes) {
-    std::fwrite(data, 1, bytes, this->m_file);
+    if (this->m_file == nullptr) { return; }
+    if (std::fwrite(data, 1, bytes, this->m_file) != bytes) {
+        this->m_writeError = true;
+    }
 }
 
 void DecisionLog::writeHeader(DecisionKind kind, uint16_t turn, uint8_t player,
@@ -96,6 +123,7 @@ void DecisionLog::logProduction(uint16_t turn, uint8_t player, uint16_t cityIdx,
         writeF32(this->m_file, alternates[i].score);
         writeU8 (this->m_file, alternates[i].kind);
     }
+    this->noteStreamError();
 }
 
 // Research record payload:
@@ -119,6 +147,7 @@ void DecisionLog::logResearch(uint16_t turn, uint8_t player,
         writeU16(this->m_file, alternates[i].techId);
         writeF32(this->m_file, alternates[i].score);
     }
+    this->noteStreamError();
 }
 
 // TurnSummary payload (fixed 25 bytes):
@@ -149,6 +178,7 @@ void DecisionLog::logTurnSummary(uint16_t turn, uint8_t player,
     writeU16(this->m_file, s.grievanceCount);
     writeU8 (this->m_file, s.warCount);
     writeU8 (this->m_file, s.victoryTypeLead);
+    this->noteStreamError();
 }
 
 // ============================================================================

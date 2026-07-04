@@ -28,6 +28,13 @@
 
 #include "aoc/net/CommandBuffer.hpp"
 #include "aoc/net/StateUpdate.hpp"
+// Full include, not a forward declaration: GameStateSnapshot is used by value
+// in the std::pair element of m_pendingSnapshots below, so the complete type
+// must be visible here. libstdc++ (gcc 13, as on the Ubuntu headless image)
+// instantiates the pair's destructibility traits eagerly and rejects an
+// incomplete type; libstdc++ on newer gcc is laxer, which is why this only
+// broke the headless container build.
+#include "aoc/net/GameStateSnapshot.hpp"
 #include "aoc/core/Types.hpp"
 
 #include <cstdint>
@@ -41,8 +48,6 @@
 #endif
 
 namespace aoc::net {
-
-struct GameStateSnapshot;
 
 /**
  * @brief Abstract transport interface.
