@@ -1495,7 +1495,12 @@ void growContinentalFractionAtArcs(SphereField& field, float dtMy) {
     // cells inboard. Targeting the arc cell (not the trench cell)
     // keeps the gain applied to a stable interior cell that
     // applySubduction never resets, so growth compounds.
-    constexpr float K_ARC_FRAC_PER_RADMY = 0.5f;
+    // 2026-07-05: 0.5 -> 0.25. Measured against the fixed-volume
+    // sea level, the old rate over-produced continental crust to
+    // ~55 % of the sphere by the end of the run (Earth: ~29 %) --
+    // it had been compensating for the drowned-land look of the
+    // unanchored datum era.
+    constexpr float K_ARC_FRAC_PER_RADMY = 0.25f;
     // Continental thickness gain follows the same closing-rate
     // proportionality but at a reduced K — andesitic arc thickens
     // to ~30 km (DeCelles 2002 modern Andean active-arc), not the
@@ -1625,7 +1630,8 @@ void accreteToNeighbours(SphereField& field, float dtMy) {
     // SPREAD_FROM_THRESHOLD = 0.95 ensures only fully-mature
     // continental cells donate. Below that, cf is still growing via
     // arc volcanism and should not be diluted into neighbours.
-    constexpr float K_SPREAD_PER_MY        = 0.0025f;
+    // 2026-07-05: halved with K_ARC_FRAC (see there).
+    constexpr float K_SPREAD_PER_MY        = 0.00125f;
     constexpr float SPREAD_FROM_THRESHOLD  = 0.95f;
     // Crust donated per unit cf increase so that diffused cells emerge
     // above sea level as their cf crosses the continental threshold.
@@ -1915,6 +1921,17 @@ void recomputeIsostaticElevationOnRaster(SphereField& field) {
     const float rhoC = PhysicsConstants::rhoContinentalKgM3;
     const float rhoO = PhysicsConstants::rhoOceanicKgM3;
     const float datumM = PhysicsConstants::mantleDatumM;
+    // Thermal subsidence of oceanic lithosphere (half-space cooling,
+    // Stein & Stein 1992 GDH1: ridge-flank depth grows ~365 m per
+    // sqrt(My), saturating for old basins as the plate approaches
+    // thermal equilibrium). Without it every oceanic cell sits at the
+    // fresh-crust Airy level (~ -2700 m) regardless of age, the ocean
+    // basins hold far too little water, and the fixed-volume sea
+    // level rides ~ +500 m high and drowns the continents. With it
+    // the hypsometry gains Earth's deep abyssal tail (old floor
+    // ~ -5500..-5800 m) and ridges stand out as shallow young bands.
+    constexpr float K_SUBSIDENCE_M_PER_SQRT_MY = 350.0f;
+    constexpr float SUBSIDENCE_SATURATION_MY   = 81.0f;
 #if defined(AOC_HAS_OPENMP)
     #pragma omp parallel for schedule(static)
 #endif
@@ -1925,8 +1942,107 @@ void recomputeIsostaticElevationOnRaster(SphereField& field) {
         const float rho = c * rhoC + (1.0f - c) * rhoO;
         // Airy: column rises h * (1 - rho/rhoMantle) above the datum.
         const float zAboveDatumM = h * 1000.0f * (1.0f - rho / rhoM);
-        field.surfaceElevationM[i] = zAboveDatumM - datumM;
+        // Quadratic composition weight: pure oceanic lithosphere
+        // subsides fully; stretched transitional crust (mid cf)
+        // subsides partially -- that is what makes passive-margin
+        // SHELVES (McKenzie 1978) rather than abyssal-depth margins;
+        // stabilised cratonic lithosphere barely subsides at all.
+        const float oceanic = 1.0f - c;
+        const float subsidenceM = oceanic * oceanic
+            * K_SUBSIDENCE_M_PER_SQRT_MY
+            * std::sqrt(std::min(field.crustAgeMy[i],
+                                 SUBSIDENCE_SATURATION_MY));
+        field.surfaceElevationM[i] = zAboveDatumM - datumM - subsidenceM;
     }
+}
+
+void solveSeaLevelFixedVolume(SphereField& field) {
+    // Sea level is where the world's FIXED water volume fills the
+    // hypsometric bowl (Earth's water inventory has been essentially
+    // constant since the Archean; the level is a consequence of
+    // hypsometry, not a tunable). Solve
+    //   sum_i max(0, z_sea - elev_i) * cosLat_i
+    //     = oceanVolumeEquivDepthM * sum_i cosLat_i
+    // for z_sea by bisection. Approximation: no water-load isostasy
+    // re-solve (mantleDatumM bakes modern ocean loading into the Airy
+    // calibration), so a stand shift of +-100-200 m is slightly
+    // over-stated -- acceptable at this fidelity.
+    //
+    // SERIAL fixed-order summation on purpose: an OpenMP reduction
+    // makes the float sum thread-count-dependent, which breaks
+    // test_determinism and the portable golden preset.
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    constexpr float Z_MIN = -6000.0f;
+    constexpr float Z_MAX =  6000.0f;
+
+    // Per-latitude area weights (cell area scales with cos(lat)).
+    float latWeight[LAT];
+    double totalWeight = 0.0;
+    for (int32_t j = 0; j < LAT; ++j) {
+        const float latDeg = -90.0f
+            + (static_cast<float>(j) + 0.5f) * SphereField::CELL_DEG;
+        latWeight[j] = std::max(0.0f,
+            std::cos(latDeg * 0.01745329252f));
+        totalWeight += static_cast<double>(latWeight[j])
+            * static_cast<double>(LON);
+    }
+    const double targetVolume =
+        static_cast<double>(field.oceanVolumeEquivDepthM) * totalWeight;
+
+    auto floodedVolume = [&](float zSea) -> double {
+        double vol = 0.0;
+        for (int32_t j = 0; j < LAT; ++j) {
+            const double w = static_cast<double>(latWeight[j]);
+            double rowSum = 0.0;
+            const std::size_t rowBase =
+                static_cast<std::size_t>(j) * static_cast<std::size_t>(LON);
+            for (int32_t i = 0; i < LON; ++i) {
+                const float d = zSea
+                    - field.surfaceElevationM[rowBase
+                        + static_cast<std::size_t>(i)];
+                if (d > 0.0f) rowSum += static_cast<double>(d);
+            }
+            vol += rowSum * w;
+        }
+        return vol;
+    };
+
+    // Warm-start bracket around the previous epoch's level (the
+    // hypsometry moves slowly between epochs); fall back to the full
+    // bracket when the warm one does not straddle the target.
+    float lo = field.seaLevelM - 500.0f;
+    float hi = field.seaLevelM + 500.0f;
+    if (lo < Z_MIN) lo = Z_MIN;
+    if (hi > Z_MAX) hi = Z_MAX;
+    if (!(floodedVolume(lo) < targetVolume
+          && floodedVolume(hi) > targetVolume)) {
+        lo = Z_MIN;
+        hi = Z_MAX;
+        if (floodedVolume(hi) <= targetVolume) {
+            // Degenerate hypsometry: even a +6 km stand cannot hold
+            // the water budget (near-all-land world). Saturate.
+            LOG_WARN("SphereFieldPhysics: sea-level bracket saturated "
+                     "high (all-land hypsometry?)");
+            field.seaLevelM = Z_MAX;
+            return;
+        }
+        if (floodedVolume(lo) >= targetVolume) {
+            LOG_WARN("SphereFieldPhysics: sea-level bracket saturated "
+                     "low (all-ocean hypsometry?)");
+            field.seaLevelM = Z_MIN;
+            return;
+        }
+    }
+    for (int32_t iter = 0; iter < 40; ++iter) {
+        const float mid = 0.5f * (lo + hi);
+        if (floodedVolume(mid) < targetVolume) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    field.seaLevelM = 0.5f * (lo + hi);
 }
 
 void applySurfaceErosionOnRaster(SphereField& field, float dtMy) {
@@ -1986,7 +2102,13 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy) {
             // belts behave as expected. Cited: Davis 1899
             // "Geographical Cycle"; Hack 1960 "Interpretation of
             // erosional topography in humid temperate regions".
-            if (z < 100.0f) continue;
+            // Base level follows the solved sea level (2026-07-05):
+            // erosion grades toward the shoreline, wherever the fixed
+            // water volume puts it -- this is the freeboard
+            // self-regulation loop (high stand -> more of the land
+            // column erodes -> isostatic adjustment -> equilibrium).
+            const float baseLevelM = field.seaLevelM + 100.0f;
+            if (z < baseLevelM) continue;
             const int32_t lonW = (lonIdx == 0)       ? LON - 1 : lonIdx - 1;
             const int32_t lonE = (lonIdx == LON - 1) ? 0       : lonIdx + 1;
             const float zW = field.surfaceElevationM[
@@ -2001,7 +2123,7 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy) {
             const float dzLat = (zN - zS) / (2.0f * cellHeightM);
             const float slope = std::sqrt(dzLon * dzLon + dzLat * dzLat);
             float dz = K_EROSION_M_PER_MY_PER_SLOPE * slope * dtMy;
-            if (dz > z - 100.0f) dz = z - 100.0f; // cap at peneplain floor
+            if (dz > z - baseLevelM) dz = z - baseLevelM; // cap at peneplain floor
             if (dz < 0.0f) continue;
             const float c  = field.continentalFraction[idx];
             const float airy = c * airyRatio_cont + (1.0f - c) * airyRatio_oce;
@@ -2112,6 +2234,7 @@ void stepSpherePhysicsEpoch(SphereField& field,
     applySlabPullFeedback(field, plates, dtMy);
     applyWilsonRifting(field, plates, rngState, dtMy);
     recomputeIsostaticElevationOnRaster(field);
+    solveSeaLevelFixedVolume(field);
     applySurfaceErosionOnRaster(field, dtMy);
     compactPlateList(field, plates);
     recomputePlateCentroidsFromCells(field, plates);
@@ -2173,7 +2296,7 @@ void stepSpherePhysicsEpoch(SphereField& field,
         const float cflCells = (traceMaxOmegaDeg * dtMy) / SphereField::CELL_DEG;
         std::fprintf(stderr,
             "[sphere] dt=%.1fMy rate[%.4f..%.4f] crust=%.1fkm "
-            "z=%.0fm mtn=%zu cont(>0.5)=%zu cf_mean=%.3f "
+            "z=%.0fm zsea=%.0fm mtn=%zu cont(>0.5)=%zu cf_mean=%.3f "
             "plates=%zu boundary=%zu btype(c/d/t)=%zu/%zu/%zu "
             "maxOmega=%.3fdeg/My cflCells=%.1f\n",
             static_cast<double>(dtMy),
@@ -2181,6 +2304,7 @@ void stepSpherePhysicsEpoch(SphereField& field,
             static_cast<double>(maxRate),
             static_cast<double>(maxCrust),
             static_cast<double>(maxZ),
+            static_cast<double>(field.seaLevelM),
             mountainCells,
             continentalCells,
             meanContFrac,

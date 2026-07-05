@@ -42,9 +42,11 @@ struct ThresholdResult {
 /// `seaLevelDelta` shifts the sea-level cut. Positive raises sea level
 /// (more water), negative lowers (more land). Range conventionally
 /// [-1.0, +1.0]; one unit shifts the cut by 0.20 in unitless elevation
-/// = 1000 m of vertical sea-level change (mantle datum / 5000 m).
+/// = 1000 m of vertical sea-level change. The physical sea level
+/// itself is solved upstream from the conserved ocean volume
+/// (SphereField::seaLevelM); elevationMap arrives already relative to
+/// it, so the default cut is exactly 0.
 void runThresholdComputation(HexGrid& grid, MapType mapType,
-                             float effectiveWaterRatio,
                              float seaLevelDelta,
                              const std::vector<float>& elevationMap,
                              ThresholdResult& out);

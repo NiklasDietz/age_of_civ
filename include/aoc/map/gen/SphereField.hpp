@@ -82,6 +82,21 @@ struct SphereField {
     // gate on this field instead of inferring from the signed rate.
     std::vector<uint8_t> boundaryType;
 
+    // Sea level in metres above the mantle datum, resolved each epoch
+    // by solveSeaLevelFixedVolume: the level at which the world's
+    // fixed ocean-water volume exactly fills the hypsometric bowl
+    // (Earth's water volume has been essentially constant since the
+    // Archean -- sea level is a consequence of hypsometry, not a free
+    // parameter). All land/water decisions downstream are made
+    // relative to this value. 0 until first solved.
+    float seaLevelM = 0.0f;
+    // Conserved ocean-water volume, expressed as global-mean
+    // equivalent depth in metres (volume / total sphere area).
+    // Earth: 3682 m mean ocean depth x 70.8 % ocean area ~= 2607 m
+    // (NOAA). climatePhase perturbs it (icehouse locks water in ice
+    // sheets, greenhouse melts them / thermally expands the column).
+    float oceanVolumeEquivDepthM = 2607.0f;
+
     /// Allocate all SoA fields to CELL_COUNT and zero-initialise them.
     /// plateId is set to -1 (unowned). Idempotent.
     void resize();

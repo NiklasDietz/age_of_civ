@@ -259,31 +259,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     };
     std::vector<Hotspot> hotspots;
 
-    // Per-type waterRatio override. waterRatio drives the final ocean cutoff,
-    // so LandOnly needs a tiny override and Islands a high one regardless of
-    // the caller's default.
-    float effectiveWaterRatio = config.waterRatio;
-    // Apply eustatic + climate-phase sea-level shift. Greenhouse (1)
-    // adds +0.04 (warm-period high), icehouse (2) subtracts -0.06
-    // (Pleistocene low, exposed shelves). User-supplied seaLevelDelta
-    // stacks on top.
-    if (config.climatePhase == 1)      { effectiveWaterRatio += 0.04f; }
-    else if (config.climatePhase == 2) { effectiveWaterRatio -= 0.06f; }
-    // 2026-05-04: EUSTATIC SEA-LEVEL CYCLES. Real Earth sea level
-    // varies cyclically over ~30-100 My periods driven by total
-    // mid-ocean-ridge volume (more spreading = more displaced water
-    // = higher seas). Cretaceous high stand was +200 m above modern;
-    // Pleistocene glacials dropped seas -120 m. The seed-derived
-    // sine offset gives each generated world a different point in
-    // its cycle (ranges +/- 0.06 of waterRatio = roughly +/- 200 m).
-    {
-        aoc::Random eustaticRng(config.seed ^ 0x45555354u); // "EUST"
-        const float cyclePhase =
-            eustaticRng.nextFloat(0.0f, 6.2832f);
-        effectiveWaterRatio += std::sin(cyclePhase) * 0.06f;
-    }
-    effectiveWaterRatio = std::clamp(
-        effectiveWaterRatio + config.seaLevelDelta, 0.05f, 0.85f);
+    // Sea level is not a knob: it is solved per epoch from a conserved
+    // ocean-water volume against the evolving hypsometry
+    // (solveSeaLevelFixedVolume). The climate phase perturbs the WATER
+    // BUDGET physically -- icehouse locks ~ -120 m of stand in ice
+    // sheets, greenhouse melts them / thermally expands the column for
+    // ~ +100 m (Cretaceous/Pleistocene envelope). Stand-to-volume via
+    // the ~0.708 ocean-area fraction. The old effectiveWaterRatio
+    // plumbing this replaces was computed and then discarded by
+    // Thresholds -- the greenhouse/icehouse UI knob was a silent
+    // no-op. config.seaLevelDelta remains the creative slider and
+    // still shifts the final cut in Thresholds.
+    float eustaticStandM = 0.0f;
+    if (config.climatePhase == 1)      { eustaticStandM = +100.0f; }
+    else if (config.climatePhase == 2) { eustaticStandM = -120.0f; }
 
     switch (config.mapType) {
         case MapType::Continents: {
@@ -630,15 +619,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 LOG_INFO("Hotspots placed: %d (target %d)",
                          placed, hotspotTarget);
             }
-            // 2026-05-04: bumped clamp 0.40-0.55 -> 0.60-0.72 to match
-            // Earth's actual water coverage (~71%). Old 40-55% global
-            // water meant midlatitudes ended up 70-80% land, which fused
-            // every continent into a Pangaea-shaped megablob even when
-            // tectonic-sim plates remained physically separate. With the
-            // higher cutoff, landmass/total-land fraction realistically
-            // peaks around 0.40-0.55 and adjacent plates produce
-            // genuinely separated continents.
-            effectiveWaterRatio = std::clamp(config.waterRatio, 0.60f, 0.72f);
             break;
         }
         // (continents tectonic-sim runs after the switch — see below)
@@ -709,6 +689,12 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // seeding pattern.
         aoc::map::gen::SphereField sphereField;
         sphereField.resize();
+        // Water budget: Earth-mean 2607 m equivalent depth (3682 m
+        // mean ocean depth x 70.8 % coverage, NOAA) perturbed by the
+        // climate-phase stand offset converted to volume through the
+        // ocean-area fraction.
+        sphereField.oceanVolumeEquivDepthM =
+            2607.0f + eustaticStandM * 0.708f;
         std::vector<uint8_t> sphereBoundaryScratch;
         // Wilson-rifting RNG: deterministic per map seed so the same
         // seed always reproduces the same supercontinent breakup
@@ -738,17 +724,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             const int32_t numCratons = 7 + cratonRng.nextInt(0, 4);
 
             // Per-nucleus absolute area drawn from log-normal — no
-            // global quota. Median nucleus = 0.7 % of sphere
-            // (~1810 cells at 720x360), σ = 0.6 in log space gives
-            // a 4x spread between smallest and largest nucleus
-            // (Slave craton ~0.5 M km² up to Yilgarn ~3 M km²;
-            // Belousova et al. 2010 cratonic age-area survey).
-            // Mean total nucleus coverage with 7 cratons ≈ 5 % of
-            // sphere — the early-Archean continental fraction
-            // baseline (Cawood et al. 2013). Subsequent epoch
-            // thickening grows this to the modern ~29 % via arc
-            // volcanism at convergent margins.
-            constexpr float NUCLEUS_MEDIAN_FRACTION = 0.007f;
+            // global quota. 2026-07-05: median raised 0.7 % -> 1.8 %
+            // of sphere. The old value targeted the ~5 % mid-Archean
+            // (~3.5 Ga) baseline and hoped arc volcanism would grow
+            // it to the modern 29 % — measured across every seed
+            // sweep, that growth reliably undershot (final land
+            // 13-29 %). The sim's own sources say most continental
+            // crust already existed EARLY: ~60-70 % of today's volume
+            // by ~2.5 Ga (Cawood et al. 2013; Belousova et al. 2010
+            // detrital-zircon record), i.e. a ~15-20 % initial
+            // areal stock is MORE faithful than 5 % + over-weighted
+            // arc production. 7-11 nuclei x 1.8 % median ~ 15-22 %
+            // initial coverage; arcs and accretion then add the
+            // Phanerozoic tail.
+            constexpr float NUCLEUS_MEDIAN_FRACTION = 0.018f;
             constexpr float NUCLEUS_LOG_SIGMA      = 0.6f;
             const float nucleusMedianCells =
                 NUCLEUS_MEDIAN_FRACTION * static_cast<float>(N);
@@ -763,10 +752,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     std::cos(6.28318530718f * u2);
                 const float scale = std::exp(NUCLEUS_LOG_SIGMA * gauss);
                 const float cells = nucleusMedianCells * scale;
-                // Clamp to [50, 5000] cells — protects against
-                // pathological samples and stays within the
-                // Belousova 2010 cratonic-area envelope.
-                const float clamped = std::clamp(cells, 50.0f, 5000.0f);
+                // Clamp to [50, 9000] cells — protects against
+                // pathological samples; upper bound ~3.5 % of sphere
+                // (Eurasia-craton-cluster scale) so the raised median
+                // is not truncated to a flat size distribution.
+                const float clamped = std::clamp(cells, 50.0f, 9000.0f);
                 cratonTarget[static_cast<std::size_t>(i)] =
                     static_cast<std::size_t>(clamped);
             }
@@ -1145,7 +1135,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     sphereField.surfaceElevationM,
                     mw.coord.latDeg, mw.coord.lonDeg,
                     hexHalfCells);
-                float oroSampled = (zMpeak > aoc::map::gen::MOUNTAIN_THRESHOLD_M)
+                // Mountain height is measured ABOVE SEA LEVEL, which
+                // the physics solves per epoch from the fixed water
+                // volume (SphereField::seaLevelM).
+                float oroSampled = (zMpeak - sphereField.seaLevelM
+                        > aoc::map::gen::MOUNTAIN_THRESHOLD_M)
                     ? 1.0f : 0.0f;
                 const float fracPeak = sphereField.bilinearSample(
                     sphereField.continentalFraction,
@@ -1176,7 +1170,12 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // applySurfaceErosionOnRaster) preserves shields at
                 // their cratonic +500-800 m steady state, so the
                 // physical sea-level cut suffices.
-                elev = zM / 5000.0f;
+                // Unitless elevation relative to the SOLVED sea level
+                // (zero = shoreline by construction; the fixed-volume
+                // solve anchors land fraction physically instead of
+                // hoping the Airy datum lands at the right stand).
+                const float zRelM = zM - sphereField.seaLevelM;
+                elev = zRelM / 5000.0f;
                 // Sub-grid coastal detail. The 0.5-deg raster cannot
                 // represent coastline relief below ~55 km and bilinear
                 // sampling to hex pitch low-passes even that, so coasts
@@ -1190,7 +1189,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // target and decays to zero away from the coast band.
                 // Sampled on the unit sphere: no antimeridian seam.
                 const float coastBand = 1.0f
-                    - std::min(1.0f, std::abs(zM) / 400.0f);
+                    - std::min(1.0f, std::abs(zRelM) / 400.0f);
                 if (coastBand > 0.0f && contFracHere >= 0.05f) {
                     const float latR = mw.coord.latDeg * 0.01745329252f;
                     const float lonR = mw.coord.lonDeg * 0.01745329252f;
@@ -1367,7 +1366,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // gen/Thresholds.cpp.
     aoc::map::gen::ThresholdResult thresholds;
     aoc::map::gen::runThresholdComputation(
-        grid, config.mapType, effectiveWaterRatio,
+        grid, config.mapType,
         config.seaLevelDelta, elevationMap, thresholds);
     std::vector<float>&   mountainElev      = thresholds.mountainElev;
     std::vector<int32_t>& distFromCoast     = thresholds.distFromCoast;

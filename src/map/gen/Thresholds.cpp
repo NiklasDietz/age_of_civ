@@ -17,7 +17,6 @@
 namespace aoc::map::gen {
 
 void runThresholdComputation(HexGrid& grid, MapType mapType,
-                             float effectiveWaterRatio,
                              float seaLevelDelta,
                              const std::vector<float>& elevationMap,
                              ThresholdResult& out) {
@@ -51,8 +50,6 @@ void runThresholdComputation(HexGrid& grid, MapType mapType,
         }
     }
     out.waterThreshold = seaLevelCut;
-
-    (void)effectiveWaterRatio; // kept in signature for legacy callers
 
     if (std::getenv("AOC_DUMP_THRESHOLD") != nullptr) {
         std::fprintf(stderr,

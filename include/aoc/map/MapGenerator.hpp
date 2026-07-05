@@ -72,7 +72,6 @@ public:
         int32_t  width     = 140;
         int32_t  height    = 90;
         uint64_t seed      = 42;
-        float    waterRatio    = 0.25f;
         float    forestRatio   = 0.25f;
         float    hillRatio     = 0.18f;
         MapType     mapType   = MapType::Continents;  ///< Landmass generation style
@@ -126,8 +125,11 @@ public:
         //   higher sea level), 2 = icehouse (colder, expanded ice,
         //   lower sea level — Pleistocene maximum).
         int32_t  climatePhase = 0;
-        // seaLevelDelta: shifts effective waterRatio. -0.10 = -120 m
-        // Pleistocene low, +0.05 = mid-Cretaceous high.
+        // seaLevelDelta: creative sea-level slider, applied as a shift
+        // of the final land/water cut in Thresholds (one unit = 1000 m
+        // of stand). The physical sea level itself is solved from the
+        // conserved ocean volume each epoch (SphereField::seaLevelM);
+        // the climate phase perturbs that volume.
         float    seaLevelDelta = 0.0f;
         // axialTilt in degrees (Earth = 23.5°). Higher = stronger
         // seasonal contrast (wider tropic + polar zones, less temperate).

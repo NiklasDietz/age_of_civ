@@ -276,6 +276,14 @@ void applySubduction(SphereField& field,
 /// datum. This pass is pure -- state (h, c) is not modified.
 void recomputeIsostaticElevationOnRaster(SphereField& field);
 
+/// Solve `field.seaLevelM` so the conserved ocean-water volume
+/// (`field.oceanVolumeEquivDepthM`, expressed as global-mean equivalent
+/// depth) exactly fills the current hypsometry. Run each epoch after
+/// isostasy; erosion base level and all downstream land/water decisions
+/// are relative to the solved level. Serial bisection by design --
+/// determinism forbids OpenMP float reductions here.
+void solveSeaLevelFixedVolume(SphereField& field);
+
 /// Phase 1.7: stream-power surface erosion. dh = -K_EROSION * z * dtMy
 /// applied where z > 0 (above sea level). Each metre of surface lowering
 /// removes (rhoMantle / rhoCrust) metres of crustal column via the Airy
