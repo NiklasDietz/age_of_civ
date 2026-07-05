@@ -612,11 +612,9 @@ private:
     aoc::ui::WidgetId m_creatorPlatesLabelId = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorDriftLabelId  = aoc::ui::INVALID_WIDGET;
     /// Top-of-screen ADVANCED config panel for creator-mode knobs
-    /// that don't fit in the bottom panel anymore. Hosts super-sample
-    /// resolution + climate phase + sea level + axial tilt + ENSO +
-    /// Milankovitch.
+    /// that don't fit in the bottom panel anymore. Hosts climate
+    /// phase + sea level + axial tilt + ENSO + Milankovitch.
     aoc::ui::WidgetId m_creatorAdvPanelId       = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId m_creatorSuperSampleLabel = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorClimatePhaseLabel= aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorSeaLevelLabel    = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorAxialTiltLabel   = aoc::ui::INVALID_WIDGET;
@@ -626,7 +624,6 @@ private:
     /// Backing values for advanced config (mirror MapGenerator::Config
     /// flags). Updated by UI buttons / text inputs and pushed to the
     /// generator on regenerate.
-    int32_t m_creatorSuperSample  = 1;     ///< 1, 2, or 4 (×64 grid res)
     int32_t m_creatorClimatePhase = 0;     ///< 0 neutral / 1 greenhouse / 2 icehouse
     int32_t m_creatorSeaLevelTenths = 0;   ///< -10..+10 (= -1.0..+1.0 dec)
     int32_t m_creatorAxialTiltTenths = 235; ///< 0..400 (= 0.0..40.0°), Earth=235

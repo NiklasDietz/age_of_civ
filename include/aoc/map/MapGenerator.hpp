@@ -23,9 +23,8 @@ namespace aoc::map {
 /// 2026-05-03: per user direction, only `Continents` is supported. All other
 /// map types are commented-out below so the enum value range stays stable for
 /// any save-game blob that still serializes a non-zero value (it will be
-/// remapped to Continents at load time). The generator code paths for the
-/// removed types remain in `src/map/MapGenerator.cpp` under `#if 0` blocks
-/// for reference only -- they are not built and not selectable.
+/// remapped to Continents at load time). Their generator code paths have
+/// been deleted entirely.
 enum class MapType : uint8_t {
     Continents = 0,         ///< Tectonic-plate-simulated continents. Only supported type.
     // Islands,                ///< [removed 2026-05-03]
@@ -96,8 +95,9 @@ public:
         /// default. The generator converts internally:
         ///   EPOCHS = round(tectonicTotalMy / MY_PER_EPOCH_TARGET)
         /// where MY_PER_EPOCH_TARGET = 50 My (substep size; large enough
-        /// to keep sim fast, small enough that exponential erosion stays
-        /// well-conditioned at K_EROSION = 0.034 / My).
+        /// to keep sim fast, small enough that the slope-based stream-power
+        /// erosion (K_EROSION_M_PER_MY_PER_SLOPE, SphereFieldPhysics.cpp)
+        /// stays well-conditioned per step).
         int32_t  tectonicTotalMy = 0;
         /// Internal: epoch count derived from `tectonicTotalMy`. Set
         /// only if you need to override directly (legacy paths).
@@ -109,10 +109,11 @@ public:
         /// have run. Used by the Continent Creator scrubber to render
         /// intermediate states. 0 = run the full sim.
         int32_t  runEpochsLimit = 0;
-        /// Total plate-drift budget over the sim, in fraction of map width.
-        /// 0 = use default 0.6. Larger = plates traverse more of the world
-        /// per sim. Smaller = continents barely move. Each step's DT is
-        /// derived: DT = driftFraction / (EPOCHS * vMax).
+        // DEBT: driftFraction is dead since the legacy 2D plate motion
+        // was deleted (2026-07-05 phase 1) — raster advection uses the
+        // physical Euler-pole velocities directly. Field + UI slider
+        // kept this phase to avoid unplanned UI surgery; remove both
+        // with the phase-7 unification cleanup.
         float    driftFraction = 0.0f;
 
         // ----- TEMPORAL CLIMATE PHASES (single-snapshot proxies) -----
@@ -139,22 +140,10 @@ public:
         // 0 = circular (mild seasons), 1 = elliptical (extreme).
         float    milankovitchPhase = 0.0f;
 
-        // ----- ACCURACY / SUPER-SAMPLING -----
-        // Plate-tectonic sim already runs in continuous coords (float
-        // plate positions, per-plate 64×64 plate-local orogeny grid).
-        // Tile rasterization happens at output. Increasing this factor
-        // raises the per-plate orogeny grid resolution from the default
-        // 64 to 64*factor, improving boundary precision + sub-hex
-        // detail at cost of memory and compute.
-        // 1 = default (64×64), 2 = high (128×128), 4 = ultra (256×256).
-        int32_t  superSampleFactor = 1;
-
     };
 
     /// Substep size in millions of years per simulation epoch. Total
-    /// sim time = MY_PER_EPOCH_TARGET * tectonicEpochs. Picked so that
-    /// K_EROSION_PER_MY * MY_PER_EPOCH_TARGET = 0.034 * 50 = 1.7 (still
-    /// a stable exponential erosion step) and so that 60 epochs covers
+    /// sim time = MY_PER_EPOCH_TARGET * tectonicEpochs; 60 epochs covers
     /// ~3 Gy of geological time (default supercontinent-cycle target).
     inline static constexpr int32_t MY_PER_EPOCH_TARGET = 50;
     inline static constexpr int32_t DEFAULT_TECTONIC_TOTAL_MY = 3000;
@@ -181,8 +170,7 @@ private:
     static void placeNaturalWonders(HexGrid& grid, aoc::Random& rng);
 
     // 2026-05-03: generateRealisticTerrain removed (was the LandWithSeas
-    // entry point; LandWithSeas is gone). Definition wrapped in #if 0
-    // inside MapGenerator.cpp for reference only.
+    // entry point; LandWithSeas is gone).
 
     /// Place resources based on geology zones (Realistic map type).
     static void placeGeologyResources(const Config& config, HexGrid& grid, aoc::Random& rng);

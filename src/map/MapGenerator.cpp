@@ -60,10 +60,11 @@ namespace aoc::map {
 // Hard upper bound on the plate count carried by the simulation.
 // HexGrid::setPlateId stores a uint8_t with 255 reserved as the
 // "unowned" sentinel, so any pid >= 255 cannot be persisted and would
-// be silently dropped. The runtime caps below (rift/microplate spawn
-// gates) are tuned well below this ceiling but the static_assert
-// documents the contract and trips at compile time if anyone raises
-// the soft cap past the hardware limit.
+// be silently dropped. Plate growth is currently bounded only by the
+// Wilson-rifting cadence (at most one split per epoch, 60 epochs,
+// ~13 initial plates -> worst case well under 255); this constant
+// documents the contract until raster docking wires it in as an
+// explicit Wilson spawn gate.
 inline constexpr std::size_t MAX_PLATE_CAP = 32;
 static_assert(MAX_PLATE_CAP < 255,
               "plate count must fit in 0..254 with 255 as sentinel");
@@ -218,9 +219,10 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
 void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Random& rng) {
     const int32_t width  = grid.width();
     const int32_t height = grid.height();
-    // Cylindrical X wrap toggles the seam-handling logic in plate motion,
-    // collision tests, and Voronoi distance lookups so the east/west edge
-    // doesn't appear as a straight cut through plates.
+    // Cylindrical X wrap toggles the seam-handling logic in the passes
+    // that still reason in projected map space (hotspot drift, post-sim
+    // neighbour walks) so the east/west edge doesn't appear as a
+    // straight cut through plates.
     const bool cylSim = (config.topology == MapTopology::Cylindrical);
 
     // Generate elevation map using fractal noise
@@ -285,21 +287,13 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
 
     switch (config.mapType) {
         case MapType::Continents: {
-            // Plate-tectonic continent layout: pick ~14 plate seeds
-            // randomly, flag ~55% as ocean, run a Voronoi assignment
-            // per tile. Land plates produce land, ocean plates produce
-            // deep ocean. Plate boundaries blur via the same domain-
-            // warp used for tile elevation, so coastlines are irregular
-            // rather than straight Voronoi edges.
-            //
-            // This is closer to real Earth generation (compare PlaTec /
-            // Lautenschlager / Wraight & Carrillo 2013 plate sims) and
-            // crucially avoids the "additive falloff" failure mode that
-            // merged neighbouring continents into one landmass.
-            // Two-pass plate placement so land plates are never Voronoi-
-            // adjacent. Adjacent land plates merge their bases (both
-            // 0.85) and read as one continuous landmass — the bug that
-            // made every map collapse to "one big landmass".
+            // Plate-tectonic continent layout. Plate seeds placed here
+            // parameterise rigid motion (Euler pole + angular velocity)
+            // only; raster ownership comes from stochastic region
+            // growing (generateInitialPlateOwnership — NO Voronoi), and
+            // continental crust from the independent craton BFS below.
+            // Land/water emerges from 3 Gy of raster physics
+            // (SphereFieldPhysics), not from these seeds' positions.
             //
             // Pass 1: 3-4 LAND plate seeds, rejection-sampled with a
             // large minimum gap (0.42) so the land cells can't share a
@@ -367,11 +361,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     p.latDeg = mw.coord.latDeg;
                     p.lonDeg = mw.coord.lonDeg;
                 }
-                // Reserved RNG draw (legacy log-normal speed bucket
-                // discriminator -- vx/vy deleted but stream stays
-                // stable so seed-replay matches earlier audits).
-                (void)centerRng.nextFloat(0.0f, 1.0f);
-                p.rot        = centerRng.nextFloat(-3.14159f, 3.14159f);
                 // Random Euler pole on sphere + log-normal angular
                 // velocity. Distribution parameters derive from the
                 // Müller 2022 1000-Ma reconstruction filtered to
@@ -700,48 +689,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         const int32_t EPOCHS = (config.runEpochsLimit > 0)
             ? std::min(requestedEpochs, config.runEpochsLimit)
             : requestedEpochs;
-        // DRIFT_DT_NORMALIZED derived from EPOCHS and the user-configurable
-        // total drift budget. Default drift = 0.6 map widths. Larger
-        // drift = bigger plate motion = more dramatic continental
-        // shuffle. Smaller = plates barely move, fine-grained evolution
-        // at small scale.
-        //
-        // NOTE: DRIFT_DT_NORMALIZED is a *normalised projection-space step* used by
-        // the legacy 2D motion path that advances `Plate::cx/cy` and
-        // `Plate::rot` each epoch. It is NOT the physical My-per-epoch
-        // timestep. The physical timestep is `MY_PER_EPOCH_TARGET = 50`
-        // (see SphereFieldPhysics call sites). This value is a tuned
-        // fraction of map width per epoch, calibrated empirically to
-        // produce visible-but-realistic plate drift on the Mollweide
-        // overlay; it has no direct geological meaning. Keeps existing
-        // 2D consumers (hotspot proximity, rift seeding, EarthSystem
-        // boundary normals) working until they are migrated to the
-        // sphere physics layer.
-        const float driftFrac = (config.driftFraction > 0.0f)
-            ? config.driftFraction : 0.6f;
-        const float DRIFT_DT_NORMALIZED = std::clamp(
-            (driftFrac / 0.7f) / static_cast<float>(EPOCHS),
-            0.001f, 0.040f);
-
-        const std::vector<Plate> startPlates = plates;
-
-        // Rift-burst scheduling. Each burst spawns 2-3 rifts within
-        // 1-2 epochs; ~12-25 epoch gap between bursts. Models Earth
-        // Phanerozoic burst pattern (Pangaea breakup at 250 Ma + smaller
-        // events at 100, 65, 50 Ma).
-        std::vector<int32_t> riftBurstEpochs;
-        {
-            int32_t e = centerRng.nextInt(3, 8);
-            while (e < EPOCHS) {
-                riftBurstEpochs.push_back(e);
-                e += centerRng.nextInt(12, 25);
-            }
-        }
-
         // SphereField allocation is unconditional; the world-frame elevation pass downstream
         // sources tile elevation from this raster via bilinearSample.
-        // The flag AOC_PHYSICS_ON_SPHEREFIELD now only gates the per-
-        // epoch step + snapshot setter (default ON since P2.1).
         // Procedural cratonic seeding (CLAUDE.md rule 2: never load
         // craton polygons from a dataset). Place 5-9 small Archean
         // continental nuclei at random sphere positions with a
@@ -1009,22 +958,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                      + centerRng.nextFloat(-1.0f, 1.0f);
             };
 
-            // Advance every plate by (vx, vy) * DRIFT_DT_NORMALIZED.
-            // Cylindrical maps WRAP around the X axis (no east/west
-            // edge — like a globe band); flat maps BOUNCE so plates
-            // stay on the rectangle. Y always bounces (poles aren't
-            // wrap-connected).
+            // P6.10 Euler-pole jitter: drift each plate's pole and
+            // perturb |omega| before the raster physics integrates
+            // motion this epoch. The legacy 2D centroid advance that
+            // lived here was dead weight — plate lat/lon is overwritten
+            // every epoch by recomputePlateCentroidsFromCells, and the
+            // raster motion is integrated by advectPlateOwnership from
+            // the Euler parameters this jitter perturbs.
             for (Plate& p : plates) {
-                // Plate rotates around (eulerPoleLatDeg, eulerPoleLonDeg)
-                // by (angularVelDeg * DRIFT_DT_NORMALIZED) per epoch.
-                // Legacy (cx, cy) re-projected via Mollweide forward
-                // each epoch for surviving 2D consumers.
-                constexpr float motionScale = 1.0f;
                 if (p.eulerPoleLatDeg != 0.0f
                     || p.eulerPoleLonDeg != 0.0f
                     || p.angularVelDeg != 0.0f) {
-                    // P6.10 jitter: drift Euler pole + perturb angular
-                    // velocity before applying motion this epoch.
                     p.eulerPoleLatDeg = std::clamp(
                         p.eulerPoleLatDeg
                             + gaussianFromUniform() * poleSigmaDeg,
@@ -1033,31 +977,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     while (p.eulerPoleLonDeg >  180.0f) p.eulerPoleLonDeg -= 360.0f;
                     while (p.eulerPoleLonDeg < -180.0f) p.eulerPoleLonDeg += 360.0f;
                     p.angularVelDeg *= 1.0f + gaussianFromUniform() * velFracSigma;
-
-                    aoc::map::gen::LatLon current{p.latDeg, p.lonDeg};
-                    aoc::map::gen::LatLon pole{
-                        p.eulerPoleLatDeg, p.eulerPoleLonDeg};
-                    const float stepDeg =
-                        p.angularVelDeg * DRIFT_DT_NORMALIZED * motionScale;
-                    aoc::map::gen::LatLon next =
-                        aoc::map::gen::rotateAroundEulerPole(
-                            current, pole, stepDeg);
-                    p.latDeg = next.latDeg;
-                    p.lonDeg = next.lonDeg;
-                    aoc::map::gen::MollweidePoint mw =
-                        aoc::map::gen::mollweideForward(next);
-                    p.cx = mw.mapX;
-                    p.cy = mw.mapY;
-                    // Propagate Euler rotation's local-vertical component
-                    // into p.rot. Projection = stepRad * cos(haversine to
-                    // pole): plate at pole spins fully; plate 90° from
-                    // pole only translates.
-                    const float angDistRad =
-                        aoc::map::gen::haversineRadians(next, pole);
-                    p.rot += stepDeg * 0.01745329252f
-                        * std::cos(angDistRad);
                 }
-                ++p.ageEpochs;
             }
 
             // Plate-pair interactions for this epoch:
@@ -1128,372 +1048,6 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     p.cy = mw.mapY;
                 }
             }
-            // Rift events fire on scheduled burst epochs (3 rifts per
-            // burst). Each rift splits a land plate into 1-2 children,
-            // sometimes producing a triple junction.
-            const bool isRiftEpoch = std::find(
-                riftBurstEpochs.begin(), riftBurstEpochs.end(), epoch)
-                != riftBurstEpochs.end();
-            const int32_t riftsPerBurst = isRiftEpoch ? 3 : 0;
-            if (isRiftEpoch) {
-                std::vector<std::size_t> landIdx;
-                for (std::size_t i = 0; i < plates.size(); ++i) {
-                    if (plates[i].landFraction > 0.40f) { landIdx.push_back(i); }
-                }
-                // Cap total plate count. Earth has ~15 plates (7 major +
-                // 8 minor) — let the world grow up to ~2x the initial
-                // count then stop adding new plates. Without this, every
-                // rift adds 1-2 land plates and over many epochs the
-                // world fills up with land plates → land-only map.
-                // Real-world Pangaea cycle has CONSTANT net plate count:
-                // mergers balance rifts.
-                // 2026-05-04: cap dropped 18 -> 13 to match Earth's
-                // ~15-plate total when accounting for ID-mod-26 letter
-                // collisions. Old 18 + start ~13 + child/microplate
-                // growth let plate count run to 20-22 distinct ids.
-                // Earth has ~7 major + ~8 minor = 15 plates total;
-                // capping at 13 leaves headroom for occasional
-                // microplate spawns without runaway proliferation.
-                const std::size_t maxPlates = std::max(
-                    static_cast<std::size_t>(13),
-                    startPlates.size() + static_cast<std::size_t>(2));
-                const int32_t splitsThisEpoch =
-                    (plates.size() >= maxPlates)
-                        ? 0
-                        : std::min(riftsPerBurst,
-                                   static_cast<int32_t>(landIdx.size()));
-                for (int32_t s = 0; s < splitsThisEpoch; ++s) {
-                    if (landIdx.empty()) { break; }
-                    // PLUME-INDUCED RIFTING. Prefer plates near a
-                    // hotspot — major rifts on Earth correlate with
-                    // mantle plumes (Afar plume → East African Rift +
-                    // Red Sea opening; CAMP plume → Atlantic opening
-                    // ~200 Mya; Iceland plume → North Atlantic
-                    // separation). For each candidate plate compute
-                    // its distance to the nearest hotspot; weight the
-                    // pick toward closer plates.
-                    std::size_t pickPos = 0;
-                    if (!hotspots.empty()) {
-                        float bestProx = -1.0f;
-                        for (std::size_t k = 0; k < landIdx.size(); ++k) {
-                            const Plate& cand = plates[landIdx[k]];
-                            float minHd = 1e9f;
-                            for (const Hotspot& h : hotspots) {
-                                float hdx = cand.cx - h.cx;
-                                float hdy = cand.cy - h.cy;
-                                if (cylSim) {
-                                    if (hdx > 0.5f) { hdx -= 1.0f; }
-                                    if (hdx < -0.5f) { hdx += 1.0f; }
-                                }
-                                const float hd = std::sqrt(hdx * hdx + hdy * hdy);
-                                if (hd < minHd) { minHd = hd; }
-                            }
-                            const float prox = 1.0f / (0.05f + minHd);
-                            const float jitter = centerRng.nextFloat(0.0f, prox * 0.5f);
-                            if (prox + jitter > bestProx) {
-                                bestProx = prox + jitter;
-                                pickPos = k;
-                            }
-                        }
-                    } else {
-                        pickPos = static_cast<std::size_t>(
-                            centerRng.nextInt(0,
-                                static_cast<int32_t>(landIdx.size()) - 1));
-                    }
-                    const std::size_t pi = landIdx[pickPos];
-                    landIdx.erase(landIdx.begin()
-                        + static_cast<std::ptrdiff_t>(pickPos));
-
-                    // Real continental rifting (Wilson cycle):
-                    //  1. A rift LINE develops along a weak zone in
-                    //     the continent (often an old suture from a
-                    //     previous collision).
-                    //  2. The two halves are pushed APART perpendicular
-                    //     to the rift line by upwelling mantle
-                    //     (ridge-push force).
-                    //  3. New oceanic crust forms BETWEEN the halves;
-                    //     they drift apart at ~few cm/year with a
-                    //     mid-ocean ridge marking the original rift.
-                    // Triple junctions (Afar, where African+Arabian+
-                    // Somalian plates meet) form when three rifts meet
-                    // at one point at roughly 120° to each other.
-                    // 2026-05-04: triple-junction rate dropped 30% -> 5%.
-                    // Real triple-junction events (Afar-style RRR) are
-                    // rare: only a handful in Earth's geologic record.
-                    // Old 30%-per-rift firing produced 2 children per
-                    // rift in nearly every cycle, doubling plate
-                    // proliferation rate.
-                    const bool tripleSplit = (centerRng.nextFloat(0.0f, 1.0f) < 0.05f);
-                    const int32_t childCount = tripleSplit ? 2 : 1;
-
-                    // The rift LINE is at angle `faultAxis`. Children
-                    // are placed perpendicular to this line (i.e., at
-                    // faultAxis ± π/2) so they really do sit on
-                    // opposite sides of the rift.
-                    const float faultAxis = centerRng.nextFloat(0.0f, 6.2832f);
-                    // FAILED RIFT (aulacogen). Real Earth: ~30 % of
-                    // continental rifts stall before opening to ocean
-                    // crust. Examples: Mississippi Embayment + Reelfoot
-                    // Rift (failed Iapetus margin), North Sea Graben
-                    // (failed Atlantic), Benue Trough (failed S
-                    // Atlantic). Leaves a linear basin trough across
-                    // the parent continent — visible as a low-elevation
-                    // rift scar that gets sediment-filled over time.
-                    // We mark this by carving negative orogeny along a
-                    // narrow band in the parent's local frame, then
-                    // skipping child creation entirely.
-                    const bool failedRift =
-                        (centerRng.nextFloat(0.0f, 1.0f) < 0.30f);
-                    if (failedRift) {
-                        // 30% of rift events skip child spawn (failed
-                        // rift / aulacogen). Plate-count effect only.
-                        continue;
-                    }
-                    // Smaller initial separation (was 0.10–0.18) so a
-                    // rift is a less abrupt visual event. Children
-                    // gradually drift apart over subsequent epochs
-                    // instead of teleporting far at the rift moment.
-                    const float offsetMag = centerRng.nextFloat(0.05f, 0.10f);
-                    // Push direction = perpendicular to the rift line.
-                    const float pushAxis = faultAxis + 1.5708f; // +π/2
-
-                    // Snapshot parent before mutating it (its velocity
-                    // becomes one of the diverging directions).
-                    const Plate parent = plates[pi];
-                    // Parent stays on one side of the rift line.
-                    plates[pi].cx = std::clamp(parent.cx
-                        + std::cos(pushAxis) * offsetMag * 0.5f, 0.05f, 0.95f);
-                    plates[pi].cy = std::clamp(parent.cy
-                        + std::sin(pushAxis) * offsetMag * 0.5f, 0.05f, 0.95f);
-                    // Parent retains its ORIGINAL crust seed and most
-                    // of its landFraction; it IS the original continent
-                    // continuing on. Velocity tilts toward +pushAxis
-                    // (it's the side moving in that direction).
-                    {
-                        plates[pi].landFraction = std::clamp(
-                            parent.landFraction * centerRng.nextFloat(0.85f, 0.97f),
-                            0.30f, 0.85f);
-                    }
-
-                    for (int32_t c = 0; c < childCount; ++c) {
-                        Plate child = parent;
-                        // 2026-05-04: triple-junction arms are 0°/120°/240°
-                        // apart (Afar-style RRR junction). Was 0°/180°/120°,
-                        // which made the 0/180 pair collinear -- not a
-                        // genuine triple junction. Parent keeps original
-                        // pushAxis; child 0 rotated +120°, child 1 +240°.
-                        const float childPushAngle = (c == 0)
-                            ? (pushAxis + 2.0944f)         // +120°
-                            : (pushAxis + 4.18879f);       // +240°
-                        child.cx = std::clamp(parent.cx
-                            + std::cos(childPushAngle) * offsetMag * 0.5f, 0.05f, 0.95f);
-                        child.cy = std::clamp(parent.cy
-                            + std::sin(childPushAngle) * offsetMag * 0.5f, 0.05f, 0.95f);
-                        // Children get fresh rotation, aspect, AND crust
-                        // seed. A child plate carries a different chunk
-                        // of the original landmass — its own crust
-                        // pattern, not a duplicate of the parent's.
-                        // (When Pangaea broke apart, Africa and S America
-                        // Rotate child frame slightly so the same noise
-                        // is sampled differently away from the seam,
-                        // producing a divergent interior but matching
-                        // coastline (Gondwana-style).
-                        child.rot          = parent.rot
-                                           + centerRng.nextFloat(-0.30f, 0.30f);
-                        // Rifted children are continental fragments
-                        // (S. America breaking off Pangaea). Both halves
-                        // carry continent + new oceanic crust accreted
-                        // at the trailing edge facing the rift line. No
-                        // new third plate for the ocean basin -- it is
-                        // split
-                        // between the two existing plates' trailing
-                        // edges; child landFraction reduced slightly so
-                        // the new ocean basin appears at the rift seam.
-                        child.landFraction = std::clamp(
-                            parent.landFraction *
-                                centerRng.nextFloat(0.85f, 1.00f),
-                            0.30f, 0.55f);
-                        // Children = young rifted fragments (Atlantic-
-                        // post-Pangea analog). Inherit parent's Euler
-                        // pole with slight perturbation.
-                        plates.push_back(child);
-                    }
-                }
-                // MICROPLATES. Between major plates, smaller fragments
-                // sometimes form (Caribbean, Cocos, Scotia, Adria,
-                // Anatolian, Aegean). Random small chance per rift epoch
-                // to spawn a tiny plate at a triple-junction-like spot
-                // between two adjacent major plates. Gives world a more
-                // realistic "messy" plate distribution rather than only
-                // major plates.
-                // 2026-05-04: spawn rate cut 5% -> 1.5% per rift epoch
-                // and capped at MICROPLATE_CAP=3 active. Old 5%/epoch
-                // Microplate spawn: gated by maxPlates + 4-plate floor
-                // + 1.5%/epoch chance. Produces ~1-2 microplates per sim
-                // matching Earth's ~10-over-4.5Gyr.
-                if (plates.size() < maxPlates
-                    && plates.size() >= 4
-                    && centerRng.nextFloat(0.0f, 1.0f) < 0.015f) {
-                    // Pick two random plates that are close to each other.
-                    const std::size_t pa = static_cast<std::size_t>(
-                        centerRng.nextInt(0, static_cast<int32_t>(plates.size()) - 1));
-                    std::size_t pb = pa;
-                    float bestD = 1e9f;
-                    for (std::size_t k = 0; k < plates.size(); ++k) {
-                        if (k == pa) { continue; }
-                        float kdx = plates[k].cx - plates[pa].cx;
-                        float kdy = plates[k].cy - plates[pa].cy;
-                        if (cylSim) {
-                            if (kdx > 0.5f) { kdx -= 1.0f; }
-                            if (kdx < -0.5f) { kdx += 1.0f; }
-                        }
-                        const float kd = std::sqrt(kdx * kdx + kdy * kdy);
-                        if (kd < bestD) { bestD = kd; pb = k; }
-                    }
-                    if (pb != pa && bestD < 0.30f) {
-                        Plate micro;
-                        micro.cx = (plates[pa].cx + plates[pb].cx) * 0.5f
-                                 + centerRng.nextFloat(-0.04f, 0.04f);
-                        micro.cy = (plates[pa].cy + plates[pb].cy) * 0.5f
-                                 + centerRng.nextFloat(-0.04f, 0.04f);
-                        if (cylSim) {
-                            if (micro.cx < 0.0f) { micro.cx += 1.0f; }
-                            if (micro.cx > 1.0f) { micro.cx -= 1.0f; }
-                        }
-                        micro.cx = std::clamp(micro.cx, 0.05f, 0.95f);
-                        micro.cy = std::clamp(micro.cy, 0.10f, 0.90f);
-                        // Reject if midpoint lands inside a THIRD plate's
-                        // territory. Real Earth: microplates form at
-                        // junctions BETWEEN adjacent plates, never
-                        // embedded inside one plate's interior.
-                        //
-                        // Use the authoritative sphereField.plateId for
-                        // the ownership query rather than Euclidean
-                        // nearest-centroid scan over the plates vector.
-                        // The legacy O(N) scan was a Voronoi proxy that
-                        // mis-identified ownership for non-convex /
-                        // multi-lobe plate footprints. The raster lookup
-                        // gives the actual physics-resolved owner.
-                        {
-                            // Recover lat/lon for the microplate centre
-                            // from its Mollweide cache (cx, cy).
-                            const auto inv = aoc::map::gen::mollweideInverse(
-                                micro.cx, micro.cy);
-                            if (!inv.valid) continue;
-                            micro.latDeg = inv.coord.latDeg;
-                            micro.lonDeg = inv.coord.lonDeg;
-                            const auto cell = aoc::map::gen::SphereField::locate(
-                                micro.latDeg, micro.lonDeg);
-                            const std::size_t cellIdx =
-                                aoc::map::gen::SphereField::cellIndex(
-                                    cell.lonIdx, cell.latIdx);
-                            const int16_t ownerId = sphereField.plateId[cellIdx];
-                            if (ownerId < 0
-                                || (static_cast<std::size_t>(ownerId) != pa
-                                 && static_cast<std::size_t>(ownerId) != pb)) {
-                                // Midpoint inside third plate — skip.
-                                continue;
-                            }
-                        }
-                        // Small random velocity (microplates have erratic motion).
-                        micro.rot    = centerRng.nextFloat(-3.14f, 3.14f);
-                        // Mixed land/ocean character — typical for
-                        // 2026-05-04: microplates are now always oceanic
-                        // with near-zero landFraction. Real microplates
-                        // (Cocos, Juan de Fuca, Scotia, Anatolian) are
-                        // mostly oceanic. Land-microplate option
-                        // produced 0.75-0.90 landFraction patches that
-                        // packed into existing continents and inflated
-                        // the per-continent plate count. Like rifted
-                        // children, microplates now exist only as
-                        // boundary-stress sources and small island arcs.
-                        micro.landFraction =
-                            centerRng.nextFloat(0.005f, 0.02f);
-                        micro.ageEpochs = 0;
-                        // Microplates spin fast (Anatolian, Adria rotate
-                        // measurably faster than majors over Quaternary).
-                        plates.push_back(micro);
-                    }
-                }
-            }
-
-
-            // ---- RIDGE SPAWNING: new oceanic plate at largest void ----
-            // Wilson cycle balance: as oceanic plates subduct away, new
-            // ones must form at spreading centres so the ocean basins
-            // refresh. Otherwise the world drains of oceanic plates over
-            // time and gridlocks. Each epoch, count oceanic plates; if
-            // below the target floor, find the world point farthest
-            // from any plate centre — that's the largest void where a
-            // new ridge axis would naturally seed — and spawn a fresh
-            // oceanic plate there with crustAge=0.
-            {
-                int32_t oceanicCount = 0;
-                for (const Plate& p : plates) {
-                    if (p.landFraction < 0.40f) {
-                        ++oceanicCount;
-                    }
-                }
-                constexpr int32_t OCEANIC_FLOOR = 5;
-                if (oceanicCount < OCEANIC_FLOOR
-                    && plates.size() < MAX_PLATE_CAP) {
-                    // Scan a coarse grid for the void centre.
-                    constexpr int32_t SCAN = 32;
-                    float bestDist = -1.0f;
-                    float bestSx = 0.5f, bestSy = 0.5f;
-                    for (int32_t sy = 2; sy < SCAN - 2; ++sy) {
-                        for (int32_t sx = 0; sx < SCAN; ++sx) {
-                            const float nxs = (static_cast<float>(sx) + 0.5f)
-                                / static_cast<float>(SCAN);
-                            const float nys = (static_cast<float>(sy) + 0.5f)
-                                / static_cast<float>(SCAN);
-                            float minSq = 1e9f;
-                            for (const Plate& p : plates) {
-                                // Include primary + extra seeds. Multi-
-                                // seed plates can claim territory far
-                                // from their primary centre; void
-                                // detection must use ALL seeds or new
-                                // ridge plates can spawn inside an
-                                // extra-seed lobe of an existing plate.
-                                auto seedDsq = [&](float seedX, float seedY) {
-                                    float ddx = nxs - seedX;
-                                    float ddy = nys - seedY;
-                                    if (cylSim) {
-                                        if (ddx >  0.5f) { ddx -= 1.0f; }
-                                        if (ddx < -0.5f) { ddx += 1.0f; }
-                                    }
-                                    return ddx * ddx + ddy * ddy;
-                                };
-                                const float dsq = seedDsq(p.cx, p.cy);
-                                if (dsq < minSq) { minSq = dsq; }
-                            }
-                            if (minSq > bestDist) {
-                                bestDist = minSq;
-                                bestSx = nxs;
-                                bestSy = nys;
-                            }
-                        }
-                    }
-                    if (bestDist > 0.020f) { // require meaningful void
-                        Plate fresh;
-                        fresh.cx = bestSx;
-                        fresh.cy = bestSy;
-                        // Inherit a slow drift in the direction AWAY
-                        // from the nearest plate (ridge-push starting
-                        // condition).
-                        fresh.rot    = centerRng.nextFloat(-3.14f, 3.14f);
-                        // 2026-05-04: matched ocean-plate landFraction
-                        // reduction. Fresh ridge-spawn ocean plates are
-                        // brand new oceanic crust -- effectively 100 %
-                        // ocean.
-                        fresh.landFraction = centerRng.nextFloat(0.005f, 0.02f);
-                        fresh.ageEpochs = 0;
-                        // Fresh ridge-spawn plate: random pole, oceanic
-                        // rotation magnitude (faster than continental).
-                        plates.push_back(fresh);
-                    }
-                }
-            }
             // Hotspot drift. Real plumes drift ~1 cm/yr (Hawaiian-Emperor
             // bend at 47 Mya). Tiny rotation about map centre per epoch
             // curves trails subtly over long sims.
@@ -1514,31 +1068,16 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 h.cy = std::clamp(h.cy, 0.05f, 0.95f);
             }
 
-            // Per-epoch EROSION: decay positive orogeny by a small
-            // fraction every epoch. Real Earth erosion rates wear
-            // mountain ranges from Himalaya-tall (~9 km) to nothing
-            // over ~500 My. With each epoch ≈ 10-25 My that's
-            // ~2-5% per epoch. Active boundaries keep adding stress
-            // faster than erosion removes, so they keep growing.
-            // Inactive boundaries (plates separated) erode toward
-            // hills then plains — the natural mountain lifecycle.
-            // Negative orogeny (subduction trenches) also fills in
-            // slowly via sediment deposition.
-            // Erosion now lives in SphereFieldPhysics::applySurfaceErosionOnRaster.
-#if defined(AOC_PHYSICS_ON_SPHEREFIELD)
+            // Raster physics epoch: advection, boundary classification,
+            // thickening, arc growth, subduction, ridge accretion,
+            // slab pull, Wilson rifting, isostasy, erosion.
             aoc::map::gen::stepSpherePhysicsEpoch(
                 sphereField, plates, sphereBoundaryScratch,
                 physicsRngState, MY_PER_EPOCH_P1);
-#endif
         }
-#if defined(AOC_PHYSICS_ON_SPHEREFIELD)
-        // 2026-05-06: PHYSICS-FIRST P1. Hand the SphereField surface-
-        // elevation snapshot to the HexGrid for the renderer/save path.
-        // P1 only writes the snapshot; tile elevation is still consumed
-        // from the legacy world-frame `orogeny[]` array. Phase 2 will
-        // route tile elevation through bilinearSample on this snapshot.
+        // Hand the SphereField surface-elevation snapshot to the
+        // HexGrid for the renderer/save path.
         grid.setSphereFieldElevationSnapshot(sphereField.surfaceElevationM);
-#endif
 
         // Per-hex-tile orogeny lookup. NO Voronoi: tile (col, row) →
         // Mollweide-inverse → lat/lon → SphereField peakSample for

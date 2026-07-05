@@ -1662,7 +1662,6 @@ void Application::regenerateContinentPreview(int32_t timeMy) {
     cfg.runEpochsLimit = epochLimit;
     cfg.driftFraction  = static_cast<float>(this->m_creatorDriftPct) * 0.1f;
     // Advanced config from top panel.
-    cfg.superSampleFactor  = this->m_creatorSuperSample;
     cfg.climatePhase       = this->m_creatorClimatePhase;
     cfg.seaLevelDelta      = static_cast<float>(this->m_creatorSeaLevelTenths) * 0.10f;
     cfg.axialTilt          = static_cast<float>(this->m_creatorAxialTiltTenths) * 0.10f;
@@ -1836,7 +1835,6 @@ void Application::enqueueRegen(int32_t timeMy) {
         std::clamp(this->m_creatorProjection, 0, 3));
     cfg.runEpochsLimit    = epochLimit;
     cfg.driftFraction     = static_cast<float>(this->m_creatorDriftPct) * 0.1f;
-    cfg.superSampleFactor = this->m_creatorSuperSample;
     cfg.climatePhase      = this->m_creatorClimatePhase;
     cfg.seaLevelDelta     = static_cast<float>(this->m_creatorSeaLevelTenths) * 0.10f;
     cfg.axialTilt         = static_cast<float>(this->m_creatorAxialTiltTenths) * 0.10f;
@@ -1925,7 +1923,6 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
     if (this->m_creatorAdvPanelId != aoc::ui::INVALID_WIDGET) {
         this->m_uiManager.removeWidget(this->m_creatorAdvPanelId);
         this->m_creatorAdvPanelId = aoc::ui::INVALID_WIDGET;
-        this->m_creatorSuperSampleLabel  = aoc::ui::INVALID_WIDGET;
         this->m_creatorClimatePhaseLabel = aoc::ui::INVALID_WIDGET;
         this->m_creatorSeaLevelLabel     = aoc::ui::INVALID_WIDGET;
         this->m_creatorAxialTiltLabel    = aoc::ui::INVALID_WIDGET;
@@ -1993,10 +1990,6 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                 {0.0f, 0.0f, widthPx, 36.0f}, std::move(btn));
             *labelOut = id;
         };
-        // Plates grid resolution (per-plate orogeny grid scale).
-        // 1 = 64×64 default, 2 = 128×128, 4 = 256×256.
-        addCycler("Grid:",   &this->m_creatorSuperSample,    1,   4,   1,
-            &this->m_creatorSuperSampleLabel, 96.0f);
         addCycler("Phase:",  &this->m_creatorClimatePhase,   0,   2,   1,
             &this->m_creatorClimatePhaseLabel, 96.0f);
         addCycler("SL:",     &this->m_creatorSeaLevelTenths, -10, 10,  1,

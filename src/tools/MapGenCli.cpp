@@ -181,24 +181,16 @@ void usage(const char* prog) {
         "          [--format ascii|csv|both]\n"
         "          [--tectonic-time-my N | --tectonic-time-gy N | --epochs N]\n"
         "          [--projection mollweide|equirect|mercator|robinson]\n"
-        "          [--super-sample N]\n"
-        "          [--dump-plates PATH] [--dump-edges PATH]\n"
-        "          [--dump-mountain-edges PATH]\n"
+        "          [--dump-plates PATH]\n"
         "\n"
         "Generates a single Continents map and writes it to disk for review.\n"
         "Defaults: --seed 42 --width 140 --height 90 --output /tmp/map\n"
         "          --format ascii\n"
         "\n"
-        "Diagnostic flags (Phase 13d-A1):\n"
+        "Diagnostic flags:\n"
         "  --dump-plates PATH   write per-plate CSV (sphere position, motion,\n"
-        "                       Euler pole, polygon size) to PATH for offline\n"
-        "                       analysis by tools/diagnose_plate_shapes.py.\n"
-        "  --dump-edges PATH    write per-boundary-edge CSV in world frame\n"
-        "                       (rotated polygon vertices) with edge_type and\n"
-        "                       neighbor_plate_id, for diagnose_mountain_edges.py.\n"
-        "  --dump-mountain-edges PATH  write per-mountain-tile CSV with the\n"
-        "                       nearest boundary edge (owner, type, distance_km)\n"
-        "                       for diagnose_mountain_edges.py.\n",
+        "                       Euler pole, cell count) to PATH for offline\n"
+        "                       analysis by tools/diagnose_plate_shapes.py.\n",
         prog);
 }
 
@@ -225,8 +217,6 @@ int main(int argc, char* argv[]) {
 
     std::string outputBase     = "/tmp/map";
     std::string dumpPlatesPath;
-    std::string dumpEdgesPath;
-    std::string dumpMountainEdgesPath;
     OutputFormat format    = OutputFormat::Ascii;
     bool         frameMode = false;
     bool         serveHttp = false;
@@ -272,18 +262,12 @@ int main(int argc, char* argv[]) {
                     p.c_str());
                 return 2;
             }
-        } else if (arg == "--super-sample" && i + 1 < argc) {
-            config.superSampleFactor = std::atoi(argv[++i]);
         } else if (arg == "--cylindrical") {
             config.topology = aoc::map::MapTopology::Cylindrical;
         } else if (arg == "--frames") {
             frameMode = true;
         } else if (arg == "--dump-plates" && i + 1 < argc) {
             dumpPlatesPath = argv[++i];
-        } else if (arg == "--dump-edges" && i + 1 < argc) {
-            dumpEdgesPath = argv[++i];
-        } else if (arg == "--dump-mountain-edges" && i + 1 < argc) {
-            dumpMountainEdgesPath = argv[++i];
         } else if (arg == "--serve-http") {
             serveHttp = true;
         } else if (arg == "--port" && i + 1 < argc) {
@@ -375,7 +359,6 @@ int main(int argc, char* argv[]) {
         writeCsv(grid, path);
         std::printf("wrote %s (per-tile CSV)\n", path.c_str());
     }
-    // 2026-05-06 cleanup: --dump-plates / --dump-edges /
     // --dump-plates: per-plate diagnostic CSV. Writes one row per
     // plate id present on the final HexGrid: cell count, land
     // fraction, bounding box (min/max col/row), centroid screen
@@ -435,9 +418,6 @@ int main(int argc, char* argv[]) {
                         dumpPlatesPath.c_str());
         }
     }
-    (void)dumpEdgesPath;
-    (void)dumpMountainEdgesPath;
-
     // ---------------------------------------------------------------
     // HTTP debug server mode. Map already generated above. The server
     // exposes a read-only inspection API plus a /sim/re-roll mutator

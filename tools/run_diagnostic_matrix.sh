@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
-# Phase 13d-A2 step 4: drive the plate-shape / mountain-edge / peak-
-# sample-leak diagnostic suite over a fixed seed matrix and aggregate
-# the results into build/plate_diag/SUMMARY.md.
+# Drive the continent-shape metrics over a fixed seed matrix and
+# aggregate the results into build/plate_diag/SUMMARY.md.
+#
+# 2026-07-05: rewritten around tools/mapgen_metrics.py. The previous
+# version drove diagnose_plate_shapes / diagnose_mountain_edges /
+# diagnose_peak_sample_leak, which consumed --dump-edges /
+# --dump-mountain-edges / --dump-physics-cells CSVs that the CLI no
+# longer emits (Voronoi-polygon-era data model); all three scripts and
+# flags have been deleted.
 #
 # Outputs:
-#   build/plate_diag/m_s<N>.{plates,edges,medges,csv}.csv   raw dumps
-#   build/plate_diag/m_s<N>.cells.plate*.csv                physics-cell dumps
-#   build/plate_diag/SUMMARY.md                             headline metrics
+#   build/plate_diag/m_s<N>.csv         per-tile CSV dumps
+#   build/plate_diag/m_s<N>.plates.csv  per-plate stats (--dump-plates)
+#   build/plate_diag/metrics.json       per-seed shape metrics
+#   build/plate_diag/SUMMARY.md         headline metrics
 #
 # Usage: tools/run_diagnostic_matrix.sh [SEEDS...]
-#   default seeds: 1..16 at 140x90 (fast); high-res 280x180 done for s1+s7.
+#   default seeds: 1..16 at 140x90.
 
 set -euo pipefail
 
@@ -30,55 +37,22 @@ if [[ ${#SEEDS[@]} -eq 0 ]]; then
     SEEDS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)
 fi
 
-# ---- per-seed dump (low-res 140x90) ----------------------------------
+SEED_LIST="$(IFS=,; echo "${SEEDS[*]}")"
+
+python3 "${ROOT}/tools/mapgen_metrics.py" baseline \
+    --binary "${MAPGEN}" \
+    --outdir "${OUT}" \
+    --seeds "${SEED_LIST}"
+
+# --dump-plates per seed for plate-level stats (cell count, land frac,
+# bbox, centroid) alongside the shape metrics.
 for s in "${SEEDS[@]}"; do
-    echo "[matrix] dumping seed ${s} ..."
-    rm -f "${OUT}/m_s${s}.cells.plate"*.csv
     "${MAPGEN}" \
         --seed "${s}" --width 140 --height 90 \
         --output "${OUT}/m_s${s}" --format csv \
-        --dump-plates "${OUT}/m_s${s}.plates.csv" \
-        --dump-edges "${OUT}/m_s${s}.edges.csv" \
-        --dump-mountain-edges "${OUT}/m_s${s}.medges.csv" \
-        --dump-physics-cells "${OUT}/m_s${s}.cells" > /dev/null
+        --dump-plates "${OUT}/m_s${s}.plates.csv" > /dev/null
 done
 
-# ---- aggregate plate shapes ------------------------------------------
-SHAPES_LOG="${OUT}/shapes.log"
-{
-    for s in "${SEEDS[@]}"; do
-        echo "### seed ${s}"
-        python3 "${ROOT}/tools/diagnose_plate_shapes.py" \
-            --plates "${OUT}/m_s${s}.plates.csv" \
-            --edges  "${OUT}/m_s${s}.edges.csv" || true
-        echo
-    done
-} > "${SHAPES_LOG}"
-
-# ---- aggregate mountain-edge anomaly ---------------------------------
-MEDGE_LOG="${OUT}/medge.log"
-python3 "${ROOT}/tools/diagnose_mountain_edges.py" \
-    --files "${OUT}"/m_s*.medges.csv > "${MEDGE_LOG}"
-
-# ---- aggregate peak-sample leak (per-seed, expensive) ----------------
-LEAK_LOG="${OUT}/leak.log"
-{
-    for s in "${SEEDS[@]}"; do
-        # Skip seeds that produced 0 mountains (script just prints empty).
-        if [[ ! -s "${OUT}/m_s${s}.medges.csv" ]] \
-            || [[ "$(wc -l < "${OUT}/m_s${s}.medges.csv")" -le 1 ]]; then
-            echo "### seed ${s}: 0 mountains, skipping leak check"
-            continue
-        fi
-        echo "### seed ${s}"
-        python3 "${ROOT}/tools/diagnose_peak_sample_leak.py" \
-            --mountain-edges "${OUT}/m_s${s}.medges.csv" \
-            --cells "${OUT}/m_s${s}.cells.plate*.csv" 2>/dev/null || true
-        echo
-    done
-} > "${LEAK_LOG}"
-
-# ---- summary ---------------------------------------------------------
 SUMMARY="${OUT}/SUMMARY.md"
 {
     echo "# Plate diagnostic matrix"
@@ -86,34 +60,25 @@ SUMMARY="${OUT}/SUMMARY.md"
     echo "Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "Seeds: ${SEEDS[*]}  Resolution: 140x90"
     echo
-    echo "## Plate shapes (Polsby-Popper compactness, PCA aspect)"
+    echo "## Continent-shape metrics (tools/mapgen_metrics.py)"
     echo
     echo '```'
-    awk '/compactness mean=/ { match($0, /mean=([0-9.]+)/, a); match($0, /median=([0-9.]+)/, b); printf "  %s\n", $0 }' "${SHAPES_LOG}" \
-        || cat "${SHAPES_LOG}"
+    python3 - "${OUT}/metrics.json" <<'EOF'
+import json, sys
+data = json.load(open(sys.argv[1]))
+hdr = f"{'seed':>6} {'land%':>6} {'comps':>5} {'4-30':>4} {'coastD':>6} {'axis0/90':>8} {'beltaxis':>8}"
+print(hdr)
+for seed, m in data.items():
+    co = m.get("coast_orientation") or {}
+    mt = m.get("mountains") or {}
+    print(f"{seed:>6} {m['land_fraction']*100:>6.1f} {m['n_land_components']:>5} "
+          f"{m['component_bands']['4-30']:>4} {str(m['coast_box_dimension']):>6} "
+          f"{str(co.get('axis_aligned_frac')):>8} "
+          f"{str(mt.get('belt_axis_aligned_frac')):>8}")
+EOF
     echo '```'
     echo
-    echo "## Mountain-edge anomaly (% mountains with nearest edge != type 2/4)"
-    echo
-    echo '```'
-    cat "${MEDGE_LOG}"
-    echo '```'
-    echo
-    echo "## PeakSample leak (winner_plate != tile.owner_plate)"
-    echo
-    echo '```'
-    awk '
-        /^### seed/ { seed=$3; next }
-        /MISMATCH/  { printf "  s%-3s  %s\n", seed, $0 }
-        /winner_distance_km/ { printf "  s%-3s  %s\n", seed, $0 }
-    ' "${LEAK_LOG}"
-    echo '```'
-    echo
-    echo "## Headlines"
-    echo
-    grep -h 'AGGREGATE' "${MEDGE_LOG}" || true
-    echo
-    echo "Detail logs in ${OUT}/{shapes,medge,leak}.log."
+    echo "Detail: ${OUT}/metrics.json, per-plate stats in m_s<N>.plates.csv."
 } > "${SUMMARY}"
 
 echo "wrote ${SUMMARY}"

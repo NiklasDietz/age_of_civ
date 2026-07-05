@@ -90,16 +90,10 @@ if(AOC_DIAG_IR)
     add_compile_definitions(AOC_DIAG_IR=1)
 endif()
 
-# Physics-first plate-tectonic rewrite: default flipped ON 2026-05-06.
-# SphereField (720x360 lat/lon) physics runs every build alongside the
-# legacy per-plate pipeline. World-frame elevation still sources from
-# legacy `orogenyLocal` until Phase 2 step 2 deletes the scatter passes;
-# SphereField is a passenger in P2 step 1.
-option(AOC_PHYSICS_ON_SPHEREFIELD
-       "Run the SphereField physics-first epoch loop" ON)
-if(AOC_PHYSICS_ON_SPHEREFIELD)
-    add_compile_definitions(AOC_PHYSICS_ON_SPHEREFIELD=1)
-endif()
+# The SphereField (720x360 lat/lon) physics epoch loop is the only
+# motion/crust mechanism and runs unconditionally. The old
+# AOC_PHYSICS_ON_SPHEREFIELD toggle was retired 2026-07-05 when the
+# legacy 2D plate machinery it fell back to was deleted.
 
 # AddressSanitizer + LeakSanitizer for build_dbg. Gate via -DAOC_ENABLE_ASAN=ON
 # at configure time. Combine with `ASAN_OPTIONS=suppressions=$PWD/asan_suppressions.txt`

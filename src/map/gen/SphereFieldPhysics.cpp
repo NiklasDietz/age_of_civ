@@ -708,118 +708,6 @@ int32_t compactPlateList(SphereField& field, std::vector<Plate>& plates) {
     return removed;
 }
 
-void mergePlates(SphereField& field,
-                 std::vector<Plate>& plates,
-                 std::size_t survivor,
-                 std::size_t absorbed) {
-    // Defensive guards. A self-merge or out-of-range index is a
-    // caller bug; ignore rather than corrupt state.
-    if (survivor == absorbed) return;
-    if (survivor >= plates.size() || absorbed >= plates.size()) return;
-
-    const int16_t survId  = static_cast<int16_t>(survivor);
-    const int16_t absId   = static_cast<int16_t>(absorbed);
-
-    // Update survivor's authoritative sphere state to reflect the
-    // union of both plates.
-    //
-    // Latitude/longitude midpoint via 3D unit-vector mean — averaging
-    // (latDeg, lonDeg) directly fails across the antimeridian and
-    // around the poles. The unit-vector midpoint is the great-circle
-    // midpoint between the two centroids on the sphere.
-    constexpr double DEG2RAD = 0.01745329252;
-    constexpr double RAD2DEG = 57.29577951;
-    {
-        const double aLatR = static_cast<double>(plates[survivor].latDeg) * DEG2RAD;
-        const double aLonR = static_cast<double>(plates[survivor].lonDeg) * DEG2RAD;
-        const double bLatR = static_cast<double>(plates[absorbed].latDeg) * DEG2RAD;
-        const double bLonR = static_cast<double>(plates[absorbed].lonDeg) * DEG2RAD;
-        const double ax = std::cos(aLatR) * std::cos(aLonR);
-        const double ay = std::cos(aLatR) * std::sin(aLonR);
-        const double az = std::sin(aLatR);
-        const double bx = std::cos(bLatR) * std::cos(bLonR);
-        const double by = std::cos(bLatR) * std::sin(bLonR);
-        const double bz = std::sin(bLatR);
-        double mx = (ax + bx) * 0.5;
-        double my = (ay + by) * 0.5;
-        double mz = (az + bz) * 0.5;
-        const double r = std::sqrt(mx * mx + my * my + mz * mz);
-        if (r > 1e-9) {
-            mx /= r; my /= r; mz /= r;
-            plates[survivor].latDeg = static_cast<float>(std::asin(std::clamp(mz, -1.0, 1.0)) * RAD2DEG);
-            plates[survivor].lonDeg = static_cast<float>(std::atan2(my, mx) * RAD2DEG);
-        }
-        // r ≈ 0 = antipodal centroids; skip the update and keep the
-        // survivor's prior centroid. Antipodal merge is geometrically
-        // ill-defined — recomputePlateCentroidsFromCells will recover
-        // the area-weighted centroid from the joined cell set at the
-        // end of the next epoch.
-    }
-    plates[survivor].landFraction = std::max(plates[survivor].landFraction,
-                                             plates[absorbed].landFraction);
-    plates[survivor].ageEpochs = std::max(plates[survivor].ageEpochs,
-                                          plates[absorbed].ageEpochs);
-
-    constexpr int32_t LON = SphereField::LON_CELLS;
-    constexpr int32_t LAT = SphereField::LAT_CELLS;
-
-    // Pass 1: zero the instantaneous closing rate on cells that sat
-    // on the suture between survivor and absorbed BEFORE the remap.
-    // After the remap those cells are interior — their convergence
-    // rate, populated by accumulateClosingRate from the difference
-    // of plate Euler-velocities, is no longer physical (the two plates
-    // are now one rigid body) and would otherwise drive ghost orogeny
-    // across the welded interior in the next thicken pass.
-    for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
-        for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
-            const std::size_t idx = SphereField::cellIndex(lonIdx, latIdx);
-            const int16_t selfId = field.plateId[idx];
-            if (selfId != survId && selfId != absId) continue;
-            const int16_t other = (selfId == survId) ? absId : survId;
-            const int32_t lonW = (lonIdx == 0)       ? LON - 1 : lonIdx - 1;
-            const int32_t lonE = (lonIdx == LON - 1) ? 0       : lonIdx + 1;
-            const int32_t latS = std::max(0, latIdx - 1);
-            const int32_t latN = std::min(LAT - 1, latIdx + 1);
-            const std::size_t neigh[4] = {
-                SphereField::cellIndex(lonW, latIdx),
-                SphereField::cellIndex(lonE, latIdx),
-                SphereField::cellIndex(lonIdx, latS),
-                SphereField::cellIndex(lonIdx, latN),
-            };
-            for (int32_t k = 0; k < 4; ++k) {
-                if (field.plateId[neigh[k]] == other) {
-                    field.convergenceRateRadPerMy[idx] = 0.0f;
-                    field.boundaryType[idx] = 0; // NotBoundary after weld
-                    break;
-                }
-            }
-        }
-    }
-
-    // Pass 2: rewrite plate ids in a single sweep.
-    //   pid == absorbed         -> survivor (then shift if needed)
-    //   pid >  absorbed         -> pid - 1 (vector erase shifts left)
-    //   pid <  absorbed (incl.
-    //          == survivor)     -> unchanged
-    // Survivor's own index also shifts down by one if survivor came
-    // after absorbed in the vector.
-    const int16_t survPostErase = (static_cast<std::size_t>(survivor) > absorbed)
-        ? static_cast<int16_t>(survivor - 1)
-        : static_cast<int16_t>(survivor);
-    for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
-        const int16_t pid = field.plateId[i];
-        if (pid < 0) continue;
-        if (pid == absId) {
-            field.plateId[i] = survPostErase;
-        } else if (pid > absId) {
-            field.plateId[i] = static_cast<int16_t>(pid - 1);
-        } else if (pid == survId && survPostErase != survId) {
-            field.plateId[i] = survPostErase;
-        }
-    }
-
-    plates.erase(plates.begin() + static_cast<std::ptrdiff_t>(absorbed));
-}
 
 void mergePlatesBatch(SphereField& field,
                       std::vector<Plate>& plates,
@@ -922,8 +810,6 @@ void mergePlatesBatch(SphereField& field,
         if (r == i) continue;
         plates[r].landFraction = std::max(plates[r].landFraction,
                                           plates[i].landFraction);
-        plates[r].ageEpochs    = std::max(plates[r].ageEpochs,
-                                          plates[i].ageEpochs);
     }
 
     // Pass 2: build remap from old -> new index, doing the compaction

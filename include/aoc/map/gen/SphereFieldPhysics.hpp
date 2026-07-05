@@ -63,36 +63,17 @@ void generateInitialPlateOwnership(SphereField& field,
                                    const std::vector<Plate>& plates,
                                    uint64_t seed);
 
-/// Atomic plate merge. Combines `absorbed` into `survivor`, rewrites
-/// every raster cell `pid == absorbed` to `survivor`, zeroes the
-/// instantaneous closing rate on the welded suture so the next
-/// boundary pass does not re-fire orogeny across the new plate
-/// interior, then erases `absorbed` from `plates` and remaps
-/// every raster `pid > absorbed` down by one. Performs the entire
-/// transform in one pass so no caller observes an inconsistent
-/// state where `field.plateId` references a stale plate index.
-///
-/// Survivor authoritative state (latDeg/lonDeg/landFraction/
-/// ageEpochs) is updated to reflect the union of the two plates.
-/// Mollweide projection cache (cx/cy) is the caller's responsibility
-/// — physics does not own the projection layer.
-void mergePlates(SphereField& field,
-                 std::vector<Plate>& plates,
-                 std::size_t survivor,
-                 std::size_t absorbed);
-
-/// Batch plate merge. Performs the equivalent of N sequential `mergePlates`
-/// calls but with only ONE pass over `field.plateId` instead of one per
-/// pair. Each pair (survivor, absorbed) is treated as a request to
-/// fold `absorbed` into `survivor`. Transitive chains are resolved via
-/// union-find so callers may pass overlapping pairs without ordering
-/// assumptions: e.g. {(a,b),(c,a)} merges b and c into a.
+/// Batch plate merge with ONE pass over `field.plateId`. Each pair
+/// (survivor, absorbed) is treated as a request to fold `absorbed`
+/// into `survivor`. Transitive chains are resolved via union-find so
+/// callers may pass overlapping pairs without ordering assumptions:
+/// e.g. {(a,b),(c,a)} merges b and c into a.
 ///
 /// Each absorbed plate's authoritative state is folded into its final
 /// root survivor (latDeg/lonDeg unit-vector mean over participating
-/// plates; landFraction = max; ageEpochs = max). Suture-cell
-/// convergence rates are zeroed for every pre-merge plate-plate
-/// boundary so ghost orogeny does not accrete on welded interiors.
+/// plates; landFraction = max). Suture-cell convergence rates are
+/// zeroed for every pre-merge plate-plate boundary so ghost orogeny
+/// does not accrete on welded interiors.
 ///
 /// Pair indices reference the pre-call `plates` vector positions.
 /// On return, every absorbed plate has been erased and remaining
