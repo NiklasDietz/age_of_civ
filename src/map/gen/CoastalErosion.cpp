@@ -17,11 +17,14 @@ void runCoastalErosion(HexGrid& grid) {
     const int32_t width  = grid.width();
     const int32_t height = grid.height();
 
-    // Two CA passes: peel hair-thin tendrils, then peel anything STILL
-    // attached by a bridge. Mountains exempt (locked by orogeny).
-    // First pass kills 1-tile peninsulas and arms; second peels the
-    // 2-tile-wide stubs that get exposed by the first pass.
-    for (int32_t pass = 0; pass < 2; ++pass) {
+    // Single CA pass dropping only true spits: land attached by one
+    // edge (5+ of 6 neighbours water). Mountains exempt (locked by
+    // orogeny). 2026-07-05: was 2 passes at >= 4 water neighbours —
+    // that is a curvature-flow smoother which peeled every cape and
+    // peninsula tip and drove coastline fractal dimension toward 1.0
+    // (and re-created the 1-3-tile crumbs AFTER the island purge had
+    // run, defeating both passes' goals).
+    for (int32_t pass = 0; pass < 1; ++pass) {
         std::vector<int32_t> drown;
         drown.reserve(static_cast<std::size_t>(width * height) / 16);
         for (int32_t row = 0; row < height; ++row) {
@@ -42,7 +45,7 @@ void runCoastalErosion(HexGrid& grid) {
                         ++waterCount;
                     }
                 }
-                if (validCount > 0 && waterCount >= 4) {
+                if (validCount > 0 && waterCount >= 5) {
                     drown.push_back(idx);
                 }
             }

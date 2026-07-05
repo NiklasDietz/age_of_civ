@@ -24,6 +24,7 @@
 #include "aoc/simulation/government/GovernmentComponent.hpp"
 #include "aoc/simulation/victory/VictoryCondition.hpp"
 #include "aoc/simulation/economy/IndustrialRevolution.hpp"
+#include "aoc/map/LandmassMetrics.hpp"
 #include "aoc/map/Pathfinding.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/game/Player.hpp"
@@ -92,6 +93,13 @@ void GameServer::initialize(const GameConfig& config) {
         this->m_aiControllers.emplace_back(player);
     }
 
+    // Minimum landmass size for a capital: small islands survive the
+    // generator's softened purge (>= 4 tiles), but a start needs room
+    // for early expansion. Mirrors HeadlessSimulation start placement.
+    constexpr int32_t MIN_START_LANDMASS_TILES = 12;
+    const std::vector<int32_t> landmassSizes =
+        aoc::map::computeLandmassSizes(this->m_grid);
+
     // Spawn starting city and configure each player via the GameState object model
     for (int32_t p = 0; p < totalPlayers; ++p) {
         PlayerId player = static_cast<PlayerId>(p);
@@ -106,7 +114,9 @@ void GameServer::initialize(const GameConfig& config) {
             int32_t ry = this->m_rng.nextInt(5, config.mapHeight - 5);
             int32_t idx = ry * config.mapWidth + rx;
             if (!aoc::map::isWater(this->m_grid.terrain(idx))
-                && !aoc::map::isImpassable(this->m_grid.terrain(idx))) {
+                && !aoc::map::isImpassable(this->m_grid.terrain(idx))
+                && landmassSizes[static_cast<std::size_t>(idx)]
+                       >= MIN_START_LANDMASS_TILES) {
                 startPos = aoc::hex::offsetToAxial({rx, ry});
                 break;
             }

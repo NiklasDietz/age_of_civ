@@ -17,6 +17,7 @@
 
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
+#include "aoc/map/LandmassMetrics.hpp"
 #include "aoc/map/MapGenerator.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/core/Random.hpp"
@@ -408,6 +409,13 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
         }
     }
 
+    // Minimum landmass size for a capital. Small islands survive the
+    // generator's softened purge (>= 4 tiles), but a start needs room
+    // for early expansion.
+    constexpr int32_t MIN_START_LANDMASS_TILES = 12;
+    const std::vector<int32_t> landmassSizes =
+        aoc::map::computeLandmassSizes(grid);
+
     // Spawn each AI player with a starting city and scout
     for (int32_t p = 0; p < playerCount; ++p) {
         aoc::PlayerId player = static_cast<aoc::PlayerId>(p);
@@ -421,6 +429,10 @@ int runHeadlessSimulation(int32_t maxTurns, int32_t playerCount,
             int32_t idx = ry * mapConfig.width + rx;
             if (aoc::map::isWater(grid.terrain(idx))
                 || aoc::map::isImpassable(grid.terrain(idx))) {
+                continue;
+            }
+            if (landmassSizes[static_cast<std::size_t>(idx)]
+                    < MIN_START_LANDMASS_TILES) {
                 continue;
             }
             aoc::hex::AxialCoord candidate = aoc::hex::offsetToAxial({rx, ry});

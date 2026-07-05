@@ -18,7 +18,11 @@ void runLakePurge(HexGrid& grid, bool cylindricalTopology) {
     const int32_t height = grid.height();
     const bool cylSim    = cylindricalTopology;
 
-    constexpr int32_t MIN_LAKE_SIZE = 60; // tiles smaller than this fill in
+    // 2026-07-05: 60 -> 8. At Standard scale 60 tiles is ~3M km2 —
+    // Caspian-, Great-Lakes- and Baltic-scale inland waters were all
+    // converted to Plains, so no inland sea could ever exist. 8 fills
+    // only pond-scale artifacts and keeps playable inland seas.
+    constexpr int32_t MIN_LAKE_SIZE = 8; // tiles smaller than this fill in
     std::vector<int32_t> lakeId(static_cast<std::size_t>(width * height), -1);
     std::vector<int32_t> lakeQueue;
     lakeQueue.reserve(static_cast<std::size_t>(width * height));

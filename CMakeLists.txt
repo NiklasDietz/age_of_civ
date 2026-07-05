@@ -246,6 +246,7 @@ set(AOC_LIB_SOURCES
 
     # Map
     src/map/HexGrid.cpp
+    src/map/LandmassMetrics.cpp
     src/map/MapGenerator.cpp
     src/map/gen/Biogeography.cpp
     src/map/gen/ClimateBiome.cpp

@@ -1106,11 +1106,21 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // is a percentile-rank map: ClimateBiome.cpp picks ocean / shore / land
     // tiers via Thresholds.cpp on a sorted view of this array, so the
     // absolute scale only needs to be monotonic.
+    // Seed for the sub-grid coastal detail field below. Fixed tag so
+    // the field is stable per world seed and independent of every RNG
+    // stream (pure hash noise -- no draws, no ordering sensitivity).
+    const uint64_t coastSeed = aoc::map::gen::mixSeed(
+        static_cast<uint64_t>(config.seed) ^ 0x434F4153ULL); // "COAS"
     AOC_PARALLEL_FOR_ROWS
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
-            const float nx = static_cast<float>(col) / static_cast<float>(width);
-            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            // Half-cell offset: sample at the hex CENTRE, not its
+            // north-west corner (col/width alone biases every sample
+            // half a hex toward -x/-y).
+            const float nx = (static_cast<float>(col) + 0.5f)
+                / static_cast<float>(width);
+            const float ny = (static_cast<float>(row) + 0.5f)
+                / static_cast<float>(height);
             const aoc::map::gen::MollweideInverseResult mw =
                 aoc::map::gen::projectionInverse(
                     config.projection, nx, ny);
@@ -1167,7 +1177,48 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // their cratonic +500-800 m steady state, so the
                 // physical sea-level cut suffices.
                 elev = zM / 5000.0f;
-                (void)contFracHere;
+                // Sub-grid coastal detail. The 0.5-deg raster cannot
+                // represent coastline relief below ~55 km and bilinear
+                // sampling to hex pitch low-passes even that, so coasts
+                // come out as smooth arcs; real coastlines are fractal
+                // down to metre scale (D ~ 1.1-1.3, Mandelbrot 1967).
+                // Reconstruct the unresolved relief with deterministic
+                // value noise confined to the raster's own vertical
+                // ambiguity band (within 400 m of sea level) and to
+                // crust carrying any continental signal. This is a
+                // stationary seed-derived field -- it fits no ratio
+                // target and decays to zero away from the coast band.
+                // Sampled on the unit sphere: no antimeridian seam.
+                const float coastBand = 1.0f
+                    - std::min(1.0f, std::abs(zM) / 400.0f);
+                if (coastBand > 0.0f && contFracHere >= 0.05f) {
+                    const float latR = mw.coord.latDeg * 0.01745329252f;
+                    const float lonR = mw.coord.lonDeg * 0.01745329252f;
+                    const float px = std::cos(latR) * std::cos(lonR);
+                    const float py = std::cos(latR) * std::sin(lonR);
+                    const float pz = std::sin(latR);
+                    // 4 octaves from ~10 deg base wavelength (above the
+                    // ~2.6-deg hex pitch at Standard width, so detail
+                    // reads as bays/headlands rather than speckle) down
+                    // to ~1.25 deg, amplitude halving per octave.
+                    float detail = 0.0f;
+                    float amp = 1.0f;
+                    float freq = 5.73f; // 1 / (10 deg in radians)
+                    float norm = 0.0f;
+                    for (int32_t o = 0; o < 4; ++o) {
+                        detail += amp * (2.0f * aoc::map::gen::smoothHashNoise3(
+                            px * freq, py * freq, pz * freq,
+                            coastSeed + static_cast<uint64_t>(o)) - 1.0f);
+                        norm += amp;
+                        amp *= 0.5f;
+                        freq *= 2.0f;
+                    }
+                    // +-0.08 unitless = +-400 m at full window: only
+                    // tiles the raster itself puts near sea level can
+                    // flip, i.e. a 1-2 hex coastal ribbon.
+                    elev += (detail / norm) * 0.08f
+                        * aoc::map::gen::smoothstep(coastBand);
+                }
             }
             // Hotspot volcanic islands. Each hotspot is a mantle
             // plume that builds a Hawaiian/Icelandic-scale island
@@ -1221,8 +1272,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // deferred to keep this WP's diff minimal and behaviour-identical.
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
-            const float nx = static_cast<float>(col) / static_cast<float>(width);
-            const float ny = static_cast<float>(row) / static_cast<float>(height);
+            const float nx = (static_cast<float>(col) + 0.5f)
+                / static_cast<float>(width);
+            const float ny = (static_cast<float>(row) + 0.5f)
+                / static_cast<float>(height);
             const aoc::map::gen::MollweideInverseResult mw =
                 aoc::map::gen::projectionInverse(
                     config.projection, nx, ny);
@@ -1613,21 +1666,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
 
     // Erosion pass: connected-component flood fill on land. Components
     // smaller than MIN_ISLAND_SIZE tiles get drowned (converted to
-    // Ocean) — clears single-tile flecks and 2-3-tile crumbs along
-    // continental shelves so coastlines read as proper edges instead
-    // of confetti. Big continents and intentional island chains
-    // (size ≥ threshold) survive.
+    // Ocean) — clears single-tile confetti along continental shelves.
     {
-        // Island purge threshold scales with simulated age. Real ocean
-        // plates carry hotspot island chains that get DRAGGED into
-        // subduction trenches over geological time (Hawaii→Aleutian
-        // recycle). Longer sims drown more small islands. Threshold
-        // grows linearly with totalMy (12 at 1 Gy → 50 at 4 Gy).
-        const int32_t totalMyForIslands = (config.tectonicTotalMy > 0)
-            ? config.tectonicTotalMy
-            : MapGenerator::DEFAULT_TECTONIC_TOTAL_MY;
-        const int32_t MIN_ISLAND_SIZE = std::clamp(
-            12 + totalMyForIslands / 200, 12, 50);
+        // 2026-07-05: fixed at 4 tiles (was clamp(12 + totalMy/200,
+        // 12, 50) = 27 at the 3 Gy default, ~1.4M km2 at Standard
+        // scale — everything below Greenland drowned, no archipelagos
+        // possible and every hotspot island purged). Earth's island
+        // inventory is dominated by small features; 4 keeps 1-3-tile
+        // flecks out while letting Japan/Indonesia-scale groups
+        // survive. Capital placement is guarded separately by a
+        // minimum-landmass check at start-position selection.
+        constexpr int32_t MIN_ISLAND_SIZE = 4;
         std::vector<int32_t> compId(static_cast<std::size_t>(width * height), -1);
         std::vector<int32_t> bfs;
         bfs.reserve(static_cast<std::size_t>(width * height));
