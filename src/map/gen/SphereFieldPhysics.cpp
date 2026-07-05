@@ -2499,11 +2499,66 @@ void stepSpherePhysicsEpoch(SphereField& field,
             const float a = std::fabs(p.angularVelDeg);
             if (a > traceMaxOmegaDeg) traceMaxOmegaDeg = a;
         }
+        // Plate-contiguity diagnostic: connected components per plate
+        // on the raster (4-adjacency, lon wrap, no cross-pole joins).
+        // Real plates are contiguous by definition; fragments here are
+        // mechanism bugs, not geology.
+        std::size_t fragmentedPlates = 0;
+        std::size_t maxComponents = 0;
+        {
+            constexpr int32_t LONC = SphereField::LON_CELLS;
+            constexpr int32_t LATC = SphereField::LAT_CELLS;
+            std::vector<int32_t> comp(SphereField::CELL_COUNT, -1);
+            std::vector<std::size_t> stack;
+            std::vector<int32_t> compsPerPlate(plates.size(), 0);
+            int32_t nextComp = 0;
+            for (std::size_t s = 0; s < SphereField::CELL_COUNT; ++s) {
+                if (comp[s] >= 0) continue;
+                const int16_t pid = field.plateId[s];
+                if (pid < 0) continue;
+                comp[s] = nextComp;
+                stack.clear();
+                stack.push_back(s);
+                while (!stack.empty()) {
+                    const std::size_t c = stack.back();
+                    stack.pop_back();
+                    const int32_t lon = static_cast<int32_t>(c % LONC);
+                    const int32_t lat = static_cast<int32_t>(c / LONC);
+                    const int32_t lonW = (lon == 0) ? LONC - 1 : lon - 1;
+                    const int32_t lonE = (lon == LONC - 1) ? 0 : lon + 1;
+                    const std::size_t nbrs[4] = {
+                        SphereField::cellIndex(lonW, lat),
+                        SphereField::cellIndex(lonE, lat),
+                        (lat > 0) ? SphereField::cellIndex(lon, lat - 1) : c,
+                        (lat < LATC - 1) ? SphereField::cellIndex(lon, lat + 1)
+                                         : c,
+                    };
+                    for (const std::size_t n : nbrs) {
+                        if (n == c) continue;
+                        if (comp[n] >= 0) continue;
+                        if (field.plateId[n] != pid) continue;
+                        comp[n] = nextComp;
+                        stack.push_back(n);
+                    }
+                }
+                if (static_cast<std::size_t>(pid) < compsPerPlate.size()) {
+                    ++compsPerPlate[static_cast<std::size_t>(pid)];
+                }
+                ++nextComp;
+            }
+            for (const int32_t k : compsPerPlate) {
+                if (k > 1) ++fragmentedPlates;
+                if (static_cast<std::size_t>(k) > maxComponents) {
+                    maxComponents = static_cast<std::size_t>(k);
+                }
+            }
+        }
         const float cflCells = (traceMaxOmegaDeg * dtMy) / SphereField::CELL_DEG;
         std::fprintf(stderr,
             "[sphere] dt=%.1fMy rate[%.4f..%.4f] crust=%.1fkm "
             "z=%.0fm zsea=%.0fm mtn=%zu cont(>0.5)=%zu cf_mean=%.3f "
             "plates=%zu boundary=%zu btype(c/d/t)=%zu/%zu/%zu "
+            "frag=%zu maxComp=%zu "
             "maxOmega=%.3fdeg/My cflCells=%.1f\n",
             static_cast<double>(dtMy),
             static_cast<double>(minRate),
@@ -2517,6 +2572,7 @@ void stepSpherePhysicsEpoch(SphereField& field,
             plates.size(),
             boundaryCount,
             btConvergent, btDivergent, btTransform,
+            fragmentedPlates, maxComponents,
             static_cast<double>(traceMaxOmegaDeg),
             static_cast<double>(cflCells));
     }

@@ -369,9 +369,12 @@ int main(int argc, char* argv[]) {
         std::ofstream pf(dumpPlatesPath);
         if (pf.is_open()) {
             pf << "plate_id,cell_count,land_frac,min_col,max_col,"
-                  "min_row,max_row,centroid_col,centroid_row\n";
+                  "min_row,max_row,centroid_col,centroid_row,"
+                  "component_count,largest_comp_frac,bbox_arc_cols\n";
             const int32_t W = grid.width();
             const int32_t H = grid.height();
+            const bool cylGrid =
+                (grid.topology() == aoc::map::MapTopology::Cylindrical);
             std::array<int64_t, 256> cellCount{};
             std::array<int64_t, 256> landCount{};
             std::array<int64_t, 256> sumCol{};
@@ -384,6 +387,13 @@ int main(int argc, char* argv[]) {
                 minCol[i] = W; maxCol[i] = -1;
                 minRow[i] = H; maxRow[i] = -1;
             }
+            // Per-plate column occupancy for the wrap-aware bbox arc:
+            // an antimeridian-straddling plate reports a full-width
+            // min/max box; the minimal covering lon-arc (width minus
+            // the largest empty column gap) is the honest extent.
+            std::vector<std::array<uint8_t, 256>> colUsed(
+                static_cast<std::size_t>(W));
+            for (std::array<uint8_t, 256>& a : colUsed) { a.fill(0u); }
             for (int32_t row = 0; row < H; ++row) {
                 for (int32_t col = 0; col < W; ++col) {
                     const int32_t idx = row * W + col;
@@ -399,6 +409,55 @@ int main(int argc, char* argv[]) {
                     if (col > maxCol[pid]) maxCol[pid] = col;
                     if (row < minRow[pid]) minRow[pid] = row;
                     if (row > maxRow[pid]) maxRow[pid] = row;
+                    colUsed[static_cast<std::size_t>(col)][pid] = 1u;
+                }
+            }
+            // Contiguity: connected components per plate over the hex
+            // adjacency (east-west wrap when cylindrical).
+            std::array<int32_t, 256> compCount{};
+            std::array<int64_t, 256> largestComp{};
+            {
+                std::vector<int32_t> comp(
+                    static_cast<std::size_t>(W * H), -1);
+                std::vector<int32_t> stack;
+                int32_t next = 0;
+                for (int32_t s = 0; s < W * H; ++s) {
+                    if (comp[static_cast<std::size_t>(s)] >= 0) continue;
+                    const uint8_t pid = grid.plateId(s);
+                    if (pid == 0xFFu) continue;
+                    comp[static_cast<std::size_t>(s)] = next;
+                    int64_t size = 0;
+                    stack.clear();
+                    stack.push_back(s);
+                    while (!stack.empty()) {
+                        const int32_t c = stack.back();
+                        stack.pop_back();
+                        ++size;
+                        const aoc::hex::AxialCoord ax =
+                            aoc::hex::offsetToAxial({c % W, c / W});
+                        for (const aoc::hex::AxialCoord& nb
+                                 : aoc::hex::neighbors(ax)) {
+                            aoc::hex::OffsetCoord oc =
+                                aoc::hex::axialToOffset(nb);
+                            if (cylGrid) {
+                                oc.col = ((oc.col % W) + W) % W;
+                            }
+                            if (oc.col < 0 || oc.col >= W
+                                || oc.row < 0 || oc.row >= H) {
+                                continue;
+                            }
+                            const int32_t ni = oc.row * W + oc.col;
+                            if (comp[static_cast<std::size_t>(ni)] >= 0) {
+                                continue;
+                            }
+                            if (grid.plateId(ni) != pid) continue;
+                            comp[static_cast<std::size_t>(ni)] = next;
+                            stack.push_back(ni);
+                        }
+                    }
+                    ++compCount[pid];
+                    if (size > largestComp[pid]) largestComp[pid] = size;
+                    ++next;
                 }
             }
             for (int32_t pid = 0; pid < 256; ++pid) {
@@ -409,10 +468,33 @@ int main(int argc, char* argv[]) {
                                  / static_cast<float>(cellCount[pid]);
                 const float crow = static_cast<float>(sumRow[pid])
                                  / static_cast<float>(cellCount[pid]);
+                // Minimal covering column arc (wrap-aware): W minus
+                // the largest circular run of unused columns. Double
+                // sweep captures a gap crossing the seam; with at
+                // least one used column, runs reset and never reach W.
+                int32_t arcCols = maxCol[pid] - minCol[pid] + 1;
+                if (cylGrid) {
+                    int32_t largestGap = 0;
+                    int32_t run = 0;
+                    for (int32_t k = 0; k < 2 * W; ++k) {
+                        if (colUsed[static_cast<std::size_t>(k % W)][pid]) {
+                            if (run > largestGap) largestGap = run;
+                            run = 0;
+                        } else {
+                            ++run;
+                        }
+                    }
+                    largestGap = std::min(largestGap, W - 1);
+                    arcCols = W - largestGap;
+                }
+                const float largestFrac = static_cast<float>(
+                    largestComp[pid]) / static_cast<float>(cellCount[pid]);
                 pf << pid << ',' << cellCount[pid] << ',' << lf << ','
                    << minCol[pid] << ',' << maxCol[pid] << ','
                    << minRow[pid] << ',' << maxRow[pid] << ','
-                   << ccol << ',' << crow << '\n';
+                   << ccol << ',' << crow << ','
+                   << compCount[pid] << ',' << largestFrac << ','
+                   << arcCols << '\n';
             }
             std::printf("wrote %s (per-plate stats)\n",
                         dumpPlatesPath.c_str());
