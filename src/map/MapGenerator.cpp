@@ -730,7 +730,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // geometries: seeds 100 and 200 produced only 3-5 % land in the
             // 6-seed sweep at numCratons=5, because few cratons + small
             // log-normal samples + few convergent boundaries starved the
-            // accreteToCardinalNeighbours diffusion pass of donor cells.
+            // accreteToNeighbours diffusion pass of donor cells.
             // Real Earth has ~12 stable cratons (Pilbara, Yilgarn, Slave,
             // Kaapvaal, North Atlantic, Siberian, North China, Tarim,
             // Indian, São Francisco, Amazonian, West African; Cawood et

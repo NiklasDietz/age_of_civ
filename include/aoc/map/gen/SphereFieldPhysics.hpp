@@ -252,7 +252,7 @@ void growContinentalFractionAtArcs(SphereField& field, float dtMy);
 ///
 /// Cross-plate diffusion is INTENTIONALLY BLOCKED: spreading across
 /// plate boundaries would short-circuit subduction-driven assembly.
-void accreteToCardinalNeighbours(SphereField& field, float dtMy);
+void accreteToNeighbours(SphereField& field, float dtMy);
 
 /// Phase 1.5: subduction. At convergent boundary cells, the side with
 /// the lower continental fraction (denser oceanic crust) is consumed

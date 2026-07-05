@@ -1,0 +1,302 @@
+{
+  "42": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-age-of-civ/82312deb-679e-42cd-a536-696a84286b7c/scratchpad/phase3b_post/seed42.csv",
+    "sha256": "a344a2b4db617cf0a8d2595b53d82d384dcc713d2ce131a442242bbcf01acbf4",
+    "width": 140,
+    "height": 90,
+    "land_fraction": 0.4159,
+    "n_land_components": 20,
+    "component_bands": {
+      "1-3": 13,
+      "4-30": 3,
+      "31-100": 0,
+      ">100": 4
+    },
+    "largest_components": [
+      3756,
+      836,
+      364,
+      200,
+      24,
+      22,
+      22,
+      2
+    ],
+    "largest_over_median": 3756.0,
+    "coastline_cells": 1226,
+    "coast_perimeter_over_land": 0.234,
+    "coast_box_dimension": 1.209,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.2925,
+        0.1849,
+        0.3172,
+        0.2054
+      ],
+      "axis_aligned_frac": 0.6097,
+      "samples": 1217
+    },
+    "mountains": {
+      "n_components": 77,
+      "n_belts": 34,
+      "belt_axis_bins_0_45_90_135": [
+        8,
+        13,
+        9,
+        4
+      ],
+      "belt_axis_aligned_frac": 0.5,
+      "mean_elongation": 10.33
+    }
+  },
+  "7": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-age-of-civ/82312deb-679e-42cd-a536-696a84286b7c/scratchpad/phase3b_post/seed7.csv",
+    "sha256": "001bbd1ccbd7b1cb1b388cd967679d02888cca3a50a595c13d994fdd0060980e",
+    "width": 140,
+    "height": 90,
+    "land_fraction": 0.1521,
+    "n_land_components": 30,
+    "component_bands": {
+      "1-3": 18,
+      "4-30": 2,
+      "31-100": 3,
+      ">100": 7
+    },
+    "largest_components": [
+      651,
+      266,
+      199,
+      185,
+      166,
+      133,
+      108,
+      83
+    ],
+    "largest_over_median": 651.0,
+    "coastline_cells": 938,
+    "coast_perimeter_over_land": 0.4896,
+    "coast_box_dimension": 1.173,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.3122,
+        0.1862,
+        0.2809,
+        0.2207
+      ],
+      "axis_aligned_frac": 0.5931,
+      "samples": 929
+    },
+    "mountains": {
+      "n_components": 39,
+      "n_belts": 12,
+      "belt_axis_bins_0_45_90_135": [
+        2,
+        3,
+        3,
+        4
+      ],
+      "belt_axis_aligned_frac": 0.4167,
+      "mean_elongation": 15.99
+    }
+  },
+  "100": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-age-of-civ/82312deb-679e-42cd-a536-696a84286b7c/scratchpad/phase3b_post/seed100.csv",
+    "sha256": "29f53021cbd112524e2b0a1ee30796807a992ff7aadc20d4f2dd0ae68c064b5c",
+    "width": 140,
+    "height": 90,
+    "land_fraction": 0.2234,
+    "n_land_components": 32,
+    "component_bands": {
+      "1-3": 17,
+      "4-30": 4,
+      "31-100": 5,
+      ">100": 6
+    },
+    "largest_components": [
+      1201,
+      549,
+      353,
+      145,
+      129,
+      120,
+      53,
+      52
+    ],
+    "largest_over_median": 1201.0,
+    "coastline_cells": 1170,
+    "coast_perimeter_over_land": 0.4156,
+    "coast_box_dimension": 1.225,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.2834,
+        0.201,
+        0.3154,
+        0.2002
+      ],
+      "axis_aligned_frac": 0.5988,
+      "samples": 1154
+    },
+    "mountains": {
+      "n_components": 76,
+      "n_belts": 32,
+      "belt_axis_bins_0_45_90_135": [
+        7,
+        4,
+        13,
+        8
+      ],
+      "belt_axis_aligned_frac": 0.625,
+      "mean_elongation": 10.0
+    }
+  },
+  "200": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-age-of-civ/82312deb-679e-42cd-a536-696a84286b7c/scratchpad/phase3b_post/seed200.csv",
+    "sha256": "b19c79c655b57fc90410c39a80da7c22a2fad0f815db18f41b546c08545253e5",
+    "width": 140,
+    "height": 90,
+    "land_fraction": 0.3521,
+    "n_land_components": 26,
+    "component_bands": {
+      "1-3": 19,
+      "4-30": 1,
+      "31-100": 0,
+      ">100": 6
+    },
+    "largest_components": [
+      1360,
+      1226,
+      831,
+      689,
+      178,
+      111,
+      22,
+      2
+    ],
+    "largest_over_median": 1360.0,
+    "coastline_cells": 1535,
+    "coast_perimeter_over_land": 0.346,
+    "coast_box_dimension": 1.265,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.3036,
+        0.196,
+        0.3201,
+        0.1802
+      ],
+      "axis_aligned_frac": 0.6238,
+      "samples": 1515
+    },
+    "mountains": {
+      "n_components": 58,
+      "n_belts": 29,
+      "belt_axis_bins_0_45_90_135": [
+        6,
+        9,
+        6,
+        8
+      ],
+      "belt_axis_aligned_frac": 0.4138,
+      "mean_elongation": 7.16
+    }
+  },
+  "1234": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-age-of-civ/82312deb-679e-42cd-a536-696a84286b7c/scratchpad/phase3b_post/seed1234.csv",
+    "sha256": "8901def83a9ed5386f34be6e9d86934de7273ac85b99c1b20adeb201897c4c0e",
+    "width": 140,
+    "height": 90,
+    "land_fraction": 0.381,
+    "n_land_components": 17,
+    "component_bands": {
+      "1-3": 13,
+      "4-30": 0,
+      "31-100": 1,
+      ">100": 3
+    },
+    "largest_components": [
+      1914,
+      1767,
+      1076,
+      31,
+      1,
+      1,
+      1,
+      1
+    ],
+    "largest_over_median": 1914.0,
+    "coastline_cells": 1415,
+    "coast_perimeter_over_land": 0.2947,
+    "coast_box_dimension": 1.239,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.3053,
+        0.1919,
+        0.3031,
+        0.1997
+      ],
+      "axis_aligned_frac": 0.6084,
+      "samples": 1402
+    },
+    "mountains": {
+      "n_components": 51,
+      "n_belts": 22,
+      "belt_axis_bins_0_45_90_135": [
+        6,
+        5,
+        7,
+        4
+      ],
+      "belt_axis_aligned_frac": 0.5909,
+      "mean_elongation": 9.72
+    }
+  },
+  "777": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-age-of-civ/82312deb-679e-42cd-a536-696a84286b7c/scratchpad/phase3b_post/seed777.csv",
+    "sha256": "d623d907c5d0e65cc4ba0f28475d864fd3426b68627f86008e42c36d0580835f",
+    "width": 140,
+    "height": 90,
+    "land_fraction": 0.4157,
+    "n_land_components": 15,
+    "component_bands": {
+      "1-3": 11,
+      "4-30": 2,
+      "31-100": 0,
+      ">100": 2
+    },
+    "largest_components": [
+      3290,
+      1888,
+      27,
+      22,
+      1,
+      1,
+      1,
+      1
+    ],
+    "largest_over_median": 3290.0,
+    "coastline_cells": 1367,
+    "coast_perimeter_over_land": 0.261,
+    "coast_box_dimension": 1.229,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.2726,
+        0.197,
+        0.3096,
+        0.2207
+      ],
+      "axis_aligned_frac": 0.5822,
+      "samples": 1350
+    },
+    "mountains": {
+      "n_components": 65,
+      "n_belts": 31,
+      "belt_axis_bins_0_45_90_135": [
+        4,
+        10,
+        8,
+        9
+      ],
+      "belt_axis_aligned_frac": 0.3871,
+      "mean_elongation": 9.53
+    }
+  }
+}

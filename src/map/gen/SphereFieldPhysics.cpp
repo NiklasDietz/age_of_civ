@@ -1275,6 +1275,59 @@ void markBoundaryCells(const SphereField& field,
     }
 }
 
+namespace {
+
+/// True local boundary normal at a boundary cell, in the (east, north)
+/// tangent basis, pointing FROM the self plate TOWARD the neighbour
+/// side. Computed as the negated gradient of the self-plate indicator
+/// over a 5x5 cell window (~1 deg, well below any real orogen arc
+/// radius), with the east offsets scaled by cos(lat) so the gradient
+/// lives in physical space (unweighted lattice offsets rotate normals
+/// poleward at high latitude). Pure function of the plateId raster —
+/// safe inside the OpenMP boundary loop. Returns false when the
+/// gradient is degenerate (symmetric window, thin sliver); the caller
+/// falls back to the cardinal normal, which never degenerates.
+bool boundaryNormalAt(const SphereField& field, int32_t lonIdx,
+                      int32_t latIdx, int16_t selfId,
+                      float& outNx, float& outNy) {
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    constexpr int32_t WIN = 2; // 5x5 window
+    const LatLon centre = SphereField::cellCenter(lonIdx, latIdx);
+    const float cosLat = std::max(
+        0.05f, std::cos(centre.latDeg * 0.01745329252f));
+    float gx = 0.0f;
+    float gy = 0.0f;
+    for (int32_t dy = -WIN; dy <= WIN; ++dy) {
+        const int32_t lat = latIdx + dy;
+        if (lat < 0 || lat >= LAT) continue;
+        for (int32_t dx = -WIN; dx <= WIN; ++dx) {
+            if (dx == 0 && dy == 0) continue;
+            int32_t lon = lonIdx + dx;
+            lon = ((lon % LON) + LON) % LON;
+            const std::size_t nIdx = SphereField::cellIndex(lon, lat);
+            if (field.plateId[nIdx] != selfId) continue;
+            // Physical offset of this self-cell from the centre; its
+            // direction, weighted by 1/r^2, accumulates the indicator
+            // gradient (self-mass pulls the gradient toward itself).
+            const float ex = static_cast<float>(dx) * cosLat;
+            const float ey = static_cast<float>(dy);
+            const float r2 = ex * ex + ey * ey;
+            gx += ex / r2;
+            gy += ey / r2;
+        }
+    }
+    const float mag = std::sqrt(gx * gx + gy * gy);
+    if (mag < 1e-4f) return false;
+    // Gradient points INTO the self plate; the boundary normal points
+    // the other way (self -> neighbour).
+    outNx = -gx / mag;
+    outNy = -gy / mag;
+    return true;
+}
+
+} // namespace
+
 void accumulateClosingRate(SphereField& field,
                            const std::vector<Plate>& plates,
                            const std::vector<uint8_t>& isBoundary) {
@@ -1346,19 +1399,27 @@ void accumulateClosingRate(SphereField& field,
             const float dvE = vA.east  - vB.east;
             const float dvN = vA.north - vB.north;
 
-            // Boundary-normal direction in the local east/north basis,
-            // pointing FROM cell (lonIdx, latIdx) TOWARD the neighbour
-            // cell (nLon, nLat). For purely E/W or N/S neighbours the
-            // normal is one of the four cardinal unit vectors.
-            const float nE_dir = static_cast<float>(nLon - lonIdx);
-            const float nN_dir = static_cast<float>(nLat - latIdx);
-            // Renormalise (handles longitude wrap where lonW=LON-1
-            // produced a -719 difference instead of +1 west).
-            float nx = (nE_dir > 0) ? 1.0f : (nE_dir < 0) ? -1.0f : 0.0f;
-            float ny = (nN_dir > 0) ? 1.0f : (nN_dir < 0) ? -1.0f : 0.0f;
-            // Special-case the wrap: if abs(nE_dir) > 1 then we wrapped.
-            if (std::fabs(nE_dir) > 1.0f) {
-                nx = (nE_dir > 0) ? -1.0f : 1.0f;
+            // Boundary normal in the local east/north basis, pointing
+            // FROM cell (lonIdx, latIdx) TOWARD the neighbour side.
+            // Primary estimate: smoothed-indicator gradient over a 5x5
+            // window (boundaryNormalAt) — resolves oblique boundary
+            // strike instead of snapping to the raster axes, which
+            // aliased every diagonal boundary into 0/90-degree
+            // segments and made mountain belts, trenches, and the
+            // coastlines they shape run axis-aligned.
+            float nx;
+            float ny;
+            if (!boundaryNormalAt(field, lonIdx, latIdx, selfId, nx, ny)) {
+                // Degenerate gradient: fall back to the cardinal
+                // normal toward the picked neighbour (never fails).
+                const float nE_dir = static_cast<float>(nLon - lonIdx);
+                const float nN_dir = static_cast<float>(nLat - latIdx);
+                nx = (nE_dir > 0) ? 1.0f : (nE_dir < 0) ? -1.0f : 0.0f;
+                ny = (nN_dir > 0) ? 1.0f : (nN_dir < 0) ? -1.0f : 0.0f;
+                // Longitude wrap: lonW=LON-1 reads as -719, not +1.
+                if (std::fabs(nE_dir) > 1.0f) {
+                    nx = (nE_dir > 0) ? -1.0f : 1.0f;
+                }
             }
 
             // Closing component (along boundary normal n) and shear
@@ -1374,13 +1435,19 @@ void accumulateClosingRate(SphereField& field,
             // boundary-type histogram (orogen_reference.txt extracts
             // ~25 % transform / 35 % convergent / 40 % divergent on
             // the modern Earth boundary network) calibrates the
-            // 1.5× tie-break: shear must clearly dominate to over-
-            // ride the closing classification, otherwise the cell
-            // counts as convergent or divergent according to sign.
+            // tie-break: shear must clearly dominate to override the
+            // closing classification, otherwise the cell counts as
+            // convergent or divergent according to sign.
+            // 2026-07-05: 1.5 -> 2.4, re-anchored after the gradient
+            // normal replaced the cardinal normal. The old factor was
+            // calibrated against cardinal-aliased decomposition (which
+            // under-reads shear on oblique boundaries); with true
+            // normals the same 1.5 over-classified transform (40 % vs
+            // the ~25 % target on the seed-42 trace).
             const float absClosing = std::fabs(closing);
             const float absShear   = std::fabs(shear);
             uint8_t btype;
-            if (absShear > 1.5f * absClosing) {
+            if (absShear > 2.4f * absClosing) {
                 btype = 3; // Transform
             } else if (closing >= 0.0f) {
                 btype = 1; // Convergent
@@ -1475,13 +1542,33 @@ void growContinentalFractionAtArcs(SphereField& field, float dtMy) {
             // and step ARC_OFFSET_CELLS cells INBOARD into its
             // interior, away from the trench cell. The arc zone
             // sits in the overrider plate, not at the contact.
+            // Inboard direction follows the TRUE boundary normal
+            // (boundaryNormalAt) so arcs parallel curved trenches
+            // instead of stepping only along the raster axes;
+            // cardinal fallback on degenerate gradients.
             const float selfFrac  = field.continentalFraction[idx];
             const float otherFrac = field.continentalFraction[otherIdx];
             int32_t arcLon, arcLat;
             int16_t arcOwnerId;
-            if (selfFrac >= otherFrac) {
-                // self is overrider; step AWAY from other (i.e.
-                // negate the trench->other direction).
+            const bool selfIsOverrider = (selfFrac >= otherFrac);
+            const int32_t ovrLon = selfIsOverrider ? lonIdx : otherLon;
+            const int32_t ovrLat = selfIsOverrider ? latIdx : otherLat;
+            arcOwnerId = selfIsOverrider ? selfId
+                                         : field.plateId[otherIdx];
+            float nrmE, nrmN;
+            if (boundaryNormalAt(field, ovrLon, ovrLat, arcOwnerId,
+                                 nrmE, nrmN)) {
+                // Normal points overrider -> other side; inboard is
+                // the opposite. Convert the physical east component
+                // to lon cells at this latitude.
+                const LatLon oc = SphereField::cellCenter(ovrLon, ovrLat);
+                const float cosL = std::max(
+                    0.05f, std::cos(oc.latDeg * 0.01745329252f));
+                arcLon = ovrLon + static_cast<int32_t>(std::lround(
+                    -nrmE / cosL * static_cast<float>(ARC_OFFSET_CELLS)));
+                arcLat = ovrLat + static_cast<int32_t>(std::lround(
+                    -nrmN * static_cast<float>(ARC_OFFSET_CELLS)));
+            } else if (selfIsOverrider) {
                 const int32_t dLon = otherLon - lonIdx;
                 const int32_t dLat = otherLat - latIdx;
                 int32_t stepLon = (dLon > 0) ? -1 : (dLon < 0) ? 1 : 0;
@@ -1489,9 +1576,7 @@ void growContinentalFractionAtArcs(SphereField& field, float dtMy) {
                 if (std::abs(dLon) > 1) stepLon = -stepLon; // wrap fix
                 arcLon = lonIdx + stepLon * ARC_OFFSET_CELLS;
                 arcLat = latIdx + stepLat * ARC_OFFSET_CELLS;
-                arcOwnerId = selfId;
             } else {
-                // other is overrider; step from other AWAY from self.
                 const int32_t dLon = lonIdx - otherLon;
                 const int32_t dLat = latIdx - otherLat;
                 int32_t stepLon = (dLon > 0) ? -1 : (dLon < 0) ? 1 : 0;
@@ -1499,7 +1584,6 @@ void growContinentalFractionAtArcs(SphereField& field, float dtMy) {
                 if (std::abs(dLon) > 1) stepLon = -stepLon;
                 arcLon = otherLon + stepLon * ARC_OFFSET_CELLS;
                 arcLat = otherLat + stepLat * ARC_OFFSET_CELLS;
-                arcOwnerId = field.plateId[otherIdx];
             }
             // Latitude clamp; longitude wrap.
             if (arcLat < 0)        arcLat = 0;
@@ -1522,7 +1606,7 @@ void growContinentalFractionAtArcs(SphereField& field, float dtMy) {
     }
 }
 
-void accreteToCardinalNeighbours(SphereField& field, float dtMy) {
+void accreteToNeighbours(SphereField& field, float dtMy) {
     // Cawood et al. 2013: accretionary orogens account for ~30 % of
     // present continental area, added predominantly during Phanerozoic
     // (~540 My). That equates to a normalised area growth rate of roughly
@@ -1578,19 +1662,39 @@ void accreteToCardinalNeighbours(SphereField& field, float dtMy) {
             const int32_t lonE = (lonIdx == LON - 1) ? 0       : lonIdx + 1;
             const int32_t latS = (latIdx == 0)       ? 0       : latIdx - 1;
             const int32_t latN = (latIdx == LAT - 1) ? LAT - 1 : latIdx + 1;
-            const std::size_t neighbours[4] = {
-                SphereField::cellIndex(lonW, latIdx),
-                SphereField::cellIndex(lonE, latIdx),
-                SphereField::cellIndex(lonIdx, latS),
-                SphereField::cellIndex(lonIdx, latN),
+            // 8-neighbour isotropic kernel (2026-07-05). The previous
+            // 4-cardinal kernel grew continents as an L-infinity ball:
+            // after ~12 cells of diffusion every growth front flattened
+            // into an axis-aligned wall, which is exactly the straight
+            // meridional/zonal coastline artifact (defect D2 class).
+            // Diagonals weighted 1/sqrt(2) (inverse distance); weights
+            // normalised so the TOTAL donated fraction per donor per
+            // epoch matches the previous 4-cell calibration.
+            struct NeighbourShare {
+                std::size_t idx;
+                float w;
             };
-            for (std::size_t n : neighbours) {
+            constexpr float DIAG_W = 0.70710678f;
+            constexpr float KERNEL_NORM = 4.0f / (4.0f + 4.0f * DIAG_W);
+            const NeighbourShare neighbours[8] = {
+                { SphereField::cellIndex(lonW, latIdx), 1.0f },
+                { SphereField::cellIndex(lonE, latIdx), 1.0f },
+                { SphereField::cellIndex(lonIdx, latS), 1.0f },
+                { SphereField::cellIndex(lonIdx, latN), 1.0f },
+                { SphereField::cellIndex(lonW, latS), DIAG_W },
+                { SphereField::cellIndex(lonE, latS), DIAG_W },
+                { SphereField::cellIndex(lonW, latN), DIAG_W },
+                { SphereField::cellIndex(lonE, latN), DIAG_W },
+            };
+            for (const NeighbourShare& nb : neighbours) {
+                const std::size_t n = nb.idx;
                 // Same-plate gate -- cross-plate diffusion would break
                 // Wilson-cycle assembly (continents cannot leak across
                 // an open ocean basin without colliding first).
                 if (field.plateId[n] != donorId) { continue; }
                 if (nextFrac[n] >= 1.0f) { continue; }
-                const float actual = std::min(dFracMax, 1.0f - nextFrac[n]);
+                const float share = dFracMax * nb.w * KERNEL_NORM;
+                const float actual = std::min(share, 1.0f - nextFrac[n]);
                 nextFrac[n] += actual;
                 // Thicken crust proportionally so diffused cells emerge
                 // above sea level as cf crosses the continental threshold.
@@ -1733,17 +1837,38 @@ void applySubduction(SphereField& field,
                 closingKm / SUBDUCTION_CELL_WIDTH_KM);
             const int32_t epochCap = 60; // cap so a single epoch can't eat a whole basin
             const int32_t cellsToConsume = std::min(maxCells, epochCap);
-            // Inward walk direction: consumed cell -> next cell deeper
-            // into the consumed plate's territory. The override-side
-            // direction reversed gives consumed-side outward; we want
-            // consumed-side inward, i.e. (consumed - override).
-            const int32_t dLon = consumedLon - overrideLon;
-            const int32_t dLat = consumedLat - overrideLat;
-            int32_t stepLon = (dLon > 0) ? 1 : (dLon < 0) ? -1 : 0;
-            int32_t stepLat = (dLat > 0) ? 1 : (dLat < 0) ? -1 : 0;
-            // Longitude wrap: if the difference > 1 in absolute value we
-            // wrapped around the antimeridian; reverse the inward step.
-            if (std::abs(dLon) > 1) stepLon = -stepLon;
+            // Inward walk direction: consumed cell -> deeper into the
+            // consumed plate's territory, along the TRUE boundary
+            // normal (boundaryNormalAt at the consumed cell, negated:
+            // the normal points consumed -> overrider side there).
+            // Walking the true direction cuts trenches along the
+            // actual convergence azimuth instead of raster-axis
+            // staircases. Cardinal fallback on degenerate gradients.
+            float dirE, dirN; // unit vector, physical (east, north)
+            {
+                float bnE, bnN;
+                if (boundaryNormalAt(field, consumedLon, consumedLat,
+                                     consumedSideId, bnE, bnN)) {
+                    dirE = -bnE;
+                    dirN = -bnN;
+                } else {
+                    const int32_t dLon = consumedLon - overrideLon;
+                    const int32_t dLat = consumedLat - overrideLat;
+                    float sLon = (dLon > 0) ? 1.0f : (dLon < 0) ? -1.0f : 0.0f;
+                    const float sLat = (dLat > 0) ? 1.0f : (dLat < 0) ? -1.0f : 0.0f;
+                    // Longitude wrap: |diff| > 1 means we crossed the
+                    // antimeridian; reverse the inward step.
+                    if (std::abs(dLon) > 1) sLon = -sLon;
+                    dirE = sLon;
+                    dirN = sLat;
+                }
+            }
+            // DDA over cells: continuous position advanced so the
+            // dominant axis moves exactly one cell per step (always
+            // progresses); east component converted to lon cells at
+            // the current latitude.
+            float posLon = static_cast<float>(consumedLon);
+            float posLat = static_cast<float>(consumedLat);
             int32_t curLon = consumedLon;
             int32_t curLat = consumedLat;
             for (int32_t step = 0; step < cellsToConsume; ++step) {
@@ -1759,11 +1884,27 @@ void applySubduction(SphereField& field,
                 field.continentalFraction[curIdx] = 0.0f;
                 field.crustAgeMy[curIdx] = 0.0f;
                 // Advance one cell deeper into consumed-plate territory.
-                curLon += stepLon;
-                curLat += stepLat;
+                const LatLon cc = SphereField::cellCenter(curLon, curLat);
+                const float cosL = std::max(
+                    0.05f, std::cos(cc.latDeg * 0.01745329252f));
+                float dLonCells = dirE / cosL;
+                float dLatCells = dirN;
+                const float norm = std::max(std::fabs(dLonCells),
+                                            std::fabs(dLatCells));
+                if (norm < 1e-6f) break;
+                posLon += dLonCells / norm;
+                posLat += dLatCells / norm;
+                // Wrap the continuous longitude, then derive the cell.
+                if (posLon < -0.5f) {
+                    posLon += static_cast<float>(LON);
+                } else if (posLon >= static_cast<float>(LON) - 0.5f) {
+                    posLon -= static_cast<float>(LON);
+                }
+                curLon = static_cast<int32_t>(std::lround(posLon));
+                curLat = static_cast<int32_t>(std::lround(posLat));
                 if (curLat < 0 || curLat >= LAT) break;
-                if (curLon < 0)        curLon += LON;
-                if (curLon >= LON)     curLon -= LON;
+                if (curLon < 0)    curLon += LON;
+                if (curLon >= LON) curLon -= LON;
             }
         }
     }
@@ -1955,7 +2096,7 @@ void stepSpherePhysicsEpoch(SphereField& field,
     // band. Runs BEFORE subduction so the diffusion frontier is
     // exposed to subduction's consumption pass in the same epoch and
     // cf stays in dynamic equilibrium between growth and destruction.
-    accreteToCardinalNeighbours(field, dtMy);
+    accreteToNeighbours(field, dtMy);
     applySubduction(field, plates, dtMy);
     // Ridge accretion: extrude fresh oceanic basalt on already-oceanic
     // cells whose plates are pulling apart. The continental-fraction
@@ -1992,6 +2133,10 @@ void stepSpherePhysicsEpoch(SphereField& field,
         std::size_t mountainCells = 0;
         std::size_t boundaryCount = 0;
         std::size_t continentalCells = 0;
+        // Per-boundary-type counts for the Muller 2022 histogram check
+        // (~35 % convergent / 40 % divergent / 25 % transform on the
+        // modern Earth boundary network).
+        std::size_t btConvergent = 0, btDivergent = 0, btTransform = 0;
         double sumContFrac = 0.0;
         for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
             const float r = field.convergenceRateRadPerMy[i];
@@ -2001,6 +2146,12 @@ void stepSpherePhysicsEpoch(SphereField& field,
             if (r > maxRate)  maxRate  = r;
             if (r < minRate)  minRate  = r;
             if (boundaryScratch[i]) ++boundaryCount;
+            switch (field.boundaryType[i]) {
+                case 1u: ++btConvergent; break;
+                case 2u: ++btDivergent;  break;
+                case 3u: ++btTransform;  break;
+                default: break;
+            }
             if (h > maxCrust) maxCrust = h;
             if (z > maxZ)     maxZ     = z;
             if (z > 4000.0f) ++mountainCells;
@@ -2023,7 +2174,7 @@ void stepSpherePhysicsEpoch(SphereField& field,
         std::fprintf(stderr,
             "[sphere] dt=%.1fMy rate[%.4f..%.4f] crust=%.1fkm "
             "z=%.0fm mtn=%zu cont(>0.5)=%zu cf_mean=%.3f "
-            "plates=%zu boundary=%zu "
+            "plates=%zu boundary=%zu btype(c/d/t)=%zu/%zu/%zu "
             "maxOmega=%.3fdeg/My cflCells=%.1f\n",
             static_cast<double>(dtMy),
             static_cast<double>(minRate),
@@ -2035,6 +2186,7 @@ void stepSpherePhysicsEpoch(SphereField& field,
             meanContFrac,
             plates.size(),
             boundaryCount,
+            btConvergent, btDivergent, btTransform,
             static_cast<double>(traceMaxOmegaDeg),
             static_cast<double>(cflCells));
     }
