@@ -81,6 +81,13 @@ struct SphereField {
     // Downstream passes (subduction / accretion / thicken / Wilson)
     // gate on this field instead of inferring from the signed rate.
     std::vector<uint8_t> boundaryType;
+    // Continental-suture contact clock, in My. Accumulates while a
+    // continental cell (cf > 0.5) sits at a CONVERGENT boundary
+    // against a different plate's continental cell; resets to zero
+    // when the contact ends or the crust is recycled. Drives raster
+    // docking: plates weld only after sustained cont-cont suturing
+    // (India-Asia style), never on centroid proximity.
+    std::vector<float>   sutureContactMy;
 
     // Sea level in metres above the mantle datum, resolved each epoch
     // by solveSeaLevelFixedVolume: the level at which the world's

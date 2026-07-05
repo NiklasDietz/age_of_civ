@@ -490,7 +490,7 @@ void runClimateBiomePass(HexGrid& grid,
                     if (pid != 0xFFu
                         && pid < plateAge.size()
                         && pid < plateLandFrac.size()
-                        && plateAge[pid]      > 150.0f
+                        && plateAge[pid]      > 1500.0f // cratonic mean age, My (2026-07-05)
                         && plateLandFrac[pid] >   0.40f) {
                         const float n = fractalNoise(nx * 4.0f,
                             ny * 4.0f + 11.7f, 4, 2.0f, 0.5f, hillRng);

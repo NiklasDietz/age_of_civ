@@ -36,7 +36,7 @@ void runBiogeographicRealms(HexGrid& grid) {
         if (pid == 0xFFu || pid >= mergesAbsorbed.size()) { continue; }
         if (pid >= crustAge.size() || pid >= landFrac.size()) { continue; }
         if (mergesAbsorbed[pid] == 0
-            && crustAge[pid] > 60.0f
+            && crustAge[pid] > 800.0f // mean crustAgeMy (2026-07-05: was epoch units, zero-fed)
             && landFrac[pid] > 0.40f) {
             isoRealm[static_cast<std::size_t>(i)] = 1;
         }

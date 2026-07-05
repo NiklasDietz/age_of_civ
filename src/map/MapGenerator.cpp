@@ -252,6 +252,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // extracted post-sim / elevation passes can construct it directly.
     using Plate = aoc::map::gen::Plate;
     std::vector<Plate> plates;
+    // Raster-derived per-plate metadata, filled at the end of the
+    // tectonic block (sphereField is scoped there) and persisted to
+    // the HexGrid after it.
+    std::vector<float> rasterLandFracs;
+    std::vector<float> rasterCrustAges;
     struct Hotspot {
         float cx;
         float cy;
@@ -1040,74 +1045,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 }
             }
 
-            // Plate-pair interactions for this epoch:
-            //  - Very close pairs of land plates collide → fuse (drop
-            //    the second, transfer its mass into the first).
-            //  - Pairs of plates may rift apart at random with low
-            //    probability per epoch, modelling a passive divergent
-            //    boundary that opens a new ocean.
-            // Stress integration handles the per-tile elevation effect
-            // — these structural events only change which plates are
-            // around in subsequent epochs.
-            // Continental collision (fusion). Two land plates fuse when
-            //   1. Centres are within MERGE_DIST_RAD on the sphere
-            //      (haversine distance — replaces the legacy Euclidean
-            //      Mollweide distance which was distorted at high
-            //      latitude and across the antimeridian).
-            //   2. Both plates carry > 40 % continental land fraction.
-            //
-            // CONTINENTAL COLLISION DYNAMICS (multi-stage):
-            //   1. Approach — plates close from afar at full velocity.
-            //   2. CONTACT: crust starts deforming. Mountain orogeny
-            //      accumulates via the convergent-stress code below.
-            //      Plates keep identities until SUTURING.
-            //   3. SUTURING (d < MERGE_DIST): collision energy mostly
-            //      dissipated, plates have welded along the boundary
-            //      → fuse atomically via mergePlatesBatch.
-            //
-            // Real-world: India-Eurasia has been actively colliding for
-            // ~50 My, building Himalayas. Plates are still moving
-            // relative to each other (~5 cm/yr) — they aren't yet fully
-            // merged. Our simulation mirrors this: long collision
-            // phase, then merge.
-            //
-            // MERGE_DIST_RAD = 0.22 radians ≈ 12.6° (~1400 km on the
-            // sphere). Calibrated to the legacy Mollweide threshold
-            // (0.07 normalised units across a Mollweide span of
-            // sqrt(2)/π = 0.45 width unit ≈ 12-13° at the equator
-            // depending on latitude — the haversine equivalent at the
-            // equator equals the Mollweide value times π/2 ≈ 1.57x
-            // because Mollweide x compresses east-west by 2/π).
-            constexpr float MERGE_DIST_RAD = 0.22f;
-            std::vector<std::pair<std::size_t, std::size_t>> mergePairs;
-            for (std::size_t a = 0; a < plates.size(); ++a) {
-                if (plates[a].landFraction <= 0.40f) continue;
-                for (std::size_t b = a + 1; b < plates.size(); ++b) {
-                    if (plates[b].landFraction <= 0.40f) continue;
-                    const float d = aoc::map::gen::haversineRadians(
-                        aoc::map::gen::LatLon{plates[a].latDeg, plates[a].lonDeg},
-                        aoc::map::gen::LatLon{plates[b].latDeg, plates[b].lonDeg});
-                    if (d < MERGE_DIST_RAD) {
-                        mergePairs.emplace_back(a, b);
-                    }
-                }
-            }
-            if (!mergePairs.empty()) {
-                // Single deferred sweep across field.plateId — replaces
-                // the previous N-pair sequential mergePlates loop where
-                // each call performed its own full grid sweep.
-                aoc::map::gen::mergePlatesBatch(
-                    sphereField, plates, mergePairs);
-                // Re-project Mollweide cache for survivors (physics
-                // does not own the projection layer).
-                for (Plate& p : plates) {
-                    const aoc::map::gen::MollweidePoint mw =
-                        aoc::map::gen::mollweideForward(
-                            aoc::map::gen::LatLon{p.latDeg, p.lonDeg});
-                    p.cx = mw.mapX;
-                    p.cy = mw.mapY;
-                }
-            }
+            // Continental docking now lives on the raster
+            // (applyContinentalDocking inside stepSpherePhysicsEpoch):
+            // plates weld after sustained cont-cont convergent suture
+            // contact, not when 2D centroids drift near each other
+            // while carrying an init-time random landFraction flag.
             // Hotspot drift. Real plumes drift ~1 cm/yr (Hawaiian-Emperor
             // bend at 47 Mya). Tiny rotation about map centre per epoch
             // curves trails subtly over long sims.
@@ -1138,6 +1080,38 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // Hand the SphereField surface-elevation snapshot to the
         // HexGrid for the renderer/save path.
         grid.setSphereFieldElevationSnapshot(sphereField.surfaceElevationM);
+        // Raster-derived per-plate metadata (consumed by the persist
+        // block after this scope): continental cell share and mean
+        // crust age per plate.
+        rasterLandFracs.assign(plates.size(), 0.0f);
+        rasterCrustAges.assign(plates.size(), 0.0f);
+        {
+            std::vector<int64_t> cellCount(plates.size(), 0);
+            std::vector<int64_t> contCount(plates.size(), 0);
+            std::vector<double>  ageSum(plates.size(), 0.0);
+            for (std::size_t i = 0;
+                 i < aoc::map::gen::SphereField::CELL_COUNT; ++i) {
+                const int16_t pid = sphereField.plateId[i];
+                if (pid < 0
+                    || static_cast<std::size_t>(pid) >= plates.size()) {
+                    continue;
+                }
+                const std::size_t p = static_cast<std::size_t>(pid);
+                ++cellCount[p];
+                if (sphereField.continentalFraction[i] > 0.5f) {
+                    ++contCount[p];
+                }
+                ageSum[p] += static_cast<double>(sphereField.crustAgeMy[i]);
+            }
+            for (std::size_t p = 0; p < plates.size(); ++p) {
+                if (cellCount[p] > 0) {
+                    rasterLandFracs[p] = static_cast<float>(contCount[p])
+                        / static_cast<float>(cellCount[p]);
+                    rasterCrustAges[p] = static_cast<float>(
+                        ageSum[p] / static_cast<double>(cellCount[p]));
+                }
+            }
+        }
 
         // Per-hex-tile orogeny lookup. NO Voronoi: tile (col, row) →
         // Mollweide-inverse → lat/lon → SphereField peakSample for
@@ -1382,29 +1356,38 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             hsCopy.emplace_back(h.cx, h.cy);
         }
         grid.setHotspots(std::move(hsCopy));
-        // 2026-05-06 cleanup: dead setter calls (LatLon/Weight/
-        // EulerPole/AngularVelDeg/Rot/Polygons/PolygonEdgeTypes/
-        // Setters consumed by IceAndRock/Biogeography/EarthSystem/
-        // ClimateBiome via the getter API.
+        // Per-plate metadata for the downstream realism passes
+        // (IceAndRock / Biogeography / EarthSystem / ClimateBiome via
+        // the getter API). 2026-07-05: derived from the evolved RASTER
+        // instead of zero-fills -- these consumers had been silently
+        // dead since the sphere rewrite. landFraction = continental
+        // cell share of the plate's raster footprint; crustAge = mean
+        // crustAgeMy of its cells; mergesAbsorbed = docking history;
+        // motions = Euler tangent velocity at the centroid (renderer
+        // arrows); isPolar = |centroid lat| > 66.
         std::vector<std::pair<float, float>> motions;
         std::vector<std::pair<float, float>> centers;
-        std::vector<float>                   landFracs;
-        std::vector<float>                   crustAges;
+        std::vector<float> landFracs = rasterLandFracs;
+        std::vector<float> crustAges = rasterCrustAges;
+        landFracs.resize(plates.size(), 0.0f);
+        crustAges.resize(plates.size(), 0.0f);
         std::vector<int32_t>                 mergesAbsorbed;
         std::vector<uint8_t>                 isPolar;
         motions.reserve(plates.size());
         centers.reserve(plates.size());
-        landFracs.reserve(plates.size());
-        crustAges.reserve(plates.size());
         mergesAbsorbed.reserve(plates.size());
         isPolar.reserve(plates.size());
         for (const Plate& p : plates) {
-            motions.emplace_back(0.0f, 0.0f);
+            const aoc::map::gen::TangentVelocity v =
+                aoc::map::gen::eulerVelocityAt(
+                    aoc::map::gen::LatLon{p.latDeg, p.lonDeg},
+                    aoc::map::gen::LatLon{p.eulerPoleLatDeg,
+                                          p.eulerPoleLonDeg},
+                    p.angularVelDeg);
+            motions.emplace_back(v.east, v.north);
             centers.emplace_back(p.cx, p.cy);
-            landFracs.push_back(p.landFraction);
-            crustAges.push_back(0.0f);
-            mergesAbsorbed.push_back(0);
-            isPolar.push_back(0u);
+            mergesAbsorbed.push_back(p.mergesAbsorbed);
+            isPolar.push_back(std::fabs(p.latDeg) > 66.0f ? 1u : 0u);
         }
         grid.setPlateMotions(std::move(motions));
         grid.setPlateCenters(std::move(centers));

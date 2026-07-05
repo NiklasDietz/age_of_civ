@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
+#include <map>
 #include <utility>
 
 namespace aoc::map::gen {
@@ -712,6 +713,7 @@ int32_t applyWilsonRifting(SphereField& field,
                     PhysicsConstants::initialOceanicThicknessKm;
                 field.continentalFraction[cell] = 0.0f;
                 field.crustAgeMy[cell] = 0.0f;
+                field.sutureContactMy[cell] = 0.0f;
             }
         }
         ++newPlates;
@@ -855,6 +857,7 @@ void mergePlatesBatch(SphereField& field,
         if (r == i) continue;
         plates[r].landFraction = std::max(plates[r].landFraction,
                                           plates[i].landFraction);
+        plates[r].mergesAbsorbed += 1 + plates[i].mergesAbsorbed;
     }
 
     // Pass 2: build remap from old -> new index, doing the compaction
@@ -1030,6 +1033,7 @@ void advectPlateOwnership(SphereField& field,
     std::vector<float>   newAge(N, 0.0f);
     std::vector<float>   newSurface(N, 0.0f);
     std::vector<float>   newThermal(N, 0.0f);
+    std::vector<float>   newSuture(N, 0.0f);
     // Conservation ledger: which source each dest copied from, and how
     // many dests claimed each source (see conservation sweep below).
     std::vector<std::size_t> srcOf(N, SIZE_MAX);
@@ -1089,6 +1093,7 @@ void advectPlateOwnership(SphereField& field,
                     newAge[destIdx]      = field.crustAgeMy[depIdx];
                     newSurface[destIdx]  = field.surfaceElevationM[depIdx];
                     newThermal[destIdx]  = field.thermalAgeMy[depIdx];
+                    newSuture[destIdx]   = field.sutureContactMy[depIdx];
                     srcOf[destIdx] = depIdx;
                     ++srcClaims[depIdx];
                     continue;
@@ -1191,6 +1196,7 @@ void advectPlateOwnership(SphereField& field,
                 newAge[idx]      = field.crustAgeMy[bestSrc];
                 newSurface[idx]  = field.surfaceElevationM[bestSrc];
                 newThermal[idx]  = field.thermalAgeMy[bestSrc];
+                newSuture[idx]   = field.sutureContactMy[bestSrc];
                 srcOf[idx] = bestSrc;
                 ++srcClaims[bestSrc];
                 ++pass2Claim;
@@ -1277,6 +1283,7 @@ void advectPlateOwnership(SphereField& field,
                     newAge[idx]      = field.crustAgeMy[idx];
                     newSurface[idx]  = field.surfaceElevationM[idx];
                     newThermal[idx]  = field.thermalAgeMy[idx];
+                    newSuture[idx]   = field.sutureContactMy[idx];
                 } else {
                     newCrust[idx]    = PhysicsConstants::initialOceanicThicknessKm;
                     newContFrac[idx] = 0.0f;
@@ -1322,6 +1329,7 @@ void advectPlateOwnership(SphereField& field,
     field.crustAgeMy          = std::move(newAge);
     field.surfaceElevationM   = std::move(newSurface);
     field.thermalAgeMy        = std::move(newThermal);
+    field.sutureContactMy     = std::move(newSuture);
 }
 
 void markBoundaryCells(const SphereField& field,
@@ -1992,6 +2000,7 @@ void applySubduction(SphereField& field,
                     PhysicsConstants::initialOceanicThicknessKm;
                 field.continentalFraction[curIdx] = 0.0f;
                 field.crustAgeMy[curIdx] = 0.0f;
+                field.sutureContactMy[curIdx] = 0.0f;
                 // Advance one cell deeper into consumed-plate territory.
                 const LatLon cc = SphereField::cellCenter(curLon, curLat);
                 const float cosL = std::max(
@@ -2016,6 +2025,96 @@ void applySubduction(SphereField& field,
                 if (curLon >= LON) curLon -= LON;
             }
         }
+    }
+}
+
+void applyContinentalDocking(SphereField& field,
+                             std::vector<Plate>& plates,
+                             float dtMy) {
+    // Continental docking on the raster (2026-07-05; replaces the
+    // centroid-distance merge that gated on an init-time RANDOM
+    // landFraction). Two plates weld only after SUSTAINED
+    // continent-continent convergent contact along a real suture
+    // (India-Asia: ~50 My of collision before effective fusion).
+    //
+    // Per-cell `sutureContactMy` accumulates while a continental cell
+    // (cf > 0.5) sits at a convergent boundary against a different
+    // plate's continental cell, and resets when the contact ends --
+    // per-cell state survives plate-list compaction remaps by
+    // construction (a per-pair map keyed on plate ids would be
+    // invalidated every epoch). Fresh Wilson-rift children cannot
+    // re-dock spuriously: their mutual boundary is the carved oceanic
+    // seam (cf = 0), which never counts as suture contact.
+    // Gates tuned against the failure mode where craton nuclei that
+    // straddle initial plate boundaries read as instant sutures and
+    // weld the world into 4-6 plates within three epochs: docking
+    // needs an ACTIVE collision (finite closing rate ~ > 1.3 cm/yr),
+    // sustained for ~250 My (India-Asia: ~50 My and still welding;
+    // full cratonisation of a suture takes hundreds of My), along a
+    // continental-collision-scale front (~800 km).
+    constexpr float DOCKING_CONTACT_MY   = 250.0f;
+    constexpr float DOCKING_MIN_RATE     = 0.002f; // rad/My
+    constexpr int32_t DOCKING_MIN_CELLS  = 16;
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    if (plates.empty()) return;
+    // Ordered pair map: deterministic iteration feeds mergePlatesBatch
+    // in sorted key order (union-find root selection is pair-order
+    // dependent -- commit 61384bb precedent).
+    std::map<std::pair<int16_t, int16_t>, int32_t> ripeSuture;
+    for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+        for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
+            const std::size_t idx = SphereField::cellIndex(lonIdx, latIdx);
+            const int16_t selfId = field.plateId[idx];
+            bool inContact = false;
+            int16_t otherId = -1;
+            if (selfId >= 0
+                && field.boundaryType[idx] == 1u
+                && field.convergenceRateRadPerMy[idx] > DOCKING_MIN_RATE
+                && field.continentalFraction[idx] > 0.5f) {
+                const int32_t lonW = (lonIdx == 0)       ? LON - 1 : lonIdx - 1;
+                const int32_t lonE = (lonIdx == LON - 1) ? 0       : lonIdx + 1;
+                const int32_t latS = (latIdx == 0)       ? 0       : latIdx - 1;
+                const int32_t latN = (latIdx == LAT - 1) ? LAT - 1 : latIdx + 1;
+                const std::size_t nbrs[4] = {
+                    SphereField::cellIndex(lonW, latIdx),
+                    SphereField::cellIndex(lonE, latIdx),
+                    SphereField::cellIndex(lonIdx, latS),
+                    SphereField::cellIndex(lonIdx, latN),
+                };
+                for (const std::size_t n : nbrs) {
+                    const int16_t nPid = field.plateId[n];
+                    if (nPid >= 0 && nPid != selfId
+                        && field.continentalFraction[n] > 0.5f) {
+                        inContact = true;
+                        otherId = nPid;
+                        break;
+                    }
+                }
+            }
+            if (!inContact) {
+                field.sutureContactMy[idx] = 0.0f;
+                continue;
+            }
+            field.sutureContactMy[idx] += dtMy;
+            if (field.sutureContactMy[idx] >= DOCKING_CONTACT_MY) {
+                const std::pair<int16_t, int16_t> key = {
+                    std::min(selfId, otherId), std::max(selfId, otherId)};
+                ++ripeSuture[key];
+            }
+        }
+    }
+    std::vector<std::pair<std::size_t, std::size_t>> mergePairs;
+    for (const std::pair<const std::pair<int16_t, int16_t>, int32_t>& e
+             : ripeSuture) {
+        if (e.second >= DOCKING_MIN_CELLS) {
+            mergePairs.emplace_back(
+                static_cast<std::size_t>(e.first.first),
+                static_cast<std::size_t>(e.first.second));
+        }
+    }
+    if (!mergePairs.empty()) {
+        mergePlatesBatch(field, plates, mergePairs);
     }
 }
 
@@ -2337,9 +2436,7 @@ void stepSpherePhysicsEpoch(SphereField& field,
     // stretched stale crust behind drifting plates with no mid-ocean-
     // ridge spreading record (Atlantic age gradient never appears).
     accreteAtDivergentBoundary(field, dtMy);
-    // No full plate-pair fusion ("continental docking") at the
-    // raster level here — `mergePlates` (called from MapGenerator on
-    // 2D centroid contact) does that atomically.
+    applyContinentalDocking(field, plates, dtMy);
     applySlabPullFeedback(field, plates, dtMy);
     applyWilsonRifting(field, plates, rngState, dtMy);
     recomputeIsostaticElevationOnRaster(field);

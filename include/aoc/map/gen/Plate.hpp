@@ -28,6 +28,11 @@ struct Plate {
     float cx  = 0.0f;
     float cy  = 0.0f;
     float landFraction = 0.0f;
+    // Number of plates this plate has absorbed via continental
+    // docking (transitively). Persisted per-plate to the HexGrid for
+    // the suture-hill pass (old collision zones -> Urals/Appalachian
+    // remnant hill belts).
+    int32_t mergesAbsorbed = 0;
 };
 
 } // namespace aoc::map::gen

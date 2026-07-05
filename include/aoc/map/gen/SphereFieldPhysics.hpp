@@ -271,6 +271,14 @@ void applySubduction(SphereField& field,
                      const std::vector<Plate>& plates,
                      float dtMy);
 
+/// Continental docking: accumulate the per-cell suture-contact clock
+/// and weld plate pairs whose cont-cont convergent suture has been in
+/// sustained contact (>= 120 My over >= 8 cells). Replaces the legacy
+/// centroid-distance merge.
+void applyContinentalDocking(SphereField& field,
+                             std::vector<Plate>& plates,
+                             float dtMy);
+
 /// Phase 1.6: Airy isostasy on the raster. Surface elevation is derived
 /// from `crustThicknessKm` and `continentalFraction` against the mantle
 /// datum. This pass is pure -- state (h, c) is not modified.
