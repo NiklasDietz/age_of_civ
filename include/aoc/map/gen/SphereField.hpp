@@ -119,6 +119,15 @@ struct SphereField {
     [[nodiscard]] float peakSample(
         const std::vector<float>& field, float latDeg, float lonDeg,
         int32_t halfSearchCells) const noexcept;
+
+    /// Most frequent nonzero boundaryType over the same footprint
+    /// window as peakSample, tie-broken by lowest type id (convergent
+    /// wins). Boundary cells form 1-cell lines on the raster; a point
+    /// lookup at the hex centre misses most of them, so hex-tile
+    /// boundary classification must aggregate over the footprint.
+    /// Returns 0 when no boundary cell lies inside the window.
+    [[nodiscard]] uint8_t boundaryTypeMode(
+        float latDeg, float lonDeg, int32_t halfSearchCells) const noexcept;
 };
 
 } // namespace aoc::map::gen

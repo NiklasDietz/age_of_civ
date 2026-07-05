@@ -51,10 +51,6 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
     std::vector<uint8_t>& lakeFlag   = out.lakeFlag;
     std::vector<uint8_t>& upwelling  = out.upwelling;
 
-    const auto& mots = grid.plateMotions();
-    const auto& cens = grid.plateCenters();
-    const auto& lfrs = grid.plateLandFrac();
-
     // ---- LAKES (positive generation) ----
     for (int32_t i = 0; i < totalT; ++i) {
         const TerrainType t = grid.terrain(i);
@@ -94,6 +90,15 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
             }
         }
     }
+    // Arc volcanism: land tile within reach of a convergent plate
+    // boundary (slab dehydration melts the mantle wedge above the
+    // subducting slab; the arc sits ~100-200 km inboard of the
+    // trench). 2026-07-05: classified from boundaryTypeTile -- the
+    // previous per-plate centroid/motion math read zero-filled
+    // vectors, so volcanism level 1 could never fire. Known accepted
+    // over-mark: continent-continent collision fronts also read
+    // convergent (real Tibet has no arc volcanism); refine with a
+    // crust-type tile when plate metadata revives (phase 7).
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
             const int32_t idx = row * width + col;
@@ -101,41 +106,17 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
                 || grid.terrain(idx) == TerrainType::ShallowWater) {
                 continue;
             }
-            const uint8_t myPid = grid.plateId(idx);
-            if (myPid == 0xFFu || myPid >= mots.size()) { continue; }
-            if (myPid >= lfrs.size() || lfrs[myPid] < 0.40f) { continue; }
-            bool isArc = false;
+            bool isArc = (grid.boundaryTypeTile(idx) == 1u);
             for (int32_t d = 0; d < 6 && !isArc; ++d) {
-                int32_t cur = idx;
                 int32_t cc = col, rr = row;
                 for (int32_t step = 0; step < 4 && !isArc; ++step) {
                     int32_t nIdx;
                     if (!nb(cc, rr, d, nIdx)) { break; }
-                    cur = nIdx;
                     cc = nIdx % width;
                     rr = nIdx / width;
-                    const uint8_t nPid = grid.plateId(cur);
-                    if (nPid == 0xFFu || nPid == myPid) { continue; }
-                    if (nPid >= mots.size()
-                        || nPid >= lfrs.size()) { continue; }
-                    if (lfrs[nPid] >= 0.40f) { continue; }
-                    float bnx = cens[nPid].first  - cens[myPid].first;
-                    float bny = cens[nPid].second - cens[myPid].second;
-                    if (cylSim) {
-                        if (bnx >  0.5f) { bnx -= 1.0f; }
-                        if (bnx < -0.5f) { bnx += 1.0f; }
+                    if (grid.boundaryTypeTile(nIdx) == 1u) {
+                        isArc = true;
                     }
-                    // Cheap zero-vector guard in squared-magnitude (no
-                    // sqrt). Threshold 1e-8 == (1e-4)^2.
-                    const float bnLen2 = bnx * bnx + bny * bny;
-                    if (bnLen2 < 1e-8f) { break; }
-                    const float bnLen = std::sqrt(bnLen2);
-                    bnx /= bnLen; bny /= bnLen;
-                    const float relVx = mots[myPid].first - mots[nPid].first;
-                    const float relVy = mots[myPid].second - mots[nPid].second;
-                    const float closing = relVx * bnx + relVy * bny;
-                    if (closing > 0.04f) { isArc = true; }
-                    break;
                 }
             }
             if (isArc) {
@@ -147,41 +128,30 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
     }
 
     // ---- SEISMIC HAZARD ----
+    // Graded by the boundary type under/next to the tile: convergent
+    // (megathrust) worst, divergent/transform intermediate, plain
+    // differing-plate contact mild. 2026-07-05: from boundaryTypeTile
+    // (the old centroid/motion discrimination was zero-fed and
+    // degenerated to a uniform base level).
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
             const int32_t idx = row * width + col;
             const uint8_t myPid = grid.plateId(idx);
-            if (myPid == 0xFFu || myPid >= mots.size()) { continue; }
+            if (myPid == 0xFFu) { continue; }
             uint8_t worst = 0;
-            for (int32_t d = 0; d < 6; ++d) {
+            const uint8_t btHere = grid.boundaryTypeTile(idx);
+            if (btHere == 1u)      { worst = 3; }
+            else if (btHere != 0u) { worst = 2; }
+            for (int32_t d = 0; d < 6 && worst < 3; ++d) {
                 int32_t nIdx;
                 if (!nb(col, row, d, nIdx)) { continue; }
-                const uint8_t nPid = grid.plateId(nIdx);
-                if (nPid == 0xFFu || nPid == myPid) { continue; }
-                if (nPid >= mots.size()) { continue; }
-                float bnx = cens[nPid].first  - cens[myPid].first;
-                float bny = cens[nPid].second - cens[myPid].second;
-                if (cylSim) {
-                    if (bnx >  0.5f) { bnx -= 1.0f; }
-                    if (bnx < -0.5f) { bnx += 1.0f; }
-                }
-                // Cheap zero-vector guard in squared-magnitude (no
-                // sqrt). Threshold 1e-8 == (1e-4)^2.
-                const float bnLen2 = bnx * bnx + bny * bny;
-                if (bnLen2 < 1e-8f) { continue; }
-                const float bnLen = std::sqrt(bnLen2);
-                bnx /= bnLen; bny /= bnLen;
-                const float relVx = mots[myPid].first - mots[nPid].first;
-                const float relVy = mots[myPid].second - mots[nPid].second;
-                const float normProj = relVx * bnx + relVy * bny;
-                const float tangProj = -relVx * bny + relVy * bnx;
-                const float aN = std::abs(normProj);
-                const float aT = std::abs(tangProj);
-                uint8_t cur = 1;
-                if (aN > aT && aN > 0.04f) {
-                    cur = (normProj > 0.0f) ? 3 : 2;
-                } else if (aT > 0.04f) {
-                    cur = 2;
+                const uint8_t bt = grid.boundaryTypeTile(nIdx);
+                uint8_t cur = 0;
+                if (bt == 1u)      { cur = 3; }
+                else if (bt != 0u) { cur = 2; }
+                else {
+                    const uint8_t nPid = grid.plateId(nIdx);
+                    if (nPid != 0xFFu && nPid != myPid) { cur = 1; }
                 }
                 if (cur > worst) { worst = cur; }
             }

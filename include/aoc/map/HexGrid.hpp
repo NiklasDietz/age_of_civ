@@ -576,6 +576,30 @@ public:
         }
     }
 
+    /// Per-tile plate-boundary type projected from the SphereField
+    /// raster (0 none, 1 convergent, 2 divergent, 3 transform),
+    /// footprint-aggregated at projection time so the raster's 1-cell
+    /// boundary lines survive hex downsampling. Drives active/passive
+    /// margin classification (PostSim), boundary-driven resource
+    /// placement (Resources), and arc-volcanism/seismic-hazard markers
+    /// (EarthSystem). Not serialized (matches plateId).
+    [[nodiscard]] uint8_t boundaryTypeTile(int32_t index) const {
+        const int32_t total = this->tileCount();
+        if (index < 0 || index >= total) { return 0u; }
+        if (this->m_boundaryTypeTile.empty()) { return 0u; }
+        return this->m_boundaryTypeTile[static_cast<std::size_t>(index)];
+    }
+    void setBoundaryTypeTile(int32_t index, uint8_t bt) {
+        const int32_t total = this->tileCount();
+        if (this->m_boundaryTypeTile.empty()) {
+            this->m_boundaryTypeTile.assign(
+                static_cast<std::size_t>(total), 0u);
+        }
+        if (index >= 0 && index < total) {
+            this->m_boundaryTypeTile[static_cast<std::size_t>(index)] = bt;
+        }
+    }
+
     /// Per-tile crust age in epoch units. 0 = freshly-formed at ridge,
     /// high = old continental craton. Drives the CrustAge overlay (red
     /// young → blue ancient) and matches real-Earth seafloor age maps.
@@ -2010,6 +2034,7 @@ public:
     }
 private:
     std::vector<uint8_t>          m_plateId;
+    std::vector<uint8_t>          m_boundaryTypeTile;
     std::vector<std::pair<float, float>> m_hotspots;
     std::vector<std::pair<float, float>> m_plateMotion;
     std::vector<std::pair<float, float>> m_plateCenter;

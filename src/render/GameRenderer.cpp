@@ -869,75 +869,29 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
                     const float ay = verts[edge * 2 + 1];
                     const float bx = verts[((edge + 1) % 6) * 2];
                     const float by = verts[((edge + 1) % 6) * 2 + 1];
-                    // Boundary type colour. Lookup neighbour plate id;
-                    // compute relative velocity along boundary normal
-                    // (= convergence/divergence) vs tangent (= transform).
-                    //   |normal|  ≫ |tangent|  → convergent (red)
-                    //                            or divergent (blue)
-                    //   |tangent| ≫ |normal|  → transform (yellow)
-                    //   both small             → passive (black)
+                    // Boundary type colour from the boundaryTypeTile
+                    // layer (projected off the SphereField raster --
+                    // the physics' own classification). 2026-07-05:
+                    // replaces the per-plate centroid/motion trig that
+                    // has read zero-filled vectors since the sphere
+                    // rewrite (every edge rendered black).
+                    //   convergent → red, divergent → blue,
+                    //   transform → yellow, no live boundary → grey.
                     float r = 0.0f, g = 0.0f, b = 0.0f;
-                    uint8_t nbCatLine = 0xFFu;
-                    if (grid.isValid(nbrs[static_cast<std::size_t>(EDGE_TO_DIR[edge])])) {
-                        nbCatLine = grid.plateId(grid.toIndex(
-                            nbrs[static_cast<std::size_t>(EDGE_TO_DIR[edge])]));
-                    }
-                    const auto& motions = grid.plateMotions();
-                    const auto& centers = grid.plateCenters();
-                    const auto& landFr  = grid.plateLandFrac();
-                    if (myCat < motions.size() && nbCatLine < motions.size()
-                        && nbCatLine != 0xFFu) {
-                        const std::pair<float, float>& vA = motions[myCat];
-                        const std::pair<float, float>& vB = motions[nbCatLine];
-                        const std::pair<float, float>& cA = centers[myCat];
-                        const std::pair<float, float>& cB = centers[nbCatLine];
-                        float bnx = cB.first  - cA.first;
-                        float bny = cB.second - cA.second;
-                        const float bnLen = std::sqrt(bnx * bnx + bny * bny);
-                        if (bnLen > 1e-4f) {
-                            bnx /= bnLen; bny /= bnLen;
-                            const float relVx = vA.first  - vB.first;
-                            const float relVy = vA.second - vB.second;
-                            const float normProj = relVx * bnx + relVy * bny;
-                            const float tangProj = -relVx * bny + relVy * bnx;
-                            const float aN = std::abs(normProj);
-                            const float aT = std::abs(tangProj);
-                            // Looser threshold (0.02 vs 0.05) — boundaries
-                            // with weak relative motion still register.
-                            // Real plates rarely sit exactly still.
-                            if (aN > aT && aN > 0.02f) {
-                                if (normProj > 0.0f) {
-                                    // Plates closing → split convergent
-                                    // into 3 sub-types using landFraction:
-                                    //   both continental → collision (red)
-                                    //   one ocean / one cont → subduction
-                                    //     of ocean under cont (magenta)
-                                    //   both oceanic → ocean subduction
-                                    //     forms island arc (orange)
-                                    const float lA = (myCat < landFr.size())
-                                        ? landFr[myCat] : 0.5f;
-                                    const float lB = (nbCatLine < landFr.size())
-                                        ? landFr[nbCatLine] : 0.5f;
-                                    const bool aLand = lA > 0.4f;
-                                    const bool bLand = lB > 0.4f;
-                                    if (aLand && bLand) {
-                                        r = 0.95f; g = 0.10f; b = 0.10f; // collision red
-                                    } else if (aLand != bLand) {
-                                        r = 0.95f; g = 0.20f; b = 0.85f; // subduction magenta
-                                    } else {
-                                        r = 1.0f; g = 0.55f; b = 0.10f;  // ocean-ocean orange
-                                    }
-                                } else {
-                                    // Plates pulling apart → divergent (blue).
-                                    r = 0.10f; g = 0.40f; b = 0.95f;
-                                }
-                            } else if (aT > 0.02f) {
-                                // Sliding past each other → transform (yellow).
-                                r = 1.0f; g = 0.85f; b = 0.10f;
-                            } else {
-                                // Negligible relative motion → passive (grey).
-                                r = 0.4f; g = 0.4f; b = 0.4f;
-                            }
+                    {
+                        uint8_t bt = grid.boundaryTypeTile(index);
+                        if (bt == 0u && grid.isValid(
+                                nbrs[static_cast<std::size_t>(
+                                    EDGE_TO_DIR[edge])])) {
+                            bt = grid.boundaryTypeTile(grid.toIndex(
+                                nbrs[static_cast<std::size_t>(
+                                    EDGE_TO_DIR[edge])]));
+                        }
+                        switch (bt) {
+                            case 1u: r = 0.95f; g = 0.10f; b = 0.10f; break;
+                            case 2u: r = 0.10f; g = 0.40f; b = 0.95f; break;
+                            case 3u: r = 1.0f;  g = 0.85f; b = 0.10f; break;
+                            default: r = 0.4f;  g = 0.4f;  b = 0.4f;  break;
                         }
                     }
                     // Thick double-stroke border. PlateBoundaries mode

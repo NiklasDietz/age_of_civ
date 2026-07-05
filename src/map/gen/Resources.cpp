@@ -33,69 +33,38 @@ void MapGenerator::placeGeologyResources(const Config& config, HexGrid& grid,
     const int32_t tileCount = width * height;
 
     // Use REAL tectonic data captured by the Continents generator:
-    // plateId per tile, plateMotions, plateCenters, plateLandFrac,
-    // rockType, marginType, sedimentDepth, crustAgeTile. Earlier this
-    // function rebuilt 4-6 fake plate seeds and ignored the actual
-    // simulated tectonics — resources were placed against bogus
-    // boundaries. Now we classify each tile's nearest plate-boundary
-    // type by looking at the velocity-relative-to-neighbor direction
-    // (same logic the renderer's PlateBoundaries overlay uses) and
-    // place resources by real geology + rock type + margin type.
-    const auto& realMotions = grid.plateMotions();
-    const auto& realCenters = grid.plateCenters();
-    const auto& realLandFr  = grid.plateLandFrac();
-    const auto& realRock    = grid.rockType();
-    const auto& realMargin  = grid.marginType();
-    const auto& realSed     = grid.sedimentDepth();
-    const auto& realAge     = grid.crustAgeTile();
-    const bool  cylRes = (grid.topology() == aoc::map::MapTopology::Cylindrical);
+    // plateId per tile, boundaryTypeTile, plateLandFrac, rockType,
+    // marginType, sedimentDepth, crustAgeTile. Earlier this function
+    // classified boundaries from per-plate centroid/motion vectors on
+    // the HexGrid -- those have been zero-filled since the sphere
+    // rewrite, so every tile silently read BoundaryType::None and the
+    // boundary-driven placement below was dead. 2026-07-05: classify
+    // from the boundaryTypeTile layer projected off the SphereField
+    // raster (the physics' own convergent/divergent/transform state).
+    const std::vector<float>&   realLandFr = grid.plateLandFrac();
+    const std::vector<uint8_t>& realRock   = grid.rockType();
+    const std::vector<uint8_t>& realMargin = grid.marginType();
+    const std::vector<float>&   realSed    = grid.sedimentDepth();
+    const std::vector<float>&   realAge    = grid.crustAgeTile();
 
     std::vector<BoundaryType> boundary(
         static_cast<std::size_t>(tileCount), BoundaryType::None);
-    for (int32_t row = 0; row < height; ++row) {
-        for (int32_t col = 0; col < width; ++col) {
-            const int32_t index = row * width + col;
-            const uint8_t myPid = grid.plateId(index);
-            if (myPid == 0xFFu) { continue; }
-            const hex::AxialCoord axial = hex::offsetToAxial({col, row});
-            const std::array<hex::AxialCoord, 6> nbrs = hex::neighbors(axial);
-            for (const hex::AxialCoord& n : nbrs) {
-                if (!grid.isValid(n)) { continue; }
-                const int32_t nIndex = grid.toIndex(n);
-                const uint8_t nPid = grid.plateId(nIndex);
-                if (nPid == 0xFFu || nPid == myPid) { continue; }
-                if (myPid >= realMotions.size()
-                    || nPid >= realMotions.size()) { continue; }
-                const std::pair<float, float>& vA = realMotions[myPid];
-                const std::pair<float, float>& vB = realMotions[nPid];
-                const std::pair<float, float>& cA = realCenters[myPid];
-                const std::pair<float, float>& cB = realCenters[nPid];
-                float bnx = cB.first  - cA.first;
-                float bny = cB.second - cA.second;
-                if (cylRes) {
-                    if (bnx >  0.5f) { bnx -= 1.0f; }
-                    if (bnx < -0.5f) { bnx += 1.0f; }
-                }
-                const float bnLen = std::sqrt(bnx * bnx + bny * bny);
-                if (bnLen < 1e-4f) { continue; }
-                bnx /= bnLen; bny /= bnLen;
-                const float relVx = vA.first  - vB.first;
-                const float relVy = vA.second - vB.second;
-                const float normProj = relVx * bnx + relVy * bny;
-                const float tangProj = -relVx * bny + relVy * bnx;
-                const float aN = std::abs(normProj);
-                const float aT = std::abs(tangProj);
-                if (aN > aT && aN > 0.02f) {
-                    boundary[static_cast<std::size_t>(index)] =
-                        (normProj > 0.0f)
-                            ? BoundaryType::Convergent
-                            : BoundaryType::Divergent;
-                } else if (aT > 0.02f) {
-                    boundary[static_cast<std::size_t>(index)] =
-                        BoundaryType::Transform;
-                }
+    for (int32_t index = 0; index < tileCount; ++index) {
+        switch (grid.boundaryTypeTile(index)) {
+            case 1u:
+                boundary[static_cast<std::size_t>(index)] =
+                    BoundaryType::Convergent;
                 break;
-            }
+            case 2u:
+                boundary[static_cast<std::size_t>(index)] =
+                    BoundaryType::Divergent;
+                break;
+            case 3u:
+                boundary[static_cast<std::size_t>(index)] =
+                    BoundaryType::Transform;
+                break;
+            default:
+                break;
         }
     }
 

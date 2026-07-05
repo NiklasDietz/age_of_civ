@@ -5,6 +5,8 @@
 
 #include "aoc/map/gen/PostSim.hpp"
 
+#include <cstdlib>
+
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/gen/HexNeighbors.hpp"
 #include "aoc/map/gen/MapGenContext.hpp"
@@ -193,7 +195,24 @@ void runPostSimPasses(MapGenContext& ctx) {
         }
     }
 
-    // Pass 5: active vs passive margin classification.
+    // Pass 5: active vs passive margin classification. A coast tile
+    // is ACTIVE (Andean-type: offshore trench, narrow shelf, coastal
+    // cordillera) when a convergent plate boundary lies within
+    // ACTIVE_MARGIN_RANGE_HEXES of it; otherwise PASSIVE
+    // (Atlantic-type: the ocean-continent transition is NOT a plate
+    // boundary -- wide shelf, sediment prism, no mountains). Passive
+    // margins dominate real coastlines because most coasts date to a
+    // supercontinent rifting event, not to the current boundary
+    // network. Uses the boundaryTypeTile layer projected from the
+    // SphereField raster (2026-07-05; replaces the every-coast-passive
+    // stub). Known accepted bias: belts that went quiet in the final
+    // epochs read passive even where mountains still stand.
+    // Range 1: the boundaryTypeTile layer is already footprint-
+    // aggregated (~1 hex of smear either side of the raster boundary
+    // line), so one further ring puts the trench-to-coast reach at
+    // ~2 hexes ~ 500 km -- Andean scale. 3 rings over-classified
+    // active (36-56 % passive vs Earth's ~60-75 %).
+    constexpr int32_t ACTIVE_MARGIN_RANGE_HEXES = 1;
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
             const int32_t idx = row * width + col;
@@ -207,22 +226,40 @@ void runPostSimPasses(MapGenContext& ctx) {
                         < 0.0f) { nearWater = true; break; }
             }
             if (!nearWater) { continue; }
-            const uint8_t myPid = grid.plateId(idx);
-            if (myPid == 0xFFu || myPid >= plates.size()) { continue; }
-            int32_t otherPid = -1;
-            for (int32_t d = 0; d < 6; ++d) {
-                int32_t nIdx;
-                if (!neighbourIdx(col, row, d, nIdx)) { continue; }
-                const uint8_t pid = grid.plateId(nIdx);
-                if (pid == 0xFFu) { continue; }
-                if (pid != myPid) { otherPid = pid; break; }
+            // BFS out to ACTIVE_MARGIN_RANGE_HEXES looking for a
+            // convergent boundary tile. Range is small (3) so a
+            // per-tile ring walk stays cheap.
+            bool nearConvergent =
+                (grid.boundaryTypeTile(idx) == 1u);
+            for (int32_t d = 0; d < 6 && !nearConvergent; ++d) {
+                int32_t cc = col;
+                int32_t rr = row;
+                for (int32_t step = 0;
+                     step < ACTIVE_MARGIN_RANGE_HEXES && !nearConvergent;
+                     ++step) {
+                    int32_t nIdx;
+                    if (!neighbourIdx(cc, rr, d, nIdx)) { break; }
+                    cc = nIdx % width;
+                    rr = nIdx / width;
+                    if (grid.boundaryTypeTile(nIdx) == 1u) {
+                        nearConvergent = true;
+                    }
+                }
             }
-            // Boundary-normal-based active/passive classification needs
-            // SphereField convergenceRateRadPerMy (TODO). For now every
-            // coast tile is passive.
-            (void)otherPid;
-            marginTypeTile[static_cast<std::size_t>(idx)] = 2;
+            marginTypeTile[static_cast<std::size_t>(idx)] =
+                nearConvergent ? 1u : 2u;
         }
+    }
+    if (std::getenv("AOC_DUMP_MARGINS") != nullptr) {
+        std::size_t nActive = 0, nPassive = 0;
+        for (const uint8_t m : marginTypeTile) {
+            if (m == 1u) ++nActive;
+            else if (m == 2u) ++nPassive;
+        }
+        std::fprintf(stderr, "[margins] active=%zu passive=%zu (%.0f%% passive)\n",
+            nActive, nPassive,
+            100.0 * static_cast<double>(nPassive)
+                / static_cast<double>(std::max<std::size_t>(1, nActive + nPassive)));
     }
 
     // Pass 6: apply sediment + margin-type elevation modifier.
@@ -275,7 +312,12 @@ void runPostSimPasses(MapGenContext& ctx) {
                     if (m == 2) {
                         elevDelta[static_cast<std::size_t>(nIdx)] += 0.04f;
                     } else if (m == 1) {
-                        elevDelta[static_cast<std::size_t>(nIdx)] -= 0.03f;
+                        // 2026-07-05: -0.03 -> -0.06 now that active
+                        // margins actually classify (trenches are the
+                        // deepest bathymetry on Earth; the offshore
+                        // drop is what visually separates Pacific-type
+                        // from Atlantic-type coasts).
+                        elevDelta[static_cast<std::size_t>(nIdx)] -= 0.06f;
                     }
                 }
             }

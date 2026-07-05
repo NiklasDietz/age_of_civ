@@ -112,4 +112,37 @@ float SphereField::peakSample(
     return peak;
 }
 
+uint8_t SphereField::boundaryTypeMode(
+    float latDeg, float lonDeg, int32_t halfSearchCells) const noexcept {
+    const CellCoord c = locate(latDeg, lonDeg);
+    auto wrapLon = [](int32_t i) noexcept -> int32_t {
+        i %= LON_CELLS;
+        if (i < 0) i += LON_CELLS;
+        return i;
+    };
+    auto clampLat = [](int32_t j) noexcept -> int32_t {
+        if (j < 0) return 0;
+        if (j >= LAT_CELLS) return LAT_CELLS - 1;
+        return j;
+    };
+    int32_t counts[4] = {0, 0, 0, 0};
+    for (int32_t dj = -halfSearchCells; dj <= halfSearchCells; ++dj) {
+        const int32_t jj = clampLat(c.latIdx + dj);
+        for (int32_t di = -halfSearchCells; di <= halfSearchCells; ++di) {
+            const int32_t ii = wrapLon(c.lonIdx + di);
+            const uint8_t bt = this->boundaryType[cellIndex(ii, jj)];
+            if (bt <= 3u) { ++counts[bt]; }
+        }
+    }
+    uint8_t best = 0u;
+    int32_t bestCount = 0;
+    for (uint8_t t = 1u; t <= 3u; ++t) {
+        if (counts[t] > bestCount) { // strict > = lowest-id tie-break
+            bestCount = counts[t];
+            best = t;
+        }
+    }
+    return best;
+}
+
 } // namespace aoc::map::gen

@@ -1290,6 +1290,18 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 grid.setPlateId(row * width + col,
                     static_cast<uint8_t>(pid));
             }
+            // Boundary type over the hex footprint (same window logic
+            // as the mountain peakSample): raster boundaries are
+            // 1-cell lines, so a centre-point lookup would miss most
+            // of them and margin classification would come out patchy.
+            const int32_t btHalfCells = std::max(3,
+                static_cast<int32_t>(std::ceil(
+                    180.0f / static_cast<float>(width) / 0.5f)));
+            const uint8_t bt = sphereField.boundaryTypeMode(
+                mw.coord.latDeg, mw.coord.lonDeg, btHalfCells);
+            if (bt != 0u) {
+                grid.setBoundaryTypeTile(row * width + col, bt);
+            }
         }
     }
     } // end if (config.mapType == MapType::Continents && !plates.empty())
