@@ -11,6 +11,7 @@
 #include "aoc/simulation/resource/ResourceComponent.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/map/HexGrid.hpp"
+#include "aoc/core/Deterministic.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <unordered_map>
@@ -77,14 +78,15 @@ void detectMonopolies(aoc::game::GameState& gameState, const aoc::map::HexGrid& 
             continue;
         }
 
-        PlayerId topPlayer = INVALID_PLAYER;
-        int32_t  topAmount = 0;
-        for (const std::pair<const PlayerId, int32_t>& entry : playerSupply[idx]) {
-            if (entry.second > topAmount) {
-                topAmount = entry.second;
-                topPlayer = entry.first;
-            }
-        }
+        // playerSupply[idx] is an unordered_map; break supply ties by lowest
+        // PlayerId so the monopolist pick is order-independent. (A tie at the
+        // max forces share <= 0.5, below the 0.60 activation gate, so topPlayer
+        // is never committed on a tie today -- this is defensive uniformity
+        // that also hardens the site against a future lower gate.)
+        const std::pair<PlayerId, int32_t> top =
+            aoc::core::argMaxByValueLowestKey(playerSupply[idx], INVALID_PLAYER);
+        const PlayerId topPlayer = top.first;
+        const int32_t  topAmount = top.second;
 
         float share       = static_cast<float>(topAmount) / static_cast<float>(totalSupply[idx]);
         info.controlShare = share;

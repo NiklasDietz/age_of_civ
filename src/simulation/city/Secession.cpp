@@ -15,6 +15,7 @@
 #include "aoc/game/City.hpp"
 #include "aoc/map/HexGrid.hpp"
 #include "aoc/map/HexCoord.hpp"
+#include "aoc/core/Deterministic.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <array>
@@ -90,14 +91,12 @@ bool checkAndPerformSecession(aoc::game::GameState& gameState,
         }
     }
 
-    PlayerId bestNeighbor = INVALID_PLAYER;
-    float    bestPressure = 0.0f;
-    for (const std::pair<const PlayerId, float>& entry : neighborPressure) {
-        if (entry.second > bestPressure) {
-            bestPressure = entry.second;
-            bestNeighbor = entry.first;
-        }
-    }
+    // Pick the neighbour with the greatest summed pressure. neighborPressure is
+    // an unordered_map, so break ties by lowest PlayerId for a deterministic,
+    // portable winner; the sentinel guard keeps a zero-pressure neighbour from
+    // ever beating INVALID_PLAYER (the city stays a Free City in that case).
+    const PlayerId bestNeighbor =
+        aoc::core::argMaxByValueLowestKey(neighborPressure, INVALID_PLAYER).first;
 
     // Grievance on the former owner against the gainer (or an anchor if none).
     const PlayerId gainer = (bestNeighbor != INVALID_PLAYER) ? bestNeighbor
