@@ -737,12 +737,27 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // arc production. 7-11 nuclei x 1.8 % median ~ 15-22 %
             // initial coverage; arcs and accretion then add the
             // Phanerozoic tail.
-            constexpr float NUCLEUS_MEDIAN_FRACTION = 0.018f;
-            constexpr float NUCLEUS_LOG_SIGMA      = 0.6f;
-            const float nucleusMedianCells =
-                NUCLEUS_MEDIAN_FRACTION * static_cast<float>(N);
-            std::vector<std::size_t> cratonTarget(
-                static_cast<std::size_t>(numCratons), 0);
+            // Total initial crust stock: one draw from the geologic
+            // envelope (16-22 % of the sphere; ~60-70 % of modern
+            // continental volume existed by 2.5 Ga -- Cawood 2013 /
+            // Belousova 2010), PARTITIONED across nuclei by
+            // log-normal weights (sigma = 1.0: smallest-to-largest
+            // ~30x, matching Earth's strongly hierarchical landmass
+            // sizes -- Afro-Eurasia ~57 % of land, Australia ~5 %).
+            // Partitioning a single stock draw keeps the size
+            // hierarchy while removing the ~2x total-stock lottery
+            // that independent per-nucleus draws produced; the FINAL
+            // land fraction remains fully emergent from 3 Gy of
+            // physics against the fixed ocean volume.
+            constexpr float STOCK_FRACTION_MIN = 0.26f;
+            constexpr float STOCK_FRACTION_MAX = 0.32f;
+            constexpr float NUCLEUS_LOG_SIGMA  = 1.0f;
+            const float totalStockCells =
+                cratonRng.nextFloat(STOCK_FRACTION_MIN, STOCK_FRACTION_MAX)
+                * static_cast<float>(N);
+            std::vector<float> nucleusWeight(
+                static_cast<std::size_t>(numCratons), 0.0f);
+            float weightSum = 0.0f;
             for (int32_t i = 0; i < numCratons; ++i) {
                 const float u1 = std::max(1e-6f,
                     cratonRng.nextFloat(0.0f, 1.0f));
@@ -750,12 +765,18 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 const float gauss =
                     std::sqrt(-2.0f * std::log(u1)) *
                     std::cos(6.28318530718f * u2);
-                const float scale = std::exp(NUCLEUS_LOG_SIGMA * gauss);
-                const float cells = nucleusMedianCells * scale;
+                nucleusWeight[static_cast<std::size_t>(i)] =
+                    std::exp(NUCLEUS_LOG_SIGMA * gauss);
+                weightSum += nucleusWeight[static_cast<std::size_t>(i)];
+            }
+            std::vector<std::size_t> cratonTarget(
+                static_cast<std::size_t>(numCratons), 0);
+            for (int32_t i = 0; i < numCratons; ++i) {
+                const float cells = totalStockCells
+                    * nucleusWeight[static_cast<std::size_t>(i)] / weightSum;
                 // Clamp to [50, 9000] cells — protects against
                 // pathological samples; upper bound ~3.5 % of sphere
-                // (Eurasia-craton-cluster scale) so the raised median
-                // is not truncated to a flat size distribution.
+                // (Eurasia-craton-cluster scale).
                 const float clamped = std::clamp(cells, 50.0f, 9000.0f);
                 cratonTarget[static_cast<std::size_t>(i)] =
                     static_cast<std::size_t>(clamped);
@@ -822,19 +843,43 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 }
             }
 
-            // Stochastic BFS expansion. Each craton grows by repeatedly
-            // picking a random cell from its frontier and claiming it.
-            // Random selection (vs FIFO) produces non-convex shapes with
-            // peninsulas and bays.
+            // Anisotropic stochastic growth (2026-07-05). Plain
+            // random-frontier BFS is an Eden growth model whose
+            // clusters converge to DISCS (ragged edges, circular
+            // outline) -- the "same-weight round blob continents"
+            // artifact. Real cratons are assemblies of arc terranes
+            // accreted along linear belts (Superior Province
+            // subprovince stripes, Yilgarn terranes), i.e. elongated.
+            // Each craton draws an assembly-axis azimuth and an
+            // anisotropy ratio A in [1.5, 3.0] (log-uniform); a popped
+            // frontier cell is accepted with a probability that decays
+            // with its TRUE elliptical radius (d_par/a)^2 +
+            // (d_perp * A / a)^2 -- rejected cells re-enter the
+            // frontier at most once, and growth falls back to
+            // unconditional acceptance if the frontier drains
+            // (target area always reached).
             std::vector<int8_t> claimed(N, 0); // 1 = continental
+            std::vector<int8_t> rejectedOnce(N, 0);
             for (int32_t cidx = 0; cidx < numCratons; ++cidx) {
                 const std::size_t target =
                     cratonTarget[static_cast<std::size_t>(cidx)];
                 if (target == 0) continue;
-                const std::size_t startIdx = SF::cellIndex(
-                    seedLon[static_cast<std::size_t>(cidx)],
-                    seedLat[static_cast<std::size_t>(cidx)]);
+                const int32_t sLon = seedLon[static_cast<std::size_t>(cidx)];
+                const int32_t sLat = seedLat[static_cast<std::size_t>(cidx)];
+                const std::size_t startIdx = SF::cellIndex(sLon, sLat);
                 if (claimed[startIdx]) continue; // overlap with prior craton
+                const float axisAz = cratonRng.nextFloat(0.0f, 3.14159265f);
+                const float axCos = std::cos(axisAz);
+                const float axSin = std::sin(axisAz);
+                const float aniso = std::exp(cratonRng.nextFloat(
+                    0.405f, 1.099f)); // ln(1.5)..ln(3.0), log-uniform
+                const float cosSeedLat = std::max(0.2f, std::cos(
+                    (-90.0f + (static_cast<float>(sLat) + 0.5f) * 0.5f)
+                        * 0.01745329252f));
+                // Ellipse semi-major axis (cells) from target area:
+                // area ~ pi * a * (a / A).
+                const float semiMajor = std::sqrt(
+                    static_cast<float>(target) * aniso / 3.14159265f);
                 claimed[startIdx] = 1;
                 std::size_t grown = 1;
                 std::vector<std::size_t> frontier;
@@ -854,8 +899,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         if (!claimed[nbrs[k]]) frontier.push_back(nbrs[k]);
                     }
                 };
-                pushNbrs(seedLon[static_cast<std::size_t>(cidx)],
-                         seedLat[static_cast<std::size_t>(cidx)]);
+                pushNbrs(sLon, sLat);
                 while (grown < target && !frontier.empty()) {
                     // Pick a random frontier cell. Swap-remove for O(1)
                     // deletion.
@@ -866,12 +910,38 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     frontier[pick] = frontier.back();
                     frontier.pop_back();
                     if (claimed[cellIdx]) continue;
-                    claimed[cellIdx] = 1;
-                    ++grown;
                     const int32_t cellLon =
                         static_cast<int32_t>(cellIdx % LON);
                     const int32_t cellLat =
                         static_cast<int32_t>(cellIdx / LON);
+                    // Elliptical-radius acceptance. Offsets in cell
+                    // units, longitude wrapped and metric-corrected
+                    // by the seed-latitude cosine.
+                    int32_t dLonRaw = cellLon - sLon;
+                    if (dLonRaw >  LON / 2) dLonRaw -= LON;
+                    if (dLonRaw < -LON / 2) dLonRaw += LON;
+                    const float dx = static_cast<float>(dLonRaw) * cosSeedLat;
+                    const float dy = static_cast<float>(cellLat - sLat);
+                    const float dPar  =  dx * axCos + dy * axSin;
+                    const float dPerp = -dx * axSin + dy * axCos;
+                    const float rho = std::sqrt(
+                        (dPar * dPar + dPerp * dPerp * aniso * aniso))
+                        / std::max(1.0f, semiMajor);
+                    bool accept = true;
+                    if (rho > 1.0f && !rejectedOnce[cellIdx]) {
+                        // Soft edge: acceptance decays fast outside
+                        // the target ellipse; one retry keeps the
+                        // frontier alive without stalling growth.
+                        const float p = std::exp(-4.0f * (rho - 1.0f));
+                        if (cratonRng.nextFloat(0.0f, 1.0f) > p) {
+                            accept = false;
+                            rejectedOnce[cellIdx] = 1;
+                            frontier.push_back(cellIdx);
+                        }
+                    }
+                    if (!accept) continue;
+                    claimed[cellIdx] = 1;
+                    ++grown;
                     pushNbrs(cellLon, cellLat);
                 }
             }

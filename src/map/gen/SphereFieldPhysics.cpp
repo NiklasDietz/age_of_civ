@@ -1,6 +1,7 @@
 #include "aoc/map/gen/SphereFieldPhysics.hpp"
 
 #include "aoc/core/Log.hpp"
+#include "aoc/map/gen/Noise.hpp"
 #include "aoc/map/gen/PlatePhysics.hpp"
 
 #include <algorithm>
@@ -437,7 +438,12 @@ void applySlabPullFeedback(SphereField& field,
 // ~25-30 % of total continental crust massed together — about
 // 19-22 % of the global surface area (continental crust covers
 // ~29 % of Earth's surface). 0.20 is the Pangaean-onset floor.
-inline constexpr float SUPERCONTINENT_FRACTION = 0.20f;
+// 2026-07-05: 0.20 -> 0.12. At 0.20 a second-generation fragment
+// (~15 % of the globe, Gondwana-scale) stopped accruing thermal age
+// after one split, so rifting stalled at 2-3 continents and seed 42
+// never rifted at all in 3 Gy. Gondwana (~19 % of the globe) kept
+// rifting on real Earth; 0.12 lets the cycle continue.
+inline constexpr float SUPERCONTINENT_FRACTION = 0.12f;
 inline constexpr float RIFT_THRESHOLD_MY       = 150.0f;
 // Probability ramp width above RIFT_THRESHOLD_MY: rift probability
 // reaches 1.0 at thermal age = threshold + RIFT_RAMP_MY. Vérard
@@ -641,32 +647,71 @@ int32_t applyWilsonRifting(SphereField& field,
         const double nrmMag = std::sqrt(
             nrm_x * nrm_x + nrm_y * nrm_y + nrm_z * nrm_z);
         const double invNrmMag = (nrmMag > 1e-9) ? 1.0 / nrmMag : 0.0;
-        for (const CellVec& v : plateCells) {
-            const std::size_t cell = v.cellIdx;
-            const double dot = (v.cx-mx)*nrm_x + (v.cy-my)*nrm_y + (v.cz-mz)*nrm_z;
-            if (dot < 0.0) {
+        if (invNrmMag == 0.0) { ++newPlates; break; }
+        // 2026-07-05 rift-seam geometry (defect D6b). The previous
+        // split was the PCA-median great circle: every rifted
+        // coastline was born DEAD STRAIGHT and every fragment pair
+        // near-equal -- exactly the two artifact classes (straight
+        // coasts, same-size fragments) the program removes elsewhere.
+        // Real conjugate margins are sinuous (the Atlantic S-curve)
+        // and supercontinents shed UNEQUAL fragments.
+        //
+        // (a) Asymmetric split: the plane offset is drawn as a
+        //     fragment-share quantile q ~ 0.5 * exp(N(0, 0.5)),
+        //     clamped to [0.18, 0.82] -- a log-normal size hierarchy
+        //     instead of a fixed halving.
+        // (b) Sinuous trace: the split threshold wiggles along the
+        //     principal axis with smoothHashNoise (+-0.05 in
+        //     sin-projection units ~ +-3 deg), so the seam -- and the
+        //     two future passive coastlines it becomes -- meanders.
+        //     Pure hash noise: deterministic, no RNG-stream coupling
+        //     beyond the two explicit draws below.
+        const float qGauss = (xorshift01(rngState) + xorshift01(rngState)
+                              + xorshift01(rngState)) * 2.0f - 3.0f;
+        const double splitShare = std::clamp(
+            0.5 * std::exp(0.5 * static_cast<double>(qGauss)),
+            0.18, 0.82);
+        const uint64_t seamSeed = mixSeed(
+            (static_cast<uint64_t>(rngState) << 20) ^ 0x52494654ULL);
+        // Per-cell projection across the seam (sin of angular distance
+        // to the great circle) and along the principal axis.
+        std::vector<double> projAcross(plateCells.size());
+        std::vector<double> projAlong(plateCells.size());
+        std::vector<double> sortedAcross;
+        sortedAcross.reserve(plateCells.size());
+        for (std::size_t k = 0; k < plateCells.size(); ++k) {
+            const CellVec& v = plateCells[k];
+            projAcross[k] = (v.cx * nrm_x + v.cy * nrm_y + v.cz * nrm_z)
+                * invNrmMag;
+            projAlong[k] = v.cx * vx + v.cy * vy + v.cz * vz;
+            sortedAcross.push_back(projAcross[k]);
+        }
+        std::sort(sortedAcross.begin(), sortedAcross.end());
+        const std::size_t qIdx = std::min(
+            sortedAcross.size() - 1,
+            static_cast<std::size_t>(splitShare
+                * static_cast<double>(sortedAcross.size())));
+        const double splitAt = sortedAcross[qIdx];
+        constexpr double SEAM_WIGGLE_SIN = 0.05; // ~ +-3 deg
+        constexpr float  SEAM_WIGGLE_FREQ = 9.0f;
+        for (std::size_t k = 0; k < plateCells.size(); ++k) {
+            const std::size_t cell = plateCells[k].cellIdx;
+            const double wiggle = (static_cast<double>(smoothHashNoise(
+                static_cast<float>(projAlong[k]) * SEAM_WIGGLE_FREQ,
+                0.0f, seamSeed)) - 0.5) * 2.0 * SEAM_WIGGLE_SIN;
+            const double eff = projAcross[k] - splitAt - wiggle;
+            if (eff < 0.0) {
                 field.plateId[cell] = childId;
             }
             field.thermalAgeMy[cell] = 0.0f;
-            // The split plane has nrm = v × m as its normal vector
-            // (perpendicular to both the principal axis and the
-            // centroid direction). The plane passes through origin
-            // because cells are unit vectors. A cell's signed
-            // distance to the plane is c · nrm; cells close to the
-            // rift great circle satisfy |c · nrm| < threshold and
-            // get converted to fresh oceanic crust so the rifted
-            // halves are separated by a developing ocean basin.
-            // Normalise nrm so the threshold is in actual radians of
-            // angular distance.
-            if (invNrmMag > 0.0) {
-                const double axisProj =
-                    (v.cx * nrm_x + v.cy * nrm_y + v.cz * nrm_z) * invNrmMag;
-                if (std::fabs(axisProj) < RIFT_AXIS_OCEAN_SIN_HALF) {
-                    field.crustThicknessKm[cell] =
-                        PhysicsConstants::initialOceanicThicknessKm;
-                    field.continentalFraction[cell] = 0.0f;
-                    field.crustAgeMy[cell] = 0.0f;
-                }
+            // Cells within the seam band become fresh oceanic crust:
+            // the proto-ocean basin whose two flanks are conjugate
+            // passive margins (Atlantic-style opening).
+            if (std::fabs(eff) < RIFT_AXIS_OCEAN_SIN_HALF) {
+                field.crustThicknessKm[cell] =
+                    PhysicsConstants::initialOceanicThicknessKm;
+                field.continentalFraction[cell] = 0.0f;
+                field.crustAgeMy[cell] = 0.0f;
             }
         }
         ++newPlates;
@@ -985,6 +1030,10 @@ void advectPlateOwnership(SphereField& field,
     std::vector<float>   newAge(N, 0.0f);
     std::vector<float>   newSurface(N, 0.0f);
     std::vector<float>   newThermal(N, 0.0f);
+    // Conservation ledger: which source each dest copied from, and how
+    // many dests claimed each source (see conservation sweep below).
+    std::vector<std::size_t> srcOf(N, SIZE_MAX);
+    std::vector<uint16_t>    srcClaims(N, 0);
     std::size_t pass1Orphan = 0;
     std::size_t pass2Claim  = 0;
     std::size_t pass3Wake   = 0;
@@ -1040,6 +1089,8 @@ void advectPlateOwnership(SphereField& field,
                     newAge[destIdx]      = field.crustAgeMy[depIdx];
                     newSurface[destIdx]  = field.surfaceElevationM[depIdx];
                     newThermal[destIdx]  = field.thermalAgeMy[depIdx];
+                    srcOf[destIdx] = depIdx;
+                    ++srcClaims[depIdx];
                     continue;
                 }
             }
@@ -1140,9 +1191,34 @@ void advectPlateOwnership(SphereField& field,
                 newAge[idx]      = field.crustAgeMy[bestSrc];
                 newSurface[idx]  = field.surfaceElevationM[bestSrc];
                 newThermal[idx]  = field.thermalAgeMy[bestSrc];
+                srcOf[idx] = bestSrc;
+                ++srcClaims[bestSrc];
                 ++pass2Claim;
             }
             // else: still VACATED -> pass 3 wake fill
+        }
+    }
+
+    // CONSERVATION SWEEP (2026-07-05). Backward semi-Lagrangian
+    // resampling DUPLICATES crust wherever two destination cells map
+    // to the same source (pass 1) or a leading-edge source both keeps
+    // its column and donates it to a vacated cell (pass 2). Compounded
+    // over the CFL substeps this fabricated crustal volume out of
+    // nothing -- measured: continental area grew 25 % -> 47 % of the
+    // sphere in one run with ALL growth mechanisms disabled, and the
+    // displaced-water sea level crept up until continents drowned.
+    // Physically, a source feeding k destinations is the plate
+    // STRETCHING locally: the column must thin, not clone. Divide
+    // thickness (extensive) among claimants; composition, age and
+    // thermal state are intensive and stay. Thinned stretched crust
+    // then subsides isostatically -- which is exactly how real
+    // stretched margins behave (McKenzie 1978).
+    for (std::size_t i = 0; i < N; ++i) {
+        const std::size_t src = srcOf[i];
+        if (src == SIZE_MAX) continue;
+        const uint16_t k = srcClaims[src];
+        if (k > 1u) {
+            newCrust[i] /= static_cast<float>(k);
         }
     }
 
@@ -1500,7 +1576,7 @@ void growContinentalFractionAtArcs(SphereField& field, float dtMy) {
     // ~55 % of the sphere by the end of the run (Earth: ~29 %) --
     // it had been compensating for the drowned-land look of the
     // unanchored datum era.
-    constexpr float K_ARC_FRAC_PER_RADMY = 0.25f;
+    constexpr float K_ARC_FRAC_PER_RADMY = 0.10f;
     // Continental thickness gain follows the same closing-rate
     // proportionality but at a reduced K — andesitic arc thickens
     // to ~30 km (DeCelles 2002 modern Andean active-arc), not the
@@ -1607,6 +1683,33 @@ void growContinentalFractionAtArcs(SphereField& field, float dtMy) {
             float h = field.crustThicknessKm[arcIdx] + dCrustKm;
             if (h > maxCrust) h = maxCrust;
             field.crustThicknessKm[arcIdx] = h;
+
+            // Tectonic (subduction) erosion of the overriding margin
+            // (2026-07-05). Roughly half of Earth's convergent margins
+            // are EROSIVE: the trench eats the overriding plate's edge
+            // at rates comparable to arc production (von Huene &
+            // Scholl 1991), which is why continental area is a
+            // near-steady state on Earth. Without this sink the sim's
+            // continental area grew monotonically (measured 25 % ->
+            // 47 % of the sphere over one run) and the rising
+            // displaced-water stand drowned the continents. Applied at
+            // the overrider's trench-front cell, slightly below the
+            // arc gain so net growth stays mildly positive
+            // (Phanerozoic net accretion).
+            constexpr float K_TRENCH_EROSION_FRAC_PER_RADMY = 0.10f;
+            const std::size_t trenchIdx = selfIsOverrider ? idx : otherIdx;
+            const float lossFrac =
+                K_TRENCH_EROSION_FRAC_PER_RADMY * rate * dtMy;
+            float tf = field.continentalFraction[trenchIdx] - lossFrac;
+            if (tf < 0.0f) tf = 0.0f;
+            field.continentalFraction[trenchIdx] = tf;
+            const float lossKm = K_ARC_KM_PER_RADMY * rate * dtMy
+                * (K_TRENCH_EROSION_FRAC_PER_RADMY / K_ARC_FRAC_PER_RADMY);
+            float th = field.crustThicknessKm[trenchIdx] - lossKm;
+            if (th < PhysicsConstants::initialOceanicThicknessKm) {
+                th = PhysicsConstants::initialOceanicThicknessKm;
+            }
+            field.crustThicknessKm[trenchIdx] = th;
         }
     }
 }
@@ -1631,7 +1734,7 @@ void accreteToNeighbours(SphereField& field, float dtMy) {
     // continental cells donate. Below that, cf is still growing via
     // arc volcanism and should not be diluted into neighbours.
     // 2026-07-05: halved with K_ARC_FRAC (see there).
-    constexpr float K_SPREAD_PER_MY        = 0.00125f;
+    constexpr float K_SPREAD_PER_MY        = 0.0005f;
     constexpr float SPREAD_FROM_THRESHOLD  = 0.95f;
     // Crust donated per unit cf increase so that diffused cells emerge
     // above sea level as their cf crosses the continental threshold.
@@ -2107,7 +2210,13 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy) {
             // water volume puts it -- this is the freeboard
             // self-regulation loop (high stand -> more of the land
             // column erodes -> isostatic adjustment -> equilibrium).
-            const float baseLevelM = field.seaLevelM + 100.0f;
+            // +600 m, not +100: Earth's mean land elevation is ~840 m --
+            // shields hold well above the shoreline (Davis's peneplain
+            // grades toward base level but continental interiors stay
+            // hundreds of metres up). +100 parked every eroded
+            // interior inside the +-400 m coastal-detail band, which
+            // then speckled it into land/water noise.
+            const float baseLevelM = field.seaLevelM + 600.0f;
             if (z < baseLevelM) continue;
             const int32_t lonW = (lonIdx == 0)       ? LON - 1 : lonIdx - 1;
             const int32_t lonE = (lonIdx == LON - 1) ? 0       : lonIdx + 1;
@@ -2123,7 +2232,7 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy) {
             const float dzLat = (zN - zS) / (2.0f * cellHeightM);
             const float slope = std::sqrt(dzLon * dzLon + dzLat * dzLat);
             float dz = K_EROSION_M_PER_MY_PER_SLOPE * slope * dtMy;
-            if (dz > z - baseLevelM) dz = z - baseLevelM; // cap at peneplain floor
+            if (dz > z - baseLevelM) dz = z - baseLevelM; // cap at floor
             if (dz < 0.0f) continue;
             const float c  = field.continentalFraction[idx];
             const float airy = c * airyRatio_cont + (1.0f - c) * airyRatio_oce;

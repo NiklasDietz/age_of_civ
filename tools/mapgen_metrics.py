@@ -211,6 +211,38 @@ def mountain_belt_stats(mountain, width, height):
     }
 
 
+def landmass_elongation(land, width, height):
+    """Mean PCA eigenvalue ratio of land components >= 50 tiles.
+
+    ~1 means circular blobs (Eden growth), >= 2 means elongated,
+    Earth-like continent silhouettes.
+    """
+    seen = [[False] * width for _ in range(height)]
+    ratios = []
+    for row in range(height):
+        for col in range(width):
+            if not land[row][col] or seen[row][col]:
+                continue
+            comp = []
+            queue = deque([(col, row)])
+            seen[row][col] = True
+            while queue:
+                c, r = queue.popleft()
+                comp.append((c, r))
+                for nc, nr in hex_neighbours(c, r, width, height):
+                    if land[nr][nc] and not seen[nr][nc]:
+                        seen[nr][nc] = True
+                        queue.append((nc, nr))
+            if len(comp) >= 50:
+                _, ratio = component_pca_axis_deg(comp)
+                if math.isfinite(ratio):
+                    ratios.append(ratio)
+    if not ratios:
+        return None
+    return {"mean": round(sum(ratios) / len(ratios), 2),
+            "n_components": len(ratios)}
+
+
 def analyze(csv_path):
     width, height, land, mountain = load_csv(csv_path)
     land_cells = sum(row.count(True) for row in land)
@@ -244,6 +276,7 @@ def analyze(csv_path):
             else None),
         "coast_orientation": sobel_orientation_bins(coast, land, width, height),
         "mountains": mountain_belt_stats(mountain, width, height),
+        "landmass_elongation": landmass_elongation(land, width, height),
     }
 
 
