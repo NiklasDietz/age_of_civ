@@ -15,8 +15,11 @@ decision-log for AI tracing.
 that simulation, rendering, and networking all read and write through typed accessors.
 
 **map** stores the hex tile grid as parallel SoA arrays and provides coordinate math,
-terrain definitions, fog of war, pathfinding, and a full plate-tectonic map generator with
-a Mollweide-projected sphere, climate, river, and resource placement pipeline.
+terrain definitions, fog of war, pathfinding, and a physics-first plate-tectonics map
+generator: a 720×360 lat/lon raster simulation (rigid-plate advection, subduction fronts,
+Wilson-cycle rifting, continental docking, plate-contiguity enforcement, Airy isostasy
+with oceanic thermal subsidence, and a fixed-ocean-volume sea level) projected onto the
+hex grid and refined by margin, climate, river, and resource placement passes.
 
 **simulation** is the game's domain layer: 20+ independent sub-modules covering AI
 decision-making, economy/trade, diplomacy, city management, unit combat, technology,
@@ -63,6 +66,7 @@ currently log a warning and return false.
 **replay** records per-turn per-player snapshots (score, population, military, techs) for
 post-game analysis.
 
+<!-- arch-doc: layers=flat; no layering declared in directory or manifest naming (dependency graph is layered de-facto but the code names no layers) -->
 ```mermaid
 graph TD
   app --> render
