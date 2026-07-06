@@ -1037,11 +1037,17 @@ void advectPlateOwnership(SphereField& field,
     std::vector<float>   newSurface(N, 0.0f);
     std::vector<float>   newThermal(N, 0.0f);
     std::vector<float>   newSuture(N, 0.0f);
-    // Conservation ledger: which source each dest copied from, and how
-    // many dests claimed each source (see conservation sweep below).
-    std::vector<std::size_t> srcOf(N, SIZE_MAX);
-    std::vector<uint16_t>    srcClaims(N, 0);
-    std::vector<std::size_t> firstClaim(N, SIZE_MAX);
+    // Aliasing ledger: which sources have already been consumed this
+    // substep. A rigid rotation is area-preserving, so wherever the
+    // rounded backward map sends TWO destinations to one source
+    // (collision) there is an adjacent source NO destination samples
+    // (orphan) -- and under near-zonal rotation these pair up in full
+    // latitude rows. Echo destinations therefore re-target the
+    // adjacent orphan instead of duplicating (old behaviour, crust
+    // fabrication) or turning to wake (intermediate behaviour, which
+    // punched full-width ocean stripes through zonally-moving
+    // continents).
+    std::vector<uint8_t> claimed(N, 0);
     std::size_t pass1Orphan = 0;
     std::size_t pass2Claim  = 0;
     std::size_t pass3Wake   = 0;
@@ -1087,9 +1093,57 @@ void advectPlateOwnership(SphereField& field,
             const double cz = std::sin(latR);
 
             if (incumbent >= 0 && static_cast<std::size_t>(incumbent) < P) {
-                const std::size_t depIdx = rotateRodrigues(
+                std::size_t depIdx = rotateRodrigues(
                     rotBack[static_cast<std::size_t>(incumbent)], cx, cy, cz);
                 if (field.plateId[depIdx] == incumbent) {
+                    if (claimed[depIdx]) {
+                        // Echo: this source already moved to another
+                        // destination. Pair with the adjacent ORPHAN
+                        // source instead (N/S first: collision and
+                        // orphan rows alternate by latitude under
+                        // zonal motion; then E/W).
+                        const int32_t dLon = static_cast<int32_t>(
+                            depIdx % static_cast<std::size_t>(LON));
+                        const int32_t dLat = static_cast<int32_t>(
+                            depIdx / static_cast<std::size_t>(LON));
+                        const int32_t lonW2 =
+                            (dLon == 0) ? LON - 1 : dLon - 1;
+                        const int32_t lonE2 =
+                            (dLon == LON - 1) ? 0 : dLon + 1;
+                        const std::size_t probe[4] = {
+                            (dLat > 0)
+                                ? SphereField::cellIndex(dLon, dLat - 1)
+                                : depIdx,
+                            (dLat < LAT - 1)
+                                ? SphereField::cellIndex(dLon, dLat + 1)
+                                : depIdx,
+                            SphereField::cellIndex(lonW2, dLat),
+                            SphereField::cellIndex(lonE2, dLat),
+                        };
+                        std::size_t alt = SIZE_MAX;
+                        for (const std::size_t q : probe) {
+                            if (q == depIdx) continue;
+                            if (claimed[q]) continue;
+                            if (field.plateId[q] != incumbent) continue;
+                            alt = q;
+                            break;
+                        }
+                        if (alt == SIZE_MAX) {
+                            // No orphan nearby: fall back to this
+                            // cell's own (unmoved) column if free.
+                            if (!claimed[destIdx]
+                                && field.plateId[destIdx] == incumbent) {
+                                alt = destIdx;
+                            }
+                        }
+                        if (alt == SIZE_MAX) {
+                            newOwner[destIdx] = VACATED;
+                            ++pass1Orphan;
+                            continue;
+                        }
+                        depIdx = alt;
+                    }
+                    claimed[depIdx] = 1u;
                     // Incumbent claim: copy state from departure cell.
                     newOwner[destIdx]    = incumbent;
                     newCrust[destIdx]    = field.crustThicknessKm[depIdx];
@@ -1098,11 +1152,6 @@ void advectPlateOwnership(SphereField& field,
                     newSurface[destIdx]  = field.surfaceElevationM[depIdx];
                     newThermal[destIdx]  = field.thermalAgeMy[depIdx];
                     newSuture[destIdx]   = field.sutureContactMy[depIdx];
-                    srcOf[destIdx] = depIdx;
-                    ++srcClaims[depIdx];
-                    if (destIdx < firstClaim[depIdx]) {
-                        firstClaim[depIdx] = destIdx;
-                    }
                     continue;
                 }
             }
@@ -1204,11 +1253,6 @@ void advectPlateOwnership(SphereField& field,
                 newSurface[idx]  = field.surfaceElevationM[bestSrc];
                 newThermal[idx]  = field.thermalAgeMy[bestSrc];
                 newSuture[idx]   = field.sutureContactMy[bestSrc];
-                srcOf[idx] = bestSrc;
-                ++srcClaims[bestSrc];
-                if (idx < firstClaim[bestSrc]) {
-                    firstClaim[bestSrc] = idx;
-                }
                 ++pass2Claim;
             }
             // else: still VACATED -> pass 3 wake fill
@@ -1273,40 +1317,6 @@ void advectPlateOwnership(SphereField& field,
                 newThermal[idx]  = 0.0f;
             }
             ++pass3Wake;
-        }
-    }
-
-    // CONSERVATION SWEEP (2026-07-05, moved after pass 3 on
-    // 2026-07-06). Backward semi-Lagrangian resampling DUPLICATES
-    // crust wherever two destinations map to one source (pass 1), a
-    // leading-edge source both keeps and donates its column (pass 2),
-    // or a continental trailing-edge keep coexists with its pass-1
-    // forward copy (pass 3). Compounded over the CFL substeps this
-    // fabricated crustal volume out of nothing -- measured 25 % ->
-    // 47 % continental area with ALL growth mechanisms disabled.
-    // Physically a source feeding k destinations is the plate
-    // STRETCHING locally: the column must thin, not clone. Divide
-    // thickness (extensive) among claimants; composition, age and
-    // thermal state are intensive and stay. Thinned stretched crust
-    // subsides isostatically (McKenzie 1978).
-    for (std::size_t i = 0; i < N; ++i) {
-        const std::size_t src = srcOf[i];
-        if (src == SIZE_MAX) continue;
-        if (srcClaims[src] > 1u && i != firstClaim[src]) {
-            // EXACTLY-ONE-COPY rule (2026-07-06, replaces divide-by-k).
-            // Multi-claim of one source under a RIGID rotation is
-            // raster aliasing, not physical stretching: the column
-            // must appear exactly once. The canonical claimant (lowest
-            // dest index, deterministic) keeps the full column; the
-            // others become fresh same-plate oceanic wake. Halving
-            // every claimant instead thinned continental interiors on
-            // every aliasing hit (~1 % of cells per substep x ~900
-            // substeps) and bled freeboard until continents drowned.
-            newCrust[i]    = PhysicsConstants::initialOceanicThicknessKm;
-            newContFrac[i] = 0.0f;
-            newAge[i]      = 0.0f;
-            newThermal[i]  = 0.0f;
-            newSuture[i]   = 0.0f;
         }
     }
 
