@@ -271,6 +271,15 @@ void applySubduction(SphereField& field,
                      const std::vector<Plate>& plates,
                      float dtMy);
 
+/// Contiguity enforcement: every plate keeps its largest connected
+/// component; smaller fragments (bounded by a size cap) transfer to
+/// the neighbour with the longest shared border -- terrane transfer,
+/// ownership only. Returns cells moved. Run after the epoch's last
+/// ownership mutator (Wilson rifting), and once after initial
+/// ownership as an invariant check.
+int32_t enforcePlateContiguity(SphereField& field,
+                               const std::vector<Plate>& plates);
+
 /// Continental docking: accumulate the per-cell suture-contact clock
 /// and weld plate pairs whose cont-cont convergent suture has been in
 /// sustained contact (>= 120 My over >= 8 cells). Replaces the legacy

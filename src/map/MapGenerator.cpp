@@ -39,6 +39,7 @@
 
 #include <algorithm>
 #include <array>
+#include <map>
 #include <chrono>
 #include <cmath>
 #include <vector>
@@ -990,6 +991,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // (subduction, ridge accretion, docking, rifting) rewrite it.
         aoc::map::gen::generateInitialPlateOwnership(
             sphereField, plates, static_cast<uint64_t>(config.seed));
+        // Invariant check: region growing should already produce one
+        // component per plate; this is a no-op unless it regresses.
+        aoc::map::gen::enforcePlateContiguity(sphereField, plates);
         aoc::map::gen::recomputeIsostaticElevationOnRaster(sphereField);
         // Per-epoch substep duration in My. Derived from total simulated
         // time so the physics integrates at a fixed cadence regardless
@@ -1344,6 +1348,110 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 mw.coord.latDeg, mw.coord.lonDeg, btHalfCells);
             if (bt != 0u) {
                 grid.setBoundaryTypeTile(row * width + col, bt);
+            }
+        }
+    }
+
+    // Hex-level plate-contiguity cleanup. The raster plates are kept
+    // contiguous by enforcePlateContiguity, but projecting a 0.5-deg
+    // raster onto ~2.5-deg hexes ALIASES thin plate arms into
+    // disconnected hex fragments (a 1-2-cell arm skips hex centres).
+    // Same terrane-transfer rule as the raster pass: every fragment
+    // except the plate's largest hex component moves to the
+    // neighbouring plate with the longest shared border (ties: lowest
+    // plate id). Display/consumer layer only -- the raster stays
+    // authoritative.
+    {
+        const int32_t totalT = width * height;
+        std::vector<int32_t> comp(static_cast<std::size_t>(totalT), -1);
+        std::vector<int64_t> compSize;
+        std::vector<uint8_t> compPlate;
+        std::vector<int32_t> stack;
+        for (int32_t s = 0; s < totalT; ++s) {
+            if (comp[static_cast<std::size_t>(s)] >= 0) { continue; }
+            const uint8_t pid = grid.plateId(s);
+            if (pid == 0xFFu) { continue; }
+            const int32_t cid = static_cast<int32_t>(compSize.size());
+            comp[static_cast<std::size_t>(s)] = cid;
+            int64_t size = 0;
+            stack.clear();
+            stack.push_back(s);
+            while (!stack.empty()) {
+                const int32_t c = stack.back();
+                stack.pop_back();
+                ++size;
+                const hex::AxialCoord ax =
+                    hex::offsetToAxial({c % width, c / width});
+                for (const hex::AxialCoord& nb : hex::neighbors(ax)) {
+                    hex::OffsetCoord oc = hex::axialToOffset(nb);
+                    if (cylSim) {
+                        oc.col = ((oc.col % width) + width) % width;
+                    }
+                    if (oc.col < 0 || oc.col >= width
+                        || oc.row < 0 || oc.row >= height) {
+                        continue;
+                    }
+                    const int32_t ni = oc.row * width + oc.col;
+                    if (comp[static_cast<std::size_t>(ni)] >= 0) {
+                        continue;
+                    }
+                    if (grid.plateId(ni) != pid) { continue; }
+                    comp[static_cast<std::size_t>(ni)] = cid;
+                    stack.push_back(ni);
+                }
+            }
+            compSize.push_back(size);
+            compPlate.push_back(pid);
+        }
+        std::array<int32_t, 256> keepComp{};
+        keepComp.fill(-1);
+        for (std::size_t cid = 0; cid < compSize.size(); ++cid) {
+            const uint8_t p = compPlate[cid];
+            if (keepComp[p] < 0
+                || compSize[cid] > compSize[static_cast<std::size_t>(
+                       keepComp[p])]) {
+                keepComp[p] = static_cast<int32_t>(cid);
+            }
+        }
+        // Longest-border target per fragment (snapshot reads).
+        std::vector<std::map<uint8_t, int32_t>> borders(compSize.size());
+        for (int32_t s = 0; s < totalT; ++s) {
+            const int32_t cid = comp[static_cast<std::size_t>(s)];
+            if (cid < 0) { continue; }
+            const uint8_t p = compPlate[static_cast<std::size_t>(cid)];
+            if (keepComp[p] == cid) { continue; }
+            const hex::AxialCoord ax =
+                hex::offsetToAxial({s % width, s / width});
+            for (const hex::AxialCoord& nb : hex::neighbors(ax)) {
+                hex::OffsetCoord oc = hex::axialToOffset(nb);
+                if (cylSim) {
+                    oc.col = ((oc.col % width) + width) % width;
+                }
+                if (oc.col < 0 || oc.col >= width
+                    || oc.row < 0 || oc.row >= height) {
+                    continue;
+                }
+                const uint8_t nPid = grid.plateId(oc.row * width + oc.col);
+                if (nPid == 0xFFu || nPid == p) { continue; }
+                ++borders[static_cast<std::size_t>(cid)][nPid];
+            }
+        }
+        for (int32_t s = 0; s < totalT; ++s) {
+            const int32_t cid = comp[static_cast<std::size_t>(s)];
+            if (cid < 0) { continue; }
+            const uint8_t p = compPlate[static_cast<std::size_t>(cid)];
+            if (keepComp[p] == cid) { continue; }
+            uint8_t best = 0xFFu;
+            int32_t bestLen = 0;
+            for (const std::pair<const uint8_t, int32_t>& e
+                     : borders[static_cast<std::size_t>(cid)]) {
+                if (e.second > bestLen) {
+                    bestLen = e.second;
+                    best = e.first;
+                }
+            }
+            if (best != 0xFFu) {
+                grid.setPlateId(s, best);
             }
         }
     }

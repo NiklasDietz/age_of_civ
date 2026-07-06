@@ -75,6 +75,9 @@ inline constexpr float K_EROSION_M_PER_MY_PER_SLOPE = 2000.0f;
 // pass fires at credibly Earth-like timescales for closing rates of
 // ~5 cm/yr.
 inline constexpr float SUBDUCTION_CELL_WIDTH_KM = 50.0f;
+// Hard plate-speed ceiling (slab-pull clamp and the kinematic
+// consumption cap in applySubduction both derive from it).
+inline constexpr float MAX_ABS_OMEGA_DEG_PER_MY = 0.15f;
 
 void generateInitialPlateOwnership(SphereField& field,
                                    const std::vector<Plate>& plates,
@@ -382,8 +385,8 @@ void applySlabPullFeedback(SphereField& field,
     // interior cells advect, so cumulative rotation determines how
     // much state can stretch into latitudinal bands. 0.15 deg/My x
     // 60 epochs x 50 My = 450 deg ~ 1.25 revolutions, matching the
-    // long-term continental-track envelope.
-    constexpr float MAX_ABS_OMEGA_DEG_PER_MY = 0.15f;
+    // long-term continental-track envelope. (Constant is file-scope:
+    // the subduction consumption cap derives from it too.)
 
     for (std::size_t i = 0; i < N; ++i) {
         if (cellCount[i] == 0) continue;
@@ -1038,6 +1041,7 @@ void advectPlateOwnership(SphereField& field,
     // many dests claimed each source (see conservation sweep below).
     std::vector<std::size_t> srcOf(N, SIZE_MAX);
     std::vector<uint16_t>    srcClaims(N, 0);
+    std::vector<std::size_t> firstClaim(N, SIZE_MAX);
     std::size_t pass1Orphan = 0;
     std::size_t pass2Claim  = 0;
     std::size_t pass3Wake   = 0;
@@ -1096,6 +1100,9 @@ void advectPlateOwnership(SphereField& field,
                     newSuture[destIdx]   = field.sutureContactMy[depIdx];
                     srcOf[destIdx] = depIdx;
                     ++srcClaims[depIdx];
+                    if (destIdx < firstClaim[depIdx]) {
+                        firstClaim[depIdx] = destIdx;
+                    }
                     continue;
                 }
             }
@@ -1199,103 +1206,108 @@ void advectPlateOwnership(SphereField& field,
                 newSuture[idx]   = field.sutureContactMy[bestSrc];
                 srcOf[idx] = bestSrc;
                 ++srcClaims[bestSrc];
+                if (idx < firstClaim[bestSrc]) {
+                    firstClaim[bestSrc] = idx;
+                }
                 ++pass2Claim;
             }
             // else: still VACATED -> pass 3 wake fill
         }
     }
 
-    // CONSERVATION SWEEP (2026-07-05). Backward semi-Lagrangian
-    // resampling DUPLICATES crust wherever two destination cells map
-    // to the same source (pass 1) or a leading-edge source both keeps
-    // its column and donates it to a vacated cell (pass 2). Compounded
-    // over the CFL substeps this fabricated crustal volume out of
-    // nothing -- measured: continental area grew 25 % -> 47 % of the
-    // sphere in one run with ALL growth mechanisms disabled, and the
-    // displaced-water sea level crept up until continents drowned.
-    // Physically, a source feeding k destinations is the plate
-    // STRETCHING locally: the column must thin, not clone. Divide
-    // thickness (extensive) among claimants; composition, age and
-    // thermal state are intensive and stay. Thinned stretched crust
-    // then subsides isostatically -- which is exactly how real
-    // stretched margins behave (McKenzie 1978).
-    for (std::size_t i = 0; i < N; ++i) {
-        const std::size_t src = srcOf[i];
-        if (src == SIZE_MAX) continue;
-        const uint16_t k = srcClaims[src];
-        if (k > 1u) {
-            newCrust[i] /= static_cast<float>(k);
+    // PASS 3: wake fill. Cells still VACATED after pass 2 had no
+    // converging neighbour -- they sit behind a receding trailing
+    // edge. 2026-07-06: ownership goes to the PRIOR INCUMBENT (the
+    // plate whose trailing edge vacated the cell) -- the half-
+    // spreading picture: each ridge flank rides the plate that pulled
+    // away from it. The previous slowest-4-neighbour rule handed wake
+    // to whatever cratonic plate happened to touch it, and read
+    // same-sweep newOwner values through a 4-iteration expansion loop
+    // -- growing raster-order-dependent ribbons of DISCONNECTED
+    // slow-plate territory up to 4 cells per substep (the primary
+    // plate-archipelago generator, measured 8-12 fragmented plates
+    // with up to 121 components each).
+    //
+    // Continental crust is buoyant (Cogley 1984) and keeps its column;
+    // it stays with its own plate. The keep is REGISTERED in the
+    // conservation ledger: pass 1 may have also copied this column
+    // forward, and an unregistered keep bypassed the divide-by-k
+    // thinning (silent crust duplication at every trailing
+    // continental edge). Previously-oceanic cells become fresh
+    // mid-ocean-ridge basalt (Turcotte & Schubert 2014 ch. 2).
+    for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+        for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
+            const std::size_t idx = SphereField::cellIndex(lonIdx, latIdx);
+            if (newOwner[idx] != VACATED) continue;
+            const int16_t prior = field.plateId[idx];
+            if (prior < 0 || static_cast<std::size_t>(prior) >= P) {
+                continue; // fallback sweep below assigns these
+            }
+            newOwner[idx] = prior;
+            // Continental trailing cells KEEP their column (with the
+            // PRIOR owner -- the contiguity fix is the ownership, not
+            // the crust). This keep is not literal "crust stays
+            // behind": it is the discrete counterweight to the raster
+            // transport's leading-edge sink -- at a blocked leading
+            // boundary the front row of columns is deleted every
+            // substep (incumbent wins; the column has nowhere to go),
+            // which is the shortening/deformation a rigid-translation
+            // scheme cannot express. Dropping the keep while the sink
+            // remained bled continental area 16 % -> 4 % over one run.
+            // The two discretisation artifacts cancel in aggregate;
+            // neither is registered in the aliasing ledger.
+            // Previously-oceanic cells become fresh mid-ocean-ridge
+            // basalt (Turcotte & Schubert 2014 ch. 2).
+            if (field.continentalFraction[idx] > 0.5f) {
+                newCrust[idx]    = field.crustThicknessKm[idx];
+                newContFrac[idx] = field.continentalFraction[idx];
+                newAge[idx]      = field.crustAgeMy[idx];
+                newSurface[idx]  = field.surfaceElevationM[idx];
+                newThermal[idx]  = field.thermalAgeMy[idx];
+                newSuture[idx]   = field.sutureContactMy[idx];
+            } else {
+                newCrust[idx]    = PhysicsConstants::initialOceanicThicknessKm;
+                newContFrac[idx] = 0.0f;
+                newAge[idx]      = 0.0f;
+                newSurface[idx]  = 0.0f;
+                newThermal[idx]  = 0.0f;
+            }
+            ++pass3Wake;
         }
     }
 
-    // PASS 3: wake fill. Cells still VACATED after pass 2 had no
-    // converging neighbour -- they sit at a true divergent boundary.
-    // Real Earth fills such cells with fresh basaltic oceanic crust
-    // extruded at the mid-ocean ridge (Turcotte & Schubert 2014 ch. 2:
-    // 7 km basalt at age 0). Ownership goes to the slowest 4-neighbour
-    // so the fresh crust attaches to the cratonic side of the rift,
-    // matching Atlantic-style passive-margin geometry.
-    for (int32_t pass = 0; pass < 4; ++pass) {
-        bool anyFilled = false;
-        for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
-            for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
-                const std::size_t idx = SphereField::cellIndex(lonIdx, latIdx);
-                if (newOwner[idx] != VACATED) continue;
-                const int32_t lonW = (lonIdx == 0)       ? LON - 1 : lonIdx - 1;
-                const int32_t lonE = (lonIdx == LON - 1) ? 0       : lonIdx + 1;
-                const int32_t latS = std::max(0, latIdx - 1);
-                const int32_t latN = std::min(LAT - 1, latIdx + 1);
-                const std::size_t nIdx[4] = {
-                    SphereField::cellIndex(lonW, latIdx),
-                    SphereField::cellIndex(lonE, latIdx),
-                    SphereField::cellIndex(lonIdx, latS),
-                    SphereField::cellIndex(lonIdx, latN),
-                };
-                int16_t pickPid    = -1;
-                float   pickOmega  = 1e9f;
-                for (int32_t k = 0; k < 4; ++k) {
-                    const int16_t nPid = newOwner[nIdx[k]];
-                    if (nPid < 0) continue;
-                    const float w = std::fabs(
-                        plates[static_cast<std::size_t>(nPid)].angularVelDeg);
-                    if (w < pickOmega) {
-                        pickOmega = w;
-                        pickPid   = nPid;
-                    }
-                }
-                if (pickPid < 0) continue;
-                newOwner[idx] = pickPid;
-                // Continental crust is buoyant and does not subduct
-                // or sink to mid-ocean-ridge depths even when its host
-                // plate's boundary sweeps past (Cogley 1984 "Continental
-                // margins and the extent and number of the continents",
-                // Rev Geophys 22). When the trailing edge of a moving
-                // plate vacates a continental cell, the cell remains
-                // continental but transfers ownership to the converging
-                // / cratonic neighbour plate -- exactly the passive-
-                // margin transfer that gave us North Atlantic continental
-                // shelves on both the Eurasian and North American
-                // plates. Only previously-oceanic cells become fresh
-                // mid-ocean-ridge basalt at the spreading centre.
-                if (field.continentalFraction[idx] > 0.5f) {
-                    newCrust[idx]    = field.crustThicknessKm[idx];
-                    newContFrac[idx] = field.continentalFraction[idx];
-                    newAge[idx]      = field.crustAgeMy[idx];
-                    newSurface[idx]  = field.surfaceElevationM[idx];
-                    newThermal[idx]  = field.thermalAgeMy[idx];
-                    newSuture[idx]   = field.sutureContactMy[idx];
-                } else {
-                    newCrust[idx]    = PhysicsConstants::initialOceanicThicknessKm;
-                    newContFrac[idx] = 0.0f;
-                    newAge[idx]      = 0.0f;
-                    newSurface[idx]  = 0.0f;
-                    newThermal[idx]  = 0.0f;
-                }
-                ++pass3Wake;
-                anyFilled = true;
-            }
+    // CONSERVATION SWEEP (2026-07-05, moved after pass 3 on
+    // 2026-07-06). Backward semi-Lagrangian resampling DUPLICATES
+    // crust wherever two destinations map to one source (pass 1), a
+    // leading-edge source both keeps and donates its column (pass 2),
+    // or a continental trailing-edge keep coexists with its pass-1
+    // forward copy (pass 3). Compounded over the CFL substeps this
+    // fabricated crustal volume out of nothing -- measured 25 % ->
+    // 47 % continental area with ALL growth mechanisms disabled.
+    // Physically a source feeding k destinations is the plate
+    // STRETCHING locally: the column must thin, not clone. Divide
+    // thickness (extensive) among claimants; composition, age and
+    // thermal state are intensive and stay. Thinned stretched crust
+    // subsides isostatically (McKenzie 1978).
+    for (std::size_t i = 0; i < N; ++i) {
+        const std::size_t src = srcOf[i];
+        if (src == SIZE_MAX) continue;
+        if (srcClaims[src] > 1u && i != firstClaim[src]) {
+            // EXACTLY-ONE-COPY rule (2026-07-06, replaces divide-by-k).
+            // Multi-claim of one source under a RIGID rotation is
+            // raster aliasing, not physical stretching: the column
+            // must appear exactly once. The canonical claimant (lowest
+            // dest index, deterministic) keeps the full column; the
+            // others become fresh same-plate oceanic wake. Halving
+            // every claimant instead thinned continental interiors on
+            // every aliasing hit (~1 % of cells per substep x ~900
+            // substeps) and bled freeboard until continents drowned.
+            newCrust[i]    = PhysicsConstants::initialOceanicThicknessKm;
+            newContFrac[i] = 0.0f;
+            newAge[i]      = 0.0f;
+            newThermal[i]  = 0.0f;
+            newSuture[i]   = 0.0f;
         }
-        if (!anyFilled) break;
     }
 
     // Final fallback: a patch of vacated cells with no claimed neighbour
@@ -1704,7 +1716,7 @@ void growContinentalFractionAtArcs(SphereField& field, float dtMy) {
             // the overrider's trench-front cell, slightly below the
             // arc gain so net growth stays mildly positive
             // (Phanerozoic net accretion).
-            constexpr float K_TRENCH_EROSION_FRAC_PER_RADMY = 0.10f;
+            constexpr float K_TRENCH_EROSION_FRAC_PER_RADMY = 0.03f;
             const std::size_t trenchIdx = selfIsOverrider ? idx : otherIdx;
             const float lossFrac =
                 K_TRENCH_EROSION_FRAC_PER_RADMY * rate * dtMy;
@@ -1840,6 +1852,25 @@ void applySubduction(SphereField& field,
     constexpr int32_t LAT = SphereField::LAT_CELLS;
     const float R = PhysicsConstants::earthRadiusKm;
 
+    // Kinematic consumption cap: the largest closing distance any
+    // boundary can sustain in one epoch, from the plate-motion
+    // envelope (2 * MAX_ABS_OMEGA both plates head-on). ~34 cells at
+    // dt = 50 My -- Tibet consumes ~45 cells per 50 My at 5 cm/yr,
+    // same order. A cap BELOW the kinematic envelope would stop the
+    // overrider advancing at the closing rate while the consumed
+    // plate's trailing edge keeps spawning wake -- silent area-
+    // accounting breakage under incumbent-wins advection.
+    const int32_t kinematicCap = std::max(1, static_cast<int32_t>(
+        std::ceil(2.0f * MAX_ABS_OMEGA_DEG_PER_MY * 0.01745329252f
+                  * dtMy * R / SUBDUCTION_CELL_WIDTH_KM)));
+    // Peel state: per-cell seed/flip bookkeeping (see peel phase).
+    std::vector<int32_t> peelBudget(SphereField::CELL_COUNT, -1);
+    std::vector<int16_t> peelOwner(SphereField::CELL_COUNT, -1);
+    std::vector<int16_t> peelConsumed(SphereField::CELL_COUNT, -1);
+    std::vector<int32_t> candBudget(SphereField::CELL_COUNT, -1);
+    std::vector<int16_t> candOwner(SphereField::CELL_COUNT, -1);
+    std::vector<int16_t> candConsumed(SphereField::CELL_COUNT, -1);
+
     // Single-threaded: ownership transfers must observe a consistent
     // order so a cell consumed in the same epoch cannot also itself
     // consume a neighbour.
@@ -1916,22 +1947,17 @@ void applySubduction(SphereField& field,
             int16_t     overriderId;
             int16_t     consumedSideId;
             int32_t     consumedLon, consumedLat;
-            int32_t     overrideLon, overrideLat;
             const bool selfConsumed = (fracDelta < 0.0f);
             if (selfConsumed) {
                 overriderId      = otherId;
                 consumedSideId   = selfId;
                 consumedLon = lonIdx;
                 consumedLat = latIdx;
-                overrideLon = static_cast<int32_t>(otherIdx % LON);
-                overrideLat = static_cast<int32_t>(otherIdx / LON);
             } else {
                 overriderId      = selfId;
                 consumedSideId   = otherId;
                 consumedLon = static_cast<int32_t>(otherIdx % LON);
                 consumedLat = static_cast<int32_t>(otherIdx / LON);
-                overrideLon = lonIdx;
-                overrideLat = latIdx;
             }
 
             // Gate by closing distance: only consume when the closing
@@ -1939,93 +1965,244 @@ void applySubduction(SphereField& field,
             const float closingKm = rate * dtMy * R;
             if (closingKm < SUBDUCTION_CELL_WIDTH_KM) continue;
 
-            // Multi-cell consumption proportional to closing distance.
-            // Real Earth Tibet at 5 cm/yr × 50 My consumes ~2500 km =
-            // ~45 cells of oceanic crust each epoch. Our previous
-            // implementation flipped only ONE cell per boundary per
-            // epoch — 45× too slow. Walk inward along the convergent
-            // normal (consumed → override direction reversed) one
-            // cell-width at a time, flipping each cell that is still
-            // oceanic and still owned by the consumed plate. Stop at
-            // the first continental cell (collision arrest), at the
-            // grid edge, at a different plate (microplate boundary),
-            // or once the budget is spent.
+            // Register a PEEL SEED (2026-07-06). The previous
+            // implementation walked an independent 1-cell-wide DDA
+            // tongue up to 60 cells deep from every boundary cell;
+            // adjacent tongues diverge/cross and comb the consumed
+            // plate into stranded 1-wide teeth (measured: plates with
+            // 100+ raster components). Consumption now happens as a
+            // coherent FRONT: each seed carries a budget from its
+            // LOCAL closing rate; the round-based peel below advances
+            // the whole front one cell per round while budgets last.
             const int32_t maxCells = static_cast<int32_t>(
                 closingKm / SUBDUCTION_CELL_WIDTH_KM);
-            const int32_t epochCap = 60; // cap so a single epoch can't eat a whole basin
-            const int32_t cellsToConsume = std::min(maxCells, epochCap);
-            // Inward walk direction: consumed cell -> deeper into the
-            // consumed plate's territory, along the TRUE boundary
-            // normal (boundaryNormalAt at the consumed cell, negated:
-            // the normal points consumed -> overrider side there).
-            // Walking the true direction cuts trenches along the
-            // actual convergence azimuth instead of raster-axis
-            // staircases. Cardinal fallback on degenerate gradients.
-            float dirE, dirN; // unit vector, physical (east, north)
-            {
-                float bnE, bnN;
-                if (boundaryNormalAt(field, consumedLon, consumedLat,
-                                     consumedSideId, bnE, bnN)) {
-                    dirE = -bnE;
-                    dirN = -bnN;
-                } else {
-                    const int32_t dLon = consumedLon - overrideLon;
-                    const int32_t dLat = consumedLat - overrideLat;
-                    float sLon = (dLon > 0) ? 1.0f : (dLon < 0) ? -1.0f : 0.0f;
-                    const float sLat = (dLat > 0) ? 1.0f : (dLat < 0) ? -1.0f : 0.0f;
-                    // Longitude wrap: |diff| > 1 means we crossed the
-                    // antimeridian; reverse the inward step.
-                    if (std::abs(dLon) > 1) sLon = -sLon;
-                    dirE = sLon;
-                    dirN = sLat;
-                }
-            }
-            // DDA over cells: continuous position advanced so the
-            // dominant axis moves exactly one cell per step (always
-            // progresses); east component converted to lon cells at
-            // the current latitude.
-            float posLon = static_cast<float>(consumedLon);
-            float posLat = static_cast<float>(consumedLat);
-            int32_t curLon = consumedLon;
-            int32_t curLat = consumedLat;
-            for (int32_t step = 0; step < cellsToConsume; ++step) {
-                const std::size_t curIdx = SphereField::cellIndex(curLon, curLat);
-                // Stop conditions: cell is no longer the consumed plate
-                // (microplate-edge or already-converted) OR cell is
-                // continental (collision arrest, no further subduction).
-                if (field.plateId[curIdx] != consumedSideId) break;
-                if (field.continentalFraction[curIdx] > 0.5f) break;
-                field.plateId[curIdx] = overriderId;
-                field.crustThicknessKm[curIdx] =
-                    PhysicsConstants::initialOceanicThicknessKm;
-                field.continentalFraction[curIdx] = 0.0f;
-                field.crustAgeMy[curIdx] = 0.0f;
-                field.sutureContactMy[curIdx] = 0.0f;
-                // Advance one cell deeper into consumed-plate territory.
-                const LatLon cc = SphereField::cellCenter(curLon, curLat);
-                const float cosL = std::max(
-                    0.05f, std::cos(cc.latDeg * 0.01745329252f));
-                float dLonCells = dirE / cosL;
-                float dLatCells = dirN;
-                const float norm = std::max(std::fabs(dLonCells),
-                                            std::fabs(dLatCells));
-                if (norm < 1e-6f) break;
-                posLon += dLonCells / norm;
-                posLat += dLatCells / norm;
-                // Wrap the continuous longitude, then derive the cell.
-                if (posLon < -0.5f) {
-                    posLon += static_cast<float>(LON);
-                } else if (posLon >= static_cast<float>(LON) - 0.5f) {
-                    posLon -= static_cast<float>(LON);
-                }
-                curLon = static_cast<int32_t>(std::lround(posLon));
-                curLat = static_cast<int32_t>(std::lround(posLat));
-                if (curLat < 0 || curLat >= LAT) break;
-                if (curLon < 0)    curLon += LON;
-                if (curLon >= LON) curLon -= LON;
+            const int32_t budgetHere = std::min(maxCells, kinematicCap);
+            const std::size_t seedIdx = SphereField::cellIndex(
+                consumedLon, consumedLat);
+            if (budgetHere > peelBudget[seedIdx]
+                || (budgetHere == peelBudget[seedIdx]
+                    && overriderId < peelOwner[seedIdx])) {
+                peelBudget[seedIdx]   = budgetHere;
+                peelOwner[seedIdx]    = overriderId;
+                peelConsumed[seedIdx] = consumedSideId;
             }
         }
     }
+
+    // PEEL PHASE: flip seeds, then expand round by round. Each round
+    // marks candidates from the previous round's flips (4-adjacent
+    // cells still owned by the flipped cell's consumed plate, oceanic
+    // only -- continental cells arrest the front and can never be
+    // tunnelled behind), then applies them as a batch: rounds are
+    // order-independent, ties resolve to the lowest overrider id.
+    std::vector<std::size_t> frontier;
+    for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
+        if (peelBudget[i] < 0) continue;
+        // Seed flip (identical semantics to the old walk's first cell).
+        field.plateId[i] = peelOwner[i];
+        field.crustThicknessKm[i] =
+            PhysicsConstants::initialOceanicThicknessKm;
+        field.continentalFraction[i] = 0.0f;
+        field.crustAgeMy[i] = 0.0f;
+        field.sutureContactMy[i] = 0.0f;
+        frontier.push_back(i);
+    }
+    while (!frontier.empty()) {
+        // Mark: candidate -> (budget, owner, consumed), best-of rules.
+        std::vector<std::size_t> marked;
+        for (const std::size_t c : frontier) {
+            const int32_t b = peelBudget[c] - 1;
+            if (b <= 0) continue;
+            const int32_t lon = static_cast<int32_t>(c % LON);
+            const int32_t lat = static_cast<int32_t>(c / LON);
+            const int32_t lonW = (lon == 0)       ? LON - 1 : lon - 1;
+            const int32_t lonE = (lon == LON - 1) ? 0       : lon + 1;
+            const std::size_t nbrs[4] = {
+                SphereField::cellIndex(lonW, lat),
+                SphereField::cellIndex(lonE, lat),
+                (lat > 0)       ? SphereField::cellIndex(lon, lat - 1) : c,
+                (lat < LAT - 1) ? SphereField::cellIndex(lon, lat + 1) : c,
+            };
+            for (const std::size_t n : nbrs) {
+                if (n == c) continue;
+                if (field.plateId[n] != peelConsumed[c]) continue;
+                if (field.continentalFraction[n] > 0.5f) continue;
+                if (b > candBudget[n]
+                    || (b == candBudget[n]
+                        && peelOwner[c] < candOwner[n])) {
+                    if (candBudget[n] < 0) marked.push_back(n);
+                    candBudget[n]   = b;
+                    candOwner[n]    = peelOwner[c];
+                    candConsumed[n] = peelConsumed[c];
+                }
+            }
+        }
+        // Flip the batch; it becomes the next frontier.
+        std::sort(marked.begin(), marked.end());
+        frontier.clear();
+        for (const std::size_t n : marked) {
+            field.plateId[n] = candOwner[n];
+            field.crustThicknessKm[n] =
+                PhysicsConstants::initialOceanicThicknessKm;
+            field.continentalFraction[n] = 0.0f;
+            field.crustAgeMy[n] = 0.0f;
+            field.sutureContactMy[n] = 0.0f;
+            peelBudget[n]   = candBudget[n];
+            peelOwner[n]    = candOwner[n];
+            peelConsumed[n] = candConsumed[n];
+            candBudget[n] = -1;
+            frontier.push_back(n);
+        }
+    }
+}
+
+int32_t enforcePlateContiguity(SphereField& field,
+                               const std::vector<Plate>& plates) {
+    // Plates are contiguous by definition; fragments here are
+    // mechanism artifacts (rift plane-splits striping large plates,
+    // residual advection strandings), not geology. Each plate keeps
+    // its largest connected component; every smaller fragment
+    // transfers to the neighbouring plate sharing the longest border
+    // with it -- physically a terrane transfer: ownership only, the
+    // crust columns stay untouched. Serial, deterministic: decisions
+    // are computed from an immutable snapshot and applied as one
+    // batch; ties resolve to the lowest plate id. Repeats up to 3
+    // rounds (a batch application can itself disconnect a shape in
+    // rare comb geometries). Returns cells moved (trace diagnostic).
+    //
+    // SIZE CAP: only fragments <= min(25 % of the plate, 500 cells)
+    // move. Re-keying a subcontinent to a neighbour's Euler pole in
+    // one epoch would be a kinematic discontinuity, and a rift child
+    // born as two lobes must not lose its larger lobe to a third
+    // plate; over-cap fragments are left for the next epoch's
+    // mechanisms.
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    constexpr int32_t MAX_ROUNDS = 3;
+    if (plates.empty()) return 0;
+    int32_t totalMoved = 0;
+    std::vector<int32_t> comp(SphereField::CELL_COUNT);
+    std::vector<std::size_t> stack;
+    for (int32_t round = 0; round < MAX_ROUNDS; ++round) {
+        // Global CCL over 4-adjacency (lon wraps, no cross-pole join).
+        std::fill(comp.begin(), comp.end(), -1);
+        std::vector<int64_t> compSize;
+        std::vector<int16_t> compPlate;
+        for (std::size_t s = 0; s < SphereField::CELL_COUNT; ++s) {
+            if (comp[s] >= 0) continue;
+            const int16_t pid = field.plateId[s];
+            if (pid < 0) continue;
+            const int32_t cid = static_cast<int32_t>(compSize.size());
+            comp[s] = cid;
+            int64_t size = 0;
+            stack.clear();
+            stack.push_back(s);
+            while (!stack.empty()) {
+                const std::size_t c = stack.back();
+                stack.pop_back();
+                ++size;
+                const int32_t lon = static_cast<int32_t>(c % LON);
+                const int32_t lat = static_cast<int32_t>(c / LON);
+                const int32_t lonW = (lon == 0)       ? LON - 1 : lon - 1;
+                const int32_t lonE = (lon == LON - 1) ? 0       : lon + 1;
+                const std::size_t nbrs[4] = {
+                    SphereField::cellIndex(lonW, lat),
+                    SphereField::cellIndex(lonE, lat),
+                    (lat > 0)       ? SphereField::cellIndex(lon, lat - 1) : c,
+                    (lat < LAT - 1) ? SphereField::cellIndex(lon, lat + 1) : c,
+                };
+                for (const std::size_t n : nbrs) {
+                    if (n == c || comp[n] >= 0) continue;
+                    if (field.plateId[n] != pid) continue;
+                    comp[n] = cid;
+                    stack.push_back(n);
+                }
+            }
+            compSize.push_back(size);
+            compPlate.push_back(pid);
+        }
+        // Largest component per plate (ties: lower component id, i.e.
+        // lower seed index, wins -- CCL discovers in raster order).
+        std::vector<int32_t> keepComp(plates.size(), -1);
+        for (std::size_t cid = 0; cid < compSize.size(); ++cid) {
+            const std::size_t p = static_cast<std::size_t>(compPlate[cid]);
+            if (p >= plates.size()) continue;
+            if (keepComp[p] < 0
+                || compSize[cid] > compSize[static_cast<std::size_t>(
+                       keepComp[p])]) {
+                keepComp[p] = static_cast<int32_t>(cid);
+            }
+        }
+        std::vector<int64_t> plateCells(plates.size(), 0);
+        for (std::size_t cid = 0; cid < compSize.size(); ++cid) {
+            const std::size_t p = static_cast<std::size_t>(compPlate[cid]);
+            if (p < plates.size()) plateCells[p] += compSize[cid];
+        }
+        // Border tally per fragment: longest shared border wins
+        // (snapshot reads only; -1 neighbours do not count).
+        std::vector<std::map<int16_t, int32_t>> borders(compSize.size());
+        for (std::size_t s = 0; s < SphereField::CELL_COUNT; ++s) {
+            const int32_t cid = comp[s];
+            if (cid < 0) continue;
+            const std::size_t p = static_cast<std::size_t>(compPlate[
+                static_cast<std::size_t>(cid)]);
+            if (p >= plates.size() || keepComp[p] == cid) continue;
+            const int32_t lon = static_cast<int32_t>(s % LON);
+            const int32_t lat = static_cast<int32_t>(s / LON);
+            const int32_t lonW = (lon == 0)       ? LON - 1 : lon - 1;
+            const int32_t lonE = (lon == LON - 1) ? 0       : lon + 1;
+            const std::size_t nbrs[4] = {
+                SphereField::cellIndex(lonW, lat),
+                SphereField::cellIndex(lonE, lat),
+                (lat > 0)       ? SphereField::cellIndex(lon, lat - 1) : s,
+                (lat < LAT - 1) ? SphereField::cellIndex(lon, lat + 1) : s,
+            };
+            for (const std::size_t n : nbrs) {
+                if (n == s) continue;
+                const int16_t nPid = field.plateId[n];
+                if (nPid < 0 || nPid == compPlate[
+                        static_cast<std::size_t>(cid)]) {
+                    continue;
+                }
+                ++borders[static_cast<std::size_t>(cid)][nPid];
+            }
+        }
+        // Batch transfer.
+        std::vector<int16_t> target(compSize.size(),
+                                    static_cast<int16_t>(-1));
+        for (std::size_t cid = 0; cid < compSize.size(); ++cid) {
+            const std::size_t p = static_cast<std::size_t>(compPlate[cid]);
+            if (p >= plates.size() || keepComp[p]
+                    == static_cast<int32_t>(cid)) {
+                continue;
+            }
+            const int64_t cap = std::min<int64_t>(
+                plateCells[p] / 4, 500);
+            if (compSize[cid] > cap) continue; // over-cap: leave for later
+            int16_t best = -1;
+            int32_t bestLen = 0;
+            for (const std::pair<const int16_t, int32_t>& e
+                     : borders[cid]) {
+                if (e.second > bestLen) {
+                    bestLen = e.second;
+                    best = e.first;
+                }
+            }
+            if (best >= 0) target[cid] = best;
+        }
+        int32_t moved = 0;
+        for (std::size_t s = 0; s < SphereField::CELL_COUNT; ++s) {
+            const int32_t cid = comp[s];
+            if (cid < 0) continue;
+            const int16_t t = target[static_cast<std::size_t>(cid)];
+            if (t < 0) continue;
+            field.plateId[s] = t;
+            ++moved;
+        }
+        totalMoved += moved;
+        if (moved == 0) break;
+    }
+    return totalMoved;
 }
 
 void applyContinentalDocking(SphereField& field,
@@ -2439,6 +2616,7 @@ void stepSpherePhysicsEpoch(SphereField& field,
     applyContinentalDocking(field, plates, dtMy);
     applySlabPullFeedback(field, plates, dtMy);
     applyWilsonRifting(field, plates, rngState, dtMy);
+    const int32_t contiguityMoved = enforcePlateContiguity(field, plates);
     recomputeIsostaticElevationOnRaster(field);
     solveSeaLevelFixedVolume(field);
     applySurfaceErosionOnRaster(field, dtMy);
@@ -2558,7 +2736,7 @@ void stepSpherePhysicsEpoch(SphereField& field,
             "[sphere] dt=%.1fMy rate[%.4f..%.4f] crust=%.1fkm "
             "z=%.0fm zsea=%.0fm mtn=%zu cont(>0.5)=%zu cf_mean=%.3f "
             "plates=%zu boundary=%zu btype(c/d/t)=%zu/%zu/%zu "
-            "frag=%zu maxComp=%zu "
+            "frag=%zu maxComp=%zu terrane=%d "
             "maxOmega=%.3fdeg/My cflCells=%.1f\n",
             static_cast<double>(dtMy),
             static_cast<double>(minRate),
@@ -2573,6 +2751,7 @@ void stepSpherePhysicsEpoch(SphereField& field,
             boundaryCount,
             btConvergent, btDivergent, btTransform,
             fragmentedPlates, maxComponents,
+            contiguityMoved,
             static_cast<double>(traceMaxOmegaDeg),
             static_cast<double>(cflCells));
     }
