@@ -43,9 +43,36 @@ void runPostSimPasses(MapGenContext& ctx) {
         return hexNeighbor(width, height, cylSim, col, row, dir, outIdx);
     };
 
-    // Per-tile crust age unsupported in legacy 2D state; SphereField
-    // crustAgeMy is the live source. Tile output stays zero.
-    std::fill(crustAgeTile.begin(), crustAgeTile.end(), 0.0f);
+    // crustAgeTile stays zero, DELIBERATELY, and this is not the old excuse.
+    //
+    // The previous comment here said per-tile crust age was "unsupported in
+    // legacy 2D state" long after the sphere rewrite made
+    // SphereField::crustAgeMy available, and the zero-fill silently killed every
+    // downstream `age > N` test -- the Archean-craton resource suite, bauxite
+    // laterite, IOCG uranium, magmatic Ni-Cu, cobalt, helium, PGM, dolomite,
+    // alluvial gold, MVT Pb-Zn, plus bedrock lithology and the magnetic-anomaly
+    // stripes.
+    //
+    // 2026-07-27: the live field was measured before wiring it (AOC_DUMP_OROGENY
+    // prints the distribution). On CONTINENTAL land, seeds 42/7/100 at 3 Gy:
+    //   p5 = 2408-2811 My, p25 = p50 = p75 = p95 = p100 = 3000 My
+    // Continental crust age is SATURATED at the run length. Its interquartile
+    // range is exactly zero, so it fails the liveness gate the worldgen plan
+    // sets for input layers ("> K distinct values AND IQR > 0") -- there is no
+    // young-versus-old signal on land to threshold at all. Oceanic crust does
+    // vary (p5 = 50 My to p100 = 3000 My), but only 17-38 land tiles per map are
+    // oceanic-composition.
+    //
+    // Wiring it would therefore make EVERY continental tile a maximally-old
+    // craton: every threshold below ~2400 fires everywhere, every threshold
+    // above 3000 fires nowhere, and the young-basin branch that places oil, gas,
+    // coal and niter becomes unreachable. That is strictly worse than the
+    // zero-fill, so the field stays zero until the tectonics work gives
+    // continental crust a real age spread -- continental cells currently never
+    // reset their age, because nothing records accretion or rifting on them.
+    //
+    // Re-anchoring the consumer thresholds is blocked on the same thing: there
+    // is nothing to anchor them to yet.
     (void)ophioliteMask;
 
     // Pass 3: sediment yield + downhill deposition, as a GATHER.

@@ -1444,6 +1444,50 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 }
                 std::fprintf(stderr, "\n");
             }
+            {
+                // Crust-age distribution on continental vs oceanic tiles. Every
+                // downstream `age > N` threshold is on the OLD epoch scale
+                // (30..130), so wiring the real My-scale field without
+                // re-anchoring them would make every continental tile an "old
+                // craton" -- strictly worse than the zero-fill it replaced.
+                std::vector<float> contAge;
+                std::vector<float> oceanAge;
+                for (std::size_t i = 0; i < crustPeakKmDump.size(); ++i) {
+                    if (elevationMap[i] < 0.0f) {
+                        continue;
+                    }
+                    const int32_t dcol = static_cast<int32_t>(i) % width;
+                    const int32_t drow = static_cast<int32_t>(i) / width;
+                    const aoc::map::gen::MollweideInverseResult dmw =
+                        aoc::map::gen::projectionInverse(
+                            config.projection,
+                            (static_cast<float>(dcol) + 0.5f) / static_cast<float>(width),
+                            (static_cast<float>(drow) + 0.5f) / static_cast<float>(height));
+                    if (!dmw.valid) {
+                        continue;
+                    }
+                    ((contFracDump[i] >= 0.5f) ? contAge : oceanAge)
+                        .push_back(sphereField.bilinearSample(
+                            sphereField.crustAgeMy, dmw.coord.latDeg, dmw.coord.lonDeg));
+                }
+                for (int32_t which = 0; which < 2; ++which) {
+                    std::vector<float>& v = (which == 0) ? contAge : oceanAge;
+                    std::sort(v.begin(), v.end());
+                    std::fprintf(stderr, "[crustage] %s land n=%zu My:",
+                                 (which == 0) ? "continental" : "oceanic  ", v.size());
+                    for (const int32_t pc : {5, 25, 50, 75, 95, 100}) {
+                        if (v.empty()) {
+                            break;
+                        }
+                        const std::size_t k = std::min(
+                            v.size() - 1,
+                            static_cast<std::size_t>(static_cast<double>(pc) / 100.0 *
+                                                     static_cast<double>(v.size() - 1)));
+                        std::fprintf(stderr, "  p%d=%.0f", pc, static_cast<double>(v[k]));
+                    }
+                    std::fprintf(stderr, "\n");
+                }
+            }
             std::fprintf(stderr,
                          "[orogeny] seaLevelM=%.0f (craton plateau stands this far above)\n",
                          static_cast<double>(-sphereField.seaLevelM));
