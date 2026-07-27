@@ -36,7 +36,6 @@ struct EarthSystemOutputs {
 /// place (sets terrain/feature/resource on lake/floodplain/salt/etc tiles)
 /// and fills the 6 output vectors.
 void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
-                          const std::vector<float>& orogeny,
                           const std::vector<float>& sediment,
                           EarthSystemOutputs& out);
 

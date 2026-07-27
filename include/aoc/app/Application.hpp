@@ -69,7 +69,7 @@ class RenderPipeline;
 namespace renderer {
 class Renderer2D;
 }
-}
+} // namespace vulkan_app
 
 namespace aoc::app {
 
@@ -93,7 +93,7 @@ public:
     Application();
     ~Application();
 
-    Application(const Application&) = delete;
+    Application(const Application&)            = delete;
     Application& operator=(const Application&) = delete;
 
     [[nodiscard]] ErrorCode initialize(const Config& config);
@@ -120,9 +120,9 @@ public:
     /// Defer spectator start until the first frame of run() so the render
     /// pipeline and window are fully initialized.
     void setDeferredSpectate(int32_t playerCount, int32_t maxTurns) {
-        this->m_deferredSpectate = true;
+        this->m_deferredSpectate        = true;
         this->m_deferredSpectatePlayers = playerCount;
-        this->m_deferredSpectateTurns = maxTurns;
+        this->m_deferredSpectateTurns   = maxTurns;
     }
 
 private:
@@ -150,17 +150,17 @@ private:
     hex::AxialCoord findNearbyLandTile(hex::AxialCoord target) const;
 
     // Window + Input
-    Window        m_window;
-    InputManager  m_inputManager;
+    Window m_window;
+    InputManager m_inputManager;
 
     // Vulkan rendering (forward-declared, need complete type in .cpp)
-    std::unique_ptr<vulkan_app::GraphicsDevice>       m_graphicsDevice;
-    std::unique_ptr<vulkan_app::RenderPipeline>       m_renderPipeline;
+    std::unique_ptr<vulkan_app::GraphicsDevice> m_graphicsDevice;
+    std::unique_ptr<vulkan_app::RenderPipeline> m_renderPipeline;
     std::unique_ptr<vulkan_app::renderer::Renderer2D> m_renderer2d;
 
     // Game rendering
     aoc::render::CameraController m_cameraController;
-    aoc::render::GameRenderer     m_gameRenderer;
+    aoc::render::GameRenderer m_gameRenderer;
     /// 3D globe renderer for the Continent Creator. Held as
     /// pointer-to-impl so we don't drag Renderer3D into the public
     /// Application header (Vulkan types stay confined to .cpp).
@@ -178,18 +178,18 @@ private:
     std::unique_ptr<aoc::debug::DebugServer> m_debugServer;
 
     // Game state
-    aoc::game::GameState         m_gameState;
-    aoc::map::HexGrid          m_hexGrid;
-    aoc::sim::TurnManager        m_turnManager;
-    aoc::sim::EconomySimulation  m_economy;
-    aoc::map::FogOfWar           m_fogOfWar;
-    aoc::sim::DiplomacyManager   m_diplomacy;
+    aoc::game::GameState m_gameState;
+    aoc::map::HexGrid m_hexGrid;
+    aoc::sim::TurnManager m_turnManager;
+    aoc::sim::EconomySimulation m_economy;
+    aoc::map::FogOfWar m_fogOfWar;
+    aoc::sim::DiplomacyManager m_diplomacy;
     std::vector<aoc::sim::ai::AIController> m_aiControllers;
     aoc::sim::BarbarianController m_barbarianController;
-    aoc::sim::GlobalDealTracker   m_dealTracker;
+    aoc::sim::GlobalDealTracker m_dealTracker;
     aoc::sim::AllianceObligationTracker m_allianceTracker;
-    aoc::sim::GoodyHutState      m_goodyHuts;   ///< Ancient ruins placed on map.
-    aoc::Random                  m_gameRng{0};  ///< Reseeded in startGame()
+    aoc::sim::GoodyHutState m_goodyHuts; ///< Ancient ruins placed on map.
+    aoc::Random m_gameRng{0};            ///< Reseeded in startGame()
 
     /// Currently selected unit (nullptr if none or city selected).
     aoc::game::Unit* m_selectedUnit = nullptr;
@@ -206,27 +206,28 @@ private:
 
     // UI
     aoc::ui::UIManager m_uiManager;
-    aoc::ui::WidgetId  m_turnLabel      = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId  m_selectionLabel = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId  m_economyLabel   = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId  m_endTurnButton  = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId  m_endTurnInnerBtn = aoc::ui::INVALID_WIDGET; ///< Inner button child for label/onClick mutation
-    aoc::ui::WidgetId  m_lastPlayerBanner = aoc::ui::INVALID_WIDGET; ///< "Waiting for you" glow
-    aoc::ui::WidgetId  m_topBar         = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId  m_resourceLabel  = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_turnLabel      = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_selectionLabel = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_economyLabel   = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_endTurnButton  = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_endTurnInnerBtn =
+        aoc::ui::INVALID_WIDGET; ///< Inner button child for label/onClick mutation
+    aoc::ui::WidgetId m_lastPlayerBanner = aoc::ui::INVALID_WIDGET; ///< "Waiting for you" glow
+    aoc::ui::WidgetId m_topBar           = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_resourceLabel    = aoc::ui::INVALID_WIDGET;
     /// Civ-6-style yield strip in the HUD top bar. Each yield gets its
     /// own (icon + value) pair so updateHUD can refresh just the
     /// numeric text without rebuilding labels. Labels live as siblings
     /// inside `m_yieldStrip`.
-    aoc::ui::WidgetId  m_yieldStrip     = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId  m_goldLabel      = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId  m_scienceLabel   = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId  m_cultureLabel   = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId  m_faithLabel     = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_yieldStrip   = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_goldLabel    = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_scienceLabel = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_cultureLabel = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_faithLabel   = aoc::ui::INVALID_WIDGET;
     /// Civ-6 style strip of player icons in the top bar. Children
     /// rebuilt each frame from `updateDiploStrip` to reflect met /
     /// at-war / allied state. One icon per known civ.
-    aoc::ui::WidgetId  m_diploStrip     = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_diploStrip = aoc::ui::INVALID_WIDGET;
 
     /// Dev-time widget inspector. F11 toggles. Renders hover-highlight
     /// + hovered/focused ids over the UI.
@@ -235,26 +236,26 @@ private:
     /// Full-screen loading overlay shown during `startGame` while map
     /// generation + placement + initial player spawn run. Registered
     /// in the ScreenRegistry so resize re-layouts it.
-    aoc::ui::LoadingScreen   m_loadingScreen;
-    aoc::ui::WidgetId  m_menuDropdown   = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId  m_confirmDialog  = aoc::ui::INVALID_WIDGET;
+    aoc::ui::LoadingScreen m_loadingScreen;
+    aoc::ui::WidgetId m_menuDropdown  = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_confirmDialog = aoc::ui::INVALID_WIDGET;
 
     // Unit action panel
-    aoc::ui::WidgetId  m_unitActionPanel = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_unitActionPanel = aoc::ui::INVALID_WIDGET;
     void rebuildUnitActionPanel();
 
     // Research progress bar
-    aoc::ui::WidgetId  m_researchLabel   = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId  m_researchBar     = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId  m_researchBarFill = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_researchLabel   = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_researchBar     = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_researchBarFill = aoc::ui::INVALID_WIDGET;
 
     // Production progress bar
-    aoc::ui::WidgetId  m_productionLabel   = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId  m_productionBar     = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId  m_productionBarFill = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_productionLabel   = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_productionBar     = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_productionBarFill = aoc::ui::INVALID_WIDGET;
 
     // Help overlay
-    aoc::ui::WidgetId  m_helpOverlay = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_helpOverlay = aoc::ui::INVALID_WIDGET;
 
     /// The unit selected when the action panel was last built (nullptr = no unit / city selected).
     aoc::game::Unit* m_actionPanelUnit = nullptr;
@@ -268,10 +269,10 @@ private:
     /// Enum: 0=default, 1=hand, 2=ibeam, 3=crosshair. Void* keeps
     /// GLFW out of the header.
     struct CursorHandles {
-        void* arrow     = nullptr;
-        void* hand      = nullptr;
-        void* ibeam     = nullptr;
-        void* crossHair = nullptr;
+        void* arrow         = nullptr;
+        void* hand          = nullptr;
+        void* ibeam         = nullptr;
+        void* crossHair     = nullptr;
         int32_t lastApplied = 0;
     };
     CursorHandles m_cursors;
@@ -284,16 +285,16 @@ private:
     bool m_uiConsumedInput = false;
 
     // Game screens
-    aoc::ui::ProductionScreen   m_productionScreen;
-    aoc::ui::TechScreen         m_techScreen;
-    aoc::ui::GovernmentScreen   m_governmentScreen;
-    aoc::ui::EconomyScreen      m_economyScreen;
-    aoc::ui::CityDetailScreen   m_cityDetailScreen;
-    aoc::ui::TradeScreen        m_tradeScreen;
+    aoc::ui::ProductionScreen m_productionScreen;
+    aoc::ui::TechScreen m_techScreen;
+    aoc::ui::GovernmentScreen m_governmentScreen;
+    aoc::ui::EconomyScreen m_economyScreen;
+    aoc::ui::CityDetailScreen m_cityDetailScreen;
+    aoc::ui::TradeScreen m_tradeScreen;
     aoc::ui::TradeRouteSetupScreen m_tradeRouteSetupScreen;
-    aoc::ui::DiplomacyScreen    m_diplomacyScreen;
-    aoc::ui::ReligionScreen     m_religionScreen;
-    aoc::ui::ScoreScreen        m_scoreScreen;
+    aoc::ui::DiplomacyScreen m_diplomacyScreen;
+    aoc::ui::ReligionScreen m_religionScreen;
+    aoc::ui::ScoreScreen m_scoreScreen;
 
     /// Central registry for all modal screens + menus. Populated once in
     /// `initialize()`; replaces the hand-maintained `anyScreenOpen` /
@@ -307,7 +308,7 @@ private:
 
     // Audio system (event queue + music manager)
     aoc::audio::SoundEventQueue m_soundQueue;
-    aoc::audio::MusicManager    m_musicManager;
+    aoc::audio::MusicManager m_musicManager;
 
     // Notification toast system
     aoc::ui::NotificationManager m_notificationManager;
@@ -345,10 +346,10 @@ private:
 
     // App state machine
     AppState m_appState = AppState::MainMenu;
-    aoc::ui::MainMenu       m_mainMenu;
+    aoc::ui::MainMenu m_mainMenu;
     aoc::ui::GameSetupScreen m_gameSetupScreen;
-    aoc::ui::SettingsMenu   m_settingsMenu;
-    aoc::ui::PauseMenu      m_pauseMenu;
+    aoc::ui::SettingsMenu m_settingsMenu;
+    aoc::ui::PauseMenu m_pauseMenu;
 
     /// Build the main menu with all its callbacks. Used by initialize() and returnToMainMenu().
     void buildMainMenu(float screenW, float screenH);
@@ -358,7 +359,7 @@ private:
         aoc::game::Unit* unit = nullptr;
         hex::AxialCoord previousPosition;
         int32_t previousMovement = 0;
-        bool hasState = false;
+        bool hasState            = false;
     };
     UndoState m_undoState;
 
@@ -383,9 +384,9 @@ private:
     // ========================================================================
 
     /// Deferred spectator start (set before run(), executed on first frame).
-    bool m_deferredSpectate = false;
+    bool m_deferredSpectate           = false;
     int32_t m_deferredSpectatePlayers = 8;
-    int32_t m_deferredSpectateTurns = 500;
+    int32_t m_deferredSpectateTurns   = 500;
 
     /// True when the game is running in all-AI spectator mode.
     bool m_spectatorMode = false;
@@ -427,7 +428,7 @@ private:
     /// last ~12 snapshots.
     std::map<int32_t, std::vector<uint8_t>> m_spectatorSnapshots;
     static constexpr int32_t SPECTATOR_SNAPSHOT_INTERVAL = 20;
-    static constexpr size_t  SPECTATOR_SNAPSHOT_MAX      = 12;
+    static constexpr size_t SPECTATOR_SNAPSHOT_MAX       = 12;
 
     /// Build the seek slider + label at the bottom of the screen.  Called
     /// once from the spectate-start path.
@@ -454,11 +455,11 @@ private:
     /// Plain staging value for the numeric text-input widget, which
     /// edits through an `int32_t*`. Synced from/to the atomic
     /// `m_creatorTotalMy` around each focus/commit (main thread only).
-    int32_t  m_creatorTotalMyInput = 3000;
-    int32_t  m_creatorLandPlates  = 4;
+    int32_t m_creatorTotalMyInput = 3000;
+    int32_t m_creatorLandPlates   = 4;
     std::atomic<int32_t> m_creatorTimeCurrentMy{3000};
-    int32_t  m_creatorWidth  = 400;
-    int32_t  m_creatorHeight = 200;
+    int32_t m_creatorWidth  = 400;
+    int32_t m_creatorHeight = 200;
     /// Total plate-drift budget for the sim, in 10ths of a map width.
     /// 1 = 0.1x map width total drift, 60 = 6x. Default 12 = 1.2 of
     /// map width — plates traverse the map ≥ once during the sim,
@@ -469,7 +470,7 @@ private:
     // remain coherent longer and Wilson-cycle dynamics play out at a
     // pace closer to real Earth. User-adjustable via creator slider
     // (range 1-20 = 0.1-2.0 map widths).
-    int32_t  m_creatorDriftPct = 8;
+    int32_t m_creatorDriftPct = 8;
     /// Lazy snapshot cache: maps epoch → HexGrid copy. Populated on
     /// first visit to each epoch; subsequent scrubs to that epoch
     /// blit from cache instead of re-running MapGenerator. Cleared
@@ -503,16 +504,15 @@ private:
     /// copyable in general, so we use a sentinel int instead. All real
     /// creator times are positive (clamped to >=0 by the regenerator),
     /// so the sentinel is unambiguous.
-    static constexpr int32_t PENDING_TIME_NONE =
-        std::numeric_limits<int32_t>::min();
+    static constexpr int32_t PENDING_TIME_NONE = std::numeric_limits<int32_t>::min();
     std::atomic<int32_t> m_pendingCreatorTime{PENDING_TIME_NONE};
-    std::atomic<bool>    m_pendingReroll{false};
+    std::atomic<bool> m_pendingReroll{false};
     /// Seed associated with the pending re-roll. Read on the main
     /// thread only after `m_pendingReroll` is observed true; the worker
     /// writes this BEFORE setting the flag (release on the flag), so a
     /// matching acquire on the flag synchronises this value.
     std::atomic<uint32_t> m_pendingRerollSeed{0};
-    std::atomic<bool>    m_quitRequested{false};
+    std::atomic<bool> m_quitRequested{false};
 
     /// Off-main-thread map regeneration. The main thread enqueues a target
     /// epoch via `enqueueRegen(my)`; the worker thread runs `MapGenerator::generate`
@@ -528,13 +528,13 @@ private:
     /// invariant via mutex on the cache and a single owning swap on the main
     /// thread. HexGrid is ~750 KB so the swap is a pointer-level operation
     /// (std::swap on vectors).
-    aoc::map::HexGrid              m_pendingGrid;
+    aoc::map::HexGrid m_pendingGrid;
     /// CV wakes the worker when a new request lands. Lock guards
     /// `m_regenRequestCfg` (non-trivially-copyable; cannot live in an atomic).
     /// `m_regenRequestMy` + `m_regenRequestGeneration` are atomic so the
     /// worker can observe cancellation without holding the lock.
-    std::condition_variable        m_regenCv;
-    std::mutex                     m_regenWakeMutex;
+    std::condition_variable m_regenCv;
+    std::mutex m_regenWakeMutex;
     /// Configuration snapshot captured by the main thread at enqueue time.
     /// The worker reads this once under `m_regenWakeMutex` then releases the
     /// lock for the slow `MapGenerator::generate` call.
@@ -543,21 +543,21 @@ private:
     /// queued. Writers (HTTP handlers, main thread) increment
     /// `m_regenRequestGeneration` AFTER writing this so the worker observes
     /// the latest request via a single acquire on the generation counter.
-    std::atomic<int32_t>           m_regenRequestMy{PENDING_TIME_NONE};
+    std::atomic<int32_t> m_regenRequestMy{PENDING_TIME_NONE};
     /// Monotonic counter bumped on every `enqueueRegen` call. Worker snapshots
     /// it at the start of a run; on completion, if the value has moved, the
     /// result is stale and the worker discards it (single-flight semantics).
-    std::atomic<uint64_t>          m_regenRequestGeneration{0};
+    std::atomic<uint64_t> m_regenRequestGeneration{0};
     /// Worker → main signal. Set when `m_pendingGrid` holds a fresh result
     /// AND the target epoch the worker computed is still current. Cleared by
     /// the main thread inside `consumeRegenResult()` after the swap.
-    std::atomic<bool>              m_regenResultReady{false};
+    std::atomic<bool> m_regenResultReady{false};
     /// Snapshot of the epoch the worker computed `m_pendingGrid` for. Used by
     /// `consumeRegenResult()` for cache-insert + epoch-current-state update.
-    std::atomic<int32_t>           m_regenResultEpochMy{PENDING_TIME_NONE};
+    std::atomic<int32_t> m_regenResultEpochMy{PENDING_TIME_NONE};
     /// Worker stop signal. Set by `~Application` (or explicit shutdown) before
     /// destruction. The worker checks it on every CV wake and exits when set.
-    std::jthread                   m_regenWorker;
+    std::jthread m_regenWorker;
 
     /// Immutable grid snapshot for the HTTP debug handlers. The main
     /// thread whole-object-assigns `m_hexGrid` (regen swap, map load,
@@ -573,8 +573,7 @@ private:
     /// Main thread only: copy `m_hexGrid` into a fresh snapshot.
     void publishDebugGridSnapshot();
     /// Any thread: fetch the latest published snapshot (may be null).
-    [[nodiscard]] std::shared_ptr<const aoc::map::HexGrid>
-    debugGridSnapshot() const;
+    [[nodiscard]] std::shared_ptr<const aoc::map::HexGrid> debugGridSnapshot() const;
 
     /// Drop every raw `Unit*` / `City*` the UI caches (selection,
     /// previous-frame selection, action panel, movement undo). Call
@@ -602,11 +601,11 @@ private:
     /// Play state — when true, m_creatorTimeCurrentMy advances by one
     /// physics epoch (MY_PER_EPOCH_TARGET My) every PLAY_INTERVAL
     /// seconds, looping at m_creatorTotalMy.
-    bool   m_creatorPlaying    = false;
-    float  m_creatorPlayAccum  = 0.0f;
-    aoc::ui::WidgetId m_creatorPlayBtnId = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId m_creatorPanelId = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId m_creatorEpochLabelId = aoc::ui::INVALID_WIDGET;
+    bool m_creatorPlaying                    = false;
+    float m_creatorPlayAccum                 = 0.0f;
+    aoc::ui::WidgetId m_creatorPlayBtnId     = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_creatorPanelId       = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_creatorEpochLabelId  = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorWidthLabelId  = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorHeightLabelId = aoc::ui::INVALID_WIDGET;
     aoc::ui::WidgetId m_creatorPlatesLabelId = aoc::ui::INVALID_WIDGET;
@@ -614,44 +613,47 @@ private:
     /// Top-of-screen ADVANCED config panel for creator-mode knobs
     /// that don't fit in the bottom panel anymore. Hosts climate
     /// phase + sea level + axial tilt + ENSO + Milankovitch.
-    aoc::ui::WidgetId m_creatorAdvPanelId       = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId m_creatorClimatePhaseLabel= aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId m_creatorSeaLevelLabel    = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId m_creatorAxialTiltLabel   = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId m_creatorEnsoLabel        = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId m_creatorMilanLabel       = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId m_creatorProjectionLabel  = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_creatorAdvPanelId        = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_creatorClimatePhaseLabel = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_creatorSeaLevelLabel     = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_creatorAxialTiltLabel    = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_creatorEnsoLabel         = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_creatorMilanLabel        = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_creatorProjectionLabel   = aoc::ui::INVALID_WIDGET;
     /// Backing values for advanced config (mirror MapGenerator::Config
     /// flags). Updated by UI buttons / text inputs and pushed to the
     /// generator on regenerate.
-    int32_t m_creatorClimatePhase = 0;     ///< 0 neutral / 1 greenhouse / 2 icehouse
-    int32_t m_creatorSeaLevelTenths = 0;   ///< -10..+10 (= -1.0..+1.0 dec)
+    int32_t m_creatorClimatePhase    = 0;   ///< 0 neutral / 1 greenhouse / 2 icehouse
+    int32_t m_creatorSeaLevelTenths  = 0;   ///< -10..+10 (= -1.0..+1.0 dec)
     int32_t m_creatorAxialTiltTenths = 235; ///< 0..400 (= 0.0..40.0°), Earth=235
-    int32_t m_creatorEnsoState    = 0;     ///< 0/1/2
-    int32_t m_creatorMilanTenths  = 0;     ///< 0..10 (= 0.0..1.0)
-    /// Sphere → rectangle projection used to render hex tiles.
-    /// 0 Mollweide, 1 Equirectangular, 2 Mercator, 3 Robinson.
-    /// Cycler in continent creator advanced row.
-    int32_t m_creatorProjection   = 0;
+    int32_t m_creatorEnsoState       = 0;   ///< 0/1/2
+    int32_t m_creatorMilanTenths     = 0;   ///< 0..10 (= 0.0..1.0)
+    /// Index into CREATOR_PROJECTIONS (Application.cpp) selecting the
+    /// sphere → rectangle projection used to render hex tiles. Cycler in the
+    /// continent creator advanced row. This is a UI index, NOT a
+    /// MapProjection enum value -- the table maps between them, so the cycler
+    /// order can change without silently reassigning projections.
+    /// 0 = Lambert equal-area (the default).
+    int32_t m_creatorProjection = 0;
     /// 3D globe view toggle. When true, the continent creator preview
     /// renders a textured sphere instead of the flat hex map; left-
     /// drag rotates the sphere (Google-Maps style), scroll zooms.
     /// Existing time-scrubber, projection cycler, play/pause keep
     /// working -- the projection cycler is greyed out while globe is
     /// active because the sphere itself is the projection.
-    bool    m_creatorGlobe        = false;
+    bool m_creatorGlobe                   = false;
     aoc::ui::WidgetId m_creatorGlobeBtnId = aoc::ui::INVALID_WIDGET;
     /// Orbit camera state for the 3D globe view. Yaw/pitch in degrees,
     /// zoom = camera radius in unit-sphere multiples (1.0 = touching
     /// the surface, larger = further away).
-    float   m_globeYawDeg         = 0.0f;
-    float   m_globePitchDeg       = 0.0f;
-    float   m_globeZoom           = 4.0f;
+    float m_globeYawDeg   = 0.0f;
+    float m_globePitchDeg = 0.0f;
+    float m_globeZoom     = 4.0f;
     /// Drag-rotate state. Set on left-button press over a non-widget
     /// region while the globe is active; cleared on release.
-    bool    m_globeDragActive     = false;
-    double  m_globeLastMouseX     = 0.0;
-    double  m_globeLastMouseY     = 0.0;
+    bool m_globeDragActive   = false;
+    double m_globeLastMouseX = 0.0;
+    double m_globeLastMouseY = 0.0;
     /// Deferred-regen flag. Setup-knob changes (W/H/Plates/EpochsTotal/
     /// text-input typing) only set this to true; the explicit "Generate"
     /// button consumes it and runs MapGenerator. Without this each
@@ -662,8 +664,8 @@ private:
     /// digit / backspace / Enter / Esc keys go to this field; the
     /// `m_numInputBuffer` accumulates user keystrokes and the value
     /// commits on each edit so the live preview regenerates immediately.
-    int32_t* m_numInputTarget = nullptr;
-    int32_t  m_numInputMin    = 1;
+    int32_t* m_numInputTarget           = nullptr;
+    int32_t m_numInputMin               = 1;
     aoc::ui::WidgetId m_numInputLabelId = aoc::ui::INVALID_WIDGET;
     std::string m_numInputBuffer;
     std::function<void()> m_numInputOnChange;
@@ -671,11 +673,8 @@ private:
 
     /// Begin editing the int pointed to by `target`. Snapshot value to
     /// buffer, raise focus indicator on `labelId`, store callbacks.
-    void numInputFocus(int32_t* target,
-                        int32_t minVal,
-                        aoc::ui::WidgetId labelId,
-                        std::function<void()> onChange,
-                        std::function<std::string()> display);
+    void numInputFocus(int32_t* target, int32_t minVal, aoc::ui::WidgetId labelId,
+                       std::function<void()> onChange, std::function<std::string()> display);
     /// Commit + clear focus. Optional applyDelta=true triggers onChange.
     void numInputDefocus();
     /// Per-frame keystroke routing while focused.
@@ -711,14 +710,14 @@ private:
         Feature,
     };
     /// True while the player is in the map-editor preview mode.
-    bool m_mapEditorMode = false;
-    BrushMode m_editorBrushMode = BrushMode::Terrain;
-    aoc::map::TerrainType m_editorBrush = aoc::map::TerrainType::Grassland;
+    bool m_mapEditorMode                       = false;
+    BrushMode m_editorBrushMode                = BrushMode::Terrain;
+    aoc::map::TerrainType m_editorBrush        = aoc::map::TerrainType::Grassland;
     aoc::map::FeatureType m_editorFeatureBrush = aoc::map::FeatureType::Forest;
-    int32_t m_editorBrushRadius = 1;  ///< 1..4 hex radius
-    aoc::ui::WidgetId m_editorPanelId = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId m_editorBrushLabelId = aoc::ui::INVALID_WIDGET;
-    aoc::ui::WidgetId m_editorRadiusLabelId = aoc::ui::INVALID_WIDGET;
+    int32_t m_editorBrushRadius                = 1; ///< 1..4 hex radius
+    aoc::ui::WidgetId m_editorPanelId          = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_editorBrushLabelId     = aoc::ui::INVALID_WIDGET;
+    aoc::ui::WidgetId m_editorRadiusLabelId    = aoc::ui::INVALID_WIDGET;
 
     /// Per-action change list captured between mouse-down and the
     /// next mouse-down (so a single drag groups into one undo step).
@@ -726,8 +725,8 @@ private:
     /// encoded into the same byte slot since we never mix kinds in
     /// one action — see m_undoLastWasFeature).
     struct EditorChange {
-        int32_t  tileIndex;
-        uint8_t  oldValue;
+        int32_t tileIndex;
+        uint8_t oldValue;
     };
     struct EditorAction {
         std::vector<EditorChange> changes;

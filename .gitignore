@@ -6,6 +6,7 @@ ml/data/
 ml/*.pt
 ml/*.npz
 ml/__pycache__/
+tools/__pycache__/
 claude-code-tweaks
 
 # Build trees (CMake presets build into build/<preset>; legacy ad-hoc dirs also covered)

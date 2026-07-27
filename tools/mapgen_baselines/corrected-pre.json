@@ -1,0 +1,379 @@
+{
+  "42": {
+    "file": "(scratch)/cyl_42.csv",
+    "sha256": "3758c4b9dc6e5de90d2104e2ad4a4fd4346564b73aee53f01c9263a7a2f80870",
+    "width": 140,
+    "height": 90,
+    "projection": "mollweide",
+    "wrap": true,
+    "land_fraction": 0.3682,
+    "land_fraction_raw_tiles": 0.2893,
+    "sphere_tile_fraction": 0.7857,
+    "n_land_components": 7,
+    "component_bands": {
+      "1-3": 1,
+      "4-30": 4,
+      "31-100": 0,
+      ">100": 2
+    },
+    "largest_components": [
+      3259,
+      327,
+      26,
+      13,
+      12,
+      5,
+      3
+    ],
+    "largest_over_median": 250.69,
+    "coastline_cells": 1128,
+    "coast_perimeter_over_land": 0.3095,
+    "coast_box_dimension": 1.188,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.3309,
+        0.2409,
+        0.2709,
+        0.1573
+      ],
+      "axis_aligned_frac": 0.6018,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 1100
+    },
+    "mountains": {
+      "n_components": 65,
+      "n_belts": 40,
+      "belt_axis_bins_0_45_90_135": [
+        13,
+        9,
+        10,
+        8
+      ],
+      "belt_axis_aligned_frac": 0.575,
+      "median_elongation": 5.5
+    },
+    "landmass_elongation": {
+      "median": 8.17,
+      "p90": 8.17,
+      "max": 14.07,
+      "n_components": 2,
+      "n_degenerate": 0
+    }
+  },
+  "7": {
+    "file": "(scratch)/cyl_7.csv",
+    "sha256": "31532bccba83700f549e8ebcf99ec5c557348855422d7738aede1c57ff32f469",
+    "width": 140,
+    "height": 90,
+    "projection": "mollweide",
+    "wrap": true,
+    "land_fraction": 0.3148,
+    "land_fraction_raw_tiles": 0.2474,
+    "sphere_tile_fraction": 0.7857,
+    "n_land_components": 17,
+    "component_bands": {
+      "1-3": 5,
+      "4-30": 8,
+      "31-100": 0,
+      ">100": 4
+    },
+    "largest_components": [
+      2585,
+      165,
+      137,
+      117,
+      24,
+      24,
+      23,
+      8
+    ],
+    "largest_over_median": 430.83,
+    "coastline_cells": 1328,
+    "coast_perimeter_over_land": 0.4261,
+    "coast_box_dimension": 1.231,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.2866,
+        0.2811,
+        0.2537,
+        0.1785
+      ],
+      "axis_aligned_frac": 0.5403,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 1277
+    },
+    "mountains": {
+      "n_components": 76,
+      "n_belts": 25,
+      "belt_axis_bins_0_45_90_135": [
+        6,
+        7,
+        5,
+        7
+      ],
+      "belt_axis_aligned_frac": 0.44,
+      "median_elongation": 6.44
+    },
+    "landmass_elongation": {
+      "median": 5.95,
+      "p90": 30.27,
+      "max": 36.21,
+      "n_components": 4,
+      "n_degenerate": 0
+    }
+  },
+  "100": {
+    "file": "(scratch)/cyl_100.csv",
+    "sha256": "ff657d6510b095219a2d36e4bc55a0978c7fa54a6caa5002dbb04feaa0fde2a7",
+    "width": 140,
+    "height": 90,
+    "projection": "mollweide",
+    "wrap": true,
+    "land_fraction": 0.2543,
+    "land_fraction_raw_tiles": 0.1998,
+    "sphere_tile_fraction": 0.7857,
+    "n_land_components": 14,
+    "component_bands": {
+      "1-3": 2,
+      "4-30": 10,
+      "31-100": 0,
+      ">100": 2
+    },
+    "largest_components": [
+      2278,
+      143,
+      21,
+      15,
+      11,
+      9,
+      8,
+      7
+    ],
+    "largest_over_median": 325.43,
+    "coastline_cells": 1002,
+    "coast_perimeter_over_land": 0.3979,
+    "coast_box_dimension": 1.181,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.2259,
+        0.2187,
+        0.2881,
+        0.2674
+      ],
+      "axis_aligned_frac": 0.514,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 965
+    },
+    "mountains": {
+      "n_components": 44,
+      "n_belts": 16,
+      "belt_axis_bins_0_45_90_135": [
+        5,
+        3,
+        4,
+        4
+      ],
+      "belt_axis_aligned_frac": 0.5625,
+      "median_elongation": 12.06
+    },
+    "landmass_elongation": {
+      "median": 3.13,
+      "p90": 3.13,
+      "max": 50.68,
+      "n_components": 2,
+      "n_degenerate": 0
+    }
+  },
+  "200": {
+    "file": "(scratch)/cyl_200.csv",
+    "sha256": "3c326ffb19f3c092a3b634d56fa277734ec90213454d4d55d35fecb0a5d27dff",
+    "width": 140,
+    "height": 90,
+    "projection": "mollweide",
+    "wrap": true,
+    "land_fraction": 0.2665,
+    "land_fraction_raw_tiles": 0.2094,
+    "sphere_tile_fraction": 0.7857,
+    "n_land_components": 22,
+    "component_bands": {
+      "1-3": 6,
+      "4-30": 11,
+      "31-100": 0,
+      ">100": 5
+    },
+    "largest_components": [
+      1110,
+      625,
+      411,
+      242,
+      158,
+      16,
+      9,
+      8
+    ],
+    "largest_over_median": 222.0,
+    "coastline_cells": 1284,
+    "coast_perimeter_over_land": 0.4867,
+    "coast_box_dimension": 1.293,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.2725,
+        0.2319,
+        0.2518,
+        0.2438
+      ],
+      "axis_aligned_frac": 0.5243,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 1255
+    },
+    "mountains": {
+      "n_components": 66,
+      "n_belts": 25,
+      "belt_axis_bins_0_45_90_135": [
+        4,
+        3,
+        10,
+        8
+      ],
+      "belt_axis_aligned_frac": 0.56,
+      "median_elongation": 8.62
+    },
+    "landmass_elongation": {
+      "median": 6.46,
+      "p90": 12.77,
+      "max": 67.72,
+      "n_components": 5,
+      "n_degenerate": 0
+    }
+  },
+  "1234": {
+    "file": "(scratch)/cyl_1234.csv",
+    "sha256": "553a66d945bfdf5d1a69155eaa9a940e7e21848311d06553b0779485a5bed76b",
+    "width": 140,
+    "height": 90,
+    "projection": "mollweide",
+    "wrap": true,
+    "land_fraction": 0.3251,
+    "land_fraction_raw_tiles": 0.2554,
+    "sphere_tile_fraction": 0.7857,
+    "n_land_components": 13,
+    "component_bands": {
+      "1-3": 2,
+      "4-30": 7,
+      "31-100": 0,
+      ">100": 4
+    },
+    "largest_components": [
+      2462,
+      340,
+      219,
+      123,
+      13,
+      13,
+      12,
+      11
+    ],
+    "largest_over_median": 205.17,
+    "coastline_cells": 844,
+    "coast_perimeter_over_land": 0.2623,
+    "coast_box_dimension": 1.176,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.1937,
+        0.1596,
+        0.4397,
+        0.2071
+      ],
+      "axis_aligned_frac": 0.6334,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 821
+    },
+    "mountains": {
+      "n_components": 26,
+      "n_belts": 12,
+      "belt_axis_bins_0_45_90_135": [
+        3,
+        2,
+        3,
+        4
+      ],
+      "belt_axis_aligned_frac": 0.5,
+      "median_elongation": 9.23
+    },
+    "landmass_elongation": {
+      "median": 2.57,
+      "p90": 7.93,
+      "max": 21.54,
+      "n_components": 4,
+      "n_degenerate": 0
+    }
+  },
+  "777": {
+    "file": "(scratch)/cyl_777.csv",
+    "sha256": "f3a5bcda732af6102000201890ef3183ede3612b2e2f26ca57858a55f30e55a5",
+    "width": 140,
+    "height": 90,
+    "projection": "mollweide",
+    "wrap": true,
+    "land_fraction": 0.1591,
+    "land_fraction_raw_tiles": 0.125,
+    "sphere_tile_fraction": 0.7857,
+    "n_land_components": 48,
+    "component_bands": {
+      "1-3": 6,
+      "4-30": 32,
+      "31-100": 7,
+      ">100": 3
+    },
+    "largest_components": [
+      465,
+      367,
+      119,
+      68,
+      51,
+      49,
+      43,
+      37
+    ],
+    "largest_over_median": 66.43,
+    "coastline_cells": 1050,
+    "coast_perimeter_over_land": 0.6667,
+    "coast_box_dimension": 1.192,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.2217,
+        0.2666,
+        0.252,
+        0.2598
+      ],
+      "axis_aligned_frac": 0.4736,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 1024
+    },
+    "mountains": {
+      "n_components": 53,
+      "n_belts": 23,
+      "belt_axis_bins_0_45_90_135": [
+        2,
+        5,
+        6,
+        10
+      ],
+      "belt_axis_aligned_frac": 0.3478,
+      "median_elongation": 7.05
+    },
+    "landmass_elongation": {
+      "median": 6.55,
+      "p90": 6.55,
+      "max": 14.92,
+      "n_components": 5,
+      "n_degenerate": 0
+    }
+  }
+}

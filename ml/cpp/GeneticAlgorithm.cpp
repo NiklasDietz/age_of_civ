@@ -49,6 +49,10 @@ bool parseMapType(std::string_view s, aoc::map::MapType& out) {
     }
     if (lower == "continents") { out = aoc::map::MapType::Continents; return true; }
     if (lower.empty()) { return false; }
+    std::fprintf(stderr,
+                 "[Config] map type '%.*s' is not available; remapped to "
+                 "continents (only Continents is supported since 2026-05-03).\n",
+                 static_cast<int>(s.size()), s.data());
     out = aoc::map::MapType::Continents;
     return true;
 }
@@ -132,19 +136,7 @@ static constexpr std::array<std::array<float, NUM_PARAMS>, 12> EXISTING_LEADERS 
       1.0f, 0.7f, 1.2f, 1.4f}},
 }};
 
-// Parameter names for output (same order as LeaderBehavior fields).
-static constexpr const char* PARAM_NAMES[NUM_PARAMS] = {
-    "militaryAggression", "expansionism", "scienceFocus", "cultureFocus",
-    "economicFocus", "diplomaticOpenness", "religiousZeal", "nukeWillingness",
-    "trustworthiness", "grudgeHolding",
-    "techMilitary", "techEconomic", "techIndustrial", "techNaval", "techInformation",
-    "prodSettlers", "prodMilitary", "prodBuilders", "prodBuildings", "prodWonders",
-    "prodNaval", "prodReligious",
-    "warDeclarationThreshold", "peaceAcceptanceThreshold", "allianceDesire",
-    "riskTolerance", "environmentalism", "peripheryTolerance", "greatPersonFocus",
-    "espionagePriority", "ideologicalFervor", "speculationAppetite",
-    "milBaseWeight", "milThreatSensitivity", "milEmergencySlope", "milOverstockPenalty",
-};
+// PARAM_NAMES now lives in GeneticAlgorithm.hpp (single shared definition).
 
 void clampGenes(std::array<float, NUM_PARAMS>& genes, const ParamBounds& bounds) {
     for (int32_t i = 0; i < NUM_PARAMS; ++i) {
@@ -168,10 +160,14 @@ std::vector<Individual> createInitialPopulation(int32_t popSize, std::mt19937& r
     std::uniform_int_distribution<int32_t> parentDist(0, 11);
 
     if (singleLeader) {
-        // Seed slot 0 with the un-mutated archetype so the target flavour
-        // is always in the gene pool. Fill remainder with mutations.
+        // Seed slot 0 with the archetype (clamped to bounds) so the target
+        // flavour is always in the gene pool. Clamping matters: some shipped
+        // archetypes sit just outside defaultBounds() (e.g. Gandhi's
+        // prodMilitary 0.2 < the 0.3 floor), and an out-of-bounds seed would
+        // otherwise poison the initial population. Fill remainder with mutations.
         Individual seed{};
         seed.genes = EXISTING_LEADERS[static_cast<std::size_t>(seedLeader)];
+        clampGenes(seed.genes, bounds);
         population.push_back(seed);
         while (static_cast<int32_t>(population.size()) < popSize) {
             Individual ind{};
@@ -185,10 +181,12 @@ std::vector<Individual> createInitialPopulation(int32_t popSize, std::mt19937& r
         return population;
     }
 
-    // Default: rotate through all 12 hand-crafted leaders, then mutations.
+    // Default: rotate through all 12 hand-crafted leaders (clamped to bounds,
+    // see note above), then mutations.
     for (int32_t i = 0; i < 12 && static_cast<int32_t>(population.size()) < popSize; ++i) {
         Individual ind{};
         ind.genes = EXISTING_LEADERS[static_cast<std::size_t>(i)];
+        clampGenes(ind.genes, bounds);
         population.push_back(ind);
     }
 

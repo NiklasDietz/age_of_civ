@@ -16,6 +16,8 @@
 #include "aoc/map/gen/MapGenContext.hpp"
 #include "aoc/map/gen/Mappability.hpp"
 #include "aoc/map/gen/PostSim.hpp"
+#include "aoc/map/gen/Lakes.hpp"
+#include "aoc/map/gen/Relief.hpp"
 #include "aoc/map/gen/Thresholds.hpp"
 #include "aoc/map/gen/AtmosphereOcean.hpp"
 #include "aoc/map/gen/BiomeSubtypes.hpp"
@@ -50,10 +52,10 @@
 // own tile (no neighbour scatter, no shared accumulators) can prefix
 // the outer for-row loop with this macro for free CPU-core scaling.
 #ifdef AOC_HAS_OPENMP
-#  include <omp.h>
-#  define AOC_PARALLEL_FOR_ROWS _Pragma("omp parallel for schedule(static)")
+#include <omp.h>
+#define AOC_PARALLEL_FOR_ROWS _Pragma("omp parallel for schedule(static)")
 #else
-#  define AOC_PARALLEL_FOR_ROWS
+#define AOC_PARALLEL_FOR_ROWS
 #endif
 
 namespace aoc::map {
@@ -67,8 +69,7 @@ namespace aoc::map {
 // documents the contract until raster docking wires it in as an
 // explicit Wilson spawn gate.
 inline constexpr std::size_t MAX_PLATE_CAP = 32;
-static_assert(MAX_PLATE_CAP < 255,
-              "plate count must fit in 0..254 with 255 as sentinel");
+static_assert(MAX_PLATE_CAP < 255, "plate count must fit in 0..254 with 255 as sentinel");
 
 // Noise utilities live in src/map/gen/Noise.{hpp,cpp}. The MapGenerator
 // member declarations stay in the header for callers that already use them
@@ -78,15 +79,6 @@ static_assert(MAX_PLATE_CAP < 255,
 using gen::hashNoise;
 using gen::smoothstep;
 
-float MapGenerator::noise2D(float x, float y, float frequency, aoc::Random& rng) {
-    return gen::noise2D(x, y, frequency, rng);
-}
-
-float MapGenerator::fractalNoise(float x, float y, int octaves, float frequency,
-                                  float persistence, aoc::Random& rng) {
-    return gen::fractalNoise(x, y, octaves, frequency, persistence, rng);
-}
-
 // ============================================================================
 // Generation steps
 // ============================================================================
@@ -94,25 +86,45 @@ float MapGenerator::fractalNoise(float x, float y, int octaves, float frequency,
 void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
     outGrid.initialize(config.width, config.height, config.topology);
 
+    // True latitude per grid row, from the SAME projection the terrain is
+    // sampled through. Must be set before assignTerrain, because every
+    // climate / biogeography pass downstream reads it. Previously each pass
+    // reconstructed latitude as `2 * |row/height - 0.5|`, which assumes row is
+    // linear in latitude -- true for no projection here, so climate zones were
+    // placed 8-19 degrees away from the terrain they describe.
+    {
+        std::vector<float> rowLat(static_cast<std::size_t>(config.height), 0.0f);
+        for (int32_t row = 0; row < config.height; ++row) {
+            const float ny = (static_cast<float>(row) + 0.5f) / static_cast<float>(config.height);
+            // Sample at the row's mid-longitude: latitude is a function of the
+            // row alone for every projection offered, and mid-map is inside the
+            // valid domain of all of them (Mollweide's ellipse included).
+            const aoc::map::gen::MollweideInverseResult inv =
+                aoc::map::gen::projectionInverse(config.projection, 0.5f, ny);
+            rowLat[static_cast<std::size_t>(row)] = inv.valid ? inv.coord.latDeg : 0.0f;
+        }
+        outGrid.setRowLatitudes(std::move(rowLat));
+    }
+
     aoc::Random rng(config.seed);
 
     // Coarse-grained per-stage timing for profiling. Logs at DEBUG.
     using PerfClock = std::chrono::steady_clock;
-    const auto t0 = PerfClock::now();
-    auto logStage = [&t0]([[maybe_unused]] const char* name) {
+    const auto t0   = PerfClock::now();
+    auto logStage   = [&t0]([[maybe_unused]] const char* name) {
         [[maybe_unused]] const auto now = PerfClock::now();
-        [[maybe_unused]] const auto ms = std::chrono::duration_cast<
-            std::chrono::milliseconds>(now - t0).count();
-        LOG_DEBUG("[mapgen] %lld ms total — stage: %s",
-            static_cast<long long>(ms), name);
+        [[maybe_unused]] const auto ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(now - t0).count();
+        LOG_DEBUG("[mapgen] %lld ms total — stage: %s", static_cast<long long>(ms), name);
     };
 
     // 2026-05-03: LandWithSeas removed. Only Continents path remains; it
     // runs the standard tectonic-plate pipeline (assignTerrain → coastline
     // smoothing → features → rivers → wonders).
-    assignTerrain(config, outGrid, rng);
+    TerrainFields terrainFields;
+    assignTerrain(config, outGrid, rng, terrainFields);
     logStage("assign-terrain");
-    smoothCoastlines(outGrid);
+    smoothCoastlines(outGrid, terrainFields);
     logStage("smooth-coastlines");
     assignFeatures(config, outGrid, rng);
     logStage("assign-features");
@@ -142,11 +154,14 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
         for (int32_t pass = 0; pass < 2; ++pass) {
             std::vector<int8_t> next = nearRiver;
             for (int32_t i = 0; i < total; ++i) {
-                if (nearRiver[static_cast<std::size_t>(i)]) { continue; }
-                const hex::AxialCoord ax =
-                    hex::offsetToAxial({i % width, i / width});
+                if (nearRiver[static_cast<std::size_t>(i)]) {
+                    continue;
+                }
+                const hex::AxialCoord ax = hex::offsetToAxial({i % width, i / width});
                 for (const hex::AxialCoord& n : hex::neighbors(ax)) {
-                    if (!outGrid.isValid(n)) { continue; }
+                    if (!outGrid.isValid(n)) {
+                        continue;
+                    }
                     if (nearRiver[static_cast<std::size_t>(outGrid.toIndex(n))]) {
                         next[static_cast<std::size_t>(i)] = 1;
                         break;
@@ -156,10 +171,16 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
             nearRiver.swap(next);
         }
         for (int32_t i = 0; i < total; ++i) {
-            if (!nearRiver[static_cast<std::size_t>(i)]) { continue; }
+            if (!nearRiver[static_cast<std::size_t>(i)]) {
+                continue;
+            }
             const TerrainType t = outGrid.terrain(i);
-            if (t == TerrainType::Mountain) { continue; }
-            if (isWater(t)) { continue; }
+            if (t == TerrainType::Mountain) {
+                continue;
+            }
+            if (isWater(t)) {
+                continue;
+            }
             // Sediment: smooth Hills to None, flatten elevation tier.
             if (outGrid.feature(i) == FeatureType::Hills) {
                 outGrid.setFeature(i, FeatureType::None);
@@ -180,31 +201,33 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
     // BEACH_PLACER, PYRITE, PHOSPHATE, VMS_ORE, SKARN_ORE, MVT_ORE),
     // making the matching production recipes unreachable on those maps.
     switch (config.placement) {
-        case ResourcePlacementMode::Random:
-            placeRandomResources(config, outGrid, rng);
-            break;
-        case ResourcePlacementMode::Fair:
-            placeGeologyResources(config, outGrid, rng);
-            balanceResourcesFair(config, outGrid, rng);
-            break;
-        case ResourcePlacementMode::Realistic:
-        default:
-            placeGeologyResources(config, outGrid, rng);
-            break;
+    case ResourcePlacementMode::Random:
+        placeRandomResources(config, outGrid, rng);
+        break;
+    case ResourcePlacementMode::Fair:
+        placeGeologyResources(config, outGrid, rng);
+        balanceResourcesFair(config, outGrid, rng);
+        break;
+    case ResourcePlacementMode::Realistic:
+    default:
+        placeGeologyResources(config, outGrid, rng);
+        break;
     }
     logStage("resource-placement-DONE");
 
     // Natural fish spots: seed FISH on ShallowWater tiles.
     // Coast terrain is no longer generated; all shallow water is ShallowWater.
     {
-        aoc::Random fishRng(config.seed ^ 0x46495348u);  // "FISH"
+        aoc::Random fishRng(config.seed ^ 0x46495348u); // "FISH"
         const int32_t tiles = outGrid.tileCount();
         for (int32_t i = 0; i < tiles; ++i) {
             const TerrainType t = outGrid.terrain(i);
             if (t != TerrainType::ShallowWater) {
                 continue;
             }
-            if (outGrid.resource(i).isValid()) { continue; }
+            if (outGrid.resource(i).isValid()) {
+                continue;
+            }
             constexpr float p = 0.04f;
             if (fishRng.chance(p)) {
                 outGrid.setResource(i, ResourceId{aoc::sim::goods::FISH});
@@ -217,7 +240,8 @@ void MapGenerator::generate(const Config& config, HexGrid& outGrid) {
     aoc::sim::detectChokepoints(outGrid);
 }
 
-void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Random& rng) {
+void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Random& rng,
+                                 TerrainFields& outFields) {
     const int32_t width  = grid.width();
     const int32_t height = grid.height();
     // Cylindrical X wrap toggles the seam-handling logic in the passes
@@ -277,356 +301,366 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // no-op. config.seaLevelDelta remains the creative slider and
     // still shifts the final cut in Thresholds.
     float eustaticStandM = 0.0f;
-    if (config.climatePhase == 1)      { eustaticStandM = +100.0f; }
-    else if (config.climatePhase == 2) { eustaticStandM = -120.0f; }
+    if (config.climatePhase == 1) {
+        eustaticStandM = +100.0f;
+    } else if (config.climatePhase == 2) {
+        eustaticStandM = -120.0f;
+    }
 
     switch (config.mapType) {
-        case MapType::Continents: {
-            // Plate-tectonic continent layout. Plate seeds placed here
-            // parameterise rigid motion (Euler pole + angular velocity)
-            // only; raster ownership comes from stochastic region
-            // growing (generateInitialPlateOwnership — NO Voronoi), and
-            // continental crust from the independent craton BFS below.
-            // Land/water emerges from 3 Gy of raster physics
-            // (SphereFieldPhysics), not from these seeds' positions.
-            //
-            // Pass 1: 3-4 LAND plate seeds, rejection-sampled with a
-            // large minimum gap (0.42) so the land cells can't share a
-            // boundary directly.
-            // Pass 2: 5-7 OCEAN plate seeds, fill in the gaps with a
-            // smaller minimum gap (0.13) from ANY existing seed. These
-            // sit between the land seeds and become the connective
-            // ocean tissue separating continents.
-            // Earth has ~7 major tectonic plates (Eurasian, African,
-            // North/South American, Pacific, Antarctic, Indo-Australian)
-            // plus ~8 minor ones. Default 7 gives realistic continent
-            // sizing; user can push to 14 via setup screen.
-            // 2026-05-04: ocean plate count dropped 7-10 -> 3-4 to match
-            // Earth's actual distribution: ~7 major plates total of
-            // which only ~2-3 are mostly oceanic (Pacific, Nazca,
-            // Cocos), and ONE of those (Pacific) covers ~30 % of the
-            // surface alone. Old 7-10 ocean plates fragmented the
-            // ocean into many similar-sized cells; combined with rift
-            // children + microplates the total plate count hit 20+
-            // and visible plate territories were all small/uniform
-            // rather than the giant-Pacific + a-few-medium pattern of
-            // real Earth.
-            // Initial plate population matches Müller 2022 modern-Earth
-            // major-plate count (~7-15 active throughout Phanerozoic).
-            // Spawning more than this floods the world with boundary
-            // cells; ridge-accretion and subduction passes then erode
-            // continental crust faster than docking can preserve it.
-            // Wilson-cycle dynamics expand and contract the count
-            // naturally over the 3-Gy default sim, so init does not
-            // need to over-seed.
-            const int32_t landCountTarget = (config.landPlateCount > 0)
-                ? std::max(1, config.landPlateCount)
-                : centerRng.nextInt(5, 8);
-            const int32_t oceanCountTarget = centerRng.nextInt(4, 7);
-            const float LAND_MIN_GAP  = std::max(0.18f,
-                0.70f / static_cast<float>(landCountTarget + 1));
-            constexpr float OCEAN_MIN_GAP = 0.09f;
+    case MapType::Continents: {
+        // Plate-tectonic continent layout. Plate seeds placed here
+        // parameterise rigid motion (Euler pole + angular velocity)
+        // only; raster ownership comes from stochastic region
+        // growing (generateInitialPlateOwnership — NO Voronoi), and
+        // continental crust from the independent craton BFS below.
+        // Land/water emerges from 3 Gy of raster physics
+        // (SphereFieldPhysics), not from these seeds' positions.
+        //
+        // Pass 1: 3-4 LAND plate seeds, rejection-sampled with a
+        // large minimum gap (0.42) so the land cells can't share a
+        // boundary directly.
+        // Pass 2: 5-7 OCEAN plate seeds, fill in the gaps with a
+        // smaller minimum gap (0.13) from ANY existing seed. These
+        // sit between the land seeds and become the connective
+        // ocean tissue separating continents.
+        // Earth has ~7 major tectonic plates (Eurasian, African,
+        // North/South American, Pacific, Antarctic, Indo-Australian)
+        // plus ~8 minor ones. Default 7 gives realistic continent
+        // sizing; user can push to 14 via setup screen.
+        // 2026-05-04: ocean plate count dropped 7-10 -> 3-4 to match
+        // Earth's actual distribution: ~7 major plates total of
+        // which only ~2-3 are mostly oceanic (Pacific, Nazca,
+        // Cocos), and ONE of those (Pacific) covers ~30 % of the
+        // surface alone. Old 7-10 ocean plates fragmented the
+        // ocean into many similar-sized cells; combined with rift
+        // children + microplates the total plate count hit 20+
+        // and visible plate territories were all small/uniform
+        // rather than the giant-Pacific + a-few-medium pattern of
+        // real Earth.
+        // Initial plate population matches Müller 2022 modern-Earth
+        // major-plate count (~7-15 active throughout Phanerozoic).
+        // Spawning more than this floods the world with boundary
+        // cells; ridge-accretion and subduction passes then erode
+        // continental crust faster than docking can preserve it.
+        // Wilson-cycle dynamics expand and contract the count
+        // naturally over the 3-Gy default sim, so init does not
+        // need to over-seed.
+        const int32_t landCountTarget  = (config.landPlateCount > 0)
+                                             ? std::max(1, config.landPlateCount)
+                                             : centerRng.nextInt(5, 8);
+        const int32_t oceanCountTarget = centerRng.nextInt(4, 7);
+        const float LAND_MIN_GAP = std::max(0.18f, 0.70f / static_cast<float>(landCountTarget + 1));
+        constexpr float OCEAN_MIN_GAP = 0.09f;
 
-            const auto pushPlate = [&](float cx, float cy, bool isLand) {
-                Plate p;
-                p.cx = cx;
-                p.cy = cy;
-                // 2026-05-05: SPHERE MIGRATION - derive lat/lon from
-                // legacy (cx, cy) via Mollweide inverse. Calls that
-                // pass (cx, cy) outside the Mollweide ellipse get
-                // clamped: lat from y assuming valid ellipse interior,
-                // lon scaled by ellipse fill ratio. Plates initialised
-                // here will have authoritative lat/lon for sphere
-                // motion in Phase 2; legacy cx/cy retained until full
-                // Phase 6 cleanup.
-                {
-                    aoc::map::gen::MollweideInverseResult mw =
-                        aoc::map::gen::mollweideInverse(cx, cy);
+        const auto pushPlate = [&](float cx, float cy, bool isLand) {
+            Plate p;
+            p.cx = cx;
+            p.cy = cy;
+            // 2026-05-05: SPHERE MIGRATION - derive lat/lon from
+            // legacy (cx, cy) via Mollweide inverse. Calls that
+            // pass (cx, cy) outside the Mollweide ellipse get
+            // clamped: lat from y assuming valid ellipse interior,
+            // lon scaled by ellipse fill ratio. Plates initialised
+            // here will have authoritative lat/lon for sphere
+            // motion in Phase 2; legacy cx/cy retained until full
+            // Phase 6 cleanup.
+            {
+                aoc::map::gen::MollweideInverseResult mw = aoc::map::gen::mollweideInverse(cx, cy);
+                if (!mw.valid) {
+                    // Out of ellipse: nearest valid (lat, lon) is
+                    // along the ellipse boundary closest to (cx,cy).
+                    // Approximate by clamping y -> sphere bounds.
+                    const float yClip = std::clamp(cy, 0.02f, 0.98f);
+                    const float xClip = std::clamp(cx, 0.02f, 0.98f);
+                    mw                = aoc::map::gen::mollweideInverse(xClip, yClip);
                     if (!mw.valid) {
-                        // Out of ellipse: nearest valid (lat, lon) is
-                        // along the ellipse boundary closest to (cx,cy).
-                        // Approximate by clamping y -> sphere bounds.
-                        const float yClip = std::clamp(cy, 0.02f, 0.98f);
-                        const float xClip = std::clamp(cx, 0.02f, 0.98f);
-                        mw = aoc::map::gen::mollweideInverse(xClip, yClip);
-                        if (!mw.valid) {
-                            mw.coord = {0.0f, 0.0f};
-                        }
-                    }
-                    p.latDeg = mw.coord.latDeg;
-                    p.lonDeg = mw.coord.lonDeg;
-                }
-                // Random Euler pole on sphere + log-normal angular
-                // velocity. Distribution parameters derive from the
-                // Müller 2022 1000-Ma reconstruction filtered to
-                // major plates (README findings: median 0.1 deg/Ma,
-                // p95 1.0 deg/Ma) which gives μ=-2.30, σ=1.40 in
-                // ln(deg/Ma) — see `data/plate_statistics.csv` and
-                // `tools/plate_data/extract_statistics.py`. Box-Muller
-                // for Gaussian sampling so a single deterministic RNG
-                // call drives the whole draw. Continental plates are
-                // shifted slightly slower (Δμ = -0.4) per HS3-NUVEL-1A
-                // observation that cratonic plates resist mantle drag
-                // more than oceanic ones (Gripp & Gordon 2002 Pacific
-                // 0.96 vs Eurasian 0.14).
-                {
-                    // Clamp Euler-pole latitude to |lat| <= 60 deg.
-                    // Real Earth Euler poles cluster between -60 and
-                    // +60 latitude (Gripp & Gordon 2002 plate-motion
-                    // catalogue: only the Cocos pole at 36.8 N gets
-                    // close to the limit; most are < 60). Poles
-                    // closer to a sphere pole produce near-axial
-                    // rotation that visually smears continental crust
-                    // into concentric circles when rendered on a 3D
-                    // globe, even though the per-cell physics is
-                    // correct -- it is the lat/lon raster's polar
-                    // singularity that visualises a normal rigid
-                    // rotation as a swirl. Clamping eliminates the
-                    // visual artefact at the cost of a tiny exclusion
-                    // zone near the geographic poles.
-                    const float poleLat = centerRng.nextFloat(-60.0f, 60.0f);
-                    const float poleLon = centerRng.nextFloat(-180.0f, 180.0f);
-                    p.eulerPoleLatDeg = poleLat;
-                    p.eulerPoleLonDeg = poleLon;
-                    constexpr float MAJOR_MOTION_LN_MU    = -2.30f;
-                    constexpr float MAJOR_MOTION_LN_SIGMA =  1.40f;
-                    const float u1 = std::max(1e-6f,
-                        centerRng.nextFloat(0.0f, 1.0f));
-                    const float u2 = centerRng.nextFloat(0.0f, 1.0f);
-                    const float gaussian = std::sqrt(-2.0f * std::log(u1))
-                                          * std::cos(6.28318530718f * u2);
-                    const float continentalShift = isLand ? -0.40f : 0.0f;
-                    const float lnSpeed = MAJOR_MOTION_LN_MU
-                                        + continentalShift
-                                        + MAJOR_MOTION_LN_SIGMA * gaussian;
-                    // Clamp to Mueller 2022 modern plate-motion catalogue
-                    // GEOLOGICAL-TIMESCALE envelope: median plate ~0.1
-                    // deg/My with sustainable upper bound at ~0.30 deg/My
-                    // (twice the median). Modern Pacific 1.0 deg/My is
-                    // a short-term figure that a plate cannot sustain
-                    // across the 3-Gy default sim without generating
-                    // unrealistic ~8-revolution sweeps. Lower bound
-                    // 0.005 deg/My matches the slowest cratonic plates
-                    // (Eurasian / Antarctic). Init clamp must agree
-                    // with the slab-pull cap (MAX_ABS_OMEGA_DEG_PER_MY
-                    // in SphereFieldPhysics.cpp = 0.15) so a plate that
-                    // spawns near the init upper limit decays under
-                    // slab-pull damping toward 0.15.
-                    const float angVelMag =
-                        std::clamp(std::exp(lnSpeed), 0.005f, 0.30f);
-                    p.angularVelDeg = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f)
-                        ? -angVelMag : angVelMag;
-                }
-                // landFraction: continental plates are mostly land but
-                // not entirely (Eurasian has plenty of seas); oceanic
-                // plates have small islands and seamount chains. Adds
-                // realism: every plate has SOME land and SOME ocean
-                // intrinsic to it.
-                // CRATONIC INIT. Initial continental plates are SMALL
-                // STABLE CRATONS (0.45-0.65 land coverage) — Archean-
-                // shield-like nuclei representing early continental
-                // crust. Over the sim they GROW via:
-                //   • Subduction-arc volcanism along their boundaries
-                //     pushing tiles above water (Andes, Cordillera)
-                //   • Terrane accretion at mergers (Cordilleran terranes)
-                //   • Hotspot tracks adding volcanic islands
-                //   • Orogeny lifting margin tiles above water level
-                // Net effect over 100+ epochs: cratons → full continents
-                // (matches Earth's progression from Archean nuclei to
-                // present continents through ~2.5 Ga of accretion).
-                // 2026-05-04: dropped from 0.85-0.95 to 0.35-0.55. Real
-                // tectonic plates are mostly OCEAN even when they carry a
-                // continent: African plate is ~32% land, Indian ~36%,
-                // Eurasian ~40%, North American ~45%, Pacific ~0%. The
-                // old 0.85-0.95 range made every "land" plate read as a
-                // near-continuous continent, so adjacent land plates
-                // formed a Pangaea even when their centroids drifted
-                // apart. With 0.35-0.55 each plate carries a continent-
-                // sized landmass surrounded by intra-plate ocean, and
-                // adjacent land plates produce two SEPARATE continents
-                // separated by ocean rather than a fused supercontinent.
-                // 2026-05-04: ocean-plate landFraction dropped 0.02-0.08
-                // -> 0.005-0.02. With 5-7% land randomly scattered,
-                // ocean plates produced isolated land tiles that
-                // bordered neighbouring continental land tiles and
-                // counted toward "internal plates inside one
-                // continent" -- the largest visible continent showed
-                // 8-12 plate ids contributing land. Real Pacific plate
-                // is ~99 % oceanic; volcanic islands are rare and
-                // distant. With 0.5-2 % crust mask above threshold,
-                // ocean plates contribute essentially zero stray land
-                // tiles to neighbouring continents.
-                p.landFraction = isLand
-                    ? centerRng.nextFloat(0.35f, 0.55f)
-                    : centerRng.nextFloat(0.005f, 0.02f);
-                // Initial crust age: continental plates start old (cratons
-                // = Archean, billions of years), oceanic plates start
-                // moderately aged (random 0-50 epochs equivalent).
-                // Cratons get high age so their slab-pull contribution
-                // is suppressed (they shouldn't subduct themselves).
-                // Irregular-shape probability: 35 % of plates get one
-                // extra Voronoi seed offset from the primary, giving
-                // an L-shape / lobed / curved territory rather than
-                // a clean Voronoi cell. Real Earth plates are highly
-                // irregular due to accretion + rifting history.
-                // 60 % of plates get 1 extra seed, 25 % of those get
-                // a SECOND extra seed → multi-lobed territory.
-                // Real Earth plates almost never have clean Voronoi
-                // shapes; they have arms and bays from accretion +
-                // partial mergers.
-                // 2026-05-04: dropped extras 3-6 -> 0-2, offset 0.10-0.22
-                // -> 0.04-0.10. With 3-6 extra seeds spread 0.10-0.22
-                // away from primary, plate territories became multi-
-                // lobed AND the lobes interleaved with neighbouring
-                // plates' lobes -- one plate ended up surrounded by
-                // (or surrounding) another, producing the "weirdly
-                // shaped plates embedded inside a bigger plate" pattern
-                plates.push_back(p);
-            };
-
-            // ---- Pass 1: land seeds, stratified by latitude band ----
-            // Earth has continents distributed across latitudes
-            // (Eurasia mid-N, Africa straddles equator, Australia mid-S,
-            // Antarctica polar). Random uniform placement clustered all
-            // land at one Y-band on small samples. Stratified sampling
-            // forces at least one land plate per Y-band so the layout
-            // reads as a globe with multiple latitudinal continents.
-            // Up to landCountTarget bands — each band seeds one plate.
-            // Cap at landCountTarget so extra plates fill via fallback.
-            // Cylindrical maps wrap on X — placement uses the full [0,1)
-            // range and proximity tests use the wrapped (shortest) dx.
-            // Flat maps keep an interior buffer so seeds don't sit on
-            // the rectangle edge.
-            const bool cylPlace = (config.topology == MapTopology::Cylindrical);
-            const float xLo = cylPlace ? 0.0f : 0.10f;
-            const float xHi = cylPlace ? 1.0f : 0.90f;
-            const float xLoOcn = cylPlace ? 0.0f : 0.04f;
-            const float xHiOcn = cylPlace ? 1.0f : 0.96f;
-            const auto wrapDx = [cylPlace](float a, float b) {
-                float d = a - b;
-                if (cylPlace) {
-                    if (d >  0.5f) { d -= 1.0f; }
-                    if (d < -0.5f) { d += 1.0f; }
-                }
-                return d;
-            };
-
-            int32_t landPlaced = 0;
-            int32_t attempts = 0;
-            // 2026-05-08: stratified-by-latitude placement removed.
-            // Splitting the land-lat range into N bands and forcing
-            // exactly one plate per band produced visible horizontal
-            // plate-id stripes after region growing -- each plate's
-            // BFS reach was already lat-skewed by its seed band, so
-            // the final ownership map looked like a layer cake.
-            // Uniform random sampling with rejection on minimum gap
-            // produces clustered + isolated continents alike, matching
-            // Earth's irregular plate distribution.
-            constexpr float LAND_LAT_LO = 0.22f;
-            constexpr float LAND_LAT_HI = 0.78f;
-            while (landPlaced < landCountTarget && attempts < 800) {
-                ++attempts;
-                const float cx = centerRng.nextFloat(xLo, xHi);
-                const float cy = centerRng.nextFloat(LAND_LAT_LO, LAND_LAT_HI);
-                bool tooClose = false;
-                for (const Plate& existing : plates) {
-                    const float dx = wrapDx(cx, existing.cx);
-                    const float dy = cy - existing.cy;
-                    if (std::sqrt(dx * dx + dy * dy) < LAND_MIN_GAP) {
-                        tooClose = true; break;
+                        mw.coord = {0.0f, 0.0f};
                     }
                 }
-                if (tooClose) { continue; }
-                pushPlate(cx, cy, true);
-                ++landPlaced;
+                p.latDeg = mw.coord.latDeg;
+                p.lonDeg = mw.coord.lonDeg;
             }
+            // Random Euler pole on sphere + log-normal angular
+            // velocity. Distribution parameters derive from the
+            // Müller 2022 1000-Ma reconstruction filtered to
+            // major plates (README findings: median 0.1 deg/Ma,
+            // p95 1.0 deg/Ma) which gives μ=-2.30, σ=1.40 in
+            // ln(deg/Ma) — see `data/plate_statistics.csv` and
+            // `tools/plate_data/extract_statistics.py`. Box-Muller
+            // for Gaussian sampling so a single deterministic RNG
+            // call drives the whole draw. Continental plates are
+            // shifted slightly slower (Δμ = -0.4) per HS3-NUVEL-1A
+            // observation that cratonic plates resist mantle drag
+            // more than oceanic ones (Gripp & Gordon 2002 Pacific
+            // 0.96 vs Eurasian 0.14).
+            {
+                // Clamp Euler-pole latitude to |lat| <= 60 deg.
+                // Real Earth Euler poles cluster between -60 and
+                // +60 latitude (Gripp & Gordon 2002 plate-motion
+                // catalogue: only the Cocos pole at 36.8 N gets
+                // close to the limit; most are < 60). Poles
+                // closer to a sphere pole produce near-axial
+                // rotation that visually smears continental crust
+                // into concentric circles when rendered on a 3D
+                // globe, even though the per-cell physics is
+                // correct -- it is the lat/lon raster's polar
+                // singularity that visualises a normal rigid
+                // rotation as a swirl. Clamping eliminates the
+                // visual artefact at the cost of a tiny exclusion
+                // zone near the geographic poles.
+                const float poleLat                   = centerRng.nextFloat(-60.0f, 60.0f);
+                const float poleLon                   = centerRng.nextFloat(-180.0f, 180.0f);
+                p.eulerPoleLatDeg                     = poleLat;
+                p.eulerPoleLonDeg                     = poleLon;
+                constexpr float MAJOR_MOTION_LN_MU    = -2.30f;
+                constexpr float MAJOR_MOTION_LN_SIGMA = 1.40f;
+                const float u1 = std::max(1e-6f, centerRng.nextFloat(0.0f, 1.0f));
+                const float u2 = centerRng.nextFloat(0.0f, 1.0f);
+                const float gaussian =
+                    std::sqrt(-2.0f * std::log(u1)) * std::cos(6.28318530718f * u2);
+                const float continentalShift = isLand ? -0.40f : 0.0f;
+                const float lnSpeed =
+                    MAJOR_MOTION_LN_MU + continentalShift + MAJOR_MOTION_LN_SIGMA * gaussian;
+                // Clamp to Mueller 2022 modern plate-motion catalogue
+                // GEOLOGICAL-TIMESCALE envelope: median plate ~0.1
+                // deg/My with sustainable upper bound at ~0.30 deg/My
+                // (twice the median). Modern Pacific 1.0 deg/My is
+                // a short-term figure that a plate cannot sustain
+                // across the 3-Gy default sim without generating
+                // unrealistic ~8-revolution sweeps. Lower bound
+                // 0.005 deg/My matches the slowest cratonic plates
+                // (Eurasian / Antarctic). Init clamp must agree
+                // with the slab-pull cap (MAX_ABS_OMEGA_DEG_PER_MY
+                // in SphereFieldPhysics.cpp = 0.15) so a plate that
+                // spawns near the init upper limit decays under
+                // slab-pull damping toward 0.15.
+                const float angVelMag = std::clamp(std::exp(lnSpeed), 0.005f, 0.30f);
+                p.angularVelDeg = (centerRng.nextFloat(0.0f, 1.0f) < 0.5f) ? -angVelMag : angVelMag;
+            }
+            // landFraction: continental plates are mostly land but
+            // not entirely (Eurasian has plenty of seas); oceanic
+            // plates have small islands and seamount chains. Adds
+            // realism: every plate has SOME land and SOME ocean
+            // intrinsic to it.
+            // CRATONIC INIT. Initial continental plates are SMALL
+            // STABLE CRATONS (0.45-0.65 land coverage) — Archean-
+            // shield-like nuclei representing early continental
+            // crust. Over the sim they GROW via:
+            //   • Subduction-arc volcanism along their boundaries
+            //     pushing tiles above water (Andes, Cordillera)
+            //   • Terrane accretion at mergers (Cordilleran terranes)
+            //   • Hotspot tracks adding volcanic islands
+            //   • Orogeny lifting margin tiles above water level
+            // Net effect over 100+ epochs: cratons → full continents
+            // (matches Earth's progression from Archean nuclei to
+            // present continents through ~2.5 Ga of accretion).
+            // 2026-05-04: dropped from 0.85-0.95 to 0.35-0.55. Real
+            // tectonic plates are mostly OCEAN even when they carry a
+            // continent: African plate is ~32% land, Indian ~36%,
+            // Eurasian ~40%, North American ~45%, Pacific ~0%. The
+            // old 0.85-0.95 range made every "land" plate read as a
+            // near-continuous continent, so adjacent land plates
+            // formed a Pangaea even when their centroids drifted
+            // apart. With 0.35-0.55 each plate carries a continent-
+            // sized landmass surrounded by intra-plate ocean, and
+            // adjacent land plates produce two SEPARATE continents
+            // separated by ocean rather than a fused supercontinent.
+            // 2026-05-04: ocean-plate landFraction dropped 0.02-0.08
+            // -> 0.005-0.02. With 5-7% land randomly scattered,
+            // ocean plates produced isolated land tiles that
+            // bordered neighbouring continental land tiles and
+            // counted toward "internal plates inside one
+            // continent" -- the largest visible continent showed
+            // 8-12 plate ids contributing land. Real Pacific plate
+            // is ~99 % oceanic; volcanic islands are rare and
+            // distant. With 0.5-2 % crust mask above threshold,
+            // ocean plates contribute essentially zero stray land
+            // tiles to neighbouring continents.
+            p.landFraction =
+                isLand ? centerRng.nextFloat(0.35f, 0.55f) : centerRng.nextFloat(0.005f, 0.02f);
+            // Initial crust age: continental plates start old (cratons
+            // = Archean, billions of years), oceanic plates start
+            // moderately aged (random 0-50 epochs equivalent).
+            // Cratons get high age so their slab-pull contribution
+            // is suppressed (they shouldn't subduct themselves).
+            // Irregular-shape probability: 35 % of plates get one
+            // extra Voronoi seed offset from the primary, giving
+            // an L-shape / lobed / curved territory rather than
+            // a clean Voronoi cell. Real Earth plates are highly
+            // irregular due to accretion + rifting history.
+            // 60 % of plates get 1 extra seed, 25 % of those get
+            // a SECOND extra seed → multi-lobed territory.
+            // Real Earth plates almost never have clean Voronoi
+            // shapes; they have arms and bays from accretion +
+            // partial mergers.
+            // 2026-05-04: dropped extras 3-6 -> 0-2, offset 0.10-0.22
+            // -> 0.04-0.10. With 3-6 extra seeds spread 0.10-0.22
+            // away from primary, plate territories became multi-
+            // lobed AND the lobes interleaved with neighbouring
+            // plates' lobes -- one plate ended up surrounded by
+            // (or surrounding) another, producing the "weirdly
+            // shaped plates embedded inside a bigger plate" pattern
+            plates.push_back(p);
+        };
 
-            // ---- Pass 2: ocean seeds, filling gaps ----
-            // Force-place ocean seeds in the polar bands first
-            // (above LAND_LAT_HI and below LAND_LAT_LO). Without
-            // these, the only nearby plates to a top-band land plate
-            // are also land → continent extends to the map edge
-            // (no Australia-like isolated continents possible).
-            // 3-4 forced polar ocean seeds per band caps land plates
-            // and produces clear "northern ocean" and "southern ocean"
-            // (Arctic / Southern Ocean style).
-            attempts = 0;
-            int32_t oceanPlaced = 0;
-            // Two polar oceanic plates (Arctic + Antarctic analogues).
-            // Routed through pushPlate so they get authoritative
-            // (latDeg, lonDeg) from Mollweide inverse and an Euler
-            // pole / angular velocity drawn from the standard
-            // distribution. Without this, polar plates default to
-            // (lat=0, lon=0) and collide at the prime-meridian
-            // equator — both want the same seed cell, only one
-            // claims, the other dies silently in
-            // generateInitialPlateOwnership.
-            pushPlate(0.5f, centerRng.nextFloat(0.03f, 0.10f), false);  // Arctic
-            pushPlate(0.5f, centerRng.nextFloat(0.90f, 0.97f), false);  // Antarctic
-            oceanPlaced += 2;
-            // Then fill remaining ocean seeds across the map (interior
-            // gaps between continents).
-            while (oceanPlaced < oceanCountTarget && attempts < 800) {
-                ++attempts;
-                const float cx = centerRng.nextFloat(xLoOcn, xHiOcn);
-                const float cy = centerRng.nextFloat(0.04f, 0.96f);
-                bool tooClose = false;
-                for (const Plate& existing : plates) {
-                    const float dx = wrapDx(cx, existing.cx);
-                    const float dy = cy - existing.cy;
-                    if (std::sqrt(dx * dx + dy * dy) < OCEAN_MIN_GAP) {
-                        tooClose = true;
+        // ---- Pass 1: land seeds, stratified by latitude band ----
+        // Earth has continents distributed across latitudes
+        // (Eurasia mid-N, Africa straddles equator, Australia mid-S,
+        // Antarctica polar). Random uniform placement clustered all
+        // land at one Y-band on small samples. Stratified sampling
+        // forces at least one land plate per Y-band so the layout
+        // reads as a globe with multiple latitudinal continents.
+        // Up to landCountTarget bands — each band seeds one plate.
+        // Cap at landCountTarget so extra plates fill via fallback.
+        // Cylindrical maps wrap on X — placement uses the full [0,1)
+        // range and proximity tests use the wrapped (shortest) dx.
+        // Flat maps keep an interior buffer so seeds don't sit on
+        // the rectangle edge.
+        const bool cylPlace = (config.topology == MapTopology::Cylindrical);
+        const float xLo     = cylPlace ? 0.0f : 0.10f;
+        const float xHi     = cylPlace ? 1.0f : 0.90f;
+        const float xLoOcn  = cylPlace ? 0.0f : 0.04f;
+        const float xHiOcn  = cylPlace ? 1.0f : 0.96f;
+        const auto wrapDx   = [cylPlace](float a, float b) {
+            float d = a - b;
+            if (cylPlace) {
+                if (d > 0.5f) {
+                    d -= 1.0f;
+                }
+                if (d < -0.5f) {
+                    d += 1.0f;
+                }
+            }
+            return d;
+        };
+
+        int32_t landPlaced = 0;
+        int32_t attempts   = 0;
+        // 2026-05-08: stratified-by-latitude placement removed.
+        // Splitting the land-lat range into N bands and forcing
+        // exactly one plate per band produced visible horizontal
+        // plate-id stripes after region growing -- each plate's
+        // BFS reach was already lat-skewed by its seed band, so
+        // the final ownership map looked like a layer cake.
+        // Uniform random sampling with rejection on minimum gap
+        // produces clustered + isolated continents alike, matching
+        // Earth's irregular plate distribution.
+        constexpr float LAND_LAT_LO = 0.22f;
+        constexpr float LAND_LAT_HI = 0.78f;
+        while (landPlaced < landCountTarget && attempts < 800) {
+            ++attempts;
+            const float cx = centerRng.nextFloat(xLo, xHi);
+            const float cy = centerRng.nextFloat(LAND_LAT_LO, LAND_LAT_HI);
+            bool tooClose  = false;
+            for (const Plate& existing : plates) {
+                const float dx = wrapDx(cx, existing.cx);
+                const float dy = cy - existing.cy;
+                if (std::sqrt(dx * dx + dy * dy) < LAND_MIN_GAP) {
+                    tooClose = true;
+                    break;
+                }
+            }
+            if (tooClose) {
+                continue;
+            }
+            pushPlate(cx, cy, true);
+            ++landPlaced;
+        }
+
+        // ---- Pass 2: ocean seeds, filling gaps ----
+        // Force-place ocean seeds in the polar bands first
+        // (above LAND_LAT_HI and below LAND_LAT_LO). Without
+        // these, the only nearby plates to a top-band land plate
+        // are also land → continent extends to the map edge
+        // (no Australia-like isolated continents possible).
+        // 3-4 forced polar ocean seeds per band caps land plates
+        // and produces clear "northern ocean" and "southern ocean"
+        // (Arctic / Southern Ocean style).
+        attempts            = 0;
+        int32_t oceanPlaced = 0;
+        // Two polar oceanic plates (Arctic + Antarctic analogues).
+        // Routed through pushPlate so they get authoritative
+        // (latDeg, lonDeg) from Mollweide inverse and an Euler
+        // pole / angular velocity drawn from the standard
+        // distribution. Without this, polar plates default to
+        // (lat=0, lon=0) and collide at the prime-meridian
+        // equator — both want the same seed cell, only one
+        // claims, the other dies silently in
+        // generateInitialPlateOwnership.
+        pushPlate(0.5f, centerRng.nextFloat(0.03f, 0.10f), false); // Arctic
+        pushPlate(0.5f, centerRng.nextFloat(0.90f, 0.97f), false); // Antarctic
+        oceanPlaced += 2;
+        // Then fill remaining ocean seeds across the map (interior
+        // gaps between continents).
+        while (oceanPlaced < oceanCountTarget && attempts < 800) {
+            ++attempts;
+            const float cx = centerRng.nextFloat(xLoOcn, xHiOcn);
+            const float cy = centerRng.nextFloat(0.04f, 0.96f);
+            bool tooClose  = false;
+            for (const Plate& existing : plates) {
+                const float dx = wrapDx(cx, existing.cx);
+                const float dy = cy - existing.cy;
+                if (std::sqrt(dx * dx + dy * dy) < OCEAN_MIN_GAP) {
+                    tooClose = true;
+                    break;
+                }
+            }
+            if (tooClose) {
+                continue;
+            }
+            pushPlate(cx, cy, false);
+            ++oceanPlaced;
+        }
+        // Hotspots: 5-8 mantle-plume volcanic island chains placed
+        // INSIDE ocean territory (not near continents, where they
+        // used to create ringed-crater artefacts). Small radius +
+        // low strength so they produce Hawaii / Iceland scale
+        // island chains, not full continents. Stored in a separate
+        // vector so the overlay can render their positions in dark
+        // red and the user can correlate volcanic islands to
+        // mantle activity.
+        {
+            // 5-8 was 5-11 % of total land per audit; Earth has
+            // ~10 currently-active mantle plumes but only 2-3 of
+            // them produce sub-aerial islands (Hawaii, Iceland,
+            // Galapagos). Drop count to 2-4 so hotspot land
+            // budget falls under 2 % of total.
+            const int32_t hotspotTarget = centerRng.nextInt(2, 4);
+            int32_t placed              = 0;
+            int32_t htAttempts          = 0;
+            while (placed < hotspotTarget && htAttempts < 300) {
+                ++htAttempts;
+                const float hcx = centerRng.nextFloat(0.05f, 0.95f);
+                const float hcy = centerRng.nextFloat(0.10f, 0.90f);
+                // Reject if too close to a LAND plate centre — keep
+                // hotspots in the deep ocean where they belong.
+                bool nearLand = false;
+                for (const Plate& p : plates) {
+                    if (p.landFraction <= 0.40f) {
+                        continue;
+                    }
+                    const float dxh = hcx - p.cx;
+                    const float dyh = hcy - p.cy;
+                    if (std::sqrt(dxh * dxh + dyh * dyh) < 0.20f) {
+                        nearLand = true;
                         break;
                     }
                 }
-                if (tooClose) { continue; }
-                pushPlate(cx, cy, false);
-                ++oceanPlaced;
-            }
-            // Hotspots: 5-8 mantle-plume volcanic island chains placed
-            // INSIDE ocean territory (not near continents, where they
-            // used to create ringed-crater artefacts). Small radius +
-            // low strength so they produce Hawaii / Iceland scale
-            // island chains, not full continents. Stored in a separate
-            // vector so the overlay can render their positions in dark
-            // red and the user can correlate volcanic islands to
-            // mantle activity.
-            {
-                // 5-8 was 5-11 % of total land per audit; Earth has
-                // ~10 currently-active mantle plumes but only 2-3 of
-                // them produce sub-aerial islands (Hawaii, Iceland,
-                // Galapagos). Drop count to 2-4 so hotspot land
-                // budget falls under 2 % of total.
-                const int32_t hotspotTarget = centerRng.nextInt(2, 4);
-                int32_t placed = 0;
-                int32_t htAttempts = 0;
-                while (placed < hotspotTarget && htAttempts < 300) {
-                    ++htAttempts;
-                    const float hcx = centerRng.nextFloat(0.05f, 0.95f);
-                    const float hcy = centerRng.nextFloat(0.10f, 0.90f);
-                    // Reject if too close to a LAND plate centre — keep
-                    // hotspots in the deep ocean where they belong.
-                    bool nearLand = false;
-                    for (const Plate& p : plates) {
-                        if (p.landFraction <= 0.40f) { continue; }
-                        const float dxh = hcx - p.cx;
-                        const float dyh = hcy - p.cy;
-                        if (std::sqrt(dxh * dxh + dyh * dyh) < 0.20f) {
-                            nearLand = true; break;
-                        }
-                    }
-                    if (nearLand) { continue; }
-                    Hotspot h;
-                    h.cx = hcx; h.cy = hcy;
-                    h.strength = centerRng.nextFloat(0.08f, 0.16f);
-                    hotspots.push_back(h);
-                    ++placed;
+                if (nearLand) {
+                    continue;
                 }
-                LOG_INFO("Hotspots placed: %d (target %d)",
-                         placed, hotspotTarget);
+                Hotspot h;
+                h.cx       = hcx;
+                h.cy       = hcy;
+                h.strength = centerRng.nextFloat(0.08f, 0.16f);
+                hotspots.push_back(h);
+                ++placed;
             }
-            break;
+            LOG_INFO("Hotspots placed: %d (target %d)", placed, hotspotTarget);
         }
+        break;
+    }
         // (continents tectonic-sim runs after the switch — see below)
     }
 
@@ -641,14 +675,19 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // afterward smooths peaks into ranges instead of solitary spikes.
     // ========================================================================
     std::vector<float> orogeny(static_cast<std::size_t>(width * height), 0.0f);
+    // Per-tile crustal composition, published through TerrainFields so the
+    // continental-shelf classification can ask what the crust IS rather than how
+    // deep the water is. Zero (pure oceanic) for tiles the sphere sample never
+    // reaches, which is the conservative default -- they will not be called shelf.
+    std::vector<float> contFracTile(static_cast<std::size_t>(width * height), 0.0f);
     // Per-tile auxiliary fields populated during/after the tectonic sim.
     // Size matches the tile grid so they can be written by world-frame
     // post-passes (post-sim sediment, rock type, margin type, crust age).
-    std::vector<float>   sediment(static_cast<std::size_t>(width * height), 0.0f);
-    std::vector<uint8_t> rockTypeTile(static_cast<std::size_t>(width * height), 0); // 0=sed
+    std::vector<float> sediment(static_cast<std::size_t>(width * height), 0.0f);
+    std::vector<uint8_t> rockTypeTile(static_cast<std::size_t>(width * height), 0);   // 0=sed
     std::vector<uint8_t> marginTypeTile(static_cast<std::size_t>(width * height), 0); // 0=interior
     std::vector<uint8_t> ophioliteMask(static_cast<std::size_t>(width * height), 0); // suture marks
-    std::vector<float>   crustAgeTile(static_cast<std::size_t>(width * height), 0.0f);
+    std::vector<float> crustAgeTile(static_cast<std::size_t>(width * height), 0.0f);
     if (config.mapType == MapType::Continents && !plates.empty()) {
         // Multi-cycle plate-tectonic sim. EPOCHS scales the simulated
         // geological age — more epochs = more cycles of drift, collide,
@@ -662,19 +701,18 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // derive the epoch count. Caller may set tectonicTotalMy
         // (preferred) or tectonicEpochs (legacy direct override).
         const int32_t totalMy = (config.tectonicTotalMy > 0)
-            ? config.tectonicTotalMy
-            : MapGenerator::DEFAULT_TECTONIC_TOTAL_MY;
-        int32_t epochsFromTime = std::max(3, static_cast<int32_t>(
-            (totalMy + MapGenerator::MY_PER_EPOCH_TARGET / 2)
-            / MapGenerator::MY_PER_EPOCH_TARGET));
-        const int32_t requestedEpochs = (config.tectonicEpochs > 0)
-            ? std::max(3, config.tectonicEpochs)
-            : epochsFromTime;
+                                    ? config.tectonicTotalMy
+                                    : MapGenerator::DEFAULT_TECTONIC_TOTAL_MY;
+        int32_t epochsFromTime =
+            std::max(3, static_cast<int32_t>((totalMy + MapGenerator::MY_PER_EPOCH_TARGET / 2) /
+                                             MapGenerator::MY_PER_EPOCH_TARGET));
+        const int32_t requestedEpochs =
+            (config.tectonicEpochs > 0) ? std::max(3, config.tectonicEpochs) : epochsFromTime;
         // Stepper hook: scrubber callers pass runEpochsLimit to halt
         // the sim mid-flight at a specific epoch and view that state.
         const int32_t EPOCHS = (config.runEpochsLimit > 0)
-            ? std::min(requestedEpochs, config.runEpochsLimit)
-            : requestedEpochs;
+                                   ? std::min(requestedEpochs, config.runEpochsLimit)
+                                   : requestedEpochs;
         // SphereField allocation is unconditional; the world-frame elevation pass downstream
         // sources tile elevation from this raster via bilinearSample.
         // Procedural cratonic seeding (CLAUDE.md rule 2: never load
@@ -699,8 +737,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // mean ocean depth x 70.8 % coverage, NOAA) perturbed by the
         // climate-phase stand offset converted to volume through the
         // ocean-area fraction.
-        sphereField.oceanVolumeEquivDepthM =
-            2607.0f + eustaticStandM * 0.708f;
+        sphereField.oceanVolumeEquivDepthM = 2607.0f + eustaticStandM * 0.708f;
         std::vector<uint8_t> sphereBoundaryScratch;
         // Wilson-rifting RNG: deterministic per map seed so the same
         // seed always reproduces the same supercontinent breakup
@@ -708,9 +745,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         uint32_t physicsRngState = static_cast<uint32_t>(config.seed) ^ 0xDEADBEEFu;
         if (physicsRngState == 0u) physicsRngState = 0x12345678u;
         {
-            using SF = aoc::map::gen::SphereField;
-            constexpr int32_t LON = SF::LON_CELLS;
-            constexpr int32_t LAT = SF::LAT_CELLS;
+            using SF                = aoc::map::gen::SphereField;
+            constexpr int32_t LON   = SF::LON_CELLS;
+            constexpr int32_t LAT   = SF::LAT_CELLS;
             constexpr std::size_t N = SF::CELL_COUNT;
             // Independent RNG for cratonic seeding -- distinct from
             // physicsRngState so changes here do not perturb the
@@ -759,33 +796,25 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             constexpr float STOCK_FRACTION_MAX = 0.32f;
             constexpr float NUCLEUS_LOG_SIGMA  = 1.0f;
             const float totalStockCells =
-                cratonRng.nextFloat(STOCK_FRACTION_MIN, STOCK_FRACTION_MAX)
-                * static_cast<float>(N);
-            std::vector<float> nucleusWeight(
-                static_cast<std::size_t>(numCratons), 0.0f);
+                cratonRng.nextFloat(STOCK_FRACTION_MIN, STOCK_FRACTION_MAX) * static_cast<float>(N);
+            std::vector<float> nucleusWeight(static_cast<std::size_t>(numCratons), 0.0f);
             float weightSum = 0.0f;
             for (int32_t i = 0; i < numCratons; ++i) {
-                const float u1 = std::max(1e-6f,
-                    cratonRng.nextFloat(0.0f, 1.0f));
-                const float u2 = cratonRng.nextFloat(0.0f, 1.0f);
-                const float gauss =
-                    std::sqrt(-2.0f * std::log(u1)) *
-                    std::cos(6.28318530718f * u2);
-                nucleusWeight[static_cast<std::size_t>(i)] =
-                    std::exp(NUCLEUS_LOG_SIGMA * gauss);
+                const float u1    = std::max(1e-6f, cratonRng.nextFloat(0.0f, 1.0f));
+                const float u2    = cratonRng.nextFloat(0.0f, 1.0f);
+                const float gauss = std::sqrt(-2.0f * std::log(u1)) * std::cos(6.28318530718f * u2);
+                nucleusWeight[static_cast<std::size_t>(i)] = std::exp(NUCLEUS_LOG_SIGMA * gauss);
                 weightSum += nucleusWeight[static_cast<std::size_t>(i)];
             }
-            std::vector<std::size_t> cratonTarget(
-                static_cast<std::size_t>(numCratons), 0);
+            std::vector<std::size_t> cratonTarget(static_cast<std::size_t>(numCratons), 0);
             for (int32_t i = 0; i < numCratons; ++i) {
-                const float cells = totalStockCells
-                    * nucleusWeight[static_cast<std::size_t>(i)] / weightSum;
+                const float cells =
+                    totalStockCells * nucleusWeight[static_cast<std::size_t>(i)] / weightSum;
                 // Clamp to [50, 9000] cells — protects against
                 // pathological samples; upper bound ~3.5 % of sphere
                 // (Eurasia-craton-cluster scale).
-                const float clamped = std::clamp(cells, 50.0f, 9000.0f);
-                cratonTarget[static_cast<std::size_t>(i)] =
-                    static_cast<std::size_t>(clamped);
+                const float clamped                       = std::clamp(cells, 50.0f, 9000.0f);
+                cratonTarget[static_cast<std::size_t>(i)] = static_cast<std::size_t>(clamped);
             }
 
             // Place craton seeds with minimum angular separation
@@ -814,21 +843,22 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // relaxed 0.5x separation. The relaxed band still
                 // prevents craton overlap while admitting denser
                 // packings the original threshold would reject.
-                bool ok = false;
+                bool ok       = false;
                 auto tryPlace = [&](float minSep) -> bool {
-                    const float u = cratonRng.nextFloat(
-                        -CRATON_LAT_LIMIT_SIN, CRATON_LAT_LIMIT_SIN);
-                    const float latDeg = std::asin(u) * 57.29577951f;
-                    const float lonDeg = cratonRng.nextFloat(-180.0f, 180.0f);
+                    const float u =
+                        cratonRng.nextFloat(-CRATON_LAT_LIMIT_SIN, CRATON_LAT_LIMIT_SIN);
+                    const float latDeg    = std::asin(u) * 57.29577951f;
+                    const float lonDeg    = cratonRng.nextFloat(-180.0f, 180.0f);
                     const SF::CellCoord c = SF::locate(latDeg, lonDeg);
                     for (int32_t j = 0; j < i; ++j) {
-                        const aoc::map::gen::LatLon a = SF::cellCenter(
-                            c.lonIdx, c.latIdx);
-                        const aoc::map::gen::LatLon b = SF::cellCenter(
-                            seedLon[static_cast<std::size_t>(j)],
-                            seedLat[static_cast<std::size_t>(j)]);
+                        const aoc::map::gen::LatLon a = SF::cellCenter(c.lonIdx, c.latIdx);
+                        const aoc::map::gen::LatLon b =
+                            SF::cellCenter(seedLon[static_cast<std::size_t>(j)],
+                                           seedLat[static_cast<std::size_t>(j)]);
                         const float d = aoc::map::gen::haversineRadians(a, b);
-                        if (d < minSep) { return false; }
+                        if (d < minSep) {
+                            return false;
+                        }
                     }
                     seedLon[static_cast<std::size_t>(i)] = c.lonIdx;
                     seedLat[static_cast<std::size_t>(i)] = c.latIdx;
@@ -867,34 +897,32 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             std::vector<int8_t> claimed(N, 0); // 1 = continental
             std::vector<int8_t> rejectedOnce(N, 0);
             for (int32_t cidx = 0; cidx < numCratons; ++cidx) {
-                const std::size_t target =
-                    cratonTarget[static_cast<std::size_t>(cidx)];
+                const std::size_t target = cratonTarget[static_cast<std::size_t>(cidx)];
                 if (target == 0) continue;
-                const int32_t sLon = seedLon[static_cast<std::size_t>(cidx)];
-                const int32_t sLat = seedLat[static_cast<std::size_t>(cidx)];
+                const int32_t sLon         = seedLon[static_cast<std::size_t>(cidx)];
+                const int32_t sLat         = seedLat[static_cast<std::size_t>(cidx)];
                 const std::size_t startIdx = SF::cellIndex(sLon, sLat);
                 if (claimed[startIdx]) continue; // overlap with prior craton
                 const float axisAz = cratonRng.nextFloat(0.0f, 3.14159265f);
-                const float axCos = std::cos(axisAz);
-                const float axSin = std::sin(axisAz);
-                const float aniso = std::exp(cratonRng.nextFloat(
-                    0.405f, 1.099f)); // ln(1.5)..ln(3.0), log-uniform
-                const float cosSeedLat = std::max(0.2f, std::cos(
-                    (-90.0f + (static_cast<float>(sLat) + 0.5f) * 0.5f)
-                        * 0.01745329252f));
+                const float axCos  = std::cos(axisAz);
+                const float axSin  = std::sin(axisAz);
+                const float aniso =
+                    std::exp(cratonRng.nextFloat(0.405f, 1.099f)); // ln(1.5)..ln(3.0), log-uniform
+                const float cosSeedLat =
+                    std::max(0.2f, std::cos((-90.0f + (static_cast<float>(sLat) + 0.5f) * 0.5f) *
+                                            0.01745329252f));
                 // Ellipse semi-major axis (cells) from target area:
                 // area ~ pi * a * (a / A).
-                const float semiMajor = std::sqrt(
-                    static_cast<float>(target) * aniso / 3.14159265f);
-                claimed[startIdx] = 1;
-                std::size_t grown = 1;
+                const float semiMajor = std::sqrt(static_cast<float>(target) * aniso / 3.14159265f);
+                claimed[startIdx]     = 1;
+                std::size_t grown     = 1;
                 std::vector<std::size_t> frontier;
                 frontier.reserve(target * 2);
                 auto pushNbrs = [&](int32_t lonI, int32_t latI) {
-                    const int32_t lonW = (lonI == 0)       ? LON - 1 : lonI - 1;
-                    const int32_t lonE = (lonI == LON - 1) ? 0       : lonI + 1;
-                    const int32_t latS = std::max(0, latI - 1);
-                    const int32_t latN = std::min(LAT - 1, latI + 1);
+                    const int32_t lonW        = (lonI == 0) ? LON - 1 : lonI - 1;
+                    const int32_t lonE        = (lonI == LON - 1) ? 0 : lonI + 1;
+                    const int32_t latS        = std::max(0, latI - 1);
+                    const int32_t latN        = std::min(LAT - 1, latI + 1);
                     const std::size_t nbrs[4] = {
                         SF::cellIndex(lonW, latI),
                         SF::cellIndex(lonE, latI),
@@ -910,37 +938,33 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // Pick a random frontier cell. Swap-remove for O(1)
                     // deletion.
                     const std::size_t pick = static_cast<std::size_t>(
-                        cratonRng.nextInt(0,
-                            static_cast<int32_t>(frontier.size()) - 1));
+                        cratonRng.nextInt(0, static_cast<int32_t>(frontier.size()) - 1));
                     const std::size_t cellIdx = frontier[pick];
-                    frontier[pick] = frontier.back();
+                    frontier[pick]            = frontier.back();
                     frontier.pop_back();
                     if (claimed[cellIdx]) continue;
-                    const int32_t cellLon =
-                        static_cast<int32_t>(cellIdx % LON);
-                    const int32_t cellLat =
-                        static_cast<int32_t>(cellIdx / LON);
+                    const int32_t cellLon = static_cast<int32_t>(cellIdx % LON);
+                    const int32_t cellLat = static_cast<int32_t>(cellIdx / LON);
                     // Elliptical-radius acceptance. Offsets in cell
                     // units, longitude wrapped and metric-corrected
                     // by the seed-latitude cosine.
                     int32_t dLonRaw = cellLon - sLon;
-                    if (dLonRaw >  LON / 2) dLonRaw -= LON;
+                    if (dLonRaw > LON / 2) dLonRaw -= LON;
                     if (dLonRaw < -LON / 2) dLonRaw += LON;
-                    const float dx = static_cast<float>(dLonRaw) * cosSeedLat;
-                    const float dy = static_cast<float>(cellLat - sLat);
-                    const float dPar  =  dx * axCos + dy * axSin;
+                    const float dx    = static_cast<float>(dLonRaw) * cosSeedLat;
+                    const float dy    = static_cast<float>(cellLat - sLat);
+                    const float dPar  = dx * axCos + dy * axSin;
                     const float dPerp = -dx * axSin + dy * axCos;
-                    const float rho = std::sqrt(
-                        (dPar * dPar + dPerp * dPerp * aniso * aniso))
-                        / std::max(1.0f, semiMajor);
-                    bool accept = true;
+                    const float rho   = std::sqrt((dPar * dPar + dPerp * dPerp * aniso * aniso)) /
+                                        std::max(1.0f, semiMajor);
+                    bool accept       = true;
                     if (rho > 1.0f && !rejectedOnce[cellIdx]) {
                         // Soft edge: acceptance decays fast outside
                         // the target ellipse; one retry keeps the
                         // frontier alive without stalling growth.
                         const float p = std::exp(-4.0f * (rho - 1.0f));
                         if (cratonRng.nextFloat(0.0f, 1.0f) > p) {
-                            accept = false;
+                            accept                = false;
                             rejectedOnce[cellIdx] = 1;
                             frontier.push_back(cellIdx);
                         }
@@ -961,24 +985,20 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
                 for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
                     const std::size_t idx = SF::cellIndex(lonIdx, latIdx);
-                    const int32_t lonW = (lonIdx == 0)       ? LON - 1 : lonIdx - 1;
-                    const int32_t lonE = (lonIdx == LON - 1) ? 0       : lonIdx + 1;
-                    const int32_t latS = std::max(0, latIdx - 1);
-                    const int32_t latN = std::min(LAT - 1, latIdx + 1);
-                    const float self = static_cast<float>(claimed[idx]);
-                    const float fW = static_cast<float>(claimed[
-                        SF::cellIndex(lonW, latIdx)]);
-                    const float fE = static_cast<float>(claimed[
-                        SF::cellIndex(lonE, latIdx)]);
-                    const float fS = static_cast<float>(claimed[
-                        SF::cellIndex(lonIdx, latS)]);
-                    const float fN = static_cast<float>(claimed[
-                        SF::cellIndex(lonIdx, latN)]);
+                    const int32_t lonW    = (lonIdx == 0) ? LON - 1 : lonIdx - 1;
+                    const int32_t lonE    = (lonIdx == LON - 1) ? 0 : lonIdx + 1;
+                    const int32_t latS    = std::max(0, latIdx - 1);
+                    const int32_t latN    = std::min(LAT - 1, latIdx + 1);
+                    const float self      = static_cast<float>(claimed[idx]);
+                    const float fW   = static_cast<float>(claimed[SF::cellIndex(lonW, latIdx)]);
+                    const float fE   = static_cast<float>(claimed[SF::cellIndex(lonE, latIdx)]);
+                    const float fS   = static_cast<float>(claimed[SF::cellIndex(lonIdx, latS)]);
+                    const float fN   = static_cast<float>(claimed[SF::cellIndex(lonIdx, latN)]);
                     const float frac = (self * 2.0f + fW + fE + fS + fN) / 6.0f;
                     sphereField.continentalFraction[idx] = frac;
                     sphereField.crustThicknessKm[idx] =
-                        frac  * aoc::map::gen::PhysicsConstants::initialContinentalThicknessKm
-                      + (1.0f - frac) * aoc::map::gen::PhysicsConstants::initialOceanicThicknessKm;
+                        frac * aoc::map::gen::PhysicsConstants::initialContinentalThicknessKm +
+                        (1.0f - frac) * aoc::map::gen::PhysicsConstants::initialOceanicThicknessKm;
                 }
             }
         }
@@ -989,8 +1009,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // non-convex peninsulas + bays + lobed shapes. From this
         // initial cut onwards plateId persists; only mechanism passes
         // (subduction, ridge accretion, docking, rifting) rewrite it.
-        aoc::map::gen::generateInitialPlateOwnership(
-            sphereField, plates, static_cast<uint64_t>(config.seed));
+        aoc::map::gen::generateInitialPlateOwnership(sphereField, plates,
+                                                     static_cast<uint64_t>(config.seed));
         // Invariant check: region growing should already produce one
         // component per plate; this is a no-op unless it regresses.
         aoc::map::gen::enforcePlateContiguity(sphereField, plates);
@@ -998,8 +1018,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // Per-epoch substep duration in My. Derived from total simulated
         // time so the physics integrates at a fixed cadence regardless
         // of caller-requested epoch count.
-        const float MY_PER_EPOCH_P1 = static_cast<float>(totalMy)
-            / static_cast<float>(requestedEpochs);
+        const float MY_PER_EPOCH_P1 =
+            static_cast<float>(totalMy) / static_cast<float>(requestedEpochs);
 
         for (int32_t epoch = 0; epoch < EPOCHS; ++epoch) {
             // 2026-05-07 P6.10 recalibration: Stochastic Euler-pole jitter
@@ -1017,14 +1037,13 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // never reach steady state because the rate at any boundary
             // resets faster than the K_EROSION decay constant
             // (1/K = 16.7 Myr).
-            const float jitterScale = std::sqrt(std::max(1.0f, MY_PER_EPOCH_P1));
+            const float jitterScale  = std::sqrt(std::max(1.0f, MY_PER_EPOCH_P1));
             const float velFracSigma = 0.01f * jitterScale;
             const float poleSigmaDeg = 0.10f * jitterScale;
             auto gaussianFromUniform = [&]() {
                 // Sum of 3 U[-1,1] approximates N(0,1) (CLT, σ=1).
-                return centerRng.nextFloat(-1.0f, 1.0f)
-                     + centerRng.nextFloat(-1.0f, 1.0f)
-                     + centerRng.nextFloat(-1.0f, 1.0f);
+                return centerRng.nextFloat(-1.0f, 1.0f) + centerRng.nextFloat(-1.0f, 1.0f) +
+                       centerRng.nextFloat(-1.0f, 1.0f);
             };
 
             // P6.10 Euler-pole jitter: drift each plate's pole and
@@ -1035,15 +1054,12 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // raster motion is integrated by advectPlateOwnership from
             // the Euler parameters this jitter perturbs.
             for (Plate& p : plates) {
-                if (p.eulerPoleLatDeg != 0.0f
-                    || p.eulerPoleLonDeg != 0.0f
-                    || p.angularVelDeg != 0.0f) {
+                if (p.eulerPoleLatDeg != 0.0f || p.eulerPoleLonDeg != 0.0f ||
+                    p.angularVelDeg != 0.0f) {
                     p.eulerPoleLatDeg = std::clamp(
-                        p.eulerPoleLatDeg
-                            + gaussianFromUniform() * poleSigmaDeg,
-                        -89.0f, 89.0f);
+                        p.eulerPoleLatDeg + gaussianFromUniform() * poleSigmaDeg, -89.0f, 89.0f);
                     p.eulerPoleLonDeg += gaussianFromUniform() * poleSigmaDeg;
-                    while (p.eulerPoleLonDeg >  180.0f) p.eulerPoleLonDeg -= 360.0f;
+                    while (p.eulerPoleLonDeg > 180.0f) p.eulerPoleLonDeg -= 360.0f;
                     while (p.eulerPoleLonDeg < -180.0f) p.eulerPoleLonDeg += 360.0f;
                     p.angularVelDeg *= 1.0f + gaussianFromUniform() * velFracSigma;
                 }
@@ -1059,15 +1075,19 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // curves trails subtly over long sims.
             for (Hotspot& h : hotspots) {
                 constexpr float HS_DRIFT_RAD = 0.00040f;
-                const float rx = h.cx - 0.5f;
-                const float ry = h.cy - 0.5f;
-                const float cw = std::cos(HS_DRIFT_RAD);
-                const float sw = std::sin(HS_DRIFT_RAD);
-                h.cx = 0.5f + rx * cw - ry * sw;
-                h.cy = 0.5f + rx * sw + ry * cw;
+                const float rx               = h.cx - 0.5f;
+                const float ry               = h.cy - 0.5f;
+                const float cw               = std::cos(HS_DRIFT_RAD);
+                const float sw               = std::sin(HS_DRIFT_RAD);
+                h.cx                         = 0.5f + rx * cw - ry * sw;
+                h.cy                         = 0.5f + rx * sw + ry * cw;
                 if (cylSim) {
-                    if (h.cx < 0.0f) { h.cx += 1.0f; }
-                    if (h.cx > 1.0f) { h.cx -= 1.0f; }
+                    if (h.cx < 0.0f) {
+                        h.cx += 1.0f;
+                    }
+                    if (h.cx > 1.0f) {
+                        h.cx -= 1.0f;
+                    }
                 } else {
                     h.cx = std::clamp(h.cx, 0.05f, 0.95f);
                 }
@@ -1077,9 +1097,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // Raster physics epoch: advection, boundary classification,
             // thickening, arc growth, subduction, ridge accretion,
             // slab pull, Wilson rifting, isostasy, erosion.
-            aoc::map::gen::stepSpherePhysicsEpoch(
-                sphereField, plates, sphereBoundaryScratch,
-                physicsRngState, MY_PER_EPOCH_P1);
+            aoc::map::gen::stepSpherePhysicsEpoch(sphereField, plates, sphereBoundaryScratch,
+                                                  physicsRngState, MY_PER_EPOCH_P1);
         }
         // Hand the SphereField surface-elevation snapshot to the
         // HexGrid for the renderer/save path.
@@ -1092,12 +1111,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         {
             std::vector<int64_t> cellCount(plates.size(), 0);
             std::vector<int64_t> contCount(plates.size(), 0);
-            std::vector<double>  ageSum(plates.size(), 0.0);
-            for (std::size_t i = 0;
-                 i < aoc::map::gen::SphereField::CELL_COUNT; ++i) {
+            std::vector<double> ageSum(plates.size(), 0.0);
+            for (std::size_t i = 0; i < aoc::map::gen::SphereField::CELL_COUNT; ++i) {
                 const int16_t pid = sphereField.plateId[i];
-                if (pid < 0
-                    || static_cast<std::size_t>(pid) >= plates.size()) {
+                if (pid < 0 || static_cast<std::size_t>(pid) >= plates.size()) {
                     continue;
                 }
                 const std::size_t p = static_cast<std::size_t>(pid);
@@ -1109,10 +1126,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             }
             for (std::size_t p = 0; p < plates.size(); ++p) {
                 if (cellCount[p] > 0) {
-                    rasterLandFracs[p] = static_cast<float>(contCount[p])
-                        / static_cast<float>(cellCount[p]);
-                    rasterCrustAges[p] = static_cast<float>(
-                        ageSum[p] / static_cast<double>(cellCount[p]));
+                    rasterLandFracs[p] =
+                        static_cast<float>(contCount[p]) / static_cast<float>(cellCount[p]);
+                    rasterCrustAges[p] =
+                        static_cast<float>(ageSum[p] / static_cast<double>(cellCount[p]));
                 }
             }
         }
@@ -1125,336 +1142,500 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // continental-only mountain gate. Tiles with ocean SphereField
         // mass are clamped to a low orogeny tier to prevent oceanic
         // cells with random elevation noise registering as mountains.
-    // PERF: fused orogeny + elevation pass. Both passes iterate the same
-    // (row, col) grid, are row-parallel, and recompute the identical
-    // projectionInverse per cell; merging them computes that pure inverse
-    // once and writes the two disjoint output arrays (orogeny, elevationMap)
-    // in one sweep. orogeny is only written when the cell is in projection
-    // range (matching the old `continue`); out-of-range cells keep their
-    // pre-initialised 0.0f orogeny and get elevationMap = -1.0f exactly as
-    // before. Results are bit-identical -- one of three projectionInverse
-    // calls per cell is removed.
-    //
-    // World-frame elevation: tile (col, row) maps to lat/lon via the user-
-    // selected projection; elevation comes from the SphereField
-    // surfaceElevationM raster (authoritative state produced by 3 Gy of
-    // mechanism physics — subduction trims, ridges accrete, continents dock,
-    // Wilson cycles rift). Tiles outside the projection's valid range get a
-    // deep ocean elevation so the rendering still draws them as water. Output
-    // is a percentile-rank map: ClimateBiome.cpp picks ocean / shore / land
-    // tiers via Thresholds.cpp on a sorted view of this array, so the
-    // absolute scale only needs to be monotonic.
-    // Seed for the sub-grid coastal detail field below. Fixed tag so
-    // the field is stable per world seed and independent of every RNG
-    // stream (pure hash noise -- no draws, no ordering sensitivity).
-    const uint64_t coastSeed = aoc::map::gen::mixSeed(
-        static_cast<uint64_t>(config.seed) ^ 0x434F4153ULL); // "COAS"
-    AOC_PARALLEL_FOR_ROWS
-    for (int32_t row = 0; row < height; ++row) {
-        for (int32_t col = 0; col < width; ++col) {
-            // Half-cell offset: sample at the hex CENTRE, not its
-            // north-west corner (col/width alone biases every sample
-            // half a hex toward -x/-y).
-            const float nx = (static_cast<float>(col) + 0.5f)
-                / static_cast<float>(width);
-            const float ny = (static_cast<float>(row) + 0.5f)
-                / static_cast<float>(height);
-            const aoc::map::gen::MollweideInverseResult mw =
-                aoc::map::gen::projectionInverse(
-                    config.projection, nx, ny);
-            float elev = -1.0f; // Out of projection range → ocean.
-            if (mw.valid) {
-                // --- orogeny (mountain) sample ---
-                // halfSearchCells calibrated to the hex tile's actual
-                // footprint on the sphere. SphereField cell pitch is
-                // 0.5 deg; hex tile width is 360/width deg. Half-window
-                // = ceil(hex_half_width / cell_pitch) so peakSample
-                // captures every SphereField cell whose centre falls
-                // inside the hex. Without this, a 4 km+ peak that
-                // straddles the hex edge is missed and the tile renders
-                // as flat -- visible mountain ranges shrink to a few
-                // scattered tiles even when the SphereField shows
-                // hundreds of mountain cells. Default 80-wide map:
-                // hex_half_width = 2.25 deg, halfSearchCells = 5.
-                const int32_t hexHalfCells = std::max(3,
-                    static_cast<int32_t>(std::ceil(
-                        180.0f / static_cast<float>(width) / 0.5f)));
-                const float zMpeak = sphereField.peakSample(
-                    sphereField.surfaceElevationM,
-                    mw.coord.latDeg, mw.coord.lonDeg,
-                    hexHalfCells);
-                // Mountain height is measured ABOVE SEA LEVEL, which
-                // the physics solves per epoch from the fixed water
-                // volume (SphereField::seaLevelM).
-                float oroSampled = (zMpeak - sphereField.seaLevelM
-                        > aoc::map::gen::MOUNTAIN_THRESHOLD_M)
-                    ? 1.0f : 0.0f;
-                const float fracPeak = sphereField.bilinearSample(
-                    sphereField.continentalFraction,
-                    mw.coord.latDeg, mw.coord.lonDeg);
-                if (fracPeak < 0.5f && oroSampled > 0.10f) {
-                    oroSampled = 0.10f;
-                }
-                orogeny[static_cast<std::size_t>(row * width + col)] = oroSampled;
+        // PERF: fused orogeny + elevation pass. Both passes iterate the same
+        // (row, col) grid, are row-parallel, and recompute the identical
+        // projectionInverse per cell; merging them computes that pure inverse
+        // once and writes the two disjoint output arrays (orogeny, elevationMap)
+        // in one sweep. orogeny is only written when the cell is in projection
+        // range (matching the old `continue`); out-of-range cells keep their
+        // pre-initialised 0.0f orogeny and get elevationMap = -1.0f exactly as
+        // before. Results are bit-identical -- one of three projectionInverse
+        // calls per cell is removed.
+        //
+        // World-frame elevation: tile (col, row) maps to lat/lon via the user-
+        // selected projection; elevation comes from the SphereField
+        // surfaceElevationM raster (authoritative state produced by 3 Gy of
+        // mechanism physics — subduction trims, ridges accrete, continents dock,
+        // Wilson cycles rift). Tiles outside the projection's valid range get a
+        // deep ocean elevation so the rendering still draws them as water. Output
+        // is a percentile-rank map: ClimateBiome.cpp picks ocean / shore / land
+        // tiers via Thresholds.cpp on a sorted view of this array, so the
+        // absolute scale only needs to be monotonic.
+        // Seed for the sub-grid coastal detail field below. Fixed tag so
+        // the field is stable per world seed and independent of every RNG
+        // stream (pure hash noise -- no draws, no ordering sensitivity).
+        const uint64_t coastSeed =
+            aoc::map::gen::mixSeed(static_cast<uint64_t>(config.seed) ^ 0x434F4153ULL); // "COAS"
 
-                // --- elevation sample ---
-                const float zM = sphereField.bilinearSample(
-                    sphereField.surfaceElevationM,
-                    mw.coord.latDeg, mw.coord.lonDeg);
-                const float contFracHere = sphereField.bilinearSample(
-                    sphereField.continentalFraction,
-                    mw.coord.latDeg, mw.coord.lonDeg);
-                // Map metres above mantle datum (zero = real sea level
-                // by Airy isostasy + datum calibration in
-                // PlatePhysics.hpp) to a unitless elevation. The
-                // 5000 m scale puts oceanic basement at ~-0.54 and
-                // continental highland at ~+0.56 -- the sign of the
-                // unitless value matches the sign of the physical
-                // value, so the binary water/land cut is simply
-                // elev < 0. No contFrac lift, no percentile cutoff:
-                // these were band-aids for a previous erosion law
-                // that drove continental cells to z=0; the slope-
-                // based stream-power erosion (SphereFieldPhysics
-                // applySurfaceErosionOnRaster) preserves shields at
-                // their cratonic +500-800 m steady state, so the
-                // physical sea-level cut suffices.
-                // Unitless elevation relative to the SOLVED sea level
-                // (zero = shoreline by construction; the fixed-volume
-                // solve anchors land fraction physically instead of
-                // hoping the Airy datum lands at the right stand).
-                const float zRelM = zM - sphereField.seaLevelM;
-                elev = zRelM / 5000.0f;
-                // Sub-grid coastal detail. The 0.5-deg raster cannot
-                // represent coastline relief below ~55 km and bilinear
-                // sampling to hex pitch low-passes even that, so coasts
-                // come out as smooth arcs; real coastlines are fractal
-                // down to metre scale (D ~ 1.1-1.3, Mandelbrot 1967).
-                // Reconstruct the unresolved relief with deterministic
-                // value noise confined to the raster's own vertical
-                // ambiguity band (within 400 m of sea level) and to
-                // crust carrying any continental signal. This is a
-                // stationary seed-derived field -- it fits no ratio
-                // target and decays to zero away from the coast band.
-                // Sampled on the unit sphere: no antimeridian seam.
-                const float coastBand = 1.0f
-                    - std::min(1.0f, std::abs(zRelM) / 400.0f);
-                if (coastBand > 0.0f && contFracHere >= 0.05f) {
-                    const float latR = mw.coord.latDeg * 0.01745329252f;
-                    const float lonR = mw.coord.lonDeg * 0.01745329252f;
-                    const float px = std::cos(latR) * std::cos(lonR);
-                    const float py = std::cos(latR) * std::sin(lonR);
-                    const float pz = std::sin(latR);
-                    // 4 octaves from ~10 deg base wavelength (above the
-                    // ~2.6-deg hex pitch at Standard width, so detail
-                    // reads as bays/headlands rather than speckle) down
-                    // to ~1.25 deg, amplitude halving per octave.
-                    float detail = 0.0f;
-                    float amp = 1.0f;
-                    float freq = 5.73f; // 1 / (10 deg in radians)
-                    float norm = 0.0f;
-                    for (int32_t o = 0; o < 4; ++o) {
-                        detail += amp * (2.0f * aoc::map::gen::smoothHashNoise3(
-                            px * freq, py * freq, pz * freq,
-                            coastSeed + static_cast<uint64_t>(o)) - 1.0f);
-                        norm += amp;
-                        amp *= 0.5f;
-                        freq *= 2.0f;
-                    }
-                    // +-0.08 unitless = +-400 m at full window: only
-                    // tiles the raster itself puts near sea level can
-                    // flip, i.e. a 1-2 hex coastal ribbon.
-                    elev += (detail / norm) * 0.08f
-                        * aoc::map::gen::smoothstep(coastBand);
+        // Reference continental crustal thickness for THIS planet: the median
+        // over continental sphere cells. The mountain mask is a multiple of it
+        // (MOUNTAIN_CRUST_RATIO), so the criterion measures thickening rather
+        // than depth and survives the fact that this simulation's absolute
+        // thickness scale is about half of Earth's.
+        //
+        // Computed from the sphere raster rather than from projected tiles: it is
+        // a property of the planet's crust, not of the projection, and one serial
+        // nth_element over the raster is deterministic regardless of thread count.
+        float mountainCrustKm = 0.0f;
+        {
+            std::vector<float> contCrustKm;
+            contCrustKm.reserve(aoc::map::gen::SphereField::CELL_COUNT);
+            for (std::size_t c = 0; c < sphereField.crustThicknessKm.size(); ++c) {
+                if (sphereField.continentalFraction[c] >= 0.5f) {
+                    contCrustKm.push_back(sphereField.crustThicknessKm[c]);
                 }
             }
-            // Hotspot volcanic islands. Each hotspot is a mantle
-            // plume that builds a Hawaiian/Icelandic-scale island
-            // in deep ocean. Distance test runs in lat/lon space so
-            // island size is independent of hex grid resolution.
-            if (mw.valid) {
-                for (const Hotspot& h : hotspots) {
-                    const aoc::map::gen::MollweideInverseResult hmw =
-                        aoc::map::gen::projectionInverse(
-                            config.projection, h.cx, h.cy);
-                    if (!hmw.valid) continue;
-                    float dLat = mw.coord.latDeg - hmw.coord.latDeg;
-                    float dLon = mw.coord.lonDeg - hmw.coord.lonDeg;
-                    if (dLon >  180.0f) dLon -= 360.0f;
-                    if (dLon < -180.0f) dLon += 360.0f;
-                    const float cosLat = std::cos(
-                        mw.coord.latDeg * 3.14159265f / 180.0f);
-                    dLon *= cosLat;
-                    const float r2deg = dLat * dLat + dLon * dLon;
-                    constexpr float HOTSPOT_RADIUS_DEG = 1.5f;
-                    constexpr float HOTSPOT_R2_LIMIT =
-                        HOTSPOT_RADIUS_DEG * HOTSPOT_RADIUS_DEG;
-                    if (r2deg < HOTSPOT_R2_LIMIT) {
-                        const float sigma2 = HOTSPOT_R2_LIMIT * 0.16f;
-                        const float falloff = std::exp(-r2deg / sigma2);
-                        // Was 0.65 + strength*2.0 = up to 0.97, which
-                        // lifted ~10 cells per hotspot above the
-                        // percentile water threshold. Drop to 0.40 +
-                        // strength*1.0 = up to 0.56 so only the centre
-                        // cell crests; falloff puts the next ring at
-                        // ~0.34, below threshold. Result: ~1-2 land
-                        // cells per hotspot, Hawaii-Big-Island scale.
-                        elev += (0.40f + h.strength * 1.0f) * falloff;
-                    }
-                }
-            }
-            elevationMap[static_cast<std::size_t>(row * width + col)] = elev;
-        }
-    }
-
-    // Per-hex-tile plate id, projected from the SphereField raster
-    // through the user-selected projection. `SphereField::locate`
-    // returns the authoritative raster cell.
-    //
-    // DEBT(perf, WP-11): this third full-grid pass recomputes the same
-    // projectionInverse per cell as the fused orogeny/elevation pass above.
-    // It is NOT fused in because it is intentionally serial -- grid.setPlateId
-    // lazy-allocates m_plateId on its first call (HexGrid.hpp), which is not
-    // thread-safe, so folding it into the row-parallel loop above would race.
-    // Fusing safely needs the m_plateId buffer pre-allocated before the loop;
-    // deferred to keep this WP's diff minimal and behaviour-identical.
-    for (int32_t row = 0; row < height; ++row) {
-        for (int32_t col = 0; col < width; ++col) {
-            const float nx = (static_cast<float>(col) + 0.5f)
-                / static_cast<float>(width);
-            const float ny = (static_cast<float>(row) + 0.5f)
-                / static_cast<float>(height);
-            const aoc::map::gen::MollweideInverseResult mw =
-                aoc::map::gen::projectionInverse(
-                    config.projection, nx, ny);
-            if (!mw.valid) { continue; }
-            const aoc::map::gen::SphereField::CellCoord c =
-                aoc::map::gen::SphereField::locate(
-                    mw.coord.latDeg, mw.coord.lonDeg);
-            const std::size_t idx = aoc::map::gen::SphereField::cellIndex(
-                c.lonIdx, c.latIdx);
-            const int16_t pid = sphereField.plateId[idx];
-            if (pid >= 0 && pid < 255) {
-                grid.setPlateId(row * width + col,
-                    static_cast<uint8_t>(pid));
-            }
-            // Boundary type over the hex footprint (same window logic
-            // as the mountain peakSample): raster boundaries are
-            // 1-cell lines, so a centre-point lookup would miss most
-            // of them and margin classification would come out patchy.
-            const int32_t btHalfCells = std::max(3,
-                static_cast<int32_t>(std::ceil(
-                    180.0f / static_cast<float>(width) / 0.5f)));
-            const uint8_t bt = sphereField.boundaryTypeMode(
-                mw.coord.latDeg, mw.coord.lonDeg, btHalfCells);
-            if (bt != 0u) {
-                grid.setBoundaryTypeTile(row * width + col, bt);
+            if (contCrustKm.empty()) {
+                // No continental crust at all: nothing can be an orogen. Set the
+                // bar above the hard 70 km cap so the mask is empty rather than
+                // dividing by an undefined reference.
+                mountainCrustKm = 1.0e9f;
+            } else {
+                const std::ptrdiff_t mid = static_cast<std::ptrdiff_t>(contCrustKm.size() / 2u);
+                std::nth_element(contCrustKm.begin(), contCrustKm.begin() + mid, contCrustKm.end());
+                const float medianKm = contCrustKm[static_cast<std::size_t>(mid)];
+                mountainCrustKm      = medianKm * aoc::map::gen::MOUNTAIN_CRUST_RATIO;
+                LOG_DEBUG("[mapgen] median continental crust %.1f km -> mountain root cutoff "
+                          "%.1f km (%.1fx)",
+                          static_cast<double>(medianKm), static_cast<double>(mountainCrustKm),
+                          static_cast<double>(aoc::map::gen::MOUNTAIN_CRUST_RATIO));
             }
         }
-    }
 
-    // Hex-level plate-contiguity cleanup. The raster plates are kept
-    // contiguous by enforcePlateContiguity, but projecting a 0.5-deg
-    // raster onto ~2.5-deg hexes ALIASES thin plate arms into
-    // disconnected hex fragments (a 1-2-cell arm skips hex centres).
-    // Same terrane-transfer rule as the raster pass: every fragment
-    // except the plate's largest hex component moves to the
-    // neighbouring plate with the longest shared border (ties: lowest
-    // plate id). Display/consumer layer only -- the raster stays
-    // authoritative.
-    {
-        const int32_t totalT = width * height;
-        std::vector<int32_t> comp(static_cast<std::size_t>(totalT), -1);
-        std::vector<int64_t> compSize;
-        std::vector<uint8_t> compPlate;
-        std::vector<int32_t> stack;
-        for (int32_t s = 0; s < totalT; ++s) {
-            if (comp[static_cast<std::size_t>(s)] >= 0) { continue; }
-            const uint8_t pid = grid.plateId(s);
-            if (pid == 0xFFu) { continue; }
-            const int32_t cid = static_cast<int32_t>(compSize.size());
-            comp[static_cast<std::size_t>(s)] = cid;
-            int64_t size = 0;
-            stack.clear();
-            stack.push_back(s);
-            while (!stack.empty()) {
-                const int32_t c = stack.back();
-                stack.pop_back();
-                ++size;
-                const hex::AxialCoord ax =
-                    hex::offsetToAxial({c % width, c / width});
+        // AOC_DUMP_OROGENY: histogram the inputs the mountain mask is built from,
+        // so the MOUNTAIN_CRUST_KM threshold can be checked against the crust
+        // distribution the physics actually produces instead of assumed. Same
+        // opt-in-by-env-var pattern as AOC_DUMP_THRESHOLD. Off by default and it
+        // allocates nothing when off.
+        const bool dumpOrogeny = std::getenv("AOC_DUMP_OROGENY") != nullptr;
+        std::vector<float> crustPeakKmDump;
+        std::vector<float> contFracDump;
+        if (dumpOrogeny) {
+            crustPeakKmDump.assign(static_cast<std::size_t>(width * height), 0.0f);
+            contFracDump.assign(static_cast<std::size_t>(width * height), 0.0f);
+        }
+
+        AOC_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                // Half-cell offset: sample at the hex CENTRE, not its
+                // north-west corner (col/width alone biases every sample
+                // half a hex toward -x/-y).
+                const float nx = (static_cast<float>(col) + 0.5f) / static_cast<float>(width);
+                const float ny = (static_cast<float>(row) + 0.5f) / static_cast<float>(height);
+                const aoc::map::gen::MollweideInverseResult mw =
+                    aoc::map::gen::projectionInverse(config.projection, nx, ny);
+                float elev = -1.0f; // Out of projection range → ocean.
+                if (mw.valid) {
+                    // --- orogeny (mountain) sample ---
+                    // halfSearchCells calibrated to the hex tile's actual
+                    // footprint on the sphere. SphereField cell pitch is
+                    // 0.5 deg; hex tile width is 360/width deg. Half-window
+                    // = ceil(hex_half_width / cell_pitch) so peakSample
+                    // captures every SphereField cell whose centre falls
+                    // inside the hex. Without this, a 4 km+ peak that
+                    // straddles the hex edge is missed and the tile renders
+                    // as flat -- visible mountain ranges shrink to a few
+                    // scattered tiles even when the SphereField shows
+                    // hundreds of mountain cells. Default 80-wide map:
+                    // hex_half_width = 2.25 deg, halfSearchCells = 5.
+                    const int32_t hexHalfCells = std::max(
+                        3,
+                        static_cast<int32_t>(std::ceil(180.0f / static_cast<float>(width) / 0.5f)));
+                    // Mountain = THICK CRUST, not high ground.
+                    //
+                    // 2026-07-27. This used to be
+                    // `zMpeak - seaLevelM > MOUNTAIN_THRESHOLD_M (4000 m)`,
+                    // which cannot work while continental freeboard is wrong.
+                    // Measured on seed 42: a 35 km craton sits +2815 m above the
+                    // Airy datum and the fixed-volume solve puts sea level at
+                    // -910 to -1255 m, so the craton PLATEAU stands 3725-4065 m
+                    // above sea level -- it straddles the 4000 m line. Every
+                    // craton tile was therefore within a few hundred metres of
+                    // being a mountain, decided by plateau noise, and because
+                    // `zsea` drifts 345 m across the run the whole plateau swept
+                    // back and forth through the threshold. That is the observed
+                    // flicker (SphereField mtn cells 343-529 with no trend).
+                    //
+                    // Crustal thickness is the right discriminator and it is
+                    // immune to both faults, because it is not an elevation: a
+                    // datum error and a drifting sea level cancel out of it
+                    // entirely. It is also the actual definition of an orogen --
+                    // a mountain belt IS a crustal root. Normal continental
+                    // crust is ~41 km (Christensen & Mooney 1995, JGR 100:9761);
+                    // the Andes and Tibet run 70-85 km. The threshold sits
+                    // between the two, so cratons are excluded by construction
+                    // rather than by luck.
+                    //
+                    // This is the relief-relative bridge the worldgen plan calls
+                    // for: it decouples the visible mountain mask from the
+                    // isostasy rewrite. When the elevation law is fixed, an
+                    // elevation test becomes viable again -- but this one will
+                    // still be correct, so there is no reason to go back.
+                    const float crustPeak =
+                        sphereField.peakSample(sphereField.crustThicknessKm, mw.coord.latDeg,
+                                               mw.coord.lonDeg, hexHalfCells);
+                    const float fracPeak = sphereField.bilinearSample(
+                        sphereField.continentalFraction, mw.coord.latDeg, mw.coord.lonDeg);
+                    float oroSampled = (crustPeak > mountainCrustKm) ? 1.0f : 0.0f;
+                    // Oceanic crust never carries a mountain biome: a thick
+                    // OCEANIC column is an island arc or an oceanic plateau, not
+                    // an orogen.
+                    if (fracPeak < 0.5f && oroSampled > 0.10f) {
+                        oroSampled = 0.10f;
+                    }
+                    orogeny[static_cast<std::size_t>(row * width + col)]      = oroSampled;
+                    contFracTile[static_cast<std::size_t>(row * width + col)] = fracPeak;
+                    if (dumpOrogeny) {
+                        crustPeakKmDump[static_cast<std::size_t>(row * width + col)] = crustPeak;
+                        contFracDump[static_cast<std::size_t>(row * width + col)]    = fracPeak;
+                    }
+
+                    // --- elevation sample ---
+                    const float zM = sphereField.bilinearSample(sphereField.surfaceElevationM,
+                                                                mw.coord.latDeg, mw.coord.lonDeg);
+                    const float contFracHere = sphereField.bilinearSample(
+                        sphereField.continentalFraction, mw.coord.latDeg, mw.coord.lonDeg);
+                    // Map metres above mantle datum (zero = real sea level
+                    // by Airy isostasy + datum calibration in
+                    // PlatePhysics.hpp) to a unitless elevation. The
+                    // 5000 m scale puts oceanic basement at ~-0.54 and
+                    // continental highland at ~+0.56 -- the sign of the
+                    // unitless value matches the sign of the physical
+                    // value, so the binary water/land cut is simply
+                    // elev < 0. No contFrac lift, no percentile cutoff:
+                    // these were band-aids for a previous erosion law
+                    // that drove continental cells to z=0; the slope-
+                    // based stream-power erosion (SphereFieldPhysics
+                    // applySurfaceErosionOnRaster) preserves shields at
+                    // their cratonic +500-800 m steady state, so the
+                    // physical sea-level cut suffices.
+                    // Unitless elevation relative to the SOLVED sea level
+                    // (zero = shoreline by construction; the fixed-volume
+                    // solve anchors land fraction physically instead of
+                    // hoping the Airy datum lands at the right stand).
+                    const float zRelM = zM - sphereField.seaLevelM;
+                    elev              = zRelM / 5000.0f;
+                    // Sub-grid coastal detail. The 0.5-deg raster cannot
+                    // represent coastline relief below ~55 km and bilinear
+                    // sampling to hex pitch low-passes even that, so coasts
+                    // come out as smooth arcs; real coastlines are fractal
+                    // down to metre scale (D ~ 1.1-1.3, Mandelbrot 1967).
+                    // Reconstruct the unresolved relief with deterministic
+                    // value noise confined to the raster's own vertical
+                    // ambiguity band (within 400 m of sea level) and to
+                    // crust carrying any continental signal. This is a
+                    // stationary seed-derived field -- it fits no ratio
+                    // target and decays to zero away from the coast band.
+                    // Sampled on the unit sphere: no antimeridian seam.
+                    const float coastBand = 1.0f - std::min(1.0f, std::abs(zRelM) / 400.0f);
+                    if (coastBand > 0.0f && contFracHere >= 0.05f) {
+                        const float latR = mw.coord.latDeg * 0.01745329252f;
+                        const float lonR = mw.coord.lonDeg * 0.01745329252f;
+                        const float px   = std::cos(latR) * std::cos(lonR);
+                        const float py   = std::cos(latR) * std::sin(lonR);
+                        const float pz   = std::sin(latR);
+                        // 4 octaves from ~10 deg base wavelength (above the
+                        // ~2.6-deg hex pitch at Standard width, so detail
+                        // reads as bays/headlands rather than speckle) down
+                        // to ~1.25 deg, amplitude halving per octave.
+                        float detail = 0.0f;
+                        float amp    = 1.0f;
+                        float freq   = 5.73f; // 1 / (10 deg in radians)
+                        float norm   = 0.0f;
+                        for (int32_t o = 0; o < 4; ++o) {
+                            detail += amp * (2.0f * aoc::map::gen::smoothHashNoise3(
+                                                        px * freq, py * freq, pz * freq,
+                                                        coastSeed + static_cast<uint64_t>(o)) -
+                                             1.0f);
+                            norm += amp;
+                            amp *= 0.5f;
+                            freq *= 2.0f;
+                        }
+                        // +-0.08 unitless = +-400 m at full window: only
+                        // tiles the raster itself puts near sea level can
+                        // flip, i.e. a 1-2 hex coastal ribbon.
+                        elev += (detail / norm) * 0.08f * aoc::map::gen::smoothstep(coastBand);
+                    }
+                }
+                // Hotspot volcanic islands. Each hotspot is a mantle
+                // plume that builds a Hawaiian/Icelandic-scale island
+                // in deep ocean. Distance test runs in lat/lon space so
+                // island size is independent of hex grid resolution.
+                if (mw.valid) {
+                    for (const Hotspot& h : hotspots) {
+                        const aoc::map::gen::MollweideInverseResult hmw =
+                            aoc::map::gen::projectionInverse(config.projection, h.cx, h.cy);
+                        if (!hmw.valid) continue;
+                        float dLat = mw.coord.latDeg - hmw.coord.latDeg;
+                        float dLon = mw.coord.lonDeg - hmw.coord.lonDeg;
+                        if (dLon > 180.0f) dLon -= 360.0f;
+                        if (dLon < -180.0f) dLon += 360.0f;
+                        const float cosLat = std::cos(mw.coord.latDeg * 3.14159265f / 180.0f);
+                        dLon *= cosLat;
+                        const float r2deg                  = dLat * dLat + dLon * dLon;
+                        constexpr float HOTSPOT_RADIUS_DEG = 1.5f;
+                        constexpr float HOTSPOT_R2_LIMIT = HOTSPOT_RADIUS_DEG * HOTSPOT_RADIUS_DEG;
+                        if (r2deg < HOTSPOT_R2_LIMIT) {
+                            const float sigma2  = HOTSPOT_R2_LIMIT * 0.16f;
+                            const float falloff = std::exp(-r2deg / sigma2);
+                            // Was 0.65 + strength*2.0 = up to 0.97, which
+                            // lifted ~10 cells per hotspot above the
+                            // percentile water threshold. Drop to 0.40 +
+                            // strength*1.0 = up to 0.56 so only the centre
+                            // cell crests; falloff puts the next ring at
+                            // ~0.34, below threshold. Result: ~1-2 land
+                            // cells per hotspot, Hawaii-Big-Island scale.
+                            elev += (0.40f + h.strength * 1.0f) * falloff;
+                        }
+                    }
+                }
+                elevationMap[static_cast<std::size_t>(row * width + col)] = elev;
+            }
+        }
+
+        if (dumpOrogeny) {
+            // Continental tiles only -- oceanic crust is a different population
+            // and the mask excludes it anyway.
+            std::vector<float> contCrust;
+            contCrust.reserve(crustPeakKmDump.size());
+            for (std::size_t i = 0; i < crustPeakKmDump.size(); ++i) {
+                if (contFracDump[i] >= 0.5f) {
+                    contCrust.push_back(crustPeakKmDump[i]);
+                }
+            }
+            std::sort(contCrust.begin(), contCrust.end());
+            const std::size_t n = contCrust.size();
+            std::fprintf(stderr, "[orogeny] continental tiles=%zu of %d\n", n, width * height);
+            if (n > 0) {
+                const int32_t PCTS[] = {1, 10, 25, 50, 75, 90, 95, 99, 100};
+                std::fprintf(stderr, "[orogeny] peak crust km by percentile:");
+                for (const int32_t p : PCTS) {
+                    const std::size_t k =
+                        std::min(n - 1, static_cast<std::size_t>(static_cast<double>(p) / 100.0 *
+                                                                 static_cast<double>(n - 1)));
+                    std::fprintf(stderr, "  p%d=%.1f", p, static_cast<double>(contCrust[k]));
+                }
+                std::fprintf(stderr, "\n");
+                // Mountain-tile share each candidate threshold would produce, so
+                // MOUNTAIN_CRUST_KM can be chosen against the real distribution.
+                // Reported against the LAND population (elev >= 0, the default
+                // sea-level cut), because that is what the Earth reference of
+                // ~10 % of continental area compares against.
+                std::size_t landTiles = 0;
+                for (std::size_t i = 0; i < crustPeakKmDump.size(); ++i) {
+                    if (elevationMap[i] >= 0.0f) {
+                        ++landTiles;
+                    }
+                }
+                std::fprintf(stderr, "[orogeny] land tiles=%zu; mountain %% of LAND vs threshold:",
+                             landTiles);
+                for (const float t : {25.0f, 30.0f, 35.0f, 40.0f, 45.0f, 50.0f, 55.0f}) {
+                    std::size_t mtnLand = 0;
+                    for (std::size_t i = 0; i < crustPeakKmDump.size(); ++i) {
+                        if (elevationMap[i] >= 0.0f && contFracDump[i] >= 0.5f &&
+                            crustPeakKmDump[i] > t) {
+                            ++mtnLand;
+                        }
+                    }
+                    std::fprintf(stderr, "  %.0fkm=%.1f%%", static_cast<double>(t),
+                                 100.0 * static_cast<double>(mtnLand) /
+                                     static_cast<double>(std::max<std::size_t>(1, landTiles)));
+                }
+                std::fprintf(stderr, "\n");
+            }
+            std::fprintf(stderr,
+                         "[orogeny] seaLevelM=%.0f (craton plateau stands this far above)\n",
+                         static_cast<double>(-sphereField.seaLevelM));
+
+            // Local slope distribution over non-mountain land, in metres of
+            // relief per 100 km. This is what the Hills criterion is built on,
+            // so the same measure-then-choose discipline applies to it.
+            std::vector<float> slopes;
+            slopes.reserve(static_cast<std::size_t>(width * height));
+            for (int32_t row = 0; row < height; ++row) {
+                for (int32_t col = 0; col < width; ++col) {
+                    const std::size_t i = static_cast<std::size_t>(row * width + col);
+                    if (elevationMap[i] < 0.0f) {
+                        continue;
+                    }
+                    if (orogeny[i] > 0.5f) {
+                        continue;
+                    }
+                    slopes.push_back(
+                        aoc::map::gen::localReliefMPer100Km(grid, elevationMap, 0.0f, col, row));
+                }
+            }
+            std::sort(slopes.begin(), slopes.end());
+            if (!slopes.empty()) {
+                const int32_t PCTS2[] = {10, 25, 50, 75, 90, 95, 99};
+                std::fprintf(stderr, "[orogeny] non-mtn land relief m/100km by percentile:");
+                for (const int32_t p : PCTS2) {
+                    const std::size_t k =
+                        std::min(slopes.size() - 1,
+                                 static_cast<std::size_t>(static_cast<double>(p) / 100.0 *
+                                                          static_cast<double>(slopes.size() - 1)));
+                    std::fprintf(stderr, "  p%d=%.0f", p, static_cast<double>(slopes[k]));
+                }
+                std::fprintf(stderr, "\n");
+            }
+        }
+
+        // Per-hex-tile plate id, projected from the SphereField raster
+        // through the user-selected projection. `SphereField::locate`
+        // returns the authoritative raster cell.
+        //
+        // DEBT(perf, WP-11): this third full-grid pass recomputes the same
+        // projectionInverse per cell as the fused orogeny/elevation pass above.
+        // It is NOT fused in because it is intentionally serial -- grid.setPlateId
+        // lazy-allocates m_plateId on its first call (HexGrid.hpp), which is not
+        // thread-safe, so folding it into the row-parallel loop above would race.
+        // Fusing safely needs the m_plateId buffer pre-allocated before the loop;
+        // deferred to keep this WP's diff minimal and behaviour-identical.
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const float nx = (static_cast<float>(col) + 0.5f) / static_cast<float>(width);
+                const float ny = (static_cast<float>(row) + 0.5f) / static_cast<float>(height);
+                const aoc::map::gen::MollweideInverseResult mw =
+                    aoc::map::gen::projectionInverse(config.projection, nx, ny);
+                if (!mw.valid) {
+                    continue;
+                }
+                const aoc::map::gen::SphereField::CellCoord c =
+                    aoc::map::gen::SphereField::locate(mw.coord.latDeg, mw.coord.lonDeg);
+                const std::size_t idx = aoc::map::gen::SphereField::cellIndex(c.lonIdx, c.latIdx);
+                const int16_t pid     = sphereField.plateId[idx];
+                if (pid >= 0 && pid < 255) {
+                    grid.setPlateId(row * width + col, static_cast<uint8_t>(pid));
+                }
+                // Boundary type over the hex footprint (same window logic
+                // as the mountain peakSample): raster boundaries are
+                // 1-cell lines, so a centre-point lookup would miss most
+                // of them and margin classification would come out patchy.
+                const int32_t btHalfCells = std::max(
+                    3, static_cast<int32_t>(std::ceil(180.0f / static_cast<float>(width) / 0.5f)));
+                const uint8_t bt =
+                    sphereField.boundaryTypeMode(mw.coord.latDeg, mw.coord.lonDeg, btHalfCells);
+                if (bt != 0u) {
+                    grid.setBoundaryTypeTile(row * width + col, bt);
+                }
+            }
+        }
+
+        // Hex-level plate-contiguity cleanup. The raster plates are kept
+        // contiguous by enforcePlateContiguity, but projecting a 0.5-deg
+        // raster onto ~2.5-deg hexes ALIASES thin plate arms into
+        // disconnected hex fragments (a 1-2-cell arm skips hex centres).
+        // Same terrane-transfer rule as the raster pass: every fragment
+        // except the plate's largest hex component moves to the
+        // neighbouring plate with the longest shared border (ties: lowest
+        // plate id). Display/consumer layer only -- the raster stays
+        // authoritative.
+        {
+            const int32_t totalT = width * height;
+            std::vector<int32_t> comp(static_cast<std::size_t>(totalT), -1);
+            std::vector<int64_t> compSize;
+            std::vector<uint8_t> compPlate;
+            std::vector<int32_t> stack;
+            for (int32_t s = 0; s < totalT; ++s) {
+                if (comp[static_cast<std::size_t>(s)] >= 0) {
+                    continue;
+                }
+                const uint8_t pid = grid.plateId(s);
+                if (pid == 0xFFu) {
+                    continue;
+                }
+                const int32_t cid                 = static_cast<int32_t>(compSize.size());
+                comp[static_cast<std::size_t>(s)] = cid;
+                int64_t size                      = 0;
+                stack.clear();
+                stack.push_back(s);
+                while (!stack.empty()) {
+                    const int32_t c = stack.back();
+                    stack.pop_back();
+                    ++size;
+                    const hex::AxialCoord ax = hex::offsetToAxial({c % width, c / width});
+                    for (const hex::AxialCoord& nb : hex::neighbors(ax)) {
+                        hex::OffsetCoord oc = hex::axialToOffset(nb);
+                        if (cylSim) {
+                            oc.col = ((oc.col % width) + width) % width;
+                        }
+                        if (oc.col < 0 || oc.col >= width || oc.row < 0 || oc.row >= height) {
+                            continue;
+                        }
+                        const int32_t ni = oc.row * width + oc.col;
+                        if (comp[static_cast<std::size_t>(ni)] >= 0) {
+                            continue;
+                        }
+                        if (grid.plateId(ni) != pid) {
+                            continue;
+                        }
+                        comp[static_cast<std::size_t>(ni)] = cid;
+                        stack.push_back(ni);
+                    }
+                }
+                compSize.push_back(size);
+                compPlate.push_back(pid);
+            }
+            std::array<int32_t, 256> keepComp{};
+            keepComp.fill(-1);
+            for (std::size_t cid = 0; cid < compSize.size(); ++cid) {
+                const uint8_t p = compPlate[cid];
+                if (keepComp[p] < 0 ||
+                    compSize[cid] > compSize[static_cast<std::size_t>(keepComp[p])]) {
+                    keepComp[p] = static_cast<int32_t>(cid);
+                }
+            }
+            // Longest-border target per fragment (snapshot reads).
+            std::vector<std::map<uint8_t, int32_t>> borders(compSize.size());
+            for (int32_t s = 0; s < totalT; ++s) {
+                const int32_t cid = comp[static_cast<std::size_t>(s)];
+                if (cid < 0) {
+                    continue;
+                }
+                const uint8_t p = compPlate[static_cast<std::size_t>(cid)];
+                if (keepComp[p] == cid) {
+                    continue;
+                }
+                const hex::AxialCoord ax = hex::offsetToAxial({s % width, s / width});
                 for (const hex::AxialCoord& nb : hex::neighbors(ax)) {
                     hex::OffsetCoord oc = hex::axialToOffset(nb);
                     if (cylSim) {
                         oc.col = ((oc.col % width) + width) % width;
                     }
-                    if (oc.col < 0 || oc.col >= width
-                        || oc.row < 0 || oc.row >= height) {
+                    if (oc.col < 0 || oc.col >= width || oc.row < 0 || oc.row >= height) {
                         continue;
                     }
-                    const int32_t ni = oc.row * width + oc.col;
-                    if (comp[static_cast<std::size_t>(ni)] >= 0) {
+                    const uint8_t nPid = grid.plateId(oc.row * width + oc.col);
+                    if (nPid == 0xFFu || nPid == p) {
                         continue;
                     }
-                    if (grid.plateId(ni) != pid) { continue; }
-                    comp[static_cast<std::size_t>(ni)] = cid;
-                    stack.push_back(ni);
+                    ++borders[static_cast<std::size_t>(cid)][nPid];
                 }
             }
-            compSize.push_back(size);
-            compPlate.push_back(pid);
-        }
-        std::array<int32_t, 256> keepComp{};
-        keepComp.fill(-1);
-        for (std::size_t cid = 0; cid < compSize.size(); ++cid) {
-            const uint8_t p = compPlate[cid];
-            if (keepComp[p] < 0
-                || compSize[cid] > compSize[static_cast<std::size_t>(
-                       keepComp[p])]) {
-                keepComp[p] = static_cast<int32_t>(cid);
-            }
-        }
-        // Longest-border target per fragment (snapshot reads).
-        std::vector<std::map<uint8_t, int32_t>> borders(compSize.size());
-        for (int32_t s = 0; s < totalT; ++s) {
-            const int32_t cid = comp[static_cast<std::size_t>(s)];
-            if (cid < 0) { continue; }
-            const uint8_t p = compPlate[static_cast<std::size_t>(cid)];
-            if (keepComp[p] == cid) { continue; }
-            const hex::AxialCoord ax =
-                hex::offsetToAxial({s % width, s / width});
-            for (const hex::AxialCoord& nb : hex::neighbors(ax)) {
-                hex::OffsetCoord oc = hex::axialToOffset(nb);
-                if (cylSim) {
-                    oc.col = ((oc.col % width) + width) % width;
-                }
-                if (oc.col < 0 || oc.col >= width
-                    || oc.row < 0 || oc.row >= height) {
+            for (int32_t s = 0; s < totalT; ++s) {
+                const int32_t cid = comp[static_cast<std::size_t>(s)];
+                if (cid < 0) {
                     continue;
                 }
-                const uint8_t nPid = grid.plateId(oc.row * width + oc.col);
-                if (nPid == 0xFFu || nPid == p) { continue; }
-                ++borders[static_cast<std::size_t>(cid)][nPid];
-            }
-        }
-        for (int32_t s = 0; s < totalT; ++s) {
-            const int32_t cid = comp[static_cast<std::size_t>(s)];
-            if (cid < 0) { continue; }
-            const uint8_t p = compPlate[static_cast<std::size_t>(cid)];
-            if (keepComp[p] == cid) { continue; }
-            uint8_t best = 0xFFu;
-            int32_t bestLen = 0;
-            for (const std::pair<const uint8_t, int32_t>& e
-                     : borders[static_cast<std::size_t>(cid)]) {
-                if (e.second > bestLen) {
-                    bestLen = e.second;
-                    best = e.first;
+                const uint8_t p = compPlate[static_cast<std::size_t>(cid)];
+                if (keepComp[p] == cid) {
+                    continue;
+                }
+                uint8_t best    = 0xFFu;
+                int32_t bestLen = 0;
+                for (const std::pair<const uint8_t, int32_t>& e :
+                     borders[static_cast<std::size_t>(cid)]) {
+                    if (e.second > bestLen) {
+                        bestLen = e.second;
+                        best    = e.first;
+                    }
+                }
+                if (best != 0xFFu) {
+                    grid.setPlateId(s, best);
                 }
             }
-            if (best != 0xFFu) {
-                grid.setPlateId(s, best);
-            }
         }
-    }
     } // end if (config.mapType == MapType::Continents && !plates.empty())
     if (config.mapType == MapType::Continents && !plates.empty()) {
         // Persist hotspot positions for the overlay.
@@ -1479,19 +1660,16 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         std::vector<float> crustAges = rasterCrustAges;
         landFracs.resize(plates.size(), 0.0f);
         crustAges.resize(plates.size(), 0.0f);
-        std::vector<int32_t>                 mergesAbsorbed;
-        std::vector<uint8_t>                 isPolar;
+        std::vector<int32_t> mergesAbsorbed;
+        std::vector<uint8_t> isPolar;
         motions.reserve(plates.size());
         centers.reserve(plates.size());
         mergesAbsorbed.reserve(plates.size());
         isPolar.reserve(plates.size());
         for (const Plate& p : plates) {
-            const aoc::map::gen::TangentVelocity v =
-                aoc::map::gen::eulerVelocityAt(
-                    aoc::map::gen::LatLon{p.latDeg, p.lonDeg},
-                    aoc::map::gen::LatLon{p.eulerPoleLatDeg,
-                                          p.eulerPoleLonDeg},
-                    p.angularVelDeg);
+            const aoc::map::gen::TangentVelocity v = aoc::map::gen::eulerVelocityAt(
+                aoc::map::gen::LatLon{p.latDeg, p.lonDeg},
+                aoc::map::gen::LatLon{p.eulerPoleLatDeg, p.eulerPoleLonDeg}, p.angularVelDeg);
             motions.emplace_back(v.east, v.north);
             centers.emplace_back(p.cx, p.cy);
             mergesAbsorbed.push_back(p.mergesAbsorbed);
@@ -1523,23 +1701,17 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         }
     }
 
-    // 2026-05-03: water + mountain threshold computation extracted to
+    // 2026-05-03: water threshold + distance-to-coast extracted to
     // gen/Thresholds.cpp.
     aoc::map::gen::ThresholdResult thresholds;
-    aoc::map::gen::runThresholdComputation(
-        grid, config.mapType,
-        config.seaLevelDelta, elevationMap, thresholds);
-    std::vector<float>&   mountainElev      = thresholds.mountainElev;
-    std::vector<int32_t>& distFromCoast     = thresholds.distFromCoast;
-    const float           waterThreshold    = thresholds.waterThreshold;
-    const float           mountainThreshold = thresholds.mountainThreshold;
+    aoc::map::gen::runThresholdComputation(grid, config.seaLevelDelta, elevationMap, thresholds);
+    std::vector<int32_t>& distFromCoast = thresholds.distFromCoast;
+    const float waterThreshold          = thresholds.waterThreshold;
 
     // 2026-05-03: 2-D climate model + biome assignment extracted to
     // gen/ClimateBiome.cpp.
-    aoc::map::gen::runClimateBiomePass(grid, config, rng, elevationMap,
-                                        mountainElev, distFromCoast,
-                                        orogeny, thresholds.isWater,
-                                        waterThreshold, mountainThreshold);
+    aoc::map::gen::runClimateBiomePass(grid, config, rng, elevationMap, distFromCoast, orogeny,
+                                       thresholds.isWater, waterThreshold);
 
     // Rain-shadow / wind conversion is now integrated into the
     // moisture computation above (windMoist field walks upwind across
@@ -1551,8 +1723,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // 2026-05-03: ice-sheet + rock-type extracted to gen/IceAndRock.cpp.
     if (config.mapType == MapType::Continents) {
         aoc::map::gen::runIceSheetExpansion(grid);
-        aoc::map::gen::runRockTypeAssignment(grid, ophioliteMask, sediment,
-                                             rockTypeTile);
+        aoc::map::gen::runRockTypeAssignment(grid, ophioliteMask, sediment, rockTypeTile);
     }
 
     // ============================================================
@@ -1570,34 +1741,119 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // bridges / refugia / metamorphic-core remain inline below because
         // they need direct Plate-struct access from the assignTerrain stack.
         aoc::map::gen::EarthSystemOutputs esOut;
-        aoc::map::gen::runEarthSystemPasses(grid, cylSim, orogeny, sediment,
-                                             esOut);
-        std::vector<float>&   soilFert   = esOut.soilFert;
+        aoc::map::gen::runEarthSystemPasses(grid, cylSim, sediment, esOut);
+        std::vector<float>& soilFert     = esOut.soilFert;
         std::vector<uint8_t>& volcanism  = esOut.volcanism;
         std::vector<uint8_t>& hazard     = esOut.hazard;
         std::vector<uint8_t>& permafrost = esOut.permafrost;
         std::vector<uint8_t>& lakeFlag   = esOut.lakeFlag;
         std::vector<uint8_t>& upwelling  = esOut.upwelling;
 
+        // LAKES. Every closed depression fills to its spill point; what is left
+        // under water is a lake. See gen/Lakes.cpp -- until 2026-07-27 the only
+        // writer of `lakeFlag` was an unreachable branch, so every world had
+        // zero lakes and the five passes below that read the flag did nothing.
+        //
+        // Must run AFTER runEarthSystemPasses, which assign()s lakeFlag to zero,
+        // and BEFORE runLandBridges / runAtmosphereOcean / runCoastalLandforms /
+        // runDrainageLivestock / the BiomeSubtypes input, which consume it.
+        {
+            // Depth floor, chosen from the measured depression depths
+            // (AOC_DUMP_LAKES, seeds 42/7/100/200/777): p50 is 26-48 m, p90
+            // 119-253 m, p99 396-465 m. A 0.5-degree raster resampled to
+            // 100-300 km tiles, plus the +/-400 m coastal detail band, cannot
+            // resolve a closed depression of a few tens of metres -- roughly the
+            // lower half of the raw distribution is reconstruction error, not
+            // terrain. Real lake basins are far deeper (Baikal 1642 m, Caspian
+            // 1025 m, the Great Lakes 64-406 m), so 50 m is a conservative floor
+            // that still admits genuinely shallow basins like Chad.
+            //
+            // Measured outcome at 50 m: 1-26 basins and 4-209 tiles per seed,
+            // i.e. 0.4-5.0 % of land and 2.7 % on average against Earth's ~1.8 %.
+            // A 100 m floor would give a tighter 1.0 % but leaves two of the five
+            // seeds with no lakes at all, which is the failure this replaced.
+            //
+            // 4 tiles is the smallest basin that is a basin rather than one pit
+            // cell and its immediate neighbours.
+            constexpr float LAKE_MIN_DEPTH_M      = 50.0f;
+            constexpr int32_t LAKE_MIN_TILES      = 4;
+            const aoc::map::gen::LakeResult lakes = aoc::map::gen::findEndorheicLakes(
+                grid, elevationMap, waterThreshold, LAKE_MIN_DEPTH_M, LAKE_MIN_TILES);
+            for (int32_t i = 0; i < width * height; ++i) {
+                if (lakes.lakeFlag[static_cast<std::size_t>(i)] == 0u) {
+                    continue;
+                }
+                lakeFlag[static_cast<std::size_t>(i)] = 1u;
+                // There is no Lake terrain type; inland water is ShallowWater
+                // plus the flag, which is the representation the dead code
+                // intended and every consumer already expects.
+                grid.setTerrain(i, TerrainType::ShallowWater);
+                grid.setElevation(i, -1);
+                grid.setFeature(i, FeatureType::None);
+            }
+            LOG_DEBUG("[mapgen] lakes: %d basins, %d tiles", lakes.lakeCount, lakes.floodedTiles);
+
+            if (std::getenv("AOC_DUMP_LAKES") != nullptr) {
+                // Depression depths with the floor removed, so LAKE_MIN_DEPTH_M
+                // is set against the depths this elevation field contains rather
+                // than assumed, plus what each candidate floor would select.
+                const aoc::map::gen::LakeResult all =
+                    aoc::map::gen::findEndorheicLakes(grid, elevationMap, waterThreshold, 0.0f, 1);
+                std::vector<float> depths;
+                for (const float d : all.lakeDepthM) {
+                    if (d > 0.0f) {
+                        depths.push_back(d);
+                    }
+                }
+                std::sort(depths.begin(), depths.end());
+                std::fprintf(stderr, "[lakes] %zu tiles in a closed depression", depths.size());
+                for (const int32_t p : {50, 75, 90, 99}) {
+                    if (depths.empty()) {
+                        break;
+                    }
+                    const std::size_t k =
+                        std::min(depths.size() - 1,
+                                 static_cast<std::size_t>(static_cast<double>(p) / 100.0 *
+                                                          static_cast<double>(depths.size() - 1)));
+                    std::fprintf(stderr, "  p%d=%.0fm", p, static_cast<double>(depths[k]));
+                }
+                std::fprintf(stderr, "\n[lakes] basins/tiles vs depth floor:");
+                for (const float floorM : {10.0f, 50.0f, 100.0f, 200.0f, 400.0f}) {
+                    const aoc::map::gen::LakeResult r = aoc::map::gen::findEndorheicLakes(
+                        grid, elevationMap, waterThreshold, floorM, LAKE_MIN_TILES);
+                    std::fprintf(stderr, "  %.0fm=%d/%d", static_cast<double>(floorM), r.lakeCount,
+                                 r.floodedTiles);
+                }
+                std::fprintf(stderr, "\n");
+            }
+        }
+
         // Trailing in-stack helper retained for biogeographic / land-bridge
         // / refugia / metamorphic blocks that still need it.
-        auto nbHelper = [&](int32_t col, int32_t row,
-                             int32_t dir, int32_t& outIdx) {
-            const bool oddRow = (row & 1) != 0;
-            static const int32_t DCOL_EVEN[6] = { +1,  0, -1, -1,  0, +1};
-            static const int32_t DCOL_ODD[6]  = { +1, +1,  0, -1, -1,  0};
-            static const int32_t DROW[6]      = {  0, -1, -1,  0, +1, +1};
-            const int32_t dc = oddRow ? DCOL_ODD[dir] : DCOL_EVEN[dir];
-            const int32_t dr = DROW[dir];
-            int32_t nc = col + dc;
-            int32_t nr = row + dr;
+        auto nbHelper = [&](int32_t col, int32_t row, int32_t dir, int32_t& outIdx) {
+            const bool oddRow                 = (row & 1) != 0;
+            static const int32_t DCOL_EVEN[6] = {+1, 0, -1, -1, 0, +1};
+            static const int32_t DCOL_ODD[6]  = {+1, +1, 0, -1, -1, 0};
+            static const int32_t DROW[6]      = {0, -1, -1, 0, +1, +1};
+            const int32_t dc                  = oddRow ? DCOL_ODD[dir] : DCOL_EVEN[dir];
+            const int32_t dr                  = DROW[dir];
+            int32_t nc                        = col + dc;
+            int32_t nr                        = row + dr;
             if (cylSim) {
-                if (nc < 0)        { nc += width; }
-                if (nc >= width)   { nc -= width; }
+                if (nc < 0) {
+                    nc += width;
+                }
+                if (nc >= width) {
+                    nc -= width;
+                }
             } else {
-                if (nc < 0 || nc >= width) { return false; }
+                if (nc < 0 || nc >= width) {
+                    return false;
+                }
             }
-            if (nr < 0 || nr >= height) { return false; }
+            if (nr < 0 || nr >= height) {
+                return false;
+            }
             outIdx = nr * width + nc;
             return true;
         };
@@ -1617,7 +1873,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         std::vector<uint8_t>& climateHazard = s3out.climateHazard;
         std::vector<uint8_t>& glacialFeat   = s3out.glacialFeat;
         std::vector<uint8_t>& oceanZone     = s3out.oceanZone;
-        std::vector<float>&   cloudCover    = s3out.cloudCover;
+        std::vector<float>& cloudCover      = s3out.cloudCover;
         std::vector<uint8_t>& flowDir       = s3out.flowDir;
 
         // 2026-05-03: SESSION 4 extracted to gen/Session4.cpp.
@@ -1636,19 +1892,19 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         aoc::map::gen::BiomeSubtypesOutputs s4out;
         aoc::map::gen::runBiomeSubtypes(grid, s4in, s4out);
         std::vector<uint16_t>& natHazard = s4out.natHazard;
-        std::vector<uint8_t>&  bSub      = s4out.bSub;
-        std::vector<uint8_t>&  marineD   = s4out.marineD;
-        std::vector<uint8_t>&  wildlife  = s4out.wildlife;
-        std::vector<uint8_t>&  disease   = s4out.disease;
-        std::vector<uint8_t>&  windE     = s4out.windE;
-        std::vector<uint8_t>&  solarE    = s4out.solarE;
-        std::vector<uint8_t>&  hydroE    = s4out.hydroE;
-        std::vector<uint8_t>&  geoE      = s4out.geoE;
-        std::vector<uint8_t>&  tidalE    = s4out.tidalE;
-        std::vector<uint8_t>&  waveE     = s4out.waveE;
-        std::vector<uint8_t>&  atmExtras = s4out.atmExtras;
-        std::vector<uint8_t>&  hydExtras = s4out.hydExtras;
-        std::vector<uint8_t>&  eventMrk  = s4out.eventMrk;
+        std::vector<uint8_t>& bSub       = s4out.bSub;
+        std::vector<uint8_t>& marineD    = s4out.marineD;
+        std::vector<uint8_t>& wildlife   = s4out.wildlife;
+        std::vector<uint8_t>& disease    = s4out.disease;
+        std::vector<uint8_t>& windE      = s4out.windE;
+        std::vector<uint8_t>& solarE     = s4out.solarE;
+        std::vector<uint8_t>& hydroE     = s4out.hydroE;
+        std::vector<uint8_t>& geoE       = s4out.geoE;
+        std::vector<uint8_t>& tidalE     = s4out.tidalE;
+        std::vector<uint8_t>& waveE      = s4out.waveE;
+        std::vector<uint8_t>& atmExtras  = s4out.atmExtras;
+        std::vector<uint8_t>& hydExtras  = s4out.hydExtras;
+        std::vector<uint8_t>& eventMrk   = s4out.eventMrk;
 
         // 2026-05-03: post-SESSION-4 analysis blocks (mountain passes,
         // defensibility, domesticable, trade route, habitability, wetland,
@@ -1657,15 +1913,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         aoc::map::gen::runDefensibility(grid, cylSim);
         aoc::map::gen::runDomesticable(grid);
         aoc::map::gen::runTradeRoutePotential(grid, marineD);
-        aoc::map::gen::runHabitability(grid, cylSim, soilFert, natHazard,
-                                       disease, permafrost);
+        aoc::map::gen::runHabitability(grid, cylSim, soilFert, natHazard, disease, permafrost);
         aoc::map::gen::runWetlandSubtype(grid);
         aoc::map::gen::runCoralReef(grid, bSub);
 
         // 2026-05-03: SESSION 9 compute body extracted to gen/Session9.cpp.
         aoc::map::gen::KoppenStructuresOutputs s9out;
-        aoc::map::gen::runKoppenStructures(grid, cylSim, orogeny, lakeFlag, sediment,
-                                   eventMrk, s9out);
+        aoc::map::gen::runKoppenStructures(grid, cylSim, orogeny, lakeFlag, sediment, eventMrk,
+                                           s9out);
         std::vector<uint8_t>& kop    = s9out.kop;
         std::vector<uint8_t>& mtnS   = s9out.mtnS;
         std::vector<uint8_t>& oreG   = s9out.oreG;
@@ -1711,6 +1966,22 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // 2026-05-03: SESSION 13 extracted to gen/Session13.cpp.
         aoc::map::gen::runInsolationSlope(grid, cylSim, config.axialTilt);
 
+        // PRODUCER BEFORE CONSUMER. runStreamRiparian's metamorphic-facies rule
+        // reads grid.crustalThickness() and grid.geothermalGradient(), which used
+        // to be published in the batch of set* calls ~15 lines BELOW it. Both
+        // getters are size-checked, so the read silently fell back to G=50 /
+        // T=100 and the facies classification never saw a real value -- and on a
+        // second generate into the same HexGrid it saw the PREVIOUS map's values
+        // instead, which is what made the Continent Creator non-reproducible.
+        //
+        // These two are published here, immediately before their only consumer,
+        // rather than moved into the batch below. The batch is positional
+        // ordering used as a contract, which is exactly how this bug happened;
+        // the plan's Phase 1 replaces it with typed MapGenContext dataflow so the
+        // compiler checks it.
+        grid.setCrustalThickness(std::move(crustTh));
+        grid.setGeothermalGradient(std::move(geoGrad));
+
         // 2026-05-03: SESSION 14 extracted to gen/Session14.cpp.
         aoc::map::gen::runStreamRiparian(grid, cylSim, soilFert, orogeny);
 
@@ -1726,8 +1997,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         grid.setLithology(std::move(litho));
         grid.setBedrockLithology(std::move(bedrock));
         grid.setSoilOrder(std::move(sOrder));
-        grid.setCrustalThickness(std::move(crustTh));
-        grid.setGeothermalGradient(std::move(geoGrad));
+        // crustalThickness and geothermalGradient are published above, before
+        // runStreamRiparian, which is their only consumer inside this block.
         grid.setAlbedo(std::move(albedo));
         grid.setVegetationType(std::move(vegType));
         grid.setAtmosphericRiver(std::move(atmRiv));
@@ -1770,15 +2041,18 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     reefT[static_cast<std::size_t>(i)] = 3; // atoll
                     continue;
                 }
-                bool adjLand = false;
+                bool adjLand  = false;
                 bool nearLand = false;
                 for (int32_t d = 0; d < 6; ++d) {
                     int32_t nIdx;
-                    if (!nbHelper(col, row, d, nIdx)) { continue; }
+                    if (!nbHelper(col, row, d, nIdx)) {
+                        continue;
+                    }
                     const aoc::map::TerrainType nt = grid.terrain(nIdx);
-                    if (nt != aoc::map::TerrainType::Ocean
-                        && nt != aoc::map::TerrainType::ShallowWater) {
-                        adjLand = true; break;
+                    if (nt != aoc::map::TerrainType::Ocean &&
+                        nt != aoc::map::TerrainType::ShallowWater) {
+                        adjLand = true;
+                        break;
                     }
                 }
                 if (adjLand) {
@@ -1787,17 +2061,24 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 }
                 for (int32_t dr = -3; dr <= 3 && !nearLand; ++dr) {
                     const int32_t rr = row + dr;
-                    if (rr < 0 || rr >= height) { continue; }
+                    if (rr < 0 || rr >= height) {
+                        continue;
+                    }
                     for (int32_t dc = -3; dc <= 3 && !nearLand; ++dc) {
                         int32_t cc = col + dc;
                         if (cylSim) {
-                            if (cc < 0)        { cc += width; }
-                            if (cc >= width)   { cc -= width; }
-                        } else if (cc < 0 || cc >= width) { continue; }
-                        const aoc::map::TerrainType nt =
-                            grid.terrain(rr * width + cc);
-                        if (nt != aoc::map::TerrainType::Ocean
-                            && nt != aoc::map::TerrainType::ShallowWater) {
+                            if (cc < 0) {
+                                cc += width;
+                            }
+                            if (cc >= width) {
+                                cc -= width;
+                            }
+                        } else if (cc < 0 || cc >= width) {
+                            continue;
+                        }
+                        const aoc::map::TerrainType nt = grid.terrain(rr * width + cc);
+                        if (nt != aoc::map::TerrainType::Ocean &&
+                            nt != aoc::map::TerrainType::ShallowWater) {
                             nearLand = true;
                         }
                     }
@@ -1855,24 +2136,34 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         int32_t nextId = 0;
         std::vector<int32_t> compSize;
         for (int32_t i = 0; i < width * height; ++i) {
-            if (compId[static_cast<std::size_t>(i)] >= 0) { continue; }
-            if (isWater(grid.terrain(i))) { continue; }
+            if (compId[static_cast<std::size_t>(i)] >= 0) {
+                continue;
+            }
+            if (isWater(grid.terrain(i))) {
+                continue;
+            }
             compId[static_cast<std::size_t>(i)] = nextId;
-            int32_t size = 0;
+            int32_t size                        = 0;
             bfs.clear();
             bfs.push_back(i);
             while (!bfs.empty()) {
                 const int32_t idx = bfs.back();
                 bfs.pop_back();
                 ++size;
-                const int32_t col = idx % width;
-                const int32_t row = idx / width;
+                const int32_t col        = idx % width;
+                const int32_t row        = idx / width;
                 const hex::AxialCoord ax = hex::offsetToAxial({col, row});
                 for (const hex::AxialCoord& n : hex::neighbors(ax)) {
-                    if (!grid.isValid(n)) { continue; }
+                    if (!grid.isValid(n)) {
+                        continue;
+                    }
                     const int32_t ni = grid.toIndex(n);
-                    if (compId[static_cast<std::size_t>(ni)] >= 0) { continue; }
-                    if (isWater(grid.terrain(ni))) { continue; }
+                    if (compId[static_cast<std::size_t>(ni)] >= 0) {
+                        continue;
+                    }
+                    if (isWater(grid.terrain(ni))) {
+                        continue;
+                    }
                     compId[static_cast<std::size_t>(ni)] = nextId;
                     bfs.push_back(ni);
                 }
@@ -1883,7 +2174,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // Drown sub-threshold land components.
         for (int32_t i = 0; i < width * height; ++i) {
             const int32_t cid = compId[static_cast<std::size_t>(i)];
-            if (cid < 0) { continue; }
+            if (cid < 0) {
+                continue;
+            }
             if (compSize[static_cast<std::size_t>(cid)] < MIN_ISLAND_SIZE) {
                 grid.setTerrain(i, TerrainType::Ocean);
                 grid.setElevation(i, -1);
@@ -1897,15 +2190,18 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
     // 2026-05-03: lake-purge + coastal-arm erosion extracted to gen/.
     aoc::map::gen::runLakePurge(grid, cylSim);
     aoc::map::gen::runCoastalErosion(grid);
+
+    // Hand the metric elevation field to the passes that need real depth.
+    outFields.elevationMap        = std::move(elevationMap);
+    outFields.continentalFraction = std::move(contFracTile);
+    outFields.waterThreshold      = waterThreshold;
 }
 
 // smoothCoastlines, assignFeatures, placeNaturalWonders moved to src/map/gen/Features.cpp.
 // generateRivers moved to src/map/gen/Rivers.cpp.
 
-
 // ============================================================================
 
 // Resource-placement passes moved to src/map/gen/Resources.cpp.
-
 
 } // namespace aoc::map

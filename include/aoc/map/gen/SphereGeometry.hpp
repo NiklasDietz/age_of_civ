@@ -81,8 +81,7 @@ struct Vec3 {
 /// vectors. Suitable for plate motion: each plate carries an Euler pole
 /// and an angular speed; rotating the plate's geometry by `omega * dt`
 /// advances it one step.
-[[nodiscard]] LatLon rotateAroundEulerPole(
-    LatLon p, LatLon pole, float angleDeg);
+[[nodiscard]] LatLon rotateAroundEulerPole(LatLon p, LatLon pole, float angleDeg);
 
 /// Tangent-plane velocity vector at `p` produced by Euler-pole rotation
 /// around `pole` at `angularVelDeg` degrees per unit time. Returned as
@@ -95,19 +94,17 @@ struct Vec3 {
 /// (angularVelDeg * unit_vec(pole)) and r is unit_vec(p). The resulting
 /// 3D vector is decomposed into the local east/north tangent basis at p.
 struct TangentVelocity {
-    float east;   // radians per unit time
+    float east; // radians per unit time
     float north;
 };
-[[nodiscard]] TangentVelocity eulerVelocityAt(
-    LatLon p, LatLon pole, float angularVelDeg);
+[[nodiscard]] TangentVelocity eulerVelocityAt(LatLon p, LatLon pole, float angularVelDeg);
 
 /// Walk along a great circle from `start` at azimuth `azimuthDeg`
 /// (clockwise from north, like a compass bearing) for `distanceRad`
 /// radians of arc. Returns the endpoint (latDeg, lonDeg). Used by the
 /// polygon-construction pass to ray-cast plate boundaries on the sphere
 /// without going through unit-square coords.
-[[nodiscard]] LatLon greatCircleWalk(
-    LatLon start, float azimuthDeg, float distanceRad);
+[[nodiscard]] LatLon greatCircleWalk(LatLon start, float azimuthDeg, float distanceRad);
 
 // ---------------------------------------------------------------------------
 // Mollweide projection (equal-area pseudocylindrical)
@@ -121,7 +118,7 @@ struct TangentVelocity {
 struct MollweidePoint {
     float mapX;
     float mapY;
-    bool  inEllipse;
+    bool inEllipse;
 };
 
 /// Forward Mollweide: (lat, lon) -> (mapX, mapY) in [0, 1]^2.
@@ -137,7 +134,7 @@ struct MollweidePoint {
 /// is unspecified and must not be used.
 struct MollweideInverseResult {
     LatLon coord;
-    bool   valid;
+    bool valid;
 };
 
 /// Inverse Mollweide: (mapX, mapY) in [0, 1]^2 -> (lat, lon).
@@ -153,8 +150,8 @@ struct MollweideInverseResult {
 /// elevation / orogeny / plate-stash passes -- and returns the lat/lon (or
 /// `valid = false` for tiles whose centre falls outside the Mollweide
 /// ellipse, i.e. the polar voids).
-[[nodiscard]] MollweideInverseResult tileToLatLon(
-    int32_t col, int32_t row, int32_t width, int32_t height);
+[[nodiscard]] MollweideInverseResult tileToLatLon(int32_t col, int32_t row, int32_t width,
+                                                  int32_t height);
 
 // ---------------------------------------------------------------------------
 // Projection dispatcher
@@ -172,20 +169,37 @@ enum class MapProjection : uint8_t {
     /// Equal-area pseudocylindrical (default). Earth surface fills a
     /// 2:1 ellipse; corners are masked out. Polar areas are
     /// compressed but areas are preserved.
-    Mollweide        = 0,
+    Mollweide = 0,
     /// Lat = ny linear; lon = nx linear. Simplest possible, fills the
     /// rectangle, distorts polar regions massively (Greenland twice
     /// real area at ±60° latitude). Equivalent to "Plate Carrée".
-    Equirectangular  = 1,
+    Equirectangular = 1,
     /// Conformal projection used by web maps. Preserves angles
     /// locally; massively inflates polar areas (Antarctica appears
     /// infinite at the bottom row). Polar latitudes clipped at ±85°
     /// to keep the grid finite.
-    Mercator         = 2,
+    Mercator = 2,
     /// Pseudocylindrical compromise projection used in the National
     /// Geographic and Times atlases until 1998. Areas, shapes, and
     /// distances are all moderately preserved.
-    Robinson         = 3,
+    Robinson = 3,
+    /// Lambert cylindrical equal-area: lon linear in nx, sin(lat) linear
+    /// in ny. The default, and the only projection under which a hex-tile
+    /// COUNT is proportional to planet AREA -- so "29 % of tiles are land"
+    /// actually means "29 % of the planet is land" and every realism metric
+    /// is honest without weighting. It also fills the rectangle completely
+    /// (Mollweide wastes ~21.4 % of a grid on out-of-ellipse corners that
+    /// get force-set to ocean, which additionally makes polar continents
+    /// unrepresentable) and wraps validly at every latitude, which
+    /// Mollweide does not -- its left and right edges meet only at the
+    /// equator, while the game grid wraps at every row.
+    ///
+    /// Trade-off, stated honestly: the top and bottom rows stretch
+    /// east-west (a polar tile is roughly 30 km x 1330 km at 140x90). That
+    /// is inherent to mapping a sphere onto a wrapped rectangle --
+    /// Equirectangular has the same worst-case tile aspect ratio while
+    /// ALSO misrepresenting polar area by up to ~57x.
+    LambertCylindricalEqualArea = 4,
 };
 
 /// Forward projection lat/lon → unit-square (mapX, mapY) for the given
@@ -197,7 +211,19 @@ enum class MapProjection : uint8_t {
 /// Inverse projection unit-square (mapX, mapY) → lat/lon for the given
 /// projection. `valid = false` when the input falls outside the
 /// projection's valid range.
-[[nodiscard]] MollweideInverseResult projectionInverse(
-    MapProjection proj, float mapX, float mapY);
+[[nodiscard]] MollweideInverseResult projectionInverse(MapProjection proj, float mapX, float mapY);
+
+/// Relative sphere area of the tile at (col, row), normalised so the mean over
+/// a full grid is ~1. Returns 0 for tiles outside the projection's valid domain
+/// -- those are not on the sphere and must be excluded from area statistics
+/// rather than counted as ocean.
+///
+/// A tile COUNT is only proportional to planet AREA under an equal-area
+/// projection. Every consumer that reports or integrates an area (land
+/// fraction, component sizes, the fixed-volume sea-level solve) should weight
+/// by this instead of re-deriving its own cos(lat) factor, so the weight always
+/// comes from the same projection the tiles were sampled through.
+[[nodiscard]] float tileAreaWeight(MapProjection proj, int32_t col, int32_t row, int32_t width,
+                                   int32_t height);
 
 } // namespace aoc::map::gen

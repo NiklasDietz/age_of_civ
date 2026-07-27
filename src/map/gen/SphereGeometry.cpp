@@ -20,7 +20,7 @@ namespace {
 
 // Hardcoded pi as a float -- M_PI is a non-standard double constant and
 // promoting it to float at every site adds noise to hot paths.
-constexpr float kPi      = 3.14159265358979323846f;
+constexpr float kPi       = 3.14159265358979323846f;
 constexpr float kDegToRad = kPi / 180.0f;
 constexpr float kRadToDeg = 180.0f / kPi;
 
@@ -39,7 +39,7 @@ const float kFourSqrt2 = 4.0f * kSqrt2;
 // angle solve. 1e-6 is well below single-precision noise; 8 iterations
 // is comfortably above the empirical 3-4 needed at any latitude.
 constexpr float kMollweideTolerance = 1.0e-6f;
-constexpr int   kMollweideMaxIters  = 8;
+constexpr int kMollweideMaxIters    = 8;
 
 /// Solve 2*theta + sin(2*theta) = pi * sin(lat) for theta via
 /// Newton-Raphson. Initial guess is lat itself, which is excellent at low
@@ -50,20 +50,26 @@ constexpr int   kMollweideMaxIters  = 8;
 float solveMollweideTheta(float latRad) {
     // Pole short-circuit: theta = +/- pi/2 exactly.
     const float halfPi = 0.5f * kPi;
-    if (latRad >=  halfPi - 1.0e-7f) { return  halfPi; }
-    if (latRad <= -halfPi + 1.0e-7f) { return -halfPi; }
+    if (latRad >= halfPi - 1.0e-7f) {
+        return halfPi;
+    }
+    if (latRad <= -halfPi + 1.0e-7f) {
+        return -halfPi;
+    }
 
     const float target = kPi * std::sin(latRad);
-    float theta = latRad; // initial guess
+    float theta        = latRad; // initial guess
 
     for (int iter = 0; iter < kMollweideMaxIters; ++iter) {
         const float twoTheta   = 2.0f * theta;
         const float residual   = twoTheta + std::sin(twoTheta) - target;
         const float derivative = 2.0f + 2.0f * std::cos(twoTheta);
         // Derivative bottoms out at the poles; guarded above.
-        const float step       = residual / derivative;
+        const float step = residual / derivative;
         theta -= step;
-        if (std::fabs(step) < kMollweideTolerance) { break; }
+        if (std::fabs(step) < kMollweideTolerance) {
+            break;
+        }
     }
     return theta;
 }
@@ -91,9 +97,9 @@ LatLon vec3ToLatLon(Vec3 v) {
     const float lengthSq = v.x * v.x + v.y * v.y + v.z * v.z;
     const float length   = std::sqrt(lengthSq);
     const float invLen   = (length > 0.0f) ? (1.0f / length) : 0.0f;
-    const float nx = v.x * invLen;
-    const float ny = v.y * invLen;
-    const float nz = v.z * invLen;
+    const float nx       = v.x * invLen;
+    const float ny       = v.y * invLen;
+    const float nz       = v.z * invLen;
 
     LatLon out;
     out.latDeg = std::asin(std::clamp(nz, -1.0f, 1.0f)) * kRadToDeg;
@@ -114,9 +120,8 @@ float haversineRadians(LatLon a, LatLon b) {
     const float sinHalfDLat = std::sin(0.5f * dLat);
     const float sinHalfDLon = std::sin(0.5f * dLon);
 
-    const float h = sinHalfDLat * sinHalfDLat
-                  + std::cos(lat1) * std::cos(lat2)
-                  * sinHalfDLon * sinHalfDLon;
+    const float h =
+        sinHalfDLat * sinHalfDLat + std::cos(lat1) * std::cos(lat2) * sinHalfDLon * sinHalfDLon;
 
     // asin clamp guards against h slightly above 1 due to rounding at
     // antipodal points.
@@ -135,9 +140,9 @@ LatLon rotateAroundEulerPole(LatLon p, LatLon pole, float angleDeg) {
     const Vec3 pVec = latLonToVec3(p);
     const Vec3 kVec = latLonToVec3(pole); // pole is already a unit vector
 
-    const float angleRad = angleDeg * kDegToRad;
-    const float c = std::cos(angleRad);
-    const float s = std::sin(angleRad);
+    const float angleRad  = angleDeg * kDegToRad;
+    const float c         = std::cos(angleRad);
+    const float s         = std::sin(angleRad);
     const float oneMinusC = 1.0f - c;
 
     // k . v
@@ -166,27 +171,30 @@ LatLon greatCircleWalk(LatLon start, float azimuthDeg, float distanceRad) {
     const float sinD   = std::sin(distanceRad);
     const float cosD   = std::cos(distanceRad);
 
-    const float sinNewLat = sinLat * cosD + cosLat * sinD * std::cos(az);
+    const float sinNewLat     = sinLat * cosD + cosLat * sinD * std::cos(az);
     const float clampedSinLat = std::clamp(sinNewLat, -1.0f, 1.0f);
-    const float newLat = std::asin(clampedSinLat);
-    const float newLon = lonRad + std::atan2(
-        std::sin(az) * sinD * cosLat,
-        cosD - sinLat * clampedSinLat);
+    const float newLat        = std::asin(clampedSinLat);
+    const float newLon =
+        lonRad + std::atan2(std::sin(az) * sinD * cosLat, cosD - sinLat * clampedSinLat);
 
     LatLon out;
     out.latDeg = newLat * kRadToDeg;
     out.lonDeg = newLon * kRadToDeg;
     // Wrap longitude to [-180, 180].
-    while (out.lonDeg >  180.0f) { out.lonDeg -= 360.0f; }
-    while (out.lonDeg < -180.0f) { out.lonDeg += 360.0f; }
+    while (out.lonDeg > 180.0f) {
+        out.lonDeg -= 360.0f;
+    }
+    while (out.lonDeg < -180.0f) {
+        out.lonDeg += 360.0f;
+    }
     return out;
 }
 
 TangentVelocity eulerVelocityAt(LatLon p, LatLon pole, float angularVelDeg) {
     // omega = angularVelRad * pole_unit_vec
     const float angVelRad = angularVelDeg * kDegToRad;
-    const Vec3 poleVec = latLonToVec3(pole);
-    const Vec3 pVec    = latLonToVec3(p);
+    const Vec3 poleVec    = latLonToVec3(pole);
+    const Vec3 pVec       = latLonToVec3(p);
 
     // v3D = omega x r (in 3D Cartesian)
     const float vx3 = angVelRad * (poleVec.y * pVec.z - poleVec.z * pVec.y);
@@ -197,13 +205,13 @@ TangentVelocity eulerVelocityAt(LatLon p, LatLon pole, float angularVelDeg) {
     // Local north basis at p: e_north = (-sin(lat)cos(lon), -sin(lat)sin(lon), cos(lat))
     const float latRad = p.latDeg * kDegToRad;
     const float lonRad = p.lonDeg * kDegToRad;
-    const float cLat = std::cos(latRad);
-    const float sLat = std::sin(latRad);
-    const float cLon = std::cos(lonRad);
-    const float sLon = std::sin(lonRad);
+    const float cLat   = std::cos(latRad);
+    const float sLat   = std::sin(latRad);
+    const float cLon   = std::cos(lonRad);
+    const float sLon   = std::sin(lonRad);
 
     TangentVelocity tv;
-    tv.east  = -sLon * vx3 +  cLon * vy3;
+    tv.east  = -sLon * vx3 + cLon * vy3;
     tv.north = -sLat * cLon * vx3 - sLat * sLon * vy3 + cLat * vz3;
     return tv;
 }
@@ -216,7 +224,7 @@ MollweidePoint mollweideForward(LatLon p) {
     const float latRad = p.latDeg * kDegToRad;
     const float lonRad = p.lonDeg * kDegToRad;
 
-    const float theta = solveMollweideTheta(latRad);
+    const float theta    = solveMollweideTheta(latRad);
     const float cosTheta = std::cos(theta);
     const float sinTheta = std::sin(theta);
 
@@ -237,7 +245,7 @@ MollweidePoint mollweideForward(LatLon p) {
     // (with both deltas multiplied by 2) suffices.
     const float dx = (out.mapX - 0.5f) * 2.0f;
     const float dy = (out.mapY - 0.5f) * 2.0f;
-    out.inEllipse = (dx * dx + dy * dy) <= 1.0f + 1.0e-5f;
+    out.inEllipse  = (dx * dx + dy * dy) <= 1.0f + 1.0e-5f;
     return out;
 }
 
@@ -276,23 +284,22 @@ MollweideInverseResult mollweideInverse(float mapX, float mapY) {
     }
 
     float lonDeg = lonRad * kRadToDeg;
-    lonDeg = std::clamp(lonDeg, -180.0f, 180.0f);
+    lonDeg       = std::clamp(lonDeg, -180.0f, 180.0f);
 
     result.coord.latDeg = latRad * kRadToDeg;
     result.coord.lonDeg = lonDeg;
-    result.valid = true;
+    result.valid        = true;
     return result;
 }
 
-MollweideInverseResult tileToLatLon(
-    int32_t col, int32_t row, int32_t width, int32_t height) {
+MollweideInverseResult tileToLatLon(int32_t col, int32_t row, int32_t width, int32_t height) {
     // Matches the legacy Voronoi convention used by the elevation /
     // orogeny / plate-stash passes: nx = col / width, ny = row / height
     // (NOT the centred (col + 0.5) / width form). Switching the
     // sampling convention would shift every tile half a pixel and
     // perturb determinism for downstream noise lookups that take the
     // same nx/ny as input.
-    const float mapX = (width  > 0) ? (static_cast<float>(col) / static_cast<float>(width))  : 0.5f;
+    const float mapX = (width > 0) ? (static_cast<float>(col) / static_cast<float>(width)) : 0.5f;
     const float mapY = (height > 0) ? (static_cast<float>(row) / static_cast<float>(height)) : 0.5f;
     return mollweideInverse(mapX, mapY);
 }
@@ -308,10 +315,9 @@ MollweideInverseResult tileToLatLon(
 // world maps render lat/lon textures.
 static MollweidePoint equirectangularForward(LatLon p) {
     MollweidePoint r;
-    r.mapX = (p.lonDeg + 180.0f) / 360.0f;
-    r.mapY = (90.0f - p.latDeg) / 180.0f;
-    r.inEllipse = (r.mapX >= 0.0f && r.mapX <= 1.0f
-                && r.mapY >= 0.0f && r.mapY <= 1.0f);
+    r.mapX      = (p.lonDeg + 180.0f) / 360.0f;
+    r.mapY      = (90.0f - p.latDeg) / 180.0f;
+    r.inEllipse = (r.mapX >= 0.0f && r.mapX <= 1.0f && r.mapY >= 0.0f && r.mapY <= 1.0f);
     return r;
 }
 
@@ -319,8 +325,7 @@ static MollweideInverseResult equirectangularInverse(float mapX, float mapY) {
     MollweideInverseResult r;
     r.coord.lonDeg = mapX * 360.0f - 180.0f;
     r.coord.latDeg = 90.0f - mapY * 180.0f;
-    r.valid        = (mapX >= 0.0f && mapX <= 1.0f
-                  && mapY >= 0.0f && mapY <= 1.0f);
+    r.valid        = (mapX >= 0.0f && mapX <= 1.0f && mapY >= 0.0f && mapY <= 1.0f);
     return r;
 }
 
@@ -341,24 +346,22 @@ static constexpr float kMercatorYHalfLimit = 1.2181232f;
 
 static MollweidePoint mercatorForward(LatLon p) {
     MollweidePoint r;
-    r.mapX = (p.lonDeg + 180.0f) / 360.0f;
-    const float clampedLat = std::clamp(p.latDeg,
-        -MERCATOR_LAT_LIMIT_DEG, MERCATOR_LAT_LIMIT_DEG);
-    const float latR = clampedLat * kDegToRad;
-    const float y = std::log(std::tan(0.785398163f + 0.5f * latR));
-    r.mapY = 0.5f - 0.5f * y / kMercatorYHalfLimit;
-    r.inEllipse = (std::fabs(p.latDeg) <= MERCATOR_LAT_LIMIT_DEG);
+    r.mapX                 = (p.lonDeg + 180.0f) / 360.0f;
+    const float clampedLat = std::clamp(p.latDeg, -MERCATOR_LAT_LIMIT_DEG, MERCATOR_LAT_LIMIT_DEG);
+    const float latR       = clampedLat * kDegToRad;
+    const float y          = std::log(std::tan(0.785398163f + 0.5f * latR));
+    r.mapY                 = 0.5f - 0.5f * y / kMercatorYHalfLimit;
+    r.inEllipse            = (std::fabs(p.latDeg) <= MERCATOR_LAT_LIMIT_DEG);
     return r;
 }
 
 static MollweideInverseResult mercatorInverse(float mapX, float mapY) {
     MollweideInverseResult r;
-    r.coord.lonDeg = mapX * 360.0f - 180.0f;
-    const float y = (0.5f - mapY) * 2.0f * kMercatorYHalfLimit;
+    r.coord.lonDeg   = mapX * 360.0f - 180.0f;
+    const float y    = (0.5f - mapY) * 2.0f * kMercatorYHalfLimit;
     const float latR = 2.0f * (std::atan(std::exp(y)) - 0.785398163f);
-    r.coord.latDeg = latR * kRadToDeg;
-    r.valid = (mapX >= 0.0f && mapX <= 1.0f
-            && mapY >= 0.0f && mapY <= 1.0f);
+    r.coord.latDeg   = latR * kRadToDeg;
+    r.valid          = (mapX >= 0.0f && mapX <= 1.0f && mapY >= 0.0f && mapY <= 1.0f);
     return r;
 }
 
@@ -371,31 +374,26 @@ static MollweideInverseResult mercatorInverse(float mapX, float mapY) {
 // linearly between table entries. A common atlas projection — areas
 // and shapes are both moderately preserved (no exact equal-area, no
 // exact conformal, but the global look is "natural").
-static const float kRobinsonX[19] = {
-    1.0000f, 0.9986f, 0.9954f, 0.9900f, 0.9822f, 0.9730f, 0.9600f,
-    0.9427f, 0.9216f, 0.8962f, 0.8679f, 0.8350f, 0.7986f, 0.7597f,
-    0.7186f, 0.6732f, 0.6213f, 0.5722f, 0.5322f
-};
-static const float kRobinsonY[19] = {
-    0.0000f, 0.0620f, 0.1240f, 0.1860f, 0.2480f, 0.3100f, 0.3720f,
-    0.4340f, 0.4958f, 0.5571f, 0.6176f, 0.6769f, 0.7346f, 0.7903f,
-    0.8435f, 0.8936f, 0.9394f, 0.9761f, 1.0000f
-};
+static const float kRobinsonX[19] = {1.0000f, 0.9986f, 0.9954f, 0.9900f, 0.9822f, 0.9730f, 0.9600f,
+                                     0.9427f, 0.9216f, 0.8962f, 0.8679f, 0.8350f, 0.7986f, 0.7597f,
+                                     0.7186f, 0.6732f, 0.6213f, 0.5722f, 0.5322f};
+static const float kRobinsonY[19] = {0.0000f, 0.0620f, 0.1240f, 0.1860f, 0.2480f, 0.3100f, 0.3720f,
+                                     0.4340f, 0.4958f, 0.5571f, 0.6176f, 0.6769f, 0.7346f, 0.7903f,
+                                     0.8435f, 0.8936f, 0.9394f, 0.9761f, 1.0000f};
 
 static MollweidePoint robinsonForward(LatLon p) {
     MollweidePoint r;
     const float absLat = std::fabs(p.latDeg);
-    const float idxF = absLat / 5.0f;
-    const int32_t idx = std::min(17, static_cast<int32_t>(idxF));
-    const float t = idxF - static_cast<float>(idx);
-    const float X = kRobinsonX[idx] * (1.0f - t) + kRobinsonX[idx + 1] * t;
-    const float Y = kRobinsonY[idx] * (1.0f - t) + kRobinsonY[idx + 1] * t;
-    const float xRaw = X * (p.lonDeg / 180.0f);
-    const float yRaw = (p.latDeg < 0.0f) ? -Y : Y;
-    r.mapX = 0.5f + 0.5f * xRaw;
-    r.mapY = 0.5f - 0.5f * yRaw;
-    r.inEllipse = (r.mapX >= 0.0f && r.mapX <= 1.0f
-                && r.mapY >= 0.0f && r.mapY <= 1.0f);
+    const float idxF   = absLat / 5.0f;
+    const int32_t idx  = std::min(17, static_cast<int32_t>(idxF));
+    const float t      = idxF - static_cast<float>(idx);
+    const float X      = kRobinsonX[idx] * (1.0f - t) + kRobinsonX[idx + 1] * t;
+    const float Y      = kRobinsonY[idx] * (1.0f - t) + kRobinsonY[idx + 1] * t;
+    const float xRaw   = X * (p.lonDeg / 180.0f);
+    const float yRaw   = (p.latDeg < 0.0f) ? -Y : Y;
+    r.mapX             = 0.5f + 0.5f * xRaw;
+    r.mapY             = 0.5f - 0.5f * yRaw;
+    r.inEllipse        = (r.mapX >= 0.0f && r.mapX <= 1.0f && r.mapY >= 0.0f && r.mapY <= 1.0f);
     return r;
 }
 
@@ -405,23 +403,59 @@ static MollweideInverseResult robinsonInverse(float mapX, float mapY) {
     MollweideInverseResult r;
     const float yRaw = (0.5f - mapY) * 2.0f;
     const float absY = std::fabs(yRaw);
-    int32_t idx = 0;
+    int32_t idx      = 0;
     for (; idx < 17; ++idx) {
         if (kRobinsonY[idx + 1] >= absY) break;
     }
-    const float yLo = kRobinsonY[idx];
-    const float yHi = kRobinsonY[idx + 1];
-    const float t = (yHi > yLo) ? (absY - yLo) / (yHi - yLo) : 0.0f;
+    const float yLo    = kRobinsonY[idx];
+    const float yHi    = kRobinsonY[idx + 1];
+    const float t      = (yHi > yLo) ? (absY - yLo) / (yHi - yLo) : 0.0f;
     const float absLat = (static_cast<float>(idx) + t) * 5.0f;
-    const float lat = (yRaw < 0.0f) ? -absLat : absLat;
-    const float X = kRobinsonX[idx] * (1.0f - t) + kRobinsonX[idx + 1] * t;
-    const float xRaw = (mapX - 0.5f) * 2.0f;
-    const float lon = (X > 1e-6f) ? (xRaw / X) * 180.0f : 0.0f;
-    r.coord.latDeg = lat;
-    r.coord.lonDeg = lon;
-    r.valid = (lat >= -90.0f && lat <= 90.0f
-            && lon >= -180.0f && lon <= 180.0f
-            && std::fabs(xRaw) <= X + 1e-3f);
+    const float lat    = (yRaw < 0.0f) ? -absLat : absLat;
+    const float X      = kRobinsonX[idx] * (1.0f - t) + kRobinsonX[idx + 1] * t;
+    const float xRaw   = (mapX - 0.5f) * 2.0f;
+    const float lon    = (X > 1e-6f) ? (xRaw / X) * 180.0f : 0.0f;
+    r.coord.latDeg     = lat;
+    r.coord.lonDeg     = lon;
+    r.valid            = (lat >= -90.0f && lat <= 90.0f && lon >= -180.0f && lon <= 180.0f &&
+                          std::fabs(xRaw) <= X + 1e-3f);
+    return r;
+}
+
+// ---------------------------------------------------------------------------
+// Lambert cylindrical equal-area
+// ---------------------------------------------------------------------------
+//
+// nx = (lon + 180) / 360, ny = (1 - sin(lat)) / 2.
+//
+// Equal-area because the cylindrical projection's area element is
+// dA = R^2 dlon dsin(lat), so a rectangle of constant (nx, ny) extent maps to
+// a constant sphere area everywhere. That is the whole point: a hex-tile COUNT
+// becomes proportional to planet AREA, so land fraction, component sizes and
+// every other area statistic are directly comparable to Earth without a
+// cos(lat) weight -- and the fixed-volume sea-level solve, which integrates
+// over area, no longer needs one either.
+//
+// The full unit square is valid (no void corners, unlike Mollweide) and the
+// east-west wrap is exact at every latitude, matching the game's Cylindrical
+// topology. Rows near the poles cover a wide latitude band each (ny is linear
+// in sin(lat), not lat), which is exactly what area fidelity requires: polar
+// regions genuinely occupy little area and therefore few tiles.
+static MollweidePoint lambertEqualAreaForward(LatLon p) {
+    MollweidePoint r;
+    r.mapX             = (p.lonDeg + 180.0f) / 360.0f;
+    const float sinLat = std::sin(std::clamp(p.latDeg, -90.0f, 90.0f) * kDegToRad);
+    r.mapY             = 0.5f * (1.0f - sinLat);
+    r.inEllipse        = (r.mapX >= 0.0f && r.mapX <= 1.0f && r.mapY >= 0.0f && r.mapY <= 1.0f);
+    return r;
+}
+
+static MollweideInverseResult lambertEqualAreaInverse(float mapX, float mapY) {
+    MollweideInverseResult r;
+    r.coord.lonDeg     = mapX * 360.0f - 180.0f;
+    const float sinLat = std::clamp(1.0f - 2.0f * mapY, -1.0f, 1.0f);
+    r.coord.latDeg     = std::asin(sinLat) * kRadToDeg;
+    r.valid            = (mapX >= 0.0f && mapX <= 1.0f && mapY >= 0.0f && mapY <= 1.0f);
     return r;
 }
 
@@ -431,27 +465,69 @@ static MollweideInverseResult robinsonInverse(float mapX, float mapY) {
 
 MollweidePoint projectionForward(MapProjection proj, LatLon p) {
     switch (proj) {
-        case MapProjection::Equirectangular: return equirectangularForward(p);
-        case MapProjection::Mercator:        return mercatorForward(p);
-        case MapProjection::Robinson:        return robinsonForward(p);
-        case MapProjection::Mollweide:
-        default:                             return mollweideForward(p);
+    case MapProjection::Equirectangular:
+        return equirectangularForward(p);
+    case MapProjection::Mercator:
+        return mercatorForward(p);
+    case MapProjection::Robinson:
+        return robinsonForward(p);
+    case MapProjection::LambertCylindricalEqualArea:
+        return lambertEqualAreaForward(p);
+    case MapProjection::Mollweide:
+    default:
+        return mollweideForward(p);
     }
 }
 
-MollweideInverseResult projectionInverse(
-    MapProjection proj, float mapX, float mapY) {
+MollweideInverseResult projectionInverse(MapProjection proj, float mapX, float mapY) {
     switch (proj) {
-        case MapProjection::Equirectangular: return equirectangularInverse(mapX, mapY);
-        case MapProjection::Mercator:        return mercatorInverse(mapX, mapY);
-        case MapProjection::Robinson:        return robinsonInverse(mapX, mapY);
-        case MapProjection::Mollweide:
-        default:                             return mollweideInverse(mapX, mapY);
+    case MapProjection::Equirectangular:
+        return equirectangularInverse(mapX, mapY);
+    case MapProjection::Mercator:
+        return mercatorInverse(mapX, mapY);
+    case MapProjection::Robinson:
+        return robinsonInverse(mapX, mapY);
+    case MapProjection::LambertCylindricalEqualArea:
+        return lambertEqualAreaInverse(mapX, mapY);
+    case MapProjection::Mollweide:
+    default:
+        return mollweideInverse(mapX, mapY);
+    }
+}
+
+/// Relative sphere area of the tile at (col, row) under `proj`, normalised so
+/// the mean over a full grid is ~1. Zero for tiles outside the projection's
+/// valid domain -- those are not on the sphere at all and must be excluded
+/// from area statistics, not counted as ocean.
+///
+/// Exists so every area-weighted consumer (metrics, sea-level integration,
+/// land-fraction reporting) derives the weight from the SAME projection the
+/// tiles were sampled through, instead of each re-deriving a cos(lat) factor.
+float tileAreaWeight(MapProjection proj, int32_t col, int32_t row, int32_t width, int32_t height) {
+    const float nx = (static_cast<float>(col) + 0.5f) / static_cast<float>(width);
+    const float ny = (static_cast<float>(row) + 0.5f) / static_cast<float>(height);
+    const MollweideInverseResult inv = projectionInverse(proj, nx, ny);
+    if (!inv.valid) {
+        return 0.0f;
+    }
+    switch (proj) {
+    // Equal-area projections: every valid tile carries the same weight.
+    case MapProjection::Mollweide:
+    case MapProjection::LambertCylindricalEqualArea:
+        return 1.0f;
+    // Non-equal-area: the sphere area of a (dlon x dlat) cell scales as
+    // cos(lat). Rows sample latitude uniformly and the mean of cos over
+    // uniform latitude is 2/pi, so scaling by pi/2 normalises the mean weight
+    // to ~1, putting it on the same scale as the equal-area cases above.
+    case MapProjection::Equirectangular:
+    case MapProjection::Mercator:
+    case MapProjection::Robinson:
+    default:
+        return std::cos(inv.coord.latDeg * kDegToRad) * (kPi * 0.5f);
     }
 }
 
 } // namespace aoc::map::gen
-
 
 // ===========================================================================
 // Inline tests (compile with -DAOC_SPHERE_TESTS to build the test main).
@@ -484,27 +560,25 @@ void check(bool condition, const char* label) {
 } // namespace
 
 int main() {
-    using aoc::map::gen::LatLon;
     using aoc::map::gen::haversineRadians;
-    using aoc::map::gen::rotateAroundEulerPole;
+    using aoc::map::gen::LatLon;
     using aoc::map::gen::mollweideForward;
     using aoc::map::gen::mollweideInverse;
+    using aoc::map::gen::rotateAroundEulerPole;
 
     const float pi = 3.14159265358979323846f;
 
     // 1. haversine of two equator points 90 deg apart = pi/2 radians.
     {
-        const float d = haversineRadians(
-            LatLon{0.0f, 0.0f}, LatLon{0.0f, 90.0f});
-        check(approxEqual(d, 0.5f * pi, 1.0e-5f),
-              "haversine equator 90deg == pi/2");
+        const float d = haversineRadians(LatLon{0.0f, 0.0f}, LatLon{0.0f, 90.0f});
+        check(approxEqual(d, 0.5f * pi, 1.0e-5f), "haversine equator 90deg == pi/2");
     }
 
     // 2. Rotate equatorial point 90 deg around the north pole -> longitude
     //    advances by 90 deg.
     {
-        const LatLon rotated = rotateAroundEulerPole(
-            LatLon{0.0f, 0.0f}, LatLon{90.0f, 0.0f}, 90.0f);
+        const LatLon rotated =
+            rotateAroundEulerPole(LatLon{0.0f, 0.0f}, LatLon{90.0f, 0.0f}, 90.0f);
         check(approxEqual(rotated.latDeg, 0.0f, 1.0e-4f),
               "Euler-pole rotation preserves equator latitude");
         check(approxEqual(rotated.lonDeg, 90.0f, 1.0e-3f),
@@ -513,40 +587,30 @@ int main() {
 
     // 3. mollweideForward(0, 0) -> (0.5, 0.5, true).
     {
-        const aoc::map::gen::MollweidePoint mp =
-            mollweideForward(LatLon{0.0f, 0.0f});
-        check(approxEqual(mp.mapX, 0.5f, 1.0e-5f),
-              "mollweideForward(0,0).mapX == 0.5");
-        check(approxEqual(mp.mapY, 0.5f, 1.0e-5f),
-              "mollweideForward(0,0).mapY == 0.5");
+        const aoc::map::gen::MollweidePoint mp = mollweideForward(LatLon{0.0f, 0.0f});
+        check(approxEqual(mp.mapX, 0.5f, 1.0e-5f), "mollweideForward(0,0).mapX == 0.5");
+        check(approxEqual(mp.mapY, 0.5f, 1.0e-5f), "mollweideForward(0,0).mapY == 0.5");
         check(mp.inEllipse, "mollweideForward(0,0).inEllipse == true");
     }
 
     // 4. mollweideForward(90, 0) -> (0.5, ~1.0, true).
     {
-        const aoc::map::gen::MollweidePoint mp =
-            mollweideForward(LatLon{90.0f, 0.0f});
-        check(approxEqual(mp.mapX, 0.5f, 1.0e-4f),
-              "mollweideForward(90,0).mapX == 0.5");
-        check(approxEqual(mp.mapY, 1.0f, 1.0e-4f),
-              "mollweideForward(90,0).mapY ~ 1.0");
+        const aoc::map::gen::MollweidePoint mp = mollweideForward(LatLon{90.0f, 0.0f});
+        check(approxEqual(mp.mapX, 0.5f, 1.0e-4f), "mollweideForward(90,0).mapX == 0.5");
+        check(approxEqual(mp.mapY, 1.0f, 1.0e-4f), "mollweideForward(90,0).mapY ~ 1.0");
     }
 
     // 5. mollweideInverse(0.5, 0.5) -> (0, 0, valid).
     {
-        const aoc::map::gen::MollweideInverseResult r =
-            mollweideInverse(0.5f, 0.5f);
+        const aoc::map::gen::MollweideInverseResult r = mollweideInverse(0.5f, 0.5f);
         check(r.valid, "mollweideInverse(0.5,0.5).valid == true");
-        check(approxEqual(r.coord.latDeg, 0.0f, 1.0e-4f),
-              "mollweideInverse(0.5,0.5).latDeg == 0");
-        check(approxEqual(r.coord.lonDeg, 0.0f, 1.0e-4f),
-              "mollweideInverse(0.5,0.5).lonDeg == 0");
+        check(approxEqual(r.coord.latDeg, 0.0f, 1.0e-4f), "mollweideInverse(0.5,0.5).latDeg == 0");
+        check(approxEqual(r.coord.lonDeg, 0.0f, 1.0e-4f), "mollweideInverse(0.5,0.5).lonDeg == 0");
     }
 
     // 6. mollweideInverse(0.0, 0.5) -> longitude near -180.
     {
-        const aoc::map::gen::MollweideInverseResult r =
-            mollweideInverse(0.0f, 0.5f);
+        const aoc::map::gen::MollweideInverseResult r = mollweideInverse(0.0f, 0.5f);
         check(r.valid, "mollweideInverse(0.0,0.5).valid == true");
         check(approxEqual(r.coord.lonDeg, -180.0f, 1.0e-2f),
               "mollweideInverse(0.0,0.5).lonDeg ~ -180");

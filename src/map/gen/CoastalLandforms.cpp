@@ -125,8 +125,7 @@ void runCoastalLandforms(HexGrid& grid, bool cylindrical,
     // ---- RIVER REGIME ----
     AOC_S12_PARALLEL_FOR_ROWS
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
             if (grid.riverEdges(i) == 0) { continue; }
@@ -224,8 +223,7 @@ void runCoastalLandforms(HexGrid& grid, bool cylindrical,
     // ---- LAKE-EFFECT SNOW ----
     AOC_S12_PARALLEL_FOR_ROWS
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         if (lat < 0.45f) { continue; }
         const float windStep = (lat >= 0.60f) ? -1.0f : 1.0f;
         for (int32_t col = 0; col < width; ++col) {

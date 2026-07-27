@@ -572,52 +572,9 @@ void buildOverrides(const Individual& subject,
     }
 }
 
-/// Score the full SimulationResult for Player 0 using the outcome-component
-/// formula. Extracted so rank-based future work can share the math.
-float playerOutcomeScore(const SimulationResult& simResult,
-                         std::size_t playerIdx, int32_t turns) {
-    const int32_t myVP = simResult.eraVP[playerIdx];
-    int32_t bestRivalVP = 0;
-    for (std::size_t i = 0; i < simResult.eraVP.size(); ++i) {
-        if (i == playerIdx) { continue; }
-        if (simResult.eraVP[i] > bestRivalVP) { bestRivalVP = simResult.eraVP[i]; }
-    }
-    const float denomVP = static_cast<float>(std::max(1, std::max(myVP, bestRivalVP)));
-    const float relativeWin = static_cast<float>(myVP - bestRivalVP) / denomVP;
-
-    const float treasuryF = static_cast<float>(simResult.treasury[playerIdx]);
-    const float turnsF    = static_cast<float>(std::max(1, turns));
-    float economicHealth  = treasuryF / (turnsF * 5.0f);
-    economicHealth = std::max(-1.0f, std::min(1.0f, economicHealth));
-
-    const int32_t peak = simResult.peakCityCount[playerIdx];
-    const int32_t held = simResult.cityCount[playerIdx];
-    const float survival = (peak > 0)
-        ? static_cast<float>(held) / static_cast<float>(peak)
-        : 0.0f;
-
-    const float income  = simResult.totalIncome[playerIdx];
-    const float expense = simResult.totalExpense[playerIdx];
-    float balancedFlow;
-    if (income <= 0.0f) {
-        balancedFlow = 0.0f;
-    } else {
-        const float ratio = (income - expense) / income;
-        balancedFlow = std::max(0.0f, std::min(1.0f, 0.5f + 0.5f * ratio));
-    }
-
-    const float rawHappy  = simResult.avgHappiness[playerIdx];
-    const float happiness = std::max(0.0f, std::min(1.0f, (rawHappy + 5.0f) / 10.0f));
-
-    const bool eliminated = (peak > 0 && held == 0);
-    if (eliminated) { return -1.0f; }
-
-    return 1.0f  * relativeWin
-         + 0.25f * economicHealth
-         + 0.25f * survival
-         + 0.20f * balancedFlow
-         + 0.15f * happiness;
-}
+// playerOutcomeScore() is defined at aoc::ga namespace scope below the
+// anonymous namespace (declared in FitnessEvaluator.hpp) so unit tests can
+// call it directly. scoreOneGame() reaches it via that declaration.
 
 /// Single-game fitness contribution. Runs one headless sim with `overrides`
 /// installed (slot 0 = individual being evaluated, slots 1..N-1 = opponents
@@ -665,6 +622,51 @@ GameScore scoreOneGame(std::span<const Individual* const> overrides,
 }
 
 } // namespace
+
+float playerOutcomeScore(const SimulationResult& simResult,
+                         std::size_t playerIdx, int32_t turns) {
+    const int32_t myVP = simResult.eraVP[playerIdx];
+    int32_t bestRivalVP = 0;
+    for (std::size_t i = 0; i < simResult.eraVP.size(); ++i) {
+        if (i == playerIdx) { continue; }
+        if (simResult.eraVP[i] > bestRivalVP) { bestRivalVP = simResult.eraVP[i]; }
+    }
+    const float denomVP = static_cast<float>(std::max(1, std::max(myVP, bestRivalVP)));
+    const float relativeWin = static_cast<float>(myVP - bestRivalVP) / denomVP;
+
+    const float treasuryF = static_cast<float>(simResult.treasury[playerIdx]);
+    const float turnsF    = static_cast<float>(std::max(1, turns));
+    float economicHealth  = treasuryF / (turnsF * 5.0f);
+    economicHealth = std::max(-1.0f, std::min(1.0f, economicHealth));
+
+    const int32_t peak = simResult.peakCityCount[playerIdx];
+    const int32_t held = simResult.cityCount[playerIdx];
+    const float survival = (peak > 0)
+        ? static_cast<float>(held) / static_cast<float>(peak)
+        : 0.0f;
+
+    const float income  = simResult.totalIncome[playerIdx];
+    const float expense = simResult.totalExpense[playerIdx];
+    float balancedFlow;
+    if (income <= 0.0f) {
+        balancedFlow = 0.0f;
+    } else {
+        const float ratio = (income - expense) / income;
+        balancedFlow = std::max(0.0f, std::min(1.0f, 0.5f + 0.5f * ratio));
+    }
+
+    const float rawHappy  = simResult.avgHappiness[playerIdx];
+    const float happiness = std::max(0.0f, std::min(1.0f, (rawHappy + 5.0f) / 10.0f));
+
+    const bool eliminated = (peak > 0 && held == 0);
+    if (eliminated) { return -1.0f; }
+
+    return 1.0f  * relativeWin
+         + 0.25f * economicHealth
+         + 0.25f * survival
+         + 0.20f * balancedFlow
+         + 0.15f * happiness;
+}
 
 float evaluateFitness(const Individual& individual,
                        const GAConfig& config,
@@ -869,7 +871,7 @@ void evaluatePopulation(std::vector<Individual>& population,
     // Also track ALL game endings (regardless of winner) for diagnostic output
     // — this exposes whether non-Score/Culture conditions ever actually fire,
     // independent of whether the evaluated subject happened to win.
-    constexpr std::size_t VT_COUNT = 8;  // Must match VictoryType enum size.
+    constexpr std::size_t VT_COUNT = aoc::sim::VICTORY_TYPE_COUNT;
     std::array<int32_t, VT_COUNT> winsByType{};
     std::array<int32_t, VT_COUNT> allEndings{};
     int32_t totalSubjectWins = 0;
@@ -918,10 +920,12 @@ void evaluatePopulation(std::vector<Individual>& population,
         population[idx].gamesPlayed = config.gamesPerEval;
     }
 
-    static const char* VT_NAMES[VT_COUNT] = {
+    static const char* const VT_NAMES[] = {
         "None", "Score", "Prestige", "LastStanding",
         "Science", "Domination", "Culture", "Religion"
     };
+    static_assert(std::size(VT_NAMES) == VT_COUNT,
+                  "VT_NAMES must have one entry per VictoryType");
     if (config.balanceWinrate && totalSubjectWins > 0) {
         std::fprintf(stderr, "  [balance] subject wins:");
         for (std::size_t t = 1; t < VT_COUNT; ++t) {

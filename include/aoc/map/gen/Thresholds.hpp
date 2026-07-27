@@ -20,7 +20,6 @@ class HexGrid;
 namespace gen {
 
 struct ThresholdResult {
-    std::vector<float>   mountainElev;
     std::vector<int32_t> distFromCoast;
     /// Per-cell binary water mask (1 = water, 0 = land). Computed by
     /// ranking elevationMap and marking the bottom waterCutoff entries
@@ -29,15 +28,11 @@ struct ThresholdResult {
     /// `waterThreshold` mis-classifies cells that share the threshold
     /// elevation (large continental plateau at z = 0 m + lift).
     std::vector<uint8_t> isWater;
-    float                waterThreshold    = 0.0f;
-    float                mountainThreshold = 0.0f;
+    float waterThreshold = 0.0f;
 };
 
-/// Compute water + mountain elevation thresholds and the BFS distance
-/// field. `elevationMap` is read-only here. Caller passes it in by value;
-/// `mountainElev` (returned) is `elevationMap` with the coastal-ridge
-/// adjustment applied so the mountain percentile picks belt-tiles instead
-/// of arbitrary peaks.
+/// Compute the sea-level cut, the binary water mask and the BFS
+/// distance-to-coast field. `elevationMap` is read-only here.
 ///
 /// `seaLevelDelta` shifts the sea-level cut. Positive raises sea level
 /// (more water), negative lowers (more land). Range conventionally
@@ -46,10 +41,8 @@ struct ThresholdResult {
 /// itself is solved upstream from the conserved ocean volume
 /// (SphereField::seaLevelM); elevationMap arrives already relative to
 /// it, so the default cut is exactly 0.
-void runThresholdComputation(HexGrid& grid, MapType mapType,
-                             float seaLevelDelta,
-                             const std::vector<float>& elevationMap,
-                             ThresholdResult& out);
+void runThresholdComputation(HexGrid& grid, float seaLevelDelta,
+                             const std::vector<float>& elevationMap, ThresholdResult& out);
 
 } // namespace gen
 } // namespace aoc::map

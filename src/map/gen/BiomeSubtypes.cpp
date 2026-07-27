@@ -78,8 +78,7 @@ void runBiomeSubtypes(const HexGrid& grid, const BiomeSubtypesInputs& in,
     // ---- WP1: NATURAL HAZARDS ----
     AOC_S4_PARALLEL_FOR_ROWS
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
             const TerrainType t = grid.terrain(i);
@@ -178,8 +177,7 @@ void runBiomeSubtypes(const HexGrid& grid, const BiomeSubtypesInputs& in,
 
     // ---- WP2: BIOME SUBTYPES ----
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
             const TerrainType t = grid.terrain(i);
@@ -312,8 +310,7 @@ void runBiomeSubtypes(const HexGrid& grid, const BiomeSubtypesInputs& in,
         }
     }
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         if (lat < 0.40f || lat > 0.65f) { continue; }
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
@@ -347,8 +344,7 @@ void runBiomeSubtypes(const HexGrid& grid, const BiomeSubtypesInputs& in,
         }
     }
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         if (lat > 0.30f) { continue; }
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
@@ -364,8 +360,7 @@ void runBiomeSubtypes(const HexGrid& grid, const BiomeSubtypesInputs& in,
 
     // ---- WP4: WILDLIFE ----
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
             const TerrainType t = grid.terrain(i);
@@ -406,8 +401,7 @@ void runBiomeSubtypes(const HexGrid& grid, const BiomeSubtypesInputs& in,
 
     // ---- WP5: DISEASE ZONES ----
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
             const TerrainType t = grid.terrain(i);
@@ -443,8 +437,7 @@ void runBiomeSubtypes(const HexGrid& grid, const BiomeSubtypesInputs& in,
 
     // ---- WP6: RENEWABLE ENERGY POTENTIALS ----
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
             const TerrainType t = grid.terrain(i);
@@ -504,8 +497,7 @@ void runBiomeSubtypes(const HexGrid& grid, const BiomeSubtypesInputs& in,
 
     // ---- WP7: ATMOSPHERIC EXTRAS ----
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
             uint8_t ax = 0;

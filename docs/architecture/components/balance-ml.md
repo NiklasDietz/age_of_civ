@@ -22,12 +22,13 @@ automatically.
 
 - `ml/cpp/GeneticAlgorithm.cpp` / `.hpp` — standard real-valued GA: selection,
   crossover, Gaussian mutation over the genome vector.
-- `ml/cpp/FitnessEvaluator.cpp` / `.hpp` — runs `aoc_simulate` (or calls `GameServer`
-  directly) for N turns, extracts a fitness score (win-rate balance, score variance
-  across AI players).
+- `ml/cpp/FitnessEvaluator.cpp` / `.hpp` — runs an **embedded** headless simulation
+  (`runSimulation`, linked from `aoc_lib`; it does **not** shell out to `aoc_simulate`
+  nor call `GameServer`) for N turns, then extracts a fitness score.
 - `ml/cpp/BalanceTuner.cpp` / `.hpp` — top-level driver: initializes population,
-  runs generations, writes best genome to a JSON file loaded by `BalanceParams` at
-  startup.
+  runs generations, and writes the best genome to a **plain-text** summary
+  (`evolved_balance.txt` + a paste-ready block on stderr). There is **no** JSON loader:
+  the tuned values are copied by hand into the `BalanceParams` struct defaults.
 - `ml/cpp/ThreadPool.hpp` — simple fixed-size thread pool used to run fitness
   evaluations in parallel (one headless sim per thread).
 
@@ -35,8 +36,10 @@ automatically.
 
 - `aoc::balance::params()` — read by `TurnProcessor` and simulation sub-modules as a
   runtime override on top of the compile-time constants in `BalanceConfig.hpp`.
-- The ML tuner is a standalone binary (`aoc_evolve` when built); it writes a JSON params
-  file that `BalanceParams` loads at next game startup.
+- The ML tuner is a standalone binary (`aoc_evolve`); it writes plain-text summaries
+  (`evolved_balance.txt` for balance, `evolved_summary.txt` for AI leaders). Feedback into
+  the game is manual: values are pasted into `BalanceParams` defaults / the
+  `LEADER_PERSONALITIES` table. `BalanceParams` loads no file at startup.
 
 ## Internal structure
 

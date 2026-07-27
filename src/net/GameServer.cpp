@@ -53,15 +53,35 @@ void GameServer::initialize(const GameConfig& config) {
     }
 
     this->m_maxTurns = config.maxTurns;
-    this->m_rng = aoc::Random(config.seed);
+    this->m_rng      = aoc::Random(config.seed);
     this->m_gameOver = false;
 
-    // Generate map
+    // Generate map.
+    //
+    // Topology and projection are set EXPLICITLY rather than left to the
+    // Config defaults: this path claims deterministic lockstep (identical map
+    // across peers, see the constructor comment), so the two settings that
+    // change every tile must be pinned here where they are visible, not
+    // inherited. Until 2026-07-27 this function set neither, so a server
+    // silently generated a different topology from the one the client's own
+    // new-game path used.
     aoc::map::MapGenerator::Config mapConfig{};
-    mapConfig.width = config.mapWidth;
-    mapConfig.height = config.mapHeight;
-    mapConfig.seed = config.seed;
-    mapConfig.mapType = config.mapType;
+    // Treat the dimensions as untrusted: width*height sizes ~50 per-tile
+    // layers plus the worldgen intermediates, so clamp before allocating.
+    mapConfig.width  = std::clamp(config.mapWidth, aoc::map::HexGrid::MIN_MAP_DIMENSION,
+                                  aoc::map::HexGrid::MAX_MAP_DIMENSION);
+    mapConfig.height = std::clamp(config.mapHeight, aoc::map::HexGrid::MIN_MAP_DIMENSION,
+                                  aoc::map::HexGrid::MAX_MAP_DIMENSION);
+    if (mapConfig.width != config.mapWidth || mapConfig.height != config.mapHeight) {
+        LOG_WARN("GameServer::initialize: map dimensions %dx%d out of range "
+                 "[%d, %d]; clamped to %dx%d",
+                 config.mapWidth, config.mapHeight, aoc::map::HexGrid::MIN_MAP_DIMENSION,
+                 aoc::map::HexGrid::MAX_MAP_DIMENSION, mapConfig.width, mapConfig.height);
+    }
+    mapConfig.seed       = config.seed;
+    mapConfig.mapType    = config.mapType;
+    mapConfig.topology   = aoc::map::MapTopology::Cylindrical;
+    mapConfig.projection = aoc::map::gen::MapProjection::LambertCylindricalEqualArea;
     aoc::map::MapGenerator generator;
     generator.generate(mapConfig, this->m_grid);
 
@@ -71,9 +91,8 @@ void GameServer::initialize(const GameConfig& config) {
     const int32_t totalPlayers = requestedPlayers;
     this->m_diplomacy.initialize(static_cast<uint8_t>(totalPlayers));
 
-    this->m_turnManager.setPlayerCount(
-        static_cast<uint8_t>(config.humanPlayerCount),
-        static_cast<uint8_t>(config.aiPlayerCount));
+    this->m_turnManager.setPlayerCount(static_cast<uint8_t>(config.humanPlayerCount),
+                                       static_cast<uint8_t>(config.aiPlayerCount));
 
     // Initialize GameState for the correct number of players
     this->m_gameState.initialize(totalPlayers);
@@ -97,34 +116,37 @@ void GameServer::initialize(const GameConfig& config) {
     // generator's softened purge (>= 4 tiles), but a start needs room
     // for early expansion. Mirrors HeadlessSimulation start placement.
     constexpr int32_t MIN_START_LANDMASS_TILES = 12;
-    const std::vector<int32_t> landmassSizes =
-        aoc::map::computeLandmassSizes(this->m_grid);
+    const std::vector<int32_t> landmassSizes   = aoc::map::computeLandmassSizes(this->m_grid);
 
     // Spawn starting city and configure each player via the GameState object model
     for (int32_t p = 0; p < totalPlayers; ++p) {
         PlayerId player = static_cast<PlayerId>(p);
-        uint8_t civId = (p < static_cast<int32_t>(config.civAssignments.size()))
-            ? config.civAssignments[static_cast<std::size_t>(p)]
-            : static_cast<uint8_t>(p % aoc::sim::CIV_COUNT);
+        uint8_t civId   = (p < static_cast<int32_t>(config.civAssignments.size()))
+                              ? config.civAssignments[static_cast<std::size_t>(p)]
+                              : static_cast<uint8_t>(p % aoc::sim::CIV_COUNT);
 
-        // Find a valid starting land tile
+        // Find a valid starting land tile. Index off the GRID's dimensions,
+        // not config's: the requested dimensions are clamped above, so on a
+        // clamped request config.mapWidth/Height no longer describe the grid
+        // and using them here would index out of bounds.
+        const int32_t gridW = this->m_grid.width();
+        const int32_t gridH = this->m_grid.height();
         aoc::hex::AxialCoord startPos{0, 0};
         for (int32_t attempts = 0; attempts < 1000; ++attempts) {
-            int32_t rx = this->m_rng.nextInt(5, config.mapWidth - 5);
-            int32_t ry = this->m_rng.nextInt(5, config.mapHeight - 5);
-            int32_t idx = ry * config.mapWidth + rx;
-            if (!aoc::map::isWater(this->m_grid.terrain(idx))
-                && !aoc::map::isImpassable(this->m_grid.terrain(idx))
-                && landmassSizes[static_cast<std::size_t>(idx)]
-                       >= MIN_START_LANDMASS_TILES) {
+            int32_t rx  = this->m_rng.nextInt(5, gridW - 5);
+            int32_t ry  = this->m_rng.nextInt(5, gridH - 5);
+            int32_t idx = ry * gridW + rx;
+            if (!aoc::map::isWater(this->m_grid.terrain(idx)) &&
+                !aoc::map::isImpassable(this->m_grid.terrain(idx)) &&
+                landmassSizes[static_cast<std::size_t>(idx)] >= MIN_START_LANDMASS_TILES) {
                 startPos = aoc::hex::offsetToAxial({rx, ry});
                 break;
             }
         }
 
         // Found starting city via GameState (creates City in Player's city list)
-        std::string cityName = std::string(
-            aoc::sim::civDef(static_cast<aoc::sim::CivId>(civId)).cityNames[0]);
+        std::string cityName =
+            std::string(aoc::sim::civDef(static_cast<aoc::sim::CivId>(civId)).cityNames[0]);
         aoc::sim::foundCity(this->m_gameState, this->m_grid, player, startPos, cityName, true, 1);
 
         // Configure player fields on the GameState Player object
@@ -137,18 +159,18 @@ void GameServer::initialize(const GameConfig& config) {
             // Initialize tech state
             gsPlayer->tech().owner = player;
             gsPlayer->tech().initialize();
-            gsPlayer->tech().completedTechs[0] = true;  // Start with Mining
+            gsPlayer->tech().completedTechs[0] = true; // Start with Mining
 
             // Initialize civic state
             gsPlayer->civics().owner = player;
             gsPlayer->civics().initialize();
 
             // Initialize monetary state
-            gsPlayer->monetary().owner = player;
+            gsPlayer->monetary().owner    = player;
             gsPlayer->monetary().treasury = 0;
 
             // Initialize economy component
-            gsPlayer->economy().owner = player;
+            gsPlayer->economy().owner    = player;
             gsPlayer->economy().treasury = 0;
 
             // Initialize government
@@ -163,26 +185,25 @@ void GameServer::initialize(const GameConfig& config) {
     }
 
     // Build turn context
-    this->m_turnCtx.grid = &this->m_grid;
-    this->m_turnCtx.economy = &this->m_economy;
-    this->m_turnCtx.diplomacy = &this->m_diplomacy;
-    this->m_turnCtx.barbarians = &this->m_barbarians;
-    this->m_turnCtx.rng = &this->m_rng;
+    this->m_turnCtx.grid        = &this->m_grid;
+    this->m_turnCtx.economy     = &this->m_economy;
+    this->m_turnCtx.diplomacy   = &this->m_diplomacy;
+    this->m_turnCtx.barbarians  = &this->m_barbarians;
+    this->m_turnCtx.rng         = &this->m_rng;
     this->m_turnCtx.currentTurn = 0;
-    this->m_turnCtx.gameState = &this->m_gameState;
+    this->m_turnCtx.gameState   = &this->m_gameState;
 
     for (aoc::sim::ai::AIController& ai : this->m_aiControllers) {
         this->m_turnCtx.aiControllers.push_back(&ai);
     }
-    this->m_turnCtx.allPlayers = this->m_allPlayers;
-    this->m_turnCtx.maxTurns = static_cast<TurnNumber>(this->m_maxTurns);
+    this->m_turnCtx.allPlayers      = this->m_allPlayers;
+    this->m_turnCtx.maxTurns        = static_cast<TurnNumber>(this->m_maxTurns);
     this->m_turnCtx.victoryTypeMask = aoc::sim::VICTORY_MASK_ALL;
-    this->m_turnCtx.humanPlayer = this->m_humanPlayers.empty()
-        ? INVALID_PLAYER : this->m_humanPlayers[0];
+    this->m_turnCtx.humanPlayer =
+        this->m_humanPlayers.empty() ? INVALID_PLAYER : this->m_humanPlayers[0];
 
-    LOG_INFO("GameServer initialized: %d human + %d AI players, map %dx%d",
-             config.humanPlayerCount, config.aiPlayerCount,
-             config.mapWidth, config.mapHeight);
+    LOG_INFO("GameServer initialized: %d human + %d AI players, map %dx%d", config.humanPlayerCount,
+             config.aiPlayerCount, config.mapWidth, config.mapHeight);
 }
 
 bool GameServer::tick() {
@@ -247,298 +268,290 @@ bool GameServer::validateCommand(PlayerId player, const GameCommand& command) co
     // (`unit->owner() == player`) since EntityId-to-unit resolution
     // is part of the ECS migration; once that is in place, hoist the
     // check up here.
-    return std::visit([player](const auto& cmd) -> bool {
-        using T = std::decay_t<decltype(cmd)>;
+    return std::visit(
+        [player](const auto& cmd) -> bool {
+            using T = std::decay_t<decltype(cmd)>;
 
-        if constexpr (std::is_same_v<T, SetTaxRateCommand>) {
-            // Reject commands that spoof a player id.
-            if (cmd.player != player) {
-                LOG_WARN("validateCommand: SetTaxRate rejected -- "
-                         "cmd.player=%d != connection player=%d",
-                         static_cast<int>(cmd.player),
-                         static_cast<int>(player));
-                return false;
+            if constexpr (std::is_same_v<T, SetTaxRateCommand>) {
+                // Reject commands that spoof a player id.
+                if (cmd.player != player) {
+                    LOG_WARN("validateCommand: SetTaxRate rejected -- "
+                             "cmd.player=%d != connection player=%d",
+                             static_cast<int>(cmd.player), static_cast<int>(player));
+                    return false;
+                }
+                // Tax rate is documented as Percentage in [0.0f, 1.0f].
+                // Reject any rate outside that range; clients that want a
+                // saturated rate must send a clamped value.
+                if (!(cmd.rate >= 0.0f && cmd.rate <= 1.0f)) {
+                    LOG_WARN("validateCommand: SetTaxRate rejected -- "
+                             "rate=%.6f outside [0.0, 1.0]",
+                             static_cast<double>(cmd.rate));
+                    return false;
+                }
+                return true;
+            } else if constexpr (std::is_same_v<T, SetResearchCommand>) {
+                if (cmd.player != player) {
+                    LOG_WARN("validateCommand: SetResearch rejected -- "
+                             "cmd.player=%d != connection player=%d",
+                             static_cast<int>(cmd.player), static_cast<int>(player));
+                    return false;
+                }
+                // techId is untrusted wire data: reject ids outside the tech table.
+                if (!(cmd.techId.isValid() && cmd.techId.value < aoc::sim::techCount())) {
+                    LOG_WARN("validateCommand: SetResearch rejected -- "
+                             "invalid techId %u (count %u)",
+                             static_cast<unsigned>(cmd.techId.value),
+                             static_cast<unsigned>(aoc::sim::techCount()));
+                    return false;
+                }
+                return true;
+            } else if constexpr (std::is_same_v<T, EndTurnCommand>) {
+                if (cmd.player != player) {
+                    LOG_WARN("validateCommand: EndTurn rejected -- "
+                             "cmd.player=%d != connection player=%d",
+                             static_cast<int>(cmd.player), static_cast<int>(player));
+                    return false;
+                }
+                return true;
+            } else if constexpr (std::is_same_v<T, TransitionMonetaryCommand>) {
+                if (cmd.player != player) {
+                    LOG_WARN("validateCommand: TransitionMonetary rejected -- "
+                             "cmd.player=%d != connection player=%d",
+                             static_cast<int>(cmd.player), static_cast<int>(player));
+                    return false;
+                }
+                // targetSystem is cast to MonetarySystemType: reject values that
+                // fall outside the enum's valid range.
+                if (cmd.targetSystem >= static_cast<uint8_t>(aoc::sim::MonetarySystemType::Count)) {
+                    LOG_WARN("validateCommand: TransitionMonetary rejected -- "
+                             "targetSystem=%u out of range (count %u)",
+                             static_cast<unsigned>(cmd.targetSystem),
+                             static_cast<unsigned>(aoc::sim::MonetarySystemType::Count));
+                    return false;
+                }
+                return true;
             }
-            // Tax rate is documented as Percentage in [0.0f, 1.0f].
-            // Reject any rate outside that range; clients that want a
-            // saturated rate must send a clamped value.
-            if (!(cmd.rate >= 0.0f && cmd.rate <= 1.0f)) {
-                LOG_WARN("validateCommand: SetTaxRate rejected -- "
-                         "rate=%.6f outside [0.0, 1.0]",
-                         static_cast<double>(cmd.rate));
-                return false;
-            }
+            // Commands without an explicit `player` field (MoveUnit,
+            // AttackUnit, FoundCity, SetProduction) fall through to the
+            // unit/city owner check inside executeCommand.
             return true;
-        }
-        else if constexpr (std::is_same_v<T, SetResearchCommand>) {
-            if (cmd.player != player) {
-                LOG_WARN("validateCommand: SetResearch rejected -- "
-                         "cmd.player=%d != connection player=%d",
-                         static_cast<int>(cmd.player),
-                         static_cast<int>(player));
-                return false;
-            }
-            // techId is untrusted wire data: reject ids outside the tech table.
-            if (!(cmd.techId.isValid() && cmd.techId.value < aoc::sim::techCount())) {
-                LOG_WARN("validateCommand: SetResearch rejected -- "
-                         "invalid techId %u (count %u)",
-                         static_cast<unsigned>(cmd.techId.value),
-                         static_cast<unsigned>(aoc::sim::techCount()));
-                return false;
-            }
-            return true;
-        }
-        else if constexpr (std::is_same_v<T, EndTurnCommand>) {
-            if (cmd.player != player) {
-                LOG_WARN("validateCommand: EndTurn rejected -- "
-                         "cmd.player=%d != connection player=%d",
-                         static_cast<int>(cmd.player),
-                         static_cast<int>(player));
-                return false;
-            }
-            return true;
-        }
-        else if constexpr (std::is_same_v<T, TransitionMonetaryCommand>) {
-            if (cmd.player != player) {
-                LOG_WARN("validateCommand: TransitionMonetary rejected -- "
-                         "cmd.player=%d != connection player=%d",
-                         static_cast<int>(cmd.player),
-                         static_cast<int>(player));
-                return false;
-            }
-            // targetSystem is cast to MonetarySystemType: reject values that
-            // fall outside the enum's valid range.
-            if (cmd.targetSystem
-                >= static_cast<uint8_t>(aoc::sim::MonetarySystemType::Count)) {
-                LOG_WARN("validateCommand: TransitionMonetary rejected -- "
-                         "targetSystem=%u out of range (count %u)",
-                         static_cast<unsigned>(cmd.targetSystem),
-                         static_cast<unsigned>(aoc::sim::MonetarySystemType::Count));
-                return false;
-            }
-            return true;
-        }
-        // Commands without an explicit `player` field (MoveUnit,
-        // AttackUnit, FoundCity, SetProduction) fall through to the
-        // unit/city owner check inside executeCommand.
-        return true;
-    }, command);
+        },
+        command);
 }
 
 void GameServer::executeCommand(PlayerId player, const GameCommand& command) {
     // std::visit requires a generic lambda (type is not nameable) - the only valid use of auto here
-    std::visit([this, player](const auto& cmd) {
-        using T = std::decay_t<decltype(cmd)>;
+    std::visit(
+        [this, player](const auto& cmd) {
+            using T = std::decay_t<decltype(cmd)>;
 
-        if constexpr (std::is_same_v<T, EndTurnCommand>) {
-            if (static_cast<std::size_t>(player) >= this->m_playerReady.size()) {
-                LOG_WARN("executeCommand: EndTurn dropped -- player id %d out of "
-                         "range (size %zu)",
-                         static_cast<int>(player), this->m_playerReady.size());
-                return;
-            }
-            this->m_playerReady[static_cast<std::size_t>(player)] = true;
-            if (this->m_transport != nullptr) {
-                this->m_transport->broadcastUpdate(PlayerEndedTurnUpdate{player});
-            }
-        }
-        else if constexpr (std::is_same_v<T, MoveUnitCommand>) {
-            // Find the unit in the GameState object model via the player's unit list
-            aoc::game::Player* gsPlayer = this->m_gameState.player(player);
-            if (gsPlayer == nullptr) { return; }
+            if constexpr (std::is_same_v<T, EndTurnCommand>) {
+                if (static_cast<std::size_t>(player) >= this->m_playerReady.size()) {
+                    LOG_WARN("executeCommand: EndTurn dropped -- player id %d out of "
+                             "range (size %zu)",
+                             static_cast<int>(player), this->m_playerReady.size());
+                    return;
+                }
+                this->m_playerReady[static_cast<std::size_t>(player)] = true;
+                if (this->m_transport != nullptr) {
+                    this->m_transport->broadcastUpdate(PlayerEndedTurnUpdate{player});
+                }
+            } else if constexpr (std::is_same_v<T, MoveUnitCommand>) {
+                // Find the unit in the GameState object model via the player's unit list
+                aoc::game::Player* gsPlayer = this->m_gameState.player(player);
+                if (gsPlayer == nullptr) {
+                    return;
+                }
 
-            // Identify the unit by its entity handle embedded in the command.
-            // During the migration period, cmd.unitEntity is still an ECS EntityId;
-            // resolve it by searching the player's units by position or index.
-            // For now we use the ECS unit as the authoritative source of position.
-            aoc::sim::UnitComponent* ecsUnit =
-                static_cast<aoc::sim::UnitComponent*>(nullptr) /* network commands need position-based unit lookup */;
-            if (ecsUnit == nullptr || ecsUnit->owner != player) {
-                LOG_WARN("executeCommand: MoveUnit dropped -- player %d, unit "
-                         "lookup unresolved (ECS path not implemented)",
-                         static_cast<int>(player));
-                return;
-            }
+                // Identify the unit by its entity handle embedded in the command.
+                // During the migration period, cmd.unitEntity is still an ECS EntityId;
+                // resolve it by searching the player's units by position or index.
+                // For now we use the ECS unit as the authoritative source of position.
+                aoc::sim::UnitComponent* ecsUnit = static_cast<aoc::sim::UnitComponent*>(
+                    nullptr) /* network commands need position-based unit lookup */;
+                if (ecsUnit == nullptr || ecsUnit->owner != player) {
+                    LOG_WARN("executeCommand: MoveUnit dropped -- player %d, unit "
+                             "lookup unresolved (ECS path not implemented)",
+                             static_cast<int>(player));
+                    return;
+                }
 
-            // Mirror state into the GameState Unit object
-            aoc::game::Unit* gsUnit = gsPlayer->unitAt(ecsUnit->position);
-            aoc::hex::AxialCoord fromPos = ecsUnit->position;
+                // Mirror state into the GameState Unit object
+                aoc::game::Unit* gsUnit      = gsPlayer->unitAt(ecsUnit->position);
+                aoc::hex::AxialCoord fromPos = ecsUnit->position;
 
-            std::optional<aoc::map::PathResult> path =
-                aoc::map::findPath(this->m_grid, ecsUnit->position, cmd.destination);
-            if (path.has_value() && !path->path.empty()) {
-                aoc::hex::AxialCoord nextTile = path->path.front();
+                std::optional<aoc::map::PathResult> path =
+                    aoc::map::findPath(this->m_grid, ecsUnit->position, cmd.destination);
+                if (path.has_value() && !path->path.empty()) {
+                    aoc::hex::AxialCoord nextTile = path->path.front();
 
-                // Update ECS unit (still used by movement system)
-                ecsUnit->position = nextTile;
-                ecsUnit->movementRemaining -= 1;
-                path->path.erase(path->path.begin());
-                ecsUnit->pendingPath = std::move(path->path);
+                    // Update ECS unit (still used by movement system)
+                    ecsUnit->position = nextTile;
+                    ecsUnit->movementRemaining -= 1;
+                    path->path.erase(path->path.begin());
+                    ecsUnit->pendingPath = std::move(path->path);
 
-                // Mirror update into the GameState Unit
-                if (gsUnit != nullptr) {
-                    gsUnit->setPosition(nextTile);
-                    gsUnit->setMovementRemaining(ecsUnit->movementRemaining);
-                    gsUnit->pendingPath() = ecsUnit->pendingPath;
+                    // Mirror update into the GameState Unit
+                    if (gsUnit != nullptr) {
+                        gsUnit->setPosition(nextTile);
+                        gsUnit->setMovementRemaining(ecsUnit->movementRemaining);
+                        gsUnit->pendingPath() = ecsUnit->pendingPath;
+                    }
+
+                    if (this->m_transport != nullptr) {
+                        this->m_transport->broadcastUpdate(UnitMovedUpdate{
+                            cmd.unitEntity, player, fromPos, nextTile, ecsUnit->movementRemaining});
+                    }
+                }
+            } else if constexpr (std::is_same_v<T, SetResearchCommand>) {
+                // Reject an out-of-range tech id before writing it: cmd.techId is
+                // untrusted wire data and must not be stored unvalidated.
+                if (!(cmd.techId.isValid() && cmd.techId.value < aoc::sim::techCount())) {
+                    LOG_WARN("executeCommand: SetResearch dropped -- player %d sent "
+                             "invalid techId %u (count %u)",
+                             static_cast<int>(player), static_cast<unsigned>(cmd.techId.value),
+                             static_cast<unsigned>(aoc::sim::techCount()));
+                    return;
+                }
+
+                // Set research directly on the GameState Player
+                aoc::game::Player* gsPlayer = this->m_gameState.player(cmd.player);
+                if (gsPlayer != nullptr) {
+                    gsPlayer->tech().currentResearch = cmd.techId;
                 }
 
                 if (this->m_transport != nullptr) {
+                    std::string techName = std::string(aoc::sim::techDef(cmd.techId).name);
                     this->m_transport->broadcastUpdate(
-                        UnitMovedUpdate{cmd.unitEntity, player, fromPos, nextTile,
-                                        ecsUnit->movementRemaining});
+                        ResearchChangedUpdate{cmd.player, cmd.techId.value, techName});
                 }
-            }
-        }
-        else if constexpr (std::is_same_v<T, SetResearchCommand>) {
-            // Reject an out-of-range tech id before writing it: cmd.techId is
-            // untrusted wire data and must not be stored unvalidated.
-            if (!(cmd.techId.isValid() && cmd.techId.value < aoc::sim::techCount())) {
-                LOG_WARN("executeCommand: SetResearch dropped -- player %d sent "
-                         "invalid techId %u (count %u)",
-                         static_cast<int>(player),
-                         static_cast<unsigned>(cmd.techId.value),
-                         static_cast<unsigned>(aoc::sim::techCount()));
-                return;
-            }
+            } else if constexpr (std::is_same_v<T, FoundCityCommand>) {
+                // Find settler unit in the GameState object model
+                aoc::game::Player* gsPlayer = this->m_gameState.player(player);
+                if (gsPlayer == nullptr) {
+                    return;
+                }
 
-            // Set research directly on the GameState Player
-            aoc::game::Player* gsPlayer = this->m_gameState.player(cmd.player);
-            if (gsPlayer != nullptr) {
-                gsPlayer->tech().currentResearch = cmd.techId;
-            }
+                // Resolve settler position from ECS (settler entity still tracked by ECS)
+                aoc::sim::UnitComponent* settler = static_cast<aoc::sim::UnitComponent*>(
+                    nullptr) /* network protocol migration pending */;
+                if (settler == nullptr || settler->owner != player ||
+                    aoc::sim::unitTypeDef(settler->typeId).unitClass !=
+                        aoc::sim::UnitClass::Settler) {
+                    LOG_WARN("executeCommand: FoundCity dropped -- player %d, settler "
+                             "lookup unresolved (ECS path not implemented)",
+                             static_cast<int>(player));
+                    return;
+                }
+                aoc::hex::AxialCoord pos = settler->position;
 
-            if (this->m_transport != nullptr) {
-                std::string techName = std::string(aoc::sim::techDef(cmd.techId).name);
-                this->m_transport->broadcastUpdate(
-                    ResearchChangedUpdate{cmd.player, cmd.techId.value, techName});
-            }
-        }
-        else if constexpr (std::is_same_v<T, FoundCityCommand>) {
-            // Find settler unit in the GameState object model
-            aoc::game::Player* gsPlayer = this->m_gameState.player(player);
-            if (gsPlayer == nullptr) { return; }
+                // Remove settler from the GameState unit list
+                aoc::game::Unit* gsSettler = gsPlayer->unitAt(pos);
+                if (gsSettler != nullptr) {
+                    gsPlayer->removeUnit(gsSettler);
+                }
 
-            // Resolve settler position from ECS (settler entity still tracked by ECS)
-            aoc::sim::UnitComponent* settler =
-                static_cast<aoc::sim::UnitComponent*>(nullptr) /* network protocol migration pending */;
-            if (settler == nullptr || settler->owner != player
-                || aoc::sim::unitTypeDef(settler->typeId).unitClass != aoc::sim::UnitClass::Settler) {
-                LOG_WARN("executeCommand: FoundCity dropped -- player %d, settler "
-                         "lookup unresolved (ECS path not implemented)",
-                         static_cast<int>(player));
-                return;
-            }
-            aoc::hex::AxialCoord pos = settler->position;
+                // Destroy the ECS settler entity
+                // Settler removal deferred until network protocol uses position-based IDs
 
-            // Remove settler from the GameState unit list
-            aoc::game::Unit* gsSettler = gsPlayer->unitAt(pos);
-            if (gsSettler != nullptr) {
-                gsPlayer->removeUnit(gsSettler);
-            }
+                // Found city via GameState (creates City in Player's city list)
+                aoc::sim::foundCity(this->m_gameState, this->m_grid, player, pos, cmd.cityName,
+                                    false, 1);
 
-            // Destroy the ECS settler entity
-            // Settler removal deferred until network protocol uses position-based IDs
+                // Resolve the new city for the broadcast.
+                // Cities are now owned entirely by the GameState object model, so there is
+                // no ECS entity handle. The broadcast uses NULL_ENTITY as a placeholder
+                // until a proper network ID scheme is introduced.
+                const aoc::game::City* newCity = gsPlayer->cityAt(pos);
+                EntityId cityEntity            = NULL_ENTITY;
+                (void)newCity; // used only to confirm the city was created
 
-            // Found city via GameState (creates City in Player's city list)
-            aoc::sim::foundCity(
-                this->m_gameState, this->m_grid, player,
-                pos, cmd.cityName, false, 1);
-
-            // Resolve the new city for the broadcast.
-            // Cities are now owned entirely by the GameState object model, so there is
-            // no ECS entity handle. The broadcast uses NULL_ENTITY as a placeholder
-            // until a proper network ID scheme is introduced.
-            const aoc::game::City* newCity = gsPlayer->cityAt(pos);
-            EntityId cityEntity = NULL_ENTITY;
-            (void)newCity; // used only to confirm the city was created
-
-            if (this->m_transport != nullptr) {
-                this->m_transport->broadcastUpdate(
-                    UnitDestroyedUpdate{cmd.settlerEntity, player, pos, 2});
-                this->m_transport->broadcastUpdate(
-                    CityFoundedUpdate{cityEntity, player, cmd.cityName, pos});
-            }
-        }
-        else if constexpr (std::is_same_v<T, AttackUnitCommand>) {
-            // Resolve combat via the ECS-backed combat system (still authoritative for combat)
-            aoc::sim::UnitComponent* attacker =
-                static_cast<aoc::sim::UnitComponent*>(nullptr) /* network protocol migration pending */;
-            aoc::sim::UnitComponent* defender =
-                static_cast<aoc::sim::UnitComponent*>(nullptr) /* network protocol migration pending */;
-            if (attacker == nullptr || defender == nullptr || attacker->owner != player) {
-                LOG_WARN("executeCommand: AttackUnit dropped -- player %d, "
-                         "attacker/defender lookup unresolved (ECS path not implemented)",
-                         static_cast<int>(player));
-                return;
-            }
-
-            aoc::hex::AxialCoord atkPos = attacker->position;
-            aoc::hex::AxialCoord defPos = defender->position;
-
-            aoc::sim::CombatResult result = aoc::sim::resolveMeleeCombat(
-                this->m_gameState, this->m_rng, this->m_grid, cmd.attacker, cmd.defender);
-
-            if (this->m_transport != nullptr) {
-                CombatResultUpdate update{};
-                update.attacker = cmd.attacker;
-                update.defender = cmd.defender;
-                update.attackerOwner = player;
-                update.defenderOwner = defender->owner;
-                update.attackerHPAfter = attacker->hitPoints - result.attackerDamage;
-                update.defenderHPAfter = defender->hitPoints - result.defenderDamage;
-                update.attackerDestroyed = result.attackerKilled;
-                update.defenderDestroyed = result.defenderKilled;
-                update.attackerPos = atkPos;
-                update.defenderPos = defPos;
-                this->m_transport->broadcastUpdate(update);
-            }
-        }
-        else if constexpr (std::is_same_v<T, SetProductionCommand>) {
-            // Find city in the GameState object model
-            aoc::game::Player* gsPlayer = this->m_gameState.player(player);
-            if (gsPlayer == nullptr) { return; }
-
-            // Resolve city from the ECS entity (still used as the network handle)
-            const aoc::sim::CityComponent* ecsCity =
-                static_cast<aoc::sim::CityComponent*>(nullptr) /* network protocol migration pending */;
-            if (ecsCity != nullptr) {
-                aoc::game::City* gsCity = gsPlayer->cityAt(ecsCity->location);
-                if (gsCity != nullptr && this->m_transport != nullptr) {
+                if (this->m_transport != nullptr) {
                     this->m_transport->broadcastUpdate(
-                        ProductionChangedUpdate{cmd.cityEntity, player, "Item", 0.0f});
+                        UnitDestroyedUpdate{cmd.settlerEntity, player, pos, 2});
+                    this->m_transport->broadcastUpdate(
+                        CityFoundedUpdate{cityEntity, player, cmd.cityName, pos});
                 }
+            } else if constexpr (std::is_same_v<T, AttackUnitCommand>) {
+                // Resolve combat via the ECS-backed combat system (still authoritative for combat)
+                aoc::sim::UnitComponent* attacker = static_cast<aoc::sim::UnitComponent*>(
+                    nullptr) /* network protocol migration pending */;
+                aoc::sim::UnitComponent* defender = static_cast<aoc::sim::UnitComponent*>(
+                    nullptr) /* network protocol migration pending */;
+                if (attacker == nullptr || defender == nullptr || attacker->owner != player) {
+                    LOG_WARN("executeCommand: AttackUnit dropped -- player %d, "
+                             "attacker/defender lookup unresolved (ECS path not implemented)",
+                             static_cast<int>(player));
+                    return;
+                }
+
+                aoc::hex::AxialCoord atkPos = attacker->position;
+                aoc::hex::AxialCoord defPos = defender->position;
+
+                aoc::sim::CombatResult result = aoc::sim::resolveMeleeCombat(
+                    this->m_gameState, this->m_rng, this->m_grid, cmd.attacker, cmd.defender);
+
+                if (this->m_transport != nullptr) {
+                    CombatResultUpdate update{};
+                    update.attacker          = cmd.attacker;
+                    update.defender          = cmd.defender;
+                    update.attackerOwner     = player;
+                    update.defenderOwner     = defender->owner;
+                    update.attackerHPAfter   = attacker->hitPoints - result.attackerDamage;
+                    update.defenderHPAfter   = defender->hitPoints - result.defenderDamage;
+                    update.attackerDestroyed = result.attackerKilled;
+                    update.defenderDestroyed = result.defenderKilled;
+                    update.attackerPos       = atkPos;
+                    update.defenderPos       = defPos;
+                    this->m_transport->broadcastUpdate(update);
+                }
+            } else if constexpr (std::is_same_v<T, SetProductionCommand>) {
+                // Find city in the GameState object model
+                aoc::game::Player* gsPlayer = this->m_gameState.player(player);
+                if (gsPlayer == nullptr) {
+                    return;
+                }
+
+                // Resolve city from the ECS entity (still used as the network handle)
+                const aoc::sim::CityComponent* ecsCity = static_cast<aoc::sim::CityComponent*>(
+                    nullptr) /* network protocol migration pending */;
+                if (ecsCity != nullptr) {
+                    aoc::game::City* gsCity = gsPlayer->cityAt(ecsCity->location);
+                    if (gsCity != nullptr && this->m_transport != nullptr) {
+                        this->m_transport->broadcastUpdate(
+                            ProductionChangedUpdate{cmd.cityEntity, player, "Item", 0.0f});
+                    }
+                }
+            } else if constexpr (std::is_same_v<T, SetTaxRateCommand>) {
+                // Defence in depth: validateCommand already rejects rates
+                // outside [0.0f, 1.0f] and a spoofed cmd.player. Clamp here
+                // anyway so any future caller that bypasses validate cannot
+                // store an out-of-range tax rate. `cmd.player != player`
+                // is treated as a hard bug -- drop the command.
+                if (cmd.player != player) {
+                    LOG_WARN("executeCommand: SetTaxRate dropped -- "
+                             "cmd.player=%d != connection player=%d",
+                             static_cast<int>(cmd.player), static_cast<int>(player));
+                    return;
+                }
+                const float clampedRate     = std::clamp(cmd.rate, 0.0f, 1.0f);
+                aoc::game::Player* gsPlayer = this->m_gameState.player(cmd.player);
+                if (gsPlayer != nullptr) {
+                    gsPlayer->monetary().taxRate = clampedRate;
+                }
+            } else if constexpr (std::is_same_v<T, TransitionMonetaryCommand>) {
+                // Monetary transition -- validate and execute
             }
-        }
-        else if constexpr (std::is_same_v<T, SetTaxRateCommand>) {
-            // Defence in depth: validateCommand already rejects rates
-            // outside [0.0f, 1.0f] and a spoofed cmd.player. Clamp here
-            // anyway so any future caller that bypasses validate cannot
-            // store an out-of-range tax rate. `cmd.player != player`
-            // is treated as a hard bug -- drop the command.
-            if (cmd.player != player) {
-                LOG_WARN("executeCommand: SetTaxRate dropped -- "
-                         "cmd.player=%d != connection player=%d",
-                         static_cast<int>(cmd.player),
-                         static_cast<int>(player));
-                return;
-            }
-            const float clampedRate = std::clamp(cmd.rate, 0.0f, 1.0f);
-            aoc::game::Player* gsPlayer = this->m_gameState.player(cmd.player);
-            if (gsPlayer != nullptr) {
-                gsPlayer->monetary().taxRate = clampedRate;
-            }
-        }
-        else if constexpr (std::is_same_v<T, TransitionMonetaryCommand>) {
-            // Monetary transition -- validate and execute
-        }
-    }, command);
+        },
+        command);
 }
 
 GameStateSnapshot GameServer::generateSnapshot(PlayerId player) const {
     GameStateSnapshot snapshot{};
-    snapshot.forPlayer = player;
+    snapshot.forPlayer  = player;
     snapshot.turnNumber = this->m_turnCtx.currentTurn;
-    snapshot.gameOver = this->m_gameOver;
+    snapshot.gameOver   = this->m_gameOver;
 
     const aoc::game::Player* gsPlayer = this->m_gameState.player(player);
     if (gsPlayer == nullptr) {
@@ -547,23 +560,23 @@ GameStateSnapshot GameServer::generateSnapshot(PlayerId player) const {
 
     // Economy summary from the GameState Player object
     const aoc::sim::MonetaryStateComponent& ms = gsPlayer->monetary();
-    snapshot.economy.gdp = ms.gdp;
-    snapshot.economy.treasury = ms.treasury;
-    snapshot.economy.monetarySystem = static_cast<uint8_t>(ms.system);
-    snapshot.economy.coinTier = static_cast<uint8_t>(ms.effectiveCoinTier);
-    snapshot.economy.inflationRate = ms.inflationRate;
+    snapshot.economy.gdp                       = ms.gdp;
+    snapshot.economy.treasury                  = ms.treasury;
+    snapshot.economy.monetarySystem            = static_cast<uint8_t>(ms.system);
+    snapshot.economy.coinTier                  = static_cast<uint8_t>(ms.effectiveCoinTier);
+    snapshot.economy.inflationRate             = ms.inflationRate;
 
     // Units: iterate all players (all units are visible in the snapshot for now)
     for (const std::unique_ptr<aoc::game::Player>& p : this->m_gameState.players()) {
         for (const std::unique_ptr<aoc::game::Unit>& unit : p->units()) {
             VisibleUnit vu{};
             // Network handle: use NULL_ENTITY during ECS migration
-            vu.entity = NULL_ENTITY;
-            vu.owner = unit->owner();
-            vu.unitTypeId = unit->typeId().value;
-            vu.position = unit->position();
-            vu.hitPoints = unit->hitPoints();
-            vu.maxHitPoints = unit->typeDef().maxHitPoints;
+            vu.entity            = NULL_ENTITY;
+            vu.owner             = unit->owner();
+            vu.unitTypeId        = unit->typeId().value;
+            vu.position          = unit->position();
+            vu.hitPoints         = unit->hitPoints();
+            vu.maxHitPoints      = unit->typeDef().maxHitPoints;
             vu.movementRemaining = unit->movementRemaining();
             snapshot.units.push_back(vu);
         }
@@ -573,20 +586,20 @@ GameStateSnapshot GameServer::generateSnapshot(PlayerId player) const {
     for (const std::unique_ptr<aoc::game::Player>& p : this->m_gameState.players()) {
         for (const std::unique_ptr<aoc::game::City>& city : p->cities()) {
             VisibleCity vc{};
-            vc.entity = NULL_ENTITY;
-            vc.owner = city->owner();
-            vc.name = city->name();
-            vc.location = city->location();
+            vc.entity     = NULL_ENTITY;
+            vc.owner      = city->owner();
+            vc.name       = city->name();
+            vc.location   = city->location();
             vc.population = city->population();
-            vc.isCapital = city->isOriginalCapital();
+            vc.isCapital  = city->isOriginalCapital();
             snapshot.cities.push_back(vc);
         }
     }
 
     // Victory data from the GameState Player object
     const aoc::sim::VictoryTrackerComponent& vt = gsPlayer->victoryTracker();
-    snapshot.economy.eraVictoryPoints = vt.eraVictoryPoints;
-    snapshot.economy.compositeCSI = vt.compositeCSI;
+    snapshot.economy.eraVictoryPoints           = vt.eraVictoryPoints;
+    snapshot.economy.compositeCSI               = vt.compositeCSI;
 
     return snapshot;
 }

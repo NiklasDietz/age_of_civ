@@ -97,6 +97,31 @@ using aoc::app::detail::turnToYear;
 
 namespace {
 
+/// Continent Creator projection cycler: UI index -> projection, with the
+/// display name. An explicit table rather than a cast from the cycle index to
+/// the enum, so the UI order and the enum's numeric values are independent --
+/// the cast made them the same thing, which meant adding a projection or
+/// reordering the cycler silently changed which one every index selected.
+/// Index 0 is the default the creator opens on.
+struct CreatorProjectionOption {
+    aoc::map::gen::MapProjection projection;
+    const char* name;
+};
+constexpr CreatorProjectionOption CREATOR_PROJECTIONS[] = {
+    {aoc::map::gen::MapProjection::LambertCylindricalEqualArea, "Equal-area"},
+    {aoc::map::gen::MapProjection::Mollweide, "Mollweide"},
+    {aoc::map::gen::MapProjection::Equirectangular, "Equirect"},
+    {aoc::map::gen::MapProjection::Mercator, "Mercator"},
+    {aoc::map::gen::MapProjection::Robinson, "Robinson"},
+};
+constexpr int32_t CREATOR_PROJECTION_COUNT = static_cast<int32_t>(std::size(CREATOR_PROJECTIONS));
+
+[[nodiscard]] aoc::map::gen::MapProjection creatorProjectionAt(int32_t index) {
+    return CREATOR_PROJECTIONS[static_cast<std::size_t>(
+                                   std::clamp(index, 0, CREATOR_PROJECTION_COUNT - 1))]
+        .projection;
+}
+
 /// Aggregate counts for the `/info`-style debug payload. Walks every
 /// tile once, recording terrain category and the set of distinct
 /// `plateId` values seen.
@@ -114,12 +139,15 @@ struct PlateInfoStats {
     for (int32_t i = 0; i < total; ++i) {
         const aoc::map::TerrainType t = grid.terrain(i);
         if (t == aoc::map::TerrainType::Mountain) ++stats.mtnTiles;
-        if (aoc::map::isWater(t)) ++stats.oceanTiles;
-        else ++stats.landTiles;
+        if (aoc::map::isWater(t))
+            ++stats.oceanTiles;
+        else
+            ++stats.landTiles;
         const uint8_t pid = grid.plateId(i);
         if (pid != 0xFFu) seenPlate[pid] = true;
     }
-    for (bool s : seenPlate) if (s) ++stats.plates;
+    for (bool s : seenPlate)
+        if (s) ++stats.plates;
     return stats;
 }
 
@@ -142,8 +170,10 @@ struct PerPlateStats {
     const int32_t W = grid.width();
     const int32_t H = grid.height();
     for (int32_t i = 0; i < 256; ++i) {
-        s.minCol[i] = W; s.maxCol[i] = -1;
-        s.minRow[i] = H; s.maxRow[i] = -1;
+        s.minCol[i] = W;
+        s.maxCol[i] = -1;
+        s.minRow[i] = H;
+        s.maxRow[i] = -1;
     }
     for (int32_t row = 0; row < H; ++row) {
         for (int32_t col = 0; col < W; ++col) {
@@ -176,22 +206,15 @@ struct PerPlateStats {
         if (s.cellCount[pid] == 0) continue;
         if (!first) o << ',';
         first = false;
-        const float lf = static_cast<float>(s.landCount[pid])
-                       / static_cast<float>(s.cellCount[pid]);
-        o << "{\"plate_id\":" << pid
-          << ",\"cell_count\":" << s.cellCount[pid]
-          << ",\"land_frac\":" << lf
-          << ",\"min_col\":"   << s.minCol[pid]
-          << ",\"max_col\":"   << s.maxCol[pid]
-          << ",\"min_row\":"   << s.minRow[pid]
-          << ",\"max_row\":"   << s.maxRow[pid]
-          << ",\"centroid_col\":"
-          << static_cast<float>(s.sumCol[pid])
-               / static_cast<float>(s.cellCount[pid])
+        const float lf =
+            static_cast<float>(s.landCount[pid]) / static_cast<float>(s.cellCount[pid]);
+        o << "{\"plate_id\":" << pid << ",\"cell_count\":" << s.cellCount[pid]
+          << ",\"land_frac\":" << lf << ",\"min_col\":" << s.minCol[pid]
+          << ",\"max_col\":" << s.maxCol[pid] << ",\"min_row\":" << s.minRow[pid]
+          << ",\"max_row\":" << s.maxRow[pid] << ",\"centroid_col\":"
+          << static_cast<float>(s.sumCol[pid]) / static_cast<float>(s.cellCount[pid])
           << ",\"centroid_row\":"
-          << static_cast<float>(s.sumRow[pid])
-               / static_cast<float>(s.cellCount[pid])
-          << "}";
+          << static_cast<float>(s.sumRow[pid]) / static_cast<float>(s.cellCount[pid]) << "}";
     }
     o << "]";
     return o.str();
@@ -215,14 +238,16 @@ struct DumpTarget {
 [[nodiscard]] DumpTarget resolveDumpTarget(const std::string& requested) {
     DumpTarget target;
     std::error_code ec;
-    const std::filesystem::path root = std::filesystem::weakly_canonical(
-        std::filesystem::current_path() / "dumps", ec);
+    const std::filesystem::path root =
+        std::filesystem::weakly_canonical(std::filesystem::current_path() / "dumps", ec);
     if (ec) {
         target.error = "dump root unavailable";
         return target;
     }
     std::filesystem::path candidate(requested);
-    if (candidate.is_relative()) { candidate = root / candidate; }
+    if (candidate.is_relative()) {
+        candidate = root / candidate;
+    }
     if (!aoc::core::isPathInsideAllowlist(candidate, {root})) {
         target.error = "path outside dump root";
         return target;
@@ -241,7 +266,7 @@ struct DumpTarget {
     // std::filesystem::rename is atomic (never crosses filesystems).
     static std::atomic<uint64_t> dumpToken{0};
     const uint64_t token = dumpToken.fetch_add(1, std::memory_order_relaxed);
-    target.tempPath = target.finalPath;
+    target.tempPath      = target.finalPath;
     target.tempPath += ".tmp" + std::to_string(token);
     return target;
 }
@@ -266,8 +291,7 @@ ErrorCode Application::initialize(const Config& config) {
     // -- Window --
     ErrorCode result = this->m_window.create(config.window);
     if (result != ErrorCode::Ok) {
-        LOG_ERROR("Window creation failed: %.*s",
-                  static_cast<int>(describeError(result).size()),
+        LOG_ERROR("Window creation failed: %.*s", static_cast<int>(describeError(result).size()),
                   describeError(result).data());
         return result;
     }
@@ -276,7 +300,7 @@ ErrorCode Application::initialize(const Config& config) {
 
     // -- Vulkan --
     vulkan_app::GraphicsDevice::Config deviceConfig{};
-    deviceConfig.appName = "AgeOfCiv";
+    deviceConfig.appName          = "AgeOfCiv";
     deviceConfig.enableValidation = config.enableValidation;
 
     // Query GLFW for the Vulkan instance extensions it needs for surface creation.
@@ -296,8 +320,8 @@ ErrorCode Application::initialize(const Config& config) {
     }
 
     const std::pair<uint32_t, uint32_t> fbSize = this->m_window.framebufferSize();
-    const uint32_t fbWidth = fbSize.first;
-    const uint32_t fbHeight = fbSize.second;
+    const uint32_t fbWidth                     = fbSize.first;
+    const uint32_t fbHeight                    = fbSize.second;
     vulkan_app::RenderPipeline::Config pipelineConfig{};
     pipelineConfig.width  = fbWidth;
     pipelineConfig.height = fbHeight;
@@ -307,14 +331,12 @@ ErrorCode Application::initialize(const Config& config) {
     pipelineConfig.clearB = 0.08f;
     pipelineConfig.clearA = 1.0f;
 
-    this->m_renderPipeline = std::make_unique<vulkan_app::RenderPipeline>(
-        *this->m_graphicsDevice, pipelineConfig);
+    this->m_renderPipeline =
+        std::make_unique<vulkan_app::RenderPipeline>(*this->m_graphicsDevice, pipelineConfig);
 
-    VkExtent2D extent = this->m_renderPipeline->extent();
+    VkExtent2D extent  = this->m_renderPipeline->extent();
     this->m_renderer2d = std::make_unique<vulkan_app::renderer::Renderer2D>(
-        this->m_graphicsDevice->device(),
-        this->m_renderPipeline->renderPass(),
-        extent,
+        this->m_graphicsDevice->device(), this->m_renderPipeline->renderPass(), extent,
         vulkan_app::RenderPipeline::MAX_FRAMES_IN_FLIGHT);
 
     // -- Game renderer (needed for both menu and in-game rendering) --
@@ -325,43 +347,33 @@ ErrorCode Application::initialize(const Config& config) {
     // application lifetime; toggling globe mode just gates the draw
     // call and grid-update at frame time, not the resource lifecycle.
     this->m_globeRenderer = std::make_unique<aoc::render::GlobeRenderer>();
-    this->m_globeRenderer->initialize(
-        this->m_graphicsDevice->device(),
-        this->m_renderPipeline->renderPass(),
-        extent);
+    this->m_globeRenderer->initialize(this->m_graphicsDevice->device(),
+                                      this->m_renderPipeline->renderPass(), extent);
 
     // -- Live-debug command file. Lambdas capture `this` so handlers
     // can read game state directly. All run synchronously on the main
     // thread inside the per-frame poll() call -- no locking.
-    this->m_debugCmdFile.registerHandler("info",
-        [this](const std::string&) -> std::string {
-            const PlateInfoStats stats = computePlateInfoStats(this->m_hexGrid);
-            std::ostringstream o;
-            o << "{\"creatorMode\":"
-              << (this->m_continentCreatorMode ? "true" : "false")
-              << ",\"creatorTime\":" << this->m_creatorTimeCurrentMy
-              << ",\"creatorTotal\":" << this->m_creatorTotalMy
-              << ",\"creatorSeed\":" << this->m_creatorSeed
-              << ",\"width\":"  << this->m_hexGrid.width()
-              << ",\"height\":" << this->m_hexGrid.height()
-              << ",\"plates\":" << stats.plates
-              << ",\"mountainTiles\":" << stats.mtnTiles
-              << ",\"landTiles\":"     << stats.landTiles
-              << ",\"oceanTiles\":"    << stats.oceanTiles
-              << ",\"globeView\":"
-              << (this->m_creatorGlobe ? "true" : "false")
-              << "}";
-            return o.str();
-        });
+    this->m_debugCmdFile.registerHandler("info", [this](const std::string&) -> std::string {
+        const PlateInfoStats stats = computePlateInfoStats(this->m_hexGrid);
+        std::ostringstream o;
+        o << "{\"creatorMode\":" << (this->m_continentCreatorMode ? "true" : "false")
+          << ",\"creatorTime\":" << this->m_creatorTimeCurrentMy
+          << ",\"creatorTotal\":" << this->m_creatorTotalMy
+          << ",\"creatorSeed\":" << this->m_creatorSeed << ",\"width\":" << this->m_hexGrid.width()
+          << ",\"height\":" << this->m_hexGrid.height() << ",\"plates\":" << stats.plates
+          << ",\"mountainTiles\":" << stats.mtnTiles << ",\"landTiles\":" << stats.landTiles
+          << ",\"oceanTiles\":" << stats.oceanTiles
+          << ",\"globeView\":" << (this->m_creatorGlobe ? "true" : "false") << "}";
+        return o.str();
+    });
 
-    this->m_debugCmdFile.registerHandler("dump-plates",
-        [this](const std::string& path) -> std::string {
+    this->m_debugCmdFile.registerHandler(
+        "dump-plates", [this](const std::string& path) -> std::string {
             if (path.empty()) return "{\"error\":\"missing PATH arg\"}";
             std::ofstream pf(path);
             if (!pf.is_open()) {
                 std::ostringstream o;
-                o << "{\"error\":\"open failed\",\"path\":\""
-                  << path << "\"}";
+                o << "{\"error\":\"open failed\",\"path\":\"" << path << "\"}";
                 return o.str();
             }
             const int32_t W = this->m_hexGrid.width();
@@ -375,8 +387,10 @@ ErrorCode Application::initialize(const Config& config) {
             std::array<int32_t, 256> minRow{};
             std::array<int32_t, 256> maxRow{};
             for (int32_t i = 0; i < 256; ++i) {
-                minCol[i] = W; maxCol[i] = -1;
-                minRow[i] = H; maxRow[i] = -1;
+                minCol[i] = W;
+                maxCol[i] = -1;
+                minRow[i] = H;
+                maxRow[i] = -1;
             }
             for (int32_t row = 0; row < H; ++row) {
                 for (int32_t col = 0; col < W; ++col) {
@@ -400,32 +414,29 @@ ErrorCode Application::initialize(const Config& config) {
             int32_t emitted = 0;
             for (int32_t pid = 0; pid < 256; ++pid) {
                 if (cellCount[pid] == 0) continue;
-                const float lf = static_cast<float>(landCount[pid])
-                               / static_cast<float>(cellCount[pid]);
-                const float ccol = static_cast<float>(sumCol[pid])
-                                 / static_cast<float>(cellCount[pid]);
-                const float crow = static_cast<float>(sumRow[pid])
-                                 / static_cast<float>(cellCount[pid]);
-                pf << pid << ',' << cellCount[pid] << ',' << lf << ','
-                   << minCol[pid] << ',' << maxCol[pid] << ','
-                   << minRow[pid] << ',' << maxRow[pid] << ','
-                   << ccol << ',' << crow << '\n';
+                const float lf =
+                    static_cast<float>(landCount[pid]) / static_cast<float>(cellCount[pid]);
+                const float ccol =
+                    static_cast<float>(sumCol[pid]) / static_cast<float>(cellCount[pid]);
+                const float crow =
+                    static_cast<float>(sumRow[pid]) / static_cast<float>(cellCount[pid]);
+                pf << pid << ',' << cellCount[pid] << ',' << lf << ',' << minCol[pid] << ','
+                   << maxCol[pid] << ',' << minRow[pid] << ',' << maxRow[pid] << ',' << ccol << ','
+                   << crow << '\n';
                 ++emitted;
             }
             std::ostringstream o;
-            o << "{\"path\":\"" << path << "\",\"plates\":"
-              << emitted << "}";
+            o << "{\"path\":\"" << path << "\",\"plates\":" << emitted << "}";
             return o.str();
         });
 
-    this->m_debugCmdFile.registerHandler("dump-grid",
-        [this](const std::string& path) -> std::string {
+    this->m_debugCmdFile.registerHandler(
+        "dump-grid", [this](const std::string& path) -> std::string {
             if (path.empty()) return "{\"error\":\"missing PATH arg\"}";
             std::ofstream gf(path);
             if (!gf.is_open()) {
                 std::ostringstream o;
-                o << "{\"error\":\"open failed\",\"path\":\""
-                  << path << "\"}";
+                o << "{\"error\":\"open failed\",\"path\":\"" << path << "\"}";
                 return o.str();
             }
             const int32_t W = this->m_hexGrid.width();
@@ -435,34 +446,52 @@ ErrorCode Application::initialize(const Config& config) {
             for (int32_t row = 0; row < H; ++row) {
                 if ((row & 1) == 1) gf << ' ';
                 for (int32_t col = 0; col < W; ++col) {
-                    const int32_t idx = row * W + col;
-                    const aoc::map::TerrainType t =
-                        this->m_hexGrid.terrain(idx);
-                    char ch = '?';
+                    const int32_t idx             = row * W + col;
+                    const aoc::map::TerrainType t = this->m_hexGrid.terrain(idx);
+                    char ch                       = '?';
                     switch (t) {
-                        case aoc::map::TerrainType::Ocean:        ch = ':'; break;
-                        case aoc::map::TerrainType::Coast:        ch = ','; break;
-                        case aoc::map::TerrainType::ShallowWater: ch = '.'; break;
-                        case aoc::map::TerrainType::Desert:       ch = 'D'; break;
-                        case aoc::map::TerrainType::Plains:       ch = '-'; break;
-                        case aoc::map::TerrainType::Grassland:    ch = 'g'; break;
-                        case aoc::map::TerrainType::Tundra:       ch = 'T'; break;
-                        case aoc::map::TerrainType::Snow:         ch = '*'; break;
-                        case aoc::map::TerrainType::Mountain:     ch = '^'; break;
-                        default: ch = '?'; break;
+                    case aoc::map::TerrainType::Ocean:
+                        ch = ':';
+                        break;
+                    case aoc::map::TerrainType::Coast:
+                        ch = ',';
+                        break;
+                    case aoc::map::TerrainType::ShallowWater:
+                        ch = '.';
+                        break;
+                    case aoc::map::TerrainType::Desert:
+                        ch = 'D';
+                        break;
+                    case aoc::map::TerrainType::Plains:
+                        ch = '-';
+                        break;
+                    case aoc::map::TerrainType::Grassland:
+                        ch = 'g';
+                        break;
+                    case aoc::map::TerrainType::Tundra:
+                        ch = 'T';
+                        break;
+                    case aoc::map::TerrainType::Snow:
+                        ch = '*';
+                        break;
+                    case aoc::map::TerrainType::Mountain:
+                        ch = '^';
+                        break;
+                    default:
+                        ch = '?';
+                        break;
                     }
                     gf << ch;
                 }
                 gf << '\n';
             }
             std::ostringstream o;
-            o << "{\"path\":\"" << path
-              << "\",\"width\":" << W << ",\"height\":" << H << "}";
+            o << "{\"path\":\"" << path << "\",\"width\":" << W << ",\"height\":" << H << "}";
             return o.str();
         });
 
-    this->m_debugCmdFile.registerHandler("set-creator-time",
-        [this](const std::string& args) -> std::string {
+    this->m_debugCmdFile.registerHandler(
+        "set-creator-time", [this](const std::string& args) -> std::string {
             if (!this->m_continentCreatorMode) {
                 return "{\"error\":\"not in creator mode\"}";
             }
@@ -474,26 +503,23 @@ ErrorCode Application::initialize(const Config& config) {
             return o.str();
         });
 
-    this->m_debugCmdFile.registerHandler("re-roll",
-        [this](const std::string& args) -> std::string {
-            if (!this->m_continentCreatorMode) {
-                return "{\"error\":\"not in creator mode\"}";
-            }
-            if (args.empty()) return "{\"error\":\"missing SEED arg\"}";
-            this->m_creatorSeed =
-                static_cast<uint32_t>(std::strtoul(args.c_str(), nullptr, 10));
-            this->clearCreatorEpochCache();
-            this->enqueueRegen(this->m_creatorTotalMy);
-            std::ostringstream o;
-            o << "{\"creatorSeed\":" << this->m_creatorSeed << "}";
-            return o.str();
-        });
+    this->m_debugCmdFile.registerHandler("re-roll", [this](const std::string& args) -> std::string {
+        if (!this->m_continentCreatorMode) {
+            return "{\"error\":\"not in creator mode\"}";
+        }
+        if (args.empty()) return "{\"error\":\"missing SEED arg\"}";
+        this->m_creatorSeed = static_cast<uint32_t>(std::strtoul(args.c_str(), nullptr, 10));
+        this->clearCreatorEpochCache();
+        this->enqueueRegen(this->m_creatorTotalMy);
+        std::ostringstream o;
+        o << "{\"creatorSeed\":" << this->m_creatorSeed << "}";
+        return o.str();
+    });
 
-    this->m_debugCmdFile.registerHandler("quit",
-        [this](const std::string&) -> std::string {
-            glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
-            return "{\"closing\":true}";
-        });
+    this->m_debugCmdFile.registerHandler("quit", [this](const std::string&) -> std::string {
+        glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
+        return "{\"closing\":true}";
+    });
 
     // -- HTTP debug API. Localhost-only, JSON over HTTP, same
     // information surface as the file watcher above plus richer
@@ -502,50 +528,39 @@ ErrorCode Application::initialize(const Config& config) {
     // read goes through the immutable snapshot published by the main
     // thread (`debugGridSnapshot`), never through `m_hexGrid`, whose
     // buffers are reallocated by regen/load/reset on the main thread. --
-    using DSM = aoc::debug::DebugServer::Method;
+    using DSM           = aoc::debug::DebugServer::Method;
     this->m_debugServer = std::make_unique<aoc::debug::DebugServer>(9876);
 
     auto buildInfoJson = [this]() -> std::string {
-        const std::shared_ptr<const aoc::map::HexGrid> grid =
-            this->debugGridSnapshot();
+        const std::shared_ptr<const aoc::map::HexGrid> grid = this->debugGridSnapshot();
         if (grid == nullptr) {
             throw aoc::debug::ServiceUnavailableError("no snapshot yet");
         }
         const PlateInfoStats stats = computePlateInfoStats(*grid);
         std::ostringstream o;
-        o << "{\"creatorMode\":"
-          << (this->m_continentCreatorMode ? "true" : "false")
+        o << "{\"creatorMode\":" << (this->m_continentCreatorMode ? "true" : "false")
           << ",\"creatorTime\":" << this->m_creatorTimeCurrentMy
           << ",\"creatorTotal\":" << this->m_creatorTotalMy
-          << ",\"creatorSeed\":" << this->m_creatorSeed
-          << ",\"width\":"  << grid->width()
-          << ",\"height\":" << grid->height()
-          << ",\"plates\":" << stats.plates
-          << ",\"mountainTiles\":" << stats.mtnTiles
-          << ",\"landTiles\":"     << stats.landTiles
-          << ",\"oceanTiles\":"    << stats.oceanTiles
-          << ",\"globeView\":"
-          << (this->m_creatorGlobe ? "true" : "false")
-          << "}";
+          << ",\"creatorSeed\":" << this->m_creatorSeed << ",\"width\":" << grid->width()
+          << ",\"height\":" << grid->height() << ",\"plates\":" << stats.plates
+          << ",\"mountainTiles\":" << stats.mtnTiles << ",\"landTiles\":" << stats.landTiles
+          << ",\"oceanTiles\":" << stats.oceanTiles
+          << ",\"globeView\":" << (this->m_creatorGlobe ? "true" : "false") << "}";
         return o.str();
     };
 
-    this->m_debugServer->routeJson(DSM::Get, "/ping",
-        [](const auto&, const auto&) {
-            return std::string("{\"ok\":true}");
-        });
+    this->m_debugServer->routeJson(
+        DSM::Get, "/ping", [](const auto&, const auto&) { return std::string("{\"ok\":true}"); });
 
-    this->m_debugServer->routeJson(DSM::Get, "/info",
-        [buildInfoJson](const auto&, const auto&) {
-            return buildInfoJson();
-        });
+    this->m_debugServer->routeJson(
+        DSM::Get, "/info", [buildInfoJson](const auto&, const auto&) { return buildInfoJson(); });
 
     // GET /plates -- JSON array, one entry per plate present.
-    this->m_debugServer->routeJson(DSM::Get, "/plates",
+    this->m_debugServer->routeJson(
+        DSM::Get, "/plates",
         [this](const std::unordered_map<std::string, std::string>&,
                const std::string&) -> std::string {
-            const std::shared_ptr<const aoc::map::HexGrid> grid =
-                this->debugGridSnapshot();
+            const std::shared_ptr<const aoc::map::HexGrid> grid = this->debugGridSnapshot();
             if (grid == nullptr) {
                 throw aoc::debug::ServiceUnavailableError("no snapshot yet");
             }
@@ -553,48 +568,39 @@ ErrorCode Application::initialize(const Config& config) {
         });
 
     // GET /tile?idx=N -- single tile detail.
-    this->m_debugServer->routeJson(DSM::Get, "/tile",
+    this->m_debugServer->routeJson(
+        DSM::Get, "/tile",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
-            const std::unordered_map<std::string, std::string>::const_iterator
-                it = q.find("idx");
+            const std::unordered_map<std::string, std::string>::const_iterator it = q.find("idx");
             if (it == q.end()) {
                 return std::string("{\"error\":\"missing idx\"}");
             }
-            const std::shared_ptr<const aoc::map::HexGrid> grid =
-                this->debugGridSnapshot();
+            const std::shared_ptr<const aoc::map::HexGrid> grid = this->debugGridSnapshot();
             if (grid == nullptr) {
                 throw aoc::debug::ServiceUnavailableError("no snapshot yet");
             }
-            const int32_t idx = std::atoi(it->second.c_str());
+            const int32_t idx   = std::atoi(it->second.c_str());
             const int32_t total = grid->tileCount();
             if (idx < 0 || idx >= total) {
                 return std::string("{\"error\":\"idx out of range\"}");
             }
             const int32_t W = grid->width();
             std::ostringstream o;
-            o << "{\"idx\":" << idx
-              << ",\"col\":" << (idx % W)
-              << ",\"row\":" << (idx / W)
-              << ",\"plate_id\":"
-              << static_cast<int32_t>(grid->plateId(idx))
-              << ",\"terrain\":\""
-              << aoc::map::terrainName(grid->terrain(idx))
-              << "\",\"feature\":\""
+            o << "{\"idx\":" << idx << ",\"col\":" << (idx % W) << ",\"row\":" << (idx / W)
+              << ",\"plate_id\":" << static_cast<int32_t>(grid->plateId(idx)) << ",\"terrain\":\""
+              << aoc::map::terrainName(grid->terrain(idx)) << "\",\"feature\":\""
               << aoc::map::featureName(grid->feature(idx))
-              << "\",\"owner\":"
-              << static_cast<int32_t>(grid->owner(idx))
-              << ",\"river_edges\":"
-              << static_cast<int32_t>(grid->riverEdges(idx))
-              << "}";
+              << "\",\"owner\":" << static_cast<int32_t>(grid->owner(idx))
+              << ",\"river_edges\":" << static_cast<int32_t>(grid->riverEdges(idx)) << "}";
             return o.str();
         });
 
     // GET /constants -- current physics tunables snapshot. Read-only
     // for v1; mutation arrives with /sim/set-constant in a later
     // phase.
-    this->m_debugServer->routeJson(DSM::Get, "/constants",
-        [](const auto&, const auto&) -> std::string {
+    this->m_debugServer->routeJson(
+        DSM::Get, "/constants", [](const auto&, const auto&) -> std::string {
             std::ostringstream o;
             o << "{\"K_THICKEN\":250.0"
               << ",\"K_EROSION\":0.034"
@@ -612,16 +618,15 @@ ErrorCode Application::initialize(const Config& config) {
 
     // POST /dump/plates?path=PATH -- writes per-plate CSV to path
     // (confined to <cwd>/dumps; see resolveDumpTarget).
-    this->m_debugServer->routeJson(DSM::Post, "/dump/plates",
+    this->m_debugServer->routeJson(
+        DSM::Post, "/dump/plates",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
-            const std::unordered_map<std::string, std::string>::const_iterator
-                it = q.find("path");
+            const std::unordered_map<std::string, std::string>::const_iterator it = q.find("path");
             if (it == q.end()) {
                 return std::string("{\"error\":\"missing path query\"}");
             }
-            const std::shared_ptr<const aoc::map::HexGrid> grid =
-                this->debugGridSnapshot();
+            const std::shared_ptr<const aoc::map::HexGrid> grid = this->debugGridSnapshot();
             if (grid == nullptr) {
                 throw aoc::debug::ServiceUnavailableError("no snapshot yet");
             }
@@ -632,13 +637,11 @@ ErrorCode Application::initialize(const Config& config) {
                   << aoc::debug::escapeJsonString(it->second) << "\"}";
                 return o.str();
             }
-            const std::string safePath =
-                aoc::debug::escapeJsonString(target.finalPath.string());
+            const std::string safePath = aoc::debug::escapeJsonString(target.finalPath.string());
             std::ofstream pf(target.tempPath);
             if (!pf.is_open()) {
                 std::ostringstream o;
-                o << "{\"error\":\"open failed\",\"path\":\""
-                  << safePath << "\"}";
+                o << "{\"error\":\"open failed\",\"path\":\"" << safePath << "\"}";
                 return o.str();
             }
             const PerPlateStats s = computePerPlateStats(*grid);
@@ -647,48 +650,43 @@ ErrorCode Application::initialize(const Config& config) {
             int32_t emitted = 0;
             for (int32_t pid = 0; pid < 256; ++pid) {
                 if (s.cellCount[pid] == 0) continue;
-                const float lf = static_cast<float>(s.landCount[pid])
-                               / static_cast<float>(s.cellCount[pid]);
-                const float ccol = static_cast<float>(s.sumCol[pid])
-                                 / static_cast<float>(s.cellCount[pid]);
-                const float crow = static_cast<float>(s.sumRow[pid])
-                                 / static_cast<float>(s.cellCount[pid]);
-                pf << pid << ',' << s.cellCount[pid] << ',' << lf << ','
-                   << s.minCol[pid] << ',' << s.maxCol[pid] << ','
-                   << s.minRow[pid] << ',' << s.maxRow[pid] << ','
-                   << ccol << ',' << crow << '\n';
+                const float lf =
+                    static_cast<float>(s.landCount[pid]) / static_cast<float>(s.cellCount[pid]);
+                const float ccol =
+                    static_cast<float>(s.sumCol[pid]) / static_cast<float>(s.cellCount[pid]);
+                const float crow =
+                    static_cast<float>(s.sumRow[pid]) / static_cast<float>(s.cellCount[pid]);
+                pf << pid << ',' << s.cellCount[pid] << ',' << lf << ',' << s.minCol[pid] << ','
+                   << s.maxCol[pid] << ',' << s.minRow[pid] << ',' << s.maxRow[pid] << ',' << ccol
+                   << ',' << crow << '\n';
                 ++emitted;
             }
             pf.close();
             std::error_code renameEc;
-            std::filesystem::rename(target.tempPath, target.finalPath,
-                                    renameEc);
+            std::filesystem::rename(target.tempPath, target.finalPath, renameEc);
             if (renameEc) {
                 std::error_code removeEc;
                 std::filesystem::remove(target.tempPath, removeEc);
                 std::ostringstream o;
-                o << "{\"error\":\"rename failed\",\"path\":\""
-                  << safePath << "\"}";
+                o << "{\"error\":\"rename failed\",\"path\":\"" << safePath << "\"}";
                 return o.str();
             }
             std::ostringstream o;
-            o << "{\"path\":\"" << safePath << "\",\"plates\":"
-              << emitted << "}";
+            o << "{\"path\":\"" << safePath << "\",\"plates\":" << emitted << "}";
             return o.str();
         });
 
     // POST /dump/grid?path=PATH -- ASCII map (confined to <cwd>/dumps;
     // see resolveDumpTarget).
-    this->m_debugServer->routeJson(DSM::Post, "/dump/grid",
+    this->m_debugServer->routeJson(
+        DSM::Post, "/dump/grid",
         [this](const std::unordered_map<std::string, std::string>& q,
                const std::string&) -> std::string {
-            const std::unordered_map<std::string, std::string>::const_iterator
-                it = q.find("path");
+            const std::unordered_map<std::string, std::string>::const_iterator it = q.find("path");
             if (it == q.end()) {
                 return std::string("{\"error\":\"missing path query\"}");
             }
-            const std::shared_ptr<const aoc::map::HexGrid> grid =
-                this->debugGridSnapshot();
+            const std::shared_ptr<const aoc::map::HexGrid> grid = this->debugGridSnapshot();
             if (grid == nullptr) {
                 throw aoc::debug::ServiceUnavailableError("no snapshot yet");
             }
@@ -699,13 +697,11 @@ ErrorCode Application::initialize(const Config& config) {
                   << aoc::debug::escapeJsonString(it->second) << "\"}";
                 return o.str();
             }
-            const std::string safePath =
-                aoc::debug::escapeJsonString(target.finalPath.string());
+            const std::string safePath = aoc::debug::escapeJsonString(target.finalPath.string());
             std::ofstream gf(target.tempPath);
             if (!gf.is_open()) {
                 std::ostringstream o;
-                o << "{\"error\":\"open failed\",\"path\":\""
-                  << safePath << "\"}";
+                o << "{\"error\":\"open failed\",\"path\":\"" << safePath << "\"}";
                 return o.str();
             }
             const int32_t W = grid->width();
@@ -715,20 +711,40 @@ ErrorCode Application::initialize(const Config& config) {
             for (int32_t row = 0; row < H; ++row) {
                 if ((row & 1) == 1) gf << ' ';
                 for (int32_t col = 0; col < W; ++col) {
-                    const int32_t idx = row * W + col;
+                    const int32_t idx             = row * W + col;
                     const aoc::map::TerrainType t = grid->terrain(idx);
-                    char ch = '?';
+                    char ch                       = '?';
                     switch (t) {
-                        case aoc::map::TerrainType::Ocean:        ch = ':'; break;
-                        case aoc::map::TerrainType::Coast:        ch = ','; break;
-                        case aoc::map::TerrainType::ShallowWater: ch = '.'; break;
-                        case aoc::map::TerrainType::Desert:       ch = 'D'; break;
-                        case aoc::map::TerrainType::Plains:       ch = '-'; break;
-                        case aoc::map::TerrainType::Grassland:    ch = 'g'; break;
-                        case aoc::map::TerrainType::Tundra:       ch = 'T'; break;
-                        case aoc::map::TerrainType::Snow:         ch = '*'; break;
-                        case aoc::map::TerrainType::Mountain:     ch = '^'; break;
-                        default: ch = '?'; break;
+                    case aoc::map::TerrainType::Ocean:
+                        ch = ':';
+                        break;
+                    case aoc::map::TerrainType::Coast:
+                        ch = ',';
+                        break;
+                    case aoc::map::TerrainType::ShallowWater:
+                        ch = '.';
+                        break;
+                    case aoc::map::TerrainType::Desert:
+                        ch = 'D';
+                        break;
+                    case aoc::map::TerrainType::Plains:
+                        ch = '-';
+                        break;
+                    case aoc::map::TerrainType::Grassland:
+                        ch = 'g';
+                        break;
+                    case aoc::map::TerrainType::Tundra:
+                        ch = 'T';
+                        break;
+                    case aoc::map::TerrainType::Snow:
+                        ch = '*';
+                        break;
+                    case aoc::map::TerrainType::Mountain:
+                        ch = '^';
+                        break;
+                    default:
+                        ch = '?';
+                        break;
                     }
                     gf << ch;
                 }
@@ -736,19 +752,16 @@ ErrorCode Application::initialize(const Config& config) {
             }
             gf.close();
             std::error_code renameEc;
-            std::filesystem::rename(target.tempPath, target.finalPath,
-                                    renameEc);
+            std::filesystem::rename(target.tempPath, target.finalPath, renameEc);
             if (renameEc) {
                 std::error_code removeEc;
                 std::filesystem::remove(target.tempPath, removeEc);
                 std::ostringstream o;
-                o << "{\"error\":\"rename failed\",\"path\":\""
-                  << safePath << "\"}";
+                o << "{\"error\":\"rename failed\",\"path\":\"" << safePath << "\"}";
                 return o.str();
             }
             std::ostringstream o;
-            o << "{\"path\":\"" << safePath
-              << "\",\"width\":" << W << ",\"height\":" << H << "}";
+            o << "{\"path\":\"" << safePath << "\",\"width\":" << W << ",\"height\":" << H << "}";
             return o.str();
         });
 
@@ -762,8 +775,8 @@ ErrorCode Application::initialize(const Config& config) {
     // top of the next frame and runs the actual `regenerateContinentPreview`
     // there. Last-writer-wins on the flag is intentional -- if two
     // POSTs land in the same frame the most recent target is honoured.
-    this->m_debugServer->routeJson(DSM::Post, "/sim/set-creator-time",
-        [this](const auto& q, const auto&) -> std::string {
+    this->m_debugServer->routeJson(
+        DSM::Post, "/sim/set-creator-time", [this](const auto& q, const auto&) -> std::string {
             if (!this->m_continentCreatorMode) {
                 return std::string("{\"error\":\"not in creator mode\"}");
             }
@@ -787,15 +800,14 @@ ErrorCode Application::initialize(const Config& config) {
     // creator-time (default 50 = one physics epoch). Negative dy
     // steps back; cache makes back-steps cheap, forward steps re-run
     // sim from seed to the new epoch.
-    this->m_debugServer->routeJson(DSM::Post, "/sim/step",
-        [this](const auto& q, const auto&) -> std::string {
+    this->m_debugServer->routeJson(
+        DSM::Post, "/sim/step", [this](const auto& q, const auto&) -> std::string {
             if (!this->m_continentCreatorMode) {
                 return std::string("{\"error\":\"not in creator mode\"}");
             }
-            constexpr int32_t MY_PER_EPOCH =
-                aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
-            int32_t dy = MY_PER_EPOCH;
-            auto it = q.find("dy");
+            constexpr int32_t MY_PER_EPOCH = aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
+            int32_t dy                     = MY_PER_EPOCH;
+            auto it                        = q.find("dy");
             if (it != q.end()) dy = std::atoi(it->second.c_str());
             // `m_creatorTimeCurrentMy` is read on the main thread but
             // we read it here lock-free for a best-effort target. The
@@ -803,19 +815,17 @@ ErrorCode Application::initialize(const Config& config) {
             // re-clamps via `regenerateContinentPreview`, so a stale
             // base only shifts the user's step by one epoch at most.
             const int32_t target = this->m_creatorTimeCurrentMy + dy;
-            const int32_t safeTarget = (target == PENDING_TIME_NONE)
-                ? (PENDING_TIME_NONE + 1) : target;
-            this->m_pendingCreatorTime.store(safeTarget,
-                                              std::memory_order_release);
+            const int32_t safeTarget =
+                (target == PENDING_TIME_NONE) ? (PENDING_TIME_NONE + 1) : target;
+            this->m_pendingCreatorTime.store(safeTarget, std::memory_order_release);
             std::ostringstream o;
-            o << "{\"queuedCreatorTime\":" << safeTarget
-              << ",\"step\":" << dy << "}";
+            o << "{\"queuedCreatorTime\":" << safeTarget << ",\"step\":" << dy << "}";
             return o.str();
         });
 
     // POST /sim/re-roll?seed=N -- new seed + regen.
-    this->m_debugServer->routeJson(DSM::Post, "/sim/re-roll",
-        [this](const auto& q, const auto&) -> std::string {
+    this->m_debugServer->routeJson(
+        DSM::Post, "/sim/re-roll", [this](const auto& q, const auto&) -> std::string {
             if (!this->m_continentCreatorMode) {
                 return std::string("{\"error\":\"not in creator mode\"}");
             }
@@ -823,8 +833,8 @@ ErrorCode Application::initialize(const Config& config) {
             if (it == q.end()) {
                 return std::string("{\"error\":\"missing seed\"}");
             }
-            const uint32_t seed = static_cast<uint32_t>(
-                std::strtoul(it->second.c_str(), nullptr, 10));
+            const uint32_t seed =
+                static_cast<uint32_t>(std::strtoul(it->second.c_str(), nullptr, 10));
             // Seed must be visible BEFORE the flag is observed true,
             // hence release-write on the flag pairs with acquire on
             // the drain side.
@@ -841,31 +851,30 @@ ErrorCode Application::initialize(const Config& config) {
     // `glfwSetWindowShouldClose`. Set the atomic flag and let the main
     // loop call the GLFW API on the render thread.
     this->m_debugServer->routeJson(DSM::Post, "/quit",
-        [this](const auto&, const auto&) -> std::string {
-            this->m_quitRequested.store(true, std::memory_order_release);
-            return std::string("{\"closing\":true}");
-        });
+                                   [this](const auto&, const auto&) -> std::string {
+                                       this->m_quitRequested.store(true, std::memory_order_release);
+                                       return std::string("{\"closing\":true}");
+                                   });
 
     // GET /schema -- self-describing route catalogue.
-    this->m_debugServer->routeJson(DSM::Get, "/schema",
-        [](const auto&, const auto&) -> std::string {
-            return std::string(
-                "{"
-                "\"routes\":["
-                "{\"method\":\"GET\",\"path\":\"/ping\"},"
-                "{\"method\":\"GET\",\"path\":\"/info\"},"
-                "{\"method\":\"GET\",\"path\":\"/plates\"},"
-                "{\"method\":\"GET\",\"path\":\"/tile?idx=N\"},"
-                "{\"method\":\"GET\",\"path\":\"/constants\"},"
-                "{\"method\":\"GET\",\"path\":\"/schema\"},"
-                "{\"method\":\"POST\",\"path\":\"/dump/plates?path=PATH\"},"
-                "{\"method\":\"POST\",\"path\":\"/dump/grid?path=PATH\"},"
-                "{\"method\":\"POST\",\"path\":\"/sim/set-creator-time?my=N\"},"
-                "{\"method\":\"POST\",\"path\":\"/sim/step?dy=N\"},"
-                "{\"method\":\"POST\",\"path\":\"/sim/re-roll?seed=N\"},"
-                "{\"method\":\"POST\",\"path\":\"/quit\"}"
-                "]"
-                "}");
+    this->m_debugServer->routeJson(
+        DSM::Get, "/schema", [](const auto&, const auto&) -> std::string {
+            return std::string("{"
+                               "\"routes\":["
+                               "{\"method\":\"GET\",\"path\":\"/ping\"},"
+                               "{\"method\":\"GET\",\"path\":\"/info\"},"
+                               "{\"method\":\"GET\",\"path\":\"/plates\"},"
+                               "{\"method\":\"GET\",\"path\":\"/tile?idx=N\"},"
+                               "{\"method\":\"GET\",\"path\":\"/constants\"},"
+                               "{\"method\":\"GET\",\"path\":\"/schema\"},"
+                               "{\"method\":\"POST\",\"path\":\"/dump/plates?path=PATH\"},"
+                               "{\"method\":\"POST\",\"path\":\"/dump/grid?path=PATH\"},"
+                               "{\"method\":\"POST\",\"path\":\"/sim/set-creator-time?my=N\"},"
+                               "{\"method\":\"POST\",\"path\":\"/sim/step?dy=N\"},"
+                               "{\"method\":\"POST\",\"path\":\"/sim/re-roll?seed=N\"},"
+                               "{\"method\":\"POST\",\"path\":\"/quit\"}"
+                               "]"
+                               "}");
         });
 
     // Opt-in only: the routes above stay registered (cheap, no socket)
@@ -882,9 +891,8 @@ ErrorCode Application::initialize(const Config& config) {
     }
 
     // -- Resize --
-    this->m_window.setResizeCallback([this](uint32_t width, uint32_t height) {
-        this->onResize(width, height);
-    });
+    this->m_window.setResizeCallback(
+        [this](uint32_t width, uint32_t height) { this->onResize(width, height); });
 
     // -- Main menu --
     if (!aoc::ui::BitmapFont::initialize()) {
@@ -927,7 +935,7 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_cursors.ibeam     = glfwCreateStandardCursor(GLFW_IBEAM_CURSOR);
     this->m_cursors.crossHair = glfwCreateStandardCursor(GLFW_CROSSHAIR_CURSOR);
 
-    this->m_appState = AppState::MainMenu;
+    this->m_appState    = AppState::MainMenu;
     const float screenW = static_cast<float>(fbWidth);
     const float screenH = static_cast<float>(fbHeight);
 
@@ -935,13 +943,15 @@ ErrorCode Application::initialize(const Config& config) {
     // handler keeps these in sync for window moves across monitors.
     {
         aoc::ui::Theme& t = aoc::ui::theme();
-        t.viewportW = screenW;
-        t.viewportH = screenH;
-        float xscale = 1.0f;
-        float yscale = 1.0f;
+        t.viewportW       = screenW;
+        t.viewportH       = screenH;
+        float xscale      = 1.0f;
+        float yscale      = 1.0f;
         glfwGetWindowContentScale(this->m_window.handle(), &xscale, &yscale);
         t.dpiScale = std::max(xscale, yscale);
-        if (t.dpiScale <= 0.0f) { t.dpiScale = 1.0f; }
+        if (t.dpiScale <= 0.0f) {
+            t.dpiScale = 1.0f;
+        }
     }
 
     this->buildMainMenu(screenW, screenH);
@@ -959,18 +969,25 @@ ErrorCode Application::initialize(const Config& config) {
     // up-front cost is negligible. Defer no work to ctor because earlier
     // members must be fully initialized first (m_regenWakeMutex etc are
     // member-default-constructed and need no further setup).
-    this->m_regenWorker = std::jthread(
-        [this](std::stop_token tok) { this->regenWorkerLoop(tok); });
+    this->m_regenWorker = std::jthread([this](std::stop_token tok) { this->regenWorkerLoop(tok); });
 
     // Selection safety: units die inside turn processing while the UI
     // still holds raw pointers to them. Player::removeUnit fires this
     // observer just before the unique_ptr is erased, so the cached
     // pointers can never dangle.
     aoc::game::Player::setUnitRemovalObserver([this](aoc::game::Unit* unit) {
-        if (this->m_selectedUnit == unit)     { this->m_selectedUnit = nullptr; }
-        if (this->m_prevSelectedUnit == unit) { this->m_prevSelectedUnit = nullptr; }
-        if (this->m_actionPanelUnit == unit)  { this->m_actionPanelUnit = nullptr; }
-        if (this->m_undoState.unit == unit)   { this->m_undoState = UndoState{}; }
+        if (this->m_selectedUnit == unit) {
+            this->m_selectedUnit = nullptr;
+        }
+        if (this->m_prevSelectedUnit == unit) {
+            this->m_prevSelectedUnit = nullptr;
+        }
+        if (this->m_actionPanelUnit == unit) {
+            this->m_actionPanelUnit = nullptr;
+        }
+        if (this->m_undoState.unit == unit) {
+            this->m_undoState = UndoState{};
+        }
     });
 
     // First grid snapshot so read-only debug routes answer before any
@@ -991,11 +1008,11 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     this->m_aiControllers.clear();
     this->m_gameOver = false;
     this->clearEntitySelection();
-    this->m_spectatorMode = false;
-    this->m_spectatorPaused = false;
+    this->m_spectatorMode            = false;
+    this->m_spectatorPaused          = false;
     this->m_spectatorTurnAccumulator = 0.0f;
-    this->m_spectatorFollowPlayer = -1;
-    this->m_victoryResult = {};
+    this->m_spectatorFollowPlayer    = -1;
+    this->m_victoryResult            = {};
 
     // 2026-05-03: rally-point map is a function-local static in
     // UnitSelection.cpp. Without this clear, a new game inherits rally
@@ -1020,7 +1037,7 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     // covers both preset clicks and the custom +/- spinners.
     const std::pair<int32_t, int32_t> dims = aoc::map::mapSizeDimensions(config.mapSize);
     aoc::map::MapGenerator::Config mapConfig{};
-    mapConfig.width  = (config.customWidth  >= 20) ? config.customWidth  : dims.first;
+    mapConfig.width  = (config.customWidth >= 20) ? config.customWidth : dims.first;
     mapConfig.height = (config.customHeight >= 20) ? config.customHeight : dims.second;
     // Use hardware entropy for a unique map seed each launch.  steady_clock
     // truncated to 32 bits loses entropy on systems where the clock advances
@@ -1032,15 +1049,14 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     // which case we draw a fresh OS-entropy seed. Same setup seed +
     // same params → identical world every game.
     const uint32_t timeSeed = (config.mapSeed != 0u) ? config.mapSeed : autoSeed;
-    mapConfig.seed = timeSeed;
-    LOG_INFO("Map seed: %u%s", timeSeed,
-             (config.mapSeed != 0u) ? " (from setup)" : " (auto)");
-    this->m_gameRng = aoc::Random(timeSeed + 1);
-    mapConfig.mapType = config.mapType;
-    mapConfig.mapSize = config.mapSize;
-    mapConfig.placement = config.placement;
+    mapConfig.seed          = timeSeed;
+    LOG_INFO("Map seed: %u%s", timeSeed, (config.mapSeed != 0u) ? " (from setup)" : " (auto)");
+    this->m_gameRng           = aoc::Random(timeSeed + 1);
+    mapConfig.mapType         = config.mapType;
+    mapConfig.mapSize         = config.mapSize;
+    mapConfig.placement       = config.placement;
     mapConfig.tectonicTotalMy = config.tectonicTotalMy;
-    mapConfig.landPlateCount = config.landPlateCount;
+    mapConfig.landPlateCount  = config.landPlateCount;
     // Continents wrap horizontally (cylindrical topology) so scrolling
     // east past the right edge re-enters from the west — the world has
     // no east/west boundary, matching a globe's longitude band.
@@ -1053,8 +1069,8 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     // back to normal generation.
     if (this->m_useExistingGridOnNextStart && this->m_hexGrid.width() > 0) {
         this->m_useExistingGridOnNextStart = false;
-        LOG_INFO("Reusing in-memory map from editor (%dx%d)",
-                 this->m_hexGrid.width(), this->m_hexGrid.height());
+        LOG_INFO("Reusing in-memory map from editor (%dx%d)", this->m_hexGrid.width(),
+                 this->m_hexGrid.height());
     } else {
         this->m_useExistingGridOnNextStart = false;
         aoc::map::MapGenerator::generate(mapConfig, this->m_hexGrid);
@@ -1066,14 +1082,12 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     // for vertical pan clamp. Without setting these the camera can pan
     // off into infinite empty space.
     {
-        constexpr float SQRT3 = 1.7320508075688772f;
-        const float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
-        const float worldHeight = static_cast<float>(this->m_hexGrid.height())
-            * 1.5f * hexSize;
+        constexpr float SQRT3   = 1.7320508075688772f;
+        const float hexSize     = this->m_gameRenderer.mapRenderer().hexSize();
+        const float worldHeight = static_cast<float>(this->m_hexGrid.height()) * 1.5f * hexSize;
         this->m_cameraController.setWorldHeight(worldHeight);
         if (this->m_hexGrid.topology() == aoc::map::MapTopology::Cylindrical) {
-            const float worldWidth = static_cast<float>(this->m_hexGrid.width())
-                * SQRT3 * hexSize;
+            const float worldWidth = static_cast<float>(this->m_hexGrid.width()) * SQRT3 * hexSize;
             this->m_cameraController.setWorldWidth(worldWidth);
         } else {
             this->m_cameraController.setWorldWidth(0.0f);
@@ -1088,14 +1102,12 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     // the screen, with a small padding factor so borders stay visible.
     {
         constexpr float SQRT3 = 1.7320508075688772f;
-        const float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
-        const float mapWWorld = static_cast<float>(this->m_hexGrid.width())
-                              * SQRT3 * hexSize;
-        const float mapHWorld = static_cast<float>(this->m_hexGrid.height())
-                              * 1.5f * hexSize;
+        const float hexSize   = this->m_gameRenderer.mapRenderer().hexSize();
+        const float mapWWorld = static_cast<float>(this->m_hexGrid.width()) * SQRT3 * hexSize;
+        const float mapHWorld = static_cast<float>(this->m_hexGrid.height()) * 1.5f * hexSize;
         const std::pair<uint32_t, uint32_t> fb = this->m_window.framebufferSize();
-        const float fbW = static_cast<float>(fb.first);
-        const float fbH = static_cast<float>(fb.second);
+        const float fbW                        = static_cast<float>(fb.first);
+        const float fbH                        = static_cast<float>(fb.second);
         if (mapWWorld > 0.0f && mapHWorld > 0.0f && fbW > 0.0f && fbH > 0.0f) {
             const float fitZoom = std::min(fbW / mapWWorld, fbH / mapHWorld) * 0.95f;
             // Hard floor: hex must remain at least 6 pixels on screen so
@@ -1104,8 +1116,8 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
             // noise. The floor wins when the map is too big to ever fit
             // entirely on screen at a useful zoom level.
             constexpr float MIN_HEX_PIXELS = 6.0f;
-            const float pxFloor = MIN_HEX_PIXELS / hexSize;
-            const float minZoom = std::max(fitZoom, pxFloor);
+            const float pxFloor            = MIN_HEX_PIXELS / hexSize;
+            const float minZoom            = std::max(fitZoom, pxFloor);
             this->m_cameraController.setMinZoom(minZoom);
             // Snap current zoom up if the new floor is stricter, so the
             // first frame after game start doesn't render at a stale
@@ -1150,8 +1162,7 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
         gsPlayer->setHuman(config.players[i].isHuman);
         gsPlayer->setTreasury(0);
     }
-    LOG_INFO("GameState initialized for %u players",
-             static_cast<unsigned>(config.playerCount));
+    LOG_INFO("GameState initialized for %u players", static_cast<unsigned>(config.playerCount));
 
     // Spawn human player (always slot 0)
     this->spawnStartingEntities(config.players[0].civId);
@@ -1166,7 +1177,7 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     // -- War weariness, era score, religion, grievance per-player initialization --
     // These are owned by the GameState Player objects; no ECS entities needed.
     for (uint8_t p = 0; p < config.playerCount; ++p) {
-        const PlayerId pid = static_cast<PlayerId>(p);
+        const PlayerId pid            = static_cast<PlayerId>(p);
         aoc::game::Player* initPlayer = this->m_gameState.player(pid);
         if (initPlayer != nullptr) {
             initPlayer->warWeariness().owner = pid;
@@ -1208,20 +1219,20 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
         std::vector<aoc::hex::AxialCoord> startPositions;
         startPositions.reserve(config.playerCount);
         for (uint8_t i = 0; i < config.playerCount; ++i) {
-            const aoc::game::Player* pptr =
-                this->m_gameState.player(static_cast<PlayerId>(i));
-            if (pptr == nullptr || pptr->units().empty()) { continue; }
+            const aoc::game::Player* pptr = this->m_gameState.player(static_cast<PlayerId>(i));
+            if (pptr == nullptr || pptr->units().empty()) {
+                continue;
+            }
             startPositions.push_back(pptr->units().front()->position());
         }
         this->m_goodyHuts.hutLocations.clear();
-        aoc::sim::placeGoodyHuts(this->m_goodyHuts, this->m_hexGrid,
-                                  startPositions, this->m_gameRng);
+        aoc::sim::placeGoodyHuts(this->m_goodyHuts, this->m_hexGrid, startPositions,
+                                 this->m_gameRng);
     }
 
     // Spawn city-states
     const int32_t cityStateCount = static_cast<int32_t>(config.playerCount) * 2;
-    aoc::sim::spawnCityStates(this->m_gameState, this->m_hexGrid,
-                               cityStateCount, this->m_gameRng);
+    aoc::sim::spawnCityStates(this->m_gameState, this->m_hexGrid, cityStateCount, this->m_gameRng);
 
     // Update fog of war for all players
     for (uint8_t i = 0; i < config.playerCount; ++i) {
@@ -1236,15 +1247,15 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
                 ++visCount;
             }
         }
-        LOG_INFO("Fog of war: %d tiles visible for player 0 (of %d total)",
-                 visCount, this->m_hexGrid.tileCount());
+        LOG_INFO("Fog of war: %d tiles visible for player 0 (of %d total)", visCount,
+                 this->m_hexGrid.tileCount());
     }
 
     // -- HUD --
     {
         const std::pair<uint32_t, uint32_t> initFbSize = this->m_window.framebufferSize();
-        const float initW = static_cast<float>(initFbSize.first);
-        const float initH = static_cast<float>(initFbSize.second);
+        const float initW                              = static_cast<float>(initFbSize.first);
+        const float initH                              = static_cast<float>(initFbSize.second);
         this->m_uiManager.setScreenSize(initW, initH);
     }
     this->buildHUD();
@@ -1257,9 +1268,8 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     this->m_loadingScreen.setStatus("Done");
     this->m_loadingScreen.close(this->m_uiManager);
 
-    LOG_INFO("Game started (map type=%d, size=%d, players=%u)",
-             static_cast<int>(config.mapType), static_cast<int>(config.mapSize),
-             static_cast<unsigned>(config.playerCount));
+    LOG_INFO("Game started (map type=%d, size=%d, players=%u)", static_cast<int>(config.mapType),
+             static_cast<int>(config.mapSize), static_cast<unsigned>(config.playerCount));
 }
 
 void Application::startSpectate(int32_t playerCount, int32_t maxTurns) {
@@ -1272,24 +1282,32 @@ void Application::startSpectate(int32_t playerCount, int32_t maxTurns) {
 
     // Clamp parameters to valid ranges.
     // GameSetupConfig::players array has 20 slots.
-    if (playerCount < 2)  { playerCount = 2;  }
-    if (playerCount > 20) { playerCount = 20; }
-    if (maxTurns < 100)   { maxTurns = 100;   }
-    if (maxTurns > 5000)  { maxTurns = 5000;  }
+    if (playerCount < 2) {
+        playerCount = 2;
+    }
+    if (playerCount > 20) {
+        playerCount = 20;
+    }
+    if (maxTurns < 100) {
+        maxTurns = 100;
+    }
+    if (maxTurns > 5000) {
+        maxTurns = 5000;
+    }
 
     // Build an all-AI GameSetupConfig and delegate to startGame().
     aoc::ui::GameSetupConfig config{};
-    config.mapType    = aoc::map::MapType::Continents;
-    config.mapSize    = aoc::map::MapSize::Standard;
-    config.playerCount = static_cast<uint8_t>(playerCount);
-    config.aiDifficulty = aoc::ui::AIDifficulty::Normal;
+    config.mapType              = aoc::map::MapType::Continents;
+    config.mapSize              = aoc::map::MapSize::Standard;
+    config.playerCount          = static_cast<uint8_t>(playerCount);
+    config.aiDifficulty         = aoc::ui::AIDifficulty::Normal;
     config.sequentialTurnsInWar = false;
 
     for (int32_t i = 0; i < playerCount; ++i) {
         config.players[static_cast<std::size_t>(i)].isActive = true;
         // All slots are AI — no human player in spectator mode.
-        config.players[static_cast<std::size_t>(i)].isHuman  = false;
-        config.players[static_cast<std::size_t>(i)].civId    =
+        config.players[static_cast<std::size_t>(i)].isHuman = false;
+        config.players[static_cast<std::size_t>(i)].civId =
             static_cast<uint8_t>(i % static_cast<int32_t>(aoc::sim::CIV_COUNT));
     }
 
@@ -1306,21 +1324,20 @@ void Application::startSpectate(int32_t playerCount, int32_t maxTurns) {
     }
 
     // Add an AI controller for player 0 (the slot startGame() treated as human).
-    this->m_aiControllers.emplace(this->m_aiControllers.begin(),
-                                   aoc::PlayerId{0},
-                                   config.aiDifficulty);
+    this->m_aiControllers.emplace(this->m_aiControllers.begin(), aoc::PlayerId{0},
+                                  config.aiDifficulty);
 
     // Reveal all tiles immediately — spectator sees everything.
     this->spectatorRevealAll();
 
     // Initialize spectator state.
-    this->m_spectatorMode          = true;
-    this->m_spectatorMaxTurns      = maxTurns;
-    this->m_spectatorPaused        = false;
-    this->m_spectatorSpeed         = 1.0f;
+    this->m_spectatorMode            = true;
+    this->m_spectatorMaxTurns        = maxTurns;
+    this->m_spectatorPaused          = false;
+    this->m_spectatorSpeed           = 1.0f;
     this->m_spectatorTurnAccumulator = 0.0f;
-    this->m_spectatorFollowPlayer  = -1;
-    this->m_spectatorFogEnabled    = false;
+    this->m_spectatorFollowPlayer    = -1;
+    this->m_spectatorFogEnabled      = false;
 
     // Hide the end-turn button — spectator does not need it.
     if (this->m_endTurnButton != aoc::ui::INVALID_WIDGET) {
@@ -1330,7 +1347,7 @@ void Application::startSpectate(int32_t playerCount, int32_t maxTurns) {
     // Seek slider along the bottom of the screen.
     const std::pair<uint32_t, uint32_t> seekFb = this->m_window.framebufferSize();
     this->buildSpectatorSeekControls(static_cast<float>(seekFb.first),
-                                      static_cast<float>(seekFb.second));
+                                     static_cast<float>(seekFb.second));
     this->m_spectatorTargetTurn = -1;
     this->m_spectatorSnapshots.clear();
 
@@ -1338,30 +1355,28 @@ void Application::startSpectate(int32_t playerCount, int32_t maxTurns) {
     // The map uses offset coordinates (col, row) internally.
     // Tile (0,0) is at pixel ~(0,0). Tile (width-1, height-1) is at the bottom-right.
     // Compute pixel position of the last tile to find the map extent.
-    const aoc::hex::OffsetCoord lastOffset{
-        this->m_hexGrid.width() - 1,
-        this->m_hexGrid.height() - 1};
+    const aoc::hex::OffsetCoord lastOffset{this->m_hexGrid.width() - 1,
+                                           this->m_hexGrid.height() - 1};
     const aoc::hex::AxialCoord lastAxial = aoc::hex::offsetToAxial(lastOffset);
-    float maxPx = 0.0f;
-    float maxPy = 0.0f;
-    aoc::hex::axialToPixel(lastAxial, this->m_gameRenderer.mapRenderer().hexSize(),
-                            maxPx, maxPy);
+    float maxPx                          = 0.0f;
+    float maxPy                          = 0.0f;
+    aoc::hex::axialToPixel(lastAxial, this->m_gameRenderer.mapRenderer().hexSize(), maxPx, maxPy);
     // Center is half of the max extent
     this->m_cameraController.setPosition(maxPx * 0.5f, maxPy * 0.5f);
     this->m_cameraController.setZoom(0.5f);
 
-    LOG_INFO("Spectator: camera at (%.0f, %.0f) map extent (%.0f, %.0f)",
-             maxPx * 0.5f, maxPy * 0.5f, maxPx, maxPy);
+    LOG_INFO("Spectator: camera at (%.0f, %.0f) map extent (%.0f, %.0f)", maxPx * 0.5f,
+             maxPy * 0.5f, maxPx, maxPy);
     LOG_INFO("Spectator mode started: %d AI players, max %d turns", playerCount, maxTurns);
 }
 
 void Application::spectatorRevealAll() {
-    const int32_t tileCount = this->m_hexGrid.tileCount();
+    const int32_t tileCount   = this->m_hexGrid.tileCount();
     const int32_t playerCount = this->m_gameState.playerCount();
     for (int32_t p = 0; p < playerCount; ++p) {
         for (int32_t t = 0; t < tileCount; ++t) {
             this->m_fogOfWar.setVisibility(static_cast<aoc::PlayerId>(p), t,
-                                            aoc::map::TileVisibility::Visible);
+                                           aoc::map::TileVisibility::Visible);
         }
     }
 }
@@ -1369,18 +1384,17 @@ void Application::spectatorRevealAll() {
 void Application::spectatorAdvanceTurn() {
     // Build TurnContext for all AI players (no human player).
     aoc::sim::TurnContext turnCtx{};
-    turnCtx.grid         = &this->m_hexGrid;
-    turnCtx.fogOfWar     = &this->m_fogOfWar;
-    turnCtx.economy      = &this->m_economy;
-    turnCtx.diplomacy    = &this->m_diplomacy;
-    turnCtx.barbarians   = &this->m_barbarianController;
-    turnCtx.dealTracker  = &this->m_dealTracker;
+    turnCtx.grid            = &this->m_hexGrid;
+    turnCtx.fogOfWar        = &this->m_fogOfWar;
+    turnCtx.economy         = &this->m_economy;
+    turnCtx.diplomacy       = &this->m_diplomacy;
+    turnCtx.barbarians      = &this->m_barbarianController;
+    turnCtx.dealTracker     = &this->m_dealTracker;
     turnCtx.allianceTracker = &this->m_allianceTracker;
-    turnCtx.rng          = &this->m_gameRng;
-    turnCtx.gameState    = &this->m_gameState;
-    turnCtx.humanPlayer  = aoc::INVALID_PLAYER;
-    turnCtx.currentTurn  = static_cast<aoc::TurnNumber>(
-        this->m_turnManager.currentTurn() + 1);
+    turnCtx.rng             = &this->m_gameRng;
+    turnCtx.gameState       = &this->m_gameState;
+    turnCtx.humanPlayer     = aoc::INVALID_PLAYER;
+    turnCtx.currentTurn     = static_cast<aoc::TurnNumber>(this->m_turnManager.currentTurn() + 1);
 
     for (aoc::sim::ai::AIController& ai : this->m_aiControllers) {
         turnCtx.aiControllers.push_back(&ai);
@@ -1411,18 +1425,18 @@ void Application::spectatorAdvanceTurn() {
         if (!this->m_goodyHuts.hutLocations.empty()) {
             const int32_t playerCount = this->m_gameState.playerCount();
             for (int32_t p = 0; p < playerCount; ++p) {
-                aoc::game::Player* gsp =
-                    this->m_gameState.player(static_cast<aoc::PlayerId>(p));
-                if (gsp == nullptr) { continue; }
+                aoc::game::Player* gsp = this->m_gameState.player(static_cast<aoc::PlayerId>(p));
+                if (gsp == nullptr) {
+                    continue;
+                }
                 std::vector<aoc::hex::AxialCoord> positions;
                 positions.reserve(gsp->units().size());
                 for (const std::unique_ptr<aoc::game::Unit>& unitPtr : gsp->units()) {
                     positions.push_back(unitPtr->position());
                 }
                 for (const aoc::hex::AxialCoord& pos : positions) {
-                    aoc::sim::checkAndClaimGoodyHut(this->m_goodyHuts,
-                                                   this->m_gameState,
-                                                   *gsp, pos, this->m_gameRng);
+                    aoc::sim::checkAndClaimGoodyHut(this->m_goodyHuts, this->m_gameState, *gsp, pos,
+                                                    this->m_gameRng);
                 }
             }
         }
@@ -1433,8 +1447,8 @@ void Application::spectatorAdvanceTurn() {
         } else {
             const int32_t playerCount = this->m_gameState.playerCount();
             for (int32_t p = 0; p < playerCount; ++p) {
-                this->m_fogOfWar.updateVisibility(
-                    this->m_gameState, this->m_hexGrid, static_cast<aoc::PlayerId>(p));
+                this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid,
+                                                  static_cast<aoc::PlayerId>(p));
             }
         }
 
@@ -1443,13 +1457,11 @@ void Application::spectatorAdvanceTurn() {
         if (vr.type != aoc::sim::VictoryType::None) {
             this->m_spectatorPaused = true;
             LOG_INFO("Spectator: Player %u wins by type %d at turn %u",
-                     static_cast<unsigned>(vr.winner),
-                     static_cast<int>(vr.type),
+                     static_cast<unsigned>(vr.winner), static_cast<int>(vr.type),
                      static_cast<unsigned>(this->m_turnManager.currentTurn()));
         }
 
-        this->m_replayRecorder.recordFrame(this->m_gameState,
-                                            this->m_turnManager.currentTurn());
+        this->m_replayRecorder.recordFrame(this->m_gameState, this->m_turnManager.currentTurn());
         this->m_turnManager.beginNewTurn();
     }
 }
@@ -1465,42 +1477,33 @@ void Application::spectatorUpdateFollowCamera() {
     }
     // Pan to the first city (the capital).
     const aoc::hex::AxialCoord capitalLoc = followed->cities().front()->location();
-    float cx = 0.0f;
-    float cy = 0.0f;
+    float cx                              = 0.0f;
+    float cy                              = 0.0f;
     hex::axialToPixel(capitalLoc, this->m_gameRenderer.mapRenderer().hexSize(), cx, cy);
     this->m_cameraController.setPosition(cx, cy);
 }
 
 void Application::spectatorDrawHUD(void* cmdBufferPtr, uint32_t frameWidth, uint32_t frameHeight) {
     VkCommandBuffer cmdBuffer = static_cast<VkCommandBuffer>(cmdBufferPtr);
-    const float screenW = static_cast<float>(frameWidth);
-    const float screenH = static_cast<float>(frameHeight);
+    const float screenW       = static_cast<float>(frameWidth);
+    const float screenH       = static_cast<float>(frameHeight);
 
     this->m_renderer2d->begin();
 
     // Draw spectator status bar and player scoreboard.
     this->m_spectatorHUD.drawStatusBar(
-        *this->m_renderer2d,
-        static_cast<int32_t>(this->m_turnManager.currentTurn()),
-        this->m_spectatorMaxTurns,
-        this->m_spectatorSpeed,
-        this->m_spectatorPaused,
-        this->m_spectatorFollowPlayer,
-        screenW, screenH);
+        *this->m_renderer2d, static_cast<int32_t>(this->m_turnManager.currentTurn()),
+        this->m_spectatorMaxTurns, this->m_spectatorSpeed, this->m_spectatorPaused,
+        this->m_spectatorFollowPlayer, screenW, screenH);
 
-    this->m_spectatorHUD.drawScoreboard(
-        *this->m_renderer2d,
-        this->m_gameState,
-        screenW, screenH);
+    this->m_spectatorHUD.drawScoreboard(*this->m_renderer2d, this->m_gameState, screenW, screenH);
 
     this->m_renderer2d->end(cmdBuffer);
 }
 
-void Application::numInputFocus(int32_t* target,
-                                  int32_t minVal,
-                                  aoc::ui::WidgetId labelId,
-                                  std::function<void()> onChange,
-                                  std::function<std::string()> display) {
+void Application::numInputFocus(int32_t* target, int32_t minVal, aoc::ui::WidgetId labelId,
+                                std::function<void()> onChange,
+                                std::function<std::string()> display) {
     this->m_numInputTarget   = target;
     this->m_numInputMin      = minVal;
     this->m_numInputLabelId  = labelId;
@@ -1519,30 +1522,31 @@ void Application::numInputDefocus() {
         if (*this->m_numInputTarget < this->m_numInputMin) {
             *this->m_numInputTarget = this->m_numInputMin;
         }
-        if (this->m_numInputLabelId != aoc::ui::INVALID_WIDGET
-            && this->m_numInputDisplay) {
-            this->m_uiManager.setLabelText(this->m_numInputLabelId,
-                this->m_numInputDisplay());
+        if (this->m_numInputLabelId != aoc::ui::INVALID_WIDGET && this->m_numInputDisplay) {
+            this->m_uiManager.setLabelText(this->m_numInputLabelId, this->m_numInputDisplay());
         }
-        if (this->m_numInputOnChange) { this->m_numInputOnChange(); }
+        if (this->m_numInputOnChange) {
+            this->m_numInputOnChange();
+        }
     }
-    this->m_numInputTarget   = nullptr;
-    this->m_numInputLabelId  = aoc::ui::INVALID_WIDGET;
+    this->m_numInputTarget  = nullptr;
+    this->m_numInputLabelId = aoc::ui::INVALID_WIDGET;
     this->m_numInputBuffer.clear();
     this->m_numInputOnChange = nullptr;
     this->m_numInputDisplay  = nullptr;
 }
 
 void Application::numInputTick() {
-    if (this->m_numInputTarget == nullptr) { return; }
+    if (this->m_numInputTarget == nullptr) {
+        return;
+    }
 
     bool changed = false;
     // Digits 0-9.
     for (int32_t k = GLFW_KEY_0; k <= GLFW_KEY_9; ++k) {
         if (this->m_inputManager.isKeyPressed(k)) {
             if (this->m_numInputBuffer.size() < 9) {
-                this->m_numInputBuffer.push_back(
-                    static_cast<char>('0' + (k - GLFW_KEY_0)));
+                this->m_numInputBuffer.push_back(static_cast<char>('0' + (k - GLFW_KEY_0)));
                 changed = true;
             }
         }
@@ -1551,8 +1555,7 @@ void Application::numInputTick() {
     for (int32_t k = GLFW_KEY_KP_0; k <= GLFW_KEY_KP_9; ++k) {
         if (this->m_inputManager.isKeyPressed(k)) {
             if (this->m_numInputBuffer.size() < 9) {
-                this->m_numInputBuffer.push_back(
-                    static_cast<char>('0' + (k - GLFW_KEY_KP_0)));
+                this->m_numInputBuffer.push_back(static_cast<char>('0' + (k - GLFW_KEY_KP_0)));
                 changed = true;
             }
         }
@@ -1565,14 +1568,16 @@ void Application::numInputTick() {
         }
     }
     // Enter / Escape commit and defocus.
-    if (this->m_inputManager.isKeyPressed(GLFW_KEY_ENTER)
-        || this->m_inputManager.isKeyPressed(GLFW_KEY_KP_ENTER)
-        || this->m_inputManager.isKeyPressed(GLFW_KEY_ESCAPE)) {
+    if (this->m_inputManager.isKeyPressed(GLFW_KEY_ENTER) ||
+        this->m_inputManager.isKeyPressed(GLFW_KEY_KP_ENTER) ||
+        this->m_inputManager.isKeyPressed(GLFW_KEY_ESCAPE)) {
         this->numInputDefocus();
         return;
     }
 
-    if (!changed) { return; }
+    if (!changed) {
+        return;
+    }
 
     // Parse buffer → int. Empty buffer = treat as min.
     int32_t parsed = this->m_numInputMin;
@@ -1583,20 +1588,22 @@ void Application::numInputTick() {
             parsed = this->m_numInputMin;
         }
     }
-    if (parsed < this->m_numInputMin) { parsed = this->m_numInputMin; }
+    if (parsed < this->m_numInputMin) {
+        parsed = this->m_numInputMin;
+    }
     *this->m_numInputTarget = parsed;
     if (this->m_numInputLabelId != aoc::ui::INVALID_WIDGET) {
-        this->m_uiManager.setLabelText(this->m_numInputLabelId,
-            ">" + this->m_numInputBuffer + "<");
+        this->m_uiManager.setLabelText(this->m_numInputLabelId, ">" + this->m_numInputBuffer + "<");
     }
-    if (this->m_numInputOnChange) { this->m_numInputOnChange(); }
+    if (this->m_numInputOnChange) {
+        this->m_numInputOnChange();
+    }
 }
 
 std::string Application::formatCreatorAgeLabel(int32_t curMy, int32_t totalMy) {
     char buf[64];
     if (totalMy >= 1000 || curMy >= 1000) {
-        std::snprintf(buf, sizeof(buf), "Age %.2f / %.2f Gy",
-                      static_cast<double>(curMy)   / 1000.0,
+        std::snprintf(buf, sizeof(buf), "Age %.2f / %.2f Gy", static_cast<double>(curMy) / 1000.0,
                       static_cast<double>(totalMy) / 1000.0);
     } else {
         std::snprintf(buf, sizeof(buf), "Age %d / %d My", curMy, totalMy);
@@ -1638,35 +1645,36 @@ void Application::regenerateContinentPreview(int32_t timeMy) {
     // (one substep is the smallest meaningful preview) and to the
     // configured total simulated time on the ceiling.
     constexpr int32_t MY_PER_EPOCH = aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
-    if (timeMy < MY_PER_EPOCH) { timeMy = MY_PER_EPOCH; }
+    if (timeMy < MY_PER_EPOCH) {
+        timeMy = MY_PER_EPOCH;
+    }
     if (timeMy > this->m_creatorTotalMy) {
         timeMy = this->m_creatorTotalMy;
     }
     // Snap to nearest physics-epoch boundary so the cache key is
     // stable as the user scrubs.
-    const int32_t epochLimit = std::max(1, timeMy / MY_PER_EPOCH);
-    timeMy = epochLimit * MY_PER_EPOCH;
+    const int32_t epochLimit     = std::max(1, timeMy / MY_PER_EPOCH);
+    timeMy                       = epochLimit * MY_PER_EPOCH;
     this->m_creatorTimeCurrentMy = timeMy;
 
     aoc::map::MapGenerator::Config cfg{};
-    cfg.width  = std::max(20, this->m_creatorWidth);
-    cfg.height = std::max(20, this->m_creatorHeight);
-    cfg.seed = this->m_creatorSeed;
-    cfg.mapType = aoc::map::MapType::Continents;
-    cfg.mapSize = aoc::map::MapSize::Standard;
-    cfg.topology = aoc::map::MapTopology::Cylindrical;
+    cfg.width           = std::max(20, this->m_creatorWidth);
+    cfg.height          = std::max(20, this->m_creatorHeight);
+    cfg.seed            = this->m_creatorSeed;
+    cfg.mapType         = aoc::map::MapType::Continents;
+    cfg.mapSize         = aoc::map::MapSize::Standard;
+    cfg.topology        = aoc::map::MapTopology::Cylindrical;
     cfg.tectonicTotalMy = this->m_creatorTotalMy;
-    cfg.landPlateCount = this->m_creatorLandPlates;
-    cfg.projection = static_cast<aoc::map::gen::MapProjection>(
-        std::clamp(this->m_creatorProjection, 0, 3));
-    cfg.runEpochsLimit = epochLimit;
-    cfg.driftFraction  = static_cast<float>(this->m_creatorDriftPct) * 0.1f;
+    cfg.landPlateCount  = this->m_creatorLandPlates;
+    cfg.projection      = creatorProjectionAt(this->m_creatorProjection);
+    cfg.runEpochsLimit  = epochLimit;
+    cfg.driftFraction   = static_cast<float>(this->m_creatorDriftPct) * 0.1f;
     // Advanced config from top panel.
-    cfg.climatePhase       = this->m_creatorClimatePhase;
-    cfg.seaLevelDelta      = static_cast<float>(this->m_creatorSeaLevelTenths) * 0.10f;
-    cfg.axialTilt          = static_cast<float>(this->m_creatorAxialTiltTenths) * 0.10f;
-    cfg.ensoState          = this->m_creatorEnsoState;
-    cfg.milankovitchPhase  = static_cast<float>(this->m_creatorMilanTenths) * 0.10f;
+    cfg.climatePhase      = this->m_creatorClimatePhase;
+    cfg.seaLevelDelta     = static_cast<float>(this->m_creatorSeaLevelTenths) * 0.10f;
+    cfg.axialTilt         = static_cast<float>(this->m_creatorAxialTiltTenths) * 0.10f;
+    cfg.ensoState         = this->m_creatorEnsoState;
+    cfg.milankovitchPhase = static_cast<float>(this->m_creatorMilanTenths) * 0.10f;
 
     // Cache hit? Skip the slow MapGenerator pass and copy a snapshot.
     // Bounded LRU: most-recently-used epoch lives at the back of
@@ -1730,13 +1738,11 @@ void Application::applyNewHexGridFixups(int32_t timeMy) {
     // new map.
     {
         constexpr float SQRT3 = 1.7320508075688772f;
-        const float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
-        const float worldH = static_cast<float>(this->m_hexGrid.height())
-                           * 1.5f * hexSize;
+        const float hexSize   = this->m_gameRenderer.mapRenderer().hexSize();
+        const float worldH    = static_cast<float>(this->m_hexGrid.height()) * 1.5f * hexSize;
         this->m_cameraController.setWorldHeight(worldH);
         if (this->m_hexGrid.topology() == aoc::map::MapTopology::Cylindrical) {
-            const float worldWidth = static_cast<float>(this->m_hexGrid.width())
-                                   * SQRT3 * hexSize;
+            const float worldWidth = static_cast<float>(this->m_hexGrid.width()) * SQRT3 * hexSize;
             this->m_cameraController.setWorldWidth(worldWidth);
         } else {
             this->m_cameraController.setWorldWidth(0.0f);
@@ -1744,42 +1750,38 @@ void Application::applyNewHexGridFixups(int32_t timeMy) {
     }
     {
         constexpr float SQRT3 = 1.7320508075688772f;
-        const float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
-        const float mapWWorld = static_cast<float>(this->m_hexGrid.width())
-                              * SQRT3 * hexSize;
-        const float mapHWorld = static_cast<float>(this->m_hexGrid.height())
-                              * 1.5f * hexSize;
+        const float hexSize   = this->m_gameRenderer.mapRenderer().hexSize();
+        const float mapWWorld = static_cast<float>(this->m_hexGrid.width()) * SQRT3 * hexSize;
+        const float mapHWorld = static_cast<float>(this->m_hexGrid.height()) * 1.5f * hexSize;
         const std::pair<uint32_t, uint32_t> fb = this->m_window.framebufferSize();
-        const float fbW = static_cast<float>(fb.first);
-        const float fbH = static_cast<float>(fb.second);
+        const float fbW                        = static_cast<float>(fb.first);
+        const float fbH                        = static_cast<float>(fb.second);
         if (mapWWorld > 0.0f && mapHWorld > 0.0f && fbW > 0.0f && fbH > 0.0f) {
-            const float fitZoom = std::min(fbW / mapWWorld, fbH / mapHWorld) * 0.95f;
+            const float fitZoom            = std::min(fbW / mapWWorld, fbH / mapHWorld) * 0.95f;
             constexpr float MIN_HEX_PIXELS = 6.0f;
-            const float pxFloor = MIN_HEX_PIXELS / hexSize;
-            const float minZoom = std::max(fitZoom, pxFloor);
+            const float pxFloor            = MIN_HEX_PIXELS / hexSize;
+            const float minZoom            = std::max(fitZoom, pxFloor);
             this->m_cameraController.setMinZoom(minZoom);
             // Only re-fit + re-centre if the camera is currently
             // OUTSIDE the new map bounds. Scrubbing through epochs
             // shouldn't snap the view back to the centre — the user
             // is probably looking at a specific region and wants to
             // watch it evolve in place.
-            const float cx = this->m_cameraController.cameraX();
-            const float cy = this->m_cameraController.cameraY();
+            const float cx          = this->m_cameraController.cameraX();
+            const float cy          = this->m_cameraController.cameraY();
             const bool outOfBoundsX = cx < 0.0f || cx > mapWWorld;
             const bool outOfBoundsY = cy < 0.0f || cy > mapHWorld;
             if (this->m_cameraController.zoom() < minZoom) {
                 this->m_cameraController.setZoom(minZoom);
             }
             if (outOfBoundsX || outOfBoundsY) {
-                this->m_cameraController.setPosition(mapWWorld * 0.5f,
-                                                      mapHWorld * 0.5f);
+                this->m_cameraController.setPosition(mapWWorld * 0.5f, mapHWorld * 0.5f);
             }
         }
     }
 
     this->spectatorRevealAll();
-    LOG_INFO("Creator: regenerated at %d/%d My (%dx%d)",
-             timeMy, this->m_creatorTotalMy.load(),
+    LOG_INFO("Creator: regenerated at %d/%d My (%dx%d)", timeMy, this->m_creatorTotalMy.load(),
              this->m_hexGrid.width(), this->m_hexGrid.height());
 }
 
@@ -1795,10 +1797,14 @@ void Application::applyNewHexGridFixups(int32_t timeMy) {
 
 void Application::enqueueRegen(int32_t timeMy) {
     constexpr int32_t MY_PER_EPOCH = aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
-    if (timeMy < MY_PER_EPOCH) { timeMy = MY_PER_EPOCH; }
-    if (timeMy > this->m_creatorTotalMy) { timeMy = this->m_creatorTotalMy; }
-    const int32_t epochLimit = std::max(1, timeMy / MY_PER_EPOCH);
-    timeMy = epochLimit * MY_PER_EPOCH;
+    if (timeMy < MY_PER_EPOCH) {
+        timeMy = MY_PER_EPOCH;
+    }
+    if (timeMy > this->m_creatorTotalMy) {
+        timeMy = this->m_creatorTotalMy;
+    }
+    const int32_t epochLimit     = std::max(1, timeMy / MY_PER_EPOCH);
+    timeMy                       = epochLimit * MY_PER_EPOCH;
     this->m_creatorTimeCurrentMy = timeMy;
 
     // Cache hit -> deliver synchronously. The copy is ~1 ms and there is no
@@ -1831,8 +1837,7 @@ void Application::enqueueRegen(int32_t timeMy) {
     cfg.topology          = aoc::map::MapTopology::Cylindrical;
     cfg.tectonicTotalMy   = this->m_creatorTotalMy;
     cfg.landPlateCount    = this->m_creatorLandPlates;
-    cfg.projection        = static_cast<aoc::map::gen::MapProjection>(
-        std::clamp(this->m_creatorProjection, 0, 3));
+    cfg.projection        = creatorProjectionAt(this->m_creatorProjection);
     cfg.runEpochsLimit    = epochLimit;
     cfg.driftFraction     = static_cast<float>(this->m_creatorDriftPct) * 0.1f;
     cfg.climatePhase      = this->m_creatorClimatePhase;
@@ -1852,21 +1857,25 @@ void Application::enqueueRegen(int32_t timeMy) {
 void Application::regenWorkerLoop(std::stop_token stopToken) {
     while (!stopToken.stop_requested()) {
         aoc::map::MapGenerator::Config localCfg{};
-        int32_t targetMy = PENDING_TIME_NONE;
+        int32_t targetMy     = PENDING_TIME_NONE;
         uint64_t genSnapshot = 0;
         {
             std::unique_lock<std::mutex> lk(this->m_regenWakeMutex);
             this->m_regenCv.wait(lk, [this, &stopToken] {
-                return stopToken.stop_requested()
-                    || this->m_regenRequestMy.load(std::memory_order_acquire) != PENDING_TIME_NONE;
+                return stopToken.stop_requested() ||
+                       this->m_regenRequestMy.load(std::memory_order_acquire) != PENDING_TIME_NONE;
             });
-            if (stopToken.stop_requested()) { return; }
-            targetMy = this->m_regenRequestMy.exchange(
-                PENDING_TIME_NONE, std::memory_order_acquire);
-            localCfg = this->m_regenRequestCfg;
+            if (stopToken.stop_requested()) {
+                return;
+            }
+            targetMy =
+                this->m_regenRequestMy.exchange(PENDING_TIME_NONE, std::memory_order_acquire);
+            localCfg    = this->m_regenRequestCfg;
             genSnapshot = this->m_regenRequestGeneration.load(std::memory_order_acquire);
         }
-        if (targetMy == PENDING_TIME_NONE) { continue; }
+        if (targetMy == PENDING_TIME_NONE) {
+            continue;
+        }
         // Slow path runs outside the lock so additional enqueueRegen calls
         // are non-blocking. The main thread is the only other writer of
         // `m_pendingGrid` (it swaps after observing m_regenResultReady = true,
@@ -1877,8 +1886,7 @@ void Application::regenWorkerLoop(std::stop_token stopToken) {
         // the slow gen, discard our result -- the worker will pick the latest
         // request up on the next loop iteration. Stops "flicker" where a
         // stale result is briefly shown before the freshest one lands.
-        if (this->m_regenRequestGeneration.load(std::memory_order_acquire)
-                != genSnapshot) {
+        if (this->m_regenRequestGeneration.load(std::memory_order_acquire) != genSnapshot) {
             continue;
         }
         this->m_regenResultEpochMy.store(targetMy, std::memory_order_release);
@@ -1887,16 +1895,17 @@ void Application::regenWorkerLoop(std::stop_token stopToken) {
 }
 
 void Application::consumeRegenResult() {
-    if (!this->m_regenResultReady.load(std::memory_order_acquire)) { return; }
+    if (!this->m_regenResultReady.load(std::memory_order_acquire)) {
+        return;
+    }
     // Worker is back at the CV wait until we clear `m_regenResultReady`
     // (it never writes the flag again until released). Exclusive access
     // to `m_pendingGrid` is therefore safe on this thread.
     using std::swap;
     swap(this->m_hexGrid, this->m_pendingGrid);
-    const int32_t epochMy = this->m_regenResultEpochMy.load(
-        std::memory_order_acquire);
+    const int32_t epochMy          = this->m_regenResultEpochMy.load(std::memory_order_acquire);
     constexpr int32_t MY_PER_EPOCH = aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
-    const int32_t epochLimit = std::max(1, epochMy / MY_PER_EPOCH);
+    const int32_t epochLimit       = std::max(1, epochMy / MY_PER_EPOCH);
     {
         std::lock_guard<std::mutex> guard(this->m_creatorEpochCacheMutex);
         // Insert / refresh the cache entry. emplace is a no-op on duplicate
@@ -1917,12 +1926,12 @@ void Application::consumeRegenResult() {
 void Application::buildContinentCreatorControls(float screenW, float screenH) {
     if (this->m_creatorPanelId != aoc::ui::INVALID_WIDGET) {
         this->m_uiManager.removeWidget(this->m_creatorPanelId);
-        this->m_creatorPanelId = aoc::ui::INVALID_WIDGET;
+        this->m_creatorPanelId      = aoc::ui::INVALID_WIDGET;
         this->m_creatorEpochLabelId = aoc::ui::INVALID_WIDGET;
     }
     if (this->m_creatorAdvPanelId != aoc::ui::INVALID_WIDGET) {
         this->m_uiManager.removeWidget(this->m_creatorAdvPanelId);
-        this->m_creatorAdvPanelId = aoc::ui::INVALID_WIDGET;
+        this->m_creatorAdvPanelId        = aoc::ui::INVALID_WIDGET;
         this->m_creatorClimatePhaseLabel = aoc::ui::INVALID_WIDGET;
         this->m_creatorSeaLevelLabel     = aoc::ui::INVALID_WIDGET;
         this->m_creatorAxialTiltLabel    = aoc::ui::INVALID_WIDGET;
@@ -1930,17 +1939,16 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         this->m_creatorMilanLabel        = aoc::ui::INVALID_WIDGET;
         this->m_creatorProjectionLabel   = aoc::ui::INVALID_WIDGET;
     }
-    constexpr float PANEL_H = 200.0f; // multi-row HorizontalWrap container
+    constexpr float PANEL_H   = 200.0f; // multi-row HorizontalWrap container
     constexpr float PANEL_PAD = 8.0f;
     aoc::ui::PanelData bg;
-    bg.backgroundColor = aoc::ui::tokens::SURFACE_PARCHMENT;
-    bg.gradientBottom  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
-    bg.borderColor     = aoc::ui::tokens::BRONZE_DARK;
-    bg.borderWidth     = 1.0f;
-    bg.cornerRadius    = aoc::ui::tokens::CORNER_PANEL;
+    bg.backgroundColor     = aoc::ui::tokens::SURFACE_PARCHMENT;
+    bg.gradientBottom      = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
+    bg.borderColor         = aoc::ui::tokens::BRONZE_DARK;
+    bg.borderWidth         = 1.0f;
+    bg.cornerRadius        = aoc::ui::tokens::CORNER_PANEL;
     this->m_creatorPanelId = this->m_uiManager.createPanel(
-        {PANEL_PAD, screenH - PANEL_H - PANEL_PAD,
-         screenW - PANEL_PAD * 2.0f, PANEL_H},
+        {PANEL_PAD, screenH - PANEL_H - PANEL_PAD, screenW - PANEL_PAD * 2.0f, PANEL_H},
         std::move(bg));
     {
         aoc::ui::Widget* w = this->m_uiManager.getWidget(this->m_creatorPanelId);
@@ -1950,8 +1958,8 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             // creator we need wrap; single row at button width 64
             // would need ~4500 px wide screen.
             w->layoutDirection = aoc::ui::LayoutDirection::HorizontalWrap;
-            w->padding = {6.0f, 8.0f, 6.0f, 8.0f};
-            w->childSpacing = 6.0f;
+            w->padding         = {6.0f, 8.0f, 6.0f, 8.0f};
+            w->childSpacing    = 6.0f;
         }
     }
     // Advanced cyclers — climate + sea level + axial tilt + super-
@@ -1962,55 +1970,49 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         // advanced panel — keeps minimap clear).
         this->m_creatorAdvPanelId = this->m_creatorPanelId;
         // Helper: add cycler button (label + tap-to-cycle through ints).
-        auto addCycler = [&](const std::string& prefix,
-                              int32_t* value,
-                              int32_t lo, int32_t hi, int32_t step,
-                              aoc::ui::WidgetId* labelOut,
-                              float widthPx = 96.0f) {
+        auto addCycler = [&](const std::string& prefix, int32_t* value, int32_t lo, int32_t hi,
+                             int32_t step, aoc::ui::WidgetId* labelOut, float widthPx = 96.0f) {
             aoc::ui::ButtonData btn;
             btn.label        = prefix + std::to_string(*value);
             btn.fontSize     = 14.0f;
             btn.normalColor  = aoc::ui::tokens::BRONZE_BASE;
             btn.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
             btn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
-            btn.onClick = [this, value, prefix, lo, hi, step, labelOut]() {
+            btn.onClick      = [this, value, prefix, lo, hi, step, labelOut]() {
                 int32_t nv = *value + step;
-                if (nv > hi) { nv = lo; }
+                if (nv > hi) {
+                    nv = lo;
+                }
                 *value = nv;
                 if (*labelOut != aoc::ui::INVALID_WIDGET) {
-                    this->m_uiManager.setLabelText(*labelOut,
-                        prefix + std::to_string(nv));
+                    this->m_uiManager.setLabelText(*labelOut, prefix + std::to_string(nv));
                 }
                 this->clearCreatorEpochCache();
-                this->enqueueRegen(
-                    this->m_creatorTimeCurrentMy);
+                this->enqueueRegen(this->m_creatorTimeCurrentMy);
             };
             const aoc::ui::WidgetId id = this->m_uiManager.createButton(
-                this->m_creatorAdvPanelId,
-                {0.0f, 0.0f, widthPx, 36.0f}, std::move(btn));
+                this->m_creatorAdvPanelId, {0.0f, 0.0f, widthPx, 36.0f}, std::move(btn));
             *labelOut = id;
         };
-        addCycler("Phase:",  &this->m_creatorClimatePhase,   0,   2,   1,
-            &this->m_creatorClimatePhaseLabel, 96.0f);
-        addCycler("SL:",     &this->m_creatorSeaLevelTenths, -10, 10,  1,
-            &this->m_creatorSeaLevelLabel, 88.0f);
-        addCycler("Tilt:",   &this->m_creatorAxialTiltTenths, 0, 400, 25,
-            &this->m_creatorAxialTiltLabel, 100.0f);
-        addCycler("ENSO:",   &this->m_creatorEnsoState,      0,   2,   1,
-            &this->m_creatorEnsoLabel, 88.0f);
-        addCycler("Milan:",  &this->m_creatorMilanTenths,    0,  10,   1,
-            &this->m_creatorMilanLabel, 88.0f);
+        addCycler("Phase:", &this->m_creatorClimatePhase, 0, 2, 1,
+                  &this->m_creatorClimatePhaseLabel, 96.0f);
+        addCycler("SL:", &this->m_creatorSeaLevelTenths, -10, 10, 1, &this->m_creatorSeaLevelLabel,
+                  88.0f);
+        addCycler("Tilt:", &this->m_creatorAxialTiltTenths, 0, 400, 25,
+                  &this->m_creatorAxialTiltLabel, 100.0f);
+        addCycler("ENSO:", &this->m_creatorEnsoState, 0, 2, 1, &this->m_creatorEnsoLabel, 88.0f);
+        addCycler("Milan:", &this->m_creatorMilanTenths, 0, 10, 1, &this->m_creatorMilanLabel,
+                  88.0f);
 
-        // Map projection cycler — labels with the projection NAME so
-        // it's clear which one is active. Cycles 0=Mollweide,
-        // 1=Equirectangular, 2=Mercator, 3=Robinson.
+        // Map projection cycler — labels with the projection NAME so it's
+        // clear which one is active. Order and names both come from
+        // CREATOR_PROJECTIONS so this stays in step with the enum
+        // automatically; index 0 is the default (equal-area).
         {
-            static constexpr const char* PROJ_NAMES[4] = {
-                "Mollweide", "Equirect", "Mercator", "Robinson"
-            };
             auto labelFor = [](int32_t v) {
-                const int32_t i = std::clamp(v, 0, 3);
-                return std::string("Proj: ") + PROJ_NAMES[i];
+                const int32_t i = std::clamp(v, 0, CREATOR_PROJECTION_COUNT - 1);
+                return std::string("Proj: ") +
+                       CREATOR_PROJECTIONS[static_cast<std::size_t>(i)].name;
             };
             aoc::ui::ButtonData btn;
             btn.label        = labelFor(this->m_creatorProjection);
@@ -2018,21 +2020,18 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             btn.normalColor  = aoc::ui::tokens::BRONZE_BASE;
             btn.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
             btn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
-            btn.onClick = [this, labelFor]() {
+            btn.onClick      = [this, labelFor]() {
                 this->m_creatorProjection =
-                    (this->m_creatorProjection + 1) % 4;
+                    (this->m_creatorProjection + 1) % CREATOR_PROJECTION_COUNT;
                 if (this->m_creatorProjectionLabel != aoc::ui::INVALID_WIDGET) {
-                    this->m_uiManager.setLabelText(
-                        this->m_creatorProjectionLabel,
-                        labelFor(this->m_creatorProjection));
+                    this->m_uiManager.setLabelText(this->m_creatorProjectionLabel,
+                                                   labelFor(this->m_creatorProjection));
                 }
                 this->clearCreatorEpochCache();
-                this->enqueueRegen(
-                    this->m_creatorTimeCurrentMy);
+                this->enqueueRegen(this->m_creatorTimeCurrentMy);
             };
-            this->m_creatorProjectionLabel =
-                this->m_uiManager.createButton(this->m_creatorAdvPanelId,
-                    {0.0f, 0.0f, 140.0f, 36.0f}, std::move(btn));
+            this->m_creatorProjectionLabel = this->m_uiManager.createButton(
+                this->m_creatorAdvPanelId, {0.0f, 0.0f, 140.0f, 36.0f}, std::move(btn));
         }
 
         // Globe toggle. Flips between flat hex map and 3D textured
@@ -2048,12 +2047,11 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             gb.normalColor  = aoc::ui::tokens::BRONZE_BASE;
             gb.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
             gb.pressedColor = aoc::ui::tokens::STATE_PRESSED;
-            gb.onClick = [this, globeLabel]() {
+            gb.onClick      = [this, globeLabel]() {
                 this->m_creatorGlobe = !this->m_creatorGlobe;
                 if (this->m_creatorGlobeBtnId != aoc::ui::INVALID_WIDGET) {
-                    this->m_uiManager.setLabelText(
-                        this->m_creatorGlobeBtnId,
-                        globeLabel(this->m_creatorGlobe));
+                    this->m_uiManager.setLabelText(this->m_creatorGlobeBtnId,
+                                                   globeLabel(this->m_creatorGlobe));
                 }
                 // Force a fresh sub-mesh build the next render() so
                 // the sphere reflects the current grid state. Without
@@ -2064,8 +2062,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                 }
             };
             this->m_creatorGlobeBtnId = this->m_uiManager.createButton(
-                this->m_creatorAdvPanelId,
-                {0.0f, 0.0f, 120.0f, 36.0f}, std::move(gb));
+                this->m_creatorAdvPanelId, {0.0f, 0.0f, 120.0f, 36.0f}, std::move(gb));
         }
     }
 
@@ -2074,33 +2071,31 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
     // Step − button (one physics epoch back, MY_PER_EPOCH My).
     {
         aoc::ui::ButtonData minus;
-        minus.label        = "<<";
-        minus.fontSize     = 14.0f;
-        minus.normalColor  = aoc::ui::tokens::BRONZE_BASE;
-        minus.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
-        minus.pressedColor = aoc::ui::tokens::STATE_PRESSED;
-        minus.labelColor   = aoc::ui::tokens::TEXT_GILT;
-        minus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        minus.label          = "<<";
+        minus.fontSize       = 14.0f;
+        minus.normalColor    = aoc::ui::tokens::BRONZE_BASE;
+        minus.hoverColor     = aoc::ui::tokens::BRONZE_LIGHT;
+        minus.pressedColor   = aoc::ui::tokens::STATE_PRESSED;
+        minus.labelColor     = aoc::ui::tokens::TEXT_GILT;
+        minus.cornerRadius   = aoc::ui::tokens::CORNER_BUTTON;
         minus.repeatDelaySec = 0.35f;
         minus.repeatRateHz   = 8.0f;
-        minus.onClick = [this]() {
-            this->enqueueRegen(
-                this->m_creatorTimeCurrentMy - MY_PER_EPOCH);
+        minus.onClick        = [this]() {
+            this->enqueueRegen(this->m_creatorTimeCurrentMy - MY_PER_EPOCH);
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
-                this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
-                    formatCreatorAgeLabel(this->m_creatorTimeCurrentMy,
-                              this->m_creatorTotalMy));
+                this->m_uiManager.setLabelText(
+                    this->m_creatorEpochLabelId,
+                    formatCreatorAgeLabel(this->m_creatorTimeCurrentMy, this->m_creatorTotalMy));
             }
         };
-        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 56.0f, 36.0f}, std::move(minus));
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 56.0f, 36.0f},
+                                             std::move(minus));
     }
 
     // Age button — click to type total sim length directly.
     {
         aoc::ui::ButtonData epoch;
-        epoch.label        = formatCreatorAgeLabel(this->m_creatorTimeCurrentMy,
-                                        this->m_creatorTotalMy);
+        epoch.label = formatCreatorAgeLabel(this->m_creatorTimeCurrentMy, this->m_creatorTotalMy);
         epoch.fontSize     = 14.0f;
         epoch.normalColor  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
         epoch.hoverColor   = aoc::ui::tokens::SURFACE_PARCHMENT;
@@ -2115,50 +2110,47 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             // an atomic cannot hand out; stage into the plain mirror and
             // commit to the atomic on every change (main thread only).
             this->m_creatorTotalMyInput = this->m_creatorTotalMy.load();
-            this->numInputFocus(&this->m_creatorTotalMyInput, MY_PER_EPOCH,
-                this->m_creatorEpochLabelId,
+            this->numInputFocus(
+                &this->m_creatorTotalMyInput, MY_PER_EPOCH, this->m_creatorEpochLabelId,
                 [this]() {
                     this->m_creatorTotalMy = this->m_creatorTotalMyInput;
                     if (this->m_creatorTimeCurrentMy > this->m_creatorTotalMy) {
-                        this->m_creatorTimeCurrentMy =
-                            this->m_creatorTotalMy.load();
+                        this->m_creatorTimeCurrentMy = this->m_creatorTotalMy.load();
                     }
                     // Defer regen: typing each digit shouldn't hang.
                     this->m_creatorDirty = true;
                 },
                 [this]() {
                     return formatCreatorAgeLabel(this->m_creatorTimeCurrentMy,
-                                      this->m_creatorTotalMy);
+                                                 this->m_creatorTotalMy);
                 });
         };
         this->m_creatorEpochLabelId = this->m_uiManager.createButton(
-            this->m_creatorPanelId, {0.0f, 0.0f, 180.0f, 36.0f},
-            std::move(epoch));
+            this->m_creatorPanelId, {0.0f, 0.0f, 180.0f, 36.0f}, std::move(epoch));
     }
 
     // Step + button (one physics epoch forward, MY_PER_EPOCH My).
     {
         aoc::ui::ButtonData plus;
-        plus.label        = ">>";
-        plus.fontSize     = 14.0f;
-        plus.normalColor  = aoc::ui::tokens::BRONZE_BASE;
-        plus.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
-        plus.pressedColor = aoc::ui::tokens::STATE_PRESSED;
-        plus.labelColor   = aoc::ui::tokens::TEXT_GILT;
-        plus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        plus.label          = ">>";
+        plus.fontSize       = 14.0f;
+        plus.normalColor    = aoc::ui::tokens::BRONZE_BASE;
+        plus.hoverColor     = aoc::ui::tokens::BRONZE_LIGHT;
+        plus.pressedColor   = aoc::ui::tokens::STATE_PRESSED;
+        plus.labelColor     = aoc::ui::tokens::TEXT_GILT;
+        plus.cornerRadius   = aoc::ui::tokens::CORNER_BUTTON;
         plus.repeatDelaySec = 0.35f;
         plus.repeatRateHz   = 8.0f;
-        plus.onClick = [this]() {
-            this->enqueueRegen(
-                this->m_creatorTimeCurrentMy + MY_PER_EPOCH);
+        plus.onClick        = [this]() {
+            this->enqueueRegen(this->m_creatorTimeCurrentMy + MY_PER_EPOCH);
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
-                this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
-                    formatCreatorAgeLabel(this->m_creatorTimeCurrentMy,
-                              this->m_creatorTotalMy));
+                this->m_uiManager.setLabelText(
+                    this->m_creatorEpochLabelId,
+                    formatCreatorAgeLabel(this->m_creatorTimeCurrentMy, this->m_creatorTotalMy));
             }
         };
-        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 56.0f, 36.0f}, std::move(plus));
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 56.0f, 36.0f},
+                                             std::move(plus));
     }
 
     // Total-time adjuster: increments the simulated geological time
@@ -2166,84 +2158,92 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
     // click). One click = one physics epoch (50 My).
     {
         constexpr int32_t MIN_TOTAL_MY = aoc::map::MapGenerator::MY_PER_EPOCH_TARGET * 3;
-        auto totalDelta = [this](int32_t deltaMy) {
+        auto totalDelta                = [this](int32_t deltaMy) {
             int32_t newTotal = this->m_creatorTotalMy + deltaMy;
-            if (newTotal < MIN_TOTAL_MY) { newTotal = MIN_TOTAL_MY; }
-            if (newTotal == this->m_creatorTotalMy) { return; }
+            if (newTotal < MIN_TOTAL_MY) {
+                newTotal = MIN_TOTAL_MY;
+            }
+            if (newTotal == this->m_creatorTotalMy) {
+                return;
+            }
             this->m_creatorTotalMy = newTotal;
             if (this->m_creatorTimeCurrentMy > this->m_creatorTotalMy) {
                 this->m_creatorTimeCurrentMy = this->m_creatorTotalMy.load();
             }
             this->m_creatorDirty = true;
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
-                this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
-                    formatCreatorAgeLabel(this->m_creatorTimeCurrentMy,
-                              this->m_creatorTotalMy));
+                this->m_uiManager.setLabelText(
+                    this->m_creatorEpochLabelId,
+                    formatCreatorAgeLabel(this->m_creatorTimeCurrentMy, this->m_creatorTotalMy));
             }
         };
 
         aoc::ui::ButtonData lessEp;
-        lessEp.label        = "-50My";
-        lessEp.fontSize     = 12.0f;
-        lessEp.normalColor  = aoc::ui::tokens::BRONZE_DARK;
-        lessEp.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
-        lessEp.pressedColor = aoc::ui::tokens::STATE_PRESSED;
-        lessEp.labelColor   = aoc::ui::tokens::TEXT_GILT;
-        lessEp.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        lessEp.label          = "-50My";
+        lessEp.fontSize       = 12.0f;
+        lessEp.normalColor    = aoc::ui::tokens::BRONZE_DARK;
+        lessEp.hoverColor     = aoc::ui::tokens::BRONZE_BASE;
+        lessEp.pressedColor   = aoc::ui::tokens::STATE_PRESSED;
+        lessEp.labelColor     = aoc::ui::tokens::TEXT_GILT;
+        lessEp.cornerRadius   = aoc::ui::tokens::CORNER_BUTTON;
         lessEp.repeatDelaySec = 0.35f;
         lessEp.repeatRateHz   = 8.0f;
-        lessEp.onClick  = [totalDelta]() { totalDelta(-MY_PER_EPOCH); };
-        lessEp.onScroll = [totalDelta](float dy) {
+        lessEp.onClick        = [totalDelta]() { totalDelta(-MY_PER_EPOCH); };
+        lessEp.onScroll       = [totalDelta](float dy) {
             totalDelta(dy > 0.0f ? -MY_PER_EPOCH : MY_PER_EPOCH);
         };
-        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 56.0f, 36.0f}, std::move(lessEp));
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 56.0f, 36.0f},
+                                             std::move(lessEp));
 
         aoc::ui::ButtonData moreEp;
-        moreEp.label        = "+50My";
-        moreEp.fontSize     = 12.0f;
-        moreEp.normalColor  = aoc::ui::tokens::BRONZE_DARK;
-        moreEp.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
-        moreEp.pressedColor = aoc::ui::tokens::STATE_PRESSED;
-        moreEp.labelColor   = aoc::ui::tokens::TEXT_GILT;
-        moreEp.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        moreEp.label          = "+50My";
+        moreEp.fontSize       = 12.0f;
+        moreEp.normalColor    = aoc::ui::tokens::BRONZE_DARK;
+        moreEp.hoverColor     = aoc::ui::tokens::BRONZE_BASE;
+        moreEp.pressedColor   = aoc::ui::tokens::STATE_PRESSED;
+        moreEp.labelColor     = aoc::ui::tokens::TEXT_GILT;
+        moreEp.cornerRadius   = aoc::ui::tokens::CORNER_BUTTON;
         moreEp.repeatDelaySec = 0.35f;
         moreEp.repeatRateHz   = 8.0f;
-        moreEp.onClick  = [totalDelta]() { totalDelta(MY_PER_EPOCH); };
-        moreEp.onScroll = [totalDelta](float dy) {
+        moreEp.onClick        = [totalDelta]() { totalDelta(MY_PER_EPOCH); };
+        moreEp.onScroll       = [totalDelta](float dy) {
             totalDelta(dy > 0.0f ? MY_PER_EPOCH : -MY_PER_EPOCH);
         };
-        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 56.0f, 36.0f}, std::move(moreEp));
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 56.0f, 36.0f},
+                                             std::move(moreEp));
     }
 
     // Land plate count adjuster — no upper cap. Hold-to-repeat for fast scan.
     {
         aoc::ui::ButtonData lessC;
-        lessC.label        = "Cont-";
-        lessC.fontSize     = 12.0f;
-        lessC.normalColor  = aoc::ui::tokens::BRONZE_DARK;
-        lessC.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
-        lessC.pressedColor = aoc::ui::tokens::STATE_PRESSED;
-        lessC.labelColor   = aoc::ui::tokens::TEXT_GILT;
-        lessC.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        lessC.label          = "Cont-";
+        lessC.fontSize       = 12.0f;
+        lessC.normalColor    = aoc::ui::tokens::BRONZE_DARK;
+        lessC.hoverColor     = aoc::ui::tokens::BRONZE_BASE;
+        lessC.pressedColor   = aoc::ui::tokens::STATE_PRESSED;
+        lessC.labelColor     = aoc::ui::tokens::TEXT_GILT;
+        lessC.cornerRadius   = aoc::ui::tokens::CORNER_BUTTON;
         lessC.repeatDelaySec = 0.35f;
         lessC.repeatRateHz   = 8.0f;
-        auto plateDelta = [this](int32_t d) {
+        auto plateDelta      = [this](int32_t d) {
             int32_t nv = this->m_creatorLandPlates + d;
-            if (nv < 1) { nv = 1; }
-            if (nv == this->m_creatorLandPlates) { return; }
+            if (nv < 1) {
+                nv = 1;
+            }
+            if (nv == this->m_creatorLandPlates) {
+                return;
+            }
             this->m_creatorLandPlates = nv;
-            this->m_creatorDirty = true;
+            this->m_creatorDirty      = true;
             if (this->m_creatorPlatesLabelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setLabelText(this->m_creatorPlatesLabelId,
-                    "P:" + std::to_string(this->m_creatorLandPlates));
+                                               "P:" + std::to_string(this->m_creatorLandPlates));
             }
         };
         lessC.onClick  = [plateDelta]() { plateDelta(-1); };
         lessC.onScroll = [plateDelta](float dy) { plateDelta(dy > 0.0f ? -1 : 1); };
-        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 50.0f, 36.0f}, std::move(lessC));
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 50.0f, 36.0f},
+                                             std::move(lessC));
 
         // Plates value box — click to type initial-plate count.
         {
@@ -2255,83 +2255,85 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             pBtn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
             pBtn.labelColor   = aoc::ui::tokens::TEXT_HEADER;
             pBtn.cornerRadius = 3.0f;
-            pBtn.onClick = [this]() {
+            pBtn.onClick      = [this]() {
                 this->numInputDefocus();
-                this->numInputFocus(&this->m_creatorLandPlates, 1,
-                    this->m_creatorPlatesLabelId,
+                this->numInputFocus(
+                    &this->m_creatorLandPlates, 1, this->m_creatorPlatesLabelId,
                     [this]() { this->m_creatorDirty = true; },
                     [this]() {
-                        return std::string("P:")
-                             + std::to_string(this->m_creatorLandPlates);
+                        return std::string("P:") + std::to_string(this->m_creatorLandPlates);
                     });
             };
             this->m_creatorPlatesLabelId = this->m_uiManager.createButton(
-                this->m_creatorPanelId, {0.0f, 0.0f, 50.0f, 36.0f},
-                std::move(pBtn));
+                this->m_creatorPanelId, {0.0f, 0.0f, 50.0f, 36.0f}, std::move(pBtn));
         }
 
         aoc::ui::ButtonData moreC;
-        moreC.label        = "Cont+";
-        moreC.fontSize     = 12.0f;
-        moreC.normalColor  = aoc::ui::tokens::BRONZE_DARK;
-        moreC.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
-        moreC.pressedColor = aoc::ui::tokens::STATE_PRESSED;
-        moreC.labelColor   = aoc::ui::tokens::TEXT_GILT;
-        moreC.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        moreC.label          = "Cont+";
+        moreC.fontSize       = 12.0f;
+        moreC.normalColor    = aoc::ui::tokens::BRONZE_DARK;
+        moreC.hoverColor     = aoc::ui::tokens::BRONZE_BASE;
+        moreC.pressedColor   = aoc::ui::tokens::STATE_PRESSED;
+        moreC.labelColor     = aoc::ui::tokens::TEXT_GILT;
+        moreC.cornerRadius   = aoc::ui::tokens::CORNER_BUTTON;
         moreC.repeatDelaySec = 0.35f;
         moreC.repeatRateHz   = 8.0f;
-        auto plateDeltaP = [this](int32_t d) {
+        auto plateDeltaP     = [this](int32_t d) {
             int32_t nv = this->m_creatorLandPlates + d;
-            if (nv < 1) { nv = 1; }
-            if (nv == this->m_creatorLandPlates) { return; }
+            if (nv < 1) {
+                nv = 1;
+            }
+            if (nv == this->m_creatorLandPlates) {
+                return;
+            }
             this->m_creatorLandPlates = nv;
-            this->m_creatorDirty = true;
+            this->m_creatorDirty      = true;
             if (this->m_creatorPlatesLabelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setLabelText(this->m_creatorPlatesLabelId,
-                    "P:" + std::to_string(this->m_creatorLandPlates));
+                                               "P:" + std::to_string(this->m_creatorLandPlates));
             }
         };
         moreC.onClick  = [plateDeltaP]() { plateDeltaP(1); };
         moreC.onScroll = [plateDeltaP](float dy) { plateDeltaP(dy > 0.0f ? 1 : -1); };
-        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 50.0f, 36.0f}, std::move(moreC));
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 50.0f, 36.0f},
+                                             std::move(moreC));
     }
 
     // Map width / height spinners. Each pair: label + W- W+ / H- H+.
     // Both - and + have hold-to-repeat AND scroll-wheel support: hover
     // either button and roll the wheel to scrub the value.
-    auto buildDimSpinner = [this](const char* prefix,
-                                   int32_t* target,
-                                   aoc::ui::WidgetId* labelOut) {
+    auto buildDimSpinner = [this](const char* prefix, int32_t* target,
+                                  aoc::ui::WidgetId* labelOut) {
         const std::string pfx(prefix);
         auto applyDelta = [this, target, labelOut, pfx](int32_t delta) {
             int32_t newVal = *target + delta;
-            if (newVal < 20) { newVal = 20; }
-            if (newVal == *target) { return; }
-            *target = newVal;
+            if (newVal < 20) {
+                newVal = 20;
+            }
+            if (newVal == *target) {
+                return;
+            }
+            *target              = newVal;
             this->m_creatorDirty = true;
             if (*labelOut != aoc::ui::INVALID_WIDGET) {
-                this->m_uiManager.setLabelText(*labelOut,
-                    pfx + ":" + std::to_string(*target));
+                this->m_uiManager.setLabelText(*labelOut, pfx + ":" + std::to_string(*target));
             }
         };
 
         aoc::ui::ButtonData minus;
-        minus.label        = pfx + "-";
-        minus.fontSize     = 11.0f;
-        minus.normalColor  = aoc::ui::tokens::BRONZE_DARK;
-        minus.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
-        minus.pressedColor = aoc::ui::tokens::STATE_PRESSED;
-        minus.labelColor   = aoc::ui::tokens::TEXT_GILT;
-        minus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        minus.label          = pfx + "-";
+        minus.fontSize       = 11.0f;
+        minus.normalColor    = aoc::ui::tokens::BRONZE_DARK;
+        minus.hoverColor     = aoc::ui::tokens::BRONZE_BASE;
+        minus.pressedColor   = aoc::ui::tokens::STATE_PRESSED;
+        minus.labelColor     = aoc::ui::tokens::TEXT_GILT;
+        minus.cornerRadius   = aoc::ui::tokens::CORNER_BUTTON;
         minus.repeatDelaySec = 0.30f;
         minus.repeatRateHz   = 20.0f;
-        minus.onClick  = [applyDelta]() { applyDelta(-1); };
-        minus.onScroll = [applyDelta](float dy) {
-            applyDelta(dy > 0.0f ? -1 : 1);
-        };
-        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 36.0f, 36.0f}, std::move(minus));
+        minus.onClick        = [applyDelta]() { applyDelta(-1); };
+        minus.onScroll       = [applyDelta](float dy) { applyDelta(dy > 0.0f ? -1 : 1); };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 36.0f, 36.0f},
+                                             std::move(minus));
 
         // Value box — Button styled like a label. Click to focus + type.
         aoc::ui::ButtonData valBtn;
@@ -2346,41 +2348,36 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         // members, stable for the lifetime of the panel).
         valBtn.onClick = [this, target, labelOut, pfx, this_target_min = 20]() {
             this->numInputDefocus();
-            this->numInputFocus(target, this_target_min, *labelOut,
-                [this]() { this->m_creatorDirty = true; },
-                [target, pfx]() {
-                    return pfx + ":" + std::to_string(*target);
-                });
+            this->numInputFocus(
+                target, this_target_min, *labelOut, [this]() { this->m_creatorDirty = true; },
+                [target, pfx]() { return pfx + ":" + std::to_string(*target); });
         };
         *labelOut = this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 64.0f, 36.0f}, std::move(valBtn));
+                                                   {0.0f, 0.0f, 64.0f, 36.0f}, std::move(valBtn));
 
         aoc::ui::ButtonData plus;
-        plus.label        = pfx + "+";
-        plus.fontSize     = 11.0f;
-        plus.normalColor  = aoc::ui::tokens::BRONZE_DARK;
-        plus.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
-        plus.pressedColor = aoc::ui::tokens::STATE_PRESSED;
-        plus.labelColor   = aoc::ui::tokens::TEXT_GILT;
-        plus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        plus.label          = pfx + "+";
+        plus.fontSize       = 11.0f;
+        plus.normalColor    = aoc::ui::tokens::BRONZE_DARK;
+        plus.hoverColor     = aoc::ui::tokens::BRONZE_BASE;
+        plus.pressedColor   = aoc::ui::tokens::STATE_PRESSED;
+        plus.labelColor     = aoc::ui::tokens::TEXT_GILT;
+        plus.cornerRadius   = aoc::ui::tokens::CORNER_BUTTON;
         plus.repeatDelaySec = 0.30f;
         plus.repeatRateHz   = 20.0f;
-        plus.onClick  = [applyDelta]() { applyDelta(1); };
-        plus.onScroll = [applyDelta](float dy) {
-            applyDelta(dy > 0.0f ? 1 : -1);
-        };
-        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 36.0f, 36.0f}, std::move(plus));
+        plus.onClick        = [applyDelta]() { applyDelta(1); };
+        plus.onScroll       = [applyDelta](float dy) { applyDelta(dy > 0.0f ? 1 : -1); };
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 36.0f, 36.0f},
+                                             std::move(plus));
     };
-    buildDimSpinner("W", &this->m_creatorWidth,  &this->m_creatorWidthLabelId);
+    buildDimSpinner("W", &this->m_creatorWidth, &this->m_creatorWidthLabelId);
     buildDimSpinner("H", &this->m_creatorHeight, &this->m_creatorHeightLabelId);
 
     // Drift value-box. Displays plate-drift budget × 0.1 (so 6 = 0.6
     // map widths total over the whole sim). Click to type a number.
     {
         auto applyDriftDisplay = [this]() {
-            return std::string("Drift:")
-                 + std::to_string(this->m_creatorDriftPct);
+            return std::string("Drift:") + std::to_string(this->m_creatorDriftPct);
         };
         aoc::ui::ButtonData driftBtn;
         driftBtn.label        = applyDriftDisplay();
@@ -2390,22 +2387,19 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         driftBtn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         driftBtn.labelColor   = aoc::ui::tokens::TEXT_HEADER;
         driftBtn.cornerRadius = 3.0f;
-        driftBtn.onClick = [this, applyDriftDisplay]() {
+        driftBtn.onClick      = [this, applyDriftDisplay]() {
             this->numInputDefocus();
-            this->numInputFocus(&this->m_creatorDriftPct, 1,
-                this->m_creatorDriftLabelId,
-                [this]() { this->m_creatorDirty = true; },
-                applyDriftDisplay);
+            this->numInputFocus(
+                &this->m_creatorDriftPct, 1, this->m_creatorDriftLabelId,
+                [this]() { this->m_creatorDirty = true; }, applyDriftDisplay);
         };
         this->m_creatorDriftLabelId = this->m_uiManager.createButton(
-            this->m_creatorPanelId, {0.0f, 0.0f, 80.0f, 36.0f},
-            std::move(driftBtn));
+            this->m_creatorPanelId, {0.0f, 0.0f, 80.0f, 36.0f}, std::move(driftBtn));
     }
 
     // Overlay toggles. Each button switches the global MapOverlay to
     // its mode (or None if it's already on). Plates / Winds / Currents.
-    auto addOverlayBtn = [this](const char* label,
-                                  aoc::render::GameRenderer::MapOverlay mode) {
+    auto addOverlayBtn = [this](const char* label, aoc::render::GameRenderer::MapOverlay mode) {
         aoc::ui::ButtonData ovl;
         ovl.label        = label;
         ovl.fontSize     = 12.0f;
@@ -2414,72 +2408,72 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         ovl.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         ovl.labelColor   = aoc::ui::tokens::TEXT_GILT;
         ovl.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        ovl.onClick = [this, mode]() {
+        ovl.onClick      = [this, mode]() {
             using OM = aoc::render::GameRenderer::MapOverlay;
             this->m_gameRenderer.overlayMode =
                 (this->m_gameRenderer.overlayMode == mode) ? OM::None : mode;
         };
-        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 64.0f, 36.0f}, std::move(ovl));
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 64.0f, 36.0f},
+                                             std::move(ovl));
     };
-    addOverlayBtn("Plates",   aoc::render::GameRenderer::MapOverlay::TectonicPlates);
-    addOverlayBtn("Bounds",   aoc::render::GameRenderer::MapOverlay::PlateBoundaries);
-    addOverlayBtn("Wind",     aoc::render::GameRenderer::MapOverlay::Winds);
+    addOverlayBtn("Plates", aoc::render::GameRenderer::MapOverlay::TectonicPlates);
+    addOverlayBtn("Bounds", aoc::render::GameRenderer::MapOverlay::PlateBoundaries);
+    addOverlayBtn("Wind", aoc::render::GameRenderer::MapOverlay::Winds);
     addOverlayBtn("Currents", aoc::render::GameRenderer::MapOverlay::OceanCurrents);
     addOverlayBtn("Hotspots", aoc::render::GameRenderer::MapOverlay::Hotspots);
-    addOverlayBtn("Motion",   aoc::render::GameRenderer::MapOverlay::PlateMotion);
-    addOverlayBtn("Age",      aoc::render::GameRenderer::MapOverlay::CrustAge);
-    addOverlayBtn("Sed",      aoc::render::GameRenderer::MapOverlay::Sediment);
-    addOverlayBtn("Rock",     aoc::render::GameRenderer::MapOverlay::RockType);
-    addOverlayBtn("Margins",  aoc::render::GameRenderer::MapOverlay::Margins);
-    addOverlayBtn("Volc",     aoc::render::GameRenderer::MapOverlay::Volcanism);
-    addOverlayBtn("Quake",    aoc::render::GameRenderer::MapOverlay::Hazard);
-    addOverlayBtn("Soil",     aoc::render::GameRenderer::MapOverlay::Soil);
-    addOverlayBtn("Realms",   aoc::render::GameRenderer::MapOverlay::Realms);
-    addOverlayBtn("Storm",    aoc::render::GameRenderer::MapOverlay::Storms);
-    addOverlayBtn("Glacial",  aoc::render::GameRenderer::MapOverlay::Glacial);
-    addOverlayBtn("Ocean",    aoc::render::GameRenderer::MapOverlay::Ocean);
-    addOverlayBtn("Cloud",    aoc::render::GameRenderer::MapOverlay::Clouds);
-    addOverlayBtn("Flow",     aoc::render::GameRenderer::MapOverlay::Flow);
-    addOverlayBtn("Hazard",   aoc::render::GameRenderer::MapOverlay::Hazards);
-    addOverlayBtn("BioSub",   aoc::render::GameRenderer::MapOverlay::BiomeSub);
-    addOverlayBtn("Depth",    aoc::render::GameRenderer::MapOverlay::MarineDepth);
-    addOverlayBtn("Wild",     aoc::render::GameRenderer::MapOverlay::Wildlife);
-    addOverlayBtn("Disease",  aoc::render::GameRenderer::MapOverlay::Disease);
-    addOverlayBtn("Wind",     aoc::render::GameRenderer::MapOverlay::EnergyWind);
-    addOverlayBtn("Solar",    aoc::render::GameRenderer::MapOverlay::EnergySolar);
-    addOverlayBtn("Hydro",    aoc::render::GameRenderer::MapOverlay::EnergyHydro);
-    addOverlayBtn("Geo",      aoc::render::GameRenderer::MapOverlay::EnergyGeothermal);
-    addOverlayBtn("Tide",     aoc::render::GameRenderer::MapOverlay::EnergyTidal);
-    addOverlayBtn("Wave",     aoc::render::GameRenderer::MapOverlay::EnergyWave);
-    addOverlayBtn("Atm",      aoc::render::GameRenderer::MapOverlay::AtmExtras);
-    addOverlayBtn("HydroX",   aoc::render::GameRenderer::MapOverlay::HydroExtras);
-    addOverlayBtn("Events",   aoc::render::GameRenderer::MapOverlay::Events);
-    addOverlayBtn("Pass",     aoc::render::GameRenderer::MapOverlay::Pass);
-    addOverlayBtn("Def",      aoc::render::GameRenderer::MapOverlay::Defense);
-    addOverlayBtn("Animal",   aoc::render::GameRenderer::MapOverlay::Domestic);
-    addOverlayBtn("Trade",    aoc::render::GameRenderer::MapOverlay::Trade);
-    addOverlayBtn("Habit",    aoc::render::GameRenderer::MapOverlay::Habit);
-    addOverlayBtn("Wet",      aoc::render::GameRenderer::MapOverlay::Wetland);
-    addOverlayBtn("Reef",     aoc::render::GameRenderer::MapOverlay::Reef);
-    addOverlayBtn("Cliff",    aoc::render::GameRenderer::MapOverlay::Cliff);
-    addOverlayBtn("CoastLF",  aoc::render::GameRenderer::MapOverlay::CoastalLF);
-    addOverlayBtn("Riv",      aoc::render::GameRenderer::MapOverlay::RiverRegime);
-    addOverlayBtn("AridLF",   aoc::render::GameRenderer::MapOverlay::AridLF);
-    addOverlayBtn("TF",       aoc::render::GameRenderer::MapOverlay::TransformFault);
-    addOverlayBtn("LakeFX",   aoc::render::GameRenderer::MapOverlay::LakeFX);
-    addOverlayBtn("Drum",     aoc::render::GameRenderer::MapOverlay::Drumlin);
-    addOverlayBtn("Sutur",    aoc::render::GameRenderer::MapOverlay::SutureReact);
-    addOverlayBtn("Res",      aoc::render::GameRenderer::MapOverlay::Resources);
-    addOverlayBtn("Inso",     aoc::render::GameRenderer::MapOverlay::Insolation);
-    addOverlayBtn("Asp",      aoc::render::GameRenderer::MapOverlay::Aspect);
-    addOverlayBtn("Slope",    aoc::render::GameRenderer::MapOverlay::Slope);
-    addOverlayBtn("Eco",      aoc::render::GameRenderer::MapOverlay::Ecotone);
-    addOverlayBtn("PelP",     aoc::render::GameRenderer::MapOverlay::PelagicProd);
-    addOverlayBtn("ShSed",    aoc::render::GameRenderer::MapOverlay::ShelfSed);
-    addOverlayBtn("Rebnd",    aoc::render::GameRenderer::MapOverlay::Rebound);
-    addOverlayBtn("SedD",     aoc::render::GameRenderer::MapOverlay::SedDir);
-    addOverlayBtn("Cchg",     aoc::render::GameRenderer::MapOverlay::CoastChg);
+    addOverlayBtn("Motion", aoc::render::GameRenderer::MapOverlay::PlateMotion);
+    addOverlayBtn("Age", aoc::render::GameRenderer::MapOverlay::CrustAge);
+    addOverlayBtn("Sed", aoc::render::GameRenderer::MapOverlay::Sediment);
+    addOverlayBtn("Rock", aoc::render::GameRenderer::MapOverlay::RockType);
+    addOverlayBtn("Margins", aoc::render::GameRenderer::MapOverlay::Margins);
+    addOverlayBtn("Volc", aoc::render::GameRenderer::MapOverlay::Volcanism);
+    addOverlayBtn("Quake", aoc::render::GameRenderer::MapOverlay::Hazard);
+    addOverlayBtn("Soil", aoc::render::GameRenderer::MapOverlay::Soil);
+    addOverlayBtn("Realms", aoc::render::GameRenderer::MapOverlay::Realms);
+    addOverlayBtn("Storm", aoc::render::GameRenderer::MapOverlay::Storms);
+    addOverlayBtn("Glacial", aoc::render::GameRenderer::MapOverlay::Glacial);
+    addOverlayBtn("Ocean", aoc::render::GameRenderer::MapOverlay::Ocean);
+    addOverlayBtn("Cloud", aoc::render::GameRenderer::MapOverlay::Clouds);
+    addOverlayBtn("Flow", aoc::render::GameRenderer::MapOverlay::Flow);
+    addOverlayBtn("Hazard", aoc::render::GameRenderer::MapOverlay::Hazards);
+    addOverlayBtn("BioSub", aoc::render::GameRenderer::MapOverlay::BiomeSub);
+    addOverlayBtn("Depth", aoc::render::GameRenderer::MapOverlay::MarineDepth);
+    addOverlayBtn("Wild", aoc::render::GameRenderer::MapOverlay::Wildlife);
+    addOverlayBtn("Disease", aoc::render::GameRenderer::MapOverlay::Disease);
+    addOverlayBtn("Wind", aoc::render::GameRenderer::MapOverlay::EnergyWind);
+    addOverlayBtn("Solar", aoc::render::GameRenderer::MapOverlay::EnergySolar);
+    addOverlayBtn("Hydro", aoc::render::GameRenderer::MapOverlay::EnergyHydro);
+    addOverlayBtn("Geo", aoc::render::GameRenderer::MapOverlay::EnergyGeothermal);
+    addOverlayBtn("Tide", aoc::render::GameRenderer::MapOverlay::EnergyTidal);
+    addOverlayBtn("Wave", aoc::render::GameRenderer::MapOverlay::EnergyWave);
+    addOverlayBtn("Atm", aoc::render::GameRenderer::MapOverlay::AtmExtras);
+    addOverlayBtn("HydroX", aoc::render::GameRenderer::MapOverlay::HydroExtras);
+    addOverlayBtn("Events", aoc::render::GameRenderer::MapOverlay::Events);
+    addOverlayBtn("Pass", aoc::render::GameRenderer::MapOverlay::Pass);
+    addOverlayBtn("Def", aoc::render::GameRenderer::MapOverlay::Defense);
+    addOverlayBtn("Animal", aoc::render::GameRenderer::MapOverlay::Domestic);
+    addOverlayBtn("Trade", aoc::render::GameRenderer::MapOverlay::Trade);
+    addOverlayBtn("Habit", aoc::render::GameRenderer::MapOverlay::Habit);
+    addOverlayBtn("Wet", aoc::render::GameRenderer::MapOverlay::Wetland);
+    addOverlayBtn("Reef", aoc::render::GameRenderer::MapOverlay::Reef);
+    addOverlayBtn("Cliff", aoc::render::GameRenderer::MapOverlay::Cliff);
+    addOverlayBtn("CoastLF", aoc::render::GameRenderer::MapOverlay::CoastalLF);
+    addOverlayBtn("Riv", aoc::render::GameRenderer::MapOverlay::RiverRegime);
+    addOverlayBtn("AridLF", aoc::render::GameRenderer::MapOverlay::AridLF);
+    addOverlayBtn("TF", aoc::render::GameRenderer::MapOverlay::TransformFault);
+    addOverlayBtn("LakeFX", aoc::render::GameRenderer::MapOverlay::LakeFX);
+    addOverlayBtn("Drum", aoc::render::GameRenderer::MapOverlay::Drumlin);
+    addOverlayBtn("Sutur", aoc::render::GameRenderer::MapOverlay::SutureReact);
+    addOverlayBtn("Res", aoc::render::GameRenderer::MapOverlay::Resources);
+    addOverlayBtn("Inso", aoc::render::GameRenderer::MapOverlay::Insolation);
+    addOverlayBtn("Asp", aoc::render::GameRenderer::MapOverlay::Aspect);
+    addOverlayBtn("Slope", aoc::render::GameRenderer::MapOverlay::Slope);
+    addOverlayBtn("Eco", aoc::render::GameRenderer::MapOverlay::Ecotone);
+    addOverlayBtn("PelP", aoc::render::GameRenderer::MapOverlay::PelagicProd);
+    addOverlayBtn("ShSed", aoc::render::GameRenderer::MapOverlay::ShelfSed);
+    addOverlayBtn("Rebnd", aoc::render::GameRenderer::MapOverlay::Rebound);
+    addOverlayBtn("SedD", aoc::render::GameRenderer::MapOverlay::SedDir);
+    addOverlayBtn("Cchg", aoc::render::GameRenderer::MapOverlay::CoastChg);
 
     // Generate — rebuilds the world with current parameters. Apply
     // when the user is done tweaking values; deferred so each
@@ -2493,7 +2487,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         gen.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         gen.labelColor   = aoc::ui::tokens::TEXT_GILT;
         gen.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        gen.onClick = [this]() {
+        gen.onClick      = [this]() {
             this->numInputDefocus();
             // Clear epoch cache — config changed, old snapshots are stale.
             this->clearCreatorEpochCache();
@@ -2501,13 +2495,13 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             this->enqueueRegen(this->m_creatorTotalMy);
             this->m_creatorDirty = false;
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
-                this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
-                    formatCreatorAgeLabel(this->m_creatorTimeCurrentMy,
-                                          this->m_creatorTotalMy));
+                this->m_uiManager.setLabelText(
+                    this->m_creatorEpochLabelId,
+                    formatCreatorAgeLabel(this->m_creatorTimeCurrentMy, this->m_creatorTotalMy));
             }
         };
-        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 90.0f, 36.0f}, std::move(gen));
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 90.0f, 36.0f},
+                                             std::move(gen));
     }
 
     // Play / Pause toggle. When playing, the scrubber auto-advances
@@ -2523,24 +2517,22 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         play.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         play.labelColor   = aoc::ui::tokens::TEXT_GILT;
         play.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        play.onClick = [this]() {
+        play.onClick      = [this]() {
             // If pressing Play while at the endpoint, restart from
             // epoch 1 so playback actually has somewhere to go.
             // Otherwise the play tick immediately hits the end and
             // stops, making the button bounce back to "Play".
-            if (!this->m_creatorPlaying
-                && this->m_creatorTimeCurrentMy >= this->m_creatorTotalMy) {
+            if (!this->m_creatorPlaying && this->m_creatorTimeCurrentMy >= this->m_creatorTotalMy) {
                 // Rewind to first physics-epoch boundary.
-                const int32_t firstStep =
-                    aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
+                const int32_t firstStep      = aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
                 this->m_creatorTimeCurrentMy = firstStep;
                 this->enqueueRegen(firstStep);
             }
-            this->m_creatorPlaying = !this->m_creatorPlaying;
+            this->m_creatorPlaying   = !this->m_creatorPlaying;
             this->m_creatorPlayAccum = 0.0f;
             if (this->m_creatorPlayBtnId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setButtonLabel(this->m_creatorPlayBtnId,
-                    this->m_creatorPlaying ? "Pause" : "Play");
+                                                 this->m_creatorPlaying ? "Pause" : "Play");
             }
         };
         this->m_creatorPlayBtnId = this->m_uiManager.createButton(
@@ -2557,7 +2549,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         reroll.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         reroll.labelColor   = aoc::ui::tokens::TEXT_GILT;
         reroll.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        reroll.onClick = [this]() {
+        reroll.onClick      = [this]() {
             this->numInputDefocus();
             this->clearCreatorEpochCache();
             std::random_device rd;
@@ -2571,13 +2563,13 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             this->enqueueRegen(this->m_creatorTimeCurrentMy);
             this->m_creatorDirty = false;
             if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
-                this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
-                    formatCreatorAgeLabel(this->m_creatorTimeCurrentMy,
-                                          this->m_creatorTotalMy));
+                this->m_uiManager.setLabelText(
+                    this->m_creatorEpochLabelId,
+                    formatCreatorAgeLabel(this->m_creatorTimeCurrentMy, this->m_creatorTotalMy));
             }
         };
-        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 90.0f, 36.0f}, std::move(reroll));
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 90.0f, 36.0f},
+                                             std::move(reroll));
     }
 
     // Use This Map (returns to GameSetup with current params pre-filled)
@@ -2590,10 +2582,10 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         use.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         use.labelColor   = aoc::ui::tokens::TEXT_GILT;
         use.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        use.onClick = [this, screenW, screenH]() {
-            const uint32_t seed = this->m_creatorSeed;
+        use.onClick      = [this, screenW, screenH]() {
+            const uint32_t seed   = this->m_creatorSeed;
             const int32_t totalMy = this->m_creatorTotalMy;
-            const int32_t plates = this->m_creatorLandPlates;
+            const int32_t plates  = this->m_creatorLandPlates;
             // Tear down preview state.
             if (this->m_creatorPanelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.removeWidget(this->m_creatorPanelId);
@@ -2607,8 +2599,8 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             this->returnToMainMenu();
             this->m_mainMenu.destroy(this->m_uiManager);
             // Pre-fill the GameSetup with the chosen seed/tectonics.
-            this->m_gameSetupScreen.setContinentPreset(
-                aoc::map::MapType::Continents, seed, totalMy, plates);
+            this->m_gameSetupScreen.setContinentPreset(aoc::map::MapType::Continents, seed, totalMy,
+                                                       plates);
             this->m_gameSetupScreen.build(
                 this->m_uiManager, screenW, screenH,
                 [this](const aoc::ui::GameSetupConfig& cfg) {
@@ -2620,8 +2612,8 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                     this->buildMainMenu(screenW, screenH);
                 });
         };
-        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 130.0f, 36.0f}, std::move(use));
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 130.0f, 36.0f},
+                                             std::move(use));
     }
 
     // Edit Map: hand the currently-previewed grid to the map editor
@@ -2637,7 +2629,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         edit.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         edit.labelColor   = aoc::ui::tokens::TEXT_GILT;
         edit.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        edit.onClick = [this, screenW, screenH]() {
+        edit.onClick      = [this, screenW, screenH]() {
             // Tear down creator panels but KEEP m_hexGrid (editor
             // brushes operate on it directly).
             if (this->m_creatorPanelId != aoc::ui::INVALID_WIDGET) {
@@ -2649,13 +2641,13 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
                 this->m_creatorAdvPanelId = aoc::ui::INVALID_WIDGET;
             }
             this->m_continentCreatorMode = false;
-            this->m_creatorPlaying = false;
-            this->m_mapEditorMode = true;
+            this->m_creatorPlaying       = false;
+            this->m_mapEditorMode        = true;
             this->m_editorUndoStack.clear();
             this->buildMapEditorControls(screenW, screenH);
         };
-        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 80.0f, 36.0f}, std::move(edit));
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 80.0f, 36.0f},
+                                             std::move(edit));
     }
 
     // Back to Main Menu
@@ -2668,7 +2660,7 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
         back.pressedColor = aoc::ui::tokens::DIPLO_AT_WAR;
         back.labelColor   = aoc::ui::tokens::TEXT_PARCHMENT;
         back.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        back.onClick = [this, screenW, screenH]() {
+        back.onClick      = [this, screenW, screenH]() {
             // Tear down preview, return to main menu.
             if (this->m_creatorPanelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.removeWidget(this->m_creatorPanelId);
@@ -2680,37 +2672,37 @@ void Application::buildContinentCreatorControls(float screenW, float screenH) {
             }
             this->m_continentCreatorMode = false;
             this->returnToMainMenu();
-            (void)screenW; (void)screenH;
+            (void)screenW;
+            (void)screenH;
         };
-        (void)this->m_uiManager.createButton(this->m_creatorPanelId,
-            {0.0f, 0.0f, 80.0f, 36.0f}, std::move(back));
+        (void)this->m_uiManager.createButton(this->m_creatorPanelId, {0.0f, 0.0f, 80.0f, 36.0f},
+                                             std::move(back));
     }
 }
 
 void Application::buildMapEditorControls(float screenW, float screenH) {
     if (this->m_editorPanelId != aoc::ui::INVALID_WIDGET) {
         this->m_uiManager.removeWidget(this->m_editorPanelId);
-        this->m_editorPanelId = aoc::ui::INVALID_WIDGET;
+        this->m_editorPanelId      = aoc::ui::INVALID_WIDGET;
         this->m_editorBrushLabelId = aoc::ui::INVALID_WIDGET;
     }
-    constexpr float PANEL_H = 64.0f;
+    constexpr float PANEL_H   = 64.0f;
     constexpr float PANEL_PAD = 8.0f;
     aoc::ui::PanelData bg;
-    bg.backgroundColor = aoc::ui::tokens::SURFACE_PARCHMENT;
-    bg.gradientBottom  = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
-    bg.borderColor     = aoc::ui::tokens::BRONZE_DARK;
-    bg.borderWidth     = 1.0f;
-    bg.cornerRadius    = aoc::ui::tokens::CORNER_PANEL;
+    bg.backgroundColor    = aoc::ui::tokens::SURFACE_PARCHMENT;
+    bg.gradientBottom     = aoc::ui::tokens::SURFACE_PARCHMENT_DIM;
+    bg.borderColor        = aoc::ui::tokens::BRONZE_DARK;
+    bg.borderWidth        = 1.0f;
+    bg.cornerRadius       = aoc::ui::tokens::CORNER_PANEL;
     this->m_editorPanelId = this->m_uiManager.createPanel(
-        {PANEL_PAD, screenH - PANEL_H - PANEL_PAD,
-         screenW - PANEL_PAD * 2.0f, PANEL_H},
+        {PANEL_PAD, screenH - PANEL_H - PANEL_PAD, screenW - PANEL_PAD * 2.0f, PANEL_H},
         std::move(bg));
     {
         aoc::ui::Widget* w = this->m_uiManager.getWidget(this->m_editorPanelId);
         if (w != nullptr) {
             w->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
-            w->padding = {6.0f, 8.0f, 6.0f, 8.0f};
-            w->childSpacing = 6.0f;
+            w->padding         = {6.0f, 8.0f, 6.0f, 8.0f};
+            w->childSpacing    = 6.0f;
         }
     }
 
@@ -2720,65 +2712,66 @@ void Application::buildMapEditorControls(float screenW, float screenH) {
         aoc::map::TerrainType type;
     };
     const std::array<BrushEntry, 6> brushes = {{
-        {"Grass",  aoc::map::TerrainType::Grassland},
-        {"Plain",  aoc::map::TerrainType::Plains},
+        {"Grass", aoc::map::TerrainType::Grassland},
+        {"Plain", aoc::map::TerrainType::Plains},
         {"Desert", aoc::map::TerrainType::Desert},
-        {"Snow",   aoc::map::TerrainType::Snow},
-        {"Mtn",    aoc::map::TerrainType::Mountain},
-        {"Ocean",  aoc::map::TerrainType::Ocean},
+        {"Snow", aoc::map::TerrainType::Snow},
+        {"Mtn", aoc::map::TerrainType::Mountain},
+        {"Ocean", aoc::map::TerrainType::Ocean},
     }};
     for (const BrushEntry& be : brushes) {
         aoc::ui::ButtonData btn;
-        btn.label        = be.label;
-        btn.fontSize     = 11.0f;
-        btn.normalColor  = aoc::ui::tokens::BRONZE_BASE;
-        btn.hoverColor   = aoc::ui::tokens::BRONZE_LIGHT;
-        btn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
-        btn.labelColor   = aoc::ui::tokens::TEXT_GILT;
-        btn.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        btn.label                     = be.label;
+        btn.fontSize                  = 11.0f;
+        btn.normalColor               = aoc::ui::tokens::BRONZE_BASE;
+        btn.hoverColor                = aoc::ui::tokens::BRONZE_LIGHT;
+        btn.pressedColor              = aoc::ui::tokens::STATE_PRESSED;
+        btn.labelColor                = aoc::ui::tokens::TEXT_GILT;
+        btn.cornerRadius              = aoc::ui::tokens::CORNER_BUTTON;
         const aoc::map::TerrainType t = be.type;
-        const std::string lbl = be.label;
-        btn.onClick = [this, t, lbl]() {
+        const std::string lbl         = be.label;
+        btn.onClick                   = [this, t, lbl]() {
             this->m_editorBrushMode = BrushMode::Terrain;
-            this->m_editorBrush = t;
+            this->m_editorBrush     = t;
             if (this->m_editorBrushLabelId != aoc::ui::INVALID_WIDGET) {
-                this->m_uiManager.setLabelText(this->m_editorBrushLabelId,
-                    "Brush: " + lbl);
+                this->m_uiManager.setLabelText(this->m_editorBrushLabelId, "Brush: " + lbl);
             }
         };
-        (void)this->m_uiManager.createButton(this->m_editorPanelId,
-            {0.0f, 0.0f, 56.0f, 36.0f}, std::move(btn));
+        (void)this->m_uiManager.createButton(this->m_editorPanelId, {0.0f, 0.0f, 56.0f, 36.0f},
+                                             std::move(btn));
     }
 
     // -- Feature palette (4 buttons; Clear maps to None) --
-    struct FBrush { const char* label; aoc::map::FeatureType f; };
+    struct FBrush {
+        const char* label;
+        aoc::map::FeatureType f;
+    };
     const std::array<FBrush, 4> fbrushes = {{
         {"Forest", aoc::map::FeatureType::Forest},
         {"Jungle", aoc::map::FeatureType::Jungle},
-        {"Hills",  aoc::map::FeatureType::Hills},
-        {"Clear",  aoc::map::FeatureType::None},
+        {"Hills", aoc::map::FeatureType::Hills},
+        {"Clear", aoc::map::FeatureType::None},
     }};
     for (const FBrush& fb : fbrushes) {
         aoc::ui::ButtonData btn;
-        btn.label        = fb.label;
-        btn.fontSize     = 11.0f;
-        btn.normalColor  = aoc::ui::tokens::BRONZE_DARK;
-        btn.hoverColor   = aoc::ui::tokens::BRONZE_BASE;
-        btn.pressedColor = aoc::ui::tokens::STATE_PRESSED;
-        btn.labelColor   = aoc::ui::tokens::TEXT_GILT;
-        btn.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        btn.label                     = fb.label;
+        btn.fontSize                  = 11.0f;
+        btn.normalColor               = aoc::ui::tokens::BRONZE_DARK;
+        btn.hoverColor                = aoc::ui::tokens::BRONZE_BASE;
+        btn.pressedColor              = aoc::ui::tokens::STATE_PRESSED;
+        btn.labelColor                = aoc::ui::tokens::TEXT_GILT;
+        btn.cornerRadius              = aoc::ui::tokens::CORNER_BUTTON;
         const aoc::map::FeatureType f = fb.f;
-        const std::string lbl = fb.label;
-        btn.onClick = [this, f, lbl]() {
-            this->m_editorBrushMode = BrushMode::Feature;
+        const std::string lbl         = fb.label;
+        btn.onClick                   = [this, f, lbl]() {
+            this->m_editorBrushMode    = BrushMode::Feature;
             this->m_editorFeatureBrush = f;
             if (this->m_editorBrushLabelId != aoc::ui::INVALID_WIDGET) {
-                this->m_uiManager.setLabelText(this->m_editorBrushLabelId,
-                    "Brush: " + lbl);
+                this->m_uiManager.setLabelText(this->m_editorBrushLabelId, "Brush: " + lbl);
             }
         };
-        (void)this->m_uiManager.createButton(this->m_editorPanelId,
-            {0.0f, 0.0f, 56.0f, 36.0f}, std::move(btn));
+        (void)this->m_uiManager.createButton(this->m_editorPanelId, {0.0f, 0.0f, 56.0f, 36.0f},
+                                             std::move(btn));
     }
 
     this->m_editorBrushLabelId = this->m_uiManager.createLabel(
@@ -2795,20 +2788,22 @@ void Application::buildMapEditorControls(float screenW, float screenH) {
         rMinus.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         rMinus.labelColor   = aoc::ui::tokens::TEXT_GILT;
         rMinus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        rMinus.onClick = [this]() {
-            if (this->m_editorBrushRadius > 1) { --this->m_editorBrushRadius; }
+        rMinus.onClick      = [this]() {
+            if (this->m_editorBrushRadius > 1) {
+                --this->m_editorBrushRadius;
+            }
             if (this->m_editorRadiusLabelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setLabelText(this->m_editorRadiusLabelId,
-                    "R" + std::to_string(this->m_editorBrushRadius));
+                                               "R" + std::to_string(this->m_editorBrushRadius));
             }
         };
-        (void)this->m_uiManager.createButton(this->m_editorPanelId,
-            {0.0f, 0.0f, 36.0f, 36.0f}, std::move(rMinus));
+        (void)this->m_uiManager.createButton(this->m_editorPanelId, {0.0f, 0.0f, 36.0f, 36.0f},
+                                             std::move(rMinus));
 
         this->m_editorRadiusLabelId = this->m_uiManager.createLabel(
             this->m_editorPanelId, {0.0f, 0.0f, 36.0f, 36.0f},
             aoc::ui::LabelData{"R" + std::to_string(this->m_editorBrushRadius),
-                                aoc::ui::tokens::TEXT_HEADER, 13.0f});
+                               aoc::ui::tokens::TEXT_HEADER, 13.0f});
 
         aoc::ui::ButtonData rPlus;
         rPlus.label        = "R+";
@@ -2818,15 +2813,17 @@ void Application::buildMapEditorControls(float screenW, float screenH) {
         rPlus.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         rPlus.labelColor   = aoc::ui::tokens::TEXT_GILT;
         rPlus.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        rPlus.onClick = [this]() {
-            if (this->m_editorBrushRadius < 4) { ++this->m_editorBrushRadius; }
+        rPlus.onClick      = [this]() {
+            if (this->m_editorBrushRadius < 4) {
+                ++this->m_editorBrushRadius;
+            }
             if (this->m_editorRadiusLabelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.setLabelText(this->m_editorRadiusLabelId,
-                    "R" + std::to_string(this->m_editorBrushRadius));
+                                               "R" + std::to_string(this->m_editorBrushRadius));
             }
         };
-        (void)this->m_uiManager.createButton(this->m_editorPanelId,
-            {0.0f, 0.0f, 36.0f, 36.0f}, std::move(rPlus));
+        (void)this->m_uiManager.createButton(this->m_editorPanelId, {0.0f, 0.0f, 36.0f, 36.0f},
+                                             std::move(rPlus));
     }
 
     // Undo
@@ -2839,22 +2836,24 @@ void Application::buildMapEditorControls(float screenW, float screenH) {
         undo.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         undo.labelColor   = aoc::ui::tokens::TEXT_GILT;
         undo.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        undo.onClick = [this]() {
-            if (this->m_editorUndoStack.empty()) { return; }
+        undo.onClick      = [this]() {
+            if (this->m_editorUndoStack.empty()) {
+                return;
+            }
             const EditorAction& act = this->m_editorUndoStack.back();
             for (const EditorChange& ch : act.changes) {
                 if (act.isFeature) {
                     this->m_hexGrid.setFeature(ch.tileIndex,
-                        static_cast<aoc::map::FeatureType>(ch.oldValue));
+                                               static_cast<aoc::map::FeatureType>(ch.oldValue));
                 } else {
                     this->m_hexGrid.setTerrain(ch.tileIndex,
-                        static_cast<aoc::map::TerrainType>(ch.oldValue));
+                                               static_cast<aoc::map::TerrainType>(ch.oldValue));
                 }
             }
             this->m_editorUndoStack.pop_back();
         };
-        (void)this->m_uiManager.createButton(this->m_editorPanelId,
-            {0.0f, 0.0f, 60.0f, 36.0f}, std::move(undo));
+        (void)this->m_uiManager.createButton(this->m_editorPanelId, {0.0f, 0.0f, 60.0f, 36.0f},
+                                             std::move(undo));
     }
 
     // Use This Map: returns to GameSetup with the edited grid intact.
@@ -2868,12 +2867,12 @@ void Application::buildMapEditorControls(float screenW, float screenH) {
         use.pressedColor = aoc::ui::tokens::STATE_PRESSED;
         use.labelColor   = aoc::ui::tokens::TEXT_GILT;
         use.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        use.onClick = [this, screenW, screenH]() {
+        use.onClick      = [this, screenW, screenH]() {
             if (this->m_editorPanelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.removeWidget(this->m_editorPanelId);
                 this->m_editorPanelId = aoc::ui::INVALID_WIDGET;
             }
-            this->m_mapEditorMode = false;
+            this->m_mapEditorMode              = false;
             this->m_useExistingGridOnNextStart = true;
             this->returnToMainMenu();
             this->m_mainMenu.destroy(this->m_uiManager);
@@ -2888,8 +2887,8 @@ void Application::buildMapEditorControls(float screenW, float screenH) {
                     this->buildMainMenu(screenW, screenH);
                 });
         };
-        (void)this->m_uiManager.createButton(this->m_editorPanelId,
-            {0.0f, 0.0f, 110.0f, 36.0f}, std::move(use));
+        (void)this->m_uiManager.createButton(this->m_editorPanelId, {0.0f, 0.0f, 110.0f, 36.0f},
+                                             std::move(use));
     }
 
     // Done (back to main menu without using the edit)
@@ -2902,7 +2901,7 @@ void Application::buildMapEditorControls(float screenW, float screenH) {
         done.pressedColor = aoc::ui::tokens::DIPLO_AT_WAR;
         done.labelColor   = aoc::ui::tokens::TEXT_PARCHMENT;
         done.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
-        done.onClick = [this]() {
+        done.onClick      = [this]() {
             if (this->m_editorPanelId != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.removeWidget(this->m_editorPanelId);
                 this->m_editorPanelId = aoc::ui::INVALID_WIDGET;
@@ -2911,8 +2910,8 @@ void Application::buildMapEditorControls(float screenW, float screenH) {
             this->m_editorUndoStack.clear();
             this->returnToMainMenu();
         };
-        (void)this->m_uiManager.createButton(this->m_editorPanelId,
-            {0.0f, 0.0f, 60.0f, 36.0f}, std::move(done));
+        (void)this->m_uiManager.createButton(this->m_editorPanelId, {0.0f, 0.0f, 60.0f, 36.0f},
+                                             std::move(done));
     }
 }
 
@@ -2927,44 +2926,44 @@ void Application::buildSpectatorSeekControls(float screenW, float screenH) {
 
     constexpr float PANEL_W = 560.0f;
     constexpr float PANEL_H = 42.0f;
-    const float panelX = (screenW - PANEL_W) * 0.5f;
-    const float panelY = screenH - PANEL_H - 10.0f;
+    const float panelX      = (screenW - PANEL_W) * 0.5f;
+    const float panelY      = screenH - PANEL_H - 10.0f;
 
     this->m_spectatorSeekPanelId = this->m_uiManager.createPanel(
-        {panelX, panelY, PANEL_W, PANEL_H},
-        aoc::ui::PanelData{{0.05f, 0.05f, 0.10f, 0.85f}, 4.0f});
+        {panelX, panelY, PANEL_W, PANEL_H}, aoc::ui::PanelData{{0.05f, 0.05f, 0.10f, 0.85f}, 4.0f});
 
     this->m_spectatorSeekLabelId = this->m_uiManager.createLabel(
-        this->m_spectatorSeekPanelId,
-        {10.0f, 6.0f, 150.0f, 16.0f},
+        this->m_spectatorSeekPanelId, {10.0f, 6.0f, 150.0f, 16.0f},
         aoc::ui::LabelData{"Seek: Turn 0", {0.9f, 0.9f, 0.9f, 1.0f}, 12.0f});
 
     aoc::ui::SliderData slider{};
-    slider.minValue = 0.0f;
-    slider.maxValue = static_cast<float>(this->m_spectatorMaxTurns);
-    slider.value    = 0.0f;
-    slider.step     = 1.0f;
+    slider.minValue       = 0.0f;
+    slider.maxValue       = static_cast<float>(this->m_spectatorMaxTurns);
+    slider.value          = 0.0f;
+    slider.step           = 1.0f;
     slider.onValueChanged = [this](float v) {
         this->m_spectatorTargetTurn = static_cast<int32_t>(v + 0.5f);
     };
     this->m_spectatorSeekSliderId = this->m_uiManager.createSlider(
-        this->m_spectatorSeekPanelId,
-        {170.0f, 12.0f, PANEL_W - 180.0f, 20.0f},
-        std::move(slider));
+        this->m_spectatorSeekPanelId, {170.0f, 12.0f, PANEL_W - 180.0f, 20.0f}, std::move(slider));
 }
 
 void Application::spectatorMaybeSnapshot() {
     const int32_t turn = static_cast<int32_t>(this->m_turnManager.currentTurn());
-    if (turn % SPECTATOR_SNAPSHOT_INTERVAL != 0) { return; }
-    if (this->m_spectatorSnapshots.count(turn) != 0) { return; }
+    if (turn % SPECTATOR_SNAPSHOT_INTERVAL != 0) {
+        return;
+    }
+    if (this->m_spectatorSnapshots.count(turn) != 0) {
+        return;
+    }
 
     // Write snapshot to /tmp so we can reuse the on-disk loadGame path
     // without refactoring Serializer for in-memory mode.  Store filepath
     // marker in the map so we can rediscover and delete later.
     const std::string path = "/tmp/aoc_spec_snap_" + std::to_string(turn) + ".sav";
-    const aoc::ErrorCode result = aoc::save::saveGame(
-        path, this->m_gameState, this->m_hexGrid, this->m_turnManager,
-        this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
+    const aoc::ErrorCode result =
+        aoc::save::saveGame(path, this->m_gameState, this->m_hexGrid, this->m_turnManager,
+                            this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
     if (result != aoc::ErrorCode::Ok) {
         LOG_WARN("spectatorSnapshot turn %d: saveGame failed", turn);
         return;
@@ -2976,8 +2975,8 @@ void Application::spectatorMaybeSnapshot() {
     // SPECTATOR_SNAPSHOT_MAX so /tmp doesn't fill up.
     while (this->m_spectatorSnapshots.size() > SPECTATOR_SNAPSHOT_MAX) {
         auto oldest = this->m_spectatorSnapshots.begin();
-        std::remove((std::string("/tmp/aoc_spec_snap_") +
-                     std::to_string(oldest->first) + ".sav").c_str());
+        std::remove(
+            (std::string("/tmp/aoc_spec_snap_") + std::to_string(oldest->first) + ".sav").c_str());
         this->m_spectatorSnapshots.erase(oldest);
     }
 }
@@ -2985,19 +2984,21 @@ void Application::spectatorMaybeSnapshot() {
 bool Application::spectatorRestoreSnapshot(int32_t turn) {
     // Find the newest snapshot at or before `turn`.
     auto it = this->m_spectatorSnapshots.upper_bound(turn);
-    if (it == this->m_spectatorSnapshots.begin()) { return false; }
+    if (it == this->m_spectatorSnapshots.begin()) {
+        return false;
+    }
     --it;
     const int32_t snapTurn = it->first;
 
     // Pause the sim advance while we mutate GameState + derived containers
     // to avoid any mid-frame turn tick seeing half-loaded state.
-    const bool wasPaused = this->m_spectatorPaused;
+    const bool wasPaused    = this->m_spectatorPaused;
     this->m_spectatorPaused = true;
 
     const std::string path = "/tmp/aoc_spec_snap_" + std::to_string(snapTurn) + ".sav";
-    const aoc::ErrorCode result = aoc::save::loadGame(
-        path, this->m_gameState, this->m_hexGrid, this->m_turnManager,
-        this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
+    const aoc::ErrorCode result =
+        aoc::save::loadGame(path, this->m_gameState, this->m_hexGrid, this->m_turnManager,
+                            this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
     if (result != aoc::ErrorCode::Ok) {
         LOG_WARN("spectatorRestoreSnapshot turn %d: loadGame failed", snapTurn);
         this->m_spectatorPaused = wasPaused;
@@ -3016,8 +3017,8 @@ bool Application::spectatorRestoreSnapshot(int32_t turn) {
     this->m_aiControllers.clear();
     const int32_t pc = this->m_gameState.playerCount();
     for (int32_t p = 0; p < pc; ++p) {
-        this->m_aiControllers.emplace_back(
-            static_cast<aoc::PlayerId>(p), aoc::ui::AIDifficulty::Normal);
+        this->m_aiControllers.emplace_back(static_cast<aoc::PlayerId>(p),
+                                           aoc::ui::AIDifficulty::Normal);
     }
     // In spectator mode no slot is human; controllers cover all players.
     // Reset turn-manager readiness so the next advance cycles cleanly.
@@ -3034,8 +3035,8 @@ bool Application::spectatorRestoreSnapshot(int32_t turn) {
         this->spectatorRevealAll();
     } else {
         for (int32_t p = 0; p < pc; ++p) {
-            this->m_fogOfWar.updateVisibility(
-                this->m_gameState, this->m_hexGrid, static_cast<aoc::PlayerId>(p));
+            this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid,
+                                              static_cast<aoc::PlayerId>(p));
         }
     }
 
@@ -3058,8 +3059,8 @@ void Application::run() {
     }
 
     std::chrono::steady_clock::time_point previousTime = std::chrono::steady_clock::now();
-    float fpsAccum = 0.0f;
-    int32_t fpsFrameCount = 0;
+    float fpsAccum                                     = 0.0f;
+    int32_t fpsFrameCount                              = 0;
 
     while (!this->m_window.shouldClose()) {
         // Live-debug command file: poll once per frame at the very
@@ -3076,21 +3077,18 @@ void Application::run() {
         // recent target. Re-roll takes precedence because it implies
         // "rebuild from scratch".
         if (this->m_pendingReroll.exchange(false, std::memory_order_acquire)) {
-            const uint32_t seed = this->m_pendingRerollSeed.load(
-                std::memory_order_relaxed);
+            const uint32_t seed = this->m_pendingRerollSeed.load(std::memory_order_relaxed);
             this->m_creatorSeed = seed;
             this->clearCreatorEpochCache();
             // Drop any stale set-creator-time the worker queued before
             // the re-roll; re-roll resets to total time anyway.
-            this->m_pendingCreatorTime.store(PENDING_TIME_NONE,
-                                              std::memory_order_relaxed);
+            this->m_pendingCreatorTime.store(PENDING_TIME_NONE, std::memory_order_relaxed);
             this->enqueueRegen(this->m_creatorTotalMy);
         }
         {
-            const int32_t pending = this->m_pendingCreatorTime.exchange(
-                PENDING_TIME_NONE, std::memory_order_acquire);
-            if (pending != PENDING_TIME_NONE
-                && this->m_continentCreatorMode) {
+            const int32_t pending =
+                this->m_pendingCreatorTime.exchange(PENDING_TIME_NONE, std::memory_order_acquire);
+            if (pending != PENDING_TIME_NONE && this->m_continentCreatorMode) {
                 this->enqueueRegen(pending);
             }
         }
@@ -3105,16 +3103,17 @@ void Application::run() {
 
         std::chrono::steady_clock::time_point currentTime = std::chrono::steady_clock::now();
         float deltaTime = std::chrono::duration<float>(currentTime - previousTime).count();
-        previousTime = currentTime;
+        previousTime    = currentTime;
 
         // FPS counter: update window title every 0.5 seconds
         fpsAccum += deltaTime;
         ++fpsFrameCount;
         if (this->m_settingsMenu.settings().showFPS && fpsAccum >= 0.5f) {
             float fps = static_cast<float>(fpsFrameCount) / fpsAccum;
-            std::string title = "Age of Civilization - " + std::to_string(static_cast<int>(fps)) + " FPS";
+            std::string title =
+                "Age of Civilization - " + std::to_string(static_cast<int>(fps)) + " FPS";
             glfwSetWindowTitle(this->m_window.handle(), title.c_str());
-            fpsAccum = 0.0f;
+            fpsAccum      = 0.0f;
             fpsFrameCount = 0;
         } else if (!this->m_settingsMenu.settings().showFPS && fpsFrameCount == 1) {
             glfwSetWindowTitle(this->m_window.handle(), "Age of Civilization");
@@ -3142,21 +3141,22 @@ void Application::run() {
                 std::string message;
 
                 std::vector<uint8_t> pixels;
-                uint32_t shotWidth = 0;
+                uint32_t shotWidth  = 0;
                 uint32_t shotHeight = 0;
                 VkFormat shotFormat = VK_FORMAT_UNDEFINED;
                 if (this->m_renderPipeline && this->m_renderPipeline->readSwapchainPixels(
-                        pixels, shotWidth, shotHeight, shotFormat)) {
-                    const bool isBgra = (shotFormat == VK_FORMAT_B8G8R8A8_SRGB
-                                        || shotFormat == VK_FORMAT_B8G8R8A8_UNORM);
+                                                  pixels, shotWidth, shotHeight, shotFormat)) {
+                    const bool isBgra = (shotFormat == VK_FORMAT_B8G8R8A8_SRGB ||
+                                         shotFormat == VK_FORMAT_B8G8R8A8_UNORM);
                     if (writeScreenshotPng(shotPath, pixels, shotWidth, shotHeight, isBgra)) {
-                        ok = true;
+                        ok      = true;
                         message = "screenshot written via swapchain readback";
                     } else {
                         message = "PNG encode failed (check parent directory + disk space)";
                     }
                 } else {
-                    message = "swapchain readback unavailable (no frame presented yet or TRANSFER_SRC not supported)";
+                    message = "swapchain readback unavailable (no frame presented yet or "
+                              "TRANSFER_SRC not supported)";
                 }
 
                 this->m_dbusService.reportScreenshotResult(ok, std::move(message));
@@ -3164,8 +3164,8 @@ void Application::run() {
         }
 
         std::pair<uint32_t, uint32_t> fbSizePair = this->m_window.framebufferSize();
-        uint32_t fbWidth = fbSizePair.first;
-        uint32_t fbHeight = fbSizePair.second;
+        uint32_t fbWidth                         = fbSizePair.first;
+        uint32_t fbHeight                        = fbSizePair.second;
 
         // Detect framebuffer size changes that the GLFW callback may have missed
         // (e.g., window manager fullscreen toggle on Wayland)
@@ -3187,24 +3187,26 @@ void Application::run() {
                 } else if (this->m_gameSetupScreen.isBuilt()) {
                     this->m_gameSetupScreen.destroy(this->m_uiManager);
                     const std::pair<uint32_t, uint32_t> menuSize = this->m_window.framebufferSize();
-                    this->buildMainMenu(static_cast<float>(menuSize.first), static_cast<float>(menuSize.second));
+                    this->buildMainMenu(static_cast<float>(menuSize.first),
+                                        static_cast<float>(menuSize.second));
                 } else {
                     break;
                 }
             }
 
             // UI input
-            const bool leftPressed  = this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
-            const bool leftReleased = this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT);
+            const bool leftPressed =
+                this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
+            const bool leftReleased =
+                this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT);
             const float scrollDelta = static_cast<float>(this->m_inputManager.scrollDelta());
-            this->m_uiManager.handleInput(
-                static_cast<float>(this->m_inputManager.mouseX()),
-                static_cast<float>(this->m_inputManager.mouseY()),
-                leftPressed, leftReleased, scrollDelta);
+            this->m_uiManager.handleInput(static_cast<float>(this->m_inputManager.mouseX()),
+                                          static_cast<float>(this->m_inputManager.mouseY()),
+                                          leftPressed, leftReleased, scrollDelta);
 
             // Update layout on resize
-            this->m_mainMenu.updateLayout(
-                this->m_uiManager, static_cast<float>(fbWidth), static_cast<float>(fbHeight));
+            this->m_mainMenu.updateLayout(this->m_uiManager, static_cast<float>(fbWidth),
+                                          static_cast<float>(fbHeight));
 
             // Render: UI only (no world-space pass)
             if (fbWidth == 0 || fbHeight == 0) {
@@ -3226,18 +3228,15 @@ void Application::run() {
             this->m_renderer2d->beginFrame(frame.frameIndex);
             this->m_renderer2d->begin();
 
-            this->m_uiManager.setScreenSize(
-                static_cast<float>(frame.extent.width),
-                static_cast<float>(frame.extent.height));
+            this->m_uiManager.setScreenSize(static_cast<float>(frame.extent.width),
+                                            static_cast<float>(frame.extent.height));
             this->m_uiManager.layout();
-            this->m_uiManager.setRenderCommandBuffer(
-                static_cast<void*>(frame.commandBuffer));
+            this->m_uiManager.setRenderCommandBuffer(static_cast<void*>(frame.commandBuffer));
             this->m_uiManager.render(*this->m_renderer2d);
             this->m_uiManager.setRenderCommandBuffer(nullptr);
-            this->m_widgetInspector.render(
-                *this->m_renderer2d, this->m_uiManager,
-                static_cast<float>(this->m_inputManager.mouseX()),
-                static_cast<float>(this->m_inputManager.mouseY()));
+            this->m_widgetInspector.render(*this->m_renderer2d, this->m_uiManager,
+                                           static_cast<float>(this->m_inputManager.mouseX()),
+                                           static_cast<float>(this->m_inputManager.mouseY()));
 
             this->m_renderer2d->end(frame.commandBuffer);
 
@@ -3266,19 +3265,17 @@ void Application::run() {
         if (this->m_inputManager.isKeyPressed(GLFW_KEY_F8)) {
             using OM = aoc::render::GameRenderer::MapOverlay;
             this->m_gameRenderer.overlayMode =
-                (this->m_gameRenderer.overlayMode == OM::None)
-                    ? OM::TectonicPlates : OM::None;
+                (this->m_gameRenderer.overlayMode == OM::None) ? OM::TectonicPlates : OM::None;
             LOG_INFO("Overlay mode: %s",
-                this->m_gameRenderer.overlayMode == OM::None
-                    ? "off" : "tectonic plates");
+                     this->m_gameRenderer.overlayMode == OM::None ? "off" : "tectonic plates");
         }
         if (this->m_debugConsole.isOpen()) {
             // Route character input to console
             for (int32_t ki = GLFW_KEY_A; ki <= GLFW_KEY_Z; ++ki) {
                 if (this->m_inputManager.isKeyPressed(ki)) {
-                    bool shift = this->m_inputManager.isKeyHeld(GLFW_KEY_LEFT_SHIFT)
-                              || this->m_inputManager.isKeyHeld(GLFW_KEY_RIGHT_SHIFT);
-                    char c = static_cast<char>(ki - GLFW_KEY_A + (shift ? 'A' : 'a'));
+                    bool shift = this->m_inputManager.isKeyHeld(GLFW_KEY_LEFT_SHIFT) ||
+                                 this->m_inputManager.isKeyHeld(GLFW_KEY_RIGHT_SHIFT);
+                    char c     = static_cast<char>(ki - GLFW_KEY_A + (shift ? 'A' : 'a'));
                     this->m_debugConsole.addChar(c);
                 }
             }
@@ -3300,8 +3297,8 @@ void Application::run() {
                 this->m_debugConsole.backspace();
             }
             if (this->m_inputManager.isKeyPressed(GLFW_KEY_ENTER)) {
-                this->m_debugConsole.execute(this->m_gameState, this->m_hexGrid,
-                                              this->m_fogOfWar, 0);
+                this->m_debugConsole.execute(this->m_gameState, this->m_hexGrid, this->m_fogOfWar,
+                                             0);
             }
         }
 
@@ -3328,16 +3325,15 @@ void Application::run() {
                     // Reached endpoint — stop play.
                     this->m_creatorPlaying = false;
                     if (this->m_creatorPlayBtnId != aoc::ui::INVALID_WIDGET) {
-                        this->m_uiManager.setButtonLabel(
-                            this->m_creatorPlayBtnId, "Play");
+                        this->m_uiManager.setButtonLabel(this->m_creatorPlayBtnId, "Play");
                     }
                 } else {
                     // Advance one physics-epoch (50 My) per play tick.
-                    this->m_creatorTimeCurrentMy +=
-                        aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
+                    this->m_creatorTimeCurrentMy += aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
                     this->enqueueRegen(this->m_creatorTimeCurrentMy);
                     if (this->m_creatorEpochLabelId != aoc::ui::INVALID_WIDGET) {
-                        this->m_uiManager.setLabelText(this->m_creatorEpochLabelId,
+                        this->m_uiManager.setLabelText(
+                            this->m_creatorEpochLabelId,
                             formatCreatorAgeLabel(this->m_creatorTimeCurrentMy,
                                                   this->m_creatorTotalMy));
                     }
@@ -3348,8 +3344,8 @@ void Application::run() {
         // ================================================================
         // Spectator mode input and turn advancement
         // ================================================================
-        if (this->m_spectatorMode && !this->m_debugConsole.isOpen()
-            && !this->m_continentCreatorMode && !this->m_mapEditorMode) {
+        if (this->m_spectatorMode && !this->m_debugConsole.isOpen() &&
+            !this->m_continentCreatorMode && !this->m_mapEditorMode) {
             // Space: toggle pause/resume.
             if (this->m_inputManager.isKeyPressed(GLFW_KEY_SPACE)) {
                 this->m_spectatorPaused = !this->m_spectatorPaused;
@@ -3364,7 +3360,8 @@ void Application::run() {
                 for (int32_t s = 0; s < STEP_COUNT - 1; ++s) {
                     if (this->m_spectatorSpeed < SPEED_STEPS[s + 1] - 0.01f) {
                         this->m_spectatorSpeed = SPEED_STEPS[s + 1];
-                        LOG_INFO("Spectator speed: %.0fx", static_cast<double>(this->m_spectatorSpeed));
+                        LOG_INFO("Spectator speed: %.0fx",
+                                 static_cast<double>(this->m_spectatorSpeed));
                         break;
                     }
                 }
@@ -3378,7 +3375,8 @@ void Application::run() {
                 for (int32_t s = STEP_COUNT - 1; s > 0; --s) {
                     if (this->m_spectatorSpeed > SPEED_STEPS[s - 1] + 0.01f) {
                         this->m_spectatorSpeed = SPEED_STEPS[s - 1];
-                        LOG_INFO("Spectator speed: %.0fx", static_cast<double>(this->m_spectatorSpeed));
+                        LOG_INFO("Spectator speed: %.0fx",
+                                 static_cast<double>(this->m_spectatorSpeed));
                         break;
                     }
                 }
@@ -3416,8 +3414,7 @@ void Application::run() {
             if (this->m_inputManager.isKeyPressed(GLFW_KEY_TAB)) {
                 const int32_t count = this->m_gameState.playerCount();
                 if (count > 0) {
-                    this->m_spectatorFollowPlayer =
-                        (this->m_spectatorFollowPlayer + 2) % count;
+                    this->m_spectatorFollowPlayer = (this->m_spectatorFollowPlayer + 2) % count;
                     LOG_INFO("Spectator: cycling to player %d", this->m_spectatorFollowPlayer);
                     this->spectatorUpdateFollowCamera();
                 }
@@ -3430,11 +3427,9 @@ void Application::run() {
             // a civ in the scoreboard sets m_spectatorFollowPlayer, then
             // pressing T overtakes that civ.
             if (this->m_inputManager.isKeyPressed(GLFW_KEY_T)) {
-                if (this->m_spectatorFollowPlayer >= 0
-                    && this->m_spectatorFollowPlayer
-                       < this->m_gameState.playerCount()) {
-                    const PlayerId tookOver =
-                        static_cast<PlayerId>(this->m_spectatorFollowPlayer);
+                if (this->m_spectatorFollowPlayer >= 0 &&
+                    this->m_spectatorFollowPlayer < this->m_gameState.playerCount()) {
+                    const PlayerId tookOver = static_cast<PlayerId>(this->m_spectatorFollowPlayer);
                     this->m_gameState.setHumanPlayerId(tookOver);
                     LOG_INFO("WP-H takeover: player %u is now human-controlled",
                              static_cast<unsigned>(tookOver));
@@ -3447,8 +3442,9 @@ void Application::run() {
                 if (!this->m_spectatorFogEnabled) {
                     this->spectatorRevealAll();
                 }
-                LOG_INFO("Spectator fog: %s",
-                         this->m_spectatorFogEnabled ? "enabled (follow player)" : "disabled (reveal all)");
+                LOG_INFO("Spectator fog: %s", this->m_spectatorFogEnabled
+                                                  ? "enabled (follow player)"
+                                                  : "disabled (reveal all)");
             }
 
             // Seek: if slider moved backward, restore the newest snapshot
@@ -3479,27 +3475,26 @@ void Application::run() {
 
                 // Cap the number of turns processed per frame to avoid hitching.
                 constexpr int32_t MAX_TURNS_PER_FRAME = 50;
-                int32_t turnsThisFrame = 0;
-                const bool seeking = (this->m_spectatorTargetTurn >= 0
-                    && static_cast<int32_t>(this->m_turnManager.currentTurn())
-                           < this->m_spectatorTargetTurn);
-                while ((seeking
-                        || this->m_spectatorTurnAccumulator >= 1.0f)
-                       && turnsThisFrame < MAX_TURNS_PER_FRAME
-                       && !this->m_spectatorPaused) {
-                    if (!seeking) { this->m_spectatorTurnAccumulator -= 1.0f; }
+                int32_t turnsThisFrame                = 0;
+                const bool seeking = (this->m_spectatorTargetTurn >= 0 &&
+                                      static_cast<int32_t>(this->m_turnManager.currentTurn()) <
+                                          this->m_spectatorTargetTurn);
+                while ((seeking || this->m_spectatorTurnAccumulator >= 1.0f) &&
+                       turnsThisFrame < MAX_TURNS_PER_FRAME && !this->m_spectatorPaused) {
+                    if (!seeking) {
+                        this->m_spectatorTurnAccumulator -= 1.0f;
+                    }
                     this->spectatorAdvanceTurn();
                     ++turnsThisFrame;
 
-                    if (this->m_turnManager.currentTurn()
-                            >= static_cast<aoc::TurnNumber>(this->m_spectatorMaxTurns)) {
+                    if (this->m_turnManager.currentTurn() >=
+                        static_cast<aoc::TurnNumber>(this->m_spectatorMaxTurns)) {
                         this->m_spectatorPaused = true;
                         LOG_INFO("Spectator: reached maximum turn limit (%d)",
                                  this->m_spectatorMaxTurns);
                     }
-                    if (seeking
-                        && static_cast<int32_t>(this->m_turnManager.currentTurn())
-                               >= this->m_spectatorTargetTurn) {
+                    if (seeking && static_cast<int32_t>(this->m_turnManager.currentTurn()) >=
+                                       this->m_spectatorTargetTurn) {
                         this->m_spectatorTargetTurn = -1;
                         break;
                     }
@@ -3518,8 +3513,8 @@ void Application::run() {
             // simulation state whenever the user is NOT actively dragging
             // the slider (which would snap it back on every frame).
             if (this->m_spectatorSeekSliderId != aoc::ui::INVALID_WIDGET) {
-                aoc::ui::Widget* sliderWidget = this->m_uiManager.getWidget(
-                    this->m_spectatorSeekSliderId);
+                aoc::ui::Widget* sliderWidget =
+                    this->m_uiManager.getWidget(this->m_spectatorSeekSliderId);
                 if (sliderWidget != nullptr) {
                     if (auto* sd = std::get_if<aoc::ui::SliderData>(&sliderWidget->data)) {
                         if (!sd->dragging && this->m_spectatorTargetTurn < 0) {
@@ -3528,8 +3523,9 @@ void Application::run() {
                     }
                 }
                 if (this->m_spectatorSeekLabelId != aoc::ui::INVALID_WIDGET) {
-                    std::string txt = "Seek: Turn "
-                        + std::to_string(static_cast<int32_t>(this->m_turnManager.currentTurn()));
+                    std::string txt =
+                        "Seek: Turn " +
+                        std::to_string(static_cast<int32_t>(this->m_turnManager.currentTurn()));
                     this->m_uiManager.setLabelText(this->m_spectatorSeekLabelId, std::move(txt));
                 }
             }
@@ -3541,13 +3537,14 @@ void Application::run() {
         // -- Animated unit movement: advance animProgress each frame --
         {
             constexpr float ANIM_DURATION = 0.2f;
-            for (const std::unique_ptr<aoc::game::Player>& animPlayer : this->m_gameState.players()) {
+            for (const std::unique_ptr<aoc::game::Player>& animPlayer :
+                 this->m_gameState.players()) {
                 for (const std::unique_ptr<aoc::game::Unit>& animUnit : animPlayer->units()) {
                     if (animUnit->isAnimating) {
                         animUnit->animProgress += deltaTime / ANIM_DURATION;
                         if (animUnit->animProgress >= 1.0f) {
                             animUnit->animProgress = 1.0f;
-                            animUnit->isAnimating = false;
+                            animUnit->isAnimating  = false;
                         }
                     }
                 }
@@ -3562,8 +3559,9 @@ void Application::run() {
         this->m_notificationManager.update(deltaTime);
 
         // -- Cycle to next unit needing orders (Tab key, human mode only) --
-        if (!this->m_spectatorMode
-            && this->m_inputManager.isActionPressed(InputAction::CycleNextUnit) && !this->anyScreenOpen()) {
+        if (!this->m_spectatorMode &&
+            this->m_inputManager.isActionPressed(InputAction::CycleNextUnit) &&
+            !this->anyScreenOpen()) {
             aoc::game::Player* cyclePlayer = this->m_gameState.player(0);
             if (cyclePlayer != nullptr) {
                 aoc::game::Unit* nextUnit = nullptr;
@@ -3598,8 +3596,7 @@ void Application::run() {
         // doubles as pause menu for now (Save/Load via F5/F9).
         if (this->m_inputManager.isActionPressed(InputAction::Cancel)) {
             LOG_INFO("ESC pressed in-game (pauseBuilt=%d, anyScreen=%d)",
-                     this->m_pauseMenu.isBuilt() ? 1 : 0,
-                     this->anyScreenOpen() ? 1 : 0);
+                     this->m_pauseMenu.isBuilt() ? 1 : 0, this->anyScreenOpen() ? 1 : 0);
             if (this->m_pauseMenu.isBuilt()) {
                 this->m_pauseMenu.destroy(this->m_uiManager);
             } else if (this->anyScreenOpen()) {
@@ -3607,56 +3604,44 @@ void Application::run() {
             } else {
                 const std::pair<uint32_t, uint32_t> sz = this->m_window.framebufferSize();
                 this->m_pauseMenu.build(
-                    this->m_uiManager,
-                    static_cast<float>(sz.first),
-                    static_cast<float>(sz.second),
+                    this->m_uiManager, static_cast<float>(sz.first), static_cast<float>(sz.second),
                     [this]() { this->m_pauseMenu.destroy(this->m_uiManager); },
                     [this](int slot) {
-                        const std::string fname =
-                            "save_slot_" + std::to_string(slot + 1) + ".aoc";
-                        ErrorCode r = aoc::save::saveGame(
-                            fname.c_str(), this->m_gameState, this->m_hexGrid,
-                            this->m_turnManager, this->m_economy, this->m_diplomacy,
-                            this->m_fogOfWar, this->m_gameRng);
+                        const std::string fname = "save_slot_" + std::to_string(slot + 1) + ".aoc";
+                        ErrorCode r             = aoc::save::saveGame(
+                            fname.c_str(), this->m_gameState, this->m_hexGrid, this->m_turnManager,
+                            this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
                         if (r != ErrorCode::Ok) {
-                            LOG_ERROR("PauseMenu save slot %d failed: %.*s",
-                                slot + 1,
-                                static_cast<int>(describeError(r).size()),
-                                describeError(r).data());
-                            this->m_notificationManager.push(
-                                "Save failed", 3.0f, 0.9f, 0.3f, 0.3f);
+                            LOG_ERROR("PauseMenu save slot %d failed: %.*s", slot + 1,
+                                      static_cast<int>(describeError(r).size()),
+                                      describeError(r).data());
+                            this->m_notificationManager.push("Save failed", 3.0f, 0.9f, 0.3f, 0.3f);
                         } else {
                             LOG_INFO("PauseMenu: saved to %s", fname.c_str());
-                            this->m_notificationManager.push(
-                                ("Saved to " + fname).c_str(),
-                                3.0f, 0.4f, 0.9f, 0.4f);
+                            this->m_notificationManager.push(("Saved to " + fname).c_str(), 3.0f,
+                                                             0.4f, 0.9f, 0.4f);
                         }
                     },
                     [this](int slot) {
-                        const std::string fname =
-                            "save_slot_" + std::to_string(slot + 1) + ".aoc";
-                        ErrorCode r = aoc::save::loadGame(
-                            fname.c_str(), this->m_gameState, this->m_hexGrid,
-                            this->m_turnManager, this->m_economy, this->m_diplomacy,
-                            this->m_fogOfWar, this->m_gameRng);
+                        const std::string fname = "save_slot_" + std::to_string(slot + 1) + ".aoc";
+                        ErrorCode r             = aoc::save::loadGame(
+                            fname.c_str(), this->m_gameState, this->m_hexGrid, this->m_turnManager,
+                            this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
                         if (r != ErrorCode::Ok) {
-                            LOG_ERROR("PauseMenu load slot %d failed: %.*s",
-                                slot + 1,
-                                static_cast<int>(describeError(r).size()),
-                                describeError(r).data());
-                            this->m_notificationManager.push(
-                                "Load failed (no save in slot?)",
-                                3.0f, 0.9f, 0.3f, 0.3f);
+                            LOG_ERROR("PauseMenu load slot %d failed: %.*s", slot + 1,
+                                      static_cast<int>(describeError(r).size()),
+                                      describeError(r).data());
+                            this->m_notificationManager.push("Load failed (no save in slot?)", 3.0f,
+                                                             0.9f, 0.3f, 0.3f);
                         } else {
                             // Load replaced the grid + every Player
                             // (and their units) wholesale.
                             this->publishDebugGridSnapshot();
                             this->clearEntitySelection();
                             this->m_economy.initialize();
-                            this->m_fogOfWar.initialize(
-                                this->m_hexGrid.tileCount(), MAX_PLAYERS);
-                            this->m_fogOfWar.updateVisibility(
-                                this->m_gameState, this->m_hexGrid, 0);
+                            this->m_fogOfWar.initialize(this->m_hexGrid.tileCount(), MAX_PLAYERS);
+                            this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid,
+                                                              0);
                             LOG_INFO("PauseMenu: loaded from %s", fname.c_str());
                             this->m_pauseMenu.destroy(this->m_uiManager);
                         }
@@ -3673,62 +3658,60 @@ void Application::run() {
         }
 
         // -- Toggle tile yield display (Y key) --
-        if (!this->m_spectatorMode
-            && this->m_inputManager.isKeyPressed(GLFW_KEY_Y) && !this->m_debugConsole.isOpen()) {
+        if (!this->m_spectatorMode && this->m_inputManager.isKeyPressed(GLFW_KEY_Y) &&
+            !this->m_debugConsole.isOpen()) {
             this->m_settingsMenu.settings().showTileYields =
                 !this->m_settingsMenu.settings().showTileYields;
-            this->m_gameRenderer.showTileYields =
-                this->m_settingsMenu.settings().showTileYields;
+            this->m_gameRenderer.showTileYields = this->m_settingsMenu.settings().showTileYields;
             this->m_notificationManager.push(
-                this->m_gameRenderer.showTileYields
-                    ? "Tile yields: ON" : "Tile yields: OFF",
-                2.0f, 0.8f, 0.8f, 0.8f);
+                this->m_gameRenderer.showTileYields ? "Tile yields: ON" : "Tile yields: OFF", 2.0f,
+                0.8f, 0.8f, 0.8f);
         }
 
         // -- Screen toggle keys (human mode only) --
-        if (!this->m_spectatorMode
-            && this->m_inputManager.isActionPressed(InputAction::OpenTechTree)) {
+        if (!this->m_spectatorMode &&
+            this->m_inputManager.isActionPressed(InputAction::OpenTechTree)) {
             this->m_techScreen.setContext(&this->m_gameState, 0);
             this->m_techScreen.setGrid(&this->m_hexGrid);
             this->m_techScreen.toggle(this->m_uiManager);
         }
-        if (!this->m_spectatorMode
-            && this->m_inputManager.isActionPressed(InputAction::OpenEconomy)) {
-            this->m_economyScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0, &this->m_economy.market());
+        if (!this->m_spectatorMode &&
+            this->m_inputManager.isActionPressed(InputAction::OpenEconomy)) {
+            this->m_economyScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0,
+                                             &this->m_economy.market());
             this->m_economyScreen.toggle(this->m_uiManager);
         }
-        if (!this->m_spectatorMode
-            && this->m_inputManager.isActionPressed(InputAction::OpenGovernment)) {
+        if (!this->m_spectatorMode &&
+            this->m_inputManager.isActionPressed(InputAction::OpenGovernment)) {
             this->m_governmentScreen.setContext(&this->m_gameState, 0);
             this->m_governmentScreen.toggle(this->m_uiManager);
         }
-        if (!this->m_spectatorMode
-            && this->m_inputManager.isActionPressed(InputAction::OpenReligion)) {
+        if (!this->m_spectatorMode &&
+            this->m_inputManager.isActionPressed(InputAction::OpenReligion)) {
             this->m_religionScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0);
             this->m_religionScreen.toggle(this->m_uiManager);
         }
-        if (!this->m_spectatorMode
-            && this->m_inputManager.isActionPressed(InputAction::OpenProductionPicker)) {
+        if (!this->m_spectatorMode &&
+            this->m_inputManager.isActionPressed(InputAction::OpenProductionPicker)) {
             // Only open if an own city is selected
             if (this->m_selectedCity != nullptr && this->m_selectedCity->owner() == 0) {
-                this->m_productionScreen.setContext(
-                    &this->m_gameState, &this->m_hexGrid, this->m_selectedCity->location(), 0);
+                this->m_productionScreen.setContext(&this->m_gameState, &this->m_hexGrid,
+                                                    this->m_selectedCity->location(), 0);
                 this->m_productionScreen.toggle(this->m_uiManager);
             }
         }
 
         // -- Unit upgrade (U key, human mode only) --
-        if (!this->m_spectatorMode
-            && this->m_inputManager.isActionPressed(InputAction::UpgradeUnit)) {
+        if (!this->m_spectatorMode &&
+            this->m_inputManager.isActionPressed(InputAction::UpgradeUnit)) {
             if (this->m_selectedUnit != nullptr) {
                 const std::vector<aoc::sim::UnitUpgradeDef> upgrades =
                     aoc::sim::getAvailableUpgrades(this->m_selectedUnit->typeId());
                 if (!upgrades.empty()) {
                     // Try the first available upgrade
                     const aoc::sim::UnitUpgradeDef& upg = upgrades[0];
-                    bool success = aoc::sim::upgradeUnit(
-                        this->m_gameState, *this->m_selectedUnit, upg.to,
-                        this->m_selectedUnit->owner());
+                    bool success = aoc::sim::upgradeUnit(this->m_gameState, *this->m_selectedUnit,
+                                                         upg.to, this->m_selectedUnit->owner());
                     if (success) {
                         this->m_eventLog.addEvent("Unit upgraded!");
                     }
@@ -3737,19 +3720,17 @@ void Application::run() {
         }
 
         // -- Help overlay (F1, human mode only) --
-        if (!this->m_spectatorMode
-            && this->m_inputManager.isActionPressed(InputAction::ShowHelp)) {
+        if (!this->m_spectatorMode && this->m_inputManager.isActionPressed(InputAction::ShowHelp)) {
             if (this->m_helpOverlay != aoc::ui::INVALID_WIDGET) {
                 this->m_uiManager.removeWidget(this->m_helpOverlay);
                 this->m_helpOverlay = aoc::ui::INVALID_WIDGET;
             } else {
-                const float sw = static_cast<float>(fbWidth);
-                const float sh = static_cast<float>(fbHeight);
+                const float sw         = static_cast<float>(fbWidth);
+                const float sh         = static_cast<float>(fbHeight);
                 constexpr float HELP_W = 380.0f;
                 constexpr float HELP_H = 400.0f;
-                this->m_helpOverlay = this->m_uiManager.createPanel(
-                    {0.0f, 0.0f, sw, sh},
-                    aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.5f}, 0.0f});
+                this->m_helpOverlay    = this->m_uiManager.createPanel(
+                    {0.0f, 0.0f, sw, sh}, aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.5f}, 0.0f});
 
                 aoc::ui::WidgetId helpInner = this->m_uiManager.createPanel(
                     this->m_helpOverlay,
@@ -3758,13 +3739,13 @@ void Application::run() {
                 {
                     aoc::ui::Widget* inner = this->m_uiManager.getWidget(helpInner);
                     if (inner != nullptr) {
-                        inner->padding = {12.0f, 12.0f, 12.0f, 12.0f};
+                        inner->padding      = {12.0f, 12.0f, 12.0f, 12.0f};
                         inner->childSpacing = 3.0f;
                     }
                 }
 
-                (void)this->m_uiManager.createLabel(helpInner,
-                    {0.0f, 0.0f, 356.0f, 22.0f},
+                (void)this->m_uiManager.createLabel(
+                    helpInner, {0.0f, 0.0f, 356.0f, 22.0f},
                     aoc::ui::LabelData{"Keyboard Shortcuts", {1.0f, 0.9f, 0.5f, 1.0f}, 16.0f});
 
                 constexpr std::array<std::pair<const char*, const char*>, 16> SHORTCUTS = {{
@@ -3788,51 +3769,49 @@ void Application::run() {
 
                 for (const std::pair<const char*, const char*>& shortcut : SHORTCUTS) {
                     const std::string line = std::string(shortcut.first) + ": " + shortcut.second;
-                    (void)this->m_uiManager.createLabel(helpInner,
-                        {0.0f, 0.0f, 356.0f, 16.0f},
+                    (void)this->m_uiManager.createLabel(
+                        helpInner, {0.0f, 0.0f, 356.0f, 16.0f},
                         aoc::ui::LabelData{line, {0.8f, 0.8f, 0.85f, 1.0f}, 12.0f});
                 }
 
                 // Close button
                 aoc::ui::ButtonData closeBtn;
-                closeBtn.label = "Close [F1]";
-                closeBtn.fontSize = 12.0f;
-                closeBtn.normalColor = {0.3f, 0.15f, 0.15f, 0.9f};
-                closeBtn.hoverColor = {0.45f, 0.2f, 0.2f, 0.9f};
+                closeBtn.label        = "Close [F1]";
+                closeBtn.fontSize     = 12.0f;
+                closeBtn.normalColor  = {0.3f, 0.15f, 0.15f, 0.9f};
+                closeBtn.hoverColor   = {0.45f, 0.2f, 0.2f, 0.9f};
                 closeBtn.pressedColor = {0.2f, 0.1f, 0.1f, 0.9f};
                 closeBtn.cornerRadius = 4.0f;
-                closeBtn.onClick = [this]() {
+                closeBtn.onClick      = [this]() {
                     if (this->m_helpOverlay != aoc::ui::INVALID_WIDGET) {
                         this->m_uiManager.removeWidget(this->m_helpOverlay);
                         this->m_helpOverlay = aoc::ui::INVALID_WIDGET;
                     }
                 };
-                (void)this->m_uiManager.createButton(helpInner,
-                    {0.0f, 0.0f, 100.0f, 28.0f}, std::move(closeBtn));
+                (void)this->m_uiManager.createButton(helpInner, {0.0f, 0.0f, 100.0f, 28.0f},
+                                                     std::move(closeBtn));
 
                 this->m_uiManager.layout();
             }
         }
 
         // -- Quick save/load (human mode only) --
-        if (!this->m_spectatorMode
-            && this->m_inputManager.isActionPressed(InputAction::QuickSave)) {
+        if (!this->m_spectatorMode &&
+            this->m_inputManager.isActionPressed(InputAction::QuickSave)) {
             ErrorCode saveResult = aoc::save::saveGame(
-                "quicksave.aoc", this->m_gameState, this->m_hexGrid,
-                this->m_turnManager, this->m_economy, this->m_diplomacy,
-                this->m_fogOfWar, this->m_gameRng);
+                "quicksave.aoc", this->m_gameState, this->m_hexGrid, this->m_turnManager,
+                this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
             if (saveResult != ErrorCode::Ok) {
                 LOG_ERROR("Quick save failed: %.*s",
                           static_cast<int>(describeError(saveResult).size()),
                           describeError(saveResult).data());
             }
         }
-        if (!this->m_spectatorMode
-            && this->m_inputManager.isActionPressed(InputAction::QuickLoad)) {
+        if (!this->m_spectatorMode &&
+            this->m_inputManager.isActionPressed(InputAction::QuickLoad)) {
             ErrorCode loadResult = aoc::save::loadGame(
-                "quicksave.aoc", this->m_gameState, this->m_hexGrid,
-                this->m_turnManager, this->m_economy, this->m_diplomacy,
-                this->m_fogOfWar, this->m_gameRng);
+                "quicksave.aoc", this->m_gameState, this->m_hexGrid, this->m_turnManager,
+                this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
             if (loadResult != ErrorCode::Ok) {
                 LOG_ERROR("Quick load failed: %.*s",
                           static_cast<int>(describeError(loadResult).size()),
@@ -3850,40 +3829,42 @@ void Application::run() {
                 this->m_fogOfWar.initialize(this->m_hexGrid.tileCount(), MAX_PLAYERS);
                 this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, 0);
                 for (const aoc::sim::ai::AIController& ai : this->m_aiControllers) {
-                    this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, ai.player());
+                    this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid,
+                                                      ai.player());
                 }
             }
         }
 
         // -- UI input (consumes clicks on widgets) --
         {
-            const bool leftPressed   = this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
-            const bool leftReleased  = this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT);
-            const bool rightPressed  = this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_RIGHT);
-            const bool rightReleased = this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_RIGHT);
+            const bool leftPressed =
+                this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
+            const bool leftReleased =
+                this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT);
+            const bool rightPressed =
+                this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_RIGHT);
+            const bool rightReleased =
+                this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_RIGHT);
             const float scrollDelta = static_cast<float>(this->m_inputManager.scrollDelta());
             this->m_uiConsumedInput = this->m_uiManager.handleInput(
                 static_cast<float>(this->m_inputManager.mouseX()),
-                static_cast<float>(this->m_inputManager.mouseY()),
-                leftPressed, leftReleased, scrollDelta,
-                rightPressed, rightReleased);
+                static_cast<float>(this->m_inputManager.mouseY()), leftPressed, leftReleased,
+                scrollDelta, rightPressed, rightReleased);
         }
 
         // -- 3D globe orbit input (creator + globe-mode only). Left
         // press/drag/release rotates the sphere (Google-Maps style);
         // wheel zooms. Gated on UI not having consumed the input so
         // clicking creator panel buttons doesn't also yank the globe.
-        if (this->m_continentCreatorMode && this->m_creatorGlobe
-            && !this->m_uiConsumedInput
-            && !this->m_debugConsole.isOpen()) {
-            const double mx = this->m_inputManager.mouseX();
-            const double my = this->m_inputManager.mouseY();
-            const bool leftHeld = this->m_inputManager.isMouseButtonHeld(
-                GLFW_MOUSE_BUTTON_LEFT);
-            const bool leftPressed = this->m_inputManager.isMouseButtonPressed(
-                GLFW_MOUSE_BUTTON_LEFT);
-            const bool leftReleased = this->m_inputManager.isMouseButtonReleased(
-                GLFW_MOUSE_BUTTON_LEFT);
+        if (this->m_continentCreatorMode && this->m_creatorGlobe && !this->m_uiConsumedInput &&
+            !this->m_debugConsole.isOpen()) {
+            const double mx     = this->m_inputManager.mouseX();
+            const double my     = this->m_inputManager.mouseY();
+            const bool leftHeld = this->m_inputManager.isMouseButtonHeld(GLFW_MOUSE_BUTTON_LEFT);
+            const bool leftPressed =
+                this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT);
+            const bool leftReleased =
+                this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT);
             if (leftPressed) {
                 this->m_globeDragActive = true;
                 this->m_globeLastMouseX = mx;
@@ -3894,19 +3875,16 @@ void Application::run() {
             if (this->m_globeDragActive && leftHeld) {
                 const double dx = mx - this->m_globeLastMouseX;
                 const double dy = my - this->m_globeLastMouseY;
-                this->m_globeYawDeg   += static_cast<float>(dx) * 0.4f;
+                this->m_globeYawDeg += static_cast<float>(dx) * 0.4f;
                 this->m_globePitchDeg = std::clamp(
-                    this->m_globePitchDeg - static_cast<float>(dy) * 0.4f,
-                    -89.0f, 89.0f);
+                    this->m_globePitchDeg - static_cast<float>(dy) * 0.4f, -89.0f, 89.0f);
                 this->m_globeLastMouseX = mx;
                 this->m_globeLastMouseY = my;
             }
-            const float scroll = static_cast<float>(
-                this->m_inputManager.scrollDelta());
+            const float scroll = static_cast<float>(this->m_inputManager.scrollDelta());
             if (scroll != 0.0f) {
-                this->m_globeZoom = std::clamp(
-                    this->m_globeZoom * (1.0f - scroll * 0.10f),
-                    1.5f, 8.0f);
+                this->m_globeZoom =
+                    std::clamp(this->m_globeZoom * (1.0f - scroll * 0.10f), 1.5f, 8.0f);
                 this->m_inputManager.consumeScroll();
             }
         }
@@ -3922,16 +3900,15 @@ void Application::run() {
         aoc::render::Minimap::Rect mmRect =
             aoc::render::Minimap::computeRect(this->m_hexGrid, fbHeight);
         mmRect.y -= this->m_gameRenderer.m_minimapBottomOffset;
-        const float mouseXf = static_cast<float>(this->m_inputManager.mouseX());
-        const float mouseYf = static_cast<float>(this->m_inputManager.mouseY());
+        const float mouseXf    = static_cast<float>(this->m_inputManager.mouseX());
+        const float mouseYf    = static_cast<float>(this->m_inputManager.mouseY());
         const bool overMinimap = this->m_gameRenderer.minimap().containsPoint(
             mouseXf, mouseYf, mmRect.x, mmRect.y, mmRect.w, mmRect.h);
         const bool overWidget = this->m_uiManager.hoveredWidget() != aoc::ui::INVALID_WIDGET;
-        const bool suppressEdgeScroll =
-            overWidget || overMinimap || this->anyScreenOpen()
-            || this->m_uiConsumedInput || this->m_debugConsole.isOpen();
-        this->m_cameraController.update(this->m_inputManager, deltaTime,
-                                         fbWidth, fbHeight, suppressEdgeScroll);
+        const bool suppressEdgeScroll = overWidget || overMinimap || this->anyScreenOpen() ||
+                                        this->m_uiConsumedInput || this->m_debugConsole.isOpen();
+        this->m_cameraController.update(this->m_inputManager, deltaTime, fbWidth, fbHeight,
+                                        suppressEdgeScroll);
 
         // -- Minimap click detection --
         // Dimensions reused from the suppress-edge-scroll calculation
@@ -3941,16 +3918,13 @@ void Application::run() {
         // Minimap click + drag to pan. While the left mouse button is
         // held over the minimap, pan the camera continuously to follow
         // the cursor. Releasing stops panning.
-        if (overMinimap
-            && !this->m_uiConsumedInput
-            && this->m_inputManager.isMouseButtonHeld(GLFW_MOUSE_BUTTON_LEFT)) {
+        if (overMinimap && !this->m_uiConsumedInput &&
+            this->m_inputManager.isMouseButtonHeld(GLFW_MOUSE_BUTTON_LEFT)) {
             float worldX = 0.0f;
             float worldY = 0.0f;
             this->m_gameRenderer.minimap().screenToWorld(
-                mouseXf, mouseYf, mmRect.x, mmRect.y, mmRect.w, mmRect.h,
-                this->m_hexGrid,
-                this->m_gameRenderer.mapRenderer().hexSize(),
-                worldX, worldY);
+                mouseXf, mouseYf, mmRect.x, mmRect.y, mmRect.w, mmRect.h, this->m_hexGrid,
+                this->m_gameRenderer.mapRenderer().hexSize(), worldX, worldY);
             this->m_cameraController.setPosition(worldX, worldY);
             this->m_uiConsumedInput = true;
         }
@@ -3968,44 +3942,46 @@ void Application::run() {
         // action onto the undo stack. The drag dedupes tiles already
         // captured in the current action so a tile records only its
         // pre-drag value (one undo step rolls a whole stroke back).
-        const bool editorMouseHeld = this->m_mapEditorMode
-            && !this->m_uiConsumedInput
-            && this->m_inputManager.isMouseButtonHeld(GLFW_MOUSE_BUTTON_LEFT);
-        const bool editorMouseReleased = this->m_mapEditorMode
-            && this->m_editorMouseDownLast
-            && !this->m_inputManager.isMouseButtonHeld(GLFW_MOUSE_BUTTON_LEFT);
-        if (this->m_mapEditorMode && !this->m_uiConsumedInput
-            && this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT)) {
+        const bool editorMouseHeld = this->m_mapEditorMode && !this->m_uiConsumedInput &&
+                                     this->m_inputManager.isMouseButtonHeld(GLFW_MOUSE_BUTTON_LEFT);
+        const bool editorMouseReleased =
+            this->m_mapEditorMode && this->m_editorMouseDownLast &&
+            !this->m_inputManager.isMouseButtonHeld(GLFW_MOUSE_BUTTON_LEFT);
+        if (this->m_mapEditorMode && !this->m_uiConsumedInput &&
+            this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT)) {
             this->m_editorCurrentAction.changes.clear();
-            this->m_editorCurrentAction.isFeature =
-                (this->m_editorBrushMode == BrushMode::Feature);
+            this->m_editorCurrentAction.isFeature = (this->m_editorBrushMode == BrushMode::Feature);
         }
         if (editorMouseHeld) {
-            const std::pair<uint32_t, uint32_t> editorFb =
-                this->m_window.framebufferSize();
+            const std::pair<uint32_t, uint32_t> editorFb = this->m_window.framebufferSize();
             float ewx = 0.0f, ewy = 0.0f;
-            this->m_cameraController.screenToWorld(
-                this->m_inputManager.mouseX(), this->m_inputManager.mouseY(),
-                ewx, ewy, editorFb.first, editorFb.second);
-            const float editorHexSize = this->m_gameRenderer.mapRenderer().hexSize();
-            const aoc::hex::AxialCoord centerTile =
-                aoc::hex::pixelToAxial(ewx, ewy, editorHexSize);
+            this->m_cameraController.screenToWorld(this->m_inputManager.mouseX(),
+                                                   this->m_inputManager.mouseY(), ewx, ewy,
+                                                   editorFb.first, editorFb.second);
+            const float editorHexSize             = this->m_gameRenderer.mapRenderer().hexSize();
+            const aoc::hex::AxialCoord centerTile = aoc::hex::pixelToAxial(ewx, ewy, editorHexSize);
             std::vector<aoc::hex::AxialCoord> brushTiles;
-            brushTiles.reserve(static_cast<std::size_t>(
-                1 + 3 * this->m_editorBrushRadius * (this->m_editorBrushRadius + 1)));
-            aoc::hex::spiral(centerTile, this->m_editorBrushRadius,
-                             std::back_inserter(brushTiles));
+            brushTiles.reserve(static_cast<std::size_t>(1 + 3 * this->m_editorBrushRadius *
+                                                                (this->m_editorBrushRadius + 1)));
+            aoc::hex::spiral(centerTile, this->m_editorBrushRadius, std::back_inserter(brushTiles));
             const bool paintFeature = (this->m_editorBrushMode == BrushMode::Feature);
             for (const aoc::hex::AxialCoord& t : brushTiles) {
-                if (!this->m_hexGrid.isValid(t)) { continue; }
-                const int32_t pIdx = this->m_hexGrid.toIndex(t);
+                if (!this->m_hexGrid.isValid(t)) {
+                    continue;
+                }
+                const int32_t pIdx   = this->m_hexGrid.toIndex(t);
                 bool alreadyCaptured = false;
                 for (const EditorChange& ch : this->m_editorCurrentAction.changes) {
-                    if (ch.tileIndex == pIdx) { alreadyCaptured = true; break; }
+                    if (ch.tileIndex == pIdx) {
+                        alreadyCaptured = true;
+                        break;
+                    }
                 }
                 if (paintFeature) {
                     const aoc::map::FeatureType prev = this->m_hexGrid.feature(pIdx);
-                    if (prev == this->m_editorFeatureBrush) { continue; }
+                    if (prev == this->m_editorFeatureBrush) {
+                        continue;
+                    }
                     if (!alreadyCaptured) {
                         this->m_editorCurrentAction.changes.push_back(
                             EditorChange{pIdx, static_cast<uint8_t>(prev)});
@@ -4013,7 +3989,9 @@ void Application::run() {
                     this->m_hexGrid.setFeature(pIdx, this->m_editorFeatureBrush);
                 } else {
                     const aoc::map::TerrainType prev = this->m_hexGrid.terrain(pIdx);
-                    if (prev == this->m_editorBrush) { continue; }
+                    if (prev == this->m_editorBrush) {
+                        continue;
+                    }
                     if (!alreadyCaptured) {
                         this->m_editorCurrentAction.changes.push_back(
                             EditorChange{pIdx, static_cast<uint8_t>(prev)});
@@ -4030,30 +4008,30 @@ void Application::run() {
             this->m_editorCurrentAction.isFeature = false;
         }
         this->m_editorMouseDownLast =
-            this->m_mapEditorMode
-            && this->m_inputManager.isMouseButtonHeld(GLFW_MOUSE_BUTTON_LEFT);
+            this->m_mapEditorMode && this->m_inputManager.isMouseButtonHeld(GLFW_MOUSE_BUTTON_LEFT);
         // When only the city detail panel is open (right-side, non-blocking),
         // allow map interactions on the MAP area (left of the city panel).
         // Don't check m_uiConsumedInput — the HUD widgets shouldn't block tile clicks.
-        if (!this->m_spectatorMode
-            && this->onlyCityDetailScreenOpen()
-            && this->m_gameState.player(0) != nullptr && this->m_gameState.player(0)->cityAt(this->m_cityDetailScreen.cityLocation()) != nullptr
-            && this->m_inputManager.mouseX() < static_cast<double>(fbWidth) - 350.0) {
+        if (!this->m_spectatorMode && this->onlyCityDetailScreenOpen() &&
+            this->m_gameState.player(0) != nullptr &&
+            this->m_gameState.player(0)->cityAt(this->m_cityDetailScreen.cityLocation()) !=
+                nullptr &&
+            this->m_inputManager.mouseX() < static_cast<double>(fbWidth) - 350.0) {
             // Left-click on a tile: toggle worker assignment
             if (this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_LEFT)) {
                 const std::pair<uint32_t, uint32_t> workerFbSize = this->m_window.framebufferSize();
-                float worldX = 0.0f;
-                float worldY = 0.0f;
+                float worldX                                     = 0.0f;
+                float worldY                                     = 0.0f;
                 this->m_cameraController.screenToWorld(
-                    this->m_inputManager.mouseX(), this->m_inputManager.mouseY(),
-                    worldX, worldY, workerFbSize.first, workerFbSize.second);
+                    this->m_inputManager.mouseX(), this->m_inputManager.mouseY(), worldX, worldY,
+                    workerFbSize.first, workerFbSize.second);
                 const float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
                 const aoc::hex::AxialCoord clickedTile =
                     aoc::hex::pixelToAxial(worldX, worldY, hexSize);
 
                 if (this->m_hexGrid.isValid(clickedTile)) {
                     // Check if clicked on a unit or different city → close panel and select
-                    bool clickedOtherEntity = false;
+                    bool clickedOtherEntity        = false;
                     aoc::game::Player* clickPlayer = this->m_gameState.player(0);
                     if (clickPlayer != nullptr) {
                         aoc::game::Unit* clickedUnit = clickPlayer->unitAt(clickedTile);
@@ -4062,20 +4040,19 @@ void Application::run() {
                             this->m_cityDetailScreen.close(this->m_uiManager);
                             this->m_selectedUnit = clickedUnit;
                             this->m_selectedCity = nullptr;
-                            clickedOtherEntity = true;
+                            clickedOtherEntity   = true;
                         }
                     }
                     if (!clickedOtherEntity && clickPlayer != nullptr) {
                         aoc::game::City* clickedCity = clickPlayer->cityAt(clickedTile);
-                        if (clickedCity != nullptr
-                            && clickedCity->location() != this->m_cityDetailScreen.cityLocation()) {
+                        if (clickedCity != nullptr &&
+                            clickedCity->location() != this->m_cityDetailScreen.cityLocation()) {
                             // Clicked on different own city: switch to it
                             this->m_cityDetailScreen.close(this->m_uiManager);
                             this->m_selectedCity = clickedCity;
                             this->m_selectedUnit = nullptr;
                             this->m_cityDetailScreen.setContext(
-                                &this->m_gameState, &this->m_hexGrid,
-                                clickedCity->location(), 0,
+                                &this->m_gameState, &this->m_hexGrid, clickedCity->location(), 0,
                                 &this->m_economy);
                             this->m_cityDetailScreen.open(this->m_uiManager);
                             clickedOtherEntity = true;
@@ -4091,8 +4068,8 @@ void Application::run() {
             // Right-click: tile buying (existing context action logic)
             this->handleContextAction();
         }
-        if (!this->m_spectatorMode
-            && !this->anyScreenOpen() && this->m_inputManager.isActionPressed(InputAction::EndTurn)) {
+        if (!this->m_spectatorMode && !this->anyScreenOpen() &&
+            this->m_inputManager.isActionPressed(InputAction::EndTurn)) {
             this->handleEndTurn();
         }
 
@@ -4122,29 +4099,25 @@ void Application::run() {
         //   (c) everything else → hide.
         {
             const aoc::ui::WidgetId hovered = this->m_uiManager.hoveredWidget();
-            const bool mapClickable = (!this->anyScreenOpen()
-                                       || this->onlyCityDetailScreenOpen())
-                                      && !this->m_uiConsumedInput;
+            const bool mapClickable =
+                (!this->anyScreenOpen() || this->onlyCityDetailScreenOpen()) &&
+                !this->m_uiConsumedInput;
 
             if (hovered != aoc::ui::INVALID_WIDGET) {
                 std::string_view widgetTip = this->m_uiManager.widgetTooltip(hovered);
                 if (!widgetTip.empty()) {
                     this->m_gameRenderer.tooltipManager().showText(
-                        std::string(widgetTip),
-                        static_cast<float>(this->m_inputManager.mouseX()),
-                        static_cast<float>(this->m_inputManager.mouseY()),
-                        fbWidth, fbHeight);
+                        std::string(widgetTip), static_cast<float>(this->m_inputManager.mouseX()),
+                        static_cast<float>(this->m_inputManager.mouseY()), fbWidth, fbHeight);
                 } else {
                     this->m_gameRenderer.tooltipManager().hide();
                 }
             } else if (mapClickable) {
                 this->m_gameRenderer.tooltipManager().update(
                     static_cast<float>(this->m_inputManager.mouseX()),
-                    static_cast<float>(this->m_inputManager.mouseY()),
-                    this->m_gameState, this->m_hexGrid,
-                    this->m_cameraController, this->m_fogOfWar,
-                    PlayerId{0}, fbWidth, fbHeight,
-                    NULL_ENTITY);
+                    static_cast<float>(this->m_inputManager.mouseY()), this->m_gameState,
+                    this->m_hexGrid, this->m_cameraController, this->m_fogOfWar, PlayerId{0},
+                    fbWidth, fbHeight, NULL_ENTITY);
             } else {
                 this->m_gameRenderer.tooltipManager().hide();
             }
@@ -4163,16 +4136,22 @@ void Application::run() {
         // Enum mapping: 0=default, 1=hand, 2=ibeam, 3=crosshair.
         {
             const aoc::ui::WidgetId h = this->m_uiManager.hoveredWidget();
-            int32_t want = 0;
+            int32_t want              = 0;
             if (h != aoc::ui::INVALID_WIDGET) {
                 const aoc::ui::Widget* hw = this->m_uiManager.getWidget(h);
-                if (hw != nullptr) { want = hw->hoverCursor; }
+                if (hw != nullptr) {
+                    want = hw->hoverCursor;
+                }
             }
             if (want != this->m_cursors.lastApplied) {
                 void* picked = this->m_cursors.arrow;
-                if (want == 1)      { picked = this->m_cursors.hand; }
-                else if (want == 2) { picked = this->m_cursors.ibeam; }
-                else if (want == 3) { picked = this->m_cursors.crossHair; }
+                if (want == 1) {
+                    picked = this->m_cursors.hand;
+                } else if (want == 2) {
+                    picked = this->m_cursors.ibeam;
+                } else if (want == 3) {
+                    picked = this->m_cursors.crossHair;
+                }
                 glfwSetCursor(this->m_window.handle(), static_cast<GLFWcursor*>(picked));
                 this->m_cursors.lastApplied = want;
             }
@@ -4191,7 +4170,7 @@ void Application::run() {
         // Sync Renderer2D extent with swapchain (may have changed after recreation)
         this->m_renderer2d->setExtent(frame.extent);
         // Update fbWidth/fbHeight to match the actual swapchain extent
-        fbWidth = frame.extent.width;
+        fbWidth  = frame.extent.width;
         fbHeight = frame.extent.height;
 
         this->m_renderPipeline->beginRenderPass(frame);
@@ -4203,38 +4182,33 @@ void Application::run() {
         } else if (this->m_selectedCity != nullptr) {
             this->m_gameRenderer.selectionHighlight = this->m_selectedCity->location();
         } else {
-            this->m_gameRenderer.selectionHighlight =
-                aoc::render::GameRenderer::INVALID_SELECTION;
+            this->m_gameRenderer.selectionHighlight = aoc::render::GameRenderer::INVALID_SELECTION;
         }
         // Worker-placement overlay: only when a city is selected by the
         // human player, panel is closed, and we're not in spectator mode.
         // Mirrors Civ-6's "click city → tiles glow, click tile → toggle
         // worker" interaction.
-        const bool showOverlay =
-            this->m_selectedCity != nullptr
-            && this->m_selectedCity->owner() == 0
-            && !this->m_cityDetailScreen.isOpen()
-            && !this->m_spectatorMode;
-        this->m_gameRenderer.workerOverlayCity =
-            showOverlay ? this->m_selectedCity : nullptr;
+        const bool showOverlay = this->m_selectedCity != nullptr &&
+                                 this->m_selectedCity->owner() == 0 &&
+                                 !this->m_cityDetailScreen.isOpen() && !this->m_spectatorMode;
+        this->m_gameRenderer.workerOverlayCity = showOverlay ? this->m_selectedCity : nullptr;
 
         this->m_gameRenderer.m_minimapSuppressed = this->anyScreenOpen();
         // Creator panel is ~200 px tall (HorizontalWrap multi-row).
         // Editor panel is 64 px. Lift minimap above whichever is shown.
-        constexpr float SINGLE_PANEL_H = 80.0f;  // editor: 64 + padding
+        constexpr float SINGLE_PANEL_H  = 80.0f;  // editor: 64 + padding
         constexpr float CREATOR_PANEL_H = 216.0f; // creator: 200 + padding
         this->m_gameRenderer.m_minimapBottomOffset =
             this->m_continentCreatorMode ? CREATOR_PANEL_H
-            : (this->m_mapEditorMode ? SINGLE_PANEL_H : 0.0f);
+                                         : (this->m_mapEditorMode ? SINGLE_PANEL_H : 0.0f);
 
         // 3D globe pass. Runs BEFORE the 2D pass inside the same
         // render pass, writes into the same colour attachment. The
         // 2D pass is gated to skip the flat hex map when globe is
         // active so the sphere stays visible underneath the UI
         // overlays (panels, minimap, etc.).
-        const bool globeActive =
-            this->m_continentCreatorMode && this->m_creatorGlobe
-            && this->m_globeRenderer != nullptr;
+        const bool globeActive           = this->m_continentCreatorMode && this->m_creatorGlobe &&
+                                           this->m_globeRenderer != nullptr;
         this->m_gameRenderer.skipFlatMap = globeActive;
         this->m_gameRenderer.globeViewActive = globeActive;
         this->m_gameRenderer.globeYawDeg     = this->m_globeYawDeg;
@@ -4252,24 +4226,20 @@ void Application::run() {
             this->m_renderer2d->begin();
             const float fw = static_cast<float>(frame.extent.width);
             const float fh = static_cast<float>(frame.extent.height);
-            this->m_renderer2d->drawFilledRect(
-                0.0f, 0.0f, fw, fh,
-                0.020f, 0.025f, 0.055f, 1.0f); // deep space navy
+            this->m_renderer2d->drawFilledRect(0.0f, 0.0f, fw, fh, 0.020f, 0.025f, 0.055f,
+                                               1.0f); // deep space navy
             constexpr int32_t kStarCount = 500;
             for (int32_t i = 0; i < kStarCount; ++i) {
-                const uint32_t h0 = static_cast<uint32_t>(i) * 2654435761u
-                                  + 0x9E3779B1u;
-                const uint32_t h1 = static_cast<uint32_t>(i) * 40503u
-                                  + 0x12345678u;
-                const uint32_t h2 = static_cast<uint32_t>(i) * 1664525u
-                                  + 1013904223u;
-                const float sx = static_cast<float>(h0 % 10000u) / 10000.0f * fw;
-                const float sy = static_cast<float>(h1 % 10000u) / 10000.0f * fh;
-                const float sz = static_cast<float>(h2 % 10000u) / 10000.0f;
+                const uint32_t h0  = static_cast<uint32_t>(i) * 2654435761u + 0x9E3779B1u;
+                const uint32_t h1  = static_cast<uint32_t>(i) * 40503u + 0x12345678u;
+                const uint32_t h2  = static_cast<uint32_t>(i) * 1664525u + 1013904223u;
+                const float sx     = static_cast<float>(h0 % 10000u) / 10000.0f * fw;
+                const float sy     = static_cast<float>(h1 % 10000u) / 10000.0f * fh;
+                const float sz     = static_cast<float>(h2 % 10000u) / 10000.0f;
                 const float radius = 0.5f + sz * 1.8f;
                 const float bright = 0.55f + sz * 0.45f;
-                this->m_renderer2d->drawFilledCircle(
-                    sx, sy, radius, bright, bright, bright * 0.95f, 1.0f);
+                this->m_renderer2d->drawFilledCircle(sx, sy, radius, bright, bright, bright * 0.95f,
+                                                     1.0f);
             }
             // Sun: large disc top-right with soft halo. Position picked
             // so it does not overlap the creator's bottom panel; halo
@@ -4279,46 +4249,32 @@ void Application::run() {
             for (int32_t halo = 6; halo >= 1; --halo) {
                 const float rr = 28.0f + static_cast<float>(halo) * 14.0f;
                 const float a  = 0.10f / static_cast<float>(halo);
-                this->m_renderer2d->drawFilledCircle(
-                    sunCx, sunCy, rr, 1.0f, 0.95f, 0.65f, a);
+                this->m_renderer2d->drawFilledCircle(sunCx, sunCy, rr, 1.0f, 0.95f, 0.65f, a);
             }
-            this->m_renderer2d->drawFilledCircle(
-                sunCx, sunCy, 36.0f, 1.0f, 0.97f, 0.78f, 1.0f);
+            this->m_renderer2d->drawFilledCircle(sunCx, sunCy, 36.0f, 1.0f, 0.97f, 0.78f, 1.0f);
             this->m_renderer2d->end(frame.commandBuffer);
 
             this->m_globeRenderer->setExtent(frame.extent);
-            const float aspect = static_cast<float>(frame.extent.width)
-                               / static_cast<float>(std::max(1u, frame.extent.height));
-            this->m_globeRenderer->render(
-                frame.commandBuffer, frame.frameIndex,
-                this->m_hexGrid,
-                this->m_globeYawDeg, this->m_globePitchDeg,
-                this->m_globeZoom, aspect);
+            const float aspect = static_cast<float>(frame.extent.width) /
+                                 static_cast<float>(std::max(1u, frame.extent.height));
+            this->m_globeRenderer->render(frame.commandBuffer, frame.frameIndex, this->m_hexGrid,
+                                          this->m_globeYawDeg, this->m_globePitchDeg,
+                                          this->m_globeZoom, aspect);
         }
-        this->m_gameRenderer.render(
-            *this->m_renderer2d,
-            frame.commandBuffer,
-            frame.frameIndex,
-            this->m_cameraController,
-            this->m_hexGrid,
-            this->m_gameState,
-            this->m_fogOfWar,
-            PlayerId{0},
-            this->m_uiManager,
-            frame.extent.width, frame.extent.height,
-            &this->m_eventLog,
-            &this->m_notificationManager,
-            &this->m_tutorialManager);
+        this->m_gameRenderer.render(*this->m_renderer2d, frame.commandBuffer, frame.frameIndex,
+                                    this->m_cameraController, this->m_hexGrid, this->m_gameState,
+                                    this->m_fogOfWar, PlayerId{0}, this->m_uiManager,
+                                    frame.extent.width, frame.extent.height, &this->m_eventLog,
+                                    &this->m_notificationManager, &this->m_tutorialManager);
 
         // Dev-only widget inspector overlay — toggled via F11.
         // Drawn last so it sits on top of HUD + screens.
         if (this->m_widgetInspector.isEnabled()) {
             this->m_renderer2d->resetCamera();
             this->m_renderer2d->setZoom(1.0f);
-            this->m_widgetInspector.render(
-                *this->m_renderer2d, this->m_uiManager,
-                static_cast<float>(this->m_inputManager.mouseX()),
-                static_cast<float>(this->m_inputManager.mouseY()));
+            this->m_widgetInspector.render(*this->m_renderer2d, this->m_uiManager,
+                                           static_cast<float>(this->m_inputManager.mouseX()),
+                                           static_cast<float>(this->m_inputManager.mouseY()));
         }
 
         // Spectator HUD overlay (own begin/end batch, screen-space)
@@ -4326,8 +4282,8 @@ void Application::run() {
             // Reset camera to screen-space so HUD coords are in pixels.
             this->m_renderer2d->resetCamera();
             this->m_renderer2d->setZoom(1.0f);
-            this->spectatorDrawHUD(static_cast<void*>(frame.commandBuffer),
-                                    frame.extent.width, frame.extent.height);
+            this->spectatorDrawHUD(static_cast<void*>(frame.commandBuffer), frame.extent.width,
+                                   frame.extent.height);
         }
 
         // Debug console overlay (own begin/end batch, screen-space)
@@ -4338,24 +4294,20 @@ void Application::run() {
             const float consoleH = 250.0f;
             const float consoleY = static_cast<float>(frame.extent.height) - consoleH;
 
-            this->m_renderer2d->drawFilledRect(
-                0.0f, consoleY, consoleW, consoleH,
-                0.0f, 0.0f, 0.0f, 0.85f);
+            this->m_renderer2d->drawFilledRect(0.0f, consoleY, consoleW, consoleH, 0.0f, 0.0f, 0.0f,
+                                               0.85f);
 
             float lineY = consoleY + 5.0f;
             for (const std::string& line : this->m_debugConsole.history()) {
-                aoc::ui::BitmapFont::drawText(
-                    *this->m_renderer2d, line,
-                    5.0f, lineY, 12.0f,
-                    aoc::ui::Color{0.85f, 0.85f, 0.85f, 1.0f});
+                aoc::ui::BitmapFont::drawText(*this->m_renderer2d, line, 5.0f, lineY, 12.0f,
+                                              aoc::ui::Color{0.85f, 0.85f, 0.85f, 1.0f});
                 lineY += 14.0f;
             }
 
             std::string inputLine = "> " + this->m_debugConsole.input() + "_";
-            aoc::ui::BitmapFont::drawText(
-                *this->m_renderer2d, inputLine,
-                5.0f, consoleY + consoleH - 20.0f, 14.0f,
-                aoc::ui::Color{0.0f, 1.0f, 0.0f, 1.0f});
+            aoc::ui::BitmapFont::drawText(*this->m_renderer2d, inputLine, 5.0f,
+                                          consoleY + consoleH - 20.0f, 14.0f,
+                                          aoc::ui::Color{0.0f, 1.0f, 0.0f, 1.0f});
 
             this->m_renderer2d->end(frame.commandBuffer);
         }
@@ -4369,28 +4321,26 @@ void Application::run() {
 
 void Application::showReturnToMenuConfirm() {
     if (this->m_confirmDialog != aoc::ui::INVALID_WIDGET) {
-        return;  // Already showing
+        return; // Already showing
     }
 
     const std::pair<uint32_t, uint32_t> confirmFbSize = this->m_window.framebufferSize();
-    float screenW = static_cast<float>(confirmFbSize.first);
-    float screenH = static_cast<float>(confirmFbSize.second);
+    float screenW                                     = static_cast<float>(confirmFbSize.first);
+    float screenH                                     = static_cast<float>(confirmFbSize.second);
 
     // Dark overlay + centered dialog
     this->m_confirmDialog = this->m_uiManager.createPanel(
-        {0.0f, 0.0f, screenW, screenH},
-        aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.5f}, 0.0f});
+        {0.0f, 0.0f, screenW, screenH}, aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.5f}, 0.0f});
 
-    constexpr float DLG_W = 340.0f;
-    constexpr float DLG_H = 160.0f;
+    constexpr float DLG_W      = 340.0f;
+    constexpr float DLG_H      = 160.0f;
     aoc::ui::WidgetId dlgPanel = this->m_uiManager.createPanel(
-        this->m_confirmDialog,
-        {(screenW - DLG_W) * 0.5f, (screenH - DLG_H) * 0.5f, DLG_W, DLG_H},
+        this->m_confirmDialog, {(screenW - DLG_W) * 0.5f, (screenH - DLG_H) * 0.5f, DLG_W, DLG_H},
         aoc::ui::PanelData{{0.10f, 0.10f, 0.14f, 0.95f}, 6.0f});
     {
         aoc::ui::Widget* dp = this->m_uiManager.getWidget(dlgPanel);
-        dp->padding = {15.0f, 15.0f, 15.0f, 15.0f};
-        dp->childSpacing = 12.0f;
+        dp->padding         = {15.0f, 15.0f, 15.0f, 15.0f};
+        dp->childSpacing    = 12.0f;
     }
 
     // Question text
@@ -4400,36 +4350,35 @@ void Application::showReturnToMenuConfirm() {
 
     // Button row
     aoc::ui::WidgetId btnRow = this->m_uiManager.createPanel(
-        dlgPanel, {0.0f, 0.0f, 310.0f, 34.0f},
-        aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        dlgPanel, {0.0f, 0.0f, 310.0f, 34.0f}, aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
     {
         aoc::ui::Widget* row = this->m_uiManager.getWidget(btnRow);
         row->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
-        row->childSpacing = 10.0f;
+        row->childSpacing    = 10.0f;
     }
 
     // auto required: lambda type is unnameable
     auto makeDlgBtn = [this](aoc::ui::WidgetId parent, const std::string& label,
-                              aoc::ui::Color normalColor, std::function<void()> onClick) {
+                             aoc::ui::Color normalColor, std::function<void()> onClick) {
         aoc::ui::ButtonData btn;
-        btn.label = label;
-        btn.fontSize = 13.0f;
-        btn.normalColor = normalColor;
-        btn.hoverColor = {normalColor.r + 0.1f, normalColor.g + 0.1f, normalColor.b + 0.1f, 0.9f};
-        btn.pressedColor = {normalColor.r - 0.05f, normalColor.g - 0.05f, normalColor.b - 0.05f, 0.9f};
-        btn.labelColor = {1.0f, 1.0f, 1.0f, 1.0f};
+        btn.label        = label;
+        btn.fontSize     = 13.0f;
+        btn.normalColor  = normalColor;
+        btn.hoverColor   = {normalColor.r + 0.1f, normalColor.g + 0.1f, normalColor.b + 0.1f, 0.9f};
+        btn.pressedColor = {normalColor.r - 0.05f, normalColor.g - 0.05f, normalColor.b - 0.05f,
+                            0.9f};
+        btn.labelColor   = {1.0f, 1.0f, 1.0f, 1.0f};
         btn.cornerRadius = 4.0f;
-        btn.onClick = std::move(onClick);
-        [[maybe_unused]] aoc::ui::WidgetId id = this->m_uiManager.createButton(
-            parent, {0.0f, 0.0f, 95.0f, 34.0f}, std::move(btn));
+        btn.onClick      = std::move(onClick);
+        [[maybe_unused]] aoc::ui::WidgetId id =
+            this->m_uiManager.createButton(parent, {0.0f, 0.0f, 95.0f, 34.0f}, std::move(btn));
     };
 
     // "Save & Exit" button
     makeDlgBtn(btnRow, "Save", {0.15f, 0.40f, 0.15f, 0.9f}, [this]() {
         [[maybe_unused]] ErrorCode saveResult = aoc::save::saveGame(
-            "quicksave.aoc", this->m_gameState, this->m_hexGrid,
-            this->m_turnManager, this->m_economy, this->m_diplomacy,
-            this->m_fogOfWar, this->m_gameRng);
+            "quicksave.aoc", this->m_gameState, this->m_hexGrid, this->m_turnManager,
+            this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
         LOG_INFO("Game saved before returning to menu");
         this->m_uiManager.removeWidget(this->m_confirmDialog);
         this->m_confirmDialog = aoc::ui::INVALID_WIDGET;
@@ -4470,22 +4419,22 @@ void Application::returnToMainMenu() {
     }
     if (this->m_endTurnButton != aoc::ui::INVALID_WIDGET) {
         this->m_uiManager.removeWidget(this->m_endTurnButton);
-        this->m_endTurnButton = aoc::ui::INVALID_WIDGET;
+        this->m_endTurnButton   = aoc::ui::INVALID_WIDGET;
         this->m_endTurnInnerBtn = aoc::ui::INVALID_WIDGET;
     }
     // The info panel and victory panel are root widgets too
     // Simplest: just remove all widgets and rebuild
     // Reset all stored widget IDs
-    this->m_turnLabel = aoc::ui::INVALID_WIDGET;
-    this->m_selectionLabel = aoc::ui::INVALID_WIDGET;
-    this->m_economyLabel = aoc::ui::INVALID_WIDGET;
-    this->m_resourceLabel = aoc::ui::INVALID_WIDGET;
-    this->m_victoryLabel = aoc::ui::INVALID_WIDGET;
-    this->m_researchLabel = aoc::ui::INVALID_WIDGET;
-    this->m_researchBar = aoc::ui::INVALID_WIDGET;
-    this->m_researchBarFill = aoc::ui::INVALID_WIDGET;
-    this->m_productionLabel = aoc::ui::INVALID_WIDGET;
-    this->m_productionBar = aoc::ui::INVALID_WIDGET;
+    this->m_turnLabel         = aoc::ui::INVALID_WIDGET;
+    this->m_selectionLabel    = aoc::ui::INVALID_WIDGET;
+    this->m_economyLabel      = aoc::ui::INVALID_WIDGET;
+    this->m_resourceLabel     = aoc::ui::INVALID_WIDGET;
+    this->m_victoryLabel      = aoc::ui::INVALID_WIDGET;
+    this->m_researchLabel     = aoc::ui::INVALID_WIDGET;
+    this->m_researchBar       = aoc::ui::INVALID_WIDGET;
+    this->m_researchBarFill   = aoc::ui::INVALID_WIDGET;
+    this->m_productionLabel   = aoc::ui::INVALID_WIDGET;
+    this->m_productionBar     = aoc::ui::INVALID_WIDGET;
     this->m_productionBarFill = aoc::ui::INVALID_WIDGET;
     if (this->m_unitActionPanel != aoc::ui::INVALID_WIDGET) {
         this->m_uiManager.removeWidget(this->m_unitActionPanel);
@@ -4513,10 +4462,10 @@ void Application::returnToMainMenu() {
     this->m_spectatorFogEnabled      = false;
 
     // Switch to main menu
-    this->m_appState = AppState::MainMenu;
+    this->m_appState                               = AppState::MainMenu;
     const std::pair<uint32_t, uint32_t> menuFbSize = this->m_window.framebufferSize();
-    float screenW = static_cast<float>(menuFbSize.first);
-    float screenH = static_cast<float>(menuFbSize.second);
+    float screenW                                  = static_cast<float>(menuFbSize.first);
+    float screenH                                  = static_cast<float>(menuFbSize.second);
 
     this->buildMainMenu(screenW, screenH);
 
@@ -4551,18 +4500,14 @@ void Application::buildMainMenu(float screenW, float screenH) {
                     this->buildMainMenu(screenW, screenH);
                 });
         },
-        [this]() {
-            glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
-        },
+        [this]() { glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE); },
         [this, screenW, screenH]() {
             if (!this->m_settingsMenu.isBuilt()) {
-                this->m_settingsMenu.build(
-                    this->m_uiManager, screenW, screenH,
-                    [this]() {
-                        aoc::ui::saveSettings(this->m_settingsMenu.settings(), "settings.cfg");
-                        this->m_settingsMenu.destroy(this->m_uiManager);
-                        this->applySettings();
-                    });
+                this->m_settingsMenu.build(this->m_uiManager, screenW, screenH, [this]() {
+                    aoc::ui::saveSettings(this->m_settingsMenu.settings(), "settings.cfg");
+                    this->m_settingsMenu.destroy(this->m_uiManager);
+                    this->applySettings();
+                });
             }
         },
         [this]() {
@@ -4570,9 +4515,9 @@ void Application::buildMainMenu(float screenW, float screenH) {
             this->m_mainMenu.destroy(this->m_uiManager);
             this->m_settingsMenu.destroy(this->m_uiManager);
             aoc::ui::GameSetupConfig tutorialConfig{};
-            tutorialConfig.mapType = aoc::map::MapType::Continents;
-            tutorialConfig.mapSize = aoc::map::MapSize::Small;
-            tutorialConfig.playerCount = 2;
+            tutorialConfig.mapType             = aoc::map::MapType::Continents;
+            tutorialConfig.mapSize             = aoc::map::MapSize::Small;
+            tutorialConfig.playerCount         = 2;
             tutorialConfig.players[0].isActive = true;
             tutorialConfig.players[0].isHuman  = true;
             tutorialConfig.players[0].civId    = 0;
@@ -4605,10 +4550,11 @@ void Application::buildMainMenu(float screenW, float screenH) {
                     specConfig.players[0].isHuman = true;
                     this->startGame(specConfig);
                     aoc::game::Player* slot0 = this->m_gameState.player(0);
-                    if (slot0 != nullptr) { slot0->setHuman(false); }
-                    this->m_aiControllers.emplace(this->m_aiControllers.begin(),
-                                                   aoc::PlayerId{0},
-                                                   specConfig.aiDifficulty);
+                    if (slot0 != nullptr) {
+                        slot0->setHuman(false);
+                    }
+                    this->m_aiControllers.emplace(this->m_aiControllers.begin(), aoc::PlayerId{0},
+                                                  specConfig.aiDifficulty);
                     this->spectatorRevealAll();
                     this->m_spectatorMode            = true;
                     this->m_spectatorMaxTurns        = 500;
@@ -4624,8 +4570,8 @@ void Application::buildMainMenu(float screenW, float screenH) {
                     this->m_spectatorSnapshots.clear();
                     int32_t fbw = 0, fbh = 0;
                     glfwGetFramebufferSize(this->m_window.handle(), &fbw, &fbh);
-                    this->buildSpectatorSeekControls(
-                        static_cast<float>(fbw), static_cast<float>(fbh));
+                    this->buildSpectatorSeekControls(static_cast<float>(fbw),
+                                                     static_cast<float>(fbh));
                 },
                 [this, screenW, screenH]() {
                     this->m_gameSetupScreen.destroy(this->m_uiManager);
@@ -4641,45 +4587,46 @@ void Application::buildMainMenu(float screenW, float screenH) {
             this->m_settingsMenu.destroy(this->m_uiManager);
 
             std::random_device rdc;
-            this->m_creatorSeed         = rdc();
+            this->m_creatorSeed = rdc();
             // Default 3 Gy = ~5 Wilson supercontinent cycles
             // (Anderson 2007). Matches MapGenerator default.
-            this->m_creatorTotalMy = aoc::map::MapGenerator::DEFAULT_TECTONIC_TOTAL_MY;
-            this->m_creatorLandPlates   = 7;
-            this->m_creatorWidth        = 400;
-            this->m_creatorHeight       = 200;
+            this->m_creatorTotalMy       = aoc::map::MapGenerator::DEFAULT_TECTONIC_TOTAL_MY;
+            this->m_creatorLandPlates    = 7;
+            this->m_creatorWidth         = 400;
+            this->m_creatorHeight        = 200;
             this->m_creatorTimeCurrentMy = this->m_creatorTotalMy.load();
             this->m_continentCreatorMode = true;
             this->clearCreatorEpochCache();
-            this->m_creatorPlaying = false;
+            this->m_creatorPlaying   = false;
             this->m_creatorPlayAccum = 0.0f;
 
             // Set up an empty AI player so the existing render path
             // (which expects players + a hexgrid) works. We hide HUD
             // for clarity below.
             aoc::ui::GameSetupConfig ccConfig{};
-            ccConfig.mapType = aoc::map::MapType::Continents;
-            ccConfig.mapSize = aoc::map::MapSize::Standard;
-            ccConfig.playerCount = 2;
+            ccConfig.mapType             = aoc::map::MapType::Continents;
+            ccConfig.mapSize             = aoc::map::MapSize::Standard;
+            ccConfig.playerCount         = 2;
             ccConfig.players[0].isActive = true;
             ccConfig.players[0].isHuman  = true;
             ccConfig.players[0].civId    = 0;
             ccConfig.players[1].isActive = true;
             ccConfig.players[1].isHuman  = false;
             ccConfig.players[1].civId    = 1;
-            ccConfig.mapSeed = this->m_creatorSeed;
-            ccConfig.tectonicTotalMy = this->m_creatorTotalMy;
-            ccConfig.landPlateCount = this->m_creatorLandPlates;
+            ccConfig.mapSeed             = this->m_creatorSeed;
+            ccConfig.tectonicTotalMy     = this->m_creatorTotalMy;
+            ccConfig.landPlateCount      = this->m_creatorLandPlates;
             this->startGame(ccConfig);
             aoc::game::Player* slot0 = this->m_gameState.player(0);
-            if (slot0 != nullptr) { slot0->setHuman(false); }
-            this->m_aiControllers.emplace(this->m_aiControllers.begin(),
-                                           aoc::PlayerId{0},
-                                           ccConfig.aiDifficulty);
+            if (slot0 != nullptr) {
+                slot0->setHuman(false);
+            }
+            this->m_aiControllers.emplace(this->m_aiControllers.begin(), aoc::PlayerId{0},
+                                          ccConfig.aiDifficulty);
             this->spectatorRevealAll();
-            this->m_spectatorMode            = true;
-            this->m_spectatorPaused          = true;
-            this->m_spectatorFogEnabled      = false;
+            this->m_spectatorMode       = true;
+            this->m_spectatorPaused     = true;
+            this->m_spectatorFogEnabled = false;
             // Hide top resource/Tech/Gov bar — it has no purpose in the
             // creator. Keep the End Turn button visible but relabel it
             // "Back to Main Menu"; handleEndTurn checks creator mode and
@@ -4697,10 +4644,8 @@ void Application::buildMainMenu(float screenW, float screenH) {
                 this->m_uiManager.setVisible(this->m_endTurnInnerBtn, false);
             }
             this->buildContinentCreatorControls(screenW, screenH);
-            LOG_INFO("Continent Creator opened (seed=%u age=%d/%d My)",
-                     this->m_creatorSeed.load(),
-                     this->m_creatorTimeCurrentMy.load(),
-                     this->m_creatorTotalMy.load());
+            LOG_INFO("Continent Creator opened (seed=%u age=%d/%d My)", this->m_creatorSeed.load(),
+                     this->m_creatorTimeCurrentMy.load(), this->m_creatorTotalMy.load());
         },
         [this, screenW, screenH]() {
             // Map Editor: launches a quick AI-only sandbox so the
@@ -4711,9 +4656,9 @@ void Application::buildMainMenu(float screenW, float screenH) {
             this->m_settingsMenu.destroy(this->m_uiManager);
 
             aoc::ui::GameSetupConfig editorConfig{};
-            editorConfig.mapType = aoc::map::MapType::Continents;
-            editorConfig.mapSize = aoc::map::MapSize::Standard;
-            editorConfig.playerCount = 2;
+            editorConfig.mapType             = aoc::map::MapType::Continents;
+            editorConfig.mapSize             = aoc::map::MapSize::Standard;
+            editorConfig.playerCount         = 2;
             editorConfig.players[0].isActive = true;
             editorConfig.players[0].isHuman  = true;
             editorConfig.players[0].civId    = 0;
@@ -4722,10 +4667,11 @@ void Application::buildMainMenu(float screenW, float screenH) {
             editorConfig.players[1].civId    = 1;
             this->startGame(editorConfig);
             aoc::game::Player* slot0 = this->m_gameState.player(0);
-            if (slot0 != nullptr) { slot0->setHuman(false); }
-            this->m_aiControllers.emplace(this->m_aiControllers.begin(),
-                                           aoc::PlayerId{0},
-                                           editorConfig.aiDifficulty);
+            if (slot0 != nullptr) {
+                slot0->setHuman(false);
+            }
+            this->m_aiControllers.emplace(this->m_aiControllers.begin(), aoc::PlayerId{0},
+                                          editorConfig.aiDifficulty);
             this->spectatorRevealAll();
             this->m_spectatorMode       = true;
             this->m_spectatorPaused     = true;
@@ -4738,11 +4684,10 @@ void Application::buildMainMenu(float screenW, float screenH) {
                 this->m_uiManager.setVisible(this->m_endTurnButton, true);
             }
             if (this->m_endTurnInnerBtn != aoc::ui::INVALID_WIDGET) {
-                this->m_uiManager.setButtonLabel(this->m_endTurnInnerBtn,
-                    "Back to Main Menu");
+                this->m_uiManager.setButtonLabel(this->m_endTurnInnerBtn, "Back to Main Menu");
             }
             this->m_mapEditorMode = true;
-            this->m_editorBrush = aoc::map::TerrainType::Grassland;
+            this->m_editorBrush   = aoc::map::TerrainType::Grassland;
             this->buildMapEditorControls(screenW, screenH);
             LOG_INFO("Map Editor opened");
         });
@@ -4762,8 +4707,8 @@ void Application::applySettings() {
 
     LOG_INFO("Settings applied: fullscreen=%d vsync=%d showFPS=%d yields=%d vol=%d/%d/%d",
              settings.fullscreen ? 1 : 0, settings.vsync ? 1 : 0, settings.showFPS ? 1 : 0,
-             settings.showTileYields ? 1 : 0,
-             settings.masterVolume, settings.sfxVolume, settings.musicVolume);
+             settings.showTileYields ? 1 : 0, settings.masterVolume, settings.sfxVolume,
+             settings.musicVolume);
 }
 
 void Application::shutdown() {
@@ -4776,9 +4721,9 @@ void Application::shutdown() {
     glfwDestroyCursor(static_cast<GLFWcursor*>(this->m_cursors.hand));
     glfwDestroyCursor(static_cast<GLFWcursor*>(this->m_cursors.ibeam));
     glfwDestroyCursor(static_cast<GLFWcursor*>(this->m_cursors.crossHair));
-    this->m_cursors.arrow = nullptr;
-    this->m_cursors.hand  = nullptr;
-    this->m_cursors.ibeam = nullptr;
+    this->m_cursors.arrow     = nullptr;
+    this->m_cursors.hand      = nullptr;
+    this->m_cursors.ibeam     = nullptr;
     this->m_cursors.crossHair = nullptr;
 
     this->m_dbusService.stop();
@@ -4832,22 +4777,23 @@ void Application::onResize(uint32_t width, uint32_t height) {
     this->m_renderPipeline->resize(width, height);
 
     // Update UI screen size so anchor-based layout adapts immediately.
-    this->m_uiManager.setScreenSize(static_cast<float>(width),
-                                     static_cast<float>(height));
+    this->m_uiManager.setScreenSize(static_cast<float>(width), static_cast<float>(height));
 
     // Refresh the global Theme. DPI can change too (monitor swap), so
     // re-query GLFW rather than assume a one-time startup value.
     {
         aoc::ui::Theme& t = aoc::ui::theme();
-        t.viewportW = static_cast<float>(width);
-        t.viewportH = static_cast<float>(height);
-        float xscale = 1.0f;
-        float yscale = 1.0f;
+        t.viewportW       = static_cast<float>(width);
+        t.viewportH       = static_cast<float>(height);
+        float xscale      = 1.0f;
+        float yscale      = 1.0f;
         glfwGetWindowContentScale(this->m_window.handle(), &xscale, &yscale);
         // Use the larger of the two so UI stays legible on non-square
         // DPI (rare but seen on some multi-monitor setups).
         t.dpiScale = std::max(xscale, yscale);
-        if (t.dpiScale <= 0.0f) { t.dpiScale = 1.0f; }
+        if (t.dpiScale <= 0.0f) {
+            t.dpiScale = 1.0f;
+        }
     }
 
     // Broadcast resize to every registered screen. Each screen stores
@@ -4927,14 +4873,14 @@ void Application::handleSelect() {
     }
 
     const std::pair<uint32_t, uint32_t> selectFbSize = this->m_window.framebufferSize();
-    const uint32_t fbWidth = selectFbSize.first;
-    const uint32_t fbHeight = selectFbSize.second;
+    const uint32_t fbWidth                           = selectFbSize.first;
+    const uint32_t fbHeight                          = selectFbSize.second;
     float worldX = 0.0f, worldY = 0.0f;
-    this->m_cameraController.screenToWorld(
-        this->m_inputManager.mouseX(), this->m_inputManager.mouseY(),
-        worldX, worldY, fbWidth, fbHeight);
+    this->m_cameraController.screenToWorld(this->m_inputManager.mouseX(),
+                                           this->m_inputManager.mouseY(), worldX, worldY, fbWidth,
+                                           fbHeight);
 
-    float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
+    float hexSize               = this->m_gameRenderer.mapRenderer().hexSize();
     hex::AxialCoord clickedTile = hex::pixelToAxial(worldX, worldY, hexSize);
 
     if (!this->m_hexGrid.isValid(clickedTile)) {
@@ -4964,8 +4910,8 @@ void Application::handleSelect() {
             // Mirrors Civ-6's click-twice-to-manage flow without losing
             // the on-map worker UI.
             if (this->m_selectedCity == selectedCity) {
-                this->m_cityDetailScreen.setContext(
-                    &this->m_gameState, &this->m_hexGrid, clickedTile, 0);
+                this->m_cityDetailScreen.setContext(&this->m_gameState, &this->m_hexGrid,
+                                                    clickedTile, 0);
                 if (!this->m_cityDetailScreen.isOpen()) {
                     this->m_cityDetailScreen.open(this->m_uiManager);
                 }
@@ -4982,27 +4928,25 @@ void Application::handleSelect() {
     // Population caps the headcount: each citizen besides the always-
     // worked centre tile consumes one slot. Without this guard the
     // user could assign workers indefinitely.
-    if (this->m_selectedCity != nullptr
-        && this->m_selectedCity->owner() == 0) {
+    if (this->m_selectedCity != nullptr && this->m_selectedCity->owner() == 0) {
         const aoc::hex::AxialCoord ctr = this->m_selectedCity->location();
         if (aoc::hex::distance(ctr, clickedTile) <= 3) {
             const int32_t idx = this->m_hexGrid.toIndex(clickedTile);
-            if (this->m_hexGrid.movementCost(idx) != 0
-                && this->m_hexGrid.owner(idx) == 0) {
+            if (this->m_hexGrid.movementCost(idx) != 0 && this->m_hexGrid.owner(idx) == 0) {
                 aoc::game::City* selCity = this->m_selectedCity;
                 if (selCity->isTileWorked(clickedTile)) {
                     // Free a worker — always allowed.
                     selCity->toggleWorker(clickedTile);
                 } else {
                     // Assigning a worker: must have a free citizen slot.
-                    const int32_t nonCenterWorked = static_cast<int32_t>(
-                        selCity->workedTiles().size()) - 1;
+                    const int32_t nonCenterWorked =
+                        static_cast<int32_t>(selCity->workedTiles().size()) - 1;
                     const int32_t cap = selCity->population();
                     if (nonCenterWorked < cap) {
                         selCity->toggleWorker(clickedTile);
                     } else {
-                        LOG_INFO("No free citizen slots in %s (pop %d)",
-                                 selCity->name().c_str(), cap);
+                        LOG_INFO("No free citizen slots in %s (pop %d)", selCity->name().c_str(),
+                                 cap);
                     }
                 }
                 return;
@@ -5022,10 +4966,10 @@ void Application::handleContextAction() {
     }
     // Skip if the mouse moved significantly during the press (it was a drag)
     constexpr double DRAG_THRESHOLD = 5.0;
-    double dx = this->m_inputManager.mouseDeltaX();
-    double dy = this->m_inputManager.mouseDeltaY();
-    if (dx > DRAG_THRESHOLD || dx < -DRAG_THRESHOLD ||
-        dy > DRAG_THRESHOLD || dy < -DRAG_THRESHOLD) {
+    double dx                       = this->m_inputManager.mouseDeltaX();
+    double dy                       = this->m_inputManager.mouseDeltaY();
+    if (dx > DRAG_THRESHOLD || dx < -DRAG_THRESHOLD || dy > DRAG_THRESHOLD ||
+        dy < -DRAG_THRESHOLD) {
         return;
     }
 
@@ -5035,21 +4979,21 @@ void Application::handleContextAction() {
 
     // Only allow actions on own entities
     if (this->m_selectedUnit != nullptr && this->m_selectedUnit->owner() != 0) {
-        return;  // Can't control other players' units
+        return; // Can't control other players' units
     }
     if (this->m_selectedCity != nullptr && this->m_selectedCity->owner() != 0) {
-        return;  // Can't control other players' cities
+        return; // Can't control other players' cities
     }
 
     const std::pair<uint32_t, uint32_t> contextFbSize = this->m_window.framebufferSize();
-    const uint32_t fbWidth = contextFbSize.first;
-    const uint32_t fbHeight = contextFbSize.second;
+    const uint32_t fbWidth                            = contextFbSize.first;
+    const uint32_t fbHeight                           = contextFbSize.second;
     float worldX = 0.0f, worldY = 0.0f;
-    this->m_cameraController.screenToWorld(
-        this->m_inputManager.mouseX(), this->m_inputManager.mouseY(),
-        worldX, worldY, fbWidth, fbHeight);
+    this->m_cameraController.screenToWorld(this->m_inputManager.mouseX(),
+                                           this->m_inputManager.mouseY(), worldX, worldY, fbWidth,
+                                           fbHeight);
 
-    const float hexSize = this->m_gameRenderer.mapRenderer().hexSize();
+    const float hexSize              = this->m_gameRenderer.mapRenderer().hexSize();
     const hex::AxialCoord targetTile = hex::pixelToAxial(worldX, worldY, hexSize);
 
     if (!this->m_hexGrid.isValid(targetTile)) {
@@ -5065,11 +5009,11 @@ void Application::handleContextAction() {
             aoc::sim::ProductionQueueComponent& queue = city.production();
             if (queue.isEmpty()) {
                 aoc::sim::ProductionQueueItem item{};
-                item.type = aoc::sim::ProductionItemType::Unit;
-                item.itemId = 0;  // Warrior
-                item.name = "Warrior";
+                item.type      = aoc::sim::ProductionItemType::Unit;
+                item.itemId    = 0; // Warrior
+                item.name      = "Warrior";
                 item.totalCost = 40.0f;
-                item.progress = 0.0f;
+                item.progress  = 0.0f;
                 queue.queue.push_back(std::move(item));
                 LOG_INFO("Enqueued Warrior in %s", city.name().c_str());
             }
@@ -5080,7 +5024,7 @@ void Application::handleContextAction() {
         const int32_t tileIdx = this->m_hexGrid.toIndex(targetTile);
         if (this->m_hexGrid.owner(tileIdx) == INVALID_PLAYER) {
             // Check if at least one neighbor is owned by this player
-            bool adjacentToOwned = false;
+            bool adjacentToOwned                                = false;
             const std::array<aoc::hex::AxialCoord, 6> neighbors = aoc::hex::neighbors(targetTile);
             for (const aoc::hex::AxialCoord& nbr : neighbors) {
                 if (this->m_hexGrid.isValid(nbr) &&
@@ -5089,7 +5033,9 @@ void Application::handleContextAction() {
                     break;
                 }
             }
-            if (!adjacentToOwned) { return; }
+            if (!adjacentToOwned) {
+                return;
+            }
 
             const int32_t dist = this->m_hexGrid.distance(city.location(), targetTile);
             const int32_t cost = 25 * std::max(1, dist);
@@ -5098,27 +5044,26 @@ void Application::handleContextAction() {
             if (this->m_pendingBuyTile == targetTile && this->m_pendingBuyConfirm) {
                 // Second click: execute purchase via GameState player treasury
                 aoc::game::Player* buyPlayer = this->m_gameState.player(0);
-                if (buyPlayer != nullptr
-                    && buyPlayer->spendGold(static_cast<CurrencyAmount>(cost))) {
+                if (buyPlayer != nullptr &&
+                    buyPlayer->spendGold(static_cast<CurrencyAmount>(cost))) {
                     this->m_hexGrid.setOwner(tileIdx, 0);
                     city.incrementTilesClaimed();
-                    this->m_notificationManager.push(
-                        "Bought tile for " + std::to_string(cost) + " gold",
-                        2.0f, 0.2f, 0.9f, 0.3f);
+                    this->m_notificationManager.push("Bought tile for " + std::to_string(cost) +
+                                                         " gold",
+                                                     2.0f, 0.2f, 0.9f, 0.3f);
                 } else {
                     this->m_notificationManager.push(
-                        "Not enough gold! Need " + std::to_string(cost),
-                        2.0f, 1.0f, 0.3f, 0.3f);
+                        "Not enough gold! Need " + std::to_string(cost), 2.0f, 1.0f, 0.3f, 0.3f);
                 }
                 this->m_pendingBuyConfirm = false;
-                this->m_pendingBuyTile = aoc::hex::AxialCoord{-9999, -9999};
+                this->m_pendingBuyTile    = aoc::hex::AxialCoord{-9999, -9999};
             } else {
                 // First click: show cost preview
-                this->m_pendingBuyTile = targetTile;
+                this->m_pendingBuyTile    = targetTile;
                 this->m_pendingBuyConfirm = true;
-                this->m_notificationManager.push(
-                    "Buy tile for " + std::to_string(cost) + " gold? Right-click again to confirm.",
-                    3.0f, 1.0f, 0.9f, 0.4f);
+                this->m_notificationManager.push("Buy tile for " + std::to_string(cost) +
+                                                     " gold? Right-click again to confirm.",
+                                                 3.0f, 1.0f, 0.9f, 0.4f);
             }
             return;
         }
@@ -5134,7 +5079,8 @@ void Application::handleContextAction() {
     // Activate Great Person on right-click at their own tile
     {
         aoc::sim::GreatPersonComponent& gp = unit.greatPerson();
-        if (gp.position == targetTile && !gp.isActivated && gp.defId < aoc::sim::GREAT_PERSON_COUNT) {
+        if (gp.position == targetTile && !gp.isActivated &&
+            gp.defId < aoc::sim::GREAT_PERSON_COUNT) {
             aoc::sim::activateGreatPerson(this->m_gameState, this->m_hexGrid, unit);
             this->m_selectedUnit = nullptr;
             return;
@@ -5146,7 +5092,8 @@ void Application::handleContextAction() {
         const aoc::sim::UnitTypeDef& relDef = unit.typeDef();
         if (relDef.unitClass == aoc::sim::UnitClass::Religious && unit.spreadCharges > 0) {
             // Find city at target tile across all players
-            for (const std::unique_ptr<aoc::game::Player>& relPlayer : this->m_gameState.players()) {
+            for (const std::unique_ptr<aoc::game::Player>& relPlayer :
+                 this->m_gameState.players()) {
                 aoc::game::City* relCity = relPlayer->cityAt(targetTile);
                 if (relCity == nullptr) {
                     continue;
@@ -5165,7 +5112,9 @@ void Application::handleContextAction() {
                     --unit.spreadCharges;
                     if (unit.spreadCharges <= 0) {
                         aoc::game::Player* relOwner = this->m_gameState.player(unit.owner());
-                        if (relOwner != nullptr) { relOwner->removeUnit(&unit); }
+                        if (relOwner != nullptr) {
+                            relOwner->removeUnit(&unit);
+                        }
                         this->m_selectedUnit = nullptr;
                     }
                     return;
@@ -5184,7 +5133,9 @@ void Application::handleContextAction() {
 
                     if (unit.spreadCharges <= 0) {
                         aoc::game::Player* relOwner = this->m_gameState.player(unit.owner());
-                        if (relOwner != nullptr) { relOwner->removeUnit(&unit); }
+                        if (relOwner != nullptr) {
+                            relOwner->removeUnit(&unit);
+                        }
                         this->m_selectedUnit = nullptr;
                     }
                     return;
@@ -5198,7 +5149,7 @@ void Application::handleContextAction() {
 
     // If settler and target is valid land, found a city
     if (def.unitClass == aoc::sim::UnitClass::Settler && unit.position() == targetTile) {
-        const PlayerId cityOwner = unit.owner();
+        const PlayerId cityOwner      = unit.owner();
         const hex::AxialCoord cityPos = unit.position();
 
         const std::string cityName = aoc::sim::getNextCityName(this->m_gameState, cityOwner);
@@ -5208,7 +5159,7 @@ void Application::handleContextAction() {
             // cityCount() (raw vector size): "have they ever founded
             // anything before this addCity()". Founding-event semantics,
             // not current-ownership.
-            const bool isFirstCity = gsFounder->cityCount() == 0;
+            const bool isFirstCity  = gsFounder->cityCount() == 0;
             aoc::game::City& gsCity = gsFounder->addCity(cityPos, cityName);
             gsCity.autoAssignWorkers(this->m_hexGrid, aoc::sim::WorkerFocus::Balanced, gsFounder);
             if (isFirstCity) {
@@ -5248,12 +5199,13 @@ void Application::handleContextAction() {
                 }
             }
 
-            LOG_INFO("Builder placed improvement at (%d,%d)",
-                     unit.position().q, unit.position().r);
+            LOG_INFO("Builder placed improvement at (%d,%d)", unit.position().q, unit.position().r);
 
             if (!unit.hasCharges()) {
                 aoc::game::Player* builderOwner = this->m_gameState.player(unit.owner());
-                if (builderOwner != nullptr) { builderOwner->removeUnit(&unit); }
+                if (builderOwner != nullptr) {
+                    builderOwner->removeUnit(&unit);
+                }
                 this->m_selectedUnit = nullptr;
                 LOG_INFO("Builder exhausted all charges");
             }
@@ -5262,28 +5214,28 @@ void Application::handleContextAction() {
     }
 
     // Embark: land unit right-clicking an adjacent water tile
-    const int32_t targetIndex = this->m_hexGrid.toIndex(targetTile);
+    const int32_t targetIndex                 = this->m_hexGrid.toIndex(targetTile);
     const aoc::map::TerrainType targetTerrain = this->m_hexGrid.terrain(targetIndex);
-    if (!aoc::sim::isNaval(def.unitClass) && unit.state() != aoc::sim::UnitState::Embarked
-        && targetTerrain == aoc::map::TerrainType::Coast
-        && this->m_hexGrid.distance(unit.position(), targetTile) == 1) {
+    if (!aoc::sim::isNaval(def.unitClass) && unit.state() != aoc::sim::UnitState::Embarked &&
+        targetTerrain == aoc::map::TerrainType::Coast &&
+        this->m_hexGrid.distance(unit.position(), targetTile) == 1) {
         (void)aoc::sim::tryEmbark(unit, targetTile, this->m_hexGrid);
         return;
     }
 
     // Disembark: embarked unit right-clicking an adjacent land tile
-    if (unit.state() == aoc::sim::UnitState::Embarked
-        && !aoc::map::isWater(targetTerrain) && !aoc::map::isImpassable(targetTerrain)
-        && this->m_hexGrid.distance(unit.position(), targetTile) == 1) {
+    if (unit.state() == aoc::sim::UnitState::Embarked && !aoc::map::isWater(targetTerrain) &&
+        !aoc::map::isImpassable(targetTerrain) &&
+        this->m_hexGrid.distance(unit.position(), targetTile) == 1) {
         (void)aoc::sim::tryDisembark(unit, targetTile, this->m_hexGrid);
         return;
     }
 
     // Save undo state before movement
-    this->m_undoState.unit = &unit;
+    this->m_undoState.unit             = &unit;
     this->m_undoState.previousPosition = unit.position();
     this->m_undoState.previousMovement = unit.movementRemaining();
-    this->m_undoState.hasState = true;
+    this->m_undoState.hasState         = true;
 
     // Order movement using the object-model overload
     const bool pathFound = aoc::sim::orderUnitMove(unit, targetTile, this->m_hexGrid);
@@ -5324,8 +5276,8 @@ void Application::handleUndoAction() {
     unit.clearPath();
     unit.setState(aoc::sim::UnitState::Idle);
 
-    LOG_INFO("Undo: unit moved back to (%d,%d) with %d MP",
-             unit.position().q, unit.position().r, unit.movementRemaining());
+    LOG_INFO("Undo: unit moved back to (%d,%d) with %d MP", unit.position().q, unit.position().r,
+             unit.movementRemaining());
 
     this->m_undoState.hasState = false;
 }
@@ -5336,7 +5288,7 @@ void Application::handleEndTurn() {
     // there is no turn to advance. Just exit back to the main menu.
     if (this->m_continentCreatorMode || this->m_mapEditorMode) {
         this->m_continentCreatorMode = false;
-        this->m_mapEditorMode = false;
+        this->m_mapEditorMode        = false;
         if (this->m_creatorPanelId != aoc::ui::INVALID_WIDGET) {
             this->m_uiManager.removeWidget(this->m_creatorPanelId);
             this->m_creatorPanelId = aoc::ui::INVALID_WIDGET;
@@ -5364,8 +5316,8 @@ void Application::handleEndTurn() {
     // Check 1: No active research
     if (humanPre != nullptr && !humanPre->tech().currentResearch.isValid()) {
         this->m_notificationManager.push(
-            "No research selected! Open Tech Tree (T) to choose a technology.",
-            4.0f, 1.0f, 0.8f, 0.2f);
+            "No research selected! Open Tech Tree (T) to choose a technology.", 4.0f, 1.0f, 0.8f,
+            0.2f);
     }
 
     // Check 2: Cities with empty production queues
@@ -5373,8 +5325,8 @@ void Application::handleEndTurn() {
         for (const std::unique_ptr<aoc::game::City>& city : humanPre->cities()) {
             if (city->production().isEmpty()) {
                 this->m_notificationManager.push(
-                    city->name() + " has no production! Open city (click) to set production.",
-                    4.0f, 1.0f, 0.8f, 0.2f);
+                    city->name() + " has no production! Open city (click) to set production.", 4.0f,
+                    1.0f, 0.8f, 0.2f);
             }
         }
     }
@@ -5410,23 +5362,23 @@ void Application::handleEndTurn() {
 
         // Capture pre-turn tech/civic state for UI notifications
         const aoc::game::Player* humanGs = this->m_gameState.humanPlayer();
-        TechId prevResearch = humanGs->tech().currentResearch;
-        CivicId prevCivic = humanGs->civics().currentResearch;
+        TechId prevResearch              = humanGs->tech().currentResearch;
+        CivicId prevCivic                = humanGs->civics().currentResearch;
 
         // Build TurnContext and execute all game logic via TurnProcessor
         aoc::sim::TurnContext turnCtx{};
 
-        turnCtx.grid = &this->m_hexGrid;
-        turnCtx.fogOfWar = &this->m_fogOfWar;
-        turnCtx.economy = &this->m_economy;
-        turnCtx.diplomacy = &this->m_diplomacy;
-        turnCtx.barbarians = &this->m_barbarianController;
-        turnCtx.dealTracker = &this->m_dealTracker;
+        turnCtx.grid            = &this->m_hexGrid;
+        turnCtx.fogOfWar        = &this->m_fogOfWar;
+        turnCtx.economy         = &this->m_economy;
+        turnCtx.diplomacy       = &this->m_diplomacy;
+        turnCtx.barbarians      = &this->m_barbarianController;
+        turnCtx.dealTracker     = &this->m_dealTracker;
         turnCtx.allianceTracker = &this->m_allianceTracker;
-        turnCtx.rng = &this->m_gameRng;
-        turnCtx.gameState = &this->m_gameState;
-        turnCtx.humanPlayer = 0;
-        turnCtx.currentTurn = this->m_turnManager.currentTurn();
+        turnCtx.rng             = &this->m_gameRng;
+        turnCtx.gameState       = &this->m_gameState;
+        turnCtx.humanPlayer     = 0;
+        turnCtx.currentTurn     = this->m_turnManager.currentTurn();
         turnCtx.allPlayers.push_back(0);
         for (aoc::sim::ai::AIController& ai : this->m_aiControllers) {
             turnCtx.aiControllers.push_back(&ai);
@@ -5447,9 +5399,10 @@ void Application::handleEndTurn() {
         if (!this->m_goodyHuts.hutLocations.empty()) {
             const int32_t playerCount = this->m_gameState.playerCount();
             for (int32_t p = 0; p < playerCount; ++p) {
-                aoc::game::Player* gsp =
-                    this->m_gameState.player(static_cast<aoc::PlayerId>(p));
-                if (gsp == nullptr) { continue; }
+                aoc::game::Player* gsp = this->m_gameState.player(static_cast<aoc::PlayerId>(p));
+                if (gsp == nullptr) {
+                    continue;
+                }
                 std::vector<aoc::hex::AxialCoord> positions;
                 positions.reserve(gsp->units().size());
                 for (const std::unique_ptr<aoc::game::Unit>& unitPtr : gsp->units()) {
@@ -5457,11 +5410,10 @@ void Application::handleEndTurn() {
                 }
                 for (const aoc::hex::AxialCoord& pos : positions) {
                     aoc::sim::GoodyHutReward r = aoc::sim::checkAndClaimGoodyHut(
-                        this->m_goodyHuts, this->m_gameState, *gsp, pos,
-                        this->m_gameRng);
+                        this->m_goodyHuts, this->m_gameState, *gsp, pos, this->m_gameRng);
                     if (r != aoc::sim::GoodyHutReward::Count && p == 0) {
-                        this->m_notificationManager.push("Ancient ruin explored!",
-                                                          4.0f, 0.8f, 0.8f, 0.3f);
+                        this->m_notificationManager.push("Ancient ruin explored!", 4.0f, 0.8f, 0.8f,
+                                                         0.3f);
                     }
                 }
             }
@@ -5476,19 +5428,20 @@ void Application::handleEndTurn() {
         const aoc::game::Player* humanPost = this->m_gameState.humanPlayer();
         bool techCompleted = prevResearch.isValid() && !humanPost->tech().currentResearch.isValid();
         if (techCompleted) {
-            std::string techName = "Unknown";
+            std::string techName                      = "Unknown";
             const aoc::sim::PlayerTechComponent& tech = humanPost->tech();
-            const uint16_t count = aoc::sim::techCount();
+            const uint16_t count                      = aoc::sim::techCount();
             for (uint16_t t = count; t > 0; --t) {
                 if (tech.hasResearched(TechId{static_cast<uint16_t>(t - 1)})) {
-                    techName = std::string(aoc::sim::techDef(TechId{static_cast<uint16_t>(t - 1)}).name);
+                    techName =
+                        std::string(aoc::sim::techDef(TechId{static_cast<uint16_t>(t - 1)}).name);
                     break;
                 }
             }
             LOG_INFO("Research completed: %s", techName.c_str());
             this->m_eventLog.addEvent("Researched " + techName);
-            this->m_notificationManager.push("Research complete: " + techName, 4.0f,
-                                              0.3f, 0.7f, 1.0f);
+            this->m_notificationManager.push("Research complete: " + techName, 4.0f, 0.3f, 0.7f,
+                                             1.0f);
             this->m_soundQueue.push(aoc::audio::SoundEffect::TechResearched);
 
             {
@@ -5508,19 +5461,20 @@ void Application::handleEndTurn() {
         // Civic completion notification
         bool civicCompleted = prevCivic.isValid() && !humanPost->civics().currentResearch.isValid();
         if (civicCompleted) {
-            std::string civicName = "Unknown";
+            std::string civicName                       = "Unknown";
             const aoc::sim::PlayerCivicComponent& civic = humanPost->civics();
-            const uint16_t count = aoc::sim::civicCount();
+            const uint16_t count                        = aoc::sim::civicCount();
             for (uint16_t c = count; c > 0; --c) {
                 if (civic.hasCompleted(CivicId{static_cast<uint16_t>(c - 1)})) {
-                    civicName = std::string(aoc::sim::civicDef(CivicId{static_cast<uint16_t>(c - 1)}).name);
+                    civicName =
+                        std::string(aoc::sim::civicDef(CivicId{static_cast<uint16_t>(c - 1)}).name);
                     break;
                 }
             }
             LOG_INFO("Civic completed: %s", civicName.c_str());
             this->m_eventLog.addEvent("Completed " + civicName);
-            this->m_notificationManager.push("Civic complete: " + civicName, 4.0f,
-                                              0.8f, 0.5f, 1.0f);
+            this->m_notificationManager.push("Civic complete: " + civicName, 4.0f, 0.8f, 0.5f,
+                                             1.0f);
             this->m_soundQueue.push(aoc::audio::SoundEffect::CivicCompleted);
         }
 
@@ -5528,8 +5482,7 @@ void Application::handleEndTurn() {
         // completions, resource reveals, great people, etc.) and route them
         // to both the toast system and the persistent event log.
         {
-            const PlayerId humanId = (humanPost != nullptr)
-                ? humanPost->id() : INVALID_PLAYER;
+            const PlayerId humanId = (humanPost != nullptr) ? humanPost->id() : INVALID_PLAYER;
             std::vector<aoc::sim::event::GameNotification> drained =
                 aoc::sim::event::drainNotifications(humanId);
             for (const aoc::sim::event::GameNotification& note : drained) {
@@ -5539,15 +5492,28 @@ void Application::handleEndTurn() {
                 // orange, city cyan, everything else white.
                 float cr = 1.0f, cg = 1.0f, cb = 1.0f;
                 switch (note.category) {
-                    case aoc::sim::event::NotificationCategory::Diplomacy:
-                        cr = 1.0f; cg = 0.4f; cb = 0.4f; break;
-                    case aoc::sim::event::NotificationCategory::Economy:
-                        cr = 1.0f; cg = 0.9f; cb = 0.3f; break;
-                    case aoc::sim::event::NotificationCategory::Military:
-                        cr = 1.0f; cg = 0.6f; cb = 0.2f; break;
-                    case aoc::sim::event::NotificationCategory::City:
-                        cr = 0.4f; cg = 0.9f; cb = 1.0f; break;
-                    default: break;
+                case aoc::sim::event::NotificationCategory::Diplomacy:
+                    cr = 1.0f;
+                    cg = 0.4f;
+                    cb = 0.4f;
+                    break;
+                case aoc::sim::event::NotificationCategory::Economy:
+                    cr = 1.0f;
+                    cg = 0.9f;
+                    cb = 0.3f;
+                    break;
+                case aoc::sim::event::NotificationCategory::Military:
+                    cr = 1.0f;
+                    cg = 0.6f;
+                    cb = 0.2f;
+                    break;
+                case aoc::sim::event::NotificationCategory::City:
+                    cr = 0.4f;
+                    cg = 0.9f;
+                    cb = 1.0f;
+                    break;
+                default:
+                    break;
                 }
                 const float duration = (note.priority >= 8) ? 6.0f : 4.0f;
                 this->m_notificationManager.push(formatted, duration, cr, cg, cb);
@@ -5555,8 +5521,7 @@ void Application::handleEndTurn() {
         }
 
         // Record replay frame
-        this->m_replayRecorder.recordFrame(this->m_gameState,
-                                            this->m_turnManager.currentTurn());
+        this->m_replayRecorder.recordFrame(this->m_gameState, this->m_turnManager.currentTurn());
 
         // Sound events for turn transition
         this->m_soundQueue.clear();
@@ -5588,22 +5553,31 @@ void Application::handleEndTurn() {
         constexpr int32_t SCOUT_SIGHT = 2;
         constexpr int32_t UNIT_SIGHT  = 1;
         for (const std::unique_ptr<aoc::game::Player>& playerPtr : this->m_gameState.players()) {
-            if (playerPtr == nullptr) { continue; }
+            if (playerPtr == nullptr) {
+                continue;
+            }
             const PlayerId owner = playerPtr->id();
             for (const std::unique_ptr<aoc::game::Unit>& unitPtr : playerPtr->units()) {
-                if (unitPtr == nullptr) { continue; }
+                if (unitPtr == nullptr) {
+                    continue;
+                }
                 const int32_t sight = (unitPtr->typeDef().unitClass == aoc::sim::UnitClass::Scout)
-                    ? SCOUT_SIGHT : UNIT_SIGHT;
+                                          ? SCOUT_SIGHT
+                                          : UNIT_SIGHT;
                 for (const aoc::hex::AxialCoord& tile : unitPtr->movementTrace()) {
                     for (int32_t q = -sight; q <= sight; ++q) {
                         const int32_t rLo = std::max(-sight, -q - sight);
-                        const int32_t rHi = std::min( sight, -q + sight);
+                        const int32_t rHi = std::min(sight, -q + sight);
                         for (int32_t r = rLo; r <= rHi; ++r) {
                             const aoc::hex::AxialCoord t{tile.q + q, tile.r + r};
-                            if (!this->m_hexGrid.isValid(t)) { continue; }
+                            if (!this->m_hexGrid.isValid(t)) {
+                                continue;
+                            }
                             const int32_t idx = this->m_hexGrid.toIndex(t);
-                            if (this->m_fogOfWar.visibility(owner, idx) == aoc::map::TileVisibility::Unseen) {
-                                this->m_fogOfWar.setVisibility(owner, idx, aoc::map::TileVisibility::Revealed);
+                            if (this->m_fogOfWar.visibility(owner, idx) ==
+                                aoc::map::TileVisibility::Unseen) {
+                                this->m_fogOfWar.setVisibility(owner, idx,
+                                                               aoc::map::TileVisibility::Revealed);
                             }
                         }
                     }
@@ -5628,20 +5602,19 @@ void Application::handleEndTurn() {
         // Check victory conditions: read cached result from processTurn.
         const aoc::sim::VictoryResult& vr = turnCtx.lastVictoryResult;
         if (vr.type != aoc::sim::VictoryType::None) {
-            this->m_gameOver = true;
+            this->m_gameOver      = true;
             this->m_victoryResult = vr;
-            LOG_INFO("Game over! Player %u wins by %s",
-                     static_cast<unsigned>(vr.winner),
-                     vr.type == aoc::sim::VictoryType::Science       ? "Science" :
-                     vr.type == aoc::sim::VictoryType::Domination    ? "Domination" :
-                     vr.type == aoc::sim::VictoryType::Culture       ? "Culture" :
-                     vr.type == aoc::sim::VictoryType::Score         ? "Score" :
-                     vr.type == aoc::sim::VictoryType::Religion      ? "Religion" : "Unknown");
+            LOG_INFO("Game over! Player %u wins by %s", static_cast<unsigned>(vr.winner),
+                     vr.type == aoc::sim::VictoryType::Science      ? "Science"
+                     : vr.type == aoc::sim::VictoryType::Domination ? "Domination"
+                     : vr.type == aoc::sim::VictoryType::Culture    ? "Culture"
+                     : vr.type == aoc::sim::VictoryType::Score      ? "Score"
+                     : vr.type == aoc::sim::VictoryType::Religion   ? "Religion"
+                                                                    : "Unknown");
 
             const uint8_t totalPlayers = static_cast<uint8_t>(1 + this->m_aiControllers.size());
-            this->m_scoreScreen.setContext(
-                &this->m_gameState, &this->m_hexGrid, vr, totalPlayers,
-                [this]() { this->returnToMainMenu(); });
+            this->m_scoreScreen.setContext(&this->m_gameState, &this->m_hexGrid, vr, totalPlayers,
+                                           [this]() { this->returnToMainMenu(); });
             this->m_scoreScreen.open(this->m_uiManager);
         }
 
@@ -5663,17 +5636,23 @@ void Application::handleEndTurn() {
                         continue;
                     }
                     bool enemyNearby = false;
-                    for (const std::unique_ptr<aoc::game::Player>& otherPlayer : this->m_gameState.players()) {
-                        if (otherPlayer->id() == humanWake->id() || otherPlayer->id() == BARBARIAN_PLAYER) {
+                    for (const std::unique_ptr<aoc::game::Player>& otherPlayer :
+                         this->m_gameState.players()) {
+                        if (otherPlayer->id() == humanWake->id() ||
+                            otherPlayer->id() == BARBARIAN_PLAYER) {
                             continue;
                         }
-                        for (const std::unique_ptr<aoc::game::Unit>& otherUnit : otherPlayer->units()) {
-                            if (this->m_hexGrid.distance(sleeper.position(), otherUnit->position()) <= 2) {
+                        for (const std::unique_ptr<aoc::game::Unit>& otherUnit :
+                             otherPlayer->units()) {
+                            if (this->m_hexGrid.distance(sleeper.position(),
+                                                         otherUnit->position()) <= 2) {
                                 enemyNearby = true;
                                 break;
                             }
                         }
-                        if (enemyNearby) { break; }
+                        if (enemyNearby) {
+                            break;
+                        }
                     }
                     if (enemyNearby) {
                         sleeper.setState(aoc::sim::UnitState::Idle);
@@ -5700,7 +5679,7 @@ void Application::handleEndTurn() {
                 const int32_t tileCount = this->m_hexGrid.tileCount();
                 for (aoc::game::Unit* unit : autoExploreUnits) {
                     hex::AxialCoord bestTarget = unit->position();
-                    int32_t bestDist = INT32_MAX;
+                    int32_t bestDist           = INT32_MAX;
                     for (int32_t t = 0; t < tileCount; ++t) {
                         if (this->m_fogOfWar.visibility(0, t) != aoc::map::TileVisibility::Unseen) {
                             continue;
@@ -5708,7 +5687,7 @@ void Application::handleEndTurn() {
                         const hex::AxialCoord tileCoord = this->m_hexGrid.toAxial(t);
                         const int32_t dist = this->m_hexGrid.distance(unit->position(), tileCoord);
                         if (dist < bestDist) {
-                            bestDist = dist;
+                            bestDist   = dist;
                             bestTarget = tileCoord;
                         }
                     }
@@ -5740,11 +5719,12 @@ void Application::handleEndTurn() {
                         aoc::sim::bestImprovementForTile(this->m_hexGrid, currentIdx);
 
                     if (bestImpr != aoc::map::ImprovementType::None &&
-                        this->m_hexGrid.improvement(currentIdx) == aoc::map::ImprovementType::None) {
+                        this->m_hexGrid.improvement(currentIdx) ==
+                            aoc::map::ImprovementType::None) {
                         this->m_hexGrid.setImprovement(currentIdx, bestImpr);
                         unit->useCharge();
-                        LOG_INFO("Auto-improve: built improvement at (%d,%d)",
-                                 unit->position().q, unit->position().r);
+                        LOG_INFO("Auto-improve: built improvement at (%d,%d)", unit->position().q,
+                                 unit->position().r);
                         if (!unit->hasCharges()) {
                             humanAutoImprove->removeUnit(unit);
                             LOG_INFO("Auto-improve: builder exhausted all charges");
@@ -5754,19 +5734,26 @@ void Application::handleEndTurn() {
 
                     // Find nearest unimproved owned tile and move there
                     hex::AxialCoord bestTarget = unit->position();
-                    int32_t bestDist = INT32_MAX;
-                    const int32_t tileCount = this->m_hexGrid.tileCount();
+                    int32_t bestDist           = INT32_MAX;
+                    const int32_t tileCount    = this->m_hexGrid.tileCount();
                     for (int32_t t = 0; t < tileCount; ++t) {
-                        if (this->m_hexGrid.owner(t) != unit->owner()) { continue; }
-                        if (this->m_hexGrid.improvement(t) != aoc::map::ImprovementType::None) { continue; }
-                        if (this->m_hexGrid.movementCost(t) == 0) { continue; }
-                        if (aoc::sim::bestImprovementForTile(this->m_hexGrid, t) == aoc::map::ImprovementType::None) {
+                        if (this->m_hexGrid.owner(t) != unit->owner()) {
+                            continue;
+                        }
+                        if (this->m_hexGrid.improvement(t) != aoc::map::ImprovementType::None) {
+                            continue;
+                        }
+                        if (this->m_hexGrid.movementCost(t) == 0) {
+                            continue;
+                        }
+                        if (aoc::sim::bestImprovementForTile(this->m_hexGrid, t) ==
+                            aoc::map::ImprovementType::None) {
                             continue;
                         }
                         const hex::AxialCoord tileCoord = this->m_hexGrid.toAxial(t);
                         const int32_t dist = this->m_hexGrid.distance(unit->position(), tileCoord);
                         if (dist < bestDist) {
-                            bestDist = dist;
+                            bestDist   = dist;
                             bestTarget = tileCoord;
                         }
                     }
@@ -5805,19 +5792,19 @@ void Application::handleEndTurn() {
 void Application::spawnStartingEntities(aoc::sim::CivId civId) {
     // Place human player (player 0) using same circular layout as AI players.
     // Player 0 gets angle 0 (east side of map center).
-    const int32_t mapW = this->m_hexGrid.width();
-    const int32_t mapH = this->m_hexGrid.height();
+    const int32_t mapW  = this->m_hexGrid.width();
+    const int32_t mapH  = this->m_hexGrid.height();
     const float radiusX = static_cast<float>(mapW) * 0.35f;
     // Small random offset for human player too (deterministic from map seed)
     const uint32_t humanHash = 42u * 2654435761u;
-    const float humanOffX = (static_cast<float>(humanHash % 1000u) / 1000.0f - 0.5f)
-                          * static_cast<float>(mapW) * 0.10f;
-    const float humanOffY = (static_cast<float>((humanHash >> 10) % 1000u) / 1000.0f - 0.5f)
-                          * static_cast<float>(mapH) * 0.10f;
-    const int32_t spawnX = mapW / 2 + static_cast<int32_t>(radiusX + humanOffX);
-    const int32_t spawnY = mapH / 2 + static_cast<int32_t>(humanOffY);
-    aoc::hex::AxialCoord mapCenter = aoc::hex::offsetToAxial(
-        {std::clamp(spawnX, 2, mapW - 3), std::clamp(spawnY, 2, mapH - 3)});
+    const float humanOffX =
+        (static_cast<float>(humanHash % 1000u) / 1000.0f - 0.5f) * static_cast<float>(mapW) * 0.10f;
+    const float humanOffY = (static_cast<float>((humanHash >> 10) % 1000u) / 1000.0f - 0.5f) *
+                            static_cast<float>(mapH) * 0.10f;
+    const int32_t spawnX  = mapW / 2 + static_cast<int32_t>(radiusX + humanOffX);
+    const int32_t spawnY  = mapH / 2 + static_cast<int32_t>(humanOffY);
+    aoc::hex::AxialCoord mapCenter =
+        aoc::hex::offsetToAxial({std::clamp(spawnX, 2, mapW - 3), std::clamp(spawnY, 2, mapH - 3)});
 
     hex::AxialCoord capitalPos = this->findNearbyLandTile(mapCenter);
 
@@ -5827,44 +5814,48 @@ void Application::spawnStartingEntities(aoc::sim::CivId civId) {
         humanPlayer->setCivId(civId);
 
         aoc::sim::MonetaryStateComponent& monetary = humanPlayer->monetary();
-        monetary.owner = 0;
-        monetary.system = aoc::sim::MonetarySystemType::Barter;
-        monetary.treasury = 0;
-        monetary.moneySupply = 0;
-        monetary.taxRate = 0.15f;
-        monetary.governmentSpending = 0;
+        monetary.owner                             = 0;
+        monetary.system                            = aoc::sim::MonetarySystemType::Barter;
+        monetary.treasury                          = 0;
+        monetary.moneySupply                       = 0;
+        monetary.taxRate                           = 0.15f;
+        monetary.governmentSpending                = 0;
 
-        humanPlayer->economy().owner = 0;
+        humanPlayer->economy().owner    = 0;
         humanPlayer->economy().treasury = 0;
         humanPlayer->setTreasury(0);
 
         humanPlayer->tech().owner = 0;
         humanPlayer->tech().initialize();
-        humanPlayer->tech().currentResearch = TechId{0};  // Start researching Mining
+        humanPlayer->tech().currentResearch = TechId{0}; // Start researching Mining
 
         humanPlayer->civics().owner = 0;
         humanPlayer->civics().initialize();
-        humanPlayer->civics().currentResearch = CivicId{0};  // Start researching Code of Laws
+        humanPlayer->civics().currentResearch = CivicId{0}; // Start researching Code of Laws
 
-        humanPlayer->era().owner = 0;
+        humanPlayer->era().owner            = 0;
         humanPlayer->victoryTracker().owner = 0;
 
-        humanPlayer->government().owner = 0;
+        humanPlayer->government().owner      = 0;
         humanPlayer->government().government = aoc::sim::GovernmentType::Chiefdom;
 
         humanPlayer->greatPeople().owner = 0;
-        humanPlayer->eureka().owner = 0;
-        humanPlayer->banking().owner = 0;
+        humanPlayer->eureka().owner      = 0;
+        humanPlayer->banking().owner     = 0;
 
         // Spawn starting units. Try each adjacent neighbour in turn so
         // the warrior never overlaps the settler tile. Fall back to the
         // spiral search (which may still collide on coastal starts).
-        hex::AxialCoord warriorPos = capitalPos;
+        hex::AxialCoord warriorPos                     = capitalPos;
         const std::array<aoc::hex::AxialCoord, 6> nbrs = aoc::hex::neighbors(capitalPos);
         for (const aoc::hex::AxialCoord& n : nbrs) {
-            if (!this->m_hexGrid.isValid(n)) { continue; }
+            if (!this->m_hexGrid.isValid(n)) {
+                continue;
+            }
             const int32_t idx = this->m_hexGrid.toIndex(n);
-            if (this->m_hexGrid.movementCost(idx) <= 0) { continue; }
+            if (this->m_hexGrid.movementCost(idx) <= 0) {
+                continue;
+            }
             warriorPos = n;
             break;
         }
@@ -5891,48 +5882,70 @@ hex::AxialCoord Application::findNearbyLandTile(hex::AxialCoord target) const {
     // original tile (which was water) when no land was reachable, and
     // that's how AI civs ended up spawning on water.
     aoc::hex::AxialCoord bestTile = target;
-    float bestScore = -999.0f;
-    bool  foundLand = false;
+    float bestScore               = -999.0f;
+    bool foundLand                = false;
 
     for (int32_t radius = 0; radius < 60; ++radius) {
         std::vector<aoc::hex::AxialCoord> ringTiles;
         aoc::hex::ring(target, radius, std::back_inserter(ringTiles));
         for (const aoc::hex::AxialCoord& tile : ringTiles) {
-            if (!this->m_hexGrid.isValid(tile)) { continue; }
+            if (!this->m_hexGrid.isValid(tile)) {
+                continue;
+            }
             int32_t index = this->m_hexGrid.toIndex(tile);
-            if (this->m_hexGrid.movementCost(index) <= 0) { continue; }
+            if (this->m_hexGrid.movementCost(index) <= 0) {
+                continue;
+            }
             foundLand = true;
 
             aoc::map::TerrainType terrain = this->m_hexGrid.terrain(index);
-            float score = 0.0f;
+            float score                   = 0.0f;
 
             // Score terrain types (prefer fertile land)
             switch (terrain) {
-                case aoc::map::TerrainType::Grassland: score = 10.0f; break;
-                case aoc::map::TerrainType::Plains:    score = 8.0f;  break;
-                case aoc::map::TerrainType::Tundra:    score = 2.0f;  break;
-                case aoc::map::TerrainType::Desert:    score = 1.0f;  break;
-                case aoc::map::TerrainType::Snow:      score = 0.5f;  break;
-                default:                                score = 3.0f;  break;
+            case aoc::map::TerrainType::Grassland:
+                score = 10.0f;
+                break;
+            case aoc::map::TerrainType::Plains:
+                score = 8.0f;
+                break;
+            case aoc::map::TerrainType::Tundra:
+                score = 2.0f;
+                break;
+            case aoc::map::TerrainType::Desert:
+                score = 1.0f;
+                break;
+            case aoc::map::TerrainType::Snow:
+                score = 0.5f;
+                break;
+            default:
+                score = 3.0f;
+                break;
             }
 
             // Bonus for river adjacency
-            if (this->m_hexGrid.riverEdges(index) != 0) { score += 3.0f; }
+            if (this->m_hexGrid.riverEdges(index) != 0) {
+                score += 3.0f;
+            }
 
             // Bonus for nearby resources
-            if (this->m_hexGrid.resource(index).isValid()) { score += 2.0f; }
+            if (this->m_hexGrid.resource(index).isValid()) {
+                score += 2.0f;
+            }
 
             // Penalty for distance from target (prefer closer)
             score -= static_cast<float>(radius) * 0.3f;
 
             if (score > bestScore) {
                 bestScore = score;
-                bestTile = tile;
+                bestTile  = tile;
             }
         }
 
         // Stop early if we found a great tile (grassland with river)
-        if (bestScore >= 12.0f) { break; }
+        if (bestScore >= 12.0f) {
+            break;
+        }
     }
     // Last-resort fallback: scan the whole grid for any land tile if
     // the spiral failed (target on a tiny island, or in deep ocean
@@ -5958,29 +5971,29 @@ void Application::spawnAIPlayer(PlayerId player, aoc::sim::CivId civId) {
     // Distribute AI players evenly across the map using a grid pattern.
     // Player 0 is human (spawned separately). AI players 1..N get spread positions.
     // Use a circular layout: each player gets an angle, placed at 35% map radius from center.
-    const int32_t mapW = this->m_hexGrid.width();
-    const int32_t mapH = this->m_hexGrid.height();
+    const int32_t mapW         = this->m_hexGrid.width();
+    const int32_t mapH         = this->m_hexGrid.height();
     const int32_t totalPlayers = static_cast<int32_t>(this->m_aiControllers.size()) + 1;
-    const float angle = 2.0f * 3.14159f * static_cast<float>(player) / static_cast<float>(totalPlayers);
+    const float angle =
+        2.0f * 3.14159f * static_cast<float>(player) / static_cast<float>(totalPlayers);
     const float radiusX = static_cast<float>(mapW) * 0.35f;
     const float radiusY = static_cast<float>(mapH) * 0.35f;
 
     // Add randomization: +/- 15% of map size so players aren't on a perfect circle
     // Use deterministic hash from player ID for reproducibility
     const uint32_t rngHash = static_cast<uint32_t>(player) * 2654435761u;
-    const float offsetX = (static_cast<float>(rngHash % 1000u) / 1000.0f - 0.5f)
-                        * static_cast<float>(mapW) * 0.15f;
-    const float offsetY = (static_cast<float>((rngHash >> 10) % 1000u) / 1000.0f - 0.5f)
-                        * static_cast<float>(mapH) * 0.15f;
+    const float offsetX =
+        (static_cast<float>(rngHash % 1000u) / 1000.0f - 0.5f) * static_cast<float>(mapW) * 0.15f;
+    const float offsetY = (static_cast<float>((rngHash >> 10) % 1000u) / 1000.0f - 0.5f) *
+                          static_cast<float>(mapH) * 0.15f;
 
     const int32_t spawnX = mapW / 2 + static_cast<int32_t>(radiusX * std::cos(angle) + offsetX);
     const int32_t spawnY = mapH / 2 + static_cast<int32_t>(radiusY * std::sin(angle) + offsetY);
-    aoc::hex::AxialCoord aiSpawn = aoc::hex::offsetToAxial(
-        {std::clamp(spawnX, 2, mapW - 3), std::clamp(spawnY, 2, mapH - 3)});
+    aoc::hex::AxialCoord aiSpawn =
+        aoc::hex::offsetToAxial({std::clamp(spawnX, 2, mapW - 3), std::clamp(spawnY, 2, mapH - 3)});
 
     hex::AxialCoord settlerPos = this->findNearbyLandTile(aiSpawn);
-    hex::AxialCoord warriorPos = this->findNearbyLandTile(
-        {settlerPos.q + 1, settlerPos.r});
+    hex::AxialCoord warriorPos = this->findNearbyLandTile({settlerPos.q + 1, settlerPos.r});
 
     // Initialise all AI player state directly on the GameState object model.
     aoc::game::Player* aiPlayer = this->m_gameState.player(player);
@@ -5988,11 +6001,11 @@ void Application::spawnAIPlayer(PlayerId player, aoc::sim::CivId civId) {
         aiPlayer->setCivId(civId);
 
         aoc::sim::MonetaryStateComponent& monetary = aiPlayer->monetary();
-        monetary.owner = player;
-        monetary.system = aoc::sim::MonetarySystemType::Barter;
-        monetary.treasury = 0;
+        monetary.owner                             = player;
+        monetary.system                            = aoc::sim::MonetarySystemType::Barter;
+        monetary.treasury                          = 0;
 
-        aiPlayer->economy().owner = player;
+        aiPlayer->economy().owner    = player;
         aiPlayer->economy().treasury = 0;
         aiPlayer->setTreasury(0);
 
@@ -6002,23 +6015,23 @@ void Application::spawnAIPlayer(PlayerId player, aoc::sim::CivId civId) {
         aiPlayer->civics().owner = player;
         aiPlayer->civics().initialize();
 
-        aiPlayer->era().owner = player;
+        aiPlayer->era().owner            = player;
         aiPlayer->victoryTracker().owner = player;
 
-        aiPlayer->government().owner = player;
+        aiPlayer->government().owner      = player;
         aiPlayer->government().government = aoc::sim::GovernmentType::Chiefdom;
 
         aiPlayer->greatPeople().owner = player;
-        aiPlayer->eureka().owner = player;
-        aiPlayer->banking().owner = player;
+        aiPlayer->eureka().owner      = player;
+        aiPlayer->banking().owner     = player;
 
         // Spawn settler (AI will auto-found city on first turn) and warrior
         aiPlayer->addUnit(UnitTypeId{3}, settlerPos);
         aiPlayer->addUnit(UnitTypeId{0}, warriorPos);
     }
 
-    LOG_INFO("AI Player %u spawned at (%d,%d)",
-             static_cast<unsigned>(player), settlerPos.q, settlerPos.r);
+    LOG_INFO("AI Player %u spawned at (%d,%d)", static_cast<unsigned>(player), settlerPos.q,
+             settlerPos.r);
 }
 
 // ============================================================================
@@ -6026,7 +6039,7 @@ void Application::spawnAIPlayer(PlayerId player, aoc::sim::CivId civId) {
 // ============================================================================
 
 void Application::placeMapResources() {
-    aoc::Random rng(54321);  // Deterministic seed for resource placement
+    aoc::Random rng(54321); // Deterministic seed for resource placement
 
     const int32_t width  = this->m_hexGrid.width();
     const int32_t height = this->m_hexGrid.height();
@@ -6034,41 +6047,41 @@ void Application::placeMapResources() {
     // Resource placement rules: strategic resources on specific terrain types
     struct ResourcePlacement {
         uint16_t goodId;
-        float    probability;
-        bool     requiresHills;
-        bool     allowDesert;
-        bool     allowPlains;
-        bool     allowGrassland;
-        bool     allowTundra;
+        float probability;
+        bool requiresHills;
+        bool allowDesert;
+        bool allowPlains;
+        bool allowGrassland;
+        bool allowTundra;
     };
 
     constexpr std::array<ResourcePlacement, 18> PLACEMENTS = {{
-        {aoc::sim::goods::IRON_ORE,   0.04f, true,  false, true,  true,  true},
-        {aoc::sim::goods::COPPER_ORE, 0.03f, true,  false, true,  true,  false},
-        {aoc::sim::goods::COAL,       0.03f, false, false, true,  true,  true},
-        {aoc::sim::goods::OIL,        0.02f, false, true,  true,  false, true},
-        {aoc::sim::goods::HORSES,     0.03f, false, false, true,  true,  false},
-        {aoc::sim::goods::WOOD,       0.06f, false, false, false, true,  true},
-        {aoc::sim::goods::STONE,      0.04f, true,  true,  true,  true,  true},
-        {aoc::sim::goods::WHEAT,      0.05f, false, false, true,  true,  false},
+        {aoc::sim::goods::IRON_ORE, 0.04f, true, false, true, true, true},
+        {aoc::sim::goods::COPPER_ORE, 0.03f, true, false, true, true, false},
+        {aoc::sim::goods::COAL, 0.03f, false, false, true, true, true},
+        {aoc::sim::goods::OIL, 0.02f, false, true, true, false, true},
+        {aoc::sim::goods::HORSES, 0.03f, false, false, true, true, false},
+        {aoc::sim::goods::WOOD, 0.06f, false, false, false, true, true},
+        {aoc::sim::goods::STONE, 0.04f, true, true, true, true, true},
+        {aoc::sim::goods::WHEAT, 0.05f, false, false, true, true, false},
         // New resources
-        {aoc::sim::goods::COTTON,     0.03f, false, false, true,  true,  false},
-        {aoc::sim::goods::RUBBER,     0.02f, false, false, false, true,  false},
-        {aoc::sim::goods::TIN,        0.02f, true,  false, true,  true,  true},
-        {aoc::sim::goods::DYES,       0.02f, false, false, false, true,  false},
-        {aoc::sim::goods::FURS,       0.02f, false, false, false, false, true},
-        {aoc::sim::goods::RICE,       0.04f, false, false, false, true,  false},
-        {aoc::sim::goods::SUGAR,      0.02f, false, false, false, true,  false},
-        {aoc::sim::goods::SILK,       0.01f, false, false, false, true,  false},
-        {aoc::sim::goods::NITER,      0.02f, true,  true,  true,  false, false},
-        {aoc::sim::goods::ALUMINUM,   0.01f, true,  false, true,  false, true},
+        {aoc::sim::goods::COTTON, 0.03f, false, false, true, true, false},
+        {aoc::sim::goods::RUBBER, 0.02f, false, false, false, true, false},
+        {aoc::sim::goods::TIN, 0.02f, true, false, true, true, true},
+        {aoc::sim::goods::DYES, 0.02f, false, false, false, true, false},
+        {aoc::sim::goods::FURS, 0.02f, false, false, false, false, true},
+        {aoc::sim::goods::RICE, 0.04f, false, false, false, true, false},
+        {aoc::sim::goods::SUGAR, 0.02f, false, false, false, true, false},
+        {aoc::sim::goods::SILK, 0.01f, false, false, false, true, false},
+        {aoc::sim::goods::NITER, 0.02f, true, true, true, false, false},
+        {aoc::sim::goods::ALUMINUM, 0.01f, true, false, true, false, true},
     }};
 
     int32_t totalPlaced = 0;
 
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
-            int32_t index = row * width + col;
+            int32_t index                 = row * width + col;
             aoc::map::TerrainType terrain = this->m_hexGrid.terrain(index);
             aoc::map::FeatureType feature = this->m_hexGrid.feature(index);
 
@@ -6076,11 +6089,11 @@ void Application::placeMapResources() {
                 continue;
             }
 
-            bool isHills = (feature == aoc::map::FeatureType::Hills);
-            bool isDesert = (terrain == aoc::map::TerrainType::Desert);
-            bool isPlains = (terrain == aoc::map::TerrainType::Plains);
+            bool isHills     = (feature == aoc::map::FeatureType::Hills);
+            bool isDesert    = (terrain == aoc::map::TerrainType::Desert);
+            bool isPlains    = (terrain == aoc::map::TerrainType::Plains);
             bool isGrassland = (terrain == aoc::map::TerrainType::Grassland);
-            bool isTundra = (terrain == aoc::map::TerrainType::Tundra);
+            bool isTundra    = (terrain == aoc::map::TerrainType::Tundra);
 
             for (const ResourcePlacement& placement : PLACEMENTS) {
                 if (placement.requiresHills && !isHills) {
@@ -6104,7 +6117,7 @@ void Application::placeMapResources() {
                     // simulation; no ECS entity is needed.
                     this->m_hexGrid.setResource(index, ResourceId{placement.goodId});
                     ++totalPlaced;
-                    break;  // Only one resource per tile
+                    break; // Only one resource per tile
                 }
             }
         }
@@ -6112,7 +6125,6 @@ void Application::placeMapResources() {
 
     LOG_INFO("Placed %d resources on map", totalPlaced);
 }
-
 
 // ============================================================================
 // Screen helpers
@@ -6125,18 +6137,15 @@ bool Application::anyScreenOpen() const {
 bool Application::onlyCityDetailScreenOpen() const {
     // The city-detail screen is a right-side panel that leaves the map
     // clickable; callers special-case it so HUD input still works.
-    if (!this->m_cityDetailScreen.isOpen()) { return false; }
+    if (!this->m_cityDetailScreen.isOpen()) {
+        return false;
+    }
     // Any OTHER registered screen being open disqualifies the state.
-    if (this->m_productionScreen.isOpen()
-        || this->m_techScreen.isOpen()
-        || this->m_governmentScreen.isOpen()
-        || this->m_economyScreen.isOpen()
-        || this->m_tradeScreen.isOpen()
-        || this->m_tradeRouteSetupScreen.isOpen()
-        || this->m_diplomacyScreen.isOpen()
-        || this->m_religionScreen.isOpen()
-        || this->m_scoreScreen.isOpen()
-        || this->m_settingsMenu.isOpen()) {
+    if (this->m_productionScreen.isOpen() || this->m_techScreen.isOpen() ||
+        this->m_governmentScreen.isOpen() || this->m_economyScreen.isOpen() ||
+        this->m_tradeScreen.isOpen() || this->m_tradeRouteSetupScreen.isOpen() ||
+        this->m_diplomacyScreen.isOpen() || this->m_religionScreen.isOpen() ||
+        this->m_scoreScreen.isOpen() || this->m_settingsMenu.isOpen()) {
         return false;
     }
     return true;

@@ -4,9 +4,10 @@
  * @file GeneticAlgorithm.hpp
  * @brief Genetic algorithm for optimizing LeaderBehavior weights.
  *
- * Evolves a population of 25-float genomes representing AI personality
- * parameters. Uses tournament selection, uniform crossover, and Gaussian
- * mutation with occasional resets. Elitism preserves top N individuals.
+ * Evolves a population of PARAM_COUNT-float genomes (36 as of GENOME_VERSION 2)
+ * representing AI personality parameters. Uses tournament selection, uniform
+ * crossover, and Gaussian mutation with occasional resets. Elitism preserves
+ * top N individuals.
  */
 
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
@@ -14,6 +15,7 @@
 
 #include <array>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <random>
 #include <string_view>
@@ -22,6 +24,24 @@
 namespace aoc::ga {
 
 constexpr int32_t NUM_PARAMS = aoc::sim::LeaderBehavior::PARAM_COUNT;
+
+/// Parameter names in LeaderBehavior field order. Single definition shared by
+/// every consumer (checkpoint writer, stderr initializer dump, tuned-dir
+/// output) so the list cannot drift on a genome bump.
+inline constexpr std::array<const char*, NUM_PARAMS> PARAM_NAMES = {
+    "militaryAggression", "expansionism", "scienceFocus", "cultureFocus",
+    "economicFocus", "diplomaticOpenness", "religiousZeal", "nukeWillingness",
+    "trustworthiness", "grudgeHolding",
+    "techMilitary", "techEconomic", "techIndustrial", "techNaval", "techInformation",
+    "prodSettlers", "prodMilitary", "prodBuilders", "prodBuildings", "prodWonders",
+    "prodNaval", "prodReligious",
+    "warDeclarationThreshold", "peaceAcceptanceThreshold", "allianceDesire",
+    "riskTolerance", "environmentalism", "peripheryTolerance", "greatPersonFocus",
+    "espionagePriority", "ideologicalFervor", "speculationAppetite",
+    "milBaseWeight", "milThreatSensitivity", "milEmergencySlope", "milOverstockPenalty",
+};
+static_assert(PARAM_NAMES.size() == static_cast<std::size_t>(NUM_PARAMS),
+              "PARAM_NAMES must have one entry per genome parameter");
 
 /// Valid range for each parameter (mirrors Python GA's PARAM_MIN/PARAM_MAX).
 struct ParamBounds {

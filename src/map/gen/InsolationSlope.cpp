@@ -47,8 +47,8 @@ void runInsolationSlope(HexGrid& grid, bool cylindrical, float axialTilt) {
     const float tiltRad = tiltDeg * 3.14159f / 180.0f;
     AOC_S13_PARALLEL_FOR_ROWS
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = std::abs(ny - 0.5f) * 3.14159f;
+        // |latitude| in radians, from the true row latitude.
+        const float lat = grid.latitudeFraction(row) * 1.57079633f;
         const float baseI = std::cos(std::min(lat, 1.5708f));
         const float polar = 0.30f * std::sin(tiltRad);
         const float annualMean = std::clamp(baseI + polar, 0.0f, 1.0f);
@@ -126,8 +126,7 @@ void runInsolationSlope(HexGrid& grid, bool cylindrical, float axialTilt) {
     // ---- PELAGIC PRIMARY PRODUCTIVITY ----
     AOC_S13_PARALLEL_FOR_ROWS
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
             const TerrainType t = grid.terrain(i);
@@ -197,8 +196,7 @@ void runInsolationSlope(HexGrid& grid, bool cylindrical, float axialTilt) {
     // ---- GLACIAL ISOSTATIC REBOUND ----
     AOC_S13_PARALLEL_FOR_ROWS
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         if (lat < 0.55f) { continue; }
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
@@ -217,8 +215,7 @@ void runInsolationSlope(HexGrid& grid, bool cylindrical, float axialTilt) {
     // ---- SEDIMENT TRANSPORT DIRECTION ----
     AOC_S13_PARALLEL_FOR_ROWS
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
             const TerrainType t = grid.terrain(i);

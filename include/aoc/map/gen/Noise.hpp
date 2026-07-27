@@ -53,19 +53,17 @@ inline uint64_t mixSeed(uint64_t s) {
 /// plain `hashNoise(floor(x), floor(y), seed)` produces -- boundaries
 /// derived from this drift smoothly across cell edges instead of snapping.
 inline float smoothHashNoise(float x, float y, uint64_t seed) {
-    const float fx = std::floor(x);
-    const float fy = std::floor(y);
+    const float fx   = std::floor(x);
+    const float fy   = std::floor(y);
     const int32_t ix = static_cast<int32_t>(fx);
     const int32_t iy = static_cast<int32_t>(fy);
-    const float tx = smoothstep(x - fx);
-    const float ty = smoothstep(y - fy);
-    const float v00 = hashNoise(ix,     iy,     seed);
-    const float v10 = hashNoise(ix + 1, iy,     seed);
-    const float v01 = hashNoise(ix,     iy + 1, seed);
-    const float v11 = hashNoise(ix + 1, iy + 1, seed);
-    return lerp(lerp(v00, v10, tx),
-                lerp(v01, v11, tx),
-                ty);
+    const float tx   = smoothstep(x - fx);
+    const float ty   = smoothstep(y - fy);
+    const float v00  = hashNoise(ix, iy, seed);
+    const float v10  = hashNoise(ix + 1, iy, seed);
+    const float v01  = hashNoise(ix, iy + 1, seed);
+    const float v11  = hashNoise(ix + 1, iy + 1, seed);
+    return lerp(lerp(v00, v10, tx), lerp(v01, v11, tx), ty);
 }
 
 /// Hash-based value noise on a 3D lattice. Deterministic for given
@@ -87,36 +85,55 @@ inline float hashNoise3(int32_t ix, int32_t iy, int32_t iz, uint64_t seed) {
 /// sampling). Pure function of its arguments -- safe inside parallel
 /// loops.
 inline float smoothHashNoise3(float x, float y, float z, uint64_t seed) {
-    const float fx = std::floor(x);
-    const float fy = std::floor(y);
-    const float fz = std::floor(z);
+    const float fx   = std::floor(x);
+    const float fy   = std::floor(y);
+    const float fz   = std::floor(z);
     const int32_t ix = static_cast<int32_t>(fx);
     const int32_t iy = static_cast<int32_t>(fy);
     const int32_t iz = static_cast<int32_t>(fz);
-    const float tx = smoothstep(x - fx);
-    const float ty = smoothstep(y - fy);
-    const float tz = smoothstep(z - fz);
-    const float v000 = hashNoise3(ix,     iy,     iz,     seed);
-    const float v100 = hashNoise3(ix + 1, iy,     iz,     seed);
-    const float v010 = hashNoise3(ix,     iy + 1, iz,     seed);
-    const float v110 = hashNoise3(ix + 1, iy + 1, iz,     seed);
-    const float v001 = hashNoise3(ix,     iy,     iz + 1, seed);
-    const float v101 = hashNoise3(ix + 1, iy,     iz + 1, seed);
-    const float v011 = hashNoise3(ix,     iy + 1, iz + 1, seed);
+    const float tx   = smoothstep(x - fx);
+    const float ty   = smoothstep(y - fy);
+    const float tz   = smoothstep(z - fz);
+    const float v000 = hashNoise3(ix, iy, iz, seed);
+    const float v100 = hashNoise3(ix + 1, iy, iz, seed);
+    const float v010 = hashNoise3(ix, iy + 1, iz, seed);
+    const float v110 = hashNoise3(ix + 1, iy + 1, iz, seed);
+    const float v001 = hashNoise3(ix, iy, iz + 1, seed);
+    const float v101 = hashNoise3(ix + 1, iy, iz + 1, seed);
+    const float v011 = hashNoise3(ix, iy + 1, iz + 1, seed);
     const float v111 = hashNoise3(ix + 1, iy + 1, iz + 1, seed);
-    const float c00 = lerp(v000, v100, tx);
-    const float c10 = lerp(v010, v110, tx);
-    const float c01 = lerp(v001, v101, tx);
-    const float c11 = lerp(v011, v111, tx);
+    const float c00  = lerp(v000, v100, tx);
+    const float c10  = lerp(v010, v110, tx);
+    const float c01  = lerp(v001, v101, tx);
+    const float c11  = lerp(v011, v111, tx);
     return lerp(lerp(c00, c10, ty), lerp(c01, c11, ty), tz);
 }
 
-/// Bilinearly-interpolated value noise sampled at (x,y). Uses rng.next()
-/// as the per-generation seed so output is deterministic per generate() call.
-[[nodiscard]] float noise2D(float x, float y, float frequency, aoc::Random& rng);
+// ============================================================================
+// Field noise
+// ============================================================================
+//
+// 2026-07-27: these two took an `aoc::Random&` and drew `rng.next()` as the
+// lattice seed INSIDE the call. Every one of the seven call sites is inside a
+// per-tile loop, so consecutive tiles were interpolating over completely
+// different lattices -- the bilinear blend was averaging unrelated values and
+// the result was per-tile white noise, not a coherent field. Temperature,
+// moisture, shelf width, forest density and hill clustering were all affected,
+// and none of them could be parallelised because each call mutated the shared
+// RNG stream.
+//
+// They now take an explicit field seed and are PURE functions of their
+// arguments: draw one seed per field before the loop and pass it in. Same tile
+// coordinates plus same seed give the same value from any thread, in any order.
 
-/// Multi-octave fractal noise built from noise2D. Output is normalised to [0,1].
-[[nodiscard]] float fractalNoise(float x, float y, int octaves, float frequency,
-                                  float persistence, aoc::Random& rng);
+/// Bilinearly-interpolated value noise sampled at (x, y) on a lattice fixed by
+/// `seed`. Pure -- safe inside parallel loops.
+[[nodiscard]] float noise2D(float x, float y, float frequency, uint64_t seed);
+
+/// Multi-octave fractal noise built from noise2D, normalised to [0, 1]. Each
+/// octave gets its own lattice derived from `seed`, so octaves are decorrelated
+/// without being independently random per call.
+[[nodiscard]] float fractalNoise(float x, float y, int octaves, float frequency, float persistence,
+                                 uint64_t seed);
 
 } // namespace aoc::map::gen

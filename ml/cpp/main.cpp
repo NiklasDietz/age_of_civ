@@ -177,11 +177,10 @@ struct CLIArgs {
                 "  --players-list A,B,C  Mixed player counts, cycled per game\n"
                 "                        (e.g. 4,6,8). Overrides --players.\n"
                 "  --maps X,Y,Z          Cycle map types across games.\n"
-                "                        Names: continents|pangaea|archipelago|\n"
-                "                               fractal|realistic (default: realistic).\n"
-                "                        E.g. --maps continents,archipelago,pangaea\n"
-                "                        forces each genome to generalize across\n"
-                "                        naval, land-war and mixed geography.\n"
+                "                        Only 'continents' is currently supported;\n"
+                "                        other names are accepted for config compat\n"
+                "                        and remapped to continents (with a warning).\n"
+                "                        (default: continents)\n"
                 "  --workers N           Thread count (0 = auto-detect, default: 0)\n"
                 "  --seed N              RNG seed (default: random)\n"
                 "  --opponent-mode MODE  Opponent selection for non-evaluated players:\n"
@@ -335,18 +334,8 @@ void saveSummary(const aoc::ga::DifficultyTiers& tiers, const char* path) {
         return;
     }
 
-    static constexpr const char* PARAM_NAMES[aoc::ga::NUM_PARAMS] = {
-        "militaryAggression", "expansionism", "scienceFocus", "cultureFocus",
-        "economicFocus", "diplomaticOpenness", "religiousZeal", "nukeWillingness",
-        "trustworthiness", "grudgeHolding",
-        "techMilitary", "techEconomic", "techIndustrial", "techNaval", "techInformation",
-        "prodSettlers", "prodMilitary", "prodBuilders", "prodBuildings", "prodWonders",
-        "prodNaval", "prodReligious",
-        "warDeclarationThreshold", "peaceAcceptanceThreshold", "allianceDesire",
-        "riskTolerance", "environmentalism", "peripheryTolerance", "greatPersonFocus",
-        "espionagePriority", "ideologicalFervor", "speculationAppetite",
-        "milBaseWeight", "milThreatSensitivity", "milEmergencySlope", "milOverstockPenalty",
-    };
+    // PARAM_NAMES is the single shared definition from GeneticAlgorithm.hpp.
+    using aoc::ga::PARAM_NAMES;
 
     file << "Evolved Utility AI Weights (C++ GA)\n";
     // H6.5: tag output with genome version so any future binary loader can
@@ -452,7 +441,7 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "\n");
     }
     if (args.mapsList.empty()) {
-        std::fprintf(stderr, "  Map type: realistic\n");
+        std::fprintf(stderr, "  Map type: continents\n");
     } else {
         std::fprintf(stderr, "  Map types (cycled):");
         for (aoc::map::MapType m : args.mapsList) {

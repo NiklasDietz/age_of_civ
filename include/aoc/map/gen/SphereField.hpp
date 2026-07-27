@@ -35,24 +35,52 @@ namespace aoc::map::gen {
 /// Mountain biome threshold in metres above sea level.
 /// Alpine / nival biome floor (~4 km treeline at low latitudes,
 /// Tibet / Andes high-alpine zone).
+///
+/// NOT used for the hex mountain mask any more -- see MOUNTAIN_CRUST_KM. Still
+/// the SphereField trace counter's cutoff, which is why the trace's `mtn=` and
+/// the map's mountain-tile count are different quantities.
 inline constexpr float MOUNTAIN_THRESHOLD_M = 4000.0f;
+
+/// Mountain biome threshold, as a MULTIPLE of the planet's own median
+/// continental crustal thickness. A mountain belt is a thickened crustal root,
+/// so the criterion is the degree of thickening, not an absolute depth.
+///
+/// Earth's value: the Tibetan and Andean roots run 70-85 km against ~41 km of
+/// normal continental crust (Christensen & Mooney 1995, JGR 100:9761), i.e.
+/// 1.7-2.1x. 2.0 is the major-orogen end of that range, so the mask marks
+/// Tibet-and-Andes-scale belts rather than every mildly thickened margin.
+///
+/// Why a ratio and not a fixed thickness. Two independent scale errors make any
+/// absolute threshold a calibration against a broken ruler:
+///   - freeboard: the Airy datum was calibrated from the oceanic branch alone
+///     and sea level is re-solved every epoch, so an ELEVATION threshold drifts
+///     (measured: the craton plateau sweeps through 3725-4065 m while the
+///     4000 m cutoff stands still -- the mountain-flicker mechanism);
+///   - thickness scale: this simulation's median continental crust measures
+///     15.6-18.2 km against Earth's 35-41 km, so a fixed km threshold that
+///     happens to reproduce Earth's ~10 % mountain share does so only because
+///     the two errors cancel.
+/// A ratio to the planet's own median is invariant to both. It is NOT a
+/// percentile quota: the mountain FRACTION still varies freely per seed (it is
+/// measured at 6.8-22.0 % of land), so it can still be gated on.
+inline constexpr float MOUNTAIN_CRUST_RATIO = 2.0f;
 
 struct SphereField {
     static constexpr int32_t LON_CELLS = 720;
     static constexpr int32_t LAT_CELLS = 360;
-    static constexpr float   CELL_DEG  = 0.5f;
+    static constexpr float CELL_DEG    = 0.5f;
     static constexpr std::size_t CELL_COUNT =
         static_cast<std::size_t>(LON_CELLS) * static_cast<std::size_t>(LAT_CELLS);
 
     // Surface elevation in metres above the mantle datum (i.e. above
     // the sea-floor reference; tile elevation == surfaceElevationM less the
     // sea-level constant resolved by isostatic equilibrium).
-    std::vector<float>   surfaceElevationM;
+    std::vector<float> surfaceElevationM;
     // Crustal column thickness in km. Together with continentalFraction this
     // determines the isostatic surface elevation via Airy compensation.
-    std::vector<float>   crustThicknessKm;
+    std::vector<float> crustThicknessKm;
     // Composition fraction in [0, 1]: 0 = pure oceanic, 1 = pure continental.
-    std::vector<float>   continentalFraction;
+    std::vector<float> continentalFraction;
     // Owning plate id, -1 = unowned (polar voids outside the Mollweide ellipse
     // are still valid sphere cells; the -1 sentinel is reserved for cells
     // marked inactive by subduction or never assigned).
@@ -60,9 +88,9 @@ struct SphereField {
     // Instantaneous closing rate at the cell, radians/My (sphere arc rate).
     // NOT a strain integral; written each epoch by the convergence pass and
     // consumed by the thickening pass within the same epoch.
-    std::vector<float>   convergenceRateRadPerMy;
+    std::vector<float> convergenceRateRadPerMy;
     // Crust age in My since last creation (ridge spawn / accretion).
-    std::vector<float>   crustAgeMy;
+    std::vector<float> crustAgeMy;
     // Wilson-cycle thermal-blanketing age, in My. Counter advanced
     // each epoch for every continental cell that sits inside a plate
     // currently classified as a "supercontinent fragment" (continental
@@ -71,7 +99,7 @@ struct SphereField {
     // subduction. Continental rifting probability ramps in once the
     // mean of this counter for a plate exceeds the Stein & Stein 1992
     // breakup threshold (~150 My).
-    std::vector<float>   thermalAgeMy;
+    std::vector<float> thermalAgeMy;
     // Boundary-type classification per cell. Updated each epoch by
     // accumulateClosingRate alongside the magnitude. Values:
     //   0 NotBoundary      cell sits in plate interior
@@ -87,7 +115,7 @@ struct SphereField {
     // when the contact ends or the crust is recycled. Drives raster
     // docking: plates weld only after sustained cont-cont suturing
     // (India-Asia style), never on centroid proximity.
-    std::vector<float>   sutureContactMy;
+    std::vector<float> sutureContactMy;
 
     // Sea level in metres above the mantle datum, resolved each epoch
     // by solveSeaLevelFixedVolume: the level at which the world's
@@ -110,10 +138,9 @@ struct SphereField {
 
     /// Fast row-major linear index. Caller asserts that lonIdx in
     /// [0, LON_CELLS) and latIdx in [0, LAT_CELLS).
-    [[nodiscard]] static constexpr std::size_t cellIndex(
-        int32_t lonIdx, int32_t latIdx) noexcept {
-        return static_cast<std::size_t>(latIdx) * static_cast<std::size_t>(LON_CELLS)
-             + static_cast<std::size_t>(lonIdx);
+    [[nodiscard]] static constexpr std::size_t cellIndex(int32_t lonIdx, int32_t latIdx) noexcept {
+        return static_cast<std::size_t>(latIdx) * static_cast<std::size_t>(LON_CELLS) +
+               static_cast<std::size_t>(lonIdx);
     }
 
     /// Cell-centre lat/lon for the given grid coordinate.
@@ -121,14 +148,17 @@ struct SphereField {
 
     /// Locate the cell containing (latDeg, lonDeg). Longitude wraps,
     /// latitude clamps. Returns (lonIdx, latIdx) of the containing cell.
-    struct CellCoord { int32_t lonIdx; int32_t latIdx; };
+    struct CellCoord {
+        int32_t lonIdx;
+        int32_t latIdx;
+    };
     [[nodiscard]] static CellCoord locate(float latDeg, float lonDeg) noexcept;
 
     /// Bilinear-sample one of the SoA fields at an arbitrary (lat, lon).
     /// Longitude wraps (so antimeridian samples blend cells 719 and 0);
     /// latitude clamps at +/-90.
-    [[nodiscard]] float bilinearSample(
-        const std::vector<float>& field, float latDeg, float lonDeg) const noexcept;
+    [[nodiscard]] float bilinearSample(const std::vector<float>& field, float latDeg,
+                                       float lonDeg) const noexcept;
 
     /// Peak (max) sample of `field` over a (2*halfSearchCells+1)^2 cell
     /// window centred on the cell containing (latDeg, lonDeg).
@@ -138,9 +168,8 @@ struct SphereField {
     /// = 4 cells) below the visibility threshold. Peak sampling captures
     /// the local maximum so any 4 km+ peak inside the tile flags it.
     /// Longitude wraps; latitude clamps.
-    [[nodiscard]] float peakSample(
-        const std::vector<float>& field, float latDeg, float lonDeg,
-        int32_t halfSearchCells) const noexcept;
+    [[nodiscard]] float peakSample(const std::vector<float>& field, float latDeg, float lonDeg,
+                                   int32_t halfSearchCells) const noexcept;
 
     /// Most frequent nonzero boundaryType over the same footprint
     /// window as peakSample, tie-broken by lowest type id (convergent
@@ -148,8 +177,8 @@ struct SphereField {
     /// lookup at the hex centre misses most of them, so hex-tile
     /// boundary classification must aggregate over the footprint.
     /// Returns 0 when no boundary cell lies inside the window.
-    [[nodiscard]] uint8_t boundaryTypeMode(
-        float latDeg, float lonDeg, int32_t halfSearchCells) const noexcept;
+    [[nodiscard]] uint8_t boundaryTypeMode(float latDeg, float lonDeg,
+                                           int32_t halfSearchCells) const noexcept;
 };
 
 } // namespace aoc::map::gen

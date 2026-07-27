@@ -39,16 +39,27 @@ fi
 
 SEED_LIST="$(IFS=,; echo "${SEEDS[*]}")"
 
+# Projection the generator runs and the projection the metrics weight by MUST
+# agree, or land_fraction stops being a planet-area fraction. Override both
+# together via AOC_DIAG_PROJECTION when comparing against an older baseline.
+PROJECTION="${AOC_DIAG_PROJECTION:-mollweide}"
+
+# --cylindrical throughout: the game is always Cylindrical
+# (src/app/Application.cpp), and measuring Flat is how the full-width
+# ocean-stripe bug survived an entire phase programme unseen (commit 9debafd).
 python3 "${ROOT}/tools/mapgen_metrics.py" baseline \
     --binary "${MAPGEN}" \
     --outdir "${OUT}" \
-    --seeds "${SEED_LIST}"
+    --seeds "${SEED_LIST}" \
+    --projection "${PROJECTION}" \
+    --metric-projection "${PROJECTION}"
 
 # --dump-plates per seed for plate-level stats (cell count, land frac,
 # bbox, centroid) alongside the shape metrics.
 for s in "${SEEDS[@]}"; do
     "${MAPGEN}" \
         --seed "${s}" --width 140 --height 90 \
+        --cylindrical --projection "${PROJECTION}" \
         --output "${OUT}/m_s${s}" --format csv \
         --dump-plates "${OUT}/m_s${s}.plates.csv" > /dev/null
 done
@@ -59,6 +70,12 @@ SUMMARY="${OUT}/SUMMARY.md"
     echo
     echo "Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "Seeds: ${SEEDS[*]}  Resolution: 140x90"
+    echo "Topology: Cylindrical  Projection: ${PROJECTION}"
+    echo
+    echo "land% is AREA-WEIGHTED (fraction of the planet, comparable to"
+    echo "Earth's 29.2%), not a raw tile count. axis 0.50 is the measured"
+    echo "isotropic null; wall-to-wall axis-aligned bars read 0.98."
+    echo "elong is an area-weighted median; Earth's continents are 1.5-2.5."
     echo
     echo "## Continent-shape metrics (tools/mapgen_metrics.py)"
     echo
@@ -66,19 +83,23 @@ SUMMARY="${OUT}/SUMMARY.md"
     python3 - "${OUT}/metrics.json" <<'EOF'
 import json, sys
 data = json.load(open(sys.argv[1]))
-hdr = f"{'seed':>6} {'land%':>6} {'comps':>5} {'4-30':>4} {'coastD':>6} {'axis0/90':>8} {'beltaxis':>8}"
-print(hdr)
+print(f"{'seed':>6} {'land%':>6} {'comps':>5} {'4-30':>4} {'coastD':>6} "
+      f"{'axis':>6} {'elong':>6} {'degen':>5} {'beltaxis':>8}")
 for seed, m in data.items():
     co = m.get("coast_orientation") or {}
     mt = m.get("mountains") or {}
+    el = m.get("landmass_elongation") or {}
     print(f"{seed:>6} {m['land_fraction']*100:>6.1f} {m['n_land_components']:>5} "
           f"{m['component_bands']['4-30']:>4} {str(m['coast_box_dimension']):>6} "
-          f"{str(co.get('axis_aligned_frac')):>8} "
+          f"{str(co.get('axis_aligned_frac')):>6} "
+          f"{str(el.get('median')):>6} {str(el.get('n_degenerate')):>5} "
           f"{str(mt.get('belt_axis_aligned_frac')):>8}")
 EOF
     echo '```'
     echo
     echo "Detail: ${OUT}/metrics.json, per-plate stats in m_s<N>.plates.csv."
+    echo "Reference: tools/mapgen_baselines/README.md (and why the"
+    echo "phase*-post.json baselines there are invalid)."
 } > "${SUMMARY}"
 
 echo "wrote ${SUMMARY}"

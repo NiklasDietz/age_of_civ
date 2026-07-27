@@ -8,19 +8,17 @@
 #include "aoc/map/HexCoord.hpp"
 #include "aoc/map/HexGrid.hpp"
 
-#include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 namespace aoc::map::gen {
 
-void runThresholdComputation(HexGrid& grid, MapType mapType,
-                             float seaLevelDelta,
-                             const std::vector<float>& elevationMap,
-                             ThresholdResult& out) {
-    const int32_t width  = grid.width();
+void runThresholdComputation(HexGrid& grid, float seaLevelDelta,
+                             const std::vector<float>& elevationMap, ThresholdResult& out) {
+    const int32_t width      = grid.width();
     const int32_t totalTiles = grid.tileCount();
 
     // Sea-level cut. elev[i] is the unitless surface elevation produced
@@ -39,8 +37,8 @@ void runThresholdComputation(HexGrid& grid, MapType mapType,
     // No percentile cutoff (CLAUDE.md rule 3 forbids quota-based
     // shapers).
     constexpr float SEA_LEVEL_DELTA_TO_ELEV = 0.20f;
-    const float seaLevelCut = seaLevelDelta * SEA_LEVEL_DELTA_TO_ELEV;
-    const std::size_t N = elevationMap.size();
+    const float seaLevelCut                 = seaLevelDelta * SEA_LEVEL_DELTA_TO_ELEV;
+    const std::size_t N                     = elevationMap.size();
     out.isWater.assign(N, 0u);
     std::size_t waterCount = 0;
     for (std::size_t i = 0; i < N; ++i) {
@@ -52,11 +50,8 @@ void runThresholdComputation(HexGrid& grid, MapType mapType,
     out.waterThreshold = seaLevelCut;
 
     if (std::getenv("AOC_DUMP_THRESHOLD") != nullptr) {
-        std::fprintf(stderr,
-            "[thresh] sea-level cut: water=%zu/%zu (%.1f%%)\n",
-            waterCount, N,
-            100.0 * static_cast<double>(waterCount)
-                  / static_cast<double>(N));
+        std::fprintf(stderr, "[thresh] sea-level cut: water=%zu/%zu (%.1f%%)\n", waterCount, N,
+                     100.0 * static_cast<double>(waterCount) / static_cast<double>(N));
     }
     out.distFromCoast.assign(static_cast<std::size_t>(totalTiles), -1);
     std::vector<int32_t> coastQ;
@@ -68,13 +63,15 @@ void runThresholdComputation(HexGrid& grid, MapType mapType,
         }
     }
     for (std::size_t h = 0; h < coastQ.size(); ++h) {
-        const int32_t idx = coastQ[h];
-        const int32_t d = out.distFromCoast[static_cast<std::size_t>(idx)];
-        const int32_t col = idx % width;
-        const int32_t row = idx / width;
+        const int32_t idx           = coastQ[h];
+        const int32_t d             = out.distFromCoast[static_cast<std::size_t>(idx)];
+        const int32_t col           = idx % width;
+        const int32_t row           = idx / width;
         const hex::AxialCoord axial = hex::offsetToAxial({col, row});
         for (const hex::AxialCoord& n : hex::neighbors(axial)) {
-            if (!grid.isValid(n)) { continue; }
+            if (!grid.isValid(n)) {
+                continue;
+            }
             const int32_t ni = grid.toIndex(n);
             if (out.distFromCoast[static_cast<std::size_t>(ni)] >= 0) {
                 continue;
@@ -84,35 +81,14 @@ void runThresholdComputation(HexGrid& grid, MapType mapType,
         }
     }
 
-    out.mountainElev = elevationMap;
-    if (mapType != MapType::Continents) {
-        for (int32_t i = 0; i < totalTiles; ++i) {
-            if (out.distFromCoast[static_cast<std::size_t>(i)] <= 0) { continue; }
-            const int32_t d = out.distFromCoast[static_cast<std::size_t>(i)];
-            float bonus = 0.0f;
-            if (d >= 2 && d <= 6) {
-                const float peak = 4.0f;
-                const float sigma = 2.5f;
-                const float x = (static_cast<float>(d) - peak) / sigma;
-                bonus = 0.18f * std::exp(-x * x);
-            } else if (d > 8) {
-                bonus = -0.05f;
-            }
-            out.mountainElev[static_cast<std::size_t>(i)] += bonus;
-        }
-    } else {
-        for (int32_t i = 0; i < totalTiles; ++i) {
-            if (out.distFromCoast[static_cast<std::size_t>(i)] <= 0) { continue; }
-            const int32_t d = out.distFromCoast[static_cast<std::size_t>(i)];
-            if (d > 8) {
-                out.mountainElev[static_cast<std::size_t>(i)] -= 0.02f;
-            }
-        }
-    }
-
-    // Mountain status decided downstream by SphereField bilinearSample
-    // > 4000 m (MOUNTAIN_THRESHOLD_M); legacy percentile cutoff dead.
-    out.mountainThreshold = 0.0f;
+    // 2026-07-27: the `mountainElev` array, the `mountainThreshold` scalar and
+    // the `mapType` parameter were removed together. Mountains are decided
+    // upstream, where the world-frame elevation pass compares each tile's peak
+    // SphereField sample against MOUNTAIN_THRESHOLD_M; the percentile cutoff
+    // those fields fed has not existed for some time. What was left was a full
+    // per-tile copy of `elevationMap` plus a coastal-ridge bias loop that no
+    // translation unit read, a scalar hard-assigned 0, and a `mapType` branch
+    // that only chose between two ways of writing to the unread array.
 }
 
 } // namespace aoc::map::gen

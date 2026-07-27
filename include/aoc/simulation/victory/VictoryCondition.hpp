@@ -40,6 +40,7 @@
 
 #include "aoc/core/Types.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 #include <vector>
@@ -86,6 +87,13 @@ enum class VictoryType : uint8_t {
     Culture,
     Religion,
 };
+
+/// Number of VictoryType enumerators — single source of truth for histogram
+/// sizing in the GA / balance tuners. VictoryType deliberately has no `Count`
+/// sentinel (one would trip -Wswitch in the exhaustive switches over it), so
+/// derive the count from the last enumerator instead.
+inline constexpr std::size_t VICTORY_TYPE_COUNT =
+    static_cast<std::size_t>(VictoryType::Religion) + 1;
 
 // ============================================================================
 // Victory-type bitmask: selects which win conditions may trigger a game end.

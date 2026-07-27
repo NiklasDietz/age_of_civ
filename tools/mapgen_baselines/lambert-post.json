@@ -1,0 +1,380 @@
+{
+  "42": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-home-games-age-of-civ/a622222b-1772-4acd-aab0-c2202f465446/scratchpad/lampost/seed42.csv",
+    "sha256": "df1d3fb05e1d095011d0739a88c03c467005fb53013923c72710861fec73a249",
+    "width": 140,
+    "height": 90,
+    "projection": "lambert",
+    "wrap": true,
+    "land_fraction": 0.3667,
+    "land_fraction_raw_tiles": 0.3667,
+    "sphere_tile_fraction": 1.0,
+    "n_land_components": 13,
+    "component_bands": {
+      "1-3": 3,
+      "4-30": 7,
+      "31-100": 0,
+      ">100": 3
+    },
+    "largest_components": [
+      4001,
+      412,
+      145,
+      23,
+      12,
+      5,
+      4,
+      4
+    ],
+    "largest_over_median": 1000.25,
+    "coastline_cells": 1239,
+    "coast_perimeter_over_land": 0.2681,
+    "coast_box_dimension": 1.196,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.3454,
+        0.1715,
+        0.2861,
+        0.197
+      ],
+      "axis_aligned_frac": 0.6315,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 1213
+    },
+    "mountains": {
+      "n_components": 62,
+      "n_belts": 43,
+      "belt_axis_bins_0_45_90_135": [
+        6,
+        9,
+        21,
+        7
+      ],
+      "belt_axis_aligned_frac": 0.6279,
+      "median_elongation": 5.69
+    },
+    "landmass_elongation": {
+      "median": 6.17,
+      "p90": 3.83,
+      "max": 6.17,
+      "n_components": 3,
+      "n_degenerate": 0
+    }
+  },
+  "7": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-home-games-age-of-civ/a622222b-1772-4acd-aab0-c2202f465446/scratchpad/lampost/seed7.csv",
+    "sha256": "baa30b16c3e381064267719e7ecbe7d67bef2e66306386ee9f31cb9a7a85a187",
+    "width": 140,
+    "height": 90,
+    "projection": "lambert",
+    "wrap": true,
+    "land_fraction": 0.3146,
+    "land_fraction_raw_tiles": 0.3146,
+    "sphere_tile_fraction": 1.0,
+    "n_land_components": 19,
+    "component_bands": {
+      "1-3": 4,
+      "4-30": 6,
+      "31-100": 5,
+      ">100": 4
+    },
+    "largest_components": [
+      2813,
+      346,
+      318,
+      167,
+      100,
+      60,
+      47,
+      35
+    ],
+    "largest_over_median": 234.42,
+    "coastline_cells": 1340,
+    "coast_perimeter_over_land": 0.338,
+    "coast_box_dimension": 1.222,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.3072,
+        0.172,
+        0.3141,
+        0.2066
+      ],
+      "axis_aligned_frac": 0.6214,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 1302
+    },
+    "mountains": {
+      "n_components": 61,
+      "n_belts": 32,
+      "belt_axis_bins_0_45_90_135": [
+        4,
+        4,
+        12,
+        12
+      ],
+      "belt_axis_aligned_frac": 0.5,
+      "median_elongation": 4.5
+    },
+    "landmass_elongation": {
+      "median": 2.01,
+      "p90": 13.87,
+      "max": 15.9,
+      "n_components": 6,
+      "n_degenerate": 0
+    }
+  },
+  "100": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-home-games-age-of-civ/a622222b-1772-4acd-aab0-c2202f465446/scratchpad/lampost/seed100.csv",
+    "sha256": "69acf7978637297cab74d5548ba15dc8a4613fd0f9ee7a540d0a56493e81c20e",
+    "width": 140,
+    "height": 90,
+    "projection": "lambert",
+    "wrap": true,
+    "land_fraction": 0.2518,
+    "land_fraction_raw_tiles": 0.2518,
+    "sphere_tile_fraction": 1.0,
+    "n_land_components": 17,
+    "component_bands": {
+      "1-3": 3,
+      "4-30": 12,
+      "31-100": 0,
+      ">100": 2
+    },
+    "largest_components": [
+      2266,
+      757,
+      25,
+      23,
+      21,
+      15,
+      14,
+      9
+    ],
+    "largest_over_median": 283.25,
+    "coastline_cells": 1049,
+    "coast_perimeter_over_land": 0.3306,
+    "coast_box_dimension": 1.167,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.247,
+        0.2399,
+        0.3538,
+        0.1593
+      ],
+      "axis_aligned_frac": 0.6008,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 992
+    },
+    "mountains": {
+      "n_components": 37,
+      "n_belts": 22,
+      "belt_axis_bins_0_45_90_135": [
+        6,
+        4,
+        10,
+        2
+      ],
+      "belt_axis_aligned_frac": 0.7273,
+      "median_elongation": 6.92
+    },
+    "landmass_elongation": {
+      "median": 7.92,
+      "p90": 7.92,
+      "max": 15.71,
+      "n_components": 2,
+      "n_degenerate": 0
+    }
+  },
+  "200": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-home-games-age-of-civ/a622222b-1772-4acd-aab0-c2202f465446/scratchpad/lampost/seed200.csv",
+    "sha256": "2ba7e922b89837ea96456ec66f791df362f74d553f61c93eee15824b0a3723f4",
+    "width": 140,
+    "height": 90,
+    "projection": "lambert",
+    "wrap": true,
+    "land_fraction": 0.277,
+    "land_fraction_raw_tiles": 0.277,
+    "sphere_tile_fraction": 1.0,
+    "n_land_components": 24,
+    "component_bands": {
+      "1-3": 2,
+      "4-30": 12,
+      "31-100": 1,
+      ">100": 9
+    },
+    "largest_components": [
+      1415,
+      479,
+      311,
+      294,
+      224,
+      217,
+      136,
+      128
+    ],
+    "largest_over_median": 108.85,
+    "coastline_cells": 1394,
+    "coast_perimeter_over_land": 0.3994,
+    "coast_box_dimension": 1.262,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.266,
+        0.1822,
+        0.3453,
+        0.2065
+      ],
+      "axis_aligned_frac": 0.6113,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 1361
+    },
+    "mountains": {
+      "n_components": 57,
+      "n_belts": 28,
+      "belt_axis_bins_0_45_90_135": [
+        3,
+        9,
+        14,
+        2
+      ],
+      "belt_axis_aligned_frac": 0.6071,
+      "median_elongation": 8.58
+    },
+    "landmass_elongation": {
+      "median": 4.06,
+      "p90": 14.2,
+      "max": 20.71,
+      "n_components": 9,
+      "n_degenerate": 0
+    }
+  },
+  "1234": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-home-games-age-of-civ/a622222b-1772-4acd-aab0-c2202f465446/scratchpad/lampost/seed1234.csv",
+    "sha256": "5d34851fbc56908d51e7c89af15b34a922d466aaeef2a718b49a4247f2902126",
+    "width": 140,
+    "height": 90,
+    "projection": "lambert",
+    "wrap": true,
+    "land_fraction": 0.3213,
+    "land_fraction_raw_tiles": 0.3213,
+    "sphere_tile_fraction": 1.0,
+    "n_land_components": 14,
+    "component_bands": {
+      "1-3": 1,
+      "4-30": 8,
+      "31-100": 1,
+      ">100": 4
+    },
+    "largest_components": [
+      1889,
+      1180,
+      697,
+      145,
+      34,
+      28,
+      23,
+      11
+    ],
+    "largest_over_median": 171.73,
+    "coastline_cells": 1074,
+    "coast_perimeter_over_land": 0.2653,
+    "coast_box_dimension": 1.176,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.1914,
+        0.1438,
+        0.5753,
+        0.0894
+      ],
+      "axis_aligned_frac": 0.7668,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 1029
+    },
+    "mountains": {
+      "n_components": 30,
+      "n_belts": 19,
+      "belt_axis_bins_0_45_90_135": [
+        5,
+        4,
+        7,
+        3
+      ],
+      "belt_axis_aligned_frac": 0.6316,
+      "median_elongation": 9.0
+    },
+    "landmass_elongation": {
+      "median": 5.69,
+      "p90": 5.69,
+      "max": 15.92,
+      "n_components": 4,
+      "n_degenerate": 0
+    }
+  },
+  "777": {
+    "file": "/tmp/claude-1000/-home-ndietz-Repositories-private-home-games-age-of-civ/a622222b-1772-4acd-aab0-c2202f465446/scratchpad/lampost/seed777.csv",
+    "sha256": "380360774e99e7f8ed41b01b7b29ec4320bad85c48c00d4289011e8618cfe55f",
+    "width": 140,
+    "height": 90,
+    "projection": "lambert",
+    "wrap": true,
+    "land_fraction": 0.1548,
+    "land_fraction_raw_tiles": 0.1548,
+    "sphere_tile_fraction": 1.0,
+    "n_land_components": 37,
+    "component_bands": {
+      "1-3": 2,
+      "4-30": 26,
+      "31-100": 4,
+      ">100": 5
+    },
+    "largest_components": [
+      681,
+      317,
+      179,
+      141,
+      140,
+      50,
+      50,
+      42
+    ],
+    "largest_over_median": 45.4,
+    "coastline_cells": 1309,
+    "coast_perimeter_over_land": 0.6713,
+    "coast_box_dimension": 1.236,
+    "coast_orientation": {
+      "bins_deg_0_45_90_135": [
+        0.2299,
+        0.2472,
+        0.252,
+        0.2709
+      ],
+      "axis_aligned_frac": 0.4819,
+      "isotropic_null": 0.5,
+      "sphere_metric": true,
+      "samples": 1270
+    },
+    "mountains": {
+      "n_components": 46,
+      "n_belts": 20,
+      "belt_axis_bins_0_45_90_135": [
+        3,
+        4,
+        5,
+        8
+      ],
+      "belt_axis_aligned_frac": 0.4,
+      "median_elongation": 8.34
+    },
+    "landmass_elongation": {
+      "median": 4.32,
+      "p90": 7.5,
+      "max": 12.49,
+      "n_components": 7,
+      "n_degenerate": 0
+    }
+  }
+}

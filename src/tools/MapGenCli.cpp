@@ -18,6 +18,7 @@
 #include "aoc/map/Terrain.hpp"
 #include "aoc/map/gen/SphereGeometry.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -46,36 +47,67 @@ enum class OutputFormat : uint8_t {
 };
 
 [[nodiscard]] OutputFormat parseFormat(std::string_view s) {
-    if (s == "csv")   { return OutputFormat::Csv; }
-    if (s == "both")  { return OutputFormat::Both; }
+    if (s == "csv") {
+        return OutputFormat::Csv;
+    }
+    if (s == "both") {
+        return OutputFormat::Both;
+    }
     return OutputFormat::Ascii;
 }
 
 /// One char per terrain. Hills feature replaces base-terrain glyph for visual
 /// readability; rivers overlay as `~`. Choices below are intentionally unique
 /// per terrain so a printed map is unambiguous to a reader who knows the key.
-[[nodiscard]] char terrainGlyph(aoc::map::TerrainType t, aoc::map::FeatureType f,
-                                bool hasRiver) {
-    if (hasRiver && !aoc::map::isWater(t)) { return '~'; }
-    if (f == aoc::map::FeatureType::Hills && !aoc::map::isWater(t)) { return 'm'; }
-    if (f == aoc::map::FeatureType::Forest)      { return 'f'; }
-    if (f == aoc::map::FeatureType::Jungle)      { return 'j'; }
-    if (f == aoc::map::FeatureType::Marsh)       { return 'M'; }
-    if (f == aoc::map::FeatureType::Floodplains) { return 'P'; }
-    if (f == aoc::map::FeatureType::Oasis)       { return 'O'; }
-    if (f == aoc::map::FeatureType::Reef)        { return 'r'; }
-    if (f == aoc::map::FeatureType::Ice)         { return 'I'; }
+[[nodiscard]] char terrainGlyph(aoc::map::TerrainType t, aoc::map::FeatureType f, bool hasRiver) {
+    if (hasRiver && !aoc::map::isWater(t)) {
+        return '~';
+    }
+    if (f == aoc::map::FeatureType::Hills && !aoc::map::isWater(t)) {
+        return 'm';
+    }
+    if (f == aoc::map::FeatureType::Forest) {
+        return 'f';
+    }
+    if (f == aoc::map::FeatureType::Jungle) {
+        return 'j';
+    }
+    if (f == aoc::map::FeatureType::Marsh) {
+        return 'M';
+    }
+    if (f == aoc::map::FeatureType::Floodplains) {
+        return 'P';
+    }
+    if (f == aoc::map::FeatureType::Oasis) {
+        return 'O';
+    }
+    if (f == aoc::map::FeatureType::Reef) {
+        return 'r';
+    }
+    if (f == aoc::map::FeatureType::Ice) {
+        return 'I';
+    }
     switch (t) {
-        case aoc::map::TerrainType::Ocean:        return ':';
-        case aoc::map::TerrainType::Coast:        return ',';
-        case aoc::map::TerrainType::ShallowWater: return '.';
-        case aoc::map::TerrainType::Desert:       return 'D';
-        case aoc::map::TerrainType::Plains:       return '-';
-        case aoc::map::TerrainType::Grassland:    return 'g';
-        case aoc::map::TerrainType::Tundra:       return 'T';
-        case aoc::map::TerrainType::Snow:         return '*';
-        case aoc::map::TerrainType::Mountain:     return '^';
-        default:                                  return '?';
+    case aoc::map::TerrainType::Ocean:
+        return ':';
+    case aoc::map::TerrainType::Coast:
+        return ',';
+    case aoc::map::TerrainType::ShallowWater:
+        return '.';
+    case aoc::map::TerrainType::Desert:
+        return 'D';
+    case aoc::map::TerrainType::Plains:
+        return '-';
+    case aoc::map::TerrainType::Grassland:
+        return 'g';
+    case aoc::map::TerrainType::Tundra:
+        return 'T';
+    case aoc::map::TerrainType::Snow:
+        return '*';
+    case aoc::map::TerrainType::Mountain:
+        return '^';
+    default:
+        return '?';
     }
 }
 
@@ -97,12 +129,14 @@ void writeAscii(const aoc::map::HexGrid& grid, const std::string& path) {
     for (int32_t row = 0; row < height; ++row) {
         // Offset every other row by one space so the hex layout stays
         // visually distinct in a fixed-width terminal.
-        if ((row & 1) == 1) { out << ' '; }
+        if ((row & 1) == 1) {
+            out << ' ';
+        }
         for (int32_t col = 0; col < width; ++col) {
-            const int32_t idx = row * width + col;
+            const int32_t idx             = row * width + col;
             const aoc::map::TerrainType t = grid.terrain(idx);
             const aoc::map::FeatureType f = grid.feature(idx);
-            const bool river = grid.riverEdges(idx) != 0;
+            const bool river              = grid.riverEdges(idx) != 0;
             out << terrainGlyph(t, f, river) << ' ';
         }
         out << '\n';
@@ -114,10 +148,13 @@ void writeAscii(const aoc::map::HexGrid& grid, const std::string& path) {
 /// = ocean, '^' = mountain). Renders the tectonic-sim plate distribution
 /// alongside the resulting terrain so the viewer can correlate plate
 /// boundaries with mountain ranges and ocean lanes.
-[[nodiscard]] char plateGlyph(uint8_t plateId, aoc::map::TerrainType t,
-                              bool isMountain) {
-    if (isMountain) { return '^'; }
-    if (plateId == 0xFFu) { return '?'; }
+[[nodiscard]] char plateGlyph(uint8_t plateId, aoc::map::TerrainType t, bool isMountain) {
+    if (isMountain) {
+        return '^';
+    }
+    if (plateId == 0xFFu) {
+        return '?';
+    }
     const char base = static_cast<char>('A' + (plateId % 26));
     if (aoc::map::isWater(t)) {
         return static_cast<char>(base + ('a' - 'A'));
@@ -125,32 +162,33 @@ void writeAscii(const aoc::map::HexGrid& grid, const std::string& path) {
     return base;
 }
 
-void writeFrame(const aoc::map::HexGrid& grid, const std::string& path,
-                int32_t epochK, int32_t epochsTotal) {
+void writeFrame(const aoc::map::HexGrid& grid, const std::string& path, int32_t epochK,
+                int32_t epochsTotal) {
     std::ofstream out(path);
     if (!out.is_open()) {
         std::fprintf(stderr, "error: cannot open '%s' for writing\n", path.c_str());
         return;
     }
-    out << "# Frame epoch=" << epochK << "/" << epochsTotal
-        << "  Width=" << grid.width() << " Height=" << grid.height() << "\n";
+    out << "# Frame epoch=" << epochK << "/" << epochsTotal << "  Width=" << grid.width()
+        << " Height=" << grid.height() << "\n";
     out << "# Uppercase = land, lowercase = ocean, ^ = mountain;"
         << " letter = plate id mod 26\n";
     const int32_t width  = grid.width();
     const int32_t height = grid.height();
     for (int32_t row = 0; row < height; ++row) {
-        if ((row & 1) == 1) { out << ' '; }
+        if ((row & 1) == 1) {
+            out << ' ';
+        }
         for (int32_t col = 0; col < width; ++col) {
-            const int32_t idx = row * width + col;
+            const int32_t idx             = row * width + col;
             const aoc::map::TerrainType t = grid.terrain(idx);
-            const bool isMtn = (t == aoc::map::TerrainType::Mountain);
-            const uint8_t pid = grid.plateId(idx);
+            const bool isMtn              = (t == aoc::map::TerrainType::Mountain);
+            const uint8_t pid             = grid.plateId(idx);
             out << plateGlyph(pid, t, isMtn);
         }
         out << '\n';
     }
 }
-
 
 void writeCsv(const aoc::map::HexGrid& grid, const std::string& path) {
     std::ofstream out(path);
@@ -175,35 +213,75 @@ void writeCsv(const aoc::map::HexGrid& grid, const std::string& path) {
     }
 }
 
+/// Clamp a caller-supplied grid dimension. width*height sizes ~50 per-tile
+/// layers plus the worldgen intermediates, so an unvalidated value is an
+/// allocation-size hazard, not just a bad map.
+int32_t clampDimension(const char* flag, int32_t value) {
+    constexpr int32_t MIN_DIMENSION = 8;
+    if (value < MIN_DIMENSION || value > aoc::map::HexGrid::MAX_MAP_DIMENSION) {
+        const int32_t clamped =
+            std::clamp(value, MIN_DIMENSION, aoc::map::HexGrid::MAX_MAP_DIMENSION);
+        std::fprintf(stderr, "warning: %s %d out of range [%d, %d]; using %d\n", flag, value,
+                     MIN_DIMENSION, aoc::map::HexGrid::MAX_MAP_DIMENSION, clamped);
+        return clamped;
+    }
+    return value;
+}
+
 void usage(const char* prog) {
     std::fprintf(stderr,
-        "Usage: %s [--seed N] [--width W] [--height H] [--output PATH]\n"
-        "          [--format ascii|csv|both]\n"
-        "          [--tectonic-time-my N | --tectonic-time-gy N | --epochs N]\n"
-        "          [--projection mollweide|equirect|mercator|robinson]\n"
-        "          [--dump-plates PATH]\n"
-        "\n"
-        "Generates a single Continents map and writes it to disk for review.\n"
-        "Defaults: --seed 42 --width 140 --height 90 --output /tmp/map\n"
-        "          --format ascii\n"
-        "\n"
-        "Diagnostic flags:\n"
-        "  --dump-plates PATH   write per-plate CSV (sphere position, motion,\n"
-        "                       Euler pole, cell count) to PATH for offline\n"
-        "                       analysis by tools/diagnose_plate_shapes.py.\n",
-        prog);
+                 "Usage: %s [--seed N] [--width W] [--height H] [--output PATH]\n"
+                 "          [--format ascii|csv|both]\n"
+                 "          [--tectonic-time-my N | --tectonic-time-gy N | --epochs N]\n"
+                 "          [--projection lambert|mollweide|equirect|mercator|robinson]\n"
+                 "          [--flat] [--frames] [--dump-plates PATH]\n"
+                 "          [--serve-http [--port N]]\n"
+                 "\n"
+                 "Generates a single Continents map and writes it to disk for review.\n"
+                 "Defaults: --seed 42 --width 140 --height 90 --output /tmp/map\n"
+                 "          --format ascii  --topology cylindrical\n"
+                 "          --projection lambert (equal-area, so a tile count is\n"
+                 "          proportional to planet area and land%% is directly\n"
+                 "          comparable to Earth's 29.2%% with no weighting)\n"
+                 "\n"
+                 "  --flat               generate a non-wrapping grid. The default is\n"
+                 "                       Cylindrical because that is what the game\n"
+                 "                       ships; only pass this if you specifically want\n"
+                 "                       to test the non-wrapping case.\n"
+                 "\n"
+                 "Diagnostic flags:\n"
+                 "  --dump-plates PATH   write per-plate CSV (cell count, land frac,\n"
+                 "                       bbox, centroid, connected-component count) to\n"
+                 "                       PATH. Consumed by tools/run_diagnostic_matrix.sh.\n"
+                 "  --frames             re-run once per epoch and write per-epoch\n"
+                 "                       plate-glyph maps plus a concatenated animation.\n"
+                 "  --serve-http         HTTP inspection server on 127.0.0.1:<port>.\n"
+                 "\n"
+                 "Trace env vars: AOC_SPHEREPHYS_TRACE, AOC_ADVECT_TRACE,\n"
+                 "                AOC_DUMP_THRESHOLD, AOC_DUMP_MARGINS.\n",
+                 prog);
 }
 
 } // namespace
 
 int main(int argc, char* argv[]) {
-    // Force single-threaded OpenMP. The map generator's OMP-parallel sections
-    // race-corrupt heap allocations when multiple workers run concurrently,
-    // and (more subtly) produce non-deterministic output even with a fixed
-    // seed because static-schedule chunks are claimed in non-deterministic
-    // order. setenv affects child processes but not the in-process OpenMP
-    // runtime (which read OMP_NUM_THREADS at library init). Use the runtime
-    // API to set the limit AFTER OMP is loaded.
+    // Force single-threaded OpenMP so this tool's output is reproducible
+    // regardless of the host's core count.
+    //
+    // 2026-07-27: this comment used to assert that the generator's OMP
+    // sections "race-corrupt heap allocations" and produce non-deterministic
+    // output at any thread count. Neither reproduces now: aoc_simulate at
+    // OMP_NUM_THREADS=16 and =1 produce bit-identical tile dumps, and three
+    // identical aoc_mapgen runs hash identically. But one A/B comparison does
+    // not refute a data race, and there IS a real thread-count sensitivity
+    // still in the pipeline -- PostSim.cpp's sediment accumulation sums
+    // per-thread buffers in buffer order, so its float total depends on
+    // omp_get_max_threads(). The pin therefore stays as cheap insurance until
+    // a thread-sweep determinism test covers the whole generator.
+    //
+    // setenv affects child processes but not the in-process OpenMP runtime
+    // (which reads OMP_NUM_THREADS at library init), so set the limit through
+    // the runtime API as well, AFTER OMP is loaded.
     setenv("OMP_NUM_THREADS", "1", 1);
 #ifdef _OPENMP
     omp_set_num_threads(1);
@@ -215,12 +293,12 @@ int main(int argc, char* argv[]) {
     config.height  = 90;
     config.seed    = 42;
 
-    std::string outputBase     = "/tmp/map";
+    std::string outputBase = "/tmp/map";
     std::string dumpPlatesPath;
-    OutputFormat format    = OutputFormat::Ascii;
-    bool         frameMode = false;
-    bool         serveHttp = false;
-    int32_t      httpPort  = 9876;
+    OutputFormat format = OutputFormat::Ascii;
+    bool frameMode      = false;
+    bool serveHttp      = false;
+    int32_t httpPort    = 9876;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -231,9 +309,9 @@ int main(int argc, char* argv[]) {
         if (arg == "--seed" && i + 1 < argc) {
             config.seed = std::strtoull(argv[++i], nullptr, 10);
         } else if (arg == "--width" && i + 1 < argc) {
-            config.width = std::atoi(argv[++i]);
+            config.width = clampDimension("--width", std::atoi(argv[++i]));
         } else if (arg == "--height" && i + 1 < argc) {
-            config.height = std::atoi(argv[++i]);
+            config.height = clampDimension("--height", std::atoi(argv[++i]));
         } else if (arg == "--output" && i + 1 < argc) {
             outputBase = argv[++i];
         } else if (arg == "--format" && i + 1 < argc) {
@@ -246,24 +324,35 @@ int main(int argc, char* argv[]) {
             config.tectonicTotalMy = std::atoi(argv[++i]);
         } else if (arg == "--tectonic-time-gy" && i + 1 < argc) {
             // Convenience: same as --tectonic-time-my but in Gy.
-            const float gy = static_cast<float>(std::atof(argv[++i]));
+            const float gy         = static_cast<float>(std::atof(argv[++i]));
             config.tectonicTotalMy = static_cast<int32_t>(gy * 1000.0f + 0.5f);
         } else if (arg == "--projection" && i + 1 < argc) {
             // Sphere → rectangle projection: mollweide, equirect,
             // mercator, or robinson. Defaults to mollweide.
             const std::string p = argv[++i];
-            if      (p == "mollweide") config.projection = aoc::map::gen::MapProjection::Mollweide;
-            else if (p == "equirect")  config.projection = aoc::map::gen::MapProjection::Equirectangular;
-            else if (p == "mercator")  config.projection = aoc::map::gen::MapProjection::Mercator;
-            else if (p == "robinson")  config.projection = aoc::map::gen::MapProjection::Robinson;
+            if (p == "lambert")
+                config.projection = aoc::map::gen::MapProjection::LambertCylindricalEqualArea;
+            else if (p == "mollweide")
+                config.projection = aoc::map::gen::MapProjection::Mollweide;
+            else if (p == "equirect")
+                config.projection = aoc::map::gen::MapProjection::Equirectangular;
+            else if (p == "mercator")
+                config.projection = aoc::map::gen::MapProjection::Mercator;
+            else if (p == "robinson")
+                config.projection = aoc::map::gen::MapProjection::Robinson;
             else {
-                std::fprintf(stderr, "error: unknown --projection '%s' "
-                    "(expected mollweide|equirect|mercator|robinson)\n",
-                    p.c_str());
+                std::fprintf(stderr,
+                             "error: unknown --projection '%s' (expected "
+                             "lambert|mollweide|equirect|mercator|robinson)\n",
+                             p.c_str());
                 return 2;
             }
         } else if (arg == "--cylindrical") {
+            // Now the Config default; kept so existing scripts and the
+            // committed diagnostic drivers keep working.
             config.topology = aoc::map::MapTopology::Cylindrical;
+        } else if (arg == "--flat") {
+            config.topology = aoc::map::MapTopology::Flat;
         } else if (arg == "--frames") {
             frameMode = true;
         } else if (arg == "--dump-plates" && i + 1 < argc) {
@@ -298,51 +387,49 @@ int main(int argc, char* argv[]) {
             requestedEpochs = config.tectonicEpochs;
         } else {
             const int32_t totalMy = (config.tectonicTotalMy > 0)
-                ? config.tectonicTotalMy
-                : aoc::map::MapGenerator::DEFAULT_TECTONIC_TOTAL_MY;
-            requestedEpochs = std::max(3, (totalMy
-                + aoc::map::MapGenerator::MY_PER_EPOCH_TARGET / 2)
-                / aoc::map::MapGenerator::MY_PER_EPOCH_TARGET);
+                                        ? config.tectonicTotalMy
+                                        : aoc::map::MapGenerator::DEFAULT_TECTONIC_TOTAL_MY;
+            requestedEpochs =
+                std::max(3, (totalMy + aoc::map::MapGenerator::MY_PER_EPOCH_TARGET / 2) /
+                                aoc::map::MapGenerator::MY_PER_EPOCH_TARGET);
         }
         const std::string multiPath = outputBase + ".frames.txt";
         std::ofstream multi(multiPath);
         if (!multi.is_open()) {
-            std::fprintf(stderr, "error: cannot open '%s' for writing\n",
-                         multiPath.c_str());
+            std::fprintf(stderr, "error: cannot open '%s' for writing\n", multiPath.c_str());
             return 1;
         }
         for (int32_t k = 1; k <= requestedEpochs; ++k) {
             aoc::map::MapGenerator::Config frameConfig = config;
-            frameConfig.tectonicEpochs = requestedEpochs;
-            frameConfig.runEpochsLimit = k;
+            frameConfig.tectonicEpochs                 = requestedEpochs;
+            frameConfig.runEpochsLimit                 = k;
             aoc::map::HexGrid frameGrid;
             aoc::map::MapGenerator::generate(frameConfig, frameGrid);
             char buf[64];
-            std::snprintf(buf, sizeof(buf), "%s.frame%03d.txt",
-                          outputBase.c_str(), k);
+            std::snprintf(buf, sizeof(buf), "%s.frame%03d.txt", outputBase.c_str(), k);
             writeFrame(frameGrid, buf, k, requestedEpochs);
             // ANSI clear screen + cursor home, then frame.
             multi << "\x1b[2J\x1b[H";
-            multi << "# Frame " << k << "/" << requestedEpochs
-                  << "  (seed=" << config.seed
+            multi << "# Frame " << k << "/" << requestedEpochs << "  (seed=" << config.seed
                   << " size=" << config.width << "x" << config.height << ")\n";
             const int32_t width  = frameGrid.width();
             const int32_t height = frameGrid.height();
             for (int32_t row = 0; row < height; ++row) {
-                if ((row & 1) == 1) { multi << ' '; }
+                if ((row & 1) == 1) {
+                    multi << ' ';
+                }
                 for (int32_t col = 0; col < width; ++col) {
-                    const int32_t idx = row * width + col;
+                    const int32_t idx             = row * width + col;
                     const aoc::map::TerrainType t = frameGrid.terrain(idx);
-                    const bool isMtn = (t == aoc::map::TerrainType::Mountain);
-                    const uint8_t pid = frameGrid.plateId(idx);
+                    const bool isMtn              = (t == aoc::map::TerrainType::Mountain);
+                    const uint8_t pid             = frameGrid.plateId(idx);
                     multi << plateGlyph(pid, t, isMtn);
                 }
                 multi << '\n';
             }
             std::printf("frame %d/%d -> %s\n", k, requestedEpochs, buf);
         }
-        std::printf("wrote %s (animated playback: cat %s)\n",
-                    multiPath.c_str(), multiPath.c_str());
+        std::printf("wrote %s (animated playback: cat %s)\n", multiPath.c_str(), multiPath.c_str());
         return 0;
     }
 
@@ -371,10 +458,9 @@ int main(int argc, char* argv[]) {
             pf << "plate_id,cell_count,land_frac,min_col,max_col,"
                   "min_row,max_row,centroid_col,centroid_row,"
                   "component_count,largest_comp_frac,bbox_arc_cols\n";
-            const int32_t W = grid.width();
-            const int32_t H = grid.height();
-            const bool cylGrid =
-                (grid.topology() == aoc::map::MapTopology::Cylindrical);
+            const int32_t W    = grid.width();
+            const int32_t H    = grid.height();
+            const bool cylGrid = (grid.topology() == aoc::map::MapTopology::Cylindrical);
             std::array<int64_t, 256> cellCount{};
             std::array<int64_t, 256> landCount{};
             std::array<int64_t, 256> sumCol{};
@@ -384,16 +470,19 @@ int main(int argc, char* argv[]) {
             std::array<int32_t, 256> minRow{};
             std::array<int32_t, 256> maxRow{};
             for (int32_t i = 0; i < 256; ++i) {
-                minCol[i] = W; maxCol[i] = -1;
-                minRow[i] = H; maxRow[i] = -1;
+                minCol[i] = W;
+                maxCol[i] = -1;
+                minRow[i] = H;
+                maxRow[i] = -1;
             }
             // Per-plate column occupancy for the wrap-aware bbox arc:
             // an antimeridian-straddling plate reports a full-width
             // min/max box; the minimal covering lon-arc (width minus
             // the largest empty column gap) is the honest extent.
-            std::vector<std::array<uint8_t, 256>> colUsed(
-                static_cast<std::size_t>(W));
-            for (std::array<uint8_t, 256>& a : colUsed) { a.fill(0u); }
+            std::vector<std::array<uint8_t, 256>> colUsed(static_cast<std::size_t>(W));
+            for (std::array<uint8_t, 256>& a : colUsed) {
+                a.fill(0u);
+            }
             for (int32_t row = 0; row < H; ++row) {
                 for (int32_t col = 0; col < W; ++col) {
                     const int32_t idx = row * W + col;
@@ -417,8 +506,7 @@ int main(int argc, char* argv[]) {
             std::array<int32_t, 256> compCount{};
             std::array<int64_t, 256> largestComp{};
             {
-                std::vector<int32_t> comp(
-                    static_cast<std::size_t>(W * H), -1);
+                std::vector<int32_t> comp(static_cast<std::size_t>(W * H), -1);
                 std::vector<int32_t> stack;
                 int32_t next = 0;
                 for (int32_t s = 0; s < W * H; ++s) {
@@ -426,24 +514,20 @@ int main(int argc, char* argv[]) {
                     const uint8_t pid = grid.plateId(s);
                     if (pid == 0xFFu) continue;
                     comp[static_cast<std::size_t>(s)] = next;
-                    int64_t size = 0;
+                    int64_t size                      = 0;
                     stack.clear();
                     stack.push_back(s);
                     while (!stack.empty()) {
                         const int32_t c = stack.back();
                         stack.pop_back();
                         ++size;
-                        const aoc::hex::AxialCoord ax =
-                            aoc::hex::offsetToAxial({c % W, c / W});
-                        for (const aoc::hex::AxialCoord& nb
-                                 : aoc::hex::neighbors(ax)) {
-                            aoc::hex::OffsetCoord oc =
-                                aoc::hex::axialToOffset(nb);
+                        const aoc::hex::AxialCoord ax = aoc::hex::offsetToAxial({c % W, c / W});
+                        for (const aoc::hex::AxialCoord& nb : aoc::hex::neighbors(ax)) {
+                            aoc::hex::OffsetCoord oc = aoc::hex::axialToOffset(nb);
                             if (cylGrid) {
                                 oc.col = ((oc.col % W) + W) % W;
                             }
-                            if (oc.col < 0 || oc.col >= W
-                                || oc.row < 0 || oc.row >= H) {
+                            if (oc.col < 0 || oc.col >= W || oc.row < 0 || oc.row >= H) {
                                 continue;
                             }
                             const int32_t ni = oc.row * W + oc.col;
@@ -462,12 +546,12 @@ int main(int argc, char* argv[]) {
             }
             for (int32_t pid = 0; pid < 256; ++pid) {
                 if (cellCount[pid] == 0) continue;
-                const float lf = static_cast<float>(landCount[pid])
-                               / static_cast<float>(cellCount[pid]);
-                const float ccol = static_cast<float>(sumCol[pid])
-                                 / static_cast<float>(cellCount[pid]);
-                const float crow = static_cast<float>(sumRow[pid])
-                                 / static_cast<float>(cellCount[pid]);
+                const float lf =
+                    static_cast<float>(landCount[pid]) / static_cast<float>(cellCount[pid]);
+                const float ccol =
+                    static_cast<float>(sumCol[pid]) / static_cast<float>(cellCount[pid]);
+                const float crow =
+                    static_cast<float>(sumRow[pid]) / static_cast<float>(cellCount[pid]);
                 // Minimal covering column arc (wrap-aware): W minus
                 // the largest circular run of unused columns. Double
                 // sweep captures a gap crossing the seam; with at
@@ -475,7 +559,7 @@ int main(int argc, char* argv[]) {
                 int32_t arcCols = maxCol[pid] - minCol[pid] + 1;
                 if (cylGrid) {
                     int32_t largestGap = 0;
-                    int32_t run = 0;
+                    int32_t run        = 0;
                     for (int32_t k = 0; k < 2 * W; ++k) {
                         if (colUsed[static_cast<std::size_t>(k % W)][pid]) {
                             if (run > largestGap) largestGap = run;
@@ -485,19 +569,15 @@ int main(int argc, char* argv[]) {
                         }
                     }
                     largestGap = std::min(largestGap, W - 1);
-                    arcCols = W - largestGap;
+                    arcCols    = W - largestGap;
                 }
-                const float largestFrac = static_cast<float>(
-                    largestComp[pid]) / static_cast<float>(cellCount[pid]);
-                pf << pid << ',' << cellCount[pid] << ',' << lf << ','
-                   << minCol[pid] << ',' << maxCol[pid] << ','
-                   << minRow[pid] << ',' << maxRow[pid] << ','
-                   << ccol << ',' << crow << ','
-                   << compCount[pid] << ',' << largestFrac << ','
-                   << arcCols << '\n';
+                const float largestFrac =
+                    static_cast<float>(largestComp[pid]) / static_cast<float>(cellCount[pid]);
+                pf << pid << ',' << cellCount[pid] << ',' << lf << ',' << minCol[pid] << ','
+                   << maxCol[pid] << ',' << minRow[pid] << ',' << maxRow[pid] << ',' << ccol << ','
+                   << crow << ',' << compCount[pid] << ',' << largestFrac << ',' << arcCols << '\n';
             }
-            std::printf("wrote %s (per-plate stats)\n",
-                        dumpPlatesPath.c_str());
+            std::printf("wrote %s (per-plate stats)\n", dumpPlatesPath.c_str());
         }
     }
     // ---------------------------------------------------------------
@@ -526,7 +606,7 @@ int main(int argc, char* argv[]) {
         // instead. (See WP6 hint: latch preferred over shared_ptr
         // juggling, but the count is not knowable up front.)
         std::atomic<int32_t> inFlight{0};
-        std::mutex            drainMutex;
+        std::mutex drainMutex;
         std::condition_variable drainCv;
 
         // RAII helper: increment inFlight on entry, decrement and
@@ -535,12 +615,11 @@ int main(int argc, char* argv[]) {
         // accesses are guarded by gridMutex which already serialises
         // against the regen path.
         struct HandlerScope {
-            std::atomic<int32_t>&    counter;
+            std::atomic<int32_t>& counter;
             std::condition_variable& cv;
-            std::mutex&              mtx;
+            std::mutex& mtx;
 
-            HandlerScope(std::atomic<int32_t>& c,
-                         std::condition_variable& v,
+            HandlerScope(std::atomic<int32_t>& c, std::condition_variable& v,
                          std::mutex& m) noexcept
                 : counter(c), cv(v), mtx(m) {
                 this->counter.fetch_add(1, std::memory_order_acq_rel);
@@ -559,9 +638,9 @@ int main(int argc, char* argv[]) {
         // truth for /sim/step, /sim/set-creator-time, /info reporting.
         // Starts at the requested run's full duration; /sim/step
         // mutates this and re-runs generate() with the new value.
-        int32_t currentMy = (liveConfig.tectonicTotalMy > 0)
-            ? liveConfig.tectonicTotalMy
-            : aoc::map::MapGenerator::DEFAULT_TECTONIC_TOTAL_MY;
+        int32_t currentMy     = (liveConfig.tectonicTotalMy > 0)
+                                    ? liveConfig.tectonicTotalMy
+                                    : aoc::map::MapGenerator::DEFAULT_TECTONIC_TOTAL_MY;
         const int32_t totalMy = currentMy;
         // Regenerate the world at a specific total-My. Lock contract:
         // the caller owns `gridMutex` for the entire call -- the
@@ -570,17 +649,16 @@ int main(int argc, char* argv[]) {
         // refactor from forgetting to take the lock. Runs full sim
         // 0 -> targetMy each call (generate() is not resumable; its
         // determinism per seed makes this acceptable).
-        auto regenAtMy = [&](std::lock_guard<std::mutex>& /*heldLock*/,
-                             int32_t targetMy) {
-            if (targetMy < 0)        targetMy = 0;
-            if (targetMy > totalMy)  targetMy = totalMy;
-            currentMy = targetMy;
+        auto regenAtMy = [&](std::lock_guard<std::mutex>& /*heldLock*/, int32_t targetMy) {
+            if (targetMy < 0) targetMy = 0;
+            if (targetMy > totalMy) targetMy = totalMy;
+            currentMy                  = targetMy;
             liveConfig.tectonicTotalMy = std::max(1, targetMy);
             // runEpochsLimit overrides epoch derivation: use it when
             // targetMy is zero so the sim halts before the first epoch
             // and we get the pre-physics initial-cut state.
             liveConfig.runEpochsLimit = (targetMy == 0) ? 1 : 0;
-            grid = aoc::map::HexGrid{};
+            grid                      = aoc::map::HexGrid{};
             aoc::map::MapGenerator::generate(liveConfig, grid);
         };
 
@@ -598,8 +676,10 @@ int main(int argc, char* argv[]) {
             std::array<int32_t, 256> minRow{};
             std::array<int32_t, 256> maxRow{};
             for (int32_t i = 0; i < 256; ++i) {
-                minCol[i] = W; maxCol[i] = -1;
-                minRow[i] = H; maxRow[i] = -1;
+                minCol[i] = W;
+                maxCol[i] = -1;
+                minRow[i] = H;
+                maxRow[i] = -1;
             }
             for (int32_t row = 0; row < H; ++row) {
                 for (int32_t col = 0; col < W; ++col) {
@@ -624,20 +704,16 @@ int main(int argc, char* argv[]) {
                 if (cellCount[pid] == 0) continue;
                 if (!first) o << ',';
                 first = false;
-                const float lf = static_cast<float>(landCount[pid])
-                               / static_cast<float>(cellCount[pid]);
-                const float ccol = static_cast<float>(sumCol[pid])
-                                 / static_cast<float>(cellCount[pid]);
-                const float crow = static_cast<float>(sumRow[pid])
-                                 / static_cast<float>(cellCount[pid]);
-                o << "{\"plate_id\":" << pid
-                  << ",\"cell_count\":" << cellCount[pid]
-                  << ",\"land_frac\":" << lf
-                  << ",\"min_col\":" << minCol[pid]
-                  << ",\"max_col\":" << maxCol[pid]
-                  << ",\"min_row\":" << minRow[pid]
-                  << ",\"max_row\":" << maxRow[pid]
-                  << ",\"centroid_col\":" << ccol
+                const float lf =
+                    static_cast<float>(landCount[pid]) / static_cast<float>(cellCount[pid]);
+                const float ccol =
+                    static_cast<float>(sumCol[pid]) / static_cast<float>(cellCount[pid]);
+                const float crow =
+                    static_cast<float>(sumRow[pid]) / static_cast<float>(cellCount[pid]);
+                o << "{\"plate_id\":" << pid << ",\"cell_count\":" << cellCount[pid]
+                  << ",\"land_frac\":" << lf << ",\"min_col\":" << minCol[pid]
+                  << ",\"max_col\":" << maxCol[pid] << ",\"min_row\":" << minRow[pid]
+                  << ",\"max_row\":" << maxRow[pid] << ",\"centroid_col\":" << ccol
                   << ",\"centroid_row\":" << crow << '}';
             }
             o << ']';
@@ -648,53 +724,49 @@ int main(int argc, char* argv[]) {
         aoc::debug::DebugServer server(httpPort);
 
         server.routeJson(DSM::Get, "/ping",
-            [](const std::unordered_map<std::string, std::string>&,
-               const std::string&) -> std::string {
-                return "\"pong\"";
-            });
+                         [](const std::unordered_map<std::string, std::string>&,
+                            const std::string&) -> std::string { return "\"pong\""; });
 
         server.routeJson(DSM::Get, "/info",
-            [&](const std::unordered_map<std::string, std::string>&,
-                const std::string&) -> std::string {
-                std::lock_guard<std::mutex> lock(gridMutex);
-                std::ostringstream o;
-                int32_t plates = 0;
-                int32_t mtnTiles = 0;
-                int32_t landTiles = 0;
-                int32_t oceanTiles = 0;
-                const int32_t total = grid.tileCount();
-                for (int32_t i = 0; i < total; ++i) {
-                    const aoc::map::TerrainType t = grid.terrain(i);
-                    if (t == aoc::map::TerrainType::Mountain) ++mtnTiles;
-                    if (aoc::map::isWater(t)) ++oceanTiles;
-                    else ++landTiles;
-                }
-                std::vector<bool> seenPlate(256, false);
-                for (int32_t i = 0; i < total; ++i) {
-                    const uint8_t pid = grid.plateId(i);
-                    if (pid != 0xFFu) seenPlate[pid] = true;
-                }
-                for (bool s : seenPlate) if (s) ++plates;
-                o << "{\"seed\":" << liveConfig.seed
-                  << ",\"width\":"  << grid.width()
-                  << ",\"height\":" << grid.height()
-                  << ",\"plates\":" << plates
-                  << ",\"mountainTiles\":" << mtnTiles
-                  << ",\"landTiles\":"     << landTiles
-                  << ",\"oceanTiles\":"    << oceanTiles
-                  << ",\"creatorTime\":"   << currentMy
-                  << ",\"creatorTotal\":"  << totalMy
-                  << "}";
-                return o.str();
-            });
+                         [&](const std::unordered_map<std::string, std::string>&,
+                             const std::string&) -> std::string {
+                             std::lock_guard<std::mutex> lock(gridMutex);
+                             std::ostringstream o;
+                             int32_t plates      = 0;
+                             int32_t mtnTiles    = 0;
+                             int32_t landTiles   = 0;
+                             int32_t oceanTiles  = 0;
+                             const int32_t total = grid.tileCount();
+                             for (int32_t i = 0; i < total; ++i) {
+                                 const aoc::map::TerrainType t = grid.terrain(i);
+                                 if (t == aoc::map::TerrainType::Mountain) ++mtnTiles;
+                                 if (aoc::map::isWater(t))
+                                     ++oceanTiles;
+                                 else
+                                     ++landTiles;
+                             }
+                             std::vector<bool> seenPlate(256, false);
+                             for (int32_t i = 0; i < total; ++i) {
+                                 const uint8_t pid = grid.plateId(i);
+                                 if (pid != 0xFFu) seenPlate[pid] = true;
+                             }
+                             for (bool s : seenPlate)
+                                 if (s) ++plates;
+                             o << "{\"seed\":" << liveConfig.seed << ",\"width\":" << grid.width()
+                               << ",\"height\":" << grid.height() << ",\"plates\":" << plates
+                               << ",\"mountainTiles\":" << mtnTiles
+                               << ",\"landTiles\":" << landTiles << ",\"oceanTiles\":" << oceanTiles
+                               << ",\"creatorTime\":" << currentMy
+                               << ",\"creatorTotal\":" << totalMy << "}";
+                             return o.str();
+                         });
 
         server.routeJson(DSM::Get, "/plates",
-            [&](const std::unordered_map<std::string, std::string>&,
-                const std::string&) -> std::string {
-                return buildPlateStats();
-            });
+                         [&](const std::unordered_map<std::string, std::string>&,
+                             const std::string&) -> std::string { return buildPlateStats(); });
 
-        server.routeJson(DSM::Get, "/tile",
+        server.routeJson(
+            DSM::Get, "/tile",
             [&](const std::unordered_map<std::string, std::string>& q,
                 const std::string&) -> std::string {
                 auto itC = q.find("col");
@@ -705,188 +777,183 @@ int main(int argc, char* argv[]) {
                 const int32_t col = std::atoi(itC->second.c_str());
                 const int32_t row = std::atoi(itR->second.c_str());
                 std::lock_guard<std::mutex> lock(gridMutex);
-                if (col < 0 || col >= grid.width()
-                    || row < 0 || row >= grid.height()) {
+                if (col < 0 || col >= grid.width() || row < 0 || row >= grid.height()) {
                     return "{\"error\":\"out of range\"}";
                 }
                 const int32_t idx = row * grid.width() + col;
                 std::ostringstream o;
                 o << "{\"col\":" << col << ",\"row\":" << row
                   << ",\"terrain\":" << static_cast<int32_t>(grid.terrain(idx))
-                  << ",\"plate_id\":" << static_cast<int32_t>(grid.plateId(idx))
-                  << "}";
+                  << ",\"plate_id\":" << static_cast<int32_t>(grid.plateId(idx)) << "}";
                 return o.str();
             });
 
         server.routeJson(DSM::Post, "/dump/grid",
-            [&](const std::unordered_map<std::string, std::string>& q,
-                const std::string&) -> std::string {
-                HandlerScope scope(inFlight, drainCv, drainMutex);
-                auto it = q.find("path");
-                if (it == q.end() || it->second.empty()) {
-                    return "{\"error\":\"missing path\"}";
-                }
-                std::ofstream f(it->second);
-                if (!f.is_open()) return "{\"error\":\"open failed\"}";
-                std::lock_guard<std::mutex> lock(gridMutex);
-                const int32_t W = grid.width();
-                const int32_t H = grid.height();
-                for (int32_t row = 0; row < H; ++row) {
-                    if (row & 1) f << ' ';
-                    for (int32_t col = 0; col < W; ++col) {
-                        const int32_t idx = row * W + col;
-                        const uint8_t pid = grid.plateId(idx);
-                        char glyph;
-                        if (pid == 0xFFu) glyph = '.';
-                        else glyph = static_cast<char>(
-                            'a' + (pid % 26));
-                        f << glyph;
-                    }
-                    f << '\n';
-                }
-                std::ostringstream o;
-                o << "{\"path\":\"" << it->second
-                  << "\",\"width\":" << W
-                  << ",\"height\":" << H << "}";
-                return o.str();
-            });
+                         [&](const std::unordered_map<std::string, std::string>& q,
+                             const std::string&) -> std::string {
+                             HandlerScope scope(inFlight, drainCv, drainMutex);
+                             auto it = q.find("path");
+                             if (it == q.end() || it->second.empty()) {
+                                 return "{\"error\":\"missing path\"}";
+                             }
+                             std::ofstream f(it->second);
+                             if (!f.is_open()) return "{\"error\":\"open failed\"}";
+                             std::lock_guard<std::mutex> lock(gridMutex);
+                             const int32_t W = grid.width();
+                             const int32_t H = grid.height();
+                             for (int32_t row = 0; row < H; ++row) {
+                                 if (row & 1) f << ' ';
+                                 for (int32_t col = 0; col < W; ++col) {
+                                     const int32_t idx = row * W + col;
+                                     const uint8_t pid = grid.plateId(idx);
+                                     char glyph;
+                                     if (pid == 0xFFu)
+                                         glyph = '.';
+                                     else
+                                         glyph = static_cast<char>('a' + (pid % 26));
+                                     f << glyph;
+                                 }
+                                 f << '\n';
+                             }
+                             std::ostringstream o;
+                             o << "{\"path\":\"" << it->second << "\",\"width\":" << W
+                               << ",\"height\":" << H << "}";
+                             return o.str();
+                         });
 
         server.routeJson(DSM::Post, "/dump/plates",
-            [&](const std::unordered_map<std::string, std::string>& q,
-                const std::string&) -> std::string {
-                HandlerScope scope(inFlight, drainCv, drainMutex);
-                auto it = q.find("path");
-                if (it == q.end() || it->second.empty()) {
-                    return "{\"error\":\"missing path\"}";
-                }
-                std::ofstream f(it->second);
-                if (!f.is_open()) return "{\"error\":\"open failed\"}";
-                f << "plate_id,cell_count,land_frac,min_col,max_col,"
-                     "min_row,max_row,centroid_col,centroid_row\n";
-                {
-                    std::lock_guard<std::mutex> lock(gridMutex);
-                    const int32_t W = grid.width();
-                    const int32_t H = grid.height();
-                    std::array<int64_t, 256> cellCount{};
-                    std::array<int64_t, 256> landCount{};
-                    std::array<int64_t, 256> sumCol{};
-                    std::array<int64_t, 256> sumRow{};
-                    std::array<int32_t, 256> minCol{};
-                    std::array<int32_t, 256> maxCol{};
-                    std::array<int32_t, 256> minRow{};
-                    std::array<int32_t, 256> maxRow{};
-                    for (int32_t i = 0; i < 256; ++i) {
-                        minCol[i] = W; maxCol[i] = -1;
-                        minRow[i] = H; maxRow[i] = -1;
-                    }
-                    for (int32_t row = 0; row < H; ++row) {
-                        for (int32_t col = 0; col < W; ++col) {
-                            const int32_t idx = row * W + col;
-                            const uint8_t pid = grid.plateId(idx);
-                            if (pid == 0xFFu) continue;
-                            ++cellCount[pid];
-                            if (!aoc::map::isWater(grid.terrain(idx))) {
-                                ++landCount[pid];
-                            }
-                            sumCol[pid] += col;
-                            sumRow[pid] += row;
-                            if (col < minCol[pid]) minCol[pid] = col;
-                            if (col > maxCol[pid]) maxCol[pid] = col;
-                            if (row < minRow[pid]) minRow[pid] = row;
-                            if (row > maxRow[pid]) maxRow[pid] = row;
-                        }
-                    }
-                    for (int32_t pid = 0; pid < 256; ++pid) {
-                        if (cellCount[pid] == 0) continue;
-                        const float lf = static_cast<float>(landCount[pid])
-                                       / static_cast<float>(cellCount[pid]);
-                        const float ccol = static_cast<float>(sumCol[pid])
-                                         / static_cast<float>(cellCount[pid]);
-                        const float crow = static_cast<float>(sumRow[pid])
-                                         / static_cast<float>(cellCount[pid]);
-                        f << pid << ',' << cellCount[pid] << ',' << lf << ','
-                          << minCol[pid] << ',' << maxCol[pid] << ','
-                          << minRow[pid] << ',' << maxRow[pid] << ','
-                          << ccol << ',' << crow << '\n';
-                    }
-                }
-                std::ostringstream o;
-                o << "{\"path\":\"" << it->second << "\"}";
-                return o.str();
-            });
+                         [&](const std::unordered_map<std::string, std::string>& q,
+                             const std::string&) -> std::string {
+                             HandlerScope scope(inFlight, drainCv, drainMutex);
+                             auto it = q.find("path");
+                             if (it == q.end() || it->second.empty()) {
+                                 return "{\"error\":\"missing path\"}";
+                             }
+                             std::ofstream f(it->second);
+                             if (!f.is_open()) return "{\"error\":\"open failed\"}";
+                             f << "plate_id,cell_count,land_frac,min_col,max_col,"
+                                  "min_row,max_row,centroid_col,centroid_row\n";
+                             {
+                                 std::lock_guard<std::mutex> lock(gridMutex);
+                                 const int32_t W = grid.width();
+                                 const int32_t H = grid.height();
+                                 std::array<int64_t, 256> cellCount{};
+                                 std::array<int64_t, 256> landCount{};
+                                 std::array<int64_t, 256> sumCol{};
+                                 std::array<int64_t, 256> sumRow{};
+                                 std::array<int32_t, 256> minCol{};
+                                 std::array<int32_t, 256> maxCol{};
+                                 std::array<int32_t, 256> minRow{};
+                                 std::array<int32_t, 256> maxRow{};
+                                 for (int32_t i = 0; i < 256; ++i) {
+                                     minCol[i] = W;
+                                     maxCol[i] = -1;
+                                     minRow[i] = H;
+                                     maxRow[i] = -1;
+                                 }
+                                 for (int32_t row = 0; row < H; ++row) {
+                                     for (int32_t col = 0; col < W; ++col) {
+                                         const int32_t idx = row * W + col;
+                                         const uint8_t pid = grid.plateId(idx);
+                                         if (pid == 0xFFu) continue;
+                                         ++cellCount[pid];
+                                         if (!aoc::map::isWater(grid.terrain(idx))) {
+                                             ++landCount[pid];
+                                         }
+                                         sumCol[pid] += col;
+                                         sumRow[pid] += row;
+                                         if (col < minCol[pid]) minCol[pid] = col;
+                                         if (col > maxCol[pid]) maxCol[pid] = col;
+                                         if (row < minRow[pid]) minRow[pid] = row;
+                                         if (row > maxRow[pid]) maxRow[pid] = row;
+                                     }
+                                 }
+                                 for (int32_t pid = 0; pid < 256; ++pid) {
+                                     if (cellCount[pid] == 0) continue;
+                                     const float lf   = static_cast<float>(landCount[pid]) /
+                                                        static_cast<float>(cellCount[pid]);
+                                     const float ccol = static_cast<float>(sumCol[pid]) /
+                                                        static_cast<float>(cellCount[pid]);
+                                     const float crow = static_cast<float>(sumRow[pid]) /
+                                                        static_cast<float>(cellCount[pid]);
+                                     f << pid << ',' << cellCount[pid] << ',' << lf << ','
+                                       << minCol[pid] << ',' << maxCol[pid] << ',' << minRow[pid]
+                                       << ',' << maxRow[pid] << ',' << ccol << ',' << crow << '\n';
+                                 }
+                             }
+                             std::ostringstream o;
+                             o << "{\"path\":\"" << it->second << "\"}";
+                             return o.str();
+                         });
 
         server.routeJson(DSM::Post, "/sim/re-roll",
-            [&](const std::unordered_map<std::string, std::string>& q,
-                const std::string&) -> std::string {
-                HandlerScope scope(inFlight, drainCv, drainMutex);
-                uint64_t newSeed = liveConfig.seed + 1;
-                auto it = q.find("seed");
-                if (it != q.end()) {
-                    newSeed = std::strtoull(it->second.c_str(), nullptr, 10);
-                }
-                std::lock_guard<std::mutex> lock(gridMutex);
-                liveConfig.seed = newSeed;
-                regenAtMy(lock, totalMy);
-                std::ostringstream o;
-                o << "{\"seed\":" << newSeed
-                  << ",\"creatorTime\":" << currentMy
-                  << ",\"creatorTotal\":" << totalMy
-                  << ",\"width\":"  << grid.width()
-                  << ",\"height\":" << grid.height() << "}";
-                return o.str();
-            });
+                         [&](const std::unordered_map<std::string, std::string>& q,
+                             const std::string&) -> std::string {
+                             HandlerScope scope(inFlight, drainCv, drainMutex);
+                             uint64_t newSeed = liveConfig.seed + 1;
+                             auto it          = q.find("seed");
+                             if (it != q.end()) {
+                                 newSeed = std::strtoull(it->second.c_str(), nullptr, 10);
+                             }
+                             std::lock_guard<std::mutex> lock(gridMutex);
+                             liveConfig.seed = newSeed;
+                             regenAtMy(lock, totalMy);
+                             std::ostringstream o;
+                             o << "{\"seed\":" << newSeed << ",\"creatorTime\":" << currentMy
+                               << ",\"creatorTotal\":" << totalMy << ",\"width\":" << grid.width()
+                               << ",\"height\":" << grid.height() << "}";
+                             return o.str();
+                         });
 
         server.routeJson(DSM::Post, "/sim/step",
-            [&](const std::unordered_map<std::string, std::string>& q,
-                const std::string&) -> std::string {
-                HandlerScope scope(inFlight, drainCv, drainMutex);
-                int32_t dy = aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
-                auto it = q.find("dy");
-                if (it != q.end()) {
-                    dy = std::atoi(it->second.c_str());
-                }
-                std::lock_guard<std::mutex> lock(gridMutex);
-                regenAtMy(lock, currentMy + dy);
-                std::ostringstream o;
-                o << "{\"creatorTime\":" << currentMy
-                  << ",\"creatorTotal\":" << totalMy
-                  << ",\"dy\":" << dy << "}";
-                return o.str();
-            });
+                         [&](const std::unordered_map<std::string, std::string>& q,
+                             const std::string&) -> std::string {
+                             HandlerScope scope(inFlight, drainCv, drainMutex);
+                             int32_t dy = aoc::map::MapGenerator::MY_PER_EPOCH_TARGET;
+                             auto it    = q.find("dy");
+                             if (it != q.end()) {
+                                 dy = std::atoi(it->second.c_str());
+                             }
+                             std::lock_guard<std::mutex> lock(gridMutex);
+                             regenAtMy(lock, currentMy + dy);
+                             std::ostringstream o;
+                             o << "{\"creatorTime\":" << currentMy
+                               << ",\"creatorTotal\":" << totalMy << ",\"dy\":" << dy << "}";
+                             return o.str();
+                         });
 
         server.routeJson(DSM::Post, "/sim/set-creator-time",
-            [&](const std::unordered_map<std::string, std::string>& q,
-                const std::string&) -> std::string {
-                HandlerScope scope(inFlight, drainCv, drainMutex);
-                auto it = q.find("my");
-                if (it == q.end()) {
-                    return "{\"error\":\"missing my\"}";
-                }
-                const int32_t targetMy = std::atoi(it->second.c_str());
-                std::lock_guard<std::mutex> lock(gridMutex);
-                regenAtMy(lock, targetMy);
-                std::ostringstream o;
-                o << "{\"creatorTime\":" << currentMy
-                  << ",\"creatorTotal\":" << totalMy << "}";
-                return o.str();
-            });
+                         [&](const std::unordered_map<std::string, std::string>& q,
+                             const std::string&) -> std::string {
+                             HandlerScope scope(inFlight, drainCv, drainMutex);
+                             auto it = q.find("my");
+                             if (it == q.end()) {
+                                 return "{\"error\":\"missing my\"}";
+                             }
+                             const int32_t targetMy = std::atoi(it->second.c_str());
+                             std::lock_guard<std::mutex> lock(gridMutex);
+                             regenAtMy(lock, targetMy);
+                             std::ostringstream o;
+                             o << "{\"creatorTime\":" << currentMy
+                               << ",\"creatorTotal\":" << totalMy << "}";
+                             return o.str();
+                         });
 
         server.routeJson(DSM::Post, "/quit",
-            [&](const std::unordered_map<std::string, std::string>&,
-                const std::string&) -> std::string {
-                HandlerScope scope(inFlight, drainCv, drainMutex);
-                shutdownRequested.store(true);
-                return "{\"ok\":true}";
-            });
+                         [&](const std::unordered_map<std::string, std::string>&,
+                             const std::string&) -> std::string {
+                             HandlerScope scope(inFlight, drainCv, drainMutex);
+                             shutdownRequested.store(true);
+                             return "{\"ok\":true}";
+                         });
 
         if (!server.start()) {
-            std::fprintf(stderr,
-                "error: HTTP debug server failed to start on port %d\n",
-                httpPort);
+            std::fprintf(stderr, "error: HTTP debug server failed to start on port %d\n", httpPort);
             return 1;
         }
         std::printf("aoc_mapgen serving HTTP on 127.0.0.1:%d "
-                    "(POST /quit to stop)\n", httpPort);
+                    "(POST /quit to stop)\n",
+                    httpPort);
         while (!shutdownRequested.load()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
@@ -901,15 +968,14 @@ int main(int argc, char* argv[]) {
         // wait so a stuck handler shows up in CI rather than hanging.
         {
             std::unique_lock<std::mutex> lock(drainMutex);
-            const bool drained = drainCv.wait_for(
-                lock,
-                std::chrono::seconds(5),
-                [&]() { return inFlight.load(std::memory_order_acquire) == 0; });
+            const bool drained = drainCv.wait_for(lock, std::chrono::seconds(5), [&]() {
+                return inFlight.load(std::memory_order_acquire) == 0;
+            });
             if (!drained) {
                 std::fprintf(stderr,
-                    "warning: %d HTTP handler(s) still in flight after "
-                    "server.stop(); terminating anyway\n",
-                    inFlight.load(std::memory_order_acquire));
+                             "warning: %d HTTP handler(s) still in flight after "
+                             "server.stop(); terminating anyway\n",
+                             inFlight.load(std::memory_order_acquire));
             }
         }
     }

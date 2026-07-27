@@ -7,9 +7,7 @@
 
 namespace aoc::map::gen {
 
-float noise2D(float x, float y, float frequency, aoc::Random& rng) {
-    uint64_t noiseSeed = rng.next();
-
+float noise2D(float x, float y, float frequency, uint64_t noiseSeed) {
     float fx = x * frequency;
     float fy = y * frequency;
 
@@ -22,9 +20,9 @@ float noise2D(float x, float y, float frequency, aoc::Random& rng) {
     tx = smoothstep(tx);
     ty = smoothstep(ty);
 
-    float c00 = hashNoise(ix,     iy,     noiseSeed);
-    float c10 = hashNoise(ix + 1, iy,     noiseSeed);
-    float c01 = hashNoise(ix,     iy + 1, noiseSeed);
+    float c00 = hashNoise(ix, iy, noiseSeed);
+    float c10 = hashNoise(ix + 1, iy, noiseSeed);
+    float c01 = hashNoise(ix, iy + 1, noiseSeed);
     float c11 = hashNoise(ix + 1, iy + 1, noiseSeed);
 
     float top    = lerp(c00, c10, tx);
@@ -32,8 +30,8 @@ float noise2D(float x, float y, float frequency, aoc::Random& rng) {
     return lerp(top, bottom, ty);
 }
 
-float fractalNoise(float x, float y, int octaves, float frequency,
-                    float persistence, aoc::Random& rng) {
+float fractalNoise(float x, float y, int octaves, float frequency, float persistence,
+                   uint64_t seed) {
     // Guard against division by zero below: with octaves <= 0 the loop never
     // runs, leaving maxValue == 0 and `value / maxValue` producing NaN that
     // would poison downstream biome thresholds.
@@ -47,10 +45,16 @@ float fractalNoise(float x, float y, int octaves, float frequency,
     float freq      = frequency;
 
     for (int i = 0; i < octaves; ++i) {
-        value    += noise2D(x, y, freq, rng) * amplitude;
+        // Per-octave lattice derived from the field seed. Octaves must not share
+        // a lattice -- at frequency 2f the doubled coordinates would land on the
+        // same hash cells as the octave below and the sum would reinforce
+        // itself into visible blocks instead of adding detail. mixSeed spreads
+        // the small increment across all 64 bits.
+        const uint64_t octaveSeed = mixSeed(seed + static_cast<uint64_t>(i));
+        value += noise2D(x, y, freq, octaveSeed) * amplitude;
         maxValue += amplitude;
         amplitude *= persistence;
-        freq      *= 2.0f;
+        freq *= 2.0f;
     }
 
     return value / maxValue;

@@ -35,6 +35,7 @@
 #include "aoc/simulation/turn/TurnManager.hpp"
 #include "aoc/simulation/ai/AIController.hpp"
 #include "aoc/simulation/ai/LeaderPersonality.hpp"
+#include "aoc/simulation/ai/TunedLeaderIO.hpp"
 #include "aoc/simulation/barbarian/BarbarianController.hpp"
 #include "aoc/simulation/resource/EconomySimulation.hpp"
 #include "aoc/data/DataLoader.hpp"
@@ -1066,77 +1067,9 @@ namespace {
 
 std::vector<aoc::sim::LeaderPersonalityDef> g_tunedDefs;
 
-/// Parse a per-leader results file (Hard AI block). Named-field extract so
-/// we tolerate field reordering. Missing fields keep LeaderBehavior defaults.
-bool parseTunedLeader(const std::string& path, aoc::sim::LeaderBehavior& out) {
-    std::ifstream in(path);
-    if (!in.is_open()) { return false; }
-
-    std::unordered_map<std::string, float> vals;
-    std::string line;
-    bool inHard = false;
-    while (std::getline(in, line)) {
-        if (line.rfind("Hard AI", 0) == 0)   { inHard = true; continue; }
-        if (line.rfind("Medium AI", 0) == 0) { break; }
-        if (!inHard) { continue; }
-
-        auto eq = line.find('=');
-        if (eq == std::string::npos) { continue; }
-        std::string name = line.substr(0, eq);
-        std::string val  = line.substr(eq + 1);
-        auto trim = [](std::string& s) {
-            while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) { s.erase(s.begin()); }
-            while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))  { s.pop_back(); }
-        };
-        trim(name); trim(val);
-        if (name.empty() || val.empty()) { continue; }
-        try { vals[name] = std::stof(val); } catch (...) { continue; }
-    }
-    if (vals.empty()) { return false; }
-
-    out = aoc::sim::LeaderBehavior{};
-    auto set = [&](const char* key, float& field) {
-        auto it = vals.find(key);
-        if (it != vals.end()) { field = it->second; }
-    };
-    set("militaryAggression",       out.militaryAggression);
-    set("expansionism",             out.expansionism);
-    set("scienceFocus",             out.scienceFocus);
-    set("cultureFocus",             out.cultureFocus);
-    set("economicFocus",            out.economicFocus);
-    set("diplomaticOpenness",       out.diplomaticOpenness);
-    set("religiousZeal",            out.religiousZeal);
-    set("nukeWillingness",          out.nukeWillingness);
-    set("trustworthiness",          out.trustworthiness);
-    set("grudgeHolding",            out.grudgeHolding);
-    set("techMilitary",             out.techMilitary);
-    set("techEconomic",             out.techEconomic);
-    set("techIndustrial",           out.techIndustrial);
-    set("techNaval",                out.techNaval);
-    set("techInformation",          out.techInformation);
-    set("prodSettlers",             out.prodSettlers);
-    set("prodMilitary",             out.prodMilitary);
-    set("prodBuilders",             out.prodBuilders);
-    set("prodBuildings",            out.prodBuildings);
-    set("prodWonders",              out.prodWonders);
-    set("prodNaval",                out.prodNaval);
-    set("prodReligious",            out.prodReligious);
-    set("warDeclarationThreshold",  out.warDeclarationThreshold);
-    set("peaceAcceptanceThreshold", out.peaceAcceptanceThreshold);
-    set("allianceDesire",           out.allianceDesire);
-    set("riskTolerance",            out.riskTolerance);
-    set("environmentalism",         out.environmentalism);
-    set("peripheryTolerance",       out.peripheryTolerance);
-    set("greatPersonFocus",         out.greatPersonFocus);
-    set("espionagePriority",        out.espionagePriority);
-    set("ideologicalFervor",        out.ideologicalFervor);
-    set("speculationAppetite",      out.speculationAppetite);
-    set("milBaseWeight",            out.milBaseWeight);
-    set("milThreatSensitivity",     out.milThreatSensitivity);
-    set("milEmergencySlope",        out.milEmergencySlope);
-    set("milOverstockPenalty",      out.milOverstockPenalty);
-    return true;
-}
+// parseTunedLeader now lives in aoc_lib (aoc/simulation/ai/TunedLeaderIO.hpp)
+// so aoc_evolve's compare / --out-dir paths share exactly one reader, and the
+// parser rejects non-finite genes on load.
 
 void loadTunedOverrides(const std::string& dir) {
     static constexpr const char* NAMES[12] = {
@@ -1151,7 +1084,7 @@ void loadTunedOverrides(const std::string& dir) {
         char fn[512];
         std::snprintf(fn, sizeof(fn), "%s/%02d_%s.txt", dir.c_str(), i, NAMES[i]);
         aoc::sim::LeaderBehavior beh{};
-        if (!parseTunedLeader(fn, beh)) {
+        if (!aoc::sim::parseTunedLeader(fn, beh)) {
             std::fprintf(stderr, "  [tuned-dir] skip (missing/empty): %s\n", fn);
             continue;
         }

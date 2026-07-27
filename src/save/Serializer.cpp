@@ -68,8 +68,8 @@
 #include <vector>
 
 #if defined(__unix__) || defined(__APPLE__)
-#  include <fcntl.h>
-#  include <unistd.h>
+#include <fcntl.h>
+#include <unistd.h>
 #endif
 
 namespace aoc::save {
@@ -91,16 +91,13 @@ namespace {
 // which the round-trip byte-compare test and any save-hash gate rely on.
 // Loads are unaffected (they re-insert key by key).
 template <typename Map>
-[[nodiscard]] std::vector<std::pair<typename Map::key_type,
-                                    typename Map::mapped_type>>
+[[nodiscard]] std::vector<std::pair<typename Map::key_type, typename Map::mapped_type>>
 sortedEntries(const Map& map) {
-    std::vector<std::pair<typename Map::key_type, typename Map::mapped_type>>
-        entries(map.begin(), map.end());
+    std::vector<std::pair<typename Map::key_type, typename Map::mapped_type>> entries(map.begin(),
+                                                                                      map.end());
     std::sort(entries.begin(), entries.end(),
-              [](const std::pair<typename Map::key_type,
-                                 typename Map::mapped_type>& a,
-                 const std::pair<typename Map::key_type,
-                                 typename Map::mapped_type>& b) {
+              [](const std::pair<typename Map::key_type, typename Map::mapped_type>& a,
+                 const std::pair<typename Map::key_type, typename Map::mapped_type>& b) {
                   return a.first < b.first;
               });
     return entries;
@@ -127,17 +124,17 @@ constexpr std::size_t MAX_QUEUE        = 50;
 //   - districts per city ~10, buildings per district ~10
 //   - relation/grievance modifiers and wonders are small per-pair/per-city
 //   - bonds/hoards/equity positions bounded by player/good counts
-constexpr std::size_t MAX_MAP_DIM      = 512;
-constexpr std::size_t MAX_DISTRICTS    = 64;
-constexpr std::size_t MAX_BUILDINGS    = 64;
-constexpr std::size_t MAX_MODIFIERS    = 1000;
-constexpr std::size_t MAX_WONDERS      = 256;
-constexpr std::size_t MAX_BONDS        = 10000;
-constexpr std::size_t MAX_HOARDS       = 200;
-constexpr std::size_t MAX_HOARD_POS    = 1000;
-constexpr std::size_t MAX_GRIEVANCES   = 1000;
-constexpr std::size_t MAX_INVESTMENTS  = 10000;
-constexpr std::size_t MAX_AGREEMENTS   = 1000;
+constexpr std::size_t MAX_MAP_DIM     = 512;
+constexpr std::size_t MAX_DISTRICTS   = 64;
+constexpr std::size_t MAX_BUILDINGS   = 64;
+constexpr std::size_t MAX_MODIFIERS   = 1000;
+constexpr std::size_t MAX_WONDERS     = 256;
+constexpr std::size_t MAX_BONDS       = 10000;
+constexpr std::size_t MAX_HOARDS      = 200;
+constexpr std::size_t MAX_HOARD_POS   = 1000;
+constexpr std::size_t MAX_GRIEVANCES  = 1000;
+constexpr std::size_t MAX_INVESTMENTS = 10000;
+constexpr std::size_t MAX_AGREEMENTS  = 1000;
 
 // Additional caps for the remaining unbounded reserve() sites and the map
 // dimensions (audit 2026-06-06). Same rationale as above: conservative
@@ -149,7 +146,9 @@ constexpr std::size_t MAX_AGREEMENTS   = 1000;
 //   - bonds/investments/grievances/hoard positions/agreements are
 //     discrete per-player actions, at most hundreds per game
 //   - hoard components are per player (PlayerId is uint8)
-constexpr int32_t     MAX_MAP_DIMENSION          = 4096;
+// Single source of truth: HexGrid owns the dimension limit so the loader, the
+// generator, the net config and the CLI all clamp against the same number.
+constexpr int32_t MAX_MAP_DIMENSION              = aoc::map::HexGrid::MAX_MAP_DIMENSION;
 constexpr std::size_t MAX_DISTRICT_BUILDINGS     = 100;
 constexpr std::size_t MAX_RELATION_MODIFIERS     = 1000;
 constexpr std::size_t MAX_CITY_WONDERS           = 256;
@@ -164,7 +163,9 @@ constexpr std::size_t MAX_ELECTRICITY_AGREEMENTS = 1000;
 // WriteBuffer
 // ============================================================================
 
-void WriteBuffer::writeU8(uint8_t v) { this->m_data.push_back(v); }
+void WriteBuffer::writeU8(uint8_t v) {
+    this->m_data.push_back(v);
+}
 
 void WriteBuffer::writeU16(uint16_t v) {
     this->m_data.push_back(static_cast<uint8_t>(v & 0xFF));
@@ -237,8 +238,8 @@ uint8_t ReadBuffer::readU8() {
     if (this->m_corrupt || !this->hasRemaining(1)) {
         if (!this->m_corrupt) {
             this->m_corrupt = true;
-            LOG_ERROR("Serializer: readU8 underflow at offset %zu (size %zu)",
-                      this->m_offset, this->m_data.size());
+            LOG_ERROR("Serializer: readU8 underflow at offset %zu (size %zu)", this->m_offset,
+                      this->m_data.size());
         }
         return 0;
     }
@@ -251,8 +252,8 @@ uint16_t ReadBuffer::readU16() {
     if (this->m_corrupt || !this->hasRemaining(2)) {
         if (!this->m_corrupt) {
             this->m_corrupt = true;
-            LOG_ERROR("Serializer: readU16 underflow at offset %zu (size %zu)",
-                      this->m_offset, this->m_data.size());
+            LOG_ERROR("Serializer: readU16 underflow at offset %zu (size %zu)", this->m_offset,
+                      this->m_data.size());
         }
         return 0;
     }
@@ -267,14 +268,15 @@ uint32_t ReadBuffer::readU32() {
     if (this->m_corrupt || !this->hasRemaining(4)) {
         if (!this->m_corrupt) {
             this->m_corrupt = true;
-            LOG_ERROR("Serializer: readU32 underflow at offset %zu (size %zu)",
-                      this->m_offset, this->m_data.size());
+            LOG_ERROR("Serializer: readU32 underflow at offset %zu (size %zu)", this->m_offset,
+                      this->m_data.size());
         }
         return 0;
     }
     uint32_t v = 0;
     for (int i = 0; i < 4; ++i) {
-        v |= static_cast<uint32_t>(this->m_data[this->m_offset + static_cast<std::size_t>(i)]) << (i * 8);
+        v |= static_cast<uint32_t>(this->m_data[this->m_offset + static_cast<std::size_t>(i)])
+             << (i * 8);
     }
     this->m_offset += 4;
     return v;
@@ -284,14 +286,15 @@ uint64_t ReadBuffer::readU64() {
     if (this->m_corrupt || !this->hasRemaining(8)) {
         if (!this->m_corrupt) {
             this->m_corrupt = true;
-            LOG_ERROR("Serializer: readU64 underflow at offset %zu (size %zu)",
-                      this->m_offset, this->m_data.size());
+            LOG_ERROR("Serializer: readU64 underflow at offset %zu (size %zu)", this->m_offset,
+                      this->m_data.size());
         }
         return 0;
     }
     uint64_t v = 0;
     for (int i = 0; i < 8; ++i) {
-        v |= static_cast<uint64_t>(this->m_data[this->m_offset + static_cast<std::size_t>(i)]) << (i * 8);
+        v |= static_cast<uint64_t>(this->m_data[this->m_offset + static_cast<std::size_t>(i)])
+             << (i * 8);
     }
     this->m_offset += 8;
     return v;
@@ -454,7 +457,7 @@ void writeEntitySection(WriteBuffer& out, const aoc::game::GameState& gameState)
             section.writeU8(static_cast<uint8_t>(unit->state()));
             // v4: chargesRemaining, cargoCapacity (always 0 in object model), pendingPath
             section.writeU8(static_cast<uint8_t>(unit->chargesRemaining()));
-            section.writeU8(static_cast<uint8_t>(0));  // cargoCapacity: not stored in Unit object
+            section.writeU8(static_cast<uint8_t>(0)); // cargoCapacity: not stored in Unit object
             section.writeU16(static_cast<uint16_t>(unit->pendingPath().size()));
             for (const aoc::hex::AxialCoord& coord : unit->pendingPath()) {
                 section.writeI32(coord.q);
@@ -635,7 +638,8 @@ void writeDistrictsSection(WriteBuffer& out, const aoc::game::GameState& gameSta
             if (!districts.districts.empty()) {
                 section.writeU32(cityIndex);
                 section.writeU32(static_cast<uint32_t>(districts.districts.size()));
-                for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& dist : districts.districts) {
+                for (const aoc::sim::CityDistrictsComponent::PlacedDistrict& dist :
+                     districts.districts) {
                     section.writeU8(static_cast<uint8_t>(dist.type));
                     section.writeI32(dist.location.q);
                     section.writeI32(dist.location.r);
@@ -739,7 +743,7 @@ void writeVictorySection(WriteBuffer& out, const aoc::game::GameState& gameState
         section.writeU8(static_cast<uint8_t>(v.activeCollapse));
         // peakGDP is int64 in memory but the save field is 32-bit; clamp to
         // avoid wraparound on the rare late-game value above the 32-bit range.
-        constexpr aoc::CurrencyAmount kPeakGDPSaveMax = 2147483647;  // INT32_MAX
+        constexpr aoc::CurrencyAmount kPeakGDPSaveMax = 2147483647; // INT32_MAX
         const aoc::CurrencyAmount peakGDPClamped =
             v.peakGDP > kPeakGDPSaveMax ? kPeakGDPSaveMax : v.peakGDP;
         section.writeI32(static_cast<int32_t>(peakGDPClamped));
@@ -774,21 +778,22 @@ void writeStockpilesSection(WriteBuffer& out, const aoc::game::GameState& gameSt
             if (!stockpile.goods.empty() || !stockpile.exportBuffer.empty()) {
                 section.writeU32(cityIndex);
                 section.writeU32(static_cast<uint32_t>(stockpile.goods.size()));
-                for (const std::pair<uint16_t, int32_t>& entry
-                     : sortedEntries(stockpile.goods)) {
+                for (const std::pair<uint16_t, int32_t>& entry : sortedEntries(stockpile.goods)) {
                     section.writeU16(entry.first);
                     section.writeI32(entry.second);
                 }
                 // WP-O export buffer + idle counters.
                 section.writeU32(static_cast<uint32_t>(stockpile.exportBuffer.size()));
-                for (const std::pair<uint16_t, int32_t>& entry
-                     : sortedEntries(stockpile.exportBuffer)) {
+                for (const std::pair<uint16_t, int32_t>& entry :
+                     sortedEntries(stockpile.exportBuffer)) {
                     section.writeU16(entry.first);
                     section.writeI32(entry.second);
                     int32_t idle = 0;
                     std::unordered_map<uint16_t, int32_t>::const_iterator it =
                         stockpile.exportBufferIdleTurns.find(entry.first);
-                    if (it != stockpile.exportBufferIdleTurns.end()) { idle = it->second; }
+                    if (it != stockpile.exportBufferIdleTurns.end()) {
+                        idle = it->second;
+                    }
                     section.writeI32(idle);
                 }
             }
@@ -864,7 +869,7 @@ void writePlayerStateSection(WriteBuffer& out, const aoc::game::GameState& gameS
     for (const std::unique_ptr<aoc::game::Player>& player : gameState.players()) {
         const aoc::sim::PlayerEurekaComponent& eureka = player->eureka();
         section.writeU8(static_cast<uint8_t>(player->id()));
-        constexpr uint16_t bitCount = aoc::sim::MAX_EUREKA_BOOSTS;
+        constexpr uint16_t bitCount  = aoc::sim::MAX_EUREKA_BOOSTS;
         constexpr uint16_t byteCount = (bitCount + 7) / 8;
         section.writeU16(bitCount);
         for (uint16_t b = 0; b < byteCount; ++b) {
@@ -910,11 +915,9 @@ void writeDiplomacySection(WriteBuffer& out, const aoc::sim::DiplomacyManager& d
             section.writeU8(rel.hasDefensiveAlliance ? uint8_t{1} : uint8_t{0});
             // v5: remaining 5 alliance bools packed + per-type level state + cooldowns
             const uint8_t allianceBits = static_cast<uint8_t>(
-                  (rel.hasMilitaryAlliance  ? 0x01 : 0)
-                | (rel.hasResearchAgreement ? 0x02 : 0)
-                | (rel.hasEconomicAlliance  ? 0x04 : 0)
-                | (rel.hasCulturalAlliance  ? 0x08 : 0)
-                | (rel.hasReligiousAlliance ? 0x10 : 0));
+                (rel.hasMilitaryAlliance ? 0x01 : 0) | (rel.hasResearchAgreement ? 0x02 : 0) |
+                (rel.hasEconomicAlliance ? 0x04 : 0) | (rel.hasCulturalAlliance ? 0x08 : 0) |
+                (rel.hasReligiousAlliance ? 0x10 : 0));
             section.writeU8(allianceBits);
             for (const aoc::sim::AllianceState& st : rel.alliances) {
                 section.writeU8(static_cast<uint8_t>(st.type));
@@ -941,8 +944,8 @@ void writeDiplomacySection(WriteBuffer& out, const aoc::sim::DiplomacyManager& d
             section.writeI32(rel.turnsWithViolation);
             // Single byte encodes land CB (bit 0) and naval CB (bit 1).
             // Legacy saves used only bit 0; bit 1 defaults to 0 on load.
-            const uint8_t cbBits = static_cast<uint8_t>(
-                (rel.casusBelliLand ? 0x1 : 0x0) | (rel.casusBelliNaval ? 0x2 : 0x0));
+            const uint8_t cbBits = static_cast<uint8_t>((rel.casusBelliLand ? 0x1 : 0x0) |
+                                                        (rel.casusBelliNaval ? 0x2 : 0x0));
             section.writeU8(cbBits);
             section.writeU8(rel.warningIssued ? uint8_t{1} : uint8_t{0});
         }
@@ -955,7 +958,7 @@ void writeMarketSection(WriteBuffer& out, const aoc::sim::EconomySimulation& eco
     WriteBuffer section;
 
     const aoc::sim::Market& market = economy.market();
-    uint16_t count = market.goodsCount();
+    uint16_t count                 = market.goodsCount();
     section.writeU16(count);
     for (uint16_t i = 0; i < count; ++i) {
         const aoc::sim::Market::GoodMarketData& data = market.marketData(i);
@@ -972,7 +975,7 @@ void writeWonderSection(WriteBuffer& out, const aoc::game::GameState& gameState)
 
     // GlobalWonderTracker
     const aoc::sim::GlobalWonderTracker& tracker = gameState.wonderTracker();
-    section.writeU8(uint8_t{1});  // always present in object model
+    section.writeU8(uint8_t{1}); // always present in object model
     for (uint8_t w = 0; w < aoc::sim::WONDER_COUNT; ++w) {
         section.writeU8(tracker.builtBy[w]);
     }
@@ -1193,8 +1196,8 @@ void writeProductionExpSection(WriteBuffer& out, const aoc::game::GameState& gam
             if (!exp.recipeExperience.empty()) {
                 section.writeU32(cityIndex);
                 section.writeU32(static_cast<uint32_t>(exp.recipeExperience.size()));
-                for (const std::pair<uint16_t, int32_t>& entry
-                     : sortedEntries(exp.recipeExperience)) {
+                for (const std::pair<uint16_t, int32_t>& entry :
+                     sortedEntries(exp.recipeExperience)) {
                     section.writeU16(entry.first);
                     section.writeI32(entry.second);
                 }
@@ -1228,8 +1231,7 @@ void writeBuildingLevelsSection(WriteBuffer& out, const aoc::game::GameState& ga
             if (!levels.levels.empty()) {
                 section.writeU32(cityIndex);
                 section.writeU32(static_cast<uint32_t>(levels.levels.size()));
-                for (const std::pair<uint16_t, int32_t>& entry
-                     : sortedEntries(levels.levels)) {
+                for (const std::pair<uint16_t, int32_t>& entry : sortedEntries(levels.levels)) {
                     section.writeU16(entry.first);
                     section.writeI32(entry.second);
                 }
@@ -1250,8 +1252,8 @@ void writePollutionSection(WriteBuffer& out, const aoc::game::GameState& gameSta
         for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
             const aoc::sim::CityPollutionComponent& pol = city->pollution();
             const aoc::sim::CityHappinessComponent& hp  = city->happiness();
-            if (pol.wasteAccumulated != 0 || pol.co2ContributionPerTurn != 0
-                || hp.disasterUnhappiness != 0.0f) {
+            if (pol.wasteAccumulated != 0 || pol.co2ContributionPerTurn != 0 ||
+                hp.disasterUnhappiness != 0.0f) {
                 ++count;
             }
         }
@@ -1264,8 +1266,8 @@ void writePollutionSection(WriteBuffer& out, const aoc::game::GameState& gameSta
         for (const std::unique_ptr<aoc::game::City>& city : player->cities()) {
             const aoc::sim::CityPollutionComponent& pol = city->pollution();
             const aoc::sim::CityHappinessComponent& hp  = city->happiness();
-            if (pol.wasteAccumulated != 0 || pol.co2ContributionPerTurn != 0
-                || hp.disasterUnhappiness != 0.0f) {
+            if (pol.wasteAccumulated != 0 || pol.co2ContributionPerTurn != 0 ||
+                hp.disasterUnhappiness != 0.0f) {
                 section.writeU32(cityIndex);
                 section.writeI32(pol.wasteAccumulated);
                 section.writeI32(pol.co2ContributionPerTurn);
@@ -1409,8 +1411,7 @@ void writeWarWearinessSection(WriteBuffer& out, const aoc::game::GameState& game
         section.writeU8(static_cast<uint8_t>(player->id()));
         section.writeF32(w.weariness);
         section.writeU32(static_cast<uint32_t>(w.turnsAtWar.size()));
-        for (const std::pair<PlayerId, int32_t>& kv
-             : sortedEntries(w.turnsAtWar)) {
+        for (const std::pair<PlayerId, int32_t>& kv : sortedEntries(w.turnsAtWar)) {
             section.writeU8(static_cast<uint8_t>(kv.first));
             section.writeI32(kv.second);
         }
@@ -1418,8 +1419,7 @@ void writeWarWearinessSection(WriteBuffer& out, const aoc::game::GameState& game
     writeSection(out, SectionId::WarWearinessState, section);
 }
 
-static void writeEquityInvestment(WriteBuffer& section,
-                                   const aoc::sim::EquityInvestment& inv) {
+static void writeEquityInvestment(WriteBuffer& section, const aoc::sim::EquityInvestment& inv) {
     section.writeU8(static_cast<uint8_t>(inv.investor));
     section.writeU8(static_cast<uint8_t>(inv.target));
     section.writeI64(inv.principalInvested);
@@ -1447,8 +1447,7 @@ void writeStockPortfolioSection(WriteBuffer& out, const aoc::game::GameState& ga
 }
 
 /// Serialize bilateral electricity import agreements.
-void writeElectricityAgreementSection(WriteBuffer& out,
-                                       const aoc::game::GameState& gameState) {
+void writeElectricityAgreementSection(WriteBuffer& out, const aoc::game::GameState& gameState) {
     WriteBuffer section;
     const std::vector<aoc::sim::ElectricityAgreementComponent>& agrs =
         gameState.electricityAgreements();
@@ -1473,21 +1472,18 @@ void writeElectricityAgreementSection(WriteBuffer& out,
 // Save
 // ============================================================================
 
-ErrorCode saveGame(const std::string& filepath,
-                    const aoc::game::GameState& gameState,
-                    const aoc::map::HexGrid& grid,
-                    const aoc::sim::TurnManager& turnManager,
-                    const aoc::sim::EconomySimulation& economy,
-                    const aoc::sim::DiplomacyManager& diplomacy,
-                    const aoc::map::FogOfWar& /*fogOfWar*/,
-                    const aoc::Random& rng) {
+ErrorCode saveGame(const std::string& filepath, const aoc::game::GameState& gameState,
+                   const aoc::map::HexGrid& grid, const aoc::sim::TurnManager& turnManager,
+                   const aoc::sim::EconomySimulation& economy,
+                   const aoc::sim::DiplomacyManager& diplomacy,
+                   const aoc::map::FogOfWar& /*fogOfWar*/, const aoc::Random& rng) {
     WriteBuffer buf;
 
     // Header
     buf.writeU32(SAVE_MAGIC);
     buf.writeU32(SAVE_VERSION);
-    buf.writeU32(0);  // flags (reserved)
-    buf.writeU32(0);  // dataSize placeholder (filled after)
+    buf.writeU32(0); // flags (reserved)
+    buf.writeU32(0); // dataSize placeholder (filled after)
 
     // Sections
     writeMapSection(buf, grid);
@@ -1535,16 +1531,14 @@ ErrorCode saveGame(const std::string& filepath,
     {
         std::ofstream file(tmpPath, std::ios::binary | std::ios::trunc);
         if (!file.is_open()) {
-            LOG_ERROR("Serializer: failed to open temp file for writing: '%s'",
-                      tmpPath.c_str());
+            LOG_ERROR("Serializer: failed to open temp file for writing: '%s'", tmpPath.c_str());
             return ErrorCode::SaveFailed;
         }
 
         file.write(reinterpret_cast<const char*>(buf.data().data()),
                    static_cast<std::streamsize>(buf.size()));
         if (!file.good()) {
-            LOG_ERROR("Serializer: write failed for '%s' (%zu bytes)",
-                      tmpPath.c_str(), buf.size());
+            LOG_ERROR("Serializer: write failed for '%s' (%zu bytes)", tmpPath.c_str(), buf.size());
             file.close();
             std::error_code rmEc;
             std::filesystem::remove(tmpPath, rmEc);
@@ -1569,13 +1563,13 @@ ErrorCode saveGame(const std::string& filepath,
         int fd = ::open(tmpPath.c_str(), O_RDONLY);
         if (fd >= 0) {
             if (::fsync(fd) != 0) {
-                LOG_WARN("Serializer: fsync(file) failed for '%s' (errno %d)",
-                         tmpPath.c_str(), errno);
+                LOG_WARN("Serializer: fsync(file) failed for '%s' (errno %d)", tmpPath.c_str(),
+                         errno);
             }
             ::close(fd);
         } else {
-            LOG_WARN("Serializer: open-for-fsync failed for '%s' (errno %d)",
-                     tmpPath.c_str(), errno);
+            LOG_WARN("Serializer: open-for-fsync failed for '%s' (errno %d)", tmpPath.c_str(),
+                     errno);
         }
     }
 #endif
@@ -1584,8 +1578,8 @@ ErrorCode saveGame(const std::string& filepath,
         std::error_code ec;
         std::filesystem::rename(tmpPath, filepath, ec);
         if (ec) {
-            LOG_ERROR("Serializer: rename '%s' -> '%s' failed: %s",
-                      tmpPath.c_str(), filepath.c_str(), ec.message().c_str());
+            LOG_ERROR("Serializer: rename '%s' -> '%s' failed: %s", tmpPath.c_str(),
+                      filepath.c_str(), ec.message().c_str());
             std::error_code rmEc;
             std::filesystem::remove(tmpPath, rmEc);
             return ErrorCode::SaveFailed;
@@ -1596,17 +1590,17 @@ ErrorCode saveGame(const std::string& filepath,
     // fsync the containing directory so the rename itself is durable.
     {
         std::filesystem::path parent = std::filesystem::path(filepath).parent_path();
-        const std::string dirPath = parent.empty() ? std::string(".") : parent.string();
-        int dirFd = ::open(dirPath.c_str(), O_RDONLY | O_DIRECTORY);
+        const std::string dirPath    = parent.empty() ? std::string(".") : parent.string();
+        int dirFd                    = ::open(dirPath.c_str(), O_RDONLY | O_DIRECTORY);
         if (dirFd >= 0) {
             if (::fsync(dirFd) != 0) {
-                LOG_WARN("Serializer: fsync(dir) failed for '%s' (errno %d)",
-                         dirPath.c_str(), errno);
+                LOG_WARN("Serializer: fsync(dir) failed for '%s' (errno %d)", dirPath.c_str(),
+                         errno);
             }
             ::close(dirFd);
         } else {
-            LOG_WARN("Serializer: open-for-fsync(dir) failed for '%s' (errno %d)",
-                     dirPath.c_str(), errno);
+            LOG_WARN("Serializer: open-for-fsync(dir) failed for '%s' (errno %d)", dirPath.c_str(),
+                     errno);
         }
     }
 #endif
@@ -1625,14 +1619,10 @@ ErrorCode saveGame(const std::string& filepath,
  * Units and cities are collected into loadedCities / loadedUnits (in write order)
  * so that later sections can reference them by index without ECS entity handles.
  */
-ErrorCode loadGame(const std::string& filepath,
-                    aoc::game::GameState& gameState,
-                    aoc::map::HexGrid& grid,
-                    aoc::sim::TurnManager& turnManager,
-                    aoc::sim::EconomySimulation& economy,
-                    aoc::sim::DiplomacyManager& diplomacy,
-                    aoc::map::FogOfWar& /*fogOfWar*/,
-                    aoc::Random& rng) {
+ErrorCode loadGame(const std::string& filepath, aoc::game::GameState& gameState,
+                   aoc::map::HexGrid& grid, aoc::sim::TurnManager& turnManager,
+                   aoc::sim::EconomySimulation& economy, aoc::sim::DiplomacyManager& diplomacy,
+                   aoc::map::FogOfWar& /*fogOfWar*/, aoc::Random& rng) {
     // Read entire file
     std::ifstream file(filepath, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
@@ -1651,9 +1641,8 @@ ErrorCode loadGame(const std::string& filepath,
     std::vector<uint8_t> fileData(static_cast<std::size_t>(fileSize));
     file.read(reinterpret_cast<char*>(fileData.data()), fileSize);
     if (!file.good()) {
-        LOG_ERROR("Failed to read file: %s (read %lld of %lld bytes)",
-                  filepath.c_str(), static_cast<long long>(file.gcount()),
-                  static_cast<long long>(fileSize));
+        LOG_ERROR("Failed to read file: %s (read %lld of %lld bytes)", filepath.c_str(),
+                  static_cast<long long>(file.gcount()), static_cast<long long>(fileSize));
         return ErrorCode::LoadFailed;
     }
 
@@ -1675,8 +1664,8 @@ ErrorCode loadGame(const std::string& filepath,
         return ErrorCode::SaveVersionMismatch;
     }
     if (version < aoc::save::MIN_SUPPORTED_VERSION) {
-        LOG_ERROR("Save version %u is too old to load (minimum supported %u)",
-                  version, aoc::save::MIN_SUPPORTED_VERSION);
+        LOG_ERROR("Save version %u is too old to load (minimum supported %u)", version,
+                  aoc::save::MIN_SUPPORTED_VERSION);
         return ErrorCode::SaveVersionMismatch;
     }
     if (version != aoc::save::CURRENT_SAVE_VERSION) {
@@ -1701,7 +1690,7 @@ ErrorCode loadGame(const std::string& filepath,
     // buffer offset, so the loop must also stop on isCorrupt() or a
     // mid-section underflow would spin forever on the same offset.
     while (!buf.isCorrupt() && buf.hasRemaining(6)) {
-        uint16_t sectionId = buf.readU16();
+        uint16_t sectionId   = buf.readU16();
         uint32_t sectionSize = buf.readU32();
 
         if (!buf.hasRemaining(sectionSize)) {
@@ -1709,1228 +1698,1263 @@ ErrorCode loadGame(const std::string& filepath,
         }
 
         switch (static_cast<SectionId>(sectionId)) {
-            case SectionId::MapGrid: {
-                int32_t width  = buf.readI32();
-                int32_t height = buf.readI32();
-                aoc::map::MapTopology topology = static_cast<aoc::map::MapTopology>(buf.readU8());
-                // Reject hostile dimensions before they become a loop bound or
-                // allocation size (audit 2026-05-10 / 2026-06-06).
-                if (width <= 0 || height <= 0
-                    || width > MAX_MAP_DIMENSION || height > MAX_MAP_DIMENSION) {
-                    LOG_ERROR("Serializer: map dimensions %dx%d outside (0, %d]",
-                              width, height, MAX_MAP_DIMENSION);
+        case SectionId::MapGrid: {
+            int32_t width                  = buf.readI32();
+            int32_t height                 = buf.readI32();
+            aoc::map::MapTopology topology = static_cast<aoc::map::MapTopology>(buf.readU8());
+            // Reject hostile dimensions before they become a loop bound or
+            // allocation size (audit 2026-05-10 / 2026-06-06).
+            if (width <= 0 || height <= 0 || width > MAX_MAP_DIMENSION ||
+                height > MAX_MAP_DIMENSION) {
+                LOG_ERROR("Serializer: map dimensions %dx%d outside (0, %d]", width, height,
+                          MAX_MAP_DIMENSION);
+                return ErrorCode::SaveCorrupted;
+            }
+            const std::size_t count =
+                static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+            // 7 bytes per tile: terrain, feature, elevation, riverEdges,
+            // resource (u16), owner.
+            if (!buf.canReadRecords(count, 7)) {
+                LOG_ERROR("Serializer: tile count %zu exceeds file size", count);
+                return ErrorCode::SaveCorrupted;
+            }
+            grid.initialize(width, height, topology);
+            for (std::size_t i = 0; i < count && !buf.isCorrupt(); ++i) {
+                const int32_t idx = static_cast<int32_t>(i);
+                grid.setTerrain(idx, static_cast<aoc::map::TerrainType>(buf.readU8()));
+                grid.setFeature(idx, static_cast<aoc::map::FeatureType>(buf.readU8()));
+                grid.setElevation(idx, static_cast<int8_t>(buf.readU8()));
+                grid.setRiverEdges(idx, buf.readU8());
+                grid.setResource(idx, ResourceId{buf.readU16()});
+                grid.setOwner(idx, buf.readU8());
+            }
+            break;
+        }
+        case SectionId::TurnState: {
+            uint32_t turnNum = buf.readU32();
+            uint8_t phase    = buf.readU8();
+            turnManager.setTurnNumber(turnNum);
+            turnManager.setPhase(static_cast<aoc::sim::TurnPhase>(phase));
+            break;
+        }
+        case SectionId::Entities: {
+            // Units
+            uint32_t unitCount = buf.readU32();
+            if (unitCount > MAX_UNITS) {
+                LOG_ERROR("Serializer: unit count %u exceeds MAX_UNITS %zu", unitCount, MAX_UNITS);
+                return ErrorCode::SaveCorrupted;
+            }
+            loadedUnits.reserve(unitCount);
+
+            // First pass: collect (owner, typeId, pos, ...) to build Player->Unit
+            // We need to know how many players exist. Use the max owner id + 1.
+            // Initialize gameState lazily when we first encounter an owner.
+            // We call gameState.initialize() once after reading all units/cities
+            // if it hasn't been called yet, but since players were already
+            // created by the caller (or we must create them), we do it here.
+
+            struct UnitData {
+                PlayerId owner;
+                UnitTypeId typeId;
+                aoc::hex::AxialCoord pos;
+                int32_t hp;
+                int32_t mp;
+                aoc::sim::UnitState state;
+                int8_t charges;
+                std::vector<aoc::hex::AxialCoord> pendingPath;
+            };
+            std::vector<UnitData> unitDataList;
+            unitDataList.reserve(unitCount);
+
+            PlayerId maxOwner = 0;
+            for (uint32_t i = 0; i < unitCount; ++i) {
+                UnitData ud{};
+                ud.owner   = buf.readU8();
+                ud.typeId  = UnitTypeId{buf.readU16()};
+                ud.pos     = {buf.readI32(), buf.readI32()};
+                ud.hp      = buf.readI32();
+                ud.mp      = buf.readI32();
+                ud.state   = static_cast<aoc::sim::UnitState>(buf.readU8());
+                ud.charges = static_cast<int8_t>(buf.readU8());
+                [[maybe_unused]] uint8_t cargoCapacity = buf.readU8();
+                uint16_t pathSize                      = buf.readU16();
+                if (pathSize > MAX_PATH) {
+                    LOG_ERROR("Serializer: path size %u exceeds MAX_PATH %zu",
+                              static_cast<unsigned>(pathSize), MAX_PATH);
                     return ErrorCode::SaveCorrupted;
                 }
-                const std::size_t count =
-                    static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
-                // 7 bytes per tile: terrain, feature, elevation, riverEdges,
-                // resource (u16), owner.
-                if (!buf.canReadRecords(count, 7)) {
-                    LOG_ERROR("Serializer: tile count %zu exceeds file size", count);
+                ud.pendingPath.reserve(pathSize);
+                for (uint16_t p = 0; p < pathSize; ++p) {
+                    ud.pendingPath.push_back({buf.readI32(), buf.readI32()});
+                }
+                if (ud.owner > maxOwner) {
+                    maxOwner = ud.owner;
+                }
+                unitDataList.push_back(std::move(ud));
+            }
+
+            // Cities
+            uint32_t cityCount = buf.readU32();
+            if (cityCount > MAX_CITIES) {
+                LOG_ERROR("Serializer: city count %u exceeds MAX_CITIES %zu", cityCount,
+                          MAX_CITIES);
+                return ErrorCode::SaveCorrupted;
+            }
+
+            struct CityData {
+                PlayerId owner;
+                aoc::hex::AxialCoord loc;
+                std::string name;
+                int32_t population;
+                float foodSurplus;
+                float productionProgress;
+                std::vector<aoc::hex::AxialCoord> workedTiles;
+                float cultureBorderProgress;
+                int32_t tilesClaimedCount;
+                bool isOriginalCapital;
+                PlayerId originalOwner;
+            };
+            std::vector<CityData> cityDataList;
+            cityDataList.reserve(cityCount);
+
+            for (uint32_t i = 0; i < cityCount; ++i) {
+                CityData cd{};
+                cd.owner              = buf.readU8();
+                cd.loc                = {buf.readI32(), buf.readI32()};
+                cd.name               = buf.readString();
+                cd.population         = buf.readI32();
+                cd.foodSurplus        = buf.readF32();
+                cd.productionProgress = buf.readF32();
+
+                uint32_t workedCount = buf.readU32();
+                if (workedCount > MAX_WORKED_TILES) {
+                    LOG_ERROR("Serializer: worked-tile count %u exceeds MAX_WORKED_TILES %zu",
+                              workedCount, MAX_WORKED_TILES);
                     return ErrorCode::SaveCorrupted;
                 }
-                grid.initialize(width, height, topology);
-                for (std::size_t i = 0; i < count && !buf.isCorrupt(); ++i) {
-                    const int32_t idx = static_cast<int32_t>(i);
-                    grid.setTerrain(idx, static_cast<aoc::map::TerrainType>(buf.readU8()));
-                    grid.setFeature(idx, static_cast<aoc::map::FeatureType>(buf.readU8()));
-                    grid.setElevation(idx, static_cast<int8_t>(buf.readU8()));
-                    grid.setRiverEdges(idx, buf.readU8());
-                    grid.setResource(idx, ResourceId{buf.readU16()});
-                    grid.setOwner(idx, buf.readU8());
+                cd.workedTiles.reserve(workedCount);
+                for (uint32_t j = 0; j < workedCount; ++j) {
+                    cd.workedTiles.push_back({buf.readI32(), buf.readI32()});
                 }
-                break;
+
+                cd.cultureBorderProgress = buf.readF32();
+                cd.tilesClaimedCount     = buf.readI32();
+                cd.isOriginalCapital     = buf.readU8() != 0;
+                cd.originalOwner         = buf.readU8();
+
+                if (cd.owner > maxOwner) {
+                    maxOwner = cd.owner;
+                }
+                cityDataList.push_back(std::move(cd));
             }
-            case SectionId::TurnState: {
-                uint32_t turnNum = buf.readU32();
-                uint8_t phase    = buf.readU8();
-                turnManager.setTurnNumber(turnNum);
-                turnManager.setPhase(static_cast<aoc::sim::TurnPhase>(phase));
-                break;
-            }
-            case SectionId::Entities: {
-                // Units
-                uint32_t unitCount = buf.readU32();
-                if (unitCount > MAX_UNITS) {
-                    LOG_ERROR("Serializer: unit count %u exceeds MAX_UNITS %zu",
-                              unitCount, MAX_UNITS);
+
+            // Initialize (or re-initialize) GameState with the correct player count.
+            // This clears any existing player data, which is the correct behavior
+            // for a load operation that must fully replace the game state.
+            int32_t requiredPlayers = static_cast<int32_t>(maxOwner) + 1;
+            gameState.initialize(requiredPlayers);
+
+            // Populate Player objects with cities
+            for (const CityData& cd : cityDataList) {
+                aoc::game::Player* player = gameState.player(cd.owner);
+                if (player == nullptr) {
+                    LOG_ERROR("Serializer.cpp: loadGame: invalid owner %u in Entities section",
+                              static_cast<unsigned>(cd.owner));
                     return ErrorCode::SaveCorrupted;
                 }
-                loadedUnits.reserve(unitCount);
-
-                // First pass: collect (owner, typeId, pos, ...) to build Player->Unit
-                // We need to know how many players exist. Use the max owner id + 1.
-                // Initialize gameState lazily when we first encounter an owner.
-                // We call gameState.initialize() once after reading all units/cities
-                // if it hasn't been called yet, but since players were already
-                // created by the caller (or we must create them), we do it here.
-
-                struct UnitData {
-                    PlayerId owner;
-                    UnitTypeId typeId;
-                    aoc::hex::AxialCoord pos;
-                    int32_t hp;
-                    int32_t mp;
-                    aoc::sim::UnitState state;
-                    int8_t charges;
-                    std::vector<aoc::hex::AxialCoord> pendingPath;
-                };
-                std::vector<UnitData> unitDataList;
-                unitDataList.reserve(unitCount);
-
-                PlayerId maxOwner = 0;
-                for (uint32_t i = 0; i < unitCount; ++i) {
-                    UnitData ud{};
-                    ud.owner = buf.readU8();
-                    ud.typeId = UnitTypeId{buf.readU16()};
-                    ud.pos = {buf.readI32(), buf.readI32()};
-                    ud.hp = buf.readI32();
-                    ud.mp = buf.readI32();
-                    ud.state = static_cast<aoc::sim::UnitState>(buf.readU8());
-                    ud.charges = static_cast<int8_t>(buf.readU8());
-                    [[maybe_unused]] uint8_t cargoCapacity = buf.readU8();
-                    uint16_t pathSize = buf.readU16();
-                    if (pathSize > MAX_PATH) {
-                        LOG_ERROR("Serializer: path size %u exceeds MAX_PATH %zu",
-                                  static_cast<unsigned>(pathSize), MAX_PATH);
-                        return ErrorCode::SaveCorrupted;
-                    }
-                    ud.pendingPath.reserve(pathSize);
-                    for (uint16_t p = 0; p < pathSize; ++p) {
-                        ud.pendingPath.push_back({buf.readI32(), buf.readI32()});
-                    }
-                    if (ud.owner > maxOwner) { maxOwner = ud.owner; }
-                    unitDataList.push_back(std::move(ud));
+                aoc::game::City& city = player->addCity(cd.loc, cd.name);
+                city.setPopulation(cd.population);
+                city.setFoodSurplus(cd.foodSurplus);
+                city.setProductionProgress(cd.productionProgress);
+                city.workedTiles() = cd.workedTiles;
+                city.setCultureBorderProgress(cd.cultureBorderProgress);
+                for (int32_t t = 0; t < cd.tilesClaimedCount; ++t) {
+                    city.incrementTilesClaimed();
                 }
+                city.setOriginalCapital(cd.isOriginalCapital);
+                city.setOriginalOwner(cd.originalOwner);
+                loadedCities.push_back(&city);
+            }
 
-                // Cities
-                uint32_t cityCount = buf.readU32();
-                if (cityCount > MAX_CITIES) {
-                    LOG_ERROR("Serializer: city count %u exceeds MAX_CITIES %zu",
-                              cityCount, MAX_CITIES);
+            // Populate Player objects with units
+            for (const UnitData& ud : unitDataList) {
+                aoc::game::Player* player = gameState.player(ud.owner);
+                if (player == nullptr) {
+                    LOG_ERROR("Serializer.cpp: loadGame: invalid owner %u in Entities section",
+                              static_cast<unsigned>(ud.owner));
                     return ErrorCode::SaveCorrupted;
                 }
-
-                struct CityData {
-                    PlayerId owner;
-                    aoc::hex::AxialCoord loc;
-                    std::string name;
-                    int32_t population;
-                    float foodSurplus;
-                    float productionProgress;
-                    std::vector<aoc::hex::AxialCoord> workedTiles;
-                    float cultureBorderProgress;
-                    int32_t tilesClaimedCount;
-                    bool isOriginalCapital;
-                    PlayerId originalOwner;
-                };
-                std::vector<CityData> cityDataList;
-                cityDataList.reserve(cityCount);
-
-                for (uint32_t i = 0; i < cityCount; ++i) {
-                    CityData cd{};
-                    cd.owner = buf.readU8();
-                    cd.loc = {buf.readI32(), buf.readI32()};
-                    cd.name = buf.readString();
-                    cd.population = buf.readI32();
-                    cd.foodSurplus = buf.readF32();
-                    cd.productionProgress = buf.readF32();
-
-                    uint32_t workedCount = buf.readU32();
-                    if (workedCount > MAX_WORKED_TILES) {
-                        LOG_ERROR("Serializer: worked-tile count %u exceeds MAX_WORKED_TILES %zu",
-                                  workedCount, MAX_WORKED_TILES);
-                        return ErrorCode::SaveCorrupted;
-                    }
-                    cd.workedTiles.reserve(workedCount);
-                    for (uint32_t j = 0; j < workedCount; ++j) {
-                        cd.workedTiles.push_back({buf.readI32(), buf.readI32()});
-                    }
-
-                    cd.cultureBorderProgress = buf.readF32();
-                    cd.tilesClaimedCount = buf.readI32();
-                    cd.isOriginalCapital = buf.readU8() != 0;
-                    cd.originalOwner = buf.readU8();
-
-                    if (cd.owner > maxOwner) { maxOwner = cd.owner; }
-                    cityDataList.push_back(std::move(cd));
-                }
-
-                // Initialize (or re-initialize) GameState with the correct player count.
-                // This clears any existing player data, which is the correct behavior
-                // for a load operation that must fully replace the game state.
-                int32_t requiredPlayers = static_cast<int32_t>(maxOwner) + 1;
-                gameState.initialize(requiredPlayers);
-
-                // Populate Player objects with cities
-                for (const CityData& cd : cityDataList) {
-                    aoc::game::Player* player = gameState.player(cd.owner);
-                    if (player == nullptr) {
-                        LOG_ERROR("Serializer.cpp: loadGame: invalid owner %u in Entities section",
-                                  static_cast<unsigned>(cd.owner));
-                        return ErrorCode::SaveCorrupted;
-                    }
-                    aoc::game::City& city = player->addCity(cd.loc, cd.name);
-                    city.setPopulation(cd.population);
-                    city.setFoodSurplus(cd.foodSurplus);
-                    city.setProductionProgress(cd.productionProgress);
-                    city.workedTiles() = cd.workedTiles;
-                    city.setCultureBorderProgress(cd.cultureBorderProgress);
-                    for (int32_t t = 0; t < cd.tilesClaimedCount; ++t) {
-                        city.incrementTilesClaimed();
-                    }
-                    city.setOriginalCapital(cd.isOriginalCapital);
-                    city.setOriginalOwner(cd.originalOwner);
-                    loadedCities.push_back(&city);
-                }
-
-                // Populate Player objects with units
-                for (const UnitData& ud : unitDataList) {
-                    aoc::game::Player* player = gameState.player(ud.owner);
-                    if (player == nullptr) {
-                        LOG_ERROR("Serializer.cpp: loadGame: invalid owner %u in Entities section",
-                                  static_cast<unsigned>(ud.owner));
-                        return ErrorCode::SaveCorrupted;
-                    }
-                    aoc::game::Unit& unit = player->addUnit(ud.typeId, ud.pos);
-                    unit.setHitPoints(ud.hp);
-                    unit.setMovementRemaining(ud.mp);
-                    unit.setState(ud.state);
-                    // Note: chargesRemaining is not yet settable via Unit public API.
-                    unit.pendingPath() = ud.pendingPath;
-                    loadedUnits.push_back(&unit);
-                }
-                break;
+                aoc::game::Unit& unit = player->addUnit(ud.typeId, ud.pos);
+                unit.setHitPoints(ud.hp);
+                unit.setMovementRemaining(ud.mp);
+                unit.setState(ud.state);
+                // Note: chargesRemaining is not yet settable via Unit public API.
+                unit.pendingPath() = ud.pendingPath;
+                loadedUnits.push_back(&unit);
             }
-            case SectionId::RandomState: {
-                std::array<uint64_t, 4> state;
-                for (uint64_t& s : state) {
-                    s = buf.readU64();
-                }
-                rng.setState(state);
-                break;
+            break;
+        }
+        case SectionId::RandomState: {
+            std::array<uint64_t, 4> state;
+            for (uint64_t& s : state) {
+                s = buf.readU64();
             }
-            case SectionId::Improvements: {
-                int32_t count = buf.readI32();
-                for (int32_t i = 0; i < count; ++i) {
-                    uint8_t improvementVal = buf.readU8();
-                    uint8_t roadVal = buf.readU8();
-                    uint8_t infraBits = buf.readU8();  // WP-C3 lanes.
-                    uint16_t greenhouse = buf.readU16();  // WP-C4 planted crop.
-                    if (i < grid.tileCount()) {
-                        grid.setImprovement(i, static_cast<aoc::map::ImprovementType>(improvementVal));
-                        if (roadVal != 0 && !grid.hasRoad(i)) {
-                            grid.setImprovement(i, aoc::map::ImprovementType::Road);
-                        }
-                        grid.setTileInfraBits(i, infraBits);
-                        grid.setGreenhouseCrop(i, greenhouse);
+            rng.setState(state);
+            break;
+        }
+        case SectionId::Improvements: {
+            int32_t count = buf.readI32();
+            for (int32_t i = 0; i < count; ++i) {
+                uint8_t improvementVal = buf.readU8();
+                uint8_t roadVal        = buf.readU8();
+                uint8_t infraBits      = buf.readU8();  // WP-C3 lanes.
+                uint16_t greenhouse    = buf.readU16(); // WP-C4 planted crop.
+                if (i < grid.tileCount()) {
+                    grid.setImprovement(i, static_cast<aoc::map::ImprovementType>(improvementVal));
+                    if (roadVal != 0 && !grid.hasRoad(i)) {
+                        grid.setImprovement(i, aoc::map::ImprovementType::Road);
                     }
+                    grid.setTileInfraBits(i, infraBits);
+                    grid.setGreenhouseCrop(i, greenhouse);
                 }
-                break;
             }
-            case SectionId::TechProgress: {
-                // Tech components (one per player)
-                uint32_t techCompCount = buf.readU32();
-                for (uint32_t i = 0; i < techCompCount; ++i) {
-                    PlayerId owner = buf.readU8();
-                    uint16_t currentResearchVal = buf.readU16();
-                    float progress = buf.readF32();
-                    uint16_t totalTechs = buf.readU16();
-                    uint16_t byteCount = static_cast<uint16_t>((totalTechs + 7) / 8);
+            break;
+        }
+        case SectionId::TechProgress: {
+            // Tech components (one per player)
+            uint32_t techCompCount = buf.readU32();
+            for (uint32_t i = 0; i < techCompCount; ++i) {
+                PlayerId owner              = buf.readU8();
+                uint16_t currentResearchVal = buf.readU16();
+                float progress              = buf.readF32();
+                uint16_t totalTechs         = buf.readU16();
+                uint16_t byteCount          = static_cast<uint16_t>((totalTechs + 7) / 8);
 
-                    aoc::game::Player* player = gameState.player(owner);
-                    if (player != nullptr) {
-                        aoc::sim::PlayerTechComponent& tech = player->tech();
-                        tech.initialize();
-                        tech.currentResearch = TechId{currentResearchVal};
-                        tech.researchProgress = progress;
+                aoc::game::Player* player = gameState.player(owner);
+                if (player != nullptr) {
+                    aoc::sim::PlayerTechComponent& tech = player->tech();
+                    tech.initialize();
+                    tech.currentResearch  = TechId{currentResearchVal};
+                    tech.researchProgress = progress;
 
-                        for (uint16_t b = 0; b < byteCount; ++b) {
-                            uint8_t byte = buf.readU8();
-                            for (uint8_t bit = 0; bit < 8; ++bit) {
-                                uint16_t techIdx = static_cast<uint16_t>(b * 8 + bit);
-                                if (techIdx < totalTechs && techIdx < tech.completedTechs.size()) {
-                                    tech.completedTechs[techIdx] = ((byte >> bit) & 1u) != 0;
-                                }
-                            }
-                        }
-                    } else {
-                        buf.skip(byteCount);
-                    }
-                }
-
-                // Civic components (one per player)
-                uint32_t civicCompCount = buf.readU32();
-                for (uint32_t i = 0; i < civicCompCount; ++i) {
-                    PlayerId owner = buf.readU8();
-                    uint16_t currentResearchVal = buf.readU16();
-                    float progress = buf.readF32();
-                    uint16_t totalCivics = buf.readU16();
-                    uint16_t byteCount = static_cast<uint16_t>((totalCivics + 7) / 8);
-
-                    aoc::game::Player* player = gameState.player(owner);
-                    if (player != nullptr) {
-                        aoc::sim::PlayerCivicComponent& civic = player->civics();
-                        civic.initialize();
-                        civic.currentResearch = CivicId{currentResearchVal};
-                        civic.researchProgress = progress;
-
-                        for (uint16_t b = 0; b < byteCount; ++b) {
-                            uint8_t byte = buf.readU8();
-                            for (uint8_t bit = 0; bit < 8; ++bit) {
-                                uint16_t civicIdx = static_cast<uint16_t>(b * 8 + bit);
-                                if (civicIdx < totalCivics && civicIdx < civic.completedCivics.size()) {
-                                    civic.completedCivics[civicIdx] = ((byte >> bit) & 1u) != 0;
-                                }
-                            }
-                        }
-                    } else {
-                        buf.skip(byteCount);
-                    }
-                }
-                break;
-            }
-            case SectionId::ProductionQueues: {
-                uint32_t count = buf.readU32();
-                if (count > MAX_CITIES) {
-                    LOG_ERROR("Serializer: production-queue city count %u exceeds MAX_CITIES %zu",
-                              count, MAX_CITIES);
-                    return ErrorCode::SaveCorrupted;
-                }
-                for (uint32_t i = 0; i < count; ++i) {
-                    uint32_t cityIndex = buf.readU32();
-                    uint32_t queueSize = buf.readU32();
-                    if (queueSize > MAX_QUEUE) {
-                        LOG_ERROR("Serializer: production queue size %u exceeds MAX_QUEUE %zu",
-                                  queueSize, MAX_QUEUE);
-                        return ErrorCode::SaveCorrupted;
-                    }
-
-                    aoc::sim::ProductionQueueComponent queue{};
-                    for (uint32_t j = 0; j < queueSize; ++j) {
-                        aoc::sim::ProductionQueueItem item{};
-                        item.type = static_cast<aoc::sim::ProductionItemType>(buf.readU8());
-                        item.itemId = buf.readU16();
-                        item.name = buf.readString();
-                        item.totalCost = buf.readF32();
-                        item.progress = buf.readF32();
-                        queue.queue.push_back(std::move(item));
-                    }
-
-                    if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
-                        loadedCities[cityIndex]->production().queue = std::move(queue.queue);
-                    }
-                }
-                break;
-            }
-            case SectionId::Districts: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    uint32_t cityIndex = buf.readU32();
-                    uint32_t districtCount = buf.readU32();
-                    if (districtCount > MAX_DISTRICTS) {
-                        LOG_ERROR("Serializer: district count %u exceeds MAX_DISTRICTS %zu",
-                                  districtCount, MAX_DISTRICTS);
-                        return ErrorCode::SaveCorrupted;
-                    }
-
-                    aoc::sim::CityDistrictsComponent districts{};
-                    for (uint32_t d = 0; d < districtCount; ++d) {
-                        aoc::sim::CityDistrictsComponent::PlacedDistrict dist{};
-                        dist.type = static_cast<aoc::sim::DistrictType>(buf.readU8());
-                        dist.location.q = buf.readI32();
-                        dist.location.r = buf.readI32();
-                        uint32_t buildingCount = buf.readU32();
-                        if (buildingCount > MAX_DISTRICT_BUILDINGS
-                            || !buf.canReadRecords(buildingCount, 2)) {
-                            LOG_ERROR("Serializer: district building count %u exceeds MAX_DISTRICT_BUILDINGS %zu or file size",
-                                      buildingCount, MAX_DISTRICT_BUILDINGS);
-                            return ErrorCode::SaveCorrupted;
-                        }
-                        dist.buildings.reserve(buildingCount);
-                        for (uint32_t b = 0; b < buildingCount && !buf.isCorrupt(); ++b) {
-                            dist.buildings.push_back(BuildingId{buf.readU16()});
-                        }
-                        districts.districts.push_back(std::move(dist));
-                    }
-
-                    if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
-                        loadedCities[cityIndex]->districts() = std::move(districts);
-                    }
-                }
-                break;
-            }
-            case SectionId::MonetaryState: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    PlayerId owner = buf.readU8();
-                    aoc::game::Player* player = gameState.player(owner);
-                    aoc::sim::MonetaryStateComponent m{};
-                    m.owner = owner;
-                    m.system = static_cast<aoc::sim::MonetarySystemType>(buf.readU8());
-                    m.moneySupply = buf.readI64();
-                    m.treasury = buf.readI64();
-                    m.copperCoinReserves = buf.readI32();
-                    m.silverCoinReserves = buf.readI32();
-                    m.goldBarReserves = buf.readI32();
-                    m.effectiveCoinTier = static_cast<aoc::sim::CoinTier>(buf.readU8());
-                    m.goldBackingRatio = buf.readF32();
-                    m.inflationRate = buf.readF32();
-                    m.priceLevel = buf.readF32();
-                    m.interestRate = buf.readF32();
-                    m.reserveRequirement = buf.readF32();
-                    m.taxRate = buf.readF32();
-                    m.governmentSpending = buf.readI64();
-                    m.governmentDebt = buf.readI64();
-                    m.taxRevenue = buf.readI64();
-                    m.deficit = buf.readI64();
-                    m.gdp = buf.readI64();
-                    m.velocityOfMoney = buf.readF32();
-                    m.debasement.debasementRatio = buf.readF32();
-                    m.debasement.turnsDebased = buf.readI32();
-                    m.debasement.discoveredByPartners = buf.readU8() != 0;
-                    m.turnsInCurrentSystem = buf.readI32();
-                    if (player != nullptr) {
-                        player->monetary() = std::move(m);
-                    }
-                }
-                break;
-            }
-            case SectionId::GovernmentState: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    PlayerId owner = buf.readU8();
-                    aoc::game::Player* player = gameState.player(owner);
-                    aoc::sim::PlayerGovernmentComponent gov{};
-                    gov.owner = owner;
-                    gov.government = static_cast<aoc::sim::GovernmentType>(buf.readU8());
-                    for (uint8_t s = 0; s < aoc::sim::MAX_POLICY_SLOTS; ++s) {
-                        gov.activePolicies[s] = static_cast<int8_t>(buf.readU8());
-                    }
-                    gov.unlockedGovernments = buf.readU16();
-                    gov.unlockedPolicies = buf.readU32();
-                    gov.anarchyTurnsRemaining = buf.readI32();
-                    gov.activeAction = static_cast<aoc::sim::GovernmentAction>(buf.readU8());
-                    gov.actionTurnsRemaining = buf.readI32();
-                    if (player != nullptr) {
-                        player->government() = std::move(gov);
-                    }
-                }
-                break;
-            }
-            case SectionId::VictoryState: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    PlayerId owner = buf.readU8();
-                    aoc::game::Player* player = gameState.player(owner);
-                    aoc::sim::VictoryTrackerComponent v{};
-                    v.owner = owner;
-                    v.scienceProgress = buf.readI32();
-                    v.totalCultureAccumulated = buf.readF32();
-                    v.score = buf.readI32();
-                    for (int32_t c = 0; c < aoc::sim::CSI_CATEGORY_COUNT; ++c) {
-                        v.categoryScores[c] = buf.readF32();
-                    }
-                    v.tradeNetworkMultiplier = buf.readF32();
-                    v.financialIntegrationMult = buf.readF32();
-                    v.diplomaticWebMult = buf.readF32();
-                    v.compositeCSI = buf.readF32();
-                    v.eraVictoryPoints = buf.readI32();
-                    v.erasEvaluated = buf.readI32();
-                    (void)buf.readI32();   // legacy integrationProgress
-                    (void)buf.readU8();    // legacy integrationComplete
-                    v.activeCollapse = static_cast<aoc::sim::CollapseType>(buf.readU8());
-                    v.peakGDP = buf.readI32();
-                    v.turnsGDPBelowHalf = buf.readI32();
-                    v.turnsLowLoyalty = buf.readI32();
-                    v.isEliminated = buf.readU8() != 0;
-                    if (player != nullptr) {
-                        player->victoryTracker() = std::move(v);
-                    }
-                }
-                break;
-            }
-            case SectionId::Stockpiles: {
-                // WP-C2 save migration: remap deprecated luxury IDs that
-                // were cut from placement (PEARLS, TOBACCO, IVORY, INCENSE,
-                // TEA, COFFEE, GEMS, GOLD_CONTACTS) onto still-active
-                // goods so older saves load without orphan stockpile
-                // entries. IDs themselves remain reserved in the enum.
-                auto remapDeprecated = [](uint16_t id) -> uint16_t {
-                    switch (id) {
-                        case 21:  return aoc::sim::goods::SILVER_ORE;   // GEMS → SILVER
-                        case 24:  return aoc::sim::goods::SPICES;       // IVORY → SPICES
-                        case 28:  return aoc::sim::goods::SPICES;       // INCENSE → SPICES
-                        case 31:  return aoc::sim::goods::FISH;         // PEARLS → FISH
-                        case 32:  return aoc::sim::goods::SUGAR;        // TEA → SUGAR
-                        case 33:  return aoc::sim::goods::SUGAR;        // COFFEE → SUGAR
-                        case 34:  return aoc::sim::goods::SUGAR;        // TOBACCO → SUGAR
-                        case 82:  return aoc::sim::goods::SEMICONDUCTORS; // GOLD_CONTACTS → SEMICONDUCTORS
-                        default:  return id;
-                    }
-                };
-
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    uint32_t cityIndex = buf.readU32();
-                    uint32_t goodsCount = buf.readU32();
-
-                    aoc::sim::CityStockpileComponent stockpile{};
-                    for (uint32_t g = 0; g < goodsCount; ++g) {
-                        uint16_t goodId = buf.readU16();
-                        int32_t amount = buf.readI32();
-                        const uint16_t mapped = remapDeprecated(goodId);
-                        stockpile.goods[mapped] += amount;
-                    }
-                    // WP-O export buffer + idle counters.
-                    uint32_t bufCount = buf.readU32();
-                    for (uint32_t b = 0; b < bufCount; ++b) {
-                        uint16_t goodId = buf.readU16();
-                        int32_t amount = buf.readI32();
-                        int32_t idle   = buf.readI32();
-                        const uint16_t mapped = remapDeprecated(goodId);
-                        stockpile.exportBuffer[mapped] += amount;
-                        stockpile.exportBufferIdleTurns[mapped] = idle;
-                    }
-
-                    if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
-                        loadedCities[cityIndex]->stockpile() = std::move(stockpile);
-                    }
-                }
-                break;
-            }
-            // ==============================================================
-            // v4 section readers
-            // ==============================================================
-            case SectionId::PlayerState: {
-                // --- PlayerCivilizationComponent ---
-                uint32_t civCount = buf.readU32();
-                for (uint32_t i = 0; i < civCount; ++i) {
-                    PlayerId owner = buf.readU8();
-                    uint8_t civId = buf.readU8();
-                    aoc::game::Player* player = gameState.player(owner);
-                    if (player != nullptr) {
-                        player->setCivId(static_cast<aoc::sim::CivId>(civId));
-                    }
-                }
-
-                // --- PlayerEraComponent ---
-                uint32_t eraCount = buf.readU32();
-                for (uint32_t i = 0; i < eraCount; ++i) {
-                    PlayerId owner = buf.readU8();
-                    EraId eraId{buf.readU16()};
-                    aoc::game::Player* player = gameState.player(owner);
-                    if (player != nullptr) {
-                        player->era().currentEra = eraId;
-                    }
-                }
-
-                // --- PlayerEconomyComponent ---
-                uint32_t econCount = buf.readU32();
-                for (uint32_t i = 0; i < econCount; ++i) {
-                    PlayerId owner = buf.readU8();
-                    int64_t treasury = buf.readI64();
-                    int64_t incomePerTurn = buf.readI64();
-                    aoc::game::Player* player = gameState.player(owner);
-                    if (player != nullptr) {
-                        player->economy().treasury = treasury;
-                        player->economy().incomePerTurn = incomePerTurn;
-                    }
-                }
-
-                // --- PlayerGreatPeopleComponent ---
-                constexpr std::size_t GP_TYPE_COUNT =
-                    static_cast<std::size_t>(aoc::sim::GreatPersonType::Count);
-                uint32_t gpCount = buf.readU32();
-                for (uint32_t i = 0; i < gpCount; ++i) {
-                    PlayerId owner = buf.readU8();
-                    aoc::game::Player* player = gameState.player(owner);
-                    for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
-                        float points = buf.readF32();
-                        if (player != nullptr) { player->greatPeople().points[t] = points; }
-                    }
-                    for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
-                        int32_t recruited = buf.readI32();
-                        if (player != nullptr) { player->greatPeople().recruited[t] = recruited; }
-                    }
-                    // H3.8 exhausted flags (introduced in SAVE_VERSION 6).
-                    for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
-                        uint8_t flag = buf.readU8();
-                        if (player != nullptr) {
-                            player->greatPeople().exhausted[t] = (flag != 0);
-                        }
-                    }
-                    // WP-A3: permanent Merchant trade slots + Scientist pulse.
-                    int32_t xts = buf.readI32();
-                    float   psa = buf.readF32();
-                    int32_t pst = buf.readI32();
-                    if (player != nullptr) {
-                        player->greatPeople().extraTradeSlots    = xts;
-                        player->greatPeople().pulseScienceAmount = psa;
-                        player->greatPeople().pulseScienceTurns  = pst;
-                    }
-                }
-
-                // --- PlayerEurekaComponent ---
-                // v8+: pending-boost bitfield follows the triggered bitfield.
-                uint32_t eurekaCount = buf.readU32();
-                for (uint32_t i = 0; i < eurekaCount; ++i) {
-                    PlayerId owner = buf.readU8();
-                    uint16_t bitCount = buf.readU16();
-                    uint16_t byteCount = static_cast<uint16_t>((bitCount + 7) / 8);
-                    aoc::game::Player* player = gameState.player(owner);
                     for (uint16_t b = 0; b < byteCount; ++b) {
                         uint8_t byte = buf.readU8();
                         for (uint8_t bit = 0; bit < 8; ++bit) {
-                            uint16_t idx = static_cast<uint16_t>(b * 8 + bit);
-                            if (idx < bitCount && idx < aoc::sim::MAX_EUREKA_BOOSTS
-                                && ((byte >> bit) & 1u) != 0 && player != nullptr) {
-                                player->eureka().triggeredBoosts.set(idx);
+                            uint16_t techIdx = static_cast<uint16_t>(b * 8 + bit);
+                            if (techIdx < totalTechs && techIdx < tech.completedTechs.size()) {
+                                tech.completedTechs[techIdx] = ((byte >> bit) & 1u) != 0;
                             }
                         }
                     }
+                } else {
+                    buf.skip(byteCount);
+                }
+            }
+
+            // Civic components (one per player)
+            uint32_t civicCompCount = buf.readU32();
+            for (uint32_t i = 0; i < civicCompCount; ++i) {
+                PlayerId owner              = buf.readU8();
+                uint16_t currentResearchVal = buf.readU16();
+                float progress              = buf.readF32();
+                uint16_t totalCivics        = buf.readU16();
+                uint16_t byteCount          = static_cast<uint16_t>((totalCivics + 7) / 8);
+
+                aoc::game::Player* player = gameState.player(owner);
+                if (player != nullptr) {
+                    aoc::sim::PlayerCivicComponent& civic = player->civics();
+                    civic.initialize();
+                    civic.currentResearch  = CivicId{currentResearchVal};
+                    civic.researchProgress = progress;
+
                     for (uint16_t b = 0; b < byteCount; ++b) {
                         uint8_t byte = buf.readU8();
                         for (uint8_t bit = 0; bit < 8; ++bit) {
-                            uint16_t idx = static_cast<uint16_t>(b * 8 + bit);
-                            if (idx < bitCount && idx < aoc::sim::MAX_EUREKA_BOOSTS
-                                && ((byte >> bit) & 1u) != 0 && player != nullptr) {
-                                player->eureka().pendingBoosts.set(idx);
+                            uint16_t civicIdx = static_cast<uint16_t>(b * 8 + bit);
+                            if (civicIdx < totalCivics && civicIdx < civic.completedCivics.size()) {
+                                civic.completedCivics[civicIdx] = ((byte >> bit) & 1u) != 0;
                             }
                         }
                     }
+                } else {
+                    buf.skip(byteCount);
                 }
-
-                // --- PlayerWarComponent (legacy: skip) ---
-                uint32_t warCompCount = buf.readU32();
-                for (uint32_t i = 0; i < warCompCount; ++i) {
-                    [[maybe_unused]] uint8_t owner = buf.readU8();
-                    uint32_t warCount = buf.readU32();
-                    for (uint32_t w = 0; w < warCount; ++w) {
-                        (void)buf.readU8();  // aggressor
-                        (void)buf.readU8();  // defender
-                        (void)buf.readU8();  // casusBelli
-                        (void)buf.readU32(); // startTurn
-                        (void)buf.readI32(); // aggressorWarScore
-                        (void)buf.readI32(); // defenderWarScore
-                    }
-                }
-                break;
             }
-            case SectionId::Diplomacy: {
-                uint8_t playerCount = buf.readU8();
-                diplomacy.initialize(playerCount);
-
-                for (uint8_t a = 0; a < playerCount; ++a) {
-                    for (uint8_t b = a + 1; b < playerCount; ++b) {
-                        aoc::sim::PairwiseRelation& rel = diplomacy.relation(a, b);
-                        rel.baseScore = buf.readI32();
-                        rel.isAtWar = buf.readU8() != 0;
-                        rel.hasOpenBorders = buf.readU8() != 0;
-                        rel.hasDefensiveAlliance = buf.readU8() != 0;
-                        // v5: alliance bitmask + per-type state + cooldowns
-                        const uint8_t allianceBits = buf.readU8();
-                        rel.hasMilitaryAlliance  = (allianceBits & 0x01) != 0;
-                        rel.hasResearchAgreement = (allianceBits & 0x02) != 0;
-                        rel.hasEconomicAlliance  = (allianceBits & 0x04) != 0;
-                        rel.hasCulturalAlliance  = (allianceBits & 0x08) != 0;
-                        rel.hasReligiousAlliance = (allianceBits & 0x10) != 0;
-                        for (aoc::sim::AllianceState& st : rel.alliances) {
-                            st.type        = static_cast<aoc::sim::AllianceType>(buf.readU8());
-                            st.level       = static_cast<aoc::sim::AllianceLevel>(buf.readU8());
-                            st.turnsActive = buf.readI32();
-                        }
-                        rel.lastAllianceFormTurn      = buf.readI32();
-                        rel.allianceBreakWarningTurns = buf.readI32();
-                        rel.lastCasusBelli            =
-                            static_cast<aoc::sim::CasusBelliType>(buf.readU8());
-                        // Mirror new fields to (b,a) direction so the matrix is
-                        // fully symmetric right after load. Runtime code relies on
-                        // both directions holding the same alliance state.
-                        aoc::sim::PairwiseRelation& mirror = diplomacy.relation(b, a);
-                        mirror.hasDefensiveAlliance    = rel.hasDefensiveAlliance;
-                        mirror.hasMilitaryAlliance     = rel.hasMilitaryAlliance;
-                        mirror.hasResearchAgreement    = rel.hasResearchAgreement;
-                        mirror.hasEconomicAlliance     = rel.hasEconomicAlliance;
-                        mirror.hasCulturalAlliance     = rel.hasCulturalAlliance;
-                        mirror.hasReligiousAlliance    = rel.hasReligiousAlliance;
-                        mirror.alliances               = rel.alliances;
-                        mirror.lastAllianceFormTurn    = rel.lastAllianceFormTurn;
-                        mirror.allianceBreakWarningTurns = rel.allianceBreakWarningTurns;
-                        mirror.lastCasusBelli          = rel.lastCasusBelli;
-                        uint32_t modCount = buf.readU32();
-                        // Min record: string length prefix (u16) + two i32.
-                        if (modCount > MAX_RELATION_MODIFIERS
-                            || !buf.canReadRecords(modCount, 10)) {
-                            LOG_ERROR("Serializer: relation modifier count %u exceeds MAX_RELATION_MODIFIERS %zu or file size",
-                                      modCount, MAX_RELATION_MODIFIERS);
-                            return ErrorCode::SaveCorrupted;
-                        }
-                        rel.modifiers.reserve(modCount);
-                        for (uint32_t m = 0; m < modCount && !buf.isCorrupt(); ++m) {
-                            aoc::sim::RelationModifier mod{};
-                            mod.reason = buf.readString();
-                            mod.amount = buf.readI32();
-                            mod.turnsRemaining = buf.readI32();
-                            rel.modifiers.push_back(std::move(mod));
-                        }
-                        // Reputation modifiers (political reputation system)
-                        uint32_t repModCount = buf.readU32();
-                        if (repModCount > MAX_RELATION_MODIFIERS
-                            || !buf.canReadRecords(repModCount, 8)) {
-                            LOG_ERROR("Serializer: reputation modifier count %u exceeds MAX_RELATION_MODIFIERS %zu or file size",
-                                      repModCount, MAX_RELATION_MODIFIERS);
-                            return ErrorCode::SaveCorrupted;
-                        }
-                        rel.reputationModifiers.reserve(repModCount);
-                        for (uint32_t m = 0; m < repModCount && !buf.isCorrupt(); ++m) {
-                            aoc::sim::ReputationModifier repMod{};
-                            repMod.amount = buf.readI32();
-                            repMod.turnsRemaining = buf.readI32();
-                            rel.reputationModifiers.push_back(repMod);
-                        }
-                        // Border violation state
-                        rel.unitsInTerritory = buf.readI32();
-                        rel.turnsWithViolation = buf.readI32();
-                        const uint8_t cbBits = buf.readU8();
-                        rel.casusBelliLand = (cbBits & 0x1) != 0;
-                        rel.casusBelliNaval = (cbBits & 0x2) != 0;
-                        rel.warningIssued = buf.readU8() != 0;
-                    }
-                }
-                break;
+            break;
+        }
+        case SectionId::ProductionQueues: {
+            uint32_t count = buf.readU32();
+            if (count > MAX_CITIES) {
+                LOG_ERROR("Serializer: production-queue city count %u exceeds MAX_CITIES %zu",
+                          count, MAX_CITIES);
+                return ErrorCode::SaveCorrupted;
             }
-            case SectionId::Market: {
-                economy.initialize();
-                uint16_t count = buf.readU16();
-                aoc::sim::Market& market = economy.market();
-                for (uint16_t i = 0; i < count; ++i) {
-                    int32_t currentPrice = buf.readI32();
-                    [[maybe_unused]] int32_t basePrice = buf.readI32();
-                    // File-controlled index: only apply to in-range goods
-                    // (audit 2026-05-10).
-                    if (i < market.goodsCount()) {
-                        market.setPrice(i, currentPrice);
-                    }
-                }
-                break;
-            }
-            case SectionId::FogOfWar: {
-                // Fog of war is recomputed from unit/city positions after load.
-                buf.skip(sectionSize);
-                break;
-            }
-            case SectionId::WonderState: {
-                // GlobalWonderTracker
-                uint8_t hasTracker = buf.readU8();
-                if (hasTracker != 0) {
-                    aoc::sim::GlobalWonderTracker& tracker = gameState.wonderTracker();
-                    for (uint8_t w = 0; w < aoc::sim::WONDER_COUNT; ++w) {
-                        tracker.builtBy[w] = buf.readU8();
-                    }
-                }
-
-                // Per-city wonders
-                uint32_t cityWonderCount = buf.readU32();
-                for (uint32_t i = 0; i < cityWonderCount; ++i) {
-                    uint32_t cityIndex = buf.readU32();
-                    uint32_t wonderCount = buf.readU32();
-                    if (wonderCount > MAX_CITY_WONDERS
-                        || !buf.canReadRecords(wonderCount, 1)) {
-                        LOG_ERROR("Serializer: city wonder count %u exceeds MAX_CITY_WONDERS %zu or file size",
-                                  wonderCount, MAX_CITY_WONDERS);
-                        return ErrorCode::SaveCorrupted;
-                    }
-
-                    aoc::sim::CityWondersComponent wonders{};
-                    wonders.wonders.reserve(wonderCount);
-                    for (uint32_t w = 0; w < wonderCount && !buf.isCorrupt(); ++w) {
-                        wonders.wonders.push_back(buf.readU8());
-                    }
-
-                    if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
-                        loadedCities[cityIndex]->wonders() = std::move(wonders);
-                    }
-                }
-                break;
-            }
-            case SectionId::MiscEntities: {
-                // --- BarbarianEncampmentComponent (not yet in GameState object model: skip) ---
-                uint32_t barbCount = buf.readU32();
-                for (uint32_t i = 0; i < barbCount; ++i) {
-                    (void)buf.readI32(); (void)buf.readI32();  // location q, r
-                    (void)buf.readI32(); (void)buf.readI32();  // spawnCooldown, unitsSpawned
-                }
-
-                // --- GreatPersonComponent (not yet in GameState object model: skip) ---
-                uint32_t gpPersonCount = buf.readU32();
-                for (uint32_t i = 0; i < gpPersonCount; ++i) {
-                    (void)buf.readU8();  // owner
-                    (void)buf.readU8();  // defId
-                    (void)buf.readI32(); (void)buf.readI32();  // position q, r
-                    (void)buf.readU8();  // isActivated
-                }
-
-                // --- SpyComponent: stored on Unit objects ---
-                uint32_t spyCount = buf.readU32();
-                for (uint32_t i = 0; i < spyCount; ++i) {
-                    PlayerId owner = buf.readU8();
-                    aoc::sim::SpyComponent comp{};
-                    comp.owner = owner;
-                    comp.location.q = buf.readI32();
-                    comp.location.r = buf.readI32();
-                    comp.currentMission = static_cast<aoc::sim::SpyMission>(buf.readU8());
-                    comp.turnsRemaining = buf.readI32();
-                    comp.experience = buf.readI32();
-                    comp.isRevealed = buf.readU8() != 0;
-
-                    // Find the matching spy unit by owner and location
-                    aoc::game::Player* player = gameState.player(owner);
-                    if (player != nullptr) {
-                        for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
-                            if (unit->position() == comp.location) {
-                                unit->spy() = comp;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                // --- UnitExperienceComponent (not yet in Unit object model: skip) ---
-                uint32_t expCount = buf.readU32();
-                for (uint32_t i = 0; i < expCount; ++i) {
-                    (void)buf.readU32();  // unitIndex
-                    (void)buf.readI32(); (void)buf.readI32();  // experience, level
-                    uint32_t promoCount = buf.readU32();
-                    for (uint32_t p = 0; p < promoCount; ++p) {
-                        (void)buf.readU16();  // PromotionId
-                    }
-                }
-                break;
-            }
-            case SectionId::CurrencyTrust: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    PlayerId owner = buf.readU8();
-                    aoc::game::Player* player = gameState.player(owner);
-                    aoc::sim::CurrencyTrustComponent ct{};
-                    ct.owner = owner;
-                    ct.trustScore = buf.readF32();
-                    ct.turnsOnFiat = buf.readI32();
-                    ct.turnsStable = buf.readI32();
-                    ct.isReserveCurrency = buf.readU8() != 0;
-                    ct.turnsAsReserve = buf.readI32();
-                    for (int32_t p = 0; p < aoc::sim::CurrencyTrustComponent::MAX_PLAYERS; ++p) {
-                        ct.bilateralTrust[p] = buf.readF32();
-                    }
-                    if (player != nullptr) {
-                        player->currencyTrust() = std::move(ct);
-                    }
-                }
-                break;
-            }
-            case SectionId::CrisisState: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    PlayerId owner = buf.readU8();
-                    aoc::game::Player* player = gameState.player(owner);
-                    aoc::sim::CurrencyCrisisComponent c{};
-                    c.owner = owner;
-                    c.activeCrisis = static_cast<aoc::sim::CrisisType>(buf.readU8());
-                    c.turnsRemaining = buf.readI32();
-                    c.turnsHighInflation = buf.readI32();
-                    c.hasDefaulted = buf.readU8() != 0;
-                    c.defaultCooldown = buf.readI32();
-                    c.reformLockoutTurns  = buf.readI32();
-                    c.reformTrustCapTurns = buf.readI32();
-                    if (player != nullptr) {
-                        player->currencyCrisis() = std::move(c);
-                    }
-                }
-                break;
-            }
-            case SectionId::BondState: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    PlayerId owner = buf.readU8();
-                    aoc::game::Player* player = gameState.player(owner);
-                    aoc::sim::PlayerBondComponent pb{};
-                    pb.owner = owner;
-                    uint32_t issuedCount = buf.readU32();
-                    if (issuedCount > MAX_BONDS || !buf.canReadRecords(issuedCount, 34)) {
-                        LOG_ERROR("Serializer: issued bond count %u exceeds MAX_BONDS %zu or file size",
-                                  issuedCount, MAX_BONDS);
-                        return ErrorCode::SaveCorrupted;
-                    }
-                    pb.issuedBonds.reserve(issuedCount);
-                    for (uint32_t j = 0; j < issuedCount && !buf.isCorrupt(); ++j) {
-                        aoc::sim::BondIssue b{};
-                        b.id = buf.readU64();
-                        b.issuer = buf.readU8();
-                        b.holder = buf.readU8();
-                        b.principal = buf.readI64();
-                        b.yieldRate = buf.readF32();
-                        b.turnsToMaturity = buf.readI32();
-                        b.accruedInterest = buf.readI64();
-                        pb.issuedBonds.push_back(b);
-                    }
-                    uint32_t heldCount = buf.readU32();
-                    if (heldCount > MAX_BONDS || !buf.canReadRecords(heldCount, 34)) {
-                        LOG_ERROR("Serializer: held bond count %u exceeds MAX_BONDS %zu or file size",
-                                  heldCount, MAX_BONDS);
-                        return ErrorCode::SaveCorrupted;
-                    }
-                    pb.heldBonds.reserve(heldCount);
-                    for (uint32_t j = 0; j < heldCount && !buf.isCorrupt(); ++j) {
-                        aoc::sim::BondIssue b{};
-                        b.id = buf.readU64();
-                        b.issuer = buf.readU8();
-                        b.holder = buf.readU8();
-                        b.principal = buf.readI64();
-                        b.yieldRate = buf.readF32();
-                        b.turnsToMaturity = buf.readI32();
-                        b.accruedInterest = buf.readI64();
-                        pb.heldBonds.push_back(b);
-                    }
-                    if (player != nullptr) {
-                        player->bonds() = std::move(pb);
-                    }
-                }
-                // Restore bond id counter so new bonds keep unique ids.
-                aoc::sim::setNextBondId(buf.readU64());
-                break;
-            }
-            case SectionId::DevaluationState: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    PlayerId owner = buf.readU8();
-                    aoc::game::Player* player = gameState.player(owner);
-                    aoc::sim::CurrencyDevaluationComponent d{};
-                    d.owner = owner;
-                    d.isDevalued = buf.readU8() != 0;
-                    d.devaluationTurnsLeft = buf.readI32();
-                    d.exportBonus = buf.readF32();
-                    d.importPenalty = buf.readF32();
-                    d.devaluationCount = buf.readI32();
-                    if (player != nullptr) {
-                        player->currencyDevaluation() = std::move(d);
-                    }
-                }
-                break;
-            }
-            case SectionId::HoardState: {
-                uint32_t count = buf.readU32();
-                // Min record: owner (u8) + position count (u32).
-                if (count > MAX_HOARDS || !buf.canReadRecords(count, 5)) {
-                    LOG_ERROR("Serializer: hoard count %u exceeds MAX_HOARDS %zu or file size",
-                              count, MAX_HOARDS);
+            for (uint32_t i = 0; i < count; ++i) {
+                uint32_t cityIndex = buf.readU32();
+                uint32_t queueSize = buf.readU32();
+                if (queueSize > MAX_QUEUE) {
+                    LOG_ERROR("Serializer: production queue size %u exceeds MAX_QUEUE %zu",
+                              queueSize, MAX_QUEUE);
                     return ErrorCode::SaveCorrupted;
                 }
-                // gameState.initialize() (run earlier in this load) seeds one
-                // default hoard per player; without clearing, every load
-                // APPENDED the saved hoards to those, doubling the collection
-                // per save/load cycle. Replace, don't append.
-                gameState.commodityHoards().clear();
-                gameState.commodityHoards().reserve(count);
-                for (uint32_t i = 0; i < count && !buf.isCorrupt(); ++i) {
-                    aoc::sim::CommodityHoardComponent h{};
-                    h.owner = buf.readU8();
-                    uint32_t posCount = buf.readU32();
-                    if (posCount > MAX_HOARD_POSITIONS
-                        || !buf.canReadRecords(posCount, 10)) {
-                        LOG_ERROR("Serializer: hoard position count %u exceeds MAX_HOARD_POSITIONS %zu or file size",
-                                  posCount, MAX_HOARD_POSITIONS);
-                        return ErrorCode::SaveCorrupted;
-                    }
-                    h.positions.reserve(posCount);
-                    for (uint32_t j = 0; j < posCount && !buf.isCorrupt(); ++j) {
-                        aoc::sim::CommodityHoardComponent::HoardPosition pos{};
-                        pos.goodId = buf.readU16();
-                        pos.amount = buf.readI32();
-                        pos.purchasePrice = buf.readI32();
-                        h.positions.push_back(pos);
-                    }
-                    gameState.commodityHoards().push_back(std::move(h));
+
+                aoc::sim::ProductionQueueComponent queue{};
+                for (uint32_t j = 0; j < queueSize; ++j) {
+                    aoc::sim::ProductionQueueItem item{};
+                    item.type      = static_cast<aoc::sim::ProductionItemType>(buf.readU8());
+                    item.itemId    = buf.readU16();
+                    item.name      = buf.readString();
+                    item.totalCost = buf.readF32();
+                    item.progress  = buf.readF32();
+                    queue.queue.push_back(std::move(item));
                 }
-                break;
-            }
-            case SectionId::ProductionExp: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    uint32_t cityIndex = buf.readU32();
-                    uint32_t mapSize = buf.readU32();
-                    aoc::sim::CityProductionExperienceComponent comp{};
-                    for (uint32_t j = 0; j < mapSize; ++j) {
-                        uint16_t recipeId = buf.readU16();
-                        int32_t exp = buf.readI32();
-                        comp.recipeExperience[recipeId] = exp;
-                    }
-                    if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
-                        loadedCities[cityIndex]->productionExperience() = std::move(comp);
-                    }
+
+                if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
+                    loadedCities[cityIndex]->production().queue = std::move(queue.queue);
                 }
-                break;
             }
-            case SectionId::BuildingLevels: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    uint32_t cityIndex = buf.readU32();
-                    uint32_t mapSize = buf.readU32();
-                    aoc::sim::CityBuildingLevelsComponent comp{};
-                    for (uint32_t j = 0; j < mapSize; ++j) {
-                        uint16_t bid = buf.readU16();
-                        int32_t lvl = buf.readI32();
-                        comp.levels[bid] = lvl;
-                    }
-                    if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
-                        loadedCities[cityIndex]->buildingLevels() = std::move(comp);
-                    }
-                }
-                break;
-            }
-            case SectionId::PollutionState: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    uint32_t cityIndex = buf.readU32();
-                    int32_t wasteAccumulated = buf.readI32();
-                    int32_t co2PerTurn = buf.readI32();
-                    float   disasterUnhappy = buf.readF32();
-                    if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
-                        loadedCities[cityIndex]->pollution().wasteAccumulated = wasteAccumulated;
-                        loadedCities[cityIndex]->pollution().co2ContributionPerTurn = co2PerTurn;
-                        loadedCities[cityIndex]->happiness().disasterUnhappiness = disasterUnhappy;
-                    }
-                }
-                break;
-            }
-            case SectionId::AutomationState: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    uint32_t cityIndex = buf.readU32();
-                    int32_t robotWorkers = buf.readI32();
-                    int32_t maintTurns = buf.readI32();
-                    if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
-                        loadedCities[cityIndex]->automation().robotWorkers = robotWorkers;
-                        loadedCities[cityIndex]->automation().turnsSinceLastMaintenance = maintTurns;
-                    }
-                }
-                break;
-            }
-            case SectionId::IndustrialState: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    PlayerId owner = buf.readU8();
-                    aoc::game::Player* player = gameState.player(owner);
-                    aoc::sim::PlayerIndustrialComponent ind{};
-                    ind.owner = owner;
-                    ind.currentRevolution = static_cast<aoc::sim::IndustrialRevolutionId>(buf.readU8());
-                    for (int32_t r = 0; r < 6; ++r) {
-                        ind.turnAchieved[r] = buf.readI32();
-                    }
-                    if (player != nullptr) {
-                        player->industrial() = std::move(ind);
-                    }
-                }
-                break;
-            }
-            case SectionId::PrestigeState: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    PlayerId owner = buf.readU8();
-                    aoc::sim::PlayerPrestigeComponent p{};
-                    p.owner      = owner;
-                    p.science    = buf.readF32();
-                    p.culture    = buf.readF32();
-                    p.faith      = buf.readF32();
-                    p.trade      = buf.readF32();
-                    p.diplomacy  = buf.readF32();
-                    p.military   = buf.readF32();
-                    p.governance = buf.readF32();
-                    p.total      = buf.readF32();
-                    aoc::game::Player* player = gameState.player(owner);
-                    if (player != nullptr) { player->prestige() = p; }
-                }
-                break;
-            }
-            case SectionId::TourismState: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    PlayerId owner = buf.readU8();
-                    aoc::sim::PlayerTourismComponent t{};
-                    t.owner             = owner;
-                    t.tourismPerTurn    = buf.readF32();
-                    t.cumulativeTourism = buf.readF32();
-                    t.foreignTourists   = buf.readI32();
-                    t.domesticTourists  = buf.readI32();
-                    t.greatWorkCount    = buf.readI32();
-                    t.wonderCount       = buf.readI32();
-                    t.nationalParkCount = buf.readI32();
-                    aoc::game::Player* player = gameState.player(owner);
-                    if (player != nullptr) { player->tourism() = t; }
-                }
-                break;
-            }
-            case SectionId::SpaceRaceState: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    PlayerId owner = buf.readU8();
-                    aoc::sim::PlayerSpaceRaceComponent sr{};
-                    sr.owner = owner;
-                    uint8_t storedCount = buf.readU8();
-                    const int32_t limit = std::min<int32_t>(
-                        static_cast<int32_t>(storedCount), aoc::sim::SPACE_PROJECT_COUNT);
-                    for (int32_t j = 0; j < limit; ++j) {
-                        sr.completed[j] = (buf.readU8() != 0);
-                        sr.progress[j]  = buf.readF32();
-                    }
-                    // Older save with more projects than the current build
-                    // supports: consume and discard the extras.
-                    for (int32_t j = limit; j < static_cast<int32_t>(storedCount); ++j) {
-                        (void)buf.readU8();
-                        (void)buf.readF32();
-                    }
-                    aoc::game::Player* player = gameState.player(owner);
-                    if (player != nullptr) { player->spaceRace() = sr; }
-                }
-                break;
-            }
-            case SectionId::GrievanceState: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    PlayerId owner = buf.readU8();
-                    uint32_t n = buf.readU32();
-                    if (n > MAX_GRIEVANCES || !buf.canReadRecords(n, 10)) {
-                        LOG_ERROR("Serializer: grievance count %u exceeds MAX_GRIEVANCES %zu or file size",
-                                  n, MAX_GRIEVANCES);
-                        return ErrorCode::SaveCorrupted;
-                    }
-                    aoc::sim::PlayerGrievanceComponent g{};
-                    g.owner = owner;
-                    g.grievances.reserve(n);
-                    for (uint32_t j = 0; j < n && !buf.isCorrupt(); ++j) {
-                        aoc::sim::Grievance gr{};
-                        gr.type            = static_cast<aoc::sim::GrievanceType>(buf.readU8());
-                        gr.against         = buf.readU8();
-                        gr.severity        = buf.readI32();
-                        gr.turnsRemaining  = buf.readI32();
-                        g.grievances.push_back(gr);
-                    }
-                    aoc::game::Player* player = gameState.player(owner);
-                    if (player != nullptr) { player->grievances() = std::move(g); }
-                }
-                break;
-            }
-            case SectionId::WarWearinessState: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    PlayerId owner = buf.readU8();
-                    aoc::sim::PlayerWarWearinessComponent w{};
-                    w.owner     = owner;
-                    w.weariness = buf.readF32();
-                    uint32_t mapSize = buf.readU32();
-                    for (uint32_t j = 0; j < mapSize; ++j) {
-                        PlayerId key = buf.readU8();
-                        int32_t  val = buf.readI32();
-                        w.turnsAtWar[key] = val;
-                    }
-                    aoc::game::Player* player = gameState.player(owner);
-                    if (player != nullptr) { player->warWeariness() = std::move(w); }
-                }
-                break;
-            }
-            case SectionId::StockPortfolioState: {
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    PlayerId owner = buf.readU8();
-                    aoc::sim::PlayerStockPortfolioComponent p{};
-                    p.owner = owner;
-                    uint32_t invCount = buf.readU32();
-                    if (invCount > MAX_INVESTMENTS || !buf.canReadRecords(invCount, 30)) {
-                        LOG_ERROR("Serializer: investment count %u exceeds MAX_INVESTMENTS %zu or file size",
-                                  invCount, MAX_INVESTMENTS);
-                        return ErrorCode::SaveCorrupted;
-                    }
-                    p.investments.reserve(invCount);
-                    for (uint32_t j = 0; j < invCount && !buf.isCorrupt(); ++j) {
-                        aoc::sim::EquityInvestment inv{};
-                        inv.investor          = buf.readU8();
-                        inv.target            = buf.readU8();
-                        inv.principalInvested = buf.readI64();
-                        inv.currentValue      = buf.readI64();
-                        inv.totalDividends    = buf.readI64();
-                        inv.turnsHeld         = buf.readI32();
-                        p.investments.push_back(inv);
-                    }
-                    uint32_t foreignCount = buf.readU32();
-                    if (foreignCount > MAX_INVESTMENTS
-                        || !buf.canReadRecords(foreignCount, 30)) {
-                        LOG_ERROR("Serializer: foreign investment count %u exceeds MAX_INVESTMENTS %zu or file size",
-                                  foreignCount, MAX_INVESTMENTS);
-                        return ErrorCode::SaveCorrupted;
-                    }
-                    p.foreignInvestments.reserve(foreignCount);
-                    for (uint32_t j = 0; j < foreignCount && !buf.isCorrupt(); ++j) {
-                        aoc::sim::EquityInvestment inv{};
-                        inv.investor          = buf.readU8();
-                        inv.target            = buf.readU8();
-                        inv.principalInvested = buf.readI64();
-                        inv.currentValue      = buf.readI64();
-                        inv.totalDividends    = buf.readI64();
-                        inv.turnsHeld         = buf.readI32();
-                        p.foreignInvestments.push_back(inv);
-                    }
-                    aoc::game::Player* player = gameState.player(owner);
-                    if (player != nullptr) { player->stockPortfolio() = std::move(p); }
-                }
-                break;
-            }
-            case SectionId::ConfederationState: {
-                // Confederation removed 2026-04-27. Skip section to keep
-                // backwards-compat with old saves: read count + per-record
-                // bytes and discard.
-                uint32_t count = buf.readU32();
-                for (uint32_t i = 0; i < count; ++i) {
-                    (void)buf.readU32();      // id
-                    (void)buf.readI32();      // formedTurn
-                    (void)buf.readU8();       // isActive
-                    uint32_t memberCount = buf.readU32();
-                    for (uint32_t m = 0; m < memberCount; ++m) {
-                        (void)buf.readU8();
-                    }
-                }
-                break;
-            }
-            case SectionId::ElectricityAgreementState: {
-                uint32_t count = buf.readU32();
-                if (count > MAX_ELECTRICITY_AGREEMENTS
-                    || !buf.canReadRecords(count, 27)) {
-                    LOG_ERROR("Serializer: electricity agreement count %u exceeds MAX_ELECTRICITY_AGREEMENTS %zu or file size",
-                              count, MAX_ELECTRICITY_AGREEMENTS);
+            break;
+        }
+        case SectionId::Districts: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                uint32_t cityIndex     = buf.readU32();
+                uint32_t districtCount = buf.readU32();
+                if (districtCount > MAX_DISTRICTS) {
+                    LOG_ERROR("Serializer: district count %u exceeds MAX_DISTRICTS %zu",
+                              districtCount, MAX_DISTRICTS);
                     return ErrorCode::SaveCorrupted;
                 }
-                std::vector<aoc::sim::ElectricityAgreementComponent>& agrs =
-                    gameState.electricityAgreements();
-                agrs.clear();
-                agrs.reserve(count);
-                for (uint32_t i = 0; i < count && !buf.isCorrupt(); ++i) {
-                    aoc::sim::ElectricityAgreementComponent a{};
-                    a.id                  = buf.readU32();
-                    a.seller              = buf.readU8();
-                    a.buyer               = buf.readU8();
-                    a.energyPerTurn       = buf.readI32();
-                    a.goldPerTurn         = buf.readI32();
-                    a.formedTurn          = buf.readI32();
-                    a.endTurn             = buf.readI32();
-                    a.isActive            = (buf.readU8() != 0u);
-                    a.lastDeliveredEnergy = buf.readI32();
-                    agrs.push_back(a);
+
+                aoc::sim::CityDistrictsComponent districts{};
+                for (uint32_t d = 0; d < districtCount; ++d) {
+                    aoc::sim::CityDistrictsComponent::PlacedDistrict dist{};
+                    dist.type              = static_cast<aoc::sim::DistrictType>(buf.readU8());
+                    dist.location.q        = buf.readI32();
+                    dist.location.r        = buf.readI32();
+                    uint32_t buildingCount = buf.readU32();
+                    if (buildingCount > MAX_DISTRICT_BUILDINGS ||
+                        !buf.canReadRecords(buildingCount, 2)) {
+                        LOG_ERROR("Serializer: district building count %u exceeds "
+                                  "MAX_DISTRICT_BUILDINGS %zu or file size",
+                                  buildingCount, MAX_DISTRICT_BUILDINGS);
+                        return ErrorCode::SaveCorrupted;
+                    }
+                    dist.buildings.reserve(buildingCount);
+                    for (uint32_t b = 0; b < buildingCount && !buf.isCorrupt(); ++b) {
+                        dist.buildings.push_back(BuildingId{buf.readU16()});
+                    }
+                    districts.districts.push_back(std::move(dist));
                 }
-                break;
+
+                if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
+                    loadedCities[cityIndex]->districts() = std::move(districts);
+                }
             }
-            default:
-                // Unknown section: skip for forward compatibility
-                buf.skip(sectionSize);
-                break;
+            break;
+        }
+        case SectionId::MonetaryState: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                PlayerId owner            = buf.readU8();
+                aoc::game::Player* player = gameState.player(owner);
+                aoc::sim::MonetaryStateComponent m{};
+                m.owner              = owner;
+                m.system             = static_cast<aoc::sim::MonetarySystemType>(buf.readU8());
+                m.moneySupply        = buf.readI64();
+                m.treasury           = buf.readI64();
+                m.copperCoinReserves = buf.readI32();
+                m.silverCoinReserves = buf.readI32();
+                m.goldBarReserves    = buf.readI32();
+                m.effectiveCoinTier  = static_cast<aoc::sim::CoinTier>(buf.readU8());
+                m.goldBackingRatio   = buf.readF32();
+                m.inflationRate      = buf.readF32();
+                m.priceLevel         = buf.readF32();
+                m.interestRate       = buf.readF32();
+                m.reserveRequirement = buf.readF32();
+                m.taxRate            = buf.readF32();
+                m.governmentSpending = buf.readI64();
+                m.governmentDebt     = buf.readI64();
+                m.taxRevenue         = buf.readI64();
+                m.deficit            = buf.readI64();
+                m.gdp                = buf.readI64();
+                m.velocityOfMoney    = buf.readF32();
+                m.debasement.debasementRatio      = buf.readF32();
+                m.debasement.turnsDebased         = buf.readI32();
+                m.debasement.discoveredByPartners = buf.readU8() != 0;
+                m.turnsInCurrentSystem            = buf.readI32();
+                if (player != nullptr) {
+                    player->monetary() = std::move(m);
+                }
+            }
+            break;
+        }
+        case SectionId::GovernmentState: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                PlayerId owner            = buf.readU8();
+                aoc::game::Player* player = gameState.player(owner);
+                aoc::sim::PlayerGovernmentComponent gov{};
+                gov.owner      = owner;
+                gov.government = static_cast<aoc::sim::GovernmentType>(buf.readU8());
+                for (uint8_t s = 0; s < aoc::sim::MAX_POLICY_SLOTS; ++s) {
+                    gov.activePolicies[s] = static_cast<int8_t>(buf.readU8());
+                }
+                gov.unlockedGovernments   = buf.readU16();
+                gov.unlockedPolicies      = buf.readU32();
+                gov.anarchyTurnsRemaining = buf.readI32();
+                gov.activeAction          = static_cast<aoc::sim::GovernmentAction>(buf.readU8());
+                gov.actionTurnsRemaining  = buf.readI32();
+                if (player != nullptr) {
+                    player->government() = std::move(gov);
+                }
+            }
+            break;
+        }
+        case SectionId::VictoryState: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                PlayerId owner            = buf.readU8();
+                aoc::game::Player* player = gameState.player(owner);
+                aoc::sim::VictoryTrackerComponent v{};
+                v.owner                   = owner;
+                v.scienceProgress         = buf.readI32();
+                v.totalCultureAccumulated = buf.readF32();
+                v.score                   = buf.readI32();
+                for (int32_t c = 0; c < aoc::sim::CSI_CATEGORY_COUNT; ++c) {
+                    v.categoryScores[c] = buf.readF32();
+                }
+                v.tradeNetworkMultiplier   = buf.readF32();
+                v.financialIntegrationMult = buf.readF32();
+                v.diplomaticWebMult        = buf.readF32();
+                v.compositeCSI             = buf.readF32();
+                v.eraVictoryPoints         = buf.readI32();
+                v.erasEvaluated            = buf.readI32();
+                (void)buf.readI32(); // legacy integrationProgress
+                (void)buf.readU8();  // legacy integrationComplete
+                v.activeCollapse    = static_cast<aoc::sim::CollapseType>(buf.readU8());
+                v.peakGDP           = buf.readI32();
+                v.turnsGDPBelowHalf = buf.readI32();
+                v.turnsLowLoyalty   = buf.readI32();
+                v.isEliminated      = buf.readU8() != 0;
+                if (player != nullptr) {
+                    player->victoryTracker() = std::move(v);
+                }
+            }
+            break;
+        }
+        case SectionId::Stockpiles: {
+            // WP-C2 save migration: remap deprecated luxury IDs that
+            // were cut from placement (PEARLS, TOBACCO, IVORY, INCENSE,
+            // TEA, COFFEE, GEMS, GOLD_CONTACTS) onto still-active
+            // goods so older saves load without orphan stockpile
+            // entries. IDs themselves remain reserved in the enum.
+            auto remapDeprecated = [](uint16_t id) -> uint16_t {
+                switch (id) {
+                case 21:
+                    return aoc::sim::goods::SILVER_ORE; // GEMS → SILVER
+                case 24:
+                    return aoc::sim::goods::SPICES; // IVORY → SPICES
+                case 28:
+                    return aoc::sim::goods::SPICES; // INCENSE → SPICES
+                case 31:
+                    return aoc::sim::goods::FISH; // PEARLS → FISH
+                case 32:
+                    return aoc::sim::goods::SUGAR; // TEA → SUGAR
+                case 33:
+                    return aoc::sim::goods::SUGAR; // COFFEE → SUGAR
+                case 34:
+                    return aoc::sim::goods::SUGAR; // TOBACCO → SUGAR
+                case 82:
+                    return aoc::sim::goods::SEMICONDUCTORS; // GOLD_CONTACTS → SEMICONDUCTORS
+                default:
+                    return id;
+                }
+            };
+
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                uint32_t cityIndex  = buf.readU32();
+                uint32_t goodsCount = buf.readU32();
+
+                aoc::sim::CityStockpileComponent stockpile{};
+                for (uint32_t g = 0; g < goodsCount; ++g) {
+                    uint16_t goodId       = buf.readU16();
+                    int32_t amount        = buf.readI32();
+                    const uint16_t mapped = remapDeprecated(goodId);
+                    stockpile.goods[mapped] += amount;
+                }
+                // WP-O export buffer + idle counters.
+                uint32_t bufCount = buf.readU32();
+                for (uint32_t b = 0; b < bufCount; ++b) {
+                    uint16_t goodId       = buf.readU16();
+                    int32_t amount        = buf.readI32();
+                    int32_t idle          = buf.readI32();
+                    const uint16_t mapped = remapDeprecated(goodId);
+                    stockpile.exportBuffer[mapped] += amount;
+                    stockpile.exportBufferIdleTurns[mapped] = idle;
+                }
+
+                if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
+                    loadedCities[cityIndex]->stockpile() = std::move(stockpile);
+                }
+            }
+            break;
+        }
+        // ==============================================================
+        // v4 section readers
+        // ==============================================================
+        case SectionId::PlayerState: {
+            // --- PlayerCivilizationComponent ---
+            uint32_t civCount = buf.readU32();
+            for (uint32_t i = 0; i < civCount; ++i) {
+                PlayerId owner            = buf.readU8();
+                uint8_t civId             = buf.readU8();
+                aoc::game::Player* player = gameState.player(owner);
+                if (player != nullptr) {
+                    player->setCivId(static_cast<aoc::sim::CivId>(civId));
+                }
+            }
+
+            // --- PlayerEraComponent ---
+            uint32_t eraCount = buf.readU32();
+            for (uint32_t i = 0; i < eraCount; ++i) {
+                PlayerId owner = buf.readU8();
+                EraId eraId{buf.readU16()};
+                aoc::game::Player* player = gameState.player(owner);
+                if (player != nullptr) {
+                    player->era().currentEra = eraId;
+                }
+            }
+
+            // --- PlayerEconomyComponent ---
+            uint32_t econCount = buf.readU32();
+            for (uint32_t i = 0; i < econCount; ++i) {
+                PlayerId owner            = buf.readU8();
+                int64_t treasury          = buf.readI64();
+                int64_t incomePerTurn     = buf.readI64();
+                aoc::game::Player* player = gameState.player(owner);
+                if (player != nullptr) {
+                    player->economy().treasury      = treasury;
+                    player->economy().incomePerTurn = incomePerTurn;
+                }
+            }
+
+            // --- PlayerGreatPeopleComponent ---
+            constexpr std::size_t GP_TYPE_COUNT =
+                static_cast<std::size_t>(aoc::sim::GreatPersonType::Count);
+            uint32_t gpCount = buf.readU32();
+            for (uint32_t i = 0; i < gpCount; ++i) {
+                PlayerId owner            = buf.readU8();
+                aoc::game::Player* player = gameState.player(owner);
+                for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
+                    float points = buf.readF32();
+                    if (player != nullptr) {
+                        player->greatPeople().points[t] = points;
+                    }
+                }
+                for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
+                    int32_t recruited = buf.readI32();
+                    if (player != nullptr) {
+                        player->greatPeople().recruited[t] = recruited;
+                    }
+                }
+                // H3.8 exhausted flags (introduced in SAVE_VERSION 6).
+                for (std::size_t t = 0; t < GP_TYPE_COUNT; ++t) {
+                    uint8_t flag = buf.readU8();
+                    if (player != nullptr) {
+                        player->greatPeople().exhausted[t] = (flag != 0);
+                    }
+                }
+                // WP-A3: permanent Merchant trade slots + Scientist pulse.
+                int32_t xts = buf.readI32();
+                float psa   = buf.readF32();
+                int32_t pst = buf.readI32();
+                if (player != nullptr) {
+                    player->greatPeople().extraTradeSlots    = xts;
+                    player->greatPeople().pulseScienceAmount = psa;
+                    player->greatPeople().pulseScienceTurns  = pst;
+                }
+            }
+
+            // --- PlayerEurekaComponent ---
+            // v8+: pending-boost bitfield follows the triggered bitfield.
+            uint32_t eurekaCount = buf.readU32();
+            for (uint32_t i = 0; i < eurekaCount; ++i) {
+                PlayerId owner            = buf.readU8();
+                uint16_t bitCount         = buf.readU16();
+                uint16_t byteCount        = static_cast<uint16_t>((bitCount + 7) / 8);
+                aoc::game::Player* player = gameState.player(owner);
+                for (uint16_t b = 0; b < byteCount; ++b) {
+                    uint8_t byte = buf.readU8();
+                    for (uint8_t bit = 0; bit < 8; ++bit) {
+                        uint16_t idx = static_cast<uint16_t>(b * 8 + bit);
+                        if (idx < bitCount && idx < aoc::sim::MAX_EUREKA_BOOSTS &&
+                            ((byte >> bit) & 1u) != 0 && player != nullptr) {
+                            player->eureka().triggeredBoosts.set(idx);
+                        }
+                    }
+                }
+                for (uint16_t b = 0; b < byteCount; ++b) {
+                    uint8_t byte = buf.readU8();
+                    for (uint8_t bit = 0; bit < 8; ++bit) {
+                        uint16_t idx = static_cast<uint16_t>(b * 8 + bit);
+                        if (idx < bitCount && idx < aoc::sim::MAX_EUREKA_BOOSTS &&
+                            ((byte >> bit) & 1u) != 0 && player != nullptr) {
+                            player->eureka().pendingBoosts.set(idx);
+                        }
+                    }
+                }
+            }
+
+            // --- PlayerWarComponent (legacy: skip) ---
+            uint32_t warCompCount = buf.readU32();
+            for (uint32_t i = 0; i < warCompCount; ++i) {
+                [[maybe_unused]] uint8_t owner = buf.readU8();
+                uint32_t warCount              = buf.readU32();
+                for (uint32_t w = 0; w < warCount; ++w) {
+                    (void)buf.readU8();  // aggressor
+                    (void)buf.readU8();  // defender
+                    (void)buf.readU8();  // casusBelli
+                    (void)buf.readU32(); // startTurn
+                    (void)buf.readI32(); // aggressorWarScore
+                    (void)buf.readI32(); // defenderWarScore
+                }
+            }
+            break;
+        }
+        case SectionId::Diplomacy: {
+            uint8_t playerCount = buf.readU8();
+            diplomacy.initialize(playerCount);
+
+            for (uint8_t a = 0; a < playerCount; ++a) {
+                for (uint8_t b = a + 1; b < playerCount; ++b) {
+                    aoc::sim::PairwiseRelation& rel = diplomacy.relation(a, b);
+                    rel.baseScore                   = buf.readI32();
+                    rel.isAtWar                     = buf.readU8() != 0;
+                    rel.hasOpenBorders              = buf.readU8() != 0;
+                    rel.hasDefensiveAlliance        = buf.readU8() != 0;
+                    // v5: alliance bitmask + per-type state + cooldowns
+                    const uint8_t allianceBits = buf.readU8();
+                    rel.hasMilitaryAlliance    = (allianceBits & 0x01) != 0;
+                    rel.hasResearchAgreement   = (allianceBits & 0x02) != 0;
+                    rel.hasEconomicAlliance    = (allianceBits & 0x04) != 0;
+                    rel.hasCulturalAlliance    = (allianceBits & 0x08) != 0;
+                    rel.hasReligiousAlliance   = (allianceBits & 0x10) != 0;
+                    for (aoc::sim::AllianceState& st : rel.alliances) {
+                        st.type        = static_cast<aoc::sim::AllianceType>(buf.readU8());
+                        st.level       = static_cast<aoc::sim::AllianceLevel>(buf.readU8());
+                        st.turnsActive = buf.readI32();
+                    }
+                    rel.lastAllianceFormTurn      = buf.readI32();
+                    rel.allianceBreakWarningTurns = buf.readI32();
+                    rel.lastCasusBelli = static_cast<aoc::sim::CasusBelliType>(buf.readU8());
+                    // Mirror new fields to (b,a) direction so the matrix is
+                    // fully symmetric right after load. Runtime code relies on
+                    // both directions holding the same alliance state.
+                    aoc::sim::PairwiseRelation& mirror = diplomacy.relation(b, a);
+                    mirror.hasDefensiveAlliance        = rel.hasDefensiveAlliance;
+                    mirror.hasMilitaryAlliance         = rel.hasMilitaryAlliance;
+                    mirror.hasResearchAgreement        = rel.hasResearchAgreement;
+                    mirror.hasEconomicAlliance         = rel.hasEconomicAlliance;
+                    mirror.hasCulturalAlliance         = rel.hasCulturalAlliance;
+                    mirror.hasReligiousAlliance        = rel.hasReligiousAlliance;
+                    mirror.alliances                   = rel.alliances;
+                    mirror.lastAllianceFormTurn        = rel.lastAllianceFormTurn;
+                    mirror.allianceBreakWarningTurns   = rel.allianceBreakWarningTurns;
+                    mirror.lastCasusBelli              = rel.lastCasusBelli;
+                    uint32_t modCount                  = buf.readU32();
+                    // Min record: string length prefix (u16) + two i32.
+                    if (modCount > MAX_RELATION_MODIFIERS || !buf.canReadRecords(modCount, 10)) {
+                        LOG_ERROR("Serializer: relation modifier count %u exceeds "
+                                  "MAX_RELATION_MODIFIERS %zu or file size",
+                                  modCount, MAX_RELATION_MODIFIERS);
+                        return ErrorCode::SaveCorrupted;
+                    }
+                    rel.modifiers.reserve(modCount);
+                    for (uint32_t m = 0; m < modCount && !buf.isCorrupt(); ++m) {
+                        aoc::sim::RelationModifier mod{};
+                        mod.reason         = buf.readString();
+                        mod.amount         = buf.readI32();
+                        mod.turnsRemaining = buf.readI32();
+                        rel.modifiers.push_back(std::move(mod));
+                    }
+                    // Reputation modifiers (political reputation system)
+                    uint32_t repModCount = buf.readU32();
+                    if (repModCount > MAX_RELATION_MODIFIERS ||
+                        !buf.canReadRecords(repModCount, 8)) {
+                        LOG_ERROR("Serializer: reputation modifier count %u exceeds "
+                                  "MAX_RELATION_MODIFIERS %zu or file size",
+                                  repModCount, MAX_RELATION_MODIFIERS);
+                        return ErrorCode::SaveCorrupted;
+                    }
+                    rel.reputationModifiers.reserve(repModCount);
+                    for (uint32_t m = 0; m < repModCount && !buf.isCorrupt(); ++m) {
+                        aoc::sim::ReputationModifier repMod{};
+                        repMod.amount         = buf.readI32();
+                        repMod.turnsRemaining = buf.readI32();
+                        rel.reputationModifiers.push_back(repMod);
+                    }
+                    // Border violation state
+                    rel.unitsInTerritory   = buf.readI32();
+                    rel.turnsWithViolation = buf.readI32();
+                    const uint8_t cbBits   = buf.readU8();
+                    rel.casusBelliLand     = (cbBits & 0x1) != 0;
+                    rel.casusBelliNaval    = (cbBits & 0x2) != 0;
+                    rel.warningIssued      = buf.readU8() != 0;
+                }
+            }
+            break;
+        }
+        case SectionId::Market: {
+            economy.initialize();
+            uint16_t count           = buf.readU16();
+            aoc::sim::Market& market = economy.market();
+            for (uint16_t i = 0; i < count; ++i) {
+                int32_t currentPrice               = buf.readI32();
+                [[maybe_unused]] int32_t basePrice = buf.readI32();
+                // File-controlled index: only apply to in-range goods
+                // (audit 2026-05-10).
+                if (i < market.goodsCount()) {
+                    market.setPrice(i, currentPrice);
+                }
+            }
+            break;
+        }
+        case SectionId::FogOfWar: {
+            // Fog of war is recomputed from unit/city positions after load.
+            buf.skip(sectionSize);
+            break;
+        }
+        case SectionId::WonderState: {
+            // GlobalWonderTracker
+            uint8_t hasTracker = buf.readU8();
+            if (hasTracker != 0) {
+                aoc::sim::GlobalWonderTracker& tracker = gameState.wonderTracker();
+                for (uint8_t w = 0; w < aoc::sim::WONDER_COUNT; ++w) {
+                    tracker.builtBy[w] = buf.readU8();
+                }
+            }
+
+            // Per-city wonders
+            uint32_t cityWonderCount = buf.readU32();
+            for (uint32_t i = 0; i < cityWonderCount; ++i) {
+                uint32_t cityIndex   = buf.readU32();
+                uint32_t wonderCount = buf.readU32();
+                if (wonderCount > MAX_CITY_WONDERS || !buf.canReadRecords(wonderCount, 1)) {
+                    LOG_ERROR("Serializer: city wonder count %u exceeds MAX_CITY_WONDERS %zu or "
+                              "file size",
+                              wonderCount, MAX_CITY_WONDERS);
+                    return ErrorCode::SaveCorrupted;
+                }
+
+                aoc::sim::CityWondersComponent wonders{};
+                wonders.wonders.reserve(wonderCount);
+                for (uint32_t w = 0; w < wonderCount && !buf.isCorrupt(); ++w) {
+                    wonders.wonders.push_back(buf.readU8());
+                }
+
+                if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
+                    loadedCities[cityIndex]->wonders() = std::move(wonders);
+                }
+            }
+            break;
+        }
+        case SectionId::MiscEntities: {
+            // --- BarbarianEncampmentComponent (not yet in GameState object model: skip) ---
+            uint32_t barbCount = buf.readU32();
+            for (uint32_t i = 0; i < barbCount; ++i) {
+                (void)buf.readI32();
+                (void)buf.readI32(); // location q, r
+                (void)buf.readI32();
+                (void)buf.readI32(); // spawnCooldown, unitsSpawned
+            }
+
+            // --- GreatPersonComponent (not yet in GameState object model: skip) ---
+            uint32_t gpPersonCount = buf.readU32();
+            for (uint32_t i = 0; i < gpPersonCount; ++i) {
+                (void)buf.readU8(); // owner
+                (void)buf.readU8(); // defId
+                (void)buf.readI32();
+                (void)buf.readI32(); // position q, r
+                (void)buf.readU8();  // isActivated
+            }
+
+            // --- SpyComponent: stored on Unit objects ---
+            uint32_t spyCount = buf.readU32();
+            for (uint32_t i = 0; i < spyCount; ++i) {
+                PlayerId owner = buf.readU8();
+                aoc::sim::SpyComponent comp{};
+                comp.owner          = owner;
+                comp.location.q     = buf.readI32();
+                comp.location.r     = buf.readI32();
+                comp.currentMission = static_cast<aoc::sim::SpyMission>(buf.readU8());
+                comp.turnsRemaining = buf.readI32();
+                comp.experience     = buf.readI32();
+                comp.isRevealed     = buf.readU8() != 0;
+
+                // Find the matching spy unit by owner and location
+                aoc::game::Player* player = gameState.player(owner);
+                if (player != nullptr) {
+                    for (const std::unique_ptr<aoc::game::Unit>& unit : player->units()) {
+                        if (unit->position() == comp.location) {
+                            unit->spy() = comp;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // --- UnitExperienceComponent (not yet in Unit object model: skip) ---
+            uint32_t expCount = buf.readU32();
+            for (uint32_t i = 0; i < expCount; ++i) {
+                (void)buf.readU32(); // unitIndex
+                (void)buf.readI32();
+                (void)buf.readI32(); // experience, level
+                uint32_t promoCount = buf.readU32();
+                for (uint32_t p = 0; p < promoCount; ++p) {
+                    (void)buf.readU16(); // PromotionId
+                }
+            }
+            break;
+        }
+        case SectionId::CurrencyTrust: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                PlayerId owner            = buf.readU8();
+                aoc::game::Player* player = gameState.player(owner);
+                aoc::sim::CurrencyTrustComponent ct{};
+                ct.owner             = owner;
+                ct.trustScore        = buf.readF32();
+                ct.turnsOnFiat       = buf.readI32();
+                ct.turnsStable       = buf.readI32();
+                ct.isReserveCurrency = buf.readU8() != 0;
+                ct.turnsAsReserve    = buf.readI32();
+                for (int32_t p = 0; p < aoc::sim::CurrencyTrustComponent::MAX_PLAYERS; ++p) {
+                    ct.bilateralTrust[p] = buf.readF32();
+                }
+                if (player != nullptr) {
+                    player->currencyTrust() = std::move(ct);
+                }
+            }
+            break;
+        }
+        case SectionId::CrisisState: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                PlayerId owner            = buf.readU8();
+                aoc::game::Player* player = gameState.player(owner);
+                aoc::sim::CurrencyCrisisComponent c{};
+                c.owner               = owner;
+                c.activeCrisis        = static_cast<aoc::sim::CrisisType>(buf.readU8());
+                c.turnsRemaining      = buf.readI32();
+                c.turnsHighInflation  = buf.readI32();
+                c.hasDefaulted        = buf.readU8() != 0;
+                c.defaultCooldown     = buf.readI32();
+                c.reformLockoutTurns  = buf.readI32();
+                c.reformTrustCapTurns = buf.readI32();
+                if (player != nullptr) {
+                    player->currencyCrisis() = std::move(c);
+                }
+            }
+            break;
+        }
+        case SectionId::BondState: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                PlayerId owner            = buf.readU8();
+                aoc::game::Player* player = gameState.player(owner);
+                aoc::sim::PlayerBondComponent pb{};
+                pb.owner             = owner;
+                uint32_t issuedCount = buf.readU32();
+                if (issuedCount > MAX_BONDS || !buf.canReadRecords(issuedCount, 34)) {
+                    LOG_ERROR("Serializer: issued bond count %u exceeds MAX_BONDS %zu or file size",
+                              issuedCount, MAX_BONDS);
+                    return ErrorCode::SaveCorrupted;
+                }
+                pb.issuedBonds.reserve(issuedCount);
+                for (uint32_t j = 0; j < issuedCount && !buf.isCorrupt(); ++j) {
+                    aoc::sim::BondIssue b{};
+                    b.id              = buf.readU64();
+                    b.issuer          = buf.readU8();
+                    b.holder          = buf.readU8();
+                    b.principal       = buf.readI64();
+                    b.yieldRate       = buf.readF32();
+                    b.turnsToMaturity = buf.readI32();
+                    b.accruedInterest = buf.readI64();
+                    pb.issuedBonds.push_back(b);
+                }
+                uint32_t heldCount = buf.readU32();
+                if (heldCount > MAX_BONDS || !buf.canReadRecords(heldCount, 34)) {
+                    LOG_ERROR("Serializer: held bond count %u exceeds MAX_BONDS %zu or file size",
+                              heldCount, MAX_BONDS);
+                    return ErrorCode::SaveCorrupted;
+                }
+                pb.heldBonds.reserve(heldCount);
+                for (uint32_t j = 0; j < heldCount && !buf.isCorrupt(); ++j) {
+                    aoc::sim::BondIssue b{};
+                    b.id              = buf.readU64();
+                    b.issuer          = buf.readU8();
+                    b.holder          = buf.readU8();
+                    b.principal       = buf.readI64();
+                    b.yieldRate       = buf.readF32();
+                    b.turnsToMaturity = buf.readI32();
+                    b.accruedInterest = buf.readI64();
+                    pb.heldBonds.push_back(b);
+                }
+                if (player != nullptr) {
+                    player->bonds() = std::move(pb);
+                }
+            }
+            // Restore bond id counter so new bonds keep unique ids.
+            aoc::sim::setNextBondId(buf.readU64());
+            break;
+        }
+        case SectionId::DevaluationState: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                PlayerId owner            = buf.readU8();
+                aoc::game::Player* player = gameState.player(owner);
+                aoc::sim::CurrencyDevaluationComponent d{};
+                d.owner                = owner;
+                d.isDevalued           = buf.readU8() != 0;
+                d.devaluationTurnsLeft = buf.readI32();
+                d.exportBonus          = buf.readF32();
+                d.importPenalty        = buf.readF32();
+                d.devaluationCount     = buf.readI32();
+                if (player != nullptr) {
+                    player->currencyDevaluation() = std::move(d);
+                }
+            }
+            break;
+        }
+        case SectionId::HoardState: {
+            uint32_t count = buf.readU32();
+            // Min record: owner (u8) + position count (u32).
+            if (count > MAX_HOARDS || !buf.canReadRecords(count, 5)) {
+                LOG_ERROR("Serializer: hoard count %u exceeds MAX_HOARDS %zu or file size", count,
+                          MAX_HOARDS);
+                return ErrorCode::SaveCorrupted;
+            }
+            // gameState.initialize() (run earlier in this load) seeds one
+            // default hoard per player; without clearing, every load
+            // APPENDED the saved hoards to those, doubling the collection
+            // per save/load cycle. Replace, don't append.
+            gameState.commodityHoards().clear();
+            gameState.commodityHoards().reserve(count);
+            for (uint32_t i = 0; i < count && !buf.isCorrupt(); ++i) {
+                aoc::sim::CommodityHoardComponent h{};
+                h.owner           = buf.readU8();
+                uint32_t posCount = buf.readU32();
+                if (posCount > MAX_HOARD_POSITIONS || !buf.canReadRecords(posCount, 10)) {
+                    LOG_ERROR("Serializer: hoard position count %u exceeds MAX_HOARD_POSITIONS %zu "
+                              "or file size",
+                              posCount, MAX_HOARD_POSITIONS);
+                    return ErrorCode::SaveCorrupted;
+                }
+                h.positions.reserve(posCount);
+                for (uint32_t j = 0; j < posCount && !buf.isCorrupt(); ++j) {
+                    aoc::sim::CommodityHoardComponent::HoardPosition pos{};
+                    pos.goodId        = buf.readU16();
+                    pos.amount        = buf.readI32();
+                    pos.purchasePrice = buf.readI32();
+                    h.positions.push_back(pos);
+                }
+                gameState.commodityHoards().push_back(std::move(h));
+            }
+            break;
+        }
+        case SectionId::ProductionExp: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                uint32_t cityIndex = buf.readU32();
+                uint32_t mapSize   = buf.readU32();
+                aoc::sim::CityProductionExperienceComponent comp{};
+                for (uint32_t j = 0; j < mapSize; ++j) {
+                    uint16_t recipeId               = buf.readU16();
+                    int32_t exp                     = buf.readI32();
+                    comp.recipeExperience[recipeId] = exp;
+                }
+                if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
+                    loadedCities[cityIndex]->productionExperience() = std::move(comp);
+                }
+            }
+            break;
+        }
+        case SectionId::BuildingLevels: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                uint32_t cityIndex = buf.readU32();
+                uint32_t mapSize   = buf.readU32();
+                aoc::sim::CityBuildingLevelsComponent comp{};
+                for (uint32_t j = 0; j < mapSize; ++j) {
+                    uint16_t bid     = buf.readU16();
+                    int32_t lvl      = buf.readI32();
+                    comp.levels[bid] = lvl;
+                }
+                if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
+                    loadedCities[cityIndex]->buildingLevels() = std::move(comp);
+                }
+            }
+            break;
+        }
+        case SectionId::PollutionState: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                uint32_t cityIndex       = buf.readU32();
+                int32_t wasteAccumulated = buf.readI32();
+                int32_t co2PerTurn       = buf.readI32();
+                float disasterUnhappy    = buf.readF32();
+                if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
+                    loadedCities[cityIndex]->pollution().wasteAccumulated       = wasteAccumulated;
+                    loadedCities[cityIndex]->pollution().co2ContributionPerTurn = co2PerTurn;
+                    loadedCities[cityIndex]->happiness().disasterUnhappiness    = disasterUnhappy;
+                }
+            }
+            break;
+        }
+        case SectionId::AutomationState: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                uint32_t cityIndex   = buf.readU32();
+                int32_t robotWorkers = buf.readI32();
+                int32_t maintTurns   = buf.readI32();
+                if (cityIndex < static_cast<uint32_t>(loadedCities.size())) {
+                    loadedCities[cityIndex]->automation().robotWorkers              = robotWorkers;
+                    loadedCities[cityIndex]->automation().turnsSinceLastMaintenance = maintTurns;
+                }
+            }
+            break;
+        }
+        case SectionId::IndustrialState: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                PlayerId owner            = buf.readU8();
+                aoc::game::Player* player = gameState.player(owner);
+                aoc::sim::PlayerIndustrialComponent ind{};
+                ind.owner             = owner;
+                ind.currentRevolution = static_cast<aoc::sim::IndustrialRevolutionId>(buf.readU8());
+                for (int32_t r = 0; r < 6; ++r) {
+                    ind.turnAchieved[r] = buf.readI32();
+                }
+                if (player != nullptr) {
+                    player->industrial() = std::move(ind);
+                }
+            }
+            break;
+        }
+        case SectionId::PrestigeState: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                PlayerId owner = buf.readU8();
+                aoc::sim::PlayerPrestigeComponent p{};
+                p.owner                   = owner;
+                p.science                 = buf.readF32();
+                p.culture                 = buf.readF32();
+                p.faith                   = buf.readF32();
+                p.trade                   = buf.readF32();
+                p.diplomacy               = buf.readF32();
+                p.military                = buf.readF32();
+                p.governance              = buf.readF32();
+                p.total                   = buf.readF32();
+                aoc::game::Player* player = gameState.player(owner);
+                if (player != nullptr) {
+                    player->prestige() = p;
+                }
+            }
+            break;
+        }
+        case SectionId::TourismState: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                PlayerId owner = buf.readU8();
+                aoc::sim::PlayerTourismComponent t{};
+                t.owner                   = owner;
+                t.tourismPerTurn          = buf.readF32();
+                t.cumulativeTourism       = buf.readF32();
+                t.foreignTourists         = buf.readI32();
+                t.domesticTourists        = buf.readI32();
+                t.greatWorkCount          = buf.readI32();
+                t.wonderCount             = buf.readI32();
+                t.nationalParkCount       = buf.readI32();
+                aoc::game::Player* player = gameState.player(owner);
+                if (player != nullptr) {
+                    player->tourism() = t;
+                }
+            }
+            break;
+        }
+        case SectionId::SpaceRaceState: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                PlayerId owner = buf.readU8();
+                aoc::sim::PlayerSpaceRaceComponent sr{};
+                sr.owner            = owner;
+                uint8_t storedCount = buf.readU8();
+                const int32_t limit = std::min<int32_t>(static_cast<int32_t>(storedCount),
+                                                        aoc::sim::SPACE_PROJECT_COUNT);
+                for (int32_t j = 0; j < limit; ++j) {
+                    sr.completed[j] = (buf.readU8() != 0);
+                    sr.progress[j]  = buf.readF32();
+                }
+                // Older save with more projects than the current build
+                // supports: consume and discard the extras.
+                for (int32_t j = limit; j < static_cast<int32_t>(storedCount); ++j) {
+                    (void)buf.readU8();
+                    (void)buf.readF32();
+                }
+                aoc::game::Player* player = gameState.player(owner);
+                if (player != nullptr) {
+                    player->spaceRace() = sr;
+                }
+            }
+            break;
+        }
+        case SectionId::GrievanceState: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                PlayerId owner = buf.readU8();
+                uint32_t n     = buf.readU32();
+                if (n > MAX_GRIEVANCES || !buf.canReadRecords(n, 10)) {
+                    LOG_ERROR(
+                        "Serializer: grievance count %u exceeds MAX_GRIEVANCES %zu or file size", n,
+                        MAX_GRIEVANCES);
+                    return ErrorCode::SaveCorrupted;
+                }
+                aoc::sim::PlayerGrievanceComponent g{};
+                g.owner = owner;
+                g.grievances.reserve(n);
+                for (uint32_t j = 0; j < n && !buf.isCorrupt(); ++j) {
+                    aoc::sim::Grievance gr{};
+                    gr.type           = static_cast<aoc::sim::GrievanceType>(buf.readU8());
+                    gr.against        = buf.readU8();
+                    gr.severity       = buf.readI32();
+                    gr.turnsRemaining = buf.readI32();
+                    g.grievances.push_back(gr);
+                }
+                aoc::game::Player* player = gameState.player(owner);
+                if (player != nullptr) {
+                    player->grievances() = std::move(g);
+                }
+            }
+            break;
+        }
+        case SectionId::WarWearinessState: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                PlayerId owner = buf.readU8();
+                aoc::sim::PlayerWarWearinessComponent w{};
+                w.owner          = owner;
+                w.weariness      = buf.readF32();
+                uint32_t mapSize = buf.readU32();
+                for (uint32_t j = 0; j < mapSize; ++j) {
+                    PlayerId key      = buf.readU8();
+                    int32_t val       = buf.readI32();
+                    w.turnsAtWar[key] = val;
+                }
+                aoc::game::Player* player = gameState.player(owner);
+                if (player != nullptr) {
+                    player->warWeariness() = std::move(w);
+                }
+            }
+            break;
+        }
+        case SectionId::StockPortfolioState: {
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                PlayerId owner = buf.readU8();
+                aoc::sim::PlayerStockPortfolioComponent p{};
+                p.owner           = owner;
+                uint32_t invCount = buf.readU32();
+                if (invCount > MAX_INVESTMENTS || !buf.canReadRecords(invCount, 30)) {
+                    LOG_ERROR(
+                        "Serializer: investment count %u exceeds MAX_INVESTMENTS %zu or file size",
+                        invCount, MAX_INVESTMENTS);
+                    return ErrorCode::SaveCorrupted;
+                }
+                p.investments.reserve(invCount);
+                for (uint32_t j = 0; j < invCount && !buf.isCorrupt(); ++j) {
+                    aoc::sim::EquityInvestment inv{};
+                    inv.investor          = buf.readU8();
+                    inv.target            = buf.readU8();
+                    inv.principalInvested = buf.readI64();
+                    inv.currentValue      = buf.readI64();
+                    inv.totalDividends    = buf.readI64();
+                    inv.turnsHeld         = buf.readI32();
+                    p.investments.push_back(inv);
+                }
+                uint32_t foreignCount = buf.readU32();
+                if (foreignCount > MAX_INVESTMENTS || !buf.canReadRecords(foreignCount, 30)) {
+                    LOG_ERROR("Serializer: foreign investment count %u exceeds MAX_INVESTMENTS %zu "
+                              "or file size",
+                              foreignCount, MAX_INVESTMENTS);
+                    return ErrorCode::SaveCorrupted;
+                }
+                p.foreignInvestments.reserve(foreignCount);
+                for (uint32_t j = 0; j < foreignCount && !buf.isCorrupt(); ++j) {
+                    aoc::sim::EquityInvestment inv{};
+                    inv.investor          = buf.readU8();
+                    inv.target            = buf.readU8();
+                    inv.principalInvested = buf.readI64();
+                    inv.currentValue      = buf.readI64();
+                    inv.totalDividends    = buf.readI64();
+                    inv.turnsHeld         = buf.readI32();
+                    p.foreignInvestments.push_back(inv);
+                }
+                aoc::game::Player* player = gameState.player(owner);
+                if (player != nullptr) {
+                    player->stockPortfolio() = std::move(p);
+                }
+            }
+            break;
+        }
+        case SectionId::ConfederationState: {
+            // Confederation removed 2026-04-27. Skip section to keep
+            // backwards-compat with old saves: read count + per-record
+            // bytes and discard.
+            uint32_t count = buf.readU32();
+            for (uint32_t i = 0; i < count; ++i) {
+                (void)buf.readU32(); // id
+                (void)buf.readI32(); // formedTurn
+                (void)buf.readU8();  // isActive
+                uint32_t memberCount = buf.readU32();
+                for (uint32_t m = 0; m < memberCount; ++m) {
+                    (void)buf.readU8();
+                }
+            }
+            break;
+        }
+        case SectionId::ElectricityAgreementState: {
+            uint32_t count = buf.readU32();
+            if (count > MAX_ELECTRICITY_AGREEMENTS || !buf.canReadRecords(count, 27)) {
+                LOG_ERROR("Serializer: electricity agreement count %u exceeds "
+                          "MAX_ELECTRICITY_AGREEMENTS %zu or file size",
+                          count, MAX_ELECTRICITY_AGREEMENTS);
+                return ErrorCode::SaveCorrupted;
+            }
+            std::vector<aoc::sim::ElectricityAgreementComponent>& agrs =
+                gameState.electricityAgreements();
+            agrs.clear();
+            agrs.reserve(count);
+            for (uint32_t i = 0; i < count && !buf.isCorrupt(); ++i) {
+                aoc::sim::ElectricityAgreementComponent a{};
+                a.id                  = buf.readU32();
+                a.seller              = buf.readU8();
+                a.buyer               = buf.readU8();
+                a.energyPerTurn       = buf.readI32();
+                a.goldPerTurn         = buf.readI32();
+                a.formedTurn          = buf.readI32();
+                a.endTurn             = buf.readI32();
+                a.isActive            = (buf.readU8() != 0u);
+                a.lastDeliveredEnergy = buf.readI32();
+                agrs.push_back(a);
+            }
+            break;
+        }
+        default:
+            // Unknown section: skip for forward compatibility
+            buf.skip(sectionSize);
+            break;
         }
     }
 

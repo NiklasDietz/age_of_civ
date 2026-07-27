@@ -7,7 +7,8 @@
  *
  * The AI-gene GA in GeneticAlgorithm.hpp optimises a LeaderBehavior so one
  * subject beats fixed/co-evolving opponents. This tuner is different: the
- * "individual" is a BalanceGenome (11 scalars controlling loyalty,
+ * "individual" is a BalanceGenome (BALANCE_PARAM_COUNT scalars, 13 as of this
+ * writing, controlling loyalty,
  * victory-condition thresholds, space-race pacing, etc.), and fitness is a
  * population-wide metric over an N-game batch:
  *

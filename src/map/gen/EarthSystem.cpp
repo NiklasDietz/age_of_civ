@@ -25,7 +25,6 @@
 namespace aoc::map::gen {
 
 void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
-                          const std::vector<float>& orogeny,
                           const std::vector<float>& sediment,
                           EarthSystemOutputs& out) {
     const int32_t width  = grid.width();
@@ -51,22 +50,16 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
     std::vector<uint8_t>& lakeFlag   = out.lakeFlag;
     std::vector<uint8_t>& upwelling  = out.upwelling;
 
-    // ---- LAKES (positive generation) ----
-    for (int32_t i = 0; i < totalT; ++i) {
-        const TerrainType t = grid.terrain(i);
-        if (t == TerrainType::Ocean
-            || t == TerrainType::ShallowWater
-            || t == TerrainType::Mountain) {
-            continue;
-        }
-        const float oro = orogeny[static_cast<std::size_t>(i)];
-        if (oro < -0.06f) {
-            grid.setTerrain(i, TerrainType::ShallowWater);
-            grid.setElevation(i, -1);
-            grid.setFeature(i, FeatureType::None);
-            lakeFlag[static_cast<std::size_t>(i)] = 1;
-        }
-    }
+    // ---- LAKES ----
+    // 2026-07-27: the lake generator that used to live here gated on
+    // `orogeny[i] < -0.06f`, but orogeny only ever holds {0.0, 0.10, 1.0}, so it
+    // was unreachable and EVERY generated world contained zero lakes -- leaving
+    // five downstream consumers of `lakeFlag` (CoastalLandforms,
+    // DrainageLivestock, Biogeography, BiomeSubtypes, Resources) silently inert.
+    // Lakes now come from real closed-depression detection, gen/Lakes.cpp, which
+    // MapGenerator applies to `out.lakeFlag` immediately after this pass -- after,
+    // because the assign() above zeroes it. `orogeny` was this pass's only use of
+    // that argument, so the parameter is gone too.
 
     // ---- VOLCANISM markers ----
     const auto& hsList = grid.hotspots();
@@ -170,8 +163,7 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
 
     // ---- MOUNTAIN GLACIERS ----
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         if (lat < 0.55f) { continue; }
         for (int32_t col = 0; col < width; ++col) {
             const int32_t idx = row * width + col;
@@ -184,8 +176,7 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
 
     // ---- COASTAL UPWELLING ----
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         if (lat < 0.10f || lat > 0.60f) { continue; }
         for (int32_t col = 0; col < width; ++col) {
             const int32_t idx = row * width + col;
@@ -287,8 +278,7 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
             }
         }
         const int32_t row = i / width;
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         if (lat > 0.40f && lat < 0.65f
             && (t == TerrainType::Plains
                 || t == TerrainType::Grassland)) {
@@ -336,9 +326,7 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
             if (i < static_cast<int32_t>(ages2.size())
                 && ages2[static_cast<std::size_t>(i)] > 50.0f) {
                 const int32_t row = i / width;
-                const float ny = static_cast<float>(row)
-                               / static_cast<float>(height);
-                const float lat = 2.0f * std::abs(ny - 0.5f);
+                const float lat = grid.latitudeFraction(row);
                 if (lat < 0.55f) {
                     rockUpd[static_cast<std::size_t>(i)] = 5;
                 }
@@ -374,8 +362,7 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
 
     // ---- SAND DUNES ----
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         if (lat < 0.10f || lat > 0.40f) { continue; }
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
@@ -438,8 +425,7 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
 
     // ---- SEA ICE ----
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         if (lat < 0.85f) { continue; }
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
@@ -456,8 +442,7 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
 
     // ---- FJORDS ----
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         if (lat < 0.55f) { continue; }
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
@@ -486,9 +471,7 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
         if (f == FeatureType::Forest
             || f == FeatureType::Jungle) {
             const int32_t row = i / width;
-            const float ny = static_cast<float>(row)
-                           / static_cast<float>(height);
-            const float lat = 2.0f * std::abs(ny - 0.5f);
+            const float lat = grid.latitudeFraction(row);
             if (lat > 0.50f
                 && grid.feature(i) != FeatureType::Ice) {
                 grid.setFeature(i, FeatureType::Ice);
@@ -506,8 +489,7 @@ void runEarthSystemPasses(HexGrid& grid, bool cylindrical,
             && t != TerrainType::Grassland) { continue; }
         if (grid.riverEdges(i) == 0) { continue; }
         const int32_t row = i / width;
-        const float ny = static_cast<float>(row) / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         if (lat > 0.40f && lat < 0.70f) {
             if (i < static_cast<int32_t>(sediment.size())
                 && sediment[static_cast<std::size_t>(i)] > 0.05f) {

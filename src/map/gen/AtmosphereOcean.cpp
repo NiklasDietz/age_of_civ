@@ -50,9 +50,7 @@ void runAtmosphereOcean(const HexGrid& grid, bool cylindrical,
 
     // ---- HURRICANE / TORNADO / STORM TRACK / JET STREAM ----
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row)
-                       / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
             const TerrainType t = grid.terrain(i);
@@ -108,9 +106,7 @@ void runAtmosphereOcean(const HexGrid& grid, bool cylindrical,
 
     // ---- GLACIAL FEATURES ----
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row)
-                       / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
             const TerrainType t = grid.terrain(i);
@@ -165,9 +161,7 @@ void runAtmosphereOcean(const HexGrid& grid, bool cylindrical,
     // ---- OCEAN ZONES ----
     AOC_S3_PARALLEL_FOR_ROWS
     for (int32_t row = 0; row < height; ++row) {
-        const float ny = static_cast<float>(row)
-                       / static_cast<float>(height);
-        const float lat = 2.0f * std::abs(ny - 0.5f);
+        const float lat = grid.latitudeFraction(row);
         for (int32_t col = 0; col < width; ++col) {
             const int32_t i = row * width + col;
             const TerrainType t = grid.terrain(i);

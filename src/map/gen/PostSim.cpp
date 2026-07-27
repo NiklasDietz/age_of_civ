@@ -19,29 +19,27 @@
 #include <vector>
 
 #ifdef _OPENMP
-#  include <omp.h>
-#  define AOC_PS_PARALLEL_FOR_ROWS _Pragma("omp parallel for schedule(static)")
+#include <omp.h>
+#define AOC_PS_PARALLEL_FOR_ROWS _Pragma("omp parallel for schedule(static)")
 #else
-#  define AOC_PS_PARALLEL_FOR_ROWS
+#define AOC_PS_PARALLEL_FOR_ROWS
 #endif
 
 namespace aoc::map::gen {
 
 void runPostSimPasses(MapGenContext& ctx) {
-    HexGrid& grid                              = *ctx.grid;
-    const int32_t width                        = ctx.width;
-    const int32_t height                       = ctx.height;
-    const bool cylSim                          = ctx.cylindrical;
-    const std::vector<Plate>& plates           = *ctx.plates;
-    std::vector<float>& elevationMap           = *ctx.elevationMap;
-    std::vector<float>& orogeny                = *ctx.orogeny;
-    std::vector<float>& sediment               = *ctx.sediment;
-    std::vector<float>& crustAgeTile           = *ctx.crustAgeTile;
-    std::vector<uint8_t>& marginTypeTile       = *ctx.marginTypeTile;
-    std::vector<uint8_t>& ophioliteMask        = *ctx.ophioliteMask;
+    HexGrid& grid                        = *ctx.grid;
+    const int32_t width                  = ctx.width;
+    const int32_t height                 = ctx.height;
+    const bool cylSim                    = ctx.cylindrical;
+    std::vector<float>& elevationMap     = *ctx.elevationMap;
+    std::vector<float>& orogeny          = *ctx.orogeny;
+    std::vector<float>& sediment         = *ctx.sediment;
+    std::vector<float>& crustAgeTile     = *ctx.crustAgeTile;
+    std::vector<uint8_t>& marginTypeTile = *ctx.marginTypeTile;
+    std::vector<uint8_t>& ophioliteMask  = *ctx.ophioliteMask;
 
-    auto neighbourIdx = [&](int32_t col, int32_t row,
-                             int32_t dir, int32_t& outIdx) {
+    auto neighbourIdx = [&](int32_t col, int32_t row, int32_t dir, int32_t& outIdx) {
         return hexNeighbor(width, height, cylSim, col, row, dir, outIdx);
     };
 
@@ -50,71 +48,106 @@ void runPostSimPasses(MapGenContext& ctx) {
     std::fill(crustAgeTile.begin(), crustAgeTile.end(), 0.0f);
     (void)ophioliteMask;
 
-    // Pass 3: sediment yield + downhill deposition (2 passes).
-    for (int32_t pass = 0; pass < 2; ++pass) {
-#ifdef _OPENMP
-        const int32_t nThreads = omp_get_max_threads();
-#else
-        const int32_t nThreads = 1;
-#endif
-        const int32_t sedTotal = width * height;
-        std::vector<std::vector<float>> threadSed(
-            static_cast<std::size_t>(nThreads),
-            std::vector<float>(static_cast<std::size_t>(sedTotal), 0.0f));
-        AOC_PS_PARALLEL_FOR_ROWS
-        for (int32_t row = 0; row < height; ++row) {
-#ifdef _OPENMP
-            const int32_t tid = omp_get_thread_num();
-#else
-            const int32_t tid = 0;
-#endif
-            std::vector<float>& myBuf =
-                threadSed[static_cast<std::size_t>(tid)];
-            for (int32_t col = 0; col < width; ++col) {
-                const int32_t idx = row * width + col;
-                const float oro = orogeny[
-                    static_cast<std::size_t>(idx)];
-                if (oro < 0.08f) { continue; }
-                const float yield = (oro - 0.05f) * 0.10f;
-                int32_t bestIdx[3] = {-1, -1, -1};
-                float   bestOro[3] = {1e9f, 1e9f, 1e9f};
-                for (int32_t d = 0; d < 6; ++d) {
-                    int32_t nIdx;
-                    if (!neighbourIdx(col, row, d, nIdx)) { continue; }
-                    const float nOro = orogeny[
-                        static_cast<std::size_t>(nIdx)];
-                    if (nOro >= oro) { continue; }
-                    for (int32_t k = 0; k < 3; ++k) {
-                        if (nOro < bestOro[k]) {
-                            for (int32_t j = 2; j > k; --j) {
-                                bestOro[j] = bestOro[j - 1];
-                                bestIdx[j] = bestIdx[j - 1];
-                            }
-                            bestOro[k] = nOro;
-                            bestIdx[k] = nIdx;
-                            break;
-                        }
+    // Pass 3: sediment yield + downhill deposition, as a GATHER.
+    //
+    // 2026-07-27: this was a scatter. Each source tile added its yield into a
+    // per-thread buffer, `threadSed` was sized by `omp_get_max_threads()`, and
+    // the buffers were then summed in buffer order -- so the order of the
+    // floating-point additions, and therefore the resulting sediment, depended
+    // on OMP_NUM_THREADS. That is cross-machine non-determinism in a repo whose
+    // release-portable preset pins sim output to a blessed hash, and it stood in
+    // direct contradiction to solveSeaLevelFixedVolume, which is deliberately
+    // kept serial for exactly this reason.
+    //
+    // Inverting it fixes the cause rather than the symptom. Each DESTINATION
+    // tile asks which of its neighbours drain into it and sums their
+    // contributions itself, in a fixed neighbour order. There are no per-thread
+    // buffers to reduce, so there is no reduction order to depend on: the result
+    // is identical for any thread count, by construction rather than by luck.
+    // The cost is that each tile re-derives its neighbours' target lists, 36
+    // lookups instead of 6, which is nothing against a 3 Gy sphere simulation.
+    const int32_t sedTotal = width * height;
+
+    // Sediment `src` sends to each downhill target, from src's own point of
+    // view. Factored out so the gather can ask the same question the scatter
+    // asked, just from the other end.
+    struct DownhillSpread {
+        int32_t target[3];
+        int32_t count;
+        float perTarget;
+    };
+    auto downhillSpread = [&](int32_t col, int32_t row) -> DownhillSpread {
+        DownhillSpread s{{-1, -1, -1}, 0, 0.0f};
+        const int32_t idx = row * width + col;
+        const float oro   = orogeny[static_cast<std::size_t>(idx)];
+        if (oro < 0.08f) {
+            return s;
+        }
+        float bestOro[3] = {1e9f, 1e9f, 1e9f};
+        for (int32_t d = 0; d < 6; ++d) {
+            int32_t nIdx = 0;
+            if (!neighbourIdx(col, row, d, nIdx)) {
+                continue;
+            }
+            const float nOro = orogeny[static_cast<std::size_t>(nIdx)];
+            if (nOro >= oro) {
+                continue;
+            }
+            for (int32_t k = 0; k < 3; ++k) {
+                if (nOro < bestOro[k]) {
+                    for (int32_t j = 2; j > k; --j) {
+                        bestOro[j]  = bestOro[j - 1];
+                        s.target[j] = s.target[j - 1];
                     }
-                }
-                int32_t targets = 0;
-                for (int32_t k = 0; k < 3; ++k) {
-                    if (bestIdx[k] >= 0) { ++targets; }
-                }
-                if (targets == 0) { continue; }
-                const float perTarget = yield
-                    / static_cast<float>(targets);
-                for (int32_t k = 0; k < 3; ++k) {
-                    if (bestIdx[k] < 0) { continue; }
-                    myBuf[static_cast<std::size_t>(bestIdx[k])]
-                        += perTarget;
+                    bestOro[k]  = nOro;
+                    s.target[k] = nIdx;
+                    break;
                 }
             }
         }
-        for (const auto& buf : threadSed) {
+        for (int32_t k = 0; k < 3; ++k) {
+            if (s.target[k] >= 0) {
+                ++s.count;
+            }
+        }
+        if (s.count > 0) {
+            s.perTarget = ((oro - 0.05f) * 0.10f) / static_cast<float>(s.count);
+        }
+        return s;
+    };
+
+    {
+        std::vector<float> delta(static_cast<std::size_t>(sedTotal), 0.0f);
+        AOC_PS_PARALLEL_FOR_ROWS
+        for (int32_t row = 0; row < height; ++row) {
+            for (int32_t col = 0; col < width; ++col) {
+                const int32_t idx = row * width + col;
+                float incoming    = 0.0f;
+                for (int32_t d = 0; d < 6; ++d) {
+                    int32_t nIdx = 0;
+                    if (!neighbourIdx(col, row, d, nIdx)) {
+                        continue;
+                    }
+                    const DownhillSpread s = downhillSpread(nIdx % width, nIdx / width);
+                    for (int32_t k = 0; k < s.count; ++k) {
+                        if (s.target[k] == idx) {
+                            incoming += s.perTarget;
+                        }
+                    }
+                }
+                delta[static_cast<std::size_t>(idx)] = incoming;
+            }
+        }
+        // The original ran this twice. The two iterations were identical: the
+        // spread depends only on `orogeny`, which the loop never modifies, so
+        // nothing cascaded between them and the second pass simply re-added the
+        // same field. Kept as two additions rather than one doubling so the
+        // total is bit-for-bit what two sequential passes produced.
+        constexpr int32_t SEDIMENT_PASSES = 2;
+        for (int32_t pass = 0; pass < SEDIMENT_PASSES; ++pass) {
             AOC_PS_PARALLEL_FOR_ROWS
             for (int32_t i = 0; i < sedTotal; ++i) {
-                sediment[static_cast<std::size_t>(i)]
-                    += buf[static_cast<std::size_t>(i)];
+                sediment[static_cast<std::size_t>(i)] += delta[static_cast<std::size_t>(i)];
             }
         }
     }
@@ -123,24 +156,25 @@ void runPostSimPasses(MapGenContext& ctx) {
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
             const int32_t idx = row * width + col;
-            const float oro = orogeny[
-                static_cast<std::size_t>(idx)];
-            if (oro >= 0.08f) { continue; }
-            float nbMtnSum = 0.0f;
+            const float oro   = orogeny[static_cast<std::size_t>(idx)];
+            if (oro >= 0.08f) {
+                continue;
+            }
+            float nbMtnSum     = 0.0f;
             int32_t nbMtnCount = 0;
             for (int32_t d = 0; d < 6; ++d) {
                 int32_t nIdx;
-                if (!neighbourIdx(col, row, d, nIdx)) { continue; }
-                const float nOro = orogeny[
-                    static_cast<std::size_t>(nIdx)];
+                if (!neighbourIdx(col, row, d, nIdx)) {
+                    continue;
+                }
+                const float nOro = orogeny[static_cast<std::size_t>(nIdx)];
                 if (nOro > 0.10f) {
                     nbMtnSum += nOro;
                     ++nbMtnCount;
                 }
             }
             if (nbMtnCount > 0) {
-                sediment[static_cast<std::size_t>(idx)]
-                    += 0.04f * nbMtnSum;
+                sediment[static_cast<std::size_t>(idx)] += 0.04f * nbMtnSum;
             }
         }
     }
@@ -158,14 +192,16 @@ void runPostSimPasses(MapGenContext& ctx) {
         std::vector<float> shelfBonus(static_cast<std::size_t>(totalT), 0.0f);
         for (int32_t row = 0; row < height; ++row) {
             for (int32_t col = 0; col < width; ++col) {
-                const int32_t idx = row * width + col;
+                const int32_t idx    = row * width + col;
                 const std::size_t si = static_cast<std::size_t>(idx);
                 // Only continental tiles flagged as passive margin
                 // accumulate the sediment prism. They feed neighbouring
                 // ocean tiles in pass-6 via the shelf-widening pass --
                 // but the prism itself raises the LAND tile so coastal
                 // plains stand a few metres above sea level.
-                if (marginTypeTile[si] != 2) { continue; }
+                if (marginTypeTile[si] != 2) {
+                    continue;
+                }
                 // Walk 5 hex inland toward higher orogeny, summing
                 // contribution. Inland distance approximated by sweeping
                 // outward in 6 hex directions and averaging the highest
@@ -175,11 +211,12 @@ void runPostSimPasses(MapGenContext& ctx) {
                     int32_t cc = col, rr = row;
                     for (int32_t step = 1; step <= 5; ++step) {
                         int32_t nIdx;
-                        if (!neighbourIdx(cc, rr, d, nIdx)) { break; }
-                        cc = nIdx % width;
-                        rr = nIdx / width;
-                        const float nOro = orogeny[
-                            static_cast<std::size_t>(nIdx)];
+                        if (!neighbourIdx(cc, rr, d, nIdx)) {
+                            break;
+                        }
+                        cc               = nIdx % width;
+                        rr               = nIdx / width;
+                        const float nOro = orogeny[static_cast<std::size_t>(nIdx)];
                         if (nOro > maxOroNearby) {
                             maxOroNearby = nOro;
                         }
@@ -216,29 +253,36 @@ void runPostSimPasses(MapGenContext& ctx) {
     for (int32_t row = 0; row < height; ++row) {
         for (int32_t col = 0; col < width; ++col) {
             const int32_t idx = row * width + col;
-            if (elevationMap[static_cast<std::size_t>(idx)]
-                    < 0.0f) { continue; }
+            if (elevationMap[static_cast<std::size_t>(idx)] < 0.0f) {
+                continue;
+            }
             bool nearWater = false;
             for (int32_t d = 0; d < 6; ++d) {
                 int32_t nIdx;
-                if (!neighbourIdx(col, row, d, nIdx)) { continue; }
-                if (elevationMap[static_cast<std::size_t>(nIdx)]
-                        < 0.0f) { nearWater = true; break; }
+                if (!neighbourIdx(col, row, d, nIdx)) {
+                    continue;
+                }
+                if (elevationMap[static_cast<std::size_t>(nIdx)] < 0.0f) {
+                    nearWater = true;
+                    break;
+                }
             }
-            if (!nearWater) { continue; }
+            if (!nearWater) {
+                continue;
+            }
             // BFS out to ACTIVE_MARGIN_RANGE_HEXES looking for a
             // convergent boundary tile. Range is small (3) so a
             // per-tile ring walk stays cheap.
-            bool nearConvergent =
-                (grid.boundaryTypeTile(idx) == 1u);
+            bool nearConvergent = (grid.boundaryTypeTile(idx) == 1u);
             for (int32_t d = 0; d < 6 && !nearConvergent; ++d) {
                 int32_t cc = col;
                 int32_t rr = row;
-                for (int32_t step = 0;
-                     step < ACTIVE_MARGIN_RANGE_HEXES && !nearConvergent;
+                for (int32_t step = 0; step < ACTIVE_MARGIN_RANGE_HEXES && !nearConvergent;
                      ++step) {
                     int32_t nIdx;
-                    if (!neighbourIdx(cc, rr, d, nIdx)) { break; }
+                    if (!neighbourIdx(cc, rr, d, nIdx)) {
+                        break;
+                    }
                     cc = nIdx % width;
                     rr = nIdx / width;
                     if (grid.boundaryTypeTile(nIdx) == 1u) {
@@ -246,20 +290,21 @@ void runPostSimPasses(MapGenContext& ctx) {
                     }
                 }
             }
-            marginTypeTile[static_cast<std::size_t>(idx)] =
-                nearConvergent ? 1u : 2u;
+            marginTypeTile[static_cast<std::size_t>(idx)] = nearConvergent ? 1u : 2u;
         }
     }
     if (std::getenv("AOC_DUMP_MARGINS") != nullptr) {
         std::size_t nActive = 0, nPassive = 0;
         for (const uint8_t m : marginTypeTile) {
-            if (m == 1u) ++nActive;
-            else if (m == 2u) ++nPassive;
+            if (m == 1u)
+                ++nActive;
+            else if (m == 2u)
+                ++nPassive;
         }
-        std::fprintf(stderr, "[margins] active=%zu passive=%zu (%.0f%% passive)\n",
-            nActive, nPassive,
-            100.0 * static_cast<double>(nPassive)
-                / static_cast<double>(std::max<std::size_t>(1, nActive + nPassive)));
+        std::fprintf(stderr, "[margins] active=%zu passive=%zu (%.0f%% passive)\n", nActive,
+                     nPassive,
+                     100.0 * static_cast<double>(nPassive) /
+                         static_cast<double>(std::max<std::size_t>(1, nActive + nPassive)));
     }
 
     // Pass 6: apply sediment + margin-type elevation modifier.
@@ -297,14 +342,16 @@ void runPostSimPasses(MapGenContext& ctx) {
         for (int32_t row = 0; row < height; ++row) {
             for (int32_t col = 0; col < width; ++col) {
                 const int32_t idx = row * width + col;
-                const uint8_t m = marginTypeTile[
-                    static_cast<std::size_t>(idx)];
-                if (m == 0) { continue; }
+                const uint8_t m   = marginTypeTile[static_cast<std::size_t>(idx)];
+                if (m == 0) {
+                    continue;
+                }
                 for (int32_t d = 0; d < 6; ++d) {
                     int32_t nIdx;
-                    if (!neighbourIdx(col, row, d, nIdx)) { continue; }
-                    if (elevationMap[
-                            static_cast<std::size_t>(nIdx)] >= 0.0f) {
+                    if (!neighbourIdx(col, row, d, nIdx)) {
+                        continue;
+                    }
+                    if (elevationMap[static_cast<std::size_t>(nIdx)] >= 0.0f) {
                         // Only modify ocean-side neighbours (negative
                         // pre-threshold elevation).
                         continue;
@@ -336,8 +383,7 @@ void runPostSimPasses(MapGenContext& ctx) {
     // polarity per band. Works on ANY tile (oceanic or continental)
     // but stripes only visible on oceanic crust where age varies
     // smoothly along plate-motion direction. Cost: 1 byte per tile.
-    std::vector<int8_t> magneticPolarity(
-        static_cast<std::size_t>(width * height), 0);
+    std::vector<int8_t> magneticPolarity(static_cast<std::size_t>(width * height), 0);
     {
         // Reversal period in our age-time-units. Earth: ~0.5 My; sim:
         // each epoch ~10 My, so a stripe per ~0.05 epochs would be too
@@ -345,9 +391,10 @@ void runPostSimPasses(MapGenContext& ctx) {
         constexpr float REVERSAL_PERIOD = 1.0f;
         for (std::size_t i = 0; i < magneticPolarity.size(); ++i) {
             const float age = crustAgeTile[i];
-            if (age <= 0.0f) { continue; }
-            const int32_t band = static_cast<int32_t>(
-                std::floor(age / REVERSAL_PERIOD));
+            if (age <= 0.0f) {
+                continue;
+            }
+            const int32_t band  = static_cast<int32_t>(std::floor(age / REVERSAL_PERIOD));
             magneticPolarity[i] = (band & 1) ? -1 : 1;
         }
     }

@@ -14,6 +14,7 @@
 #include "aoc/simulation/victory/VictoryCondition.hpp"
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -74,6 +75,15 @@ struct SimulationResult {
                                               const std::atomic<bool>* stopFlag = nullptr,
                                               std::span<const Individual* const> overrides = {},
                                               aoc::map::MapType mapType = aoc::map::MapType::Continents);
+
+/// Outcome-component fitness for one player in a finished `SimulationResult`:
+///   1.0·relativeWin + 0.25·economicHealth + 0.25·survival
+///   + 0.20·balancedFlow + 0.15·happiness
+/// Returns exactly -1.0 for an eliminated player (peak>0, held==0). Exposed
+/// here (out of the .cpp anonymous namespace) so unit tests and rank-based
+/// future work can share the math.
+[[nodiscard]] float playerOutcomeScore(const SimulationResult& simResult,
+                                        std::size_t playerIdx, int32_t turns);
 
 /// Evaluate fitness of one individual by running multiple games.
 /// The individual's genes are used as Player 0's AI personality.

@@ -268,6 +268,8 @@ set(AOC_LIB_SOURCES
     src/map/gen/NppCarryingCapacity.cpp
     src/map/gen/DrainageLivestock.cpp
     src/map/gen/EcoAnalytics.cpp
+    src/map/gen/Lakes.cpp
+    src/map/gen/Relief.cpp
     src/map/gen/Thresholds.cpp
     src/map/gen/Noise.cpp
     src/map/gen/Resources.cpp
@@ -338,6 +340,7 @@ set(AOC_LIB_SOURCES
     src/simulation/ai/AIMilitaryController.cpp
     src/simulation/ai/AIEconomicStrategy.cpp
     src/simulation/ai/LeaderPersonality.cpp
+    src/simulation/ai/TunedLeaderIO.cpp
     src/simulation/ai/BehaviorTree.cpp
     src/simulation/ai/UtilityScoring.cpp
     src/simulation/ai/UtilityAI.cpp
@@ -860,6 +863,12 @@ if(AOC_BUILD_TESTS)
         test_save_finite
         test_decision_log_io
         test_deterministic_argmax
+        test_tuned_leader_io
+        test_climate_profile
+        test_noise_field
+        test_relief
+        test_lakes
+        test_mapgen_regenerate
     )
 
     # The debug preset builds with ASan/LSan; known suppressions live in
@@ -877,10 +886,48 @@ if(AOC_BUILD_TESTS)
         set_tests_properties(${aoc_test} PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")
     endforeach()
 
+    # ml/cpp genetic-algorithm tests: link aoc_evolve_lib (the GA / fitness /
+    # balance internals split out of the aoc_evolve executable) so the
+    # operators, fitness components, and balance metrics can be exercised
+    # directly. Working dir is the build tree so runSimulation-based tests
+    # find any copied data files.
+    if(TARGET aoc_evolve_lib)
+        set(AOC_EVOLVE_TESTS
+            test_ga_operators
+            test_fitness_components
+            test_balance_metrics
+            test_sim_determinism_small
+        )
+        foreach(aoc_test ${AOC_EVOLVE_TESTS})
+            add_executable(${aoc_test} tests/${aoc_test}.cpp)
+            target_link_libraries(${aoc_test} PRIVATE aoc_evolve_lib)
+            target_include_directories(${aoc_test} PRIVATE third_party/doctest)
+            add_test(NAME ${aoc_test} COMMAND ${aoc_test}
+                     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+            set_tests_properties(${aoc_test} PROPERTIES ENVIRONMENT "${AOC_TEST_ENV}")
+        endforeach()
+    endif()
+
     # Known-good save corpus lives in-tree; regenerate via AOC_WRITE_CORPUS
     # after a deliberate format bump.
     target_compile_definitions(test_save_roundtrip PRIVATE
         AOC_TEST_CORPUS_DIR="${CMAKE_SOURCE_DIR}/tests/data/saves")
+
+    # Worldgen measurement instrument. Every worldgen phase gate is read off
+    # tools/mapgen_metrics.py, so a silent regression there is
+    # indistinguishable from a physics regression -- and it has happened: a
+    # water-terrain name mismatch counted every continental-shelf tile as land
+    # and a missing longitude wrap split every seam-crossing landmass in two,
+    # between them invalidating all eight committed baselines. The selftest
+    # pins the instrument against synthetic masks with known answers
+    # (including the isotropic-null calibration of axis_aligned_frac) and
+    # cross-checks its terrain-name table against Terrain.hpp.
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_mapgen_metrics_selftest
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tools/mapgen_metrics.py selftest)
+    endif()
 
     # Turn-loop smoke: drive aoc_simulate for a handful of turns. Non-zero
     # exit means the headless loop crashed or asserted.
