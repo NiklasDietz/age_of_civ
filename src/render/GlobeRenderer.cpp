@@ -39,10 +39,10 @@ namespace aoc::render {
 
 namespace {
 
-constexpr int32_t  GLOBE_RINGS    = 360;  ///< latitude bands (0.5 deg per quad, matches SphereField)
-constexpr int32_t  GLOBE_SEGMENTS = 720;  ///< longitude bands (0.5 deg per quad, matches SphereField)
-constexpr float    SPHERE_RADIUS  = 1.0f;
-constexpr float    PI_F           = 3.14159265358979323846f;
+constexpr int32_t GLOBE_RINGS    = 360; ///< latitude bands (0.5 deg per quad, matches SphereField)
+constexpr int32_t GLOBE_SEGMENTS = 720; ///< longitude bands (0.5 deg per quad, matches SphereField)
+constexpr float SPHERE_RADIUS    = 1.0f;
+constexpr float PI_F             = 3.14159265358979323846f;
 
 /// Terrain ID set covered by the per-terrain sub-mesh palette. Keep
 /// in sync with `aoc::map::TerrainType` -- any unmapped terrain
@@ -55,7 +55,9 @@ constexpr float    PI_F           = 3.14159265358979323846f;
 /// produces.
 constexpr std::size_t kPaletteSize = 32;
 
-struct GlobeColor { float r, g, b; };
+struct GlobeColor {
+    float r, g, b;
+};
 
 /// Lerp helper for compile-time gradient table.
 constexpr GlobeColor mix(GlobeColor a, GlobeColor b, float t) {
@@ -68,8 +70,7 @@ constexpr GlobeColor mix(GlobeColor a, GlobeColor b, float t) {
 
 /// Build the 32-step gradient: ocean depths -> coast -> beach ->
 /// grassland -> forest -> hills -> mountain -> peak.
-[[nodiscard]] constexpr std::array<GlobeColor, kPaletteSize>
-buildPalette() {
+[[nodiscard]] constexpr std::array<GlobeColor, kPaletteSize> buildPalette() {
     std::array<GlobeColor, kPaletteSize> p{};
     // 0..7  : ocean, deep -> shallow
     const GlobeColor abyss = {0.020f, 0.060f, 0.220f};
@@ -82,7 +83,7 @@ buildPalette() {
         p[4 + i] = mix(sea, shelf, static_cast<float>(i) / 3.0f);
     }
     // 8..11 : beach + dry coast -> dark beach blend.
-    const GlobeColor beach = {0.880f, 0.830f, 0.620f};
+    const GlobeColor beach    = {0.880f, 0.830f, 0.620f};
     const GlobeColor dryGrass = {0.700f, 0.730f, 0.420f};
     for (std::size_t i = 0; i < 4; ++i) {
         p[8 + i] = mix(beach, dryGrass, static_cast<float>(i) / 3.0f);
@@ -110,23 +111,23 @@ buildPalette() {
 
 constexpr std::array<GlobeColor, kPaletteSize> kPaletteColors = buildPalette();
 
-
 /// Project (latRow, lonCol) on the SPHERE to a lat/lon pair.
-struct LatLonDeg { float latDeg; float lonDeg; };
+struct LatLonDeg {
+    float latDeg;
+    float lonDeg;
+};
 
 [[nodiscard]] LatLonDeg cellCenterDeg(int32_t ring, int32_t seg) noexcept {
-    const float v = (static_cast<float>(ring) + 0.5f)
-                  / static_cast<float>(GLOBE_RINGS);
-    const float u = (static_cast<float>(seg) + 0.5f)
-                  / static_cast<float>(GLOBE_SEGMENTS);
+    const float v = (static_cast<float>(ring) + 0.5f) / static_cast<float>(GLOBE_RINGS);
+    const float u = (static_cast<float>(seg) + 0.5f) / static_cast<float>(GLOBE_SEGMENTS);
     return {-90.0f + v * 180.0f, -180.0f + u * 360.0f};
 }
 
 /// Map (latDeg, lonDeg) to the unit-sphere position used by the
 /// orbit camera. Y is up, +X is at lon=0/lat=0, +Z is at lon=90.
 [[nodiscard]] vulkan_app::Vec3 sphereXYZ(float latDeg, float lonDeg) noexcept {
-    const float latR = latDeg * PI_F / 180.0f;
-    const float lonR = lonDeg * PI_F / 180.0f;
+    const float latR   = latDeg * PI_F / 180.0f;
+    const float lonR   = lonDeg * PI_F / 180.0f;
     const float cosLat = std::cos(latR);
     return {
         SPHERE_RADIUS * cosLat * std::cos(lonR),
@@ -143,14 +144,14 @@ struct QuadVerts {
 };
 
 [[nodiscard]] QuadVerts buildSphereQuad(int32_t ring, int32_t seg) noexcept {
-    const float lat0 = -90.0f + static_cast<float>(ring)
-                              * (180.0f / static_cast<float>(GLOBE_RINGS));
-    const float lat1 = -90.0f + static_cast<float>(ring + 1)
-                              * (180.0f / static_cast<float>(GLOBE_RINGS));
-    const float lon0 = -180.0f + static_cast<float>(seg)
-                                * (360.0f / static_cast<float>(GLOBE_SEGMENTS));
-    const float lon1 = -180.0f + static_cast<float>(seg + 1)
-                                * (360.0f / static_cast<float>(GLOBE_SEGMENTS));
+    const float lat0 =
+        -90.0f + static_cast<float>(ring) * (180.0f / static_cast<float>(GLOBE_RINGS));
+    const float lat1 =
+        -90.0f + static_cast<float>(ring + 1) * (180.0f / static_cast<float>(GLOBE_RINGS));
+    const float lon0 =
+        -180.0f + static_cast<float>(seg) * (360.0f / static_cast<float>(GLOBE_SEGMENTS));
+    const float lon1 =
+        -180.0f + static_cast<float>(seg + 1) * (360.0f / static_cast<float>(GLOBE_SEGMENTS));
     const vulkan_app::Vec3 p00 = sphereXYZ(lat0, lon0);
     const vulkan_app::Vec3 p01 = sphereXYZ(lat0, lon1);
     const vulkan_app::Vec3 p10 = sphereXYZ(lat1, lon0);
@@ -184,26 +185,26 @@ constexpr int32_t SF_LAT_CELLS = 360;
 ///   z > 5000  -> 31 (snow cap)
 /// Latitude shifts the upper tier into the snow band: at |lat| > 60,
 /// every continental cell tips up by ~6 slots (Tundra/Snow look).
-[[nodiscard]] std::size_t sampleGrid(
-    const aoc::map::HexGrid& grid, float latDeg, float lonDeg) noexcept {
+[[nodiscard]] std::size_t sampleGrid(const aoc::map::HexGrid& grid, float latDeg,
+                                     float lonDeg) noexcept {
     const auto& snap = grid.sphereFieldElevationSnapshot();
     if (snap.empty()) return 0;
     float lon = lonDeg;
-    while (lon >  180.0f) lon -= 360.0f;
+    while (lon > 180.0f) lon -= 360.0f;
     while (lon < -180.0f) lon += 360.0f;
-    int32_t lonIdx = static_cast<int32_t>(
-        (lon + 180.0f) / 360.0f * static_cast<float>(SF_LON_CELLS));
-    int32_t latIdx = static_cast<int32_t>(
-        (latDeg + 90.0f) / 180.0f * static_cast<float>(SF_LAT_CELLS));
+    int32_t lonIdx =
+        static_cast<int32_t>((lon + 180.0f) / 360.0f * static_cast<float>(SF_LON_CELLS));
+    int32_t latIdx =
+        static_cast<int32_t>((latDeg + 90.0f) / 180.0f * static_cast<float>(SF_LAT_CELLS));
     if (lonIdx < 0) lonIdx = 0;
     if (lonIdx >= SF_LON_CELLS) lonIdx = SF_LON_CELLS - 1;
     if (latIdx < 0) latIdx = 0;
     if (latIdx >= SF_LAT_CELLS) latIdx = SF_LAT_CELLS - 1;
-    const std::size_t idx = static_cast<std::size_t>(latIdx)
-                          * static_cast<std::size_t>(SF_LON_CELLS)
-                          + static_cast<std::size_t>(lonIdx);
+    const std::size_t idx =
+        static_cast<std::size_t>(latIdx) * static_cast<std::size_t>(SF_LON_CELLS) +
+        static_cast<std::size_t>(lonIdx);
     if (idx >= snap.size()) return 0;
-    const float z = snap[idx];
+    const float z      = snap[idx];
     const float absLat = std::fabs(latDeg);
 
     float t;
@@ -240,7 +241,7 @@ constexpr int32_t SF_LAT_CELLS = 360;
 
 struct GlobeRenderer::Impl {
     std::unique_ptr<vulkan_app::Renderer3D> r3d;
-    const vkutils::Device*                  device = nullptr;
+    const vkutils::Device* device = nullptr;
     std::array<vulkan_app::MeshHandle, kPaletteSize> meshes{};
     std::array<vulkan_app::MaterialHandle, kPaletteSize> materials{};
     bool initialised = false;
@@ -258,15 +259,13 @@ GlobeRenderer::~GlobeRenderer() {
     }
 }
 
-void GlobeRenderer::initialize(const vkutils::Device& device,
-                               VkRenderPass renderPass,
-                               VkExtent2D extent) {
-    std::fprintf(stderr, "[globe] initialize extent=%ux%u\n",
-                 extent.width, extent.height);
-    this->m_impl = std::make_unique<Impl>();
+void GlobeRenderer::initialize(const vkutils::Device& device, VkRenderPass renderPass,
+                               VkExtent2D extent, bool srgbFramebuffer) {
+    std::fprintf(stderr, "[globe] initialize extent=%ux%u\n", extent.width, extent.height);
+    this->m_impl         = std::make_unique<Impl>();
     this->m_impl->device = &device;
-    this->m_impl->r3d = std::make_unique<vulkan_app::Renderer3D>(
-        device, renderPass, extent);
+    this->m_impl->r3d    = std::make_unique<vulkan_app::Renderer3D>(
+        device, renderPass, extent, vulkan_app::Renderer3D::MAX_FRAMES_IN_FLIGHT, srgbFramebuffer);
     std::fprintf(stderr, "[globe] Renderer3D constructed\n");
 
     // Material palette: one PBR material per TerrainType. Roughness
@@ -275,10 +274,10 @@ void GlobeRenderer::initialize(const vkutils::Device& device,
     for (std::size_t i = 0; i < kPaletteSize; ++i) {
         const GlobeColor c = kPaletteColors[i];
         vulkan_app::Material mat;
-        mat.albedo    = {c.r, c.g, c.b, 1.0f};
-        mat.metallic  = 0.0f;
-        mat.roughness = 0.85f;
-        mat.emissive  = 0.0f;
+        mat.albedo                 = {c.r, c.g, c.b, 1.0f};
+        mat.metallic               = 0.0f;
+        mat.roughness              = 0.85f;
+        mat.emissive               = 0.0f;
         this->m_impl->materials[i] = this->m_impl->r3d->uploadMaterial(mat);
     }
     this->m_impl->initialised = true;
@@ -320,11 +319,11 @@ void GlobeRenderer::updateFromGrid(const aoc::map::HexGrid& grid) {
 
     for (int32_t ring = 0; ring < GLOBE_RINGS; ++ring) {
         for (int32_t seg = 0; seg < GLOBE_SEGMENTS; ++seg) {
-            const LatLonDeg c = cellCenterDeg(ring, seg);
+            const LatLonDeg c    = cellCenterDeg(ring, seg);
             const std::size_t pi = sampleGrid(grid, c.latDeg, c.lonDeg);
-            const QuadVerts q = buildSphereQuad(ring, seg);
-            auto& md = bins[pi];
-            const uint32_t base = static_cast<uint32_t>(md.vertices.size());
+            const QuadVerts q    = buildSphereQuad(ring, seg);
+            auto& md             = bins[pi];
+            const uint32_t base  = static_cast<uint32_t>(md.vertices.size());
             md.vertices.push_back(q.v[0]);
             md.vertices.push_back(q.v[1]);
             md.vertices.push_back(q.v[2]);
@@ -347,10 +346,8 @@ void GlobeRenderer::updateFromGrid(const aoc::map::HexGrid& grid) {
     }
 }
 
-void GlobeRenderer::render(VkCommandBuffer cmd, uint32_t frameIndex,
-                           const aoc::map::HexGrid& grid,
-                           float yawDeg, float pitchDeg, float zoom,
-                           float aspect) {
+void GlobeRenderer::render(VkCommandBuffer cmd, uint32_t frameIndex, const aoc::map::HexGrid& grid,
+                           float yawDeg, float pitchDeg, float zoom, float aspect) {
     if (!this->m_impl || !this->m_impl->initialised) return;
     if (this->m_impl->gridDirty) {
         this->updateFromGrid(grid);
@@ -361,9 +358,9 @@ void GlobeRenderer::render(VkCommandBuffer cmd, uint32_t frameIndex,
     // Orbit camera. Yaw rotates around +Y (longitude), pitch around
     // the camera-relative right axis (latitude). Camera distance is
     // `zoom` unit-spheres from origin.
-    const float yawR   = yawDeg   * PI_F / 180.0f;
+    const float yawR   = yawDeg * PI_F / 180.0f;
     const float pitchR = pitchDeg * PI_F / 180.0f;
-    const float r = std::max(1.2f, zoom);
+    const float r      = std::max(1.2f, zoom);
     vulkan_app::Camera3D cam;
     cam.position = {
         r * std::cos(pitchR) * std::sin(yawR),
@@ -382,12 +379,12 @@ void GlobeRenderer::render(VkCommandBuffer cmd, uint32_t frameIndex,
     cam.isOrthographic = true;
     const float halfH  = 0.5f * std::max(1.2f, zoom) * 0.6f;
     const float halfW  = halfH * aspect;
-    cam.orthoLeft   = -halfW;
-    cam.orthoRight  =  halfW;
-    cam.orthoTop    = -halfH;
-    cam.orthoBottom =  halfH;
-    cam.nearPlane = -10.0f;
-    cam.farPlane  =  10.0f;
+    cam.orthoLeft      = -halfW;
+    cam.orthoRight     = halfW;
+    cam.orthoTop       = -halfH;
+    cam.orthoBottom    = halfH;
+    cam.nearPlane      = -10.0f;
+    cam.farPlane       = 10.0f;
 
     r3d.setCamera(cam);
 
@@ -405,7 +402,7 @@ void GlobeRenderer::render(VkCommandBuffer cmd, uint32_t frameIndex,
     // visually "disappear", reading as distortion.
     vulkan_app::Light fill;
     fill.type      = vulkan_app::LightType::Directional;
-    fill.direction = { 0.4f,  0.5f,  0.5f};
+    fill.direction = {0.4f, 0.5f, 0.5f};
     fill.color     = {0.65f, 0.75f, 0.95f};
     fill.intensity = 0.6f;
     r3d.addLight(fill);
@@ -421,7 +418,7 @@ void GlobeRenderer::render(VkCommandBuffer cmd, uint32_t frameIndex,
     r3d.addLight(keyFromCam);
 
     vulkan_app::Transform identity;
-    int submitted = 0;
+    int submitted       = 0;
     const bool skipDraw = std::getenv("AOC_GLOBE_SKIP_DRAW") != nullptr;
     if (!skipDraw) {
         for (std::size_t i = 0; i < this->m_impl->meshes.size(); ++i) {

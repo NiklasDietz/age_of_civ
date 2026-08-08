@@ -32,8 +32,7 @@ namespace aoc::ui {
 static std::string formatTectonicTimeLabel(int32_t totalMy) {
     if (totalMy >= 1000) {
         char buf[24];
-        std::snprintf(buf, sizeof(buf), "%.1f Gy",
-                      static_cast<double>(totalMy) / 1000.0);
+        std::snprintf(buf, sizeof(buf), "%.1f Gy", static_cast<double>(totalMy) / 1000.0);
         return std::string(buf);
     }
     return std::to_string(totalMy) + " My";
@@ -67,47 +66,39 @@ static void setButtonSelected(UIManager& ui, WidgetId id, bool selected) {
 // MainMenu
 // ============================================================================
 
-void MainMenu::build(UIManager& ui, float screenW, float screenH,
-                     std::function<void()> onStartGame,
-                     std::function<void()> onQuit,
-                     std::function<void()> onSettings,
-                     std::function<void()> onTutorial,
-                     std::function<void()> onSpectate,
-                     std::function<void()> onContinentCreator,
-                     std::function<void()> onMapEditor) {
+void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<void()> onStartGame,
+                     std::function<void()> onQuit, std::function<void()> onSettings,
+                     std::function<void()> onTutorial, std::function<void()> onSpectate,
+                     std::function<void()> onContinentCreator, std::function<void()> onMapEditor) {
     assert(!this->m_isBuilt);
 
-    this->m_onStartGame = std::move(onStartGame);
-    this->m_onQuit      = std::move(onQuit);
-    this->m_onSettings  = std::move(onSettings);
-    this->m_onTutorial  = std::move(onTutorial);
-    this->m_onSpectate  = std::move(onSpectate);
+    this->m_onStartGame        = std::move(onStartGame);
+    this->m_onQuit             = std::move(onQuit);
+    this->m_onSettings         = std::move(onSettings);
+    this->m_onTutorial         = std::move(onTutorial);
+    this->m_onSpectate         = std::move(onSpectate);
     this->m_onContinentCreator = std::move(onContinentCreator);
-    this->m_onMapEditor = std::move(onMapEditor);
+    this->m_onMapEditor        = std::move(onMapEditor);
 
     // Full-screen dark background
-    this->m_rootPanel = ui.createPanel(
-        {0.0f, 0.0f, screenW, screenH},
-        PanelData{BG_DARK, 0.0f});
+    this->m_rootPanel = ui.createPanel({0.0f, 0.0f, screenW, screenH}, PanelData{BG_DARK, 0.0f});
 
     // Centered content panel — extra 42px for the Spectate button row.
     constexpr float PANEL_W = 420.0f;
     constexpr float PANEL_H = 362.0f;
-    const float panelX = (screenW - PANEL_W) * 0.5f;
-    const float panelY = (screenH - PANEL_H) * 0.5f;
+    const float panelX      = (screenW - PANEL_W) * 0.5f;
+    const float panelY      = (screenH - PANEL_H) * 0.5f;
 
-    WidgetId contentPanel = ui.createPanel(
-        this->m_rootPanel,
-        {panelX, panelY, PANEL_W, PANEL_H},
-        PanelData{PANEL_BG, 8.0f});
+    WidgetId contentPanel = ui.createPanel(this->m_rootPanel, {panelX, panelY, PANEL_W, PANEL_H},
+                                           PanelData{PANEL_BG, 8.0f});
     {
         Widget* cp = ui.getWidget(contentPanel);
         assert(cp != nullptr);
-        cp->padding = {20.0f, 20.0f, 20.0f, 20.0f};
+        cp->padding      = {20.0f, 20.0f, 20.0f, 20.0f};
         cp->childSpacing = 8.0f;
     }
 
-    const float innerW = PANEL_W - 40.0f;  // 20px padding each side
+    const float innerW = PANEL_W - 40.0f; // 20px padding each side
 
     // Title — gilt face with a dark outline so it stays legible whether
     // the menu sits over parchment or the in-game map background.
@@ -117,67 +108,68 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
         ld.color        = GOLDEN_TEXT;
         ld.fontSize     = 22.0f;
         ld.outlineColor = aoc::ui::tokens::SURFACE_INK;
-        [[maybe_unused]] WidgetId titleLabel = ui.createLabel(
-            contentPanel, {0.0f, 0.0f, innerW, 30.0f}, std::move(ld));
+        [[maybe_unused]] WidgetId titleLabel =
+            ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 30.0f}, std::move(ld));
     }
 
     // Spacer
-    [[maybe_unused]] WidgetId spacer1 = ui.createPanel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 20.0f},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    [[maybe_unused]] WidgetId spacer1 = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 20.0f},
+                                                       PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
 
     // --- Start Game button (opens Game Setup screen) ---
     {
         ButtonData btn;
-        btn.label       = "Start Game";
-        btn.fontSize    = 16.0f;
-        btn.normalColor = BTN_GREEN;
-        btn.hoverColor  = BTN_GREEN_HOVER;
+        btn.label    = "Start Game";
+        btn.fontSize = 16.0f;
+        // PRIMARY tier: the only filled-brass control on the screen, so the
+        // eye has exactly one place to land. Dark label -- cream on brass
+        // fails contrast.
+        btn.normalColor  = BTN_GREEN;
+        btn.hoverColor   = BTN_GREEN_HOVER;
         btn.pressedColor = BTN_GREEN_PRESS;
-        btn.labelColor  = WHITE_TEXT;
+        btn.labelColor   = BTN_PRIMARY_LABEL;
         btn.cornerRadius = 5.0f;
-        btn.onClick = [this]() {
+        btn.onClick      = [this]() {
             if (this->m_onStartGame) {
                 this->m_onStartGame();
             }
         };
-        [[maybe_unused]] WidgetId startBtn = ui.createButton(
-            contentPanel, {0.0f, 0.0f, innerW, 40.0f}, std::move(btn));
+        [[maybe_unused]] WidgetId startBtn =
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 40.0f}, std::move(btn));
     }
 
     // --- Settings button ---
     {
         ButtonData btn;
-        btn.label       = "Settings";
-        btn.fontSize    = 14.0f;
-        btn.normalColor = BTN_GREY;
-        btn.hoverColor  = BTN_GREY_HOVER;
+        btn.label        = "Settings";
+        btn.fontSize     = 14.0f;
+        btn.normalColor  = BTN_GREY;
+        btn.hoverColor   = BTN_GREY_HOVER;
         btn.pressedColor = BTN_GREY_PRESS;
-        btn.labelColor  = WHITE_TEXT;
+        btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = this->m_onSettings;
-        [[maybe_unused]] WidgetId settingsBtn = ui.createButton(
-            contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+        btn.onClick      = this->m_onSettings;
+        [[maybe_unused]] WidgetId settingsBtn =
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
     }
 
     // --- Tutorial button ---
     if (this->m_onTutorial) {
         ButtonData btn;
-        btn.label       = "Tutorial";
-        btn.fontSize    = 14.0f;
-        btn.normalColor = BTN_NORMAL;
-        btn.hoverColor  = BTN_HOVER;
+        btn.label        = "Tutorial";
+        btn.fontSize     = 14.0f;
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
         btn.pressedColor = BTN_PRESSED;
-        btn.labelColor  = WHITE_TEXT;
+        btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = [this]() {
+        btn.onClick      = [this]() {
             if (this->m_onTutorial) {
                 this->m_onTutorial();
             }
         };
-        [[maybe_unused]] WidgetId tutorialBtn = ui.createButton(
-            contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+        [[maybe_unused]] WidgetId tutorialBtn =
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
     }
 
     // --- Spectate button ---
@@ -185,18 +177,18 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
         ButtonData btn;
         btn.label        = "Spectate AI Game";
         btn.fontSize     = 14.0f;
-        btn.normalColor  = {0.15f, 0.25f, 0.45f, 0.90f};
-        btn.hoverColor   = {0.20f, 0.35f, 0.60f, 0.90f};
-        btn.pressedColor = {0.10f, 0.18f, 0.32f, 0.90f};
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = [this]() {
+        btn.onClick      = [this]() {
             if (this->m_onSpectate) {
                 this->m_onSpectate();
             }
         };
-        [[maybe_unused]] WidgetId spectateBtn = ui.createButton(
-            contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+        [[maybe_unused]] WidgetId spectateBtn =
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
     }
 
     // --- Map Editor button ---
@@ -204,16 +196,18 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
         ButtonData btn;
         btn.label        = "Map Editor";
         btn.fontSize     = 14.0f;
-        btn.normalColor  = {0.40f, 0.32f, 0.20f, 0.90f};
-        btn.hoverColor   = {0.55f, 0.45f, 0.28f, 0.90f};
-        btn.pressedColor = {0.30f, 0.24f, 0.15f, 0.90f};
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = [this]() {
-            if (this->m_onMapEditor) { this->m_onMapEditor(); }
+        btn.onClick      = [this]() {
+            if (this->m_onMapEditor) {
+                this->m_onMapEditor();
+            }
         };
-        [[maybe_unused]] WidgetId meBtn = ui.createButton(
-            contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+        [[maybe_unused]] WidgetId meBtn =
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
     }
 
     // --- Continent Creator button ---
@@ -221,40 +215,42 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH,
         ButtonData btn;
         btn.label        = "Continent Creator";
         btn.fontSize     = 14.0f;
-        btn.normalColor  = {0.30f, 0.45f, 0.30f, 0.90f};
-        btn.hoverColor   = {0.40f, 0.60f, 0.40f, 0.90f};
-        btn.pressedColor = {0.22f, 0.32f, 0.22f, 0.90f};
+        btn.normalColor  = BTN_NORMAL;
+        btn.hoverColor   = BTN_HOVER;
+        btn.pressedColor = BTN_PRESSED;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = [this]() {
-            if (this->m_onContinentCreator) { this->m_onContinentCreator(); }
+        btn.onClick      = [this]() {
+            if (this->m_onContinentCreator) {
+                this->m_onContinentCreator();
+            }
         };
-        [[maybe_unused]] WidgetId ccBtn = ui.createButton(
-            contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+        [[maybe_unused]] WidgetId ccBtn =
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
     }
 
     // --- Quit button ---
     {
         ButtonData btn;
-        btn.label       = "Quit";
-        btn.fontSize    = 14.0f;
-        btn.normalColor = BTN_RED;
-        btn.hoverColor  = BTN_RED_HOVER;
+        btn.label        = "Quit";
+        btn.fontSize     = 14.0f;
+        btn.normalColor  = BTN_RED;
+        btn.hoverColor   = BTN_RED_HOVER;
         btn.pressedColor = BTN_RED_PRESS;
-        btn.labelColor  = WHITE_TEXT;
+        btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = [this]() {
+        btn.onClick      = [this]() {
             if (this->m_onQuit) {
                 this->m_onQuit();
             }
         };
-        [[maybe_unused]] WidgetId quitBtn = ui.createButton(
-            contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+        [[maybe_unused]] WidgetId quitBtn =
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
     }
 
     this->m_isBuilt = true;
-    LOG_INFO("Main menu built (%.0fx%.0f)",
-             static_cast<double>(screenW), static_cast<double>(screenH));
+    LOG_INFO("Main menu built (%.0fx%.0f)", static_cast<double>(screenW),
+             static_cast<double>(screenH));
 }
 
 void MainMenu::updateLayout(UIManager& ui, float screenW, float screenH) {
@@ -272,7 +268,7 @@ void MainMenu::updateLayout(UIManager& ui, float screenW, float screenH) {
     if (!root->children.empty()) {
         constexpr float PANEL_W = 420.0f;
         constexpr float PANEL_H = 362.0f;
-        Widget* content = ui.getWidget(root->children[0]);
+        Widget* content         = ui.getWidget(root->children[0]);
         if (content != nullptr) {
             content->requestedBounds.x = (screenW - PANEL_W) * 0.5f;
             content->requestedBounds.y = (screenH - PANEL_H) * 0.5f;
@@ -300,14 +296,13 @@ void MainMenu::destroy(UIManager& ui) {
 // ============================================================================
 
 /// Civilization names (indexed by CivId).
-static constexpr std::array<std::string_view, aoc::sim::CIV_COUNT> CIV_NAMES = {{
-    "Rome", "Egypt", "China", "Germany", "Greece", "England", "Japan", "Persia",
-    "Aztec", "India", "Russia", "Brazil",
-    "Mongolia", "Arabia", "Zulu", "Scythia", "Macedon", "Mali", "Sumeria",
-    "Babylon", "Khmer", "Cree", "Mapuche", "Ottoman", "Phoenicia", "Norway",
-    "Spain", "Korea", "Indonesia", "Vietnam", "Maori", "America", "France",
-    "Netherlands", "Australia", "Canada"
-}};
+static constexpr std::array<std::string_view, aoc::sim::CIV_COUNT> CIV_NAMES = {
+    {"Rome",      "Egypt",   "China",  "Germany",     "Greece",    "England",
+     "Japan",     "Persia",  "Aztec",  "India",       "Russia",    "Brazil",
+     "Mongolia",  "Arabia",  "Zulu",   "Scythia",     "Macedon",   "Mali",
+     "Sumeria",   "Babylon", "Khmer",  "Cree",        "Mapuche",   "Ottoman",
+     "Phoenicia", "Norway",  "Spain",  "Korea",       "Indonesia", "Vietnam",
+     "Maori",     "America", "France", "Netherlands", "Australia", "Canada"}};
 
 void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
                             std::function<void(const GameSetupConfig&)> onStart,
@@ -320,51 +315,46 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
     // generated game uses exactly the previewed map.
     const bool hasPreset = (this->m_config.mapSeed != 0u);
     if (!hasPreset) {
-        this->m_config = GameSetupConfig{};
-        this->m_config.mapType     = aoc::map::MapType::Continents;
-        this->m_config.mapSize     = aoc::map::MapSize::Standard;
+        this->m_config         = GameSetupConfig{};
+        this->m_config.mapType = aoc::map::MapType::Continents;
+        this->m_config.mapSize = aoc::map::MapSize::Standard;
     }
     this->m_config.playerCount = 2;
     for (uint8_t i = 0; i < 20; ++i) {
         this->m_config.players[i].isActive = (i < 2);
         this->m_config.players[i].isHuman  = (i == 0);
-        this->m_config.players[i].civId    = i;  // Each slot defaults to a unique civ
+        this->m_config.players[i].civId    = i; // Each slot defaults to a unique civ
     }
 
     // Full-screen dark background
-    this->m_rootPanel = ui.createPanel(
-        {0.0f, 0.0f, screenW, screenH},
-        PanelData{BG_DARK, 0.0f});
+    this->m_rootPanel = ui.createPanel({0.0f, 0.0f, screenW, screenH}, PanelData{BG_DARK, 0.0f});
 
     // Centered content panel.  Height clamped to 90% of screen so on small
     // displays the panel doesn't spill offscreen; a ScrollList inside takes
     // over when the content exceeds the visible window (e.g. 8 player rows).
     constexpr float PANEL_W = 550.0f;
-    const float PANEL_H = std::min(620.0f, screenH * 0.92f);
-    const float panelX = (screenW - PANEL_W) * 0.5f;
-    const float panelY = (screenH - PANEL_H) * 0.5f;
+    const float PANEL_H     = std::min(620.0f, screenH * 0.92f);
+    const float panelX      = (screenW - PANEL_W) * 0.5f;
+    const float panelY      = (screenH - PANEL_H) * 0.5f;
 
-    WidgetId outerPanel = ui.createPanel(
-        this->m_rootPanel,
-        {panelX, panelY, PANEL_W, PANEL_H},
-        PanelData{PANEL_BG, 8.0f});
+    WidgetId outerPanel = ui.createPanel(this->m_rootPanel, {panelX, panelY, PANEL_W, PANEL_H},
+                                         PanelData{PANEL_BG, 8.0f});
     {
         Widget* cp = ui.getWidget(outerPanel);
         assert(cp != nullptr);
-        cp->padding = {20.0f, 20.0f, 20.0f, 20.0f};
+        cp->padding      = {20.0f, 20.0f, 20.0f, 20.0f};
         cp->childSpacing = 6.0f;
     }
 
     // ScrollList wraps the actual content so many-player configs stay
     // reachable by scroll-wheel when they exceed the panel's visible height.
-    WidgetId contentPanel = ui.createScrollList(
-        outerPanel,
-        {0.0f, 0.0f, PANEL_W - 40.0f, PANEL_H - 40.0f},
-        ScrollListData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f, 0.0f});
+    WidgetId contentPanel =
+        ui.createScrollList(outerPanel, {0.0f, 0.0f, PANEL_W - 40.0f, PANEL_H - 40.0f},
+                            ScrollListData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f, 0.0f});
     {
         Widget* cp = ui.getWidget(contentPanel);
         assert(cp != nullptr);
-        cp->padding = {0.0f, 0.0f, 0.0f, 0.0f};
+        cp->padding      = {0.0f, 0.0f, 0.0f, 0.0f};
         cp->childSpacing = 6.0f;
     }
 
@@ -377,29 +367,25 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         ld.color        = GOLDEN_TEXT;
         ld.fontSize     = 22.0f;
         ld.outlineColor = aoc::ui::tokens::SURFACE_INK;
-        [[maybe_unused]] WidgetId titleLabel = ui.createLabel(
-            contentPanel, {0.0f, 0.0f, innerW, 30.0f}, std::move(ld));
+        [[maybe_unused]] WidgetId titleLabel =
+            ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 30.0f}, std::move(ld));
     }
 
     // ---- Map Type section ----
     [[maybe_unused]] WidgetId mapTypeLabel = ui.createLabel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 18.0f},
-        LabelData{"Map Type:", SECTION_TEXT, 14.0f});
+        contentPanel, {0.0f, 0.0f, innerW, 18.0f}, LabelData{"Map Type:", SECTION_TEXT, 14.0f});
 
     // HorizontalWrap container — 6 map-type buttons flow onto a
     // second row when the panel is narrower than 6 × button width.
     // Height is 68 (two 32px rows + spacing) so both rows fit inside
     // the clamp even on the tightest panel size.
-    WidgetId mapTypeRow = ui.createPanel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 72.0f},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    WidgetId mapTypeRow = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 72.0f},
+                                         PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
     {
         Widget* row = ui.getWidget(mapTypeRow);
         assert(row != nullptr);
         row->layoutDirection = LayoutDirection::HorizontalWrap;
-        row->childSpacing = 6.0f;
+        row->childSpacing    = 6.0f;
     }
 
     constexpr float MAP_TYPE_BTN_W = 90.0f;
@@ -415,7 +401,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.pressedColor = BTN_SEL_PRESSED;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
+        btn.onClick      = [this, &ui]() {
             this->m_config.mapType = aoc::map::MapType::Continents;
             this->updateMapTypeButtons(ui);
         };
@@ -432,19 +418,15 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
 
     // ---- Map Size section ----
     [[maybe_unused]] WidgetId mapSizeLabel = ui.createLabel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 18.0f},
-        LabelData{"Map Size:", SECTION_TEXT, 14.0f});
+        contentPanel, {0.0f, 0.0f, innerW, 18.0f}, LabelData{"Map Size:", SECTION_TEXT, 14.0f});
 
-    WidgetId mapSizeRow = ui.createPanel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 32.0f},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    WidgetId mapSizeRow = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 32.0f},
+                                         PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
     {
         Widget* row = ui.getWidget(mapSizeRow);
         assert(row != nullptr);
         row->layoutDirection = LayoutDirection::Horizontal;
-        row->childSpacing = 6.0f;
+        row->childSpacing    = 6.0f;
     }
 
     constexpr float MAP_SIZE_BTN_W = 100.0f;
@@ -460,16 +442,16 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.pressedColor = BTN_PRESSED;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_config.mapSize = aoc::map::MapSize::Small;
-            const auto d = aoc::map::mapSizeDimensions(aoc::map::MapSize::Small);
+        btn.onClick      = [this, &ui]() {
+            this->m_config.mapSize      = aoc::map::MapSize::Small;
+            const auto d                = aoc::map::mapSizeDimensions(aoc::map::MapSize::Small);
             this->m_config.customWidth  = d.first;
             this->m_config.customHeight = d.second;
             this->updateMapSizeButtons(ui);
             this->refresh(ui);
         };
-        this->m_btnSmall = ui.createButton(
-            mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
+        this->m_btnSmall = ui.createButton(mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H},
+                                           std::move(btn));
     }
 
     // Standard (selected by default)
@@ -482,9 +464,9 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.pressedColor = BTN_SEL_PRESSED;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_config.mapSize = aoc::map::MapSize::Standard;
-            const auto d = aoc::map::mapSizeDimensions(aoc::map::MapSize::Standard);
+        btn.onClick      = [this, &ui]() {
+            this->m_config.mapSize      = aoc::map::MapSize::Standard;
+            const auto d                = aoc::map::mapSizeDimensions(aoc::map::MapSize::Standard);
             this->m_config.customWidth  = d.first;
             this->m_config.customHeight = d.second;
             this->updateMapSizeButtons(ui);
@@ -504,16 +486,16 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.pressedColor = BTN_PRESSED;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_config.mapSize = aoc::map::MapSize::Large;
-            const auto d = aoc::map::mapSizeDimensions(aoc::map::MapSize::Large);
+        btn.onClick      = [this, &ui]() {
+            this->m_config.mapSize      = aoc::map::MapSize::Large;
+            const auto d                = aoc::map::mapSizeDimensions(aoc::map::MapSize::Large);
             this->m_config.customWidth  = d.first;
             this->m_config.customHeight = d.second;
             this->updateMapSizeButtons(ui);
             this->refresh(ui);
         };
-        this->m_btnLarge = ui.createButton(
-            mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
+        this->m_btnLarge = ui.createButton(mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H},
+                                           std::move(btn));
     }
 
     // Huge
@@ -526,85 +508,81 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.pressedColor = BTN_PRESSED;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
-            this->m_config.mapSize = aoc::map::MapSize::Huge;
-            const auto d = aoc::map::mapSizeDimensions(aoc::map::MapSize::Huge);
+        btn.onClick      = [this, &ui]() {
+            this->m_config.mapSize      = aoc::map::MapSize::Huge;
+            const auto d                = aoc::map::mapSizeDimensions(aoc::map::MapSize::Huge);
             this->m_config.customWidth  = d.first;
             this->m_config.customHeight = d.second;
             this->updateMapSizeButtons(ui);
             this->refresh(ui);
         };
-        this->m_btnHuge = ui.createButton(
-            mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H}, std::move(btn));
+        this->m_btnHuge = ui.createButton(mapSizeRow, {0.0f, 0.0f, MAP_SIZE_BTN_W, MAP_SIZE_BTN_H},
+                                          std::move(btn));
     }
 
     // ---- Custom W/H spinners (override presets when adjusted) ----
-    auto buildSpinnerRow = [this, &ui, innerW](const char* label,
-                                                int32_t* target,
-                                                int32_t minVal,
-                                                WidgetId* labelOut) {
-        WidgetId row = ui.createPanel(this->m_rootPanel,
-            {0.0f, 0.0f, innerW, 28.0f},
-            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
-        Widget* r = ui.getWidget(row);
+    auto buildSpinnerRow = [this, &ui, innerW](const char* label, int32_t* target, int32_t minVal,
+                                               WidgetId* labelOut) {
+        WidgetId row = ui.createPanel(this->m_rootPanel, {0.0f, 0.0f, innerW, 28.0f},
+                                      PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        Widget* r    = ui.getWidget(row);
         if (r != nullptr) {
             r->layoutDirection = LayoutDirection::Horizontal;
-            r->childSpacing = 6.0f;
+            r->childSpacing    = 6.0f;
         }
-        (void)ui.createLabel(row, {0.0f, 0.0f, 110.0f, 24.0f},
-            LabelData{label, WHITE_TEXT, 12.0f});
+        (void)ui.createLabel(row, {0.0f, 0.0f, 110.0f, 24.0f}, LabelData{label, WHITE_TEXT, 12.0f});
 
         ButtonData minus;
-        minus.label        = "-";
-        minus.fontSize     = 13.0f;
-        minus.normalColor  = BTN_NORMAL;
-        minus.hoverColor   = BTN_HOVER;
-        minus.pressedColor = BTN_PRESSED;
-        minus.labelColor   = WHITE_TEXT;
-        minus.cornerRadius = 3.0f;
+        minus.label          = "-";
+        minus.fontSize       = 13.0f;
+        minus.normalColor    = BTN_NORMAL;
+        minus.hoverColor     = BTN_HOVER;
+        minus.pressedColor   = BTN_PRESSED;
+        minus.labelColor     = WHITE_TEXT;
+        minus.cornerRadius   = 3.0f;
         minus.repeatDelaySec = 0.35f;
         minus.repeatRateHz   = 15.0f;
-        minus.onClick = [this, &ui, target, minVal]() {
-            if (*target > minVal) { --(*target); this->refresh(ui); }
+        minus.onClick        = [this, &ui, target, minVal]() {
+            if (*target > minVal) {
+                --(*target);
+                this->refresh(ui);
+            }
         };
         (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(minus));
 
         *labelOut = ui.createLabel(row, {0.0f, 0.0f, 70.0f, 24.0f},
-            LabelData{std::to_string(*target), WHITE_TEXT, 12.0f});
+                                   LabelData{std::to_string(*target), WHITE_TEXT, 12.0f});
 
         ButtonData plus;
-        plus.label        = "+";
-        plus.fontSize     = 13.0f;
-        plus.normalColor  = BTN_NORMAL;
-        plus.hoverColor   = BTN_HOVER;
-        plus.pressedColor = BTN_PRESSED;
-        plus.labelColor   = WHITE_TEXT;
-        plus.cornerRadius = 3.0f;
+        plus.label          = "+";
+        plus.fontSize       = 13.0f;
+        plus.normalColor    = BTN_NORMAL;
+        plus.hoverColor     = BTN_HOVER;
+        plus.pressedColor   = BTN_PRESSED;
+        plus.labelColor     = WHITE_TEXT;
+        plus.cornerRadius   = 3.0f;
         plus.repeatDelaySec = 0.35f;
         plus.repeatRateHz   = 15.0f;
-        plus.onClick = [this, &ui, target]() {
-            ++(*target); this->refresh(ui);
+        plus.onClick        = [this, &ui, target]() {
+            ++(*target);
+            this->refresh(ui);
         };
         (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(plus));
     };
-    buildSpinnerRow("Width:",  &this->m_config.customWidth,  20, &this->m_widthLabel);
+    buildSpinnerRow("Width:", &this->m_config.customWidth, 20, &this->m_widthLabel);
     buildSpinnerRow("Height:", &this->m_config.customHeight, 20, &this->m_heightLabel);
 
     // ---- Turn Count section ----
     [[maybe_unused]] WidgetId turnsLabel = ui.createLabel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 18.0f},
-        LabelData{"Turn Limit:", SECTION_TEXT, 14.0f});
+        contentPanel, {0.0f, 0.0f, innerW, 18.0f}, LabelData{"Turn Limit:", SECTION_TEXT, 14.0f});
 
-    WidgetId turnsRow = ui.createPanel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 32.0f},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    WidgetId turnsRow = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 32.0f},
+                                       PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
     {
         Widget* row = ui.getWidget(turnsRow);
         assert(row != nullptr);
         row->layoutDirection = LayoutDirection::Horizontal;
-        row->childSpacing = 6.0f;
+        row->childSpacing    = 6.0f;
     }
     constexpr float TURN_BTN_W = 80.0f;
     constexpr float TURN_BTN_H = 28.0f;
@@ -618,42 +596,36 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.pressedColor = BTN_PRESSED;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui, turns]() {
+        btn.onClick      = [this, &ui, turns]() {
             this->m_config.maxTurns = turns;
             this->updateTurnButtons(ui);
         };
-        *outId = ui.createButton(
-            turnsRow, {0.0f, 0.0f, TURN_BTN_W, TURN_BTN_H}, std::move(btn));
+        *outId = ui.createButton(turnsRow, {0.0f, 0.0f, TURN_BTN_W, TURN_BTN_H}, std::move(btn));
     };
-    makeTurnButton("300",  300,  &this->m_btnTurns300);
+    makeTurnButton("300", 300, &this->m_btnTurns300);
     makeTurnButton("1000", 1000, &this->m_btnTurns1000);
     makeTurnButton("2000", 2000, &this->m_btnTurns2000);
     makeTurnButton("5000", 5000, &this->m_btnTurns5000);
 
     // ---- Resource placement section ----
-    [[maybe_unused]] WidgetId placementLabel = ui.createLabel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 18.0f},
-        LabelData{"Resource Placement:", SECTION_TEXT, 14.0f});
+    [[maybe_unused]] WidgetId placementLabel =
+        ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 18.0f},
+                       LabelData{"Resource Placement:", SECTION_TEXT, 14.0f});
 
-    WidgetId placementRow = ui.createPanel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 32.0f},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    WidgetId placementRow = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 32.0f},
+                                           PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
     {
         Widget* row = ui.getWidget(placementRow);
         assert(row != nullptr);
         row->layoutDirection = LayoutDirection::Horizontal;
-        row->childSpacing = 6.0f;
+        row->childSpacing    = 6.0f;
     }
 
     constexpr float PLACE_BTN_W = 110.0f;
     constexpr float PLACE_BTN_H = 28.0f;
 
-    auto buildPlaceBtn = [&](const std::string& label,
-                             aoc::map::ResourcePlacementMode mode,
-                             const std::string& tip,
-                             bool selected) -> WidgetId {
+    auto buildPlaceBtn = [&](const std::string& label, aoc::map::ResourcePlacementMode mode,
+                             const std::string& tip, bool selected) -> WidgetId {
         ButtonData btn;
         btn.label        = label;
         btn.fontSize     = 12.0f;
@@ -662,39 +634,36 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.pressedColor = selected ? BTN_SEL_PRESSED : BTN_PRESSED;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui, mode]() {
+        btn.onClick      = [this, &ui, mode]() {
             this->m_config.placement = mode;
             this->updatePlacementButtons(ui);
         };
-        const WidgetId id = ui.createButton(
-            placementRow, {0.0f, 0.0f, PLACE_BTN_W, PLACE_BTN_H}, std::move(btn));
+        const WidgetId id =
+            ui.createButton(placementRow, {0.0f, 0.0f, PLACE_BTN_W, PLACE_BTN_H}, std::move(btn));
         ui.setWidgetTooltip(id, tip);
         return id;
     };
 
-    this->m_btnPlaceRealistic = buildPlaceBtn(
-        "Realistic",
-        aoc::map::ResourcePlacementMode::Realistic,
-        "Geology-driven: coal in sedimentary basins, iron on continental shield, "
-        "oil near subduction boundaries.",
-        this->m_config.placement == aoc::map::ResourcePlacementMode::Realistic);
-    this->m_btnPlaceFair = buildPlaceBtn(
-        "Fair",
-        aoc::map::ResourcePlacementMode::Fair,
-        "Guarantees each quadrant gets comparable strategic-resource access. "
-        "Starts realistic then rebalances surplus.",
-        this->m_config.placement == aoc::map::ResourcePlacementMode::Fair);
-    this->m_btnPlaceRandom = buildPlaceBtn(
-        "Random",
-        aoc::map::ResourcePlacementMode::Random,
-        "Uniform per-tile chance, ignores geology. Wider swings between "
-        "resource-rich and resource-starved starts.",
-        this->m_config.placement == aoc::map::ResourcePlacementMode::Random);
+    this->m_btnPlaceRealistic =
+        buildPlaceBtn("Realistic", aoc::map::ResourcePlacementMode::Realistic,
+                      "Geology-driven: coal in sedimentary basins, iron on continental shield, "
+                      "oil near subduction boundaries.",
+                      this->m_config.placement == aoc::map::ResourcePlacementMode::Realistic);
+    this->m_btnPlaceFair =
+        buildPlaceBtn("Fair", aoc::map::ResourcePlacementMode::Fair,
+                      "Guarantees each quadrant gets comparable strategic-resource access. "
+                      "Starts realistic then rebalances surplus.",
+                      this->m_config.placement == aoc::map::ResourcePlacementMode::Fair);
+    this->m_btnPlaceRandom =
+        buildPlaceBtn("Random", aoc::map::ResourcePlacementMode::Random,
+                      "Uniform per-tile chance, ignores geology. Wider swings between "
+                      "resource-rich and resource-starved starts.",
+                      this->m_config.placement == aoc::map::ResourcePlacementMode::Random);
 
     // ---- Continent generation knobs (Continents map type) ----
-    [[maybe_unused]] WidgetId genHeaderLabel = ui.createLabel(
-        contentPanel, {0.0f, 0.0f, innerW, 18.0f},
-        LabelData{"Continent Generation:", SECTION_TEXT, 14.0f});
+    [[maybe_unused]] WidgetId genHeaderLabel =
+        ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 18.0f},
+                       LabelData{"Continent Generation:", SECTION_TEXT, 14.0f});
     if (this->m_config.mapSeed == 0u) {
         // Initial seed: draw an OS-entropy value so the field shows a
         // real number rather than 0. User can re-roll or type a custom
@@ -705,25 +674,24 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
 
     // -- Tectonic age row (total simulated geological time in My/Gy) --
     {
-        WidgetId row = ui.createPanel(contentPanel,
-            {0.0f, 0.0f, innerW, 28.0f},
-            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
-        Widget* r = ui.getWidget(row);
+        WidgetId row = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 28.0f},
+                                      PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        Widget* r    = ui.getWidget(row);
         if (r != nullptr) {
             r->layoutDirection = LayoutDirection::Horizontal;
-            r->childSpacing = 6.0f;
+            r->childSpacing    = 6.0f;
         }
         (void)ui.createLabel(row, {0.0f, 0.0f, 110.0f, 24.0f},
-            LabelData{"Tectonic age:", WHITE_TEXT, 12.0f});
+                             LabelData{"Tectonic age:", WHITE_TEXT, 12.0f});
         // Minus
         ButtonData minus;
-        minus.label        = "-";
-        minus.fontSize     = 13.0f;
-        minus.normalColor  = BTN_GREY;
-        minus.hoverColor   = BTN_GREY_HOVER;
-        minus.pressedColor = BTN_GREY_PRESS;
-        minus.labelColor   = WHITE_TEXT;
-        minus.cornerRadius = 3.0f;
+        minus.label          = "-";
+        minus.fontSize       = 13.0f;
+        minus.normalColor    = BTN_GREY;
+        minus.hoverColor     = BTN_GREY_HOVER;
+        minus.pressedColor   = BTN_GREY_PRESS;
+        minus.labelColor     = WHITE_TEXT;
+        minus.cornerRadius   = 3.0f;
         minus.repeatDelaySec = 0.35f;
         minus.repeatRateHz   = 12.0f;
         // Step in 100 My increments (game-meaningful resolution; 50 My
@@ -737,22 +705,21 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         };
         (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(minus));
 
-        this->m_epochsLabel = ui.createLabel(row,
-            {0.0f, 0.0f, 90.0f, 24.0f},
-            LabelData{formatTectonicTimeLabel(this->m_config.tectonicTotalMy),
-                WHITE_TEXT, 12.0f});
+        this->m_epochsLabel = ui.createLabel(
+            row, {0.0f, 0.0f, 90.0f, 24.0f},
+            LabelData{formatTectonicTimeLabel(this->m_config.tectonicTotalMy), WHITE_TEXT, 12.0f});
 
         ButtonData plus;
-        plus.label        = "+";
-        plus.fontSize     = 13.0f;
-        plus.normalColor  = BTN_GREY;
-        plus.hoverColor   = BTN_GREY_HOVER;
-        plus.pressedColor = BTN_GREY_PRESS;
-        plus.labelColor   = WHITE_TEXT;
-        plus.cornerRadius = 3.0f;
+        plus.label          = "+";
+        plus.fontSize       = 13.0f;
+        plus.normalColor    = BTN_GREY;
+        plus.hoverColor     = BTN_GREY_HOVER;
+        plus.pressedColor   = BTN_GREY_PRESS;
+        plus.labelColor     = WHITE_TEXT;
+        plus.cornerRadius   = 3.0f;
         plus.repeatDelaySec = 0.35f;
         plus.repeatRateHz   = 12.0f;
-        plus.onClick = [this, &ui]() {
+        plus.onClick        = [this, &ui]() {
             // No upper cap — user-decided value, generator clamps the
             // lower bound (3) and runs whatever the user picks above it.
             this->m_config.tectonicTotalMy += 100;
@@ -763,27 +730,26 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
 
     // -- Continent count row --
     {
-        WidgetId row = ui.createPanel(contentPanel,
-            {0.0f, 0.0f, innerW, 28.0f},
-            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
-        Widget* r = ui.getWidget(row);
+        WidgetId row = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 28.0f},
+                                      PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        Widget* r    = ui.getWidget(row);
         if (r != nullptr) {
             r->layoutDirection = LayoutDirection::Horizontal;
-            r->childSpacing = 6.0f;
+            r->childSpacing    = 6.0f;
         }
         (void)ui.createLabel(row, {0.0f, 0.0f, 110.0f, 24.0f},
-            LabelData{"Continents:", WHITE_TEXT, 12.0f});
+                             LabelData{"Continents:", WHITE_TEXT, 12.0f});
         ButtonData minus;
-        minus.label        = "-";
-        minus.fontSize     = 13.0f;
-        minus.normalColor  = BTN_GREY;
-        minus.hoverColor   = BTN_GREY_HOVER;
-        minus.pressedColor = BTN_GREY_PRESS;
-        minus.labelColor   = WHITE_TEXT;
-        minus.cornerRadius = 3.0f;
+        minus.label          = "-";
+        minus.fontSize       = 13.0f;
+        minus.normalColor    = BTN_GREY;
+        minus.hoverColor     = BTN_GREY_HOVER;
+        minus.pressedColor   = BTN_GREY_PRESS;
+        minus.labelColor     = WHITE_TEXT;
+        minus.cornerRadius   = 3.0f;
         minus.repeatDelaySec = 0.35f;
         minus.repeatRateHz   = 10.0f;
-        minus.onClick = [this, &ui]() {
+        minus.onClick        = [this, &ui]() {
             if (this->m_config.landPlateCount > 1) {
                 --this->m_config.landPlateCount;
                 this->refresh(ui);
@@ -791,22 +757,21 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         };
         (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(minus));
 
-        this->m_landCountLabel = ui.createLabel(row,
-            {0.0f, 0.0f, 70.0f, 24.0f},
-            LabelData{std::to_string(this->m_config.landPlateCount),
-                      WHITE_TEXT, 12.0f});
+        this->m_landCountLabel = ui.createLabel(
+            row, {0.0f, 0.0f, 70.0f, 24.0f},
+            LabelData{std::to_string(this->m_config.landPlateCount), WHITE_TEXT, 12.0f});
 
         ButtonData plus;
-        plus.label        = "+";
-        plus.fontSize     = 13.0f;
-        plus.normalColor  = BTN_GREY;
-        plus.hoverColor   = BTN_GREY_HOVER;
-        plus.pressedColor = BTN_GREY_PRESS;
-        plus.labelColor   = WHITE_TEXT;
-        plus.cornerRadius = 3.0f;
+        plus.label          = "+";
+        plus.fontSize       = 13.0f;
+        plus.normalColor    = BTN_GREY;
+        plus.hoverColor     = BTN_GREY_HOVER;
+        plus.pressedColor   = BTN_GREY_PRESS;
+        plus.labelColor     = WHITE_TEXT;
+        plus.cornerRadius   = 3.0f;
         plus.repeatDelaySec = 0.35f;
         plus.repeatRateHz   = 10.0f;
-        plus.onClick = [this, &ui]() {
+        plus.onClick        = [this, &ui]() {
             // No upper cap; generator clamps lower bound only.
             ++this->m_config.landPlateCount;
             this->refresh(ui);
@@ -816,21 +781,19 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
 
     // -- Seed row --
     {
-        WidgetId row = ui.createPanel(contentPanel,
-            {0.0f, 0.0f, innerW, 28.0f},
-            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
-        Widget* r = ui.getWidget(row);
+        WidgetId row = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 28.0f},
+                                      PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        Widget* r    = ui.getWidget(row);
         if (r != nullptr) {
             r->layoutDirection = LayoutDirection::Horizontal;
-            r->childSpacing = 6.0f;
+            r->childSpacing    = 6.0f;
         }
         (void)ui.createLabel(row, {0.0f, 0.0f, 110.0f, 24.0f},
-            LabelData{"Seed:", WHITE_TEXT, 12.0f});
+                             LabelData{"Seed:", WHITE_TEXT, 12.0f});
 
-        this->m_seedLabel = ui.createLabel(row,
-            {0.0f, 0.0f, 180.0f, 24.0f},
-            LabelData{std::to_string(this->m_config.mapSeed),
-                      WHITE_TEXT, 12.0f});
+        this->m_seedLabel =
+            ui.createLabel(row, {0.0f, 0.0f, 180.0f, 24.0f},
+                           LabelData{std::to_string(this->m_config.mapSeed), WHITE_TEXT, 12.0f});
 
         ButtonData reroll;
         reroll.label        = "Re-roll";
@@ -840,7 +803,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         reroll.pressedColor = BTN_GREY_PRESS;
         reroll.labelColor   = WHITE_TEXT;
         reroll.cornerRadius = 3.0f;
-        reroll.onClick = [this, &ui]() {
+        reroll.onClick      = [this, &ui]() {
             std::random_device rdr;
             this->m_config.mapSeed = rdr();
             this->refresh(ui);
@@ -850,26 +813,20 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
 
     // ---- Players section ----
     [[maybe_unused]] WidgetId playersSectionLabel = ui.createLabel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 18.0f},
-        LabelData{"Players:", SECTION_TEXT, 14.0f});
+        contentPanel, {0.0f, 0.0f, innerW, 18.0f}, LabelData{"Players:", SECTION_TEXT, 14.0f});
 
     // Player count row: "Players: [N]  [-] [+]"
-    WidgetId playerCountRow = ui.createPanel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 28.0f},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    WidgetId playerCountRow = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 28.0f},
+                                             PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
     {
         Widget* row = ui.getWidget(playerCountRow);
         assert(row != nullptr);
         row->layoutDirection = LayoutDirection::Horizontal;
-        row->childSpacing = 6.0f;
+        row->childSpacing    = 6.0f;
     }
 
     [[maybe_unused]] WidgetId countTextLabel = ui.createLabel(
-        playerCountRow,
-        {0.0f, 0.0f, 80.0f, 28.0f},
-        LabelData{"Number:", GREY_TEXT, 13.0f});
+        playerCountRow, {0.0f, 0.0f, 80.0f, 28.0f}, LabelData{"Number:", GREY_TEXT, 13.0f});
 
     // Minus button
     {
@@ -881,7 +838,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.pressedColor = BTN_GREY_PRESS;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 3.0f;
-        btn.onClick = [this, &ui]() {
+        btn.onClick      = [this, &ui]() {
             if (this->m_config.playerCount > 2) {
                 --this->m_config.playerCount;
                 for (uint8_t i = 0; i < 20; ++i) {
@@ -890,14 +847,13 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
                 this->refresh(ui);
             }
         };
-        [[maybe_unused]] WidgetId minusBtn = ui.createButton(
-            playerCountRow, {0.0f, 0.0f, 30.0f, 28.0f}, std::move(btn));
+        [[maybe_unused]] WidgetId minusBtn =
+            ui.createButton(playerCountRow, {0.0f, 0.0f, 30.0f, 28.0f}, std::move(btn));
     }
 
-    this->m_playerCountLabel = ui.createLabel(
-        playerCountRow,
-        {0.0f, 0.0f, 30.0f, 28.0f},
-        LabelData{std::to_string(this->m_config.playerCount), WHITE_TEXT, 13.0f});
+    this->m_playerCountLabel =
+        ui.createLabel(playerCountRow, {0.0f, 0.0f, 30.0f, 28.0f},
+                       LabelData{std::to_string(this->m_config.playerCount), WHITE_TEXT, 13.0f});
 
     // Plus button
     {
@@ -909,7 +865,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.pressedColor = BTN_GREY_PRESS;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 3.0f;
-        btn.onClick = [this, &ui]() {
+        btn.onClick      = [this, &ui]() {
             if (this->m_config.playerCount < 20) {
                 ++this->m_config.playerCount;
                 for (uint8_t i = 0; i < 20; ++i) {
@@ -918,31 +874,29 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
                 this->refresh(ui);
             }
         };
-        [[maybe_unused]] WidgetId plusBtn = ui.createButton(
-            playerCountRow, {0.0f, 0.0f, 30.0f, 28.0f}, std::move(btn));
+        [[maybe_unused]] WidgetId plusBtn =
+            ui.createButton(playerCountRow, {0.0f, 0.0f, 30.0f, 28.0f}, std::move(btn));
     }
 
     // ---- Player slot rows ----
-    constexpr float SLOT_ROW_H  = 26.0f;
-    constexpr float LABEL_W     = 70.0f;
-    constexpr float CIV_BTN_W   = 100.0f;
-    constexpr float TYPE_BTN_W  = 70.0f;
+    constexpr float SLOT_ROW_H = 26.0f;
+    constexpr float LABEL_W    = 70.0f;
+    constexpr float CIV_BTN_W  = 100.0f;
+    constexpr float TYPE_BTN_W = 70.0f;
 
     // Build all 20 slot rows up-front. Earlier loop only created 8, so
     // clicking "+" past player 8 had refresh() poke INVALID widgets in
     // m_playerRows / m_civLabels / m_typeLabels and the modal froze
     // ("grey window"). Refresh now toggles isVisible across all 20.
     for (uint8_t slot = 0; slot < 20; ++slot) {
-        WidgetId slotRow = ui.createPanel(
-            contentPanel,
-            {0.0f, 0.0f, innerW, SLOT_ROW_H},
-            PanelData{{0.08f, 0.08f, 0.12f, 0.75f}, 4.0f});
+        WidgetId slotRow = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, SLOT_ROW_H},
+                                          PanelData{{0.08f, 0.08f, 0.12f, 0.75f}, 4.0f});
         {
             Widget* row = ui.getWidget(slotRow);
             assert(row != nullptr);
             row->layoutDirection = LayoutDirection::Horizontal;
-            row->childSpacing = 6.0f;
-            row->padding = {4.0f, 2.0f, 4.0f, 2.0f};
+            row->childSpacing    = 6.0f;
+            row->padding         = {4.0f, 2.0f, 4.0f, 2.0f};
         }
         this->m_playerRows[slot] = slotRow;
 
@@ -950,15 +904,12 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         IconData swatch;
         swatch.tint          = theme().playerColor(slot);
         swatch.fallbackColor = swatch.tint;
-        (void)ui.createIcon(slotRow, {0.0f, 0.0f, 6.0f, SLOT_ROW_H - 4.0f},
-                             std::move(swatch));
+        (void)ui.createIcon(slotRow, {0.0f, 0.0f, 6.0f, SLOT_ROW_H - 4.0f}, std::move(swatch));
 
         // "Player N:" label
-        const std::string slotLabel = "Player " + std::to_string(slot + 1) + ":";
+        const std::string slotLabel         = "Player " + std::to_string(slot + 1) + ":";
         [[maybe_unused]] WidgetId nameLabel = ui.createLabel(
-            slotRow,
-            {0.0f, 0.0f, LABEL_W, SLOT_ROW_H},
-            LabelData{slotLabel, GREY_TEXT, 12.0f});
+            slotRow, {0.0f, 0.0f, LABEL_W, SLOT_ROW_H}, LabelData{slotLabel, GREY_TEXT, 12.0f});
 
         // Civ cycle button
         {
@@ -971,13 +922,13 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             btn.pressedColor = BTN_PRESSED;
             btn.labelColor   = WHITE_TEXT;
             btn.cornerRadius = 3.0f;
-            btn.onClick = [this, slot, &ui]() {
-                this->m_config.players[slot].civId =
-                    static_cast<uint8_t>((this->m_config.players[slot].civId + 1) % aoc::sim::CIV_COUNT);
+            btn.onClick      = [this, slot, &ui]() {
+                this->m_config.players[slot].civId = static_cast<uint8_t>(
+                    (this->m_config.players[slot].civId + 1) % aoc::sim::CIV_COUNT);
                 this->refresh(ui);
             };
-            this->m_civLabels[slot] = ui.createButton(
-                slotRow, {0.0f, 0.0f, CIV_BTN_W, SLOT_ROW_H}, std::move(btn));
+            this->m_civLabels[slot] =
+                ui.createButton(slotRow, {0.0f, 0.0f, CIV_BTN_W, SLOT_ROW_H}, std::move(btn));
         }
 
         // Type toggle button (Human/AI)
@@ -993,8 +944,8 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             btn.cornerRadius = 3.0f;
             if (slot == 0) {
                 // Player 1 is always Human -- no toggle
-                btn.normalColor = BTN_SELECTED;
-                btn.hoverColor  = BTN_SEL_HOVER;
+                btn.normalColor  = BTN_SELECTED;
+                btn.hoverColor   = BTN_SEL_HOVER;
                 btn.pressedColor = BTN_SEL_PRESSED;
             } else {
                 btn.onClick = [this, slot, &ui]() {
@@ -1002,8 +953,8 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
                     this->refresh(ui);
                 };
             }
-            this->m_typeLabels[slot] = ui.createButton(
-                slotRow, {0.0f, 0.0f, TYPE_BTN_W, SLOT_ROW_H}, std::move(btn));
+            this->m_typeLabels[slot] =
+                ui.createButton(slotRow, {0.0f, 0.0f, TYPE_BTN_W, SLOT_ROW_H}, std::move(btn));
         }
 
         // Hide inactive slots
@@ -1023,12 +974,12 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.pressedColor = seqOn ? BTN_SEL_PRESSED : BTN_PRESSED;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
+        btn.onClick      = [this, &ui]() {
             this->m_config.sequentialTurnsInWar = !this->m_config.sequentialTurnsInWar;
             this->refresh(ui);
         };
-        this->m_btnSequential = ui.createButton(
-            contentPanel, {0.0f, 0.0f, innerW, 28.0f}, std::move(btn));
+        this->m_btnSequential =
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 28.0f}, std::move(btn));
     }
 
     // ---- AI Difficulty toggle ----
@@ -1047,49 +998,47 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.pressedColor = BTN_PRESSED;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
-        btn.onClick = [this, &ui]() {
+        btn.onClick      = [this, &ui]() {
             // Cycle: Easy -> Normal -> Hard -> Easy
             switch (this->m_config.aiDifficulty) {
-                case AIDifficulty::Easy:
-                    this->m_config.aiDifficulty = AIDifficulty::Normal;
-                    break;
-                case AIDifficulty::Normal:
-                    this->m_config.aiDifficulty = AIDifficulty::Hard;
-                    break;
-                case AIDifficulty::Hard:
-                    this->m_config.aiDifficulty = AIDifficulty::Easy;
-                    break;
+            case AIDifficulty::Easy:
+                this->m_config.aiDifficulty = AIDifficulty::Normal;
+                break;
+            case AIDifficulty::Normal:
+                this->m_config.aiDifficulty = AIDifficulty::Hard;
+                break;
+            case AIDifficulty::Hard:
+                this->m_config.aiDifficulty = AIDifficulty::Easy;
+                break;
             }
             this->refresh(ui);
         };
-        this->m_btnDifficulty = ui.createButton(
-            contentPanel, {0.0f, 0.0f, innerW, 28.0f}, std::move(btn));
+        this->m_btnDifficulty =
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 28.0f}, std::move(btn));
     }
 
     // Spacer
-    [[maybe_unused]] WidgetId spacer = ui.createPanel(
-        contentPanel,
-        {0.0f, 0.0f, innerW, 8.0f},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    [[maybe_unused]] WidgetId spacer = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 8.0f},
+                                                      PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
 
     // ---- Start Game button ----
     {
         ButtonData btn;
-        btn.label        = "Start Game";
-        btn.fontSize     = 16.0f;
-        btn.normalColor  = BTN_GREEN;
-        btn.hoverColor   = BTN_GREEN_HOVER;
-        btn.pressedColor = BTN_GREEN_PRESS;
-        btn.labelColor   = WHITE_TEXT;
-        btn.cornerRadius = 5.0f;
+        btn.label                                           = "Start Game";
+        btn.fontSize                                        = 16.0f;
+        btn.normalColor                                     = BTN_GREEN;
+        btn.hoverColor                                      = BTN_GREEN_HOVER;
+        btn.pressedColor                                    = BTN_GREEN_PRESS;
+        btn.labelColor                                      = WHITE_TEXT;
+        btn.cornerRadius                                    = 5.0f;
         std::function<void(const GameSetupConfig&)> startCb = std::move(onStart);
-        btn.onClick = [this, startCb]() {
+        btn.onClick                                         = [this, startCb]() {
             if (startCb) {
                 startCb(this->m_config);
             }
         };
-        [[maybe_unused]] WidgetId startBtn = ui.createButton(
-            contentPanel, {0.0f, 0.0f, innerW, 40.0f}, std::move(btn));
+        [[maybe_unused]] WidgetId startBtn =
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 40.0f}, std::move(btn));
     }
 
     // ---- Back button ----
@@ -1103,8 +1052,8 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
         btn.onClick      = std::move(onBack);
-        [[maybe_unused]] WidgetId backBtn = ui.createButton(
-            contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+        [[maybe_unused]] WidgetId backBtn =
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
     }
 
     this->updateMapSizeButtons(ui);
@@ -1115,8 +1064,8 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
     this->refresh(ui);
 
     this->m_isBuilt = true;
-    LOG_INFO("Game setup screen built (%.0fx%.0f)",
-             static_cast<double>(screenW), static_cast<double>(screenH));
+    LOG_INFO("Game setup screen built (%.0fx%.0f)", static_cast<double>(screenW),
+             static_cast<double>(screenH));
 }
 
 void GameSetupScreen::destroy(UIManager& ui) {
@@ -1124,29 +1073,29 @@ void GameSetupScreen::destroy(UIManager& ui) {
         return;
     }
     ui.removeWidget(this->m_rootPanel);
-    this->m_rootPanel        = INVALID_WIDGET;
-    this->m_playerCountLabel = INVALID_WIDGET;
+    this->m_rootPanel                = INVALID_WIDGET;
+    this->m_playerCountLabel         = INVALID_WIDGET;
     this->m_btnContinents            = INVALID_WIDGET;
     this->m_btnIslands               = INVALID_WIDGET;
     this->m_btnContinentsPlusIslands = INVALID_WIDGET;
     this->m_btnLandOnly              = INVALID_WIDGET;
     this->m_btnLandWithSeas          = INVALID_WIDGET;
     this->m_btnFractal               = INVALID_WIDGET;
-    this->m_btnSmall         = INVALID_WIDGET;
-    this->m_btnStandard      = INVALID_WIDGET;
-    this->m_btnLarge         = INVALID_WIDGET;
-    this->m_btnHuge          = INVALID_WIDGET;
-    this->m_widthLabel       = INVALID_WIDGET;
-    this->m_heightLabel      = INVALID_WIDGET;
-    this->m_btnTurns300      = INVALID_WIDGET;
-    this->m_btnTurns1000     = INVALID_WIDGET;
-    this->m_btnTurns2000     = INVALID_WIDGET;
-    this->m_btnTurns5000     = INVALID_WIDGET;
-    this->m_btnPlaceRealistic= INVALID_WIDGET;
-    this->m_btnPlaceFair     = INVALID_WIDGET;
-    this->m_btnPlaceRandom   = INVALID_WIDGET;
-    this->m_btnSequential    = INVALID_WIDGET;
-    this->m_btnDifficulty    = INVALID_WIDGET;
+    this->m_btnSmall                 = INVALID_WIDGET;
+    this->m_btnStandard              = INVALID_WIDGET;
+    this->m_btnLarge                 = INVALID_WIDGET;
+    this->m_btnHuge                  = INVALID_WIDGET;
+    this->m_widthLabel               = INVALID_WIDGET;
+    this->m_heightLabel              = INVALID_WIDGET;
+    this->m_btnTurns300              = INVALID_WIDGET;
+    this->m_btnTurns1000             = INVALID_WIDGET;
+    this->m_btnTurns2000             = INVALID_WIDGET;
+    this->m_btnTurns5000             = INVALID_WIDGET;
+    this->m_btnPlaceRealistic        = INVALID_WIDGET;
+    this->m_btnPlaceFair             = INVALID_WIDGET;
+    this->m_btnPlaceRandom           = INVALID_WIDGET;
+    this->m_btnSequential            = INVALID_WIDGET;
+    this->m_btnDifficulty            = INVALID_WIDGET;
     for (uint8_t i = 0; i < 20; ++i) {
         this->m_playerRows[i] = INVALID_WIDGET;
         this->m_civLabels[i]  = INVALID_WIDGET;
@@ -1158,29 +1107,24 @@ void GameSetupScreen::destroy(UIManager& ui) {
 
 void GameSetupScreen::refresh(UIManager& ui) {
     // Update player count label
-    ui.setLabelText(this->m_playerCountLabel,
-                    std::to_string(this->m_config.playerCount));
+    ui.setLabelText(this->m_playerCountLabel, std::to_string(this->m_config.playerCount));
 
     // Continent generation knobs.
     if (this->m_epochsLabel != INVALID_WIDGET) {
         ui.setLabelText(this->m_epochsLabel,
-            formatTectonicTimeLabel(this->m_config.tectonicTotalMy));
+                        formatTectonicTimeLabel(this->m_config.tectonicTotalMy));
     }
     if (this->m_landCountLabel != INVALID_WIDGET) {
-        ui.setLabelText(this->m_landCountLabel,
-            std::to_string(this->m_config.landPlateCount));
+        ui.setLabelText(this->m_landCountLabel, std::to_string(this->m_config.landPlateCount));
     }
     if (this->m_seedLabel != INVALID_WIDGET) {
-        ui.setLabelText(this->m_seedLabel,
-            std::to_string(this->m_config.mapSeed));
+        ui.setLabelText(this->m_seedLabel, std::to_string(this->m_config.mapSeed));
     }
     if (this->m_widthLabel != INVALID_WIDGET) {
-        ui.setLabelText(this->m_widthLabel,
-            std::to_string(this->m_config.customWidth));
+        ui.setLabelText(this->m_widthLabel, std::to_string(this->m_config.customWidth));
     }
     if (this->m_heightLabel != INVALID_WIDGET) {
-        ui.setLabelText(this->m_heightLabel,
-            std::to_string(this->m_config.customHeight));
+        ui.setLabelText(this->m_heightLabel, std::to_string(this->m_config.customHeight));
     }
 
     // Show/hide player rows and update labels
@@ -1222,18 +1166,15 @@ void GameSetupScreen::updateMapTypeButtons(UIManager& ui) {
 }
 
 void GameSetupScreen::updateMapSizeButtons(UIManager& ui) {
-    setButtonSelected(ui, this->m_btnSmall,
-                      this->m_config.mapSize == aoc::map::MapSize::Small);
+    setButtonSelected(ui, this->m_btnSmall, this->m_config.mapSize == aoc::map::MapSize::Small);
     setButtonSelected(ui, this->m_btnStandard,
                       this->m_config.mapSize == aoc::map::MapSize::Standard);
-    setButtonSelected(ui, this->m_btnLarge,
-                      this->m_config.mapSize == aoc::map::MapSize::Large);
-    setButtonSelected(ui, this->m_btnHuge,
-                      this->m_config.mapSize == aoc::map::MapSize::Huge);
+    setButtonSelected(ui, this->m_btnLarge, this->m_config.mapSize == aoc::map::MapSize::Large);
+    setButtonSelected(ui, this->m_btnHuge, this->m_config.mapSize == aoc::map::MapSize::Huge);
 }
 
 void GameSetupScreen::updateTurnButtons(UIManager& ui) {
-    setButtonSelected(ui, this->m_btnTurns300,  this->m_config.maxTurns == 300);
+    setButtonSelected(ui, this->m_btnTurns300, this->m_config.maxTurns == 300);
     setButtonSelected(ui, this->m_btnTurns1000, this->m_config.maxTurns == 1000);
     setButtonSelected(ui, this->m_btnTurns2000, this->m_config.maxTurns == 2000);
     setButtonSelected(ui, this->m_btnTurns5000, this->m_config.maxTurns == 5000);
@@ -1247,6 +1188,5 @@ void GameSetupScreen::updatePlacementButtons(UIManager& ui) {
     setButtonSelected(ui, this->m_btnPlaceRandom,
                       this->m_config.placement == aoc::map::ResourcePlacementMode::Random);
 }
-
 
 } // namespace aoc::ui

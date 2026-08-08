@@ -22,7 +22,9 @@
 #include <memory>
 #include <cstdint>
 
-namespace vkutils { class Device; }
+namespace vkutils {
+class Device;
+}
 
 namespace vulkan_app {
 class Renderer3D;
@@ -40,9 +42,11 @@ public:
 
     /// One-shot init. Owns its own Renderer3D bound to the supplied
     /// render pass + device. Must be called before any render().
-    void initialize(const vkutils::Device& device,
-                    VkRenderPass renderPass,
-                    VkExtent2D extent);
+    /// @param srgbFramebuffer True when the target attachment is an _SRGB
+    ///        format, so the shader must emit linear and let the hardware
+    ///        encode. Derive from the acquired swapchain format.
+    void initialize(const vkutils::Device& device, VkRenderPass renderPass, VkExtent2D extent,
+                    bool srgbFramebuffer = true);
 
     /// Resize the underlying Renderer3D viewport. Call after window
     /// resize.
@@ -66,10 +70,8 @@ public:
     /// the frame. If the grid has been marked dirty (markGridDirty)
     /// since the previous render, this also rebuilds the sub-meshes
     /// from `grid` first. Must be called inside an active render pass.
-    void render(VkCommandBuffer cmd, uint32_t frameIndex,
-                const aoc::map::HexGrid& grid,
-                float yawDeg, float pitchDeg, float zoom,
-                float aspect);
+    void render(VkCommandBuffer cmd, uint32_t frameIndex, const aoc::map::HexGrid& grid,
+                float yawDeg, float pitchDeg, float zoom, float aspect);
 
 private:
     struct Impl;

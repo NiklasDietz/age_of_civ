@@ -334,10 +334,15 @@ ErrorCode Application::initialize(const Config& config) {
     this->m_renderPipeline =
         std::make_unique<vulkan_app::RenderPipeline>(*this->m_graphicsDevice, pipelineConfig);
 
-    VkExtent2D extent  = this->m_renderPipeline->extent();
+    VkExtent2D extent = this->m_renderPipeline->extent();
+    // Colours are authored in sRGB; whether the shader must linearise them
+    // depends on the format the surface actually gave us, not on what we asked
+    // for -- see Renderer2D's constructor doc.
+    const bool srgbTarget =
+        vulkan_app::renderer::isSrgbFormat(this->m_renderPipeline->swapchainFormat());
     this->m_renderer2d = std::make_unique<vulkan_app::renderer::Renderer2D>(
         this->m_graphicsDevice->device(), this->m_renderPipeline->renderPass(), extent,
-        vulkan_app::RenderPipeline::MAX_FRAMES_IN_FLIGHT);
+        vulkan_app::RenderPipeline::MAX_FRAMES_IN_FLIGHT, srgbTarget);
 
     // -- Game renderer (needed for both menu and in-game rendering) --
     this->m_gameRenderer.initialize(*this->m_renderPipeline, *this->m_renderer2d);
@@ -348,7 +353,7 @@ ErrorCode Application::initialize(const Config& config) {
     // call and grid-update at frame time, not the resource lifecycle.
     this->m_globeRenderer = std::make_unique<aoc::render::GlobeRenderer>();
     this->m_globeRenderer->initialize(this->m_graphicsDevice->device(),
-                                      this->m_renderPipeline->renderPass(), extent);
+                                      this->m_renderPipeline->renderPass(), extent, srgbTarget);
 
     // -- Live-debug command file. Lambdas capture `this` so handlers
     // can read game state directly. All run synchronously on the main
@@ -520,6 +525,34 @@ ErrorCode Application::initialize(const Config& config) {
         glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
         return "{\"closing\":true}";
     });
+
+    // Capture the presented frame straight out of the swapchain. Unlike a
+    // compositor screenshot this works under any windowing setup and captures
+    // exactly what the renderer produced, which is what makes it usable as a
+    // before/after record when changing how things are drawn.
+    //
+    // Deliberately NOT restricted to the DBus screenshot allowlist: that
+    // allowlist exists because DBus is reachable by other processes on the
+    // session bus, whereas this watcher already accepts arbitrary local
+    // commands (including `quit`) from a file only the running user can write.
+    this->m_debugCmdFile.registerHandler(
+        "screenshot", [this](const std::string& args) -> std::string {
+            std::string path = args;
+            while (!path.empty() && (path.back() == ' ' || path.back() == '\t')) {
+                path.pop_back();
+            }
+            if (path.empty()) {
+                return "{\"error\":\"usage: screenshot <absolute-path.png>\"}";
+            }
+
+            std::string message;
+            const bool ok = this->captureScreenshot(path, message);
+
+            std::ostringstream o;
+            o << "{\"ok\":" << (ok ? "true" : "false") << ",\"path\":\"" << path
+              << "\",\"message\":\"" << message << "\"}";
+            return o.str();
+        });
 
     // -- HTTP debug API. Localhost-only, JSON over HTTP, same
     // information surface as the file watcher above plus richer
@@ -1534,6 +1567,30 @@ void Application::numInputDefocus() {
     this->m_numInputBuffer.clear();
     this->m_numInputOnChange = nullptr;
     this->m_numInputDisplay  = nullptr;
+}
+
+bool Application::captureScreenshot(const std::string& path, std::string& message) {
+    std::vector<uint8_t> pixels;
+    uint32_t shotWidth  = 0;
+    uint32_t shotHeight = 0;
+    VkFormat shotFormat = VK_FORMAT_UNDEFINED;
+
+    if (this->m_renderPipeline == nullptr ||
+        !this->m_renderPipeline->readSwapchainPixels(pixels, shotWidth, shotHeight, shotFormat)) {
+        message = "swapchain readback unavailable (no frame presented yet or "
+                  "TRANSFER_SRC not supported)";
+        return false;
+    }
+
+    const bool isBgra =
+        (shotFormat == VK_FORMAT_B8G8R8A8_SRGB || shotFormat == VK_FORMAT_B8G8R8A8_UNORM);
+    if (!writeScreenshotPng(path, pixels, shotWidth, shotHeight, isBgra)) {
+        message = "PNG encode failed (check parent directory + disk space)";
+        return false;
+    }
+
+    message = "screenshot written via swapchain readback";
+    return true;
 }
 
 void Application::numInputTick() {
@@ -3137,28 +3194,8 @@ void Application::run() {
         {
             std::string shotPath = this->m_dbusService.takePendingScreenshotPath();
             if (!shotPath.empty()) {
-                bool ok = false;
                 std::string message;
-
-                std::vector<uint8_t> pixels;
-                uint32_t shotWidth  = 0;
-                uint32_t shotHeight = 0;
-                VkFormat shotFormat = VK_FORMAT_UNDEFINED;
-                if (this->m_renderPipeline && this->m_renderPipeline->readSwapchainPixels(
-                                                  pixels, shotWidth, shotHeight, shotFormat)) {
-                    const bool isBgra = (shotFormat == VK_FORMAT_B8G8R8A8_SRGB ||
-                                         shotFormat == VK_FORMAT_B8G8R8A8_UNORM);
-                    if (writeScreenshotPng(shotPath, pixels, shotWidth, shotHeight, isBgra)) {
-                        ok      = true;
-                        message = "screenshot written via swapchain readback";
-                    } else {
-                        message = "PNG encode failed (check parent directory + disk space)";
-                    }
-                } else {
-                    message = "swapchain readback unavailable (no frame presented yet or "
-                              "TRANSFER_SRC not supported)";
-                }
-
+                const bool ok = this->captureScreenshot(shotPath, message);
                 this->m_dbusService.reportScreenshotResult(ok, std::move(message));
             }
         }

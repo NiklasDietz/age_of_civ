@@ -695,13 +695,15 @@ elseif(MSVC)
 endif()
 
 # --------------------------------------------------------------------------
-# Shader toolchain (glslangValidator / glslc) -- informational check
+# Shader toolchain (glslangValidator / glslc)
 # --------------------------------------------------------------------------
 # The renderer compiles GLSL -> SPIR-V at runtime via libshaderc
-# (vulkan_utils/ShaderBuilder.cpp loads it via dlopen/LoadLibrary). No build-
-# time shader compilation is wired up, so we only emit a status message if
-# the SDK-provided CLI tools are visible. Find_program looks on PATH, which
-# the LunarG SDK installers populate on all three platforms.
+# (vulkan_utils/ShaderBuilder.cpp loads it via dlopen/LoadLibrary), so shaders
+# are not linked into the binary. Without a build-time check a syntax error in
+# a .glsl file surfaces only when a human launches the game -- shaders are the
+# least-covered code in the tree. Validate them at build time when a compiler
+# is available. Find_program looks on PATH, which the LunarG SDK installers
+# populate on all three platforms.
 find_program(AOC_GLSLANG_VALIDATOR glslangValidator)
 find_program(AOC_GLSLC glslc)
 if(AOC_GLSLANG_VALIDATOR)
@@ -709,6 +711,51 @@ if(AOC_GLSLANG_VALIDATOR)
 endif()
 if(AOC_GLSLC)
     message(STATUS "Found glslc: ${AOC_GLSLC}")
+endif()
+
+# Validate every .glsl under the renderer and the game shader dir. Stage is
+# inferred from the .vert./.frag./.comp. infix in the filename. Validation only
+# -- the actual SPIR-V still comes from the runtime compiler, so this cannot
+# drift from what ships.
+option(AOC_VALIDATE_SHADERS "Compile-check GLSL shaders at build time" ON)
+if(AOC_VALIDATE_SHADERS AND AOC_GLSLC)
+    file(GLOB AOC_ALL_GLSL
+        "${CMAKE_SOURCE_DIR}/third_party/vulkan_renderer/shaders/*.glsl"
+        "${CMAKE_SOURCE_DIR}/shaders/*.glsl")
+    set(AOC_SHADER_STAMPS "")
+    foreach(GLSL_FILE ${AOC_ALL_GLSL})
+        get_filename_component(GLSL_NAME "${GLSL_FILE}" NAME)
+        set(GLSL_STAGE "")
+        if(GLSL_NAME MATCHES "\\.vert\\.")
+            set(GLSL_STAGE vertex)
+        elseif(GLSL_NAME MATCHES "\\.frag\\.")
+            set(GLSL_STAGE fragment)
+        elseif(GLSL_NAME MATCHES "\\.comp\\.")
+            set(GLSL_STAGE compute)
+        endif()
+        if(GLSL_STAGE)
+            set(GLSL_STAMP "${CMAKE_BINARY_DIR}/shader_check/${GLSL_NAME}.stamp")
+            add_custom_command(
+                OUTPUT "${GLSL_STAMP}"
+                COMMAND ${CMAKE_COMMAND} -E make_directory
+                        "${CMAKE_BINARY_DIR}/shader_check"
+                COMMAND ${AOC_GLSLC} -fshader-stage=${GLSL_STAGE}
+                        "${GLSL_FILE}" -o "${GLSL_STAMP}.spv"
+                COMMAND ${CMAKE_COMMAND} -E touch "${GLSL_STAMP}"
+                DEPENDS "${GLSL_FILE}"
+                COMMENT "Validating shader: ${GLSL_NAME}"
+                VERBATIM
+            )
+            list(APPEND AOC_SHADER_STAMPS "${GLSL_STAMP}")
+        endif()
+    endforeach()
+    if(AOC_SHADER_STAMPS)
+        add_custom_target(aoc_validate_shaders ALL DEPENDS ${AOC_SHADER_STAMPS})
+        list(LENGTH AOC_SHADER_STAMPS AOC_SHADER_COUNT)
+        message(STATUS "Build-time shader validation enabled (${AOC_SHADER_COUNT} shaders)")
+    endif()
+elseif(AOC_VALIDATE_SHADERS)
+    message(STATUS "Build-time shader validation skipped (glslc not found)")
 endif()
 
 # --------------------------------------------------------------------------

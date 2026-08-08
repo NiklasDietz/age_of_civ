@@ -680,6 +680,14 @@ private:
     /// Per-frame keystroke routing while focused.
     void numInputTick();
 
+    /// Read back the last presented swapchain image and write it to @p path as
+    /// a PNG. Must be called on the render thread, and only after at least one
+    /// frame has been presented. Shared by the DBus TakeScreenshot method and
+    /// the `screenshot` debug-command verb.
+    /// @param message Filled with a human-readable result either way.
+    /// @return True on success.
+    bool captureScreenshot(const std::string& path, std::string& message);
+
     /// Re-run MapGenerator with the stored creator config, halting
     /// the tectonic sim at `timeMy` millions of years simulated. The
     /// caller passes simulated geological age, not an epoch index;

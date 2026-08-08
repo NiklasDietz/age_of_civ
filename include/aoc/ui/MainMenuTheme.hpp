@@ -2,13 +2,23 @@
 
 /**
  * @file MainMenuTheme.hpp
- * @brief Legacy menu palette names — now redirected to the unified
- *        parchment/bronze design tokens defined in StyleTokens.hpp.
+ * @brief Legacy menu palette names, redirected to the design tokens in
+ *        StyleTokens.hpp.
  *
- * Existing call sites that reference GOLDEN_TEXT / PANEL_BG / BTN_GREY
- * continue to compile but render with the new visual language. Migrate
- * call sites to the explicit `aoc::ui::tokens::*` names over time, then
- * delete this header.
+ * These are aliases only — retinting `tokens::*` retints every call site here
+ * for free, which is why the header is kept rather than migrated away.
+ *
+ * IMPORTANT: the names are historical and describe the ORIGINAL hue
+ * ("BTN_GREEN", "BTN_RED"), not what they render as now. They have been
+ * regrouped into a three-tier button system, because a menu where every entry
+ * is a different hue has no hierarchy — the eye has nothing to land on:
+ *
+ *   PRIMARY   (BTN_GREEN*)  filled brass. At most one per screen.
+ *   SECONDARY (BTN_NORMAL*, BTN_GREY*) recessed surface, cream label.
+ *   DANGER    (BTN_RED*)    destructive only.
+ *   SELECTED  (BTN_SEL*)    "this option is active" within a group.
+ *
+ * Prefer the tier that matches the action's WEIGHT, not its old colour name.
  */
 
 #include "aoc/ui/StyleTokens.hpp"
@@ -16,38 +26,43 @@
 namespace aoc::ui {
 
 // Text aliases.
-inline constexpr Color GOLDEN_TEXT      = tokens::TEXT_GILT;
-inline constexpr Color WHITE_TEXT       = tokens::TEXT_PARCHMENT;
-inline constexpr Color GREY_TEXT        = tokens::TEXT_DISABLED;
-inline constexpr Color SECTION_TEXT     = tokens::TEXT_HEADER;
+inline constexpr Color GOLDEN_TEXT  = tokens::TEXT_GILT;
+inline constexpr Color WHITE_TEXT   = tokens::TEXT_INK;
+inline constexpr Color GREY_TEXT    = tokens::TEXT_DISABLED;
+inline constexpr Color SECTION_TEXT = tokens::TEXT_HEADER;
 
 // Background / panel aliases.
-inline constexpr Color BG_DARK          = tokens::SURFACE_INK;       // dark backdrop
-inline constexpr Color PANEL_BG         = tokens::SURFACE_PARCHMENT; // primary panel face
+inline constexpr Color BG_DARK  = tokens::SURFACE_INK;       // dark backdrop
+inline constexpr Color PANEL_BG = tokens::SURFACE_PARCHMENT; // primary panel face
 
-// Primary button — bronze action.
-inline constexpr Color BTN_NORMAL       = tokens::BRONZE_BASE;
-inline constexpr Color BTN_HOVER        = tokens::BRONZE_LIGHT;
-inline constexpr Color BTN_PRESSED      = tokens::STATE_PRESSED;
+/// Label colour for the filled-brass PRIMARY tier: dark ink on light metal.
+/// Cream-on-brass fails contrast badly.
+inline constexpr Color BTN_PRIMARY_LABEL = tokens::SURFACE_INK;
 
-// Selected (azure accent for "current selection" semantics).
-inline constexpr Color BTN_SELECTED     = tokens::DIPLO_ALLIED;
-inline constexpr Color BTN_SEL_HOVER    = {0.296f, 0.522f, 0.789f, 1.0f}; // light azure
-inline constexpr Color BTN_SEL_PRESSED  = {0.198f, 0.348f, 0.526f, 1.0f}; // deep azure
+// SECONDARY tier — the default. Recessed card that lifts toward brass on hover.
+inline constexpr Color BTN_NORMAL  = tokens::SURFACE_MARBLE;
+inline constexpr Color BTN_HOVER   = {0.200f, 0.224f, 0.259f, 1.0f}; // #333942
+inline constexpr Color BTN_PRESSED = tokens::SURFACE_PARCHMENT_DIM;
 
-// Confirm / commit (olive success).
-inline constexpr Color BTN_GREEN        = tokens::STATE_SUCCESS;
-inline constexpr Color BTN_GREEN_HOVER  = {0.432f, 0.654f, 0.292f, 1.0f};
-inline constexpr Color BTN_GREEN_PRESS  = {0.288f, 0.436f, 0.194f, 1.0f};
+// SELECTED — "this option is active". Brass, matching the accent language
+// rather than the old azure, which read as a foreign hue on this ground.
+inline constexpr Color BTN_SELECTED    = tokens::BRONZE_DARK;
+inline constexpr Color BTN_SEL_HOVER   = tokens::BRONZE_BASE;
+inline constexpr Color BTN_SEL_PRESSED = {0.278f, 0.212f, 0.098f, 1.0f}; // deeper brass
 
-// Destructive (carmine danger).
-inline constexpr Color BTN_RED          = tokens::STATE_DANGER;
-inline constexpr Color BTN_RED_HOVER    = {0.767f, 0.272f, 0.197f, 1.0f};
-inline constexpr Color BTN_RED_PRESS    = {0.511f, 0.182f, 0.131f, 1.0f};
+// PRIMARY tier — filled brass, the single call to action.
+inline constexpr Color BTN_GREEN       = tokens::BRONZE_LIGHT;
+inline constexpr Color BTN_GREEN_HOVER = tokens::GOLD_HIGHLIGHT;
+inline constexpr Color BTN_GREEN_PRESS = tokens::BRONZE_BASE;
 
-// Neutral grey (now parchment-dim — for cancellation / back actions).
-inline constexpr Color BTN_GREY         = tokens::SURFACE_PARCHMENT_DIM;
-inline constexpr Color BTN_GREY_HOVER   = tokens::SURFACE_PARCHMENT;
-inline constexpr Color BTN_GREY_PRESS   = tokens::BRONZE_DARK;
+// DANGER — destructive. Muted at rest so it does not compete with PRIMARY.
+inline constexpr Color BTN_RED       = {0.451f, 0.192f, 0.153f, 1.0f}; // #733127 muted
+inline constexpr Color BTN_RED_HOVER = tokens::STATE_DANGER;
+inline constexpr Color BTN_RED_PRESS = {0.541f, 0.184f, 0.125f, 1.0f};
+
+// Neutral / back / cancel — flattest of the secondary variants.
+inline constexpr Color BTN_GREY       = tokens::SURFACE_PARCHMENT;
+inline constexpr Color BTN_GREY_HOVER = tokens::SURFACE_MARBLE;
+inline constexpr Color BTN_GREY_PRESS = tokens::SURFACE_PARCHMENT_DIM;
 
 } // namespace aoc::ui

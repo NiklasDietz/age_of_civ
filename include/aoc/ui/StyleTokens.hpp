@@ -8,8 +8,10 @@
  * and the full color palette. See docs/ui/style_guide.md for the
  * rationale and component-level usage.
  *
- * sRGB float values stored — the renderer applies gamma correction at
- * sample time. Hex equivalents in the style guide.
+ * Colors are authored in sRGB, as normalized floats: {0.788f, 0.639f, 0.352f}
+ * is #C9A35A. The fragment shader converts to linear at output when the target
+ * is an _SRGB format, so these values reach the display as written. Hex
+ * equivalents in the comments below.
  */
 
 #include "aoc/ui/Widget.hpp"
@@ -31,21 +33,25 @@ inline constexpr float S8 = 64.0f;
 // ============================================================================
 // Border + corner
 // ============================================================================
-inline constexpr float BORDER_HAIR    = 1.0f;   ///< Inner stroke
-inline constexpr float BORDER_RAIL    = 4.0f;   ///< Bronze rail
-inline constexpr float CORNER_PANEL   = 6.0f;   ///< Standard panel corner cartouche
+inline constexpr float BORDER_HAIR    = 1.0f; ///< Inner stroke
+inline constexpr float BORDER_RAIL    = 4.0f; ///< Bronze rail
+inline constexpr float CORNER_PANEL   = 6.0f; ///< Standard panel corner cartouche
 inline constexpr float CORNER_TOOLTIP = 2.0f;
 inline constexpr float CORNER_BUTTON  = 4.0f;
-inline constexpr float CORNER_PILL    = 12.0f;  ///< Resource pill
+inline constexpr float CORNER_PILL    = 12.0f; ///< Resource pill
 
 // ============================================================================
 // Shadow tiers (offsetY, blur, alpha)
 // ============================================================================
-struct Shadow { float oy; float blur; float a; };
-inline constexpr Shadow SHADOW_INSET{1.0f,  0.0f, 0.30f};
-inline constexpr Shadow SHADOW_HOVER{2.0f,  4.0f, 0.25f};
+struct Shadow {
+    float oy;
+    float blur;
+    float a;
+};
+inline constexpr Shadow SHADOW_INSET{1.0f, 0.0f, 0.30f};
+inline constexpr Shadow SHADOW_HOVER{2.0f, 4.0f, 0.25f};
 inline constexpr Shadow SHADOW_MODAL{4.0f, 12.0f, 0.35f};
-inline constexpr Shadow SHADOW_HERO {8.0f, 24.0f, 0.45f};
+inline constexpr Shadow SHADOW_HERO{8.0f, 24.0f, 0.45f};
 
 // ============================================================================
 // Typography sizes (px at 1.0 dpiScale)
@@ -65,55 +71,66 @@ inline constexpr float FS_TAB_DATA = 13.0f;
 // ============================================================================
 
 // --- Surfaces ---
-// Civ-6 leather UI: dark wood/leather panels with gold filigree + cream
-// body text. Light parchment surfaces glared over the 3D map. Tokens
-// renamed to keep call-sites stable; the SURFACE_PARCHMENT family now
-// reads as "panel face" (dark) rather than literal parchment.
-inline constexpr Color SURFACE_PARCHMENT     = {0.184f, 0.131f, 0.078f, 1.00f}; // #2F2114 dark walnut
-inline constexpr Color SURFACE_PARCHMENT_DIM = {0.117f, 0.082f, 0.046f, 1.00f}; // #1E150C deep shadow
-inline constexpr Color SURFACE_MARBLE        = {0.262f, 0.196f, 0.121f, 1.00f}; // #43321F tooltip card
-inline constexpr Color SURFACE_MAHOGANY      = {0.094f, 0.062f, 0.039f, 1.00f}; // #18100A
-inline constexpr Color SURFACE_INK           = {0.039f, 0.027f, 0.011f, 1.00f}; // #0A0703
-inline constexpr Color SURFACE_FROST_DIM     = {0.031f, 0.027f, 0.039f, 0.78f}; // map dim under modal
+// "Obsidian & Ochre": cool, desaturated near-black surfaces carrying warm
+// ochre/brass ornament. The map is bright and warm (#D1BF80 desert, #A6B359
+// plains, #4CA64C grass -- see map/Terrain.hpp), so ochre is the INK, not the
+// paper: ochre surfaces would merge into the terrain instead of sitting on it.
+// Cool shadow against warm light also makes flat UI read as lit.
+//
+// Token names are historical and deliberately unchanged -- ~600 call sites
+// across 20 files depend on them. Read SURFACE_PARCHMENT as "panel face".
+inline constexpr Color SURFACE_PARCHMENT = {0.110f, 0.125f, 0.149f, 1.00f}; // #1C2026 panel face
+inline constexpr Color SURFACE_PARCHMENT_DIM = {0.078f, 0.090f, 0.106f, 1.00f}; // #14171B sunken
+inline constexpr Color SURFACE_MARBLE    = {0.149f, 0.169f, 0.200f, 1.00f}; // #262B33 raised card
+inline constexpr Color SURFACE_MAHOGANY  = {0.078f, 0.090f, 0.106f, 1.00f}; // #14171B app bg
+inline constexpr Color SURFACE_INK       = {0.055f, 0.063f, 0.075f, 1.00f}; // #0E1013 void
+inline constexpr Color SURFACE_FROST_DIM = {0.039f, 0.047f, 0.055f, 0.80f}; // scrim under modal
 
-// --- Bronze / gilt ---
-inline constexpr Color BRONZE_LIGHT      = {0.788f, 0.639f, 0.352f, 1.00f}; // #C9A35A
-inline constexpr Color BRONZE_BASE       = {0.643f, 0.486f, 0.227f, 1.00f}; // #A47C3A
-inline constexpr Color BRONZE_DARK       = {0.431f, 0.313f, 0.133f, 1.00f}; // #6E5022
-inline constexpr Color GOLD_HIGHLIGHT    = {0.945f, 0.835f, 0.556f, 1.00f}; // #F1D58E
+// --- Brass / gilt ---
+// The hero accent. BRONZE_LIGHT (#C9A35A) is the ochre the whole scheme hangs
+// on and is deliberately identical to RES_GOLD, so gold yield and UI accent
+// are the same hue.
+inline constexpr Color BRONZE_LIGHT   = {0.788f, 0.639f, 0.353f, 1.00f}; // #C9A35A OCHRE
+inline constexpr Color BRONZE_BASE    = {0.541f, 0.420f, 0.200f, 1.00f}; // #8A6B33 brass
+inline constexpr Color BRONZE_DARK    = {0.361f, 0.275f, 0.125f, 1.00f}; // #5C4620 brass deep
+inline constexpr Color GOLD_HIGHLIGHT = {0.961f, 0.890f, 0.690f, 1.00f}; // #F5E3B0 gilt
 
 // --- Text ---
-// Inverted to cream tones for the dark leather surfaces above. Token
-// names retained for call-site stability; "TEXT_INK" is now the cream
-// body tone, "TEXT_HEADER" is bright gilt, "TEXT_GILT" is hot highlight.
-inline constexpr Color TEXT_INK          = {0.886f, 0.835f, 0.717f, 1.00f}; // #E2D5B7 cream body
-inline constexpr Color TEXT_HEADER       = {0.945f, 0.850f, 0.572f, 1.00f}; // #F1D992 gilt header
-inline constexpr Color TEXT_GILT         = {1.000f, 0.917f, 0.643f, 1.00f}; // #FFEAA4 hot gilt
-inline constexpr Color TEXT_PARCHMENT    = {0.886f, 0.835f, 0.717f, 1.00f}; // matches body
-inline constexpr Color TEXT_DISABLED     = {0.529f, 0.470f, 0.376f, 1.00f}; // #877860 muted cream
+// Cream on near-black. Token names retained for call-site stability:
+// TEXT_INK is the body tone, TEXT_HEADER the brass heading, TEXT_GILT the
+// hot highlight.
+inline constexpr Color TEXT_INK       = {0.941f, 0.918f, 0.863f, 1.00f}; // #F0EADC cream body
+inline constexpr Color TEXT_HEADER    = {0.878f, 0.745f, 0.486f, 1.00f}; // #E0BE7C brass heading
+inline constexpr Color TEXT_GILT      = {0.961f, 0.890f, 0.690f, 1.00f}; // #F5E3B0 gilt
+inline constexpr Color TEXT_PARCHMENT = {0.941f, 0.918f, 0.863f, 1.00f}; // matches body
+inline constexpr Color TEXT_DISABLED  = {0.490f, 0.471f, 0.424f, 1.00f}; // #7D786C muted
 
-// --- Resources (8 hue families, parchment-tuned) ---
-inline constexpr Color RES_FOOD       = {0.360f, 0.545f, 0.243f, 1.00f}; // #5C8B3E olive
-inline constexpr Color RES_PRODUCTION = {0.658f, 0.431f, 0.180f, 1.00f}; // #A86E2E terracotta
-inline constexpr Color RES_GOLD       = {0.788f, 0.639f, 0.352f, 1.00f}; // #C9A35A
-inline constexpr Color RES_SCIENCE    = {0.247f, 0.435f, 0.658f, 1.00f}; // #3F6FA8 azure
-inline constexpr Color RES_CULTURE    = {0.545f, 0.247f, 0.545f, 1.00f}; // #8B3F8B mulberry
-inline constexpr Color RES_FAITH      = {0.784f, 0.784f, 0.784f, 1.00f}; // #C8C8C8 pearl
-inline constexpr Color RES_POWER      = {0.839f, 0.701f, 0.255f, 1.00f}; // #D6B341 electric
-inline constexpr Color RES_TOURISM    = {0.839f, 0.482f, 0.262f, 1.00f}; // #D67B43 coral
+// --- Resources (8 hue families) ---
+// Chroma lifted relative to the old walnut scheme: these now sit on a
+// near-black ground, where the previous darker values lost separation.
+inline constexpr Color RES_FOOD       = {0.435f, 0.659f, 0.290f, 1.00f}; // #6FA84A leaf
+inline constexpr Color RES_PRODUCTION = {0.776f, 0.498f, 0.208f, 1.00f}; // #C67F35 terracotta
+inline constexpr Color RES_GOLD       = {0.788f, 0.639f, 0.353f, 1.00f}; // #C9A35A (== OCHRE)
+inline constexpr Color RES_SCIENCE    = {0.306f, 0.545f, 0.769f, 1.00f}; // #4E8BC4 azure
+inline constexpr Color RES_CULTURE    = {0.651f, 0.361f, 0.651f, 1.00f}; // #A65CA6 mulberry
+inline constexpr Color RES_FAITH      = {0.847f, 0.863f, 0.878f, 1.00f}; // #D8DCE0 pearl
+inline constexpr Color RES_POWER      = {0.898f, 0.761f, 0.278f, 1.00f}; // #E5C247 electric
+inline constexpr Color RES_TOURISM    = {0.878f, 0.541f, 0.306f, 1.00f}; // #E08A4E coral
 
 // --- States ---
-inline constexpr Color STATE_PRESSED  = {0.556f, 0.419f, 0.180f, 1.00f}; // #8E6B2E
-inline constexpr Color STATE_SUCCESS  = {0.360f, 0.545f, 0.243f, 1.00f}; // #5C8B3E
-inline constexpr Color STATE_WARN     = {0.839f, 0.647f, 0.235f, 1.00f}; // #D6A53C
-inline constexpr Color STATE_DANGER   = {0.639f, 0.227f, 0.164f, 1.00f}; // #A33A2A
+inline constexpr Color STATE_PRESSED = {0.361f, 0.275f, 0.125f, 1.00f}; // #5C4620 brass deep
+inline constexpr Color STATE_SUCCESS = {0.435f, 0.659f, 0.290f, 1.00f}; // #6FA84A
+inline constexpr Color STATE_WARN    = {0.878f, 0.663f, 0.235f, 1.00f}; // #E0A93C
+inline constexpr Color STATE_DANGER  = {0.769f, 0.271f, 0.184f, 1.00f}; // #C4452F
 
 // --- Diplomatic stance ---
-inline constexpr Color DIPLO_ALLIED      = {0.247f, 0.435f, 0.658f, 1.00f}; // #3F6FA8
-inline constexpr Color DIPLO_FRIENDLY    = {0.360f, 0.545f, 0.243f, 1.00f}; // #5C8B3E
-inline constexpr Color DIPLO_NEUTRAL     = {0.658f, 0.545f, 0.360f, 1.00f}; // #A88B5C
-inline constexpr Color DIPLO_UNFRIENDLY  = {0.760f, 0.415f, 0.180f, 1.00f}; // #C26A2E
-inline constexpr Color DIPLO_HOSTILE     = {0.639f, 0.227f, 0.164f, 1.00f}; // #A33A2A
-inline constexpr Color DIPLO_AT_WAR      = {0.376f, 0.082f, 0.082f, 1.00f}; // #601515
+// A deliberate warm-to-cool ladder so stance reads at a glance, brightened to
+// hold against the near-black ground.
+inline constexpr Color DIPLO_ALLIED     = {0.306f, 0.545f, 0.769f, 1.00f}; // #4E8BC4
+inline constexpr Color DIPLO_FRIENDLY   = {0.435f, 0.659f, 0.290f, 1.00f}; // #6FA84A
+inline constexpr Color DIPLO_NEUTRAL    = {0.690f, 0.604f, 0.447f, 1.00f}; // #B09A72
+inline constexpr Color DIPLO_UNFRIENDLY = {0.831f, 0.475f, 0.227f, 1.00f}; // #D4793A
+inline constexpr Color DIPLO_HOSTILE    = {0.769f, 0.271f, 0.184f, 1.00f}; // #C4452F
+inline constexpr Color DIPLO_AT_WAR     = {0.478f, 0.114f, 0.114f, 1.00f}; // #7A1D1D
 
 } // namespace aoc::ui::tokens
