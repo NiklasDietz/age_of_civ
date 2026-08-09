@@ -85,6 +85,7 @@
 #include <utility>
 
 #include "aoc/app/ScreenshotEncoder.hpp"
+#include "aoc/debug/GameControlValidation.hpp"
 
 // getNextCityName is defined in TurnProcessor.cpp
 
@@ -2275,29 +2276,24 @@ void Application::executeGameControlCommand(const aoc::debug::SetProductionComma
     item.itemId   = cmd.itemId;
     item.progress = 0.0f;
 
+    if (!aoc::debug::isProductionItemValid(cmd.type, cmd.itemId)) {
+        return;
+    }
+
     switch (cmd.type) {
     case aoc::sim::ProductionItemType::Unit: {
-        if (cmd.itemId >= aoc::sim::UNIT_TYPE_COUNT) {
-            return;
-        }
         const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(aoc::UnitTypeId{cmd.itemId});
         item.name                        = std::string(def.name);
         item.totalCost                   = static_cast<float>(def.productionCost);
         break;
     }
     case aoc::sim::ProductionItemType::Building: {
-        if (cmd.itemId >= aoc::sim::BUILDING_DEFS.size()) {
-            return;
-        }
         const aoc::sim::BuildingDef& def = aoc::sim::buildingDef(aoc::BuildingId{cmd.itemId});
         item.name                        = std::string(def.name);
         item.totalCost                   = static_cast<float>(def.productionCost);
         break;
     }
     case aoc::sim::ProductionItemType::Wonder: {
-        if (cmd.itemId >= aoc::sim::WONDER_COUNT) {
-            return;
-        }
         const aoc::sim::WonderDef& def =
             aoc::sim::wonderDef(static_cast<aoc::sim::WonderId>(cmd.itemId));
         item.name      = std::string(def.name);
@@ -2305,9 +2301,6 @@ void Application::executeGameControlCommand(const aoc::debug::SetProductionComma
         break;
     }
     case aoc::sim::ProductionItemType::District: {
-        if (cmd.itemId >= aoc::sim::DISTRICT_TYPE_COUNT) {
-            return;
-        }
         const aoc::sim::DistrictType districtType = static_cast<aoc::sim::DistrictType>(cmd.itemId);
         item.name      = std::string(aoc::sim::districtTypeName(districtType));
         item.totalCost = 60.0f; // Base district cost, matches GameScreens.cpp
@@ -2325,13 +2318,10 @@ void Application::executeGameControlCommand(const aoc::debug::SetResearchCommand
     if (player == nullptr) {
         return;
     }
-    if (cmd.techId >= aoc::sim::techCount()) {
+    if (!aoc::debug::isResearchValid(player->tech(), cmd.techId)) {
         return;
     }
     const aoc::TechId techId{cmd.techId};
-    if (!player->tech().canResearch(techId)) {
-        return;
-    }
     player->tech().currentResearch  = techId;
     player->tech().researchProgress = 0.0f;
 }
@@ -5137,7 +5127,8 @@ void Application::pumpLoadingFrame() {
     this->m_renderPipeline->beginRenderPass(frame);
 
     // Screen-space pass: the overlay is authored in pixels, so no camera
-    // transform (unlike the in-game path, which goes through transformBounds).
+    // transform. The in-game path opens an identical screen-space batch for
+    // its UI overlays (see GameRenderer::render).
     this->m_renderer2d->resetCamera();
     this->m_renderer2d->setZoom(1.0f);
     this->m_renderer2d->beginFrame(frame.frameIndex);
