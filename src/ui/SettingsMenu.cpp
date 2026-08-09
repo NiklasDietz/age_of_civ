@@ -45,10 +45,14 @@ int32_t parseInt(const std::string& value, int32_t defaultVal) {
 WidgetId createVolumeRow(UIManager& ui, WidgetId parent, float rowW, const std::string& name,
                          int32_t value, WidgetId& valueLabelOut, std::function<void()> onMinus,
                          std::function<void()> onPlus) {
-    constexpr float ROW_H   = 28.0f;
-    constexpr float LABEL_W = 160.0f;
-    constexpr float BTN_W   = 30.0f;
-    constexpr float VALUE_W = 60.0f;
+    // Dimensions scale with the UI-scale slider so rows grow in step with the
+    // text. Without this the labels grew and the rows did not, so at 1.5x
+    // "Master Volume" was clipped by the "-" button and the section headers
+    // collided with the row below.
+    const float ROW_H   = theme().scaled(28.0f);
+    const float LABEL_W = theme().scaled(160.0f);
+    const float BTN_W   = theme().scaled(30.0f);
+    const float VALUE_W = theme().scaled(60.0f);
 
     WidgetId row = ui.createPanel(parent, {0.0f, 0.0f, rowW, ROW_H},
                                   PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
@@ -96,9 +100,9 @@ WidgetId createVolumeRow(UIManager& ui, WidgetId parent, float rowW, const std::
 /// Helper: create a toggle row with label and an On/Off button.
 WidgetId createToggleRow(UIManager& ui, WidgetId parent, float rowW, const std::string& name,
                          bool value, WidgetId& toggleBtnOut, std::function<void()> onToggle) {
-    constexpr float ROW_H   = 28.0f;
-    constexpr float LABEL_W = 160.0f;
-    constexpr float BTN_W   = 80.0f;
+    const float ROW_H   = theme().scaled(28.0f);
+    const float LABEL_W = theme().scaled(160.0f);
+    const float BTN_W   = theme().scaled(80.0f);
 
     WidgetId row = ui.createPanel(parent, {0.0f, 0.0f, rowW, ROW_H},
                                   PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
@@ -141,28 +145,34 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
     this->m_rootPanel =
         ui.createPanel({0.0f, 0.0f, screenW, screenH}, PanelData{tokens::SURFACE_FROST_DIM, 0.0f});
 
-    constexpr float PANEL_W = 420.0f;
+    const float PANEL_W = theme().scaled(420.0f);
 
     // Height is derived from the rows rather than hardcoded: the old fixed
     // 450 predated the UI-scale / theme-skin / colour-scheme rows, so the last
     // three children and the Back button drew outside the panel background.
     // Same failure the main menu had with its hardcoded 362.
     // Keep these counts in step with the children created below.
-    constexpr float PAD       = 20.0f; ///< contentPanel padding, all sides
-    constexpr float GAP       = 8.0f;  ///< contentPanel childSpacing
-    constexpr float TITLE_H   = 30.0f;
-    constexpr float SECTION_H = 20.0f; ///< "Audio" / "Graphics" / "Gameplay"
-    constexpr float ROW_H     = 28.0f; ///< volume, toggle, slider and cycler rows
-    constexpr float SPACER_H  = 10.0f;
-    constexpr float BACK_H    = 34.0f;
+    // All scaled: these must move in lockstep with the row helpers above, or
+    // the derived PANEL_H stops matching the rows it is summing.
+    const float PAD       = theme().scaled(20.0f); ///< contentPanel padding, all sides
+    const float GAP       = theme().scaled(8.0f);  ///< contentPanel childSpacing
+    const float TITLE_H   = theme().scaled(30.0f);
+    const float SECTION_H = theme().scaled(20.0f); ///< "Audio"/"Graphics"/"Gameplay"
+    const float ROW_H     = theme().scaled(28.0f); ///< volume, toggle, slider, cycler rows
+    const float SPACER_H  = theme().scaled(10.0f);
+    const float BACK_H    = theme().scaled(34.0f);
+    const float LABEL_W   = theme().scaled(160.0f); ///< inline row label column
+    const float LABEL_H   = theme().scaled(24.0f);
+    const float SLIDER_H  = theme().scaled(18.0f);
+    const float CYCLER_H  = theme().scaled(22.0f);
 
     constexpr int32_t SECTION_COUNT = 3;  ///< Audio, Graphics, Gameplay
     constexpr int32_t ROW_COUNT     = 10; ///< 3 volume + 3 graphics + 1 gameplay
                                           ///< + UI scale + theme skin + colour scheme
     constexpr int32_t CHILD_COUNT = 1 + SECTION_COUNT + ROW_COUNT + 1 + 1;
 
-    constexpr float PANEL_H = PAD * 2.0f + TITLE_H + SECTION_H * SECTION_COUNT + ROW_H * ROW_COUNT +
-                              SPACER_H + BACK_H + GAP * static_cast<float>(CHILD_COUNT - 1);
+    const float PANEL_H = PAD * 2.0f + TITLE_H + SECTION_H * SECTION_COUNT + ROW_H * ROW_COUNT +
+                          SPACER_H + BACK_H + GAP * static_cast<float>(CHILD_COUNT - 1);
 
     const float panelX = (screenW - PANEL_W) * 0.5f;
     const float panelY = (screenH - PANEL_H) * 0.5f;
@@ -172,16 +182,16 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
     {
         Widget* cp = ui.getWidget(contentPanel);
         assert(cp != nullptr);
-        cp->padding      = {20.0f, 20.0f, 20.0f, 20.0f};
-        cp->childSpacing = 8.0f;
+        cp->padding      = {PAD, PAD, PAD, PAD};
+        cp->childSpacing = GAP;
     }
 
-    const float innerW = PANEL_W - 40.0f;
+    const float innerW = PANEL_W - PAD * 2.0f;
 
-    (void)ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 30.0f},
+    (void)ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, TITLE_H},
                          LabelData{"Settings", GOLDEN_TEXT, 22.0f});
 
-    (void)ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 20.0f},
+    (void)ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, SECTION_H},
                          LabelData{"Audio", SECTION_TEXT, 16.0f});
 
     (void)createVolumeRow(
@@ -219,7 +229,7 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
             this->refresh(ui);
         });
 
-    (void)ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 20.0f},
+    (void)ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, SECTION_H},
                          LabelData{"Graphics", SECTION_TEXT, 16.0f});
 
     (void)createToggleRow(ui, contentPanel, innerW, "VSync", this->m_settings.vsync,
@@ -240,7 +250,7 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
                               this->refresh(ui);
                           });
 
-    (void)ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 20.0f},
+    (void)ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, SECTION_H},
                          LabelData{"Gameplay", SECTION_TEXT, 16.0f});
 
     (void)createToggleRow(ui, contentPanel, innerW, "Show Tile Yields",
@@ -252,14 +262,14 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
     // UI scale slider (0.75 .. 1.5). Writes directly to Theme.userScale
     // so widgets `scaled()` calls pick it up immediately.
     {
-        WidgetId scaleRow = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 28.0f},
+        WidgetId scaleRow = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, ROW_H},
                                            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
         Widget* r         = ui.getWidget(scaleRow);
         if (r != nullptr) {
             r->layoutDirection = LayoutDirection::Horizontal;
             r->childSpacing    = 6.0f;
         }
-        (void)ui.createLabel(scaleRow, {0.0f, 0.0f, 160.0f, 24.0f},
+        (void)ui.createLabel(scaleRow, {0.0f, 0.0f, LABEL_W, LABEL_H},
                              LabelData{"UI Scale", GREY_TEXT, 13.0f});
         SliderData s;
         s.minValue       = 0.75f;
@@ -270,19 +280,19 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
             theme().userScale = v;
             theme().bumpRevision();
         };
-        (void)ui.createSlider(scaleRow, {0.0f, 0.0f, innerW - 180.0f, 18.0f}, std::move(s));
+        (void)ui.createSlider(scaleRow, {0.0f, 0.0f, innerW - LABEL_W - GAP * 2.0f, SLIDER_H}, std::move(s));
     }
 
     // Skin cycler: Classic → Dark → Parchment. Swaps theme chrome.
     {
-        WidgetId row = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 28.0f},
+        WidgetId row = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, ROW_H},
                                       PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
         Widget* r    = ui.getWidget(row);
         if (r != nullptr) {
             r->layoutDirection = LayoutDirection::Horizontal;
             r->childSpacing    = 6.0f;
         }
-        (void)ui.createLabel(row, {0.0f, 0.0f, 160.0f, 24.0f},
+        (void)ui.createLabel(row, {0.0f, 0.0f, LABEL_W, LABEL_H},
                              LabelData{"Theme Skin", GREY_TEXT, 13.0f});
         const auto skinName = []() {
             switch (theme().skin) {
@@ -308,19 +318,19 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
             ThemeSkin next = static_cast<ThemeSkin>((static_cast<uint8_t>(t.skin) + 1) % 3);
             t.setSkin(next);
         };
-        (void)ui.createButton(row, {0.0f, 0.0f, innerW - 180.0f, 22.0f}, std::move(btn));
+        (void)ui.createButton(row, {0.0f, 0.0f, innerW - LABEL_W - GAP * 2.0f, CYCLER_H}, std::move(btn));
     }
 
     // Colour scheme cycler: Default → Deuteranopia → HighContrast → …
     {
-        WidgetId row = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 28.0f},
+        WidgetId row = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, ROW_H},
                                       PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
         Widget* r    = ui.getWidget(row);
         if (r != nullptr) {
             r->layoutDirection = LayoutDirection::Horizontal;
             r->childSpacing    = 6.0f;
         }
-        (void)ui.createLabel(row, {0.0f, 0.0f, 160.0f, 24.0f},
+        (void)ui.createLabel(row, {0.0f, 0.0f, LABEL_W, LABEL_H},
                              LabelData{"Colour Scheme", GREY_TEXT, 13.0f});
         ButtonData btn;
         const auto schemeName = []() -> const char* {
@@ -354,10 +364,10 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
                               // menu open surfaces the new choice.
             (void)ui;
         };
-        (void)ui.createButton(row, {0.0f, 0.0f, innerW - 180.0f, 22.0f}, std::move(btn));
+        (void)ui.createButton(row, {0.0f, 0.0f, innerW - LABEL_W - GAP * 2.0f, CYCLER_H}, std::move(btn));
     }
 
-    (void)ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 10.0f},
+    (void)ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, SPACER_H},
                          PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
 
     {
@@ -370,7 +380,7 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
         btn.onClick      = std::move(onBack);
-        (void)ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+        (void)ui.createButton(contentPanel, {0.0f, 0.0f, innerW, BACK_H}, std::move(btn));
     }
 
     this->m_isBuilt = true;
