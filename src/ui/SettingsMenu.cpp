@@ -26,47 +26,40 @@ namespace {
 /// both failure modes; std::stoi would throw on bad input and terminate the
 /// program because loadSettings runs unconditionally at startup.
 int32_t parseInt(const std::string& value, int32_t defaultVal) {
-    const char* str = value.c_str();
-    char* endPtr = nullptr;
-    errno = 0;
+    const char* str   = value.c_str();
+    char* endPtr      = nullptr;
+    errno             = 0;
     const long parsed = std::strtol(str, &endPtr, 10);
     if (endPtr == str) {
-        LOG_WARN("loadSettings: non-numeric value '%s', using default %d",
-                 str, defaultVal);
+        LOG_WARN("loadSettings: non-numeric value '%s', using default %d", str, defaultVal);
         return defaultVal;
     }
     if (errno == ERANGE || parsed < INT32_MIN || parsed > INT32_MAX) {
-        LOG_WARN("loadSettings: value '%s' overflows int32, using default %d",
-                 str, defaultVal);
+        LOG_WARN("loadSettings: value '%s' overflows int32, using default %d", str, defaultVal);
         return defaultVal;
     }
     return static_cast<int32_t>(parsed);
 }
 
 /// Helper: create a volume row with label, -/+ buttons, and a value label.
-WidgetId createVolumeRow(UIManager& ui, WidgetId parent, float rowW,
-                          const std::string& name, int32_t value,
-                          WidgetId& valueLabelOut,
-                          std::function<void()> onMinus,
-                          std::function<void()> onPlus) {
+WidgetId createVolumeRow(UIManager& ui, WidgetId parent, float rowW, const std::string& name,
+                         int32_t value, WidgetId& valueLabelOut, std::function<void()> onMinus,
+                         std::function<void()> onPlus) {
     constexpr float ROW_H   = 28.0f;
     constexpr float LABEL_W = 160.0f;
     constexpr float BTN_W   = 30.0f;
     constexpr float VALUE_W = 60.0f;
 
-    WidgetId row = ui.createPanel(
-        parent, {0.0f, 0.0f, rowW, ROW_H},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    WidgetId row = ui.createPanel(parent, {0.0f, 0.0f, rowW, ROW_H},
+                                  PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
     {
         Widget* r = ui.getWidget(row);
         assert(r != nullptr);
         r->layoutDirection = LayoutDirection::Horizontal;
-        r->childSpacing = 4.0f;
+        r->childSpacing    = 4.0f;
     }
 
-    (void)ui.createLabel(
-        row, {0.0f, 0.0f, LABEL_W, ROW_H},
-        LabelData{name, GREY_TEXT, 13.0f});
+    (void)ui.createLabel(row, {0.0f, 0.0f, LABEL_W, ROW_H}, LabelData{name, GREY_TEXT, 13.0f});
 
     {
         ButtonData btn;
@@ -81,9 +74,8 @@ WidgetId createVolumeRow(UIManager& ui, WidgetId parent, float rowW,
         (void)ui.createButton(row, {0.0f, 0.0f, BTN_W, ROW_H}, std::move(btn));
     }
 
-    valueLabelOut = ui.createLabel(
-        row, {0.0f, 0.0f, VALUE_W, ROW_H},
-        LabelData{std::to_string(value) + "%", WHITE_TEXT, 13.0f});
+    valueLabelOut = ui.createLabel(row, {0.0f, 0.0f, VALUE_W, ROW_H},
+                                   LabelData{std::to_string(value) + "%", WHITE_TEXT, 13.0f});
 
     {
         ButtonData btn;
@@ -102,27 +94,22 @@ WidgetId createVolumeRow(UIManager& ui, WidgetId parent, float rowW,
 }
 
 /// Helper: create a toggle row with label and an On/Off button.
-WidgetId createToggleRow(UIManager& ui, WidgetId parent, float rowW,
-                          const std::string& name, bool value,
-                          WidgetId& toggleBtnOut,
-                          std::function<void()> onToggle) {
+WidgetId createToggleRow(UIManager& ui, WidgetId parent, float rowW, const std::string& name,
+                         bool value, WidgetId& toggleBtnOut, std::function<void()> onToggle) {
     constexpr float ROW_H   = 28.0f;
     constexpr float LABEL_W = 160.0f;
     constexpr float BTN_W   = 80.0f;
 
-    WidgetId row = ui.createPanel(
-        parent, {0.0f, 0.0f, rowW, ROW_H},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    WidgetId row = ui.createPanel(parent, {0.0f, 0.0f, rowW, ROW_H},
+                                  PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
     {
         Widget* r = ui.getWidget(row);
         assert(r != nullptr);
         r->layoutDirection = LayoutDirection::Horizontal;
-        r->childSpacing = 4.0f;
+        r->childSpacing    = 4.0f;
     }
 
-    (void)ui.createLabel(
-        row, {0.0f, 0.0f, LABEL_W, ROW_H},
-        LabelData{name, GREY_TEXT, 13.0f});
+    (void)ui.createLabel(row, {0.0f, 0.0f, LABEL_W, ROW_H}, LabelData{name, GREY_TEXT, 13.0f});
 
     {
         ButtonData btn;
@@ -134,8 +121,7 @@ WidgetId createToggleRow(UIManager& ui, WidgetId parent, float rowW,
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 3.0f;
         btn.onClick      = std::move(onToggle);
-        toggleBtnOut = ui.createButton(
-            row, {0.0f, 0.0f, BTN_W, ROW_H}, std::move(btn));
+        toggleBtnOut     = ui.createButton(row, {0.0f, 0.0f, BTN_W, ROW_H}, std::move(btn));
     }
 
     return row;
@@ -152,23 +138,41 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
     this->m_onBack = onBack;
 
     // Frost-dim full-screen overlay (style guide §3 modal layer).
-    this->m_rootPanel = ui.createPanel(
-        {0.0f, 0.0f, screenW, screenH},
-        PanelData{tokens::SURFACE_FROST_DIM, 0.0f});
+    this->m_rootPanel =
+        ui.createPanel({0.0f, 0.0f, screenW, screenH}, PanelData{tokens::SURFACE_FROST_DIM, 0.0f});
 
     constexpr float PANEL_W = 420.0f;
-    constexpr float PANEL_H = 450.0f;
+
+    // Height is derived from the rows rather than hardcoded: the old fixed
+    // 450 predated the UI-scale / theme-skin / colour-scheme rows, so the last
+    // three children and the Back button drew outside the panel background.
+    // Same failure the main menu had with its hardcoded 362.
+    // Keep these counts in step with the children created below.
+    constexpr float PAD       = 20.0f; ///< contentPanel padding, all sides
+    constexpr float GAP       = 8.0f;  ///< contentPanel childSpacing
+    constexpr float TITLE_H   = 30.0f;
+    constexpr float SECTION_H = 20.0f; ///< "Audio" / "Graphics" / "Gameplay"
+    constexpr float ROW_H     = 28.0f; ///< volume, toggle, slider and cycler rows
+    constexpr float SPACER_H  = 10.0f;
+    constexpr float BACK_H    = 34.0f;
+
+    constexpr int32_t SECTION_COUNT = 3;  ///< Audio, Graphics, Gameplay
+    constexpr int32_t ROW_COUNT     = 10; ///< 3 volume + 3 graphics + 1 gameplay
+                                          ///< + UI scale + theme skin + colour scheme
+    constexpr int32_t CHILD_COUNT = 1 + SECTION_COUNT + ROW_COUNT + 1 + 1;
+
+    constexpr float PANEL_H = PAD * 2.0f + TITLE_H + SECTION_H * SECTION_COUNT + ROW_H * ROW_COUNT +
+                              SPACER_H + BACK_H + GAP * static_cast<float>(CHILD_COUNT - 1);
+
     const float panelX = (screenW - PANEL_W) * 0.5f;
     const float panelY = (screenH - PANEL_H) * 0.5f;
 
-    WidgetId contentPanel = ui.createPanel(
-        this->m_rootPanel,
-        {panelX, panelY, PANEL_W, PANEL_H},
-        PanelData{PANEL_BG, 8.0f});
+    WidgetId contentPanel = ui.createPanel(this->m_rootPanel, {panelX, panelY, PANEL_W, PANEL_H},
+                                           PanelData{PANEL_BG, 8.0f});
     {
         Widget* cp = ui.getWidget(contentPanel);
         assert(cp != nullptr);
-        cp->padding = {20.0f, 20.0f, 20.0f, 20.0f};
+        cp->padding      = {20.0f, 20.0f, 20.0f, 20.0f};
         cp->childSpacing = 8.0f;
     }
 
@@ -193,8 +197,7 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
         });
 
     (void)createVolumeRow(
-        ui, contentPanel, innerW, "SFX Volume", this->m_settings.sfxVolume,
-        this->m_sfxVolLabel,
+        ui, contentPanel, innerW, "SFX Volume", this->m_settings.sfxVolume, this->m_sfxVolLabel,
         [this, &ui]() {
             this->m_settings.sfxVolume = std::max(0, this->m_settings.sfxVolume - 10);
             this->refresh(ui);
@@ -219,149 +222,143 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
     (void)ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 20.0f},
                          LabelData{"Graphics", SECTION_TEXT, 16.0f});
 
-    (void)createToggleRow(
-        ui, contentPanel, innerW, "VSync", this->m_settings.vsync,
-        this->m_vsyncLabel,
-        [this, &ui]() {
-            this->m_settings.vsync = !this->m_settings.vsync;
-            this->refresh(ui);
-        });
+    (void)createToggleRow(ui, contentPanel, innerW, "VSync", this->m_settings.vsync,
+                          this->m_vsyncLabel, [this, &ui]() {
+                              this->m_settings.vsync = !this->m_settings.vsync;
+                              this->refresh(ui);
+                          });
 
-    (void)createToggleRow(
-        ui, contentPanel, innerW, "Fullscreen", this->m_settings.fullscreen,
-        this->m_fullscreenLabel,
-        [this, &ui]() {
-            this->m_settings.fullscreen = !this->m_settings.fullscreen;
-            this->refresh(ui);
-        });
+    (void)createToggleRow(ui, contentPanel, innerW, "Fullscreen", this->m_settings.fullscreen,
+                          this->m_fullscreenLabel, [this, &ui]() {
+                              this->m_settings.fullscreen = !this->m_settings.fullscreen;
+                              this->refresh(ui);
+                          });
 
-    (void)createToggleRow(
-        ui, contentPanel, innerW, "Show FPS", this->m_settings.showFPS,
-        this->m_fpsLabel,
-        [this, &ui]() {
-            this->m_settings.showFPS = !this->m_settings.showFPS;
-            this->refresh(ui);
-        });
+    (void)createToggleRow(ui, contentPanel, innerW, "Show FPS", this->m_settings.showFPS,
+                          this->m_fpsLabel, [this, &ui]() {
+                              this->m_settings.showFPS = !this->m_settings.showFPS;
+                              this->refresh(ui);
+                          });
 
     (void)ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 20.0f},
                          LabelData{"Gameplay", SECTION_TEXT, 16.0f});
 
-    (void)createToggleRow(
-        ui, contentPanel, innerW, "Show Tile Yields", this->m_settings.showTileYields,
-        this->m_yieldLabel,
-        [this, &ui]() {
-            this->m_settings.showTileYields = !this->m_settings.showTileYields;
-            this->refresh(ui);
-        });
+    (void)createToggleRow(ui, contentPanel, innerW, "Show Tile Yields",
+                          this->m_settings.showTileYields, this->m_yieldLabel, [this, &ui]() {
+                              this->m_settings.showTileYields = !this->m_settings.showTileYields;
+                              this->refresh(ui);
+                          });
 
     // UI scale slider (0.75 .. 1.5). Writes directly to Theme.userScale
     // so widgets `scaled()` calls pick it up immediately.
     {
-        WidgetId scaleRow = ui.createPanel(
-            contentPanel, {0.0f, 0.0f, innerW, 28.0f},
-            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
-        Widget* r = ui.getWidget(scaleRow);
+        WidgetId scaleRow = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 28.0f},
+                                           PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        Widget* r         = ui.getWidget(scaleRow);
         if (r != nullptr) {
             r->layoutDirection = LayoutDirection::Horizontal;
-            r->childSpacing = 6.0f;
+            r->childSpacing    = 6.0f;
         }
         (void)ui.createLabel(scaleRow, {0.0f, 0.0f, 160.0f, 24.0f},
                              LabelData{"UI Scale", GREY_TEXT, 13.0f});
         SliderData s;
-        s.minValue = 0.75f;
-        s.maxValue = 1.50f;
-        s.value    = theme().userScale;
-        s.step     = 0.05f;
-        s.onValueChanged = [](float v) { theme().userScale = v; theme().bumpRevision(); };
-        (void)ui.createSlider(scaleRow, {0.0f, 0.0f, innerW - 180.0f, 18.0f},
-                               std::move(s));
+        s.minValue       = 0.75f;
+        s.maxValue       = 1.50f;
+        s.value          = theme().userScale;
+        s.step           = 0.05f;
+        s.onValueChanged = [](float v) {
+            theme().userScale = v;
+            theme().bumpRevision();
+        };
+        (void)ui.createSlider(scaleRow, {0.0f, 0.0f, innerW - 180.0f, 18.0f}, std::move(s));
     }
 
     // Skin cycler: Classic → Dark → Parchment. Swaps theme chrome.
     {
-        WidgetId row = ui.createPanel(
-            contentPanel, {0.0f, 0.0f, innerW, 28.0f},
-            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
-        Widget* r = ui.getWidget(row);
+        WidgetId row = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 28.0f},
+                                      PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        Widget* r    = ui.getWidget(row);
         if (r != nullptr) {
             r->layoutDirection = LayoutDirection::Horizontal;
-            r->childSpacing = 6.0f;
+            r->childSpacing    = 6.0f;
         }
         (void)ui.createLabel(row, {0.0f, 0.0f, 160.0f, 24.0f},
                              LabelData{"Theme Skin", GREY_TEXT, 13.0f});
         const auto skinName = []() {
             switch (theme().skin) {
-                case ThemeSkin::Classic:   return "Classic";
-                case ThemeSkin::Dark:      return "Dark";
-                case ThemeSkin::Parchment: return "Parchment";
+            case ThemeSkin::Classic:
+                return "Classic";
+            case ThemeSkin::Dark:
+                return "Dark";
+            case ThemeSkin::Parchment:
+                return "Parchment";
             }
             return "Classic";
         };
         ButtonData btn;
-        btn.label = skinName();
-        btn.fontSize = 13.0f;
+        btn.label        = skinName();
+        btn.fontSize     = 13.0f;
         btn.normalColor  = BTN_GREY;
         btn.hoverColor   = BTN_GREY_HOVER;
         btn.pressedColor = BTN_GREY_PRESS;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 3.0f;
-        btn.onClick = []() {
-            Theme& t = theme();
-            ThemeSkin next = static_cast<ThemeSkin>(
-                (static_cast<uint8_t>(t.skin) + 1) % 3);
+        btn.onClick      = []() {
+            Theme& t       = theme();
+            ThemeSkin next = static_cast<ThemeSkin>((static_cast<uint8_t>(t.skin) + 1) % 3);
             t.setSkin(next);
         };
-        (void)ui.createButton(row, {0.0f, 0.0f, innerW - 180.0f, 22.0f},
-                               std::move(btn));
+        (void)ui.createButton(row, {0.0f, 0.0f, innerW - 180.0f, 22.0f}, std::move(btn));
     }
 
     // Colour scheme cycler: Default → Deuteranopia → HighContrast → …
     {
-        WidgetId row = ui.createPanel(
-            contentPanel, {0.0f, 0.0f, innerW, 28.0f},
-            PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
-        Widget* r = ui.getWidget(row);
+        WidgetId row = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 28.0f},
+                                      PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+        Widget* r    = ui.getWidget(row);
         if (r != nullptr) {
             r->layoutDirection = LayoutDirection::Horizontal;
-            r->childSpacing = 6.0f;
+            r->childSpacing    = 6.0f;
         }
         (void)ui.createLabel(row, {0.0f, 0.0f, 160.0f, 24.0f},
                              LabelData{"Colour Scheme", GREY_TEXT, 13.0f});
         ButtonData btn;
         const auto schemeName = []() -> const char* {
             switch (theme().colorScheme) {
-                case ColorScheme::Default:      return "Default";
-                case ColorScheme::Deuteranopia: return "Deuteranopia";
-                case ColorScheme::Protanopia:   return "Protanopia";
-                case ColorScheme::Tritanopia:   return "Tritanopia";
-                case ColorScheme::HighContrast: return "High Contrast";
+            case ColorScheme::Default:
+                return "Default";
+            case ColorScheme::Deuteranopia:
+                return "Deuteranopia";
+            case ColorScheme::Protanopia:
+                return "Protanopia";
+            case ColorScheme::Tritanopia:
+                return "Tritanopia";
+            case ColorScheme::HighContrast:
+                return "High Contrast";
             }
             return "Default";
         };
-        btn.label = schemeName();
-        btn.fontSize = 13.0f;
+        btn.label        = schemeName();
+        btn.fontSize     = 13.0f;
         btn.normalColor  = BTN_GREY;
         btn.hoverColor   = BTN_GREY_HOVER;
         btn.pressedColor = BTN_GREY_PRESS;
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 3.0f;
-        btn.onClick = [&ui, schemeName]() {
-            Theme& t = theme();
-            t.colorScheme = static_cast<ColorScheme>(
-                (static_cast<uint8_t>(t.colorScheme) + 1) % 5);
+        btn.onClick      = [&ui, schemeName]() {
+            Theme& t      = theme();
+            t.colorScheme = static_cast<ColorScheme>((static_cast<uint8_t>(t.colorScheme) + 1) % 5);
             t.bumpRevision();
-            (void)schemeName;  // Can't retarget the button label from here
-                               // without the widget id — refresh on next
-                               // menu open surfaces the new choice.
+            (void)schemeName; // Can't retarget the button label from here
+                              // without the widget id — refresh on next
+                              // menu open surfaces the new choice.
             (void)ui;
         };
-        (void)ui.createButton(row, {0.0f, 0.0f, innerW - 180.0f, 22.0f},
-                               std::move(btn));
+        (void)ui.createButton(row, {0.0f, 0.0f, innerW - 180.0f, 22.0f}, std::move(btn));
     }
 
-    (void)ui.createPanel(
-        contentPanel, {0.0f, 0.0f, innerW, 10.0f},
-        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    (void)ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 10.0f},
+                         PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
 
     {
         ButtonData btn;
@@ -373,8 +370,7 @@ void SettingsMenu::build(UIManager& ui, float screenW, float screenH,
         btn.labelColor   = WHITE_TEXT;
         btn.cornerRadius = 4.0f;
         btn.onClick      = std::move(onBack);
-        (void)ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f},
-                              std::move(btn));
+        (void)ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
     }
 
     this->m_isBuilt = true;
@@ -399,25 +395,21 @@ void SettingsMenu::destroy(UIManager& ui) {
 }
 
 void SettingsMenu::onResize(UIManager& ui, float width, float height) {
-    if (!this->m_isBuilt) { return; }
+    if (!this->m_isBuilt) {
+        return;
+    }
     std::function<void()> onBack = this->m_onBack;
     this->destroy(ui);
     this->build(ui, width, height, std::move(onBack));
 }
 
 void SettingsMenu::refresh(UIManager& ui) {
-    ui.setLabelText(this->m_masterVolLabel,
-                    std::to_string(this->m_settings.masterVolume) + "%");
-    ui.setLabelText(this->m_sfxVolLabel,
-                    std::to_string(this->m_settings.sfxVolume) + "%");
-    ui.setLabelText(this->m_musicVolLabel,
-                    std::to_string(this->m_settings.musicVolume) + "%");
-    ui.setButtonLabel(this->m_vsyncLabel,
-                      this->m_settings.vsync ? "On" : "Off");
-    ui.setButtonLabel(this->m_fullscreenLabel,
-                      this->m_settings.fullscreen ? "On" : "Off");
-    ui.setButtonLabel(this->m_fpsLabel,
-                      this->m_settings.showFPS ? "On" : "Off");
+    ui.setLabelText(this->m_masterVolLabel, std::to_string(this->m_settings.masterVolume) + "%");
+    ui.setLabelText(this->m_sfxVolLabel, std::to_string(this->m_settings.sfxVolume) + "%");
+    ui.setLabelText(this->m_musicVolLabel, std::to_string(this->m_settings.musicVolume) + "%");
+    ui.setButtonLabel(this->m_vsyncLabel, this->m_settings.vsync ? "On" : "Off");
+    ui.setButtonLabel(this->m_fullscreenLabel, this->m_settings.fullscreen ? "On" : "Off");
+    ui.setButtonLabel(this->m_fpsLabel, this->m_settings.showFPS ? "On" : "Off");
 }
 
 void saveSettings(const GameSettings& settings, const std::string& filepath) {
