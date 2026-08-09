@@ -83,22 +83,53 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<
     // Full-screen dark background
     this->m_rootPanel = ui.createPanel({0.0f, 0.0f, screenW, screenH}, PanelData{BG_DARK, 0.0f});
 
-    // Centered content panel — extra 42px for the Spectate button row.
-    constexpr float PANEL_W = 420.0f;
-    constexpr float PANEL_H = 362.0f;
-    const float panelX      = (screenW - PANEL_W) * 0.5f;
-    const float panelY      = (screenH - PANEL_H) * 0.5f;
+    // Content metrics. Four of the seven rows below are optional (each gated
+    // on its callback), so the panel height MUST be derived from the rows that
+    // will actually be created -- a hardcoded constant silently goes stale the
+    // moment a row is added or enabled. It had: the previous fixed 362px was
+    // 36px short of the full seven-row menu, leaving Quit hanging outside the
+    // panel's bottom edge.
+    constexpr float PANEL_W       = 420.0f;
+    constexpr float PAD           = 20.0f;
+    constexpr float GAP           = 8.0f;
+    constexpr float TITLE_H       = 30.0f;
+    constexpr float SPACER_H      = 20.0f;
+    constexpr float PRIMARY_BTN_H = 40.0f;
+    constexpr float BTN_H         = 34.0f;
+
+    // Rows, in creation order. Keep this in step with the buttons below.
+    float rowsH         = PRIMARY_BTN_H + BTN_H; // Start Game + Settings (always)
+    int32_t rowCount    = 2;
+    const auto countRow = [&rowsH, &rowCount](bool present) {
+        if (present) {
+            rowsH += BTN_H;
+            ++rowCount;
+        }
+    };
+    countRow(static_cast<bool>(this->m_onTutorial));
+    countRow(static_cast<bool>(this->m_onSpectate));
+    countRow(static_cast<bool>(this->m_onMapEditor));
+    countRow(static_cast<bool>(this->m_onContinentCreator));
+    countRow(true); // Quit (always)
+
+    // Children = title + spacer + rows; gaps sit between consecutive children.
+    const int32_t childCount = 2 + rowCount;
+    const float PANEL_H =
+        PAD * 2.0f + TITLE_H + SPACER_H + rowsH + GAP * static_cast<float>(childCount - 1);
+
+    const float panelX = (screenW - PANEL_W) * 0.5f;
+    const float panelY = (screenH - PANEL_H) * 0.5f;
 
     WidgetId contentPanel = ui.createPanel(this->m_rootPanel, {panelX, panelY, PANEL_W, PANEL_H},
                                            PanelData{PANEL_BG, 8.0f});
     {
         Widget* cp = ui.getWidget(contentPanel);
         assert(cp != nullptr);
-        cp->padding      = {20.0f, 20.0f, 20.0f, 20.0f};
-        cp->childSpacing = 8.0f;
+        cp->padding      = {PAD, PAD, PAD, PAD};
+        cp->childSpacing = GAP;
     }
 
-    const float innerW = PANEL_W - 40.0f; // 20px padding each side
+    const float innerW = PANEL_W - PAD * 2.0f;
 
     // Title — gilt face with a dark outline so it stays legible whether
     // the menu sits over parchment or the in-game map background.
@@ -109,11 +140,11 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<
         ld.fontSize     = 22.0f;
         ld.outlineColor = aoc::ui::tokens::SURFACE_INK;
         [[maybe_unused]] WidgetId titleLabel =
-            ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 30.0f}, std::move(ld));
+            ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, TITLE_H}, std::move(ld));
     }
 
     // Spacer
-    [[maybe_unused]] WidgetId spacer1 = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 20.0f},
+    [[maybe_unused]] WidgetId spacer1 = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, SPACER_H},
                                                        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
 
     // --- Start Game button (opens Game Setup screen) ---
@@ -135,7 +166,7 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<
             }
         };
         [[maybe_unused]] WidgetId startBtn =
-            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 40.0f}, std::move(btn));
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, PRIMARY_BTN_H}, std::move(btn));
     }
 
     // --- Settings button ---
@@ -150,7 +181,7 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<
         btn.cornerRadius = 4.0f;
         btn.onClick      = this->m_onSettings;
         [[maybe_unused]] WidgetId settingsBtn =
-            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, BTN_H}, std::move(btn));
     }
 
     // --- Tutorial button ---
@@ -169,7 +200,7 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<
             }
         };
         [[maybe_unused]] WidgetId tutorialBtn =
-            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, BTN_H}, std::move(btn));
     }
 
     // --- Spectate button ---
@@ -188,7 +219,7 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<
             }
         };
         [[maybe_unused]] WidgetId spectateBtn =
-            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, BTN_H}, std::move(btn));
     }
 
     // --- Map Editor button ---
@@ -207,7 +238,7 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<
             }
         };
         [[maybe_unused]] WidgetId meBtn =
-            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, BTN_H}, std::move(btn));
     }
 
     // --- Continent Creator button ---
@@ -226,7 +257,7 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<
             }
         };
         [[maybe_unused]] WidgetId ccBtn =
-            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, BTN_H}, std::move(btn));
     }
 
     // --- Quit button ---
@@ -245,7 +276,7 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<
             }
         };
         [[maybe_unused]] WidgetId quitBtn =
-            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, BTN_H}, std::move(btn));
     }
 
     this->m_isBuilt = true;

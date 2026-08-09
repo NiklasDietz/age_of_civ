@@ -591,7 +591,11 @@ def cmd_selftest(_args):
         ok = False
     else:
         text = header.read_text()
-        block = re.search(r"NAMES\s*=\s*\{\{(.*?)\}\}", text, re.S)
+        # Tolerate whitespace/newlines between the two braces: clang-format
+        # wraps the initializer once the name list grows past the column limit,
+        # and a `\{\{` pattern would silently match nothing and report every
+        # terrain as missing rather than failing loudly.
+        block = re.search(r"NAMES\s*=\s*\{\s*\{(.*?)\}\s*\}", text, re.S)
         names = set(re.findall(r'"([^"]+)"', block.group(1))) if block else set()
         water = re.search(r"constexpr bool isWater\(TerrainType type\)\s*\{(.*?)\}",
                           text, re.S)
