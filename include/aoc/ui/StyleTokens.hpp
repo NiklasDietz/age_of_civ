@@ -14,7 +14,9 @@
  * equivalents in the comments below.
  */
 
-#include "aoc/ui/Widget.hpp"
+// Color only -- including Widget.hpp here would be circular, since Widget.hpp
+// includes this header to default its *Data structs to these tokens.
+#include "aoc/ui/Color.hpp"
 
 namespace aoc::ui::tokens {
 

@@ -9,6 +9,9 @@
  * are stored in a contiguous vector inside UIManager.
  */
 
+#include "aoc/ui/Color.hpp"
+#include "aoc/ui/StyleTokens.hpp"
+
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -33,12 +36,8 @@ struct Rect {
     }
 };
 
-struct Color {
-    float r = 1.0f;
-    float g = 1.0f;
-    float b = 1.0f;
-    float a = 1.0f;
-};
+// Color lives in Color.hpp so StyleTokens.hpp can use it without including
+// this header -- see that file for why the split exists.
 
 struct Padding {
     float top    = 0.0f;
@@ -67,7 +66,7 @@ struct WidgetHandle {
 
 /// Empty panel -- just a colored rectangle container.
 struct PanelData {
-    Color backgroundColor = {0.1f, 0.1f, 0.15f, 0.85f};
+    Color backgroundColor = tokens::SURFACE_PARCHMENT;
     float cornerRadius    = 4.0f;
 
     /// Optional second colour for a vertical two-band gradient. Alpha
@@ -93,10 +92,10 @@ struct PanelData {
 /// Clickable button.
 struct ButtonData {
     std::string label;
-    Color normalColor  = {0.25f, 0.25f, 0.30f, 0.9f};
-    Color hoverColor   = {0.35f, 0.35f, 0.40f, 0.9f};
-    Color pressedColor = {0.15f, 0.15f, 0.20f, 0.9f};
-    Color labelColor   = {1.0f, 1.0f, 1.0f, 1.0f};
+    Color normalColor  = tokens::SURFACE_MARBLE;
+    Color hoverColor   = tokens::BRONZE_DARK;
+    Color pressedColor = tokens::STATE_PRESSED;
+    Color labelColor   = tokens::TEXT_INK;
     float cornerRadius = 3.0f;
     float fontSize     = 14.0f;
     std::function<void()> onClick;
@@ -158,7 +157,7 @@ struct ButtonData {
     /// even after the cursor leaves the button. Caller toggles this
     /// in the onClick handler.
     bool selected       = false;
-    Color selectedColor = {0.35f, 0.55f, 0.75f, 0.95f};
+    Color selectedColor = tokens::BRONZE_BASE;
 
     /// Disabled state. Greys the button, suppresses onClick + hover
     /// styling. Paired with `hoverCursor = 0` to prevent the
@@ -169,7 +168,7 @@ struct ButtonData {
 /// Text label.
 struct LabelData {
     std::string text;
-    Color color    = {1.0f, 1.0f, 1.0f, 1.0f};
+    Color color    = tokens::TEXT_INK;
     float fontSize = 14.0f;
     /// Optional 1-pixel outline drawn behind the glyphs in 8 directions.
     /// Alpha 0 = no outline. Use for titles + chip values laid over busy
@@ -183,7 +182,7 @@ struct LabelData {
 
 /// Scrollable list container. Children outside the visible window are skipped during rendering.
 struct ScrollListData {
-    Color backgroundColor = {0.12f, 0.12f, 0.16f, 0.9f};
+    Color backgroundColor = tokens::SURFACE_PARCHMENT_DIM;
     float scrollOffset    = 0.0f; ///< Pixels scrolled from top (0 = no scroll)
     float contentHeight   = 0.0f; ///< Total height of all children (computed during layout)
 };
@@ -195,10 +194,10 @@ struct ScrollListData {
 struct TabBarData {
     std::vector<std::string> labels;
     int32_t activeTab   = 0;
-    Color activeColor   = {0.35f, 0.55f, 0.75f, 0.95f};
-    Color inactiveColor = {0.20f, 0.20f, 0.28f, 0.9f};
-    Color hoverColor    = {0.30f, 0.30f, 0.38f, 0.9f};
-    Color labelColor    = {1.0f, 1.0f, 1.0f, 1.0f};
+    Color activeColor   = tokens::BRONZE_BASE;
+    Color inactiveColor = tokens::SURFACE_MARBLE;
+    Color hoverColor    = tokens::BRONZE_DARK;
+    Color labelColor    = tokens::TEXT_INK;
     float fontSize      = 13.0f;
     float tabWidth      = 100.0f;
     std::function<void(int32_t)> onTabSelected;
@@ -217,9 +216,9 @@ struct TabBarData {
 /// `backgroundColor`. Optional overlay text (e.g. "45 / 100").
 struct ProgressBarData {
     float fillFraction    = 0.0f;
-    Color fillColor       = {0.2f, 0.7f, 0.3f, 0.9f};
-    Color backgroundColor = {0.15f, 0.15f, 0.20f, 0.8f};
-    Color textColor       = {1.0f, 1.0f, 1.0f, 1.0f};
+    Color fillColor       = tokens::STATE_SUCCESS;
+    Color backgroundColor = tokens::SURFACE_INK;
+    Color textColor       = tokens::TEXT_INK;
     float cornerRadius    = 2.0f;
     std::string overlayText; ///< Optional centred label
     float fontSize = 11.0f;
@@ -232,9 +231,9 @@ struct SliderData {
     float maxValue   = 1.0f;
     float value      = 0.0f;
     float step       = 0.0f; ///< 0 = continuous
-    Color trackColor = {0.20f, 0.20f, 0.25f, 0.9f};
-    Color fillColor  = {0.35f, 0.55f, 0.75f, 0.95f};
-    Color thumbColor = {0.9f, 0.9f, 0.9f, 1.0f};
+    Color trackColor = tokens::SURFACE_INK;
+    Color fillColor  = tokens::BRONZE_BASE;
+    Color thumbColor = tokens::BRONZE_LIGHT;
     std::function<void(float)> onValueChanged;
     bool dragging = false; ///< Managed by UIManager during drag
 };
@@ -284,8 +283,8 @@ struct PortraitData {
     std::string title;
     std::vector<std::pair<std::string, std::string>> stats;
     Color tint          = {1.0f, 1.0f, 1.0f, 1.0f};
-    Color fallbackColor = {0.30f, 0.35f, 0.45f, 1.0f};
-    Color titleColor    = {1.0f, 0.9f, 0.5f, 1.0f};
+    Color fallbackColor = tokens::SURFACE_MARBLE;
+    Color titleColor    = tokens::TEXT_HEADER;
     float titleFontSize = 16.0f;
     float statsFontSize = 11.0f;
 };
@@ -301,12 +300,12 @@ struct ListRowData {
     std::string title;
     std::string subtitle;
     std::string rightValue;
-    Color titleColor    = {0.95f, 0.95f, 0.95f, 1.0f};
-    Color subtitleColor = {0.70f, 0.70f, 0.75f, 1.0f};
-    Color valueColor    = {1.0f, 0.9f, 0.4f, 1.0f};
-    Color accentColor   = {0.35f, 0.55f, 0.75f, 0.95f};
-    Color hoverBg       = {0.15f, 0.17f, 0.22f, 0.9f};
-    Color pressedBg     = {0.10f, 0.11f, 0.14f, 0.9f};
+    Color titleColor    = tokens::TEXT_INK;
+    Color subtitleColor = tokens::TEXT_PARCHMENT;
+    Color valueColor    = tokens::TEXT_GILT;
+    Color accentColor   = tokens::BRONZE_BASE;
+    Color hoverBg       = tokens::SURFACE_MARBLE;
+    Color pressedBg     = tokens::STATE_PRESSED;
     float iconSize      = 24.0f;
     float titleFont     = 13.0f;
     float subtitleFont  = 10.0f;
@@ -320,9 +319,9 @@ struct ListRowData {
 /// (#, ##), bullet lists (-), bold (**word**), and link refs ([Text]).
 struct MarkdownData {
     std::string source;
-    Color textColor    = {0.92f, 0.92f, 0.92f, 1.0f};
-    Color headingColor = {1.0f, 0.85f, 0.4f, 1.0f};
-    Color linkColor    = {0.5f, 0.75f, 1.0f, 1.0f};
+    Color textColor    = tokens::TEXT_INK;
+    Color headingColor = tokens::TEXT_HEADER;
+    Color linkColor    = tokens::BRONZE_LIGHT;
     float fontSize     = 12.0f;
     /// When set, link clicks are routed here. Argument is the link
     /// text in square brackets (e.g. "Mining" → look up encyclopedia
