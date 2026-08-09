@@ -2015,56 +2015,58 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
 
     } // end of if (!this->skipFlatMap) block above
 
-    // Layer 4: UI overlay (single batch - transform UI to world-space so the
-    // camera shader maps it back to screen-space correctly).
-    float invZoom = 1.0f / camera.zoom();
+    // ---- Switch from the world-space batch to a screen-space one ----
+    // Everything below is UI and draws in raw screen pixels. Previously it
+    // shared the world batch, so each overlay had to pre-multiply its own
+    // coordinates by invZoom and offset them by the camera's top-left just to
+    // have the camera shader undo that again. Ending the batch here and
+    // resetting the camera removes that round-trip entirely.
+    //
+    // This is only correct because flushBatch sub-allocates each flush from
+    // the frame's instance buffer; while it wrote every flush to offset 0,
+    // opening a second batch would have stomped the world draw.
+    renderer2d.end(commandBuffer);
+    renderer2d.resetCamera();
+    renderer2d.setZoom(1.0f);
+    renderer2d.begin();
+
+    // Layer 4: UI overlay (screen-space batch).
     uiManager.layout();
-    uiManager.transformBounds(topLeftX, topLeftY, invZoom);
     // Plumb the command buffer so `clipChildren` panels can push/pop
-    // scissor rects during this render pass.
+    // scissor rects during this render pass. Bounds are screen-space now, so
+    // pushScissor -- which takes screen pixels -- finally applies in-game.
     uiManager.setRenderCommandBuffer(static_cast<void*>(commandBuffer));
     uiManager.render(renderer2d);
     uiManager.setRenderCommandBuffer(nullptr);
-    uiManager.untransformBounds(topLeftX, topLeftY, invZoom);
 
-    // Tooltip (transform screen-space mouse position to world-space for rendering)
+    // Tooltip
     if (this->m_tooltipManager.isVisible()) {
-        float savedX = this->m_tooltipManager.getX();
-        float savedY = this->m_tooltipManager.getY();
-        this->m_tooltipManager.setPosition(topLeftX + savedX * invZoom,
-                                           topLeftY + savedY * invZoom);
-        this->m_tooltipManager.setRenderScale(invZoom);
+        this->m_tooltipManager.setRenderScale(1.0f);
         this->m_tooltipManager.render(renderer2d);
-        this->m_tooltipManager.setPosition(savedX, savedY);
     }
 
-    // Event log (transformed to world-space)
+    // Event log
     if (eventLog != nullptr && !eventLog->events().empty()) {
         constexpr float EVENT_LOG_W      = 320.0f;
         constexpr float EVENT_LOG_H      = 160.0f;
         constexpr float EVENT_LOG_MARGIN = 10.0f;
-        float elScreenX = static_cast<float>(screenWidth) - EVENT_LOG_W - EVENT_LOG_MARGIN;
-        float elScreenY = static_cast<float>(screenHeight) - EVENT_LOG_H - 70.0f;
-        float elWorldX  = topLeftX + elScreenX * invZoom;
-        float elWorldY  = topLeftY + elScreenY * invZoom;
-        eventLog->render(renderer2d, elWorldX, elWorldY, EVENT_LOG_W * invZoom,
-                         EVENT_LOG_H * invZoom, invZoom);
+        const float elX = static_cast<float>(screenWidth) - EVENT_LOG_W - EVENT_LOG_MARGIN;
+        const float elY = static_cast<float>(screenHeight) - EVENT_LOG_H - 70.0f;
+        eventLog->render(renderer2d, elX, elY, EVENT_LOG_W, EVENT_LOG_H, 1.0f);
     }
 
-    // Minimap (transformed to world-space). Suppressed while a modal
-    // screen is open — the world overview shouldn't peek through the
-    // tech tree, etc. Dimensions come from the shared
-    // `Minimap::computeRect` helper so the click-handler in
-    // Application.cpp uses identical bounds.
+    // Minimap. Suppressed while a modal screen is open — the world overview
+    // shouldn't peek through the tech tree, etc. Dimensions come from the
+    // shared `Minimap::computeRect` helper so the click-handler in
+    // Application.cpp uses identical bounds — and now identical coordinates,
+    // since both are screen-space.
     if (!this->m_minimapSuppressed) {
         Minimap::Rect mmRect = Minimap::computeRect(grid, screenHeight);
         mmRect.y -= this->m_minimapBottomOffset;
-        const float mmWorldX       = topLeftX + mmRect.x * invZoom;
-        const float mmWorldY       = topLeftY + mmRect.y * invZoom;
         const bool platesOnMinimap = (this->overlayMode == MapOverlay::TectonicPlates);
-        this->m_minimap.draw(renderer2d, grid, fog, viewingPlayer, camera, mmWorldX, mmWorldY,
-                             mmRect.w * invZoom, mmRect.h * invZoom, screenWidth, screenHeight,
-                             hexSize, platesOnMinimap, static_cast<int32_t>(this->overlayMode));
+        this->m_minimap.draw(renderer2d, grid, fog, viewingPlayer, camera, mmRect.x, mmRect.y,
+                             mmRect.w, mmRect.h, screenWidth, screenHeight, hexSize,
+                             platesOnMinimap, static_cast<int32_t>(this->overlayMode));
 
         // Globe-mode overlay: draw an ellipse marking the visible
         // hemisphere of the 3D sphere on the (flat equirect) minimap.
@@ -2084,12 +2086,10 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
             const float cosLatC   = std::cos(latC * 3.14159265358979f / 180.0f);
             const float ellW      = halfDeg / std::max(0.05f, cosLatC) * 2.0f;
             const float ellH      = halfDeg * 2.0f;
-            const float mmW2      = mmRect.w * invZoom;
-            const float mmH2      = mmRect.h * invZoom;
-            const float cx        = mmWorldX + ((lonC + 180.0f) / 360.0f) * mmW2;
-            const float cy        = mmWorldY + ((latC + 90.0f) / 180.0f) * mmH2;
-            const float pxPerDegX = mmW2 / 360.0f;
-            const float pxPerDegY = mmH2 / 180.0f;
+            const float cx        = mmRect.x + ((lonC + 180.0f) / 360.0f) * mmRect.w;
+            const float cy        = mmRect.y + ((latC + 90.0f) / 180.0f) * mmRect.h;
+            const float pxPerDegX = mmRect.w / 360.0f;
+            const float pxPerDegY = mmRect.h / 180.0f;
             const float ellPxW    = ellW * pxPerDegX;
             const float ellPxH    = ellH * pxPerDegY;
             // Approximate ellipse via a filled rect outline ring.
@@ -2098,22 +2098,22 @@ void GameRenderer::render(vulkan_app::renderer::Renderer2D& renderer2d,
             // bounding box, which still conveys "you are here" + size.
             const float rx = cx - ellPxW * 0.5f;
             const float ry = cy - ellPxH * 0.5f;
-            renderer2d.drawRect(std::max(mmWorldX, rx), std::max(mmWorldY, ry),
-                                std::min(ellPxW, mmW2), std::min(ellPxH, mmH2), 1.0f, 1.0f, 0.6f,
-                                0.85f, 1.5f);
+            renderer2d.drawRect(std::max(mmRect.x, rx), std::max(mmRect.y, ry),
+                                std::min(ellPxW, mmRect.w), std::min(ellPxH, mmRect.h), 1.0f, 1.0f,
+                                0.6f, 0.85f, 1.5f);
         }
     }
 
-    // Notifications (transformed to world-space)
+    // Notifications
     if (notifications != nullptr) {
         notifications->render(renderer2d, static_cast<float>(screenWidth),
-                              static_cast<float>(screenHeight), invZoom);
+                              static_cast<float>(screenHeight), 1.0f);
     }
 
-    // Tutorial overlay (transformed to world-space)
+    // Tutorial overlay
     if (tutorial != nullptr && tutorial->isActive()) {
         tutorial->render(renderer2d, static_cast<float>(screenWidth),
-                         static_cast<float>(screenHeight), invZoom);
+                         static_cast<float>(screenHeight), 1.0f);
     }
 
     renderer2d.end(commandBuffer);

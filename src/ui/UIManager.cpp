@@ -2022,13 +2022,13 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
     // `clipChildren` is set and the caller provided a command buffer.
     // Guarantees geometry outside the panel never hits the swapchain.
     //
-    // Skipped while bounds are world-space (the in-game pass runs through
-    // `transformBounds`): `pushScissor` takes screen-space pixels, so feeding
-    // it world-space bounds clips the entire panel away instead of its
-    // overflow. Menu-path screens are untransformed and do clip. This becomes
-    // unconditional once the screen-space UI pass lands.
-    const bool pushedScissor =
-        w->clipChildren && this->m_cmdBuffer != nullptr && !this->m_boundsInWorldSpace;
+    // Unconditional since the screen-space UI pass landed: every render path
+    // (menu, loading, in-game) now draws UI with an identity camera, so bounds
+    // are always the screen-space pixels `pushScissor` expects. It used to be
+    // gated on `!m_boundsInWorldSpace` because the in-game pass ran bounds
+    // through `transformBounds` first, and feeding world-space bounds to
+    // pushScissor clipped the whole panel away instead of its overflow.
+    const bool pushedScissor = w->clipChildren && this->m_cmdBuffer != nullptr;
     if (pushedScissor) {
         renderer2d.pushScissor(b.x, b.y, b.w, b.h, static_cast<VkCommandBuffer>(this->m_cmdBuffer));
     }
