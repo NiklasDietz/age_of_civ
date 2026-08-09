@@ -39,6 +39,20 @@ enum class IconShape : uint8_t {
     Compass, ///< Tourism: ring with a needle
     Shield,  ///< Defence / military
     Capital, ///< City / capital marker: star-ish burst
+    Bow,     ///< Ranged units
+    Anchor,  ///< Naval units
+    Plane,   ///< Air units
+    Tent,    ///< Settler / civilian
+    Hammer,  ///< Builder / production
+    Eye,     ///< Spy / recon / visibility
+    House,   ///< Buildings
+    Banner,  ///< Civilizations
+    Scroll,  ///< Civics / documents
+    Ore,     ///< Mineral resources
+    Droplet, ///< Liquid resources
+    Check,   ///< Positive status
+    Warning, ///< Alert status
+    Arrow,   ///< Actions / movement
 };
 
 /// Paint `shape` inside the square box (x, y, size) in `color`.

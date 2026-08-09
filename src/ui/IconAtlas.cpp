@@ -5,6 +5,7 @@
 #include "aoc/ui/IconAtlas.hpp"
 #include "aoc/core/Log.hpp"
 
+#include <array>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -38,6 +39,13 @@ uint32_t IconAtlas::id(std::string_view name) const {
 }
 
 const IconRegion* IconAtlas::region(uint32_t id) const {
+    if (id == 0 || id > this->m_regions.size()) {
+        return nullptr;
+    }
+    return &this->m_regions[id - 1];
+}
+
+IconRegion* IconAtlas::mutableRegion(uint32_t id) {
     if (id == 0 || id > this->m_regions.size()) {
         return nullptr;
     }
@@ -262,6 +270,71 @@ void IconAtlas::seedBuiltIns() {
     reg("status.researching", 0.247f, 0.435f, 0.658f);
     reg("status.completed", 0.360f, 0.545f, 0.243f);
     reg("status.intel", 0.247f, 0.435f, 0.658f);
+
+    // ----- Vector recipes by name -----
+    // Assigning per prefix rather than per entry: these categories exist
+    // precisely so an unknown id falls back to a class-level icon, and ~100
+    // bespoke glyphs would be a lot of surface for very little signal at
+    // 14-20 px. Longest prefix wins, so "units.naval-" beats "units.".
+    // Anything unmatched keeps the flat colour swatch (IconShape::None).
+    struct ShapeRule {
+        const char* prefix;
+        IconShape shape;
+    };
+    static constexpr std::array<ShapeRule, 34> SHAPE_RULES = {{
+        // Units -- by class, most specific first.
+        {"units.naval", IconShape::Anchor},
+        {"units.air", IconShape::Plane},
+        {"units.ranged", IconShape::Bow},
+        {"units.artillery", IconShape::Bow},
+        {"units.settler", IconShape::Tent},
+        {"units.builder", IconShape::Hammer},
+        {"units.trader", IconShape::Coin},
+        {"units.spy", IconShape::Eye},
+        {"units.recon", IconShape::Eye},
+        {"units.diplomat", IconShape::Scroll},
+        {"units.missionary", IconShape::Flame},
+        {"units.apostle", IconShape::Flame},
+        {"units.greatperson", IconShape::Capital},
+        {"units.support", IconShape::Hammer},
+        {"units.", IconShape::Shield},
+        // Resources.
+        {"resources.food", IconShape::Leaf},
+        {"resources.wheat", IconShape::Leaf},
+        {"resources.cotton", IconShape::Leaf},
+        {"resources.horses", IconShape::Shield},
+        {"resources.oil", IconShape::Droplet},
+        {"resources.fuel", IconShape::Droplet},
+        {"resources.wood", IconShape::Leaf},
+        {"resources.tools", IconShape::Hammer},
+        {"resources.", IconShape::Ore},
+        // Everything else.
+        {"buildings.", IconShape::House},
+        {"districts.", IconShape::Gear},
+        {"wonders.", IconShape::Capital},
+        {"civs.", IconShape::Banner},
+        {"civics.", IconShape::Scroll},
+        {"techs.", IconShape::Flask},
+        {"actions.attack", IconShape::Shield},
+        {"actions.", IconShape::Arrow},
+        {"status.completed", IconShape::Check},
+        {"status.locked", IconShape::Warning},
+    }};
+
+    for (const std::pair<const std::string, uint32_t>& entry : this->m_byName) {
+        IconRegion* r = this->mutableRegion(entry.second);
+        if (r == nullptr || r->shape != IconShape::None) {
+            continue; // yields.* already carry an explicit recipe
+        }
+        std::size_t bestLen = 0;
+        for (const ShapeRule& rule : SHAPE_RULES) {
+            const std::size_t len = std::char_traits<char>::length(rule.prefix);
+            if (len > bestLen && entry.first.compare(0, len, rule.prefix) == 0) {
+                bestLen  = len;
+                r->shape = rule.shape;
+            }
+        }
+    }
 }
 
 } // namespace aoc::ui

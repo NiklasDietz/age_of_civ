@@ -49,6 +49,10 @@ public:
     /// Lookup region by id. Returns nullptr if invalid.
     [[nodiscard]] const IconRegion* region(uint32_t id) const;
 
+    /// Mutable variant, used by seedBuiltIns to attach vector recipes after
+    /// all entries are registered. Deliberately not part of the read path.
+    [[nodiscard]] IconRegion* mutableRegion(uint32_t id);
+
     /// Load atlas manifest from a key=value file (name=r,g,b,a).
     /// Returns entries loaded. Used as a placeholder art pipeline until
     /// real PNG atlases + loader land.
