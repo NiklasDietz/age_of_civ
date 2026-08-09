@@ -75,7 +75,14 @@ void Application::buildHUD() {
     topBg.gradientBottom  = aoc::ui::tokens::SURFACE_INK;
     topBg.bottomShadow    = aoc::ui::tokens::BRONZE_BASE; // bronze rail bottom
     topBg.cornerRadius    = 0.0f;
-    this->m_topBar = this->m_uiManager.createPanel({0.0f, 0.0f, screenW, 32.0f}, std::move(topBg));
+    // Scaled so the whole HUD grows with the UI-scale slider. TOPBAR_ITEM_H is
+    // the inner row height; the bar is TOPBAR_H with 4 px padding top and
+    // bottom, so items must stay below TOPBAR_H - 8.
+    const float TOPBAR_H      = aoc::ui::theme().scaled(32.0f);
+    const float TOPBAR_ITEM_H = aoc::ui::theme().scaled(22.0f);
+
+    this->m_topBar =
+        this->m_uiManager.createPanel({0.0f, 0.0f, screenW, TOPBAR_H}, std::move(topBg));
     {
         aoc::ui::Widget* bar = this->m_uiManager.getWidget(this->m_topBar);
         bar->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
@@ -86,8 +93,8 @@ void Application::buildHUD() {
 
     // Helper for top bar buttons
     // auto required: lambda type is unnameable
-    auto makeTopBtn = [this](aoc::ui::WidgetId parent, const std::string& label, float width,
-                             std::function<void()> onClick) {
+    auto makeTopBtn = [this, TOPBAR_ITEM_H](aoc::ui::WidgetId parent, const std::string& label,
+                                            float width, std::function<void()> onClick) {
         // Top-bar buttons: bronze action style.
         aoc::ui::ButtonData btn;
         btn.label        = label;
@@ -98,7 +105,8 @@ void Application::buildHUD() {
         btn.labelColor   = aoc::ui::tokens::TEXT_GILT;
         btn.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
         btn.onClick      = std::move(onClick);
-        return this->m_uiManager.createButton(parent, {0.0f, 0.0f, width, 22.0f}, std::move(btn));
+        return this->m_uiManager.createButton(parent, {0.0f, 0.0f, width, TOPBAR_ITEM_H},
+                                              std::move(btn));
     };
 
     // LEFT SIDE: Civ-6-style yield strip. Each yield has an icon + value
@@ -109,12 +117,14 @@ void Application::buildHUD() {
     // were previously rendered at 11 px in a 72x18 chip, which scanned as
     // decoration rather than data. The top bar's inner height is 24 px
     // (32 minus 4+4 padding), so 22 is the most a chip can take.
-    constexpr float CHIP_W        = 92.0f;
-    constexpr float CHIP_H        = 22.0f;
-    constexpr float CHIP_ICON     = 18.0f;
-    constexpr float CHIP_VALUE_W  = 64.0f;
-    constexpr float CHIP_FONT     = 13.0f;
-    constexpr float YIELD_STRIP_W = 400.0f; ///< 4 chips + spacing + padding
+    const float CHIP_W       = aoc::ui::theme().scaled(92.0f);
+    const float CHIP_H       = aoc::ui::theme().scaled(22.0f);
+    const float CHIP_ICON    = aoc::ui::theme().scaled(18.0f);
+    const float CHIP_VALUE_W = aoc::ui::theme().scaled(64.0f);
+    // Font size is NOT scaled here -- BitmapFont applies fontScale() per draw,
+    // so scaling it again would compound the factor.
+    constexpr float CHIP_FONT = 13.0f;
+    const float YIELD_STRIP_W = aoc::ui::theme().scaled(400.0f); ///< 4 chips + spacing + padding
 
     this->m_yieldStrip =
         this->m_uiManager.createPanel(this->m_topBar, {0.0f, 0.0f, YIELD_STRIP_W, CHIP_H},
@@ -163,16 +173,16 @@ void Application::buildHUD() {
     }
     // Stockpile goods strip kept as a single auto-text label (variable
     // count). Sits to the right of the fixed yield strip.
-    this->m_resourceLabel =
-        this->m_uiManager.createLabel(this->m_topBar, {0.0f, 0.0f, 200.0f, 22.0f},
-                                      aoc::ui::LabelData{"", aoc::ui::tokens::TEXT_GILT, 10.0f});
+    this->m_resourceLabel = this->m_uiManager.createLabel(
+        this->m_topBar, {0.0f, 0.0f, aoc::ui::theme().scaled(200.0f), TOPBAR_ITEM_H},
+        aoc::ui::LabelData{"", aoc::ui::tokens::TEXT_GILT, 10.0f});
 
     // Civ-6-style diplomacy strip. One icon per known civ; unmet
     // players render as neutral `?`, met players get their player
     // colour. Click → open DiplomacyScreen. Rebuilt on every frame
     // inside `updateHUD` so newly-met civs light up live.
     this->m_diploStrip =
-        this->m_uiManager.createPanel(this->m_topBar, {0.0f, 0.0f, 0.0f, 22.0f},
+        this->m_uiManager.createPanel(this->m_topBar, {0.0f, 0.0f, 0.0f, TOPBAR_ITEM_H},
                                       aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
     {
         aoc::ui::Widget* s = this->m_uiManager.getWidget(this->m_diploStrip);
@@ -186,9 +196,9 @@ void Application::buildHUD() {
     // Flex spacer eats the leftover horizontal space and shoves the
     // right-hand button cluster against the window edge regardless of
     // window width. Without flex the buttons hugged the left labels.
-    aoc::ui::WidgetId spacer =
-        this->m_uiManager.createPanel(this->m_topBar, {0.0f, 0.0f, 1.0f, 22.0f},
-                                      aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    aoc::ui::WidgetId spacer = this->m_uiManager.createPanel(
+        this->m_topBar, {0.0f, 0.0f, aoc::ui::theme().scaled(1.0f), TOPBAR_ITEM_H},
+        aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
     {
         aoc::ui::Widget* sp = this->m_uiManager.getWidget(spacer);
         if (sp != nullptr) {
@@ -197,7 +207,7 @@ void Application::buildHUD() {
     }
 
     // RIGHT SIDE: Game screen buttons
-    makeTopBtn(this->m_topBar, "Tech", 50.0f, [this]() {
+    makeTopBtn(this->m_topBar, "Tech", aoc::ui::theme().scaled(50.0f), [this]() {
         if (!this->m_techScreen.isOpen()) {
             this->m_techScreen.setContext(&this->m_gameState, 0);
             this->m_techScreen.setGrid(&this->m_hexGrid);
@@ -207,7 +217,7 @@ void Application::buildHUD() {
         }
     });
 
-    makeTopBtn(this->m_topBar, "Gov", 44.0f, [this]() {
+    makeTopBtn(this->m_topBar, "Gov", aoc::ui::theme().scaled(44.0f), [this]() {
         if (!this->m_governmentScreen.isOpen()) {
             this->m_governmentScreen.setContext(&this->m_gameState, 0);
             this->m_governmentScreen.open(this->m_uiManager);
@@ -216,7 +226,7 @@ void Application::buildHUD() {
         }
     });
 
-    makeTopBtn(this->m_topBar, "Econ", 50.0f, [this]() {
+    makeTopBtn(this->m_topBar, "Econ", aoc::ui::theme().scaled(50.0f), [this]() {
         if (!this->m_economyScreen.isOpen()) {
             this->m_economyScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0,
                                              &this->m_economy.market());
@@ -226,7 +236,7 @@ void Application::buildHUD() {
         }
     });
 
-    makeTopBtn(this->m_topBar, "Trade", 50.0f, [this]() {
+    makeTopBtn(this->m_topBar, "Trade", aoc::ui::theme().scaled(50.0f), [this]() {
         if (!this->m_tradeScreen.isOpen()) {
             this->m_tradeScreen.setContext(&this->m_gameState, 0, &this->m_economy.market(),
                                            &this->m_diplomacy);
@@ -236,7 +246,7 @@ void Application::buildHUD() {
         }
     });
 
-    makeTopBtn(this->m_topBar, "Routes", 60.0f, [this]() {
+    makeTopBtn(this->m_topBar, "Routes", aoc::ui::theme().scaled(60.0f), [this]() {
         if (!this->m_tradeRouteSetupScreen.isOpen()) {
             this->m_tradeRouteSetupScreen.setContext(&this->m_gameState, &this->m_hexGrid, 0,
                                                      &this->m_economy.market(), &this->m_diplomacy);
@@ -246,7 +256,7 @@ void Application::buildHUD() {
         }
     });
 
-    makeTopBtn(this->m_topBar, "Diplo", 50.0f, [this]() {
+    makeTopBtn(this->m_topBar, "Diplo", aoc::ui::theme().scaled(50.0f), [this]() {
         if (!this->m_diplomacyScreen.isOpen()) {
             this->m_diplomacyScreen.setContext(&this->m_gameState, 0, &this->m_diplomacy,
                                                &this->m_hexGrid, &this->m_dealTracker);
@@ -259,7 +269,7 @@ void Application::buildHUD() {
     // Overtake: takes control of currently-followed civ in spectator mode.
     // Click any civ in scoreboard / press digit 1-9 to set follow target,
     // then click Overtake (or press T).
-    makeTopBtn(this->m_topBar, "Overtake", 70.0f, [this]() {
+    makeTopBtn(this->m_topBar, "Overtake", aoc::ui::theme().scaled(70.0f), [this]() {
         if (this->m_spectatorFollowPlayer >= 0 &&
             this->m_spectatorFollowPlayer < this->m_gameState.playerCount()) {
             const PlayerId tookOver = static_cast<PlayerId>(this->m_spectatorFollowPlayer);
@@ -275,12 +285,12 @@ void Application::buildHUD() {
     });
 
     // Separator (bronze hairline)
-    [[maybe_unused]] aoc::ui::WidgetId sep =
-        this->m_uiManager.createPanel(this->m_topBar, {0.0f, 0.0f, 2.0f, 22.0f},
-                                      aoc::ui::PanelData{aoc::ui::tokens::BRONZE_DARK, 0.0f});
+    [[maybe_unused]] aoc::ui::WidgetId sep = this->m_uiManager.createPanel(
+        this->m_topBar, {0.0f, 0.0f, aoc::ui::theme().scaled(2.0f), TOPBAR_ITEM_H},
+        aoc::ui::PanelData{aoc::ui::tokens::BRONZE_DARK, 0.0f});
 
     // MENU button -- toggles a dropdown with Save/Load/Settings
-    makeTopBtn(this->m_topBar, "Menu", 55.0f, [this]() {
+    makeTopBtn(this->m_topBar, "Menu", aoc::ui::theme().scaled(55.0f), [this]() {
         if (this->m_menuDropdown != aoc::ui::INVALID_WIDGET) {
             // Close dropdown
             this->m_uiManager.removeWidget(this->m_menuDropdown);
@@ -315,7 +325,9 @@ void Application::buildHUD() {
                 btn.cornerRadius                      = aoc::ui::tokens::CORNER_BUTTON;
                 btn.onClick                           = std::move(onClick);
                 [[maybe_unused]] aoc::ui::WidgetId id = this->m_uiManager.createButton(
-                    parent, {0.0f, 0.0f, 98.0f, 28.0f}, std::move(btn));
+                    parent,
+                    {0.0f, 0.0f, aoc::ui::theme().scaled(98.0f), aoc::ui::theme().scaled(28.0f)},
+                    std::move(btn));
             };
 
             makeDropBtn(this->m_menuDropdown, "Save Game", [this]() {
@@ -396,20 +408,20 @@ void Application::buildHUD() {
 
     // Info-panel labels (ink text on parchment surface).
     this->m_turnLabel = this->m_uiManager.createLabel(
-        infoPanel, {0.0f, 0.0f, 230.0f, 14.0f},
+        infoPanel, {0.0f, 0.0f, aoc::ui::theme().scaled(230.0f), aoc::ui::theme().scaled(14.0f)},
         aoc::ui::LabelData{"Turn 0", aoc::ui::tokens::TEXT_HEADER, 14.0f});
 
     this->m_economyLabel = this->m_uiManager.createLabel(
-        infoPanel, {0.0f, 0.0f, 230.0f, 12.0f},
+        infoPanel, {0.0f, 0.0f, aoc::ui::theme().scaled(230.0f), aoc::ui::theme().scaled(12.0f)},
         aoc::ui::LabelData{"Barter  Gold:100", aoc::ui::tokens::RES_GOLD, 11.0f});
 
     this->m_selectionLabel = this->m_uiManager.createLabel(
-        infoPanel, {0.0f, 0.0f, 230.0f, 12.0f},
+        infoPanel, {0.0f, 0.0f, aoc::ui::theme().scaled(230.0f), aoc::ui::theme().scaled(12.0f)},
         aoc::ui::LabelData{"No selection", aoc::ui::tokens::TEXT_INK, 11.0f});
 
     // Research progress label + bar (azure science accent).
     this->m_researchLabel = this->m_uiManager.createLabel(
-        infoPanel, {0.0f, 0.0f, 230.0f, 12.0f},
+        infoPanel, {0.0f, 0.0f, aoc::ui::theme().scaled(230.0f), aoc::ui::theme().scaled(12.0f)},
         aoc::ui::LabelData{"No research", aoc::ui::tokens::RES_SCIENCE, 10.0f});
 
     constexpr float PROGRESS_BAR_W = 220.0f;
@@ -424,7 +436,7 @@ void Application::buildHUD() {
 
     // Production progress label + bar (terracotta hammers).
     this->m_productionLabel = this->m_uiManager.createLabel(
-        infoPanel, {0.0f, 0.0f, 230.0f, 12.0f},
+        infoPanel, {0.0f, 0.0f, aoc::ui::theme().scaled(230.0f), aoc::ui::theme().scaled(12.0f)},
         aoc::ui::LabelData{"", aoc::ui::tokens::RES_PRODUCTION, 10.0f});
 
     this->m_productionBar =
@@ -439,7 +451,8 @@ void Application::buildHUD() {
     this->m_uiManager.setVisible(this->m_productionBar, false);
 
     // Bottom-right end turn button (anchored to bottom-right, repositions on resize)
-    this->m_endTurnButton = this->m_uiManager.createPanel({0.0f, 0.0f, 130.0f, 40.0f});
+    this->m_endTurnButton = this->m_uiManager.createPanel(
+        {0.0f, 0.0f, aoc::ui::theme().scaled(130.0f), aoc::ui::theme().scaled(40.0f)});
     {
         aoc::ui::Widget* endPanel = this->m_uiManager.getWidget(this->m_endTurnButton);
         if (endPanel != nullptr) {
@@ -462,12 +475,15 @@ void Application::buildHUD() {
 
     // The button is inside the panel container so it gets the panel background
     this->m_endTurnInnerBtn = this->m_uiManager.createButton(
-        this->m_endTurnButton, {0.0f, 0.0f, 130.0f, 40.0f}, std::move(endTurnBtn));
+        this->m_endTurnButton,
+        {0.0f, 0.0f, aoc::ui::theme().scaled(130.0f), aoc::ui::theme().scaled(40.0f)},
+        std::move(endTurnBtn));
 
     // "Waiting for you" banner above the end-turn button — visible when
     // the human player is the last one still acting this turn.
     this->m_lastPlayerBanner = this->m_uiManager.createPanel(
-        {0.0f, 0.0f, 150.0f, 24.0f}, aoc::ui::PanelData{{0.8f, 0.6f, 0.1f, 0.9f}, 4.0f});
+        {0.0f, 0.0f, aoc::ui::theme().scaled(150.0f), aoc::ui::theme().scaled(24.0f)},
+        aoc::ui::PanelData{{0.8f, 0.6f, 0.1f, 0.9f}, 4.0f});
     {
         aoc::ui::Widget* bannerPanel = this->m_uiManager.getWidget(this->m_lastPlayerBanner);
         if (bannerPanel != nullptr) {
@@ -483,7 +499,8 @@ void Application::buildHUD() {
 
     // Victory announcement panel (hidden until game over, centered on screen)
     aoc::ui::WidgetId victoryPanel = this->m_uiManager.createPanel(
-        {0.0f, 0.0f, 500.0f, 50.0f}, aoc::ui::PanelData{{0.1f, 0.1f, 0.15f, 0.9f}, 6.0f});
+        {0.0f, 0.0f, aoc::ui::theme().scaled(500.0f), aoc::ui::theme().scaled(50.0f)},
+        aoc::ui::PanelData{{0.1f, 0.1f, 0.15f, 0.9f}, 6.0f});
     this->m_victoryLabel =
         this->m_uiManager.createLabel(victoryPanel, {10.0f, 10.0f, 480.0f, 30.0f},
                                       aoc::ui::LabelData{"", {1.0f, 0.85f, 0.2f, 1.0f}, 24.0f});

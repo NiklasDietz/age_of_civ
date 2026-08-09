@@ -5,6 +5,7 @@
 
 #include "aoc/ui/GameScreens.hpp"
 #include "aoc/ui/StyleTokens.hpp"
+#include "aoc/ui/Theme.hpp"
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/simulation/tech/CivicTree.hpp"
 #include "aoc/ui/IconAtlas.hpp"
@@ -421,8 +422,8 @@ void ProductionScreen::open(UIManager& ui) {
     assert(this->m_gameState != nullptr);
     this->m_isOpen = true;
 
-    constexpr float SCREEN_W = 720.0f;
-    constexpr float SCREEN_H = 600.0f;
+    const float SCREEN_W = theme().scaled(720.0f);
+    const float SCREEN_H = theme().scaled(600.0f);
     WidgetId innerPanel      = this->createScreenFrame(ui, "Production", SCREEN_W, SCREEN_H,
                                                        this->m_screenW, this->m_screenH);
 
@@ -561,8 +562,8 @@ void ProductionScreen::open(UIManager& ui) {
         }
     }
 
-    constexpr float CARD_W = 330.0f;
-    constexpr float CARD_H = 78.0f;
+    const float CARD_W = theme().scaled(330.0f);
+    const float CARD_H = theme().scaled(78.0f);
 
     // `city` above was already resolved by the same lookup as
     // resolveCityByLocation, so reuse it instead of a redundant second lookup.
@@ -782,14 +783,14 @@ void TechScreen::open(UIManager& ui) {
     // connector lines can land precisely on card centres. No scroll —
     // 31 techs × max 7 per era fit at 100×56 cards.
     constexpr int ERA_COUNT = 8;
-    constexpr float CARD_W  = 200.0f;
-    constexpr float CARD_H  = 118.0f; // fits topRow + cost + eureka + unlocks + donut
-    constexpr float COL_GAP = 72.0f;  // horizontal gap (room for prereq lines)
-    constexpr float ROW_GAP = 14.0f;
-    constexpr float ROW_PAD = 12.0f;
-    constexpr float COL_PAD = 16.0f;
-    constexpr float COL_W   = CARD_W + COL_GAP;
-    constexpr float ROW_H   = CARD_H + ROW_GAP;
+    const float CARD_W  = theme().scaled(200.0f);
+    const float CARD_H  = theme().scaled(118.0f); // fits topRow + cost + eureka + unlocks + donut
+    const float COL_GAP = theme().scaled(72.0f);  // horizontal gap (room for prereq lines)
+    const float ROW_GAP = theme().scaled(14.0f);
+    const float ROW_PAD = theme().scaled(12.0f);
+    const float COL_PAD = theme().scaled(16.0f);
+    const float COL_W   = CARD_W + COL_GAP;
+    const float ROW_H   = CARD_H + ROW_GAP;
     const float graphW      = COL_PAD * 2.0f + COL_W * static_cast<float>(ERA_COUNT) - COL_GAP;
     // Reserve canvas space for ~16 rows; the bigger graph (up to 32 rows
     // after expanded techs) lives off-screen and is reachable via pan /
@@ -801,9 +802,9 @@ void TechScreen::open(UIManager& ui) {
     // graph, so pan clamping had zero horizontal range and the tree could not
     // be scrolled sideways at all. Cards are sized for legibility instead, and
     // the graph is reached by dragging / shift+wheel.
-    constexpr float MODAL_W_CAP = 1400.0f;
-    const float SCREEN_W        = std::min(MODAL_W_CAP, this->m_screenW - 80.0f);
-    const float SCREEN_H        = std::min(graphH + 110.0f, this->m_screenH - 40.0f);
+    const float MODAL_W_CAP = theme().scaled(1400.0f);
+    const float SCREEN_W        = std::min(MODAL_W_CAP, this->m_screenW - theme().scaled(80.0f));
+    const float SCREEN_H        = std::min(graphH + theme().scaled(110.0f), this->m_screenH - theme().scaled(40.0f));
     WidgetId innerPanel         = this->createScreenFrame(ui, "Technology", SCREEN_W, SCREEN_H,
                                                           this->m_screenW, this->m_screenH);
 
@@ -848,9 +849,9 @@ void TechScreen::open(UIManager& ui) {
     // viewport-clipped; canPan + edge-scroll let the user reach the
     // hidden columns. The canvas's intrinsic content size still drives
     // child layout via panX/panY shifting.
-    const float canvasW = std::min(graphW, SCREEN_W - 36.0f);
+    const float canvasW = std::min(graphW, SCREEN_W - theme().scaled(36.0f));
     // Reserve for title + research banner + pan hint + the pinned Close button.
-    const float canvasH = std::min(graphH, SCREEN_H - 140.0f);
+    const float canvasH = std::min(graphH, SCREEN_H - theme().scaled(140.0f));
     this->m_techList =
         ui.createPanel(innerPanel, {0.0f, 0.0f, canvasW, canvasH}, std::move(canvasBg));
     {
@@ -1456,14 +1457,14 @@ void GovernmentScreen::open(UIManager& ui) {
     // shifted to mulberry/RES_CULTURE so the two trees read distinctly.
     if (playerCivics != nullptr) {
         constexpr int ERA_COUNT = 8;
-        constexpr float CARD_W  = 124.0f;
-        constexpr float CARD_H  = 80.0f;
-        constexpr float COL_GAP = 50.0f;
-        constexpr float ROW_GAP = 8.0f;
+        const float CARD_W  = theme().scaled(124.0f);
+        const float CARD_H  = theme().scaled(80.0f);
+        const float COL_GAP = theme().scaled(50.0f);
+        const float ROW_GAP = theme().scaled(8.0f);
         constexpr float ROW_PAD = 12.0f;
         constexpr float COL_PAD = 16.0f;
-        constexpr float COL_W   = CARD_W + COL_GAP;
-        constexpr float ROW_H   = CARD_H + ROW_GAP;
+        const float COL_W       = CARD_W + COL_GAP;
+        const float ROW_H       = CARD_H + ROW_GAP;
         constexpr int MAX_ROWS  = 16;
         const float graphW      = COL_PAD * 2.0f + COL_W * static_cast<float>(ERA_COUNT) - COL_GAP;
         const float graphH      = ROW_PAD * 2.0f + ROW_H * 12.0f;
