@@ -26,9 +26,16 @@ glfw                 3.x      required   interactive
 
 # ---- Vendored (do NOT install) ----
 # stb_truetype   v1.26     third_party/stb_truetype.h
-#   SECURITY: unpatched OOB-read CVE-2026-5314 (no upstream fix). Only ever
-#   parse trusted/bundled system fonts with it -- never mod/user-supplied
-#   fonts. See src/ui/BitmapFont.cpp.
+#   SECURITY: unpatched OOB-read CVE-2026-5314 (no upstream fix).
+#   BUILD-TIME ONLY -- linked exclusively by the aoc_font_bake target
+#   (src/tools/FontBake.cpp), which pre-bakes the glyph atlas. The shipped
+#   game binary contains no TrueType parser: verify with
+#     nm build/release/libaoc_lib.a | grep -c stbtt   # expect 0
+#   The runtime reads the baked, bounds-checked blob instead; see
+#   include/aoc/ui/FontAtlasFormat.hpp and src/ui/BitmapFont.cpp.
+#   Do NOT reintroduce a runtime font parse -- that is what this indirection
+#   exists to prevent. The baker's font path list must stay a fixed set of
+#   trusted system paths.
 # stb_image_write v1.16    third_party/stb_image_write.h (screenshot encode)
 # cpp-httplib    0.18.5    third_party/cpp-httplib/httplib.h
 #   Pinned deliberately. Newer releases (0.49.0, 2026-07) patch ~13
