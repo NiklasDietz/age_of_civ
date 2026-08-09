@@ -159,6 +159,18 @@ public:
     /// true if at least one shortcut fired.
     bool activateShortcut(int32_t key);
 
+    /// Fire a widget's primary click handler directly, bypassing hit
+    /// testing. Supports `ButtonData`/`IconData`/`ListRowData` -- the
+    /// kinds with one unambiguous "activate" action. No-op (returns
+    /// false) for other kinds: `TabBarData` selection is inherently
+    /// x-coordinate-dependent (see the release-branch tab math in
+    /// `handleInput`) and `SliderData` is drag-based, not a discrete
+    /// click -- both should go through `handleInput` with real
+    /// coordinates instead. Respects `ButtonData::disabled`. Intended
+    /// for programmatic/remote control, where callers address widgets
+    /// by id from `dumpTreeJson()` rather than screen coordinates.
+    bool clickWidget(WidgetId id);
+
     /// Dump the widget tree to a JSON-formatted string. Used by the
     /// widget inspector overlay and also useful for post-mortem
     /// debugging. One widget per line, indented by depth.

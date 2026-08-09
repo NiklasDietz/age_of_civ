@@ -11,6 +11,7 @@
 #include "aoc/debug/DebugServer.hpp"
 #include "aoc/debug/GameSnapshot.hpp"
 #include "aoc/debug/GameControlCommand.hpp"
+#include "aoc/debug/UiControlCommand.hpp"
 #include "aoc/render/CameraController.hpp"
 #include "aoc/render/GameRenderer.hpp"
 #include "aoc/render/GlobeRenderer.hpp"
@@ -614,6 +615,34 @@ private:
     void executeGameControlCommand(const aoc::debug::FoundCityCommand& cmd);
     void executeGameControlCommand(const aoc::debug::SetProductionCommand& cmd);
     void executeGameControlCommand(const aoc::debug::SetResearchCommand& cmd);
+
+    /// UI-control commands (widget clicks/scrolls) queued by debug-server
+    /// HTTP handlers. Deliberately a SEPARATE queue from
+    /// `m_pendingCommands` above, not new variant members on
+    /// `GameControlCommand`: `drainPendingCommands()` unconditionally
+    /// drops its queue when not `AppState::InGame` (no deferral), but UI
+    /// commands must fire from the Main Menu too (e.g. clicking "Start
+    /// Game" to get a game running in the first place) -- sharing the
+    /// queue would silently discard any UI command queued pre-game.
+    std::mutex m_pendingUiCommandsMutex;
+    std::deque<aoc::debug::UiControlCommand> m_pendingUiCommands;
+    /// Main thread only: drain and dispatch every queued UI command.
+    /// Runs unconditionally every frame, regardless of `m_appState`.
+    void drainPendingUiCommands();
+
+    /// Widget-tree snapshot for `GET /ui/tree`, published once per frame
+    /// (main thread only) while the debug server is running. Unlike
+    /// `m_gameSnapshot`, this is NOT gated on `AppState::InGame` -- the
+    /// Main Menu's widget tree is exactly what a caller needs to
+    /// navigate into a game. `UIManager::m_widgets` is an unsynchronized
+    /// vector mutated every frame on the main thread, so an HTTP worker
+    /// thread must never call `dumpTreeJson()` directly.
+    mutable std::mutex m_uiSnapshotMutex;
+    std::shared_ptr<const std::string> m_uiSnapshot;
+    /// Main thread only: build and publish the current UI snapshot.
+    void publishUiSnapshot();
+    /// Any thread: fetch the latest published UI snapshot (may be null).
+    [[nodiscard]] std::shared_ptr<const std::string> uiSnapshot() const;
 
     /// Drop every raw `Unit*` / `City*` the UI caches (selection,
     /// previous-frame selection, action panel, movement undo). Call

@@ -1208,6 +1208,107 @@ ErrorCode Application::initialize(const Config& config) {
             return std::string("{\"queued\":true}");
         });
 
+    // GET /ui/tree -- widget-tree snapshot (id/kind/text/bounds/etc. per
+    // widget) plus which top-level screens are currently open. Valid in
+    // MainMenu AND InGame, unlike the /game/* routes above -- this is
+    // exactly what a caller needs to navigate from the main menu into a
+    // running game.
+    this->m_debugServer->routeJson(
+        DSM::Get, "/ui/tree",
+        [this](const std::unordered_map<std::string, std::string>&,
+               const std::string&) -> std::string {
+            const std::shared_ptr<const std::string> snap = this->uiSnapshot();
+            if (snap == nullptr) {
+                throw aoc::debug::ServiceUnavailableError("ui not ready yet");
+            }
+            return *snap;
+        });
+
+    // POST /ui/click?widgetId=N -- fire a widget's onClick directly,
+    // bypassing hit-testing. See UIManager::clickWidget for supported
+    // kinds (Button/Icon/ListRow). No synchronous existence check on
+    // widgetId, matching every /game/* mutation route's convention:
+    // deep validation happens in the drain, poll /ui/tree to observe.
+    this->m_debugServer->routeJson(DSM::Post, "/ui/click",
+                                   [this](const std::unordered_map<std::string, std::string>& q,
+                                          const std::string&) -> std::string {
+                                       int32_t widgetId = 0;
+                                       std::string err;
+                                       if (!requireIntParam(q, "widgetId", widgetId, err)) {
+                                           return err;
+                                       }
+                                       aoc::debug::ClickWidgetCommand cmd{};
+                                       cmd.widgetId = static_cast<aoc::ui::WidgetId>(widgetId);
+                                       {
+                                           std::lock_guard<std::mutex> guard(
+                                               this->m_pendingUiCommandsMutex);
+                                           this->m_pendingUiCommands.push_back(cmd);
+                                       }
+                                       return std::string("{\"queued\":true}");
+                                   });
+
+    // POST /ui/click-at?x=&y= -- synthesize a real mouse click (press +
+    // release) at a screen coordinate. Reuses UIManager::handleInput's
+    // full dispatch -- the only way to pick a specific tab in a TabBarData
+    // or interact with a SliderData, both coordinate-dependent.
+    this->m_debugServer->routeJson(DSM::Post, "/ui/click-at",
+                                   [this](const std::unordered_map<std::string, std::string>& q,
+                                          const std::string&) -> std::string {
+                                       int32_t x = 0;
+                                       int32_t y = 0;
+                                       std::string err;
+                                       if (!requireIntParam(q, "x", x, err)) {
+                                           return err;
+                                       }
+                                       if (!requireIntParam(q, "y", y, err)) {
+                                           return err;
+                                       }
+                                       aoc::debug::ClickAtCommand cmd{};
+                                       cmd.x = static_cast<float>(x);
+                                       cmd.y = static_cast<float>(y);
+                                       {
+                                           std::lock_guard<std::mutex> guard(
+                                               this->m_pendingUiCommandsMutex);
+                                           this->m_pendingUiCommands.push_back(cmd);
+                                       }
+                                       return std::string("{\"queued\":true}");
+                                   });
+
+    // POST /ui/scroll?x=&y=&delta=&shift= -- synthesize a scroll-wheel
+    // event at a screen coordinate (e.g. to pan a scroll list or the
+    // tech-tree canvas). `shift` is "1"/absent, not an int.
+    this->m_debugServer->routeJson(
+        DSM::Post, "/ui/scroll",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            int32_t x     = 0;
+            int32_t y     = 0;
+            int32_t delta = 0;
+            std::string err;
+            if (!requireIntParam(q, "x", x, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "y", y, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "delta", delta, err)) {
+                return err;
+            }
+            const std::unordered_map<std::string, std::string>::const_iterator shiftIt =
+                q.find("shift");
+            const bool shiftHeld = shiftIt != q.end() && shiftIt->second == "1";
+            aoc::debug::ScrollAtCommand cmd{};
+            cmd.x         = static_cast<float>(x);
+            cmd.y         = static_cast<float>(y);
+            cmd.delta     = static_cast<float>(delta);
+            cmd.shiftHeld = shiftHeld;
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingUiCommandsMutex);
+                this->m_pendingUiCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
     // GET /schema -- self-describing route catalogue.
     this->m_debugServer->routeJson(
         DSM::Get, "/schema", [](const auto&, const auto&) -> std::string {
@@ -1238,6 +1339,10 @@ ErrorCode Application::initialize(const Config& config) {
                 "{\"method\":\"POST\",\"path\":\"/game/city/"
                 "production?player=&q=&r=&type=&itemId=\"},"
                 "{\"method\":\"POST\",\"path\":\"/game/research?player=&techId=\"},"
+                "{\"method\":\"GET\",\"path\":\"/ui/tree\"},"
+                "{\"method\":\"POST\",\"path\":\"/ui/click?widgetId=N\"},"
+                "{\"method\":\"POST\",\"path\":\"/ui/click-at?x=&y=\"},"
+                "{\"method\":\"POST\",\"path\":\"/ui/scroll?x=&y=&delta=&shift=\"},"
                 "{\"method\":\"POST\",\"path\":\"/quit\"}"
                 "]"
                 "}");
@@ -2231,6 +2336,59 @@ void Application::drainPendingCommands() {
     if (endTurnRequested) {
         this->handleEndTurn();
     }
+}
+
+void Application::drainPendingUiCommands() {
+    std::deque<aoc::debug::UiControlCommand> commands;
+    {
+        std::lock_guard<std::mutex> guard(this->m_pendingUiCommandsMutex);
+        commands.swap(this->m_pendingUiCommands);
+    }
+    // Unlike drainPendingCommands(), this runs regardless of m_appState --
+    // "click Start Game" must work from the Main Menu.
+    for (const aoc::debug::UiControlCommand& cmd : commands) {
+        std::visit(
+            [this](const auto& c) {
+                using CommandType = std::decay_t<decltype(c)>;
+                if constexpr (std::is_same_v<CommandType, aoc::debug::ClickWidgetCommand>) {
+                    this->m_uiManager.clickWidget(c.widgetId);
+                } else if constexpr (std::is_same_v<CommandType, aoc::debug::ClickAtCommand>) {
+                    this->m_uiManager.handleInput(c.x, c.y, true, false);
+                    this->m_uiManager.handleInput(c.x, c.y, false, true);
+                } else if constexpr (std::is_same_v<CommandType, aoc::debug::ScrollAtCommand>) {
+                    this->m_uiManager.handleInput(c.x, c.y, false, false, c.delta, false, false,
+                                                  c.shiftHeld);
+                }
+            },
+            cmd);
+    }
+}
+
+void Application::publishUiSnapshot() {
+    std::shared_ptr<const std::string> snapshot;
+    if (this->m_debugServer && this->m_debugServer->isRunning()) {
+        const char* appStateName = this->m_appState == AppState::InGame ? "InGame" : "MainMenu";
+        std::string json;
+        json += "{\"appState\":\"";
+        json += appStateName;
+        json += "\",\"mainMenuOpen\":";
+        json += this->m_mainMenu.isBuilt() ? "true" : "false";
+        json += ",\"gameSetupOpen\":";
+        json += this->m_gameSetupScreen.isBuilt() ? "true" : "false";
+        json += ",\"settingsMenuOpen\":";
+        json += this->m_settingsMenu.isBuilt() ? "true" : "false";
+        json += ",\"widgets\":";
+        json += this->m_uiManager.dumpTreeJson();
+        json += "}";
+        snapshot = std::make_shared<const std::string>(std::move(json));
+    }
+    std::lock_guard<std::mutex> guard(this->m_uiSnapshotMutex);
+    this->m_uiSnapshot = std::move(snapshot);
+}
+
+std::shared_ptr<const std::string> Application::uiSnapshot() const {
+    std::lock_guard<std::mutex> guard(this->m_uiSnapshotMutex);
+    return this->m_uiSnapshot;
 }
 
 void Application::clearEntitySelection() {
@@ -3702,8 +3860,10 @@ void Application::run() {
         if (this->m_quitRequested.exchange(false, std::memory_order_acquire)) {
             glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
         }
+        this->drainPendingUiCommands();
         this->drainPendingCommands();
         this->publishGameSnapshot();
+        this->publishUiSnapshot();
 
         std::chrono::steady_clock::time_point currentTime = std::chrono::steady_clock::now();
         float deltaTime = std::chrono::duration<float>(currentTime - previousTime).count();

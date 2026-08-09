@@ -6,6 +6,7 @@
 #include "aoc/ui/UIManager.hpp"
 #include "aoc/ui/BitmapFont.hpp"
 #include "aoc/ui/IconAtlas.hpp"
+#include "aoc/core/JsonUtil.hpp"
 #include "aoc/core/Log.hpp"
 
 #include <renderer/Renderer2D.hpp>
@@ -208,6 +209,45 @@ bool UIManager::activateShortcut(int32_t key) {
         }
     }
     return fired;
+}
+
+bool UIManager::clickWidget(WidgetId id) {
+    Widget* w = this->getWidget(id);
+    if (w == nullptr || !w->isVisible) {
+        return false;
+    }
+    if (ButtonData* btn = std::get_if<ButtonData>(&w->data)) {
+        if (btn->disabled || !btn->onClick) {
+            return false;
+        }
+        // Copy before invoking: onClick may destroy/rebuild the widget
+        // tree, which can reallocate m_widgets and dangle `w`/`btn` --
+        // nothing below this point may dereference either pointer.
+        const std::function<void()> onClick = btn->onClick;
+        onClick();
+        this->logEvent({id, "click", this->m_clockSec});
+        return true;
+    }
+    if (IconData* icon = std::get_if<IconData>(&w->data)) {
+        if (!icon->onClick) {
+            return false;
+        }
+        const std::function<void()> onClick = icon->onClick;
+        onClick();
+        this->logEvent({id, "icon", this->m_clockSec});
+        return true;
+    }
+    if (ListRowData* row = std::get_if<ListRowData>(&w->data)) {
+        if (!row->onClick) {
+            return false;
+        }
+        const std::function<void()> onClick = row->onClick;
+        this->selectOnly(id);
+        onClick();
+        this->logEvent({id, "row", this->m_clockSec});
+        return true;
+    }
+    return false;
 }
 
 void UIManager::logEvent(WidgetEvent ev) {
@@ -687,12 +727,46 @@ void UIManager::activateFocused() {
     }
 }
 
+namespace {
+
+/// Human-readable identifying text for a widget, extracted from whichever
+/// variant field naturally holds one. Empty for kinds with no single
+/// natural text (panels, scroll lists, sliders, progress bars).
+std::string widgetDumpText(const Widget& w) {
+    if (const ButtonData* btn = std::get_if<ButtonData>(&w.data)) {
+        return btn->label;
+    }
+    if (const LabelData* label = std::get_if<LabelData>(&w.data)) {
+        return label->text;
+    }
+    if (const TabBarData* tabs = std::get_if<TabBarData>(&w.data)) {
+        if (tabs->activeTab >= 0 &&
+            static_cast<std::size_t>(tabs->activeTab) < tabs->labels.size()) {
+            return tabs->labels[static_cast<std::size_t>(tabs->activeTab)];
+        }
+        return {};
+    }
+    if (const ListRowData* row = std::get_if<ListRowData>(&w.data)) {
+        return row->title;
+    }
+    if (std::holds_alternative<IconData>(w.data)) {
+        // IconData has no text field of its own; the tooltip is the
+        // closest thing to a human-readable identifier.
+        return w.tooltip;
+    }
+    return {};
+}
+
+} // namespace
+
 std::string UIManager::dumpTreeJson() const {
-    // Emit a simple JSON-like array. Not strict JSON (no escaping of
-    // label text for brevity); intended for developer inspector use,
-    // not machine parsing.
+    // Machine-parseable JSON array: id/kind/parent/bounds/visible/focus,
+    // plus a human-readable `text` (for finding e.g. "the Start Game
+    // button" without knowing its id in advance) and `disabled`. Used by
+    // the widget inspector overlay, post-mortem debugging, and the
+    // remote-control debug-server routes (`GET /ui/tree`).
     std::string out;
-    out.reserve(this->m_widgets.size() * 80);
+    out.reserve(this->m_widgets.size() * 96);
     out += "[\n";
     bool first = true;
     for (const Widget& w : this->m_widgets) {
@@ -704,8 +778,10 @@ std::string UIManager::dumpTreeJson() const {
         }
         first            = false;
         const char* kind = "panel";
-        if (std::holds_alternative<ButtonData>(w.data)) {
-            kind = "button";
+        bool disabled    = false;
+        if (const ButtonData* btn = std::get_if<ButtonData>(&w.data)) {
+            kind     = "button";
+            disabled = btn->disabled;
         } else if (std::holds_alternative<LabelData>(w.data)) {
             kind = "label";
         } else if (std::holds_alternative<ScrollListData>(w.data)) {
@@ -718,6 +794,14 @@ std::string UIManager::dumpTreeJson() const {
             kind = "slider";
         } else if (std::holds_alternative<IconData>(w.data)) {
             kind = "icon";
+        } else if (std::holds_alternative<ListRowData>(w.data)) {
+            kind = "listrow";
+        } else if (std::holds_alternative<RichTextData>(w.data)) {
+            kind = "richtext";
+        } else if (std::holds_alternative<PortraitData>(w.data)) {
+            kind = "portrait";
+        } else if (std::holds_alternative<MarkdownData>(w.data)) {
+            kind = "markdown";
         }
         out += "  {\"id\":" + std::to_string(w.id);
         out += ",\"kind\":\"" + std::string(kind) + "\"";
@@ -728,6 +812,8 @@ std::string UIManager::dumpTreeJson() const {
         out += ",\"h\":" + std::to_string(static_cast<int32_t>(w.computedBounds.h));
         out += ",\"visible\":" + std::string(w.isVisible ? "true" : "false");
         out += ",\"focus\":" + std::string(w.isFocused ? "true" : "false");
+        out += ",\"disabled\":" + std::string(disabled ? "true" : "false");
+        out += ",\"text\":\"" + aoc::core::escapeJsonString(widgetDumpText(w)) + "\"";
         out += "}";
     }
     out += "\n]\n";
@@ -943,27 +1029,54 @@ bool UIManager::handleInput(float mouseX, float mouseY, bool mousePressed, bool 
             if (targetWidget != nullptr) {
                 targetWidget->isPressed = false;
                 if (ButtonData* btn = std::get_if<ButtonData>(&targetWidget->data)) {
-                    // Disabled buttons swallow the click silently — no
-                    // handler, no audio, no event log spam.
-                    if (!btn->disabled && btn->onClick) {
-                        btn->onClick();
-                    }
-                    // Audio cue (only if enabled).
-                    if (!btn->disabled && btn->clickSound != 0) {
-                        this->m_audioOutbox.push_back(btn->clickSound);
-                    }
+                    // Copy everything needed out of `btn`/`targetWidget`
+                    // BEFORE invoking a callback: onClick (e.g. "Start
+                    // Game") can destroy and rebuild the widget tree, and
+                    // UIManager::allocateWidget() falls back to
+                    // m_widgets.emplace_back() with no reserve() anywhere,
+                    // so a rebuild can reallocate m_widgets and leave
+                    // `btn`/`targetWidget` dangling. Nothing below this
+                    // point may dereference either pointer again. Copying
+                    // `onClick` itself into a local is equally required,
+                    // not just cosmetic: the std::function's closure lives
+                    // inside `btn` (inside the vector element), so if the
+                    // callback's own body triggers enough widget creation
+                    // to reallocate m_widgets WHILE it is still running,
+                    // invoking through `btn->onClick` directly would have
+                    // the callback reading its own captured state out of
+                    // now-freed memory on its next loop iteration.
+                    const bool disabled                       = btn->disabled;
+                    const uint32_t clickSound                 = btn->clickSound;
+                    const std::function<void()> onClick       = btn->onClick;
+                    const std::function<void()> onDoubleClick = btn->onDoubleClick;
+
                     // Double-click detection: if previous click on same
                     // widget was within 350 ms, fire onDoubleClick too.
-                    auto it         = this->m_lastClickTime.find(clickTarget);
+                    const std::unordered_map<WidgetId, float>::iterator it =
+                        this->m_lastClickTime.find(clickTarget);
                     const float now = this->m_clockSec;
-                    if (it != this->m_lastClickTime.end() && (now - it->second) <= 0.35f) {
-                        if (btn->onDoubleClick) {
-                            btn->onDoubleClick();
-                        }
-                        this->logEvent({clickTarget, "dblclick", now});
+                    const bool isDoubleClick =
+                        it != this->m_lastClickTime.end() && (now - it->second) <= 0.35f;
+                    if (isDoubleClick) {
                         this->m_lastClickTime.erase(it);
                     } else {
                         this->m_lastClickTime[clickTarget] = now;
+                    }
+
+                    // Disabled buttons swallow the click silently — no
+                    // handler, no audio, no event log spam.
+                    if (!disabled && onClick) {
+                        onClick();
+                    }
+                    // Audio cue (only if enabled).
+                    if (!disabled && clickSound != 0) {
+                        this->m_audioOutbox.push_back(clickSound);
+                    }
+                    if (isDoubleClick) {
+                        if (onDoubleClick) {
+                            onDoubleClick();
+                        }
+                        this->logEvent({clickTarget, "dblclick", now});
                     }
                     this->logEvent({clickTarget, "click", now});
                 } else if (TabBarData* tabs = std::get_if<TabBarData>(&targetWidget->data)) {

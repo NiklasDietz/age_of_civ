@@ -1,5 +1,6 @@
 #include "aoc/debug/GameSnapshot.hpp"
 
+#include "aoc/core/JsonUtil.hpp"
 #include "aoc/game/City.hpp"
 #include "aoc/game/GameState.hpp"
 #include "aoc/game/Player.hpp"
@@ -15,23 +16,6 @@
 namespace aoc::debug {
 
 namespace {
-
-// Local JSON string escaper — avoids depending on DebugServer.cpp (which
-// is excluded from headless builds). Escapes only the characters JSON requires.
-std::string escapeForJson(std::string_view raw) {
-    std::string out;
-    out.reserve(raw.size());
-    for (const char c : raw) {
-        if (c == '"') {
-            out += "\\\"";
-        } else if (c == '\\') {
-            out += "\\\\";
-        } else {
-            out += c;
-        }
-    }
-    return out;
-}
 
 std::string_view unitStateName(aoc::sim::UnitState s) {
     switch (s) {
@@ -140,12 +124,12 @@ std::string toJson(const std::vector<UnitSnapshot>& units) {
         }
         const UnitSnapshot& u = units[i];
         o << "{\"ownerId\":" << u.ownerId << ",\"q\":" << u.q << ",\"r\":" << u.r
-          << ",\"typeName\":\"" << escapeForJson(u.typeName) << '"'
+          << ",\"typeName\":\"" << aoc::core::escapeJsonString(u.typeName) << '"'
           << ",\"hitPoints\":" << u.hitPoints << ",\"maxHitPoints\":" << u.maxHitPoints
           << ",\"movementRemaining\":" << u.movementRemaining
           << ",\"maxMovement\":" << u.maxMovement << ",\"combatStrength\":" << u.combatStrength
-          << ",\"rangedStrength\":" << u.rangedStrength << ",\"state\":\"" << escapeForJson(u.state)
-          << '"' << '}';
+          << ",\"rangedStrength\":" << u.rangedStrength << ",\"state\":\""
+          << aoc::core::escapeJsonString(u.state) << '"' << '}';
     }
     o << ']';
     return o.str();
@@ -159,16 +143,16 @@ std::string toJson(const std::vector<CitySnapshot>& cities) {
             o << ',';
         }
         const CitySnapshot& c = cities[i];
-        o << "{\"ownerId\":" << c.ownerId << ",\"name\":\"" << escapeForJson(c.name) << '"'
-          << ",\"q\":" << c.q << ",\"r\":" << c.r << ",\"population\":" << c.population
+        o << "{\"ownerId\":" << c.ownerId << ",\"name\":\"" << aoc::core::escapeJsonString(c.name)
+          << '"' << ",\"q\":" << c.q << ",\"r\":" << c.r << ",\"population\":" << c.population
           << ",\"foodSurplus\":" << c.foodSurplus << ",\"productionQueue\":[";
         for (std::size_t j = 0; j < c.productionQueue.size(); ++j) {
             if (j > 0) {
                 o << ',';
             }
             const ProductionItemSnapshot& pi = c.productionQueue[j];
-            o << "{\"name\":\"" << escapeForJson(pi.name) << '"' << ",\"progress\":" << pi.progress
-              << ",\"totalCost\":" << pi.totalCost << '}';
+            o << "{\"name\":\"" << aoc::core::escapeJsonString(pi.name) << '"'
+              << ",\"progress\":" << pi.progress << ",\"totalCost\":" << pi.totalCost << '}';
         }
         o << "]}";
     }
@@ -189,8 +173,9 @@ std::string toJson(const PlayerSnapshot& p) {
 
 std::string toJson(const GameSnapshot& gs) {
     std::ostringstream o;
-    o << "{\"turnNumber\":" << gs.turnNumber << ",\"phase\":\"" << escapeForJson(gs.phase) << '"'
-      << ",\"activePlayerId\":" << gs.activePlayerId << ",\"players\":[";
+    o << "{\"turnNumber\":" << gs.turnNumber << ",\"phase\":\""
+      << aoc::core::escapeJsonString(gs.phase) << '"' << ",\"activePlayerId\":" << gs.activePlayerId
+      << ",\"players\":[";
     for (std::size_t i = 0; i < gs.players.size(); ++i) {
         if (i > 0) {
             o << ',';

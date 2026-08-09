@@ -232,6 +232,7 @@ set(AOC_LIB_SOURCES
     # Core
     src/core/DecisionLog.cpp
     src/core/ErrorCodes.cpp
+    src/core/JsonUtil.cpp
     src/core/PathGuard.cpp
     src/core/Selectable.cpp
 
@@ -925,6 +926,7 @@ if(AOC_BUILD_TESTS)
     if(NOT AOC_HEADLESS)
         list(APPEND AOC_SMOKE_TESTS test_ui_layout_floating)
         list(APPEND AOC_SMOKE_TESTS test_ui_game_setup_layout)
+        list(APPEND AOC_SMOKE_TESTS test_ui_control_api)
     endif()
 
     # The debug preset builds with ASan/LSan; known suppressions live in
