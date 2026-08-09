@@ -435,6 +435,10 @@ void saveSettings(const GameSettings& settings, const std::string& filepath) {
     file << "fullscreen=" << (settings.fullscreen ? 1 : 0) << "\n";
     file << "showFPS=" << (settings.showFPS ? 1 : 0) << "\n";
     file << "showTileYields=" << (settings.showTileYields ? 1 : 0) << "\n";
+    // uiScale lives on the Theme rather than in GameSettings (the slider writes
+    // theme().userScale directly), but it is a user setting like any other and
+    // was previously lost on every restart.
+    file << "uiScale=" << theme().userScale << "\n";
     LOG_INFO("Settings saved to %s", filepath.c_str());
 }
 
@@ -467,6 +471,17 @@ GameSettings loadSettings(const std::string& filepath) {
             settings.showFPS = (value == "1");
         } else if (key == "showTileYields") {
             settings.showTileYields = (value == "1");
+        } else if (key == "uiScale") {
+            // Clamp to the slider's own range so a hand-edited or corrupt file
+            // cannot produce an unusable UI that is hard to get back out of.
+            const float parsed = std::strtof(value.c_str(), nullptr);
+            if (parsed >= 0.75f && parsed <= 1.5f) {
+                theme().userScale = parsed;
+                theme().bumpRevision();
+            } else {
+                LOG_WARN("loadSettings: uiScale '%s' out of range, keeping %.2f", value.c_str(),
+                         static_cast<double>(theme().userScale));
+            }
         }
     }
     LOG_INFO("Settings loaded from %s", filepath.c_str());

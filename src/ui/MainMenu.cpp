@@ -89,18 +89,24 @@ void MainMenu::build(UIManager& ui, float screenW, float screenH, std::function<
     // moment a row is added or enabled. It had: the previous fixed 362px was
     // 36px short of the full seven-row menu, leaving Quit hanging outside the
     // panel's bottom edge.
-    constexpr float PANEL_W       = 420.0f;
-    constexpr float PAD           = 20.0f;
-    constexpr float GAP           = 8.0f;
-    constexpr float TITLE_H       = 30.0f;
-    constexpr float SPACER_H      = 20.0f;
-    constexpr float PRIMARY_BTN_H = 40.0f;
-    constexpr float BTN_H         = 34.0f;
+    // Scaled so the panel and its rows grow with the UI-scale slider in step
+    // with the text, which BitmapFont scales per-draw via fontScale(). Every
+    // other dimension on this screen derives from these, so scaling here is
+    // the whole conversion. Test by setting UI Scale to 1.5 in Settings and
+    // reopening -- dimensions resolve at build time, so an already-built menu
+    // does not relayout.
+    const float PANEL_W       = theme().scaled(420.0f);
+    const float PAD           = theme().scaled(20.0f);
+    const float GAP           = theme().scaled(8.0f);
+    const float TITLE_H       = theme().scaled(30.0f);
+    const float SPACER_H      = theme().scaled(20.0f);
+    const float PRIMARY_BTN_H = theme().scaled(40.0f);
+    const float BTN_H         = theme().scaled(34.0f);
 
     // Rows, in creation order. Keep this in step with the buttons below.
     float rowsH         = PRIMARY_BTN_H + BTN_H; // Start Game + Settings (always)
     int32_t rowCount    = 2;
-    const auto countRow = [&rowsH, &rowCount](bool present) {
+    const auto countRow = [&rowsH, &rowCount, BTN_H](bool present) {
         if (present) {
             rowsH += BTN_H;
             ++rowCount;
