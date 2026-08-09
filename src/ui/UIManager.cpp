@@ -192,21 +192,44 @@ WidgetId UIManager::createListRow(WidgetId parent, Rect bounds, ListRowData data
 // --------------------------------------------------------------------------
 
 bool UIManager::activateShortcut(int32_t key) {
-    bool fired = false;
-    for (Widget& w : this->m_widgets) {
+    // Collect matching ids first, THEN fire: an onClick can destroy/
+    // rebuild the widget tree, which can reallocate m_widgets (see the
+    // handleInput ButtonData-branch fix above) -- iterating `m_widgets`
+    // directly with a live `Widget&` while calling onClick from inside
+    // the loop would invalidate both that reference and the range-based
+    // for loop's own iterators.
+    std::vector<WidgetId> matches;
+    for (const Widget& w : this->m_widgets) {
         if (w.id == INVALID_WIDGET || !w.isVisible) {
             continue;
         }
-        if (ButtonData* btn = std::get_if<ButtonData>(&w.data)) {
-            if (btn->shortcut == key && btn->onClick) {
-                btn->onClick();
-                this->logEvent({w.id, "shortcut", this->m_clockSec});
-                if (btn->clickSound != 0) {
-                    this->m_audioOutbox.push_back(btn->clickSound);
-                }
-                fired = true;
+        if (const ButtonData* btn = std::get_if<ButtonData>(&w.data)) {
+            if (btn->shortcut == key && !btn->disabled && btn->onClick) {
+                matches.push_back(w.id);
             }
         }
+    }
+
+    bool fired = false;
+    for (const WidgetId id : matches) {
+        Widget* w = this->getWidget(id);
+        if (w == nullptr) {
+            continue; // Destroyed by an earlier match's onClick.
+        }
+        ButtonData* btn = std::get_if<ButtonData>(&w->data);
+        if (btn == nullptr || btn->disabled || !btn->onClick) {
+            continue;
+        }
+        // Copy before invoking -- same reasoning as the handleInput fix:
+        // the closure lives inside `btn`, inside the vector element.
+        const std::function<void()> onClick = btn->onClick;
+        const uint32_t clickSound           = btn->clickSound;
+        onClick();
+        this->logEvent({id, "shortcut", this->m_clockSec});
+        if (clickSound != 0) {
+            this->m_audioOutbox.push_back(clickSound);
+        }
+        fired = true;
     }
     return fired;
 }
@@ -721,9 +744,15 @@ void UIManager::activateFocused() {
         return;
     }
     if (ButtonData* btn = std::get_if<ButtonData>(&w->data)) {
-        if (btn->onClick) {
-            btn->onClick();
+        if (btn->disabled || !btn->onClick) {
+            return;
         }
+        // Copy before invoking -- same reasoning as the handleInput fix:
+        // the closure lives inside `btn`, inside the vector element, so
+        // invoking through `btn->onClick` directly risks reading freed
+        // memory mid-call if onClick's own body reallocates m_widgets.
+        const std::function<void()> onClick = btn->onClick;
+        onClick();
     }
 }
 

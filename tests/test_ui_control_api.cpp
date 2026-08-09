@@ -174,3 +174,73 @@ TEST_CASE("regression: onClick that reallocates m_widgets does not dangle "
     // No crash / no ASan failure reaching here is the actual assertion.
     CHECK(true);
 }
+
+TEST_CASE("activateFocused: respects disabled") {
+    UIManager ui;
+    const WidgetId root = ui.createPanel({0.0f, 0.0f, 200.0f, 200.0f}, PanelData{});
+    bool fired          = false;
+    ButtonData btn;
+    btn.label         = "Disabled";
+    btn.disabled      = true;
+    btn.onClick       = [&fired]() { fired = true; };
+    const WidgetId id = ui.createButton(root, {0.0f, 0.0f, 100.0f, 30.0f}, btn);
+    ui.layout();
+    // focusNext() only considers widgets with `focusable == true`, which
+    // createButton() does not set by default.
+    ui.getWidget(id)->focusable = true;
+
+    REQUIRE(ui.focusNext() == id);
+    ui.activateFocused();
+    CHECK(fired == false);
+}
+
+TEST_CASE("activateShortcut: respects disabled and fires enabled matches") {
+    UIManager ui;
+    const WidgetId root = ui.createPanel({0.0f, 0.0f, 200.0f, 200.0f}, PanelData{});
+
+    bool disabledFired = false;
+    ButtonData disabledBtn;
+    disabledBtn.label    = "Disabled";
+    disabledBtn.shortcut = 'Q';
+    disabledBtn.disabled = true;
+    disabledBtn.onClick  = [&disabledFired]() { disabledFired = true; };
+    [[maybe_unused]] const WidgetId disabledId =
+        ui.createButton(root, {0.0f, 0.0f, 100.0f, 30.0f}, disabledBtn);
+
+    bool enabledFired = false;
+    ButtonData enabledBtn;
+    enabledBtn.label    = "Enabled";
+    enabledBtn.shortcut = 'Q';
+    enabledBtn.onClick  = [&enabledFired]() { enabledFired = true; };
+    [[maybe_unused]] const WidgetId enabledId =
+        ui.createButton(root, {0.0f, 40.0f, 100.0f, 30.0f}, enabledBtn);
+
+    ui.layout();
+    CHECK(ui.activateShortcut('Q') == true);
+    CHECK(disabledFired == false);
+    CHECK(enabledFired == true);
+}
+
+TEST_CASE("regression: activateShortcut survives an onClick that reallocates m_widgets") {
+    // Same class of bug as handleInput's ButtonData branch, but this
+    // function also iterates `m_widgets` directly with a live Widget&
+    // -- a reallocation during the loop would invalidate the loop's own
+    // iterators, not just a captured pointer.
+    UIManager ui;
+    const WidgetId root = ui.createPanel({0.0f, 0.0f, 800.0f, 600.0f}, PanelData{});
+    ButtonData btn;
+    btn.label    = "Spawn";
+    btn.shortcut = 'S';
+    btn.onClick  = [&ui, root]() {
+        for (int32_t i = 0; i < 2000; ++i) {
+            [[maybe_unused]] const WidgetId spam =
+                ui.createPanel(root, {0.0f, 0.0f, 1.0f, 1.0f}, PanelData{});
+        }
+    };
+    [[maybe_unused]] const WidgetId id = ui.createButton(root, {0.0f, 0.0f, 100.0f, 30.0f}, btn);
+    ui.layout();
+
+    CHECK(ui.activateShortcut('S') == true);
+    // No crash / no ASan failure reaching here is the actual assertion.
+    CHECK(true);
+}

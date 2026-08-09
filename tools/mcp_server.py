@@ -1,21 +1,44 @@
 #!/usr/bin/env python3
-"""MCP wrapper around the Age of Civilization debug-server game-control API.
+"""MCP wrapper around the Age of Civilization debug-server API.
 
-Lets an MCP-capable client (e.g. Claude Code) query and drive an
-already-running game session: end turns, move/attack units, found cities,
-set production/research, and read back turn/player/unit/city state.
+Lets an MCP-capable client (e.g. Claude Code) drive a running game end to
+end: navigate the UI (main menu -> Game Setup -> Start Game) via the
+widget-tree/click tools, then query and control the resulting session --
+end turns, move/attack units, found cities, set production/research, and
+read back turn/player/unit/city state.
 
 This is a thin proxy -- all game logic and validation live in the C++
 `aoc::debug::DebugServer` (default `http://127.0.0.1:9876`, opt-in via
 `--enable-debug-server` on the game process). Mutation tools return
 `{"queued": true}` immediately; the game applies the command on its next
-frame, so poll `aoc_game_state`/`aoc_list_units`/`aoc_list_cities` afterward
-to observe the effect (matches the debug server's existing async idiom --
-see `/sim/set-creator-time` in `src/app/Application.cpp`).
+frame, so poll the matching read tool afterward to observe the effect
+(matches the debug server's existing async idiom -- see
+`/sim/set-creator-time` in `src/app/Application.cpp`).
 
-Setup:
-    pip install mcp
+Typical bootstrap from a cold main menu:
+    1. aoc_ui_tree()                     -> find the button whose text is
+                                            "Start Game", note its id
+    2. aoc_ui_click(widget_id=<id>)      -> opens Game Setup
+    3. aoc_ui_tree()                     -> find Game Setup's own
+                                            "Start Game" button id
+    4. aoc_ui_click(widget_id=<id>)      -> starts the game
+    5. poll aoc_game_state() until it stops returning "no active game"
+       -- map generation is synchronous and takes SEVERAL SECONDS on a
+       large map, so retry with a real timeout rather than once.
+
+Setup (verified 2026-08-09 against mcp 2.0.0 / Python 3.13):
+    pip install mcp                      # REQUIRES mcp >= 2.0
     claude mcp add age-of-civ -- python3 tools/mcp_server.py
+
+Use the interpreter that actually has `mcp` installed -- if it lives in a
+venv, point at that venv's python explicitly, e.g.
+    claude mcp add age-of-civ -- ~/venv/bin/python tools/mcp_server.py
+Verify with `claude mcp list` (should report "Connected"). Note MCP servers
+are loaded at session start, so restart the client after adding.
+
+API-version note: mcp 2.0 REMOVED `mcp.server.fastmcp.FastMCP`; this file
+uses `mcp.server.MCPServer`, which is the 2.x replacement. On mcp 1.x the
+import will fail -- upgrade rather than rewriting back to FastMCP.
 
 The target game process must be launched with `--enable-debug-server` for
 any of this to work; that flag stays opt-in by design (see
@@ -32,12 +55,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 BASE_URL = os.environ.get("AOC_DEBUG_SERVER_URL", "http://127.0.0.1:9876")
 REQUEST_TIMEOUT_SECONDS = 5
 
-mcp = FastMCP("age-of-civ")
+mcp = MCPServer("age-of-civ")
 
 
 def _request(method: str, path: str, params: dict) -> dict:
@@ -81,6 +104,79 @@ def _post(path: str, **params) -> dict:
     return _request("POST", path, params)
 
 
+def _wrap_list(payload, key: str) -> dict:
+    """Normalize a JSON-array response into an object under `key`.
+
+    MCP structured output requires the tool's return value to match its
+    annotation. Returning a bare list from a `-> dict` tool makes the SDK
+    drop structured_content entirely and emit ONE CONTENT BLOCK PER
+    ELEMENT, so a client that reads content[0] silently sees only the
+    first item. Error responses are already objects and pass through.
+    """
+    if isinstance(payload, list):
+        return {key: payload, "count": len(payload)}
+    return payload
+
+
+# ---------------------------------------------------------------------------
+# UI control -- works at the main menu AND in-game, unlike the /game/* tools
+# below which require an already-running session. Use these to get FROM the
+# main menu INTO a game in the first place.
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def aoc_ui_tree() -> dict:
+    """Get the current UI widget tree plus which screens are open.
+
+    Returns appState ("MainMenu"/"InGame"), mainMenuOpen/gameSetupOpen/
+    settingsMenuOpen flags, and a widgets array where each entry has
+    id, kind ("button"/"label"/"listrow"/...), text, bounds (x/y/w/h),
+    visible, and disabled. Find a control by its `text`, then act on it
+    with aoc_ui_click using its `id`.
+    """
+    return _get("/ui/tree")
+
+
+@mcp.tool()
+def aoc_ui_click(widget_id: int) -> dict:
+    """Click the widget with the given id (from aoc_ui_tree).
+
+    Works for buttons, icons, and list rows. Disabled widgets are ignored.
+    For tab bars and sliders -- which are position-dependent -- use
+    aoc_ui_click_at instead. Queues the click; call aoc_ui_tree afterward
+    to see the resulting screen.
+    """
+    return _post("/ui/click", widgetId=widget_id)
+
+
+@mcp.tool()
+def aoc_ui_click_at(x: int, y: int) -> dict:
+    """Click at a screen coordinate, simulating a real mouse press+release.
+
+    Use when the target is position-dependent (picking a specific tab in a
+    tab bar, dragging a slider) rather than a whole widget. Coordinates
+    come from a widget's x/y/w/h in aoc_ui_tree.
+    """
+    return _post("/ui/click-at", x=x, y=y)
+
+
+@mcp.tool()
+def aoc_ui_scroll(x: int, y: int, delta: int, shift: bool = False) -> dict:
+    """Scroll at a screen coordinate (e.g. a scroll list or the tech-tree canvas).
+
+    Negative delta scrolls down/right, positive up/left. Set shift=True for
+    horizontal panning on widgets that support it.
+    """
+    return _post("/ui/scroll", x=x, y=y, delta=delta, shift="1" if shift else "0")
+
+
+# ---------------------------------------------------------------------------
+# Game control -- all of these require an already-running session (they
+# return {"error": "no active game"} at the main menu).
+# ---------------------------------------------------------------------------
+
+
 @mcp.tool()
 def aoc_game_state() -> dict:
     """Get the current turn number, phase, active player, and a summary of every player (treasury, research, units, cities)."""
@@ -95,14 +191,20 @@ def aoc_player_detail(player: int) -> dict:
 
 @mcp.tool()
 def aoc_list_units(player: int) -> dict:
-    """List every unit owned by `player`, with position, HP, movement, and combat stats."""
-    return _get("/game/units", player=player)
+    """List every unit owned by `player`, with position, HP, movement, and combat stats.
+
+    Returns {"units": [...], "count": N}.
+    """
+    return _wrap_list(_get("/game/units", player=player), "units")
 
 
 @mcp.tool()
 def aoc_list_cities(player: int) -> dict:
-    """List every city owned by `player`, with population, food surplus, and production queue."""
-    return _get("/game/cities", player=player)
+    """List every city owned by `player`, with population, food surplus, and production queue.
+
+    Returns {"cities": [...], "count": N}.
+    """
+    return _wrap_list(_get("/game/cities", player=player), "cities")
 
 
 @mcp.tool()
@@ -153,6 +255,20 @@ def aoc_set_research(player: int, tech_id: int) -> dict:
     afterward to confirm it took effect.
     """
     return _post("/game/research", player=player, techId=tech_id)
+
+
+@mcp.tool()
+def aoc_screenshot() -> dict:
+    """Capture a screenshot of the current game window and return its file path.
+
+    Works from the main menu and in-game. The server performs a Vulkan
+    swapchain readback on the render thread and writes a timestamped PNG to
+    /tmp/. Returns {"path": "/tmp/aoc_screenshot_<timestamp>.png"} on success.
+
+    Claude Code can then Read the returned path to view the PNG as an image --
+    useful for verifying rendering, UI state, and hex-map appearance.
+    """
+    return _post("/debug/screenshot")
 
 
 if __name__ == "__main__":

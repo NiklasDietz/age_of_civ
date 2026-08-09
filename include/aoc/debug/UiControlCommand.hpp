@@ -2,6 +2,9 @@
 
 #include "aoc/ui/Widget.hpp"
 
+#include <future>
+#include <memory>
+#include <string>
 #include <variant>
 
 namespace aoc::debug {
@@ -30,6 +33,15 @@ struct ScrollAtCommand {
     bool shiftHeld;
 };
 
-using UiControlCommand = std::variant<ClickWidgetCommand, ClickAtCommand, ScrollAtCommand>;
+/// Capture a Vulkan swapchain screenshot to a PNG file and return its path.
+/// The HTTP handler places a shared_ptr<promise<string>> here; the drain
+/// (render thread) calls captureScreenshot, then fulfils the promise with the
+/// path on success or an empty string on failure.
+struct TakeScreenshotCommand {
+    std::shared_ptr<std::promise<std::string>> result;
+};
+
+using UiControlCommand =
+    std::variant<ClickWidgetCommand, ClickAtCommand, ScrollAtCommand, TakeScreenshotCommand>;
 
 } // namespace aoc::debug

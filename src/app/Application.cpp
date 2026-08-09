@@ -80,6 +80,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <future>
 #include <random>
 #include <utility>
 
@@ -1309,6 +1310,32 @@ ErrorCode Application::initialize(const Config& config) {
             return std::string("{\"queued\":true}");
         });
 
+    // POST /debug/screenshot -- capture a Vulkan swapchain PNG, return its
+    // path synchronously. Useful from the main menu and in-game alike. The
+    // HTTP worker blocks on a std::promise fulfilled by the render thread
+    // (same thread that runs captureScreenshot). Max wait: 2 s.
+    this->m_debugServer->routeJson(
+        DSM::Post, "/debug/screenshot",
+        [this](const std::unordered_map<std::string, std::string>&,
+               const std::string&) -> std::string {
+            std::shared_ptr<std::promise<std::string>> promise =
+                std::make_shared<std::promise<std::string>>();
+            std::future<std::string> future = promise->get_future();
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingUiCommandsMutex);
+                this->m_pendingUiCommands.emplace_back(
+                    aoc::debug::TakeScreenshotCommand{std::move(promise)});
+            }
+            if (future.wait_for(std::chrono::seconds(2)) == std::future_status::timeout) {
+                return std::string("{\"error\":\"screenshot timed out\"}");
+            }
+            const std::string path = future.get();
+            if (path.empty()) {
+                return std::string("{\"error\":\"screenshot capture failed\"}");
+            }
+            return std::string("{\"path\":\"") + path + "\"}";
+        });
+
     // GET /schema -- self-describing route catalogue.
     this->m_debugServer->routeJson(
         DSM::Get, "/schema", [](const auto&, const auto&) -> std::string {
@@ -1343,6 +1370,7 @@ ErrorCode Application::initialize(const Config& config) {
                 "{\"method\":\"POST\",\"path\":\"/ui/click?widgetId=N\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/click-at?x=&y=\"},"
                 "{\"method\":\"POST\",\"path\":\"/ui/scroll?x=&y=&delta=&shift=\"},"
+                "{\"method\":\"POST\",\"path\":\"/debug/screenshot\"},"
                 "{\"method\":\"POST\",\"path\":\"/quit\"}"
                 "]"
                 "}");
@@ -2358,6 +2386,18 @@ void Application::drainPendingUiCommands() {
                 } else if constexpr (std::is_same_v<CommandType, aoc::debug::ScrollAtCommand>) {
                     this->m_uiManager.handleInput(c.x, c.y, false, false, c.delta, false, false,
                                                   c.shiftHeld);
+                } else if constexpr (std::is_same_v<CommandType,
+                                                    aoc::debug::TakeScreenshotCommand>) {
+                    // Runs on the render thread -- same context as captureScreenshot requires.
+                    const std::string path =
+                        "/tmp/aoc_screenshot_" +
+                        std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                           std::chrono::system_clock::now().time_since_epoch())
+                                           .count()) +
+                        ".png";
+                    std::string message;
+                    const bool ok = this->captureScreenshot(path, message);
+                    c.result->set_value(ok ? path : std::string{});
                 }
             },
             cmd);
