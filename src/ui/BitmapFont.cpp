@@ -1,108 +1,77 @@
 /**
  * @file BitmapFont.cpp
- * @brief TrueType font rendering via stb_truetype + Renderer2D filled rects.
+ * @brief Text rendering from a pre-baked glyph atlas + Renderer2D filled rects.
  *
- * Rasterizes glyphs into small bitmaps using stb_truetype, then draws each
- * opaque pixel as a filled rectangle. Cached per (char, size) to avoid
- * re-rasterizing every frame.
+ * Draws each opaque glyph pixel as a filled rectangle, sampling coverage from
+ * an atlas baked offline by `aoc_font_bake`.
+ *
+ * There is deliberately NO TrueType parser here. stb_truetype v1.26 has an
+ * unpatched OOB read (CVE-2026-5314) reachable from stbtt_InitFont, so the
+ * parser lives only in the offline baker and never ships in the game binary.
+ * This loader reads a fixed-layout blob and bounds-checks every field, so a
+ * truncated or corrupt atlas fails cleanly instead of reading out of bounds.
  */
 
 #include "aoc/ui/BitmapFont.hpp"
 #include "aoc/core/Log.hpp"
+#include "aoc/ui/FontAtlasFormat.hpp"
 #include "aoc/ui/Theme.hpp"
-
-#define STB_TRUETYPE_IMPLEMENTATION
-#include "stb_truetype.h"
 
 #include <renderer/Renderer2D.hpp>
 
-#include <cstdio>
+#include <cmath>
 #include <cstring>
 #include <fstream>
-#include <unordered_map>
 #include <vector>
 
 namespace aoc::ui {
 
 namespace {
 
-/// Cached rasterized glyph bitmap.
-struct GlyphBitmap {
-    std::vector<uint8_t> pixels;
-    int32_t width   = 0;
-    int32_t height  = 0;
-    int32_t xOffset = 0;
-    int32_t yOffset = 0;
-    float advance   = 0.0f;
-};
-
-/// Global font state (initialized once).
 struct FontState {
     bool initialized = false;
-    std::vector<uint8_t> fontData;
-    stbtt_fontinfo fontInfo{};
 
-    /// Cache key: (codepoint << 8) | quantized_size
-    std::unordered_map<uint32_t, GlyphBitmap> glyphCache;
+    uint32_t atlasWidth  = 0;
+    uint32_t atlasHeight = 0;
+    uint32_t sizeCount   = 0;
+
+    std::vector<float> sizes;       ///< ascending pixel heights
+    std::vector<AtlasGlyph> glyphs; ///< sizeCount * FONT_ATLAS_CHAR_COUNT, size-major
+    std::vector<uint8_t> coverage;  ///< atlasWidth * atlasHeight
 };
 
 FontState g_font;
 
-uint32_t makeCacheKey(char ch, float fontSize) {
-    uint32_t codepoint     = static_cast<uint32_t>(static_cast<uint8_t>(ch));
-    uint32_t quantizedSize = static_cast<uint32_t>(fontSize * 2.0f); // 0.5px resolution
-    return (codepoint << 16) | quantizedSize;
+/// Nearest baked size index for a requested pixel height. Sizes are contiguous
+/// integers, so this is a clamp plus a round -- no search.
+uint32_t sizeIndexFor(float pixelHeight) {
+    const float clamped = std::fmin(std::fmax(pixelHeight, static_cast<float>(FONT_ATLAS_MIN_SIZE)),
+                                    static_cast<float>(FONT_ATLAS_MAX_SIZE));
+    const float rounded = std::round(clamped) - static_cast<float>(FONT_ATLAS_MIN_SIZE);
+    uint32_t index      = static_cast<uint32_t>(rounded < 0.0f ? 0.0f : rounded);
+    if (index >= g_font.sizeCount) {
+        index = g_font.sizeCount - 1;
+    }
+    return index;
 }
 
-const GlyphBitmap& getGlyph(char ch, float fontSize) {
-    uint32_t key = makeCacheKey(ch, fontSize);
-
-    std::unordered_map<uint32_t, GlyphBitmap>::iterator it = g_font.glyphCache.find(key);
-    if (it != g_font.glyphCache.end()) {
-        return it->second;
+/// Glyph record for `ch` at a baked size index. Characters outside printable
+/// ASCII fall back to '?', matching the old rasterizer's behaviour.
+const AtlasGlyph& glyphFor(char ch, uint32_t sizeIndex) {
+    uint32_t code = static_cast<uint32_t>(static_cast<uint8_t>(ch));
+    if (code < FONT_ATLAS_FIRST_CHAR || code >= FONT_ATLAS_FIRST_CHAR + FONT_ATLAS_CHAR_COUNT) {
+        code = static_cast<uint32_t>('?');
     }
+    const std::size_t offset = static_cast<std::size_t>(sizeIndex) * FONT_ATLAS_CHAR_COUNT +
+                               (code - FONT_ATLAS_FIRST_CHAR);
+    return g_font.glyphs[offset];
+}
 
-    // Rasterize the glyph
-    GlyphBitmap glyph;
-    float scale = stbtt_ScaleForPixelHeight(&g_font.fontInfo, fontSize);
-
-    int glyphIndex =
-        stbtt_FindGlyphIndex(&g_font.fontInfo, static_cast<int>(static_cast<uint8_t>(ch)));
-    if (glyphIndex == 0 && ch != ' ') {
-        // Unknown character -- use '?' instead
-        glyphIndex = stbtt_FindGlyphIndex(&g_font.fontInfo, '?');
-    }
-
-    int advanceWidth = 0;
-    int leftBearing  = 0;
-    stbtt_GetGlyphHMetrics(&g_font.fontInfo, glyphIndex, &advanceWidth, &leftBearing);
-    glyph.advance = static_cast<float>(advanceWidth) * scale;
-
-    if (ch == ' ') {
-        // Space has no bitmap
-        glyph.width            = 0;
-        glyph.height           = 0;
-        g_font.glyphCache[key] = std::move(glyph);
-        return g_font.glyphCache[key];
-    }
-
-    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-    stbtt_GetGlyphBitmapBox(&g_font.fontInfo, glyphIndex, scale, scale, &x0, &y0, &x1, &y1);
-
-    glyph.width   = x1 - x0;
-    glyph.height  = y1 - y0;
-    glyph.xOffset = x0;
-    glyph.yOffset = y0;
-
-    if (glyph.width > 0 && glyph.height > 0) {
-        glyph.pixels.resize(
-            static_cast<std::size_t>(glyph.width) * static_cast<std::size_t>(glyph.height), 0);
-        stbtt_MakeGlyphBitmap(&g_font.fontInfo, glyph.pixels.data(), glyph.width, glyph.height,
-                              glyph.width, scale, scale, glyphIndex);
-    }
-
-    g_font.glyphCache[key] = std::move(glyph);
-    return g_font.glyphCache[key];
+/// Read exactly `count` objects, failing if the stream is short. Every load-time
+/// read goes through this so a truncated file cannot leave partly-filled state.
+template <typename T> bool readExact(std::ifstream& file, T* dest, std::size_t count) {
+    file.read(reinterpret_cast<char*>(dest), static_cast<std::streamsize>(sizeof(T) * count));
+    return file.gcount() == static_cast<std::streamsize>(sizeof(T) * count);
 }
 
 } // anonymous namespace
@@ -112,48 +81,95 @@ bool BitmapFont::initialize() {
         return true;
     }
 
-    // SECURITY CONSTRAINT: stb_truetype v1.26 has an unpatched OOB-read
-    // (CVE-2026-5314, no upstream fix) reachable through stbtt_InitFont on a
-    // malformed font. This list MUST stay a fixed set of trusted system font
-    // paths -- never load a font path that came from a mod, a save, or any
-    // other untrusted input without sandboxing the parse first.
-    const char* fontPaths[] = {
-        "/usr/share/fonts/truetype/DejaVuSans.ttf",
-        "/usr/share/fonts/texlive-dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/truetype/NotoSans-Regular.ttf",
-    };
+    // Baked next to the other runtime data by the aoc_font_bake build step.
+    const char* atlasPath = "data/fonts/ui_font.aocfnt";
 
-    std::ifstream file;
-    const char* usedPath = nullptr;
-    for (const char* path : fontPaths) {
-        file.open(path, std::ios::binary | std::ios::ate);
-        if (file.is_open()) {
-            usedPath = path;
-            break;
+    std::ifstream file(atlasPath, std::ios::binary);
+    if (!file.is_open()) {
+        LOG_ERROR("BitmapFont: cannot open glyph atlas '%s'", atlasPath);
+        return false;
+    }
+
+    AtlasHeader header{};
+    if (!readExact(file, &header, 1)) {
+        LOG_ERROR("BitmapFont: glyph atlas '%s' is truncated (header)", atlasPath);
+        return false;
+    }
+    if (header.magic != FONT_ATLAS_MAGIC) {
+        LOG_ERROR("BitmapFont: glyph atlas '%s' has bad magic 0x%08X", atlasPath, header.magic);
+        return false;
+    }
+    if (header.version != FONT_ATLAS_VERSION) {
+        LOG_ERROR("BitmapFont: glyph atlas '%s' is version %u, expected %u", atlasPath,
+                  header.version, FONT_ATLAS_VERSION);
+        return false;
+    }
+    if (header.charCount != FONT_ATLAS_CHAR_COUNT || header.firstChar != FONT_ATLAS_FIRST_CHAR) {
+        LOG_ERROR("BitmapFont: glyph atlas '%s' character range does not match this build",
+                  atlasPath);
+        return false;
+    }
+
+    // A fontless bake writes a header-only atlas on purpose; treat it as "no
+    // font" so measureText's estimation path takes over, as it did before.
+    if (header.sizeCount == 0) {
+        LOG_ERROR("BitmapFont: glyph atlas '%s' is empty (font missing at bake time)", atlasPath);
+        return false;
+    }
+    if (header.sizeCount != FONT_ATLAS_SIZE_COUNT) {
+        LOG_ERROR("BitmapFont: glyph atlas '%s' has %u sizes, expected %u", atlasPath,
+                  header.sizeCount, FONT_ATLAS_SIZE_COUNT);
+        return false;
+    }
+
+    const std::size_t coverageBytes =
+        static_cast<std::size_t>(header.atlasWidth) * static_cast<std::size_t>(header.atlasHeight);
+    if (coverageBytes == 0) {
+        LOG_ERROR("BitmapFont: glyph atlas '%s' has zero-sized bitmap", atlasPath);
+        return false;
+    }
+
+    g_font.sizes.resize(header.sizeCount);
+    for (uint32_t i = 0; i < header.sizeCount; ++i) {
+        AtlasSizeEntry entry{};
+        if (!readExact(file, &entry, 1)) {
+            LOG_ERROR("BitmapFont: glyph atlas '%s' is truncated (size table)", atlasPath);
+            return false;
+        }
+        g_font.sizes[i] = entry.pixelHeight;
+    }
+
+    const std::size_t glyphCount =
+        static_cast<std::size_t>(header.sizeCount) * FONT_ATLAS_CHAR_COUNT;
+    g_font.glyphs.resize(glyphCount);
+    if (!readExact(file, g_font.glyphs.data(), glyphCount)) {
+        LOG_ERROR("BitmapFont: glyph atlas '%s' is truncated (glyph table)", atlasPath);
+        return false;
+    }
+
+    g_font.coverage.resize(coverageBytes);
+    if (!readExact(file, g_font.coverage.data(), coverageBytes)) {
+        LOG_ERROR("BitmapFont: glyph atlas '%s' is truncated (bitmap)", atlasPath);
+        return false;
+    }
+
+    // Every glyph rect must lie inside the bitmap. Validating once here is what
+    // lets the draw loop index the coverage array without per-pixel checks.
+    for (const AtlasGlyph& glyph : g_font.glyphs) {
+        if (glyph.x1 > header.atlasWidth || glyph.y1 > header.atlasHeight || glyph.x0 > glyph.x1 ||
+            glyph.y0 > glyph.y1) {
+            LOG_ERROR("BitmapFont: glyph atlas '%s' has an out-of-range glyph rect", atlasPath);
+            return false;
         }
     }
 
-    if (!file.is_open()) {
-        LOG_ERROR("BitmapFont: could not find any system TrueType font");
-        return false;
-    }
-
-    std::streamsize fileSize = file.tellg();
-    file.seekg(0, std::ios::beg);
-    g_font.fontData.resize(static_cast<std::size_t>(fileSize));
-    file.read(reinterpret_cast<char*>(g_font.fontData.data()), fileSize);
-    file.close();
-
-    if (!stbtt_InitFont(&g_font.fontInfo, g_font.fontData.data(), 0)) {
-        LOG_ERROR("BitmapFont: stbtt_InitFont failed for %s", usedPath);
-        return false;
-    }
-
+    g_font.atlasWidth  = header.atlasWidth;
+    g_font.atlasHeight = header.atlasHeight;
+    g_font.sizeCount   = header.sizeCount;
     g_font.initialized = true;
-    LOG_INFO("BitmapFont: loaded font from %s", usedPath);
+
+    LOG_INFO("BitmapFont: loaded glyph atlas %s (%ux%u, %u sizes)", atlasPath, header.atlasWidth,
+             header.atlasHeight, header.sizeCount);
     return true;
 }
 
@@ -168,31 +184,34 @@ void BitmapFont::drawText(vulkan_app::renderer::Renderer2D& renderer2d, std::str
     // factor so layout and hit-boxes stay in agreement.
     fontSize *= theme().fontScale();
 
-    // Rasterize at the screen-pixel font size for crisp glyphs,
-    // then scale positions and rect sizes by pixelScale for world-space rendering.
-    float rasterSize = fontSize / pixelScale; // screen-pixel font size
-    if (rasterSize < 4.0f) {
-        rasterSize = 4.0f;
-    }
+    // Sample the atlas at the screen-pixel font size for crisp glyphs, then
+    // scale positions and rect sizes by pixelScale for world-space rendering.
+    const uint32_t sizeIndex = sizeIndexFor(fontSize / pixelScale);
 
     float baseline = y + fontSize * 0.75f;
     float cursorX  = x;
 
     for (char ch : text) {
-        const GlyphBitmap& glyph = getGlyph(ch, rasterSize);
+        const AtlasGlyph& glyph = glyphFor(ch, sizeIndex);
+        const int32_t gw        = static_cast<int32_t>(glyph.x1) - static_cast<int32_t>(glyph.x0);
+        const int32_t gh        = static_cast<int32_t>(glyph.y1) - static_cast<int32_t>(glyph.y0);
 
-        if (glyph.width > 0 && glyph.height > 0) {
-            float glyphX = cursorX + static_cast<float>(glyph.xOffset) * pixelScale;
-            float glyphY = baseline + static_cast<float>(glyph.yOffset) * pixelScale;
+        if (gw > 0 && gh > 0) {
+            const float glyphX = cursorX + glyph.xOffset * pixelScale;
+            const float glyphY = baseline + glyph.yOffset * pixelScale;
 
-            for (int32_t py = 0; py < glyph.height; ++py) {
-                for (int32_t px = 0; px < glyph.width; ++px) {
-                    uint8_t alpha = glyph.pixels[static_cast<std::size_t>(py * glyph.width + px)];
+            for (int32_t py = 0; py < gh; ++py) {
+                const std::size_t row =
+                    (static_cast<std::size_t>(glyph.y0) + static_cast<std::size_t>(py)) *
+                    g_font.atlasWidth;
+                for (int32_t px = 0; px < gw; ++px) {
+                    const uint8_t alpha = g_font.coverage[row + static_cast<std::size_t>(glyph.x0) +
+                                                          static_cast<std::size_t>(px)];
                     // Low cutoff keeps the glyph edge ramp. A high cutoff
-                    // (was 80) threw away stb's antialiasing and made small
+                    // (was 80) threw away the antialiasing and made small
                     // text read as blocky.
                     if (alpha > 16) {
-                        float pixelAlpha = static_cast<float>(alpha) / 255.0f * color.a;
+                        const float pixelAlpha = static_cast<float>(alpha) / 255.0f * color.a;
                         renderer2d.drawFilledRect(glyphX + static_cast<float>(px) * pixelScale,
                                                   glyphY + static_cast<float>(py) * pixelScale,
                                                   pixelScale, pixelScale, color.r, color.g, color.b,
@@ -202,7 +221,7 @@ void BitmapFont::drawText(vulkan_app::renderer::Renderer2D& renderer2d, std::str
             }
         }
 
-        cursorX += glyph.advance * pixelScale;
+        cursorX += glyph.xAdvance * pixelScale;
     }
 }
 
@@ -216,10 +235,13 @@ Rect BitmapFont::measureText(std::string_view text, float fontSize) {
         return {0.0f, 0.0f, static_cast<float>(text.size()) * advance, fontSize};
     }
 
+    // Must resolve the same baked size drawText will, or measured widths and
+    // drawn widths diverge and every centred label drifts.
+    const uint32_t sizeIndex = sizeIndexFor(fontSize);
+
     float totalWidth = 0.0f;
     for (char ch : text) {
-        const GlyphBitmap& glyph = getGlyph(ch, fontSize);
-        totalWidth += glyph.advance;
+        totalWidth += glyphFor(ch, sizeIndex).xAdvance;
     }
 
     return {0.0f, 0.0f, totalWidth, fontSize};

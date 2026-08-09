@@ -2,11 +2,14 @@
 
 /**
  * @file BitmapFont.hpp
- * @brief TrueType font rendering using stb_truetype rasterization and Renderer2D filled rects.
+ * @brief Text rendering from a pre-baked glyph atlas via Renderer2D filled rects.
  *
- * Loads a system TrueType font (DejaVu Sans), rasterizes glyphs into bitmaps
- * on demand, and draws each opaque pixel as a small filled rectangle via
- * the Renderer2D primitive API. Simple but produces readable text at all sizes.
+ * Loads the atlas baked offline by `aoc_font_bake` and draws each opaque glyph
+ * pixel as a small filled rectangle through the Renderer2D primitive API.
+ * Simple but produces readable text at all sizes.
+ *
+ * No TrueType parser ships in the game binary -- stb_truetype is confined to
+ * the offline baker because of CVE-2026-5314. See FontAtlasFormat.hpp.
  */
 
 #include "aoc/ui/Widget.hpp"
@@ -36,12 +39,8 @@ public:
      *                   When rendering in world-space with a camera zoom, set this
      *                   to 1/zoom so pixels remain 1:1 on screen after the shader scales them.
      */
-    static void drawText(vulkan_app::renderer::Renderer2D& renderer2d,
-                          std::string_view text,
-                          float x, float y,
-                          float fontSize,
-                          Color color,
-                          float pixelScale = 1.0f);
+    static void drawText(vulkan_app::renderer::Renderer2D& renderer2d, std::string_view text,
+                         float x, float y, float fontSize, Color color, float pixelScale = 1.0f);
 
     /**
      * @brief Measure the pixel dimensions of a text string.
@@ -50,7 +49,7 @@ public:
     [[nodiscard]] static Rect measureText(std::string_view text, float fontSize);
 
     /// Character advance width as fraction of fontSize (for measureText consistency).
-    static constexpr float CHAR_WIDTH_RATIO  = 0.55f;
+    static constexpr float CHAR_WIDTH_RATIO   = 0.55f;
     static constexpr float CHAR_SPACING_RATIO = 0.05f;
 };
 

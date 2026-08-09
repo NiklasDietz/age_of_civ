@@ -848,6 +848,31 @@ foreach(YAML_FILE ${AOC_DATA_YAML_FILES})
     )
 endforeach()
 
+# --------------------------------------------------------------------------
+# Offline glyph-atlas baker
+#
+# aoc_font_bake is the ONLY target that compiles stb_truetype. Baking here
+# rather than parsing a TTF at runtime keeps CVE-2026-5314 (unpatched OOB read
+# in stbtt_InitFont) out of the shipped game binary entirely -- that is the
+# point, not a build convenience. See include/aoc/ui/FontAtlasFormat.hpp.
+#
+# A build machine with no system font is not an error: the baker emits an empty
+# atlas and the runtime falls back to estimated text metrics, which is exactly
+# what the old runtime loader did when it found no font.
+# --------------------------------------------------------------------------
+add_executable(aoc_font_bake src/tools/FontBake.cpp)
+target_include_directories(aoc_font_bake PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
+)
+
+add_custom_command(TARGET age_of_civ POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${AOC_DATA_OUTPUT_DIR}/fonts"
+    COMMAND aoc_font_bake "${AOC_DATA_OUTPUT_DIR}/fonts/ui_font.aocfnt"
+    COMMENT "Baking glyph atlas: data/fonts/ui_font.aocfnt"
+)
+add_dependencies(age_of_civ aoc_font_bake)
+
 endif() # NOT AOC_HEADLESS
 
 # --------------------------------------------------------------------------
