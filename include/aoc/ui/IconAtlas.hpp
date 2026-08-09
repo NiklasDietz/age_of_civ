@@ -14,6 +14,7 @@
  * and get back a stable `uint32_t` spriteId to store in IconData.
  */
 
+#include "aoc/ui/IconPainter.hpp"
 #include "aoc/ui/Widget.hpp"
 
 #include <cstdint>
@@ -27,8 +28,11 @@ namespace aoc::ui {
 struct IconRegion {
     /// UV rect in the atlas texture. Zero-sized when no real art loaded.
     float u0 = 0.0f, v0 = 0.0f, u1 = 0.0f, v1 = 0.0f;
-    /// Fallback colour used by the current placeholder renderer.
+    /// Fallback colour used when no vector recipe is assigned.
     Color fallback = {0.5f, 0.5f, 0.5f, 1.0f};
+    /// Vector recipe to paint (see IconPainter). `None` falls back to the
+    /// original flat filled square.
+    IconShape shape = IconShape::None;
 };
 
 class IconAtlas {
@@ -58,7 +62,7 @@ public:
 
 private:
     std::unordered_map<std::string, uint32_t> m_byName;
-    std::vector<IconRegion>                   m_regions;
+    std::vector<IconRegion> m_regions;
 };
 
 } // namespace aoc::ui

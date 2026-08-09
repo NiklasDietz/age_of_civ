@@ -1856,19 +1856,30 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
                 renderer2d.drawFilledRect(thumbX, b.y, thumbW, b.h, data.thumbColor.r,
                                           data.thumbColor.g, data.thumbColor.b, data.thumbColor.a);
             } else if constexpr (std::is_same_v<T, IconData>) {
-                // Real sprite path pending — pull the placeholder colour
-                // from the IconAtlas when the widget carries a registered
-                // spriteId. Unknown ids fall back to the widget's own
-                // `fallbackColor` so ad-hoc icons still draw something.
-                Color c = data.fallbackColor;
+                // Registered icons carry a colour and, for the ones that
+                // appear in the HUD, a vector recipe. Unknown ids fall back to
+                // the widget's own `fallbackColor` so ad-hoc icons still draw.
+                Color c         = data.fallbackColor;
+                IconShape shape = IconShape::None;
                 if (data.spriteId != 0) {
                     const IconRegion* reg = IconAtlas::instance().region(data.spriteId);
                     if (reg != nullptr) {
-                        c = reg->fallback;
+                        c     = reg->fallback;
+                        shape = reg->shape;
                     }
                 }
-                renderer2d.drawFilledRect(b.x, b.y, b.w, b.h, c.r * data.tint.r, c.g * data.tint.g,
-                                          c.b * data.tint.b, data.tint.a);
+                const Color tinted{c.r * data.tint.r, c.g * data.tint.g, c.b * data.tint.b,
+                                   data.tint.a};
+                if (shape == IconShape::None) {
+                    renderer2d.drawFilledRect(b.x, b.y, b.w, b.h, tinted.r, tinted.g, tinted.b,
+                                              tinted.a);
+                } else {
+                    // Square box centred in the widget bounds so non-square
+                    // icon widgets do not stretch the recipe.
+                    const float side = std::min(b.w, b.h);
+                    drawIcon(renderer2d, shape, b.x + (b.w - side) * 0.5f,
+                             b.y + (b.h - side) * 0.5f, side, tinted);
+                }
             } else if constexpr (std::is_same_v<T, RichTextData>) {
                 // Walk spans left-to-right, advancing cursor by measured
                 // span width. Icons render as tinted boxes pending the

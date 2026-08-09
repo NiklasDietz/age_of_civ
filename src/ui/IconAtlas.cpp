@@ -86,6 +86,17 @@ int32_t IconAtlas::loadPlaceholders(const std::string& path) {
             ++idx;
         }
         reg.fallback = c;
+        // This file only overrides colours. Carry over any vector recipe the
+        // built-in seed already assigned -- registerSprite overwrites the whole
+        // region, so building a fresh one here would silently reset every
+        // shaped icon to a flat square the moment an icons.txt appears.
+        const uint32_t existingId = this->id(name);
+        if (existingId != 0) {
+            const IconRegion* existing = this->region(existingId);
+            if (existing != nullptr) {
+                reg.shape = existing->shape;
+            }
+        }
         this->registerSprite(name, reg);
         ++n;
     }
@@ -104,15 +115,25 @@ void IconAtlas::seedBuiltIns() {
         this->registerSprite(name, x);
     };
 
+    /// Same, but with a vector recipe so the icon paints as a shape rather
+    /// than a flat square. Only the icons that actually appear in the HUD
+    /// carry one; everything else keeps the colour-swatch placeholder.
+    auto regShape = [&](const char* name, float r, float g, float b, IconShape shape) {
+        IconRegion x;
+        x.fallback = {r, g, b, 1.0f};
+        x.shape    = shape;
+        this->registerSprite(name, x);
+    };
+
     // ----- Yields (8 hue families, parchment-tuned) -----
-    reg("yields.food", 0.360f, 0.545f, 0.243f);
-    reg("yields.production", 0.658f, 0.431f, 0.180f);
-    reg("yields.gold", 0.788f, 0.639f, 0.352f);
-    reg("yields.science", 0.247f, 0.435f, 0.658f);
-    reg("yields.culture", 0.545f, 0.247f, 0.545f);
-    reg("yields.faith", 0.784f, 0.784f, 0.784f);
-    reg("yields.power", 0.839f, 0.701f, 0.255f);
-    reg("yields.tourism", 0.839f, 0.482f, 0.262f);
+    regShape("yields.food", 0.360f, 0.545f, 0.243f, IconShape::Leaf);
+    regShape("yields.production", 0.658f, 0.431f, 0.180f, IconShape::Gear);
+    regShape("yields.gold", 0.788f, 0.639f, 0.352f, IconShape::Coin);
+    regShape("yields.science", 0.247f, 0.435f, 0.658f, IconShape::Flask);
+    regShape("yields.culture", 0.545f, 0.247f, 0.545f, IconShape::Note);
+    regShape("yields.faith", 0.784f, 0.784f, 0.784f, IconShape::Flame);
+    regShape("yields.power", 0.839f, 0.701f, 0.255f, IconShape::Bolt);
+    regShape("yields.tourism", 0.839f, 0.482f, 0.262f, IconShape::Compass);
 
     // ----- Resources (matched to goods table) -----
     reg("resources.food", 0.35f, 0.75f, 0.25f);

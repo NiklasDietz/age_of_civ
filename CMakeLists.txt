@@ -203,6 +203,7 @@ set(AOC_GFX_ONLY_SOURCES
     src/ui/WidgetInspector.cpp
     src/ui/LoadingScreen.cpp
     src/ui/IconAtlas.cpp
+    src/ui/IconPainter.cpp
     src/ui/UITestHarness.cpp
     src/ui/Localization.cpp
     src/ui/UIPersistence.cpp
@@ -432,6 +433,7 @@ set(AOC_LIB_SOURCES
     src/ui/WidgetInspector.cpp
     src/ui/LoadingScreen.cpp
     src/ui/IconAtlas.cpp
+    src/ui/IconPainter.cpp
     src/ui/UITestHarness.cpp
     src/ui/Localization.cpp
     src/ui/UIPersistence.cpp
