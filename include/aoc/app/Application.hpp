@@ -9,6 +9,8 @@
 #include "aoc/app/InputManager.hpp"
 #include "aoc/app/DebugCommandFile.hpp"
 #include "aoc/debug/DebugServer.hpp"
+#include "aoc/debug/GameSnapshot.hpp"
+#include "aoc/debug/GameControlCommand.hpp"
 #include "aoc/render/CameraController.hpp"
 #include "aoc/render/GameRenderer.hpp"
 #include "aoc/render/GlobeRenderer.hpp"
@@ -586,6 +588,32 @@ private:
     void publishDebugGridSnapshot();
     /// Any thread: fetch the latest published snapshot (may be null).
     [[nodiscard]] std::shared_ptr<const aoc::map::HexGrid> debugGridSnapshot() const;
+
+    /// Game-state snapshot for debug GET routes. Published once per frame
+    /// (main thread only) when InGame; null when in MainMenu so routes can
+    /// return a clear "no active game" error instead of stale data.
+    mutable std::mutex m_gameSnapshotMutex;
+    std::shared_ptr<const aoc::debug::GameSnapshot> m_gameSnapshot;
+    /// Main thread only: build and publish the current game-state snapshot.
+    void publishGameSnapshot();
+    /// Any thread: fetch the latest published game snapshot (may be null).
+    [[nodiscard]] std::shared_ptr<const aoc::debug::GameSnapshot> gameSnapshot() const;
+
+    /// Mutation commands queued by debug-server HTTP handlers (worker
+    /// threads). Unlike the single-atomic mailboxes above, two different
+    /// commands queued in the same frame must BOTH apply -- last-writer-
+    /// wins would silently drop one. Drained fully, in received order,
+    /// once per frame on the main thread; `EndTurnCommand`s run last
+    /// within a drain pass regardless of queue position.
+    std::mutex m_pendingCommandsMutex;
+    std::deque<aoc::debug::GameControlCommand> m_pendingCommands;
+    /// Main thread only: drain and execute every queued command.
+    void drainPendingCommands();
+    void executeGameControlCommand(const aoc::debug::MoveUnitCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::AttackUnitCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::FoundCityCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::SetProductionCommand& cmd);
+    void executeGameControlCommand(const aoc::debug::SetResearchCommand& cmd);
 
     /// Drop every raw `Unit*` / `City*` the UI caches (selection,
     /// previous-frame selection, action panel, movement undo). Call

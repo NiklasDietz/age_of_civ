@@ -462,6 +462,7 @@ set(AOC_LIB_SOURCES
     src/app/Application.cpp
     src/app/DebugCommandFile.cpp
     src/debug/DebugServer.cpp
+    src/debug/GameSnapshot.cpp
     src/app/Application_HUD.cpp
     src/app/ScreenshotEncoder.cpp
 
@@ -916,6 +917,7 @@ if(AOC_BUILD_TESTS)
         test_relief
         test_lakes
         test_mapgen_regenerate
+        test_game_snapshot
     )
 
     # UI tests link against src/ui/UIManager.cpp, which is only compiled into

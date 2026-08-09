@@ -271,6 +271,21 @@ struct DumpTarget {
     return target;
 }
 
+/// Parse a required integer query parameter for a `/game/*` mutation route.
+/// On success returns true and sets `out`; on failure sets `errorJson` to a
+/// client-facing `{"error":"missing NAME"}` body and returns false, so the
+/// caller can `return` it directly without writing to the command queue.
+bool requireIntParam(const std::unordered_map<std::string, std::string>& query, const char* name,
+                     int32_t& out, std::string& errorJson) {
+    const std::unordered_map<std::string, std::string>::const_iterator it = query.find(name);
+    if (it == query.end()) {
+        errorJson = std::string("{\"error\":\"missing ") + name + "\"}";
+        return false;
+    }
+    out = std::atoi(it->second.c_str());
+    return true;
+}
+
 } // namespace
 
 Application::Application() = default;
@@ -889,25 +904,343 @@ ErrorCode Application::initialize(const Config& config) {
                                        return std::string("{\"closing\":true}");
                                    });
 
+    // GET /game/state -- full game snapshot (turn, phase, all players).
+    this->m_debugServer->routeJson(
+        DSM::Get, "/game/state",
+        [this](const std::unordered_map<std::string, std::string>&,
+               const std::string&) -> std::string {
+            const std::shared_ptr<const aoc::debug::GameSnapshot> snap = this->gameSnapshot();
+            if (snap == nullptr) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            return aoc::debug::toJson(*snap);
+        });
+
+    // GET /game/player?id=N -- single player detail.
+    this->m_debugServer->routeJson(
+        DSM::Get, "/game/player",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            const std::shared_ptr<const aoc::debug::GameSnapshot> snap = this->gameSnapshot();
+            if (snap == nullptr) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            const std::unordered_map<std::string, std::string>::const_iterator it = q.find("id");
+            if (it == q.end()) {
+                return std::string("{\"error\":\"missing id\"}");
+            }
+            const int32_t id = std::atoi(it->second.c_str());
+            for (const aoc::debug::PlayerSnapshot& p : snap->players) {
+                if (p.id == id) {
+                    return aoc::debug::toJson(p);
+                }
+            }
+            return std::string("{\"error\":\"player not found\"}");
+        });
+
+    // GET /game/units?player=N -- unit list for a player.
+    this->m_debugServer->routeJson(
+        DSM::Get, "/game/units",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            const std::shared_ptr<const aoc::debug::GameSnapshot> snap = this->gameSnapshot();
+            if (snap == nullptr) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            const std::unordered_map<std::string, std::string>::const_iterator it =
+                q.find("player");
+            if (it == q.end()) {
+                return std::string("{\"error\":\"missing player\"}");
+            }
+            const int32_t id = std::atoi(it->second.c_str());
+            for (const aoc::debug::PlayerSnapshot& p : snap->players) {
+                if (p.id == id) {
+                    return aoc::debug::toJson(p.units);
+                }
+            }
+            return std::string("{\"error\":\"player not found\"}");
+        });
+
+    // GET /game/cities?player=N -- city list for a player.
+    this->m_debugServer->routeJson(
+        DSM::Get, "/game/cities",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            const std::shared_ptr<const aoc::debug::GameSnapshot> snap = this->gameSnapshot();
+            if (snap == nullptr) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            const std::unordered_map<std::string, std::string>::const_iterator it =
+                q.find("player");
+            if (it == q.end()) {
+                return std::string("{\"error\":\"missing player\"}");
+            }
+            const int32_t id = std::atoi(it->second.c_str());
+            for (const aoc::debug::PlayerSnapshot& p : snap->players) {
+                if (p.id == id) {
+                    return aoc::debug::toJson(p.cities);
+                }
+            }
+            return std::string("{\"error\":\"player not found\"}");
+        });
+
+    // POST /game/turn/end -- queue an end-turn command. Drained (and run
+    // last within the drain pass, after any moves/attacks/production/
+    // research queued in the same frame) on the main thread.
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/turn/end",
+        [this](const std::unordered_map<std::string, std::string>&,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(aoc::debug::EndTurnCommand{});
+            }
+            return std::string("{\"queued\":true}");
+        });
+
+    // POST /game/unit/move?player=&q=&r=&targetQ=&targetR=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/unit/move",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t fromQ  = 0;
+            int32_t fromR  = 0;
+            int32_t toQ    = 0;
+            int32_t toR    = 0;
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "q", fromQ, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "r", fromR, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "targetQ", toQ, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "targetR", toR, err)) {
+                return err;
+            }
+            aoc::debug::MoveUnitCommand cmd{};
+            cmd.player = static_cast<aoc::PlayerId>(player);
+            cmd.from   = aoc::hex::AxialCoord{fromQ, fromR};
+            cmd.to     = aoc::hex::AxialCoord{toQ, toR};
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
+    // POST /game/unit/attack?player=&q=&r=&targetQ=&targetR=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/unit/attack",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t fromQ  = 0;
+            int32_t fromR  = 0;
+            int32_t toQ    = 0;
+            int32_t toR    = 0;
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "q", fromQ, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "r", fromR, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "targetQ", toQ, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "targetR", toR, err)) {
+                return err;
+            }
+            aoc::debug::AttackUnitCommand cmd{};
+            cmd.player = static_cast<aoc::PlayerId>(player);
+            cmd.from   = aoc::hex::AxialCoord{fromQ, fromR};
+            cmd.to     = aoc::hex::AxialCoord{toQ, toR};
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
+    // POST /game/unit/found-city?player=&q=&r=&name=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/unit/found-city",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t posQ   = 0;
+            int32_t posR   = 0;
+            int32_t player = 0;
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "q", posQ, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "r", posR, err)) {
+                return err;
+            }
+            const std::unordered_map<std::string, std::string>::const_iterator nameIt =
+                q.find("name");
+            if (nameIt == q.end() || nameIt->second.empty()) {
+                return std::string("{\"error\":\"missing name\"}");
+            }
+            aoc::debug::FoundCityCommand cmd{};
+            cmd.player = static_cast<aoc::PlayerId>(player);
+            cmd.at     = aoc::hex::AxialCoord{posQ, posR};
+            cmd.name   = nameIt->second;
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
+    // POST /game/city/production?player=&q=&r=&type=&itemId=
+    // `type` is one of "Unit"/"Building"/"District"/"Wonder". Name and
+    // cost are looked up server-side from the matching def table -- the
+    // client supplies only the id, never authoritative name/cost.
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/city/production",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t cityQ  = 0;
+            int32_t cityR  = 0;
+            int32_t itemId = 0;
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "q", cityQ, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "r", cityR, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "itemId", itemId, err)) {
+                return err;
+            }
+            const std::unordered_map<std::string, std::string>::const_iterator typeIt =
+                q.find("type");
+            if (typeIt == q.end()) {
+                return std::string("{\"error\":\"missing type\"}");
+            }
+            aoc::sim::ProductionItemType type;
+            if (typeIt->second == "Unit") {
+                type = aoc::sim::ProductionItemType::Unit;
+            } else if (typeIt->second == "Building") {
+                type = aoc::sim::ProductionItemType::Building;
+            } else if (typeIt->second == "District") {
+                type = aoc::sim::ProductionItemType::District;
+            } else if (typeIt->second == "Wonder") {
+                type = aoc::sim::ProductionItemType::Wonder;
+            } else {
+                return std::string("{\"error\":\"invalid type\"}");
+            }
+            if (itemId < 0 || itemId > std::numeric_limits<uint16_t>::max()) {
+                return std::string("{\"error\":\"itemId out of range\"}");
+            }
+            aoc::debug::SetProductionCommand cmd{};
+            cmd.player       = static_cast<aoc::PlayerId>(player);
+            cmd.cityLocation = aoc::hex::AxialCoord{cityQ, cityR};
+            cmd.type         = type;
+            cmd.itemId       = static_cast<uint16_t>(itemId);
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
+    // POST /game/research?player=&techId=
+    this->m_debugServer->routeJson(
+        DSM::Post, "/game/research",
+        [this](const std::unordered_map<std::string, std::string>& q,
+               const std::string&) -> std::string {
+            if (this->m_appState != AppState::InGame) {
+                throw aoc::debug::ServiceUnavailableError("no active game");
+            }
+            int32_t player = 0;
+            int32_t techId = 0;
+            std::string err;
+            if (!requireIntParam(q, "player", player, err)) {
+                return err;
+            }
+            if (!requireIntParam(q, "techId", techId, err)) {
+                return err;
+            }
+            if (techId < 0 || techId > std::numeric_limits<uint16_t>::max()) {
+                return std::string("{\"error\":\"techId out of range\"}");
+            }
+            aoc::debug::SetResearchCommand cmd{};
+            cmd.player = static_cast<aoc::PlayerId>(player);
+            cmd.techId = static_cast<uint16_t>(techId);
+            {
+                std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+                this->m_pendingCommands.push_back(cmd);
+            }
+            return std::string("{\"queued\":true}");
+        });
+
     // GET /schema -- self-describing route catalogue.
     this->m_debugServer->routeJson(
         DSM::Get, "/schema", [](const auto&, const auto&) -> std::string {
-            return std::string("{"
-                               "\"routes\":["
-                               "{\"method\":\"GET\",\"path\":\"/ping\"},"
-                               "{\"method\":\"GET\",\"path\":\"/info\"},"
-                               "{\"method\":\"GET\",\"path\":\"/plates\"},"
-                               "{\"method\":\"GET\",\"path\":\"/tile?idx=N\"},"
-                               "{\"method\":\"GET\",\"path\":\"/constants\"},"
-                               "{\"method\":\"GET\",\"path\":\"/schema\"},"
-                               "{\"method\":\"POST\",\"path\":\"/dump/plates?path=PATH\"},"
-                               "{\"method\":\"POST\",\"path\":\"/dump/grid?path=PATH\"},"
-                               "{\"method\":\"POST\",\"path\":\"/sim/set-creator-time?my=N\"},"
-                               "{\"method\":\"POST\",\"path\":\"/sim/step?dy=N\"},"
-                               "{\"method\":\"POST\",\"path\":\"/sim/re-roll?seed=N\"},"
-                               "{\"method\":\"POST\",\"path\":\"/quit\"}"
-                               "]"
-                               "}");
+            return std::string(
+                "{"
+                "\"routes\":["
+                "{\"method\":\"GET\",\"path\":\"/ping\"},"
+                "{\"method\":\"GET\",\"path\":\"/info\"},"
+                "{\"method\":\"GET\",\"path\":\"/plates\"},"
+                "{\"method\":\"GET\",\"path\":\"/tile?idx=N\"},"
+                "{\"method\":\"GET\",\"path\":\"/constants\"},"
+                "{\"method\":\"GET\",\"path\":\"/schema\"},"
+                "{\"method\":\"GET\",\"path\":\"/game/state\"},"
+                "{\"method\":\"GET\",\"path\":\"/game/player?id=N\"},"
+                "{\"method\":\"GET\",\"path\":\"/game/units?player=N\"},"
+                "{\"method\":\"GET\",\"path\":\"/game/cities?player=N\"},"
+                "{\"method\":\"POST\",\"path\":\"/dump/plates?path=PATH\"},"
+                "{\"method\":\"POST\",\"path\":\"/dump/grid?path=PATH\"},"
+                "{\"method\":\"POST\",\"path\":\"/sim/set-creator-time?my=N\"},"
+                "{\"method\":\"POST\",\"path\":\"/sim/step?dy=N\"},"
+                "{\"method\":\"POST\",\"path\":\"/sim/re-roll?seed=N\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/turn/end\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/unit/"
+                "move?player=&q=&r=&targetQ=&targetR=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/unit/"
+                "attack?player=&q=&r=&targetQ=&targetR=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/unit/found-city?player=&q=&r=&name=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/city/"
+                "production?player=&q=&r=&type=&itemId=\"},"
+                "{\"method\":\"POST\",\"path\":\"/game/research?player=&techId=\"},"
+                "{\"method\":\"POST\",\"path\":\"/quit\"}"
+                "]"
+                "}");
         });
 
     // Opt-in only: the routes above stay registered (cheap, no socket)
@@ -1705,6 +2038,199 @@ void Application::publishDebugGridSnapshot() {
 std::shared_ptr<const aoc::map::HexGrid> Application::debugGridSnapshot() const {
     std::lock_guard<std::mutex> guard(this->m_debugGridSnapshotMutex);
     return this->m_debugGridSnapshot;
+}
+
+void Application::publishGameSnapshot() {
+    std::shared_ptr<const aoc::debug::GameSnapshot> snapshot;
+    if (this->m_appState == AppState::InGame) {
+        snapshot = std::make_shared<aoc::debug::GameSnapshot>(
+            aoc::debug::buildGameSnapshot(this->m_gameState, this->m_turnManager));
+    }
+    std::lock_guard<std::mutex> guard(this->m_gameSnapshotMutex);
+    this->m_gameSnapshot = std::move(snapshot);
+}
+
+std::shared_ptr<const aoc::debug::GameSnapshot> Application::gameSnapshot() const {
+    std::lock_guard<std::mutex> guard(this->m_gameSnapshotMutex);
+    return this->m_gameSnapshot;
+}
+
+void Application::executeGameControlCommand(const aoc::debug::MoveUnitCommand& cmd) {
+    aoc::game::Player* player = this->m_gameState.player(cmd.player);
+    if (player == nullptr) {
+        return;
+    }
+    aoc::game::Unit* unit = player->unitAt(cmd.from);
+    if (unit == nullptr) {
+        return;
+    }
+    const bool pathFound = aoc::sim::orderUnitMove(*unit, cmd.to, this->m_hexGrid);
+    if (!pathFound) {
+        return;
+    }
+    const aoc::hex::AxialCoord posBefore = unit->position();
+    aoc::sim::moveUnitAlongPath(this->m_gameState, *unit, this->m_hexGrid);
+    if (unit->position() != posBefore) {
+        this->m_fogOfWar.updateVisibility(this->m_gameState, this->m_hexGrid, 0);
+    }
+}
+
+void Application::executeGameControlCommand(const aoc::debug::AttackUnitCommand& cmd) {
+    aoc::game::Player* attackerPlayer = this->m_gameState.player(cmd.player);
+    if (attackerPlayer == nullptr) {
+        return;
+    }
+    aoc::game::Unit* attacker = attackerPlayer->unitAt(cmd.from);
+    if (attacker == nullptr) {
+        return;
+    }
+    aoc::game::Unit* defender = nullptr;
+    for (const std::unique_ptr<aoc::game::Player>& otherPlayerPtr : this->m_gameState.players()) {
+        if (otherPlayerPtr->id() == cmd.player) {
+            continue;
+        }
+        defender = otherPlayerPtr->unitAt(cmd.to);
+        if (defender != nullptr) {
+            break;
+        }
+    }
+    if (defender == nullptr) {
+        return;
+    }
+    if (attacker->rangedStrength() > 0) {
+        aoc::sim::resolveRangedCombat(this->m_gameState, this->m_gameRng, this->m_hexGrid,
+                                      *attacker, *defender);
+    } else {
+        aoc::sim::resolveMeleeCombat(this->m_gameState, this->m_gameRng, this->m_hexGrid, *attacker,
+                                     *defender);
+    }
+    // The attacker may have died to melee retaliation; a caller that
+    // needs the attacker afterward must re-lookup by its pre-combat
+    // position rather than dereferencing `attacker` again, mirroring
+    // AIMilitaryController.cpp's post-combat cleanup pattern.
+}
+
+void Application::executeGameControlCommand(const aoc::debug::FoundCityCommand& cmd) {
+    aoc::game::Player* player = this->m_gameState.player(cmd.player);
+    if (player == nullptr) {
+        return;
+    }
+    aoc::game::Unit* unit = player->unitAt(cmd.at);
+    if (unit == nullptr || unit->typeDef().unitClass != aoc::sim::UnitClass::Settler) {
+        return;
+    }
+    aoc::game::City* city =
+        aoc::sim::foundCity(this->m_gameState, this->m_hexGrid, cmd.player, cmd.at, cmd.name);
+    if (city == nullptr) {
+        return;
+    }
+    player->removeUnit(unit);
+}
+
+void Application::executeGameControlCommand(const aoc::debug::SetProductionCommand& cmd) {
+    aoc::game::Player* player = this->m_gameState.player(cmd.player);
+    if (player == nullptr) {
+        return;
+    }
+    aoc::game::City* city = player->cityAt(cmd.cityLocation);
+    if (city == nullptr) {
+        return;
+    }
+
+    aoc::sim::ProductionQueueItem item{};
+    item.type     = cmd.type;
+    item.itemId   = cmd.itemId;
+    item.progress = 0.0f;
+
+    switch (cmd.type) {
+    case aoc::sim::ProductionItemType::Unit: {
+        if (cmd.itemId >= aoc::sim::UNIT_TYPE_COUNT) {
+            return;
+        }
+        const aoc::sim::UnitTypeDef& def = aoc::sim::unitTypeDef(aoc::UnitTypeId{cmd.itemId});
+        item.name                        = std::string(def.name);
+        item.totalCost                   = static_cast<float>(def.productionCost);
+        break;
+    }
+    case aoc::sim::ProductionItemType::Building: {
+        if (cmd.itemId >= aoc::sim::BUILDING_DEFS.size()) {
+            return;
+        }
+        const aoc::sim::BuildingDef& def = aoc::sim::buildingDef(aoc::BuildingId{cmd.itemId});
+        item.name                        = std::string(def.name);
+        item.totalCost                   = static_cast<float>(def.productionCost);
+        break;
+    }
+    case aoc::sim::ProductionItemType::Wonder: {
+        if (cmd.itemId >= aoc::sim::WONDER_COUNT) {
+            return;
+        }
+        const aoc::sim::WonderDef& def =
+            aoc::sim::wonderDef(static_cast<aoc::sim::WonderId>(cmd.itemId));
+        item.name      = std::string(def.name);
+        item.totalCost = static_cast<float>(def.productionCost);
+        break;
+    }
+    case aoc::sim::ProductionItemType::District: {
+        if (cmd.itemId >= aoc::sim::DISTRICT_TYPE_COUNT) {
+            return;
+        }
+        const aoc::sim::DistrictType districtType = static_cast<aoc::sim::DistrictType>(cmd.itemId);
+        item.name      = std::string(aoc::sim::districtTypeName(districtType));
+        item.totalCost = 60.0f; // Base district cost, matches GameScreens.cpp
+        break;
+    }
+    default:
+        return;
+    }
+
+    city->production().queue.push_back(std::move(item));
+}
+
+void Application::executeGameControlCommand(const aoc::debug::SetResearchCommand& cmd) {
+    aoc::game::Player* player = this->m_gameState.player(cmd.player);
+    if (player == nullptr) {
+        return;
+    }
+    if (cmd.techId >= aoc::sim::techCount()) {
+        return;
+    }
+    const aoc::TechId techId{cmd.techId};
+    if (!player->tech().canResearch(techId)) {
+        return;
+    }
+    player->tech().currentResearch  = techId;
+    player->tech().researchProgress = 0.0f;
+}
+
+void Application::drainPendingCommands() {
+    std::deque<aoc::debug::GameControlCommand> commands;
+    {
+        std::lock_guard<std::mutex> guard(this->m_pendingCommandsMutex);
+        commands.swap(this->m_pendingCommands);
+    }
+    if (commands.empty() || this->m_appState != AppState::InGame) {
+        return;
+    }
+
+    bool endTurnRequested = false;
+    for (const aoc::debug::GameControlCommand& cmd : commands) {
+        if (std::holds_alternative<aoc::debug::EndTurnCommand>(cmd)) {
+            endTurnRequested = true;
+            continue;
+        }
+        std::visit(
+            [this](const auto& c) {
+                using CommandType = std::decay_t<decltype(c)>;
+                if constexpr (!std::is_same_v<CommandType, aoc::debug::EndTurnCommand>) {
+                    this->executeGameControlCommand(c);
+                }
+            },
+            cmd);
+    }
+    if (endTurnRequested) {
+        this->handleEndTurn();
+    }
 }
 
 void Application::clearEntitySelection() {
@@ -3176,6 +3702,8 @@ void Application::run() {
         if (this->m_quitRequested.exchange(false, std::memory_order_acquire)) {
             glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
         }
+        this->drainPendingCommands();
+        this->publishGameSnapshot();
 
         std::chrono::steady_clock::time_point currentTime = std::chrono::steady_clock::now();
         float deltaTime = std::chrono::duration<float>(currentTime - previousTime).count();
