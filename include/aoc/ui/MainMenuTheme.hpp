@@ -41,7 +41,7 @@ inline constexpr Color BTN_PRIMARY_LABEL = tokens::SURFACE_INK;
 
 // SECONDARY tier — the default. Recessed card that lifts toward brass on hover.
 inline constexpr Color BTN_NORMAL  = tokens::SURFACE_MARBLE;
-inline constexpr Color BTN_HOVER   = {0.200f, 0.224f, 0.259f, 1.0f}; // #333942
+inline constexpr Color BTN_HOVER   = {0.318f, 0.255f, 0.188f, 1.0f}; // #514130 warm lift
 inline constexpr Color BTN_PRESSED = tokens::SURFACE_PARCHMENT_DIM;
 
 // SELECTED — "this option is active". Brass, matching the accent language

@@ -918,6 +918,12 @@ if(AOC_BUILD_TESTS)
         test_mapgen_regenerate
     )
 
+    # UI tests link against src/ui/UIManager.cpp, which is only compiled into
+    # aoc_lib in the non-headless configuration.
+    if(NOT AOC_HEADLESS)
+        list(APPEND AOC_SMOKE_TESTS test_ui_layout_floating)
+    endif()
+
     # The debug preset builds with ASan/LSan; known suppressions live in
     # asan_suppressions.txt (same file run.sh uses).
     set(AOC_TEST_ENV

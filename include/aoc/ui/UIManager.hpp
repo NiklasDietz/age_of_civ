@@ -171,10 +171,10 @@ public:
     /// Per-phase frame timing in milliseconds. Updated by `tick()` each
     /// frame; consumed by the frame-time HUD overlay.
     struct FrameTimings {
-        float layoutMs   = 0.0f;
-        float renderMs   = 0.0f;
-        float inputMs    = 0.0f;
-        float bindingMs  = 0.0f;
+        float layoutMs  = 0.0f;
+        float renderMs  = 0.0f;
+        float inputMs   = 0.0f;
+        float bindingMs = 0.0f;
         float total() const { return layoutMs + renderMs + inputMs + bindingMs; }
     };
     [[nodiscard]] const FrameTimings& frameTimings() const { return this->m_frameTimings; }
@@ -183,8 +183,8 @@ public:
     /// Recent widget events (callback fires) for the inspector. Bounded
     /// circular buffer; oldest dropped on overflow.
     struct WidgetEvent {
-        WidgetId id = INVALID_WIDGET;
-        const char* kind = "";   ///< Static string literal: "click", "right", "drop", "tab"
+        WidgetId id        = INVALID_WIDGET;
+        const char* kind   = ""; ///< Static string literal: "click", "right", "drop", "tab"
         float timestampSec = 0.0f;
     };
     void logEvent(WidgetEvent ev);
@@ -248,12 +248,14 @@ public:
     /// the host (Application/GameServer) drains and dispatches over
     /// the wire. Strings are interpreted by the application layer.
     struct NetworkEvent {
-        std::string kind;     ///< "vote", "trade-offer", "chat", ...
-        std::string payload;  ///< Free-form (often JSON)
+        std::string kind;    ///< "vote", "trade-offer", "chat", ...
+        std::string payload; ///< Free-form (often JSON)
         uint8_t fromPlayer = 0;
     };
     void emitNetworkEvent(NetworkEvent ev);
-    [[nodiscard]] const std::vector<NetworkEvent>& networkOutbox() const { return this->m_netOutbox; }
+    [[nodiscard]] const std::vector<NetworkEvent>& networkOutbox() const {
+        return this->m_netOutbox;
+    }
     void clearNetworkOutbox() { this->m_netOutbox.clear(); }
 
     // ========================================================================
@@ -278,10 +280,9 @@ public:
      * right-click path entirely. Returns true if the UI consumed the
      * input (click was on a widget).
      */
-    bool handleInput(float mouseX, float mouseY,
-                     bool mousePressed, bool mouseReleased,
-                     float scrollDelta = 0.0f,
-                     bool rightPressed = false, bool rightReleased = false);
+    bool handleInput(float mouseX, float mouseY, bool mousePressed, bool mouseReleased,
+                     float scrollDelta = 0.0f, bool rightPressed = false,
+                     bool rightReleased = false, bool shiftHeld = false);
 
     /// Optional command-buffer handle for scissor clip pushes during
     /// render. Set by the caller each frame before `render`. nullptr =
@@ -326,16 +327,15 @@ public:
 private:
     WidgetId allocateWidget();
     void layoutWidget(WidgetId id, float parentX, float parentY);
-    void renderWidget(vulkan_app::renderer::Renderer2D& renderer2d,
-                      WidgetId id) const;
+    void renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, WidgetId id) const;
     [[nodiscard]] WidgetId hitTest(float x, float y) const;
     [[nodiscard]] WidgetId hitTestWidget(WidgetId id, float x, float y) const;
     void shiftWidgetTree(WidgetId id, float deltaX, float deltaY);
 
-    std::vector<Widget>   m_widgets;
-    std::vector<WidgetId> m_rootWidgets;  ///< Top-level widgets (no parent)
-    std::vector<WidgetId> m_freeList;     ///< Recycled widget slots
-    WidgetId              m_nextId = 0;
+    std::vector<Widget> m_widgets;
+    std::vector<WidgetId> m_rootWidgets; ///< Top-level widgets (no parent)
+    std::vector<WidgetId> m_freeList;    ///< Recycled widget slots
+    WidgetId m_nextId = 0;
 
     /// Current screen dimensions for anchor calculations.
     float m_screenWidth  = 1280.0f;
@@ -354,8 +354,8 @@ private:
     /// Pan canvas (e.g. tech tree) currently being right-mouse dragged.
     /// Tracks `panX`/`panY` deltas across frames; cleared on release.
     WidgetId m_panningWidget = INVALID_WIDGET;
-    float    m_panLastMouseX = 0.0f;
-    float    m_panLastMouseY = 0.0f;
+    float m_panLastMouseX    = 0.0f;
+    float m_panLastMouseY    = 0.0f;
 
     /// Keyboard-focused widget (Tab order). Renders with a focus ring
     /// and responds to Enter/Space via `activateFocused`.
@@ -389,12 +389,15 @@ private:
     std::size_t m_eventLogCount = 0;
 
     // Drag-drop runtime state.
-    WidgetId m_dragSource = INVALID_WIDGET;
+    WidgetId m_dragSource  = INVALID_WIDGET;
     uint32_t m_dragPayload = 0;
     std::unordered_map<WidgetId, std::function<void(uint32_t)>> m_dropHandlers;
 
     // Animation runtime: held-button repeat scheduling.
-    struct ButtonRepeatState { float waited = 0.0f; bool armed = false; };
+    struct ButtonRepeatState {
+        float waited = 0.0f;
+        bool armed   = false;
+    };
     std::unordered_map<WidgetId, ButtonRepeatState> m_repeatStates;
 
     // Double-click detection: previous click timestamp per widget.
@@ -406,7 +409,7 @@ private:
 
     // Network + audio outboxes drained by the host each frame.
     std::vector<NetworkEvent> m_netOutbox;
-    std::vector<uint32_t>     m_audioOutbox;
+    std::vector<uint32_t> m_audioOutbox;
 
     /// Strict layout mode — dev-only runtime overflow warnings.
     bool m_strictLayout = false;
@@ -421,7 +424,7 @@ private:
     /// single struct so empty bindings cost zero.
     std::unordered_map<WidgetId, std::function<std::string()>> m_labelBindings;
     std::unordered_map<WidgetId, std::function<std::string()>> m_buttonBindings;
-    std::unordered_map<WidgetId, std::function<bool()>>        m_visibilityBindings;
+    std::unordered_map<WidgetId, std::function<bool()>> m_visibilityBindings;
 
     /// Scale factor applied to font sizes and corner radii during rendering.
     /// Set by transformBounds() to compensate for camera zoom.

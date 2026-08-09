@@ -746,13 +746,34 @@ void UIManager::updateBindings() {
 // Input
 // ============================================================================
 
+namespace {
+
+/// Bound a canvas's pan offset so the content cannot be dragged off-screen.
+/// Pan is a negative-going offset: 0 shows the content's top-left, and the
+/// most negative useful value is `viewport - content`. A zero or unset
+/// `panContentW/H` means the caller did not declare an extent, so that axis
+/// is left unclamped.
+void clampPan(Widget& w) {
+    if (w.panContentW > 0.0f) {
+        const float minX = std::min(0.0f, w.computedBounds.w - w.panContentW);
+        w.panX           = std::clamp(w.panX, minX, 0.0f);
+    }
+    if (w.panContentH > 0.0f) {
+        const float minY = std::min(0.0f, w.computedBounds.h - w.panContentH);
+        w.panY           = std::clamp(w.panY, minY, 0.0f);
+    }
+}
+
+} // namespace
+
 bool UIManager::handleInput(float mouseX, float mouseY, bool mousePressed, bool mouseReleased,
-                            float scrollDelta, bool rightPressed, bool rightReleased) {
-    // Pan canvas pass: while right-mouse is held over a `canPan` widget
+                            float scrollDelta, bool rightPressed, bool rightReleased,
+                            bool shiftHeld) {
+    // Pan canvas pass: while a drag is active over a `canPan` widget
     // (tech-tree graph etc.), accumulate the per-frame mouse delta into
     // its panX/panY. Released → clear. Runs before hit-test so the pan
     // keeps tracking even when the cursor leaves the canvas bounds.
-    if (rightReleased) {
+    if (rightReleased || mouseReleased) {
         this->m_panningWidget = INVALID_WIDGET;
     }
     if (this->m_panningWidget != INVALID_WIDGET) {
@@ -760,6 +781,7 @@ bool UIManager::handleInput(float mouseX, float mouseY, bool mousePressed, bool 
         if (pw != nullptr && pw->canPan) {
             pw->panX += (mouseX - this->m_panLastMouseX);
             pw->panY += (mouseY - this->m_panLastMouseY);
+            clampPan(*pw);
             this->m_panLastMouseX = mouseX;
             this->m_panLastMouseY = mouseY;
         } else {
@@ -854,9 +876,15 @@ bool UIManager::handleInput(float mouseX, float mouseY, bool mousePressed, bool 
                         break;
                     }
                     if (candidate->canPan) {
-                        // Wheel scrolls Y for pan canvases; shift held
-                        // could later switch to X but isn't plumbed yet.
-                        candidate->panY += scrollDelta * SCROLL_PIXEL_MULTIPLIER;
+                        // Plain wheel scrolls Y; shift+wheel scrolls X so wide
+                        // graphs (tech tree: 8 era columns) are reachable
+                        // without discovering the drag-to-pan gesture.
+                        if (shiftHeld) {
+                            candidate->panX += scrollDelta * SCROLL_PIXEL_MULTIPLIER;
+                        } else {
+                            candidate->panY += scrollDelta * SCROLL_PIXEL_MULTIPLIER;
+                        }
+                        clampPan(*candidate);
                         break;
                     }
                 }
@@ -868,6 +896,15 @@ bool UIManager::handleInput(float mouseX, float mouseY, bool mousePressed, bool 
         if (mousePressed) {
             w.isPressed           = true;
             this->m_pressedWidget = hit;
+            // Left-drag on a pan canvas's own background grabs it for panning.
+            // Only when the canvas itself is the hit widget — pressing a card
+            // inside it must still click the card, not start a pan. Right-drag
+            // (below) additionally works from anywhere inside the canvas.
+            if (w.canPan) {
+                this->m_panningWidget = hit;
+                this->m_panLastMouseX = mouseX;
+                this->m_panLastMouseY = mouseY;
+            }
             // Capture cursor offset relative to the widget origin so the
             // drag translation stays smooth across frames.
             if (w.isDraggable) {
@@ -1225,6 +1262,12 @@ void UIManager::layoutWidget(WidgetId id, float parentX, float parentY) {
         if (child == nullptr || !child->isVisible) {
             continue;
         }
+        // Floating children are placed absolutely and take no space in the
+        // flow, so they must not contribute to the flex pool or the spacing
+        // budget either.
+        if (child->floating) {
+            continue;
+        }
         ++visibleCount;
         if (child->flex > 0.0f) {
             flexSum += child->flex;
@@ -1247,6 +1290,15 @@ void UIManager::layoutWidget(WidgetId id, float parentX, float parentY) {
     for (WidgetId childId : w->children) {
         Widget* child = this->getWidget(childId);
         if (child == nullptr || !child->isVisible) {
+            continue;
+        }
+
+        // Floating child: keep its authored bounds, place it relative to the
+        // parent's content origin, and do NOT advance the flow cursor. Lets a
+        // modal pin a Close button to its bottom-right without the button
+        // being appended to the vertical stack (and pushed off the panel).
+        if (child->floating) {
+            this->layoutWidget(childId, contentX + w->panX, contentY + w->panY);
             continue;
         }
 

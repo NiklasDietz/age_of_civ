@@ -71,20 +71,23 @@ inline constexpr float FS_TAB_DATA = 13.0f;
 // ============================================================================
 
 // --- Surfaces ---
-// "Obsidian & Ochre": cool, desaturated near-black surfaces carrying warm
-// ochre/brass ornament. The map is bright and warm (#D1BF80 desert, #A6B359
-// plains, #4CA64C grass -- see map/Terrain.hpp), so ochre is the INK, not the
-// paper: ochre surfaces would merge into the terrain instead of sitting on it.
-// Cool shadow against warm light also makes flat UI read as lit.
+// "Leather & Ochre": warm dark brown surfaces carrying ochre/brass ornament and
+// cream text. The map is bright and warm (#D1BF80 desert, #A6B359 plains,
+// #4CA64C grass -- see map/Terrain.hpp), so these surfaces stay well below the
+// terrain in value: separation comes from the value gap plus the BRONZE_BASE
+// border and the modal scrim, not from hue contrast.
+//
+// (Superseded the earlier cool near-black "Obsidian" scheme, which read as
+// plain and unwarm against the terrain.)
 //
 // Token names are historical and deliberately unchanged -- ~600 call sites
 // across 20 files depend on them. Read SURFACE_PARCHMENT as "panel face".
-inline constexpr Color SURFACE_PARCHMENT = {0.110f, 0.125f, 0.149f, 1.00f}; // #1C2026 panel face
-inline constexpr Color SURFACE_PARCHMENT_DIM = {0.078f, 0.090f, 0.106f, 1.00f}; // #14171B sunken
-inline constexpr Color SURFACE_MARBLE    = {0.149f, 0.169f, 0.200f, 1.00f}; // #262B33 raised card
-inline constexpr Color SURFACE_MAHOGANY  = {0.078f, 0.090f, 0.106f, 1.00f}; // #14171B app bg
-inline constexpr Color SURFACE_INK       = {0.055f, 0.063f, 0.075f, 1.00f}; // #0E1013 void
-inline constexpr Color SURFACE_FROST_DIM = {0.039f, 0.047f, 0.055f, 0.80f}; // scrim under modal
+inline constexpr Color SURFACE_PARCHMENT = {0.180f, 0.141f, 0.102f, 1.00f}; // #2E241A panel face
+inline constexpr Color SURFACE_PARCHMENT_DIM = {0.129f, 0.102f, 0.071f, 1.00f}; // #211A12 sunken
+inline constexpr Color SURFACE_MARBLE    = {0.243f, 0.192f, 0.141f, 1.00f}; // #3E3124 raised card
+inline constexpr Color SURFACE_MAHOGANY  = {0.102f, 0.078f, 0.055f, 1.00f}; // #1A140E app bg
+inline constexpr Color SURFACE_INK       = {0.071f, 0.055f, 0.039f, 1.00f}; // #120E0A void
+inline constexpr Color SURFACE_FROST_DIM = {0.055f, 0.043f, 0.031f, 0.80f}; // scrim under modal
 
 // --- Brass / gilt ---
 // The hero accent. BRONZE_LIGHT (#C9A35A) is the ochre the whole scheme hangs

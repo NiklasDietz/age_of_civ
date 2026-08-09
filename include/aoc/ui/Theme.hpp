@@ -36,19 +36,19 @@ namespace aoc::ui {
 /// swap red/green slots for blue/yellow so common colourblind types
 /// can still tell factions apart.
 enum class ColorScheme : uint8_t {
-    Default       = 0,
-    Deuteranopia  = 1,
-    Protanopia    = 2,
-    Tritanopia    = 3,
-    HighContrast  = 4,
+    Default      = 0,
+    Deuteranopia = 1,
+    Protanopia   = 2,
+    Tritanopia   = 3,
+    HighContrast = 4,
 };
 
 /// Pre-baked skin variant. Affects panel/button colours — orthogonal
 /// to ColorScheme (which affects player-colours only).
 enum class ThemeSkin : uint8_t {
-    Classic    = 0,  ///< Current default: dark slate blue
-    Dark       = 1,  ///< Flatter, matte blacks
-    Parchment  = 2,  ///< Warm beige with ink-brown accents
+    Classic   = 0, ///< Current default: dark slate blue
+    Dark      = 1, ///< Flatter, matte blacks
+    Parchment = 2, ///< Warm beige with ink-brown accents
 };
 
 struct Theme {
@@ -88,33 +88,33 @@ struct Theme {
     ThemeSkin skin = ThemeSkin::Classic;
 
     /// Skin-driven chrome colours. Default values match `Classic`.
-    Color panelBg        = {0.10f, 0.10f, 0.15f, 0.92f};
-    Color buttonBase     = {0.25f, 0.25f, 0.30f, 0.9f};
+    Color panelBg         = {0.10f, 0.10f, 0.15f, 0.92f};
+    Color buttonBase      = {0.25f, 0.25f, 0.30f, 0.9f};
     Color accentHighlight = {0.35f, 0.55f, 0.75f, 0.95f};
-    Color titleText      = {1.0f,  0.85f, 0.3f,  1.0f};
+    Color titleText       = {1.0f, 0.85f, 0.3f, 1.0f};
 
     /// Swap to a preset. Bumps revision so observers refresh.
     void setSkin(ThemeSkin s) {
         this->skin = s;
         switch (s) {
-            case ThemeSkin::Classic:
-                this->panelBg         = {0.10f, 0.10f, 0.15f, 0.92f};
-                this->buttonBase      = {0.25f, 0.25f, 0.30f, 0.9f};
-                this->accentHighlight = {0.35f, 0.55f, 0.75f, 0.95f};
-                this->titleText       = {1.0f,  0.85f, 0.3f,  1.0f};
-                break;
-            case ThemeSkin::Dark:
-                this->panelBg         = {0.05f, 0.05f, 0.07f, 0.95f};
-                this->buttonBase      = {0.15f, 0.15f, 0.18f, 0.95f};
-                this->accentHighlight = {0.25f, 0.45f, 0.70f, 1.0f};
-                this->titleText       = {0.95f, 0.95f, 0.95f, 1.0f};
-                break;
-            case ThemeSkin::Parchment:
-                this->panelBg         = {0.90f, 0.85f, 0.70f, 0.95f};
-                this->buttonBase      = {0.75f, 0.65f, 0.50f, 0.95f};
-                this->accentHighlight = {0.55f, 0.35f, 0.15f, 1.0f};
-                this->titleText       = {0.30f, 0.18f, 0.10f, 1.0f};
-                break;
+        case ThemeSkin::Classic:
+            this->panelBg         = {0.10f, 0.10f, 0.15f, 0.92f};
+            this->buttonBase      = {0.25f, 0.25f, 0.30f, 0.9f};
+            this->accentHighlight = {0.35f, 0.55f, 0.75f, 0.95f};
+            this->titleText       = {1.0f, 0.85f, 0.3f, 1.0f};
+            break;
+        case ThemeSkin::Dark:
+            this->panelBg         = {0.05f, 0.05f, 0.07f, 0.95f};
+            this->buttonBase      = {0.15f, 0.15f, 0.18f, 0.95f};
+            this->accentHighlight = {0.25f, 0.45f, 0.70f, 1.0f};
+            this->titleText       = {0.95f, 0.95f, 0.95f, 1.0f};
+            break;
+        case ThemeSkin::Parchment:
+            this->panelBg         = {0.90f, 0.85f, 0.70f, 0.95f};
+            this->buttonBase      = {0.75f, 0.65f, 0.50f, 0.95f};
+            this->accentHighlight = {0.55f, 0.35f, 0.15f, 1.0f};
+            this->titleText       = {0.30f, 0.18f, 0.10f, 1.0f};
+            break;
         }
         this->bumpRevision();
     }
@@ -131,15 +131,34 @@ struct Theme {
         return pixels * this->dpiScale * this->userScale;
     }
 
+    /// Multiplier applied to every font size at draw time (BitmapFont).
+    /// Tracks the user's UI-scale slider and the screen resolution so text
+    /// stays readable on a large display without per-callsite edits.
+    ///
+    /// Deliberately EXCLUDES `dpiScale`: widget dimensions are still fixed
+    /// design pixels that bypass `scaled()`, so folding dpiScale in here
+    /// would grow text inside unchanged panels on a HiDPI display. Fold it
+    /// in once the uniform-scale pass makes panels scale too.
+    [[nodiscard]] float fontScale() const {
+        // The screens' font literals (11-14px body) were authored too small to
+        // read comfortably, so correct for that once here rather than editing
+        // ~130 call sites. Resolution and the user slider multiply on top.
+        constexpr float BASE_READABILITY = 1.25f;
+        constexpr float REFERENCE_H      = 1080.0f;
+        constexpr float MIN_RES_FACTOR   = 1.0f;
+        constexpr float MAX_RES_FACTOR   = 1.5f;
+        const float resFactor =
+            std::clamp(this->viewportH / REFERENCE_H, MIN_RES_FACTOR, MAX_RES_FACTOR);
+        return BASE_READABILITY * this->userScale * resFactor;
+    }
+
     /// Preferred width/height for a large modal screen (production,
     /// tech, city detail). Automatically clamped to viewport.
     [[nodiscard]] float modalW() const {
-        return std::min(this->viewportW - this->scaled(40.0f),
-                        this->scaled(860.0f));
+        return std::min(this->viewportW - this->scaled(40.0f), this->scaled(860.0f));
     }
     [[nodiscard]] float modalH() const {
-        return std::min(this->viewportH - this->scaled(40.0f),
-                        this->scaled(640.0f));
+        return std::min(this->viewportH - this->scaled(40.0f), this->scaled(640.0f));
     }
 
     /// Preferred width/height for a medium dialog (settings, confirm).
@@ -169,49 +188,39 @@ struct Theme {
     [[nodiscard]] Color playerColor(uint8_t playerId) const {
         // Default palette: saturated, distinct hues.
         static constexpr Color DEFAULT[8] = {
-            {0.20f, 0.55f, 0.85f, 1.0f},  // blue
-            {0.85f, 0.20f, 0.20f, 1.0f},  // red
-            {0.20f, 0.70f, 0.35f, 1.0f},  // green
-            {0.95f, 0.75f, 0.20f, 1.0f},  // gold
-            {0.70f, 0.30f, 0.80f, 1.0f},  // purple
-            {0.85f, 0.50f, 0.20f, 1.0f},  // orange
-            {0.20f, 0.80f, 0.85f, 1.0f},  // cyan
-            {0.95f, 0.60f, 0.75f, 1.0f},  // pink
+            {0.20f, 0.55f, 0.85f, 1.0f}, // blue
+            {0.85f, 0.20f, 0.20f, 1.0f}, // red
+            {0.20f, 0.70f, 0.35f, 1.0f}, // green
+            {0.95f, 0.75f, 0.20f, 1.0f}, // gold
+            {0.70f, 0.30f, 0.80f, 1.0f}, // purple
+            {0.85f, 0.50f, 0.20f, 1.0f}, // orange
+            {0.20f, 0.80f, 0.85f, 1.0f}, // cyan
+            {0.95f, 0.60f, 0.75f, 1.0f}, // pink
         };
         // Deuteranopia (no red-green): swap red/green for blue/yellow.
         static constexpr Color DEUT[8] = {
-            {0.20f, 0.55f, 0.85f, 1.0f},
-            {0.85f, 0.65f, 0.10f, 1.0f},
-            {0.10f, 0.40f, 0.95f, 1.0f},
-            {0.95f, 0.90f, 0.20f, 1.0f},
-            {0.70f, 0.30f, 0.80f, 1.0f},
-            {0.65f, 0.25f, 0.15f, 1.0f},
-            {0.20f, 0.80f, 0.85f, 1.0f},
-            {0.95f, 0.60f, 0.75f, 1.0f},
+            {0.20f, 0.55f, 0.85f, 1.0f}, {0.85f, 0.65f, 0.10f, 1.0f}, {0.10f, 0.40f, 0.95f, 1.0f},
+            {0.95f, 0.90f, 0.20f, 1.0f}, {0.70f, 0.30f, 0.80f, 1.0f}, {0.65f, 0.25f, 0.15f, 1.0f},
+            {0.20f, 0.80f, 0.85f, 1.0f}, {0.95f, 0.60f, 0.75f, 1.0f},
         };
         // High contrast: near-monochrome shapes rely on luminance not
         // hue. Each slot is a distinct lightness tier.
         static constexpr Color HC[8] = {
-            {0.95f, 0.95f, 0.95f, 1.0f},
-            {0.10f, 0.10f, 0.10f, 1.0f},
-            {0.70f, 0.70f, 0.70f, 1.0f},
-            {0.30f, 0.30f, 0.30f, 1.0f},
-            {0.50f, 0.50f, 0.50f, 1.0f},
-            {0.85f, 0.85f, 0.40f, 1.0f},
-            {0.40f, 0.40f, 0.85f, 1.0f},
-            {0.85f, 0.40f, 0.85f, 1.0f},
+            {0.95f, 0.95f, 0.95f, 1.0f}, {0.10f, 0.10f, 0.10f, 1.0f}, {0.70f, 0.70f, 0.70f, 1.0f},
+            {0.30f, 0.30f, 0.30f, 1.0f}, {0.50f, 0.50f, 0.50f, 1.0f}, {0.85f, 0.85f, 0.40f, 1.0f},
+            {0.40f, 0.40f, 0.85f, 1.0f}, {0.85f, 0.40f, 0.85f, 1.0f},
         };
         const std::size_t idx = static_cast<std::size_t>(playerId) % 8;
         switch (this->colorScheme) {
-            case ColorScheme::Deuteranopia:
-            case ColorScheme::Protanopia:
-            case ColorScheme::Tritanopia:
-                return DEUT[idx];
-            case ColorScheme::HighContrast:
-                return HC[idx];
-            case ColorScheme::Default:
-            default:
-                return DEFAULT[idx];
+        case ColorScheme::Deuteranopia:
+        case ColorScheme::Protanopia:
+        case ColorScheme::Tritanopia:
+            return DEUT[idx];
+        case ColorScheme::HighContrast:
+            return HC[idx];
+        case ColorScheme::Default:
+        default:
+            return DEFAULT[idx];
         }
     }
 };

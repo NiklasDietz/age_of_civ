@@ -404,7 +404,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
 
     // ---- Map Type section ----
     [[maybe_unused]] WidgetId mapTypeLabel = ui.createLabel(
-        contentPanel, {0.0f, 0.0f, innerW, 18.0f}, LabelData{"Map Type:", SECTION_TEXT, 14.0f});
+        contentPanel, {0.0f, 0.0f, innerW, 24.0f}, LabelData{"Map Type:", SECTION_TEXT, 14.0f});
 
     // HorizontalWrap container — 6 map-type buttons flow onto a
     // second row when the panel is narrower than 6 × button width.
@@ -449,7 +449,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
 
     // ---- Map Size section ----
     [[maybe_unused]] WidgetId mapSizeLabel = ui.createLabel(
-        contentPanel, {0.0f, 0.0f, innerW, 18.0f}, LabelData{"Map Size:", SECTION_TEXT, 14.0f});
+        contentPanel, {0.0f, 0.0f, innerW, 24.0f}, LabelData{"Map Size:", SECTION_TEXT, 14.0f});
 
     WidgetId mapSizeRow = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 32.0f},
                                          PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
@@ -552,16 +552,19 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
     }
 
     // ---- Custom W/H spinners (override presets when adjusted) ----
-    auto buildSpinnerRow = [this, &ui, innerW](const char* label, int32_t* target, int32_t minVal,
-                                               WidgetId* labelOut) {
-        WidgetId row = ui.createPanel(this->m_rootPanel, {0.0f, 0.0f, innerW, 28.0f},
+    [[maybe_unused]] WidgetId customSizeLabel = ui.createLabel(
+        contentPanel, {0.0f, 0.0f, innerW, 24.0f}, LabelData{"Custom Size:", SECTION_TEXT, 14.0f});
+
+    auto buildSpinnerRow = [this, &ui, innerW, contentPanel](const char* label, int32_t* target,
+                                                             int32_t minVal, WidgetId* labelOut) {
+        WidgetId row = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 32.0f},
                                       PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
         Widget* r    = ui.getWidget(row);
         if (r != nullptr) {
             r->layoutDirection = LayoutDirection::Horizontal;
             r->childSpacing    = 6.0f;
         }
-        (void)ui.createLabel(row, {0.0f, 0.0f, 110.0f, 24.0f}, LabelData{label, WHITE_TEXT, 12.0f});
+        (void)ui.createLabel(row, {0.0f, 0.0f, 110.0f, 28.0f}, LabelData{label, WHITE_TEXT, 12.0f});
 
         ButtonData minus;
         minus.label          = "-";
@@ -579,9 +582,9 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
                 this->refresh(ui);
             }
         };
-        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(minus));
+        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 28.0f}, std::move(minus));
 
-        *labelOut = ui.createLabel(row, {0.0f, 0.0f, 70.0f, 24.0f},
+        *labelOut = ui.createLabel(row, {0.0f, 0.0f, 70.0f, 28.0f},
                                    LabelData{std::to_string(*target), WHITE_TEXT, 12.0f});
 
         ButtonData plus;
@@ -598,14 +601,14 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             ++(*target);
             this->refresh(ui);
         };
-        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(plus));
+        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 28.0f}, std::move(plus));
     };
     buildSpinnerRow("Width:", &this->m_config.customWidth, 20, &this->m_widthLabel);
     buildSpinnerRow("Height:", &this->m_config.customHeight, 20, &this->m_heightLabel);
 
     // ---- Turn Count section ----
     [[maybe_unused]] WidgetId turnsLabel = ui.createLabel(
-        contentPanel, {0.0f, 0.0f, innerW, 18.0f}, LabelData{"Turn Limit:", SECTION_TEXT, 14.0f});
+        contentPanel, {0.0f, 0.0f, innerW, 24.0f}, LabelData{"Turn Limit:", SECTION_TEXT, 14.0f});
 
     WidgetId turnsRow = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 32.0f},
                                        PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
@@ -640,7 +643,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
 
     // ---- Resource placement section ----
     [[maybe_unused]] WidgetId placementLabel =
-        ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 18.0f},
+        ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 24.0f},
                        LabelData{"Resource Placement:", SECTION_TEXT, 14.0f});
 
     WidgetId placementRow = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 32.0f},
@@ -693,7 +696,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
 
     // ---- Continent generation knobs (Continents map type) ----
     [[maybe_unused]] WidgetId genHeaderLabel =
-        ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 18.0f},
+        ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 24.0f},
                        LabelData{"Continent Generation:", SECTION_TEXT, 14.0f});
     if (this->m_config.mapSeed == 0u) {
         // Initial seed: draw an OS-entropy value so the field shows a
@@ -734,7 +737,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
                 this->refresh(ui);
             }
         };
-        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(minus));
+        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 28.0f}, std::move(minus));
 
         this->m_epochsLabel = ui.createLabel(
             row, {0.0f, 0.0f, 90.0f, 24.0f},
@@ -756,7 +759,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             this->m_config.tectonicTotalMy += 100;
             this->refresh(ui);
         };
-        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(plus));
+        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 28.0f}, std::move(plus));
     }
 
     // -- Continent count row --
@@ -786,7 +789,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
                 this->refresh(ui);
             }
         };
-        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(minus));
+        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 28.0f}, std::move(minus));
 
         this->m_landCountLabel = ui.createLabel(
             row, {0.0f, 0.0f, 70.0f, 24.0f},
@@ -807,7 +810,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             ++this->m_config.landPlateCount;
             this->refresh(ui);
         };
-        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 24.0f}, std::move(plus));
+        (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 28.0f}, std::move(plus));
     }
 
     // -- Seed row --
@@ -844,7 +847,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
 
     // ---- Players section ----
     [[maybe_unused]] WidgetId playersSectionLabel = ui.createLabel(
-        contentPanel, {0.0f, 0.0f, innerW, 18.0f}, LabelData{"Players:", SECTION_TEXT, 14.0f});
+        contentPanel, {0.0f, 0.0f, innerW, 24.0f}, LabelData{"Players:", SECTION_TEXT, 14.0f});
 
     // Player count row: "Players: [N]  [-] [+]"
     WidgetId playerCountRow = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 28.0f},

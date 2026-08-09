@@ -29,8 +29,7 @@ struct Rect {
     float h = 0.0f;
 
     [[nodiscard]] bool contains(float px, float py) const {
-        return px >= this->x && px < this->x + this->w
-            && py >= this->y && py < this->y + this->h;
+        return px >= this->x && px < this->x + this->w && py >= this->y && py < this->y + this->h;
     }
 };
 
@@ -48,7 +47,7 @@ struct Padding {
     float left   = 0.0f;
 };
 
-using WidgetId = uint32_t;
+using WidgetId                           = uint32_t;
 inline constexpr WidgetId INVALID_WIDGET = std::numeric_limits<WidgetId>::max();
 
 /// Versioned handle used when callers need to detect widget reuse
@@ -57,7 +56,7 @@ inline constexpr WidgetId INVALID_WIDGET = std::numeric_limits<WidgetId>::max();
 /// matches the current per-slot generation, the handle is live.
 /// Unused slots bump their generation on `removeWidget`.
 struct WidgetHandle {
-    WidgetId id = INVALID_WIDGET;
+    WidgetId id         = INVALID_WIDGET;
     uint32_t generation = 0;
     [[nodiscard]] bool isValid() const { return this->id != INVALID_WIDGET; }
 };
@@ -75,31 +74,31 @@ struct PanelData {
     /// 0 = flat fill; non-zero draws a lower band blended with the
     /// main `backgroundColor`. Cheap alternative to a shader-side
     /// gradient and enough to break up the flat-grey look.
-    Color gradientBottom  = {0.0f, 0.0f, 0.0f, 0.0f};
+    Color gradientBottom = {0.0f, 0.0f, 0.0f, 0.0f};
 
     /// Optional thin outline drawn just inside the bounds.
-    Color borderColor     = {0.0f, 0.0f, 0.0f, 0.0f};
-    float borderWidth     = 1.0f;
+    Color borderColor = {0.0f, 0.0f, 0.0f, 0.0f};
+    float borderWidth = 1.0f;
 
     /// Optional leading accent bar (left edge ribbon).
-    Color accentBarColor  = {0.0f, 0.0f, 0.0f, 0.0f};
-    float accentBarWidth  = 3.0f;
+    Color accentBarColor = {0.0f, 0.0f, 0.0f, 0.0f};
+    float accentBarWidth = 3.0f;
 
     /// Optional 1-px inner edges that fake depth: lighter top, darker
     /// bottom. Alpha 0 = off.
-    Color topHighlight    = {0.0f, 0.0f, 0.0f, 0.0f};
-    Color bottomShadow    = {0.0f, 0.0f, 0.0f, 0.0f};
+    Color topHighlight = {0.0f, 0.0f, 0.0f, 0.0f};
+    Color bottomShadow = {0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 /// Clickable button.
 struct ButtonData {
     std::string label;
-    Color normalColor   = {0.25f, 0.25f, 0.30f, 0.9f};
-    Color hoverColor    = {0.35f, 0.35f, 0.40f, 0.9f};
-    Color pressedColor  = {0.15f, 0.15f, 0.20f, 0.9f};
-    Color labelColor    = {1.0f, 1.0f, 1.0f, 1.0f};
-    float cornerRadius  = 3.0f;
-    float fontSize      = 14.0f;
+    Color normalColor  = {0.25f, 0.25f, 0.30f, 0.9f};
+    Color hoverColor   = {0.35f, 0.35f, 0.40f, 0.9f};
+    Color pressedColor = {0.15f, 0.15f, 0.20f, 0.9f};
+    Color labelColor   = {1.0f, 1.0f, 1.0f, 1.0f};
+    float cornerRadius = 3.0f;
+    float fontSize     = 14.0f;
     std::function<void()> onClick;
 
     /// Optional right-click handler. When set, `UIManager::handleInput`
@@ -142,36 +141,36 @@ struct ButtonData {
     /// at the left edge before the label; label still centres in the
     /// remaining space. Used for tab buttons with category icons.
     uint32_t iconSpriteId = 0;
-    float    iconSize     = 16.0f;
+    float iconSize        = 16.0f;
 
     /// Optional gradient bottom. When alpha > 0 the button renders
     /// with a vertical gradient from `normalColor`/`hoverColor`/
     /// `pressedColor` to this colour. Gives buttons glossy depth.
-    Color gradientBottom  = {0.0f, 0.0f, 0.0f, 0.0f};
+    Color gradientBottom = {0.0f, 0.0f, 0.0f, 0.0f};
 
     /// Optional thin border. Alpha 0 = none.
-    Color borderColor     = {0.0f, 0.0f, 0.0f, 0.0f};
-    float borderWidth     = 1.0f;
+    Color borderColor = {0.0f, 0.0f, 0.0f, 0.0f};
+    float borderWidth = 1.0f;
 
     /// Persistent "this is the active choice" flag. Renderer uses
     /// `selectedColor` (falls back to hoverColor shifted brighter) so
     /// screens like tech/gov/tabs can indicate the current selection
     /// even after the cursor leaves the button. Caller toggles this
     /// in the onClick handler.
-    bool  selected = false;
+    bool selected       = false;
     Color selectedColor = {0.35f, 0.55f, 0.75f, 0.95f};
 
     /// Disabled state. Greys the button, suppresses onClick + hover
     /// styling. Paired with `hoverCursor = 0` to prevent the
     /// not-allowed cursor flicker.
-    bool  disabled = false;
+    bool disabled = false;
 };
 
 /// Text label.
 struct LabelData {
     std::string text;
-    Color       color    = {1.0f, 1.0f, 1.0f, 1.0f};
-    float       fontSize = 14.0f;
+    Color color    = {1.0f, 1.0f, 1.0f, 1.0f};
+    float fontSize = 14.0f;
     /// Optional 1-pixel outline drawn behind the glyphs in 8 directions.
     /// Alpha 0 = no outline. Use for titles + chip values laid over busy
     /// or low-contrast backgrounds where readability matters more than
@@ -179,14 +178,14 @@ struct LabelData {
     /// titles, avoid for body text. The outline draws the glyph in the
     /// outline colour at offsets of `pixelScale` along the 8 cardinal/
     /// diagonal directions, then the main fill on top.
-    Color       outlineColor = {0.0f, 0.0f, 0.0f, 0.0f};
+    Color outlineColor = {0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 /// Scrollable list container. Children outside the visible window are skipped during rendering.
 struct ScrollListData {
     Color backgroundColor = {0.12f, 0.12f, 0.16f, 0.9f};
-    float scrollOffset = 0.0f;     ///< Pixels scrolled from top (0 = no scroll)
-    float contentHeight = 0.0f;    ///< Total height of all children (computed during layout)
+    float scrollOffset    = 0.0f; ///< Pixels scrolled from top (0 = no scroll)
+    float contentHeight   = 0.0f; ///< Total height of all children (computed during layout)
 };
 
 /// Horizontal bar at the top of a tabbed panel. One button per tab;
@@ -195,7 +194,7 @@ struct ScrollListData {
 /// with the index when the user clicks.
 struct TabBarData {
     std::vector<std::string> labels;
-    int32_t activeTab = 0;
+    int32_t activeTab   = 0;
     Color activeColor   = {0.35f, 0.55f, 0.75f, 0.95f};
     Color inactiveColor = {0.20f, 0.20f, 0.28f, 0.9f};
     Color hoverColor    = {0.30f, 0.30f, 0.38f, 0.9f};
@@ -217,27 +216,27 @@ struct TabBarData {
 /// leftmost portion of the widget in `fillColor`; the remainder shows
 /// `backgroundColor`. Optional overlay text (e.g. "45 / 100").
 struct ProgressBarData {
-    float  fillFraction = 0.0f;
-    Color  fillColor       = {0.2f, 0.7f, 0.3f, 0.9f};
-    Color  backgroundColor = {0.15f, 0.15f, 0.20f, 0.8f};
-    Color  textColor       = {1.0f, 1.0f, 1.0f, 1.0f};
-    float  cornerRadius = 2.0f;
-    std::string overlayText;  ///< Optional centred label
-    float  fontSize = 11.0f;
+    float fillFraction    = 0.0f;
+    Color fillColor       = {0.2f, 0.7f, 0.3f, 0.9f};
+    Color backgroundColor = {0.15f, 0.15f, 0.20f, 0.8f};
+    Color textColor       = {1.0f, 1.0f, 1.0f, 1.0f};
+    float cornerRadius    = 2.0f;
+    std::string overlayText; ///< Optional centred label
+    float fontSize = 11.0f;
 };
 
 /// Horizontal slider. Drag the thumb to change `value` within
 /// `[minValue, maxValue]`. Step > 0 snaps; step = 0 is continuous.
 struct SliderData {
-    float minValue = 0.0f;
-    float maxValue = 1.0f;
-    float value    = 0.0f;
-    float step     = 0.0f;        ///< 0 = continuous
+    float minValue   = 0.0f;
+    float maxValue   = 1.0f;
+    float value      = 0.0f;
+    float step       = 0.0f; ///< 0 = continuous
     Color trackColor = {0.20f, 0.20f, 0.25f, 0.9f};
     Color fillColor  = {0.35f, 0.55f, 0.75f, 0.95f};
     Color thumbColor = {0.9f, 0.9f, 0.9f, 1.0f};
     std::function<void(float)> onValueChanged;
-    bool dragging = false;        ///< Managed by UIManager during drag
+    bool dragging = false; ///< Managed by UIManager during drag
 };
 
 /// Icon / sprite widget. `spriteId` is an opaque handle the renderer
@@ -246,9 +245,9 @@ struct SliderData {
 /// sprite path isn't wired yet, so screens can adopt this widget now
 /// and swap in art later without touching callsites.
 struct IconData {
-    uint32_t spriteId = 0;
-    Color    tint     = {1.0f, 1.0f, 1.0f, 1.0f};
-    Color    fallbackColor = {0.5f, 0.5f, 0.5f, 1.0f};
+    uint32_t spriteId   = 0;
+    Color tint          = {1.0f, 1.0f, 1.0f, 1.0f};
+    Color fallbackColor = {0.5f, 0.5f, 0.5f, 1.0f};
     /// Optional click handler — fires on left-release over the icon.
     std::function<void()> onClick;
 };
@@ -257,12 +256,12 @@ struct IconData {
 /// either text or an inline icon, with optional colour overrides.
 struct RichTextSpan {
     enum class Kind : uint8_t { Text, Icon, LineBreak };
-    Kind        kind = Kind::Text;
+    Kind kind = Kind::Text;
     std::string text;
-    uint32_t    iconSpriteId = 0;
-    Color       color  = {1.0f, 1.0f, 1.0f, 1.0f};
-    bool        bold   = false;
-    bool        italic = false;
+    uint32_t iconSpriteId = 0;
+    Color color           = {1.0f, 1.0f, 1.0f, 1.0f};
+    bool bold             = false;
+    bool italic           = false;
 };
 
 /// Multi-segment text widget supporting inline colour, icons, and line
@@ -284,9 +283,9 @@ struct PortraitData {
     uint32_t spriteId = 0;
     std::string title;
     std::vector<std::pair<std::string, std::string>> stats;
-    Color tint = {1.0f, 1.0f, 1.0f, 1.0f};
+    Color tint          = {1.0f, 1.0f, 1.0f, 1.0f};
     Color fallbackColor = {0.30f, 0.35f, 0.45f, 1.0f};
-    Color titleColor = {1.0f, 0.9f, 0.5f, 1.0f};
+    Color titleColor    = {1.0f, 0.9f, 0.5f, 1.0f};
     float titleFontSize = 16.0f;
     float statsFontSize = 11.0f;
 };
@@ -298,7 +297,7 @@ struct PortraitData {
 /// DiplomacyScreen relation list, etc. Renderer lays out spans left-
 /// to-right: accent bar → icon → title/subtitle stack → right value.
 struct ListRowData {
-    uint32_t iconSpriteId = 0;      ///< 0 = skip icon column
+    uint32_t iconSpriteId = 0; ///< 0 = skip icon column
     std::string title;
     std::string subtitle;
     std::string rightValue;
@@ -321,10 +320,10 @@ struct ListRowData {
 /// (#, ##), bullet lists (-), bold (**word**), and link refs ([Text]).
 struct MarkdownData {
     std::string source;
-    Color textColor   = {0.92f, 0.92f, 0.92f, 1.0f};
+    Color textColor    = {0.92f, 0.92f, 0.92f, 1.0f};
     Color headingColor = {1.0f, 0.85f, 0.4f, 1.0f};
     Color linkColor    = {0.5f, 0.75f, 1.0f, 1.0f};
-    float fontSize = 12.0f;
+    float fontSize     = 12.0f;
     /// When set, link clicks are routed here. Argument is the link
     /// text in square brackets (e.g. "Mining" → look up encyclopedia
     /// entry). Empty handler means links render as plain text.
@@ -379,7 +378,7 @@ struct Widget {
 
     /// Layout direction for child arrangement.
     LayoutDirection layoutDirection = LayoutDirection::Vertical;
-    float childSpacing = 4.0f;
+    float childSpacing              = 4.0f;
 
     /// Flex weight for proportional sizing within a flex container.
     /// 0 = use `requestedBounds` intrinsic size. >0 = share of leftover
@@ -423,9 +422,9 @@ struct Widget {
 
     /// Anchor point for root-level widgets. Determines how the widget is
     /// positioned relative to the screen edges on resize.
-    Anchor anchor = Anchor::None;
-    float marginRight  = 0.0f;  ///< Distance from right edge (right-anchored widgets)
-    float marginBottom = 0.0f;  ///< Distance from bottom edge (bottom-anchored widgets)
+    Anchor anchor      = Anchor::None;
+    float marginRight  = 0.0f; ///< Distance from right edge (right-anchored widgets)
+    float marginBottom = 0.0f; ///< Distance from bottom edge (bottom-anchored widgets)
 
     /// Visibility and interaction state.
     bool isVisible = true;
@@ -436,7 +435,7 @@ struct Widget {
     /// user. Drag is gated on Ctrl+Left-Drag so normal clicks still
     /// fire onClick. The UIManager tracks `dragAnchor` during a drag
     /// to preserve cursor offset relative to the widget origin.
-    bool isDraggable = false;
+    bool isDraggable  = false;
     float dragAnchorX = 0.0f;
     float dragAnchorY = 0.0f;
 
@@ -445,9 +444,8 @@ struct Widget {
     std::vector<WidgetId> children;
 
     /// Type-specific payload.
-    std::variant<PanelData, ButtonData, LabelData, ScrollListData,
-                 TabBarData, ProgressBarData, SliderData, IconData,
-                 RichTextData, PortraitData, MarkdownData, ListRowData>
+    std::variant<PanelData, ButtonData, LabelData, ScrollListData, TabBarData, ProgressBarData,
+                 SliderData, IconData, RichTextData, PortraitData, MarkdownData, ListRowData>
         data = PanelData{};
 
     /// Optional rich-tooltip text shown after a hover delay. Empty means
@@ -475,13 +473,13 @@ struct Widget {
     /// Mark the widget as a drag source. Callers populate `dragPayload`
     /// with an opaque uint32 tag (e.g. unit id, good id) — UIManager
     /// ferries it during a drag and hands it to the drop target.
-    bool      canDrag      = false;
-    uint32_t  dragPayload  = 0;
+    bool canDrag         = false;
+    uint32_t dragPayload = 0;
 
     /// True if the widget accepts drops. The runtime drop callback
     /// is on UIManager, not the widget, so callers can swap targets
     /// without rewriting the widget tree.
-    bool      acceptsDrop  = false;
+    bool acceptsDrop = false;
 
     // ------------------------------------------------------------------
     // Pan canvas (right-mouse drag + edge scroll)
@@ -492,20 +490,36 @@ struct Widget {
     /// tech-tree graph, world-strategic overlays, etc. Edge-scroll
     /// (mouse near widget border) is enabled separately by callers via
     /// the per-frame tick.
-    bool      canPan       = false;
-    float     panX         = 0.0f;
-    float     panY         = 0.0f;
+    bool canPan = false;
+    float panX  = 0.0f;
+    float panY  = 0.0f;
+
+    /// Intrinsic size of the pannable content, in the same units as
+    /// `computedBounds`. Set by the caller that builds the canvas (it knows
+    /// the graph extent; the children are absolutely placed so layout cannot
+    /// infer it). Drives pan clamping — 0 means "unclamped".
+    float panContentW = 0.0f;
+    float panContentH = 0.0f;
+
+    /// Take this child OUT of its parent's flow: keep the authored
+    /// `requestedBounds` (relative to the parent's content origin) and
+    /// contribute nothing to the flow cursor, flex pool, or spacing budget.
+    /// Use to pin chrome such as a modal's bottom-right Close button, which
+    /// otherwise gets appended after the content and pushed off the panel.
+    /// A separate flag rather than `anchor == Anchor::None` because None is
+    /// the default for every widget.
+    bool floating = false;
 
     // ------------------------------------------------------------------
     // Multi-select
     // ------------------------------------------------------------------
     /// Mark a widget as part of a multi-select list. UIManager tracks
     /// the selection set and supports Shift-extend / Ctrl-toggle.
-    bool      selectable   = false;
-    bool      isSelected   = false;
+    bool selectable = false;
+    bool isSelected = false;
     /// Sequence index within the parent list — used by Shift-extend
     /// to compute the inclusive range. Auto-assigned in creation order.
-    int32_t   selectIndex  = 0;
+    int32_t selectIndex = 0;
 
     // ------------------------------------------------------------------
     // Resize handles
@@ -513,25 +527,25 @@ struct Widget {
     /// User can grab edges/corners to resize. Pairs with `isDraggable`
     /// for movable + resizable panels. UIManager renders 8 thin handle
     /// rects when this flag is set and the widget is hovered.
-    bool      isResizable  = false;
-    float     minResizeW   = 80.0f;
-    float     minResizeH   = 60.0f;
+    bool isResizable = false;
+    float minResizeW = 80.0f;
+    float minResizeH = 60.0f;
 
     // ------------------------------------------------------------------
     // Animation hooks
     // ------------------------------------------------------------------
     /// Active fade tween: when alphaTarget != alpha, UIManager
     /// interpolates over `alphaTweenSec`. Setter helpers below.
-    float     alpha          = 1.0f;
-    float     alphaTarget    = 1.0f;
-    float     alphaTweenSec  = 0.0f;
-    float     alphaTweenLeft = 0.0f;
+    float alpha          = 1.0f;
+    float alphaTarget    = 1.0f;
+    float alphaTweenSec  = 0.0f;
+    float alphaTweenLeft = 0.0f;
 
     /// Hover scale animation. 1.0 = no scaling. Set `hoverScale > 1.0`
     /// for a subtle pop on hover; UIManager animates `currentScale`
     /// toward 1 + (hoverScale - 1) * isHovered each frame.
-    float     hoverScale     = 1.0f;
-    float     currentScale   = 1.0f;
+    float hoverScale   = 1.0f;
+    float currentScale = 1.0f;
 
     // ------------------------------------------------------------------
     // Flash / mood pulses (#33)
@@ -539,9 +553,9 @@ struct Widget {
     /// Temporary tint applied on top of the widget colour. Decays over
     /// `flashDurationLeft` seconds. Useful for "city under attack"
     /// pulses without rebuilding widget trees.
-    Color     flashColor    = {0.0f, 0.0f, 0.0f, 0.0f};
-    float     flashDurationLeft = 0.0f;
-    float     flashDurationTotal = 0.0f;
+    Color flashColor         = {0.0f, 0.0f, 0.0f, 0.0f};
+    float flashDurationLeft  = 0.0f;
+    float flashDurationTotal = 0.0f;
 
     // ------------------------------------------------------------------
     // Cursor change on hover (#14)
@@ -549,7 +563,7 @@ struct Widget {
     /// When hovered, the application requests this cursor shape. 0 =
     /// default. Values map to GLFW standard cursors (GLFW_HAND_CURSOR
     /// etc.) without including the GLFW header here.
-    int32_t   hoverCursor   = 0;
+    int32_t hoverCursor = 0;
 
     // ------------------------------------------------------------------
     // Networked event source (#32)
@@ -557,7 +571,7 @@ struct Widget {
     /// Origin tag for replicated/authoritative UI events. Local widgets
     /// leave this 0; networked panels fill it with the originating
     /// player id so the dispatcher can validate the source.
-    uint8_t   eventOriginPlayer = 0;
+    uint8_t eventOriginPlayer = 0;
 
     /// Scissor clip: when true, children render clipped to this
     /// widget's bounds via a Vulkan scissor rect. Hard guarantee over
@@ -571,14 +585,14 @@ struct Widget {
     /// (which mutate widgets every frame via bindings) keep redrawing.
     /// Setters that mutate visible state (`setLabelText`, etc.) reset
     /// this to true.
-    bool      isDirty = true;
+    bool isDirty = true;
 
     /// Lazy-list culling hint (#18). When set on a child of a
     /// ScrollList, layout skips bounds computation while the row is
     /// outside the visible window. Set by the list builder when rows
     /// are uniform-height; layout flips it back to false after the
     /// row enters the viewport.
-    bool      cullableRow = false;
+    bool cullableRow = false;
 };
 
 } // namespace aoc::ui

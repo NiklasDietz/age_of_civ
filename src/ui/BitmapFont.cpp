@@ -9,6 +9,7 @@
 
 #include "aoc/ui/BitmapFont.hpp"
 #include "aoc/core/Log.hpp"
+#include "aoc/ui/Theme.hpp"
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
@@ -28,11 +29,11 @@ namespace {
 /// Cached rasterized glyph bitmap.
 struct GlyphBitmap {
     std::vector<uint8_t> pixels;
-    int32_t width  = 0;
-    int32_t height = 0;
+    int32_t width   = 0;
+    int32_t height  = 0;
     int32_t xOffset = 0;
     int32_t yOffset = 0;
-    float   advance = 0.0f;
+    float advance   = 0.0f;
 };
 
 /// Global font state (initialized once).
@@ -48,8 +49,8 @@ struct FontState {
 FontState g_font;
 
 uint32_t makeCacheKey(char ch, float fontSize) {
-    uint32_t codepoint = static_cast<uint32_t>(static_cast<uint8_t>(ch));
-    uint32_t quantizedSize = static_cast<uint32_t>(fontSize * 2.0f);  // 0.5px resolution
+    uint32_t codepoint     = static_cast<uint32_t>(static_cast<uint8_t>(ch));
+    uint32_t quantizedSize = static_cast<uint32_t>(fontSize * 2.0f); // 0.5px resolution
     return (codepoint << 16) | quantizedSize;
 }
 
@@ -65,21 +66,22 @@ const GlyphBitmap& getGlyph(char ch, float fontSize) {
     GlyphBitmap glyph;
     float scale = stbtt_ScaleForPixelHeight(&g_font.fontInfo, fontSize);
 
-    int glyphIndex = stbtt_FindGlyphIndex(&g_font.fontInfo, static_cast<int>(static_cast<uint8_t>(ch)));
+    int glyphIndex =
+        stbtt_FindGlyphIndex(&g_font.fontInfo, static_cast<int>(static_cast<uint8_t>(ch)));
     if (glyphIndex == 0 && ch != ' ') {
         // Unknown character -- use '?' instead
         glyphIndex = stbtt_FindGlyphIndex(&g_font.fontInfo, '?');
     }
 
     int advanceWidth = 0;
-    int leftBearing = 0;
+    int leftBearing  = 0;
     stbtt_GetGlyphHMetrics(&g_font.fontInfo, glyphIndex, &advanceWidth, &leftBearing);
     glyph.advance = static_cast<float>(advanceWidth) * scale;
 
     if (ch == ' ') {
         // Space has no bitmap
-        glyph.width = 0;
-        glyph.height = 0;
+        glyph.width            = 0;
+        glyph.height           = 0;
         g_font.glyphCache[key] = std::move(glyph);
         return g_font.glyphCache[key];
     }
@@ -87,16 +89,16 @@ const GlyphBitmap& getGlyph(char ch, float fontSize) {
     int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
     stbtt_GetGlyphBitmapBox(&g_font.fontInfo, glyphIndex, scale, scale, &x0, &y0, &x1, &y1);
 
-    glyph.width  = x1 - x0;
-    glyph.height = y1 - y0;
+    glyph.width   = x1 - x0;
+    glyph.height  = y1 - y0;
     glyph.xOffset = x0;
     glyph.yOffset = y0;
 
     if (glyph.width > 0 && glyph.height > 0) {
-        glyph.pixels.resize(static_cast<std::size_t>(glyph.width) * static_cast<std::size_t>(glyph.height), 0);
-        stbtt_MakeGlyphBitmap(&g_font.fontInfo, glyph.pixels.data(),
-                               glyph.width, glyph.height, glyph.width,
-                               scale, scale, glyphIndex);
+        glyph.pixels.resize(
+            static_cast<std::size_t>(glyph.width) * static_cast<std::size_t>(glyph.height), 0);
+        stbtt_MakeGlyphBitmap(&g_font.fontInfo, glyph.pixels.data(), glyph.width, glyph.height,
+                              glyph.width, scale, scale, glyphIndex);
     }
 
     g_font.glyphCache[key] = std::move(glyph);
@@ -155,25 +157,26 @@ bool BitmapFont::initialize() {
     return true;
 }
 
-void BitmapFont::drawText(vulkan_app::renderer::Renderer2D& renderer2d,
-                           std::string_view text,
-                           float x, float y,
-                           float fontSize,
-                           Color color,
-                           float pixelScale) {
+void BitmapFont::drawText(vulkan_app::renderer::Renderer2D& renderer2d, std::string_view text,
+                          float x, float y, float fontSize, Color color, float pixelScale) {
     if (!g_font.initialized) {
         return;
     }
 
+    // Global readability scale (UI-scale slider x resolution). Applied here so
+    // every call site scales consistently; measureText applies the identical
+    // factor so layout and hit-boxes stay in agreement.
+    fontSize *= theme().fontScale();
+
     // Rasterize at the screen-pixel font size for crisp glyphs,
     // then scale positions and rect sizes by pixelScale for world-space rendering.
-    float rasterSize = fontSize / pixelScale;  // screen-pixel font size
+    float rasterSize = fontSize / pixelScale; // screen-pixel font size
     if (rasterSize < 4.0f) {
         rasterSize = 4.0f;
     }
 
     float baseline = y + fontSize * 0.75f;
-    float cursorX = x;
+    float cursorX  = x;
 
     for (char ch : text) {
         const GlyphBitmap& glyph = getGlyph(ch, rasterSize);
@@ -185,13 +188,15 @@ void BitmapFont::drawText(vulkan_app::renderer::Renderer2D& renderer2d,
             for (int32_t py = 0; py < glyph.height; ++py) {
                 for (int32_t px = 0; px < glyph.width; ++px) {
                     uint8_t alpha = glyph.pixels[static_cast<std::size_t>(py * glyph.width + px)];
-                    if (alpha > 80) {
+                    // Low cutoff keeps the glyph edge ramp. A high cutoff
+                    // (was 80) threw away stb's antialiasing and made small
+                    // text read as blocky.
+                    if (alpha > 16) {
                         float pixelAlpha = static_cast<float>(alpha) / 255.0f * color.a;
-                        renderer2d.drawFilledRect(
-                            glyphX + static_cast<float>(px) * pixelScale,
-                            glyphY + static_cast<float>(py) * pixelScale,
-                            pixelScale, pixelScale,
-                            color.r, color.g, color.b, pixelAlpha);
+                        renderer2d.drawFilledRect(glyphX + static_cast<float>(px) * pixelScale,
+                                                  glyphY + static_cast<float>(py) * pixelScale,
+                                                  pixelScale, pixelScale, color.r, color.g, color.b,
+                                                  pixelAlpha);
                     }
                 }
             }
@@ -202,6 +207,9 @@ void BitmapFont::drawText(vulkan_app::renderer::Renderer2D& renderer2d,
 }
 
 Rect BitmapFont::measureText(std::string_view text, float fontSize) {
+    // Same factor drawText applies — must stay in lockstep or centring drifts.
+    fontSize *= theme().fontScale();
+
     if (!g_font.initialized) {
         // Fallback estimation
         float advance = fontSize * (CHAR_WIDTH_RATIO + CHAR_SPACING_RATIO);

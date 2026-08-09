@@ -3883,10 +3883,12 @@ void Application::run() {
             const bool rightReleased =
                 this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_RIGHT);
             const float scrollDelta = static_cast<float>(this->m_inputManager.scrollDelta());
+            const bool uiShiftHeld  = this->m_inputManager.isKeyHeld(GLFW_KEY_LEFT_SHIFT) ||
+                                      this->m_inputManager.isKeyHeld(GLFW_KEY_RIGHT_SHIFT);
             this->m_uiConsumedInput = this->m_uiManager.handleInput(
                 static_cast<float>(this->m_inputManager.mouseX()),
                 static_cast<float>(this->m_inputManager.mouseY()), leftPressed, leftReleased,
-                scrollDelta, rightPressed, rightReleased);
+                scrollDelta, rightPressed, rightReleased, uiShiftHeld);
         }
 
         // -- 3D globe orbit input (creator + globe-mode only). Left
