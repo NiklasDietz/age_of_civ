@@ -91,8 +91,8 @@ WidgetId UIManager::createScrollList(WidgetId parent, Rect bounds, ScrollListDat
     // Scrolling deliberately overflows the visible window on Y, so rows that
     // scroll past the edge must be scissored away. A scroll list that does not
     // clip is never what the caller wants. Only takes effect when the caller
-    // supplied a command buffer AND bounds are screen-space; the in-game
-    // world-space modal path leaves m_cmdBuffer logic alone (see render()).
+    // supplied a command buffer (see render()); bounds are screen-space on
+    // every path since the screen-space UI pass landed.
     w.clipChildren = true;
     this->m_widgets[parent].children.push_back(id);
     return id;

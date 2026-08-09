@@ -316,14 +316,11 @@ WidgetId ScreenBase::createScreenFrame(UIManager& ui, const std::string& title, 
                                        float height, float screenW, float screenH) {
     // Dark semi-transparent full-screen overlay as root.
     //
-    // Scissor clip intentionally NOT enabled here: in-game screen
-    // rendering runs through `uiManager.transformBounds` so widget
-    // bounds are world-space, but `pushScissor` expects screen-space
-    // pixels. Pushing world-space bounds to the Vulkan scissor clips
-    // away the whole panel (observed: inner panel + labels visible,
-    // background missing). The layout-level `clampChildren` pass
-    // already prevents overflow; scissor would be belt-and-suspenders
-    // but needs screen-space coords first.
+    // Scissor clip is not set on this root: it spans the whole screen, so there
+    // is nothing to clip against. Child panels that DO overflow set
+    // `clipChildren` themselves (the pannable tech/civic canvases below).
+    // Since the screen-space UI pass landed, `clipChildren` works on every
+    // render path — it is no longer menu-only.
     // Frost-dim full-screen overlay (style guide: SURFACE_FROST_DIM under modals).
     this->m_rootPanel =
         ui.createPanel({0.0f, 0.0f, screenW, screenH}, PanelData{tokens::SURFACE_FROST_DIM, 0.0f});
@@ -872,6 +869,7 @@ void TechScreen::open(UIManager& ui) {
             // clampChildren would shrink them to zero. Keep absolute
             // sizes intact and rely on panning to reach hidden cards.
             lw->clampChildren = false;
+            lw->clipChildren  = true;
         }
     }
 
@@ -1486,6 +1484,7 @@ void GovernmentScreen::open(UIManager& ui) {
                 lw->padding         = {0.0f, 0.0f, 0.0f, 0.0f};
                 lw->canPan          = true;
                 lw->clampChildren   = false;
+                lw->clipChildren    = true;
             }
         }
 
