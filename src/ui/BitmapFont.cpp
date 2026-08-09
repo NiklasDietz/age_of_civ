@@ -30,6 +30,9 @@ namespace {
 
 struct FontState {
     bool initialized = false;
+    /// The atlas is uploaded lazily on the first draw: initialize() runs before
+    /// a Renderer2D exists, and this is the first point one is in hand.
+    bool uploaded = false;
 
     uint32_t atlasWidth  = 0;
     uint32_t atlasHeight = 0;
@@ -179,6 +182,18 @@ void BitmapFont::drawText(vulkan_app::renderer::Renderer2D& renderer2d, std::str
         return;
     }
 
+    if (!g_font.uploaded) {
+        // One-shot: hand the coverage bitmap to the renderer, then drop our
+        // copy -- the GPU owns it from here and nothing samples it CPU-side.
+        g_font.uploaded = renderer2d.setCoverageAtlas(g_font.coverage.data(), g_font.atlasWidth,
+                                                      g_font.atlasHeight);
+        if (!g_font.uploaded) {
+            LOG_ERROR("BitmapFont: coverage atlas upload failed; text will not render");
+            return;
+        }
+        std::vector<uint8_t>().swap(g_font.coverage);
+    }
+
     // Global readability scale (UI-scale slider x resolution). Applied here so
     // every call site scales consistently; measureText applies the identical
     // factor so layout and hit-boxes stay in agreement.
@@ -200,25 +215,18 @@ void BitmapFont::drawText(vulkan_app::renderer::Renderer2D& renderer2d, std::str
             const float glyphX = cursorX + glyph.xOffset * pixelScale;
             const float glyphY = baseline + glyph.yOffset * pixelScale;
 
-            for (int32_t py = 0; py < gh; ++py) {
-                const std::size_t row =
-                    (static_cast<std::size_t>(glyph.y0) + static_cast<std::size_t>(py)) *
-                    g_font.atlasWidth;
-                for (int32_t px = 0; px < gw; ++px) {
-                    const uint8_t alpha = g_font.coverage[row + static_cast<std::size_t>(glyph.x0) +
-                                                          static_cast<std::size_t>(px)];
-                    // Low cutoff keeps the glyph edge ramp. A high cutoff
-                    // (was 80) threw away the antialiasing and made small
-                    // text read as blocky.
-                    if (alpha > 16) {
-                        const float pixelAlpha = static_cast<float>(alpha) / 255.0f * color.a;
-                        renderer2d.drawFilledRect(glyphX + static_cast<float>(px) * pixelScale,
-                                                  glyphY + static_cast<float>(py) * pixelScale,
-                                                  pixelScale, pixelScale, color.r, color.g, color.b,
-                                                  pixelAlpha);
-                    }
-                }
-            }
+            // One instance per glyph. This used to emit one filled rect per
+            // opaque pixel -- ~60x more instances for the same text, and the
+            // reason an 8-direction label outline was once worth deleting on
+            // cost grounds. The shader samples coverage directly, so the edge
+            // ramp survives without the old alpha cutoff.
+            const float atlasW = static_cast<float>(g_font.atlasWidth);
+            const float atlasH = static_cast<float>(g_font.atlasHeight);
+            renderer2d.drawGlyph(
+                glyphX, glyphY, static_cast<float>(gw) * pixelScale,
+                static_cast<float>(gh) * pixelScale, static_cast<float>(glyph.x0) / atlasW,
+                static_cast<float>(glyph.y0) / atlasH, static_cast<float>(glyph.x1) / atlasW,
+                static_cast<float>(glyph.y1) / atlasH, color.r, color.g, color.b, color.a);
         }
 
         cursorX += glyph.xAdvance * pixelScale;
