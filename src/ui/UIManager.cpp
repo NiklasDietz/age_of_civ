@@ -87,6 +87,12 @@ WidgetId UIManager::createScrollList(WidgetId parent, Rect bounds, ScrollListDat
     w.requestedBounds = bounds;
     w.data            = std::move(data);
     w.parent          = parent;
+    // Scrolling deliberately overflows the visible window on Y, so rows that
+    // scroll past the edge must be scissored away. A scroll list that does not
+    // clip is never what the caller wants. Only takes effect when the caller
+    // supplied a command buffer AND bounds are screen-space; the in-game
+    // world-space modal path leaves m_cmdBuffer logic alone (see render()).
+    w.clipChildren = true;
     this->m_widgets[parent].children.push_back(id);
     return id;
 }
@@ -876,10 +882,15 @@ bool UIManager::handleInput(float mouseX, float mouseY, bool mousePressed, bool 
                         break;
                     }
                     if (candidate->canPan) {
-                        // Plain wheel scrolls Y; shift+wheel scrolls X so wide
-                        // graphs (tech tree: 8 era columns) are reachable
-                        // without discovering the drag-to-pan gesture.
-                        if (shiftHeld) {
+                        // Axis choice: shift+wheel always means X. Otherwise
+                        // prefer whichever axis actually overflows, so a wide
+                        // but short canvas scrolls sideways on a plain wheel
+                        // instead of appearing frozen (shift+wheel alone proved
+                        // too obscure to discover). Ties go to Y.
+                        const bool overflowX = candidate->panContentW > candidate->computedBounds.w;
+                        const bool overflowY = candidate->panContentH > candidate->computedBounds.h;
+                        const bool scrollX   = shiftHeld || (overflowX && !overflowY);
+                        if (scrollX) {
                             candidate->panX += scrollDelta * SCROLL_PIXEL_MULTIPLIER;
                         } else {
                             candidate->panY += scrollDelta * SCROLL_PIXEL_MULTIPLIER;
@@ -1868,7 +1879,14 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
     // Push a Vulkan scissor before descending into children when
     // `clipChildren` is set and the caller provided a command buffer.
     // Guarantees geometry outside the panel never hits the swapchain.
-    const bool pushedScissor = w->clipChildren && this->m_cmdBuffer != nullptr;
+    //
+    // Skipped while bounds are world-space (the in-game pass runs through
+    // `transformBounds`): `pushScissor` takes screen-space pixels, so feeding
+    // it world-space bounds clips the entire panel away instead of its
+    // overflow. Menu-path screens are untransformed and do clip. This becomes
+    // unconditional once the screen-space UI pass lands.
+    const bool pushedScissor =
+        w->clipChildren && this->m_cmdBuffer != nullptr && !this->m_boundsInWorldSpace;
     if (pushedScissor) {
         renderer2d.pushScissor(b.x, b.y, b.w, b.h, static_cast<VkCommandBuffer>(this->m_cmdBuffer));
     }
@@ -1892,7 +1910,8 @@ void UIManager::renderWidget(vulkan_app::renderer::Renderer2D& renderer2d, Widge
 }
 
 void UIManager::transformBounds(float cameraX, float cameraY, float invZoom) {
-    this->m_renderScale = invZoom;
+    this->m_renderScale        = invZoom;
+    this->m_boundsInWorldSpace = true;
     for (Widget& w : this->m_widgets) {
         if (w.id == INVALID_WIDGET) {
             continue;
@@ -1905,8 +1924,9 @@ void UIManager::transformBounds(float cameraX, float cameraY, float invZoom) {
 }
 
 void UIManager::untransformBounds(float cameraX, float cameraY, float invZoom) {
-    this->m_renderScale = 1.0f;
-    float zoom          = 1.0f / invZoom;
+    this->m_renderScale        = 1.0f;
+    this->m_boundsInWorldSpace = false;
+    float zoom                 = 1.0f / invZoom;
     for (Widget& w : this->m_widgets) {
         if (w.id == INVALID_WIDGET) {
             continue;

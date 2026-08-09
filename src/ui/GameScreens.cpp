@@ -785,9 +785,9 @@ void TechScreen::open(UIManager& ui) {
     // connector lines can land precisely on card centres. No scroll —
     // 31 techs × max 7 per era fit at 100×56 cards.
     constexpr int ERA_COUNT = 8;
-    constexpr float CARD_W  = 150.0f;
+    constexpr float CARD_W  = 200.0f;
     constexpr float CARD_H  = 118.0f; // fits topRow + cost + eureka + unlocks + donut
-    constexpr float COL_GAP = 64.0f;  // horizontal gap (room for prereq lines)
+    constexpr float COL_GAP = 72.0f;  // horizontal gap (room for prereq lines)
     constexpr float ROW_GAP = 14.0f;
     constexpr float ROW_PAD = 12.0f;
     constexpr float COL_PAD = 16.0f;
@@ -799,13 +799,16 @@ void TechScreen::open(UIManager& ui) {
     // wheel scroll on the canvas.
     const float graphH = ROW_PAD * 2.0f + ROW_H * 16.0f;
 
-    // Wider modal so all 8 eras fit. Height capped to fit the screen;
-    // the graph extends beyond visible bounds and is reachable via pan
-    // / mouse-wheel scroll.
-    const float SCREEN_W = std::min(graphW + 36.0f, this->m_screenW - 40.0f);
-    const float SCREEN_H = std::min(graphH + 110.0f, this->m_screenH - 40.0f);
-    WidgetId innerPanel  = this->createScreenFrame(ui, "Technology", SCREEN_W, SCREEN_H,
-                                                   this->m_screenW, this->m_screenH);
+    // Modal is deliberately capped BELOW the full graph width. Sizing it to
+    // `graphW + 36` (the old behaviour) made the canvas exactly as wide as the
+    // graph, so pan clamping had zero horizontal range and the tree could not
+    // be scrolled sideways at all. Cards are sized for legibility instead, and
+    // the graph is reached by dragging / shift+wheel.
+    constexpr float MODAL_W_CAP = 1400.0f;
+    const float SCREEN_W        = std::min(MODAL_W_CAP, this->m_screenW - 80.0f);
+    const float SCREEN_H        = std::min(graphH + 110.0f, this->m_screenH - 40.0f);
+    WidgetId innerPanel         = this->createScreenFrame(ui, "Technology", SCREEN_W, SCREEN_H,
+                                                          this->m_screenW, this->m_screenH);
 
     const aoc::game::Player* owningPlayer = this->m_gameState->player(this->m_player);
     const aoc::sim::PlayerTechComponent* playerTech =
@@ -831,6 +834,13 @@ void TechScreen::open(UIManager& ui) {
         ui.createLabel(innerPanel, {0.0f, 0.0f, SCREEN_W - 24.0f, 24.0f},
                        LabelData{std::move(currentText), tokens::RES_SCIENCE, 14.0f});
 
+    // The graph is wider than the modal by design, so state the pan gestures
+    // rather than leaving the user to discover them.
+    [[maybe_unused]] WidgetId panHint = ui.createLabel(
+        innerPanel, {0.0f, 0.0f, SCREEN_W - 24.0f, 20.0f},
+        LabelData{"Drag to pan  -  Wheel scrolls sideways, Shift+Wheel forces horizontal",
+                  tokens::TEXT_DISABLED, 11.0f});
+
     // ----- Graph canvas (absolute positioning) -----
     PanelData canvasBg;
     canvasBg.backgroundColor = tokens::SURFACE_PARCHMENT_DIM;
@@ -842,7 +852,8 @@ void TechScreen::open(UIManager& ui) {
     // hidden columns. The canvas's intrinsic content size still drives
     // child layout via panX/panY shifting.
     const float canvasW = std::min(graphW, SCREEN_W - 36.0f);
-    const float canvasH = std::min(graphH, SCREEN_H - 110.0f);
+    // Reserve for title + research banner + pan hint + the pinned Close button.
+    const float canvasH = std::min(graphH, SCREEN_H - 140.0f);
     this->m_techList =
         ui.createPanel(innerPanel, {0.0f, 0.0f, canvasW, canvasH}, std::move(canvasBg));
     {

@@ -278,7 +278,19 @@ private:
     CursorHandles m_cursors;
 
     /// Show "Save before returning to main menu?" dialog.
+    /// Render and present a single frame showing only the loading overlay.
+    /// `startGame()` runs generation synchronously on this thread, so without
+    /// an explicit pump the overlay is built but never drawn and the window
+    /// appears frozen. Also polls events so the compositor does not mark the
+    /// window unresponsive. Safe to call before the main loop starts.
+    void pumpLoadingFrame();
+
     void showReturnToMenuConfirm();
+
+    /// Main-menu Quit confirmation. Exit / Cancel; Exit closes the app.
+    /// In-game exits route through showReturnToMenuConfirm() instead, which
+    /// offers a save and lands on the main menu rather than closing.
+    void showExitConfirm();
 
     /// Tear down all game state and return to the main menu.
     void returnToMainMenu();

@@ -922,6 +922,7 @@ if(AOC_BUILD_TESTS)
     # aoc_lib in the non-headless configuration.
     if(NOT AOC_HEADLESS)
         list(APPEND AOC_SMOKE_TESTS test_ui_layout_floating)
+        list(APPEND AOC_SMOKE_TESTS test_ui_game_setup_layout)
     endif()
 
     # The debug preset builds with ASan/LSan; known suppressions live in

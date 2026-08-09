@@ -20,7 +20,9 @@
 #include "aoc/ui/IScreen.hpp"
 #include "aoc/ui/Widget.hpp"
 
+#include <array>
 #include <atomic>
+#include <cstdint>
 #include <string>
 
 namespace aoc::ui {
@@ -51,16 +53,36 @@ public:
     /// progress bar + status label from the atomic/locked values.
     void tick(UIManager& ui);
 
+    /// Choose which tip is shown first. Pass the map seed so consecutive
+    /// games don't open on the same tip. Call before `open()`.
+    void setTipSeed(uint32_t seed) { this->m_tipIndex = seed; }
+
 private:
-    bool m_isOpen = false;
-    WidgetId m_rootPanel = INVALID_WIDGET;
+    /// Rotating gameplay hints shown under the progress bar. Generation is
+    /// mostly a wait, so it is the natural place to teach mechanics.
+    static const std::array<const char*, 14> TIPS;
+
+    /// "Tip: <current entry>", wrapping `m_tipIndex` into TIPS.
+    [[nodiscard]] std::string currentTipText() const;
+
+    /// Wall-clock seconds each tip stays on screen.
+    static constexpr double TIP_INTERVAL_SEC = 4.0;
+
+    bool m_isOpen          = false;
+    WidgetId m_rootPanel   = INVALID_WIDGET;
     WidgetId m_progressBar = INVALID_WIDGET;
     WidgetId m_statusLabel = INVALID_WIDGET;
     WidgetId m_titleLabel  = INVALID_WIDGET;
+    WidgetId m_tipLabel    = INVALID_WIDGET;
     std::string m_title;
 
     std::atomic<float> m_progress{0.0f};
     std::string m_status;
+
+    /// Index into TIPS; advanced by tick() on a wall-clock timer so tips
+    /// rotate even while a single long generation phase is running.
+    uint32_t m_tipIndex     = 0;
+    double m_lastTipSwapSec = 0.0;
     // Manual mutex avoided — string writes are coarse (per-phase) and
     // the UI-thread read tolerates the occasional torn update.
 };

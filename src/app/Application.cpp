@@ -1057,12 +1057,22 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     this->m_spectatorMaxTurns = config.maxTurns;
 
     // Loading overlay. Rendered on next frame — we synchronously
-    // block through map-gen / spawn below so the screen only appears
-    // if something errors out, but it sets expectation for async work
-    // when that arrives. Progress is coarse (phase-labelled).
+    // block through map-gen / spawn below, so each phase explicitly pumps a
+    // frame via `phase()` — otherwise the overlay is built but never drawn and
+    // the window just freezes until the game appears.
+    this->m_loadingScreen.setTipSeed(config.mapSeed);
     this->m_loadingScreen.open(this->m_uiManager, "Generating World");
-    this->m_loadingScreen.setStatus("Generating terrain...");
-    this->m_loadingScreen.setProgress(0.1f);
+
+    // Set the label + bar, then draw one frame so the user sees it. Progress
+    // fractions are wall-clock guesses, not measured: generation is one opaque
+    // block per phase, so they only need to advance monotonically.
+    auto phase = [this](const char* label, float fraction) {
+        this->m_loadingScreen.setStatus(label);
+        this->m_loadingScreen.setProgress(fraction);
+        this->pumpLoadingFrame();
+    };
+
+    phase("Preparing world parameters...", 0.05f);
 
     // -- Map generation --
     // Custom W/H override the preset when >= 20. Preset buttons sync
@@ -1106,9 +1116,11 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
                  this->m_hexGrid.height());
     } else {
         this->m_useExistingGridOnNextStart = false;
+        phase("Shaping continents and terrain...", 0.15f);
         aoc::map::MapGenerator::generate(mapConfig, this->m_hexGrid);
         LOG_INFO("Map generated (%dx%d)", this->m_hexGrid.width(), this->m_hexGrid.height());
     }
+    phase("Recording world snapshot...", 0.55f);
     this->publishDebugGridSnapshot();
 
     // Set camera world width for cylindrical wrapping + world height
@@ -1183,7 +1195,9 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     // 2026-05-03: LandWithSeas removed; only Continents remains, which has
     // its own geology-driven resource placement inside the generator.
     // The legacy random-resource fallback is no longer reached.
+    phase("Establishing economy and trade...", 0.68f);
     this->m_economy.initialize();
+    phase("Drawing the fog of war...", 0.76f);
     this->m_fogOfWar.initialize(this->m_hexGrid.tileCount(), MAX_PLAYERS);
     this->m_diplomacy.initialize(config.playerCount);
 
@@ -1198,6 +1212,7 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
     LOG_INFO("GameState initialized for %u players", static_cast<unsigned>(config.playerCount));
 
     // Spawn human player (always slot 0)
+    phase("Settling the first peoples...", 0.86f);
     this->spawnStartingEntities(config.players[0].civId);
 
     // Spawn AI players (pass difficulty setting)
@@ -1291,14 +1306,18 @@ void Application::startGame(const aoc::ui::GameSetupConfig& config) {
         const float initH                              = static_cast<float>(initFbSize.second);
         this->m_uiManager.setScreenSize(initW, initH);
     }
+    phase("Building the interface...", 0.95f);
     this->buildHUD();
 
     // Camera was already centered on the settler by spawnStartingEntities().
     this->m_appState = AppState::InGame;
 
-    // Tear down the loading overlay now that everything's set up.
+    // Tear down the loading overlay now that everything's set up. Pump one
+    // last frame at 100% so the bar visibly completes instead of the overlay
+    // vanishing mid-fill.
     this->m_loadingScreen.setProgress(1.0f);
     this->m_loadingScreen.setStatus("Done");
+    this->pumpLoadingFrame();
     this->m_loadingScreen.close(this->m_uiManager);
 
     LOG_INFO("Game started (map type=%d, size=%d, players=%u)", static_cast<int>(config.mapType),
@@ -3237,9 +3256,16 @@ void Application::run() {
             const bool leftReleased =
                 this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_LEFT);
             const float scrollDelta = static_cast<float>(this->m_inputManager.scrollDelta());
+            const bool menuRightPressed =
+                this->m_inputManager.isMouseButtonPressed(GLFW_MOUSE_BUTTON_RIGHT);
+            const bool menuRightReleased =
+                this->m_inputManager.isMouseButtonReleased(GLFW_MOUSE_BUTTON_RIGHT);
+            const bool menuShiftHeld = this->m_inputManager.isKeyHeld(GLFW_KEY_LEFT_SHIFT) ||
+                                       this->m_inputManager.isKeyHeld(GLFW_KEY_RIGHT_SHIFT);
             this->m_uiManager.handleInput(static_cast<float>(this->m_inputManager.mouseX()),
                                           static_cast<float>(this->m_inputManager.mouseY()),
-                                          leftPressed, leftReleased, scrollDelta);
+                                          leftPressed, leftReleased, scrollDelta, menuRightPressed,
+                                          menuRightReleased, menuShiftHeld);
 
             // Update layout on resize
             this->m_mainMenu.updateLayout(this->m_uiManager, static_cast<float>(fbWidth),
@@ -3684,12 +3710,18 @@ void Application::run() {
                         }
                     },
                     [this]() {
+                        // Leaving a session loses unsaved progress, so route
+                        // through the Save / Don't Save / Cancel dialog rather
+                        // than tearing the game down immediately.
                         this->m_pauseMenu.destroy(this->m_uiManager);
-                        this->returnToMainMenu();
+                        this->showReturnToMenuConfirm();
                     },
                     [this]() {
+                        // "Quit Game" also lands on the main menu (not app
+                        // exit) so a misclick can never discard a session
+                        // outright. Use the main menu's Quit to exit.
                         this->m_pauseMenu.destroy(this->m_uiManager);
-                        glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE);
+                        this->showReturnToMenuConfirm();
                     });
             }
         }
@@ -4358,6 +4390,44 @@ void Application::run() {
     this->m_graphicsDevice->waitIdle();
 }
 
+void Application::pumpLoadingFrame() {
+    if (this->m_renderPipeline == nullptr || this->m_renderer2d == nullptr) {
+        return;
+    }
+    glfwPollEvents();
+
+    const std::pair<uint32_t, uint32_t> fb = this->m_window.framebufferSize();
+    if (fb.first == 0 || fb.second == 0) {
+        return; // Minimised: nothing to present.
+    }
+
+    vulkan_app::RenderPipeline::FrameContext frame = this->m_renderPipeline->beginFrame();
+    if (!frame) {
+        return; // Dropped frame during generation is not fatal.
+    }
+    this->m_renderer2d->setExtent(frame.extent);
+    this->m_renderPipeline->beginRenderPass(frame);
+
+    // Screen-space pass: the overlay is authored in pixels, so no camera
+    // transform (unlike the in-game path, which goes through transformBounds).
+    this->m_renderer2d->resetCamera();
+    this->m_renderer2d->setZoom(1.0f);
+    this->m_renderer2d->beginFrame(frame.frameIndex);
+    this->m_renderer2d->begin();
+
+    this->m_uiManager.setScreenSize(static_cast<float>(frame.extent.width),
+                                    static_cast<float>(frame.extent.height));
+    this->m_loadingScreen.tick(this->m_uiManager);
+    this->m_uiManager.layout();
+    this->m_uiManager.setRenderCommandBuffer(static_cast<void*>(frame.commandBuffer));
+    this->m_uiManager.render(*this->m_renderer2d);
+    this->m_uiManager.setRenderCommandBuffer(nullptr);
+
+    this->m_renderer2d->end(frame.commandBuffer);
+    this->m_renderPipeline->endRenderPass(frame);
+    this->m_renderPipeline->endFrame(frame);
+}
+
 void Application::showReturnToMenuConfirm() {
     if (this->m_confirmDialog != aoc::ui::INVALID_WIDGET) {
         return; // Already showing
@@ -4368,14 +4438,15 @@ void Application::showReturnToMenuConfirm() {
     float screenH                                     = static_cast<float>(confirmFbSize.second);
 
     // Dark overlay + centered dialog
-    this->m_confirmDialog = this->m_uiManager.createPanel(
-        {0.0f, 0.0f, screenW, screenH}, aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.5f}, 0.0f});
+    this->m_confirmDialog =
+        this->m_uiManager.createPanel({0.0f, 0.0f, screenW, screenH},
+                                      aoc::ui::PanelData{aoc::ui::tokens::SURFACE_FROST_DIM, 0.0f});
 
     constexpr float DLG_W      = 340.0f;
     constexpr float DLG_H      = 160.0f;
     aoc::ui::WidgetId dlgPanel = this->m_uiManager.createPanel(
         this->m_confirmDialog, {(screenW - DLG_W) * 0.5f, (screenH - DLG_H) * 0.5f, DLG_W, DLG_H},
-        aoc::ui::PanelData{{0.10f, 0.10f, 0.14f, 0.95f}, 6.0f});
+        aoc::ui::PanelData{aoc::ui::tokens::SURFACE_PARCHMENT, aoc::ui::tokens::CORNER_PANEL});
     {
         aoc::ui::Widget* dp = this->m_uiManager.getWidget(dlgPanel);
         dp->padding         = {15.0f, 15.0f, 15.0f, 15.0f};
@@ -4385,7 +4456,7 @@ void Application::showReturnToMenuConfirm() {
     // Question text
     [[maybe_unused]] aoc::ui::WidgetId questionLabel = this->m_uiManager.createLabel(
         dlgPanel, {0.0f, 0.0f, 310.0f, 20.0f},
-        aoc::ui::LabelData{"Save before returning to menu?", {1.0f, 0.9f, 0.6f, 1.0f}, 15.0f});
+        aoc::ui::LabelData{"Save before returning to menu?", aoc::ui::tokens::TEXT_HEADER, 15.0f});
 
     // Button row
     aoc::ui::WidgetId btnRow = this->m_uiManager.createPanel(
@@ -4414,7 +4485,7 @@ void Application::showReturnToMenuConfirm() {
     };
 
     // "Save & Exit" button
-    makeDlgBtn(btnRow, "Save", {0.15f, 0.40f, 0.15f, 0.9f}, [this]() {
+    makeDlgBtn(btnRow, "Save", aoc::ui::tokens::STATE_SUCCESS, [this]() {
         [[maybe_unused]] ErrorCode saveResult = aoc::save::saveGame(
             "quicksave.aoc", this->m_gameState, this->m_hexGrid, this->m_turnManager,
             this->m_economy, this->m_diplomacy, this->m_fogOfWar, this->m_gameRng);
@@ -4425,14 +4496,74 @@ void Application::showReturnToMenuConfirm() {
     });
 
     // "Don't Save" button
-    makeDlgBtn(btnRow, "Don't Save", {0.50f, 0.20f, 0.20f, 0.9f}, [this]() {
+    makeDlgBtn(btnRow, "Don't Save", aoc::ui::tokens::STATE_DANGER, [this]() {
         this->m_uiManager.removeWidget(this->m_confirmDialog);
         this->m_confirmDialog = aoc::ui::INVALID_WIDGET;
         this->returnToMainMenu();
     });
 
     // "Cancel" button
-    makeDlgBtn(btnRow, "Cancel", {0.25f, 0.25f, 0.30f, 0.9f}, [this]() {
+    makeDlgBtn(btnRow, "Cancel", aoc::ui::tokens::SURFACE_MARBLE, [this]() {
+        this->m_uiManager.removeWidget(this->m_confirmDialog);
+        this->m_confirmDialog = aoc::ui::INVALID_WIDGET;
+    });
+}
+
+void Application::showExitConfirm() {
+    if (this->m_confirmDialog != aoc::ui::INVALID_WIDGET) {
+        return; // Already showing
+    }
+
+    const std::pair<uint32_t, uint32_t> exitFbSize = this->m_window.framebufferSize();
+    const float screenW                            = static_cast<float>(exitFbSize.first);
+    const float screenH                            = static_cast<float>(exitFbSize.second);
+
+    this->m_confirmDialog =
+        this->m_uiManager.createPanel({0.0f, 0.0f, screenW, screenH},
+                                      aoc::ui::PanelData{aoc::ui::tokens::SURFACE_FROST_DIM, 0.0f});
+
+    constexpr float DLG_W      = 340.0f;
+    constexpr float DLG_H      = 150.0f;
+    aoc::ui::WidgetId dlgPanel = this->m_uiManager.createPanel(
+        this->m_confirmDialog, {(screenW - DLG_W) * 0.5f, (screenH - DLG_H) * 0.5f, DLG_W, DLG_H},
+        aoc::ui::PanelData{aoc::ui::tokens::SURFACE_PARCHMENT, aoc::ui::tokens::CORNER_PANEL});
+    {
+        aoc::ui::Widget* dp = this->m_uiManager.getWidget(dlgPanel);
+        dp->padding         = {15.0f, 15.0f, 15.0f, 15.0f};
+        dp->childSpacing    = 12.0f;
+    }
+
+    [[maybe_unused]] aoc::ui::WidgetId questionLabel = this->m_uiManager.createLabel(
+        dlgPanel, {0.0f, 0.0f, 310.0f, 24.0f},
+        aoc::ui::LabelData{"Exit Age of Civilization?", aoc::ui::tokens::TEXT_HEADER, 15.0f});
+
+    aoc::ui::WidgetId btnRow = this->m_uiManager.createPanel(
+        dlgPanel, {0.0f, 0.0f, 310.0f, 34.0f}, aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    {
+        aoc::ui::Widget* row = this->m_uiManager.getWidget(btnRow);
+        row->layoutDirection = aoc::ui::LayoutDirection::Horizontal;
+        row->childSpacing    = 10.0f;
+    }
+
+    // auto required: lambda type is unnameable
+    auto makeExitBtn = [this](aoc::ui::WidgetId parent, const std::string& label,
+                              aoc::ui::Color normalColor, std::function<void()> onClick) {
+        aoc::ui::ButtonData btn;
+        btn.label        = label;
+        btn.fontSize     = 13.0f;
+        btn.normalColor  = normalColor;
+        btn.hoverColor   = {normalColor.r + 0.1f, normalColor.g + 0.1f, normalColor.b + 0.1f, 1.0f};
+        btn.pressedColor = {normalColor.r - 0.05f, normalColor.g - 0.05f, normalColor.b - 0.05f,
+                            1.0f};
+        btn.labelColor   = aoc::ui::tokens::TEXT_INK;
+        btn.cornerRadius = aoc::ui::tokens::CORNER_BUTTON;
+        btn.onClick      = std::move(onClick);
+        return this->m_uiManager.createButton(parent, {0.0f, 0.0f, 145.0f, 34.0f}, std::move(btn));
+    };
+
+    makeExitBtn(btnRow, "Exit", aoc::ui::tokens::STATE_DANGER,
+                [this]() { glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE); });
+    makeExitBtn(btnRow, "Cancel", aoc::ui::tokens::SURFACE_MARBLE, [this]() {
         this->m_uiManager.removeWidget(this->m_confirmDialog);
         this->m_confirmDialog = aoc::ui::INVALID_WIDGET;
     });
@@ -4539,7 +4670,7 @@ void Application::buildMainMenu(float screenW, float screenH) {
                     this->buildMainMenu(screenW, screenH);
                 });
         },
-        [this]() { glfwSetWindowShouldClose(this->m_window.handle(), GLFW_TRUE); },
+        [this]() { this->showExitConfirm(); },
         [this, screenW, screenH]() {
             if (!this->m_settingsMenu.isBuilt()) {
                 this->m_settingsMenu.build(this->m_uiManager, screenW, screenH, [this]() {

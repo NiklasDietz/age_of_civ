@@ -164,6 +164,12 @@ public:
     /// debugging. One widget per line, indented by depth.
     [[nodiscard]] std::string dumpTreeJson() const;
 
+    /// Read-only view of the whole widget pool, for inspection and layout
+    /// tests. Exposes no more than `dumpTreeJson()` already does, without
+    /// making callers parse it. Entries with `id == INVALID_WIDGET` are free
+    /// slots and must be skipped.
+    [[nodiscard]] const std::vector<Widget>& widgets() const { return this->m_widgets; }
+
     // ========================================================================
     // Frame timing + dev tooling
     // ========================================================================
@@ -429,6 +435,11 @@ private:
     /// Scale factor applied to font sizes and corner radii during rendering.
     /// Set by transformBounds() to compensate for camera zoom.
     float m_renderScale = 1.0f;
+
+    /// True between transformBounds() and untransformBounds(), i.e. while
+    /// computedBounds hold world-space coordinates for the in-game pass.
+    /// Suppresses scissor pushes, which require screen-space pixels.
+    bool m_boundsInWorldSpace = false;
 };
 
 } // namespace aoc::ui

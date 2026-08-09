@@ -363,35 +363,31 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
     // Centered content panel.  Height clamped to 90% of screen so on small
     // displays the panel doesn't spill offscreen; a ScrollList inside takes
     // over when the content exceeds the visible window (e.g. 8 player rows).
-    constexpr float PANEL_W = 550.0f;
-    const float PANEL_H     = std::min(620.0f, screenH * 0.92f);
-    const float panelX      = (screenW - PANEL_W) * 0.5f;
-    const float panelY      = (screenH - PANEL_H) * 0.5f;
+    // Fill most of the screen rather than a narrow 550px column. The old
+    // width forced ~20 rows into one stack, which is the only reason this
+    // screen needed scrolling at all; two columns fit everything at once.
+    constexpr float PANEL_PAD   = 20.0f;
+    constexpr float COL_GAP     = 24.0f;
+    constexpr float PANEL_W_CAP = 1500.0f;
+    constexpr float PANEL_H_CAP = 1000.0f;
+    const float PANEL_W         = std::min(PANEL_W_CAP, screenW - 80.0f);
+    const float PANEL_H         = std::min(PANEL_H_CAP, screenH - 80.0f);
+    const float panelX          = (screenW - PANEL_W) * 0.5f;
+    const float panelY          = (screenH - PANEL_H) * 0.5f;
 
     WidgetId outerPanel = ui.createPanel(this->m_rootPanel, {panelX, panelY, PANEL_W, PANEL_H},
                                          PanelData{PANEL_BG, 8.0f});
     {
         Widget* cp = ui.getWidget(outerPanel);
         assert(cp != nullptr);
-        cp->padding      = {20.0f, 20.0f, 20.0f, 20.0f};
+        cp->padding      = {PANEL_PAD, PANEL_PAD, PANEL_PAD, PANEL_PAD};
         cp->childSpacing = 6.0f;
     }
 
-    // ScrollList wraps the actual content so many-player configs stay
-    // reachable by scroll-wheel when they exceed the panel's visible height.
-    WidgetId contentPanel =
-        ui.createScrollList(outerPanel, {0.0f, 0.0f, PANEL_W - 40.0f, PANEL_H - 40.0f},
-                            ScrollListData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f, 0.0f});
-    {
-        Widget* cp = ui.getWidget(contentPanel);
-        assert(cp != nullptr);
-        cp->padding      = {0.0f, 0.0f, 0.0f, 0.0f};
-        cp->childSpacing = 6.0f;
-    }
+    const float bodyW  = PANEL_W - PANEL_PAD * 2.0f;
+    const float innerW = (bodyW - COL_GAP) * 0.5f;
 
-    const float innerW = PANEL_W - 40.0f;
-
-    // Title
+    // Title spans the full width above both columns.
     {
         LabelData ld;
         ld.text         = "Game Setup";
@@ -399,7 +395,43 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         ld.fontSize     = 22.0f;
         ld.outlineColor = aoc::ui::tokens::SURFACE_INK;
         [[maybe_unused]] WidgetId titleLabel =
-            ui.createLabel(contentPanel, {0.0f, 0.0f, innerW, 30.0f}, std::move(ld));
+            ui.createLabel(outerPanel, {0.0f, 0.0f, bodyW, 30.0f}, std::move(ld));
+    }
+
+    // Two-column body. `flex = 1` on each column makes the layout pass split
+    // the row evenly (see UIManager flex pass), so the columns track the panel
+    // width instead of a hardcoded constant. Each stays a ScrollList purely as
+    // a small-viewport fallback — at normal sizes the content fits and no
+    // scrollbar engages. createScrollList sets clipChildren, so if it ever
+    // does scroll the rows clip at the column edge instead of bleeding out.
+    WidgetId bodyRow = ui.createPanel(outerPanel, {0.0f, 0.0f, bodyW, 0.0f},
+                                      PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
+    {
+        Widget* row = ui.getWidget(bodyRow);
+        assert(row != nullptr);
+        row->layoutDirection = LayoutDirection::Horizontal;
+        row->childSpacing    = COL_GAP;
+        row->flex            = 1.0f; // take the height left after title + footer
+    }
+
+    WidgetId contentPanel = ui.createScrollList(
+        bodyRow, {0.0f, 0.0f, innerW, 0.0f}, ScrollListData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f, 0.0f});
+    {
+        Widget* cp = ui.getWidget(contentPanel);
+        assert(cp != nullptr);
+        cp->padding      = {0.0f, 0.0f, 0.0f, 0.0f};
+        cp->childSpacing = 6.0f;
+        cp->flex         = 1.0f;
+    }
+
+    WidgetId rightCol = ui.createScrollList(bodyRow, {0.0f, 0.0f, innerW, 0.0f},
+                                            ScrollListData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f, 0.0f});
+    {
+        Widget* cp = ui.getWidget(rightCol);
+        assert(cp != nullptr);
+        cp->padding      = {0.0f, 0.0f, 0.0f, 0.0f};
+        cp->childSpacing = 6.0f;
+        cp->flex         = 1.0f;
     }
 
     // ---- Map Type section ----
@@ -847,10 +879,10 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
 
     // ---- Players section ----
     [[maybe_unused]] WidgetId playersSectionLabel = ui.createLabel(
-        contentPanel, {0.0f, 0.0f, innerW, 24.0f}, LabelData{"Players:", SECTION_TEXT, 14.0f});
+        rightCol, {0.0f, 0.0f, innerW, 24.0f}, LabelData{"Players:", SECTION_TEXT, 14.0f});
 
     // Player count row: "Players: [N]  [-] [+]"
-    WidgetId playerCountRow = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 28.0f},
+    WidgetId playerCountRow = ui.createPanel(rightCol, {0.0f, 0.0f, innerW, 28.0f},
                                              PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
     {
         Widget* row = ui.getWidget(playerCountRow);
@@ -923,7 +955,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
     // m_playerRows / m_civLabels / m_typeLabels and the modal froze
     // ("grey window"). Refresh now toggles isVisible across all 20.
     for (uint8_t slot = 0; slot < 20; ++slot) {
-        WidgetId slotRow = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, SLOT_ROW_H},
+        WidgetId slotRow = ui.createPanel(rightCol, {0.0f, 0.0f, innerW, SLOT_ROW_H},
                                           PanelData{{0.08f, 0.08f, 0.12f, 0.75f}, 4.0f});
         {
             Widget* row = ui.getWidget(slotRow);
@@ -1013,7 +1045,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             this->refresh(ui);
         };
         this->m_btnSequential =
-            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 28.0f}, std::move(btn));
+            ui.createButton(rightCol, {0.0f, 0.0f, innerW, 28.0f}, std::move(btn));
     }
 
     // ---- AI Difficulty toggle ----
@@ -1048,11 +1080,11 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             this->refresh(ui);
         };
         this->m_btnDifficulty =
-            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 28.0f}, std::move(btn));
+            ui.createButton(rightCol, {0.0f, 0.0f, innerW, 28.0f}, std::move(btn));
     }
 
     // Spacer
-    [[maybe_unused]] WidgetId spacer = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 8.0f},
+    [[maybe_unused]] WidgetId spacer = ui.createPanel(outerPanel, {0.0f, 0.0f, bodyW, 8.0f},
                                                       PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
 
     // ---- Start Game button ----
@@ -1072,7 +1104,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
             }
         };
         [[maybe_unused]] WidgetId startBtn =
-            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 40.0f}, std::move(btn));
+            ui.createButton(outerPanel, {0.0f, 0.0f, bodyW, 40.0f}, std::move(btn));
     }
 
     // ---- Back button ----
@@ -1087,7 +1119,7 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         btn.cornerRadius = 4.0f;
         btn.onClick      = std::move(onBack);
         [[maybe_unused]] WidgetId backBtn =
-            ui.createButton(contentPanel, {0.0f, 0.0f, innerW, 34.0f}, std::move(btn));
+            ui.createButton(outerPanel, {0.0f, 0.0f, bodyW, 34.0f}, std::move(btn));
     }
 
     this->updateMapSizeButtons(ui);
