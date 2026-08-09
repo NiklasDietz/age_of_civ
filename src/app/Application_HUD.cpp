@@ -105,8 +105,19 @@ void Application::buildHUD() {
     // pair so the HUD reads at-a-glance instead of as one wall of text.
     // The numeric labels are stored individually so updateHUD can
     // refresh them without rebuilding any widgets.
+    // Chip dimensions: the yields are the most-read numbers in the HUD and
+    // were previously rendered at 11 px in a 72x18 chip, which scanned as
+    // decoration rather than data. The top bar's inner height is 24 px
+    // (32 minus 4+4 padding), so 22 is the most a chip can take.
+    constexpr float CHIP_W        = 92.0f;
+    constexpr float CHIP_H        = 22.0f;
+    constexpr float CHIP_ICON     = 18.0f;
+    constexpr float CHIP_VALUE_W  = 64.0f;
+    constexpr float CHIP_FONT     = 13.0f;
+    constexpr float YIELD_STRIP_W = 400.0f; ///< 4 chips + spacing + padding
+
     this->m_yieldStrip =
-        this->m_uiManager.createPanel(this->m_topBar, {0.0f, 0.0f, 320.0f, 22.0f},
+        this->m_uiManager.createPanel(this->m_topBar, {0.0f, 0.0f, YIELD_STRIP_W, CHIP_H},
                                       aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
     {
         aoc::ui::Widget* ys = this->m_uiManager.getWidget(this->m_yieldStrip);
@@ -131,7 +142,7 @@ void Application::buildHUD() {
         }};
         for (const YieldChip& chip : chips) {
             aoc::ui::WidgetId chipPanel =
-                this->m_uiManager.createPanel(this->m_yieldStrip, {0.0f, 0.0f, 72.0f, 18.0f},
+                this->m_uiManager.createPanel(this->m_yieldStrip, {0.0f, 0.0f, CHIP_W, CHIP_H},
                                               aoc::ui::PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
             {
                 aoc::ui::Widget* cp = this->m_uiManager.getWidget(chipPanel);
@@ -143,10 +154,11 @@ void Application::buildHUD() {
             aoc::ui::IconData icon;
             icon.spriteId      = atlas.id(chip.iconKey);
             icon.fallbackColor = chip.color;
-            (void)this->m_uiManager.createIcon(chipPanel, {0.0f, 0.0f, 14.0f, 14.0f},
+            (void)this->m_uiManager.createIcon(chipPanel, {0.0f, 0.0f, CHIP_ICON, CHIP_ICON},
                                                std::move(icon));
-            *chip.labelOut = this->m_uiManager.createLabel(
-                chipPanel, {0.0f, 0.0f, 52.0f, 16.0f}, aoc::ui::LabelData{"0", chip.color, 11.0f});
+            *chip.labelOut =
+                this->m_uiManager.createLabel(chipPanel, {0.0f, 0.0f, CHIP_VALUE_W, CHIP_H - 2.0f},
+                                              aoc::ui::LabelData{"0", chip.color, CHIP_FONT});
         }
     }
     // Stockpile goods strip kept as a single auto-text label (variable

@@ -11,6 +11,7 @@
 #include "aoc/map/FogOfWar.hpp"
 #include "aoc/map/Terrain.hpp"
 #include "aoc/core/Log.hpp"
+#include "aoc/ui/StyleTokens.hpp"
 
 #include <renderer/Renderer2D.hpp>
 
@@ -51,8 +52,11 @@ Minimap::Rect Minimap::computeRect(const aoc::map::HexGrid& grid, uint32_t scree
     Rect r;
     r.x = MARGIN;
     // bottomReservedPx pushes minimap UP so it doesn't overlap a tall
-    // bottom-anchored panel (creator mode has two stacked panels).
-    r.y = static_cast<float>(screenHeight) - h - bottomReservedPx;
+    // bottom-anchored panel (creator mode has two stacked panels). MARGIN is
+    // applied here too: without it the minimap sat flush against the screen
+    // bottom while keeping a 10 px gap on the left, which read as the map
+    // bleeding off the edge.
+    r.y = static_cast<float>(screenHeight) - h - bottomReservedPx - MARGIN;
     r.w = w;
     r.h = h;
     return r;
@@ -63,9 +67,22 @@ void Minimap::draw(vulkan_app::renderer::Renderer2D& renderer2d, const aoc::map:
                    float mapX, float mapY, float mapW, float mapH, uint32_t screenWidth,
                    uint32_t screenHeight, float hexSize, bool platesOverlay,
                    int32_t overlayModeRaw) const {
-    // Background
-    renderer2d.drawFilledRect(mapX - 2.0f, mapY - 2.0f, mapW + 4.0f, mapH + 4.0f, 0.02f, 0.02f,
-                              0.05f, 0.9f);
+    // Inset backing panel, then a bronze frame around it. The frame is what
+    // separates the minimap from the world behind it -- without one the tile
+    // dots read as part of the map rather than a distinct HUD element.
+    constexpr float FRAME_PAD   = 3.0f;
+    constexpr float FRAME_WIDTH = 2.0f;
+    const float frameX          = mapX - FRAME_PAD;
+    const float frameY          = mapY - FRAME_PAD;
+    const float frameW          = mapW + FRAME_PAD * 2.0f;
+    const float frameH          = mapH + FRAME_PAD * 2.0f;
+
+    renderer2d.drawFilledRect(frameX, frameY, frameW, frameH, aoc::ui::tokens::SURFACE_INK.r,
+                              aoc::ui::tokens::SURFACE_INK.g, aoc::ui::tokens::SURFACE_INK.b,
+                              0.92f);
+    renderer2d.drawRect(frameX, frameY, frameW, frameH, aoc::ui::tokens::BRONZE_BASE.r,
+                        aoc::ui::tokens::BRONZE_BASE.g, aoc::ui::tokens::BRONZE_BASE.b, 1.0f,
+                        FRAME_WIDTH);
 
     const int32_t gridWidth  = grid.width();
     const int32_t gridHeight = grid.height();
