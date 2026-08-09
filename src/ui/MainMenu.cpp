@@ -588,7 +588,8 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         contentPanel, {0.0f, 0.0f, innerW, 24.0f}, LabelData{"Custom Size:", SECTION_TEXT, 14.0f});
 
     auto buildSpinnerRow = [this, &ui, innerW, contentPanel](const char* label, int32_t* target,
-                                                             int32_t minVal, WidgetId* labelOut) {
+                                                             int32_t minVal, int32_t maxVal,
+                                                             WidgetId* labelOut) {
         WidgetId row = ui.createPanel(contentPanel, {0.0f, 0.0f, innerW, 32.0f},
                                       PanelData{{0.0f, 0.0f, 0.0f, 0.0f}, 0.0f});
         Widget* r    = ui.getWidget(row);
@@ -629,14 +630,26 @@ void GameSetupScreen::build(UIManager& ui, float screenW, float screenH,
         plus.cornerRadius   = 3.0f;
         plus.repeatDelaySec = 0.35f;
         plus.repeatRateHz   = 15.0f;
-        plus.onClick        = [this, &ui, target]() {
-            ++(*target);
-            this->refresh(ui);
+        plus.onClick        = [this, &ui, target, maxVal]() {
+            if (*target < maxVal) {
+                ++(*target);
+                this->refresh(ui);
+            }
         };
         (void)ui.createButton(row, {0.0f, 0.0f, 28.0f, 28.0f}, std::move(plus));
     };
-    buildSpinnerRow("Width:", &this->m_config.customWidth, 20, &this->m_widthLabel);
-    buildSpinnerRow("Height:", &this->m_config.customHeight, 20, &this->m_heightLabel);
+    // Upper bounds exist so the 15 Hz key-repeat cannot drive worldgen into an
+    // arbitrarily large grid allocation; the buttons previously clamped only on
+    // the way down. Generous relative to real use -- the largest preset (Huge)
+    // is 280x180 and the custom default is 400x200, so this allows ~6x the
+    // default tile count.
+    constexpr int32_t MAP_DIM_MIN    = 20;
+    constexpr int32_t MAP_WIDTH_MAX  = 1000;
+    constexpr int32_t MAP_HEIGHT_MAX = 500;
+    buildSpinnerRow("Width:", &this->m_config.customWidth, MAP_DIM_MIN, MAP_WIDTH_MAX,
+                    &this->m_widthLabel);
+    buildSpinnerRow("Height:", &this->m_config.customHeight, MAP_DIM_MIN, MAP_HEIGHT_MAX,
+                    &this->m_heightLabel);
 
     // ---- Turn Count section ----
     [[maybe_unused]] WidgetId turnsLabel = ui.createLabel(
