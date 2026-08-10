@@ -407,12 +407,13 @@ def sobel_orientation_bins(cells, land, width, height, wrap=True, metric=None):
     }
 
 
-def component_pca_axis_deg(comp_cells):
-    """Principal-axis angle (deg mod 180) and eigenvalue ratio of a
-    component's cell coordinates; odd rows shifted +0.5 col to undo the
-    offset stagger. Caller must pass seam-unwrapped coordinates."""
-    pts = [(c + (0.5 if r & 1 else 0.0), r * 0.866) for c, r in comp_cells]
+def _pca_2d(pts):
+    """Principal-axis angle (deg mod 180) and EIGENVALUE (variance) ratio of a
+    2D point cloud. Note this is the ratio of variances, i.e. the SQUARE of
+    the axis ratio: an 80x2 ribbon reads ~1600, not ~40."""
     n = len(pts)
+    if n == 0:
+        return 0.0, float("inf")
     mx = sum(p[0] for p in pts) / n
     my = sum(p[1] for p in pts) / n
     sxx = sum((p[0] - mx) ** 2 for p in pts) / n
@@ -425,6 +426,89 @@ def component_pca_axis_deg(comp_cells):
     angle = math.degrees(0.5 * math.atan2(2.0 * sxy, sxx - syy)) % 180.0
     ratio = (l1 / l2) if l2 > 1e-9 else float("inf")
     return angle, ratio
+
+
+def component_pca_axis_deg(comp_cells):
+    """Principal-axis angle (deg mod 180) and eigenvalue ratio of a
+    component's cell coordinates; odd rows shifted +0.5 col to undo the
+    offset stagger. Caller must pass seam-unwrapped coordinates.
+
+    GRID-INDEX SPACE. Under a non-equal-aspect projection this measures the
+    sampling grid as much as the shape -- see component_pca_sphere_axis_ratio,
+    which is the projection-independent answer. Kept because the projected
+    shape is what the player actually sees on the map.
+    """
+    return _pca_2d([(c + (0.5 if r & 1 else 0.0), r * 0.866)
+                    for c, r in comp_cells])
+
+
+def _latlon_to_vec(lat_deg, lon_deg):
+    la, lo = math.radians(lat_deg), math.radians(lon_deg)
+    cl = math.cos(la)
+    return (cl * math.cos(lo), cl * math.sin(lo), math.sin(la))
+
+
+def component_pca_sphere_axis_ratio(comp_cells, projection, width, height):
+    """(angle deg mod 180, AXIS ratio) of a component measured on the sphere.
+
+    Why this exists: component_pca_axis_deg() runs on grid indices, so under
+    Lambert equal-area -- where a tile is 286 x 142 km at the equator and
+    74 x 547 km at 75 deg, a ~15x aspect swing -- a circular continent at high
+    latitude reads as strongly elongated and an equatorial one as E-W
+    stretched. That is the projection, not the geology. `coast_orientation`
+    was already moved into sphere space for exactly this reason; elongation
+    was not, so every elongation figure measured before this function existed
+    is partly instrument.
+
+    Method: project the component's cells AZIMUTHAL-EQUIDISTANTLY about their
+    own centroid (great-circle distance from the centre is preserved exactly,
+    which is the quantity a second moment is built from), then take the plane
+    PCA in kilometres. Works for components of any size up to a hemisphere and
+    needs no seam unwrapping -- great-circle azimuth handles the antimeridian
+    natively.
+
+    Returns the AXIS ratio (sqrt of the eigenvalue ratio), so the number is
+    directly comparable to Earth's continents at ~1.5-2.5. This differs from
+    component_pca_axis_deg(), which returns the variance ratio; the two are
+    reported under separate keys and must not be compared to each other.
+    """
+    pts_ll = []
+    for col, row in comp_cells:
+        ll = projection_inverse(projection, (col + 0.5) / width,
+                                (row + 0.5) / height)
+        if ll is not None:
+            pts_ll.append(ll)
+    if len(pts_ll) < 3:
+        return 0.0, float("inf")
+
+    cx = sum(_latlon_to_vec(la, lo)[0] for la, lo in pts_ll)
+    cy = sum(_latlon_to_vec(la, lo)[1] for la, lo in pts_ll)
+    cz = sum(_latlon_to_vec(la, lo)[2] for la, lo in pts_ll)
+    norm = math.sqrt(cx * cx + cy * cy + cz * cz)
+    if norm < 1e-9:
+        # Cells spread symmetrically enough that the mean vector vanishes (a
+        # full zonal band). No meaningful centre, so no meaningful axis.
+        return 0.0, float("inf")
+    c_lat = math.degrees(math.asin(max(-1.0, min(1.0, cz / norm))))
+    c_lon = math.degrees(math.atan2(cy, cx))
+
+    lat1 = math.radians(c_lat)
+    sin1, cos1 = math.sin(lat1), math.cos(lat1)
+    plane = []
+    for la, lo in pts_ll:
+        lat2 = math.radians(la)
+        dlon = math.radians(lo - c_lon)
+        sin2, cos2 = math.sin(lat2), math.cos(lat2)
+        cos_d = sin1 * sin2 + cos1 * cos2 * math.cos(dlon)
+        d_km = EARTH_RADIUS_KM * math.acos(max(-1.0, min(1.0, cos_d)))
+        az = math.atan2(cos2 * math.sin(dlon),
+                        cos1 * sin2 - sin1 * cos2 * math.cos(dlon))
+        # x = east, y = south, matching the grid-space convention (row index
+        # increases southward) so the two angles are directly comparable.
+        plane.append((d_km * math.sin(az), -d_km * math.cos(az)))
+    angle, var_ratio = _pca_2d(plane)
+    return angle, (math.sqrt(var_ratio) if math.isfinite(var_ratio)
+                   else float("inf"))
 
 
 def _weighted_median(pairs):
@@ -464,28 +548,7 @@ def mountain_belt_stats(mountain, width, height, wrap=True):
     }
 
 
-def landmass_elongation(land, width, height, wrap=True):
-    """Area-weighted median PCA eigenvalue ratio of land components.
-
-    ~1 means circular blobs (Eden growth); Earth's continents are ~1.5-2.5.
-
-    Uses a weighted MEDIAN, not a mean: the ratio is unbounded (a 1-tile-wide
-    ribbon returns infinity, a 2-tile-wide one ~1600), so a mean is set by
-    whichever thin marginal strip happens to exist and swings by orders of
-    magnitude. `n_degenerate` counts components too thin to have a finite
-    ratio -- a rising count there is itself the signal a mean would have
-    buried.
-    """
-    pairs = []
-    degenerate = 0
-    for comp in component_cells(land, width, height, wrap):
-        if len(comp) < MIN_ELONGATION_COMPONENT:
-            continue
-        _, ratio = component_pca_axis_deg(unwrap_columns(comp, width, wrap))
-        if math.isfinite(ratio):
-            pairs.append((ratio, float(len(comp))))
-        else:
-            degenerate += 1
+def _elongation_block(pairs, degenerate):
     if not pairs and not degenerate:
         return None
     median = _weighted_median(pairs)
@@ -497,6 +560,58 @@ def landmass_elongation(land, width, height, wrap=True):
         "n_components": len(pairs),
         "n_degenerate": degenerate,
     }
+
+
+def landmass_elongation(land, width, height, wrap=True, projection=None):
+    """Area-weighted median elongation of land components.
+
+    Two numbers, deliberately kept apart because they answer different
+    questions and are on different scales:
+
+      sphere_axis_ratio -- AXIS ratio measured on the sphere in kilometres
+          (component_pca_sphere_axis_ratio). Projection-independent, so this
+          is the one to compare against Earth's continents at ~1.5-2.5 and the
+          one to gate physics changes on. Requires `projection`.
+      grid_variance_ratio -- the legacy grid-index EIGENVALUE ratio. It is the
+          square of an axis ratio AND it carries the projection's tile aspect,
+          so a value here is not comparable to the one above. Kept because it
+          describes the shape the player sees on the projected map, and
+          because every committed baseline is in these units.
+
+    Both use a weighted MEDIAN, not a mean: the ratio is unbounded (a 1-tile
+    ribbon returns infinity), so a mean is set by whichever thin marginal
+    strip happens to exist. `n_degenerate` counts components too thin to have
+    a finite ratio -- a rising count there is itself the signal a mean would
+    have buried.
+    """
+    grid_pairs, grid_degenerate = [], 0
+    sph_pairs, sph_degenerate = [], 0
+    for comp in component_cells(land, width, height, wrap):
+        if len(comp) < MIN_ELONGATION_COMPONENT:
+            continue
+        weight = float(len(comp))
+        _, ratio = component_pca_axis_deg(unwrap_columns(comp, width, wrap))
+        if math.isfinite(ratio):
+            grid_pairs.append((ratio, weight))
+        else:
+            grid_degenerate += 1
+        if projection is not None:
+            _, sratio = component_pca_sphere_axis_ratio(comp, projection,
+                                                        width, height)
+            if math.isfinite(sratio):
+                sph_pairs.append((sratio, weight))
+            else:
+                sph_degenerate += 1
+    grid = _elongation_block(grid_pairs, grid_degenerate)
+    if grid is None:
+        return None
+    # Legacy keys stay at the top level so existing baselines and any reader
+    # of `["landmass_elongation"]["median"]` keep working unchanged.
+    out = dict(grid)
+    out["units"] = "grid-index eigenvalue (variance) ratio"
+    if projection is not None:
+        out["sphere_axis_ratio"] = _elongation_block(sph_pairs, sph_degenerate)
+    return out
 
 
 def analyze(csv_path, projection="lambert", wrap=True):
@@ -545,7 +660,8 @@ def analyze(csv_path, projection="lambert", wrap=True):
             coast, land, width, height, wrap,
             metric=local_metric(projection, width, height)),
         "mountains": mountain_belt_stats(mountain, width, height, wrap),
-        "landmass_elongation": landmass_elongation(land, width, height, wrap),
+        "landmass_elongation": landmass_elongation(land, width, height, wrap,
+                                                   projection=projection),
     }
 
 
@@ -555,6 +671,28 @@ def analyze(csv_path, projection="lambert", wrap=True):
 
 def _blank(width, height):
     return [[False] * width for _ in range(height)]
+
+
+def _sphere_cap(width, height, projection, lat_deg, lon_deg, radius_deg):
+    """Mask of every tile whose centre lies within `radius_deg` of (lat, lon).
+
+    A genuine spherical cap: round on the sphere at any latitude, arbitrarily
+    distorted on the projected grid. That contrast is what makes it the right
+    control for a shape metric.
+    """
+    g = _blank(width, height)
+    centre = _latlon_to_vec(lat_deg, lon_deg)
+    cos_r = math.cos(math.radians(radius_deg))
+    for r in range(height):
+        for c in range(width):
+            ll = projection_inverse(projection, (c + 0.5) / width,
+                                    (r + 0.5) / height)
+            if ll is None:
+                continue
+            v = _latlon_to_vec(*ll)
+            if sum(a * b for a, b in zip(v, centre)) >= cos_r:
+                g[r][c] = True
+    return g
 
 
 def _disc(width, height, cx, cy, radius, wrap=True):
@@ -728,6 +866,24 @@ def cmd_selftest(_args):
     ok &= _check("degenerate ribbon counted, not averaged in",
                  float(res["n_degenerate"]), 1.0, 0.0)
     ok &= _check("median unaffected by the ribbon", res["median"], 1.0, 0.35)
+
+    # The instrument's own defect: a spherical cap is round at EVERY latitude,
+    # so any latitude dependence in the reported elongation is the projection
+    # leaking into the measurement. Grid space fails this badly under Lambert;
+    # sphere space must not.
+    print("elongation is projection-independent (spherical caps):")
+    grid_vals, sphere_vals = [], []
+    for lat in (0.0, 45.0, 75.0):
+        cap = _sphere_cap(W, H, "lambert", lat, 0.0, 18.0)
+        res = landmass_elongation(cap, W, H, wrap=True, projection="lambert")
+        grid_vals.append(res["median"])
+        sphere_vals.append(res["sphere_axis_ratio"]["median"])
+        print(f"  [info] cap at lat {lat:4.0f}: grid {res['median']}, "
+              f"sphere {res['sphere_axis_ratio']['median']}")
+    for lat, v in zip((0.0, 45.0, 75.0), sphere_vals):
+        ok &= _check(f"sphere cap at lat {lat:.0f} reads round", v, 1.0, 0.20)
+    print(f"  (grid space spans {min(grid_vals)}-{max(grid_vals)} for the same "
+          f"three round caps -- that spread is the defect)")
 
     print("\nSELFTEST", "PASSED" if ok else "FAILED")
     return 0 if ok else 1

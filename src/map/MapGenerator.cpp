@@ -1395,6 +1395,69 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         }
 
         if (dumpOrogeny) {
+            // Continental-fraction histogram on the SPHERE RASTER (not the hex
+            // tiles -- this is a property of the crust, and the hex transfer
+            // low-passes it). Elevation is a cf-weighted blend of a high
+            // continental branch and a deep oceanic one, so the size of the
+            // TRANSITIONAL population (cf in 0.2..0.8) is what decides whether
+            // a coastline can be a graded margin at all or has to be a cliff.
+            // Reported both globally and restricted to the margin band -- cells
+            // with both a continental and an oceanic 4-neighbour -- because a
+            // globally small transitional share is fine if it is concentrated
+            // where the coastlines are.
+            {
+                using SF                       = aoc::map::gen::SphereField;
+                constexpr int32_t LON          = SF::LON_CELLS;
+                constexpr int32_t LAT          = SF::LAT_CELLS;
+                std::size_t bins[10]           = {};
+                std::size_t marginCells        = 0;
+                std::size_t marginTransitional = 0;
+                for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+                    for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
+                        const std::size_t idx = SF::cellIndex(lonIdx, latIdx);
+                        const float cf        = sphereField.continentalFraction[idx];
+                        const int32_t b       = std::clamp(static_cast<int32_t>(cf * 10.0f), 0, 9);
+                        ++bins[b];
+                        const int32_t lonW       = (lonIdx == 0) ? LON - 1 : lonIdx - 1;
+                        const int32_t lonE       = (lonIdx == LON - 1) ? 0 : lonIdx + 1;
+                        const int32_t latS       = std::max(0, latIdx - 1);
+                        const int32_t latN       = std::min(LAT - 1, latIdx + 1);
+                        const std::size_t nbr[4] = {
+                            SF::cellIndex(lonW, latIdx),
+                            SF::cellIndex(lonE, latIdx),
+                            SF::cellIndex(lonIdx, latS),
+                            SF::cellIndex(lonIdx, latN),
+                        };
+                        bool anyCont = false;
+                        bool anyOce  = false;
+                        for (const std::size_t n : nbr) {
+                            if (sphereField.continentalFraction[n] >= 0.5f) {
+                                anyCont = true;
+                            } else {
+                                anyOce = true;
+                            }
+                        }
+                        if (anyCont && anyOce) {
+                            ++marginCells;
+                            if (cf > 0.2f && cf < 0.8f) {
+                                ++marginTransitional;
+                            }
+                        }
+                    }
+                }
+                const double N = static_cast<double>(SF::CELL_COUNT);
+                std::fprintf(stderr, "[contfrac] raster histogram (0.0..1.0 in tenths):");
+                for (const std::size_t b : bins) {
+                    std::fprintf(stderr, " %.1f%%", 100.0 * static_cast<double>(b) / N);
+                }
+                std::fprintf(stderr, "\n");
+                std::fprintf(stderr,
+                             "[contfrac] margin band=%zu cells; transitional (0.2<cf<0.8) "
+                             "%zu (%.1f%% of band)\n",
+                             marginCells, marginTransitional,
+                             100.0 * static_cast<double>(marginTransitional) /
+                                 static_cast<double>(std::max<std::size_t>(1, marginCells)));
+            }
             // Continental tiles only -- oceanic crust is a different population
             // and the mask excludes it anyway.
             std::vector<float> contCrust;
@@ -1467,8 +1530,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         continue;
                     }
                     ((contFracDump[i] >= 0.5f) ? contAge : oceanAge)
-                        .push_back(sphereField.bilinearSample(
-                            sphereField.crustAgeMy, dmw.coord.latDeg, dmw.coord.lonDeg));
+                        .push_back(sphereField.bilinearSample(sphereField.crustAgeMy,
+                                                              dmw.coord.latDeg, dmw.coord.lonDeg));
                 }
                 for (int32_t which = 0; which < 2; ++which) {
                     std::vector<float>& v = (which == 0) ? contAge : oceanAge;
@@ -1479,10 +1542,10 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                         if (v.empty()) {
                             break;
                         }
-                        const std::size_t k = std::min(
-                            v.size() - 1,
-                            static_cast<std::size_t>(static_cast<double>(pc) / 100.0 *
-                                                     static_cast<double>(v.size() - 1)));
+                        const std::size_t k =
+                            std::min(v.size() - 1,
+                                     static_cast<std::size_t>(static_cast<double>(pc) / 100.0 *
+                                                              static_cast<double>(v.size() - 1)));
                         std::fprintf(stderr, "  p%d=%.0f", pc, static_cast<double>(v[k]));
                     }
                     std::fprintf(stderr, "\n");

@@ -140,12 +140,36 @@ void MapGenerator::smoothCoastlines(HexGrid& grid, const TerrainFields& fields) 
     // at which point the depth test becomes the better one and should replace
     // this. SHELF_BREAK_DEPTH_M and the AOC_DUMP_SHELF ring histogram are kept
     // so that transition is a measurement rather than a guess.
+    // Water tier assignment. Three tiers, two different questions:
+    //
+    //   Coast        -- water DIRECTLY ADJACENT to land. This is a gameplay
+    //                   tier, not a bathymetric one, and Terrain.hpp defines it
+    //                   that way ("Coastal water: adjacent to land, always
+    //                   navigable"). It must not be gated on crustal
+    //                   composition or depth: an active margin (Chile, Sumatra)
+    //                   drops to the abyss immediately offshore, and keying
+    //                   Coast on the shelf would leave every city on such a
+    //                   coast unable to build a harbour, fishing boat, kelp
+    //                   farm or desalination plant while an identical city on a
+    //                   passive margin could.
+    //   ShallowWater -- the rest of the continental shelf, further out.
+    //   Ocean        -- everything beyond the shelf break.
+    //
+    // 2026-08-10: before this, worldgen emitted only ShallowWater and Ocean and
+    // NOTHING in the codebase ever wrote Coast, while ~25 sites read it --
+    // fishing boats, kelp/fish farms, desalination, mangrove nurseries, naval
+    // movement and trade, district appeal, tech gating, disasters, reef
+    // placement. Every one of them was dead on every generated map.
     for (int32_t i = 0; i < total; ++i) {
         if (!isWater(grid.terrain(i))) {
             continue;
         }
         const int32_t d = distFromLand[static_cast<std::size_t>(i)];
         if (d <= 0) {
+            continue;
+        }
+        if (d == 1) {
+            grid.setTerrain(i, TerrainType::Coast);
             continue;
         }
         const std::size_t idx = static_cast<std::size_t>(i);
@@ -184,32 +208,48 @@ void MapGenerator::smoothCoastlines(HexGrid& grid, const TerrainFields& fields) 
             }
             std::fprintf(stderr, "\n");
         }
-        std::size_t shelf     = 0;
-        std::size_t water     = 0;
-        std::size_t byDepth   = 0;
+        std::size_t shelf   = 0;
+        std::size_t water   = 0;
+        std::size_t byDepth = 0;
+        std::size_t coast   = 0;
         for (int32_t i = 0; i < total; ++i) {
             if (!isWater(grid.terrain(i))) {
                 continue;
             }
             ++water;
-            if (grid.terrain(i) == TerrainType::ShallowWater) {
-                ++shelf;
+            if (grid.terrain(i) == TerrainType::Coast) {
+                ++coast;
+            }
+            // Shelf is counted by COMPOSITION, not by the emitted terrain tier:
+            // ring-1 water is Coast regardless of what it sits on, so reading
+            // the tier back would silently drop every shelf tile touching land
+            // and make the shelf look like it shrank when only its label moved.
+            {
+                const std::size_t idx = static_cast<std::size_t>(i);
+                const float cf        = (idx < fields.continentalFraction.size())
+                                            ? fields.continentalFraction[idx]
+                                            : 0.0f;
+                if (cf >= CONTINENTAL_CRUST_FRACTION) {
+                    ++shelf;
+                }
             }
             // What the textbook shelf-break depth would select. Once the
             // elevation law produces a real shelf population these two numbers
             // converge, and the depth test -- which is the better criterion --
             // can replace the composition test. Until then the gap IS the
             // measurement of the missing hypsometry.
-            if (depthMAt(fields.elevationMap, fields.waterThreshold, i)
-                < SHELF_BREAK_DEPTH_M) {
+            if (depthMAt(fields.elevationMap, fields.waterThreshold, i) < SHELF_BREAK_DEPTH_M) {
                 ++byDepth;
             }
         }
         std::fprintf(stderr, "[shelf] by 140 m depth cut it would be %zu (%.1f%%)\n", byDepth,
-                     100.0 * static_cast<double>(byDepth)
-                         / static_cast<double>(std::max<std::size_t>(1, water)));
+                     100.0 * static_cast<double>(byDepth) /
+                         static_cast<double>(std::max<std::size_t>(1, water)));
         std::fprintf(stderr, "[shelf] shelf=%zu of %zu water tiles (%.1f%%)\n", shelf, water,
                      100.0 * static_cast<double>(shelf) /
+                         static_cast<double>(std::max<std::size_t>(1, water)));
+        std::fprintf(stderr, "[shelf] coast tier=%zu of %zu water tiles (%.1f%%)\n", coast, water,
+                     100.0 * static_cast<double>(coast) /
                          static_cast<double>(std::max<std::size_t>(1, water)));
     }
 }
