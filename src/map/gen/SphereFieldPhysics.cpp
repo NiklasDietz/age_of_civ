@@ -2001,6 +2001,21 @@ void accreteToNeighbours(SphereField& field, float dtMy) {
                 // Same-plate gate -- cross-plate diffusion would break
                 // Wilson-cycle assembly (continents cannot leak across
                 // an open ocean basin without colliding first).
+                //
+                // 2026-08-10: TRIED AND REVERTED -- allowing donation across
+                // CONVERGENT boundaries only (terrane accretion, which is
+                // genuinely a cross-boundary process). The hypothesis was that
+                // this gate is what pins coastlines to plate boundaries:
+                // --dump-plates on seed 42 shows plate 5 (3 % land) abutting
+                // plate 9 (62 % land) with a dead-straight coast along their
+                // shared boundary at column 58. Measured over seeds
+                // 42/7/100/777, coastline axis_aligned_frac did NOT improve
+                // (mean 0.605 -> 0.609) while land fraction fell (0.246 ->
+                // 0.233); largest-component share did fall (0.71 -> 0.61) but
+                // that is confounded with having less land to connect.
+                // So the coincidence of coast and boundary is real but this
+                // gate is not its cause -- look at why the plate boundary
+                // itself is straight before trying this again.
                 if (field.plateId[n] != donorId) {
                     continue;
                 }
