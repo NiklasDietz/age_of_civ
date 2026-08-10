@@ -943,6 +943,7 @@ if(AOC_BUILD_TESTS)
         test_tuned_leader_io
         test_climate_profile
         test_noise_field
+        test_isostasy
         test_relief
         test_lakes
         test_mapgen_regenerate

@@ -1166,6 +1166,15 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // stream (pure hash noise -- no draws, no ordering sensitivity).
         const uint64_t coastSeed =
             aoc::map::gen::mixSeed(static_cast<uint64_t>(config.seed) ^ 0x434F4153ULL); // "COAS"
+        // Ceiling on the sub-grid coastal-detail amplitude, metres. The actual
+        // amplitude is the smaller of this and the local relief across one hex
+        // -- see the use site for why an unbounded fixed amplitude repaints
+        // flat continental interiors instead of detailing coastlines.
+        constexpr float COAST_DETAIL_MAX_M = 400.0f;
+        // One hex step in degrees, used to measure that local relief. Width
+        // spans 360 deg of longitude; height spans 180 deg of latitude.
+        const float hexLonStepDeg = 360.0f / static_cast<float>(width);
+        const float hexLatStepDeg = 180.0f / static_cast<float>(height);
 
         // Reference continental crustal thickness for THIS planet: the median
         // over continental sphere cells. The mountain mask is a multiple of it
@@ -1352,10 +1361,39 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             amp *= 0.5f;
                             freq *= 2.0f;
                         }
-                        // +-0.08 unitless = +-400 m at full window: only
-                        // tiles the raster itself puts near sea level can
-                        // flip, i.e. a 1-2 hex coastal ribbon.
-                        elev += (detail / norm) * 0.08f * aoc::map::gen::smoothstep(coastBand);
+                        // Amplitude is bounded by the LOCAL RELIEF, not by a
+                        // fixed +-400 m. The fixed form silently assumed the
+                        // coast is steep: it is meant to move the shoreline by
+                        // a hex or two, but the horizontal distance a vertical
+                        // perturbation moves a shoreline is (amplitude /
+                        // gradient), so on a near-flat continental interior
+                        // +-400 m redraws hundreds of km of map as noise rather
+                        // than detailing a coastline. That is not hypothetical:
+                        // this generator's continental interiors sit 45-430 m
+                        // above sea level, so essentially the whole landmass
+                        // falls inside the band, and the erosion base level in
+                        // SphereFieldPhysics was raised from +100 m to +600 m
+                        // specifically to push interiors back out of it --
+                        // a physics constant bent to work around a rendering
+                        // detail.
+                        //
+                        // Bounding by the elevation change across one hex caps
+                        // the induced shoreline shift at ~1 tile by
+                        // construction, whatever the terrain does: a steep
+                        // coast still gets the full effect, a flat plain gets
+                        // almost none.
+                        const float reliefM =
+                            std::abs(sphereField.bilinearSample(sphereField.surfaceElevationM,
+                                                                mw.coord.latDeg + hexLatStepDeg,
+                                                                mw.coord.lonDeg) -
+                                     zM) +
+                            std::abs(sphereField.bilinearSample(sphereField.surfaceElevationM,
+                                                                mw.coord.latDeg,
+                                                                mw.coord.lonDeg + hexLonStepDeg) -
+                                     zM);
+                        const float ampM = std::min(COAST_DETAIL_MAX_M, reliefM);
+                        elev += (detail / norm) * (ampM / 5000.0f) *
+                                aoc::map::gen::smoothstep(coastBand);
                     }
                 }
                 // Hotspot volcanic islands. Each hotspot is a mantle
@@ -1457,6 +1495,95 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                              marginCells, marginTransitional,
                              100.0 * static_cast<double>(marginTransitional) /
                                  static_cast<double>(std::max<std::size_t>(1, marginCells)));
+            }
+            // RASTER hypsometry, area-weighted by cos(lat), relative to the
+            // solved sea level. Measured here rather than through the hex map
+            // because the hex transfer point-samples a 55 km raster on a 286 km
+            // stride: a continental margin narrower than one hex tile is
+            // physically present and statistically invisible downstream, so a
+            // hex-level shelf count cannot distinguish "the physics did not
+            // make a margin" from "the sampler could not see it".
+            {
+                using SF              = aoc::map::gen::SphereField;
+                constexpr int32_t LON = SF::LON_CELLS;
+                constexpr int32_t LAT = SF::LAT_CELLS;
+                const float zsea      = sphereField.seaLevelM;
+                // Band edges in metres relative to sea level, land-to-abyss.
+                constexpr float EDGES[]        = {2000.0f,  500.0f,   0.0f,    -140.0f,
+                                                  -1000.0f, -3000.0f, -5000.0f};
+                constexpr const char* LABELS[] = {">2000",     "500..2000", "0..500",   "0..-140",
+                                                  "-140..-1k", "-1k..-3k",  "-3k..-5k", "<-5k"};
+                double band[8]                 = {};
+                double total                   = 0.0;
+                double contArea                = 0.0;
+                double contSubmerged           = 0.0;
+                for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+                    const float latDeg =
+                        -90.0f + (static_cast<float>(latIdx) + 0.5f) * SF::CELL_DEG;
+                    const double w = std::max(0.0f, std::cos(latDeg * 0.01745329252f));
+                    for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
+                        const std::size_t idx = SF::cellIndex(lonIdx, latIdx);
+                        const float rel       = sphereField.surfaceElevationM[idx] - zsea;
+                        std::size_t b         = 7;
+                        for (std::size_t e = 0; e < std::size(EDGES); ++e) {
+                            if (rel >= EDGES[e]) {
+                                b = e;
+                                break;
+                            }
+                        }
+                        band[b] += w;
+                        total += w;
+                        if (sphereField.continentalFraction[idx] >= 0.5f) {
+                            contArea += w;
+                            if (rel < 0.0f) {
+                                contSubmerged += w;
+                            }
+                        }
+                    }
+                }
+                std::fprintf(stderr, "[hypso] raster area by elevation band (m rel sea level):");
+                for (std::size_t b = 0; b < 8; ++b) {
+                    std::fprintf(stderr, "  %s=%.1f%%", LABELS[b], 100.0 * band[b] / total);
+                }
+                std::fprintf(stderr, "\n");
+                // Earth: ~41 % of the surface is continental crust and ~29 % is
+                // emergent, so ~30 % of continental crust is drowned. That
+                // drowned third IS the continental shelf; a number near zero
+                // here means the planet cannot have one.
+                std::fprintf(stderr,
+                             "[hypso] continental crust %.1f%% of sphere, of which %.1f%% "
+                             "submerged (Earth ~30%%); sea level %.0f m\n",
+                             100.0 * contArea / total,
+                             100.0 * contSubmerged / std::max(1e-9, contArea),
+                             static_cast<double>(zsea));
+                // Crustal thickness percentiles on the RASTER. The [orogeny]
+                // dump peak-samples over a hex footprint, so it reports the
+                // THICKEST cell in each ~286 km tile and a thinned margin is
+                // invisible in it by construction -- which is exactly the
+                // population that decides whether a shelf exists.
+                std::vector<float> contH;
+                contH.reserve(SF::CELL_COUNT / 4);
+                for (std::size_t idx = 0; idx < SF::CELL_COUNT; ++idx) {
+                    if (sphereField.continentalFraction[idx] >= 0.5f) {
+                        contH.push_back(sphereField.crustThicknessKm[idx]);
+                    }
+                }
+                std::sort(contH.begin(), contH.end());
+                if (!contH.empty()) {
+                    std::fprintf(stderr, "[hypso] raster continental crust km:");
+                    for (const int32_t p : {1, 5, 10, 25, 50, 75, 90, 99}) {
+                        const std::size_t k = std::min(
+                            contH.size() - 1,
+                            static_cast<std::size_t>(static_cast<double>(p) / 100.0 *
+                                                     static_cast<double>(contH.size() - 1)));
+                        std::fprintf(stderr, "  p%d=%.1f", p, static_cast<double>(contH[k]));
+                    }
+                    const float seaKm =
+                        aoc::map::gen::PhysicsConstants::refContinentalThicknessKm +
+                        (zsea - aoc::map::gen::PhysicsConstants::refContinentalElevationM) /
+                            aoc::map::gen::continentalElevationPerKmM();
+                    std::fprintf(stderr, "  (sea level at %.1f km)\n", static_cast<double>(seaKm));
+                }
             }
             // Continental tiles only -- oceanic crust is a different population
             // and the mask excludes it anyway.
