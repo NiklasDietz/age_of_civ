@@ -47,6 +47,7 @@ ice-covered land tile is still land; ocean under sea ice is still water.
 
 import argparse
 import csv
+import os
 import hashlib
 import json
 import math
@@ -662,6 +663,15 @@ def analyze(csv_path, projection="lambert", wrap=True):
         "mountains": mountain_belt_stats(mountain, width, height, wrap),
         "landmass_elongation": landmass_elongation(land, width, height, wrap,
                                                    projection=projection),
+        # Share of all land in the biggest landmass, and how many landmasses
+        # are big enough to matter. Earth: 0.57 and 6-7 respectively. Both are
+        # gated, and neither was computed before 2026-08-12 -- "one giant blob"
+        # was visible in every rendered map while the metrics JSON had no field
+        # that could express it.
+        "largest_share_of_land": (round(comp_sizes[0] / land_cells, 4)
+                                  if comp_sizes and land_cells else None),
+        "big_landmasses": sum(1 for s in comp_sizes
+                              if land_cells and s / land_cells > 0.02),
     }
 
 
@@ -906,7 +916,13 @@ def cmd_baseline(args):
             cmd.append("--cylindrical")
         if args.projection:
             cmd += ["--projection", args.projection]
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+        # The crust-budget numbers exist only on the generator's stderr, behind
+        # these env gates. Before 2026-08-12 stderr was captured and then
+        # DISCARDED on success, so half the gate set was silently uncomputed --
+        # an unattended tuning loop would have iterated all night against
+        # whichever four metrics happened to be in the JSON.
+        env = dict(os.environ, AOC_DUMP_OROGENY="1", AOC_DUMP_SHELF="1")
+        proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
         if proc.returncode != 0:
             print(f"error: seed {seed} generation failed:\n{proc.stderr[-2000:]}",
                   file=sys.stderr)
@@ -915,15 +931,99 @@ def cmd_baseline(args):
                                      projection=args.metric_projection,
                                      wrap=not args.flat)
         res = results[str(seed)]
+        res["crust_budget"] = parse_crust_budget(proc.stderr)
         print(f"seed {seed}: land={res['land_fraction']:.1%} "
               f"D={res['coast_box_dimension']} "
               f"components={res['n_land_components']} "
-              f"axis={res['coast_orientation']['axis_aligned_frac']} "
-              f"elong={res['landmass_elongation']['median'] if res['landmass_elongation'] else None}")
+              f"largest={res['largest_share_of_land']} "
+              f"axis={res['coast_orientation']['axis_aligned_frac']}")
     metrics_path = outdir / "metrics.json"
     metrics_path.write_text(json.dumps(results, indent=2) + "\n")
     print(f"wrote {metrics_path}")
+    if args.gate:
+        return report_gates(results)
     return 0
+
+
+# Earth reference bands. Sources: continental crust is 41-43 % of Earth's
+# surface with 29 % emergent and 12-13 % submerged margin; largest landmass
+# (Afro-Eurasia) is 57 % of land; coastline box dimension 1.15-1.25. The
+# axis_aligned_frac null of 0.50 is pinned by `selftest`.
+GATES = {
+    "land_fraction":            (0.25, 0.33,  "land fraction"),
+    "crust_share":              (0.38, 0.44,  "continental crust / sphere"),
+    "crust_submerged":          (0.25, 0.35,  "submerged share of that crust"),
+    "largest_share_of_land":    (0.00, 0.60,  "largest landmass / land"),
+    "big_landmasses":           (4,    99,    "landmasses >2 % of land"),
+    "axis_aligned_frac":        (0.00, 0.55,  "coastline axis_aligned_frac"),
+    "coast_box_dimension":      (1.15, 1.25,  "coastline box dimension"),
+    "shelf_share_of_planet":    (0.05, 0.08,  "shelf / planet"),
+}
+
+
+def parse_crust_budget(stderr):
+    """Pull the crust-budget numbers out of the generator's diagnostic dumps.
+
+    Returns None for anything absent rather than a default, so a dump that
+    stops being emitted reads as "not measured" instead of silently passing
+    its gate.
+    """
+    out = {"crust_share": None, "crust_submerged": None,
+           "shelf_share_of_planet": None}
+    m = re.search(r"\[hypso\] continental crust ([\d.]+)% of sphere, "
+                  r"of which ([\d.]+)% submerged", stderr)
+    if m:
+        out["crust_share"] = round(float(m.group(1)) / 100.0, 4)
+        out["crust_submerged"] = round(float(m.group(2)) / 100.0, 4)
+    # The 140 m depth cut is reported as a share of WATER; convert to a share
+    # of the planet so it is comparable to Earth's ~5.3 %.
+    m = re.search(r"\[shelf\] by 140 m depth cut it would be \d+ \(([\d.]+)%\)", stderr)
+    if m:
+        out["_shelf_share_of_water"] = round(float(m.group(1)) / 100.0, 4)
+    return out
+
+
+def gate_values(res):
+    """Flatten one seed's result into the scalars GATES names."""
+    cb = res.get("crust_budget") or {}
+    shelf = cb.get("_shelf_share_of_water")
+    land = res.get("land_fraction")
+    return {
+        "land_fraction": land,
+        "crust_share": cb.get("crust_share"),
+        "crust_submerged": cb.get("crust_submerged"),
+        "largest_share_of_land": res.get("largest_share_of_land"),
+        "big_landmasses": res.get("big_landmasses"),
+        "axis_aligned_frac": (res.get("coast_orientation") or {}).get("axis_aligned_frac"),
+        "coast_box_dimension": res.get("coast_box_dimension"),
+        "shelf_share_of_planet": (round(shelf * (1.0 - land), 4)
+                                  if shelf is not None and land is not None else None),
+    }
+
+
+def report_gates(results):
+    """Print a per-gate pass/fail table over the seed sweep. Returns an exit
+    code: non-zero if any gate is missed or unmeasured, so an unattended loop
+    stops instead of iterating against a metric that quietly disappeared."""
+    print("\ngate                          median   band            seeds pass")
+    failed = 0
+    for key, (lo, hi, label) in GATES.items():
+        vals = [gate_values(r).get(key) for r in results.values()]
+        present = [v for v in vals if v is not None]
+        if not present:
+            print(f"  {label:<28} NOT MEASURED -- gate cannot fail, treating as failure")
+            failed += 1
+            continue
+        present.sort()
+        median = present[len(present) // 2]
+        npass = sum(1 for v in present if lo <= v <= hi)
+        ok = npass == len(present)
+        failed += 0 if ok else 1
+        mark = "ok " if ok else "MISS"
+        print(f"  {mark} {label:<26} {median:<8.3f} [{lo}, {hi}]"
+              f"      {npass}/{len(present)}")
+    print(f"\n{'GATES PASSED' if failed == 0 else f'{failed} GATE(S) FAILED'}")
+    return 0 if failed == 0 else 1
 
 
 def main():
@@ -953,6 +1053,10 @@ def main():
                                  "(must match --projection)")
     p_baseline.add_argument("--flat", action="store_true",
                             help="generate Flat instead of Cylindrical")
+    p_baseline.add_argument("--gate", action="store_true",
+                            help="check every metric against its Earth-reference "
+                                 "band and EXIT NON-ZERO if any is missed or was "
+                                 "not measured at all")
 
     sub.add_parser("selftest", help="verify the instrument against known masks")
 
