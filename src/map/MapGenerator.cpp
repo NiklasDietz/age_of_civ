@@ -766,6 +766,18 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // al. 2013, table 1). 7-11 brings the simulation in line.
             const int32_t numCratons = 7 + cratonRng.nextInt(0, 4);
 
+            // Area weight of one raster cell at a given latitude row. Cells are
+            // lat/lon rectangles, so their ground area scales with cos(lat);
+            // any craton budget or growth accumulator expressed in raw cell
+            // COUNTS is therefore a different physical size depending on where
+            // the craton sits.
+            const auto cellAreaWeightAt = [](int32_t latIdx) -> double {
+                const double latDeg =
+                    -90.0 + (static_cast<double>(latIdx) + 0.5) *
+                                static_cast<double>(aoc::map::gen::SphereField::CELL_DEG);
+                return std::max(0.0, std::cos(latDeg * 0.01745329252));
+            };
+
             // Per-nucleus absolute area drawn from log-normal — no
             // global quota. 2026-07-05: median raised 0.7 % -> 1.8 %
             // of sphere. The old value targeted the ~5 % mid-Archean
@@ -806,15 +818,80 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 nucleusWeight[static_cast<std::size_t>(i)] = std::exp(NUCLEUS_LOG_SIGMA * gauss);
                 weightSum += nucleusWeight[static_cast<std::size_t>(i)];
             }
-            std::vector<std::size_t> cratonTarget(static_cast<std::size_t>(numCratons), 0);
-            for (int32_t i = 0; i < numCratons; ++i) {
-                const float cells =
-                    totalStockCells * nucleusWeight[static_cast<std::size_t>(i)] / weightSum;
-                // Clamp to [50, 9000] cells — protects against
-                // pathological samples; upper bound ~3.5 % of sphere
-                // (Eurasia-craton-cluster scale).
-                const float clamped                       = std::clamp(cells, 50.0f, 9000.0f);
-                cratonTarget[static_cast<std::size_t>(i)] = static_cast<std::size_t>(clamped);
+            // Per-craton target, in CELL-AREA units (sum of cos(lat) over the
+            // craton's cells) rather than a raw cell count.
+            //
+            // 2026-08-12. A raw cell count is latitude-dependent: a 0.5 deg
+            // cell at 70 deg covers a third of the ground a cell at the equator
+            // does, so "9000 cells" meant a different-sized craton depending on
+            // where its seed landed, and the log-normal size hierarchy drawn
+            // just above was partly re-rolled by geography. Targeting area
+            // removes that.
+            //
+            // The clamp also has to REDISTRIBUTE. It used to compute each
+            // craton's share of the stock independently and then clamp, which
+            // silently discarded the excess: with 7 cratons and a 9000-cell
+            // ceiling the realised total could not exceed 24.3 % of the sphere
+            // even though the stock draw asks for 26-32 %, and any craton whose
+            // log-normal weight was large got flattened to exactly the ceiling.
+            // Several cratons pinned at an identical size is precisely the
+            // "same-weight round blob continents" artifact the anisotropic
+            // growth below exists to avoid.
+            //
+            // Ceiling is 6 % of the sphere. Afro-Eurasia is 16.6 %, but a
+            // single craton that large would have a semi-axis near 40 deg and
+            // the growth ellipse would wrap into a globe-girdling belt; a
+            // Pangaea-scale mass is supposed to ASSEMBLE from several cratons
+            // over the run, not be seeded as one.
+            constexpr float CRATON_AREA_MIN_FRAC = 0.0002f;
+            constexpr float CRATON_AREA_MAX_FRAC = 0.06f;
+            std::vector<double> cratonTargetArea(static_cast<std::size_t>(numCratons), 0.0);
+            double rasterArea = 0.0;
+            for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+                rasterArea += static_cast<double>(LON) * cellAreaWeightAt(latIdx);
+            }
+            {
+                const double stockArea =
+                    static_cast<double>(totalStockCells) / static_cast<double>(N) * rasterArea;
+                const double loArea = static_cast<double>(CRATON_AREA_MIN_FRAC) * rasterArea;
+                const double hiArea = static_cast<double>(CRATON_AREA_MAX_FRAC) * rasterArea;
+                // Water-filling: clamp, then push the clipped surplus back into
+                // the cratons that still have headroom, so the drawn total is
+                // actually delivered and the hierarchy below the ceiling is
+                // preserved. Bounded iteration -- with every craton already at
+                // the ceiling there is nowhere left to put the remainder and
+                // the loop must stop rather than spin.
+                std::vector<double> want(static_cast<std::size_t>(numCratons), 0.0);
+                for (int32_t i = 0; i < numCratons; ++i) {
+                    want[static_cast<std::size_t>(i)] =
+                        stockArea *
+                        static_cast<double>(nucleusWeight[static_cast<std::size_t>(i)]) /
+                        static_cast<double>(weightSum);
+                }
+                for (int32_t pass = 0; pass < 8; ++pass) {
+                    double surplus  = 0.0;
+                    double headroom = 0.0;
+                    for (int32_t i = 0; i < numCratons; ++i) {
+                        double& w = want[static_cast<std::size_t>(i)];
+                        if (w > hiArea) {
+                            surplus += w - hiArea;
+                            w = hiArea;
+                        } else if (w < loArea) {
+                            w = loArea;
+                        } else {
+                            headroom += hiArea - w;
+                        }
+                    }
+                    if (surplus <= 1e-9 || headroom <= 1e-9) break;
+                    const double scale = std::min(1.0, surplus / headroom);
+                    for (int32_t i = 0; i < numCratons; ++i) {
+                        double& w = want[static_cast<std::size_t>(i)];
+                        if (w < hiArea) {
+                            w += (hiArea - w) * scale;
+                        }
+                    }
+                }
+                cratonTargetArea = want;
             }
 
             // Place craton seeds with minimum angular separation
@@ -897,8 +974,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             std::vector<int8_t> claimed(N, 0); // 1 = continental
             std::vector<int8_t> rejectedOnce(N, 0);
             for (int32_t cidx = 0; cidx < numCratons; ++cidx) {
-                const std::size_t target = cratonTarget[static_cast<std::size_t>(cidx)];
-                if (target == 0) continue;
+                const double targetArea = cratonTargetArea[static_cast<std::size_t>(cidx)];
+                if (targetArea <= 0.0) continue;
                 const int32_t sLon         = seedLon[static_cast<std::size_t>(cidx)];
                 const int32_t sLat         = seedLat[static_cast<std::size_t>(cidx)];
                 const std::size_t startIdx = SF::cellIndex(sLon, sLat);
@@ -908,16 +985,28 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 const float axSin  = std::sin(axisAz);
                 const float aniso =
                     std::exp(cratonRng.nextFloat(0.405f, 1.099f)); // ln(1.5)..ln(3.0), log-uniform
-                const float cosSeedLat =
-                    std::max(0.2f, std::cos((-90.0f + (static_cast<float>(sLat) + 0.5f) * 0.5f) *
-                                            0.01745329252f));
-                // Ellipse semi-major axis (cells) from target area:
-                // area ~ pi * a * (a / A).
-                const float semiMajor = std::sqrt(static_cast<float>(target) * aniso / 3.14159265f);
-                claimed[startIdx]     = 1;
-                std::size_t grown     = 1;
+                // Semi-major axis in RADIANS of arc, from the target solid
+                // angle: area ~ pi * a * (a / A) on a small cap.
+                //
+                // The offsets it is compared against are true angular
+                // distances, so the ellipse is now the same physical shape at
+                // any latitude. The previous form measured in cell indices,
+                // scaled longitude by a single cos(seed latitude), and left
+                // latitude unscaled -- a tangent-plane approximation taken at
+                // the seed and then used out to 30-45 deg away, which stretched
+                // every high-latitude craton east-west.
+                const double targetSolidAngle = targetArea / rasterArea * 4.0 * 3.14159265358979;
+                const double semiMajorRad =
+                    std::sqrt(targetSolidAngle * static_cast<double>(aniso) / 3.14159265358979);
+                const aoc::map::gen::LatLon seedPos = SF::cellCenter(sLon, sLat);
+                const double sLatR   = static_cast<double>(seedPos.latDeg) * 0.01745329252;
+                const double sLonR   = static_cast<double>(seedPos.lonDeg) * 0.01745329252;
+                const double sinSLat = std::sin(sLatR);
+                const double cosSLat = std::cos(sLatR);
+                claimed[startIdx]    = 1;
+                double grownArea     = cellAreaWeightAt(sLat);
                 std::vector<std::size_t> frontier;
-                frontier.reserve(target * 2);
+                frontier.reserve(1024);
                 auto pushNbrs = [&](int32_t lonI, int32_t latI) {
                     const int32_t lonW        = (lonI == 0) ? LON - 1 : lonI - 1;
                     const int32_t lonE        = (lonI == LON - 1) ? 0 : lonI + 1;
@@ -934,7 +1023,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     }
                 };
                 pushNbrs(sLon, sLat);
-                while (grown < target && !frontier.empty()) {
+                while (grownArea < targetArea && !frontier.empty()) {
                     // Pick a random frontier cell. Swap-remove for O(1)
                     // deletion.
                     const std::size_t pick = static_cast<std::size_t>(
@@ -945,25 +1034,44 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     if (claimed[cellIdx]) continue;
                     const int32_t cellLon = static_cast<int32_t>(cellIdx % LON);
                     const int32_t cellLat = static_cast<int32_t>(cellIdx / LON);
-                    // Elliptical-radius acceptance. Offsets in cell
-                    // units, longitude wrapped and metric-corrected
-                    // by the seed-latitude cosine.
-                    int32_t dLonRaw = cellLon - sLon;
-                    if (dLonRaw > LON / 2) dLonRaw -= LON;
-                    if (dLonRaw < -LON / 2) dLonRaw += LON;
-                    const float dx    = static_cast<float>(dLonRaw) * cosSeedLat;
-                    const float dy    = static_cast<float>(cellLat - sLat);
-                    const float dPar  = dx * axCos + dy * axSin;
-                    const float dPerp = -dx * axSin + dy * axCos;
-                    const float rho   = std::sqrt((dPar * dPar + dPerp * dPerp * aniso * aniso)) /
-                                        std::max(1.0f, semiMajor);
-                    bool accept       = true;
-                    if (rho > 1.0f && !rejectedOnce[cellIdx]) {
+                    // Elliptical-radius acceptance on TRUE angular offsets:
+                    // great-circle distance from the seed, decomposed onto the
+                    // assembly axis by the bearing. Same ellipse at any
+                    // latitude, and correct out to the 30-45 deg the largest
+                    // cratons actually span.
+                    const aoc::map::gen::LatLon cellPos = SF::cellCenter(cellLon, cellLat);
+                    const double cLatR   = static_cast<double>(cellPos.latDeg) * 0.01745329252;
+                    const double dLonR   = (static_cast<double>(cellPos.lonDeg) -
+                                            static_cast<double>(seedPos.lonDeg)) *
+                                           0.01745329252;
+                    const double sinCLat = std::sin(cLatR);
+                    const double cosCLat = std::cos(cLatR);
+                    const double cosD    = std::clamp(
+                        sinSLat * sinCLat + cosSLat * cosCLat * std::cos(dLonR), -1.0, 1.0);
+                    const double dRad = std::acos(cosD);
+                    // Bearing from the seed, measured from north. The ellipse
+                    // axis is defined in the same frame, so the decomposition
+                    // is a plain rotation by the azimuth difference.
+                    const double bearing =
+                        std::atan2(cosCLat * std::sin(dLonR),
+                                   cosSLat * sinCLat - sinSLat * cosCLat * std::cos(dLonR));
+                    const double dxA = dRad * std::sin(bearing); // east
+                    const double dyA = dRad * std::cos(bearing); // north
+                    const double dPar =
+                        dxA * static_cast<double>(axCos) + dyA * static_cast<double>(axSin);
+                    const double dPerp =
+                        -dxA * static_cast<double>(axSin) + dyA * static_cast<double>(axCos);
+                    const double rho =
+                        std::sqrt(dPar * dPar + dPerp * dPerp * static_cast<double>(aniso) *
+                                                    static_cast<double>(aniso)) /
+                        std::max(1e-6, semiMajorRad);
+                    bool accept = true;
+                    if (rho > 1.0 && !rejectedOnce[cellIdx]) {
                         // Soft edge: acceptance decays fast outside
                         // the target ellipse; one retry keeps the
                         // frontier alive without stalling growth.
-                        const float p = std::exp(-4.0f * (rho - 1.0f));
-                        if (cratonRng.nextFloat(0.0f, 1.0f) > p) {
+                        const double p = std::exp(-4.0 * (rho - 1.0));
+                        if (static_cast<double>(cratonRng.nextFloat(0.0f, 1.0f)) > p) {
                             accept                = false;
                             rejectedOnce[cellIdx] = 1;
                             frontier.push_back(cellIdx);
@@ -971,9 +1079,14 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     }
                     if (!accept) continue;
                     claimed[cellIdx] = 1;
-                    ++grown;
+                    grownArea += cellAreaWeightAt(cellLat);
                     pushNbrs(cellLon, cellLat);
                 }
+                // Rejection memory is per-craton: without the reset a cell that
+                // craton A pushed outside its ellipse would be accepted
+                // unconditionally by craton B, letting B leak a tendril along
+                // whatever A happened to reject.
+                std::fill(rejectedOnce.begin(), rejectedOnce.end(), static_cast<int8_t>(0));
             }
 
             // Claimed cells are continental crust; unclaimed are
