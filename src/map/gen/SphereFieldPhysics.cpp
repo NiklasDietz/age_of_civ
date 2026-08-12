@@ -1196,7 +1196,39 @@ void advectPlateOwnership(SphereField& field, const std::vector<Plate>& plates, 
     std::size_t pass2Claim  = 0;
     std::size_t pass3Wake   = 0;
 
-    auto rotateRodrigues = [](const PlateRot& R, double cx, double cy, double cz) -> std::size_t {
+    // Fixed sub-cell dither applied to the departure point before it is
+    // rounded to a cell. Deterministic in the cell index alone -- NOT in the
+    // substep -- so it is a stationary spatial jitter, not a random walk that
+    // would diffuse the fields over the ~900 substeps of a run.
+    //
+    // Why it is needed. Plate Euler poles cluster at high latitude (Gripp &
+    // Gordon 2002), so plate motion is dominantly ZONAL: every cell in a
+    // latitude row displaces by the same amount, and the backward map rounds
+    // that to the same integer cell shift for the whole row. Adjacent rows
+    // round to DIFFERENT integers, so any feature spanning rows is sheared
+    // into whole-cell steps with dead-straight row-aligned edges -- the long
+    // horizontal 1-cell stripes visible in the rendered plate raster, and the
+    // thin horizontal land ribbons they carve out of a continent.
+    //
+    // Offsetting each departure point by a fixed fraction of a cell turns that
+    // shared rounding boundary into a stationary irregular curve: the
+    // quantisation is still there (it must be, the raster is discrete) but it
+    // no longer lines up along parallels. Amplitude is +-0.5 cell, i.e. the
+    // rounding interval itself, which is the largest offset that cannot move a
+    // sample more than one cell from where it belongs.
+    auto cellDither = [](std::size_t cellIdx, float& dLatDeg, float& dLonDeg) {
+        uint64_t h = static_cast<uint64_t>(cellIdx) * 0x9E3779B97F4A7C15ULL;
+        h ^= h >> 29;
+        h *= 0xBF58476D1CE4E5B9ULL;
+        h ^= h >> 32;
+        const float u = static_cast<float>((h >> 11) & 0xFFFFu) / 65535.0f;
+        const float v = static_cast<float>((h >> 33) & 0xFFFFu) / 65535.0f;
+        dLatDeg       = (u - 0.5f) * SphereField::CELL_DEG;
+        dLonDeg       = (v - 0.5f) * SphereField::CELL_DEG;
+    };
+
+    auto rotateRodrigues = [&](const PlateRot& R, double cx, double cy, double cz,
+                               std::size_t destIdx) -> std::size_t {
         const double dot       = R.axX * cx + R.axY * cy + R.axZ * cz;
         const double crossX    = R.axY * cz - R.axZ * cy;
         const double crossY    = R.axZ * cx - R.axX * cz;
@@ -1207,9 +1239,80 @@ void advectPlateOwnership(SphereField& field, const std::vector<Plate>& plates, 
         const double clampedZ  = std::clamp(nZ, -1.0, 1.0);
         const double depLatDeg = std::asin(clampedZ) * RAD2DEG;
         const double depLonDeg = std::atan2(nY, nX) * RAD2DEG;
-        const SphereField::CellCoord dep =
-            SphereField::locate(static_cast<float>(depLatDeg), static_cast<float>(depLonDeg));
+        float dLat             = 0.0f;
+        float dLon             = 0.0f;
+        cellDither(destIdx, dLat, dLon);
+        const SphereField::CellCoord dep = SphereField::locate(
+            static_cast<float>(depLatDeg) + dLat, static_cast<float>(depLonDeg) + dLon);
         return SphereField::cellIndex(dep.lonIdx, dep.latIdx);
+    };
+
+    // The cell's 8 raster neighbours, ordered by TRUE GROUND DISTANCE,
+    // nearest first. Returns the count written (self-references at the polar
+    // row clamp are dropped).
+    //
+    // 2026-08-12. Both the echo re-target in pass 1 and the leading-edge claim
+    // in pass 2 previously used the 4 CARDINAL neighbours in a fixed
+    // N/S/W/E order. Two axis artifacts follow, and they compound over the ~15
+    // CFL substeps per epoch x 60 epochs this function runs:
+    //   - a leading edge can only advance along the lon/lat axes, never
+    //     diagonally, so a moving plate outline is progressively squared off
+    //     into an L-infinity ball;
+    //   - a fixed probe order always prefers a latitude neighbour, so echo
+    //     re-targeting accumulates row structure.
+    // Rendering the plate raster at epochs 1/5/15/30/60 shows exactly that
+    // progression: organic lens-shaped plates at epoch 1 degrading into
+    // rectangles and horizontal bands by epoch 30, with the final coastline
+    // running dead straight along those boundaries. The identical 4-cardinal
+    // defect was already found and fixed in accreteToNeighbours, whose comment
+    // records that it "flattened every growth front into an axis-aligned wall
+    // ... shows up as coastline axis_aligned_frac well above the 0.50
+    // isotropic null"; this pass never received the same treatment.
+    //
+    // Ordering by ground distance rather than by index also removes the
+    // latitude bias for free: toward the poles a longitude step spans far less
+    // ground than a latitude step, so the east/west neighbours genuinely ARE
+    // nearer and should be preferred. Ties break on cell index, so the order
+    // is total and thread-count independent.
+    struct RankedNeighbour {
+        std::size_t idx;
+        float dist2;
+    };
+    auto orderedNeighbours = [&](int32_t lonIdx, int32_t latIdx, RankedNeighbour* out) -> int32_t {
+        const LatLon p         = SphereField::cellCenter(lonIdx, latIdx);
+        const float cosLat     = std::cos(static_cast<float>(p.latDeg) * 0.01745329252f);
+        const float cosLat2    = cosLat * cosLat;
+        const std::size_t self = SphereField::cellIndex(lonIdx, latIdx);
+        int32_t n              = 0;
+        for (int32_t dLat = -1; dLat <= 1; ++dLat) {
+            for (int32_t dLon = -1; dLon <= 1; ++dLon) {
+                if (dLon == 0 && dLat == 0) continue;
+                const int32_t nLat = latIdx + dLat;
+                if (nLat < 0 || nLat >= LAT) continue; // poles: no wrap in lat
+                int32_t nLon = lonIdx + dLon;
+                if (nLon < 0) nLon += LON;
+                if (nLon >= LON) nLon -= LON;
+                const std::size_t nIdx = SphereField::cellIndex(nLon, nLat);
+                if (nIdx == self) continue;
+                out[n].idx = nIdx;
+                out[n].dist2 =
+                    static_cast<float>(dLon * dLon) * cosLat2 + static_cast<float>(dLat * dLat);
+                ++n;
+            }
+        }
+        // Insertion sort: n <= 8, and it keeps the comparison explicit so the
+        // tie-break on index is visibly part of the ordering.
+        for (int32_t i = 1; i < n; ++i) {
+            const RankedNeighbour key = out[i];
+            int32_t j                 = i - 1;
+            while (j >= 0 && (out[j].dist2 > key.dist2 ||
+                              (out[j].dist2 == key.dist2 && out[j].idx > key.idx))) {
+                out[j + 1] = out[j];
+                --j;
+            }
+            out[j + 1] = key;
+        }
+        return n;
     };
 
     // PASS 1: incumbent backward-sample claim.
@@ -1236,32 +1339,27 @@ void advectPlateOwnership(SphereField& field, const std::vector<Plate>& plates, 
 
             if (incumbent >= 0 && static_cast<std::size_t>(incumbent) < P) {
                 std::size_t depIdx =
-                    rotateRodrigues(rotBack[static_cast<std::size_t>(incumbent)], cx, cy, cz);
+                    rotateRodrigues(rotBack[static_cast<std::size_t>(incumbent)], cx, cy, cz, destIdx);
                 if (field.plateId[depIdx] == incumbent) {
                     if (claimed[depIdx]) {
                         // Echo: this source already moved to another
-                        // destination. Pair with the adjacent ORPHAN
-                        // source instead (N/S first: collision and
-                        // orphan rows alternate by latitude under
-                        // zonal motion; then E/W).
+                        // destination. Pair with the NEAREST unclaimed orphan
+                        // source of the same plate, measured in ground
+                        // distance over all 8 neighbours -- not the first hit
+                        // of a fixed N/S-then-E/W scan over 4, which biased
+                        // every re-target toward the latitude axis.
                         const int32_t dLon =
                             static_cast<int32_t>(depIdx % static_cast<std::size_t>(LON));
                         const int32_t dLat =
                             static_cast<int32_t>(depIdx / static_cast<std::size_t>(LON));
-                        const int32_t lonW2        = (dLon == 0) ? LON - 1 : dLon - 1;
-                        const int32_t lonE2        = (dLon == LON - 1) ? 0 : dLon + 1;
-                        const std::size_t probe[4] = {
-                            (dLat > 0) ? SphereField::cellIndex(dLon, dLat - 1) : depIdx,
-                            (dLat < LAT - 1) ? SphereField::cellIndex(dLon, dLat + 1) : depIdx,
-                            SphereField::cellIndex(lonW2, dLat),
-                            SphereField::cellIndex(lonE2, dLat),
-                        };
-                        std::size_t alt = SIZE_MAX;
-                        for (const std::size_t q : probe) {
-                            if (q == depIdx) continue;
-                            if (claimed[q]) continue;
-                            if (field.plateId[q] != incumbent) continue;
-                            alt = q;
+                        RankedNeighbour probe[8];
+                        const int32_t probeCount = orderedNeighbours(dLon, dLat, probe);
+                        std::size_t alt          = SIZE_MAX;
+                        for (int32_t q = 0; q < probeCount; ++q) {
+                            const std::size_t cand = probe[q].idx;
+                            if (claimed[cand]) continue;
+                            if (field.plateId[cand] != incumbent) continue;
+                            alt = cand;
                             break;
                         }
                         if (alt == SIZE_MAX) {
@@ -1298,8 +1396,8 @@ void advectPlateOwnership(SphereField& field, const std::vector<Plate>& plates, 
         }
     }
 
-    // PASS 2: vacated cells claimed by 4-neighbours moving INTO them.
-    // For each vacated cell we ask: does any 4-neighbour plate's
+    // PASS 2: vacated cells claimed by neighbours moving INTO them.
+    // For each vacated cell we ask: does any neighbour plate's
     // forward rotation of the neighbour cell land EXACTLY on this
     // vacated cell? If yes, that neighbour is geometrically advancing
     // into this cell -- a leading-edge claim. The neighbour's source
@@ -1323,24 +1421,21 @@ void advectPlateOwnership(SphereField& field, const std::vector<Plate>& plates, 
             const std::size_t idx = SphereField::cellIndex(lonIdx, latIdx);
             if (newOwner[idx] != VACATED) continue;
 
-            const int32_t lonW        = (lonIdx == 0) ? LON - 1 : lonIdx - 1;
-            const int32_t lonE        = (lonIdx == LON - 1) ? 0 : lonIdx + 1;
-            const int32_t latS        = std::max(0, latIdx - 1);
-            const int32_t latN        = std::min(LAT - 1, latIdx + 1);
-            const std::size_t nIdx[4] = {
-                SphereField::cellIndex(lonW, latIdx),
-                SphereField::cellIndex(lonE, latIdx),
-                SphereField::cellIndex(lonIdx, latS),
-                SphereField::cellIndex(lonIdx, latN),
-            };
+            // All 8 neighbours, so a leading edge can advance diagonally.
+            // Restricting the claim to the 4 cardinals meant a moving plate
+            // front could only ever step along the raster axes, which squares
+            // off plate outlines a little more on every one of the ~900
+            // substeps in a run.
+            RankedNeighbour nbr[8];
+            const int32_t nbrCount = orderedNeighbours(lonIdx, latIdx, nbr);
 
             int16_t bestPid     = -1;
             std::size_t bestSrc = 0;
             float bestFrac      = -1.0f;
             float bestOmega     = 1e9f;
 
-            for (int32_t k = 0; k < 4; ++k) {
-                const std::size_t nIdxK = nIdx[k];
+            for (int32_t k = 0; k < nbrCount; ++k) {
+                const std::size_t nIdxK = nbr[k].idx;
                 const int16_t nPid      = field.plateId[nIdxK];
                 if (nPid < 0 || static_cast<std::size_t>(nPid) >= P) continue;
 
@@ -1357,7 +1452,7 @@ void advectPlateOwnership(SphereField& field, const std::vector<Plate>& plates, 
                 const double ncy     = nCosLat * std::sin(nLonR);
                 const double ncz     = std::sin(nLatR);
                 const std::size_t fwdDest =
-                    rotateRodrigues(rotFwd[static_cast<std::size_t>(nPid)], ncx, ncy, ncz);
+                    rotateRodrigues(rotFwd[static_cast<std::size_t>(nPid)], ncx, ncy, ncz, nIdxK);
                 if (fwdDest != idx) continue;
 
                 const float frac  = field.continentalFraction[nIdxK];

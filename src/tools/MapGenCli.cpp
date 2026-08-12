@@ -196,7 +196,12 @@ void writeCsv(const aoc::map::HexGrid& grid, const std::string& path) {
         std::fprintf(stderr, "error: cannot open '%s' for writing\n", path.c_str());
         return;
     }
-    out << "Index,Col,Row,Terrain,Feature,Improvement,Owner,RiverEdgeMask\n";
+    // PlateId is carried so offline tooling can correlate coastline geometry
+    // with plate geometry. That correlation is the whole question behind the
+    // straight-coastline artifact -- `--dump-plates` only reports per-plate
+    // aggregates (bbox, centroid), which cannot show WHERE a boundary runs.
+    // 255 is the unowned sentinel (HexGrid stores plate id in a uint8).
+    out << "Index,Col,Row,Terrain,Feature,Improvement,Owner,RiverEdgeMask,PlateId\n";
 
     const int32_t width  = grid.width();
     const int32_t height = grid.height();
@@ -208,7 +213,8 @@ void writeCsv(const aoc::map::HexGrid& grid, const std::string& path) {
                 << aoc::map::featureName(grid.feature(idx)) << ','
                 << static_cast<int>(grid.improvement(idx)) << ','
                 << static_cast<int>(grid.owner(idx)) << ','
-                << static_cast<int>(grid.riverEdges(idx)) << '\n';
+                << static_cast<int>(grid.riverEdges(idx)) << ','
+                << static_cast<int>(grid.plateId(idx)) << '\n';
         }
     }
 }
@@ -234,7 +240,7 @@ void usage(const char* prog) {
                  "          [--format ascii|csv|both]\n"
                  "          [--tectonic-time-my N | --tectonic-time-gy N | --epochs N]\n"
                  "          [--projection lambert|mollweide|equirect|mercator|robinson]\n"
-                 "          [--flat] [--frames] [--dump-plates PATH]\n"
+                 "          [--flat] [--frames] [--stop-epoch N] [--dump-plates PATH]\n"
                  "          [--serve-http [--port N]]\n"
                  "\n"
                  "Generates a single Continents map and writes it to disk for review.\n"
@@ -255,6 +261,12 @@ void usage(const char* prog) {
                  "                       PATH. Consumed by tools/run_diagnostic_matrix.sh.\n"
                  "  --frames             re-run once per epoch and write per-epoch\n"
                  "                       plate-glyph maps plus a concatenated animation.\n"
+                 "  --stop-epoch N       halt the tectonic sim after N epochs. Use to\n"
+                 "                       inspect an early state in one run instead of\n"
+                 "                       the O(n^2) --frames sweep. Elevation-derived\n"
+                 "                       layers are not comparable across different N\n"
+                 "                       (sea level is re-solved each epoch); plate\n"
+                 "                       ownership and continental fraction are.\n"
                  "  --serve-http         HTTP inspection server on 127.0.0.1:<port>.\n"
                  "\n"
                  "Trace env vars: AOC_SPHEREPHYS_TRACE, AOC_ADVECT_TRACE,\n"
@@ -353,6 +365,17 @@ int main(int argc, char* argv[]) {
             config.topology = aoc::map::MapTopology::Cylindrical;
         } else if (arg == "--flat") {
             config.topology = aoc::map::MapTopology::Flat;
+        } else if (arg == "--stop-epoch" && i + 1 < argc) {
+            // Halt the tectonic sim after N epochs and emit that state.
+            // `--frames` already does this per frame, but it re-runs the
+            // generator once per epoch (O(n^2) total work) to build a strip;
+            // inspecting a single early state is O(1) with this.
+            //
+            // Note the state is genuinely mid-run, not a preview: sea level is
+            // still solved against whatever hypsometry exists at epoch N, so
+            // the ELEVATION-derived layers are not comparable across different
+            // --stop-epoch values. Plate ownership and continental fraction are.
+            config.runEpochsLimit = std::atoi(argv[++i]);
         } else if (arg == "--frames") {
             frameMode = true;
         } else if (arg == "--dump-plates" && i + 1 < argc) {
