@@ -1697,6 +1697,52 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                             aoc::map::gen::continentalElevationPerKmM();
                     std::fprintf(stderr, "  (sea level at %.1f km)\n", static_cast<double>(seaKm));
                 }
+                // Submerged share BY CRUSTAL MATURITY.
+                //
+                // The headline "X % of continental crust is submerged" counts
+                // every cell with cf >= 0.5, but accreteToNeighbours ramps
+                // thickness as h = 7 + 34*cf, so a cell that has only just
+                // crossed cf = 0.5 carries ~24 km -- several hundred metres
+                // BELOW sea level by construction. The accretion front is many
+                // cells deep, so that headline mixes a large population of
+                // half-formed transitional crust into a number whose Earth
+                // reference (~30 % submerged) is about full-thickness
+                // continental crust. Earth's own 41 % figure does not include
+                // its transitional crust either.
+                //
+                // Splitting by thickness says whether real continents are
+                // drowning or whether the metric is just counting the nursery.
+                {
+                    const float matureKm = 35.0f;
+                    const float transKm  = 24.0f;
+                    double area[3]       = {};
+                    double sub[3]        = {};
+                    for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+                        const float latDeg =
+                            -90.0f + (static_cast<float>(latIdx) + 0.5f) * SF::CELL_DEG;
+                        const double w = std::max(0.0f, std::cos(latDeg * 0.01745329252f));
+                        for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
+                            const std::size_t idx = SF::cellIndex(lonIdx, latIdx);
+                            if (sphereField.continentalFraction[idx] < 0.5f) continue;
+                            const float h   = sphereField.crustThicknessKm[idx];
+                            const int32_t k = (h >= matureKm) ? 0 : (h >= transKm ? 1 : 2);
+                            area[k] += w;
+                            if (sphereField.surfaceElevationM[idx] - zsea < 0.0f) {
+                                sub[k] += w;
+                            }
+                        }
+                    }
+                    const double allArea              = area[0] + area[1] + area[2];
+                    static const char* const LABEL[3] = {"mature>=35km", "transitional24-35",
+                                                         "incipient<24km"};
+                    std::fprintf(stderr, "[hypso] submerged by maturity:");
+                    for (int32_t k = 0; k < 3; ++k) {
+                        std::fprintf(stderr, "  %s share=%.0f%% submerged=%.0f%%", LABEL[k],
+                                     100.0 * area[k] / std::max(1e-9, allArea),
+                                     100.0 * sub[k] / std::max(1e-9, area[k]));
+                    }
+                    std::fprintf(stderr, "\n");
+                }
             }
             // Continental tiles only -- oceanic crust is a different population
             // and the mask excludes it anyway.
