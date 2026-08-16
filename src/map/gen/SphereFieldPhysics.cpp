@@ -2141,22 +2141,66 @@ void accreteToNeighbours(SphereField& field, float dtMy) {
     }
     field.continentalFraction.swap(nextFrac);
     field.crustThicknessKm.swap(nextCrust);
-    // Terrane maturation: young continental crust that has never been
-    // rifted relaxes toward reference thickness on a geological e-fold
-    // (Willett & Brandon 2002 cite 1-5 Gy for thermal / isostatic
-    // equilibration; 3000 My keeps the pass subtle over one epoch).
-    // Cells with stretchFactor > STRETCH_MATURATION_THRESHOLD are rift
-    // margins -- excluded so passive margins stay thin (= shelves).
+    // Terrane maturation: continental crust relaxes toward its equilibrium
+    // thickness on a geological e-fold (Willett & Brandon 2002 cite 1-5 Gy for
+    // thermal / isostatic equilibration).
+    //
+    // The target is a FIELD, not the single global reference thickness. Real
+    // continental crust is not one number (Christensen & Mooney 1995: shields
+    // 35-45 km, platforms 35-40, orogens 45-70, extended terranes 25-35), and
+    // relaxing every cell toward 41 km piles ~45 % of continental crust into
+    // an 0.8 km band -- measured p5=33.0, p50=33.8 against a 34.2 km
+    // sea-level thickness. That degeneracy is not cosmetic: it makes the
+    // submerged fraction hypersensitive, because a sub-km shift in the peak
+    // flips half the continents across sea level at once (measured: submerged
+    // 0.351 at a 5100 My e-fold, 0.139 at 5000 My).
+    //
+    // Rift margins are EXCLUDED rather than given a stretch-scaled target.
+    // Both were measured; the exclusion wins. Dividing the target by
+    // stretchFactor is the more principled statement -- a margin thinned by
+    // beta has had that crust physically removed, so its equilibrium thickness
+    // is the stretched one -- but it moved submerged share 0.391 -> 0.419 with
+    // shelf and largest-landmass unchanged, because a cell already sitting at
+    // 41/beta is already at that target and does not move. The exclusion keeps
+    // the same margins thin for one fewer division.
+    //
+    // Known limitation: stretchFactor is a max-over-all-time and never decays,
+    // so the excluded set only ratchets upward over a run. The p50 = 33.8 km
+    // spike is that population, and broadening the target cannot reach it.
+    // Un-ratcheting it (decay, or a re-thickening path through orogeny) is the
+    // open lead on the submerged gate -- see the memory file.
+    //
+    // Sampled on unit-sphere coordinates: lat/lon-space noise would seam at
+    // the antimeridian and pinch at the poles, and this field is broad enough
+    // (~48 deg wavelength) that either artifact would be plainly visible as a
+    // thickness discontinuity running the length of the map.
     constexpr float MATURATION_EFOLD_MY          = 5500.0f;
     constexpr float STRETCH_MATURATION_THRESHOLD = 1.05f;
+    constexpr float MATURATION_TARGET_SPREAD_KM  = 4.5f;
+    constexpr float MATURATION_TARGET_FREQ       = 1.2f;
+    constexpr uint64_t MATURATION_TARGET_SEED    = 0x9E3779B97F4A7C15ULL;
+    constexpr float DEG2RAD_F                    = 0.01745329252f;
     const float relax                            = 1.0f - std::exp(-dtMy / MATURATION_EFOLD_MY);
-    const float refKm                            = PhysicsConstants::refContinentalThicknessKm;
     for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
         if (field.continentalFraction[i] < 0.5f) continue;
         if (field.stretchFactor[i] > STRETCH_MATURATION_THRESHOLD) continue;
         const float h = field.crustThicknessKm[i];
-        if (h >= refKm) continue;
-        field.crustThicknessKm[i] = h + (refKm - h) * relax;
+        const LatLon c =
+            SphereField::cellCenter(static_cast<int32_t>(i % static_cast<std::size_t>(LON)),
+                                    static_cast<int32_t>(i / static_cast<std::size_t>(LON)));
+        const float latR = c.latDeg * DEG2RAD_F;
+        const float lonR = c.lonDeg * DEG2RAD_F;
+        const float px   = std::cos(latR) * std::cos(lonR);
+        const float py   = std::cos(latR) * std::sin(lonR);
+        const float pz   = std::sin(latR);
+        const float n =
+            2.0f * smoothHashNoise3(px * MATURATION_TARGET_FREQ, py * MATURATION_TARGET_FREQ,
+                                    pz * MATURATION_TARGET_FREQ, MATURATION_TARGET_SEED) -
+            1.0f;
+        const float targetKm =
+            PhysicsConstants::refContinentalThicknessKm + MATURATION_TARGET_SPREAD_KM * n;
+        if (h >= targetKm) continue;
+        field.crustThicknessKm[i] = h + (targetKm - h) * relax;
     }
 }
 
