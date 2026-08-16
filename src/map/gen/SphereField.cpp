@@ -14,13 +14,14 @@ void SphereField::resize() {
     crustAgeMy.assign(CELL_COUNT, 0.0f);
     thermalAgeMy.assign(CELL_COUNT, 0.0f);
     sutureContactMy.assign(CELL_COUNT, 0.0f);
+    stretchFactor.assign(CELL_COUNT, 1.0f);
     boundaryType.assign(CELL_COUNT, static_cast<uint8_t>(0));
 }
 
 LatLon SphereField::cellCenter(int32_t lonIdx, int32_t latIdx) noexcept {
     LatLon p;
     p.lonDeg = -180.0f + (static_cast<float>(lonIdx) + 0.5f) * CELL_DEG;
-    p.latDeg =  -90.0f + (static_cast<float>(latIdx) + 0.5f) * CELL_DEG;
+    p.latDeg = -90.0f + (static_cast<float>(latIdx) + 0.5f) * CELL_DEG;
     return p;
 }
 
@@ -40,8 +41,8 @@ SphereField::CellCoord SphereField::locate(float latDeg, float lonDeg) noexcept 
     return {lonIdx, latIdx};
 }
 
-float SphereField::bilinearSample(
-    const std::vector<float>& field, float latDeg, float lonDeg) const noexcept {
+float SphereField::bilinearSample(const std::vector<float>& field, float latDeg,
+                                  float lonDeg) const noexcept {
     // Continuous fractional cell coordinate, with cell centres at
     // (lonIdx + 0.5, latIdx + 0.5) -- so the sample at the centre of
     // cell (i, j) is exactly field[index(i, j)] (no smoothing).
@@ -54,8 +55,8 @@ float SphereField::bilinearSample(
 
     int32_t i0 = static_cast<int32_t>(std::floor(fx));
     int32_t j0 = static_cast<int32_t>(std::floor(fy));
-    float tx = fx - static_cast<float>(i0);
-    float ty = fy - static_cast<float>(j0);
+    float tx   = fx - static_cast<float>(i0);
+    float ty   = fy - static_cast<float>(j0);
 
     // Longitude wraps periodically.
     auto wrapLon = [](int32_t i) noexcept -> int32_t {
@@ -87,11 +88,10 @@ float SphereField::bilinearSample(
     return a * (1.0f - ty) + b * ty;
 }
 
-float SphereField::peakSample(
-    const std::vector<float>& field, float latDeg, float lonDeg,
-    int32_t halfSearchCells) const noexcept {
+float SphereField::peakSample(const std::vector<float>& field, float latDeg, float lonDeg,
+                              int32_t halfSearchCells) const noexcept {
     const CellCoord c = locate(latDeg, lonDeg);
-    auto wrapLon = [](int32_t i) noexcept -> int32_t {
+    auto wrapLon      = [](int32_t i) noexcept -> int32_t {
         i %= LON_CELLS;
         if (i < 0) i += LON_CELLS;
         return i;
@@ -106,17 +106,17 @@ float SphereField::peakSample(
         const int32_t jj = clampLat(c.latIdx + dj);
         for (int32_t di = -halfSearchCells; di <= halfSearchCells; ++di) {
             const int32_t ii = wrapLon(c.lonIdx + di);
-            const float v = field[cellIndex(ii, jj)];
+            const float v    = field[cellIndex(ii, jj)];
             if (v > peak) peak = v;
         }
     }
     return peak;
 }
 
-uint8_t SphereField::boundaryTypeMode(
-    float latDeg, float lonDeg, int32_t halfSearchCells) const noexcept {
+uint8_t SphereField::boundaryTypeMode(float latDeg, float lonDeg,
+                                      int32_t halfSearchCells) const noexcept {
     const CellCoord c = locate(latDeg, lonDeg);
-    auto wrapLon = [](int32_t i) noexcept -> int32_t {
+    auto wrapLon      = [](int32_t i) noexcept -> int32_t {
         i %= LON_CELLS;
         if (i < 0) i += LON_CELLS;
         return i;
@@ -132,15 +132,17 @@ uint8_t SphereField::boundaryTypeMode(
         for (int32_t di = -halfSearchCells; di <= halfSearchCells; ++di) {
             const int32_t ii = wrapLon(c.lonIdx + di);
             const uint8_t bt = this->boundaryType[cellIndex(ii, jj)];
-            if (bt <= 3u) { ++counts[bt]; }
+            if (bt <= 3u) {
+                ++counts[bt];
+            }
         }
     }
-    uint8_t best = 0u;
+    uint8_t best      = 0u;
     int32_t bestCount = 0;
     for (uint8_t t = 1u; t <= 3u; ++t) {
         if (counts[t] > bestCount) { // strict > = lowest-id tie-break
             bestCount = counts[t];
-            best = t;
+            best      = t;
         }
     }
     return best;

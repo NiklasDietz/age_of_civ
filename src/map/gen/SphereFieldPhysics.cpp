@@ -855,6 +855,7 @@ int32_t applyWilsonRifting(SphereField& field, std::vector<Plate>& plates, uint3
             // cell already thinned by an earlier rift thins further rather than
             // being reset to a stretched-from-pristine value.
             field.crustThicknessKm[cell] /= beta;
+            field.stretchFactor[cell] = std::max(field.stretchFactor[cell], beta);
         }
         if (std::getenv("AOC_SPHEREPHYS_TRACE") != nullptr) {
             std::size_t seamCells = 0;
@@ -1181,6 +1182,7 @@ void advectPlateOwnership(SphereField& field, const std::vector<Plate>& plates, 
     std::vector<float> newSurface(N, 0.0f);
     std::vector<float> newThermal(N, 0.0f);
     std::vector<float> newSuture(N, 0.0f);
+    std::vector<float> newStretch(N, 1.0f);
     // Aliasing ledger: which sources have already been consumed this
     // substep. A rigid rotation is area-preserving, so wherever the
     // rounded backward map sends TWO destinations to one source
@@ -1338,8 +1340,8 @@ void advectPlateOwnership(SphereField& field, const std::vector<Plate>& plates, 
             const double cz     = std::sin(latR);
 
             if (incumbent >= 0 && static_cast<std::size_t>(incumbent) < P) {
-                std::size_t depIdx =
-                    rotateRodrigues(rotBack[static_cast<std::size_t>(incumbent)], cx, cy, cz, destIdx);
+                std::size_t depIdx = rotateRodrigues(rotBack[static_cast<std::size_t>(incumbent)],
+                                                     cx, cy, cz, destIdx);
                 if (field.plateId[depIdx] == incumbent) {
                     if (claimed[depIdx]) {
                         // Echo: this source already moved to another
@@ -1385,6 +1387,7 @@ void advectPlateOwnership(SphereField& field, const std::vector<Plate>& plates, 
                     newSurface[destIdx]  = field.surfaceElevationM[depIdx];
                     newThermal[destIdx]  = field.thermalAgeMy[depIdx];
                     newSuture[destIdx]   = field.sutureContactMy[depIdx];
+                    newStretch[destIdx]  = field.stretchFactor[depIdx];
                     continue;
                 }
             }
@@ -1481,6 +1484,7 @@ void advectPlateOwnership(SphereField& field, const std::vector<Plate>& plates, 
                 newSurface[idx]  = field.surfaceElevationM[bestSrc];
                 newThermal[idx]  = field.thermalAgeMy[bestSrc];
                 newSuture[idx]   = field.sutureContactMy[bestSrc];
+                newStretch[idx]  = field.stretchFactor[bestSrc];
                 ++pass2Claim;
             }
             // else: still VACATED -> pass 3 wake fill
@@ -1537,12 +1541,14 @@ void advectPlateOwnership(SphereField& field, const std::vector<Plate>& plates, 
                 newSurface[idx]  = field.surfaceElevationM[idx];
                 newThermal[idx]  = field.thermalAgeMy[idx];
                 newSuture[idx]   = field.sutureContactMy[idx];
+                newStretch[idx]  = field.stretchFactor[idx];
             } else {
                 newCrust[idx]    = PhysicsConstants::initialOceanicThicknessKm;
                 newContFrac[idx] = 0.0f;
                 newAge[idx]      = 0.0f;
                 newSurface[idx]  = 0.0f;
                 newThermal[idx]  = 0.0f;
+                newStretch[idx]  = 1.0f;
             }
             ++pass3Wake;
         }
@@ -1559,6 +1565,7 @@ void advectPlateOwnership(SphereField& field, const std::vector<Plate>& plates, 
             newAge[i]      = 0.0f;
             newSurface[i]  = 0.0f;
             newThermal[i]  = 0.0f;
+            newStretch[i]  = 1.0f;
         }
     }
 
@@ -1578,6 +1585,7 @@ void advectPlateOwnership(SphereField& field, const std::vector<Plate>& plates, 
     field.surfaceElevationM   = std::move(newSurface);
     field.thermalAgeMy        = std::move(newThermal);
     field.sutureContactMy     = std::move(newSuture);
+    field.stretchFactor       = std::move(newStretch);
 }
 
 void markBoundaryCells(const SphereField& field, std::vector<uint8_t>& isBoundary) {
@@ -2133,6 +2141,23 @@ void accreteToNeighbours(SphereField& field, float dtMy) {
     }
     field.continentalFraction.swap(nextFrac);
     field.crustThicknessKm.swap(nextCrust);
+    // Terrane maturation: young continental crust that has never been
+    // rifted relaxes toward reference thickness on a geological e-fold
+    // (Willett & Brandon 2002 cite 1-5 Gy for thermal / isostatic
+    // equilibration; 3000 My keeps the pass subtle over one epoch).
+    // Cells with stretchFactor > STRETCH_MATURATION_THRESHOLD are rift
+    // margins -- excluded so passive margins stay thin (= shelves).
+    constexpr float MATURATION_EFOLD_MY          = 5500.0f;
+    constexpr float STRETCH_MATURATION_THRESHOLD = 1.05f;
+    const float relax                            = 1.0f - std::exp(-dtMy / MATURATION_EFOLD_MY);
+    const float refKm                            = PhysicsConstants::refContinentalThicknessKm;
+    for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
+        if (field.continentalFraction[i] < 0.5f) continue;
+        if (field.stretchFactor[i] > STRETCH_MATURATION_THRESHOLD) continue;
+        const float h = field.crustThicknessKm[i];
+        if (h >= refKm) continue;
+        field.crustThicknessKm[i] = h + (refKm - h) * relax;
+    }
 }
 
 void applySubduction(SphereField& field, const std::vector<Plate>& plates, float dtMy) {

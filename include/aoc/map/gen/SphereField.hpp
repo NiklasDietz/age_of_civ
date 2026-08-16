@@ -116,6 +116,12 @@ struct SphereField {
     // docking: plates weld only after sustained cont-cont suturing
     // (India-Asia style), never on centroid proximity.
     std::vector<float> sutureContactMy;
+    // Maximum lithospheric stretching factor (β) this cell has ever
+    // experienced from applyWilsonRifting. 1.0 = never rifted.
+    // Written by applyWilsonRifting; used by the terrane-maturation pass
+    // in accreteToNeighbours to exclude rift margins (which are supposed
+    // to stay thin — that is what makes them continental shelves).
+    std::vector<float> stretchFactor;
 
     // Sea level in metres above the mantle datum, resolved each epoch
     // by solveSeaLevelFixedVolume: the level at which the world's
