@@ -3020,6 +3020,24 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
         const float a = std::fabs(p.angularVelDeg);
         if (a > maxOmegaDeg) maxOmegaDeg = a;
     }
+    // Per-pass continental-volume attribution -- which pass is adding crust and
+    // which is removing it, in the relative units continentalCrustVolume uses.
+    // Off unless AOC_TRACE_BUDGET is set; each snapshot is a full raster sweep,
+    // so this roughly doubles epoch cost when enabled and costs one branch when
+    // not. This is the instrument that identified advection as a
+    // non-conservative transport and erosion as the dominant sink -- see the
+    // memory file for the numbers.
+    static const bool kBudgetTrace = std::getenv("AOC_TRACE_BUDGET") != nullptr;
+    double budgetPrev              = kBudgetTrace ? continentalCrustVolume(field) : 0.0;
+    double dAdvect = 0.0, dThicken = 0.0, dArcs = 0.0, dAccrete = 0.0, dSubduct = 0.0;
+    double dDiverge = 0.0, dDock = 0.0, dSlab = 0.0, dRift = 0.0, dContig = 0.0, dErode = 0.0;
+    const auto budgetSnap = [&](double& acc) {
+        if (!kBudgetTrace) return;
+        const double v = continentalCrustVolume(field);
+        acc            = v - budgetPrev;
+        budgetPrev     = v;
+    };
+
     float remainingDt = dtMy;
     if (maxOmegaDeg > 0.0f) {
         const float maxStep = CFL_SAFETY * SphereField::CELL_DEG / maxOmegaDeg;
@@ -3031,9 +3049,11 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
     } else {
         advectPlateOwnership(field, plates, dtMy);
     }
+    budgetSnap(dAdvect);
     markBoundaryCells(field, boundaryScratch);
     accumulateClosingRate(field, plates, boundaryScratch);
     thickenFromClosingRate(field, dtMy);
+    budgetSnap(dThicken);
     // Arc volcanism converts oceanic margins into andesitic
     // continental crust at convergent boundaries — the mechanism
     // that grows the global continental fraction over the 3 Gy run
@@ -3043,6 +3063,7 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
     // trench in real geology), and so that the next thicken pass
     // sees the elevated continentalFraction.
     growContinentalFractionAtArcs(field, dtMy);
+    budgetSnap(dArcs);
     // Phase 1.4b: terrane-accretion diffusion. Saturated continental
     // cells donate cf to same-plate neighbours, modelling collisional
     // welding / interior accretion. Without this, cont(>0.5) plateaus
@@ -3052,7 +3073,9 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
     // exposed to subduction's consumption pass in the same epoch and
     // cf stays in dynamic equilibrium between growth and destruction.
     accreteToNeighbours(field, dtMy);
+    budgetSnap(dAccrete);
     applySubduction(field, plates, dtMy);
+    budgetSnap(dSubduct);
     // Ridge accretion: extrude fresh oceanic basalt on already-oceanic
     // cells whose plates are pulling apart. The continental-fraction
     // gate inside the function protects continental rift zones; those
@@ -3061,13 +3084,27 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
     // stretched stale crust behind drifting plates with no mid-ocean-
     // ridge spreading record (Atlantic age gradient never appears).
     accreteAtDivergentBoundary(field, dtMy);
+    budgetSnap(dDiverge);
     applyContinentalDocking(field, plates, dtMy);
+    budgetSnap(dDock);
     applySlabPullFeedback(field, plates, dtMy);
+    budgetSnap(dSlab);
     applyWilsonRifting(field, plates, rngState, dtMy);
+    budgetSnap(dRift);
     const int32_t contiguityMoved = enforcePlateContiguity(field, plates);
+    budgetSnap(dContig);
     recomputeIsostaticElevationOnRaster(field);
     solveSeaLevelFixedVolume(field);
     applySurfaceErosionOnRaster(field, dtMy);
+    budgetSnap(dErode);
+    if (kBudgetTrace) {
+        std::fprintf(stderr,
+                     "[budget] advect=%+.4g thicken=%+.4g arcs=%+.4g accrete=%+.4g "
+                     "subduct=%+.4g diverge=%+.4g dock=%+.4g slab=%+.4g rift=%+.4g "
+                     "contig=%+.4g erode=%+.4g total=%.6g\n",
+                     dAdvect, dThicken, dArcs, dAccrete, dSubduct, dDiverge, dDock, dSlab,
+                     dRift, dContig, dErode, budgetPrev);
+    }
     compactPlateList(field, plates);
     recomputePlateCentroidsFromCells(field, plates);
 
