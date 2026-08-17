@@ -59,8 +59,7 @@ namespace aoc::map::gen {
 /// Cite: cellular-automaton plate-tectonic simulators (Lautenschlager
 /// & Wraight 2013) use the same region-growing approach to produce
 /// realistic plate shapes from cratonic seeds without datasets.
-void generateInitialPlateOwnership(SphereField& field,
-                                   const std::vector<Plate>& plates,
+void generateInitialPlateOwnership(SphereField& field, const std::vector<Plate>& plates,
                                    uint64_t seed);
 
 /// Batch plate merge with ONE pass over `field.plateId`. Each pair
@@ -79,11 +78,8 @@ void generateInitialPlateOwnership(SphereField& field,
 /// On return, every absorbed plate has been erased and remaining
 /// plates' indices have been compacted; `field.plateId` has been
 /// remapped to the post-erase indices in a single sweep.
-void mergePlatesBatch(SphereField& field,
-                      std::vector<Plate>& plates,
-                      const std::vector<std::pair<std::size_t,
-                                                  std::size_t>>& pairs);
-
+void mergePlatesBatch(SphereField& field, std::vector<Plate>& plates,
+                      const std::vector<std::pair<std::size_t, std::size_t>>& pairs);
 
 /// Recompute every plate's centroid (`Plate.latDeg`, `Plate.lonDeg`) as
 /// the area-weighted mean of the cells currently assigned to it. Run
@@ -92,8 +88,7 @@ void mergePlatesBatch(SphereField& field,
 /// because its cell set changes — boundary cells flip to neighbours
 /// (subduction) or new oceanic cells appear at ridges, and the
 /// centroid moves to follow.
-void recomputePlateCentroidsFromCells(SphereField& field,
-                                      std::vector<Plate>& plates);
+void recomputePlateCentroidsFromCells(SphereField& field, std::vector<Plate>& plates);
 
 /// Compact the plate list: any plate with zero cells (last cell
 /// consumed by subduction or merger) is removed from `plates`, and the
@@ -138,9 +133,7 @@ void accreteAtDivergentBoundary(SphereField& field, float dtMy);
 /// plate motion is purely random Brownian and lacks the systematic
 /// convergence-driven acceleration that produces sustained
 /// orogeny.
-void applySlabPullFeedback(SphereField& field,
-                           std::vector<Plate>& plates,
-                           float dtMy);
+void applySlabPullFeedback(SphereField& field, std::vector<Plate>& plates, float dtMy);
 
 /// Wilson-cycle continental rifting. Mantle thermal blanketing under a
 /// supercontinent (Anderson 1982; Stein & Stein 1992) accumulates
@@ -155,9 +148,7 @@ void applySlabPullFeedback(SphereField& field,
 ///      to a fresh plate id, and gives the new plate a perturbed
 ///      Euler pole so the two halves diverge.
 /// Returns the number of new plates created.
-int32_t applyWilsonRifting(SphereField& field,
-                           std::vector<Plate>& plates,
-                           uint32_t& rngState,
+int32_t applyWilsonRifting(SphereField& field, std::vector<Plate>& plates, uint32_t& rngState,
                            float dtMy);
 
 /// Plate-cell advection. Each owned cell rotates about its plate's
@@ -176,15 +167,12 @@ int32_t applyWilsonRifting(SphereField& field,
 /// continents drift visibly across the map as their plates rotate.
 /// Runs first in `stepSpherePhysicsEpoch` so the boundary network and
 /// closing-rate calculation see the freshly transported field.
-void advectPlateOwnership(SphereField& field,
-                          const std::vector<Plate>& plates,
-                          float dtMy);
+void advectPlateOwnership(SphereField& field, const std::vector<Plate>& plates, float dtMy);
 
 /// Phase 1.2: flag every cell whose 4-connected neighbourhood (N/S/E/W
 /// with longitude wrap, latitude clamp) contains a different plate id.
 /// `isBoundary` is sized to `SphereField::CELL_COUNT` and overwritten.
-void markBoundaryCells(const SphereField& field,
-                       std::vector<uint8_t>& isBoundary);
+void markBoundaryCells(const SphereField& field, std::vector<uint8_t>& isBoundary);
 
 /// Phase 1.3: write the INSTANTANEOUS closing rate (positive when plates
 /// converge) into `field.convergenceRateRadPerMy` for every boundary
@@ -192,8 +180,7 @@ void markBoundaryCells(const SphereField& field,
 /// Euler-pole tangent velocities at the cell -- with the unit vector
 /// pointing from cell A toward the neighbour cell B that flipped plate
 /// ownership. Non-boundary cells are zeroed.
-void accumulateClosingRate(SphereField& field,
-                           const std::vector<Plate>& plates,
+void accumulateClosingRate(SphereField& field, const std::vector<Plate>& plates,
                            const std::vector<uint8_t>& isBoundary);
 
 /// Phase 1.4: thicken continental crust at convergent boundary cells.
@@ -267,9 +254,7 @@ void accreteToNeighbours(SphereField& field, float dtMy);
 ///
 /// Single-threaded for determinism: ownership transfers between cells
 /// must observe a consistent order.
-void applySubduction(SphereField& field,
-                     const std::vector<Plate>& plates,
-                     float dtMy);
+void applySubduction(SphereField& field, const std::vector<Plate>& plates, float dtMy);
 
 /// Contiguity enforcement: every plate keeps its largest connected
 /// component; smaller fragments (bounded by a size cap) transfer to
@@ -277,16 +262,13 @@ void applySubduction(SphereField& field,
 /// ownership only. Returns cells moved. Run after the epoch's last
 /// ownership mutator (Wilson rifting), and once after initial
 /// ownership as an invariant check.
-int32_t enforcePlateContiguity(SphereField& field,
-                               const std::vector<Plate>& plates);
+int32_t enforcePlateContiguity(SphereField& field, const std::vector<Plate>& plates);
 
 /// Continental docking: accumulate the per-cell suture-contact clock
 /// and weld plate pairs whose cont-cont convergent suture has been in
 /// sustained contact (>= 120 My over >= 8 cells). Replaces the legacy
 /// centroid-distance merge.
-void applyContinentalDocking(SphereField& field,
-                             std::vector<Plate>& plates,
-                             float dtMy);
+void applyContinentalDocking(SphereField& field, std::vector<Plate>& plates, float dtMy);
 
 /// Phase 1.6: Airy isostasy on the raster. Surface elevation is derived
 /// from `crustThicknessKm` and `continentalFraction` against the mantle
@@ -300,6 +282,14 @@ void recomputeIsostaticElevationOnRaster(SphereField& field);
 /// are relative to the solved level. Serial bisection by design --
 /// determinism forbids OpenMP float reductions here.
 void solveSeaLevelFixedVolume(SphereField& field);
+
+/// Share of the sphere's surface covered by continental crust (cells with
+/// `continentalFraction >= 0.5`), cos-latitude weighted. Earth is ~0.41.
+///
+/// This is the same population and threshold the `[hypso]` diagnostic and the
+/// `mapgen_metrics.py` crust-share gate report, so a value computed here is
+/// directly comparable with those. Serial and fixed-order for determinism.
+[[nodiscard]] float continentalAreaShare(const SphereField& field);
 
 /// Phase 1.7: stream-power surface erosion. dh = -K_EROSION * z * dtMy
 /// applied where z > 0 (above sea level). Each metre of surface lowering
@@ -319,10 +309,7 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy);
 /// seed advanced by Wilson rifting each epoch — kept outside the
 /// call so it remains deterministic across runs with the same map
 /// seed.
-void stepSpherePhysicsEpoch(SphereField& field,
-                            std::vector<Plate>& plates,
-                            std::vector<uint8_t>& boundaryScratch,
-                            uint32_t& rngState,
-                            float dtMy);
+void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
+                            std::vector<uint8_t>& boundaryScratch, uint32_t& rngState, float dtMy);
 
 } // namespace aoc::map::gen

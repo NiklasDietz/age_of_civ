@@ -2713,6 +2713,27 @@ void applyContinentalDocking(SphereField& field, std::vector<Plate>& plates, flo
     }
 }
 
+float continentalAreaShare(const SphereField& field) {
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    double cont           = 0.0;
+    double total          = 0.0;
+    for (int32_t j = 0; j < LAT; ++j) {
+        const float latDeg = -90.0f + (static_cast<float>(j) + 0.5f) * SphereField::CELL_DEG;
+        const double w     = static_cast<double>(std::max(0.0f, std::cos(latDeg * 0.01745329252f)));
+        double rowCont     = 0.0;
+        const std::size_t rowBase = static_cast<std::size_t>(j) * static_cast<std::size_t>(LON);
+        for (int32_t i = 0; i < LON; ++i) {
+            if (field.continentalFraction[rowBase + static_cast<std::size_t>(i)] >= 0.5f) {
+                rowCont += 1.0;
+            }
+        }
+        cont += rowCont * w;
+        total += static_cast<double>(LON) * w;
+    }
+    return (total > 0.0) ? static_cast<float>(cont / total) : 0.0f;
+}
+
 void recomputeIsostaticElevationOnRaster(SphereField& field) {
     // The law itself lives in PlatePhysics.hpp as a pure function so
     // tests/test_isostasy.cpp can pin it against the literature without
@@ -3102,8 +3123,8 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
                      "[budget] advect=%+.4g thicken=%+.4g arcs=%+.4g accrete=%+.4g "
                      "subduct=%+.4g diverge=%+.4g dock=%+.4g slab=%+.4g rift=%+.4g "
                      "contig=%+.4g erode=%+.4g total=%.6g\n",
-                     dAdvect, dThicken, dArcs, dAccrete, dSubduct, dDiverge, dDock, dSlab,
-                     dRift, dContig, dErode, budgetPrev);
+                     dAdvect, dThicken, dArcs, dAccrete, dSubduct, dDiverge, dDock, dSlab, dRift,
+                     dContig, dErode, budgetPrev);
     }
     compactPlateList(field, plates);
     recomputePlateCentroidsFromCells(field, plates);

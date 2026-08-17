@@ -744,475 +744,557 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         // sequence.
         uint32_t physicsRngState = static_cast<uint32_t>(config.seed) ^ 0xDEADBEEFu;
         if (physicsRngState == 0u) physicsRngState = 0x12345678u;
-        {
-            using SF                = aoc::map::gen::SphereField;
-            constexpr int32_t LON   = SF::LON_CELLS;
-            constexpr int32_t LAT   = SF::LAT_CELLS;
-            constexpr std::size_t N = SF::CELL_COUNT;
-            // Independent RNG for cratonic seeding -- distinct from
-            // physicsRngState so changes here do not perturb the
-            // Wilson rifting cadence.
-            aoc::Random cratonRng(config.seed ^ 0x43524154u); // "CRAT"
-
-            // 2026-05-14: bumped from 5-8 -> 7-11 cratons. The lower bound
-            // matters more than the upper for seeds with adverse plate
-            // geometries: seeds 100 and 200 produced only 3-5 % land in the
-            // 6-seed sweep at numCratons=5, because few cratons + small
-            // log-normal samples + few convergent boundaries starved the
-            // accreteToNeighbours diffusion pass of donor cells.
-            // Real Earth has ~12 stable cratons (Pilbara, Yilgarn, Slave,
-            // Kaapvaal, North Atlantic, Siberian, North China, Tarim,
-            // Indian, São Francisco, Amazonian, West African; Cawood et
-            // al. 2013, table 1). 7-11 brings the simulation in line.
-            const int32_t numCratons = 7 + cratonRng.nextInt(0, 4);
-
-            // Area weight of one raster cell at a given latitude row. Cells are
-            // lat/lon rectangles, so their ground area scales with cos(lat);
-            // any craton budget or growth accumulator expressed in raw cell
-            // COUNTS is therefore a different physical size depending on where
-            // the craton sits.
-            const auto cellAreaWeightAt = [](int32_t latIdx) -> double {
-                const double latDeg =
-                    -90.0 + (static_cast<double>(latIdx) + 0.5) *
-                                static_cast<double>(aoc::map::gen::SphereField::CELL_DEG);
-                return std::max(0.0, std::cos(latDeg * 0.01745329252));
-            };
-
-            // Per-nucleus absolute area drawn from log-normal — no
-            // global quota. 2026-07-05: median raised 0.7 % -> 1.8 %
-            // of sphere. The old value targeted the ~5 % mid-Archean
-            // (~3.5 Ga) baseline and hoped arc volcanism would grow
-            // it to the modern 29 % — measured across every seed
-            // sweep, that growth reliably undershot (final land
-            // 13-29 %). The sim's own sources say most continental
-            // crust already existed EARLY: ~60-70 % of today's volume
-            // by ~2.5 Ga (Cawood et al. 2013; Belousova et al. 2010
-            // detrital-zircon record), i.e. a ~15-20 % initial
-            // areal stock is MORE faithful than 5 % + over-weighted
-            // arc production. 7-11 nuclei x 1.8 % median ~ 15-22 %
-            // initial coverage; arcs and accretion then add the
-            // Phanerozoic tail.
-            // Total initial crust stock: one draw from the geologic
-            // envelope (16-22 % of the sphere; ~60-70 % of modern
-            // continental volume existed by 2.5 Ga -- Cawood 2013 /
-            // Belousova 2010), PARTITIONED across nuclei by
-            // log-normal weights (sigma = 1.0: smallest-to-largest
-            // ~30x, matching Earth's strongly hierarchical landmass
-            // sizes -- Afro-Eurasia ~57 % of land, Australia ~5 %).
-            // Partitioning a single stock draw keeps the size
-            // hierarchy while removing the ~2x total-stock lottery
-            // that independent per-nucleus draws produced; the FINAL
-            // land fraction remains fully emergent from 3 Gy of
-            // physics against the fixed ocean volume.
-            constexpr float STOCK_FRACTION_MIN = 0.26f;
-            constexpr float STOCK_FRACTION_MAX = 0.32f;
-            constexpr float NUCLEUS_LOG_SIGMA  = 1.0f;
-            const float totalStockCells =
-                cratonRng.nextFloat(STOCK_FRACTION_MIN, STOCK_FRACTION_MAX) * static_cast<float>(N);
-            std::vector<float> nucleusWeight(static_cast<std::size_t>(numCratons), 0.0f);
-            float weightSum = 0.0f;
-            for (int32_t i = 0; i < numCratons; ++i) {
-                const float u1    = std::max(1e-6f, cratonRng.nextFloat(0.0f, 1.0f));
-                const float u2    = cratonRng.nextFloat(0.0f, 1.0f);
-                const float gauss = std::sqrt(-2.0f * std::log(u1)) * std::cos(6.28318530718f * u2);
-                nucleusWeight[static_cast<std::size_t>(i)] = std::exp(NUCLEUS_LOG_SIGMA * gauss);
-                weightSum += nucleusWeight[static_cast<std::size_t>(i)];
+        // WORLD ACCEPTANCE RETRY.
+        //
+        // The continental crust budget is not regulated: the simulation
+        // integrates whatever convergent-boundary length the initial craton and
+        // plate layout happens to produce, and that varies enormously by seed.
+        // Measured over 12 seeds, the continental share of the sphere spans
+        // 0.115 to 0.430 -- the low end is a world with essentially no
+        // continents. Until the budget is regulated at its source (see the
+        // worldgen memory notes) reject the degenerate draws and re-run.
+        //
+        // The retry covers CRATON SEEDING as well as plate assignment. Varying
+        // only the plate layout is not enough: measured, seed 2 redrawn four
+        // times on plate layout alone gave 0.115 / 0.150 / 0.164 / 0.117,
+        // because it is the craton draw that decides how much continental crust
+        // exists to begin with.
+        //
+        // Deterministic: the retry sequence is a pure function of config.seed,
+        // so a given seed always produces the same world.
+        //
+        // This filters out no-continent worlds. It does NOT fix the missing
+        // continental shelves -- 10 of those 12 seeds drown under 10 % of their
+        // continental crust, so there is no shelf-bearing draw to select for.
+        constexpr float ACCEPT_MIN_CRUST_SHARE = 0.25f;
+        constexpr float ACCEPT_MAX_CRUST_SHARE = 0.50f;
+        constexpr float ACCEPT_TARGET_SHARE    = 0.40f;
+        constexpr int32_t MAX_WORLD_ATTEMPTS   = 4;
+        const aoc::map::gen::SphereField pristineField         = sphereField;
+        const std::vector<aoc::map::gen::Plate> pristinePlates = plates;
+        const std::vector<Hotspot> pristineHotspots            = hotspots;
+        const uint32_t pristineRng                             = physicsRngState;
+        aoc::map::gen::SphereField bestField;
+        std::vector<aoc::map::gen::Plate> bestPlates;
+        std::vector<Hotspot> bestHotspots;
+        uint32_t bestRng   = pristineRng;
+        float bestShare    = 0.0f;
+        float bestDistance = std::numeric_limits<float>::max();
+        for (int32_t attempt = 0; attempt < MAX_WORLD_ATTEMPTS; ++attempt) {
+            if (attempt > 0) {
+                sphereField     = pristineField;
+                plates          = pristinePlates;
+                hotspots        = pristineHotspots;
+                physicsRngState = pristineRng;
             }
-            // Per-craton target, in CELL-AREA units (sum of cos(lat) over the
-            // craton's cells) rather than a raw cell count.
-            //
-            // 2026-08-12. A raw cell count is latitude-dependent: a 0.5 deg
-            // cell at 70 deg covers a third of the ground a cell at the equator
-            // does, so "9000 cells" meant a different-sized craton depending on
-            // where its seed landed, and the log-normal size hierarchy drawn
-            // just above was partly re-rolled by geography. Targeting area
-            // removes that.
-            //
-            // The clamp also has to REDISTRIBUTE. It used to compute each
-            // craton's share of the stock independently and then clamp, which
-            // silently discarded the excess: with 7 cratons and a 9000-cell
-            // ceiling the realised total could not exceed 24.3 % of the sphere
-            // even though the stock draw asks for 26-32 %, and any craton whose
-            // log-normal weight was large got flattened to exactly the ceiling.
-            // Several cratons pinned at an identical size is precisely the
-            // "same-weight round blob continents" artifact the anisotropic
-            // growth below exists to avoid.
-            //
-            // Ceiling is 6 % of the sphere. Afro-Eurasia is 16.6 %, but a
-            // single craton that large would have a semi-axis near 40 deg and
-            // the growth ellipse would wrap into a globe-girdling belt; a
-            // Pangaea-scale mass is supposed to ASSEMBLE from several cratons
-            // over the run, not be seeded as one.
-            constexpr float CRATON_AREA_MIN_FRAC = 0.0002f;
-            constexpr float CRATON_AREA_MAX_FRAC = 0.06f;
-            std::vector<double> cratonTargetArea(static_cast<std::size_t>(numCratons), 0.0);
-            double rasterArea = 0.0;
-            for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
-                rasterArea += static_cast<double>(LON) * cellAreaWeightAt(latIdx);
-            }
+            // Golden-ratio odd multiplier: decorrelates successive attempts
+            // without colliding with a neighbouring user-visible seed.
+            const uint64_t attemptSeed = static_cast<uint64_t>(config.seed) +
+                                         static_cast<uint64_t>(attempt) * 0x9E3779B97F4A7C15ULL;
+
             {
-                const double stockArea =
-                    static_cast<double>(totalStockCells) / static_cast<double>(N) * rasterArea;
-                const double loArea = static_cast<double>(CRATON_AREA_MIN_FRAC) * rasterArea;
-                const double hiArea = static_cast<double>(CRATON_AREA_MAX_FRAC) * rasterArea;
-                // Water-filling: clamp, then push the clipped surplus back into
-                // the cratons that still have headroom, so the drawn total is
-                // actually delivered and the hierarchy below the ceiling is
-                // preserved. Bounded iteration -- with every craton already at
-                // the ceiling there is nowhere left to put the remainder and
-                // the loop must stop rather than spin.
-                std::vector<double> want(static_cast<std::size_t>(numCratons), 0.0);
+                using SF                = aoc::map::gen::SphereField;
+                constexpr int32_t LON   = SF::LON_CELLS;
+                constexpr int32_t LAT   = SF::LAT_CELLS;
+                constexpr std::size_t N = SF::CELL_COUNT;
+                // Independent RNG for cratonic seeding -- distinct from
+                // physicsRngState so changes here do not perturb the
+                // Wilson rifting cadence.
+                aoc::Random cratonRng(static_cast<uint32_t>(attemptSeed) ^ 0x43524154u); // "CRAT"
+
+                // 2026-05-14: bumped from 5-8 -> 7-11 cratons. The lower bound
+                // matters more than the upper for seeds with adverse plate
+                // geometries: seeds 100 and 200 produced only 3-5 % land in the
+                // 6-seed sweep at numCratons=5, because few cratons + small
+                // log-normal samples + few convergent boundaries starved the
+                // accreteToNeighbours diffusion pass of donor cells.
+                // Real Earth has ~12 stable cratons (Pilbara, Yilgarn, Slave,
+                // Kaapvaal, North Atlantic, Siberian, North China, Tarim,
+                // Indian, São Francisco, Amazonian, West African; Cawood et
+                // al. 2013, table 1). 7-11 brings the simulation in line.
+                const int32_t numCratons = 7 + cratonRng.nextInt(0, 4);
+
+                // Area weight of one raster cell at a given latitude row. Cells are
+                // lat/lon rectangles, so their ground area scales with cos(lat);
+                // any craton budget or growth accumulator expressed in raw cell
+                // COUNTS is therefore a different physical size depending on where
+                // the craton sits.
+                const auto cellAreaWeightAt = [](int32_t latIdx) -> double {
+                    const double latDeg =
+                        -90.0 + (static_cast<double>(latIdx) + 0.5) *
+                                    static_cast<double>(aoc::map::gen::SphereField::CELL_DEG);
+                    return std::max(0.0, std::cos(latDeg * 0.01745329252));
+                };
+
+                // Per-nucleus absolute area drawn from log-normal — no
+                // global quota. 2026-07-05: median raised 0.7 % -> 1.8 %
+                // of sphere. The old value targeted the ~5 % mid-Archean
+                // (~3.5 Ga) baseline and hoped arc volcanism would grow
+                // it to the modern 29 % — measured across every seed
+                // sweep, that growth reliably undershot (final land
+                // 13-29 %). The sim's own sources say most continental
+                // crust already existed EARLY: ~60-70 % of today's volume
+                // by ~2.5 Ga (Cawood et al. 2013; Belousova et al. 2010
+                // detrital-zircon record), i.e. a ~15-20 % initial
+                // areal stock is MORE faithful than 5 % + over-weighted
+                // arc production. 7-11 nuclei x 1.8 % median ~ 15-22 %
+                // initial coverage; arcs and accretion then add the
+                // Phanerozoic tail.
+                // Total initial crust stock: one draw from the geologic
+                // envelope (16-22 % of the sphere; ~60-70 % of modern
+                // continental volume existed by 2.5 Ga -- Cawood 2013 /
+                // Belousova 2010), PARTITIONED across nuclei by
+                // log-normal weights (sigma = 1.0: smallest-to-largest
+                // ~30x, matching Earth's strongly hierarchical landmass
+                // sizes -- Afro-Eurasia ~57 % of land, Australia ~5 %).
+                // Partitioning a single stock draw keeps the size
+                // hierarchy while removing the ~2x total-stock lottery
+                // that independent per-nucleus draws produced; the FINAL
+                // land fraction remains fully emergent from 3 Gy of
+                // physics against the fixed ocean volume.
+                constexpr float STOCK_FRACTION_MIN = 0.26f;
+                constexpr float STOCK_FRACTION_MAX = 0.32f;
+                constexpr float NUCLEUS_LOG_SIGMA  = 1.0f;
+                const float totalStockCells =
+                    cratonRng.nextFloat(STOCK_FRACTION_MIN, STOCK_FRACTION_MAX) * static_cast<float>(N);
+                std::vector<float> nucleusWeight(static_cast<std::size_t>(numCratons), 0.0f);
+                float weightSum = 0.0f;
                 for (int32_t i = 0; i < numCratons; ++i) {
-                    want[static_cast<std::size_t>(i)] =
-                        stockArea *
-                        static_cast<double>(nucleusWeight[static_cast<std::size_t>(i)]) /
-                        static_cast<double>(weightSum);
+                    const float u1    = std::max(1e-6f, cratonRng.nextFloat(0.0f, 1.0f));
+                    const float u2    = cratonRng.nextFloat(0.0f, 1.0f);
+                    const float gauss = std::sqrt(-2.0f * std::log(u1)) * std::cos(6.28318530718f * u2);
+                    nucleusWeight[static_cast<std::size_t>(i)] = std::exp(NUCLEUS_LOG_SIGMA * gauss);
+                    weightSum += nucleusWeight[static_cast<std::size_t>(i)];
                 }
-                for (int32_t pass = 0; pass < 8; ++pass) {
-                    double surplus  = 0.0;
-                    double headroom = 0.0;
-                    for (int32_t i = 0; i < numCratons; ++i) {
-                        double& w = want[static_cast<std::size_t>(i)];
-                        if (w > hiArea) {
-                            surplus += w - hiArea;
-                            w = hiArea;
-                        } else if (w < loArea) {
-                            w = loArea;
-                        } else {
-                            headroom += hiArea - w;
-                        }
-                    }
-                    if (surplus <= 1e-9 || headroom <= 1e-9) break;
-                    const double scale = std::min(1.0, surplus / headroom);
-                    for (int32_t i = 0; i < numCratons; ++i) {
-                        double& w = want[static_cast<std::size_t>(i)];
-                        if (w < hiArea) {
-                            w += (hiArea - w) * scale;
-                        }
-                    }
-                }
-                cratonTargetArea = want;
-            }
-
-            // Place craton seeds with minimum angular separation
-            // (Lambertian uniform on sphere via cos-lat sampling so
-            // tropical seeds are not over-represented).
-            std::vector<int32_t> seedLon(static_cast<std::size_t>(numCratons));
-            std::vector<int32_t> seedLat(static_cast<std::size_t>(numCratons));
-            constexpr float MIN_SEP_RAD = 0.45f; // ~26 deg: prevents seeds clumping
-            // Mid-latitude bias for craton seeds. Earth's continental
-            // crust concentrates between roughly 20-70 degrees N and
-            // 25-50 degrees S; only Antarctica sits over a geographic
-            // pole. The visible-pole "swirl" smearing comes from
-            // continental cells rotating about polar Euler axes
-            // (plate Euler poles cluster at high latitudes, Gripp &
-            // Gordon 2002), where many longitude lines converge to a
-            // point and any continental rotation looks like a circle
-            // around the pole. Restricting craton seeds to |lat| <= 65
-            // makes the polar caps oceanic-by-default, matching real
-            // Earth and removing the visual artefact entirely.
-            constexpr float CRATON_LAT_LIMIT_SIN = 0.906f; // sin(65 deg)
-            for (int32_t i = 0; i < numCratons; ++i) {
-                // Two-tier rejection sampling: first 64 attempts use the
-                // strict separation MIN_SEP_RAD. On failure (high craton
-                // count + small sphere — the strict packing is
-                // infeasible) emit a warning and retry once with a
-                // relaxed 0.5x separation. The relaxed band still
-                // prevents craton overlap while admitting denser
-                // packings the original threshold would reject.
-                bool ok       = false;
-                auto tryPlace = [&](float minSep) -> bool {
-                    const float u =
-                        cratonRng.nextFloat(-CRATON_LAT_LIMIT_SIN, CRATON_LAT_LIMIT_SIN);
-                    const float latDeg    = std::asin(u) * 57.29577951f;
-                    const float lonDeg    = cratonRng.nextFloat(-180.0f, 180.0f);
-                    const SF::CellCoord c = SF::locate(latDeg, lonDeg);
-                    for (int32_t j = 0; j < i; ++j) {
-                        const aoc::map::gen::LatLon a = SF::cellCenter(c.lonIdx, c.latIdx);
-                        const aoc::map::gen::LatLon b =
-                            SF::cellCenter(seedLon[static_cast<std::size_t>(j)],
-                                           seedLat[static_cast<std::size_t>(j)]);
-                        const float d = aoc::map::gen::haversineRadians(a, b);
-                        if (d < minSep) {
-                            return false;
-                        }
-                    }
-                    seedLon[static_cast<std::size_t>(i)] = c.lonIdx;
-                    seedLat[static_cast<std::size_t>(i)] = c.latIdx;
-                    return true;
-                };
-                for (int32_t attempt = 0; attempt < 64 && !ok; ++attempt) {
-                    ok = tryPlace(MIN_SEP_RAD);
-                }
-                if (!ok) {
-                    LOG_WARN("MapGenerator: craton seed %d failed strict "
-                             "MIN_SEP_RAD=%.3f after 64 attempts -- "
-                             "retrying with relaxed 0.5x separation",
-                             i, static_cast<double>(MIN_SEP_RAD));
-                    constexpr float RELAXED = 0.5f * MIN_SEP_RAD;
-                    for (int32_t attempt = 0; attempt < 64 && !ok; ++attempt) {
-                        ok = tryPlace(RELAXED);
-                    }
-                }
-            }
-
-            // Anisotropic stochastic growth (2026-07-05). Plain
-            // random-frontier BFS is an Eden growth model whose
-            // clusters converge to DISCS (ragged edges, circular
-            // outline) -- the "same-weight round blob continents"
-            // artifact. Real cratons are assemblies of arc terranes
-            // accreted along linear belts (Superior Province
-            // subprovince stripes, Yilgarn terranes), i.e. elongated.
-            // Each craton draws an assembly-axis azimuth and an
-            // anisotropy ratio A in [1.5, 3.0] (log-uniform); a popped
-            // frontier cell is accepted with a probability that decays
-            // with its TRUE elliptical radius (d_par/a)^2 +
-            // (d_perp * A / a)^2 -- rejected cells re-enter the
-            // frontier at most once, and growth falls back to
-            // unconditional acceptance if the frontier drains
-            // (target area always reached).
-            std::vector<int8_t> claimed(N, 0); // 1 = continental
-            std::vector<int8_t> rejectedOnce(N, 0);
-            for (int32_t cidx = 0; cidx < numCratons; ++cidx) {
-                const double targetArea = cratonTargetArea[static_cast<std::size_t>(cidx)];
-                if (targetArea <= 0.0) continue;
-                const int32_t sLon         = seedLon[static_cast<std::size_t>(cidx)];
-                const int32_t sLat         = seedLat[static_cast<std::size_t>(cidx)];
-                const std::size_t startIdx = SF::cellIndex(sLon, sLat);
-                if (claimed[startIdx]) continue; // overlap with prior craton
-                const float axisAz = cratonRng.nextFloat(0.0f, 3.14159265f);
-                const float axCos  = std::cos(axisAz);
-                const float axSin  = std::sin(axisAz);
-                const float aniso =
-                    std::exp(cratonRng.nextFloat(0.405f, 1.099f)); // ln(1.5)..ln(3.0), log-uniform
-                // Semi-major axis in RADIANS of arc, from the target solid
-                // angle: area ~ pi * a * (a / A) on a small cap.
+                // Per-craton target, in CELL-AREA units (sum of cos(lat) over the
+                // craton's cells) rather than a raw cell count.
                 //
-                // The offsets it is compared against are true angular
-                // distances, so the ellipse is now the same physical shape at
-                // any latitude. The previous form measured in cell indices,
-                // scaled longitude by a single cos(seed latitude), and left
-                // latitude unscaled -- a tangent-plane approximation taken at
-                // the seed and then used out to 30-45 deg away, which stretched
-                // every high-latitude craton east-west.
-                const double targetSolidAngle = targetArea / rasterArea * 4.0 * 3.14159265358979;
-                const double semiMajorRad =
-                    std::sqrt(targetSolidAngle * static_cast<double>(aniso) / 3.14159265358979);
-                const aoc::map::gen::LatLon seedPos = SF::cellCenter(sLon, sLat);
-                const double sLatR   = static_cast<double>(seedPos.latDeg) * 0.01745329252;
-                const double sLonR   = static_cast<double>(seedPos.lonDeg) * 0.01745329252;
-                const double sinSLat = std::sin(sLatR);
-                const double cosSLat = std::cos(sLatR);
-                claimed[startIdx]    = 1;
-                double grownArea     = cellAreaWeightAt(sLat);
-                std::vector<std::size_t> frontier;
-                frontier.reserve(1024);
-                auto pushNbrs = [&](int32_t lonI, int32_t latI) {
-                    const int32_t lonW        = (lonI == 0) ? LON - 1 : lonI - 1;
-                    const int32_t lonE        = (lonI == LON - 1) ? 0 : lonI + 1;
-                    const int32_t latS        = std::max(0, latI - 1);
-                    const int32_t latN        = std::min(LAT - 1, latI + 1);
-                    const std::size_t nbrs[4] = {
-                        SF::cellIndex(lonW, latI),
-                        SF::cellIndex(lonE, latI),
-                        SF::cellIndex(lonI, latS),
-                        SF::cellIndex(lonI, latN),
-                    };
-                    for (int32_t k = 0; k < 4; ++k) {
-                        if (!claimed[nbrs[k]]) frontier.push_back(nbrs[k]);
+                // 2026-08-12. A raw cell count is latitude-dependent: a 0.5 deg
+                // cell at 70 deg covers a third of the ground a cell at the equator
+                // does, so "9000 cells" meant a different-sized craton depending on
+                // where its seed landed, and the log-normal size hierarchy drawn
+                // just above was partly re-rolled by geography. Targeting area
+                // removes that.
+                //
+                // The clamp also has to REDISTRIBUTE. It used to compute each
+                // craton's share of the stock independently and then clamp, which
+                // silently discarded the excess: with 7 cratons and a 9000-cell
+                // ceiling the realised total could not exceed 24.3 % of the sphere
+                // even though the stock draw asks for 26-32 %, and any craton whose
+                // log-normal weight was large got flattened to exactly the ceiling.
+                // Several cratons pinned at an identical size is precisely the
+                // "same-weight round blob continents" artifact the anisotropic
+                // growth below exists to avoid.
+                //
+                // Ceiling is 6 % of the sphere. Afro-Eurasia is 16.6 %, but a
+                // single craton that large would have a semi-axis near 40 deg and
+                // the growth ellipse would wrap into a globe-girdling belt; a
+                // Pangaea-scale mass is supposed to ASSEMBLE from several cratons
+                // over the run, not be seeded as one.
+                constexpr float CRATON_AREA_MIN_FRAC = 0.0002f;
+                constexpr float CRATON_AREA_MAX_FRAC = 0.06f;
+                std::vector<double> cratonTargetArea(static_cast<std::size_t>(numCratons), 0.0);
+                double rasterArea = 0.0;
+                for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+                    rasterArea += static_cast<double>(LON) * cellAreaWeightAt(latIdx);
+                }
+                {
+                    const double stockArea =
+                        static_cast<double>(totalStockCells) / static_cast<double>(N) * rasterArea;
+                    const double loArea = static_cast<double>(CRATON_AREA_MIN_FRAC) * rasterArea;
+                    const double hiArea = static_cast<double>(CRATON_AREA_MAX_FRAC) * rasterArea;
+                    // Water-filling: clamp, then push the clipped surplus back into
+                    // the cratons that still have headroom, so the drawn total is
+                    // actually delivered and the hierarchy below the ceiling is
+                    // preserved. Bounded iteration -- with every craton already at
+                    // the ceiling there is nowhere left to put the remainder and
+                    // the loop must stop rather than spin.
+                    std::vector<double> want(static_cast<std::size_t>(numCratons), 0.0);
+                    for (int32_t i = 0; i < numCratons; ++i) {
+                        want[static_cast<std::size_t>(i)] =
+                            stockArea *
+                            static_cast<double>(nucleusWeight[static_cast<std::size_t>(i)]) /
+                            static_cast<double>(weightSum);
                     }
-                };
-                pushNbrs(sLon, sLat);
-                while (grownArea < targetArea && !frontier.empty()) {
-                    // Pick a random frontier cell. Swap-remove for O(1)
-                    // deletion.
-                    const std::size_t pick = static_cast<std::size_t>(
-                        cratonRng.nextInt(0, static_cast<int32_t>(frontier.size()) - 1));
-                    const std::size_t cellIdx = frontier[pick];
-                    frontier[pick]            = frontier.back();
-                    frontier.pop_back();
-                    if (claimed[cellIdx]) continue;
-                    const int32_t cellLon = static_cast<int32_t>(cellIdx % LON);
-                    const int32_t cellLat = static_cast<int32_t>(cellIdx / LON);
-                    // Elliptical-radius acceptance on TRUE angular offsets:
-                    // great-circle distance from the seed, decomposed onto the
-                    // assembly axis by the bearing. Same ellipse at any
-                    // latitude, and correct out to the 30-45 deg the largest
-                    // cratons actually span.
-                    const aoc::map::gen::LatLon cellPos = SF::cellCenter(cellLon, cellLat);
-                    const double cLatR   = static_cast<double>(cellPos.latDeg) * 0.01745329252;
-                    const double dLonR   = (static_cast<double>(cellPos.lonDeg) -
-                                            static_cast<double>(seedPos.lonDeg)) *
-                                           0.01745329252;
-                    const double sinCLat = std::sin(cLatR);
-                    const double cosCLat = std::cos(cLatR);
-                    const double cosD    = std::clamp(
-                        sinSLat * sinCLat + cosSLat * cosCLat * std::cos(dLonR), -1.0, 1.0);
-                    const double dRad = std::acos(cosD);
-                    // Bearing from the seed, measured from north. The ellipse
-                    // axis is defined in the same frame, so the decomposition
-                    // is a plain rotation by the azimuth difference.
-                    const double bearing =
-                        std::atan2(cosCLat * std::sin(dLonR),
-                                   cosSLat * sinCLat - sinSLat * cosCLat * std::cos(dLonR));
-                    const double dxA = dRad * std::sin(bearing); // east
-                    const double dyA = dRad * std::cos(bearing); // north
-                    const double dPar =
-                        dxA * static_cast<double>(axCos) + dyA * static_cast<double>(axSin);
-                    const double dPerp =
-                        -dxA * static_cast<double>(axSin) + dyA * static_cast<double>(axCos);
-                    const double rho =
-                        std::sqrt(dPar * dPar + dPerp * dPerp * static_cast<double>(aniso) *
-                                                    static_cast<double>(aniso)) /
-                        std::max(1e-6, semiMajorRad);
-                    bool accept = true;
-                    if (rho > 1.0 && !rejectedOnce[cellIdx]) {
-                        // Soft edge: acceptance decays fast outside
-                        // the target ellipse; one retry keeps the
-                        // frontier alive without stalling growth.
-                        const double p = std::exp(-4.0 * (rho - 1.0));
-                        if (static_cast<double>(cratonRng.nextFloat(0.0f, 1.0f)) > p) {
-                            accept                = false;
-                            rejectedOnce[cellIdx] = 1;
-                            frontier.push_back(cellIdx);
+                    for (int32_t pass = 0; pass < 8; ++pass) {
+                        double surplus  = 0.0;
+                        double headroom = 0.0;
+                        for (int32_t i = 0; i < numCratons; ++i) {
+                            double& w = want[static_cast<std::size_t>(i)];
+                            if (w > hiArea) {
+                                surplus += w - hiArea;
+                                w = hiArea;
+                            } else if (w < loArea) {
+                                w = loArea;
+                            } else {
+                                headroom += hiArea - w;
+                            }
+                        }
+                        if (surplus <= 1e-9 || headroom <= 1e-9) break;
+                        const double scale = std::min(1.0, surplus / headroom);
+                        for (int32_t i = 0; i < numCratons; ++i) {
+                            double& w = want[static_cast<std::size_t>(i)];
+                            if (w < hiArea) {
+                                w += (hiArea - w) * scale;
+                            }
                         }
                     }
-                    if (!accept) continue;
-                    claimed[cellIdx] = 1;
-                    grownArea += cellAreaWeightAt(cellLat);
-                    pushNbrs(cellLon, cellLat);
+                    cratonTargetArea = want;
                 }
-                // Rejection memory is per-craton: without the reset a cell that
-                // craton A pushed outside its ellipse would be accepted
-                // unconditionally by craton B, letting B leak a tendril along
-                // whatever A happened to reject.
-                std::fill(rejectedOnce.begin(), rejectedOnce.end(), static_cast<int8_t>(0));
+
+                // Place craton seeds with minimum angular separation
+                // (Lambertian uniform on sphere via cos-lat sampling so
+                // tropical seeds are not over-represented).
+                std::vector<int32_t> seedLon(static_cast<std::size_t>(numCratons));
+                std::vector<int32_t> seedLat(static_cast<std::size_t>(numCratons));
+                constexpr float MIN_SEP_RAD = 0.45f; // ~26 deg: prevents seeds clumping
+                // Mid-latitude bias for craton seeds. Earth's continental
+                // crust concentrates between roughly 20-70 degrees N and
+                // 25-50 degrees S; only Antarctica sits over a geographic
+                // pole. The visible-pole "swirl" smearing comes from
+                // continental cells rotating about polar Euler axes
+                // (plate Euler poles cluster at high latitudes, Gripp &
+                // Gordon 2002), where many longitude lines converge to a
+                // point and any continental rotation looks like a circle
+                // around the pole. Restricting craton seeds to |lat| <= 65
+                // makes the polar caps oceanic-by-default, matching real
+                // Earth and removing the visual artefact entirely.
+                constexpr float CRATON_LAT_LIMIT_SIN = 0.906f; // sin(65 deg)
+                for (int32_t i = 0; i < numCratons; ++i) {
+                    // Two-tier rejection sampling: first 64 attempts use the
+                    // strict separation MIN_SEP_RAD. On failure (high craton
+                    // count + small sphere — the strict packing is
+                    // infeasible) emit a warning and retry once with a
+                    // relaxed 0.5x separation. The relaxed band still
+                    // prevents craton overlap while admitting denser
+                    // packings the original threshold would reject.
+                    bool ok       = false;
+                    auto tryPlace = [&](float minSep) -> bool {
+                        const float u =
+                            cratonRng.nextFloat(-CRATON_LAT_LIMIT_SIN, CRATON_LAT_LIMIT_SIN);
+                        const float latDeg    = std::asin(u) * 57.29577951f;
+                        const float lonDeg    = cratonRng.nextFloat(-180.0f, 180.0f);
+                        const SF::CellCoord c = SF::locate(latDeg, lonDeg);
+                        for (int32_t j = 0; j < i; ++j) {
+                            const aoc::map::gen::LatLon a = SF::cellCenter(c.lonIdx, c.latIdx);
+                            const aoc::map::gen::LatLon b =
+                                SF::cellCenter(seedLon[static_cast<std::size_t>(j)],
+                                               seedLat[static_cast<std::size_t>(j)]);
+                            const float d = aoc::map::gen::haversineRadians(a, b);
+                            if (d < minSep) {
+                                return false;
+                            }
+                        }
+                        seedLon[static_cast<std::size_t>(i)] = c.lonIdx;
+                        seedLat[static_cast<std::size_t>(i)] = c.latIdx;
+                        return true;
+                    };
+                    for (int32_t attempt = 0; attempt < 64 && !ok; ++attempt) {
+                        ok = tryPlace(MIN_SEP_RAD);
+                    }
+                    if (!ok) {
+                        LOG_WARN("MapGenerator: craton seed %d failed strict "
+                                 "MIN_SEP_RAD=%.3f after 64 attempts -- "
+                                 "retrying with relaxed 0.5x separation",
+                                 i, static_cast<double>(MIN_SEP_RAD));
+                        constexpr float RELAXED = 0.5f * MIN_SEP_RAD;
+                        for (int32_t attempt = 0; attempt < 64 && !ok; ++attempt) {
+                            ok = tryPlace(RELAXED);
+                        }
+                    }
+                }
+
+                // Anisotropic stochastic growth (2026-07-05). Plain
+                // random-frontier BFS is an Eden growth model whose
+                // clusters converge to DISCS (ragged edges, circular
+                // outline) -- the "same-weight round blob continents"
+                // artifact. Real cratons are assemblies of arc terranes
+                // accreted along linear belts (Superior Province
+                // subprovince stripes, Yilgarn terranes), i.e. elongated.
+                // Each craton draws an assembly-axis azimuth and an
+                // anisotropy ratio A in [1.5, 3.0] (log-uniform); a popped
+                // frontier cell is accepted with a probability that decays
+                // with its TRUE elliptical radius (d_par/a)^2 +
+                // (d_perp * A / a)^2 -- rejected cells re-enter the
+                // frontier at most once, and growth falls back to
+                // unconditional acceptance if the frontier drains
+                // (target area always reached).
+                std::vector<int8_t> claimed(N, 0); // 1 = continental
+                std::vector<int8_t> rejectedOnce(N, 0);
+                for (int32_t cidx = 0; cidx < numCratons; ++cidx) {
+                    const double targetArea = cratonTargetArea[static_cast<std::size_t>(cidx)];
+                    if (targetArea <= 0.0) continue;
+                    const int32_t sLon         = seedLon[static_cast<std::size_t>(cidx)];
+                    const int32_t sLat         = seedLat[static_cast<std::size_t>(cidx)];
+                    const std::size_t startIdx = SF::cellIndex(sLon, sLat);
+                    if (claimed[startIdx]) continue; // overlap with prior craton
+                    const float axisAz = cratonRng.nextFloat(0.0f, 3.14159265f);
+                    const float axCos  = std::cos(axisAz);
+                    const float axSin  = std::sin(axisAz);
+                    const float aniso =
+                        std::exp(cratonRng.nextFloat(0.405f, 1.099f)); // ln(1.5)..ln(3.0), log-uniform
+                    // Semi-major axis in RADIANS of arc, from the target solid
+                    // angle: area ~ pi * a * (a / A) on a small cap.
+                    //
+                    // The offsets it is compared against are true angular
+                    // distances, so the ellipse is now the same physical shape at
+                    // any latitude. The previous form measured in cell indices,
+                    // scaled longitude by a single cos(seed latitude), and left
+                    // latitude unscaled -- a tangent-plane approximation taken at
+                    // the seed and then used out to 30-45 deg away, which stretched
+                    // every high-latitude craton east-west.
+                    const double targetSolidAngle = targetArea / rasterArea * 4.0 * 3.14159265358979;
+                    const double semiMajorRad =
+                        std::sqrt(targetSolidAngle * static_cast<double>(aniso) / 3.14159265358979);
+                    const aoc::map::gen::LatLon seedPos = SF::cellCenter(sLon, sLat);
+                    const double sLatR   = static_cast<double>(seedPos.latDeg) * 0.01745329252;
+                    const double sLonR   = static_cast<double>(seedPos.lonDeg) * 0.01745329252;
+                    const double sinSLat = std::sin(sLatR);
+                    const double cosSLat = std::cos(sLatR);
+                    claimed[startIdx]    = 1;
+                    double grownArea     = cellAreaWeightAt(sLat);
+                    std::vector<std::size_t> frontier;
+                    frontier.reserve(1024);
+                    auto pushNbrs = [&](int32_t lonI, int32_t latI) {
+                        const int32_t lonW        = (lonI == 0) ? LON - 1 : lonI - 1;
+                        const int32_t lonE        = (lonI == LON - 1) ? 0 : lonI + 1;
+                        const int32_t latS        = std::max(0, latI - 1);
+                        const int32_t latN        = std::min(LAT - 1, latI + 1);
+                        const std::size_t nbrs[4] = {
+                            SF::cellIndex(lonW, latI),
+                            SF::cellIndex(lonE, latI),
+                            SF::cellIndex(lonI, latS),
+                            SF::cellIndex(lonI, latN),
+                        };
+                        for (int32_t k = 0; k < 4; ++k) {
+                            if (!claimed[nbrs[k]]) frontier.push_back(nbrs[k]);
+                        }
+                    };
+                    pushNbrs(sLon, sLat);
+                    while (grownArea < targetArea && !frontier.empty()) {
+                        // Pick a random frontier cell. Swap-remove for O(1)
+                        // deletion.
+                        const std::size_t pick = static_cast<std::size_t>(
+                            cratonRng.nextInt(0, static_cast<int32_t>(frontier.size()) - 1));
+                        const std::size_t cellIdx = frontier[pick];
+                        frontier[pick]            = frontier.back();
+                        frontier.pop_back();
+                        if (claimed[cellIdx]) continue;
+                        const int32_t cellLon = static_cast<int32_t>(cellIdx % LON);
+                        const int32_t cellLat = static_cast<int32_t>(cellIdx / LON);
+                        // Elliptical-radius acceptance on TRUE angular offsets:
+                        // great-circle distance from the seed, decomposed onto the
+                        // assembly axis by the bearing. Same ellipse at any
+                        // latitude, and correct out to the 30-45 deg the largest
+                        // cratons actually span.
+                        const aoc::map::gen::LatLon cellPos = SF::cellCenter(cellLon, cellLat);
+                        const double cLatR   = static_cast<double>(cellPos.latDeg) * 0.01745329252;
+                        const double dLonR   = (static_cast<double>(cellPos.lonDeg) -
+                                                static_cast<double>(seedPos.lonDeg)) *
+                                               0.01745329252;
+                        const double sinCLat = std::sin(cLatR);
+                        const double cosCLat = std::cos(cLatR);
+                        const double cosD    = std::clamp(
+                            sinSLat * sinCLat + cosSLat * cosCLat * std::cos(dLonR), -1.0, 1.0);
+                        const double dRad = std::acos(cosD);
+                        // Bearing from the seed, measured from north. The ellipse
+                        // axis is defined in the same frame, so the decomposition
+                        // is a plain rotation by the azimuth difference.
+                        const double bearing =
+                            std::atan2(cosCLat * std::sin(dLonR),
+                                       cosSLat * sinCLat - sinSLat * cosCLat * std::cos(dLonR));
+                        const double dxA = dRad * std::sin(bearing); // east
+                        const double dyA = dRad * std::cos(bearing); // north
+                        const double dPar =
+                            dxA * static_cast<double>(axCos) + dyA * static_cast<double>(axSin);
+                        const double dPerp =
+                            -dxA * static_cast<double>(axSin) + dyA * static_cast<double>(axCos);
+                        const double rho =
+                            std::sqrt(dPar * dPar + dPerp * dPerp * static_cast<double>(aniso) *
+                                                        static_cast<double>(aniso)) /
+                            std::max(1e-6, semiMajorRad);
+                        bool accept = true;
+                        if (rho > 1.0 && !rejectedOnce[cellIdx]) {
+                            // Soft edge: acceptance decays fast outside
+                            // the target ellipse; one retry keeps the
+                            // frontier alive without stalling growth.
+                            const double p = std::exp(-4.0 * (rho - 1.0));
+                            if (static_cast<double>(cratonRng.nextFloat(0.0f, 1.0f)) > p) {
+                                accept                = false;
+                                rejectedOnce[cellIdx] = 1;
+                                frontier.push_back(cellIdx);
+                            }
+                        }
+                        if (!accept) continue;
+                        claimed[cellIdx] = 1;
+                        grownArea += cellAreaWeightAt(cellLat);
+                        pushNbrs(cellLon, cellLat);
+                    }
+                    // Rejection memory is per-craton: without the reset a cell that
+                    // craton A pushed outside its ellipse would be accepted
+                    // unconditionally by craton B, letting B leak a tendril along
+                    // whatever A happened to reject.
+                    std::fill(rejectedOnce.begin(), rejectedOnce.end(), static_cast<int8_t>(0));
+                }
+
+                // Claimed cells are continental crust; unclaimed are
+                // oceanic. A 1-pass 4-neighbour smoothing softens the
+                // 0->1 cliffs at coastlines so the SphereField bilinear
+                // sampler does not produce single-cell shards downstream
+                // (the same issue the Bird-falloff function was solving
+                // with its 0.55 rad blend, recovered procedurally here).
+                for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+                    for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
+                        const std::size_t idx = SF::cellIndex(lonIdx, latIdx);
+                        const int32_t lonW    = (lonIdx == 0) ? LON - 1 : lonIdx - 1;
+                        const int32_t lonE    = (lonIdx == LON - 1) ? 0 : lonIdx + 1;
+                        const int32_t latS    = std::max(0, latIdx - 1);
+                        const int32_t latN    = std::min(LAT - 1, latIdx + 1);
+                        const float self      = static_cast<float>(claimed[idx]);
+                        const float fW   = static_cast<float>(claimed[SF::cellIndex(lonW, latIdx)]);
+                        const float fE   = static_cast<float>(claimed[SF::cellIndex(lonE, latIdx)]);
+                        const float fS   = static_cast<float>(claimed[SF::cellIndex(lonIdx, latS)]);
+                        const float fN   = static_cast<float>(claimed[SF::cellIndex(lonIdx, latN)]);
+                        const float frac = (self * 2.0f + fW + fE + fS + fN) / 6.0f;
+                        sphereField.continentalFraction[idx] = frac;
+                        sphereField.crustThicknessKm[idx] =
+                            frac * aoc::map::gen::PhysicsConstants::initialContinentalThicknessKm +
+                            (1.0f - frac) * aoc::map::gen::PhysicsConstants::initialOceanicThicknessKm;
+                    }
+                }
+            }
+            // Procedural initial plate-ownership assignment via stochastic
+            // region growing from cratonic seeds. NO Voronoi (per CLAUDE.md
+            // "World-generation physics requirements"): cells claim plate
+            // identity by path-dependent BFS expansion, producing
+            // non-convex peninsulas + bays + lobed shapes. From this
+            // initial cut onwards plateId persists; only mechanism passes
+            // (subduction, ridge accretion, docking, rifting) rewrite it.
+            aoc::map::gen::generateInitialPlateOwnership(sphereField, plates,
+                                                         attemptSeed);
+            // Invariant check: region growing should already produce one
+            // component per plate; this is a no-op unless it regresses.
+            aoc::map::gen::enforcePlateContiguity(sphereField, plates);
+            aoc::map::gen::recomputeIsostaticElevationOnRaster(sphereField);
+            // Per-epoch substep duration in My. Derived from total simulated
+            // time so the physics integrates at a fixed cadence regardless
+            // of caller-requested epoch count.
+            const float MY_PER_EPOCH_P1 =
+                static_cast<float>(totalMy) / static_cast<float>(requestedEpochs);
+
+            for (int32_t epoch = 0; epoch < EPOCHS; ++epoch) {
+                // 2026-05-07 P6.10 recalibration: Stochastic Euler-pole jitter
+                // for the 25-Myr-per-epoch tectonic timescale. Müller et al.
+                // 2008 / Tetley et al. 2019 report ~10%/Myr fractional change
+                // in plate-motion vectors at the Quaternary (sub-Myr) scale,
+                // dominated by mantle micro-reorganisations; on the 25-Myr
+                // tectonic-epoch scale relative to which our model integrates,
+                // plate motions are far more stable (Pacific plate sustained
+                // ~10 cm/yr across the 80-Myr Hawaiian-Emperor chain; Indian
+                // plate sustained 5 cm/yr northward through the 50-Myr Tibet
+                // collision). Use a long-term σ = 1%/Myr fractional change in
+                // |ω| and 0.1°/Myr Euler-pole drift, scaled as √dt for
+                // random-walk variance. Without this calibration mountains
+                // never reach steady state because the rate at any boundary
+                // resets faster than the K_EROSION decay constant
+                // (1/K = 16.7 Myr).
+                const float jitterScale  = std::sqrt(std::max(1.0f, MY_PER_EPOCH_P1));
+                const float velFracSigma = 0.01f * jitterScale;
+                const float poleSigmaDeg = 0.10f * jitterScale;
+                auto gaussianFromUniform = [&]() {
+                    // Sum of 3 U[-1,1] approximates N(0,1) (CLT, σ=1).
+                    return centerRng.nextFloat(-1.0f, 1.0f) + centerRng.nextFloat(-1.0f, 1.0f) +
+                           centerRng.nextFloat(-1.0f, 1.0f);
+                };
+
+                // P6.10 Euler-pole jitter: drift each plate's pole and
+                // perturb |omega| before the raster physics integrates
+                // motion this epoch. The legacy 2D centroid advance that
+                // lived here was dead weight — plate lat/lon is overwritten
+                // every epoch by recomputePlateCentroidsFromCells, and the
+                // raster motion is integrated by advectPlateOwnership from
+                // the Euler parameters this jitter perturbs.
+                for (Plate& p : plates) {
+                    if (p.eulerPoleLatDeg != 0.0f || p.eulerPoleLonDeg != 0.0f ||
+                        p.angularVelDeg != 0.0f) {
+                        p.eulerPoleLatDeg = std::clamp(
+                            p.eulerPoleLatDeg + gaussianFromUniform() * poleSigmaDeg, -89.0f, 89.0f);
+                        p.eulerPoleLonDeg += gaussianFromUniform() * poleSigmaDeg;
+                        while (p.eulerPoleLonDeg > 180.0f) p.eulerPoleLonDeg -= 360.0f;
+                        while (p.eulerPoleLonDeg < -180.0f) p.eulerPoleLonDeg += 360.0f;
+                        p.angularVelDeg *= 1.0f + gaussianFromUniform() * velFracSigma;
+                    }
+                }
+
+                // Continental docking now lives on the raster
+                // (applyContinentalDocking inside stepSpherePhysicsEpoch):
+                // plates weld after sustained cont-cont convergent suture
+                // contact, not when 2D centroids drift near each other
+                // while carrying an init-time random landFraction flag.
+                // Hotspot drift. Real plumes drift ~1 cm/yr (Hawaiian-Emperor
+                // bend at 47 Mya). Tiny rotation about map centre per epoch
+                // curves trails subtly over long sims.
+                for (Hotspot& h : hotspots) {
+                    constexpr float HS_DRIFT_RAD = 0.00040f;
+                    const float rx               = h.cx - 0.5f;
+                    const float ry               = h.cy - 0.5f;
+                    const float cw               = std::cos(HS_DRIFT_RAD);
+                    const float sw               = std::sin(HS_DRIFT_RAD);
+                    h.cx                         = 0.5f + rx * cw - ry * sw;
+                    h.cy                         = 0.5f + rx * sw + ry * cw;
+                    if (cylSim) {
+                        if (h.cx < 0.0f) {
+                            h.cx += 1.0f;
+                        }
+                        if (h.cx > 1.0f) {
+                            h.cx -= 1.0f;
+                        }
+                    } else {
+                        h.cx = std::clamp(h.cx, 0.05f, 0.95f);
+                    }
+                    h.cy = std::clamp(h.cy, 0.05f, 0.95f);
+                }
+
+                // Raster physics epoch: advection, boundary classification,
+                // thickening, arc growth, subduction, ridge accretion,
+                // slab pull, Wilson rifting, isostasy, erosion.
+                aoc::map::gen::stepSpherePhysicsEpoch(sphereField, plates, sphereBoundaryScratch,
+                                                      physicsRngState, MY_PER_EPOCH_P1);
             }
 
-            // Claimed cells are continental crust; unclaimed are
-            // oceanic. A 1-pass 4-neighbour smoothing softens the
-            // 0->1 cliffs at coastlines so the SphereField bilinear
-            // sampler does not produce single-cell shards downstream
-            // (the same issue the Bird-falloff function was solving
-            // with its 0.55 rad blend, recovered procedurally here).
-            for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
-                for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
-                    const std::size_t idx = SF::cellIndex(lonIdx, latIdx);
-                    const int32_t lonW    = (lonIdx == 0) ? LON - 1 : lonIdx - 1;
-                    const int32_t lonE    = (lonIdx == LON - 1) ? 0 : lonIdx + 1;
-                    const int32_t latS    = std::max(0, latIdx - 1);
-                    const int32_t latN    = std::min(LAT - 1, latIdx + 1);
-                    const float self      = static_cast<float>(claimed[idx]);
-                    const float fW   = static_cast<float>(claimed[SF::cellIndex(lonW, latIdx)]);
-                    const float fE   = static_cast<float>(claimed[SF::cellIndex(lonE, latIdx)]);
-                    const float fS   = static_cast<float>(claimed[SF::cellIndex(lonIdx, latS)]);
-                    const float fN   = static_cast<float>(claimed[SF::cellIndex(lonIdx, latN)]);
-                    const float frac = (self * 2.0f + fW + fE + fS + fN) / 6.0f;
-                    sphereField.continentalFraction[idx] = frac;
-                    sphereField.crustThicknessKm[idx] =
-                        frac * aoc::map::gen::PhysicsConstants::initialContinentalThicknessKm +
-                        (1.0f - frac) * aoc::map::gen::PhysicsConstants::initialOceanicThicknessKm;
-                }
+            const float crustShare = aoc::map::gen::continentalAreaShare(sphereField);
+            const float distance   = std::fabs(crustShare - ACCEPT_TARGET_SHARE);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestShare    = crustShare;
+                bestField    = sphereField;
+                bestPlates   = plates;
+                bestHotspots = hotspots;
+                bestRng      = physicsRngState;
+            }
+            if (crustShare >= ACCEPT_MIN_CRUST_SHARE && crustShare <= ACCEPT_MAX_CRUST_SHARE) {
+                LOG_INFO("MapGenerator: world accepted on attempt %d/%d (continental share %.3f)",
+                         attempt + 1, MAX_WORLD_ATTEMPTS, static_cast<double>(crustShare));
+                break;
+            }
+            LOG_INFO("MapGenerator: world attempt %d/%d rejected (continental share %.3f outside "
+                     "[%.2f, %.2f])",
+                     attempt + 1, MAX_WORLD_ATTEMPTS, static_cast<double>(crustShare),
+                     static_cast<double>(ACCEPT_MIN_CRUST_SHARE),
+                     static_cast<double>(ACCEPT_MAX_CRUST_SHARE));
+            if (attempt + 1 == MAX_WORLD_ATTEMPTS) {
+                // Every draw was degenerate. Take the closest rather than
+                // shipping whatever the last attempt happened to produce.
+                LOG_WARN("MapGenerator: no world met the crust-share band in %d attempts; "
+                         "using the closest (continental share %.3f)",
+                         MAX_WORLD_ATTEMPTS, static_cast<double>(bestShare));
+                sphereField     = bestField;
+                plates          = bestPlates;
+                hotspots        = bestHotspots;
+                physicsRngState = bestRng;
             }
         }
-        // Procedural initial plate-ownership assignment via stochastic
-        // region growing from cratonic seeds. NO Voronoi (per CLAUDE.md
-        // "World-generation physics requirements"): cells claim plate
-        // identity by path-dependent BFS expansion, producing
-        // non-convex peninsulas + bays + lobed shapes. From this
-        // initial cut onwards plateId persists; only mechanism passes
-        // (subduction, ridge accretion, docking, rifting) rewrite it.
-        aoc::map::gen::generateInitialPlateOwnership(sphereField, plates,
-                                                     static_cast<uint64_t>(config.seed));
-        // Invariant check: region growing should already produce one
-        // component per plate; this is a no-op unless it regresses.
-        aoc::map::gen::enforcePlateContiguity(sphereField, plates);
-        aoc::map::gen::recomputeIsostaticElevationOnRaster(sphereField);
-        // Per-epoch substep duration in My. Derived from total simulated
-        // time so the physics integrates at a fixed cadence regardless
-        // of caller-requested epoch count.
-        const float MY_PER_EPOCH_P1 =
-            static_cast<float>(totalMy) / static_cast<float>(requestedEpochs);
 
-        for (int32_t epoch = 0; epoch < EPOCHS; ++epoch) {
-            // 2026-05-07 P6.10 recalibration: Stochastic Euler-pole jitter
-            // for the 25-Myr-per-epoch tectonic timescale. Müller et al.
-            // 2008 / Tetley et al. 2019 report ~10%/Myr fractional change
-            // in plate-motion vectors at the Quaternary (sub-Myr) scale,
-            // dominated by mantle micro-reorganisations; on the 25-Myr
-            // tectonic-epoch scale relative to which our model integrates,
-            // plate motions are far more stable (Pacific plate sustained
-            // ~10 cm/yr across the 80-Myr Hawaiian-Emperor chain; Indian
-            // plate sustained 5 cm/yr northward through the 50-Myr Tibet
-            // collision). Use a long-term σ = 1%/Myr fractional change in
-            // |ω| and 0.1°/Myr Euler-pole drift, scaled as √dt for
-            // random-walk variance. Without this calibration mountains
-            // never reach steady state because the rate at any boundary
-            // resets faster than the K_EROSION decay constant
-            // (1/K = 16.7 Myr).
-            const float jitterScale  = std::sqrt(std::max(1.0f, MY_PER_EPOCH_P1));
-            const float velFracSigma = 0.01f * jitterScale;
-            const float poleSigmaDeg = 0.10f * jitterScale;
-            auto gaussianFromUniform = [&]() {
-                // Sum of 3 U[-1,1] approximates N(0,1) (CLT, σ=1).
-                return centerRng.nextFloat(-1.0f, 1.0f) + centerRng.nextFloat(-1.0f, 1.0f) +
-                       centerRng.nextFloat(-1.0f, 1.0f);
-            };
-
-            // P6.10 Euler-pole jitter: drift each plate's pole and
-            // perturb |omega| before the raster physics integrates
-            // motion this epoch. The legacy 2D centroid advance that
-            // lived here was dead weight — plate lat/lon is overwritten
-            // every epoch by recomputePlateCentroidsFromCells, and the
-            // raster motion is integrated by advectPlateOwnership from
-            // the Euler parameters this jitter perturbs.
-            for (Plate& p : plates) {
-                if (p.eulerPoleLatDeg != 0.0f || p.eulerPoleLonDeg != 0.0f ||
-                    p.angularVelDeg != 0.0f) {
-                    p.eulerPoleLatDeg = std::clamp(
-                        p.eulerPoleLatDeg + gaussianFromUniform() * poleSigmaDeg, -89.0f, 89.0f);
-                    p.eulerPoleLonDeg += gaussianFromUniform() * poleSigmaDeg;
-                    while (p.eulerPoleLonDeg > 180.0f) p.eulerPoleLonDeg -= 360.0f;
-                    while (p.eulerPoleLonDeg < -180.0f) p.eulerPoleLonDeg += 360.0f;
-                    p.angularVelDeg *= 1.0f + gaussianFromUniform() * velFracSigma;
-                }
-            }
-
-            // Continental docking now lives on the raster
-            // (applyContinentalDocking inside stepSpherePhysicsEpoch):
-            // plates weld after sustained cont-cont convergent suture
-            // contact, not when 2D centroids drift near each other
-            // while carrying an init-time random landFraction flag.
-            // Hotspot drift. Real plumes drift ~1 cm/yr (Hawaiian-Emperor
-            // bend at 47 Mya). Tiny rotation about map centre per epoch
-            // curves trails subtly over long sims.
-            for (Hotspot& h : hotspots) {
-                constexpr float HS_DRIFT_RAD = 0.00040f;
-                const float rx               = h.cx - 0.5f;
-                const float ry               = h.cy - 0.5f;
-                const float cw               = std::cos(HS_DRIFT_RAD);
-                const float sw               = std::sin(HS_DRIFT_RAD);
-                h.cx                         = 0.5f + rx * cw - ry * sw;
-                h.cy                         = 0.5f + rx * sw + ry * cw;
-                if (cylSim) {
-                    if (h.cx < 0.0f) {
-                        h.cx += 1.0f;
-                    }
-                    if (h.cx > 1.0f) {
-                        h.cx -= 1.0f;
-                    }
-                } else {
-                    h.cx = std::clamp(h.cx, 0.05f, 0.95f);
-                }
-                h.cy = std::clamp(h.cy, 0.05f, 0.95f);
-            }
-
-            // Raster physics epoch: advection, boundary classification,
-            // thickening, arc growth, subduction, ridge accretion,
-            // slab pull, Wilson rifting, isostasy, erosion.
-            aoc::map::gen::stepSpherePhysicsEpoch(sphereField, plates, sphereBoundaryScratch,
-                                                  physicsRngState, MY_PER_EPOCH_P1);
-        }
         // Hand the SphereField surface-elevation snapshot to the
         // HexGrid for the renderer/save path.
         grid.setSphereFieldElevationSnapshot(sphereField.surfaceElevationM);
