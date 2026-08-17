@@ -472,6 +472,39 @@ inline float xorshift01(uint32_t& s) {
     s ^= s << 5;
     return static_cast<float>(s & 0x00FFFFFFu) / 16777216.0f;
 }
+
+// Area-weighted continental-crust volume in RELATIVE units (km x cos-lat).
+// Absolute m^2 never appears -- this matches solveSeaLevelFixedVolume's
+// convention, and every figure derived from it is reported as a ratio, so the
+// unit cancels.
+//
+// Counts a cell when continentalFraction >= 0.5: that is the same threshold the
+// [hypso] diagnostic and the gate metrics use, so the numbers are comparable
+// with them rather than being a fourth definition of "continental".
+//
+// SERIAL, fixed-order, row-then-weight -- the same discipline
+// solveSeaLevelFixedVolume documents for its own volume sum. An OpenMP
+// reduction here would make the float summation order thread-count dependent
+// and break test_determinism and the portable golden preset.
+[[nodiscard]] double continentalCrustVolume(const SphereField& field) {
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    double vol            = 0.0;
+    for (int32_t j = 0; j < LAT; ++j) {
+        const float latDeg = -90.0f + (static_cast<float>(j) + 0.5f) * SphereField::CELL_DEG;
+        const double w     = static_cast<double>(std::max(0.0f, std::cos(latDeg * 0.01745329252f)));
+        double rowSum      = 0.0;
+        const std::size_t rowBase = static_cast<std::size_t>(j) * static_cast<std::size_t>(LON);
+        for (int32_t i = 0; i < LON; ++i) {
+            const std::size_t idx = rowBase + static_cast<std::size_t>(i);
+            if (field.continentalFraction[idx] >= 0.5f) {
+                rowSum += static_cast<double>(field.crustThicknessKm[idx]);
+            }
+        }
+        vol += rowSum * w;
+    }
+    return vol;
+}
 } // namespace
 
 int32_t applyWilsonRifting(SphereField& field, std::vector<Plate>& plates, uint32_t& rngState,
@@ -790,6 +823,17 @@ int32_t applyWilsonRifting(SphereField& field, std::vector<Plate>& plates, uint3
         constexpr float RIFT_MARGIN_NECK_SPANS = 4.0f;
         const float axialHalfKm = static_cast<float>(std::asin(RIFT_AXIS_OCEAN_SIN_HALF)) *
                                   PhysicsConstants::earthRadiusKm;
+        // Crustal-mass ledger for this rift, in the same relative units as
+        // continentalCrustVolume (km x cos-lat). Diagnostic only -- it measures
+        // the non-conservation documented above rather than correcting it.
+        // Accumulated in plateCells order, which is a deterministic row-major
+        // scan filtered by plateId, and this loop is serial.
+        // Read once: this function runs every epoch, and getenv walks the
+        // environment (the same reason stepSpherePhysicsEpoch caches its flag).
+        static const bool kRiftMassTrace = std::getenv("AOC_SPHEREPHYS_TRACE") != nullptr;
+        const double contVolBefore       = kRiftMassTrace ? continentalCrustVolume(field) : 0.0;
+        double removedByThinning         = 0.0;
+        double convertedToOcean          = 0.0;
         for (std::size_t k = 0; k < plateCells.size(); ++k) {
             const std::size_t cell = plateCells[k].cellIdx;
             double wiggle          = 0.0;
@@ -817,6 +861,12 @@ int32_t applyWilsonRifting(SphereField& field, std::vector<Plate>& plates, uint3
             // the proto-ocean basin whose two flanks are conjugate
             // passive margins (Atlantic-style opening).
             if (std::fabs(eff) < RIFT_AXIS_OCEAN_SIN_HALF) {
+                if (kRiftMassTrace && field.continentalFraction[cell] >= 0.5f) {
+                    // cos(lat) without recomputing geometry: cz is sin(lat).
+                    const double cz = plateCells[k].cz;
+                    convertedToOcean += static_cast<double>(field.crustThicknessKm[cell]) *
+                                        std::sqrt(std::max(0.0, 1.0 - cz * cz));
+                }
                 field.crustThicknessKm[cell]    = PhysicsConstants::initialOceanicThicknessKm;
                 field.continentalFraction[cell] = 0.0f;
                 field.crustAgeMy[cell]          = 0.0f;
@@ -851,6 +901,13 @@ int32_t applyWilsonRifting(SphereField& field, std::vector<Plate>& plates, uint3
             if (beta <= 1.0f) {
                 continue;
             }
+            if (kRiftMassTrace) {
+                // Mass this divide is about to delete, before it happens.
+                const double cz = plateCells[k].cz;
+                removedByThinning += static_cast<double>(field.crustThicknessKm[cell]) *
+                                     (1.0 - 1.0 / static_cast<double>(beta)) *
+                                     std::sqrt(std::max(0.0, 1.0 - cz * cz));
+            }
             // Thins only, never thickens: beta > 1 is guaranteed above, so a
             // cell already thinned by an earlier rift thins further rather than
             // being reset to a stretched-from-pristine value.
@@ -872,6 +929,17 @@ int32_t applyWilsonRifting(SphereField& field, std::vector<Plate>& plates, uint3
                          "[rift] plate %zu split (%zu cells); oceanic-composition %zu, "
                          "thinned continental %zu\n",
                          i, plateCells.size(), seamCells, thinned);
+            // Crustal-mass ledger. `thinned` mass is the genuinely unaccounted
+            // part -- it is deleted outright. `toOcean` is the axial band being
+            // converted to fresh 7 km basalt, which is what rifting physically
+            // does, so it is reported separately rather than lumped in as loss.
+            const double pct = (contVolBefore > 0.0) ? 100.0 / contVolBefore : 0.0;
+            std::fprintf(stderr,
+                         "[riftmass] plate %zu contVolBefore=%.4g thinned=%.4g (%.3f%%) "
+                         "toOcean=%.4g (%.3f%%) total=(%.3f%%)\n",
+                         i, contVolBefore, removedByThinning, removedByThinning * pct,
+                         convertedToOcean, convertedToOcean * pct,
+                         (removedByThinning + convertedToOcean) * pct);
         }
         ++newPlates;
         // One rift per epoch (matches real-Earth burst cadence).
@@ -3121,13 +3189,14 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
                      "z=%.0fm zsea=%.0fm mtn=%zu cont(>0.5)=%zu cf_mean=%.3f "
                      "plates=%zu boundary=%zu btype(c/d/t)=%zu/%zu/%zu "
                      "frag=%zu maxComp=%zu terrane=%d "
-                     "maxOmega=%.3fdeg/My cflCells=%.1f\n",
+                     "maxOmega=%.3fdeg/My cflCells=%.1f contVol=%.6g\n",
                      static_cast<double>(dtMy), static_cast<double>(minRate),
                      static_cast<double>(maxRate), static_cast<double>(maxCrust),
                      static_cast<double>(maxZ), static_cast<double>(field.seaLevelM), mountainCells,
                      continentalCells, meanContFrac, plates.size(), boundaryCount, btConvergent,
                      btDivergent, btTransform, fragmentedPlates, maxComponents, contiguityMoved,
-                     static_cast<double>(traceMaxOmegaDeg), static_cast<double>(cflCells));
+                     static_cast<double>(traceMaxOmegaDeg), static_cast<double>(cflCells),
+                     continentalCrustVolume(field));
     }
 }
 
