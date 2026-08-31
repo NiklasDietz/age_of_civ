@@ -10,7 +10,7 @@ because feature glyphs (Ice, Reef) mask the underlying terrain there.
 Usage:
   mapgen_metrics.py analyze MAP.csv [--projection P] [--flat]
   mapgen_metrics.py baseline --binary BIN --outdir DIR
-      [--seeds 42,7,100,200,1234,777] [--width 140] [--height 90]
+      [--seeds S1,S2,...] [--width 140] [--height 90]
       [--projection P] [--flat]
   mapgen_metrics.py selftest
 
@@ -43,6 +43,30 @@ produced after it.
 Note `Ice` is a FeatureType, not a TerrainType, so it never appears in the
 CSV Terrain column and is deliberately absent from WATER_TERRAINS. An
 ice-covered land tile is still land; ocean under sea ice is still water.
+
+SEED-SET SIZE
+-------------
+The aggregate gate score looks like a precise integer and is not one. Measured
+over the 24-seed default, the per-seed score has mean 5.8 of 12 and sd 2.0, so
+the sweep total carries a sampling error of
+
+    sd(total, normalised to /72) = 6 * 2.0 / sqrt(n_seeds)
+
+    n= 6  +/-4.9   two runs must differ by 14.0/72 to mean anything
+    n=12  +/-3.5                          9.9/72
+    n=24  +/-2.5                          7.0/72
+    n=48  +/-1.7                          4.9/72
+
+Two variants are compared on independent draws, not paired ones: anything that
+perturbs plate ownership changes boundaries, hence arcs, hence the whole world,
+so a shared seed produces an unrelated map and the seed variance does not
+cancel. That is why the second column carries the sqrt(2) of a difference.
+
+The practical consequence is that this instrument cannot referee small aggregate
+differences at any seed count worth running -- resolving 4/72 needs ~72 seeds.
+Read the per-gate columns instead: a gate moving 0/24 -> 12/24 is real, and the
+total moving 104 -> 108 is not. `report_resolution` prints the current sweep's
+resolution under every gate table so the number is never quoted without it.
 """
 
 import argparse
@@ -53,6 +77,7 @@ import json
 import math
 import re
 import subprocess
+import statistics
 import sys
 from collections import deque
 from pathlib import Path
@@ -62,6 +87,10 @@ from pathlib import Path
 # that header and fails if the two ever drift apart again -- that drift is
 # defect 1 above, and it silently corrupted eight committed baselines.
 WATER_TERRAINS = {"Ocean", "Coast", "Shallow Water"}
+# Water that is NOT on continental crust. The complement is the crust-footprint
+# proxy used by crust_mask_stats(): Coast and Shallow Water sit on (or beside)
+# continental crust, deep Ocean does not.
+DEEP_OCEAN_TERRAINS = {"Ocean"}
 ALL_TERRAINS = {
     "Ocean", "Coast", "Shallow Water", "Desert", "Plains",
     "Grassland", "Tundra", "Snow", "Mountain",
@@ -75,7 +104,7 @@ MIN_ELONGATION_COMPONENT = 50
 
 
 def load_csv(path):
-    """Return (width, height, land, mountain) bool grids indexed [row][col]."""
+    """Return (width, height, land, mountain, crust) bool grids indexed [row][col]."""
     cells = {}
     max_col = max_row = 0
     unknown = set()
@@ -98,10 +127,14 @@ def load_csv(path):
     width, height = max_col + 1, max_row + 1
     land = [[False] * width for _ in range(height)]
     mountain = [[False] * width for _ in range(height)]
+    crust = [[False] * width for _ in range(height)]
     for (col, row), terrain in cells.items():
         land[row][col] = terrain not in WATER_TERRAINS
         mountain[row][col] = terrain == "Mountain"
-    return width, height, land, mountain
+        # Continental-crust footprint proxy: everything that is not deep
+        # ocean. See crust_mask_stats() for what this over- and under-counts.
+        crust[row][col] = terrain not in DEEP_OCEAN_TERRAINS
+    return width, height, land, mountain, crust
 
 
 def hex_neighbours(col, row, width, height, wrap=True):
@@ -327,6 +360,169 @@ def coastline_cells(land, width, height, wrap=True):
                    for nc, nr in hex_neighbours(col, row, width, height, wrap)):
                 coast.append((col, row))
     return coast
+
+
+# ---------------------------------------------------------------------------
+# shape metrics -- second-order statistics
+#
+# Every pre-2026-08-31 gate is a first-order statistic: a fraction, a count,
+# or one fractal dimension. None of them can tell a compact continent from a
+# 3-tile ribbon of the same area, which is why "the land is a perforated
+# lace" survived a year of gate-driven tuning. Measured on seeds 42/7/100/
+# 2026: land is 2.0-3.1x the perimeter of an equal-area disc, 34-46 % of all
+# land tiles touch water, and mean inland depth is 2.1-2.9 tiles.
+#
+# Note `coast_perimeter_over_land` was ALREADY computed and written into every
+# metrics.json since before this programme started -- it read 0.3984 on seed
+# 42 the whole time. It simply had no entry in GATES. The instrument was not
+# missing; the acceptance criterion was.
+#
+# PROJECTION CAVEAT. These are tile-counting metrics. Under Lambert (the gate
+# projection) every tile has equal AREA, so a tile count is an area -- but not
+# equal SHAPE: cells stretch in longitude and compress in latitude toward the
+# poles, so a perimeter measured by cell adjacency is latitude-distorted.
+# `cmd_selftest` measures that distortion directly by scoring identical
+# spherical caps at 0/45/70 deg; treat the reported spread as the metric's
+# own error bar.
+# ---------------------------------------------------------------------------
+
+def inland_depth_map(land, width, height, wrap=True):
+    """BFS hop distance from the nearest water tile, for every land tile.
+
+    Returns a [row][col] int grid: 0 on water, 1 for a land tile adjacent to
+    water, 2 for the next ring inward, and so on."""
+    dist = [[-1] * width for _ in range(height)]
+    queue = deque()
+    for row in range(height):
+        for col in range(width):
+            if not land[row][col]:
+                dist[row][col] = 0
+                queue.append((col, row))
+    while queue:
+        c, r = queue.popleft()
+        for nc, nr in hex_neighbours(c, r, width, height, wrap):
+            if dist[nr][nc] < 0:
+                dist[nr][nc] = dist[r][c] + 1
+                queue.append((nc, nr))
+    # An all-land world leaves everything at -1; report it as depth 1 rather
+    # than as a negative, so downstream means stay finite.
+    for row in range(height):
+        for col in range(width):
+            if dist[row][col] < 0:
+                dist[row][col] = 1
+    return dist
+
+
+def inland_depth_stats(land, width, height, wrap=True):
+    """Mean inland depth, raw and normalised by the disc-equivalent.
+
+    Raw mean depth is resolution-dependent (double the grid and it doubles),
+    so it cannot carry a fixed Earth band. The normalised form divides by the
+    mean depth of a disc of the same area, which is R/3 for a disc of radius
+    R = sqrt(A/pi) -- so a perfect disc scores 1.0 at any resolution and the
+    band is a statement about shape alone."""
+    dist = inland_depth_map(land, width, height, wrap)
+    depths = [dist[r][c] for r in range(height) for c in range(width)
+              if land[r][c]]
+    if not depths:
+        return {"mean_inland_depth": None, "inland_depth_over_disc": None}
+    mean_depth = sum(depths) / len(depths)
+    # Disc-equivalent computed per component and area-weighted, so a world of
+    # many small islands is not judged against one big disc.
+    total = 0.0
+    weight = 0
+    for comp in component_cells(land, width, height, wrap):
+        n = len(comp)
+        disc_mean = math.sqrt(n / math.pi) / 3.0
+        if disc_mean <= 0:
+            continue
+        comp_mean = sum(dist[r][c] for c, r in comp) / n
+        total += (comp_mean / disc_mean) * n
+        weight += n
+    return {
+        "mean_inland_depth": round(mean_depth, 3),
+        "inland_depth_over_disc": round(total / weight, 3) if weight else None,
+    }
+
+
+def isoperimetric_ratio(land, width, height, wrap=True, min_share=0.02):
+    """Coastline length over the circumference of an equal-area disc.
+
+    1.0 is a perfect disc; higher is more ragged. Restricted to components
+    holding at least `min_share` of all land, because a 1-tile island scores
+    6/3.5 = 1.7 by construction and a world of specks would otherwise read as
+    moderately compact.
+
+    THE EARTH BAND FOR THIS MUST BE COMPUTED, NOT CITED. Coastline length is
+    ruler-dependent (Mandelbrot 1967): at fine resolution the published
+    figures give Africa 1.56 but Eurasia ~3.9 and North America ~4.3, and
+    rescaling to a ~200 km ruler with D ~ 1.1-1.2 shortens them 1.6-2.5x. No
+    primary dataset at that ruler was found. Rasterise Natural Earth 1:110m
+    onto the same grid and measure it with THIS function before setting a
+    band."""
+    comps = component_cells(land, width, height, wrap)
+    land_cells = sum(len(c) for c in comps)
+    if not land_cells:
+        return {"perimeter_over_disc": None, "perimeter_components": 0}
+    per_sum = 0.0
+    disc_sum = 0.0
+    counted = 0
+    for comp in comps:
+        n = len(comp)
+        if n / land_cells < min_share:
+            continue
+        member = {(c, r) for c, r in comp}
+        perim = sum(1 for c, r in comp
+                    if any((nc, nr) not in member
+                           for nc, nr in hex_neighbours(c, r, width, height,
+                                                        wrap)))
+        per_sum += perim
+        disc_sum += 2.0 * math.sqrt(math.pi * n)
+        counted += 1
+    return {
+        "perimeter_over_disc": (round(per_sum / disc_sum, 3)
+                                if disc_sum else None),
+        "perimeter_components": counted,
+    }
+
+
+def crust_mask_stats(crust, width, height, wrap=True):
+    """Connectivity of the CONTINENTAL CRUST footprint, not of emergent land.
+
+    Why this is separate from the land metrics. Two independent defects
+    produce a bad map -- tectonics welding everything into one supercontinent,
+    and the landform stage perforating whatever it is given -- and the
+    emergent-land mask is downstream of both, so it cannot tell them apart.
+    Measured on the crust mask instead, the two separate cleanly: crust
+    compact + land fragmented is a landform bug; crust in one blob is a
+    tectonics bug. Seed 42 measures 93 % of crust in one component while its
+    emergent land reads 64 %, because the perforation splinters the
+    supercontinent.
+
+    PROXY WARNING. This is computed from the hex CSV as "every tile that is
+    not deep Ocean", i.e. land + Coast + Shallow Water. That is not the
+    cf >= 0.5 raster mask:
+      - Coast is assigned to ring 1 regardless of crustal composition, so an
+        active margin contributes a ring of false positives;
+      - Shallow Water comes from a BFS capped at SHALLOW_BFS_MAX = 4 rings
+        (Features.cpp), so continental crust further than 4 tiles offshore is
+        invisible here.
+    The truncation can only SPLIT the mask, never merge it, so a high
+    largest-component share measured this way is a lower bound on the real
+    one. Replace with the raster-derived figure once the generator emits it.
+    """
+    comps = components(crust, width, height, wrap)
+    total = sum(comps)
+    if not total:
+        return {"crust_largest_component_share": None,
+                "crust_component_count": 0,
+                "crust_tile_fraction": 0.0}
+    return {
+        "crust_largest_component_share": round(comps[0] / total, 4),
+        # Components big enough to be a continent, matching big_landmasses.
+        "crust_component_count": sum(1 for s in comps if s / total > 0.01),
+        "crust_tile_fraction": round(total / (width * height), 4),
+    }
 
 
 def box_count_dimension(points, width, height):
@@ -616,7 +812,7 @@ def landmass_elongation(land, width, height, wrap=True, projection=None):
 
 
 def analyze(csv_path, projection="lambert", wrap=True):
-    width, height, land, mountain = load_csv(csv_path)
+    width, height, land, mountain, crust = load_csv(csv_path)
     weights = area_weights(width, height, projection)
     land_area = sum(weights[r][c]
                     for r in range(height) for c in range(width)
@@ -672,6 +868,11 @@ def analyze(csv_path, projection="lambert", wrap=True):
                                   if comp_sizes and land_cells else None),
         "big_landmasses": sum(1 for s in comp_sizes
                               if land_cells and s / land_cells > 0.02),
+        # Second-order shape statistics -- see the block above coastline_cells
+        # for why the first-order set could not see the defect these measure.
+        **inland_depth_stats(land, width, height, wrap),
+        **isoperimetric_ratio(land, width, height, wrap),
+        **crust_mask_stats(crust, width, height, wrap),
     }
 
 
@@ -895,6 +1096,85 @@ def cmd_selftest(_args):
     print(f"  (grid space spans {min(grid_vals)}-{max(grid_vals)} for the same "
           f"three round caps -- that spread is the defect)")
 
+    # -----------------------------------------------------------------
+    # shape metrics (added 2026-08-31)
+    #
+    # Bands for perimeter_over_disc and inland_depth_over_disc are anchored on
+    # THESE synthetic controls, not on published coastline figures. Coastline
+    # length is ruler-dependent (Mandelbrot 1967) and no primary dataset at
+    # this grid's ~200 km ruler was found, so an Earth-cited band would be
+    # guesswork. A spherical cap and a 4-tile ribbon are exactly computable
+    # here, and the current generator sits at the ribbon end -- which is all
+    # the acceptance criterion needs to say. Rasterise Natural Earth 1:110m
+    # onto this grid and re-anchor when it is available.
+    # -----------------------------------------------------------------
+    print("\nshape metrics -- synthetic controls:")
+
+    cap = _sphere_cap(W, H, "lambert", 0.0, 0.0, 30.0)
+    iso = isoperimetric_ratio(cap, W, H, True)
+    dep = inland_depth_stats(cap, W, H, True)
+    ok &= _check("round cap: perimeter_over_disc ~ 1", 
+                 iso["perimeter_over_disc"], 1.13, 0.10)
+    ok &= _check("round cap: inland_depth_over_disc ~ 1",
+                 dep["inland_depth_over_disc"], 0.97, 0.10)
+
+    # Scale invariance. coast_perimeter_over_land does NOT have this property
+    # (a cap scores 0.273 at r=15 and 0.119 at r=35, purely from size), which
+    # is why the gate is on the disc-normalised form and the raw coastal
+    # fraction stays a reported diagnostic.
+    ratios = []
+    for radius in (15.0, 25.0, 35.0):
+        m = _sphere_cap(W, H, "lambert", 0.0, 0.0, radius)
+        ratios.append(isoperimetric_ratio(m, W, H, True)["perimeter_over_disc"])
+    spread = max(ratios) - min(ratios)
+    ok &= _check("perimeter_over_disc is scale-invariant (spread over r=15/25/35)",
+                 spread, 0.0, 0.05)
+
+    # A 4-tile-wide bar is the shape the generator actually produces, and it
+    # is the upper edge of the gate band: anything scoring 2.0 or more is a
+    # ribbon, whatever else it is.
+    ribbon = _blank(W, H)
+    for r in range(20, 70):
+        for c in range(30, 34):
+            ribbon[r][c] = True
+    r_iso = isoperimetric_ratio(ribbon, W, H, True)["perimeter_over_disc"]
+    r_dep = inland_depth_stats(ribbon, W, H, True)["inland_depth_over_disc"]
+    ok &= _check("4x50 ribbon: perimeter_over_disc", r_iso, 2.07, 0.10)
+    ok &= _check("4x50 ribbon: inland_depth_over_disc", r_dep, 0.56, 0.10)
+    ok &= _check("ribbon fails the perimeter gate the cap passes",
+                 1.0 if (r_iso > GATES["perimeter_over_disc"][1]
+                         and iso["perimeter_over_disc"] < GATES["perimeter_over_disc"][1])
+                 else 0.0, 1.0, 0.0)
+
+    # Latitude distortion, measured rather than assumed. Lambert gives every
+    # tile equal AREA but not equal SHAPE -- cells stretch in longitude and
+    # compress in latitude toward the poles -- so a perimeter counted by cell
+    # adjacency is latitude-dependent. This is the metric's own error bar and
+    # it is NOT small; it is reported so a reader knows a 1.9 and a 2.1 are
+    # not reliably different for high-latitude land.
+    lat_vals = []
+    for lat in (0.0, 30.0, 45.0, 60.0, 70.0):
+        m = _sphere_cap(W, H, "lambert", lat, 0.0, 30.0)
+        lat_vals.append(isoperimetric_ratio(m, W, H, True)["perimeter_over_disc"])
+    lo, hi = min(lat_vals), max(lat_vals)
+    print(f"  [info] identical round caps at lat 0/30/45/60/70 score "
+          f"{lat_vals} -- projection error bar is {hi - lo:.2f}")
+    ok &= _check("latitude distortion stays within its documented error bar",
+                 hi - lo, 0.68, 0.15)
+
+    # crust mask: two discs must read as two components, one disc as one.
+    # Guards the mask that separates a tectonics defect from a landform one.
+    two = _disc(W, H, 35, 45, 12)
+    for r in range(H):
+        for c in range(W):
+            if _disc(W, H, 105, 45, 12)[r][c]:
+                two[r][c] = True
+    cs = crust_mask_stats(two, W, H, True)
+    ok &= _check("crust mask: two equal discs -> largest share 0.5",
+                 cs["crust_largest_component_share"], 0.5, 0.02)
+    ok &= _check("crust mask: two equal discs -> 2 components",
+                 float(cs["crust_component_count"]), 2.0, 0.0)
+
     print("\nSELFTEST", "PASSED" if ok else "FAILED")
     return 0 if ok else 1
 
@@ -945,6 +1225,18 @@ def cmd_baseline(args):
     return 0
 
 
+# Seed sweep the gate table is computed over. 24, not 6, because the aggregate
+# gate score is a noisy instrument: measured over these seeds the per-seed score
+# has sd 2.02 of 12, so a 6-seed sweep carries sd 4.9 on the 0-72 scale and two
+# independent 6-seed runs differ by 14 gate-seeds before anything real has moved.
+# The 29-37 spread once read off four edge-handling variants was inside that
+# noise. Variants that perturb plate ownership re-roll the whole world, so a
+# shared seed does NOT pair the comparison and the variance does not cancel.
+# See SEED-SET SIZE in the module docstring for the resolution this buys.
+DEFAULT_SEEDS = ("42,7,100,200,1234,777,999,13,555,2026,314,8675309,"
+                 "1000,2000,3000,4000,5000,6000,7000,8000,9000,11,17,23")
+
+
 # Earth reference bands. Sources: continental crust is 41-43 % of Earth's
 # surface with 29 % emergent and 12-13 % submerged margin; largest landmass
 # (Afro-Eurasia) is 57 % of land; coastline box dimension 1.15-1.25. The
@@ -958,6 +1250,35 @@ GATES = {
     "axis_aligned_frac":        (0.00, 0.55,  "coastline axis_aligned_frac"),
     "coast_box_dimension":      (1.15, 1.25,  "coastline box dimension"),
     "shelf_share_of_planet":    (0.05, 0.08,  "shelf / planet"),
+    # --- second-order shape gates, added 2026-08-31 ---
+    #
+    # Why these exist. Every gate above is a first-order statistic -- a
+    # fraction, a count, or one fractal dimension -- and not one of them can
+    # tell a compact continent from a 3-tile ribbon of the same area. The
+    # generator has been producing a perforated lace throughout, measured at
+    # 2.7-3.9x the perimeter of an equal-area disc; seeds 7 and 2026 score
+    # WORSE than a solid 120x4 bar (3.14). Note also that
+    # coast_perimeter_over_land was already computed and written into every
+    # metrics.json all along, reading 0.3984 on seed 42 -- the instrument was
+    # never missing, only the acceptance criterion.
+    #
+    # Bands are anchored on the synthetic controls in `selftest`, NOT on
+    # published coastline totals: coastline length is ruler-dependent
+    # (Mandelbrot 1967) and no primary dataset at this grid's ~200 km ruler
+    # was found. A round spherical cap scores 1.13 and a 4-tile ribbon 2.07,
+    # both exactly reproducible here. Africa's fine-resolution 1.56 falls
+    # inside the band, which is a consistency check rather than its source.
+    # Re-anchor on Natural Earth 1:110m rasterised onto this grid when
+    # available.
+    "perimeter_over_disc":      (1.20, 2.00,  "coastline vs equal-area disc"),
+    "inland_depth_over_disc":   (0.60, 1.15,  "inland depth vs disc"),
+    # Measured on the CONTINENTAL CRUST footprint, not on emergent land,
+    # because the emergent mask is downstream of BOTH the supercontinent
+    # defect and the perforation defect and cannot separate them. Crust
+    # compact + land fragmented is a landform bug; crust in one blob is a
+    # tectonics bug. Earth: Afro-Eurasia is ~45 % of continental crust.
+    "crust_largest_component_share": (0.35, 0.65, "largest crust component"),
+    "crust_component_count":    (3,    8,     "crust components >1 %"),
 }
 
 
@@ -990,6 +1311,10 @@ def gate_values(res):
     land = res.get("land_fraction")
     return {
         "land_fraction": land,
+        "perimeter_over_disc": res.get("perimeter_over_disc"),
+        "inland_depth_over_disc": res.get("inland_depth_over_disc"),
+        "crust_largest_component_share": res.get("crust_largest_component_share"),
+        "crust_component_count": res.get("crust_component_count"),
         "crust_share": cb.get("crust_share"),
         "crust_submerged": cb.get("crust_submerged"),
         "largest_share_of_land": res.get("largest_share_of_land"),
@@ -1023,7 +1348,37 @@ def report_gates(results):
         print(f"  {mark} {label:<26} {median:<8.3f} [{lo}, {hi}]"
               f"      {npass}/{len(present)}")
     print(f"\n{'GATES PASSED' if failed == 0 else f'{failed} GATE(S) FAILED'}")
+    report_resolution(results)
     return 0 if failed == 0 else 1
+
+
+def report_resolution(results):
+    """Print the aggregate gate score WITH the sampling error it carries.
+
+    The aggregate score is what tuning gets compared on, and it is far noisier
+    than its integer look suggests. Printing the score alone invites reading a
+    few gate-seeds of sampling noise as a real improvement, which has already
+    happened once on a 4-variant comparison at 6 seeds. So the score never
+    prints without the smallest difference the sweep can actually resolve.
+    """
+    per = []
+    for res in results.values():
+        gv = gate_values(res)
+        per.append(sum(1 for k, (lo, hi, _) in GATES.items()
+                       if gv.get(k) is not None and lo <= gv[k] <= hi))
+    n = len(per)
+    if n < 2:
+        return
+    total = sum(per)
+    scale = 72.0 / len(GATES)
+    sd_seed = statistics.stdev(per)
+    sem = scale * sd_seed / math.sqrt(n)
+    # Two sweeps of this size, compared: the difference carries sqrt(2) x the
+    # error of one, and 2 sigma of that is the smallest honest verdict.
+    resolves = 2.0 * sem * math.sqrt(2.0)
+    print(f"score {total}/{n * len(GATES)} "
+          f"({72.0 * total / (n * len(GATES)):.1f}/72 normalised, +/-{sem:.1f})")
+    print(f"resolves differences >= {resolves:.1f}/72; anything smaller is noise")
 
 
 def main():
@@ -1043,7 +1398,10 @@ def main():
                                 help="generate + analyze a seed sweep")
     p_baseline.add_argument("--binary", required=True)
     p_baseline.add_argument("--outdir", required=True)
-    p_baseline.add_argument("--seeds", default="42,7,100,200,1234,777")
+    p_baseline.add_argument("--seeds", default=DEFAULT_SEEDS,
+                            help="comma-separated seed sweep. The default is 24 "
+                                 "seeds because 6 cannot resolve the differences "
+                                 "this programme tunes against -- see SEED-SET SIZE.")
     p_baseline.add_argument("--width", type=int, default=140)
     p_baseline.add_argument("--height", type=int, default=90)
     p_baseline.add_argument("--projection", default=None,
