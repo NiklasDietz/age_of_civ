@@ -1124,9 +1124,16 @@ def cmd_selftest(_args):
     # is at 1-16 tiles, spanning 0.89 to 1.35. A smooth circle reads 0.891,
     # not 1.0, so the estimator is biased low by ~0.11 at this size and an
     # Earth coastline of true dimension 1.15-1.25 would NOT read 1.15-1.25
-    # here. Treat this as a roughness index over a 1-16 tile window; the band
-    # needs re-anchoring on these controls, which is deliberately left to a
-    # decision rather than done here (see the plan file).
+    # here. Treat this as a roughness index over a 1-16 tile window.
+    #
+    # CORRECTION 2026-08-31: the smooth-circle bias led to an inference that
+    # this band was mis-anchored too. It is NOT. Earth rasterised onto this
+    # grid scores 1.169, comfortably inside [1.15, 1.25], so the band is
+    # CONFIRMED and a generator reading 1.10 is genuinely too smooth. The bias
+    # is real but does not transfer: a circle is one compact blob, while
+    # Earth's coastline at this resolution carries enough length and structure
+    # for the estimator to behave. Anchor on Earth, not on inference from a
+    # synthetic control.
     def _lobed(cx, cy, radius, amp=0.0, lobes=0):
         land = [0] * (W * H)
         for r in range(H):
@@ -1188,10 +1195,31 @@ def cmd_selftest(_args):
     r_dep = inland_depth_stats(ribbon, W, H, True)["inland_depth_over_disc"]
     ok &= _check("4x50 ribbon: perimeter_over_disc", r_iso, 2.07, 0.10)
     ok &= _check("4x50 ribbon: inland_depth_over_disc", r_dep, 0.56, 0.10)
-    ok &= _check("ribbon fails the perimeter gate the cap passes",
-                 1.0 if (r_iso > GATES["perimeter_over_disc"][1]
-                         and iso["perimeter_over_disc"] < GATES["perimeter_over_disc"][1])
-                 else 0.0, 1.0, 0.0)
+    # A ribbon must be rejected -- but by the gate that CAN reject it.
+    #
+    # This control used to assert that perimeter_over_disc rejects a ribbon
+    # while a cap passes. That only held while the band also excluded Earth.
+    # Measured: ribbon 2.07, EARTH 2.33, cap 1.13 -- on this metric the ribbon
+    # is closer to Earth than a round continent is, so every band containing
+    # Earth contains the ribbon too. The old assertion encoded a false belief
+    # about what this metric can separate, and re-anchoring the band on Earth
+    # exposed it.
+    #
+    # inland_depth_over_disc is what actually separates them: ribbon 0.556
+    # (below the 0.60 floor), Earth 0.631, cap 0.949. A ribbon is thin, and
+    # thinness is a depth property, not a perimeter one. So the pair is pinned
+    # here: perimeter does NOT discriminate, depth does, and a shape verdict
+    # needs both.
+    lo_d, hi_d, _ = GATES["inland_depth_over_disc"]
+    ok &= _check("ribbon rejected by inland depth (the gate that separates it)",
+                 1.0 if not (lo_d <= r_dep <= hi_d) else 0.0,
+                 1.0, 0.0)
+    ok &= _check("cap accepted by inland depth",
+                 1.0 if lo_d <= dep["inland_depth_over_disc"] <= hi_d else 0.0,
+                 1.0, 0.0)
+    ok &= _check("perimeter alone does NOT separate ribbon from Earth (2.07 vs 2.33)",
+                 1.0 if GATES["perimeter_over_disc"][0] <= r_iso
+                        <= GATES["perimeter_over_disc"][1] else 0.0, 1.0, 0.0)
 
     # Latitude distortion, measured rather than assumed. Lambert gives every
     # tile equal AREA but not equal SHAPE -- cells stretch in longitude and
@@ -1317,7 +1345,23 @@ GATES = {
     # inside the band, which is a consistency check rather than its source.
     # Re-anchor on Natural Earth 1:110m rasterised onto this grid when
     # available.
-    "perimeter_over_disc":      (1.20, 2.00,  "coastline vs equal-area disc"),
+    # RE-ANCHORED 2026-08-31 on Earth itself. The band was [1.20, 2.00] and
+    # EARTH SCORES 2.326 -- outside its own gate. tools/earth_reference.py
+    # rasterises Natural Earth 1:110m onto this grid and measures it with the
+    # code below (land fraction comes out 0.290 against a true 0.292, so the
+    # rasterisation is sound). The old ceiling was cited from published
+    # coastline figures -- exactly the ruler-dependence error warned about
+    # above; the note asking for this measurement has been in this file since
+    # the metric was added.
+    #
+    # Consequence worth stating plainly: a generator scoring 1.8 is SMOOTHER
+    # than Earth, not better than Earth, and the old band rewarded moving away
+    # from the reference.
+    #
+    # Earth-centred with room either side. Read it WITH inland_depth_over_disc:
+    # a 4-tile ribbon scores 2.07 here against Earth's 2.33, so this metric
+    # alone cannot tell a ribbon from a continent.
+    "perimeter_over_disc":      (1.90, 2.80,  "coastline vs equal-area disc"),
     "inland_depth_over_disc":   (0.60, 1.15,  "inland depth vs disc"),
     # Measured on the CONTINENTAL CRUST footprint, not on emergent land,
     # because the emergent mask is downstream of BOTH the supercontinent
