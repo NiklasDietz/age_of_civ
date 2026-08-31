@@ -32,6 +32,7 @@
 
 #include "aoc/map/gen/Plate.hpp"
 #include "aoc/map/gen/SphereField.hpp"
+#include "aoc/map/gen/Terrane.hpp"
 
 #include <cstdint>
 #include <vector>
@@ -283,6 +284,52 @@ void recomputeIsostaticElevationOnRaster(SphereField& field);
 /// determinism forbids OpenMP float reductions here.
 void solveSeaLevelFixedVolume(SphereField& field);
 
+/// Fix sea level at 0 and solve `field.continentalFreeboardM` so the emergent
+/// land area matches Earth's 29.2 %.
+///
+/// Replaces solveSeaLevelFixedVolume in the epoch loop. The old solve pinned
+/// sea level to a conserved water volume, but dV/dz_sea at the stand is the
+/// ocean AREA -- ~95 % abyss -- so it was governed by abyssal hypsometry and
+/// nearly blind to the continental branch whose shoreline it was placing. Land
+/// fraction is determined by the continental branch, so bisecting against it
+/// makes the solved scalar sensitive to what it controls. Ocean volume becomes
+/// a reported diagnostic instead of an imposed constraint.
+/// Replace continental elevation with a landform template: orogenic roots plus
+/// a platform that rises from 0 at the continent-ocean boundary to full height
+/// inland. Puts the shoreline ON the crust outline, so a compact crust mask
+/// yields a compact coastline.
+void applyContinentalMarginProfile(SphereField& field);
+
+void solveContinentalFreeboard(SphereField& field);
+
+/// Recompute OCEANIC crust age as distance-to-nearest-ridge / half-spreading
+/// rate, clamped to 200 My. Continental basement age is left untouched.
+///
+/// Plate ownership does not advect (incumbent-wins), so interior ocean floor is
+/// never recycled and simply accumulates `+= dtMy` to the 3 Gy run length.
+/// Through GDH1 that returns the asymptotic depth nearly everywhere, which is
+/// why the abyssal-plain mode is missing from this planet's hypsometry.
+void recomputeOceanicCrustAge(SphereField& field);
+
+/// Rigid terrane transport -- see Terrane.hpp for the measurement that motivated
+/// replacing raster resampling of the continental crust fields.
+void seedTerranesFromRaster(const SphereField& field, std::vector<Terrane>& terranes,
+                            TerraneBody& body);
+/// Give each terrane an Euler pole carrying it away from the initial
+/// continental centroid, so the blocks disperse over the run instead of
+/// wandering at random and welding into one mass.
+/// Remove one-cell-thick plate-ownership fringes left by advection's
+/// orphan-claim pass. Visible as east-west smearing on high-resolution maps.
+void despecklePlateOwnership(SphereField& field);
+void assignTerraneDrift(std::vector<Terrane>& terranes, float totalMy);
+void advanceTerraneRotations(std::vector<Terrane>& terranes, const std::vector<Plate>& plates,
+                             float dtMy);
+void bakeTerranesToRaster(SphereField& field, const std::vector<Terrane>& terranes,
+                          const TerraneBody& body);
+void writebackTerraneCrust(const SphereField& field, std::vector<Terrane>& terranes,
+                           TerraneBody& body);
+
+
 /// Share of the sphere's surface covered by continental crust (cells with
 /// `continentalFraction >= 0.5`), cos-latitude weighted. Earth is ~0.41.
 ///
@@ -310,6 +357,7 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy);
 /// call so it remains deterministic across runs with the same map
 /// seed.
 void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
-                            std::vector<uint8_t>& boundaryScratch, uint32_t& rngState, float dtMy);
+                            std::vector<uint8_t>& boundaryScratch, uint32_t& rngState, float dtMy,
+                            std::vector<Terrane>* terranes, TerraneBody* terraneBody);
 
 } // namespace aoc::map::gen

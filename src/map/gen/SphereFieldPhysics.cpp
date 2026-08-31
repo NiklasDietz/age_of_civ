@@ -1,5 +1,7 @@
 #include "aoc/map/gen/SphereFieldPhysics.hpp"
 
+#include "aoc/map/gen/Terrane.hpp"
+
 #include "aoc/core/Log.hpp"
 #include "aoc/map/gen/Noise.hpp"
 #include "aoc/map/gen/PlatePhysics.hpp"
@@ -9,6 +11,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <queue>
 #include <limits>
 #include <map>
 #include <utility>
@@ -1487,7 +1490,16 @@ void advectPlateOwnership(SphereField& field, const std::vector<Plate>& plates, 
     //   1. Continental overrides oceanic (Andean / Cascadian style).
     //   2. Slowest plate wins among same-class claimants (cratonic
     //      preservation; Gripp & Gordon 2002).
-    for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
+    // AOC_NO_ADVECT_REPAIR skips passes 2 and 3 -- the orphan-claim and
+    // wake-fill repairs. Pass 1 is an exact rigid backward rotation and cannot
+    // smear; these two are what copy crust from an arbitrary nearby source into
+    // a cell that had no valid departure point, ~900 times per world, on the
+    // very field whose 0.5 contour is the coastline. Measured: with advection
+    // entirely off, crust perimeter/equal-area-disc falls 3.34 -> 1.48 (seed
+    // 42) and the largest crust component 0.92 -> 0.42. This gate isolates how
+    // much of that is the repair passes specifically.
+    static const bool kNoRepair = std::getenv("AOC_NO_ADVECT_REPAIR") != nullptr;
+    for (int32_t latIdx = 0; !kNoRepair && latIdx < LAT; ++latIdx) {
         for (int32_t lonIdx = 0; lonIdx < LON; ++lonIdx) {
             const std::size_t idx = SphereField::cellIndex(lonIdx, latIdx);
             if (newOwner[idx] != VACATED) continue;
@@ -1889,6 +1901,12 @@ void thickenFromClosingRate(SphereField& field, float dtMy) {
 }
 
 void growContinentalFractionAtArcs(SphereField& field, float dtMy) {
+    // AOC_NO_ARC_GROWTH disables arc accretion. This pass is the suspected
+    // source of filamentary continents: it adds continental EXTENT along 1-D
+    // convergent boundaries, and over a run continental area grows 37 % while
+    // continental volume grows 5 %. Gated so that claim is a measurement.
+    static const bool kNoArcGrowth = std::getenv("AOC_NO_ARC_GROWTH") != nullptr;
+    if (kNoArcGrowth) return;
     // Hawkesworth et al. 2010 net continental-crust generation ~0.5
     // km³/yr at modern arcs (1 km³/yr generated × ~50 % preserved
     // in stable continental crust); Phanerozoic mean is comparable
@@ -2054,6 +2072,11 @@ void growContinentalFractionAtArcs(SphereField& field, float dtMy) {
 }
 
 void accreteToNeighbours(SphereField& field, float dtMy) {
+    // AOC_NO_ACCRETE disables terrane-accretion diffusion plus the maturation
+    // it carries. Gated alongside AOC_NO_ARC_GROWTH so the two extent-changing
+    // passes can be attributed separately.
+    static const bool kNoAccrete = std::getenv("AOC_NO_ACCRETE") != nullptr;
+    if (kNoAccrete) return;
     // Cawood et al. 2013: accretionary orogens account for ~30 % of
     // present continental area, added predominantly during Phanerozoic
     // (~540 My). That equates to a normalised area growth rate of roughly
@@ -2269,6 +2292,422 @@ void accreteToNeighbours(SphereField& field, float dtMy) {
             PhysicsConstants::refContinentalThicknessKm + MATURATION_TARGET_SPREAD_KM * n;
         if (h >= targetKm) continue;
         field.crustThicknessKm[i] = h + (targetKm - h) * relax;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rigid terrane transport
+//
+// Replaces raster resampling of the continental crust fields. See Terrane.hpp
+// for the measurement that motivated it: advection alone accounts for the
+// crust footprint degrading from 1.28x an equal-area disc at epoch 1 to 2.62x
+// by epoch 60, and for the 0.92-0.97 largest-component supercontinent.
+//
+// The body frame is the raster as it stood when terranes were seeded. A cell's
+// present position is `R_t * body_direction`; transport is therefore a
+// coordinate change and membership is exact, so shape is preserved under any
+// accumulated rotation. Nothing is interpolated and nothing is repaired.
+// ---------------------------------------------------------------------------
+
+void despecklePlateOwnership(SphereField& field) {
+    // Strip one-cell-thick ownership fringes left by advection's orphan-claim
+    // pass, which walks eight neighbours in a fixed metric order and so grows
+    // directional combs along a moving plate front. Measured at 480x270: 0.23 %
+    // of cells sit in a one-row-thick east-west fringe, which reads as smearing
+    // on any map finer than the 140x90 the tuning was done at.
+    //
+    // A cell whose north and south neighbours agree with each other but not
+    // with it is such a fringe, and adopts them. Jacobi (read `src`, write
+    // `dst`) so the result cannot depend on traversal or thread order.
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    std::vector<int16_t> next = field.plateId;
+    for (int32_t j = 1; j < LAT - 1; ++j) {
+        for (int32_t i = 0; i < LON; ++i) {
+            const std::size_t idx = SphereField::cellIndex(i, j);
+            const int16_t self    = field.plateId[idx];
+            const int16_t n       = field.plateId[SphereField::cellIndex(i, j + 1)];
+            const int16_t s2      = field.plateId[SphereField::cellIndex(i, j - 1)];
+            if (n == s2 && n != self && n >= 0) {
+                next[idx] = n;
+            }
+        }
+    }
+    field.plateId.swap(next);
+}
+
+void seedTerranesFromRaster(const SphereField& field, std::vector<Terrane>& terranes,
+                            TerraneBody& body) {
+    // One terrane per connected component of continental crust at seeding time.
+    // Cratons are already seeded compact (measured 1.28x disc at epoch 1); this
+    // captures that geometry as a rigid body so the run cannot destroy it.
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    body.terraneId.assign(SphereField::CELL_COUNT, -1);
+    body.crustKm.assign(SphereField::CELL_COUNT, 0.0f);
+    body.ageMy.assign(SphereField::CELL_COUNT, 0.0f);
+    terranes.clear();
+
+    // Smooth the seeded mask ONCE, before the bodies are cut from it.
+    //
+    // The craton seeder is an anisotropic stochastic BFS, so its boundary is
+    // rough at the cell scale even when the blob is globally compact. That
+    // matters more than it looks: the shoreline is placed by eroding the crust
+    // outline inward ~22 cells, and eroding a rough outline by a large distance
+    // amplifies the roughness into a fragmented, ragged coastline. Measured,
+    // crust perimeter/equal-area-disc of 1.21-2.12 was still yielding land at
+    // 2.46-3.27.
+    //
+    // A majority filter is safe here precisely BECAUSE it runs once. The same
+    // operator applied per epoch was measured to cost 7-16 % of continental
+    // area per pass -- that bleed is what disqualified it as a running
+    // mechanism; as a one-time conditioning of the initial condition it has no
+    // such cost, and the rigid bodies then preserve the smoothed shape exactly
+    // for the rest of the run.
+    std::vector<uint8_t> mask(SphereField::CELL_COUNT, 0u);
+    for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
+        mask[i] = field.continentalFraction[i] >= 0.5f ? 1u : 0u;
+    }
+    for (int32_t pass = 0; pass < 3; ++pass) {
+        std::vector<uint8_t> nextMask(mask);
+        for (int32_t j = 0; j < LAT; ++j) {
+            for (int32_t i = 0; i < LON; ++i) {
+                const std::size_t idx = SphereField::cellIndex(i, j);
+                const int32_t iW = (i == 0) ? LON - 1 : i - 1;
+                const int32_t iE = (i == LON - 1) ? 0 : i + 1;
+                const std::size_t nb[4] = {SphereField::cellIndex(iW, j),
+                                           SphereField::cellIndex(iE, j),
+                                           SphereField::cellIndex(i, std::max(0, j - 1)),
+                                           SphereField::cellIndex(i, std::min(LAT - 1, j + 1))};
+                int32_t on = 0;
+                for (const std::size_t n : nb) {
+                    on += mask[n] ? 1 : 0;
+                }
+                // Strict majority in either direction; a 2-2 split holds, so
+                // the filter cannot oscillate and is idempotent at convergence.
+                if (on >= 3) nextMask[idx] = 1u;
+                else if (on <= 1) nextMask[idx] = 0u;
+            }
+        }
+        mask.swap(nextMask);
+    }
+
+    std::vector<uint8_t> seen(SphereField::CELL_COUNT, 0u);
+    std::vector<int32_t> stack;
+    for (int32_t j0 = 0; j0 < LAT; ++j0) {
+        for (int32_t i0 = 0; i0 < LON; ++i0) {
+            const std::size_t start = SphereField::cellIndex(i0, j0);
+            if (seen[start] || !mask[start]) continue;
+            const int16_t id = static_cast<int16_t>(terranes.size());
+            Terrane t;
+            t.id      = id;
+            t.plateId = field.plateId[start];
+            stack.clear();
+            stack.push_back(static_cast<int32_t>(start));
+            seen[start] = 1u;
+            while (!stack.empty()) {
+                const int32_t cur = stack.back();
+                stack.pop_back();
+                t.bodyCells.push_back(cur);
+                body.terraneId[static_cast<std::size_t>(cur)] = id;
+                body.crustKm[static_cast<std::size_t>(cur)] =
+                    field.crustThicknessKm[static_cast<std::size_t>(cur)];
+                body.ageMy[static_cast<std::size_t>(cur)] =
+                    field.crustAgeMy[static_cast<std::size_t>(cur)];
+                const int32_t j = cur / LON;
+                const int32_t i = cur % LON;
+                const int32_t iW = (i == 0) ? LON - 1 : i - 1;
+                const int32_t iE = (i == LON - 1) ? 0 : i + 1;
+                const int32_t nb[4] = {static_cast<int32_t>(SphereField::cellIndex(iW, j)),
+                                       static_cast<int32_t>(SphereField::cellIndex(iE, j)),
+                                       static_cast<int32_t>(SphereField::cellIndex(i, std::max(0, j - 1))),
+                                       static_cast<int32_t>(SphereField::cellIndex(i, std::min(LAT - 1, j + 1)))};
+                for (const int32_t n : nb) {
+                    if (n == cur || seen[static_cast<std::size_t>(n)]) continue;
+                    if (!mask[static_cast<std::size_t>(n)]) continue;
+                    seen[static_cast<std::size_t>(n)] = 1u;
+                    stack.push_back(n);
+                }
+            }
+            terranes.push_back(std::move(t));
+        }
+    }
+}
+
+void assignTerraneDrift(std::vector<Terrane>& terranes, float totalMy) {
+    // PRESCRIBED DISPERSAL -- the Wilson cycle's second half, imposed rather
+    // than hoped for.
+    //
+    // Why it has to be imposed. The rift trigger this replaces asked whether one
+    // PLATE held 25 % of the continental crust, while the supercontinent is
+    // crust welded ACROSS a dozen plates: measured, max plate share sat at
+    // 0.19-0.25 against a 0.25 threshold for the whole run, so 2-5 rifts fired
+    // in 3 Gy and nothing ever dispersed. Rigid terranes made the blocks
+    // compact but did not change that -- they simply drift at random, collide,
+    // and never separate again, leaving one mass covering ~45 % of the sphere
+    // (largest connected crust component 0.86-1.00). Every remaining failure
+    // followed from it: land fraction too high, largest landmass too high, and
+    // a rim erosion that cannot bite because the mass is far larger than the
+    // rim is wide.
+    //
+    // So each block is given an Euler pole that carries it radially AWAY from
+    // the initial continental centroid. The axis `centroid x position` rotates
+    // a point along the great circle running from the centroid through it,
+    // which is outward by construction; blocks sitting near the centroid get a
+    // random axis instead, since "away" is undefined there.
+    //
+    // The rate is set so a block travels ~50 deg over the run -- enough to open
+    // an ocean between blocks that start ~50 deg apart -- and lands at
+    // ~0.017 deg/My, comfortably inside the 0.005-0.30 deg/My envelope drawn
+    // from the Muller 2022 reconstruction for real plates.
+    constexpr int32_t LON     = SphereField::LON_CELLS;
+    constexpr float SPREAD_DEG = 50.0f;
+    if (terranes.empty() || totalMy <= 0.0f) return;
+
+    double cx = 0.0, cy = 0.0, cz = 0.0;
+    for (const Terrane& t : terranes) {
+        for (const int32_t cell : t.bodyCells) {
+            const int32_t j = cell / LON;
+            const int32_t i = cell % LON;
+            const LatLon p  = SphereField::cellCenter(i, j);
+            const Vec3 v    = latLonToVec3(p);
+            cx += v.x;
+            cy += v.y;
+            cz += v.z;
+        }
+    }
+    const double clen = std::sqrt(cx * cx + cy * cy + cz * cz);
+    if (clen < 1e-9) return;
+    const Vec3 centre{static_cast<float>(cx / clen), static_cast<float>(cy / clen),
+                      static_cast<float>(cz / clen)};
+
+    for (std::size_t k = 0; k < terranes.size(); ++k) {
+        Terrane& t = terranes[k];
+        if (t.bodyCells.empty()) continue;
+        double px = 0.0, py = 0.0, pz = 0.0;
+        for (const int32_t cell : t.bodyCells) {
+            const Vec3 v = latLonToVec3(SphereField::cellCenter(cell % LON, cell / LON));
+            px += v.x;
+            py += v.y;
+            pz += v.z;
+        }
+        const double plen = std::sqrt(px * px + py * py + pz * pz);
+        if (plen < 1e-9) continue;
+        const Vec3 pos{static_cast<float>(px / plen), static_cast<float>(py / plen),
+                       static_cast<float>(pz / plen)};
+        // axis = centre x pos; rotating about it sweeps pos directly away from
+        // centre along their common great circle.
+        Vec3 axis{centre.y * pos.z - centre.z * pos.y, centre.z * pos.x - centre.x * pos.z,
+                  centre.x * pos.y - centre.y * pos.x};
+        float alen = std::sqrt(axis.x * axis.x + axis.y * axis.y + axis.z * axis.z);
+        if (alen < 1e-4f) {
+            // Sitting on (or opposite) the centroid: "away" is undefined, so
+            // pick a deterministic axis from the block's index instead of
+            // leaving it stationary while everything else disperses.
+            const float a = static_cast<float>(k) * 2.39996f;
+            axis          = Vec3{std::cos(a), std::sin(a), 0.0f};
+            alen          = 1.0f;
+        }
+        axis = Vec3{axis.x / alen, axis.y / alen, axis.z / alen};
+        const LatLon pole      = vec3ToLatLon(axis);
+        t.driftPoleLatDeg      = pole.latDeg;
+        t.driftPoleLonDeg      = pole.lonDeg;
+        t.driftRateDegPerMy    = SPREAD_DEG / totalMy;
+    }
+}
+
+void advanceTerraneRotations(std::vector<Terrane>& terranes, const std::vector<Plate>& plates,
+                             float dtMy) {
+    for (Terrane& t : terranes) {
+        if (!t.alive) continue;
+        if (t.plateId < 0 || static_cast<std::size_t>(t.plateId) >= plates.size()) continue;
+        const Plate& p = plates[static_cast<std::size_t>(t.plateId)];
+        // Prescribed dispersal carries the block; the plate's own rotation is
+        // added at a reduced weight so motion still varies with the tectonic
+        // configuration instead of every world dispersing identically.
+        float step[9];
+        eulerRotMatrix(t.driftPoleLatDeg, t.driftPoleLonDeg, t.driftRateDegPerMy * dtMy, step);
+        float wander[9];
+        eulerRotMatrix(p.eulerPoleLatDeg, p.eulerPoleLonDeg, p.angularVelDeg * dtMy * 0.25f,
+                       wander);
+        composeRot(step, wander, step);
+        // step * current: the epoch's rotation is applied in the WORLD frame,
+        // after everything the terrane has already accumulated.
+        composeRot(step, t.rot, t.rot);
+    }
+}
+
+void bakeTerranesToRaster(SphereField& field, const std::vector<Terrane>& terranes,
+                          const TerraneBody& body) {
+    // Continental crust is rebuilt from scratch each epoch from the rigid
+    // bodies. Cells no terrane covers are oceanic -- which is how a rifted gap
+    // becomes ocean without any explicit "make ocean" step.
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    constexpr float HO    = PhysicsConstants::initialOceanicThicknessKm;
+
+    std::vector<float> newFrac(SphereField::CELL_COUNT, 0.0f);
+    std::vector<float> newCrust(SphereField::CELL_COUNT, HO);
+    std::vector<int16_t> newTerrane(SphereField::CELL_COUNT, -1);
+
+#if defined(AOC_HAS_OPENMP)
+#pragma omp parallel for schedule(static)
+#endif
+    for (int32_t j = 0; j < LAT; ++j) {
+        const float latDeg = -90.0f + (static_cast<float>(j) + 0.5f) * SphereField::CELL_DEG;
+        for (int32_t i = 0; i < LON; ++i) {
+            const float lonDeg    = -180.0f + (static_cast<float>(i) + 0.5f) * SphereField::CELL_DEG;
+            const std::size_t idx = SphereField::cellIndex(i, j);
+            // SUPERSAMPLED membership -- five sub-positions, majority vote.
+            //
+            // A single nearest-neighbour test aliases the rigid boundary: when
+            // the accumulated rotation nearly aligns with the raster, adjacent
+            // destination rows map to the same body row and then jump, leaving
+            // one-cell-thick east-west fringes along every terrane edge. That
+            // is invisible at the 140x90 this was tuned at and very visible as
+            // "smearing" on a 1920x1080 map.
+            //
+            // The threshold is load-bearing and was measured. 3-of-5 is an area
+            // estimate, so the boundary lands where the body covers half the
+            // cell. 1-of-5 dilates instead and merges neighbouring blocks
+            // (29/72 seed-gates versus 33/72). Removing the supersampling
+            // entirely also scores 29/72. Note the honest caveat: across these
+            // variants the gate total ranges 29-37 on six seeds, which is not a
+            // resolution this metric can distinguish -- the supersampling is
+            // kept because it removes a visible artefact, not because 33 beats
+            // 29 significantly.
+            constexpr float Q = 0.25f * SphereField::CELL_DEG;
+            const LatLon subs[5] = {{latDeg, lonDeg},
+                                    {latDeg - Q, lonDeg - Q},
+                                    {latDeg - Q, lonDeg + Q},
+                                    {latDeg + Q, lonDeg - Q},
+                                    {latDeg + Q, lonDeg + Q}};
+            Vec3 subv[5];
+            for (int32_t k = 0; k < 5; ++k) {
+                subv[k] = latLonToVec3(subs[k]);
+            }
+            for (const Terrane& t : terranes) {
+                if (!t.alive || t.bodyCells.empty()) continue;
+                int32_t hits           = 0;
+                std::size_t centreBidx = 0;
+                for (int32_t k = 0; k < 5; ++k) {
+                    const LatLon bl        = vec3ToLatLon(applyRotT(t.rot, subv[k]));
+                    const auto bc          = SphereField::locate(bl.latDeg, bl.lonDeg);
+                    const std::size_t bidx = SphereField::cellIndex(bc.lonIdx, bc.latIdx);
+                    if (k == 0) centreBidx = bidx;
+                    if (body.terraneId[bidx] == t.id) ++hits;
+                }
+                if (hits < 3) continue;
+                newFrac[idx]  = 1.0f;
+                newCrust[idx] = body.crustKm[centreBidx] > 0.0f
+                                    ? body.crustKm[centreBidx]
+                                    : PhysicsConstants::refContinentalThicknessKm;
+                newTerrane[idx] = t.id;
+                break; // first terrane wins an overlap; welding resolves it
+            }
+        }
+    }
+
+    for (std::size_t k = 0; k < SphereField::CELL_COUNT; ++k) {
+        // Oceanic cells keep whatever the ocean passes gave them; only cells
+        // that a terrane covers, or that one has just vacated, are rewritten.
+        if (newTerrane[k] >= 0) {
+            field.continentalFraction[k] = newFrac[k];
+            field.crustThicknessKm[k]    = newCrust[k];
+        } else if (field.terraneId[k] >= 0 || field.continentalFraction[k] > 0.0f) {
+            // Vacated by a departing terrane, or continental crust that no
+            // rigid body owns. Both become ocean floor: with adoption off, a
+            // terrane IS the continental crust, and anything outside one is a
+            // raster artefact that advection would otherwise smear.
+            field.continentalFraction[k] = 0.0f;
+            field.crustThicknessKm[k]    = HO;
+            field.crustAgeMy[k]          = 0.0f;
+        }
+        field.terraneId[k] = newTerrane[k];
+    }
+}
+
+void writebackTerraneCrust(const SphereField& field, std::vector<Terrane>& terranes,
+                           TerraneBody& body) {
+    // Thickening, erosion and maturation act on the world-frame raster; carry
+    // their result back into the body frame so it rides along next epoch. This
+    // is the ONLY reverse coupling between the physics and the terrane state.
+    constexpr int32_t LON = SphereField::LON_CELLS;
+    constexpr int32_t LAT = SphereField::LAT_CELLS;
+    for (int32_t j = 0; j < LAT; ++j) {
+        const float latDeg = -90.0f + (static_cast<float>(j) + 0.5f) * SphereField::CELL_DEG;
+        for (int32_t i = 0; i < LON; ++i) {
+            const std::size_t idx = SphereField::cellIndex(i, j);
+            const int16_t tid     = field.terraneId[idx];
+            if (tid < 0 || static_cast<std::size_t>(tid) >= terranes.size()) continue;
+            const Terrane& t = terranes[static_cast<std::size_t>(tid)];
+            if (!t.alive) continue;
+            const float lonDeg     = -180.0f + (static_cast<float>(i) + 0.5f) * SphereField::CELL_DEG;
+            const Vec3 b           = applyRotT(t.rot, latLonToVec3(LatLon{latDeg, lonDeg}));
+            const LatLon bl        = vec3ToLatLon(b);
+            const auto bc          = SphereField::locate(bl.latDeg, bl.lonDeg);
+            const std::size_t bidx = SphereField::cellIndex(bc.lonIdx, bc.latIdx);
+            if (body.terraneId[bidx] != tid) continue;
+            body.crustKm[bidx] = field.crustThicknessKm[idx];
+            body.ageMy[bidx]   = field.crustAgeMy[idx];
+        }
+    }
+
+    // Adopt newly continental cells into the terrane they border.
+    //
+    // Arc growth and accretion make crust on the world-frame raster, outside
+    // any rigid body. Left unadopted it accumulates as non-terrane continental
+    // crust, which the bake does not own and advection therefore still smears
+    // -- measured, that leak held crust perimeter/equal-area-disc at 2.25-2.93
+    // where fully rigid transport reaches 1.2-1.5. Adoption is the plan's
+    // "growth may only advance an existing margin" rule: new crust joins the
+    // body next to it and thereafter rides rigidly, rather than becoming a
+    // free-floating raster value.
+    //
+    // Deterministic by construction: cells are visited in raster order and the
+    // neighbour scan is in fixed W/E/S/N order, so the adopting terrane never
+    // depends on iteration or thread order.
+    //
+    // MEASURED and DEFAULT OFF. Adoption lets a terrane absorb any adjacent
+    // continental cell, which over a run lets neighbours grow into each other
+    // and fuse: crust perimeter/equal-area-disc went 2.54 -> 3.15 on seed 42
+    // and the largest component 0.908 -> 0.993, i.e. it re-created the
+    // supercontinent by a different route. Correct adoption needs a
+    // same-terrane-only or collision-aware rule; until then arc growth is
+    // disabled instead and the continental budget comes from the seeded stock.
+    static const bool kAdopt = std::getenv("AOC_TERRANE_ADOPT") != nullptr;
+    for (int32_t j = 0; kAdopt && j < LAT; ++j) {
+        const float latDeg = -90.0f + (static_cast<float>(j) + 0.5f) * SphereField::CELL_DEG;
+        for (int32_t i = 0; i < LON; ++i) {
+            const std::size_t idx = SphereField::cellIndex(i, j);
+            if (field.terraneId[idx] >= 0) continue;
+            if (field.continentalFraction[idx] < 0.5f) continue;
+            const int32_t iW = (i == 0) ? LON - 1 : i - 1;
+            const int32_t iE = (i == LON - 1) ? 0 : i + 1;
+            const std::size_t nb[4] = {SphereField::cellIndex(iW, j), SphereField::cellIndex(iE, j),
+                                       SphereField::cellIndex(i, std::max(0, j - 1)),
+                                       SphereField::cellIndex(i, std::min(LAT - 1, j + 1))};
+            int16_t host = -1;
+            for (const std::size_t n : nb) {
+                if (field.terraneId[n] >= 0) {
+                    host = field.terraneId[n];
+                    break;
+                }
+            }
+            if (host < 0 || static_cast<std::size_t>(host) >= terranes.size()) continue;
+            Terrane& t = terranes[static_cast<std::size_t>(host)];
+            if (!t.alive) continue;
+            const float lonDeg     = -180.0f + (static_cast<float>(i) + 0.5f) * SphereField::CELL_DEG;
+            const Vec3 b           = applyRotT(t.rot, latLonToVec3(LatLon{latDeg, lonDeg}));
+            const LatLon bl        = vec3ToLatLon(b);
+            const auto bc          = SphereField::locate(bl.latDeg, bl.lonDeg);
+            const std::size_t bidx = SphereField::cellIndex(bc.lonIdx, bc.latIdx);
+            if (body.terraneId[bidx] >= 0) continue; // body cell already taken
+            body.terraneId[bidx] = host;
+            body.crustKm[bidx]   = field.crustThicknessKm[idx];
+            body.ageMy[bidx]     = field.crustAgeMy[idx];
+            t.bodyCells.push_back(static_cast<int32_t>(bidx));
+        }
     }
 }
 
@@ -2734,6 +3173,110 @@ float continentalAreaShare(const SphereField& field) {
     return (total > 0.0) ? static_cast<float>(cont / total) : 0.0f;
 }
 
+void recomputeOceanicCrustAge(SphereField& field) {
+    // Seafloor age from distance to the nearest spreading ridge.
+    //
+    // Why this is needed. Oceanic crust age is reset to 0 only where a cell is
+    // AT a divergent boundary (accreteAtDivergentBoundary) or is subducted, and
+    // plate ownership does not advect -- advectPlateOwnership's incumbent-wins
+    // rule means boundaries move only through mechanism passes. So the ocean
+    // floor is essentially static and simply accumulates `+= dtMy` for the
+    // whole run: measured, oceanic age saturates at the 3 Gy run length.
+    // Through GDH1 that returns the asymptotic 5651 m depth almost everywhere,
+    // which is why this planet has 30.8 % of its surface below -5000 m against
+    // Earth's ~15 %, and only 10.8 % in the -3000..-5000 band against Earth's
+    // ~35 %. The abyssal-plain MODE -- the single largest feature of Earth's
+    // hypsometric curve -- is absent.
+    //
+    // Real seafloor age is a function of distance from the ridge, because the
+    // plate carries crust away from it at the half-spreading rate. That is
+    // reconstructed here directly rather than waiting for transport to do it:
+    //   age = geodesic distance to nearest divergent boundary / halfSpreadRate
+    // clamped to MAX_SEAFLOOR_AGE_MY. Earth's oldest in-situ ocean floor is
+    // ~180-200 My (western Pacific, eastern Mediterranean) because everything
+    // older has been subducted; the clamp stands in for that recycling, which
+    // this sim does not otherwise perform on interior ocean.
+    //
+    // Half-spreading rate 35 km/My is Earth's area-weighted mean (Muller et al.
+    // 2008 age grid: full rates 20-150 mm/yr, mean ~70 mm/yr = 70 km/My full,
+    // 35 km/My half). At that rate the clamp is reached 7000 km from a ridge,
+    // which is about the half-width of the Pacific -- so basin interiors
+    // saturate and basin flanks carry a real gradient, as on Earth.
+    //
+    // CONTINENTAL CRUST IS NOT TOUCHED. Its age is a basement age with entirely
+    // different meaning (billions of years, and read by the resource geology),
+    // and nothing here should overwrite it.
+    constexpr int32_t LON              = SphereField::LON_CELLS;
+    constexpr int32_t LAT              = SphereField::LAT_CELLS;
+    constexpr float HALF_SPREAD_KM_MY  = 35.0f;
+    constexpr float MAX_SEAFLOOR_AGE_MY = 200.0f;
+    constexpr float OCEANIC_GATE       = 0.5f;
+    constexpr float CELL_RAD           = SphereField::CELL_DEG * 0.01745329252f;
+    const float cellHeightKm           = PhysicsConstants::earthRadiusKm * CELL_RAD;
+    // Distance beyond which the age is clamped anyway; the search stops there
+    // so an ocean with no ridge at all does not sweep the whole raster.
+    const float maxDistKm = HALF_SPREAD_KM_MY * MAX_SEAFLOOR_AGE_MY;
+
+    std::vector<float> dist(SphereField::CELL_COUNT, std::numeric_limits<float>::max());
+    // Dijkstra over oceanic cells, sourced at every oceanic cell adjacent to a
+    // divergent boundary. Tie-broken by cell index so the pop order -- and
+    // therefore the result -- is independent of the heap's internal ordering:
+    // the same determinism requirement that keeps solveContinentalFreeboard
+    // serial.
+    using Node = std::pair<float, std::size_t>;
+    std::priority_queue<Node, std::vector<Node>, std::greater<Node>> pq;
+    for (int32_t j = 0; j < LAT; ++j) {
+        for (int32_t i = 0; i < LON; ++i) {
+            const std::size_t idx = SphereField::cellIndex(i, j);
+            if (field.continentalFraction[idx] >= OCEANIC_GATE) continue;
+            if (field.boundaryType[idx] != 2u) continue; // 2 = Divergent
+            dist[idx] = 0.0f;
+            pq.emplace(0.0f, idx);
+        }
+    }
+    while (!pq.empty()) {
+        const auto [d, idx] = pq.top();
+        pq.pop();
+        if (d > dist[idx]) continue;
+        if (d > maxDistKm) continue;
+        const int32_t j = static_cast<int32_t>(idx) / LON;
+        const int32_t i = static_cast<int32_t>(idx) % LON;
+        const float cellWidthKm =
+            cellHeightKm *
+            std::max(0.05f, std::cos((-90.0f + (static_cast<float>(j) + 0.5f) *
+                                                   SphereField::CELL_DEG) *
+                                     0.01745329252f));
+        const int32_t iW = (i == 0) ? LON - 1 : i - 1;
+        const int32_t iE = (i == LON - 1) ? 0 : i + 1;
+        const std::pair<std::size_t, float> nbrs[4] = {
+            {SphereField::cellIndex(iW, j), cellWidthKm},
+            {SphereField::cellIndex(iE, j), cellWidthKm},
+            {SphereField::cellIndex(i, std::max(0, j - 1)), cellHeightKm},
+            {SphereField::cellIndex(i, std::min(LAT - 1, j + 1)), cellHeightKm},
+        };
+        for (const auto& [n, step] : nbrs) {
+            if (n == idx) continue;
+            if (field.continentalFraction[n] >= OCEANIC_GATE) continue;
+            const float nd = d + step;
+            if (nd < dist[n]) {
+                dist[n] = nd;
+                pq.emplace(nd, n);
+            }
+        }
+    }
+
+    for (std::size_t idx = 0; idx < SphereField::CELL_COUNT; ++idx) {
+        if (field.continentalFraction[idx] >= OCEANIC_GATE) continue;
+        const float d = dist[idx];
+        // Ocean with no reachable ridge is old crust, not new: clamp, do not
+        // zero. Zeroing would make every ridgeless basin a shallow young sea.
+        const float age = (d == std::numeric_limits<float>::max())
+                              ? MAX_SEAFLOOR_AGE_MY
+                              : std::min(MAX_SEAFLOOR_AGE_MY, d / HALF_SPREAD_KM_MY);
+        field.crustAgeMy[idx] = age;
+    }
+}
+
 void recomputeIsostaticElevationOnRaster(SphereField& field) {
     // The law itself lives in PlatePhysics.hpp as a pure function so
     // tests/test_isostasy.cpp can pin it against the literature without
@@ -2748,9 +3291,401 @@ void recomputeIsostaticElevationOnRaster(SphereField& field) {
 #pragma omp parallel for schedule(static)
 #endif
     for (std::size_t i = 0; i < SphereField::CELL_COUNT; ++i) {
-        field.surfaceElevationM[i] = isostaticElevationM(
-            field.crustThicknessKm[i], field.continentalFraction[i], field.crustAgeMy[i]);
+        // The freeboard offset rides the continental branch only, scaled by
+        // continentalFraction so the continent-ocean blend stays continuous.
+        // Solved by solveContinentalFreeboard, which runs immediately after.
+        field.surfaceElevationM[i] =
+            isostaticElevationM(field.crustThicknessKm[i], field.continentalFraction[i],
+                                field.crustAgeMy[i]) +
+            field.continentalFreeboardM * field.continentalFraction[i];
     }
+}
+
+void applyContinentalMarginProfile(SphereField& field) {
+    // The Steep Shoreline invariant, applied as a landform template.
+    //
+    // Rigid terrane transport made the continental CRUST compact -- measured,
+    // its perimeter/equal-area-disc fell from 3.34/4.56/3.29 to 1.78/1.22/1.20
+    // on seeds 42/7/100. The emergent LAND stayed ragged (3.95/3.42/2.93),
+    // because elevation still varies enough across a compact continent that the
+    // sea-level contour wanders through its interior instead of running around
+    // its edge. Earth's coastline is compact for the opposite reason: a
+    // continental platform sits flat and high, and drops to the abyss over a
+    // continental slope only ~30-80 km wide, so `|grad z|` at the shoreline
+    // exceeds interior relief by two to three orders of magnitude.
+    //
+    // So the platform is supplied as a function of distance from the
+    // continent-ocean boundary rather than left to emerge from crustal
+    // thickness. Elevation becomes
+    //
+    //     z = (H - Href) * dz/dH        <- orogenic roots, untouched
+    //       + PLATFORM_M * smoothstep(d / RAMP)
+    //
+    // where d is the distance in cells to the nearest non-continental cell.
+    // At the crust edge the platform term is 0, so the shoreline lands ON the
+    // crust boundary -- which is now compact -- and mountains still stand on
+    // their roots because the first term is untouched. Freeboard is solved
+    // afterwards and sets the absolute stand.
+    //
+    // RAMP is 4 cells ~ 220 km at 0.5 deg. Earth's shelf-plus-slope runs
+    // 50-500 km (Shepard 1963 mean shelf width 78 km; slope 20-80 km), so this
+    // is at the wide end -- deliberately, because the hex sampler strides ~286
+    // km and a narrower ramp would fall entirely between two tiles.
+    constexpr int32_t LON       = SphereField::LON_CELLS;
+    constexpr int32_t LAT       = SphereField::LAT_CELLS;
+    constexpr float CONT_GATE   = 0.5f;
+    // The shoreline sits at a FIXED DISTANCE inside the crust outline, and the
+    // elevation ramps linearly through it. That makes land a morphological
+    // erosion of the crust mask -- a shape operation -- rather than a threshold
+    // on an elevation distribution. A compact crust mask therefore yields a
+    // compact coastline, which is the whole point: rigid transport already took
+    // crust perimeter/equal-area-disc to 1.2-1.8, and this is what transfers
+    // that to the emergent land.
+    //
+    // Everything that made the old coastline degenerate is removed by
+    // construction. There is no flat platform for a global stand to slice
+    // through, and no solved scalar decides land area -- SHORE_CELLS and the
+    // seeded crust stock do, and both are geometric.
+    //
+    // SHORE_CELLS is large because the cratons are large in cell
+    // terms at 0.5 deg: a block holding ~8 % of the sphere has a radius near 80
+    // cells, and turning a ~47 % crust budget into a ~29 % land fraction means
+    // drowning a rim of about 0.2 R. That drowned rim IS the continental shelf,
+    // and its width is then an output to compare against Earth rather than a
+    // tuned band.
+    // 24 -> 20. Narrowing the drowned rim strictly dominated on a paired
+    // single-seed sweep: it raised the shelf share (7.7 % -> 8.1 % of water)
+    // AND cut the submerged share of crust (49.2 % -> 42.8 %) at once, because
+    // a narrower rim spends proportionally more of itself inside the terrace.
+    constexpr float SHORE_CELLS = 20.0f;
+    constexpr float RAMP_HALF   = 10.0f;
+    constexpr float RELIEF_M    = 300.0f;
+    // Seaward of the shoreline the profile is NOT the mirror of the landward
+    // ramp. It was, and that is why the shelf gate read 0/24 at 0.015 against a
+    // 0.05-0.08 band: a symmetric +-RELIEF_M ramp over RAMP_HALF cells falls at
+    // 30 m/cell, so it crosses the 140 m shelf-break depth within 4.7 cells and
+    // the other ~19 cells of drowned rim sit below the cut. The rim was wide in
+    // distance and almost entirely absent from the depth band that defines a
+    // shelf.
+    //
+    // Earth's margin is two segments, not one: a wide, nearly flat shelf out to
+    // a break at ~140 m (Shepard 1963 mean width 78 km, gradient ~0.1 deg), then
+    // a continental slope that is narrow and steep (20-80 km, 3-6 deg) down to
+    // the rise. Reproducing that shape here means the drowned rim spends most of
+    // its WIDTH above the break and most of its RELIEF below it.
+    //
+    // SHELF_CELLS is the width of the terrace, and it is the tuning knob for the
+    // shelf gate. The slope then takes the remaining SHORE_CELLS - SHELF_CELLS
+    // cells to fall from the break to SLOPE_FOOT_M, which is ~172 m/cell -- an
+    // order of magnitude steeper than the terrace, which is the whole point.
+    //
+    // Both constants are set by what survives the projection to the hex grid,
+    // which is where the gate is measured. At 140x90 against a 720x360 raster
+    // one tile spans ~5 raster cells and its elevation is a 4x4 footprint
+    // AVERAGE, so a terrace only 12 cells (~2.3 tiles) wide is eaten from both
+    // sides: tiles straddling the shoreline average up into land, tiles
+    // straddling the break average down into the slope. Measured at
+    // SHELF_CELLS=12 / break 140: the raster carried shelf/planet 0.053, inside
+    // the band, while the hex map read 0.024 -- the rim shrank from 27.8 % to
+    // 20.7 % of water and the shallow share within it from 26.6 % to 16.3 %,
+    // compounding to a 2.2x loss. The physics was right and the sampling ate it.
+    //
+    // So the terrace is 18 cells (~3.5 tiles), wide enough to have interior
+    // tiles that straddle neither edge, and it grades to 90 m rather than to
+    // the 140 m cut, leaving 50 m of headroom before an averaged tile falls out
+    // of the band. That is also the more faithful shape: Earth's shelf averages
+    // ~60 m deep and breaks at ~140 m, so a terrace using the entire depth
+    // range to the break was already too steep.
+    constexpr float SHELF_CELLS   = 18.0f;
+    constexpr float SHELF_BREAK_M = 90.0f;
+    constexpr float SLOPE_FOOT_M  = 2200.0f;
+    // Fixed, NOT tied to SHELF_CELLS: the root fades over a set distance from
+    // the shoreline, so widening the terrace does not drag isostatic relief
+    // further out to sea and turn more of the shelf into land.
+    constexpr float ROOT_TAPER_CELLS = 6.0f;
+    // Distance is measured to the WORLD OCEAN, not to any non-continental cell.
+    //
+    // The distinction is not pedantic. Measuring to the nearest non-continental
+    // cell means a one-cell gap between two adjacent blocks is a margin on both
+    // sides, so the ramp drowns ~22 cells either way and a hairline gap becomes
+    // a 40-cell strait carved through what should be continuous land. Those
+    // were visible as thin channels running across the landmasses, and they
+    // also inflate the coastline perimeter the whole exercise is trying to
+    // reduce.
+    //
+    // So: find the connected components of non-continental cells, take the
+    // largest as the world ocean, and seed the ramp only from continental cells
+    // that touch it. Enclosed seas and narrow inter-block gaps then sit in the
+    // continental interior at full platform height, which is what an
+    // epicontinental sea or a suture actually is.
+    std::vector<int32_t> oceanComp(SphereField::CELL_COUNT, -1);
+    std::vector<int32_t> compSize;
+    {
+        std::vector<int32_t> stack;
+        for (int32_t j = 0; j < LAT; ++j) {
+            for (int32_t i = 0; i < LON; ++i) {
+                const std::size_t start = SphereField::cellIndex(i, j);
+                if (field.continentalFraction[start] >= CONT_GATE) continue;
+                if (oceanComp[start] >= 0) continue;
+                const int32_t id = static_cast<int32_t>(compSize.size());
+                int32_t n        = 0;
+                stack.clear();
+                stack.push_back(static_cast<int32_t>(start));
+                oceanComp[start] = id;
+                while (!stack.empty()) {
+                    const int32_t cur = stack.back();
+                    stack.pop_back();
+                    ++n;
+                    const int32_t cj = cur / LON;
+                    const int32_t ci = cur % LON;
+                    const int32_t iW = (ci == 0) ? LON - 1 : ci - 1;
+                    const int32_t iE = (ci == LON - 1) ? 0 : ci + 1;
+                    const std::size_t nb[4] = {
+                        SphereField::cellIndex(iW, cj), SphereField::cellIndex(iE, cj),
+                        SphereField::cellIndex(ci, std::max(0, cj - 1)),
+                        SphereField::cellIndex(ci, std::min(LAT - 1, cj + 1))};
+                    for (const std::size_t nn : nb) {
+                        if (field.continentalFraction[nn] >= CONT_GATE) continue;
+                        if (oceanComp[nn] >= 0) continue;
+                        oceanComp[nn] = id;
+                        stack.push_back(static_cast<int32_t>(nn));
+                    }
+                }
+                compSize.push_back(n);
+            }
+        }
+    }
+    int32_t worldOcean = -1;
+    {
+        int32_t best = -1;
+        for (std::size_t k = 0; k < compSize.size(); ++k) {
+            if (compSize[k] > best) {
+                best       = compSize[k];
+                worldOcean = static_cast<int32_t>(k);
+            }
+        }
+    }
+
+    std::vector<int16_t> dist(SphereField::CELL_COUNT, -1);
+    std::vector<int32_t> queue;
+    queue.reserve(SphereField::CELL_COUNT / 8);
+    for (int32_t j = 0; j < LAT; ++j) {
+        for (int32_t i = 0; i < LON; ++i) {
+            const std::size_t idx = SphereField::cellIndex(i, j);
+            if (field.continentalFraction[idx] < CONT_GATE) continue;
+            const int32_t iW = (i == 0) ? LON - 1 : i - 1;
+            const int32_t iE = (i == LON - 1) ? 0 : i + 1;
+            const std::size_t nb[4] = {SphereField::cellIndex(iW, j), SphereField::cellIndex(iE, j),
+                                       SphereField::cellIndex(i, std::max(0, j - 1)),
+                                       SphereField::cellIndex(i, std::min(LAT - 1, j + 1))};
+            for (const std::size_t n : nb) {
+                if (field.continentalFraction[n] < CONT_GATE &&
+                    oceanComp[n] == worldOcean) {
+                    dist[idx] = 0;
+                    queue.push_back(static_cast<int32_t>(idx));
+                    break;
+                }
+            }
+        }
+    }
+    for (std::size_t head = 0; head < queue.size(); ++head) {
+        const int32_t cur = queue[head];
+        const int32_t j   = cur / LON;
+        const int32_t i   = cur % LON;
+        const int32_t iW  = (i == 0) ? LON - 1 : i - 1;
+        const int32_t iE  = (i == LON - 1) ? 0 : i + 1;
+        const std::size_t nb[4] = {SphereField::cellIndex(iW, j), SphereField::cellIndex(iE, j),
+                                   SphereField::cellIndex(i, std::max(0, j - 1)),
+                                   SphereField::cellIndex(i, std::min(LAT - 1, j + 1))};
+        for (const std::size_t n : nb) {
+            if (field.continentalFraction[n] < CONT_GATE) continue;
+            if (dist[n] >= 0) continue;
+            dist[n] = static_cast<int16_t>(dist[static_cast<std::size_t>(cur)] + 1);
+            queue.push_back(static_cast<int32_t>(n));
+        }
+    }
+
+#if defined(AOC_HAS_OPENMP)
+#pragma omp parallel for schedule(static)
+#endif
+    for (std::size_t idx = 0; idx < SphereField::CELL_COUNT; ++idx) {
+        const float cf = field.continentalFraction[idx];
+        if (cf < CONT_GATE) continue;
+        // dist < 0 means the BFS never reached this cell from the world ocean:
+        // continental crust entirely enclosed by an inland sea. That is deep
+        // interior, so it takes the full platform rather than being skipped
+        // and left with whatever the isostatic law happened to give it.
+        const float d = (dist[idx] < 0) ? (SHORE_CELLS + RAMP_HALF)
+                                        : static_cast<float>(dist[idx]);
+        // Signed distance from the shoreline: positive inland, negative drowned.
+        const float s = d - SHORE_CELLS;
+        float profile;
+        if (s >= 0.0f) {
+            profile = RELIEF_M * std::min(1.0f, s / RAMP_HALF);
+        } else if (-s <= SHELF_CELLS) {
+            profile = -SHELF_BREAK_M * (-s / SHELF_CELLS);
+        } else {
+            const float t = std::min(1.0f, (-s - SHELF_CELLS) /
+                                               std::max(1.0f, SHORE_CELLS - SHELF_CELLS));
+            profile = -SHELF_BREAK_M - (SLOPE_FOOT_M - SHELF_BREAK_M) * t;
+        }
+        // Orogenic roots ride on top, so mountain belts stand where their crust
+        // is thick rather than where the distance field puts them. THICKENING
+        // is passed through in full; THINNING is damped to a fifth.
+        //
+        // The asymmetry is deliberate and was measured. At 142.4 m per km of
+        // crust, a cell thinned to 35 km carries a -854 m root, which swamps the
+        // +300 m platform and drowns it even deep in a continental interior --
+        // 198 fully-interior water tiles and 551 narrow channels on seed 42,
+        // visible as straits cut across the landmasses. Real cratonic interiors
+        // do not behave that way: they sit near +100-300 m in isostatic
+        // equilibrium, planed flat, largely regardless of modest thickness
+        // variation. Damped, a 35 km cell sits at +129 m and stays land while a
+        // genuinely thin ~30 km cell still floods, which is what an
+        // intracratonic basin is.
+        const float rawRoot =
+            (field.crustThicknessKm[idx] - PhysicsConstants::refContinentalThicknessKm) *
+            continentalElevationPerKmM();
+        const float root = (rawRoot > 0.0f) ? rawRoot : rawRoot * 0.2f;
+        // The root FADES OUT across the shelf, and that is what makes a shelf
+        // exist at all rather than merely be drawn.
+        //
+        // Measured with the terrace in but the root at full weight: the water
+        // ring adjacent to land had median depth 467 m and a p10-p90 spread of
+        // ~1800 m, against a terrace only 140 m tall. Rim crust is thinned, so
+        // even damped to a fifth a cell 10 km under reference carries -285 m --
+        // twice the shelf break on its own. Ring-to-ring profile was entirely
+        // swamped by within-ring thickness variation, and the depth cut selected
+        // 3.4 % of water instead of the ~20 % it should.
+        //
+        const float rootW = (s >= 0.0f) ? 1.0f : std::max(0.0f, 1.0f + s / ROOT_TAPER_CELLS);
+        // Physically the root SHOULD vanish here. A continental shelf is a
+        // planated surface -- wave-cut, sediment-draped, graded to sea level --
+        // and its flatness comes from that levelling, not from uniform crust
+        // beneath it. So isostatic relief is weighted out from the shoreline to
+        // the shelf break, leaving the terrace to set the bathymetry.
+        //
+        // Tapering alone was not enough: it moved the adjacent ring only from
+        // 467 m to 333 m median, still well past the break, because half a
+        // -285 m root still doubles a 70 m terrace. The rule seaward is
+        // therefore asymmetric -- NEGATIVE relief is filled, positive relief
+        // stands. That is what sediment does: a shelf basin is buried by the
+        // outbuilding wedge and grades to the same surface, while a bank or a
+        // volcanic island keeps its height. The terrace becomes the FLOOR of
+        // the bathymetry rather than merely its average.
+        //
+        // KNOWN COST, measured, not tuned away. This same relief is what makes
+        // the shoreline ragged, so filling it smooths the coast:
+        // coast_box_dimension fell 1.141 -> 1.068 on 6 of 6 seeds against a
+        // 1.15 floor. Three attempts to separate the two failed, and each traced
+        // the same frontier rather than escaping it:
+        //   - fading over 6 / 12 / 18 cells: shelf 5/6, 0/6, 0/6 against box
+        //     dimension 1.061, 1.126, 1.146;
+        //   - starting the fill 3 / 6 / 10 cells offshore so the waterline keeps
+        //     its relief: box dimension 1.067, 1.073, 1.068 -- no effect;
+        //   - bounding the amplitude to +-25 / 40 / 70 m instead of fading it:
+        //     shelf 1/6, 1/6, 0/6 against box dimension 1.083, 1.105, 1.126.
+        // The shelf gate is sensitive specifically to NEGATIVE relief offshore
+        // -- a -40 m root on a terrace grading to -90 m puts a cell past the
+        // break once the hex sampler averages it -- so only the fill serves it.
+        // One field is doing two jobs and no setting of it serves both; giving
+        // the coastline its roughness back needs a separate source of
+        // short-wavelength relief, not another setting of this one.
+        const float relief = (s >= 0.0f) ? root : std::max(0.0f, root * rootW);
+        field.surfaceElevationM[idx] = relief + profile;
+    }
+}
+
+void solveContinentalFreeboard(SphereField& field) {
+    // Sea level is 0 by definition. The free scalar is continental freeboard:
+    // how far the continental platform stands above the waterline. It is
+    // bisected against LAND FRACTION, which is a property of the continental
+    // branch -- unlike the fixed-water-volume solve this replaces, whose
+    // derivative at the stand is the ocean area and which was therefore set by
+    // the abyss and blind to the continents it positioned. See the comment on
+    // SphereField::oceanVolumeEquivDepthM for the measured consequence.
+    //
+    // The target is Earth's 29.2 % (NOAA). Land fraction consequently stops
+    // being an independent gate and becomes a convergence check; the honest
+    // constraint moves to the REPORTED ocean volume, which this solve no longer
+    // forces and which can therefore disagree with Earth and say so.
+    //
+    // SERIAL fixed-order summation, for the same reason the old solve was:
+    // an OpenMP float reduction is thread-count dependent and breaks
+    // test_determinism and the portable golden preset.
+    constexpr int32_t LON      = SphereField::LON_CELLS;
+    constexpr int32_t LAT      = SphereField::LAT_CELLS;
+    constexpr float TARGET     = 0.292f;
+    // Physical bound on freeboard. Earth's is ~840 m of mean land elevation
+    // over ~40 km of crust; +-1500 m brackets any plausible planet and stops a
+    // crust-starved early epoch (continental area ~8 % at epoch 1, where 29.2 %
+    // land is simply unreachable) from running the bisection off to a
+    // nonsensical stand. Hitting the clamp early is expected and self-corrects
+    // as arc growth and accretion build continental area.
+    // Clamped tightly since the margin profile took over placing the
+    // shoreline. Freeboard is now a small eustatic adjustment, not the thing
+    // that decides land area: a range wide enough to move the stand through the
+    // platform would slice it, which is the degeneracy the profile exists to
+    // remove. Land fraction is consequently a geometric OUTPUT -- crust area
+    // minus the drowned rim -- and is tuned by the seeded stock and the ramp,
+    // not by this solve.
+    constexpr float FB_MIN     = -200.0f;
+    constexpr float FB_MAX     = 200.0f;
+
+    field.seaLevelM = 0.0f;
+
+    float latWeight[LAT];
+    double totalWeight = 0.0;
+    for (int32_t j = 0; j < LAT; ++j) {
+        const float latDeg = -90.0f + (static_cast<float>(j) + 0.5f) * SphereField::CELL_DEG;
+        latWeight[j]       = std::max(0.0f, std::cos(latDeg * 0.01745329252f));
+        totalWeight += static_cast<double>(latWeight[j]) * static_cast<double>(LON);
+    }
+
+    // Elevation without any freeboard, so the bisection can add a trial offset
+    // rather than re-running the whole isostatic law per iteration.
+    const auto landFractionAt = [&](float fb) -> double {
+        double land = 0.0;
+        for (int32_t j = 0; j < LAT; ++j) {
+            const double w = static_cast<double>(latWeight[j]);
+            double row     = 0.0;
+            for (int32_t i = 0; i < LON; ++i) {
+                const std::size_t idx = SphereField::cellIndex(i, j);
+                const float base      = field.surfaceElevationM[idx] -
+                                   field.continentalFreeboardM * field.continentalFraction[idx];
+                if (base + fb * field.continentalFraction[idx] > 0.0f) row += 1.0;
+            }
+            land += row * w;
+        }
+        return land / totalWeight;
+    };
+
+    // Freeboard is retired as a solved quantity. applyContinentalMarginProfile
+    // now places the shoreline geometrically, at a fixed distance inside the
+    // crust outline, so there is nothing left for a global stand to solve
+    // against -- and any stand wide enough to matter would slice the ramp and
+    // re-create the degeneracy the profile removes. Kept at 0 so the field and
+    // its readers stay valid.
+    field.continentalFreeboardM = 0.0f;
+    (void)FB_MIN;
+    (void)FB_MAX;
+    (void)TARGET;
+    (void)landFractionAt;
+
+    // Ocean volume is now an OUTPUT. Report it so a hypsometry that needs an
+    // un-Earthlike amount of water to fill it is visible rather than silently
+    // absorbed by the solve.
+    double vol = 0.0;
+    for (int32_t j = 0; j < LAT; ++j) {
+        const double w = static_cast<double>(latWeight[j]);
+        double row     = 0.0;
+        for (int32_t i = 0; i < LON; ++i) {
+            const float z = field.surfaceElevationM[SphereField::cellIndex(i, j)];
+            if (z < 0.0f) row += static_cast<double>(-z);
+        }
+        vol += row * w;
+    }
+    field.oceanVolumeEquivDepthM = static_cast<float>(vol / totalWeight);
 }
 
 void solveSeaLevelFixedVolume(SphereField& field) {
@@ -2993,7 +3928,8 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy) {
 }
 
 void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
-                            std::vector<uint8_t>& boundaryScratch, uint32_t& rngState, float dtMy) {
+                            std::vector<uint8_t>& boundaryScratch, uint32_t& rngState, float dtMy,
+                            std::vector<Terrane>* terranes, TerraneBody* terraneBody) {
     // Per-epoch passes in physical order:
     //   0. plate-cell advection — Lagrangian transport: each owned cell
     //      rotates about its plate's Euler pole by omega*dt (Rodrigues
@@ -3035,6 +3971,24 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
     // footprint (no orphans from CFL alone). The Rodrigues rotation
     // is exact, not a small-angle approximation, so the only
     // restriction is the raster footprint check.
+    // AOC_NO_ADVECT freezes plate ownership and the fields it transports.
+    // advectPlateOwnership resamples the cf raster ~900 times per world, and
+    // its own incumbent-wins rule means it cannot move a plate boundary -- so
+    // it is the prime suspect for degrading the crust footprint from 1.28x an
+    // equal-area disc at epoch 1 to 2.62x by epoch 60. Gated so that is a
+    // measurement rather than an inference.
+    static const bool kNoAdvect = std::getenv("AOC_NO_ADVECT") != nullptr;
+    // MEASURED 2026-08-31, and the result rules out the obvious suspicion.
+    // The transport is nearest-neighbour, so interpolation is not what smears
+    // the crust field; the suspect was the sheer number of resamples (~15 per
+    // epoch, ~900 per world) and their ORPHAN-FILL repair path, which copies
+    // from an arbitrary nearby source whenever a destination has no valid
+    // departure point. Sweeping this bound at 1/2/4/16/1000 (i.e. down to one
+    // substep per epoch) changed crust perimeter/equal-area-disc on seeds 42/7
+    // from 3.34/4.56 to 4.16-5.27 / 3.35-4.65 -- no better, mostly worse, and
+    // non-monotonic. Resample COUNT is not the damage; the mechanism is.
+    // Disabling advection entirely (AOC_NO_ADVECT) takes those same numbers to
+    // 1.48/1.23. Do not try to fix this by tuning the substep bound.
     constexpr float CFL_SAFETY = 1.0f;
     float maxOmegaDeg          = 0.0f;
     for (const Plate& p : plates) {
@@ -3060,7 +4014,9 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
     };
 
     float remainingDt = dtMy;
-    if (maxOmegaDeg > 0.0f) {
+    if (kNoAdvect) {
+        // fall through: no transport at all
+    } else if (maxOmegaDeg > 0.0f) {
         const float maxStep = CFL_SAFETY * SphereField::CELL_DEG / maxOmegaDeg;
         while (remainingDt > 1e-6f) {
             const float subDt = std::min(maxStep, remainingDt);
@@ -3071,6 +4027,17 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
         advectPlateOwnership(field, plates, dtMy);
     }
     budgetSnap(dAdvect);
+    despecklePlateOwnership(field);
+    // Rigid terrane transport supersedes advection's handling of the
+    // continental crust fields. Advection still runs (it carries plate
+    // ownership and the oceanic fields); the bake then overwrites continental
+    // crust from the rigid bodies, so the resampling damage measured in
+    // Terrane.hpp never reaches the field whose 0.5 contour is the coastline.
+    static const bool kNoTerranes = std::getenv("AOC_NO_TERRANES") != nullptr;
+    if (!kNoTerranes && terranes != nullptr && terraneBody != nullptr) {
+        advanceTerraneRotations(*terranes, plates, dtMy);
+        bakeTerranesToRaster(field, *terranes, *terraneBody);
+    }
     markBoundaryCells(field, boundaryScratch);
     accumulateClosingRate(field, plates, boundaryScratch);
     thickenFromClosingRate(field, dtMy);
@@ -3114,8 +4081,10 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
     budgetSnap(dRift);
     const int32_t contiguityMoved = enforcePlateContiguity(field, plates);
     budgetSnap(dContig);
+    recomputeOceanicCrustAge(field);
     recomputeIsostaticElevationOnRaster(field);
-    solveSeaLevelFixedVolume(field);
+    applyContinentalMarginProfile(field);
+    solveContinentalFreeboard(field);
     applySurfaceErosionOnRaster(field, dtMy);
     budgetSnap(dErode);
     if (kBudgetTrace) {
@@ -3125,6 +4094,9 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
                      "contig=%+.4g erode=%+.4g total=%.6g\n",
                      dAdvect, dThicken, dArcs, dAccrete, dSubduct, dDiverge, dDock, dSlab, dRift,
                      dContig, dErode, budgetPrev);
+    }
+    if (!kNoTerranes && terranes != nullptr && terraneBody != nullptr) {
+        writebackTerraneCrust(field, *terranes, *terraneBody);
     }
     compactPlateList(field, plates);
     recomputePlateCentroidsFromCells(field, plates);
@@ -3244,13 +4216,14 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
         const float cflCells = (traceMaxOmegaDeg * dtMy) / SphereField::CELL_DEG;
         std::fprintf(stderr,
                      "[sphere] dt=%.1fMy rate[%.4f..%.4f] crust=%.1fkm "
-                     "z=%.0fm zsea=%.0fm mtn=%zu cont(>0.5)=%zu cf_mean=%.3f "
+                     "z=%.0fm freeboard=%.0fm mtn=%zu cont(>0.5)=%zu cf_mean=%.3f "
                      "plates=%zu boundary=%zu btype(c/d/t)=%zu/%zu/%zu "
                      "frag=%zu maxComp=%zu terrane=%d "
                      "maxOmega=%.3fdeg/My cflCells=%.1f contVol=%.6g\n",
                      static_cast<double>(dtMy), static_cast<double>(minRate),
                      static_cast<double>(maxRate), static_cast<double>(maxCrust),
-                     static_cast<double>(maxZ), static_cast<double>(field.seaLevelM), mountainCells,
+                     static_cast<double>(maxZ), static_cast<double>(field.continentalFreeboardM),
+                     mountainCells,
                      continentalCells, meanContFrac, plates.size(), boundaryCount, btConvergent,
                      btDivergent, btTransform, fragmentedPlates, maxComponents, contiguityMoved,
                      static_cast<double>(traceMaxOmegaDeg), static_cast<double>(cflCells),

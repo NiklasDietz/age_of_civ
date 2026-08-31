@@ -35,6 +35,7 @@
 #include "aoc/map/gen/PlatePhysics.hpp"
 #include "aoc/map/gen/SphereField.hpp"
 #include "aoc/map/gen/SphereFieldPhysics.hpp"
+#include "aoc/map/gen/Terrane.hpp"
 #include "aoc/core/Log.hpp"
 #include "aoc/simulation/resource/ResourceTypes.hpp"
 #include "aoc/simulation/map/Chokepoint.hpp"
@@ -288,6 +289,9 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
         float strength;
     };
     std::vector<Hotspot> hotspots;
+    // Rigid continental bodies and the body-frame raster they index into.
+    std::vector<aoc::map::gen::Terrane> terranes;
+    aoc::map::gen::TerraneBody terraneBody;
 
     // Sea level is not a knob: it is solved per epoch from a conserved
     // ocean-water volume against the evolving hypsometry
@@ -812,7 +816,15 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // Kaapvaal, North Atlantic, Siberian, North China, Tarim,
                 // Indian, São Francisco, Amazonian, West African; Cawood et
                 // al. 2013, table 1). 7-11 brings the simulation in line.
-                const int32_t numCratons = 7 + cratonRng.nextInt(0, 4);
+                // 2026-08-31: 7-11 -> 5-8, paired with the raised stock. The
+                // whole continental budget is now seeded here rather than grown
+                // during the run, so the cratons are far larger; packing 11 of
+                // them onto a sphere at that size guaranteed they touched at
+                // birth and fused into one landmass (largest connected crust
+                // component measured 0.93-1.00). Fewer, larger, better-separated
+                // blocks is also what Earth has: ~41 % of the surface in about
+                // half a dozen continental masses.
+                const int32_t numCratons = 5 + cratonRng.nextInt(0, 4);
 
                 // Area weight of one raster cell at a given latitude row. Cells are
                 // lat/lon rectangles, so their ground area scales with cos(lat);
@@ -852,8 +864,24 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // that independent per-nucleus draws produced; the FINAL
                 // land fraction remains fully emergent from 3 Gy of
                 // physics against the fixed ocean volume.
-                constexpr float STOCK_FRACTION_MIN = 0.26f;
-                constexpr float STOCK_FRACTION_MAX = 0.32f;
+                // 2026-08-31: raised from 0.26-0.32. Continental crust is now
+                // carried by rigid terranes seeded from this stock and is no
+                // longer manufactured during the run -- arc growth used to add
+                // 37 % of area along convergent boundary LINES, which is what
+                // made continents filamentary, and the rigid bake now owns the
+                // whole continental budget. So the stock has to be the final
+                // amount, not a starting point: Earth's continental crust is
+                // 41 % of the surface (Cogley 1984). The band is set slightly
+                // above that to absorb the subduction and rifting losses the
+                // run still incurs.
+                //
+                // Raising this was tried once before and made gates worse; that
+                // was under the old regime, where more crust meant fewer,
+                // bigger plates, fewer convergent boundaries and therefore less
+                // arc growth. With growth no longer boundary-coupled, that
+                // feedback is gone.
+                constexpr float STOCK_FRACTION_MIN = 0.39f;
+                constexpr float STOCK_FRACTION_MAX = 0.45f;
                 constexpr float NUCLEUS_LOG_SIGMA  = 1.0f;
                 const float totalStockCells =
                     cratonRng.nextFloat(STOCK_FRACTION_MIN, STOCK_FRACTION_MAX) * static_cast<float>(N);
@@ -892,7 +920,11 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // Pangaea-scale mass is supposed to ASSEMBLE from several cratons
                 // over the run, not be seeded as one.
                 constexpr float CRATON_AREA_MIN_FRAC = 0.0002f;
-                constexpr float CRATON_AREA_MAX_FRAC = 0.06f;
+                // Raised with the stock: a 0.06 cap over 5-8 cratons cannot
+                // hold a 0.42-0.48 budget, so every craton clamped and the
+                // surplus redistribution did the sizing instead of the
+                // log-normal draw.
+                constexpr float CRATON_AREA_MAX_FRAC = 0.14f;
                 std::vector<double> cratonTargetArea(static_cast<std::size_t>(numCratons), 0.0);
                 double rasterArea = 0.0;
                 for (int32_t latIdx = 0; latIdx < LAT; ++latIdx) {
@@ -947,7 +979,19 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // tropical seeds are not over-represented).
                 std::vector<int32_t> seedLon(static_cast<std::size_t>(numCratons));
                 std::vector<int32_t> seedLat(static_cast<std::size_t>(numCratons));
-                constexpr float MIN_SEP_RAD = 0.45f; // ~26 deg: prevents seeds clumping
+                // 2026-08-31: 0.45 -> 0.85 rad (~49 deg). With the continental
+                // budget now seeded rather than grown, a craton holding ~7 % of
+                // the sphere has an angular radius near 25 deg, so centres 26
+                // deg apart OVERLAP by construction. Separation has to exceed
+                // twice the radius for the blocks to be born distinct, and a
+                // handful of caps at 49 deg still pack comfortably on a sphere.
+                // 0.85, not 1.00: at 1.00 rad the rejection sampler could not
+                // place 5-8 blocks of this size in 64 attempts and fell back to
+                // its RELAXED = 0.5x rule, which permits overlap -- so the
+                // stricter constant produced WORSE separation than the looser
+                // one. Measured: largest connected crust component 0.95/0.53/0.59
+                // at 0.85 versus 0.93/1.00/0.90 at 1.00.
+                constexpr float MIN_SEP_RAD = 0.85f;
                 // Mid-latitude bias for craton seeds. Earth's continental
                 // crust concentrates between roughly 20-70 degrees N and
                 // 25-50 degrees S; only Antarctica sits over a geographic
@@ -1175,6 +1219,12 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // Invariant check: region growing should already produce one
             // component per plate; this is a no-op unless it regresses.
             aoc::map::gen::enforcePlateContiguity(sphereField, plates);
+            // Capture the seeded cratons as rigid bodies. They are compact here
+            // (measured 1.28x an equal-area disc at epoch 1) and the run's job
+            // is now to move them, not to redraw them every substep.
+            aoc::map::gen::seedTerranesFromRaster(sphereField, terranes, terraneBody);
+            aoc::map::gen::assignTerraneDrift(terranes,
+                                              static_cast<float>(config.tectonicTotalMy));
             aoc::map::gen::recomputeIsostaticElevationOnRaster(sphereField);
             // Per-epoch substep duration in My. Derived from total simulated
             // time so the physics integrates at a fixed cadence regardless
@@ -1259,7 +1309,8 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                 // thickening, arc growth, subduction, ridge accretion,
                 // slab pull, Wilson rifting, isostasy, erosion.
                 aoc::map::gen::stepSpherePhysicsEpoch(sphereField, plates, sphereBoundaryScratch,
-                                                      physicsRngState, MY_PER_EPOCH_P1);
+                                                      physicsRngState, MY_PER_EPOCH_P1, &terranes,
+                                                      &terraneBody);
             }
 
             const float crustShare = aoc::map::gen::continentalAreaShare(sphereField);
@@ -1496,8 +1547,48 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     }
 
                     // --- elevation sample ---
-                    const float zM = sphereField.bilinearSample(sphereField.surfaceElevationM,
-                                                                mw.coord.latDeg, mw.coord.lonDeg);
+                    // FOOTPRINT AVERAGE, not a point sample.
+                    //
+                    // Under Lambert a hex tile covers 5.1 raster cells in
+                    // longitude and 2.5 (equator) to 10.1 (row 88) in latitude
+                    // -- 13 to 52 cells per tile. Crustal thickness is read with
+                    // peakSample over that footprint and boundary type with
+                    // boundaryTypeMode, but elevation, the field that decides
+                    // land versus water, was read with a 2x2 bilinear
+                    // interpolation at the tile centre. That is a 13-52x
+                    // decimation with no anti-aliasing: whether a tile is land
+                    // was effectively decided by one 55 km cell out of dozens,
+                    // which is precisely how a smooth shoreline on the raster
+                    // becomes a ragged one on the map.
+                    //
+                    // Averaging over the tile's own lat/lon extent makes the cut
+                    // a statement about the tile's mean surface. Equal-area
+                    // projection means an unweighted mean over a regular
+                    // sub-grid is already the area-weighted one.
+                    float zM = 0.0f;
+                    {
+                        constexpr int32_t SUB = 4;
+                        float acc             = 0.0f;
+                        for (int32_t sy = 0; sy < SUB; ++sy) {
+                            const float fy =
+                                (static_cast<float>(row) + (static_cast<float>(sy) + 0.5f) /
+                                                               static_cast<float>(SUB)) /
+                                static_cast<float>(height);
+                            for (int32_t sx = 0; sx < SUB; ++sx) {
+                                const float fx =
+                                    (static_cast<float>(col) + (static_cast<float>(sx) + 0.5f) /
+                                                                   static_cast<float>(SUB)) /
+                                    static_cast<float>(width);
+                                const aoc::map::gen::MollweideInverseResult sm =
+                                    aoc::map::gen::projectionInverse(config.projection, fx, fy);
+                                const aoc::map::gen::LatLon at =
+                                    sm.valid ? sm.coord : mw.coord;
+                                acc += sphereField.bilinearSample(sphereField.surfaceElevationM,
+                                                                  at.latDeg, at.lonDeg);
+                            }
+                        }
+                        zM = acc / static_cast<float>(SUB * SUB);
+                    }
                     const float contFracHere = sphereField.bilinearSample(
                         sphereField.continentalFraction, mw.coord.latDeg, mw.coord.lonDeg);
                     // Map metres above mantle datum (zero = real sea level
@@ -1532,8 +1623,23 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
                     // stationary seed-derived field -- it fits no ratio
                     // target and decays to zero away from the coast band.
                     // Sampled on the unit sphere: no antimeridian seam.
+                    // AOC_NO_COAST_NOISE disables this field. MEASURED
+                    // 2026-08-31, seeds 42/7/100/2026: turning it off changes
+                    // coastline perimeter/equal-area-disc by
+                    // 2.94->3.08, 3.81->3.64, 2.69->2.74, 3.93->4.02 -- i.e.
+                    // NOT AT ALL (mean 3.34 -> 3.37, slightly worse). The
+                    // suspicion recorded below -- that a +-400 m band covering
+                    // the whole landmass makes this a per-tile coin flip -- is
+                    // wrong in its consequence: the relief-bounded amplitude
+                    // does hold the shoreline shift to ~1 tile as intended.
+                    // The map's raggedness is in the elevation field itself,
+                    // not in this noise. Do not delete this expecting shape to
+                    // improve; the gate is kept so the null result stays
+                    // reproducible.
+                    static const bool kNoCoastNoise =
+                        std::getenv("AOC_NO_COAST_NOISE") != nullptr;
                     const float coastBand = 1.0f - std::min(1.0f, std::abs(zRelM) / 400.0f);
-                    if (coastBand > 0.0f && contFracHere >= 0.05f) {
+                    if (!kNoCoastNoise && coastBand > 0.0f && contFracHere >= 0.05f) {
                         const float latR = mw.coord.latDeg * 0.01745329252f;
                         const float lonR = mw.coord.lonDeg * 0.01745329252f;
                         const float px   = std::cos(latR) * std::cos(lonR);

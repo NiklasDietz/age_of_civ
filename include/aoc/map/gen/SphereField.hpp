@@ -122,6 +122,10 @@ struct SphereField {
     // in accreteToNeighbours to exclude rift margins (which are supposed
     // to stay thin — that is what makes them continental shelves).
     std::vector<float> stretchFactor;
+    // Which rigid terrane covers this cell, -1 = none (oceanic). Written by
+    // bakeTerranesToRaster; see Terrane.hpp for why continental crust is
+    // carried as rigid bodies rather than resampled raster values.
+    std::vector<int16_t> terraneId;
 
     // Sea level in metres above the mantle datum, resolved each epoch
     // by solveSeaLevelFixedVolume: the level at which the world's
@@ -131,12 +135,29 @@ struct SphereField {
     // parameter). All land/water decisions downstream are made
     // relative to this value. 0 until first solved.
     float seaLevelM = 0.0f;
-    // Conserved ocean-water volume, expressed as global-mean
-    // equivalent depth in metres (volume / total sphere area).
-    // Earth: 3682 m mean ocean depth x 70.8 % ocean area ~= 2607 m
-    // (NOAA). climatePhase perturbs it (icehouse locks water in ice
-    // sheets, greenhouse melts them / thermally expands the column).
+    // Ocean-water volume as global-mean equivalent depth in metres.
+    //
+    // 2026-08-31: this stopped being a CONSTRAINT and became a DIAGNOSTIC.
+    // It used to pin sea level via solveSeaLevelFixedVolume; the trouble is
+    // that dV/dz_sea at the stand IS the ocean area, ~95 % of which is abyss,
+    // so the solve was determined almost entirely by abyssal hypsometry and
+    // was nearly blind to the continental branch it governed. Perturb mean
+    // abyssal depth by 100 m and sea level moved 1:1 -- while the middle
+    // quartile of ALL continental crust spans just 71 m of elevation. So a
+    // 100 m error in the depth of the abyss, a region with no gameplay
+    // content, relocated more than half of all continental crust across sea
+    // level, with no restoring force. Sea level is now fixed at 0 and
+    // continentalFreeboardM is solved against land fraction instead -- a
+    // constraint the continental branch actually determines. This value is
+    // still the Earth reference (3682 m mean depth x 70.8 % ocean = 2607 m,
+    // NOAA) and the realised figure is now REPORTED and gated, which is
+    // strictly more informative than a constraint satisfied by construction.
     float oceanVolumeEquivDepthM = 2607.0f;
+    // Metres added to the isostatic elevation of fully continental crust,
+    // scaled by continentalFraction so the blend stays continuous. Solved
+    // each epoch by solveContinentalFreeboard. This is the planet's
+    // continental freeboard: the height of the platform above the waterline.
+    float continentalFreeboardM = 0.0f;
 
     /// Allocate all SoA fields to CELL_COUNT and zero-initialise them.
     /// plateId is set to -1 (unowned). Idempotent.
