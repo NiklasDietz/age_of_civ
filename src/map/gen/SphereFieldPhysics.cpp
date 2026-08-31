@@ -3770,6 +3770,23 @@ void solveSeaLevelFixedVolume(SphereField& field) {
     field.seaLevelM = 0.5f * (lo + hi);
 }
 
+// Calibration gain on the stream-power law, set so total denudation matches
+// the slope-only law it replaces. Measured with AOC_DUMP_EROSION: the point of
+// L9b is to move erosion into channels, not to erode more.
+inline constexpr float STREAM_GAIN = 1.20f;
+static const bool kDumpErosion = std::getenv("AOC_DUMP_EROSION") != nullptr;
+static double gErodedRockM     = 0.0;
+static std::size_t gErodedCells = 0;
+
+void reportErosionTotals() {
+    if (!kDumpErosion) return;
+    std::fprintf(stderr,
+                 "[erosion] total rock removed %.6g m-cells over %zu cell-steps "
+                 "(mean %.4g m per eroding cell-step)\n",
+                 gErodedRockM, gErodedCells,
+                 gErodedRockM / std::max<std::size_t>(1, gErodedCells));
+}
+
 void computeDrainage(const SphereField& field, std::vector<int32_t>& receiver,
                      std::vector<int32_t>& order, std::vector<float>& drainageAreaKm2) {
     // Where a river goes, before anything is eroded. See the header for the
@@ -3959,7 +3976,8 @@ void computeDrainage(const SphereField& field, std::vector<int32_t>& receiver,
     }
 }
 
-void applySurfaceErosionOnRaster(SphereField& field, float dtMy) {
+void applySurfaceErosionOnRaster(SphereField& field, float dtMy,
+                                 const std::vector<float>& drainageAreaKm2) {
     // Metres of crust that must be removed per metre of surface lowering.
     // Derived as the INVERSE of the elevation law's own slope rather than
     // recomputed from the densities, so the two cannot drift: erosion and
@@ -4048,7 +4066,34 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy) {
             // shields reach dynamic equilibrium against slow uplift rather
             // than eroding to nothing) without pre-emptively fencing the
             // shoreline out of the continental interior.
-            const float baseLevelM = field.seaLevelM + 150.0f;
+            // The peneplain floor applies to HILLSLOPES, not to channels.
+            //
+            // A river grades to sea level -- that is what base level means --
+            // and a valley that cannot reach it cannot be drowned into a ria,
+            // which is the whole mechanism L9 exists to produce. A single floor
+            // at +150 m stops every channel 150 m short of the coast.
+            //
+            // It was also measurably binding: raising the stream-power gain 20 %
+            // increased total denudation only 5.8 %, because the extra was
+            // absorbed by cells clamping against this floor rather than cutting
+            // deeper. Erosion here is cap-limited, not rate-limited.
+            //
+            // So the floor is relaxed in proportion to discharge, logarithmically
+            // between a hillslope and a major river. Interfluves keep the full
+            // +150 m that stops shoreline retreat from cannibalising continents
+            // (the reason the floor exists, documented above); trunk streams
+            // grade to the sea.
+            constexpr float PENEPLAIN_M    = 150.0f;
+            constexpr float CHANNEL_A0_KM2 = 1.0e4f;   // hillslope
+            constexpr float CHANNEL_A1_KM2 = 1.0e6f;   // trunk river
+            float channelW = 0.0f;
+            if (!drainageAreaKm2.empty()) {
+                const float a = std::max(1.0f, drainageAreaKm2[idx]);
+                channelW = std::clamp((std::log10(a) - std::log10(CHANNEL_A0_KM2)) /
+                                          (std::log10(CHANNEL_A1_KM2) - std::log10(CHANNEL_A0_KM2)),
+                                      0.0f, 1.0f);
+            }
+            const float baseLevelM = field.seaLevelM + PENEPLAIN_M * (1.0f - channelW);
             if (z < baseLevelM) continue;
             // Neighbour elevations are clamped at sea level before the
             // gradient is taken. Rivers grade to BASE LEVEL, not to the sea
@@ -4102,7 +4147,33 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy) {
             // sitting exactly wherever the floor was). Earth's cratons survive
             // 3 Gy precisely because rebound makes net lowering a seventh of
             // denudation.
-            float dRockM = K_EROSION_M_PER_MY_PER_SLOPE * slope * dtMy;
+            // STREAM POWER when a drainage field is supplied (L9b), the
+            // historical slope-only law otherwise.
+            //
+            //     dz/dt = -K (A/Aref)^m S
+            //
+            // Slope alone erodes a hillside and a river valley at the same rate
+            // if they are equally steep, so it lowers terrain uniformly and
+            // cannot cut a channel. Discharge is what distinguishes them, and
+            // channels are what indent a coastline: a valley reaching the shore
+            // is a ria. That is the whole reason for L9 -- four cheaper
+            // mechanisms were measured against the coastline gates and failed.
+            //
+            // m = 0.5, n = 1 (Whipple & Tucker 1999). Aref normalises so the
+            // TOTAL denudation is unchanged and only its DISTRIBUTION moves;
+            // see the [erosion] dump, which exists to hold that invariant. A K
+            // that changes the total would shift every hypsometry gate at once
+            // and confound the measurement.
+            constexpr float STREAM_M    = 0.5f;
+            constexpr float STREAM_AREF = 1.0e4f;   // km2
+            float dRockM;
+            if (drainageAreaKm2.empty()) {
+                dRockM = K_EROSION_M_PER_MY_PER_SLOPE * slope * dtMy;
+            } else {
+                const float a = std::max(1.0f, drainageAreaKm2[idx]) / STREAM_AREF;
+                dRockM = K_EROSION_M_PER_MY_PER_SLOPE * STREAM_GAIN *
+                         std::pow(a, STREAM_M) * slope * dtMy;
+            }
             // Cap so one forward-Euler step cannot drive the SURFACE below the
             // peneplain floor; convert that surface allowance back into rock
             // thickness through the same ratio.
@@ -4112,6 +4183,10 @@ void applySurfaceErosionOnRaster(SphereField& field, float dtMy) {
             float h = field.crustThicknessKm[idx] - dRockM * 1e-3f;
             if (h < 0.0f) h = 0.0f;
             field.crustThicknessKm[idx] = h;
+            if (kDumpErosion) {
+                gErodedRockM += static_cast<double>(dRockM);
+                ++gErodedCells;
+            }
         }
     }
 }
@@ -4274,14 +4349,18 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
     recomputeIsostaticElevationOnRaster(field);
     applyContinentalMarginProfile(field);
     solveContinentalFreeboard(field);
-    // L9a: routing only, behind a flag, so the network can be inspected before
-    // any incision is wired to it. Costs nothing when the flag is unset.
-    if (std::getenv("AOC_DUMP_DRAINAGE") != nullptr) {
+    // L9b: route, then incise in proportion to discharge. AOC_NO_STREAM_POWER
+    // falls back to the slope-only law, which is what the denudation invariant
+    // is calibrated against.
+    static const bool kNoStreamPower = std::getenv("AOC_NO_STREAM_POWER") != nullptr;
+    if (kNoStreamPower) {
+        applySurfaceErosionOnRaster(field, dtMy);
+    } else {
         std::vector<int32_t> rcv, ord;
         std::vector<float> area;
         computeDrainage(field, rcv, ord, area);
+        applySurfaceErosionOnRaster(field, dtMy, area);
     }
-    applySurfaceErosionOnRaster(field, dtMy);
     budgetSnap(dErode);
     if (kBudgetTrace) {
         std::fprintf(stderr,

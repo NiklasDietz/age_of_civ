@@ -1248,6 +1248,7 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // None beat the inert baseline's 157, so the call is left as it is
             // until dispersal earns its place. See the plan file for the full
             // tables.
+            std::atexit(aoc::map::gen::reportErosionTotals);
             aoc::map::gen::assignTerraneDrift(terranes,
                                               static_cast<float>(config.tectonicTotalMy));
             aoc::map::gen::recomputeIsostaticElevationOnRaster(sphereField);

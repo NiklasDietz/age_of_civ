@@ -365,7 +365,15 @@ void writebackTerraneCrust(const SphereField& field, std::vector<Terrane>& terra
 void computeDrainage(const SphereField& field, std::vector<int32_t>& receiver,
                      std::vector<int32_t>& order, std::vector<float>& drainageAreaKm2);
 
-void applySurfaceErosionOnRaster(SphereField& field, float dtMy);
+/// Print the accumulated denudation totals (AOC_DUMP_EROSION). Exists to hold
+/// the L9b invariant: stream power must REDISTRIBUTE erosion, not increase it.
+void reportErosionTotals();
+
+/// `drainageAreaKm2` comes from computeDrainage and selects the erosion law:
+/// when it is empty the historical slope-only form runs, otherwise stream
+/// power `K (A/Aref)^m S` incises channels in proportion to discharge.
+void applySurfaceErosionOnRaster(SphereField& field, float dtMy,
+                                 const std::vector<float>& drainageAreaKm2 = {});
 
 /// Single-step epoch driver. Sequences ownership / boundary /
 /// closing-rate / thicken / subduct / slab-pull / Wilson rifting /
