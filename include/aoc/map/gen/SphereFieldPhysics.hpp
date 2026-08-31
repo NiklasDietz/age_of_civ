@@ -346,6 +346,25 @@ void writebackTerraneCrust(const SphereField& field, std::vector<Terrane>& terra
 /// Phase 6 will swap K_EROSION for the Whipple & Tucker 1999 stream-power
 /// coefficient with a documented derivation. Current value is a coarse
 /// placeholder calibrated to keep peaks below 8 km at steady state.
+/// Flow routing and drainage area on the raster (L9a).
+///
+/// Fills depressions for ROUTING ONLY (real elevation is untouched), assigns
+/// each land cell a D8 receiver on the filled surface, and accumulates
+/// cos-lat-weighted catchment area downstream. `order` comes back sorted by
+/// filled elevation, highest first, which is the order stream-power incision
+/// must walk so a cell's discharge is known before it is eroded.
+///
+/// Serial and deterministic by construction: the priority queue is keyed on
+/// (elevation, index) so ties break on index rather than on heap order, and
+/// the accumulation is a fixed-order loop. Do not parallelise it -- an OpenMP
+/// float reduction would make the result thread-count dependent and break
+/// test_determinism.
+///
+/// `receiver[i]` is -1 for ocean cells and for land cells that reach no lower
+/// neighbour; `drainageAreaKm2[i]` is 0 for ocean.
+void computeDrainage(const SphereField& field, std::vector<int32_t>& receiver,
+                     std::vector<int32_t>& order, std::vector<float>& drainageAreaKm2);
+
 void applySurfaceErosionOnRaster(SphereField& field, float dtMy);
 
 /// Single-step epoch driver. Sequences ownership / boundary /

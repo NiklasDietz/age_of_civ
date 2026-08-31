@@ -3770,6 +3770,195 @@ void solveSeaLevelFixedVolume(SphereField& field) {
     field.seaLevelM = 0.5f * (lo + hi);
 }
 
+void computeDrainage(const SphereField& field, std::vector<int32_t>& receiver,
+                     std::vector<int32_t>& order, std::vector<float>& drainageAreaKm2) {
+    // Where a river goes, before anything is eroded. See the header for the
+    // contract; this is the routing half of L9, deliberately separated from
+    // incision so the network can be inspected on its own.
+    constexpr int32_t LON    = SphereField::LON_CELLS;
+    constexpr int32_t LAT    = SphereField::LAT_CELLS;
+    constexpr float CELL_RAD = SphereField::CELL_DEG * 0.01745329252f;
+    const float cellHeightKm = PhysicsConstants::earthRadiusKm * CELL_RAD;
+    const std::size_t N      = SphereField::CELL_COUNT;
+
+    receiver.assign(N, -1);
+    drainageAreaKm2.assign(N, 0.0f);
+    order.clear();
+    order.reserve(N);
+
+    // Per-row geometry. Longitude pitch shrinks as cos(lat); ignoring that
+    // would make polar cells look enormously steep and capture every river.
+    std::vector<float> widthKm(static_cast<std::size_t>(LAT));
+    std::vector<float> areaKm2(static_cast<std::size_t>(LAT));
+    for (int32_t j = 0; j < LAT; ++j) {
+        const float latDeg = -90.0f + (static_cast<float>(j) + 0.5f) * SphereField::CELL_DEG;
+        const float c      = std::max(0.02f, std::cos(latDeg * 0.01745329252f));
+        widthKm[static_cast<std::size_t>(j)] = cellHeightKm * c;
+        areaKm2[static_cast<std::size_t>(j)] = cellHeightKm * widthKm[static_cast<std::size_t>(j)];
+    }
+
+    // PRIORITY-FLOOD (Barnes, Lehman & Mulla 2014) from sea level.
+    //
+    // Depressions have to be dealt with or every closed basin swallows its
+    // drainage and no discharge reaches the coast, which is exactly the signal
+    // wanted. The fill is written to a SEPARATE surface used only for routing:
+    // the real elevation must not move, because the margin profile owns it.
+    //
+    // Seeded from every cell below sea level, so the base level is the ocean
+    // itself and an inland sea drains to it only if a path exists.
+    constexpr float INF = std::numeric_limits<float>::max();
+    std::vector<float> zf(N, INF);
+    std::vector<uint8_t> done(N, 0u);
+    // Keyed on (elevation, index): ties break on index, so the pop order is
+    // fixed regardless of how the heap happens to arrange equal keys. Without
+    // the index the fill is still correct but not reproducible.
+    using Node = std::pair<float, int32_t>;
+    std::priority_queue<Node, std::vector<Node>, std::greater<Node>> pq;
+    for (std::size_t i = 0; i < N; ++i) {
+        if (field.surfaceElevationM[i] < 0.0f) {
+            zf[i] = field.surfaceElevationM[i];
+            pq.emplace(zf[i], static_cast<int32_t>(i));
+        }
+    }
+    while (!pq.empty()) {
+        const Node top = pq.top();
+        pq.pop();
+        const int32_t cur = top.second;
+        if (done[static_cast<std::size_t>(cur)]) continue;
+        done[static_cast<std::size_t>(cur)] = 1u;
+        const int32_t j = cur / LON;
+        const int32_t i = cur % LON;
+        for (int32_t dj = -1; dj <= 1; ++dj) {
+            const int32_t nj = j + dj;
+            if (nj < 0 || nj >= LAT) continue;
+            for (int32_t di = -1; di <= 1; ++di) {
+                if (di == 0 && dj == 0) continue;
+                const int32_t ni       = (i + di + LON) % LON;
+                const std::size_t nIdx = SphereField::cellIndex(ni, nj);
+                if (done[nIdx]) continue;
+                // The filled height is the higher of the cell's own elevation
+                // and the level of the spill point reached so far, plus an
+                // EPSILON so the fill is strictly increasing away from the
+                // outlet.
+                //
+                // Without the epsilon a filled depression is exactly flat, no
+                // cell in it has a strictly lower neighbour, and every one
+                // becomes a sink that swallows its own drainage. Measured
+                // without it: 12363 sinks against 8278 river mouths, and the
+                // largest basin reached 0.36 % of land where Earth's Amazon is
+                // ~4 %. This is Barnes, Lehman & Mulla's (2014) epsilon variant
+                // and it is what makes flats drain toward their spill point.
+                //
+                // 1e-4 m per step is far below any elevation the gates read,
+                // so even a basin thousands of cells across is inflated by
+                // centimetres.
+                constexpr float FILL_EPS_M = 1e-4f;
+                const float nz = std::max(field.surfaceElevationM[nIdx],
+                                          zf[static_cast<std::size_t>(cur)] + FILL_EPS_M);
+                if (nz < zf[nIdx]) {
+                    zf[nIdx] = nz;
+                    pq.emplace(nz, static_cast<int32_t>(nIdx));
+                }
+            }
+        }
+    }
+
+    // D8 receiver on the filled surface: steepest descent by true metric
+    // gradient, not by height difference alone.
+    for (int32_t j = 0; j < LAT; ++j) {
+        const float wKm = widthKm[static_cast<std::size_t>(j)];
+        const float diagKm = std::sqrt(wKm * wKm + cellHeightKm * cellHeightKm);
+        for (int32_t i = 0; i < LON; ++i) {
+            const std::size_t idx = SphereField::cellIndex(i, j);
+            if (field.surfaceElevationM[idx] < 0.0f) continue;   // ocean: an outlet
+            if (zf[idx] == INF) continue;                        // never reached
+            float bestSlope = 0.0f;
+            int32_t best    = -1;
+            for (int32_t dj = -1; dj <= 1; ++dj) {
+                const int32_t nj = j + dj;
+                if (nj < 0 || nj >= LAT) continue;
+                for (int32_t di = -1; di <= 1; ++di) {
+                    if (di == 0 && dj == 0) continue;
+                    const int32_t ni       = (i + di + LON) % LON;
+                    const std::size_t nIdx = SphereField::cellIndex(ni, nj);
+                    if (zf[nIdx] == INF) continue;
+                    const float drop = zf[idx] - zf[nIdx];
+                    if (drop <= 0.0f) continue;
+                    const float dist =
+                        (di == 0) ? cellHeightKm : ((dj == 0) ? wKm : diagKm);
+                    const float slope = drop / dist;
+                    // Strict >, then lowest index, so equal slopes resolve the
+                    // same way every run.
+                    if (slope > bestSlope ||
+                        (slope == bestSlope && best >= 0 && static_cast<int32_t>(nIdx) < best)) {
+                        bestSlope = slope;
+                        best      = static_cast<int32_t>(nIdx);
+                    }
+                }
+            }
+            receiver[idx]        = best;
+            drainageAreaKm2[idx] = areaKm2[static_cast<std::size_t>(j)];
+            order.push_back(static_cast<int32_t>(idx));
+        }
+    }
+
+    // Accumulate downstream, highest filled elevation first, so a cell's own
+    // catchment is complete before it donates. Sorting by (zf, index) keeps
+    // the traversal reproducible where many cells share a filled level -- which
+    // is common inside a filled depression.
+    std::sort(order.begin(), order.end(), [&](int32_t a, int32_t b) {
+        const float za = zf[static_cast<std::size_t>(a)];
+        const float zb = zf[static_cast<std::size_t>(b)];
+        if (za != zb) return za > zb;
+        return a < b;
+    });
+    for (const int32_t idx : order) {
+        const int32_t r = receiver[static_cast<std::size_t>(idx)];
+        if (r < 0) continue;
+        drainageAreaKm2[static_cast<std::size_t>(r)] +=
+            drainageAreaKm2[static_cast<std::size_t>(idx)];
+    }
+
+    if (std::getenv("AOC_DUMP_DRAINAGE") != nullptr) {
+        double landKm2 = 0.0, maxA = 0.0;
+        std::size_t landCells = 0, mouths = 0, sinks = 0;
+        double mouthMax = 0.0;
+        for (std::size_t i = 0; i < N; ++i) {
+            if (field.surfaceElevationM[i] < 0.0f) continue;
+            ++landCells;
+            landKm2 += areaKm2[static_cast<std::size_t>(i / LON)];
+            maxA = std::max(maxA, static_cast<double>(drainageAreaKm2[i]));
+            const int32_t r = receiver[i];
+            if (r < 0) {
+                ++sinks;
+            } else if (field.surfaceElevationM[static_cast<std::size_t>(r)] < 0.0f) {
+                ++mouths;
+                mouthMax = std::max(mouthMax, static_cast<double>(drainageAreaKm2[i]));
+            }
+        }
+        std::vector<float> as;
+        as.reserve(landCells);
+        for (std::size_t i = 0; i < N; ++i) {
+            if (field.surfaceElevationM[i] >= 0.0f) as.push_back(drainageAreaKm2[i]);
+        }
+        std::sort(as.begin(), as.end());
+        const auto pct = [&](double p) {
+            return as.empty() ? 0.0f
+                              : as[std::min(as.size() - 1,
+                                            static_cast<std::size_t>(p * (as.size() - 1)))];
+        };
+        std::fprintf(stderr,
+                     "[drainage] land=%zu cells (%.3g Mkm2) mouths=%zu sinks=%zu\n"
+                     "[drainage] area km2: p50=%.4g p90=%.4g p99=%.4g max=%.4g "
+                     "(largest basin %.2f%% of land)\n"
+                     "[drainage] largest basin reaching the sea: %.4g km2\n",
+                     landCells, landKm2 * 1e-6, mouths, sinks,
+                     static_cast<double>(pct(0.50)), static_cast<double>(pct(0.90)),
+                     static_cast<double>(pct(0.99)), maxA,
+                     100.0 * maxA / std::max(1.0, landKm2), mouthMax);
+    }
+}
+
 void applySurfaceErosionOnRaster(SphereField& field, float dtMy) {
     // Metres of crust that must be removed per metre of surface lowering.
     // Derived as the INVERSE of the elevation law's own slope rather than
@@ -4085,6 +4274,13 @@ void stepSpherePhysicsEpoch(SphereField& field, std::vector<Plate>& plates,
     recomputeIsostaticElevationOnRaster(field);
     applyContinentalMarginProfile(field);
     solveContinentalFreeboard(field);
+    // L9a: routing only, behind a flag, so the network can be inspected before
+    // any incision is wired to it. Costs nothing when the flag is unset.
+    if (std::getenv("AOC_DUMP_DRAINAGE") != nullptr) {
+        std::vector<int32_t> rcv, ord;
+        std::vector<float> area;
+        computeDrainage(field, rcv, ord, area);
+    }
     applySurfaceErosionOnRaster(field, dtMy);
     budgetSnap(dErode);
     if (kBudgetTrace) {
