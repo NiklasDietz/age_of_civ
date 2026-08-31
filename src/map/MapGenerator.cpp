@@ -1223,6 +1223,31 @@ void MapGenerator::assignTerrain(const Config& config, HexGrid& grid, aoc::Rando
             // (measured 1.28x an equal-area disc at epoch 1) and the run's job
             // is now to move them, not to redraw them every substep.
             aoc::map::gen::seedTerranesFromRaster(sphereField, terranes, terraneBody);
+            // KNOWN INERT, deliberately left so. `config.tectonicTotalMy` is
+            // the RAW request field and defaults to 0; the resolved value is
+            // the local `totalMy` above. Passing the raw field trips
+            // assignTerraneDrift's `totalMy <= 0` guard, so it returns
+            // immediately and every block keeps driftRateDegPerMy = 0.
+            // Prescribed dispersal has therefore never run, and the gate
+            // movement once attributed to it came from changes that shipped
+            // beside it.
+            //
+            // Do NOT "fix" this by passing totalMy without also redesigning the
+            // dispersal itself -- that has been measured, twice, at 24 seeds:
+            //   radial-from-centroid, live: axis_aligned_frac 24/24 -> 16/24
+            //     (rotation aliases), score 157 -> 145. Radial dispersal on a
+            //     sphere also reverses past 90 deg, and the centroid is
+            //     dominated by the largest block, so small blocks converge on
+            //     the antipode.
+            //   pairwise repulsion, live: keeps axis_aligned at 24/24 and moves
+            //     perimeter_over_disc 7/24 -> 12/24, but costs inland depth
+            //     16/24 -> 11/24 and land fraction 19/24 -> 16/24; score 151.
+            //   repulsion + size-aware craton separation: best result for
+            //     largest crust component (10/24 -> 12/24, median into band)
+            //     but axis 21/24, shelf 14/24; score 149.
+            // None beat the inert baseline's 157, so the call is left as it is
+            // until dispersal earns its place. See the plan file for the full
+            // tables.
             aoc::map::gen::assignTerraneDrift(terranes,
                                               static_cast<float>(config.tectonicTotalMy));
             aoc::map::gen::recomputeIsostaticElevationOnRaster(sphereField);
