@@ -1110,6 +1110,53 @@ def cmd_selftest(_args):
     # -----------------------------------------------------------------
     print("\nshape metrics -- synthetic controls:")
 
+    # coast_box_dimension had NO synthetic control until 2026-08-31, alone
+    # among the shape metrics, and its [1.15, 1.25] band was taken from
+    # published coastline dimensions. Those are measured with rulers nothing
+    # like this grid's ~286 km tile, which is the same ruler-dependence error
+    # documented above for perimeter_over_disc.
+    #
+    # What the controls show is that the estimator is not measuring a fractal
+    # dimension at all. Every shape below is a SMOOTH, non-fractal curve -- a
+    # circle plus a sinusoid -- and true box dimension for all of them is 1.0
+    # in the limit. Over the s in {1,2,4,8,16} window on a coastline a few
+    # hundred tiles long the estimator instead returns whatever the roughness
+    # is at 1-16 tiles, spanning 0.89 to 1.35. A smooth circle reads 0.891,
+    # not 1.0, so the estimator is biased low by ~0.11 at this size and an
+    # Earth coastline of true dimension 1.15-1.25 would NOT read 1.15-1.25
+    # here. Treat this as a roughness index over a 1-16 tile window; the band
+    # needs re-anchoring on these controls, which is deliberately left to a
+    # decision rather than done here (see the plan file).
+    def _lobed(cx, cy, radius, amp=0.0, lobes=0):
+        land = [0] * (W * H)
+        for r in range(H):
+            for c in range(W):
+                ang = math.atan2(r - cy, c - cx)
+                edge = radius + (amp * math.sin(lobes * ang) if lobes else 0.0)
+                if math.hypot(c - cx, r - cy) <= edge:
+                    land[r * W + c] = 1
+        return land
+
+    def _coast_pts(land):
+        pts = []
+        for r in range(H):
+            for c in range(W):
+                if not land[r * W + c]:
+                    continue
+                for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    rr = r + dr
+                    if rr < 0 or rr >= H or not land[rr * W + (c + dc) % W]:
+                        pts.append((c, r))
+                        break
+        return pts
+
+    for label, args, want in (
+            ("smooth circle reads BELOW 1.0 (estimator bias)", (25,), 0.891),
+            ("20 lobes: moderate crenulation", (25, 3, 20), 1.064),
+            ("40 lobes: heavy crenulation", (25, 4, 40), 1.293)):
+        d = box_count_dimension(_coast_pts(_lobed(70, 45, *args)), W, H)
+        ok &= _check(f"box dimension: {label}", d, want, 0.02)
+
     cap = _sphere_cap(W, H, "lambert", 0.0, 0.0, 30.0)
     iso = isoperimetric_ratio(cap, W, H, True)
     dep = inland_depth_stats(cap, W, H, True)
